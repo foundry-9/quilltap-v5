@@ -53,24 +53,34 @@
 //! one `sharp`, used by both the bridges' pre-transcode and the normalization,
 //! and on every production path the codec is the host's `HostImageCodec` — the
 //! same encoder the engine's `blob_webp` holds.
-//! ⚠ **Recorded divergence, RULED (the human, 2026-09-23, at the `a2db63da7`
-//! unification): DECLINE animated inputs at the codec.** The host codec
-//! encodes a single frame (`quilltap-host/src/image_codec.rs`, the `webp`
-//! crate — no libwebpmux), so an ANIMATED GIF/WebP reaching any of these
-//! sites is today stored as a still WebP where v4's
-//! `sharp(input, { animated: true })` keeps every frame. Before P4.104 these
-//! sites stored the original bytes (frames kept, mime and path
-//! un-normalized). The ruling: the host codec must DETECT an animated input
-//! (a GIF with more than one image descriptor; a WebP whose VP8X chunk sets
-//! the animation bit) and answer the "cannot transcode" arm, so v4's own
-//! store-original fallback keeps the frames — a recorded D19 divergence on
-//! mime and path, never a lost frame. The alternative (an animated encoder
-//! through libwebpmux — the `webp-animation` family — with frame timing
-//! and loop count proven tier-1 against sharp) is NOT taken now; it becomes
-//! its own order only if animated images matter on real instances. The
-//! detection is an order (`phase-4.md`, the round's next items), not yet
-//! landed: until it lands, the still-frame behaviour above is what ships.
 //!
+//! **Recorded divergence, RULED (the human, 2026-09-23, at the `a2db63da7`
+//! unification) and LANDED (P4.108): animated inputs are DECLINED at the
+//! codec.** The host codec encodes a single frame (`quilltap-host/src/
+//! image_codec.rs`, the `webp` crate — no libwebpmux), where v4's
+//! `sharp(input, { animated: true })` (`blob-transcode.ts:121`, v4's ONLY
+//! frame-keeping sharp call) re-encodes an animated GIF/WebP as an animated
+//! WebP. So the host codec counts frames on its two animated seams — its
+//! [`WebpTranscoder`] impl and `PixelCodec::encode_webp` with `animated:
+//! true` (the [`PixelCodecWebp`] path above, and `file_storage::
+//! transcode_to_webp`) — and answers a two-or-more-frame input with the
+//! cannot-transcode `Err`. `transcode_to_webp`'s WARN arm then stores the
+//! original bytes, and this function hands the input back unchanged: EVERY
+//! FRAME kept, with the original mime, path, name and sha — a D19 divergence
+//! on exactly those fields, pinned in both directions by
+//! `normalize_blob_image_equivalence`'s `RULED_ANIMATED_DECLINE` rows. The
+//! count, not the WebP animation bit, decides: a one-`ANMF` WebP is a
+//! one-page still to sharp too, and an APNG is a still PNG to sharp (v4
+//! keeps only its first frame), so neither is declined. Every other codec
+//! path decodes the first frame, as v4's `sharp(buffer)` calls do.
+//! ⚠ One declined shape looks odd and is v4's own: `write_main_avatar_to_vault`
+//! hard-codes `images/avatar.webp` (as v4's `character-vault-bridge.ts:50`
+//! does), so a declined animated avatar lands at a `.webp` path holding
+//! `storedMimeType: image/gif` bytes — exactly what v4 writes when sharp
+//! throws there. Growing the codec to encode animation (libwebpmux, the
+//! `webp-animation` family, with frame timing and loop count proven against
+//! sharp) is NOT taken; it becomes its own order only if animated images
+//! matter on real instances.
 //!
 //! **No encoder wired** (a host that supplies none, a canned test store) is
 //! decided ONCE for every site: [`blob_codec_or_refusing`] hands over the

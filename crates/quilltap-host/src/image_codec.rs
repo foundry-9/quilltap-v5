@@ -23,10 +23,23 @@
 //! required — dimension/format/alpha POLICY parity is (asserted in the tests
 //! below). Documented degradations:
 //!
-//! * **Animated GIF → WebP** (`transcodeToWebP`'s `{animated: true}`): the
-//!   `webp` crate encodes single frames only (no libwebpmux), so an animated
-//!   GIF degrades to its FIRST FRAME (a quality divergence, not a policy one —
-//!   the mime/extension/sha policy is identical).
+//! * **Animated input on the two ANIMATED encode seams is DECLINED** (P4.108,
+//!   ruled by the human 2026-09-23). The `webp` crate encodes single frames
+//!   only (no libwebpmux), and v4 has exactly ONE sharp call that keeps frames
+//!   — `transcodeToWebP`'s `sharp(input, { animated: true })`
+//!   (`lib/mount-index/blob-transcode.ts:121`). Its two v5 twins —
+//!   [`PixelCodec::encode_webp`] with `animated: true` and
+//!   [`BlobWebpTranscoder::encode_webp`] — answer the cannot-transcode `Err`
+//!   when `is_multi_frame` says the input has two or more frames, so the
+//!   caller takes v4's own store-original fallback and EVERY FRAME is kept (a
+//!   recorded D19 divergence on mime, path, name and sha — v4 writes an
+//!   animated WebP — never a lost frame). Detection is by FRAME COUNT, not
+//!   the WebP animation bit: a one-`ANMF` WebP is a one-page still to sharp
+//!   too. APNG is never declined — sharp reads it as a still PNG, so v4 keeps
+//!   only its first frame as well. Every OTHER codec method here decodes the
+//!   FIRST FRAME of an animated input, which is PARITY: every other v4 sharp
+//!   call is `sharp(buffer)` (default `pages: 1`) — `convertToWebP`, the
+//!   thumbnail, the LLM-transport shrink, the provider resize.
 //! * **AVIF / HEIC / HEIF decode** are not wired (they need dav1d / libheif C
 //!   stacks): those inputs fail decode and take v4's own failure-passthrough
 //!   branch (stored as-is with the original mime — v4 with a working sharp
@@ -41,10 +54,12 @@
 
 use std::io::Cursor;
 
+use image::codecs::gif::GifDecoder;
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::{CompressionType, FilterType as PngFilterType, PngEncoder};
+use image::codecs::webp::WebPDecoder;
 use image::imageops::FilterType;
-use image::{DynamicImage, GenericImageView, ImageFormat, ImageReader};
+use image::{AnimationDecoder, DynamicImage, GenericImageView, ImageFormat, ImageReader};
 
 use quilltap_core::files::image_processing::{
     ImageMetadata, ImageTranscoder as ResizeTranscoder, OutputFormat,
@@ -67,6 +82,39 @@ fn decode(bytes: &[u8]) -> Result<DynamicImage, String> {
         .map_err(|e| format!("image decode failed: {e}"))
 }
 
+/// Does this input carry TWO OR MORE frames? (P4.108 — the animated-input
+/// decline; see the module docs.)
+///
+/// GIF and WebP only, counted through the `image` crate's own animation
+/// decoders (a byte scan for image-descriptor `0x2C` bytes would miscount a
+/// GIF whose comment or palette carries that byte). Everything else — APNG
+/// included, which sharp reads as a still PNG — is `false`, and so is any
+/// decoder error: an input this cannot read falls through to [`decode`],
+/// which fails or succeeds exactly as it always did. `take(2)` stops the
+/// count at the answer, so a long animation is never decoded whole.
+fn is_multi_frame(bytes: &[u8]) -> bool {
+    fn at_least_two<'a>(frames: image::Frames<'a>) -> bool {
+        frames.take(2).take_while(|f| f.is_ok()).count() >= 2
+    }
+    match image::guess_format(bytes) {
+        Ok(ImageFormat::Gif) => GifDecoder::new(Cursor::new(bytes))
+            .map(|d| at_least_two(d.into_frames()))
+            .unwrap_or(false),
+        // A still WebP reports zero animation frames, so its iterator is
+        // empty; the animation bit with ONE `ANMF` counts one.
+        Ok(ImageFormat::WebP) => WebPDecoder::new(Cursor::new(bytes))
+            .map(|d| at_least_two(d.into_frames()))
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
+/// The cannot-transcode answer for an animated input (P4.108). The caller's
+/// `Err` arm is v4's store-original fallback, which keeps every frame.
+const ANIMATED_DECLINED: &str = "animated input: the host WebP encoder is single-frame \
+     (ruled 2026-09-23 — decline rather than keep only the first frame); \
+     storing the original bytes";
+
 /// Encode a decoded image as lossy WebP at `quality` (0–100) via libwebp.
 fn encode_webp_image(img: &DynamicImage, quality: i64) -> Result<Vec<u8>, String> {
     // libwebp accepts RGB8/RGBA8; normalize the color type first.
@@ -83,11 +131,16 @@ impl PixelCodec for HostImageCodec {
         bytes: &[u8],
         quality: i64,
         _effort: Option<i64>,
-        _animated: bool,
+        animated: bool,
     ) -> Result<Vec<u8>, String> {
         // `effort` (libwebp method) is not exposed by the `webp` crate's
         // simple encoder — an encoding-speed/size knob, not a policy one.
-        // `animated: true` degrades to first-frame (module docs).
+        // `animated: true` is v4's `sharp(input, { animated: true })`: a
+        // multi-frame input is DECLINED (module docs). `animated: false` is
+        // `sharp(buffer)` — the first frame, as v4.
+        if animated && is_multi_frame(bytes) {
+            return Err(ANIMATED_DECLINED.to_string());
+        }
         let img = decode(bytes)?;
         encode_webp_image(&img, quality)
     }
@@ -248,15 +301,20 @@ impl WebpTranscoder for HostImageCodec {
 
 impl BlobWebpTranscoder for HostImageCodec {
     /// The Scriptorium blob-upload pixel seam (v4 `transcodeToWebP`'s
-    /// `sharp(input).webp({quality, effort:4})`, `blob-transcode.ts:62`). Decode
-    /// then lossy-encode at `quality`; an undecodable input is an `Err` the
-    /// caller turns into v4's store-original fallback arm.
+    /// `sharp(input, { animated: true }).webp({quality, effort:4})`,
+    /// `blob-transcode.ts:121`). Decode then lossy-encode at `quality`; an
+    /// undecodable input is an `Err` the caller turns into v4's store-original
+    /// fallback arm, and so — ALWAYS, since this seam is v4's animated call —
+    /// is a multi-frame input (P4.108, the module docs).
     ///
     /// v4's `effort: 4` is a libwebp encoder-cost knob with no policy surface
     /// (the `webp` crate's simple encoder does not expose it) — dropped, exactly
     /// as the [`PixelCodec::encode_webp`] `_effort` argument is (D19: policy
     /// parity, never byte parity).
     fn encode_webp(&self, bytes: &[u8], quality: u8) -> Result<Vec<u8>, String> {
+        if is_multi_frame(bytes) {
+            return Err(ANIMATED_DECLINED.to_string());
+        }
         let img = decode(bytes)?;
         encode_webp_image(&img, quality as i64)
     }
@@ -685,6 +743,145 @@ mod tests {
             msg.contains("decode") || msg.contains("probe"),
             "unexpected: {msg}"
         );
+    }
+
+    /// P4.108 — the committed animated-input fixtures (and their generator).
+    fn anim_fixture(name: &str) -> Vec<u8> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../harness/oracle/fixtures/normalize-blob-image")
+            .join(name);
+        std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+    }
+
+    /// P4.108 Tier-1 item 2 — the helper's classification over the six
+    /// fixtures, which sharp 0.35.4 reads as pages 2 / 1 / 1 / 2 / 1 / none.
+    #[test]
+    fn is_multi_frame_counts_frames_not_flags() {
+        for (file, want) in [
+            ("anim-2frame.gif", true),
+            ("still-large.gif", false),
+            // A comment full of 0x2C (the descriptor introducer) is not a frame.
+            ("still-with-commas.gif", false),
+            ("anim-2frame.webp", true),
+            // The VP8X animation bit with ONE `ANMF`: a still to sharp.
+            ("one-anmf.webp", false),
+            // sharp reads APNG as a still PNG — never declined.
+            ("anim-2frame.apng", false),
+        ] {
+            assert_eq!(is_multi_frame(&anim_fixture(file)), want, "{file}");
+        }
+        // Stills of every other kind, and bytes that are no image at all.
+        assert!(!is_multi_frame(&gif_bytes(9, 7)));
+        assert!(!is_multi_frame(&png_bytes(4, 4, false)));
+        assert!(!is_multi_frame(&noise_webp(8, 8)));
+        assert!(!is_multi_frame(b"GIF89a truncated"));
+        assert!(!is_multi_frame(b"not an image"));
+    }
+
+    /// P4.108 Tier-1 item 3 — the two ANIMATED seams decline a multi-frame
+    /// input with the ruling's message, and encode everything else as before.
+    #[test]
+    fn the_two_animated_seams_decline_a_multi_frame_input() {
+        let codec = HostImageCodec;
+        for file in ["anim-2frame.gif", "anim-2frame.webp"] {
+            let bytes = anim_fixture(file);
+            let e = PixelCodec::encode_webp(&codec, &bytes, 85, Some(4), true).unwrap_err();
+            assert!(e.contains("ruled 2026-09-23"), "{file}: {e}");
+            let e = BlobWebpTranscoder::encode_webp(&codec, &bytes, 85).unwrap_err();
+            assert_eq!(e, ANIMATED_DECLINED, "{file}");
+        }
+        for file in [
+            "still-large.gif",
+            "still-with-commas.gif",
+            "one-anmf.webp",
+            "anim-2frame.apng",
+        ] {
+            let bytes = anim_fixture(file);
+            let a = PixelCodec::encode_webp(&codec, &bytes, 85, Some(4), true).unwrap();
+            assert_eq!(format_of(&a), ImageFormat::WebP, "{file}");
+            let b = BlobWebpTranscoder::encode_webp(&codec, &bytes, 85).unwrap();
+            assert_eq!(format_of(&b), ImageFormat::WebP, "{file}");
+        }
+    }
+
+    /// P4.108 Tier-1 item 3 — every path where v4 itself encodes only the
+    /// FIRST frame (`sharp(buffer)`, default `pages: 1`) is UNCHANGED: an
+    /// animated GIF still comes out as its first frame there.
+    #[test]
+    fn the_first_frame_paths_still_encode_an_animated_gif() {
+        let codec = HostImageCodec;
+        let anim = anim_fixture("anim-2frame.gif");
+
+        // `PixelCodec::encode_webp` with `animated: false` — v4 `convertToWebP`.
+        let direct = PixelCodec::encode_webp(&codec, &anim, 90, None, false).unwrap();
+        assert_eq!(format_of(&direct), ImageFormat::WebP);
+        let r = convert_to_webp(&codec, &anim, "image/gif", "loop.gif");
+        assert!(
+            r.was_converted,
+            "convertToWebP keeps v4's first-frame encode"
+        );
+        assert_eq!(r.mime_type, "image/webp");
+        assert_eq!(r.filename, "loop.webp");
+        assert_eq!((r.width, r.height), (Some(32), Some(24)));
+
+        // The first frame is RED (the generator's frame 1), not the blue second.
+        let px = image::load_from_memory(&r.buffer).unwrap().to_rgb8();
+        let image::Rgb([red, _g, blue]) = *px.get_pixel(16, 12);
+        assert!(red > 150 && blue < 100, "frame 1 is red: {red},{blue}");
+
+        let shrunk = ResizeTranscoder::shrink_to_webp(&codec, &anim, 16, 78).unwrap();
+        assert_eq!(dims_of(&shrunk), (16, 12));
+        let thumb = codec.thumbnail_webp(&anim, 8).unwrap();
+        assert_eq!(dims_of(&thumb), (8, 8));
+        let resized = codec.resize_step(&anim, 16, OutputFormat::Webp, 85);
+        assert_eq!(format_of(&resized), ImageFormat::WebP);
+        assert_eq!(dims_of(&resized), (16, 12));
+    }
+
+    /// P4.108 Tier-2 item 7 — the `PixelCodec` animated seam through the
+    /// policies that drive it with `animated: true`. The family
+    /// (`normalize_blob_image_equivalence`) hands `HostImageCodec` to the
+    /// chokepoint as a `BlobWebpTranscoder`, so it exercises THAT seam; this
+    /// is the proof for the other one: `PixelCodecWebp` (the normalization
+    /// over a site's pixel codec) and `file_storage::transcode_to_webp`
+    /// (the gallery / avatar / image-job pre-transcode) both store an
+    /// animated GIF's original bytes, and a still GIF is still transcoded.
+    #[test]
+    fn the_pixel_codec_animated_seam_keeps_every_frame_through_its_policies() {
+        use quilltap_core::services::mount_index::normalize_blob_image::{
+            normalize_link_blob_image, NormalizableBlob, PixelCodecWebp,
+        };
+        let codec = HostImageCodec;
+        let anim = anim_fixture("anim-2frame.gif");
+
+        let r = transcode_to_webp(&codec, &anim, "image/gif", TRANSCODE_WEBP_QUALITY);
+        assert_eq!(r.stored_mime_type, "image/gif");
+        assert_eq!(r.data, anim, "every frame kept");
+
+        let seam = PixelCodecWebp(&codec);
+        let input = NormalizableBlob {
+            relative_path: "art/loop.gif".into(),
+            file_name: "loop.gif".into(),
+            stored_mime_type: "image/gif".into(),
+            sha256: "in".into(),
+            data: anim.clone(),
+        };
+        let out = normalize_link_blob_image(&input, true, Some(&seam));
+        assert_eq!(out, input, "declined: the input, unchanged");
+
+        let still = anim_fixture("still-large.gif");
+        let r2 = transcode_to_webp(&codec, &still, "image/gif", TRANSCODE_WEBP_QUALITY);
+        assert_eq!(r2.stored_mime_type, "image/webp");
+        let out2 = normalize_link_blob_image(
+            &NormalizableBlob {
+                data: still,
+                ..input
+            },
+            true,
+            Some(&seam),
+        );
+        assert_eq!(out2.stored_mime_type, "image/webp");
+        assert_eq!(out2.relative_path, "art/loop.webp");
     }
 
     #[test]

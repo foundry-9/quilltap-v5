@@ -20,6 +20,21 @@
 //! still a PNG, and an extension-less path gains `.webp` rather than losing its
 //! leaf.
 //!
+//! **P4.108 — the animated-input decline (ruled by the human, 2026-09-23).**
+//! Seven more rows over committed animated fixtures (`fixtures/normalize-blob-
+//! image/generate.py` makes them). Two are a RULED DIVERGENCE
+//! ([`RULED_ANIMATED_DECLINE`]): v4's `sharp(input, { animated: true })` keeps
+//! both frames as an animated WebP, and v5's single-frame host codec declines
+//! instead, so the store-original fallback keeps both frames as the input. They
+//! are pinned in BOTH directions: v4 must show an animated WebP (`pages > 1`,
+//! an oracle field kept OUT of `Row`'s equality), v5 must show the input bytes
+//! exactly, and the caller's store-original WARN must fire once. The other
+//! five (a WebP passthrough, a one-`ANMF` still, two still GIFs, an APNG sharp
+//! reads as a still) must MATCH whole-row — they pin that detection counts
+//! FRAMES and never over-reaches. This family exercises the codec's
+//! `BlobWebpTranscoder` seam; the `PixelCodec` animated seam is proven by the
+//! host codec's unit tests.
+//!
 //! **The fifth host seam the work order expected is NOT taken, by measurement.**
 //! `HostImageCodec`'s existing `WebpTranscoder::encode_webp` decodes through the
 //! `image` crate's format sniffer, and `image-webp` handles a VP8L bitstream, so
@@ -132,6 +147,94 @@ const CASES: &[CaseSpec] = &[
         stored_mime_type: "image/png",
         normalize_images: Some(true),
     },
+    // P4.108 — the animated-input decline. The two `_declined` rows are the
+    // RULED divergence ([`RULED_ANIMATED_DECLINE`]); the other five MATCH.
+    CaseSpec {
+        name: "anim_gif_declined",
+        file: "anim-2frame.gif",
+        relative_path: "art/loop.gif",
+        file_name: "loop.gif",
+        stored_mime_type: "image/gif",
+        normalize_images: Some(true),
+    },
+    CaseSpec {
+        // An animated WebP reaches the encoder ONLY under a mislabelled mime:
+        // `image/webp` is outside the transcodable set, and the lossless check
+        // reads top-level chunks only (the bitstream sits inside `ANMF`).
+        name: "anim_webp_mislabelled_declined",
+        file: "anim-2frame.webp",
+        relative_path: "art/loop.gif",
+        file_name: "loop.gif",
+        stored_mime_type: "image/gif",
+        normalize_images: Some(true),
+    },
+    CaseSpec {
+        name: "anim_webp_passthrough",
+        file: "anim-2frame.webp",
+        relative_path: "art/loop.webp",
+        file_name: "loop.webp",
+        stored_mime_type: "image/webp",
+        normalize_images: Some(true),
+    },
+    CaseSpec {
+        // The animation bit with ONE `ANMF`: sharp reads one page, so no frame
+        // is at stake — detection is by FRAME COUNT, not the bit.
+        name: "one_anmf_still",
+        file: "one-anmf.webp",
+        relative_path: "art/still.gif",
+        file_name: "still.gif",
+        stored_mime_type: "image/gif",
+        normalize_images: Some(true),
+    },
+    CaseSpec {
+        name: "still_gif_transcoded",
+        file: "still-large.gif",
+        relative_path: "art/stripes.gif",
+        file_name: "stripes.gif",
+        stored_mime_type: "image/gif",
+        normalize_images: Some(true),
+    },
+    CaseSpec {
+        // One frame behind a comment full of 0x2C, the descriptor introducer.
+        name: "commas_gif_transcoded",
+        file: "still-with-commas.gif",
+        relative_path: "art/commas.gif",
+        file_name: "commas.gif",
+        stored_mime_type: "image/gif",
+        normalize_images: Some(true),
+    },
+    CaseSpec {
+        // sharp reads an APNG as a still PNG, so v4 loses these frames too and
+        // v5 must never decline one.
+        name: "apng_still",
+        file: "anim-2frame.apng",
+        relative_path: "art/loop.png",
+        file_name: "loop.png",
+        stored_mime_type: "image/png",
+        normalize_images: Some(true),
+    },
+];
+
+/// P4.108 — rows where v5 deliberately does NOT match v4, with the ruling.
+///
+/// **Ruled by the human, 2026-09-23 (the `a2db63da7` unification):** the host
+/// WebP encoder is single-frame (the `webp` crate, no libwebpmux), so rather
+/// than store an animated GIF/WebP as its first frame it DECLINES the encode,
+/// and v4's own store-original fallback keeps every frame. v4's
+/// `sharp(input, { animated: true })` keeps the frames and re-encodes to an
+/// animated WebP. The divergence is therefore on mime, path, name, sha and
+/// size — never on a frame. Pinned in BOTH directions below: a row where v4
+/// and v5 agree is a "VANISHED" failure, a row whose difference is not this
+/// one is a "WRONG SHAPE" failure, and every row named here must have run.
+const RULED_ANIMATED_DECLINE: &[(&str, &str)] = &[
+    (
+        "anim_gif_declined",
+        "a two-frame GIF: v4 writes an animated WebP; v5 stores the GIF unchanged",
+    ),
+    (
+        "anim_webp_mislabelled_declined",
+        "a two-frame WebP stored as image/gif: v4 re-encodes it animated; v5 stores it unchanged",
+    ),
 ];
 
 #[derive(Deserialize, Debug, PartialEq)]
@@ -157,6 +260,13 @@ struct Oracle {
     results: Vec<Row>,
 }
 
+/// The raw oracle rows, for fields deliberately kept OUT of [`Row`]'s
+/// whole-row equality (P4.108's `pages`, read only on the ruled rows).
+#[derive(Deserialize)]
+struct RawOracle {
+    results: Vec<serde_json::Value>,
+}
+
 fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../harness/oracle/fixtures/normalize-blob-image")
 }
@@ -172,12 +282,9 @@ fn normalize_link_blob_image_matches_oracle() {
             return;
         }
     };
-    let oracle: Oracle = serde_json::from_str(
-        std::fs::read_to_string(&oracle_path)
-            .unwrap_or_else(|e| panic!("read oracle: {e}"))
-            .trim(),
-    )
-    .expect("parse oracle");
+    let text = std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
+    let oracle: Oracle = serde_json::from_str(text.trim()).expect("parse oracle");
+    let raw: RawOracle = serde_json::from_str(text.trim()).expect("parse oracle (raw)");
     assert_eq!(
         oracle.results.len(),
         CASES.len(),
@@ -189,6 +296,10 @@ fn normalize_link_blob_image_matches_oracle() {
     let dir = fixtures_dir();
     let codec = HostImageCodec;
     let mut ours: Vec<Row> = Vec::new();
+    // Per case: were the stored bytes the input bytes ("every frame kept"),
+    // and how many times did the caller's store-original WARN fire.
+    let mut kept_input: Vec<bool> = Vec::new();
+    let mut store_original_warns: Vec<usize> = Vec::new();
 
     for case in CASES {
         let data = std::fs::read(dir.join(case.file))
@@ -204,7 +315,19 @@ fn normalize_link_blob_image_matches_oracle() {
         // An omitted flag is `true` — `LinkBlobInput` resolves the default at
         // its own boundary, so the function takes a plain bool.
         let normalize = case.normalize_images.unwrap_or(true);
-        let out = normalize_link_blob_image(&input, normalize, Some(&codec));
+        let (out, lines) = quilltap_core::test_support::captured_with(|| {
+            normalize_link_blob_image(&input, normalize, Some(&codec))
+        });
+        kept_input.push(out.data == data);
+        store_original_warns.push(
+            lines
+                .iter()
+                .filter(|l| {
+                    l.starts_with("WARN ")
+                        && l.contains("Failed to transcode blob to WebP; storing original bytes")
+                })
+                .count(),
+        );
 
         let (width, height) = if out.data == data && case.file == "notes.txt" {
             (None, None)
@@ -232,12 +355,68 @@ fn normalize_link_blob_image_matches_oracle() {
     }
 
     let mut mismatches: Vec<String> = Vec::new();
-    for (theirs, ours) in oracle.results.iter().zip(ours.iter()) {
+    let mut seen_ruled: Vec<&str> = Vec::new();
+    for (i, (theirs, ours)) in oracle.results.iter().zip(ours.iter()).enumerate() {
         assert_eq!(
             theirs.name, ours.name,
             "the oracle case list and this test's CASES are out of ORDER — \
              they are transcribed twice on purpose and must agree"
         );
+        let case = &CASES[i];
+        if let Some((_, why)) = RULED_ANIMATED_DECLINE
+            .iter()
+            .find(|(n, _)| *n == theirs.name)
+        {
+            seen_ruled.push(case.name);
+            if theirs == ours {
+                mismatches.push(format!(
+                    "  {}: the ruled divergence VANISHED — v4 and v5 agree ({why}); \
+                     if the host codec now encodes animation, retire the ruling's row\n    \
+                     both {ours:?}",
+                    theirs.name
+                ));
+                continue;
+            }
+            let v4_pages = raw.results[i].get("pages").and_then(|p| p.as_i64());
+            // v4: kept the frames and re-encoded them as an animated WebP.
+            let v4_shape = theirs.changed
+                && theirs.sha_changed
+                && theirs.stored_mime_type == "image/webp"
+                && theirs.relative_path.ends_with(".webp")
+                && v4_pages.is_some_and(|p| p > 1);
+            // v5: declined — the input exactly, every frame kept.
+            let v5_shape = !ours.changed
+                && !ours.sha_changed
+                && ours.stored_mime_type == case.stored_mime_type
+                && ours.relative_path == case.relative_path
+                && ours.file_name == case.file_name
+                && ours.bytes_grew_or_shrank == "same"
+                && kept_input[i];
+            let same_picture = theirs.width == ours.width && theirs.height == ours.height;
+            if !(v4_shape && v5_shape && same_picture) {
+                mismatches.push(format!(
+                    "  {}: the ruled divergence has the WRONG SHAPE ({why}) — \
+                     v4 animated={v4_shape} (pages {v4_pages:?}), v5 declined={v5_shape} \
+                     (bytes kept {}), same dimensions={same_picture}\n    v4 {theirs:?}\n    v5 {ours:?}",
+                    theirs.name, kept_input[i]
+                ));
+            }
+            // The decline is the codec's `Err`; the caller's WARN is what
+            // says so out loud — once per declined write.
+            if store_original_warns[i] != 1 {
+                mismatches.push(format!(
+                    "  {}: the store-original WARN fired {} times, want exactly 1",
+                    theirs.name, store_original_warns[i]
+                ));
+            }
+            continue;
+        }
+        if store_original_warns[i] != 0 {
+            mismatches.push(format!(
+                "  {}: the store-original WARN fired {} times on a row that is not declined",
+                theirs.name, store_original_warns[i]
+            ));
+        }
         if theirs != ours {
             mismatches.push(format!(
                 "  {}\n    v4 {theirs:?}\n    v5 {ours:?}",
@@ -253,6 +432,19 @@ fn normalize_link_blob_image_matches_oracle() {
         mismatches.join("\n")
     );
 
+    // Every declared ruled row must have run, or deleting it from the corpus
+    // would silently retire the divergence's measurement.
+    for (name, why) in RULED_ANIMATED_DECLINE {
+        assert!(
+            seen_ruled.contains(name),
+            "the corpus carries no '{name}' row, so the ruled divergence ({why}) is unproven — \
+             regenerate the oracle from the case file that defines it"
+        );
+    }
+
+    // Both decisions in quantity, counted on v5's side: the two ruled rows
+    // count as UNCHANGED here (v5 declines them), and the row-level diff above
+    // is what proves each one.
     let changed = ours.iter().filter(|r| r.changed).count();
     assert!(
         changed >= 4 && changed < CASES.len(),
@@ -261,9 +453,11 @@ fn normalize_link_blob_image_matches_oracle() {
     );
     println!(
         "OK: normalize_link_blob_image matched v4 on {} cases ({changed} normalized, {} left \
-         alone) — decision, mime, path, name, size direction and decoded dimensions.",
-        CASES.len(),
-        CASES.len() - changed
+         alone) — decision, mime, path, name, size direction and decoded dimensions — and \
+         diverged as RULED on the {} animated-decline rows.",
+        CASES.len() - RULED_ANIMATED_DECLINE.len(),
+        CASES.len() - changed,
+        RULED_ANIMATED_DECLINE.len()
     );
 }
 

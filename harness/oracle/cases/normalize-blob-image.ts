@@ -18,7 +18,11 @@
  *   - non-image bytes are left alone;
  *   - `normalizeImages: false` is honoured;
  *   - an OMITTED flag normalizes, because the default is `true` and a skip
- *     would be the silent reintroduction of the whole defect.
+ *     would be the silent reintroduction of the whole defect;
+ *   - (P4.108) seven animated-input rows: two v4 keeps animated and v5
+ *     DECLINES (a ruled divergence, pinned both ways on the Rust side), and
+ *     five that must match (a WebP passthrough, a one-ANMF still, two still
+ *     GIFs, an APNG sharp reads as a still).
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -116,6 +120,79 @@ const CASES: CaseSpec[] = [
     storedMimeType: 'image/png',
     normalizeImages: true,
   },
+  // P4.108 — the animated-input decline (ruled by the human, 2026-09-23).
+  // v4's `transcodeToWebP` is the ONE sharp call that passes `{ animated:
+  // true }`, so v4 keeps every frame of these; v5's host encoder is
+  // single-frame and DECLINES them instead. The two `_declined` rows are a
+  // RULED DIVERGENCE the Rust side pins in both directions; every other row
+  // here must MATCH. Fixtures + their generator: `fixtures/normalize-blob-image/
+  // generate.py`.
+  {
+    name: 'anim_gif_declined',
+    file: 'anim-2frame.gif',
+    relativePath: 'art/loop.gif',
+    fileName: 'loop.gif',
+    storedMimeType: 'image/gif',
+    normalizeImages: true,
+  },
+  {
+    // An animated WebP reaches the encoder ONLY under a mislabelled mime:
+    // `image/webp` is not in the transcodable set, and the lossless check
+    // reads top-level chunks only (the bitstream sits inside `ANMF`).
+    name: 'anim_webp_mislabelled_declined',
+    file: 'anim-2frame.webp',
+    relativePath: 'art/loop.gif',
+    fileName: 'loop.gif',
+    storedMimeType: 'image/gif',
+    normalizeImages: true,
+  },
+  {
+    name: 'anim_webp_passthrough',
+    file: 'anim-2frame.webp',
+    relativePath: 'art/loop.webp',
+    fileName: 'loop.webp',
+    storedMimeType: 'image/webp',
+    normalizeImages: true,
+  },
+  {
+    // The VP8X animation bit with ONE `ANMF` frame: sharp reads one page,
+    // so no frame is at stake and v5 must NOT decline it (frame count, not
+    // the bit — the order's refinement of the ruling's wording).
+    name: 'one_anmf_still',
+    file: 'one-anmf.webp',
+    relativePath: 'art/still.gif',
+    fileName: 'still.gif',
+    storedMimeType: 'image/gif',
+    normalizeImages: true,
+  },
+  {
+    name: 'still_gif_transcoded',
+    file: 'still-large.gif',
+    relativePath: 'art/stripes.gif',
+    fileName: 'stripes.gif',
+    storedMimeType: 'image/gif',
+    normalizeImages: true,
+  },
+  {
+    // A one-frame GIF behind a comment full of 0x2C (the image-descriptor
+    // introducer) — a naive byte scan would count frames that are not there.
+    name: 'commas_gif_transcoded',
+    file: 'still-with-commas.gif',
+    relativePath: 'art/commas.gif',
+    fileName: 'commas.gif',
+    storedMimeType: 'image/gif',
+    normalizeImages: true,
+  },
+  {
+    // sharp does not decode APNG animation (format=png, a still): v4 loses
+    // the frames here too, so v5 must never decline an APNG.
+    name: 'apng_still',
+    file: 'anim-2frame.apng',
+    relativePath: 'art/loop.png',
+    fileName: 'loop.png',
+    storedMimeType: 'image/png',
+    normalizeImages: true,
+  },
 ];
 
 async function main(): Promise<void> {
@@ -162,10 +239,16 @@ async function main(): Promise<void> {
     // different encoders must agree on.
     let width: number | null = null;
     let height: number | null = null;
+    // P4.108: the page count of what came out (`undefined` → null for a
+    // single-page format). Read by the Rust side ONLY for the ruled
+    // animated rows — v4 must have kept more than one frame there — and
+    // kept out of the whole-row comparand.
+    let pages: number | null = null;
     try {
       const meta = await sharp(out.data).metadata();
       width = meta.width ?? null;
       height = meta.height ?? null;
+      pages = meta.pages ?? null;
     } catch {
       // non-image bytes: no dimensions, on both sides
     }
@@ -181,6 +264,7 @@ async function main(): Promise<void> {
         out.data.length === data.length ? 'same' : out.data.length < data.length ? 'smaller' : 'larger',
       width,
       height,
+      pages,
     });
   }
 

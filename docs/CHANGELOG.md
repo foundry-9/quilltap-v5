@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(host): decline animated inputs on the codec's two animated seams, pinned as the ruled divergence (P4.108 items 2–8)
+
+_Versions: core 0.0.1003 (module doc only), harness 0.0.914, host 0.0.148._
+
+The host WebP codec now counts frames before its two animated encodes (the
+blob transcoder seam, and `PixelCodec::encode_webp` with `animated: true`),
+which are v5's twins of v4's one `sharp(input, { animated: true })` call. A GIF
+or WebP with two or more frames gets a cannot-transcode error, so the caller
+takes the existing store-original fallback and keeps every frame. Before this,
+an animated input was stored as a still WebP of its first frame. APNG, a WebP
+with the animation bit but one frame, and every other codec path (which v4
+also runs on the first frame only) are unchanged. The new `is_multi_frame`
+helper uses the `image` crate's own GIF and WebP animation decoders, adds no
+dependency, and stops counting at two.
+
+`normalize_blob_image_equivalence` grows seven rows over the new fixtures,
+regenerated from v4's real `normalizeLinkBlobImage` and sharp 0.35.4 at
+`a2db63da7`. Five must match whole-row. The two declined rows are pinned in
+both directions: v4 must write an animated WebP (`pages > 1`), v5 must store
+the input bytes unchanged and log the store-original WARN exactly once, and
+the test fails with "VANISHED" or "WRONG SHAPE" if either side moves. Red
+first: before the decline, both rows failed and the other five matched.
+Mutation proofs: five mutations, each red in the test written against it. The
+module docs in `image_codec.rs` and `normalize_blob_image.rs` now describe the
+decline as landed.
+
 #### 2026-09-23 — test(fixtures): the animated-input fixtures + their generator (P4.108 item 1)
 
 _No crate versions bumped._
