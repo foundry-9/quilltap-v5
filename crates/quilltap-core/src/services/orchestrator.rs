@@ -2055,7 +2055,14 @@ where
                 help_tools_enabled,
                 can_dress_themselves,
                 can_create_outfits,
-                document_editing_enabled,
+                // P4.D216 OUT-OF-MANDATE — the `build_tools` caller's owner preserves (v4 `d1c06cd9d`: `documentEditingEnabled` → `docToolsMode` + the `extras` bag).
+                // v4 `orchestrator.service.ts:1021`: `documentEditingEnabled ? 'full' : 'off'`.
+                doc_tools_mode: if document_editing_enabled {
+                    crate::services::tool_build::DocToolsMode::Full
+                } else {
+                    crate::services::tool_build::DocToolsMode::Off
+                },
+                extras: crate::services::tool_build::BuildToolsExtras::default(),
                 ask_carina_enabled,
                 // The Brahma Console (unported) is the only caller that flips these.
                 include_workspace_tools: true,

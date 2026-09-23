@@ -64,6 +64,12 @@ import {
   searchScriptoriumToolDefinition,
   searchScriptoriumBrahmaToolDefinition,
 } from '@/lib/tools/search-scriptorium-tool';
+import * as searchScriptoriumTools from '@/lib/tools/search-scriptorium-tool';
+
+// The Scenario Builder `search` variant (v4 `d1c06cd9d`), or undefined at a pin
+// that predates it.
+const scenarioSearch = (searchScriptoriumTools as Record<string, unknown>)
+  .searchScriptoriumScenarioToolDefinition as typeof searchScriptoriumToolDefinition | undefined;
 import { selfInventoryToolDefinition } from '@/lib/tools/self-inventory-tool';
 import { stateToolDefinition } from '@/lib/tools/state-tool';
 import { submitFinalResponseToolDefinition } from '@/lib/tools/submit-final-response-tool';
@@ -124,6 +130,10 @@ const ALL_TOOLS: Record<string, { type: string; function: { name: string; descri
   runSql: runSqlToolDefinition,
   searchScriptorium: searchScriptoriumToolDefinition,
   searchScriptoriumBrahma: searchScriptoriumBrahmaToolDefinition,
+  // v4 `d1c06cd9d` (the Scenario Builder variant). Read off the module
+  // namespace so the same case still runs from a pre-`d1c06cd9d` pin (the
+  // key is simply absent there).
+  ...(scenarioSearch ? { searchScriptoriumScenario: scenarioSearch } : {}),
   selfInventory: selfInventoryToolDefinition,
   state: stateToolDefinition,
   submitFinalResponse: submitFinalResponseToolDefinition,

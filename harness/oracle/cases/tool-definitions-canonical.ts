@@ -61,6 +61,12 @@ import {
   searchScriptoriumToolDefinition,
   searchScriptoriumBrahmaToolDefinition,
 } from '@/lib/tools/search-scriptorium-tool';
+import * as searchScriptoriumTools from '@/lib/tools/search-scriptorium-tool';
+
+// The Scenario Builder `search` variant (v4 `d1c06cd9d`), or undefined at a pin
+// that predates it.
+const scenarioSearch = (searchScriptoriumTools as Record<string, unknown>)
+  .searchScriptoriumScenarioToolDefinition as typeof searchScriptoriumToolDefinition | undefined;
 import { selfInventoryToolDefinition } from '@/lib/tools/self-inventory-tool';
 import { stateToolDefinition } from '@/lib/tools/state-tool';
 import { submitFinalResponseToolDefinition } from '@/lib/tools/submit-final-response-tool';
@@ -121,6 +127,8 @@ const ALL: UniversalTool[] = [
   runSqlToolDefinition,
   searchScriptoriumToolDefinition,
   searchScriptoriumBrahmaToolDefinition,
+  // v4 `d1c06cd9d` (the Scenario Builder variant); absent at an older pin.
+  ...(scenarioSearch ? [scenarioSearch] : []),
   selfInventoryToolDefinition,
   stateToolDefinition,
   submitFinalResponseToolDefinition,

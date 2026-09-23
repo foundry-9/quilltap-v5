@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(tools): the tool slate's doc-tools mode, extras bag, and the Scenario Builder `search` variant (P4.D216 unit 2)
+
+_Versions: core 0.0.1015, harness 0.0.931._
+
+v4 `d1c06cd9d` replaced `buildTools`' `documentEditingEnabled` boolean with
+`docToolsMode` (`off` / `read` / `full`) and added a trailing `extras` bag.
+`services::tool_build` gains `DocToolsMode` (the `read` mode builds the five
+read-only doc tools in v4's order) and `BuildToolsExtras`:
+`documents_only_search` picks the new `searchScriptoriumScenario` variant
+(ahead of the Brahma one), `web_search: Some(false)` withholds `search_web`
+but can never grant it, and `plugin_tool_allowlist` is carried with no
+effect because v5 builds no plugin tools. Every caller is repointed
+(`true` to `Full`, `false` to `Off`, the Salon and Carina expressions to
+`if … { Full } else { Off }`). The catalog is regenerated through its
+generator (58 to 59 entries). `tool_build_equivalence` grows twelve cases;
+exactly the six v4 moved were red before the port and all are green after.
+The 27 existing cases are byte-identical at both pins.
+
 #### 2026-09-23 — feat(llm-logs): the stream call's log type is the caller's, and `SCENARIO_BUILDER` joins the log types (P4.D216 unit 1)
 
 _Versions: core 0.0.1014._

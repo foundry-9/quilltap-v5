@@ -10,6 +10,17 @@
 //! The autonomous-room destructive-tool filter (an orchestrator post-step, not
 //! part of buildTools) is replicated on both sides.
 //!
+//! P4.D216 (v4 `d1c06cd9d`): the corpus grows the `docToolsMode` cases (the
+//! read-only five; explicit `full`/`off`), the `extras` bag (`documentsOnlySearch`
+//! → the Scenario Builder `search` variant, incl. its precedence over
+//! `excludeMemorySearch`; `webSearch: false` withholding and `webSearch: true`
+//! unable to GRANT — narrowing only), the two allowlist cases (NEUTRAL BY
+//! CONSTRUCTION on both sides — neither builds plugin tools here), and the two
+//! Scenario Builder slates. The oracle shapes the index-13 argument by what the
+//! pinned tree exports, so the same case runs at a pre-`d1c06cd9d` pin too:
+//! there the 27 pre-existing cases are byte-identical to the target's, and
+//! exactly the six moved cases differ (measured).
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //! (The worktree path is under `/.claude/`, in v4 jest's
 //! `testPathIgnorePatterns`, so the oracle `.test.ts` + spec are copied to a temp
@@ -35,7 +46,7 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::tool_build::{
-    self, build_tools, BuildToolsInput, ImageProviderConstraints,
+    self, build_tools, BuildToolsExtras, BuildToolsInput, DocToolsMode, ImageProviderConstraints,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -95,6 +106,13 @@ struct CaseW {
     can_create_outfits: bool,
     #[serde(default)]
     document_editing_enabled: bool,
+    /// P4.D216 (v4 `d1c06cd9d`): `"off"`/`"read"`/`"full"`; absent → derived
+    /// from `documentEditingEnabled` exactly as every v4 caller maps it.
+    #[serde(default)]
+    doc_tools_mode: Option<DocToolsMode>,
+    /// P4.D216 (v4 `d1c06cd9d`): `buildTools`' trailing `extras` bag.
+    #[serde(default)]
+    extras: Option<ExtrasW>,
     #[serde(default)]
     ask_carina_enabled: bool,
     #[serde(default = "default_true")]
@@ -113,6 +131,17 @@ struct CaseW {
     run_destructive_tools_allowed: i64,
     #[serde(default = "default_policy")]
     destructive_tool_policy: String,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ExtrasW {
+    #[serde(default)]
+    plugin_tool_allowlist: Option<Vec<String>>,
+    #[serde(default)]
+    documents_only_search: bool,
+    #[serde(default)]
+    web_search: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -208,7 +237,20 @@ fn tool_build_matches_oracle() {
                 help_tools_enabled: c.help_tools_enabled,
                 can_dress_themselves: c.can_dress_themselves,
                 can_create_outfits: c.can_create_outfits,
-                document_editing_enabled: c.document_editing_enabled,
+                doc_tools_mode: c.doc_tools_mode.unwrap_or(if c.document_editing_enabled {
+                    DocToolsMode::Full
+                } else {
+                    DocToolsMode::Off
+                }),
+                extras: c
+                    .extras
+                    .as_ref()
+                    .map(|e| BuildToolsExtras {
+                        plugin_tool_allowlist: e.plugin_tool_allowlist.clone(),
+                        documents_only_search: e.documents_only_search,
+                        web_search: e.web_search,
+                    })
+                    .unwrap_or_default(),
                 ask_carina_enabled: c.ask_carina_enabled,
                 include_workspace_tools: c.include_workspace_tools,
                 exclude_memory_search: c.exclude_memory_search,

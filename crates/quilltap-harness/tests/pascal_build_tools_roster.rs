@@ -91,7 +91,9 @@ fn base_input<'a>(ctx: Option<RosterContext>) -> BuildToolsInput<'a> {
         help_tools_enabled: false,
         can_dress_themselves: false,
         can_create_outfits: false,
-        document_editing_enabled: false,
+        // P4.D216 OUT-OF-MANDATE — the `build_tools` caller's owner preserves (v4 `d1c06cd9d`: `documentEditingEnabled` → `docToolsMode` + the `extras` bag).
+        doc_tools_mode: quilltap_core::services::tool_build::DocToolsMode::Off,
+        extras: quilltap_core::services::tool_build::BuildToolsExtras::default(),
         ask_carina_enabled: false,
         include_workspace_tools: false,
         exclude_memory_search: false,

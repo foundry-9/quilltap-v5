@@ -542,7 +542,14 @@ where
             help_tools_enabled: b(&answerer, "defaultHelpToolsEnabled") == Some(true),
             can_dress_themselves: false,
             can_create_outfits: false,
-            document_editing_enabled,
+            // P4.D216 OUT-OF-MANDATE — the `build_tools` caller's owner preserves (v4 `d1c06cd9d`: `documentEditingEnabled` → `docToolsMode` + the `extras` bag).
+            // v4 `carina.service.ts:640`: `documentEditingEnabled ? 'full' : 'off'`.
+            doc_tools_mode: if document_editing_enabled {
+                crate::services::tool_build::DocToolsMode::Full
+            } else {
+                crate::services::tool_build::DocToolsMode::Off
+            },
+            extras: crate::services::tool_build::BuildToolsExtras::default(),
             ask_carina_enabled: false,
             include_workspace_tools: true,
             exclude_memory_search: false,

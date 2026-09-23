@@ -9,7 +9,7 @@
 
 use super::ToolDef;
 
-/// Every tool definition, in v4 `ALL_TOOLS` order. 58 entries.
+/// Every tool definition, in v4 `ALL_TOOLS` order. 59 entries.
 pub static TOOL_DEFINITIONS: &[ToolDef] = &[
     ToolDef {
         key: "askCarina",
@@ -225,6 +225,11 @@ pub static TOOL_DEFINITIONS: &[ToolDef] = &[
         key: "searchScriptoriumBrahma",
         name: "search",
         json: r#"{"name":"search","description":"Search across the operator's past conversation history and every document store you can reach (every file in every store, plus the `Knowledge/` folders within them via the `knowledge` source). Use this to find information from past chats, locate specific discussions by topic, search through reference documents, or look up what's been written down. NOTE: you do NOT have access to the operator's memories — the commonplace-book memory layer is intentionally not searchable from the Brahma Console.","parameters":{"type":"object","properties":{"query":{"type":"string","minLength":1,"maxLength":500,"description":"What to search for across the operator's conversations, documents, and knowledge base. Be specific about the topic, event, or detail you want to find."},"sources":{"type":"array","items":{"type":"string","enum":["conversations","documents","knowledge"]},"description":"Which layers to search. Defaults to all available sources if not specified. \"conversations\" searches rendered transcripts of past chats; \"documents\" searches every file in every document store; \"knowledge\" searches only files under a `Knowledge/` folder inside those stores. NOTE: this console has NO access to memories — the commonplace-book memory source is deliberately unavailable here."},"scope":{"default":"all","description":"Which document stores the `documents` and `knowledge` sources reach into. The Brahma Console searches every enabled document store regardless of scope, so this parameter has no practical effect here.","type":"string","enum":["all","project","character","group"]},"limit":{"default":10,"type":"integer","minimum":1,"maximum":20,"description":"Maximum number of results to return across all sources. Default is 10."}},"required":["query"],"additionalProperties":false}}"#,
+    },
+    ToolDef {
+        key: "searchScriptoriumScenario",
+        name: "search",
+        json: r#"{"name":"search","description":"Search the document stores reachable for this scene — the cast's character vaults, their groups' stores, the project's stores, and the instance-wide Quilltap General store. Use the `knowledge` source to confine the search to `Knowledge/` folders. Use it to find the place, its history, its customs, and what the given time means there.","parameters":{"type":"object","properties":{"query":{"type":"string","minLength":1,"maxLength":500,"description":"What to look up in the document stores: a place, its history, a custom, an event, a season. Be specific."},"sources":{"type":"array","items":{"type":"string","enum":["documents","knowledge"]},"description":"Which layers to search. Defaults to both. \"documents\" searches every file in every reachable store; \"knowledge\" searches only files under a `Knowledge/` folder inside those stores, tagged by tier."},"scope":{"default":"all","description":"\"all\" (the default) searches every reachable store. \"character\" narrows to the cast's character vaults, \"group\" to their groups' stores, \"project\" to the project's stores.","type":"string","enum":["all","project","character","group"]},"limit":{"default":10,"type":"integer","minimum":1,"maximum":20,"description":"Maximum number of results to return. Default is 10."}},"required":["query"],"additionalProperties":false}}"#,
     },
     ToolDef {
         key: "selfInventory",

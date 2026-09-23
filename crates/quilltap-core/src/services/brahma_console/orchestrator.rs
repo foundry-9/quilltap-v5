@@ -314,7 +314,9 @@ where
             help_tools_enabled: false,
             can_dress_themselves: false,
             can_create_outfits: false,
-            document_editing_enabled: true,
+            // v4 `d1c06cd9d`: `'full'` for the old `true`.
+            doc_tools_mode: crate::services::tool_build::DocToolsMode::Full,
+            extras: crate::services::tool_build::BuildToolsExtras::default(),
             ask_carina_enabled: false,
             include_workspace_tools: false,
             exclude_memory_search: true,

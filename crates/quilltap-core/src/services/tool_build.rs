@@ -171,6 +171,43 @@ pub fn is_tool_disabled(
     false
 }
 
+/// v4 `DocToolsMode` (`plugin-tool-builder.ts`, `d1c06cd9d`) — which `doc_*`
+/// tools a surface is offered. `Full` is the whole family — reads, writes,
+/// document-UI and photo tools (chat surfaces with linked stores, the Brahma
+/// Console). `Read` is the five read-only tools alone (`doc_read_file`,
+/// `doc_grep`, `doc_list_files`, `doc_read_frontmatter`, `doc_read_heading`)
+/// for a surface with no chat row to open documents in and nothing it may
+/// write (the Scenario Builder). `Off` (v4's `?? 'off'` default) builds none.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DocToolsMode {
+    #[default]
+    Off,
+    Read,
+    Full,
+}
+
+/// v4 `BuildToolsExtras` (`streaming.service.ts`, `d1c06cd9d`) — surface-specific
+/// narrowing for [`build_tools`]. "Every field only ever removes tools relative
+/// to the positional flags and the profile." `Default` is v4's ABSENT bag.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BuildToolsExtras {
+    /// Only these plugin tools are built (e.g. `["curl"]`); `None` = every
+    /// configured plugin tool, and `Some(vec![])` admits none — absent is not
+    /// empty. ⚠ v5 builds NO plugin tools (the standing non-port on
+    /// [`BuildToolsForProviderOptions`]), so this field has no effect here; it
+    /// is carried so a caller states v4's intent, and the admission point in
+    /// [`build_tools_for_provider`] names where it would bite.
+    pub plugin_tool_allowlist: Option<Vec<String>>,
+    /// Build the documents/knowledge-only `search` variant (the Scenario
+    /// Builder's). Takes precedence over `exclude_memory_search`.
+    pub documents_only_search: bool,
+    /// `Some(false)` withholds `search_web` even when the profile allows it.
+    /// It can never GRANT search to a profile that forbids it: v4 computes
+    /// `!!connectionProfile.allowWebSearch && extras?.webSearch !== false`.
+    pub web_search: Option<bool>,
+}
+
 /// The `buildToolsForProvider` option set (built-in surface only). Mirrors v4's
 /// `BuildToolsOptions`; the plugin-only `includePluginTools` / `toolConfigs` are
 /// omitted (deferred). `rng`/`state` are always the workspace defaults (v4 leaves
@@ -194,7 +231,13 @@ pub struct BuildToolsForProviderOptions {
     pub wardrobe_update: bool,
     pub wardrobe_archive: bool,
     pub agent_mode: bool,
-    pub document_editing: bool,
+    /// v4 `docToolsMode` (`d1c06cd9d` — it replaced `documentEditing: boolean`).
+    pub doc_tools_mode: DocToolsMode,
+    /// v4 `pluginToolAllowlist` — see [`BuildToolsExtras::plugin_tool_allowlist`].
+    pub plugin_tool_allowlist: Option<Vec<String>>,
+    /// v4 `documentsOnlySearch` — the Scenario Builder `search` variant. Takes
+    /// precedence over `exclude_memory_search`.
+    pub documents_only_search: bool,
     pub ask_carina: bool,
     /// Defaults to `true` (every character surface). The Brahma Console sets false.
     pub include_workspace_tools: bool,
@@ -262,10 +305,15 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
         push_key(&mut universal, "deleteAnnotation");
     }
 
-    // Unified search — every surface. The Brahma variant drops `memories`.
+    // Unified search — every surface. The Brahma variant drops `memories`; the
+    // Scenario Builder variant narrows further to documents/knowledge and takes
+    // precedence (v4 `d1c06cd9d`'s three-way pick). All three share the wire
+    // name `search`.
     push_key(
         &mut universal,
-        if options.exclude_memory_search {
+        if options.documents_only_search {
+            "searchScriptoriumScenario"
+        } else if options.exclude_memory_search {
             "searchScriptoriumBrahma"
         } else {
             "searchScriptorium"
@@ -312,7 +360,20 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
         push_key(&mut universal, "submitFinalResponse");
     }
 
-    if options.document_editing {
+    // Document tools (Scriptorium Phase 3.3). `Read` builds the read-only five
+    // and nothing else — no writes, no document-UI tools (they need a real chat
+    // row), no photo tools. Push order is v4's (wire-visible pre-canonicalization).
+    if options.doc_tools_mode == DocToolsMode::Read {
+        for key in [
+            "docReadFile",
+            "docGrep",
+            "docListFiles",
+            "docReadFrontmatter",
+            "docReadHeading",
+        ] {
+            push_key(&mut universal, key);
+        }
+    } else if options.doc_tools_mode == DocToolsMode::Full {
         // v4's exact document-editing push list (18 doc tools + 4 photo tools —
         // describe_image joined at a14a1811, bug 92, immediately after
         // attach_image; the order is wire-visible pre-canonicalization).
@@ -357,7 +418,13 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
         }
     }
 
-    // Plugin tools (deferred; a no-plugin instance appends nothing).
+    // Plugin tools (deferred; a no-plugin instance appends nothing). v4 filters
+    // `toolRegistry.getConfiguredToolDefinitions(toolConfigs)` by
+    // `pluginToolAllowlist` right here (`allowlist ? filter(name ∈ set) : all`,
+    // pushed only when non-empty) — `options.plugin_tool_allowlist` is read at
+    // this point in v4 and would narrow the plugin push here; with no plugin
+    // tools built on v5 (the standing non-port, §R.4(k) of P4.D216) there is
+    // nothing for it to admit or refuse. Named, not taken.
 
     if universal.is_empty() {
         return Vec::new();
@@ -422,7 +489,9 @@ pub struct BuildToolsInput<'a> {
     pub can_dress_themselves: bool,
     /// `character.canCreateOutfits !== false` (already resolved).
     pub can_create_outfits: bool,
-    pub document_editing_enabled: bool,
+    /// v4 `buildTools`' positional `docToolsMode` (index 13; `d1c06cd9d`
+    /// replaced the `documentEditingEnabled` boolean there).
+    pub doc_tools_mode: DocToolsMode,
     pub ask_carina_enabled: bool,
     /// Defaults to `true`; the Brahma Console strips the workspace bundle.
     pub include_workspace_tools: bool,
@@ -440,6 +509,10 @@ pub struct BuildToolsInput<'a> {
     /// the legacy `disabledTools===undefined` bail all return before a single
     /// mount is listed (v4 `streaming.service.ts:186`).
     pub custom_tool_context: Option<crate::pascal::roster::RosterContext>,
+    /// v4 `buildTools`' trailing `extras` (`d1c06cd9d`) — surface-specific
+    /// narrowing, applied at construction (never a post-filter).
+    /// `BuildToolsExtras::default()` is v4's absent bag.
+    pub extras: BuildToolsExtras,
 }
 
 /// v4 `buildTools` return.
@@ -518,7 +591,10 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
     let options = BuildToolsForProviderOptions {
         image_generation: input.image_profile_id.is_some(),
         image_provider_constraints: input.image_provider_constraints.clone(),
-        web_search: input.allow_web_search,
+        // A surface may narrow web search further (never widen it past the
+        // profile): v4 `!!connectionProfile.allowWebSearch && extras?.webSearch
+        // !== false`.
+        web_search: input.allow_web_search && input.extras.web_search != Some(false),
         project_info: input.project_id.is_some(),
         request_full_context: input.request_full_context,
         help_search: input.help_tools_enabled,
@@ -533,7 +609,9 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
         wardrobe_update: input.can_create_outfits,
         wardrobe_archive: input.can_create_outfits,
         agent_mode: input.agent_mode_enabled,
-        document_editing: input.document_editing_enabled,
+        doc_tools_mode: input.doc_tools_mode,
+        plugin_tool_allowlist: input.extras.plugin_tool_allowlist.clone(),
+        documents_only_search: input.extras.documents_only_search,
         ask_carina: input.ask_carina_enabled,
         include_workspace_tools: input.include_workspace_tools,
         exclude_memory_search: input.exclude_memory_search,
@@ -724,7 +802,7 @@ mod tests {
     fn document_editing_slate() {
         let opts = BuildToolsForProviderOptions {
             include_workspace_tools: false,
-            document_editing: true,
+            doc_tools_mode: DocToolsMode::Full,
             ..Default::default()
         };
         let n = names(&build_tools_for_provider(&opts));
@@ -734,6 +812,54 @@ mod tests {
         // Not in v4's push list.
         assert!(!n.contains(&"doc_move_folder".to_string()));
         assert!(!n.contains(&"doc_read_blob".to_string()));
+    }
+
+    /// v4 `plugin-tool-builder.scenario.test.ts` (`d1c06cd9d`) case names —
+    /// the `'read'` mode builds EXACTLY the read-only five and none of the
+    /// writes / document-UI / photo tools; the Scenario Builder `search`
+    /// variant offers neither `memories` nor `conversations`. (Case names
+    /// only — the byte-exact proof is `tool_build_equivalence` over v4's real
+    /// `buildTools`.)
+    #[test]
+    fn read_mode_builds_the_read_only_five() {
+        let opts = BuildToolsForProviderOptions {
+            include_workspace_tools: false,
+            doc_tools_mode: DocToolsMode::Read,
+            ..Default::default()
+        };
+        let mut n = names(&build_tools_for_provider(&opts));
+        n.retain(|t| t != "search");
+        n.sort();
+        assert_eq!(
+            n,
+            vec![
+                "doc_grep",
+                "doc_list_files",
+                "doc_read_file",
+                "doc_read_frontmatter",
+                "doc_read_heading"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_scenario_search_variant_offers_no_memories_or_conversations() {
+        let opts = BuildToolsForProviderOptions {
+            include_workspace_tools: false,
+            documents_only_search: true,
+            // Precedence: documents-only wins over the Brahma variant.
+            exclude_memory_search: true,
+            ..Default::default()
+        };
+        let tools = build_tools_for_provider(&opts);
+        let search = tools
+            .iter()
+            .find(|t| t["function"]["name"] == "search")
+            .expect("a search tool is always built");
+        let params = serde_json::to_string(&search["function"]["parameters"]).unwrap();
+        assert!(!params.contains("memories"), "{params}");
+        assert!(!params.contains("conversations"), "{params}");
+        assert!(params.contains("knowledge"), "{params}");
     }
 
     #[test]
@@ -762,7 +888,7 @@ mod tests {
         assert!(!destructive_allowed("opt_in_per_room", false));
         let opts = BuildToolsForProviderOptions {
             include_workspace_tools: false,
-            document_editing: true,
+            doc_tools_mode: DocToolsMode::Full,
             ..Default::default()
         };
         let mut tools = build_tools_for_provider(&opts);

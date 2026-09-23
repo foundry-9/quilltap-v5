@@ -30,6 +30,18 @@
     { "name": "destructive_autonomous_refuse", "documentEditingEnabled": true, "chatType": "autonomous", "destructiveToolPolicy": "always_refuse", "runDestructiveToolsAllowed": 1 },
     { "name": "destructive_autonomous_allowed", "documentEditingEnabled": true, "chatType": "autonomous", "destructiveToolPolicy": "opt_in_per_room", "runDestructiveToolsAllowed": 1 },
     { "name": "destructive_autonomous_not_permitted", "documentEditingEnabled": true, "chatType": "autonomous", "destructiveToolPolicy": "opt_in_per_room", "runDestructiveToolsAllowed": 0 },
-    { "name": "destructive_non_autonomous_kept", "documentEditingEnabled": true, "chatType": "chat", "runDestructiveToolsAllowed": 0 }
+    { "name": "destructive_non_autonomous_kept", "documentEditingEnabled": true, "chatType": "chat", "runDestructiveToolsAllowed": 0 },
+    { "name": "p4d216_doc_tools_read", "docToolsMode": "read" },
+    { "name": "p4d216_doc_tools_full_explicit", "docToolsMode": "full" },
+    { "name": "p4d216_doc_tools_off_explicit", "docToolsMode": "off" },
+    { "name": "p4d216_documents_only_search", "extras": { "documentsOnlySearch": true } },
+    { "name": "p4d216_documents_only_beats_exclude_memory", "includeWorkspaceTools": false, "excludeMemorySearch": true, "extras": { "documentsOnlySearch": true } },
+    { "name": "p4d216_web_search_extra_false_withholds", "allowWebSearch": true, "extras": { "webSearch": false } },
+    { "name": "p4d216_web_search_extra_true_cannot_grant", "allowWebSearch": false, "extras": { "webSearch": true } },
+    { "name": "p4d216_web_search_extra_true_keeps", "allowWebSearch": true, "extras": { "webSearch": true } },
+    { "name": "p4d216_plugin_allowlist_curl_neutral", "extras": { "pluginToolAllowlist": ["curl"] } },
+    { "name": "p4d216_plugin_allowlist_empty_neutral", "extras": { "pluginToolAllowlist": [] } },
+    { "name": "p4d216_scenario_builder_real_slate", "agentModeEnabled": true, "includeWorkspaceTools": false, "allowWebSearch": true, "docToolsMode": "read", "extras": { "documentsOnlySearch": true, "pluginToolAllowlist": ["curl"], "webSearch": true } },
+    { "name": "p4d216_scenario_builder_in_world_slate", "agentModeEnabled": true, "includeWorkspaceTools": false, "allowWebSearch": true, "docToolsMode": "read", "extras": { "documentsOnlySearch": true, "pluginToolAllowlist": [], "webSearch": false } }
   ]
 }

@@ -52,6 +52,15 @@ import { buildTools } from '@/lib/services/chat-message/streaming.service';
 import { checkModelSupportsTools } from '@/lib/tools/pseudo-tool-support';
 import { createLLMProvider } from '@/lib/llm';
 import { DESTRUCTIVE_TOOL_NAMES } from '@/lib/tools/destructive-tools';
+import * as searchScriptoriumTools from '@/lib/tools/search-scriptorium-tool';
+
+// P4.D216: `d1c06cd9d` turned `buildTools`' index-13 boolean into the
+// `docToolsMode` string. A pre-`d1c06cd9d` pin (the baseline neutrality leg)
+// still takes the boolean — and `!!'off'` is TRUE there — so the argument is
+// shaped by what the pinned tree exports (the Scenario Builder search variant
+// shipped in the same commit), never by guessing.
+const PIN_HAS_DOC_TOOLS_MODE =
+  'searchScriptoriumScenarioToolDefinition' in (searchScriptoriumTools as Record<string, unknown>);
 
 interface RawCase {
   name: string;
@@ -72,6 +81,12 @@ interface RawCase {
   canDressThemselves?: boolean;
   canCreateOutfits?: boolean;
   documentEditingEnabled?: boolean;
+  /** P4.D216 (v4 `d1c06cd9d`): the positional `docToolsMode` at index 13. Absent
+   * → derived from `documentEditingEnabled` the way every v4 caller maps it
+   * (`true → 'full'`, else `'off'`). */
+  docToolsMode?: 'off' | 'read' | 'full';
+  /** P4.D216 (v4 `d1c06cd9d`): `buildTools`' trailing `extras` bag. */
+  extras?: { pluginToolAllowlist?: string[]; documentsOnlySearch?: boolean; webSearch?: boolean };
   askCarinaEnabled?: boolean;
   includeWorkspaceTools?: boolean;
   excludeMemorySearch?: boolean;
@@ -121,6 +136,8 @@ test('tool-build oracle', async () => {
     };
     const imageProfileId = c.imageProfileId ?? null;
     const disabledTools = c.disabledToolsUndefined ? undefined : c.disabledTools ?? [];
+    const docToolsMode: 'off' | 'read' | 'full' =
+      c.docToolsMode ?? (c.documentEditingEnabled ? 'full' : 'off');
 
     const built = await buildTools(
       connectionProfile as never,
@@ -136,11 +153,13 @@ test('tool-build oracle', async () => {
       c.helpToolsEnabled ?? false,
       c.canDressThemselves ?? true,
       c.canCreateOutfits ?? true,
-      c.documentEditingEnabled ?? false,
+      (PIN_HAS_DOC_TOOLS_MODE ? docToolsMode : docToolsMode === 'full') as never,
       c.askCarinaEnabled ?? false,
       c.includeWorkspaceTools ?? true,
       c.excludeMemorySearch ?? false,
-      c.sqlAccess ?? false
+      c.sqlAccess ?? false,
+      null, // customToolContext — the corpus has no Pascal roster
+      ...((c.extras ? [c.extras] : []) as never[])
     );
 
     let tools = built.tools as unknown[];

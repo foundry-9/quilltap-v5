@@ -88,13 +88,15 @@ mod tests {
 
     #[test]
     fn catalog_is_complete_and_parses() {
-        // 58 since P4.D108 added `describeImage` (v4 a14a1811, bug 92 — the
-        // looking verb). Previously 57 since P4.d13 unit 6 DELETED
+        // 59 since P4.D216 added `searchScriptoriumScenario` (v4 `d1c06cd9d` —
+        // the Scenario Builder's documents/knowledge-only `search` variant; a
+        // THIRD catalog entry on the wire name `search`). 58 since P4.D108 added
+        // `describeImage` (v4 a14a1811, bug 92 — the looking verb). Previously 57 since P4.d13 unit 6 DELETED
         // `memorySearch` (v4 8bf3cb5f removed `memory-search-tool.ts` outright
         // — the old memory-only tool collided with the Scriptorium `search` on
         // the wire name `search`). The count is the tripwire for a regenerated
         // catalog silently gaining or losing a tool.
-        assert_eq!(TOOL_DEFINITIONS.len(), 58);
+        assert_eq!(TOOL_DEFINITIONS.len(), 59);
         for d in TOOL_DEFINITIONS {
             let v: Value = serde_json::from_str(d.json).expect("valid JSON");
             assert_eq!(v.get("name").and_then(Value::as_str), Some(d.name));
