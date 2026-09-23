@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — tooling(fixtures): the vintage migrator opens every committed pair and reports index adds (P4.107 Tier 2)
+
+_No crate versions bumped._
+
+`harness/oracle/fixtures/migrate-memories-fixture-columns.ts` gains three test
+peppers (the tier-2 one, `chat-cast`'s, `episodic-recall`'s), each read from its
+JSON spec's `testPepperBase64` rather than copied in; `images-collection` moves
+to the same JSON read. Before this the script threw `no known test pepper opens
+…` on `wardrobe-instructions-*`, `chat-cast-*`, `conversation-summaries-regen-*`,
+`embedding-profiles-*` and `episodic-recall-*` and aborted the run there. A file
+no pepper opens still throws, naming every pepper tried. `--report-only` now
+prints `WOULD CREATE INDEX <name>` for an `extraSql` index the target lacks, and
+an apply prints `+INDEX <name>` for one it created, so an index-only lag (the
+llm-logs partitions' `idx_llm_logs_*`) no longer reads as "already current".
+Proven on scratch copies: `wardrobe-instructions-main.db` opens and reports
+current; `inspector-llm.db` and `almanack-llmlogs.db` each report the two index
+lines. No committed fixture changes.
+
 #### 2026-09-23 — docs(porting): P4.D215 lane close — the gate record and the order's status header
 
 _Docs-only change._

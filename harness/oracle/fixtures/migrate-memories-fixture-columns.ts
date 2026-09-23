@@ -239,7 +239,10 @@
  *   authorizes, from `build-chat-compressed-fixture.ts`, not this script)
  */
 
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Resolve better-sqlite3 (v4 aliases it to better-sqlite3-multiple-ciphers — the
 // sqleet/ChaCha20 binding) from the v4 checkout: run this script with cwd there.
@@ -247,17 +250,42 @@ const requireFromV4 = createRequire(process.cwd() + '/');
 const Database = requireFromV4('better-sqlite3');
 
 /**
- * The committed web fixtures' synthetic test peppers. Most pairs carry the
+ * The committed fixtures' synthetic test peppers. Most pairs carry the
  * `quilltap-web/tests/common/mod.rs:17` one; the `images-{main,mount}.db` pair
  * is keyed with the `images-collection.json` spec's own `testPepperBase64`
  * instead (measured at P4.94 — the single-pepper assumption made the migrator
  * die `SQLITE_NOTADB` on that pair, which reads exactly like a corrupt file).
  * Each target is opened with the first pepper that works; none working is a
- * loud refusal, never a skip.
+ * loud refusal naming every pepper tried, never a skip.
+ *
+ * P4.107 added the three peppers the `a2db63da7` round's measurement found
+ * other committed pairs keyed with — the tier-2 one (`wardrobe-instructions-*`,
+ * `conversation-summaries-regen-*`, `embedding-profiles-*`), `chat-cast-*`'s,
+ * and `episodic-recall-*`'s. Before them the migrator threw `no known test
+ * pepper opens …` on those pairs and aborted the whole run there — a PEPPER
+ * miss the phase plan had read as a schema problem. Every pepper with a JSON
+ * source is READ from that spec's `testPepperBase64`, never retyped, so a
+ * re-keyed spec cannot leave a stale copy here; `web-fixture` has no JSON
+ * source (its home is the Rust test helper) and stays a literal.
  */
+const FIXTURE_SPEC_DIR = dirname(fileURLToPath(import.meta.url));
+
+function specPepper(name: string, specFile: string): { name: string; base64: string } {
+  const spec = JSON.parse(readFileSync(join(FIXTURE_SPEC_DIR, specFile), 'utf8')) as {
+    testPepperBase64?: unknown;
+  };
+  if (typeof spec.testPepperBase64 !== 'string') {
+    throw new Error(`${specFile} carries no string testPepperBase64 (pepper ${name})`);
+  }
+  return { name: `${name} (${specFile})`, base64: spec.testPepperBase64 };
+}
+
 const TEST_PEPPERS: { name: string; base64: string }[] = [
   { name: 'web-fixture', base64: 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=' },
-  { name: 'images-collection', base64: 'dGVzdC1wZXBwZXItZm9yLWZpeHR1cmVzLW9ubHktMzJieXRl' },
+  specPepper('images-collection', 'images-collection.json'),
+  specPepper('tier-2', 'wardrobe-instructions.json'),
+  specPepper('chat-cast', 'chat-cast.json'),
+  specPepper('oracle-test', 'episodic-recall.json'),
 ];
 
 /** v4's `add-smart-typography-settings-field` column default, byte-for-byte. */
@@ -463,6 +491,12 @@ function main(): void {
       );
     }
     const applied: string[] = [];
+    // Index adds (P4.107): `--report-only` names what an apply WOULD create, an
+    // apply names what it DID. `extraSql` runs on every pass whose TABLE exists,
+    // so a partition current on columns but lacking an index is NOT "already
+    // current" — the llm-logs partitions' `idx_llm_logs_*` lag was invisible to
+    // the dry run before, and an apply added the indexes silently.
+    const indexAdds: string[] = [];
     for (const m of MIGRATIONS) {
       const table = db
         .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`)
@@ -487,15 +521,25 @@ function main(): void {
       // `CREATE INDEX … ("generationKey")` died `no such column` before the
       // ALTER ran (found by the `bcd7e4852` unification widening
       // `attach-file-main.db`, the sixth pair).
-      if (!reportOnly) for (const extra of m.extraSql ?? []) db.exec(extra);
+      for (const extra of m.extraSql ?? []) {
+        const indexName = /CREATE INDEX IF NOT EXISTS "([^"]+)"/.exec(extra)?.[1];
+        if (!indexName) {
+          throw new Error(`cannot read an index name from extraSql: ${extra}`);
+        }
+        const present = db
+          .prepare(`SELECT name FROM sqlite_master WHERE type='index' AND name=?`)
+          .get(indexName);
+        if (!present) indexAdds.push(indexName);
+        if (!reportOnly) db.exec(extra);
+      }
     }
     db.close();
     const verb = reportOnly ? 'WOULD ADD ' : '+';
-    process.stderr.write(
-      applied.length
-        ? `${path}: ${verb}${applied.join(` ${verb}`)}\n`
-        : `${path}: already current\n`,
-    );
+    const parts = [
+      ...applied.map((c) => `${verb}${c}`),
+      ...indexAdds.map((i) => (reportOnly ? `WOULD CREATE INDEX ${i}` : `+INDEX ${i}`)),
+    ];
+    process.stderr.write(parts.length ? `${path}: ${parts.join(' ')}\n` : `${path}: already current\n`);
   }
 }
 
