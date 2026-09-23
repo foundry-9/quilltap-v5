@@ -7,7 +7,7 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { injectQuery } from '@tanstack/angular-query-experimental';
+import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient, coreErrorMessage } from '../../core/core-client';
 import type { ChatSetScenarioResult } from '../../core/core-contract';
@@ -19,6 +19,12 @@ import {
   scenarioKeys,
 } from '../../scenario/scenario.api';
 import { ScenarioSelect, hasAnyScenarioOptions } from '../../scenario/scenario-select';
+import { HOST_AVATAR } from '../../scenario-builder/host-avatar';
+import {
+  ScenarioBuilderDialog,
+  type SavedScenarioTarget,
+  type ScenarioBuilderCastMember,
+} from '../../scenario-builder/scenario-builder-dialog';
 import {
   scenarioSelectionToPayload,
   type CharacterScenario,
@@ -60,12 +66,20 @@ interface ScenarioDraft {
  * "Show archived" (v4 `d25dacc1`) re-fetches all four tiers with
  * `includeArchived`; the flag is part of each query key, so the two answers
  * cache separately instead of one overwriting the other.
+ *
+ * **"Ask the Host to set the scene"** (v4 `d1c06cd9d`, P4.D218): the Scenario
+ * Builder, `@defer`red (v4's `next/dynamic`). "Use this scene" makes the
+ * Host's draft the CUSTOM text — nothing is saved; the existing Change-scenario
+ * button persists it, so the Host's revision announcement fires exactly as for
+ * a hand-typed scene. After a "Save as scenario…" the new preset is selected
+ * when this picker offers it, read from the caches the save dialog has
+ * already invalidated and awaited.
  */
 @Component({
   selector: 'qt-chat-scenario-control',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block' },
-  imports: [ScenarioSelect],
+  imports: [ScenarioBuilderDialog, ScenarioSelect],
   template: `
     <div class="qt-label">
       <span class="block mb-1">Scenario</span>
@@ -93,6 +107,28 @@ interface ScenarioDraft {
         />
         Show archived
       </label>
+      <button
+        type="button"
+        class="qt-button-secondary qt-button-sm inline-flex items-center gap-1.5 mb-2"
+        [disabled]="saving()"
+        (click)="builderOpen.set(true)"
+      >
+        <img [src]="hostAvatar" alt="" class="h-4 w-4 rounded-full" />
+        Ask the Host to set the scene
+      </button>
+      @if (builderOpen()) {
+        @defer {
+          <qt-scenario-builder-dialog
+            [cast]="castCharacters()"
+            [projectId]="projectId() ?? null"
+            [projectName]="projectName() ?? null"
+            [chatId]="chatId()"
+            (closed)="builderOpen.set(false)"
+            (use)="handleUseBuiltScene($event)"
+            (saved)="handleBuiltSceneSaved($event)"
+          />
+        }
+      }
       @if (selection().kind === 'custom') {
         <textarea
           class="qt-textarea text-sm"
@@ -128,6 +164,7 @@ interface ScenarioDraft {
 export class ChatScenarioControl {
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
+  private readonly queryClient = injectQueryClient();
 
   readonly chatId = input.required<string>();
   /** The chat's project, when it has one — gates the project tier. */
@@ -143,8 +180,19 @@ export class ChatScenarioControl {
   readonly singleLlmCharacterId = input<string | null>(null);
   /** Gates the reference-data fetches until the section has been opened once. */
   readonly enabled = input(false);
+  /**
+   * Every present character in the room — LLM- and user-controlled alike — for
+   * the Scenario Builder: their vaults and groups scope what the Host may read,
+   * and they are offered as save targets (v4 `castCharacters`, `d1c06cd9d`).
+   */
+  readonly castCharacters = input<readonly ScenarioBuilderCastMember[]>([]);
+  /** The chat's project name, for the Scenario Builder's save targets. */
+  readonly projectName = input<string | null>(null);
   /** Fired after the scenario is saved (v4 `onChatUpdated`, typically `fetchChat`). */
   readonly chatUpdated = output<void>();
+
+  protected readonly hostAvatar = HOST_AVATAR;
+  protected readonly builderOpen = signal(false);
 
   private readonly draft = signal<ScenarioDraft | null>(null);
   protected readonly saving = signal(false);
@@ -284,6 +332,57 @@ export class ChatScenarioControl {
         return null;
     }
   });
+
+  /**
+   * "Use this scene" (v4 `handleUseBuiltScene`): the Host's draft becomes the
+   * custom text. Nothing is dispatched — the existing Change-scenario button
+   * persists it, so the Host's revision announcement fires exactly as for a
+   * hand-typed scene.
+   */
+  protected handleUseBuiltScene(scene: string): void {
+    this.draft.set({ selection: { kind: 'custom' }, customText: scene });
+  }
+
+  /**
+   * After a save (v4 `handleBuiltSceneSaved`), select the new preset when this
+   * picker offers it. The save dialog has already AWAITED the invalidation of
+   * the scenario family, so the caches hold fresh lists — read them, never
+   * refetch. v5's tier queries cache the flattened OPTION arrays (v4 caches
+   * the raw `{ scenarios }` / `{ groupScenarios }` envelopes), so the lookups
+   * read arrays; the rules are v4's: the project only for this chat's own
+   * project, a group only when that group offers that path, a character only
+   * when it is the room's lone LLM character.
+   */
+  protected handleBuiltSceneSaved(target: SavedScenarioTarget): void {
+    const showArchived = this.showArchived();
+    let next: ScenarioSelection | null = null;
+    if (target.kind === 'general') {
+      const data = this.queryClient.getQueryData<GeneralScenarioOption[]>(
+        scenarioKeys.general(showArchived),
+      );
+      if ((data ?? []).some((s) => s.path === target.path)) {
+        next = { kind: 'general', path: target.path };
+      }
+    } else if (target.kind === 'project' && target.projectId === this.projectId()) {
+      const data = this.queryClient.getQueryData<ProjectScenarioOption[]>(
+        scenarioKeys.project(target.projectId, showArchived),
+      );
+      if ((data ?? []).some((s) => s.path === target.path)) {
+        next = { kind: 'project', path: target.path };
+      }
+    } else if (target.kind === 'group') {
+      const data = this.queryClient.getQueryData<GroupScenarioOption[]>(
+        scenarioKeys.group(this.characterIdsKey(), showArchived),
+      );
+      const offered = (data ?? []).some(
+        (s) => s.groupId === target.groupId && s.path === target.path,
+      );
+      if (offered) next = { kind: 'group', groupId: target.groupId, path: target.path };
+    } else if (target.kind === 'character' && target.characterId === this.singleLlmCharacterId()) {
+      next = { kind: 'character', scenarioId: target.scenarioId };
+    }
+    if (next) this.draft.set({ selection: next, customText: '' });
+  }
 
   protected setShowArchived(event: Event): void {
     this.showArchived.set((event.target as HTMLInputElement).checked);

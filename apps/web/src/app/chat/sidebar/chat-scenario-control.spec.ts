@@ -133,8 +133,12 @@ function textarea(fixture: ComponentFixture<Host>): HTMLTextAreaElement | null {
   return fixture.nativeElement.querySelector('textarea');
 }
 
+/**
+ * The Change-scenario button — by its class, not as the first button: since
+ * P4.D218 the "Ask the Host to set the scene" button precedes it.
+ */
 function saveButton(fixture: ComponentFixture<Host>): HTMLButtonElement {
-  return fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+  return fixture.nativeElement.querySelector('button.qt-tool-palette-button') as HTMLButtonElement;
 }
 
 function toasts(): string[] {

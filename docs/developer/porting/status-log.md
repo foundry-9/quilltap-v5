@@ -146480,3 +146480,50 @@ tool (§R.4(k), Tier 3 item 14); `withCollectionActionDispatch` not re-proven be
   (2). Both reverted by file backup.
 - **Gate:** lint clean; `npm test` 446 files / 7,639 passed; build clean, no
   budget warning. SPA 0.5.751.
+
+### Unit 4 — the Salon entry (Tier 1 item 7)
+
+- **`chat-scenario-control.ts`**: NEW inputs `castCharacters` and
+  `projectName`; the button after Show archived (`qt-button-secondary
+  qt-button-sm … mb-2`, the Host avatar, disabled while saving); the dialog
+  `@defer`red under `builderOpen` with `cast = castCharacters`, the chat's
+  project id/name and **this chat's id** (so the Host also sees its current
+  scene); `handleUseBuiltScene` → the draft `{ custom, customText: scene }` —
+  NOTHING dispatched (the existing Change-scenario button persists it, which
+  is what makes the Host announce the revision); `handleBuiltSceneSaved`
+  reads the caches the save dialog already invalidated AND awaited (never a
+  refetch) — general by path; project only for this chat's own project;
+  group only when that group offers that path; character only when it is
+  the lone LLM character — and sets the draft `{ selection, customText: ''
+  }`. **Measured:** v5's tier queries cache the flattened OPTION arrays
+  where v4 caches the raw `{ scenarios }` / `{ groupScenarios }` envelopes,
+  so the lookups read arrays; the keys (`scenarioKeys.*(…, showArchived)`)
+  are the ones the control's own queries use, so the archived-inclusive
+  cache is read when that is what the picker shows (pinned).
+- **Threading:** `chat-sidebar.ts` computes v4's `castCharacters` (every
+  participant with `status !== 'removed' && character?.id &&
+  !character.archivedAt`, ANY controller — "the user's persona has a vault
+  and groups too"; archived characters "lend the Host nothing") and passes it
+  through `chat-section.ts` (v5's split of v4's in-file `ChatSection`, inside
+  `apps/web/**` — P4.D218's per §R.10(e)), which also passes
+  `state().projectName`.
+- **The existing control spec's `saveButton()` took the FIRST button** —
+  now the Host's; re-pointed at the Change-scenario button by its class (7
+  cases had gone red/timed out). Unlike the New Chat form, a NESTED `@defer`
+  needed no `compileComponents` anywhere in the tree (measured: the full
+  suite's only reds were those 7).
+- **Spec** `chat-scenario-control.host.spec.ts` — 9 cases (the dialog
+  stubbed by selector): the button + portrait, disabled while a save is in
+  flight; the dialog's cast/project/chatId inputs and close-unmount; Use →
+  Custom with the scene in the box and NO `chatSetScenario`, then Change
+  scenario dispatches `{ chatId, scenario }`; the saved-preset selection —
+  general present / absent, project own / other, group offered / other
+  group, the Show-archived cache, character lone / several. Plus 1 in
+  `chat-sidebar.spec.ts`: the cast filter over removed / archived / absent /
+  user / character-less seats, read off the Chat section's input.
+- **Mutation proof:** M6 drop the `archivedAt` guard from the sidebar's cast
+  filter → reddens the cast case (1). Reverted by file backup.
+- **Gate:** lint clean; `npm test` 447 files / 7,649 passed; build clean.
+  SPA 0.5.752. (A first gate launch was backgrounded with a bare `&` inside a
+  foreground command — the recorded trap; it was killed and relaunched as one
+  `run_in_background` chain before any result was read.)

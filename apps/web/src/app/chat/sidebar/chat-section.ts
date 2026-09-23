@@ -211,6 +211,8 @@ export interface ChatSectionState {
         [scenarioText]="state().scenarioText"
         [llmCharacterIds]="llmCharacterIds()"
         [singleLlmCharacterId]="singleLlmCharacterId()"
+        [castCharacters]="castCharacters()"
+        [projectName]="state().projectName"
         [enabled]="hasEverOpened()"
         (chatUpdated)="chatUpdated.emit()"
       />
@@ -358,6 +360,8 @@ export class ChatSection {
   readonly llmCharacterIds = input<readonly string[]>([]);
   /** The lone LLM character's ID, or null when several share the room. */
   readonly singleLlmCharacterId = input<string | null>(null);
+  /** Every present character (any controller), for the Scenario Builder (v4 `d1c06cd9d`). */
+  readonly castCharacters = input<readonly { id: string; name: string }[]>([]);
   /**
    * The Concierge's two stored fields (P4.D141), mirroring v4's own
    * `ChatSidebarProps` — which carries `isDangerousChat` and `conciergeOverride`

@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(spa): "Ask the Host to set the scene" in the Salon sidebar's scenario control (P4.D218 unit 4)
+
+_Versions: SPA 0.5.752._
+
+The Salon sidebar's scenario control gains the Scenario Builder button,
+with the dialog lazy-loaded and given the chat's id, project, and every
+present, unarchived character regardless of controller (computed in the
+sidebar and passed through the Chat section). Using a built scene makes it
+the custom draft without saving; the existing Change scenario button
+persists it. After a save, the new preset is selected when the refreshed
+scenario caches offer it. The existing control spec now finds the Change
+scenario button by class. 10 new spec cases.
+
 #### 2026-09-23 — feat(spa): "Ask the Host to set the scene" on the New Chat form (P4.D218 unit 3)
 
 _Versions: SPA 0.5.751._

@@ -288,6 +288,7 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             [sectionOpen]="openSection() === 'chat'"
             [llmCharacterIds]="llmCharacterIds()"
             [singleLlmCharacterId]="singleLlmCharacterId()"
+            [castCharacters]="castCharacters()"
             [isDangerousChat]="isDangerousChat()"
             [conciergeOverride]="conciergeOverride()"
             (chatUpdated)="chatUpdated.emit()"
@@ -582,6 +583,17 @@ export class ChatSidebar implements OnInit {
     this.participants()
       .filter((p) => p.controlledBy !== 'user' && p.status !== 'removed' && p.character?.id)
       .map((p) => p.character!.id),
+  );
+
+  /**
+   * Everyone present, whoever holds the reins, for the Scenario Builder: the
+   * user's persona has a vault and groups too. Archived characters are
+   * tombstones and lend the Host nothing (v4 `ChatSidebar.tsx` at `d1c06cd9d`).
+   */
+  protected readonly castCharacters = computed<{ id: string; name: string }[]>(() =>
+    this.participants()
+      .filter((p) => p.status !== 'removed' && p.character?.id && !p.character.archivedAt)
+      .map((p) => ({ id: p.character!.id, name: p.character!.name })),
   );
 
   protected readonly singleLlmCharacterId = computed<string | null>(() => {

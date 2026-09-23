@@ -1,5 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -10,7 +11,7 @@ import { CoreClient } from '../../core/core-client';
 import type { ParticipantDetail } from '../../core/core-contract';
 import { createInitialTurnState, type TurnSelectionResult, type TurnState } from '../turn-order';
 import { ChatSidebar } from './chat-sidebar';
-import type { ChatSectionState } from './chat-section';
+import { ChatSection, type ChatSectionState } from './chat-section';
 import type { VisibilityState } from './visibility-section';
 
 /**
@@ -405,6 +406,44 @@ describe('ChatSidebar — a picker tick re-emits from the sidebar', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.subpromptsChanged).toEqual([
       { participantId: 'alice', subpromptIds: ['be-terse'] },
+    ]);
+  });
+});
+
+/**
+ * The Scenario Builder's cast (v4 `ChatSidebar.tsx` at `d1c06cd9d`): EVERY
+ * present character, whoever holds the reins — "the user's persona has a
+ * vault and groups too" — minus the removed and the archived ("tombstones
+ * [that] lend the Host nothing"), threaded to the Chat section.
+ */
+describe('ChatSidebar — the Scenario Builder cast (v4 d1c06cd9d)', () => {
+  it('passes every present, unarchived character, any controller, to the Chat section', async () => {
+    // Expanded, with the Chat card open — the section renders only then.
+    localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
+    const fixture = await render();
+    const chatHeader = Array.from(
+      sidebarEl(fixture).querySelectorAll('.qt-collapsible-card-header'),
+    ).find((h) => (h.textContent ?? '').trim().startsWith('Chat')) as HTMLButtonElement;
+    chatHeader.click();
+    fixture.detectChanges();
+    const archived = participant('carol', 'Carol');
+    archived.character = { ...archived.character!, archivedAt: '2026-02-01T00:00:00.000Z' };
+    fixture.componentInstance.participants.set([
+      participant('user', 'You', { controlledBy: 'user' }),
+      participant('alice', 'Alice'),
+      participant('bob', 'Bob', { status: 'removed' }),
+      archived,
+      participant('dora', 'Dora', { status: 'absent' }),
+      participant('npc', 'Nobody', { character: null }),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const section = fixture.debugElement.query(By.directive(ChatSection));
+    expect(section).not.toBeNull();
+    expect((section.componentInstance as ChatSection).castCharacters()).toEqual([
+      { id: 'char-user', name: 'You' },
+      { id: 'char-alice', name: 'Alice' },
+      { id: 'char-dora', name: 'Dora' },
     ]);
   });
 });
