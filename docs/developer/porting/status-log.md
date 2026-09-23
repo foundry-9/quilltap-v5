@@ -146345,3 +146345,78 @@ tool (§R.4(k), Tier 3 item 14); `withCollectionActionDispatch` not re-proven be
   | M3 subscribe AFTER the dispatch resolves | 3 — frames-first done, frames-first error, reply-first (its detect frame lost) |
 - **Gate:** `npm run lint` clean; `npm test` 444 files / 7,581 passed
   (7,474 + 107); `npm run build` clean. SPA 0.5.749.
+
+### Unit 2 — the dialog and the save dialog (Tier 1 items 4, 5, 8's profile coercions)
+
+- **`scenario-builder-dialog.ts`** (`qt-scenario-builder-dialog`, provides
+  `ScenarioBuilderRun`): the three views (`running` > draft ≠ null → review >
+  inputs), every v4 string/placeholder/maxLength, the mode radio seeded ONCE
+  at mount from the cast (v4's `useState` initializer), the Model `<select>`
+  with `[selected]` per option (the standing select rule), v4's default rule
+  (chosen → default-with-tools → any-with-tools → first) and disabled
+  `(no tools)` rows + the note, the capabilities probe on mount (the host
+  mounts the dialog only while open, so mount IS v4's `enabled: isOpen`), the
+  web-unreachable notice's two suffixes, the running pane (the activity list
+  through `describeHostActivity`, the quill while pending, `close` titled
+  `Came to nothing` on `success === false`, else `check` titled `Done`; the
+  thinking block only for non-blank reasoning — v4's `ThinkingBlock` returns
+  null on blank), the review pane (`qt-markdown-field` re-keyed by
+  `draftKey` on every completed run; Revise by button or Enter, disabled
+  unless `revision.trim() && profileId`; the failed-revise suffix ` Your
+  draft is untouched.`), the per-view footer, Stop, `handleClose` refusing
+  while running, Use (`use` then `closed`), Save (`defaultSaveName` capped
+  at 100, fallback `A scene set by the Host`).
+- **`save-scenario-dialog.ts`** (`qt-save-scenario-dialog`): the strings, the
+  name seeded once at mount, the target options (General; `Project: <name
+  || 'this project'>` with a project; `Group: <name>` from
+  `groupList { characterIds: sorted cast }` keyed `['groups','by-characters',
+  <castKey>]`, asked only for a non-empty cast; `<name>’s scenarios` per cast
+  member), the description disabled + v4's note for a character target, the
+  blank-name refusal, the four EXISTING create verbs with v4's bodies mapped
+  onto `ScenarioCreateBag` (`{ filename, name, description?, body }`) and
+  `characterScenarioCreate { characterId, title, content }`, then
+  `invalidateQueries(['scenarios'])` awaited → the success toast → `saved`
+  → `closed`; a refusal stays open with `role="alert"`. **Measured:** v5's
+  tier creates answer `{ path, … }` and the character create `{ scenario }`,
+  exactly v4's shapes (`api/scenarios.rs:create_op`, `wrap_obj(out,
+  "scenario")`), so `SavedScenarioTarget` is built from the same keys.
+- **Profile mapping** (`scenario-builder.api.ts`, `mapScenarioBuilderProfiles`
+  = v4 `mapProfiles`): `isDefault === true`, `allowToolUse !== false`,
+  `allowWebSearch === true`, over the SAME `['connectionProfiles']` key the
+  Settings cards cache `ConnectionProfileDto[]` under (so a profile edit's
+  invalidation reaches the dialog, as v4's shared key does).
+- **Recorded divergences (SPA-convention, no v5 input):** `qt-modal` handles
+  no Escape at all, so v4's `closeOnEscape={!running && !saveOpen}` has no
+  counterpart (the ✕ reaches `handleClose`, which refuses while running);
+  v4's `(HTTP ${res.status})` save-failure sentence has no status on a v5
+  envelope — a refusal shows its `message`, an empty one v4's catch sentence
+  `The scenario could not be filed.`; v5's `ThinkingBlock` has no `streaming`
+  arm, so v4's forced-open `Thinking…` label renders as the collapsed=false
+  `Thinking` (a pre-existing gap shared with the Brahma console's live
+  block — noted for the unifier, not widened here); v4's dialog persists no
+  geometry (`BaseModal` takes none), so Tier 2 item 11 is **measured
+  N/A**.
+- **Spec** `scenario-builder-dialog.spec.ts` — 42 cases over a fake core
+  (`scenario-builder-dialog.testing.ts`: a build dispatch emits its queued
+  frames on `events$` under the request's `runId`, then resolves with the
+  terminal object): **v4's 13 dialog cases by name** (the other 5 of v4's 18
+  are the `describeHostActivity` cases, in `host-activity.spec.ts`) + 29
+  beyond v4 (mode seed both ways; placeholders/caps; the default-rule
+  fallbacks and labels; the no-tools note; `Set the scene` gating; both
+  warning sentences verbatim; the capabilities probe; the full build body
+  incl. trims and nulls; a failed first run on the inputs pane; the running
+  pane's descriptions and marks; Stop → `scenarioBuilderAbort { runId }`
+  back to inputs; destroy aborts; close refused while running; Enter
+  revises and clears; the failed-revise suffix; an edited draft is what Use
+  hands over; blank disables Use/Save; the save dialog's default name + cap,
+  target list order incl. the sorted `groupList` request, the unnamed
+  project, no group query for an empty cast, project + group bodies incl.
+  the trimmed description, the character description lock, the blank-name
+  refusal, invalidate → toast → saved → close, the empty-message fallback,
+  Cancel keeps the draft; the `mapProfiles` absent-key defaults).
+- **Type check:** the dialog is not yet imported by the app (unit 3 wires
+  it), so `npm run build` alone would not have checked it; a temporary
+  `main.ts` import + `npm run build` compiled it clean (reverted, `main.ts`
+  unchanged).
+- **Gate:** lint clean; `npm test` 445 files / 7,623 passed; build clean.
+  SPA 0.5.750.

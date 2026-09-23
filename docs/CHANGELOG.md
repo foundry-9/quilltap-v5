@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(spa): the Scenario Builder dialog and its save dialog (P4.D218 unit 2)
+
+_Versions: SPA 0.5.750._
+
+Added `qt-scenario-builder-dialog` (v4's `ScenarioBuilderDialog`): the
+inputs, running and review panes with v4's strings, the model picker's
+default rule and disabled no-tools rows, the web-unreachable notice, the
+live activity list and thinking block, Revise, Stop, Use and Save. Added
+`qt-save-scenario-dialog`, which files the scene through the existing
+General, project, group and character create verbs, lists the cast's
+groups through `groupList { characterIds }`, invalidates the scenario
+lists, and toasts. Profile flags are mapped as v4's `mapProfiles`. 42 spec
+cases, including v4's 13 dialog cases by name.
+
 #### 2026-09-23 — feat(spa): Scenario Builder contract types, the tool-call fold and host-activity twins, and the run state (P4.D218 unit 1)
 
 _Versions: SPA 0.5.749._
