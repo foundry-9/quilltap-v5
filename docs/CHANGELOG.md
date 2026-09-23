@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(help): re-vendor help/story-backgrounds.md at v4 00c290c9a (P4.D215 unit 5)
+
+_Docs-only change._
+
+Byte-copied from v4 (8,976 bytes). The page now says a changed title from
+any automatic titler commissions a background, an unchanged one does not,
+and a hand-set title is kept. The help tree stays at 126 files.
+
 #### 2026-09-23 — fix(context-summary): the fold keeps a hand-set title and cues the Lantern (P4.D215 unit 4)
 
 _Versions: core 0.0.1005, harness 0.0.916._

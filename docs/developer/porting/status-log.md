@@ -143832,3 +143832,199 @@ rewritten to the pin — a lane-local wrapper over `recipe_sweep.py --show`).
 - The migrator's recipe header (P4.107's file this round) does NOT gain a
   `chat-admin` line from this lane — the recipe above is the record; the
   unifier may fold it into the header.
+
+### Lane interruption — v4 moved mid-lane (2026-09-23)
+
+The §R.2 probe before the first TARGET regen batch FAILED: v4 `main` had
+moved to `dff00e98d` ("docs: add Scenario Builder handoff spec", 4 files,
+docs + `.claude/commands` only). The lane STOPPED and reported. On resume
+the checkout was also DIRTY in `lib/` (Scenario Builder work in progress:
+`lib/doc-edit/path-resolver.ts`, `lib/tools/handlers/doc-edit/*`,
+`lib/tools/*search-scriptorium*`, untracked `lib/scenario-builder/`) and no
+waiver was found in the ledger. **Authority to resume: the human, in the
+lane's chat, 2026-09-23 — "resume anyway, pins only".** Every regen in this
+lane runs from the two pinned detached worktrees; nothing reads the live
+checkout. The ledger was not written.
+
+### Unit 2 — the chokepoint + the title-update job (TARGET pin)
+
+- NEW `services/auto_title.rs`: `AutoTitleSource`/`AutoTitleOutcome`
+  (v4's strings), `apply_auto_title` in v4's order (the re-read; the three
+  DEBUG lines; `writeExtraOnly`; the unchanged compare against the RE-READ
+  title; the INFO `[Auto Title] Chat retitled` `{chatId, source, from,
+  to}`; the help-like gate on the RE-READ row; no internal catch), the
+  timestamp INJECTED. The extra patch is typed to the one key v4's callers
+  pass (`AutoTitleExtraPatch { last_rename_check_interchange }`) +
+  `clear_manual_rename` — recorded in the module doc.
+  `queue_story_background_if_enabled` MOVED here from
+  `image_profile_resolution.rs` (the resolver stays), its two lines
+  re-prefixed `[Auto Title]`, `context` dropped, fields camelCase.
+  `title_update_job::CONTEXT` survives only on the `:429` checkpoint-burned
+  warn, where v4's handler keeps its own `context` (verified at
+  `00c290c9a:title-update.ts:201`).
+- The job: the unconditional write, the `Updated title` INFO and the local
+  re-read + `!is_help_chat` enqueue DELETED; `apply_auto_title(…,
+  extra_patch: { lastRenameCheckInterchange }, TitleCheck, the job's
+  clock)`; a chokepoint error now FAILS the job (`?`), as v4's uncaught
+  `applyAutoTitle` does — before, `write_chat`'s `let _ =` swallowed a
+  title-write error. v5's job already used `is_help_like_chat_type` (no
+  narrower predicate existed), so the gate's predicate is unchanged.
+- **FINDING (the order was wrong): `title_update_tier3` was RED on main at
+  BOTH pins, not "NOT known red".** The committed `cost-background-main.db`
+  lacks the two P4.D171 columns; the Rust side has always healed its
+  per-case copy (`ensure_p4d171_columns`) but the ORACLE never did, so v4's
+  `chats.update` threw `no such column: cycleOrderParticipantIds` on 19 of
+  20 rows (measured at `a2db63da7` with the grown case: 19 of 22 threw).
+  Fixed on the ORACLE's per-case COPY with the Rust helpers' exact DDL
+  (`ensureP4d171Columns` in the case) — the committed pair is NOT widened
+  (P4.107's list). After the fix both pins record 20 clean rows + the two
+  expected throws.
+- Grown (red-first at the TARGET, 22 rows): `unchanged_title` and
+  `renamed_mid_flight` (the canned provider writes the hand rename through
+  v4's real `chats.update` / v5's `ChatUpdate` inside the call). **Pre-port:
+  2 of 22 differential rows red (exactly those two) + 4 capture tests red**
+  (`rename_info_…`, `queued_story_background_…`, `failed_to_queue_…`, and
+  the NEW `renamed_by_hand_debug_fires_only_on_a_mid_flight_rename`). At
+  the baseline the same two rows record the PRE-fix behaviour (the
+  unchanged title writes and queues; the mid-flight rename is
+  overwritten). Post-port: 8/8 tests, 22/22 rows. A case-set check (driven
+  == oracle) added.
+- The dedupe capture arm had to CHANGE SHAPE: since the chokepoint, a
+  second run with the same verdict is the UNCHANGED arm and never reaches
+  the enqueue, so `isNew: false` now needs a DIFFERENT second title
+  (`capture_replies`); the same-twice arm is pinned separately.
+- **FINDING — a cross-thread `Interest` race in the capture tests.** The
+  regenerate family's new capture test saw ZERO lines under the default
+  test threads and passed alone; the title-update binary's
+  `set_default`+`CaptureLayer` tests carry the same latent race. NEW
+  `crates/quilltap-harness/tests/auto_title_capture/mod.rs`: a
+  process-global subscriber (installed at the top of every test in the
+  binary) routing events into the calling thread's buffer, rendered by
+  `test_support::FieldVisitor` (byte-identical to `CaptureLayer`).
+  `test_support::global_capture` could not serve: it records the message
+  only, and these pins assert fields. 3/3 consecutive runs green.
+
+### Unit 3 — regenerate-title (TARGET pin, over the widened pair)
+
+- `chat_regenerate_title` through `apply_auto_title(…,
+  clear_manual_rename: true, Regenerate, now_iso)`; the body `{success,
+  title}` for every outcome; a chokepoint error → 500 `Failed to
+  regenerate title`. v4's three lines added (Tier 2 item 8): ERROR `Title
+  generation failed` `{chatId, error}`, INFO `Title regenerated` `{chatId,
+  newTitle, outcome}`, ERROR `Error regenerating title` `{chatId}` + error.
+  No `api/engine.rs` hunk (the verb already takes `now_iso`).
+- Grown 9 → 15 cases, every row now also carrying `background_jobs`:
+  `regen_title_overrules_manual`, `_unchanged`, `_queues_background`,
+  `_overrules_manual_queues_background`, `_unchanged_no_background`,
+  `_help_no_background`. **The plant mechanism:** the chat-admin fixture
+  has no `image_profiles` table, so the ORACLE plants through v4's REAL
+  repositories (`imageProfiles.create`, `chatSettings.updateForUser`,
+  `chats.update`) on its per-case copy after the clock freeze and saves the
+  planted copy beside the NDJSON as `<oracle>.<case>.{main,mount}.db`; the
+  Rust side opens THAT seed — neither side hand-writes v4's row shapes.
+  **Pre-port: 2 of 15 red** (`_queues_background` and
+  `_overrules_manual_queues_background`, both on `jobs` — bug 163); the
+  baseline records `jobs: []` on both. Post-port 60/60 comparands OK.
+- Capture test `regenerate_title_log_lines_fire_on_their_own_branches`:
+  applied / unchanged / provider-throws / the chokepoint's re-read failing
+  (`DROP TABLE chats` planted inside the canned call) — each line on its own
+  branch, siblings silent.
+- The `missing` outcome is not driven through a differential arm (it needs
+  the chat deleted between the verb's read and the chokepoint's re-read);
+  its DEBUG line is ported and the body's every-outcome shape is v4's by
+  construction. Named here, not silently skipped.
+
+### Unit 4 — the fold (TARGET pin)
+
+- The early return on the START snapshot's `isManuallyRenamed` with the
+  DEBUG `[Context Summary] Chat renamed by hand; skipping fold title`
+  BEFORE the title LLM call; the title through `apply_fold_title` (its own
+  `chat_settings::find_by_user_id` read + `apply_auto_title(…,
+  SummaryFold, now_iso())`, no extra patch). **The pre-existing `?`
+  divergence CLOSES:** v4's title block is one try/catch, so a failure from
+  the settings read through the chokepoint now logs the ERROR `[Context
+  Summary] Error generating title for chat {id}:` and the fold still
+  succeeds (v5 used to fail the whole fold on a title-write error). The
+  INFO `Generated title for chat {id}: {title}` WITH `outcome` and the
+  `!success` WARN (`undefined` when absent) — three pre-existing absent
+  lines restored.
+- Grown: two new chats in `context-summary-service-tier3.json`
+  (`c…000f` hand-renamed; `c…0010` naming a planted image profile through
+  its OWN `imageProfileId`) + a `storyBackgrounds` spec block the builder
+  seeds (a `chat_settings` row with backgrounds ENABLED and NO default
+  profile, one image profile WITH an `apiKeyId`) — so only chat P can
+  resolve a profile. Two ops: `fold_hand_renamed`,
+  `fold_queues_background`. The fixture JSONs re-dumped with their
+  original escape conventions (the diff is additions only).
+- **Neutrality of the grown fixture at the BASELINE:** regenerated with
+  the HEAD inputs and with the grown inputs from the `a2db63da7` pin, the
+  old ops' results, canned calls, embed inputs, llm_logs (23 rows),
+  chat_messages, chats, background_jobs, memories and mount-link paths are
+  equal once minted ids/timestamps are stripped.
+- **Red-first on the un-ported fold (HEAD `context_summary.rs` swapped in
+  from a file backup):** bug 163 — `background_jobs rows diverge` (no
+  STORY_BACKGROUND_GENERATION row for chat P). **Bug 164 was INVISIBLE to
+  the existing diff**: the un-ported fold asks for a title v4 never
+  requested, misses the canned replay, writes no title (so the tables
+  match), and its failed-call llm_logs row vanishes into
+  `assert_ruled_failed_call_divergence`, which strips EVERY failed-call
+  row. Pinned explicitly before that split: zero `TITLE_GENERATION` rows
+  for `c…000f` on both sides — red-first at 1 on the un-ported fold.
+- Capture pins per op (`assert_fold_title_lines`: the skip DEBUG only on
+  `fold_hand_renamed`; the WARN only on `title_failure`; exactly one
+  `Generated title … outcome=applied` + one `[Auto Title] Chat retitled`
+  elsewhere; the queued line only on `fold_queues_background`; silence on
+  `fold_too_few_turns`) and the catch arm on a separate PRISTINE copy with
+  `chat_settings` dropped (ERROR, no success line, fold still succeeds),
+  run at the END of the test so it cannot mask the table diff.
+- The target oracle: the hand-renamed chat keeps `A Title I Picked
+  Myself`, no canned title entry is recorded for it (29 canned rows, 0
+  with its title), and `background_jobs` holds exactly one
+  STORY_BACKGROUND_GENERATION row (chat P).
+
+### Unit 5 — `help/story-backgrounds.md`
+
+Byte-copied at `00c290c9a`: 8,976 bytes, md5
+`7b9ce0c074ddabad85152da6fc8fcfea`; 126 files. The SPA's rename-modal
+control is labelled exactly "Use automatic naming" (`chat-rename-modal.ts:82`),
+matching the page. `help_tree_equivalence` at the TARGET pin: ok. Pin
+marker `the Lantern's cue that the scene has shifted`: 1 in the target
+NDJSON, 0 in the baseline one. No version bump (the P4.D212 precedent;
+the embedding crate is `quilltap-host`, outside this lane).
+
+### Mutation proofs (file-backup revert; all three families per mutation)
+
+| mutation | reddens |
+|---|---|
+| M1 ignore the re-read's `isManuallyRenamed` | `title_update`: `renamed_mid_flight` + `renamed_by_hand_debug_…` — nothing else |
+| M2 regenerate passes `clear_manual_rename: false` | `regen_title_overrules_manual` (+ its background twin, + the two unchanged arms' `isManuallyRenamed`) |
+| M3 drop the unchanged skip | `unchanged_title`, `regen_title_unchanged_no_background` (jobs) + the capture arms that pin the unchanged line |
+| M4 drop the fold's early return | `context_summary_service_tier3` (the skip-line pin; the data pin — one title call — measured red on the un-ported fold) |
+| M5 invert the help-like gate | `help_chat`, `regen_title_help_no_background`, every background-queueing row in all three families |
+| M6 the fold passes no settings | `context_summary_service_tier3` (`fold_queues_background`; its jobs row measured red on the un-ported fold) |
+
+All six sources restored `cmp`-identical to the pre-mutation backups.
+
+### Neutrality legs (ported tree)
+
+At the TARGET pin: `memory_pipeline_jobs_tier3` ok, `orchestrator_tier3`
+ok (3.94 s — it RAN), `story_background_job_tier3` ok (2 tests). At the
+BASELINE pin: `chat_admin_routes` ok, `chat_rebuild_summary` ok,
+`context_summary` ok (46-row oracle), `chat_tasks` ok (27-row oracle).
+Zero `SKIP:` lines.
+
+### Recorded for the unifier / next orders
+
+- `title_update_tier3` was red on main (the oracle-side copy heal above is
+  the fix; the unifier should expect it GREEN from the new baseline pin).
+- `cost-background-main.db`'s 5-column gap stays (Tier 3 item 11, P4.107's
+  list) — this lane healed only the oracle's per-case COPY.
+- `assert_ruled_failed_call_divergence` strips every failed-call row, so a
+  spurious failed call hides from any family that uses it; this lane pinned
+  its own case explicitly — a candidate for a narrower split (keyed on the
+  expected op) in a later order.
+- v4's backend-level `SQLite find error` lines: not ported (Tier 3 item 12).
+- §R.9 mirror pre-list (the unifier's): `docs/v4/developer/bugs/fixed/
+  bug-163-fold-rename-no-background.md` (NEW, 4,621),
+  `bug-164-fold-overwrites-manual-title.md` (NEW, 2,867),
+  `docs/v4/developer/bugs.md` (306,475 → 308,274).
