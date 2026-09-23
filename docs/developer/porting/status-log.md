@@ -144625,3 +144625,176 @@ lines / `updateReturns` / `reads` present) before a diff was believed.
 - **Neutrality:** every pre-existing row of the four grown families stayed green at the pin (the full diffs above compare them all); `chats_messages_ops_tier2` at the HEAD corpus under unit 1's code is green.
 - **The `docs/v4/` mirror:** this lane moves no mirror path. **Versions:** core 0.0.1002 → **0.0.1005** (+3), harness 0.0.913 → **0.0.918** (+5); web/host/cli/tauri/SPA untouched (no web test added).
 - **Target cleaned** after the gate (`rm -rf <worktree>/target`); the pin worktree and `/tmp/p4109` scratch removed at close.
+
+## Lane record — P4.108: the animated-input decline at the host codec (2026-09-23, branch `claude/animated-input-decline-docs-e14979`)
+
+**Scope:** the human's 2026-09-23 ruling on P4.104's recorded divergence, as
+ordered: a multi-frame GIF/WebP on the codec's two ANIMATED seams answers the
+cannot-transcode `Err`, so v4's store-original fallback keeps every frame.
+**All of Tier 1 (items 1–6) and Tier 2 (items 7–8) LANDED; Tier 3 items 9–10
+stay deferred as the order names them.**
+
+### §1 Probe
+
+The lane's first probe (against the ledger as cut, `00c290c9a`) FAILED: v4
+`main` had moved to `dff00e98d` and the tree was dirty with the Scenario
+Builder (31 paths under `lib/`/`app/`). The lane STOPPED and reported. `main`'s
+`/driftcheck` commit `4136d21c` then recorded `dff00e98d` + `d1c06cd9d` in §3
+and wrote the waiver into §1 ("a lane whose §2 probe fails on
+`dff00e98d`/`d1c06cd9d` may proceed … the rows stay out of this round").
+Re-probe against that §1: branch `main`, HEAD `d1c06cd9d`, tree CLEAN,
+`d1c06cd9d..main` and `1a2b2164c..bugfix` EMPTY — PASS. Re-run before the
+gate: PASS. (The lane branch is cut from `01e52897` and does not carry
+`4136d21c`; the lane never wrote the ledger.)
+
+### §2 Pin
+
+`/tmp/qt-v4-pin-p4108-a2db63da7` — `git rev-parse HEAD` = `a2db63da7`, `ls -ld`
+checked, the three symlink classes made; sharp 0.35.4 from the symlinked
+`node_modules`. v4's `blob-transcode.ts:121` read at the pin:
+`sharp(input, { animated: true }).webp({ quality, effort: 4 })`, catch
+`:138-149` → WARN + the input.
+
+### §3 Fixtures (item 1) — commit `beac9e4a`
+
+Six files + `generate.py` under `harness/oracle/fixtures/normalize-blob-image/`.
+The GIFs and the APNG come from the standard library alone (`python3
+generate.py --check` → `OK: 4 deterministic fixtures match byte-for-byte`); the
+two WebPs from libwebp 1.6.0 (`--webp`; version-dependent, so the bytes are
+committed). **The APNG is hand-assembled too** (the order suggested only the
+GIFs be scripted; ffmpeg was not needed at all). Measured:
+
+| fixture | bytes | sharp `metadata()` (pin) | sharp `{animated:true}` → WebP | ffprobe frames |
+|---|---|---|---|---|
+| `anim-2frame.gif` | 1,245 | gif 32×24 pages 2 | 226 B, pages 2 | 2 |
+| `still-large.gif` | 2,353 | gif 64×48 pages 1 | 208 B, still | 1 |
+| `still-with-commas.gif` | 822 | gif 32×24 pages 1 | 80 B, still | 1 |
+| `anim-2frame.webp` | 222 | webp 32×24 pages 2 | 234 B, pages 2 (GREW) | — |
+| `one-anmf.webp` | 140 | webp 32×24 pages 1 | 84 B, still | — |
+| `anim-2frame.apng` | 241 | png 32×24 pages undefined | 82 B, still | 2 |
+
+`webpinfo`: `anim-2frame.webp` = VP8X (Animation: 1, canvas 32×24) + ANIM
+(loop 0) + two ANMF (100 ms, VP8 lossy 66/64 B); `one-anmf.webp` = VP8X
+(Animation: 1) + ANIM + ONE ANMF (VP8 lossy 72 B), "No error detected".
+Every value matches the order's survey item 2.
+
+### §4 The helper + the two gated seams (items 2, 3, 6) — commit `1b03b486`
+
+`is_multi_frame` (private, `image_codec.rs`): `guess_format` → `GifDecoder` /
+`WebPDecoder` → `into_frames().take(2).take_while(is_ok).count() >= 2`;
+everything else, and any decoder error, `false`. (`image` 0.25.10's WebP frame
+iterator is empty for a still — `num_frames()` is 0 — so no `has_animation()`
+pre-check is needed.) `PixelCodec::encode_webp` declines when `animated &&
+is_multi_frame`; `BlobWebpTranscoder::encode_webp` whenever `is_multi_frame`.
+The message: `animated input: the host WebP encoder is single-frame (ruled
+2026-09-23 — decline rather than keep only the first frame); storing the
+original bytes`. No core trait signature, `file_storage.rs`, `files/**`, or
+non-animated method touched. **Which rule shipped: FRAME COUNT ≥ 2** (the
+order's refinement); `one_anmf_still` is a neutrality row, not a divergence.
+Host tests (4 new, 16/16 green): `is_multi_frame_counts_frames_not_flags`
+(true/false/false/true/false/false + stills + junk),
+`the_two_animated_seams_decline_a_multi_frame_input`,
+`the_first_frame_paths_still_encode_an_animated_gif` (`encode_webp(…, false)`,
+`convert_to_webp`, `shrink_to_webp`, `thumbnail_webp`, `resize_step` all
+still encode — and the pixel is frame 1's RED),
+`the_pixel_codec_animated_seam_keeps_every_frame_through_its_policies`
+(`file_storage::transcode_to_webp` + `PixelCodecWebp` through
+`normalize_link_blob_image` → the input unchanged; a still GIF still
+transcoded). Module docs: `image_codec.rs`'s first-frame bullet → the ruled
+record; `normalize_blob_image.rs`'s "not yet landed" paragraph → the closed
+record with the `images/avatar.webp` sentence (verified: v5
+`image_job_storage.rs:180`, v4 `character-vault-bridge.ts:50` at the pin).
+
+### §5 The family (items 4, 5, 8) — commit `1b03b486`
+
+`normalize_blob_image_equivalence` 9 → 16 rows (both case lists, order
+asserted). The oracle case gained a `pages` field (sharp `metadata().pages`
+of the output), read by Rust from the raw `Value` for the ruled rows only.
+`RULED_ANIMATED_DECLINE` = `anim_gif_declined`, `anim_webp_mislabelled_
+declined`: v4 `{changed, shaChanged, image/webp, *.webp, pages > 1}`; v5
+`{!changed, !shaChanged, the input's mime/path/fileName, "same", out bytes ==
+in bytes}`; width/height equal; "VANISHED" if v4 == v5, "WRONG SHAPE"
+otherwise; every declared row asserted run. The WARN capture pin (item 8):
+`Failed to transcode blob to WebP; storing original bytes` at WARN exactly
+once on each ruled row, ZERO on every other row. The `changed >= 4` guard's
+comment now says the ruled rows count as unchanged on v5.
+
+**Regen recipe (as run):**
+```
+V5W=/Users/csebold/source/quilltap-v5/.claude/worktrees/animated-input-decline-docs-e14979
+cd /tmp/qt-v4-pin-p4108-a2db63da7        # git rev-parse HEAD = a2db63da7
+QT_FIXTURE_NORMALIZE_BLOB_IMAGE=$V5W/harness/oracle/fixtures/normalize-blob-image \
+  ~/.nvm/versions/node/v24.13.1/bin/npx tsx $V5W/harness/oracle/cases/normalize-blob-image.ts \
+  > /tmp/p4108/oracle-normalize-blob-image.ndjson     # 3,567 bytes, 16 rows
+cd $V5W && QT_ORACLE_NORMALIZE_BLOB_IMAGE=/tmp/p4108/oracle-normalize-blob-image.ndjson \
+  cargo test -p quilltap-harness --test normalize_blob_image_equivalence -- --nocapture
+```
+Changed bytes in the fresh NDJSON (one line, so `grep -o … | wc -l`): `"pages":2` → 3 (the two ruled rows
++ `anim_webp_passthrough`), `"pages":null` → 13. The nine pre-existing rows still match
+v5 whole-row (the pre-change oracle was not regenerated for a by-byte compare).
+
+**Red first (item 4), on the un-declined codec with the grown family:** 2 of
+16 rows red, the other 14 (incl. all five new MATCH rows) green —
+`anim_gif_declined` "the ruled divergence VANISHED" (v5 wrote a still
+`image/webp` whose whole row equals v4's animated one: same mime, path, name,
+32×24, `smaller`); `anim_webp_mislabelled_declined` "WRONG SHAPE" (v5
+`smaller`, v4 `larger`; `declined=false`) + "WARN fired 0 times, want exactly
+1". After the decline: `OK … matched v4 on 14 cases (9 normalized, 7 left
+alone) … and diverged as RULED on the 2 animated-decline rows`; the
+repository-path test green.
+
+### §6 Mutation proofs (item 7) — all reverted by file backup, `cmp`-identical
+
+| # | mutation | host (`image_codec`) | family |
+|---|---|---|---|
+| M1 | drop `animated &&` (decline on every path) | RED `the_first_frame_paths_still_encode_an_animated_gif` (only) | green — as expected: the family drives `BlobWebpTranscoder`, which always declined |
+| M2 | `Ok(Png) => true` (as first written — too broad: declines EVERY PNG) | 3 red | RED on every PNG row + `apng_still` — replaced by M2b |
+| M2b | APNG only (`PngDecoder::is_apng`) | RED `is_multi_frame_counts_frames_not_flags`, `the_two_animated_seams_…` | RED `apng_still` only |
+| M3 | count frames `>= 1` | 5 red | RED `one_anmf_still`, `still_gif_transcoded`, `commas_gif_transcoded` |
+| M4 | no decline on `BlobWebpTranscoder` only | RED `the_two_animated_seams_…` | RED both ruled rows (VANISHED / WRONG SHAPE + WARN 0) — **the family exercises THIS seam** |
+| M5 | no decline on `PixelCodec` only | RED `the_two_animated_seams_…`, `the_pixel_codec_animated_seam_…` | green — the `PixelCodec` seam's proof is the host test, as the order anticipated |
+
+### §7 Deferred (Tier 3, loud)
+
+- **Item 9 — an animated encoder** (libwebpmux / `webp-animation`): NOT
+  taken, per the ruling. The decline IS the typed refusal (the codec's `Err`
+  names the ruling, and the caller logs it at WARN on every declined write);
+  it becomes its own order only if animated images matter on real instances.
+- **Item 10 — the dogfood proof** (a real animated GIF through a gallery save
+  and a Scriptorium upload on the Friday copy): the next dogfood pass's row.
+
+### §8 For the unifier
+
+- Fixtures ADDED (six + `generate.py`); no existing fixture changed, so no
+  other oracle is invalidated. Only `normalize_blob_image_equivalence` and
+  `quilltap-host`'s `image_codec` tests read them.
+- Versions: core 0.0.1002 → 0.0.1003 (module doc only), harness 0.0.913 →
+  0.0.914, host 0.0.147 → 0.0.148. `Cargo.toml` deltas version-only.
+- `docs/v4/` mirror: this lane moves no mirror path.
+- The censuses: `blob_write_sites_census` and
+  `compressed_column_write_sites_census` do not scan the host crate; run in
+  the gate to prove they did not move (§9).
+
+### §9 Gate (final code tree `1b03b486`, `CARGO_INCREMENTAL=0 TZ=UTC`)
+
+- §R.2 probe before the gate: PASS (`d1c06cd9d`, CLEAN, both logs empty).
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (default;
+  `--features quilltap-core/native-transport`); `cargo build --workspace
+  --release` clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's env
+  block (`QT_ORACLE_NORMALIZE_BLOB_IMAGE` only — every other family's var
+  withheld, so they SKIP honestly): **620 binaries / 3,649 passed / 1 failed /
+  3 ignored.** The family RAN (both `OK:` lines in the log, 16 rows). **The one
+  red is NOT this lane's:**
+  `services::activity_registry::tests::records_a_blip_once_a_span_outlives_the_threshold`
+  (`activity_registry.rs:547`, `activity_counts().summary` read 1, want 0) —
+  green alone (1/1). The registry is process-global; the live count carried a
+  sibling's in-flight `Summary` span into the assert. This lane's only core
+  change is a module doc. **A NEW intermittent for the unifier to classify**
+  (§R.5 names only the `/tmp/qt-imggen-*` collision).
+- Censuses unmoved, run in the workspace test: `blob_write_sites_census` 2/2,
+  `compressed_column_write_sites_census` 3/3, `dispatch_wrong_type_census`
+  12/12 (446 unmoved — no verb).
+- Tier R not run (the order assigns it to P4.109/P4.110; the CLI links no
+  host codec path this lane moved).

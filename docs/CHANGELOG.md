@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): the P4.108 lane close — record, gate, status headers
+
+_Docs-only change._
+
+The P4.108 lane record in `status-log.md` (probe, pin, fixture measurements,
+red-first counts, the mutation table, the regen recipe, the gate), P4.108's
+status header, and one sentence on P4.104's header closing its animated
+divergence as ruled. The gate's one red is a pre-existing timing intermittent
+in the activity registry, green on its own, recorded for the unifier.
+
 #### 2026-09-23 — feat(host): decline animated inputs on the codec's two animated seams, pinned as the ruled divergence (P4.108 items 2–8)
 
 _Versions: core 0.0.1003 (module doc only), harness 0.0.914, host 0.0.148._
