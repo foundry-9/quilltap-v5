@@ -144798,3 +144798,47 @@ repository-path test green.
   12/12 (446 unmoved — no verb).
 - Tier R not run (the order assigns it to P4.109/P4.110; the CLI links no
   host codec path this lane moved).
+
+## P4.110 — the DRY smalls: the shared census lexer, `materialize_salon_instance`, `execute_import`'s required codec (lane record, 2026-09-23)
+
+Lane branch `claude/census-lexer-salon-import-codec-2839ef` (worktree
+`.claude/worktrees/census-lexer-salon-import-codec-2839ef`), cut from `main`
+`4136d21c`. **§2 probe at lane start: PASS** against the ledger's §1 as
+`4136d21c` records it (branch `main`, tree CLEAN, HEAD `d1c06cd9d`, both logs
+EMPTY); §1 keeps this round's pins at `a2db63da7` and puts `dff00e98d` /
+`d1c06cd9d` out of the round, so the order's §R.2 HEAD (`00c290c9a`) is
+superseded by the ledger, which is the record.
+
+### Unit 1 — the shared lexer (Tier 1 item 1)
+
+- NEW `crates/quilltap-harness/tests/source_census/mod.rs`
+  (`#![allow(dead_code)]`, a directory module so cargo builds no binary for
+  it): `core_src_root`, `rust_sources`, `production_zone`, `next_token`,
+  `next_char_len`, `test_item_end`, `floor_boundary`, `code_only`,
+  `string_literals`, `contains_word` — lines `:156-441` of
+  `compressed_column_write_sites_census.rs` moved verbatim (`pub` added; one
+  blank line restored between `rust_sources` and `production_zone`, which the
+  blob copy had and the cc copy lacked — the order's "identical bar one blank
+  line", measured). Diffed against `HEAD`'s block: identical bar that line.
+- Both census files: the block DELETED, `mod source_census;` + a `use` of the
+  names each needs; the blob module doc's "copied verbatim … lift deferred"
+  paragraph rewritten to point at the home.
+- **Counts UNCHANGED** (read before the lift, re-read after): blob `CENSUS`
+  11 files summing 12 writes / 12 `with_blob_codec`, `EXEMPT` 1
+  (`services/quilltap_import/document_stores.rs`); cc `CENSUS` 6 files
+  summing 14 (13 call sites + the definition), `EXEMPT` 1
+  (`db/chat_message_fts.rs`). `blob_write_sites_census` 2/2,
+  `compressed_column_write_sites_census` 3/3 (incl.
+  `the_scanner_balances_past_literal_braces_and_keeps_the_sql` and
+  `the_counters_see_only_code`).
+- **Mutation (file backup, `cmp`-verified revert):** the shared `next_token`'s
+  char-literal arm disabled (`if rest.starts_with('\'') && false {` — compiles;
+  the tree built, both binaries ran). **Both binaries RED:** blob
+  `every_production_blob_write_carries_an_encoder` — "`tools/generate_image.rs`:
+  in the census but makes no blob write any more" (a `'"'` char literal read
+  as a string opener swallowed the file's write); cc
+  `the_scanner_balances_past_literal_braces_and_keeps_the_sql` at its first
+  assert (the `'}'` char closed the test module early). The census over the
+  real tree in cc stayed green under the mutation — its tree-wide arm does not
+  happen to cross a char-literal brace — so the literal-braces pin is the one
+  that guards the cc file, as designed.

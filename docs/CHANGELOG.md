@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(harness): one shared source-census lexer under the blob and compressed-column censuses (P4.110 item 1)
+
+_Versions: harness 0.0.914._
+
+The two write-site censuses carried byte-identical copies of the same
+source lexer (the blob census copied it from the compressed-column census
+at P4.104 and deferred the lift). The lexer now lives once in
+`crates/quilltap-harness/tests/source_census/mod.rs` — the seven lexer
+functions plus `string_literals`, `floor_boundary` and `contains_word`,
+moved verbatim with only `pub` added — and both census files import it.
+Test-only refactor: both censuses' counts are unchanged (blob 12 writes /
+12 codec constructions + one EXEMPT; compressed-column 14), all five tests
+green, and a mutation of the shared `next_token` (char literals no longer
+recognized) reddens both binaries.
+
 #### 2026-09-23 — docs(porting): the P4.108 lane close — record, gate, status headers
 
 _Docs-only change._
