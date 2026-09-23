@@ -6665,12 +6665,18 @@ per-family results: the round record in `status-log.md`.
 
 **Next (in order):**
 
-1. **The bug-163/164 catch-up** once v4 commits them (the auto-title
-   chokepoint — `applyAutoTitle` under both the regenerate-title action and
-   the title-update job, the story-background enqueue moving INTO it, a
-   hand rename during the LLM call winning, `help/story-backgrounds.md`) —
-   a PORT on `chat_admin`'s regenerate-title + the title job handler; the
-   probe will catch the commit.
+1. **The bug-163/164 catch-up — v4 COMMITTED it as `00c290c9a` minutes
+   after this round's fast-forward** (the ledger's §3 row, UNPROCESSED): the
+   auto-title chokepoint (`lib/chat/auto-title.ts` — `applyAutoTitle` under
+   the fold, the title-update job and the regenerate-title action; the
+   story-background enqueue MOVED into it; a manually-renamed chat keeps
+   its title unless the regenerate clears the flag; a hand rename during
+   the LLM call wins; four outcomes), the fold's new
+   `[Context Summary] Chat renamed by hand; skipping fold title` debug
+   line, `help/story-backgrounds.md`, two bug mirrors. A PORT on three v5
+   surfaces (`context_summary.rs`, `title_update_job.rs`, `chat_admin.rs`)
+   + `image_profile_resolution.rs`'s enqueue home; the fold families move
+   again. One order; pin the target `00c290c9a`.
 2. **The fixture-vintage heal's next list** (one order, P4.103's method —
    every gap measured with the migrator's `--report-only` from the
    `a2db63da7` pin at unification): `photos-main.db` (five `photos_routes`

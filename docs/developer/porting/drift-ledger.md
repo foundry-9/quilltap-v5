@@ -25,41 +25,36 @@ probe verifies against._
   unification (P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥
   P4.106, 2026-09-23). CLAUDE.md's Status bullet agrees.
 - **Checked:** 2026-09-23, 00:10 (the `/unify` opening probe — PASSED: on
-  `main`, CLEAN, both logs empty) and again at the unification's close (see
-  the verdict — the tree went DIRTY mid-unification).
-- **v4 `main` HEAD at check:** `a2db63da7` — **AT the baseline, ZERO commits
-  past.**
+  `main`, CLEAN, both logs empty), again at the unification's close (the
+  tree DIRTY with bugs 163/164 in flight), and once more at the
+  fast-forward (~02:05) — **the dirt had COMMITTED as `00c290c9a`**, tree
+  CLEAN again; this `/driftcheck` entry records it.
+- **v4 `main` HEAD at check:** `00c290c9a` ("fix(titles): route every
+  auto-title through applyAutoTitle (bugs 163, 164)", 2026-09-23 00:20,
+  `4.10.0-dev.65`) — **ONE commit past the baseline** (`git diff --stat
+  a2db63da7 00c290c9a`: 17 files, +662/−115).
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
   branch") — **UNMOVED**; only pre-absorbed lineage.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **DIRTY** — clean at 00:10,
-  dirty from 00:16 on (the human working in v4 during the unification):
-  bugs **163** ("fold rename no background") and **164** ("fold overwrites
-  manual title") IN FLIGHT, UNCOMMITTED — NEW `lib/chat/auto-title.ts` (an
-  `applyAutoTitle` chokepoint), edits to `lib/chat/context-summary.ts`,
-  `lib/background-jobs/handlers/title-update.ts` (its
-  `queueStoryBackgroundIfEnabled` folded into the chokepoint),
-  `app/api/v1/chats/[id]/actions/title.ts`, one existing unit test, two NEW
-  unit tests, the two NEW bug files under `docs/developer/bugs/fixed/`,
-  `docs/developer/bugs.md`, `docs/CHANGELOG.md`, `help/story-backgrounds.md`,
-  `CLAUDE.md`. **No row is opened for uncommitted work** (a row is a commit);
-  the next `/driftcheck` classifies them when they land. Every regen of this
-  unification ran from DETACHED pins (`/tmp/qt-v4-pin-unify-a2db63da7`,
-  `/tmp/qt-v4-pin-unify-f45a517a9`), which the working-tree dirt cannot reach.
-- **Verdict: NO DRIFT COMMITTED — v4 HEAD IS the baseline; the §3 table is
-  EMPTY. ⚠ The tree is DIRTY with bugs 163/164 in flight (above), so treat
-  the checkout as poisoned for any regen run from it.** Expected next:
-  v4 commits the title chokepoint (a PORT on `chat_admin`'s regenerate-title,
-  the title-update job handler, and the story-background enqueue — surfaces
-  v5 carries; the story-background trigger moving INTO the chokepoint is the
-  behaviour to watch) plus `help/story-backgrounds.md`.
-- **Regen rule: PIN REQUIRED at `a2db63da7`.** HEAD is at the baseline, but
-  the checkout is DIRTY in `lib/` and `app/` (§2's rule: uncommitted `lib/`
-  edits poison any regen run from the checkout). Every oracle regen runs from
-  a detached worktree pinned at `a2db63da7` (§5.1, lane-unique path) until a
-  `/driftcheck` records the tree clean again. **Do not reason about which
-  families the dirt "could" affect — pin.**
+- **Checkout at check:** branch **`main`**, tree **CLEAN** (the bugs-163/164
+  work that was in flight during the unification landed whole as
+  `00c290c9a`).
+- **Verdict: DRIFT PENDING — 1 commit, UNPROCESSED** (§3): `00c290c9a`, a
+  PORT on three surfaces v5 carries (the fold's title write, the
+  `TITLE_UPDATE` job handler, the regenerate-title verb) + a help re-vendor
+  + two mirrors. **Next round: this one commit** (small — one order, or a
+  rider on the heal), then the fixture-vintage heal's next list and the
+  animated-input ruling (`phase-4.md`).
+- **Regen rule: PIN REQUIRED at `a2db63da7`.** HEAD is one commit past the
+  baseline and that commit rewrites the fold's title path
+  (`context-summary.ts`) whose families regenerate routinely
+  (`context_summary_service_tier3`, `memory_pipeline_jobs_tier3`,
+  `orchestrator_tier3` — the same three that moved at `e7821606f`). Every
+  oracle regen runs from a detached worktree pinned at `a2db63da7` (§5.1,
+  lane-unique path); the catch-up lane pins the TARGET `00c290c9a` for the
+  moving families. **Do not reason about which families "could" be
+  affected — pin.**
 - **The workspace gate at the baseline:** `qtap_schema_embed_guard` GREEN
   (95,266), `zod_version_guard` GREEN (4.6.5), `provider_sdk_version_guard`
   GREEN (NEW, P4.106 — openai 7.20.0 / anthropic 0.115.0 / google genai
@@ -74,9 +69,9 @@ probe verifies against._
   from `e7d77bb60` stands; the FTS objects come from P4.D204's boot
   reconciler; none of the three absorbed commits moved the schema
   (`e7821606f` ships no migration on purpose; `a2db63da7` is bin-only).
-- **`help/**` vs v4 HEAD `a2db63da7`:** 126 = 126 files, **NONE differs**
-  (the working tree's dirty `help/story-backgrounds.md` is uncommitted and
-  not counted — it becomes the next round's re-vendor).
+- **`help/**` vs v4 HEAD `00c290c9a`:** 126 = 126 files; **ONE differs** —
+  `story-backgrounds.md` (8,220 → 8,976 bytes; the chokepoint's "a rename
+  cues the Lantern" paragraph). Re-vendor it with the bug-163/164 port.
 - **The three text-compression migrations and the image re-encode
   migration stay DEFERRED as reclamation** (named in
   `db/text_compression.rs`, the P4.D209 record, and P4.104's module doc); a
@@ -125,6 +120,7 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+| `00c290c9a` | 2026-09-23 | fix(titles): route every auto-title through applyAutoTitle (bugs 163, 164) | **PORT** | **17 files, +662/−115; the code: NEW `lib/chat/auto-title.ts` (167 — `applyAutoTitle` + `queueStoryBackgroundIfEnabled` MOVED here from the title-update handler), `lib/chat/context-summary.ts` (+20/−?: the fold's title write goes through the chokepoint, and a `chat.isManuallyRenamed` chat SKIPS the fold title with a new debug line `[Context Summary] Chat renamed by hand; skipping fold title`), `lib/background-jobs/handlers/title-update.ts` (109 → the chokepoint with `extraPatch: { lastRenameCheckInterchange }`, `source: 'title-check'`), `app/api/v1/chats/[id]/actions/title.ts` (regenerate-title through the chokepoint with `clearManualRename: true`, `source: 'regenerate'`; the info line gains `outcome`); three tests (two NEW). Bug 164: the fold used to OVERWRITE a hand-renamed chat's title; bug 163: the fold renamed without queueing the story background (the Lantern's cue is a CHANGED title, whatever the source). The chokepoint's two rules: a manually-renamed chat keeps its title unless `clearManualRename`; a title that actually changed queues the background; it re-reads the chat after the LLM call so a hand rename mid-flight wins; outcomes `applied` / `unchanged` / `manually-renamed` / `missing`. **v5 intersection — three ported surfaces, all carrying the PRE-fix shape:** `services/context_summary.rs` (the fold's title write — P4.D212's file this round; check whether v5's fold gates on `isManuallyRenamed` at all), `services/title_update_job.rs:192` (its own `isManuallyRenamed` gate + `queue_story_background_if_enabled` at `:476` — the enqueue that MOVES into the chokepoint), `services/chat_admin.rs:688` (regenerate-title clearing `isManuallyRenamed`; the `cast_or_first_profile` factoring P4.D212 just made), `services/image_profile_resolution.rs:126` (`queue_story_background_if_enabled` — v4 moved its home; v5's stays unless the port moves it). Families that move: `context_summary_service_tier3` (a new debug line + the fold's title outcome), `memory_pipeline_jobs_tier3`, `orchestrator_tier3`, `chat_regenerate_title_tier3` (RED today on the un-widened `chat-admin-*` pair — heal it first or widen per case), the title-update job's tier-3 family, `story_background_job_tier3` (neutral). `help/story-backgrounds.md` re-vendor (8,976). Mirrors: `docs/v4/developer/bugs/fixed/bug-163-fold-rename-no-background.md` (NEW), `bug-164-fold-overwrites-manual-title.md` (NEW), `bugs.md`; `CLAUDE.md`/`README.md`/`CHANGELOG`/the stamps NO-PORT. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

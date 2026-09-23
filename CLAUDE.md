@@ -877,9 +877,9 @@ records THERE. Update this summary only when a phase or round completes.
 - **The `a2db63da7` bug-161/162 drift catch-up + maintenance round (P4.D212 ∥
   P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥ P4.106): UNIFIED on main
   (2026-09-23) — ALL SEVEN LANDED; the oracle baseline MOVES to `a2db63da7`
-  and the ledger's §3 is EMPTY; ⚠ v4's checkout went DIRTY mid-unification
-  (bugs 163/164, the auto-title chokepoint, UNCOMMITTED) so the regen rule
-  stays PIN REQUIRED.** Bug 161 absorbed whole (ONE `speaker_names` resolver
+  ; ⚠ v4 COMMITTED bugs 163/164 (`00c290c9a`, the auto-title chokepoint)
+  minutes after the fast-forward — the ledger's §3 holds that ONE
+  UNPROCESSED row and the regen rule stays PIN REQUIRED.** Bug 161 absorbed whole (ONE `speaker_names` resolver
   shared by the fold and the episode pass — v5 had reproduced the defect
   verbatim; the fold turn's required `speaker`; `FOLD_SUMMARY_PROMPT`
   regenerated mechanically, 1,585 bytes identical; the debug line; the
