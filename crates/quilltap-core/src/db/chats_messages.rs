@@ -762,6 +762,14 @@ impl<'c> ChatMessagesRepository<'c> {
             return Ok(());
         };
 
+        // Fallback, as v4's `getMessages` here. ⚠ A NAMED RESIDUAL (the
+        // `00c290c9a` unification's review, beside P4.109's Tier 3 item 9):
+        // the importer reaches this through `add_message`, and v4 runs its
+        // `addMessage` inside `withStrictRepositoryFailures`, where this read
+        // would rethrow ("Failed to import message in chat …"); v5 would
+        // instead write `messageCount` from `[]` and count the message
+        // imported. Practically unreachable — the read follows a successful
+        // INSERT on the same connection — so strictness is not threaded here.
         let all = chats_messages_read::get_messages(self.conn, chat_id)?;
         let message_count = count_visible_messages(&all) as f64;
 

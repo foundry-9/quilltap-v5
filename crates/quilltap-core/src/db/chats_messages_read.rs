@@ -280,8 +280,8 @@ fn marshal_system(row: &Row) -> Result<Value, rusqlite::Error> {
 }
 
 /// Marshal one `chat_messages` row by its `type` discriminator. An unrecognized
-/// `type` yields `None` (v4 `ChatEventSchema.safeParse` would fail → the row is
-/// skipped as corrupted).
+/// `type` yields `None` (v4 `ChatEventSchema.safeParse` fails → [`read_row`]
+/// reports the row CORRUPTED, so it is skipped with v4's WARN).
 fn marshal_row(row: &Row) -> Result<Option<Value>, rusqlite::Error> {
     let typ: String = row.get(1)?;
     Ok(match typ.as_str() {
@@ -297,14 +297,15 @@ fn marshal_row(row: &Row) -> Result<Option<Value>, rusqlite::Error> {
 /// `chats-messages.ops.ts`).
 const LOG_CONTEXT: &str = "db.chats-messages";
 
-/// One row as `get_messages` sees it: kept, dropped for an unknown `type`, or
-/// CORRUPTED — a cell `marshal_row` cannot read as its member's type.
+/// One row as `get_messages` sees it: kept, or CORRUPTED — an unknown `type`,
+/// or a cell `marshal_row` cannot read as its member's type. Both are v4's
+/// per-row `ChatEventSchema.safeParse` failing, so both take its WARN.
 enum RowOutcome {
-    Event(Option<Value>),
+    Event(Value),
     Corrupted {
         id: Option<String>,
         typ: Option<String>,
-        error: rusqlite::Error,
+        error: String,
     },
 }
 
@@ -321,13 +322,24 @@ fn is_cell_error(e: &rusqlite::Error) -> bool {
 }
 
 fn read_row(row: &Row) -> Result<RowOutcome, rusqlite::Error> {
+    let corrupted = |error: String| RowOutcome::Corrupted {
+        id: row.get::<_, Option<String>>(0).ok().flatten(),
+        typ: row.get::<_, Option<String>>(1).ok().flatten(),
+        error,
+    };
     match marshal_row(row) {
-        Ok(v) => Ok(RowOutcome::Event(v)),
-        Err(e) if is_cell_error(&e) => Ok(RowOutcome::Corrupted {
-            id: row.get::<_, Option<String>>(0).ok().flatten(),
-            typ: row.get::<_, Option<String>>(1).ok().flatten(),
-            error: e,
-        }),
+        Ok(Some(v)) => Ok(RowOutcome::Event(v)),
+        // The `00c290c9a` unification: an unknown `type` fails v4's
+        // discriminated-union `safeParse` exactly like a bad cell, so it takes
+        // the same WARN (P4.109 had dropped it silently).
+        Ok(None) => Ok(corrupted(format!(
+            "unrecognized chat event type {:?}",
+            row.get::<_, Option<String>>(1)
+                .ok()
+                .flatten()
+                .unwrap_or_default()
+        ))),
+        Err(e) if is_cell_error(&e) => Ok(corrupted(e.to_string())),
         Err(e) => Err(e),
     }
 }
@@ -383,15 +395,21 @@ pub fn get_messages_strict(conn: &Connection, chat_id: &str) -> Result<Vec<Value
     let mut out = Vec::new();
     for r in rows {
         match r? {
-            RowOutcome::Event(Some(v)) => out.push(v),
-            RowOutcome::Event(None) => {}
+            RowOutcome::Event(v) => out.push(v),
             RowOutcome::Corrupted { id, typ, error } => {
+                // v4's `msg?.id || 'unknown'`: JS `||`, so an EMPTY string
+                // falls back too, not only an absent one.
+                let or_unknown = |v: &Option<String>| {
+                    v.clone()
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| "unknown".into())
+                };
                 tracing::warn!(
                     target: "quilltap::db",
                     context = LOG_CONTEXT,
                     chatId = chat_id,
-                    messageId = id.as_deref().unwrap_or("unknown"),
-                    messageType = typ.as_deref().unwrap_or("unknown"),
+                    messageId = or_unknown(&id).as_str(),
+                    messageType = or_unknown(&typ).as_str(),
                     error = %error,
                     "Skipping corrupted chat message",
                 );
@@ -634,6 +652,36 @@ mod tests {
             assert!(line.contains("chatId=c1"), "{line}");
             assert!(line.contains("messageId=m2"), "{line}");
             assert!(line.contains("messageType=message"), "{line}");
+        }
+    }
+
+    /// The `00c290c9a` unification (the §3 review): a row whose `type` is no
+    /// union member fails v4's `ChatEventSchema.safeParse` exactly as a bad
+    /// cell does, so it takes the same WARN — P4.109 had skipped it SILENTLY.
+    /// And v4's `msg?.id || 'unknown'` is JS `||`: an EMPTY id falls back too.
+    #[test]
+    fn an_unknown_type_row_is_skipped_with_the_same_warn() {
+        let conn = three_rows();
+        conn.execute(
+            "UPDATE chat_messages SET type = 'bogus', id = '' WHERE id = 'm2'",
+            [],
+        )
+        .unwrap();
+        for strict in [false, true] {
+            let (events, lines) = crate::test_support::captured_with(|| {
+                if strict {
+                    get_messages_strict(&conn, "c1")
+                } else {
+                    get_messages(&conn, "c1")
+                }
+            });
+            assert_eq!(ids(&events.unwrap()), ["m1", "m3"]);
+            assert_eq!(lines.len(), 1, "strict={strict}: {lines:?}");
+            let line = &lines[0];
+            assert!(line.starts_with("WARN quilltap::db"), "{line}");
+            assert!(line.contains("Skipping corrupted chat message"), "{line}");
+            assert!(line.contains("messageId=unknown"), "{line}");
+            assert!(line.contains("messageType=bogus"), "{line}");
         }
     }
 }
