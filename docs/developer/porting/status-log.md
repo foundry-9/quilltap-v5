@@ -145128,3 +145128,237 @@ hashes cited in the lane records map to the unify branch as: P4.108
 - **Full Playwright** against the final release binary + the fresh `dist`:
   **331 passed / 0 failed / 6 skipped (10.1 m)** — the six skips the standing
   parks; zero reds, so nothing to re-run by file.
+
+## P4.111 — the fixture-vintage heal, the ten mains (lane, 2026-09-23, `claude/fixture-vintage-heal-ten-mains-2c44de`)
+
+**Order:** `docs/developer/porting/work-orders/p4.111-fixture-vintage-heal-ten-mains.md`
+(the `d1c06cd9d` round: P4.D216 → {P4.D217} ∥ P4.D218 ∥ P4.D219 ∥ P4.111 ∥
+P4.112). Cut from `main` `602c5f87`. Pin: `/tmp/qt-v4-pin-p4111-00c290c9a`
+(the BASELINE only; `rev-parse` = `00c290c9a50b…`, `ls -ld` checked, its own
+`status` clean before every batch; the three symlink classes). **No `.rs` file
+touched.**
+
+**§R.2 probe:** PASSED at lane start and again before the post-widen batch
+(branch `main`, HEAD `d1c06cd9d`, both logs empty, tree clean).
+
+### Tier 1 — landed whole (commit `d499fd45`)
+
+1. **Pre-widen measurement from the pin** (sweep artifact
+   `harness/tools/sweep-results/2026-09-23-00c290c9a-p4111-pre-widen.json`, 26
+   families, un-widened tree `602c5f87`): **10 red** / 16 ok / zero `SKIP:`.
+
+   | family | pre-widen (case → error) |
+   |---|---|
+   | `embedding_remainder_equivalence` | the four render cases `error` on BOTH sides `no such column: cycleOrderParticipantIds` — the outcome sequence diverges only on the `sqlite error:` prefix |
+   | `autonomous_rooms_routes_equivalence` | `listing`, `listing_user_b`, `status_running`, `status_idle` MISMATCH; `status_missing` 500 "Failed to read chat" vs 404; `status_non_autonomous` 500 vs 400; `start_idle`; `start_already_running` 500 vs 400; the panic at `pause` (expected 200) |
+   | `chat_cast_routes_equivalence` | **regen_failed** — v4 `SqliteError: no such column: cycleOrderParticipantIds` |
+   | `conversation_summaries_regen_equivalence` | v5 handler `no such column: cycleOrderParticipantIds` |
+   | `documents_routes_equivalence` | `chat_accessible_stores_all`/`_default` 500 "Failed to resolve accessible document stores"; `chat_read_document_existing`, `chat_read_document_missing` (500 vs 404), `chat_resolve_document_exists`/`_missing` → `no such column: cycleOrderParticipantIds` |
+   | `cost_background_routes_equivalence` | the seven `cost_*` cases `no such column: cycleOrderParticipantIds` (`cost_chat_missing` 500 vs 404); `regen_disabled`/`regen_no_image_profile`/`regen_no_characters` 500 vs 400; `regen_queued`/`regen_present_participants_only` 500 + JOBS MISMATCH |
+   | `system_delete_data_equivalence` | seven body mismatches (`delete_data_preview`, `delete_data`, `delete_data_twice`, `delete_data_keeps_instance_settings`, `delete_data_sweeps_archive_bundles`, `delete_data_keeps_archive_bundles_explicitly`, `delete_data_preview_after_wipe`) |
+   | `recall_replay_equivalence` | `retro_full` status diverges (`no such column: cycleOrderParticipantIds`) |
+   | `home_routes_equivalence` | `route_primary` "Failed to load the home dashboard" |
+   | `text_replacements_routes_equivalence` | `bg_resolved`, `bg_no_id`, `bg_file_missing`, `bg_chat_missing` (500 vs 404) — `no such column: cycleOrderParticipantIds` |
+
+   **The order said ELEVEN — it is TEN.** `title_update_tier3_equivalence` was
+   already GREEN: P4.D215 gave its oracle case `ensureP4d171Columns` on the
+   per-case copy (`title-update-tier3.test.ts:400-423`), closing P4.107's
+   eleventh red before this lane opened.
+
+   `--report-only` over the ten, verbatim (matches P4.107's table exactly):
+   embedding-remainder 13 cols (archive trio, `multiCharacterPrefill`,
+   `fallbackProfileId`, `allowTierFallback`, the four `chat_settings`
+   columns, `cycleOrderParticipantIds`, `routeTrail`, `transcriptVersion`);
+   autonomous 12 (the same less `routeTrail`); chat-cast 10 + `WOULD CREATE
+   INDEX idx_files_generationKey`; conversation-summaries-regen 6 (archive
+   trio, cycle, routeTrail, transcriptVersion); documents 6 (same);
+   cost-background 5 + index (`impersonationVoiceRewrite`, cycle, routeTrail,
+   transcriptVersion, `generationKey`); system-data 5 + index (same);
+   episodic-recall 4; home 4 + index; text-replacements 3 + index (cycle,
+   transcriptVersion, `generationKey`).
+2. **The widen:** ONE apply run naming the ten MAIN files only, from the pin
+   (the recipe is appended to the migrator's header). The output matched the
+   report column for column, with `+INDEX idx_files_generationKey` on
+   chat-cast, cost-background, system-data, home and text-replacements. There
+   was no `.db-journal` residue, and `--report-only` afterwards answered
+   "already current" ×10. **No pepper was added:** P4.107's five open all ten.
+   Scratch-copy proofs with each pepper: `integrity_check` ok ×10; every
+   added column present by `pragma_table_info`; `idx_files_generationKey`
+   present on all five `files`-bearing mains (the other five have no `files`
+   table). `git diff --stat` shows exactly the ten `.db` files among the
+   fixtures. Sizes: autonomous 167,936 → 172,032; chat-cast 200,704 →
+   204,800; cost-background 192,512 → 196,608; home 180,224 → 184,320;
+   system-data 475,136 → 479,232; text-replacements 77,824 → 81,920; the
+   other four are unchanged in size.
+3. **Every reader re-run from the pin** (`…-p4111-heal.json` +
+   `…-p4111-guarded.json`): **all ten reds GREEN.** ⚠ **But the widen turned
+   THREE previously-green families red:** `system_export_equivalence`,
+   `system_import_state` and `qtap_schema_validate_equivalence` all hit
+   **regen_failed**, with v4's oracle throwing `SqliteError: duplicate column
+   name: cycleOrderParticipantIds` (`system-export.test.ts:389`,
+   `system-import-execute.test.ts:1207`) and `…: generationKey`
+   (`qtap-schema-validate.test.ts:268`). Those cases PLANT the P4.D171/P4.D182
+   columns into their copy of `system-data-main.db` with UNGUARDED `ALTER
+   TABLE … ADD COLUMN`, and the widened pair now carries them. The Rust sides
+   were unaffected because they heal through the idempotent `ensure_*`
+   helpers. **P4.107 could not see this:** its classifying temporary widen
+   re-ran only the eleven RED families, never the green readers of the same
+   pairs. **Ruled by the human in chat (2026-09-23): guard the ALTERs.** Each
+   add now runs only when `pragma_table_info` lacks the column (an
+   `addColumnIfMissing` helper in the two system cases, an inline check in
+   `qtap-schema-validate`). The declarations are byte-identical to the
+   migrator's and the planted values are unchanged. This is a LOUD
+   out-of-mandate edit: the order barred test-logic edits and did not predict
+   it. After it: **26 / 26 ok, zero `SKIP:`.**
+   **v4 NDJSON before vs after** (normalized for minted UUIDs and ISO
+   timestamps): IDENTICAL for `files-body-guards`, `home`, `precompute`,
+   `query-param-semantics`, `recall-replay`, `system-body-guards`,
+   `system-delete-data`, `title-update`, `vault-conv`, `system-export`,
+   `qtap-schema`, `cost-background`, `mount-refresh`, `system-backup`,
+   `system-jobs`, `system-jobs-collection` and `text-replacements`. So
+   `home`, `recall_replay` and `system_delete_data` were red on the v5 side
+   ONLY. The files that CHANGED on the v4 side for real:
+   - `autonomous-rooms-routes`: **v4 itself returned 500 pre-widen** on
+     `start_idle`, `pause`, `stop`, `resume_paused`, `resume_idle` and the
+     eight `update_*` cases (13 rows; "Failed to … autonomous run" / "Failed
+     to update autonomous-room settings"). All now answer 200. Several of
+     those were mutual-500 FALSE AGREEMENTS (P4.107's wardrobe `set_all`
+     shape), retired by the widen.
+   - `documents-routes`: `chat_open_document_reactivate`/`_new_blank` v4 500
+     "Failed to open document" → 200; `chat_write_document`/
+     `chat_rename_document`'s `librarianMessage` `null` → the Librarian's
+     announcement. v4's announcement write had been failing on vintage.
+   - `embedding-remainder`: the four render cases `error` → `ok`, and the
+     table dumps gain the widened columns and the rendered chunk content.
+   - `conversation-summaries-regen`: one mount file row (the handler now runs
+     past the chat read).
+   - `system-import`: only clock stamps inside the base64 export envelopes.
+   - `system-import-execute`: the raw `chat_settings` dumps gain
+     `impersonationVoiceRewrite: 0` (the widen's own column). Three
+     `contentSha256`s move over content whose embedded ids and clocks
+     normalize equal.
+4. **The dead heals, NAMED (now no-ops on the widened pairs, NOT removed;
+   for the next smalls, §Tier 3 item 8):**
+   - Rust, all idempotent `ensure_*` over one of the ten:
+     `title_update_tier3_equivalence.rs:90` (`ensure_p4d171_columns`,
+     cost-background); `inform_drop_lives_on_the_action.rs:101-102`
+     (`ensure_p4d171_columns` + `ensure_p4d182_columns`, chat-cast);
+     `system_import_equivalence.rs:119,125`; `system_export_equivalence.rs:50-57,440-447`;
+     `system_backup_equivalence.rs:210-217`; `system_delete_data_equivalence.rs:63-70`;
+     `system_import_state.rs:203-220` (the four `*_repair::ensure_*` calls,
+     system-data). ⚠ The `ensure_chat_informs_table` call at
+     `inform_drop_lives_on_the_action.rs:103` is NOT dead (the migrator adds
+     columns, not tables).
+   - Oracle side: `title-update-tier3.test.ts:410-423`
+     (`ensureP4d171Columns`, cost-background). The three guarded plants
+     above keep their UPDATEs (the planted VALUES are the point), but their
+     `ADD COLUMN` halves are now dead on the widened pair.
+   - NOT dead: `crates/quilltap-web/tests/common/mod.rs:124-132,177-185`
+     (`turnSkippingEnabled` — a column the migrator does not add, over the
+     `chat-send`/characters pairs, not these ten).
+   - P4.107's header sentence (§R.7) landed.
+
+### Tier 2 — landed (report only; NO widen)
+
+5. **The next measurement.** `--report-only` over every other committed `.db`
+   the migrator can open: **96 of 96 open; 74 current; 22 carry a gap.**
+
+   | file | gap |
+   |---|---|
+   | `chat-send-main.db` | 13 cols |
+   | `salon-long-main.db` | 14 cols + 1 idx (DELIBERATE, P4.94) |
+   | `llm-log-cleanup-main.db` | 7 cols |
+   | `llm-log-cleanup-llmlogs.db` | 2 cols + 2 idx |
+   | `headshoulders-main.db` | 5 cols + 1 idx |
+   | `chat-scenario-main.db` | 4 cols |
+   | `files-main.db` | 4 cols + 1 idx |
+   | `post-office-main.db` | 4 cols + 1 idx |
+   | `character-archive-main.db` | 3 cols + 1 idx |
+   | `embedding-generate-main.db`, `embedding-profiles-main.db`, `memories-main.db`, `workbench-main.db` | 3 cols each |
+   | `help-chat-main.db` | 2 cols + 1 idx |
+   | `avatar-rolls-main.db` | 1 col (`transcriptVersion`) + 1 idx |
+   | `brahma-main.db`, `in-scene-voiced-main.db` | 1 col (`transcriptVersion`) |
+   | `almanack-llmlogs.db`, `attach-file-llmlogs.db`, `inspector-llm.db`, `system-data-llmlogs.db` | index-only (`idx_llm_logs_*` ×2) |
+   | `almanack-llmlogs-legacy.db` | 2 cols + 2 idx (DELIBERATE — never widen) |
+
+   **Which are actually red:** none, as last measured by P4.107 at
+   `a2db63da7` (all 16 remaining pairs' readers green, 75 families). Their
+   readers were NOT re-run in this lane; the baseline move `a2db63da7` →
+   `00c290c9a` moved no schema. **For the heal after this one:** the trap
+   this lane hit was checked in advance for all 16. Every oracle-side plant
+   over them is already guarded (`archive-reencrypt-tier2.test.ts:148-157`
+   and `character-archive-tier2.test.ts:324-333` in `try/catch`;
+   `chat-scenario-routes.test.ts:236-243` and `post-office-routes.test.ts:179`
+   by a `has` check; the Rust `post_office_routes_equivalence.rs:197` by an
+   `existing` check). So a widen of any of them should not repeat this
+   lane's regression, but the green readers must still be re-run.
+6. **The mount-partition lag:** **34 of 47** committed `*-mount.db` files
+   lack `idx_doc_mount_files_sha256`. Twelve carry it, and
+   `chat-compressed-mount.db` has no `doc_mount_files` table. **No reader
+   would notice:** the one index name appears only in doc comments
+   (`db/doc_mount_files.rs:28`, `doc-mount-files-tier2.json:17`), and every
+   `sqlite_master` probe in `crates/*/tests` and `harness/oracle/cases`
+   filters `type = 'table'`. Recorded, not applied.
+
+### Tier 3 — deferrals, loud
+
+7. `almanack-main.db`'s invented `help_docs.slug` shape — a builder question,
+   untouched (P4.107 item 7 stands).
+8. Removing the dead heals named in item 4 → the next smalls (P4.112 owns
+   P4.107's five, not these).
+9. **Stale doc comment, noted for its owner:**
+   `crates/quilltap-core/src/services/quilltap_import/reconcile.rs:708-712`
+   says the committed `system-data-main.db` "predates `multiCharacterPrefill`"
+   and that `system_import_state`'s profile leg is vacuous. The pair already
+   carried that column before this lane (it is not in the widen's list), so
+   the comment was stale before the widen. It needs an `.rs` edit, out of
+   mandate.
+
+### Fixtures changed → oracles invalidated
+
+The ten widened mains. Every family reading them (the 26 above) was
+regenerated from the pin in this lane. **The unifier re-runs all 26 from the
+NEW baseline pin**, together with the drift lanes' growth, per §R.3/§R.5. No
+committed restore archive was rebuilt, so `system_restore_state` and
+`restore_vintage_state`, which read `restore-archives/` built from
+system-data at an earlier vintage, are untouched. No e2e spec reads the ten
+(grepped `apps/web/e2e`).
+
+### Regen recipes (as run)
+
+`CARGO_INCREMENTAL=0 TZ=UTC python3 harness/tools/recipe_sweep.py --run-all --v4 /tmp/qt-v4-pin-p4111-00c290c9a --v5w <ABSOLUTE worktree> --families embedding_remainder_equivalence,autonomous_rooms_routes_equivalence,chat_cast_routes_equivalence,inform_drop_lives_on_the_action,conversation_summaries_regen_equivalence,documents_routes_equivalence,mount_refresh_equivalence,title_update_tier3_equivalence,cost_background_routes_equivalence,system_export_equivalence,system_jobs_routes_equivalence,system_jobs_collection_equivalence,system_import_state,system_backup_equivalence,system_import_equivalence,qtap_schema_validate_equivalence,system_delete_data_equivalence,query_param_semantics_equivalence,system_body_guards_equivalence,files_body_guards_equivalence,precompute_equivalence,recall_replay_equivalence,vault_conv_search_equivalence,home_routes_equivalence,text_replacements_routes_equivalence,text_replacements_web_routes --results <artifact>`
+(then the three guarded families alone after the `.ts` guard). The fresh
+NDJSON was copied to the lane-private `/tmp/p4111/post/` before the workspace
+gate (the recipes write fixed `/tmp/oracle-*.ndjson` paths).
+
+### Lane gate (tree = `d499fd45`'s content, `CARGO_INCREMENTAL=0 TZ=UTC`)
+
+`cargo fmt --all --check` clean. `cargo clippy --workspace --all-targets --
+-D warnings` clean in BOTH feature sets. `cargo build --workspace --release`
+clean. `cargo test --workspace --no-fail-fast -- --nocapture` with the
+lane's 24-var block (`QT_ORACLE_{AUTONOMOUS_ROUTES,CHAT_CAST,COST_BACKGROUND,
+CSR,DOCUMENTS_ROUTES,EMBEDDING_REMAINDER,FILES_BODY_GUARDS,HOME,MOUNT_REFRESH,
+PRECOMPUTE,QTAP_SCHEMA,QUERY_PARAM_SEMANTICS,RECALL_REPLAY,SYSTEM_BACKUP,
+SYSTEM_BODY_GUARDS,SYSTEM_DELETE_DATA,SYSTEM_EXPORT,SYSTEM_IMPORT,
+SYSTEM_IMPORT_EXECUTE,SYSTEM_JOBS,SYSTEM_JOBS_COLLECTION,TEXT_REPLACEMENTS,
+TITLE_UPDATE,VAULT_CONV}` → `/tmp/p4111/post/*.ndjson`; every other family's
+var withheld): **621 `test result:` lines, 3,664 passed / 0 failed / 3
+ignored.** All 26 lane families RUN by name with non-zero durations and zero
+`SKIP:` lines; the 500 `SKIP:` lines belong to families outside the block.
+The standing `/tmp/qt-imggen-*` intermittent did not fire. The censuses and
+guards ran inside the gate and did not move. No mutation proof applies: no
+`.rs` changed, and the proof is the red→green measurement.
+
+**Versions:** web 0.0.179 → 0.0.180 (the pairs live in
+`crates/quilltap-web/tests/fixtures/`). No other crate. The migrator, the
+three oracle cases and the sweep artifacts are harness tooling outside any
+crate.
+
+**What the order got wrong (measured):** (a) ten reds, not eleven —
+`title_update_tier3` was healed oracle-side by P4.D215; (b) "every green
+reader must stay green" did not hold unaided — three green system-data
+readers depended on the pair's vintage through unguarded oracle `ADD COLUMN`
+plants (fixed under the human's ruling, item 3); (c) the reader list was 26
+families, including `mount_refresh` and `inform_drop_lives_on_the_action`,
+which P4.107's table counted under different pairs, and the system-data
+row's eleven readers (`title_update_tier3` sits under cost-background).

@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): the P4.111 lane close — lane record, status headers
+
+_Docs-only change._
+
+- The P4.111 record in `status-log.md` covers the before and after measurement
+  by case, the recipe as run, the lane gate, the dead reader-side heals, and
+  the gap report for every remaining committed pair.
+- Both status headers are updated: P4.111 is closed, and P4.107's header
+  notes that P4.111 took its next list.
+
 #### 2026-09-23 — test(fixtures): ten committed main fixtures widened to v4's current columns, closing ten standing vintage reds (P4.111)
 
 _Versions: web 0.0.180._
