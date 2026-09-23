@@ -25,15 +25,15 @@
 //!
 //! Regenerate (Node 24, from a pinned v4 worktree):
 //!   W=<this worktree>
-//!   cd /tmp/qt-v4-pin-p4d203-f45a517a9
+//!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_CZ_MAIN=$W/crates/quilltap-web/tests/fixtures/chat-compressed-main.db \
 //!   QT_FIXTURE_CZ_MOUNT=$W/crates/quilltap-web/tests/fixtures/chat-compressed-mount.db \
 //!   QT_FIXTURE_CZ_LLM=$W/crates/quilltap-web/tests/fixtures/chat-compressed-llmlogs.db \
 //!     ~/.nvm/versions/node/v24.13.1/bin/npx tsx \
 //!       $W/harness/oracle/cases/chat-compressed-collect.ts \
-//!       > /tmp/p4.d203/oracle-chat-compressed.ndjson
+//!       > /tmp/oracle-chat-compressed-collect.ndjson
 //! Run:
-//!   QT_ORACLE_CHAT_COMPRESSED=/tmp/p4.d203/oracle-chat-compressed.ndjson \
+//!   QT_ORACLE_CHAT_COMPRESSED=/tmp/oracle-chat-compressed-collect.ndjson \
 //!     cargo test -p quilltap-harness --test compressed_collect_equivalence -- --nocapture
 
 use std::path::PathBuf;
