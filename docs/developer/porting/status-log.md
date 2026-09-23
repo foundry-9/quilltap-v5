@@ -146420,3 +146420,63 @@ tool (§R.4(k), Tier 3 item 14); `withCollectionActionDispatch` not re-proven be
   unchanged).
 - **Gate:** lint clean; `npm test` 445 files / 7,623 passed; build clean.
   SPA 0.5.750.
+
+### Unit 3 — the New Chat entry (Tier 1 item 6)
+
+- **`new-chat-form.ts`**: the button on the `Starting Scenario (Optional)`
+  label line (`Ask the Host to set the scene`, the Host avatar, disabled while
+  creating or with no profiles), the dialog `@defer`red under `builderOpen`
+  (v4's `next/dynamic`) with `cast` = every selected character (any
+  controller — v4's `builderCast`), `projectId = selectedProjectId ??
+  project.id`, `projectName` from the project list then the loaded project;
+  `handleUseBuiltScene` (the scene into `form.scenario`, the FIVE pointers
+  nulled — v5's names measured identical to v4's: `scenarioId`,
+  `projectScenarioPath`, `generalScenarioPath`, `groupScenarioPath`,
+  `groupScenarioGroupId` — and the editor re-keyed); `handleBuiltSceneSaved`
+  (await `refetchScenarioTiers()`, then select ONLY what the re-read tiers
+  offer: general by path, project only for the form's own project, group by
+  id AND path, character only when it is the lone LLM character — appended
+  locally to that character's `scenarios`; a selection clears the custom
+  text and re-keys).
+- **Measured — the editor re-key:** v5's `qt-markdown-field` ALSO re-inits
+  on a plain `value` change (its value effect), unlike v4's mount-only
+  editor, so the re-key is belt and braces for the identical-value case;
+  kept as v4's rule, pinned through `recordKey`.
+- **`HOST_AVATAR` moved to its own module** (`scenario-builder/host-avatar.ts`):
+  importing any VALUE from the dialog's module would make it an eager
+  dependency and defeat the `@defer` (the build now shows no budget warning;
+  the dialog lands in a lazy chunk).
+- **`NewChatState.refetchScenarioTiers()`** (v4 `useNewChat`): general /
+  project (with a project) / group union (with an LLM cast) through the
+  EXISTING `scenario.api.ts` fetchers, honouring Show archived, in parallel;
+  a tier that read is set on the state and returned, one that did not is
+  `null` and left alone. **Measured difference:** v4 answers a non-2xx tier
+  with that tier's `null` but a THROWN fetch with all three `null` (one
+  outer catch); v5's dispatch rejects on both and they cannot be told apart,
+  so each tier is caught on its own. The character's own list is appended
+  to the signal DIRECTLY (`selectedCharacters.update`), not through
+  `setSelectedCharacters`: the cast's ids do not change, so none of its
+  cast-change follow-ups (the single-LLM propagation, the group-union
+  refetch) apply — v4's effects key on the id list and stay quiet too.
+- **The `@defer` ripple:** the form now carries unresolved metadata until
+  compiled, so the pre-existing `new-chat-form.spec.ts` `render()` became
+  async with `TestBed.compileComponents()` and its 21 call sites `await` it
+  (a mechanical conversion from HEAD; prettier's unrelated reflows of that
+  file were NOT kept).
+- **Spec** `new-chat-form.host.spec.ts` — 16 cases, the dialog swapped for a
+  same-selector stub (v4's own test mocks the lazily-loaded dialog the same
+  way): **v4's 7 `NewChatForm.test.tsx` cases by name** (button disabled
+  while creating / with no profiles / enabled; the five pointers cleared +
+  the re-key; the group preset selected + text cleared; left alone when not
+  offered; the general preset) + 9 (a different group at the same path is
+  not offered; project only for the own project, re-read regardless; the
+  character append + select with one LLM character; left alone with two;
+  the builder's cast/project inputs; closing unmounts; and three
+  `refetchScenarioTiers` cases — general only; project + LLM-only group
+  union with Show archived; a failed tier answers null and leaves its list).
+- **Mutation proofs:** M4 null four pointers (drop `groupScenarioGroupId`) →
+  reddens v4's five-pointer case (1); M5 select the group without checking
+  the re-read → reddens "leaves the form alone" + the different-group case
+  (2). Both reverted by file backup.
+- **Gate:** lint clean; `npm test` 446 files / 7,639 passed; build clean, no
+  budget warning. SPA 0.5.751.

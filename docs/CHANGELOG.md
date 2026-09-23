@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(spa): "Ask the Host to set the scene" on the New Chat form (P4.D218 unit 3)
+
+_Versions: SPA 0.5.751._
+
+The New Chat form gains the Scenario Builder button beside the starting
+scenario label, with the dialog lazy-loaded through `@defer`. Using a built
+scene sets it as the custom scenario text, clears all five preset pointers,
+and re-keys the editor. After a save, `NewChatState.refetchScenarioTiers()`
+re-reads the general, project and group tiers, and the new preset is
+selected only if the re-read tiers offer it; a character save is appended to
+the lone LLM character's list and selected. The existing form spec's render
+helper now compiles components because of the deferred block. 16 new spec
+cases, including v4's seven by name.
+
 #### 2026-09-23 — feat(spa): the Scenario Builder dialog and its save dialog (P4.D218 unit 2)
 
 _Versions: SPA 0.5.750._

@@ -66,7 +66,7 @@ function makeState(): NewChatState {
   return state;
 }
 
-function render(state: NewChatState): ComponentFixture<NewChatForm> {
+async function render(state: NewChatState): Promise<ComponentFixture<NewChatForm>> {
   TestBed.configureTestingModule({
     imports: [NewChatForm],
     providers: [
@@ -74,6 +74,9 @@ function render(state: NewChatState): ComponentFixture<NewChatForm> {
       { provide: CoreClient, useValue: stubCore },
     ],
   });
+  // The form `@defer`s the Scenario Builder dialog (P4.D218), so the
+  // component carries unresolved metadata until compiled.
+  await TestBed.compileComponents();
   const fixture = TestBed.createComponent(NewChatForm);
   fixture.componentRef.setInput('state', state);
   fixture.detectChanges();
@@ -97,17 +100,17 @@ function scenarioEditor(fixture: ComponentFixture<NewChatForm>): RichEditor {
 }
 
 describe('NewChatForm scenario layering', () => {
-  it('shows the "Starting scenario" editor when no preset is selected', () => {
-    const fixture = render(makeState());
+  it('shows the "Starting scenario" editor when no preset is selected', async () => {
+    const fixture = await render(makeState());
     expect(labelOf(fixture, 'Starting scenario')).not.toBeNull();
     expect(labelOf(fixture, 'Additional scenario notes')).toBeNull();
   });
 
-  it('shows the preset preview, append hint, and relabeled editor when a preset is selected', () => {
+  it('shows the preset preview, append hint, and relabeled editor when a preset is selected', async () => {
     const state = makeState();
     state.generalScenarios.set([GENERAL]);
     state.patchForm({ generalScenarioPath: GENERAL.path });
-    const fixture = render(state);
+    const fixture = await render(state);
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('A foggy moor at dawn.');
     expect(text).toMatch(/added beneath the scenario above/i);
@@ -117,7 +120,7 @@ describe('NewChatForm scenario layering', () => {
 
   it('carries the scenario notes markdown into the form state', async () => {
     const state = makeState();
-    const fixture = render(state);
+    const fixture = await render(state);
     await settle(fixture);
 
     scenarioEditor(fixture).setMarkdown('They meet at *dusk*, by the folly.');
@@ -129,7 +132,7 @@ describe('NewChatForm scenario layering', () => {
   it('seeds the field from the form scenario without dirtying it on load', async () => {
     const state = makeState();
     state.patchForm({ scenario: 'A __foggy__ moor.' });
-    const fixture = render(state);
+    const fixture = await render(state);
     await settle(fixture);
 
     // Displayed canonically, but the load is not an edit: the stored form value
@@ -140,7 +143,7 @@ describe('NewChatForm scenario layering', () => {
 });
 
 describe('NewChatForm Play As dropdown', () => {
-  it('lists only cast characters (v4 e2eb3d21)', () => {
+  it('lists only cast characters (v4 e2eb3d21)', async () => {
     const state = makeState();
     const alice = char('a', 'Alice');
     const bob = char('b', 'Bob', { controlledBy: 'user' });
@@ -153,7 +156,7 @@ describe('NewChatForm Play As dropdown', () => {
     // Bob is a default-user character but NOT in the cast, so he is absent from
     // the dropdown — he would be added via the picker on the left instead.
     state.userControlledCharacters.set([bob]);
-    const fixture = render(state);
+    const fixture = await render(state);
     const select = (fixture.nativeElement as HTMLElement).querySelector('#new-chat-partner');
     const options = Array.from(select?.querySelectorAll('option') ?? []).map((o) =>
       o.textContent?.trim(),
@@ -180,8 +183,8 @@ function templateOptions(fixture: ComponentFixture<NewChatForm>): string[] {
 }
 
 describe('NewChatForm roleplay template picker', () => {
-  it('is hidden when no templates are available', () => {
-    const fixture = render(makeState());
+  it('is hidden when no templates are available', async () => {
+    const fixture = await render(makeState());
     expect(templateSelect(fixture)).toBeNull();
   });
 
@@ -190,7 +193,7 @@ describe('NewChatForm roleplay template picker', () => {
     state.roleplayTemplates.set(TEMPLATES);
     state.defaultRoleplayTemplateId.set('tpl-house');
     state.patchForm({ roleplayTemplateId: 'tpl-house' });
-    const fixture = render(state);
+    const fixture = await render(state);
     // `[ngModel]` lands on the DOM asynchronously — settle before reading it,
     // or the assertion reads the pristine '' and passes for the wrong reason.
     await settle(fixture);
@@ -207,7 +210,7 @@ describe('NewChatForm roleplay template picker', () => {
     const state = makeState();
     state.roleplayTemplates.set(TEMPLATES);
     state.defaultRoleplayTemplateId.set(null);
-    const fixture = render(state);
+    const fixture = await render(state);
     await settle(fixture);
 
     expect(templateSelect(fixture)?.value).toBe('');
@@ -219,7 +222,7 @@ describe('NewChatForm roleplay template picker', () => {
     state.roleplayTemplates.set(TEMPLATES);
     state.defaultRoleplayTemplateId.set('tpl-house');
     state.patchForm({ roleplayTemplateId: 'tpl-house' });
-    const fixture = render(state);
+    const fixture = await render(state);
     await settle(fixture);
 
     const select = templateSelect(fixture)!;
@@ -236,7 +239,7 @@ describe('NewChatForm roleplay template picker', () => {
     state.roleplayTemplates.set(TEMPLATES);
     state.defaultRoleplayTemplateId.set('tpl-house');
     state.patchForm({ roleplayTemplateId: 'tpl-house' });
-    const fixture = render(state);
+    const fixture = await render(state);
     await settle(fixture);
 
     const select = templateSelect(fixture)!;
@@ -274,8 +277,8 @@ function conciergeSelect(fixture: ComponentFixture<NewChatForm>): HTMLSelectElem
 }
 
 describe('NewChatForm Concierge picker', () => {
-  it('offers the four states in the sidebar\u2019s two optgroups', () => {
-    const fixture = render(makeState());
+  it('offers the four states in the sidebar\u2019s two optgroups', async () => {
+    const fixture = await render(makeState());
     const select = conciergeSelect(fixture);
 
     const groups = Array.from(select.querySelectorAll('optgroup')).map((g) => g.label);
@@ -286,7 +289,7 @@ describe('NewChatForm Concierge picker', () => {
   });
 
   it('starts on Monitored and marks it the default', async () => {
-    const fixture = render(makeState());
+    const fixture = await render(makeState());
     await settle(fixture);
     expect(conciergeSelect(fixture).value).toBe('monitored');
 
@@ -300,10 +303,10 @@ describe('NewChatForm Concierge picker', () => {
 
   it.each(['monitored', 'flagged', 'vouched', 'uncensored'] as const)(
     'shows the shared presentation helper sentence for %s',
-    (state) => {
+    async (state) => {
       const s = makeState();
       s.patchForm({ conciergeState: state });
-      const fixture = render(s);
+      const fixture = await render(s);
       const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
       expect(text).toContain(CONCIERGE_STATE_PRESENTATION[state].detail);
       // The `hint` is deliberately NOT shown here — the reader is looking at
@@ -314,7 +317,7 @@ describe('NewChatForm Concierge picker', () => {
 
   it('records the chosen state on the form state', async () => {
     const state = makeState();
-    const fixture = render(state);
+    const fixture = await render(state);
     await settle(fixture);
 
     const select = conciergeSelect(fixture);
@@ -333,7 +336,7 @@ describe('NewChatForm Concierge picker', () => {
    */
   it('re-renders the selected option after a programmatic state change', async () => {
     const state = makeState();
-    const fixture = render(state);
+    const fixture = await render(state);
     await settle(fixture);
     expect(conciergeSelect(fixture).value).toBe('monitored');
 
@@ -386,10 +389,10 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
     return label.querySelector('input[type="checkbox"]') as HTMLInputElement;
   }
 
-  it('hides an archived character scenario until "Show archived" is ticked', () => {
+  it('hides an archived character scenario until "Show archived" is ticked', async () => {
     const state = makeState();
     withCharacter(state, [DUEL, WAKE]);
-    const fixture = render(state);
+    const fixture = await render(state);
     expect(optionTexts(fixture)).toEqual(['Custom...', 'A Duel']);
 
     state.showArchivedScenarios.set(true);
@@ -397,11 +400,11 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
     expect(optionTexts(fixture)).toEqual(['Custom...', 'A Duel', 'A Wake (archived)']);
   });
 
-  it('keeps the CURRENT selection visible even when archived and hidden', () => {
+  it('keeps the CURRENT selection visible even when archived and hidden', async () => {
     const state = makeState();
     withCharacter(state, [DUEL, WAKE]);
     state.patchForm({ scenarioId: WAKE.id });
-    const fixture = render(state);
+    const fixture = await render(state);
     // The archived row stays — suffixed — because blanking the select out from
     // under a pick made a moment ago is worse than showing it (v4 `:160-170`).
     expect(optionTexts(fixture)).toEqual(['Custom...', 'A Duel', 'A Wake (archived)']);
@@ -411,15 +414,15 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
     expect(select.value).toBe(WAKE.id);
   });
 
-  it('previews an archived selection against the UNFILTERED list', () => {
+  it('previews an archived selection against the UNFILTERED list', async () => {
     const state = makeState();
     withCharacter(state, [DUEL, WAKE]);
     state.patchForm({ scenarioId: WAKE.id });
-    const fixture = render(state);
+    const fixture = await render(state);
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Rain on the glass.');
   });
 
-  it('renders the Group Scenarios optgroup now that the tier is wired (v4 d25dacc1)', () => {
+  it('renders the Group Scenarios optgroup now that the tier is wired (v4 d25dacc1)', async () => {
     const state = makeState();
     withCharacter(state, [DUEL]);
     state.groupScenarios.set([
@@ -434,7 +437,7 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
         body: 'A cellar.',
       },
     ]);
-    const fixture = render(state);
+    const fixture = await render(state);
     const groups = [
       ...(fixture.nativeElement as HTMLElement).querySelectorAll('#new-chat-scenario-select optgroup'),
     ].map((g) => g.getAttribute('label'));
@@ -442,7 +445,7 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
     expect(optionTexts(fixture)).toContain('The Den');
   });
 
-  it('a picked group scenario previews its body and holds the select', () => {
+  it('a picked group scenario previews its body and holds the select', async () => {
     const state = makeState();
     withCharacter(state, [DUEL]);
     state.groupScenarios.set([
@@ -458,7 +461,7 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
       },
     ]);
     state.patchForm({ groupScenarioPath: 'Scenarios/den.md', groupScenarioGroupId: 'g1' });
-    const fixture = render(state);
+    const fixture = await render(state);
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('A cellar.');
     const select = (fixture.nativeElement as HTMLElement).querySelector(
       '#new-chat-scenario-select',
@@ -469,7 +472,7 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
   it('the "Show archived" checkbox drives the state setter, which refetches', async () => {
     const state = makeState();
     withCharacter(state, [DUEL]);
-    const fixture = render(state);
+    const fixture = await render(state);
     const box = archivedBox(fixture);
     expect(box.checked).toBe(false);
     box.checked = true;

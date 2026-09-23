@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
@@ -22,6 +22,12 @@ import {
 import { Icon, type IconName } from '../../ui/icon';
 import { ImageProfilePicker } from '../../images/image-profile-picker';
 import { ScenarioSelect, hasAnyScenarioOptions } from '../../scenario/scenario-select';
+import { HOST_AVATAR } from '../../scenario-builder/host-avatar';
+import {
+  ScenarioBuilderDialog,
+  type SavedScenarioTarget,
+  type ScenarioBuilderCastMember,
+} from '../../scenario-builder/scenario-builder-dialog';
 import type { ScenarioSelection } from '../../scenario/scenario.types';
 import { applyPlayAs, scenarioSelectionPatch } from './new-chat.logic';
 import { NewChatState } from './new-chat.state';
@@ -87,6 +93,7 @@ interface PlayAsOption {
     ImageProfilePicker,
     MarkdownField,
     OutfitSelector,
+    ScenarioBuilderDialog,
     ScenarioSelect,
     TimestampConfigCard,
     AutonomousRoomCard,
@@ -237,9 +244,20 @@ interface PlayAsOption {
         </div>
 
         <div>
-          <label for="new-chat-scenario" class="mb-2 block text-sm qt-text-primary"
-            >Starting Scenario (Optional)</label
-          >
+          <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <label for="new-chat-scenario" class="block text-sm qt-text-primary"
+              >Starting Scenario (Optional)</label
+            >
+            <button
+              type="button"
+              class="qt-button-secondary qt-button-sm inline-flex items-center gap-1.5"
+              [disabled]="creating() || profiles().length === 0"
+              (click)="builderOpen.set(true)"
+            >
+              <img [src]="hostAvatar" alt="" class="h-4 w-4 rounded-full" />
+              Ask the Host to set the scene
+            </button>
+          </div>
           @if (showScenarioDropdown()) {
             <qt-scenario-select
               selectId="new-chat-scenario-select"
@@ -295,9 +313,28 @@ interface PlayAsOption {
             minHeight="6rem"
             [ariaLabel]="presetContent() ? 'Additional scenario notes' : 'Starting scenario'"
             [value]="form().scenario"
+            [recordKey]="scenarioEditorKey()"
             [disabled]="creating()"
             (contentChange)="onScenarioNotes($event)"
           />
+          <!--
+            The Host's Scenario Builder (v4 d1c06cd9d). Deferred — v4 loads the
+            dialog with next/dynamic so the builder (and the Markdown renderer
+            behind its thinking block) stays out of this surface's bundle
+            until the Host is asked; the @defer block is that lazy load.
+          -->
+          @if (builderOpen()) {
+            @defer {
+              <qt-scenario-builder-dialog
+                [cast]="builderCast()"
+                [projectId]="builderProjectId()"
+                [projectName]="builderProjectName()"
+                (closed)="builderOpen.set(false)"
+                (use)="handleUseBuiltScene($event)"
+                (saved)="handleBuiltSceneSaved($event)"
+              />
+            }
+          }
         </div>
 
         @if (outfitCharacters().length > 0) {
@@ -646,6 +683,110 @@ export class NewChatForm {
 
   protected onPlayAs(nextId: string): void {
     this.core().setSelectedCharacters((prev) => applyPlayAs(prev, nextId));
+  }
+
+  // --- The Host's Scenario Builder (v4 `d1c06cd9d`) -------------------------
+
+  protected readonly hostAvatar = HOST_AVATAR;
+  protected readonly builderOpen = signal(false);
+  /**
+   * The scenario editor's re-key (v4 `scenarioEditorKey` → `remountKey`). v4's
+   * editor reads `value` only at mount, so a programmatic fill must remount
+   * it. v5's `qt-markdown-field` ALSO re-inits on a plain value change
+   * (measured — its value effect), so the key is belt and braces for the
+   * identical-value case; kept because it is v4's rule and the spec pins it.
+   */
+  protected readonly scenarioEditorKey = signal(0);
+
+  /** Every selected character, whoever plays them (v4 `builderCast`). */
+  protected readonly builderCast = computed<ScenarioBuilderCastMember[]>(() =>
+    this.core()
+      .selectedCharacters()
+      .map((sc) => ({ id: sc.character.id, name: sc.character.name })),
+  );
+  protected readonly builderProjectId = computed<string | null>(
+    () => this.selectedProjectId() ?? this.project()?.id ?? null,
+  );
+  protected readonly builderProjectName = computed<string | null>(() => {
+    const id = this.builderProjectId();
+    const project = this.project();
+    return (
+      (id && this.availableProjects().find((p) => p.id === id)?.name) ||
+      (project && project.id === id ? project.name : null)
+    );
+  });
+
+  /**
+   * "Use this scene" (v4 `handleUseBuiltScene`): the scene becomes the custom
+   * text, EVERY preset pointer is cleared — all five, the group's id with its
+   * path — and the editor is re-keyed.
+   */
+  protected handleUseBuiltScene(scene: string): void {
+    this.core().patchForm({
+      scenario: scene,
+      scenarioId: null,
+      projectScenarioPath: null,
+      generalScenarioPath: null,
+      groupScenarioPath: null,
+      groupScenarioGroupId: null,
+    });
+    this.scenarioEditorKey.update((k) => k + 1);
+  }
+
+  /**
+   * After a save (v4 `handleBuiltSceneSaved`): re-read the tiers, then select
+   * the new preset ONLY when this form's picker now offers it — "a tier this
+   * surface doesn't show, or a group no LLM cast member belongs to, is not
+   * offered; a character's own list only when exactly one LLM character is
+   * cast" — and clear the custom text it replaces. Otherwise the text stays
+   * as custom.
+   */
+  protected async handleBuiltSceneSaved(target: SavedScenarioTarget): Promise<void> {
+    const fresh = await this.core().refetchScenarioTiers();
+    let selection: ScenarioSelection | null = null;
+    if (target.kind === 'general') {
+      if (fresh.general?.some((s) => s.path === target.path)) {
+        selection = { kind: 'general', path: target.path };
+      }
+    } else if (target.kind === 'project' && target.projectId === this.builderProjectId()) {
+      if (fresh.project?.some((s) => s.path === target.path)) {
+        selection = { kind: 'project', path: target.path };
+      }
+    } else if (target.kind === 'group') {
+      if (fresh.group?.some((s) => s.groupId === target.groupId && s.path === target.path)) {
+        selection = { kind: 'group', groupId: target.groupId, path: target.path };
+      }
+    } else if (
+      target.kind === 'character' &&
+      this.singleLlm()?.character.id === target.characterId
+    ) {
+      // The character's scenario list rides on the character record, which this
+      // form does not refetch; add the new entry locally so it can be selected.
+      // Written to the signal directly: the cast's ids do not change, so none
+      // of `setSelectedCharacters`' cast-change follow-ups apply (v4's effects
+      // key on the id list and stay quiet too).
+      this.core().selectedCharacters.update((prev) =>
+        prev.map((sc) =>
+          sc.character.id === target.characterId
+            ? {
+                ...sc,
+                character: {
+                  ...sc.character,
+                  scenarios: [
+                    ...(sc.character.scenarios ?? []),
+                    { id: target.scenarioId, title: target.title, content: target.content },
+                  ],
+                },
+              }
+            : sc,
+        ),
+      );
+      selection = { kind: 'character', scenarioId: target.scenarioId };
+    }
+    if (!selection) return;
+    this.onScenarioSelect(selection);
+    this.core().patchForm({ scenario: '' });
+    this.scenarioEditorKey.update((k) => k + 1);
   }
 
   protected onScenarioSelect(selection: ScenarioSelection): void {

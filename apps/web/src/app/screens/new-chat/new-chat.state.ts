@@ -34,7 +34,12 @@ import type {
   ScenarioDto,
   ScenarioListDto,
 } from '../../core/core-contract';
-import { toScenarioOption } from '../../scenario/scenario.api';
+import {
+  fetchGeneralScenarios,
+  fetchGroupScenarios,
+  fetchProjectScenarios,
+  toScenarioOption,
+} from '../../scenario/scenario.api';
 import { resolveDefaultSystemPromptId } from '../../shared/default-system-prompt';
 import type { ToastService } from '../../ui/toast.service';
 import type { GreenRoomController } from './green-room.types';
@@ -55,6 +60,18 @@ export interface NewChatOptions {
   projectId?: string;
   /** Start the form in autonomous-room mode (v4 `?autonomous=1`). */
   initialAutonomous?: boolean;
+}
+
+/**
+ * The tiers as re-read by {@link NewChatState.refetchScenarioTiers}, so a caller
+ * can check what the picker now offers without waiting for a re-render (v4
+ * `RefetchedScenarioTiers`, `useNewChat.ts` at `d1c06cd9d`). `null` = not
+ * re-read (the tier does not apply, or the read failed).
+ */
+export interface RefetchedScenarioTiers {
+  general: ScenarioOption[] | null;
+  project: ScenarioOption[] | null;
+  group: GroupScenarioOption[] | null;
 }
 
 /** A `{ chatId, isAutonomous } | null` submit outcome (v4 `handleCreateChat` return). */
@@ -449,6 +466,56 @@ export class NewChatState {
   async setShowArchivedScenarios(next: boolean): Promise<void> {
     this.showArchivedScenarios.set(next);
     await this.load();
+  }
+
+  /**
+   * Re-read the general, project and group scenario tiers — after the
+   * Scenario Builder files a new one — and return what was read (v4
+   * `refetchScenarioTiers`, `useNewChat.ts` at `d1c06cd9d`). v4 needs it
+   * because these lists ride plain `fetch`, not TanStack, so invalidating
+   * the scenario query family does not reach them; the same is true here
+   * (they are signals this state fills, not queries).
+   *
+   * Through the EXISTING tier fetchers, with the form's "Show archived" flag,
+   * in parallel: general always; the project tier only with a project chosen;
+   * the group union only with an LLM character cast. A tier that read is set
+   * on the state; one that did not is left alone and answers `null`.
+   *
+   * One measured difference in the failure arms: v4 answers a non-2xx read
+   * with that tier's `null` (a warn), but a THROWN fetch escapes to one outer
+   * catch that answers all three `null`. v5's dispatch rejects on both, and
+   * the two cannot be told apart, so each tier is caught on its own — a
+   * refusal on one tier no longer blanks the others.
+   */
+  async refetchScenarioTiers(): Promise<RefetchedScenarioTiers> {
+    const includeArchived = this.showArchivedScenarios();
+    const projectId = this.selectedProjectId();
+    const llmIds = this.llmSelected().map((sc) => sc.character.id);
+    const read = async <T>(tier: string, fetcher: () => Promise<T>): Promise<T | null> => {
+      try {
+        return await fetcher();
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.warn('[NewChatState] Failed to refetch scenarios', {
+          tier,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      }
+    };
+    const [general, project, group] = await Promise.all([
+      read('general', () => fetchGeneralScenarios(this.core, includeArchived)),
+      projectId
+        ? read('project', () => fetchProjectScenarios(this.core, projectId, includeArchived))
+        : Promise.resolve(null),
+      llmIds.length > 0
+        ? read('group', () => fetchGroupScenarios(this.core, llmIds, includeArchived))
+        : Promise.resolve(null),
+    ]);
+    if (general) this.generalScenarios.set(general);
+    if (project) this.projectScenarios.set(project);
+    if (group) this.groupScenarios.set(group);
+    return { general, project, group };
   }
 
   private async refreshGroupScenarios(): Promise<void> {

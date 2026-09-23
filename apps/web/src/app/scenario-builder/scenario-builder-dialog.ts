@@ -17,6 +17,7 @@ import { MarkdownField } from '../editor/markdown-field';
 import { Icon } from '../ui/icon';
 import { Modal } from '../ui/modal';
 import { describeHostActivity } from './host-activity';
+import { HOST_AVATAR } from './host-avatar';
 import {
   SaveScenarioDialog,
   type SavedScenarioTarget,
@@ -34,9 +35,6 @@ import { ScenarioBuilderRun } from './scenario-builder-run.state';
 export type { SavedScenarioTarget, ScenarioBuilderCastMember } from './save-scenario-dialog';
 
 type Mode = 'real' | 'in-world';
-
-/** The Host's portrait (v4 `STAFF_AVATARS.host ?? '/images/avatars/host-avatar.webp'`). */
-export const HOST_AVATAR = '/images/avatars/host-avatar.webp';
 
 /**
  * The Scenario Builder dialog — "Ask the Host to set the scene." (v4
