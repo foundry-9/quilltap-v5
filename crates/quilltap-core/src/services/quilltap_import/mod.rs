@@ -1551,8 +1551,14 @@ fn import_body(
                     // with the SAME sentence and carries on with the sets it
                     // has — every row whose `recordMessageId` it can no longer
                     // vouch for then drops. Swallowing the `Err` silently would
-                    // leave that mass drop unexplained in the log.
-                    match crate::db::chats_messages_read::get_messages(main, &remapped_chat_id) {
+                    // leave that mass drop unexplained in the log. STRICT, not
+                    // the swallowing `get_messages`: v4 runs the whole import
+                    // inside `withStrictRepositoryFailures` (`execute.ts:430`),
+                    // so its fallback `getMessages` rethrows into that catch.
+                    match crate::db::chats_messages_read::get_messages_strict(
+                        main,
+                        &remapped_chat_id,
+                    ) {
                         Ok(events) => {
                             for ev in events {
                                 if let Some(mid) = ev.get("id").and_then(Value::as_str) {
@@ -2293,6 +2299,72 @@ mod tests {
             !encodes.is_empty(),
             "the caller's codec was never asked to encode the imported PNG — the \
              file step ran on a codec the caller did not pass"
+        );
+    }
+
+    /// The `00c290c9a` unification (P4.109's recorded handoff): the informs
+    /// pass reads each destination chat's messages through
+    /// `get_messages_strict`, because v4 runs the whole import inside
+    /// `withStrictRepositoryFailures` (`execute.ts:430`), where even a
+    /// fallback `safeQuery` rethrows — so a failed message read reaches
+    /// `execute.ts:727-741`'s try/catch and warns `Failed to read chat while
+    /// importing informs`. Through the swallowing `get_messages` the read
+    /// answers `[]`, that warn is unreachable, and the mass drop it explains
+    /// goes unexplained.
+    ///
+    /// Red-first: with the site on `get_messages`, the warn never fired (the
+    /// swallow's own `Failed to get messages for chat` ERROR fired instead).
+    #[test]
+    fn a_failed_informs_message_read_warns_under_the_strict_scope() {
+        const TEST_PEPPER: &str = "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==";
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), TEST_PEPPER).unwrap();
+        let main =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap.db"), TEST_PEPPER).unwrap();
+        let mount = crate::db::Writer::open_writable(
+            &dir.path().join("quilltap-mount-index.db"),
+            TEST_PEPPER,
+        )
+        .unwrap();
+        // Poison the message table so ANY message read fails with a SQL error
+        // (the same plant as `chats_search_equivalence`'s `POISON_SQL`).
+        main.connection()
+            .execute_batch(r#"ALTER TABLE "chat_messages" RENAME TO "chat_messages_poisoned""#)
+            .unwrap();
+
+        let export = export_with(
+            "chatInforms",
+            json!({
+                "id": "1f000000-0000-4000-8000-000000000001",
+                "chatId": "c1000000-0000-4000-8000-000000000001",
+                "recordMessageId": "m1000000-0000-4000-8000-000000000001",
+            }),
+        );
+        let codec = RecordingPixelCodec::default();
+        let (result, lines) = crate::test_support::captured_with(|| {
+            execute_import(
+                main.connection(),
+                mount.connection(),
+                crate::api::SINGLE_USER_ID,
+                &export,
+                &ImportOptions::seed_defaults(),
+                &codec,
+            )
+        });
+        result.expect("the import runs to completion");
+        let warns = lines
+            .iter()
+            .filter(|l| l.contains("Failed to read chat while importing informs"))
+            .count();
+        assert_eq!(
+            warns, 1,
+            "the strict message read must reach v4's informs warn exactly once; lines: {lines:#?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Failed to get messages for chat")),
+            "the informs pass read through the SWALLOWING get_messages; lines: {lines:#?}"
         );
     }
 }

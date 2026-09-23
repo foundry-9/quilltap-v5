@@ -192,7 +192,9 @@ fn remap_linked_to(
         let mut matched = false;
         for chat_id in &resolved_chat_ids {
             if !message_id_cache.iter().any(|(k, _)| k == chat_id) {
-                let events = crate::db::chats_messages_read::get_messages(main, chat_id)?;
+                // STRICT: v4 runs the import inside `withStrictRepositoryFailures`
+                // (`execute.ts:430`), so a failed read fails the import.
+                let events = crate::db::chats_messages_read::get_messages_strict(main, chat_id)?;
                 let ids: Vec<String> = events
                     .iter()
                     .filter_map(|e| e.get("id").and_then(Value::as_str).map(str::to_string))

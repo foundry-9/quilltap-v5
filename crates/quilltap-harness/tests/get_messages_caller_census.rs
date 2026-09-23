@@ -93,15 +93,15 @@ const CENSUS: &[(&str, usize, usize)] = &[
     ("services/orchestrator.rs", 1, 0),
     ("services/participant_resolver.rs", 1, 0),
     ("services/qtap_export/records.rs", 1, 0),
-    // ⚠ RECORDED, NOT EDITED (P4.109 §R.10(c)/(d) — P4.110 owns
-    // `services/quilltap_import/**`): the census verdict for BOTH importer
-    // sites is STRICT. v4 runs them inside `withStrictRepositoryFailures`
+    // STRICT, both: v4 runs them inside `withStrictRepositoryFailures`
     // (`execute.ts:430`), where `safeQuery` rethrows even in fallback mode;
     // `mod.rs`'s `match` arm is v4's "Failed to read chat while importing
-    // informs" warn, which the swallowing variant makes unreachable. The
-    // unifier repoints both and moves these two rows to `(…, 0, 1)`.
-    ("services/quilltap_import/files.rs", 1, 0),
-    ("services/quilltap_import/mod.rs", 1, 0),
+    // informs" warn, which the swallowing variant would make unreachable.
+    // P4.109 recorded both (P4.110 owned the files); repointed at the
+    // `00c290c9a` unification, pinned by `quilltap_import`'s
+    // `a_failed_informs_message_read_warns_under_the_strict_scope`.
+    ("services/quilltap_import/files.rs", 0, 1),
+    ("services/quilltap_import/mod.rs", 0, 1),
     ("services/recall_replay.rs", 1, 0),
     ("services/story_background_job.rs", 1, 0),
     ("services/title_update_job.rs", 1, 0),
@@ -198,7 +198,9 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // swallowing 76 − 2 repointed (`find_event_value`, the help-chat test
     // helper) + 3 new unit-test calls = 77; strict 2 repointed + 1
     // (`get_messages`' own call of its sibling) + 2 new unit-test calls = 5.
-    assert_eq!((swallowing, strict), (77, 5), "census totals");
+    // The `00c290c9a` unification moved the two importer sites P4.109
+    // recorded: swallowing 77 − 2 = 75; strict 5 + 2 = 7.
+    assert_eq!((swallowing, strict), (75, 7), "census totals");
 }
 
 /// The scanner itself: comments skipped, definitions subtracted, and the
