@@ -48,12 +48,13 @@
 //! `system` inserts omit the column (SQLite fills its DDL default `NULL`). The
 //! read companion is [`crate::db::chats_messages_read::put_is_silent`] (seam #8).
 
+use rusqlite::types::Value as SqlValue;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::chats::{ChatUpdate, ChatsRepository};
-use super::text_compression::text_to_blob;
+use super::text_compression::{text_to_blob, TextCell};
 use super::{chats_messages_read, chats_read, js_number_to_json, DbError};
 use crate::chat_predicates::ParticipantStatus;
 use crate::clock::now_iso;
@@ -515,14 +516,42 @@ impl<'c> ChatMessagesRepository<'c> {
 
     /// `updateMessage` — merge `updates` onto the existing event, re-validate, and
     /// rewrite the row. Returns `Ok(false)` when no message with that id exists in
-    /// the chat (v4's `null`). v4 does `{...existing, ...updates}` →
-    /// `ChatEventSchema.parse` → `$set: validated`, which rewrites every member
-    /// column (nulls kept) and leaves the non-member columns untouched. Since a
-    /// validly-created row's non-member columns are already at their DDL defaults
-    /// (`NULL`, and `'[]'` for `attachments`), DELETE + re-INSERT of the merged
-    /// event produces the byte-identical row while reusing the insert marshaling.
-    /// (Updates never change `type`; the corpus and real usage hold to that.)
+    /// the chat (v4's `null`). v4 does `findOne({ id, chatId })` →
+    /// `{...existing, ...updates}` → `ChatEventSchema.parse` →
+    /// `updateOne({ id }, { $set: validated })` (`chats-messages.ops.ts:517`),
+    /// which its SQLite backend turns into ONE `UPDATE "chat_messages" SET
+    /// "<key>" = ?, … WHERE "id" = ?` over every key of the parsed event
+    /// (`query-translator.ts:497-521,683`). This is that statement: every MEMBER
+    /// column of the parsed event, bound through [`member_columns`] — the SAME
+    /// marshaling [`insert_event`] binds, so the two column lists cannot drift
+    /// apart (`update_sets_exactly_the_insert_columns_but_chat_id` pins it).
     /// No chat-metadata side-effect (v4 `updateMessage` touches only the row).
+    ///
+    /// **Why this is no longer a DELETE + re-INSERT.** Before `f45a517a9` the
+    /// two were byte-identical — a validly-created row's non-member columns sit
+    /// at their DDL defaults, so re-inserting the merged event reproduced the
+    /// row exactly, and reused the insert marshaling for free. `f45a517a9` put
+    /// three triggers on `chat_messages` (`db::chat_message_fts`), and on an
+    /// UPDATE only `chat_messages_fts_au` can fire — and only when the DECODED
+    /// `content` changed AND the row already has a map row. A DELETE + INSERT
+    /// fires `_ad` + `_ai` instead, which is not the same state (P4.105, each
+    /// pinned in `chat_message_update_fts_tier2_equivalence`):
+    ///
+    /// 1. the message's `ftsId` is re-minted — v4's is STABLE across edits;
+    /// 2. an edit that leaves `content` alone (or rewrites the same text, even
+    ///    into a re-encoded BLOB) re-indexes past `_au`'s `IS NOT` guard — v4
+    ///    touches the index not at all;
+    /// 3. a row that BECOMES eligible through the edit (a `TOOL` row made a
+    ///    `USER` row) is indexed by `_ai` — v4 leaves it out until a rebuild;
+    /// 4. the base rowid moves — v4's UPDATE preserves it.
+    ///
+    /// Search RESULTS are unchanged by all four (the same tokens under a new
+    /// id), which is why no search family saw it.
+    ///
+    /// The WHERE is by `id` alone, as v4's is; the find above it is by `id`
+    /// AND `chatId`. (Updates never change `type` — the corpus and real usage
+    /// hold to that — so a member's column list is the whole write; a column
+    /// outside the member is left as it lies, exactly as v4 leaves it.)
     pub fn update_message(
         &self,
         chat_id: &str,
@@ -544,11 +573,9 @@ impl<'c> ChatMessagesRepository<'c> {
         let event: ChatEventInput = serde_json::from_value(merged)
             .map_err(|e| DbError::Internal(format!("updateMessage parse: {e}")))?;
 
-        self.conn.execute(
-            "DELETE FROM chat_messages WHERE id = ?1",
-            rusqlite::params![message_id],
-        )?;
-        insert_event(self.conn, chat_id, &event)?;
+        let (sql, params) = update_statement(message_id, &event)?;
+        self.conn
+            .execute(&sql, rusqlite::params_from_iter(params.iter()))?;
         // v4 `:539` / `:567` — BOTH the modern-row and legacy-array branches
         // announce directly (not through `commitTranscriptChange`: an edit
         // computes no chat-row bookkeeping). Reached only past the not-found
@@ -858,139 +885,203 @@ fn participants_from_chat(chat: &Value) -> Vec<ParticipantView> {
 // ===========================================================================
 
 fn insert_event(conn: &Connection, chat_id: &str, event: &ChatEventInput) -> Result<(), DbError> {
-    match event {
-        ChatEventInput::Message(m) => insert_message(conn, chat_id, m),
-        ChatEventInput::ContextSummary(c) => insert_context_summary(conn, chat_id, c),
-        ChatEventInput::System(s) => insert_system(conn, chat_id, s),
+    let (sql, params) = insert_statement(chat_id, event)?;
+    conn.execute(&sql, rusqlite::params_from_iter(params.iter()))?;
+    Ok(())
+}
+
+/// One column of a member's row image: its name in SQL and the value bound for
+/// it — what v4's `documentToRow` / `translateUpdate` bind for that key.
+type MemberColumn = (&'static str, SqlValue);
+
+/// The `INSERT` for one event: `chatId` plus every [`member_columns`] entry.
+///
+/// v4 inserts **only the keys present in the validated event**, so the columns
+/// a union member doesn't carry fall to their DDL defaults — `NULL` for every
+/// nullable column, and `'[]'` for `attachments` (its `.default([])` becomes a
+/// `DEFAULT '[]'` clause). A `message` insert names every `MessageEvent` column
+/// (with `attachments` always written); a `context-summary` / `system` insert
+/// names only that member's columns and **omits `attachments`** so SQLite fills
+/// the same `'[]'` default. The final cell state is byte-identical to v4's.
+fn insert_statement(
+    chat_id: &str,
+    event: &ChatEventInput,
+) -> Result<(String, Vec<SqlValue>), DbError> {
+    let mut cols: Vec<MemberColumn> = vec![("chatId", SqlValue::Text(chat_id.to_string()))];
+    cols.extend(member_columns(event)?);
+    let names = cols
+        .iter()
+        .map(|(c, _)| format!("\"{c}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let marks = (1..=cols.len())
+        .map(|i| format!("?{i}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!("INSERT INTO chat_messages ({names}) VALUES ({marks})");
+    Ok((sql, cols.into_iter().map(|(_, v)| v).collect()))
+}
+
+/// The `UPDATE` for one event — v4's `UPDATE "chat_messages" SET "<key>" = ?, …
+/// WHERE "id" = ?` over every [`member_columns`] entry (`id` and `type`
+/// included, as v4's `$set: validated` includes them), WHERE by `id` alone.
+/// See [`ChatMessagesRepository::update_message`] for why this replaced the
+/// DELETE + re-INSERT.
+fn update_statement(
+    message_id: &str,
+    event: &ChatEventInput,
+) -> Result<(String, Vec<SqlValue>), DbError> {
+    let cols = member_columns(event)?;
+    let sets = cols
+        .iter()
+        .enumerate()
+        .map(|(i, (c, _))| format!("\"{c}\" = ?{}", i + 1))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "UPDATE chat_messages SET {sets} WHERE \"id\" = ?{}",
+        cols.len() + 1
+    );
+    let mut params: Vec<SqlValue> = cols.into_iter().map(|(_, v)| v).collect();
+    params.push(SqlValue::Text(message_id.to_string()));
+    Ok((sql, params))
+}
+
+/// Every MEMBER column of the parsed event and the value v4 stores for it —
+/// the one marshaling both [`insert_statement`] and [`update_statement`] bind.
+fn member_columns(event: &ChatEventInput) -> Result<Vec<MemberColumn>, DbError> {
+    Ok(match event {
+        ChatEventInput::Message(m) => message_columns(m)?,
+        ChatEventInput::ContextSummary(c) => context_summary_columns(c),
+        ChatEventInput::System(s) => system_columns(s),
+    })
+}
+
+/// `Option<T>` → the bound value, `None` → SQL NULL.
+fn opt<T: Into<SqlValue>>(v: Option<T>) -> SqlValue {
+    v.map(Into::into).unwrap_or(SqlValue::Null)
+}
+
+/// A codec cell as an owned bound value (TEXT below the floor, else the BLOB).
+fn cell(c: TextCell) -> SqlValue {
+    match c {
+        TextCell::Text(s) => SqlValue::Text(s),
+        TextCell::Blob(b) => SqlValue::Blob(b),
     }
 }
 
-fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Result<(), DbError> {
-    let raw_response = opt_value_json(&m.raw_response)?;
-    let attachments = json_text(&m.attachments)?;
-    let debug_memory_logs = opt_json(&m.debug_memory_logs)?;
-    let reasoning_segments = opt_json(&m.reasoning_segments)?;
-    let danger_flags = opt_json(&m.danger_flags)?;
-    let target_participant_ids = opt_json(&m.target_participant_ids)?;
-    let host_event = opt_json(&m.host_event)?;
-    let custom_announcer = opt_json(&m.custom_announcer)?;
-    let carina_meta = opt_json(&m.carina_meta)?;
-    let pascal_meta = opt_json(&m.pascal_meta)?;
-    let route_trail = opt_value_json(&m.route_trail)?;
-    let pending_external_attachments = opt_json(&m.pending_external_attachments)?;
-    let summary_anchor = opt_json(&m.summary_anchor)?;
-    let is_silent_message = is_silent_stored(m.is_silent_message);
-    // Normal boolean columns → INTEGER 0/1 or SQL NULL (see the struct comment).
-    let confirmed = m.confirmed.map(i64::from);
-    let confirmation_checked = m.confirmation_checked.map(i64::from);
-    let confirmation_revised = m.confirmation_revised.map(i64::from);
+fn message_columns(m: &MessageEventInput) -> Result<Vec<MemberColumn>, DbError> {
     // The four REGISTERED COMPRESSED COLUMNS of `chat_messages` (v4
     // `manager.ts:134-139`) go through the codec on the way in. v4's write
-    // chokepoint is ONE `documentToRow`; v5's is these independent
-    // hand-written statements, so a write path that bypasses the codec is the
-    // DEFAULT — which is why `compressed_column_write_sites_census` pins every
-    // one of them. Two here; `context` and `description` below.
+    // chokepoint is ONE `documentToRow`; v5's is these member marshalers, so a
+    // write path that bypasses the codec is the DEFAULT — which is why
+    // `compressed_column_write_sites_census` pins every one of them. Two here;
+    // `context` and `description` below.
     let content = text_to_blob(&m.content);
     let opaque_content = m.opaque_content.as_deref().map(text_to_blob);
-
-    conn.execute(
-        "INSERT INTO chat_messages (\
-           id, chatId, type, role, content, rawResponse, tokenCount, promptTokens, \
-           completionTokens, swipeGroupId, swipeIndex, attachments, debugMemoryLogs, \
-           thoughtSignature, reasoningContent, reasoningSegments, participantId, recoveryType, \
-           renderedHtml, dangerFlags, targetParticipantIds, isSilentMessage, systemSender, \
-           systemKind, opaqueContent, hostEvent, customAnnouncer, carinaMeta, \
-           pendingExternalPrompt, pendingExternalPromptFull, pendingExternalAttachments, \
-           summaryAnchor, provider, modelName, createdAt, confirmed, confirmationChecked, \
-           confirmationRevised, confirmationNotes, confirmationOriginalContent, pascalMeta, \
-           routeTrail) \
-         VALUES (\
-           ?1, ?2, 'message', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
-           ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, \
-           ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41)",
-        rusqlite::params![
-            m.id,
-            chat_id,
-            m.role,
-            content,
-            raw_response,
-            m.token_count,
-            m.prompt_tokens,
-            m.completion_tokens,
-            m.swipe_group_id,
-            m.swipe_index,
-            attachments,
-            debug_memory_logs,
-            m.thought_signature,
-            m.reasoning_content,
-            reasoning_segments,
-            m.participant_id,
-            m.recovery_type,
-            m.rendered_html,
-            danger_flags,
-            target_participant_ids,
-            is_silent_message,
-            m.system_sender,
-            m.system_kind,
-            opaque_content,
-            host_event,
-            custom_announcer,
-            carina_meta,
-            m.pending_external_prompt,
-            m.pending_external_prompt_full,
-            pending_external_attachments,
-            summary_anchor,
-            m.provider,
-            m.model_name,
-            m.created_at,
-            confirmed,
-            confirmation_checked,
-            confirmation_revised,
-            m.confirmation_notes,
-            m.confirmation_original_content,
-            pascal_meta,
-            route_trail,
-        ],
-    )?;
-    Ok(())
+    Ok(vec![
+        ("id", SqlValue::Text(m.id.clone())),
+        ("type", SqlValue::Text("message".into())),
+        ("role", SqlValue::Text(m.role.clone())),
+        ("content", cell(content)),
+        ("rawResponse", opt(opt_value_json(&m.raw_response)?)),
+        ("tokenCount", opt(m.token_count)),
+        ("promptTokens", opt(m.prompt_tokens)),
+        ("completionTokens", opt(m.completion_tokens)),
+        ("swipeGroupId", opt(m.swipe_group_id.clone())),
+        ("swipeIndex", opt(m.swipe_index)),
+        ("attachments", SqlValue::Text(json_text(&m.attachments)?)),
+        ("debugMemoryLogs", opt(opt_json(&m.debug_memory_logs)?)),
+        ("thoughtSignature", opt(m.thought_signature.clone())),
+        ("reasoningContent", opt(m.reasoning_content.clone())),
+        ("reasoningSegments", opt(opt_json(&m.reasoning_segments)?)),
+        ("participantId", opt(m.participant_id.clone())),
+        ("recoveryType", opt(m.recovery_type.clone())),
+        ("renderedHtml", opt(m.rendered_html.clone())),
+        ("dangerFlags", opt(opt_json(&m.danger_flags)?)),
+        (
+            "targetParticipantIds",
+            opt(opt_json(&m.target_participant_ids)?),
+        ),
+        (
+            "isSilentMessage",
+            opt(is_silent_stored(m.is_silent_message)),
+        ),
+        ("systemSender", opt(m.system_sender.clone())),
+        ("systemKind", opt(m.system_kind.clone())),
+        (
+            "opaqueContent",
+            opaque_content.map(cell).unwrap_or(SqlValue::Null),
+        ),
+        ("hostEvent", opt(opt_json(&m.host_event)?)),
+        ("customAnnouncer", opt(opt_json(&m.custom_announcer)?)),
+        ("carinaMeta", opt(opt_json(&m.carina_meta)?)),
+        (
+            "pendingExternalPrompt",
+            opt(m.pending_external_prompt.clone()),
+        ),
+        (
+            "pendingExternalPromptFull",
+            opt(m.pending_external_prompt_full.clone()),
+        ),
+        (
+            "pendingExternalAttachments",
+            opt(opt_json(&m.pending_external_attachments)?),
+        ),
+        ("summaryAnchor", opt(opt_json(&m.summary_anchor)?)),
+        ("provider", opt(m.provider.clone())),
+        ("modelName", opt(m.model_name.clone())),
+        ("createdAt", SqlValue::Text(m.created_at.clone())),
+        // Normal boolean columns → INTEGER 0/1 or SQL NULL (see the struct
+        // comment).
+        ("confirmed", opt(m.confirmed.map(i64::from))),
+        (
+            "confirmationChecked",
+            opt(m.confirmation_checked.map(i64::from)),
+        ),
+        (
+            "confirmationRevised",
+            opt(m.confirmation_revised.map(i64::from)),
+        ),
+        ("confirmationNotes", opt(m.confirmation_notes.clone())),
+        (
+            "confirmationOriginalContent",
+            opt(m.confirmation_original_content.clone()),
+        ),
+        ("pascalMeta", opt(opt_json(&m.pascal_meta)?)),
+        ("routeTrail", opt(opt_value_json(&m.route_trail)?)),
+    ])
 }
 
-fn insert_context_summary(
-    conn: &Connection,
-    chat_id: &str,
-    c: &ContextSummaryInput,
-) -> Result<(), DbError> {
-    // `attachments` omitted → SQLite fills its DDL `DEFAULT '[]'`, matching v4
-    // (which inserts only the validated keys).
-    conn.execute(
-        "INSERT INTO chat_messages (id, chatId, type, context, createdAt) \
-         VALUES (?1, ?2, 'context-summary', ?3, ?4)",
-        rusqlite::params![c.id, chat_id, text_to_blob(&c.context), c.created_at],
-    )?;
-    Ok(())
+fn context_summary_columns(c: &ContextSummaryInput) -> Vec<MemberColumn> {
+    // `attachments` is not a member → omitted, so an INSERT gets the DDL
+    // `DEFAULT '[]'` (matching v4, which inserts only the validated keys) and
+    // an UPDATE leaves the cell as it lies (matching v4's `$set`).
+    vec![
+        ("id", SqlValue::Text(c.id.clone())),
+        ("type", SqlValue::Text("context-summary".into())),
+        ("context", cell(text_to_blob(&c.context))),
+        ("createdAt", SqlValue::Text(c.created_at.clone())),
+    ]
 }
 
-fn insert_system(conn: &Connection, chat_id: &str, s: &SystemEventInput) -> Result<(), DbError> {
-    conn.execute(
-        "INSERT INTO chat_messages (\
-           id, chatId, type, systemEventType, description, promptTokens, completionTokens, \
-           totalTokens, provider, modelName, estimatedCostUSD, createdAt) \
-         VALUES (?1, ?2, 'system', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        rusqlite::params![
-            s.id,
-            chat_id,
-            s.system_event_type,
-            text_to_blob(&s.description),
-            s.prompt_tokens,
-            s.completion_tokens,
-            s.total_tokens,
-            s.provider,
-            s.model_name,
-            s.estimated_cost_usd,
-            s.created_at,
-        ],
-    )?;
-    Ok(())
+fn system_columns(s: &SystemEventInput) -> Vec<MemberColumn> {
+    vec![
+        ("id", SqlValue::Text(s.id.clone())),
+        ("type", SqlValue::Text("system".into())),
+        (
+            "systemEventType",
+            SqlValue::Text(s.system_event_type.clone()),
+        ),
+        ("description", cell(text_to_blob(&s.description))),
+        ("promptTokens", opt(s.prompt_tokens)),
+        ("completionTokens", opt(s.completion_tokens)),
+        ("totalTokens", opt(s.total_tokens)),
+        ("provider", opt(s.provider.clone())),
+        ("modelName", opt(s.model_name.clone())),
+        ("estimatedCostUSD", opt(s.estimated_cost_usd)),
+        ("createdAt", SqlValue::Text(s.created_at.clone())),
+    ]
 }
 
 /// The stored `isSilentMessage` cell (the TEXT-affinity seam, verified against v4).
@@ -1059,5 +1150,133 @@ mod pascal_meta_tests {
 
         // Re-serialized byte-for-byte, key order included.
         assert_eq!(serde_json::to_string(&parsed).unwrap(), wire);
+    }
+}
+
+#[cfg(test)]
+mod member_column_tests {
+    use super::*;
+
+    /// The column lists the three hand-written `INSERT` statements named
+    /// before P4.105 folded them into [`member_columns`] — copied verbatim
+    /// from the retired SQL, so the refactor is PROVEN not to have changed
+    /// which columns an insert writes (the order being immaterial to the
+    /// stored row).
+    const PRE_P4105_MESSAGE_INSERT: &str = "id, chatId, type, role, content, rawResponse, \
+        tokenCount, promptTokens, completionTokens, swipeGroupId, swipeIndex, attachments, \
+        debugMemoryLogs, thoughtSignature, reasoningContent, reasoningSegments, participantId, \
+        recoveryType, renderedHtml, dangerFlags, targetParticipantIds, isSilentMessage, \
+        systemSender, systemKind, opaqueContent, hostEvent, customAnnouncer, carinaMeta, \
+        pendingExternalPrompt, pendingExternalPromptFull, pendingExternalAttachments, \
+        summaryAnchor, provider, modelName, createdAt, confirmed, confirmationChecked, \
+        confirmationRevised, confirmationNotes, confirmationOriginalContent, pascalMeta, \
+        routeTrail";
+    const PRE_P4105_CONTEXT_SUMMARY_INSERT: &str = "id, chatId, type, context, createdAt";
+    const PRE_P4105_SYSTEM_INSERT: &str = "id, chatId, type, systemEventType, description, \
+        promptTokens, completionTokens, totalTokens, provider, modelName, estimatedCostUSD, \
+        createdAt";
+
+    fn events() -> Vec<(&'static str, ChatEventInput, &'static str)> {
+        let parse = |v: Value| serde_json::from_value::<ChatEventInput>(v).expect("event");
+        vec![
+            (
+                "message",
+                parse(serde_json::json!({
+                    "type": "message", "id": "m1", "role": "USER", "content": "hi",
+                    "createdAt": "2026-01-01T00:00:00.000Z"
+                })),
+                PRE_P4105_MESSAGE_INSERT,
+            ),
+            (
+                "context-summary",
+                parse(serde_json::json!({
+                    "type": "context-summary", "id": "c1", "context": "so far",
+                    "createdAt": "2026-01-01T00:00:00.000Z"
+                })),
+                PRE_P4105_CONTEXT_SUMMARY_INSERT,
+            ),
+            (
+                "system",
+                parse(serde_json::json!({
+                    "type": "system", "id": "s1", "systemEventType": "TITLE_GENERATION",
+                    "description": "d", "createdAt": "2026-01-01T00:00:00.000Z"
+                })),
+                PRE_P4105_SYSTEM_INSERT,
+            ),
+        ]
+    }
+
+    fn sorted(names: impl Iterator<Item = String>) -> Vec<String> {
+        let mut v: Vec<String> = names.collect();
+        v.sort();
+        v
+    }
+
+    fn unquote(s: &str) -> String {
+        s.trim().trim_matches('"').to_string()
+    }
+
+    fn insert_columns(sql: &str) -> Vec<String> {
+        let open = sql.find('(').expect("insert column list");
+        let close = sql[open..].find(')').expect("insert column list") + open;
+        sql[open + 1..close].split(',').map(unquote).collect()
+    }
+
+    fn update_columns(sql: &str) -> Vec<String> {
+        let sets = sql
+            .split_once(" SET ")
+            .and_then(|(_, rest)| rest.split_once(" WHERE "))
+            .expect("update SET … WHERE")
+            .0;
+        sets.split(", ")
+            .map(|s| unquote(s.split_once(" = ").expect("`col = ?n`").0))
+            .collect()
+    }
+
+    #[test]
+    fn insert_names_exactly_the_pre_p4105_columns() {
+        for (member, event, pinned) in events() {
+            let (sql, params) = insert_statement("chat-1", &event).expect("insert");
+            let got = insert_columns(&sql);
+            assert_eq!(got.len(), params.len(), "{member}: one bind per column");
+            assert_eq!(
+                sorted(got.into_iter()),
+                sorted(pinned.split(',').map(unquote)),
+                "{member}: the INSERT's column set moved"
+            );
+        }
+    }
+
+    /// The census the order asks for: v4's `$set: validated` names every key
+    /// of the parsed event, which is every member column — the INSERT's list
+    /// less `chatId` (not a `ChatEvent` key; v4's parse strips it). Built from
+    /// the ONE marshaler, so this reds on any column added to only one side.
+    #[test]
+    fn update_sets_exactly_the_insert_columns_but_chat_id() {
+        for (member, event, _) in events() {
+            let (insert_sql, _) = insert_statement("chat-1", &event).expect("insert");
+            let (update_sql, params) = update_statement("m-x", &event).expect("update");
+            let sets = update_columns(&update_sql);
+            let mut unique = sets.clone();
+            unique.sort();
+            unique.dedup();
+            assert_eq!(unique.len(), sets.len(), "{member}: a column SET twice");
+            assert_eq!(
+                sorted(sets.into_iter()),
+                sorted(
+                    insert_columns(&insert_sql)
+                        .into_iter()
+                        .filter(|c| c != "chatId")
+                ),
+                "{member}: the UPDATE's SET list is not the INSERT's list less chatId"
+            );
+            // WHERE by `id` alone (v4 `updateOne({ id: messageId })`), bound
+            // LAST, after one bind per SET column.
+            assert!(
+                update_sql.ends_with(&format!("WHERE \"id\" = ?{}", params.len())),
+                "{member}: {update_sql}"
+            );
+            assert_eq!(params.last(), Some(&SqlValue::Text("m-x".into())));
+        }
     }
 }

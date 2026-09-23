@@ -31,20 +31,30 @@ use std::path::{Path, PathBuf};
 /// why — naming every statement the count covers)`.
 ///
 /// **The arithmetic: 4 + 2 + 4 + 2 + 1 + 1 = 14 production `text_to_blob`
-/// calls across six files** (the sixth being the definition itself). The
+/// calls across six files** (the sixth being the definition itself). P4.105
+/// moved `db/chats_messages.rs`'s WRITES (an UPDATE joined the INSERT) but not
+/// its count: both statements bind the one member marshaling, so the row stays
+/// 4 and the total 14. The
 /// `db/chats_search.rs` row is P4.D204's: P4.D203 left that file EXEMPT with a
 /// note saying P4.D204 owned the rewrite and would land the codec there, which
 /// it has — so the file moves from EXEMPT to CENSUS and the count goes 11 → 12.
 /// The `db/llm_logs.rs` row then goes 2 → 4 (and the total 12 → 14) when the
 /// dynamic `update` patch's `request`/`response` arms join `create_inner`'s.
 const CENSUS: &[(&str, usize, &str)] = &[
+    // P4.105 OUT-OF-MANDATE — P4.D203's file by history, nobody's this round
+    // (§R.10(j)): the note moves with the port; the count does not.
     (
         "db/chats_messages.rs",
         4,
-        "the message insert's `content` + `opaqueContent`, the context-summary \
-         insert's `context`, and the system insert's `description`. \
-         `update_message` is a DELETE + re-INSERT through `insert_event`, so it \
-         is covered by these four and adds none of its own.",
+        "the four member marshalers' codec calls — `message_columns`'s `content` \
+         + `opaqueContent`, `context_summary_columns`'s `context`, and \
+         `system_columns`'s `description`. Since P4.105 BOTH writes bind \
+         through that one marshaling: `insert_event`'s INSERT and \
+         `update_message`'s UPDATE (v4's `$set: validated`, which replaced the \
+         old DELETE + re-INSERT so the FTS triggers see an UPDATE). The UPDATE \
+         is a real write site on all four columns, and it adds NO call of its \
+         own — a second set of calls would be exactly the column-list drift \
+         the shared marshaler exists to prevent. So 4 stays 4.",
     ),
     (
         "db/conversation_chunks.rs",

@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — fix(db): `update_message` is v4's UPDATE, so the FTS triggers see an UPDATE (P4.105)
+
+_Versions: core 0.0.993, harness 0.0.891._
+
+`update_message` rewrote a message as DELETE + re-INSERT, which matched v4
+byte for byte until `f45a517a9` put FTS triggers on `chat_messages`. Since then
+the DELETE fired `_ad` + `_ai` where v4's UPDATE fires only `_au`, so every
+edit re-minted the message's `ftsId`, re-indexed unchanged content, indexed a
+row that became eligible (v4 leaves it out until a rebuild), and moved the
+base rowid. Search results were unchanged, so no family had seen it. It is now
+one `UPDATE chat_messages SET <every member column> WHERE "id" = ?`, bound
+through the same member marshaling the INSERT uses (a unit census pins the
+UPDATE's list as the INSERT's less `chatId`, and the INSERT's lists as the
+retired SQL's). New tier-2 family `chat_message_update_fts_tier2` runs v4's
+real `updateMessage` and v5's over one fixture built with v4's real FTS
+objects, comparing the map, the base rowids, the index rowids and its tokens
+per op; red-first on 7 of 8 ops. The write-site census note moves; its count
+does not.
 #### 2026-09-22 — fix(fixtures): P4.103 widens six committed test-fixture pairs to v4's current column vintage, closing seven standing differential reds
 
 _Versions: web 0.0.171._
