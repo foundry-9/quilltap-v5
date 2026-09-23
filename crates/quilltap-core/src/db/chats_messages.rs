@@ -60,6 +60,11 @@ use crate::chat_predicates::ParticipantStatus;
 use crate::clock::now_iso;
 use crate::turn_state::{compute_spoken_this_cycle_after_message, MessageView, ParticipantView};
 
+/// The `context` field on this module's `safeQuery`-arm lines (the house shape of
+/// `db::chats_search`'s `LOG_CONTEXT`; v4's lines come from
+/// `chats-messages.ops.ts`).
+const LOG_CONTEXT: &str = "db.chats-messages";
+
 // ===========================================================================
 // Typed input — a `ChatEvent` (the three-member union), deserialized from a spec
 // or caller and serialized (for JSON columns) byte-for-byte like v4's
@@ -552,7 +557,39 @@ impl<'c> ChatMessagesRepository<'c> {
     /// AND `chatId`. (Updates never change `type` — the corpus and real usage
     /// hold to that — so a member's column list is the whole write; a column
     /// outside the member is left as it lies, exactly as v4 leaves it.)
+    ///
+    /// **Never answers `Err`** (P4.109). v4's `updateMessage` is `safeQuery(…,
+    /// 'Failed to update message in chat', { chatId, messageId }, null)` —
+    /// FALLBACK mode — so a find, a `ChatEventSchema.parse` or an `updateOne`
+    /// that throws logs one ERROR and answers `null`, the same value as "no
+    /// such message". v5 answers that `null` as `Ok(false)`. The `Result`
+    /// stays in the signature (the P4.105 precedent); every caller's handling
+    /// of `Ok(false)` was audited against v4's `null` handling (P4.109's lane
+    /// record).
     pub fn update_message(
+        &self,
+        chat_id: &str,
+        message_id: &str,
+        updates: &Value,
+    ) -> Result<bool, DbError> {
+        match self.update_message_inner(chat_id, message_id, updates) {
+            Ok(found) => Ok(found),
+            Err(err) => {
+                tracing::error!(
+                    target: "quilltap::db",
+                    context = LOG_CONTEXT,
+                    chatId = chat_id,
+                    messageId = message_id,
+                    error = %err,
+                    "Failed to update message in chat",
+                );
+                Ok(false)
+            }
+        }
+    }
+
+    /// The body [`Self::update_message`] wraps — v4's `safeQuery` operation.
+    fn update_message_inner(
         &self,
         chat_id: &str,
         message_id: &str,
@@ -1284,5 +1321,111 @@ mod member_column_tests {
             );
             assert_eq!(params.last(), Some(&SqlValue::Text("m-x".into())));
         }
+    }
+}
+
+#[cfg(test)]
+mod update_message_safe_query_tests {
+    const PEPPER: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+    /// A provisioned instance with one chat row and one message `m1` in it.
+    fn seeded() -> (tempfile::TempDir, crate::db::Writer) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER)
+            .expect("provision a fresh instance");
+        let w = crate::db::Writer::open_writable(&dir.path().join("quilltap.db"), PEPPER)
+            .expect("writable open");
+        w.connection()
+            .execute(
+                "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt) \
+                 VALUES ('m1', 'c1', 'message', 'USER', 'hi', '2026-09-23T00:00:01.000Z')",
+                [],
+            )
+            .expect("seed m1");
+        (dir, w)
+    }
+
+    fn update_errors(lines: &[String]) -> Vec<&String> {
+        lines
+            .iter()
+            .filter(|l| l.contains("Failed to update message in chat"))
+            .collect()
+    }
+
+    /// P4.109: v4's `updateMessage` is a FALLBACK `safeQuery` answering `null`
+    /// — a merged event that fails `ChatEventSchema.parse` (here `content: 42`,
+    /// a type mismatch in Zod AND in serde) logs ONE `Failed to update message
+    /// in chat` ERROR `{chatId, messageId, error}` and answers `null`, which v5
+    /// answers as `Ok(false)`. The row is untouched.
+    #[test]
+    fn a_parse_failure_answers_false_and_logs_once() {
+        let (_dir, w) = seeded();
+        let (found, lines) = crate::test_support::captured_with(|| {
+            w.chat_messages()
+                .update_message("c1", "m1", &serde_json::json!({ "content": 42 }))
+        });
+        assert!(!found.expect("v4's safeQuery never throws here"));
+        let errors = update_errors(&lines);
+        assert_eq!(errors.len(), 1, "one ERROR: {lines:?}");
+        let line = errors[0];
+        assert!(
+            line.starts_with("ERROR quilltap::db"),
+            "level/target: {line}"
+        );
+        assert!(line.contains("context=db.chats-messages"), "{line}");
+        assert!(line.contains("chatId=c1"), "{line}");
+        assert!(line.contains("messageId=m1"), "{line}");
+        assert!(line.contains("updateMessage parse"), "{line}");
+        let content: String = w
+            .connection()
+            .query_row(
+                "SELECT content FROM chat_messages WHERE id = 'm1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(content, "hi", "a refused update writes nothing");
+    }
+
+    /// The find reads through the STRICT variant: a read failure inside
+    /// `updateMessage` is v4's `Failed to update message in chat` — never
+    /// `Failed to get messages for chat` followed by a silent "not found".
+    #[test]
+    fn a_read_failure_inside_the_update_logs_the_update_line_not_the_read_line() {
+        let (_dir, w) = seeded();
+        w.connection()
+            .execute_batch(r#"ALTER TABLE "chat_messages" RENAME TO "chat_messages_gone""#)
+            .expect("plant");
+        let (found, lines) = crate::test_support::captured_with(|| {
+            w.chat_messages()
+                .update_message("c1", "m1", &serde_json::json!({ "content": "x" }))
+        });
+        assert!(!found.expect("v4's safeQuery never throws here"));
+        assert_eq!(update_errors(&lines).len(), 1, "{lines:?}");
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Failed to get messages for chat")),
+            "the find is strict: {lines:?}"
+        );
+    }
+
+    /// The silence legs: a successful update and a plain miss (v4's `findOne`
+    /// → `null` with no throw) never log the `safeQuery` ERROR.
+    #[test]
+    fn a_healthy_update_or_a_miss_does_not_log_the_safe_query_error() {
+        let (_dir, w) = seeded();
+        let (found, lines) = crate::test_support::captured_with(|| {
+            w.chat_messages()
+                .update_message("c1", "m1", &serde_json::json!({ "content": "x" }))
+        });
+        assert!(found.unwrap());
+        assert!(update_errors(&lines).is_empty(), "{lines:?}");
+        let (found, lines) = crate::test_support::captured_with(|| {
+            w.chat_messages()
+                .update_message("c1", "nope", &serde_json::json!({ "content": "x" }))
+        });
+        assert!(!found.unwrap());
+        assert!(update_errors(&lines).is_empty(), "{lines:?}");
     }
 }

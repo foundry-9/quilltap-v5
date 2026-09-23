@@ -251,6 +251,10 @@ fn chats_messages_ops_tier2_matches_oracle() {
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+    // P4.109: each `updateMessage` op's return (`null` ↔ `Ok(false)`, the
+    // event's id ↔ `Ok(true)`, an `Err` recorded as a string) and its
+    // ERROR/WARN lines, in op order — compared against `updateReturns`.
+    let mut update_returns: Vec<(Value, Vec<String>)> = Vec::new();
     {
         let repo = writer.chat_messages();
         for op in &spec.ops {
@@ -260,8 +264,19 @@ fn chats_messages_ops_tier2_matches_oracle() {
                     message_id,
                     updates,
                 } => {
-                    repo.update_message(chat_id, message_id, updates)
-                        .expect("update_message");
+                    let (got, lines) = quilltap_core::test_support::captured_with(|| {
+                        repo.update_message(chat_id, message_id, updates)
+                    });
+                    let returned = match got {
+                        Ok(true) => Value::String(message_id.clone()),
+                        Ok(false) => Value::Null,
+                        Err(e) => Value::String(format!("Err: {e}")),
+                    };
+                    let lines = lines
+                        .into_iter()
+                        .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+                        .collect();
+                    update_returns.push((returned, lines));
                 }
                 Op::DeleteMessagesByIds {
                     chat_id,
@@ -326,6 +341,7 @@ fn chats_messages_ops_tier2_matches_oracle() {
     let got_chats = writer.dump_table_json("chats", "id").expect("dump chats");
     let _ = std::fs::remove_file(&work);
 
+    assert_update_returns(&update_returns, &oracle["updateReturns"]);
     assert_dump_eq(&got_messages, &oracle["messages"], "chat_messages");
     let mut got_chats = got_chats;
     let mut want_chats = oracle["chats"].clone();
@@ -333,4 +349,49 @@ fn chats_messages_ops_tier2_matches_oracle() {
     assert_dump_eq(&got_chats, &want_chats, "chats");
 
     eprintln!("OK: chats messages ops tier-2 matched oracle.");
+}
+
+/// P4.109: v4's `updateMessage` is a FALLBACK `safeQuery` answering `null` —
+/// the `content: 42` op fails `ChatEventSchema.parse` and logs ONE `Failed to
+/// update message in chat {chatId, messageId}`; every other op is a silence
+/// leg. Per `updateMessage` op, in order: the return, then the lines by level,
+/// message and the two context fields.
+fn assert_update_returns(got: &[(Value, Vec<String>)], want: &Value) {
+    let want = want
+        .as_array()
+        .expect("the oracle carries updateReturns — regenerate it (P4.109)");
+    assert_eq!(
+        got.len(),
+        want.len(),
+        "updateMessage op count: rust vs oracle"
+    );
+    for (i, ((returned, lines), w)) in got.iter().zip(want).enumerate() {
+        assert_eq!(
+            returned, &w["returned"],
+            "updateMessage op {i} ({}): return — v4 `null` is v5 `Ok(false)`",
+            w["messageId"]
+        );
+        let w_logs = w["logs"].as_array().expect("logs");
+        assert_eq!(
+            lines.len(),
+            w_logs.len(),
+            "updateMessage op {i}: ERROR/WARN lines — v4 {w_logs:?} rust {lines:?}"
+        );
+        for (g, wl) in lines.iter().zip(w_logs) {
+            let level = wl["level"].as_str().unwrap().to_uppercase();
+            assert!(
+                g.starts_with(&format!("{level} quilltap::db")),
+                "op {i}: {g}"
+            );
+            assert!(
+                g.contains(wl["message"].as_str().unwrap()),
+                "op {i}: {wl} vs {g}"
+            );
+            for key in ["chatId", "messageId"] {
+                if let Some(v) = wl[key].as_str() {
+                    assert!(g.contains(&format!("{key}={v}")), "op {i}: {key}: {g}");
+                }
+            }
+        }
+    }
 }

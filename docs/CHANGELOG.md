@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — fix(db): update_message answers v4's null (Ok(false)) + ERROR on any inner failure
+
+_Versions: core 0.0.1004, harness 0.0.915._
+
+`update_message` now wraps its body the way v4's fallback-mode `safeQuery`
+does: a failed find, parse or UPDATE logs `Failed to update message in chat
+{chatId, messageId, error}` and answers `Ok(false)`, the same value as "no
+such message". All nine production callers were audited against v4's `null`
+handling; none needed a change (each already maps `Ok(false)` to v4's
+404-or-ignore). `chats_messages_ops_tier2` gains a `content: 42` update and
+now compares every update's return value and log lines against v4.
+
 #### 2026-09-23 — fix(db): get_messages is v4's safeQuery fallback — [] + ERROR, with a get_messages_strict sibling chosen per caller
 
 _Versions: core 0.0.1003, harness 0.0.914._

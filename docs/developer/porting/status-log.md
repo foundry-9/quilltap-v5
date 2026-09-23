@@ -144471,3 +144471,43 @@ committed main in v4, keep going."** Every regen after it came from the
 | db/chats_search.rs:`count_messages_with_text` / `find_messages_with_text` / `replace_in_messages` | — | chats-search.ops.ts:123 / :154 / :286 | `this.messagesOps.getMessages` | fallback | the order's point: the swallow is here |
 | db/chats_messages_read.rs tests (2 pre-existing) · brahma_console/orchestrator/tests.rs (2) | unit tests | — | — | fallback | healthy fixtures; unchanged |
 
+
+### Unit 2 — `update_message` → `Ok(false)` + ERROR (commit `fix(db): update_message answers v4's null…`)
+
+- **v4 measured:** `updateMessage` is `safeQuery(…, 'Failed to update message
+  in chat', { chatId, messageId }, null)`. The port: `update_message_inner` =
+  the old body; the wrap logs `tracing::error!(target "quilltap::db", context
+  = "db.chats-messages", chatId, messageId, error, …)` and answers
+  `Ok(false)`. `find_event_value` reads STRICT (unit 1).
+- **The nine callers audited (Tier 1 item 3)** — NO hunk needed at any:
+
+  | v5 caller | v4 counterpart | v4 `null` handling | v5 today | change |
+  |---|---|---|---|---|
+  | `api/salon.rs:1058` `message_edit` | `messages/[id]/route.ts:127` PUT | `null` → 404 `Message` | `Ok(false)` → 404; `Err` → 500 | none — a parse/read failure now 404s as v4 does; `Err` stays for a writer failure |
+  | `api/files.rs:669` | `files/[id]/shared.ts:69` | return ignored | `?` | none — `?` no longer fires on an inner failure, v4 continues likewise |
+  | `generators/rename.rs:762` | `character-rename.service.ts:412` | ignored | `?` | none (same) |
+  | `services/carina_memory_extraction.rs:303` | `carina-memory-extraction.ts:184` | ignored (in try) | `let _ =` | none |
+  | `services/memory_extraction_job.rs:367` | `memory-extraction.ts:201` | ignored (in try) | `let _ =` | none |
+  | `services/regenerate_swipe.rs:895` | `regenerate-swipe.service.ts:282` | ignored | `.map(|_| ())?` | none |
+  | `services/courier_transport.rs:635` | `chats/[id]/messages/[messageId]/route.ts:132` | ignored — `chats.update` still runs | `?` then `chats().update` | none — the unpause/checkpoint now lands after a refused edit, as v4's does |
+  | `services/message_reattribute.rs:116` | `messages/[id]/route.ts:488` | `null` → 404 before `chats.update` | `Ok(false)` → 404, `chats().update` skipped | none |
+  | `services/orchestrator.rs:1807` | `orchestrator.service.ts:825` | in try/catch → warn (unreachable in v4: `safeQuery` swallows first) | `.map(|_| ())?` | none |
+
+  Hence NO §R.10(i) out-of-mandate edit was made; `git diff main` on the
+  nine files is empty.
+- **Differential:** `chats_messages_ops_tier2` gains op 3, `updateMessage`
+  `{content: 42}` (a type mismatch in Zod AND serde) on an existing row. The
+  case and the Rust side now record every `updateMessage` op's RETURN (v4 the
+  event's id or `null`; v5 `Ok(true)`/`Ok(false)`/`Err` string) and its
+  ERROR/WARN lines; the three pre-existing update ops are the silence legs.
+  v4: `null` + ONE `Failed to update message in chat {chatId, messageId}`;
+  final state unchanged. **Red-first** (the wrap dropped): op 3 `Err:
+  updateMessage parse: invalid type: integer `42`, expected a string` vs
+  `null` (before this lane the family would have panicked at the old
+  `.expect("update_message")`).
+- **Unit pins** (`chats_messages.rs` `update_message_safe_query_tests`): a
+  parse failure → `Ok(false)` + one ERROR with context/chatId/messageId, row
+  untouched; a READ failure inside the update logs the update line and NOT
+  `Failed to get messages for chat` (the strict find); silence legs for a
+  healthy update and a plain miss.
+

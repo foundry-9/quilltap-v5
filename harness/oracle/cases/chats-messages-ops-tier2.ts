@@ -95,9 +95,47 @@ async function main(): Promise<void> {
   await initializeDatabase();
   const repo = new ChatsRepository();
 
+  // P4.109 — every `updateMessage` op's RETURN (`null` vs the event — here
+  // its id) and the ERROR/WARN lines it logged. v4's `updateMessage` is a
+  // FALLBACK `safeQuery` answering `null`; the type-mismatch op
+  // (`content: 42`) fails `ChatEventSchema.parse` and must log `Failed to
+  // update message in chat` — the three healthy/miss ops are its silence legs.
+  // Recorded off the `Logger` prototype (singleton and children alike, before
+  // the level check), only while an update runs.
+  const updateReturns: Array<Record<string, unknown>> = [];
+  let opLogs: Array<Record<string, unknown>> | null = null;
+  const { Logger } = await import('@/lib/logger');
+  for (const level of ['error', 'warn'] as const) {
+    const original = Logger.prototype[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      const line: Record<string, unknown> = { level, message };
+      for (const key of ['chatId', 'messageId']) {
+        if (context && key in context) line[key] = context[key];
+      }
+      opLogs?.push(line);
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+
   for (const op of spec.ops) {
     if (op.kind === 'updateMessage') {
-      await repo.updateMessage(op.chatId, op.messageId as string, op.updates as never);
+      opLogs = [];
+      const returned = await repo.updateMessage(
+        op.chatId,
+        op.messageId as string,
+        op.updates as never,
+      );
+      updateReturns.push({
+        messageId: op.messageId,
+        returned: returned === null ? null : returned.id,
+        logs: opLogs,
+      });
+      opLogs = null;
     } else if (op.kind === 'deleteMessagesByIds') {
       await repo.deleteMessagesByIds(op.chatId, op.messageIds as string[]);
     } else if (op.kind === 'clearMessages') {
@@ -127,7 +165,9 @@ async function main(): Promise<void> {
 
   await closeDatabase();
 
-  process.stdout.write(JSON.stringify({ case: 'chats-messages-ops-tier2', messages, chats }) + '\n');
+  process.stdout.write(
+    JSON.stringify({ case: 'chats-messages-ops-tier2', updateReturns, messages, chats }) + '\n',
+  );
   process.exit(0);
 }
 
