@@ -44,7 +44,7 @@ pub fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
 /// kept verbatim**, string literals included.
 ///
 /// Two properties that pull in opposite directions, and getting them mixed up
-/// cost this census its most important arm:
+/// cost the compressed-column census its most important arm:
 ///
 /// 1. **Finding an item's boundary needs a LEXER.** The sibling census
 ///    (`stream_watchdog_wrap_census.rs`) balances braces by counting `{`/`}`
@@ -59,8 +59,9 @@ pub fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
 ///    literal. So [`next_token`] skips strings, raw strings, char literals and
 ///    both comment forms when hunting for the closing brace.
 ///
-/// 2. **The OUTPUT must keep string literals.** The thing this census searches
-///    for — `INSERT INTO chat_messages (… content …)` — *is* a string literal.
+/// 2. **The OUTPUT must keep string literals.** The thing the
+///    compressed-column census searches for — `INSERT INTO chat_messages (…
+///    content …)` — *is* a string literal.
 ///    An earlier draft emitted a space in place of every literal, and its
 ///    mutation proof duly survived: a brand-new file with an unconverted
 ///    `chat_messages` insert was not caught, because the insert had been
@@ -237,7 +238,7 @@ pub fn floor_boundary(s: &str, mut at: usize) -> usize {
 }
 
 /// The production zone with COMMENTS and STRING LITERALS removed — the view
-/// [`codec_calls`] counts over.
+/// the blob census's `codec_calls` counts over.
 ///
 /// Needed because the zone is verbatim (it must be, so arm (b) can read the
 /// SQL), which means a prose mention of `text_to_blob()` in a why-comment
