@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(harness): get_messages caller census guard
+
+_Versions: harness 0.0.918._
+
+New `get_messages_caller_census` counts the calls of `get_messages` and
+`get_messages_strict` in each file under `quilltap-core/src` and fails when a
+count moves, so a new caller has to choose a variant against v4. Plain
+per-line scan (P4.110's shared lexer is not on this base). 77 + 5 call sites
+in 50 files.
+
 #### 2026-09-23 — test(harness): ui-search poisoned-message-table regression arm
 
 _Versions: harness 0.0.917._

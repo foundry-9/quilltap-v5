@@ -144544,3 +144544,12 @@ committed main in v4, keep going."** Every regen after it came from the
   in the route touches `chat_messages`** (measured: the recorded lines are the
   search's alone). GREEN on arrival. `EXPECTED_CASES` 35 → 37.
 
+### Unit 5 — `get_messages_caller_census` (commit `test(harness): get_messages caller census guard`) — Tier 2 item 8
+
+- NEW guard: per-file counts of `get_messages(` / `get_messages_strict(`
+  calls under `quilltap-core/src` (comment lines skipped, definitions
+  subtracted, test modules counted), 50 files, **77 + 5** (the arithmetic is
+  in the test). A plain `rust_sources` scan — P4.110's shared lexer is not on
+  this base; the unifier may repoint it. The two importer rows carry the
+  RECORDED note.
+
