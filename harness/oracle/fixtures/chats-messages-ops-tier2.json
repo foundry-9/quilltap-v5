@@ -492,6 +492,21 @@
         "title": "renamed by a metadata patch",
         "messageCount": 99
       }
+    },
+    {
+      "kind": "plantNullContent",
+      "chatId": "c0000070-0000-4000-8000-000000000001",
+      "messageId": "e0000070-0000-4000-8000-000000000002"
+    },
+    {
+      "kind": "getMessages",
+      "chatId": "c0000070-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "replaceInMessages",
+      "chatId": "c0000070-0000-4000-8000-000000000001",
+      "searchText": "hello",
+      "replaceText": "howdy"
     }
   ]
 }

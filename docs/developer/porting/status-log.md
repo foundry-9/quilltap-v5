@@ -144511,3 +144511,25 @@ committed main in v4, keep going."** Every regen after it came from the
   `Failed to get messages for chat` (the strict find); silence legs for a
   healthy update and a plain miss.
 
+### Unit 3 — the corrupted-row skip (commit `fix(db): get_messages skips a corrupted row…`) — Tier 2 item 6
+
+- **v4 measured:** the per-row `ChatEventSchema.safeParse` skips with WARN
+  `Skipping corrupted chat message {chatId, messageId, messageType, errors}`.
+  The port: `get_messages_strict` marshals each row through `read_row`; a
+  CELL error (`InvalidColumnType` / `FromSqlConversionFailure` /
+  `IntegralValueOutOfRange`) skips the row with the WARN (`errors` carries
+  v5's cell error — v4's Zod issue strings have no v5 source; recorded); any
+  other error still fails the read. Both variants skip (the skip is inside
+  v4's operation, not its fallback).
+- **Differential:** `chats_messages_ops_tier2` gains `plantNullContent` (raw
+  SQL on the per-run copy, both sides), a `getMessages` op (ids + lines
+  compared), and a replace after it on the same chat. v4: keeps
+  `e0000070…01`, WARN for `…02` with `messageType: message`; the replace
+  lands (`howdy there`). **Red-first** (skip disabled): read 0 `[]` vs v4's
+  one id.
+- **Residual (named, not fixed):** `find_event_value` still reads the whole
+  chat, so an update TARGETING a corrupted row answers not-found in v5 where
+  v4's `findOne` finds it and repairs it (the `{...existing, ...updates}`
+  merge then passes Zod). P4.105's finding 1 named a `WHERE id = ? AND
+  chatId = ?` read for this; not in this order's scope.
+

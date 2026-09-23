@@ -65,6 +65,17 @@ enum Op {
         chat_id: String,
     },
     // ── P4.D183: the rest of the funnel, plus the two must-NOT-bump arms ──
+    // ── P4.109: P4.105's finding 1, a planted NULL-content row + a read ──
+    #[serde(rename = "plantNullContent")]
+    PlantNullContent {
+        #[serde(rename = "messageId")]
+        message_id: String,
+    },
+    #[serde(rename = "getMessages")]
+    GetMessages {
+        #[serde(rename = "chatId")]
+        chat_id: String,
+    },
     #[serde(rename = "addMessage")]
     AddMessage {
         #[serde(rename = "chatId")]
@@ -255,6 +266,8 @@ fn chats_messages_ops_tier2_matches_oracle() {
     // event's id ↔ `Ok(true)`, an `Err` recorded as a string) and its
     // ERROR/WARN lines, in op order — compared against `updateReturns`.
     let mut update_returns: Vec<(Value, Vec<String>)> = Vec::new();
+    // P4.109: each `getMessages` op's ids and ERROR/WARN lines.
+    let mut reads: Vec<(String, Value, Vec<String>)> = Vec::new();
     {
         let repo = writer.chat_messages();
         for op in &spec.ops {
@@ -284,6 +297,33 @@ fn chats_messages_ops_tier2_matches_oracle() {
                 } => {
                     repo.delete_messages_by_ids(chat_id, message_ids)
                         .expect("delete_messages_by_ids");
+                }
+                Op::PlantNullContent { message_id } => {
+                    writer
+                        .connection()
+                        .execute(
+                            "UPDATE chat_messages SET content = NULL WHERE id = ?1",
+                            [message_id],
+                        )
+                        .expect("plant the NULL content");
+                }
+                Op::GetMessages { chat_id } => {
+                    let (got, lines) = quilltap_core::test_support::captured_with(|| {
+                        quilltap_core::db::chats_messages_read::get_messages(
+                            writer.connection(),
+                            chat_id,
+                        )
+                    });
+                    let ids: Vec<Value> = got
+                        .expect("get_messages never answers Err")
+                        .iter()
+                        .map(|e| e["id"].clone())
+                        .collect();
+                    let lines = lines
+                        .into_iter()
+                        .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+                        .collect();
+                    reads.push((chat_id.clone(), Value::Array(ids), lines));
                 }
                 Op::ClearMessages { chat_id } => {
                     repo.clear_messages(chat_id).expect("clear_messages");
@@ -342,6 +382,7 @@ fn chats_messages_ops_tier2_matches_oracle() {
     let _ = std::fs::remove_file(&work);
 
     assert_update_returns(&update_returns, &oracle["updateReturns"]);
+    assert_reads(&reads, &oracle["reads"]);
     assert_dump_eq(&got_messages, &oracle["messages"], "chat_messages");
     let mut got_chats = got_chats;
     let mut want_chats = oracle["chats"].clone();
@@ -390,6 +431,51 @@ fn assert_update_returns(got: &[(Value, Vec<String>)], want: &Value) {
             for key in ["chatId", "messageId"] {
                 if let Some(v) = wl[key].as_str() {
                     assert!(g.contains(&format!("{key}={v}")), "op {i}: {key}: {g}");
+                }
+            }
+        }
+    }
+}
+
+/// P4.109 / P4.105's finding 1: a NULL-content row is SKIPPED by v4's per-row
+/// `ChatEventSchema.safeParse` with WARN `Skipping corrupted chat message
+/// {chatId, messageId, messageType}` — the rest of the chat still reads (and
+/// the replace after it still lands, which the `chat_messages` dump holds).
+fn assert_reads(got: &[(String, Value, Vec<String>)], want: &Value) {
+    let want = want
+        .as_array()
+        .expect("the oracle carries reads — regenerate it (P4.109)");
+    assert_eq!(
+        got.len(),
+        want.len(),
+        "getMessages op count: rust vs oracle"
+    );
+    for (i, ((chat_id, ids, lines), w)) in got.iter().zip(want).enumerate() {
+        assert_eq!(
+            chat_id.as_str(),
+            w["chatId"].as_str().unwrap(),
+            "read {i}: chat"
+        );
+        assert_eq!(ids, &w["ids"], "read {i}: the ids v4's getMessages keeps");
+        let w_logs = w["logs"].as_array().expect("logs");
+        assert_eq!(
+            lines.len(),
+            w_logs.len(),
+            "read {i}: ERROR/WARN lines — v4 {w_logs:?} rust {lines:?}"
+        );
+        for (g, wl) in lines.iter().zip(w_logs) {
+            let level = wl["level"].as_str().unwrap().to_uppercase();
+            assert!(
+                g.starts_with(&format!("{level} quilltap::db")),
+                "read {i}: {g}"
+            );
+            assert!(
+                g.contains(wl["message"].as_str().unwrap()),
+                "read {i}: {wl} vs {g}"
+            );
+            for key in ["chatId", "messageId", "messageType"] {
+                if let Some(v) = wl[key].as_str() {
+                    assert!(g.contains(&format!("{key}={v}")), "read {i}: {key}: {g}");
                 }
             }
         }

@@ -44,7 +44,12 @@ interface Op {
     | 'addMessage'
     | 'addMessages'
     | 'replaceInMessages'
-    | 'chatUpdate';
+    | 'chatUpdate'
+    // P4.109: P4.105's finding 1 — a NULL-content row planted on the per-run
+    // copy (only corrupt or hand-edited data carries one; v4 writes `content`
+    // through a required Zod string), then a read that must SKIP it.
+    | 'plantNullContent'
+    | 'getMessages';
   chatId: string;
   messageId?: string;
   updates?: Record<string, unknown>;
@@ -103,6 +108,7 @@ async function main(): Promise<void> {
   // Recorded off the `Logger` prototype (singleton and children alike, before
   // the level check), only while an update runs.
   const updateReturns: Array<Record<string, unknown>> = [];
+  const reads: Array<Record<string, unknown>> = [];
   let opLogs: Array<Record<string, unknown>> | null = null;
   const { Logger } = await import('@/lib/logger');
   for (const level of ['error', 'warn'] as const) {
@@ -114,7 +120,7 @@ async function main(): Promise<void> {
       ...rest: unknown[]
     ) {
       const line: Record<string, unknown> = { level, message };
-      for (const key of ['chatId', 'messageId']) {
+      for (const key of ['chatId', 'messageId', 'messageType']) {
         if (context && key in context) line[key] = context[key];
       }
       opLogs?.push(line);
@@ -150,6 +156,18 @@ async function main(): Promise<void> {
         op.searchText as string,
         op.replaceText as string,
       );
+    } else if (op.kind === 'plantNullContent') {
+      await rawQuery(
+        `UPDATE chat_messages SET content = NULL WHERE id = '${op.messageId as string}'`,
+      );
+    } else if (op.kind === 'getMessages') {
+      // v4 `getMessages`: the per-row `ChatEventSchema.safeParse` skips the
+      // NULL-content row with WARN `Skipping corrupted chat message` and
+      // answers the rest.
+      opLogs = [];
+      const events = await repo.getMessages(op.chatId);
+      reads.push({ chatId: op.chatId, ids: events.map((e) => e.id), logs: opLogs });
+      opLogs = null;
     } else if (op.kind === 'chatUpdate') {
       // The arm that says what must NOT move: a plain metadata patch. The
       // counter is outside `ChatMetadataSchema`, so Zod strips it from the
@@ -166,7 +184,7 @@ async function main(): Promise<void> {
   await closeDatabase();
 
   process.stdout.write(
-    JSON.stringify({ case: 'chats-messages-ops-tier2', updateReturns, messages, chats }) + '\n',
+    JSON.stringify({ case: 'chats-messages-ops-tier2', updateReturns, reads, messages, chats }) + '\n',
   );
   process.exit(0);
 }

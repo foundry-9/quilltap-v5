@@ -297,6 +297,41 @@ fn marshal_row(row: &Row) -> Result<Option<Value>, rusqlite::Error> {
 /// `chats-messages.ops.ts`).
 const LOG_CONTEXT: &str = "db.chats-messages";
 
+/// One row as `get_messages` sees it: kept, dropped for an unknown `type`, or
+/// CORRUPTED — a cell `marshal_row` cannot read as its member's type.
+enum RowOutcome {
+    Event(Option<Value>),
+    Corrupted {
+        id: Option<String>,
+        typ: Option<String>,
+        error: rusqlite::Error,
+    },
+}
+
+/// Is this a per-CELL read failure (the row's own data does not fit its
+/// member — v4's `ChatEventSchema.safeParse` failing on that one row) rather
+/// than a failure of the statement itself?
+fn is_cell_error(e: &rusqlite::Error) -> bool {
+    matches!(
+        e,
+        rusqlite::Error::InvalidColumnType(..)
+            | rusqlite::Error::FromSqlConversionFailure(..)
+            | rusqlite::Error::IntegralValueOutOfRange(..)
+    )
+}
+
+fn read_row(row: &Row) -> Result<RowOutcome, rusqlite::Error> {
+    match marshal_row(row) {
+        Ok(v) => Ok(RowOutcome::Event(v)),
+        Err(e) if is_cell_error(&e) => Ok(RowOutcome::Corrupted {
+            id: row.get::<_, Option<String>>(0).ok().flatten(),
+            typ: row.get::<_, Option<String>>(1).ok().flatten(),
+            error: e,
+        }),
+        Err(e) => Err(e),
+    }
+}
+
 /// `getMessages` — all events for a chat, ordered by `createdAt` ascending
 /// (v4 `find({ chatId }, { sort: { createdAt: 1 } })`), each marshaled through
 /// its union member; unrecognized rows are skipped.
@@ -333,15 +368,34 @@ pub fn get_messages(conn: &Connection, chat_id: &str) -> Result<Vec<Value>, DbEr
 /// [`get_messages`] WITHOUT v4's `safeQuery` fallback: a failing read answers
 /// `Err`. For the call sites whose v4 counterpart rethrows or reads the rows
 /// some other way (see [`get_messages`]).
+///
+/// A CORRUPTED row — one whose cells do not fit its member, e.g. a NULL
+/// `content` — is skipped with v4's WARN `Skipping corrupted chat message`
+/// (`chats-messages.ops.ts:346`, the per-row `ChatEventSchema.safeParse`), not
+/// allowed to fail the whole chat (P4.105's finding 1). v4's `errors` field
+/// carries Zod issue strings v5 has no source for; v5 logs the cell error in
+/// its place.
 pub fn get_messages_strict(conn: &Connection, chat_id: &str) -> Result<Vec<Value>, DbError> {
     let sql =
         format!("SELECT {COLUMNS} FROM chat_messages WHERE chatId = ?1 ORDER BY createdAt ASC");
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map([chat_id], marshal_row)?;
+    let rows = stmt.query_map([chat_id], read_row)?;
     let mut out = Vec::new();
     for r in rows {
-        if let Some(v) = r? {
-            out.push(v);
+        match r? {
+            RowOutcome::Event(Some(v)) => out.push(v),
+            RowOutcome::Event(None) => {}
+            RowOutcome::Corrupted { id, typ, error } => {
+                tracing::warn!(
+                    target: "quilltap::db",
+                    context = LOG_CONTEXT,
+                    chatId = chat_id,
+                    messageId = id.as_deref().unwrap_or("unknown"),
+                    messageType = typ.as_deref().unwrap_or("unknown"),
+                    error = %error,
+                    "Skipping corrupted chat message",
+                );
+            }
         }
     }
     Ok(out)
@@ -543,5 +597,43 @@ mod tests {
         let (events, lines) = crate::test_support::captured_with(|| get_messages(&conn, "c1"));
         assert_eq!(ids(&events.unwrap()), ["m1", "m2", "m3"]);
         assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// P4.105's finding 1: ONE corrupted row — a NULL `content`, which v4's
+    /// per-row `ChatEventSchema.safeParse` rejects — is skipped with v4's WARN
+    /// `Skipping corrupted chat message` `{chatId, messageId, messageType}`;
+    /// the rest of the chat still reads. Both variants skip (the skip is inside
+    /// v4's `safeQuery` operation, not its fallback).
+    #[test]
+    fn a_null_content_row_is_skipped_with_a_warn_not_fatal() {
+        let conn = three_rows();
+        conn.execute(
+            "UPDATE chat_messages SET content = NULL WHERE id = 'm2'",
+            [],
+        )
+        .unwrap();
+        for strict in [false, true] {
+            let (events, lines) = crate::test_support::captured_with(|| {
+                if strict {
+                    get_messages_strict(&conn, "c1")
+                } else {
+                    get_messages(&conn, "c1")
+                }
+            });
+            assert_eq!(
+                ids(&events.expect("one bad row never fails the chat")),
+                ["m1", "m3"]
+            );
+            assert_eq!(lines.len(), 1, "strict={strict}: {lines:?}");
+            let line = &lines[0];
+            assert!(
+                line.starts_with("WARN quilltap::db"),
+                "level/target: {line}"
+            );
+            assert!(line.contains("Skipping corrupted chat message"), "{line}");
+            assert!(line.contains("chatId=c1"), "{line}");
+            assert!(line.contains("messageId=m2"), "{line}");
+            assert!(line.contains("messageType=message"), "{line}");
+        }
     }
 }

@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — fix(db): get_messages skips a corrupted row with v4's WARN instead of failing the whole chat
+
+_Versions: core 0.0.1005, harness 0.0.916._
+
+A message row whose cells do not fit its type (a NULL `content`) is now
+skipped with v4's WARN `Skipping corrupted chat message {chatId, messageId,
+messageType}`; the rest of the chat still reads. Before, one such row failed
+every transcript read of that chat (P4.105's finding 1). Statement-level
+failures still fail the read. `chats_messages_ops_tier2` plants a NULL-content
+row on its per-run copy, reads the chat, and runs a replace after it.
+
 #### 2026-09-23 — fix(db): update_message answers v4's null (Ok(false)) + ERROR on any inner failure
 
 _Versions: core 0.0.1004, harness 0.0.915._
