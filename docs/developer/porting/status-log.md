@@ -144917,3 +144917,38 @@ superseded by the ledger, which is the record.
   `files`, and v4 has no switch to compare (`import-files.ts` always
   transcodes with real sharp) — the recording-codec test is the proof, as
   the order states.
+
+### Unit 4 — the other walker copies (Tier 2 item 5)
+
+- **Measured before touching (the order's premise, "ten copies", was
+  wrong):** diffed each copy against the shared `rust_sources`/
+  `core_src_root` (a script extracting each `fn` whole). IDENTICAL:
+  `stream_watchdog_wrap_census` (walker + root; its naive-brace
+  `production_zone` LEFT, as ordered) and `blob_path_normaliser_census`
+  (walker + root). A DIFFERENT walker — all of `crates/`, skipping `target`
+  and `vendor`, matching `name.ends_with(".rs")` — byte-identical in
+  `db_error_key_guard`, `deprecated_alias_callers_guard`,
+  `llm_log_duration_guard`, `participant_status_home_guard`,
+  `zod_issues_home_guard` (its `strip_test_modules` scanner LEFT), and
+  identical bar an owned `name` (`.to_string()`) in
+  `embedding_blob_binding_guard` → lifted as
+  `source_census::workspace_rust_sources` (with db_error_key's doc), each
+  guard importing it `as rust_sources` so no call site moves.
+  **NOT merged, behaviour differs:** `bare_cheap_llm_executor_guard`
+  (returns quietly on an unreadable dir — its `PRODUCTION_TREES` list names
+  crates a checkout may lack) and `role_mapper_inverse_guard` (skips no
+  directory). `transcript_version_read_order_guard` has no walker at all —
+  only its own `code_only` over a named file (the order listed it under
+  "diff first"; nothing to merge). Eight files repointed, not ten.
+- All ten census/guard binaries green by name (17 tests); clippy
+  `-D warnings` clean after the now-unused `Path` imports were dropped.
+- **Mutation (file backup, `cmp` revert):** both shared walkers stop
+  matching `.rs` (`"rsX"`). **Nine of ten binaries RED; the
+  compressed-column census SURVIVED** — its arm (a) reads rows by path and
+  its arm (b) iterates the walk with no floor, so an empty walk passes
+  vacuously. A finding in a file this lane owns (§R.10(h)) → FIXED: a
+  `files.len() > 500` floor (715 at the lift) with the why in a comment;
+  the same mutation then reddens it ("the walk found only 0 rust files");
+  green after the revert (3/3).
+- `repo_root()` is also copied across ~14 guards (seen in passing) — not in
+  this order's list; left, named here.

@@ -247,6 +247,18 @@ fn every_production_write_to_a_registered_column_goes_through_the_codec() {
     let root = core_src_root();
     let mut files = Vec::new();
     rust_sources(&root, &mut files);
+    // P4.110: a FLOOR on the walk. Arm (a) reads its rows by path, so only arm
+    // (b) depends on the walker — and an empty walk makes arm (b) pass
+    // vacuously. Measured when the walker moved to `source_census`: a mutation
+    // that stopped it matching `.rs` files reddened every other census on the
+    // shared walkers and left this one GREEN. (715 files at the lift.)
+    assert!(
+        files.len() > 500,
+        "the walk found only {} rust files under {} — arm (b) would be measuring \
+         nothing",
+        files.len(),
+        root.display()
+    );
 
     let mut problems: Vec<String> = Vec::new();
     let mut total = 0usize;

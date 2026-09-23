@@ -307,3 +307,35 @@ pub fn contains_word(haystack: &str, needle: &str) -> bool {
     }
     false
 }
+
+/// Every `.rs` file under `dir`, skipping build output (`target`) and the
+/// vendored SQLite3MC amalgamation's crate (`vendor` — 12 MB of C, no Rust of
+/// ours). The WORKSPACE walker: the guards that scan all of `crates/` (tests
+/// included) use this one; [`rust_sources`] is the core-`src` walker.
+///
+/// P4.110 lifted it from six guards that carried it byte-identical
+/// (`db_error_key_guard`, `deprecated_alias_callers_guard`,
+/// `llm_log_duration_guard`, `participant_status_home_guard`,
+/// `zod_issues_home_guard`, and `embedding_blob_binding_guard`, whose copy
+/// differed only by an owned `name`). Two further copies are NOT this walker
+/// and stay local: `bare_cheap_llm_executor_guard`'s returns quietly on an
+/// unreadable dir (its tree list names crates a checkout may lack), and
+/// `role_mapper_inverse_guard`'s skips no directory.
+pub fn workspace_rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()));
+    for entry in entries {
+        let path = entry.expect("dir entry").path();
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if path.is_dir() {
+            if name == "target" || name == "vendor" {
+                continue;
+            }
+            workspace_rust_sources(&path, out);
+        } else if name.ends_with(".rs") {
+            out.push(path);
+        }
+    }
+}

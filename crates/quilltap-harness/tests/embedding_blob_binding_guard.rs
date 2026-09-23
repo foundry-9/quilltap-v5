@@ -52,6 +52,10 @@
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test embedding_blob_binding_guard
 
+mod source_census;
+
+use source_census::workspace_rust_sources as rust_sources;
+
 use std::path::{Path, PathBuf};
 
 /// The registry mechanism, in every spelling worth refusing. v4's own name is
@@ -132,28 +136,6 @@ fn repo_root() -> PathBuf {
         .and_then(|p| p.parent())
         .expect("harness crate sits two levels under the repo root")
         .to_path_buf()
-}
-
-/// Every `.rs` file under `crates/`, skipping build output and the vendored
-/// SQLite3MC amalgamation (12 MB of C, no Rust of ours).
-fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()));
-    for entry in entries {
-        let path = entry.expect("dir entry").path();
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default()
-            .to_string();
-        if path.is_dir() {
-            if name == "target" || name == "vendor" {
-                continue;
-            }
-            rust_sources(&path, out);
-        } else if name.ends_with(".rs") {
-            out.push(path);
-        }
-    }
 }
 
 /// A needle's occurrences, split by where they sit.

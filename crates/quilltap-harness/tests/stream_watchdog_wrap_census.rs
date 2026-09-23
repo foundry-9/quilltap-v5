@@ -38,7 +38,9 @@
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test stream_watchdog_wrap_census
 
-use std::path::{Path, PathBuf};
+mod source_census;
+
+use source_census::{core_src_root, rust_sources};
 
 /// `(path under `crates/quilltap-core/src`, production `.stream_message(`
 /// calls, production `watch_stream(` calls, why)`.
@@ -127,26 +129,6 @@ const CENSUS: &[(&str, usize, usize, &str)] = &[
 
 const CALL: &str = ".stream_message(";
 const WRAP: &str = "watch_stream(";
-
-fn core_src_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("the harness crate sits two levels under the repo root")
-        .join("crates/quilltap-core/src")
-}
-
-fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()));
-    for entry in entries {
-        let path = entry.expect("dir entry").path();
-        if path.is_dir() {
-            rust_sources(&path, out);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            out.push(path);
-        }
-    }
-}
 
 /// The file with every `#[cfg(test)]` item removed by brace balance.
 ///

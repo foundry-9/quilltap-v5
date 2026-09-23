@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(harness): eight source guards share the census walkers; a floor on the compressed-column census's walk (P4.110 item 5)
+
+_Versions: harness 0.0.916._
+
+Eight more harness guards carried their own copy of a directory walker.
+Two (`stream_watchdog_wrap_census`, `blob_path_normaliser_census`) held
+byte-identical copies of the core-`src` walker and now use the shared
+`source_census::rust_sources`/`core_src_root`. Six (`db_error_key_guard`,
+`deprecated_alias_callers_guard`, `llm_log_duration_guard`,
+`participant_status_home_guard`, `zod_issues_home_guard`,
+`embedding_blob_binding_guard`) held a different walker — all of `crates/`,
+skipping `target` and `vendor` — which now lives once as
+`source_census::workspace_rust_sources`. Two guards whose walkers actually
+behave differently (`bare_cheap_llm_executor_guard`,
+`role_mapper_inverse_guard`) and the two deliberately different scanners
+stay as they are. Every guard's assertion is unchanged and green.
+
+A mutation that stops both shared walkers matching `.rs` files reddened
+nine of the ten binaries; the compressed-column census stayed green,
+because its tree-wide arm had no floor and passes vacuously on an empty
+walk. It now asserts the walk found more than 500 files (715 today), and
+the same mutation reddens it.
+
 #### 2026-09-23 — fix(import): execute_import's image codec is required, so reset and seed stop dropping theirs (P4.110 item 3)
 
 _Versions: core 0.0.1003, harness 0.0.915._

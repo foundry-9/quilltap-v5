@@ -21,30 +21,12 @@
 //! only compares the paths a corpus happens to exercise, and four of the five
 //! copies were never reachable from any oracle at all.
 
-use std::path::{Path, PathBuf};
+mod source_census;
+
+use source_census::{core_src_root, rust_sources};
 
 /// The one home, as a path relative to `crates/quilltap-core/src`.
 const CANONICAL_HOME: &str = "services/mount_index/blob_transcode.rs";
-
-fn core_src_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("the harness crate sits two levels under the repo root")
-        .join("crates/quilltap-core/src")
-}
-
-fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()));
-    for entry in entries {
-        let path = entry.expect("dir entry").path();
-        if path.is_dir() {
-            rust_sources(&path, out);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            out.push(path);
-        }
-    }
-}
 
 #[test]
 fn normalise_blob_relative_path_has_exactly_one_home() {

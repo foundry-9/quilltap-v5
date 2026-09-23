@@ -35,7 +35,11 @@
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test deprecated_alias_callers_guard
 
-use std::path::{Path, PathBuf};
+mod source_census;
+
+use source_census::workspace_rust_sources as rust_sources;
+
+use std::path::PathBuf;
 
 /// `(repo-relative path, expected occurrences, why this file may name it)`.
 const CENSUS: &[(&str, usize, &str)] = &[
@@ -85,25 +89,6 @@ fn repo_root() -> PathBuf {
         .and_then(|p| p.parent())
         .expect("harness crate sits two levels under the repo root")
         .to_path_buf()
-}
-
-fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()));
-    for entry in entries {
-        let path = entry.expect("dir entry").path();
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default();
-        if path.is_dir() {
-            if name == "target" || name == "vendor" {
-                continue;
-            }
-            rust_sources(&path, out);
-        } else if name.ends_with(".rs") {
-            out.push(path);
-        }
-    }
 }
 
 #[test]
