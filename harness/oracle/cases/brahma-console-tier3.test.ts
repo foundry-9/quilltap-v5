@@ -27,6 +27,30 @@
  * is called with the per-case userId (four users exercise the profile / api-key
  * branches).
  *
+ * P4.D216 (v4 `d1c06cd9d` — the loop moved into the shared
+ * `lib/services/agent-loop/one-shot-loop.ts`):
+ *   - **Log lines.** `createServiceLogger` is wrapped so the two services this
+ *     family reaches — `OneShotToolLoop` (the eight loop lines under the
+ *     caller's label) and `BrahmaOneShot` (the no-profile debug) — are RECORDED
+ *     per case (`{ level, message, context }`); every other service logs as
+ *     before. The Rust side captures its tracing events structurally and diffs
+ *     them line for line, so a missing, extra, reordered or re-fielded line is
+ *     a red.
+ *   - **Loop-direct arms** (`spec.loopCases`) drive v4's REAL
+ *     `runOneShotToolLoop` itself — `runBrahmaQuery` passes no `signal`, no
+ *     `onReasoning` and no `logType`, so the abort seam, the reasoning
+ *     callback, the usage sum, the default label and the log type are only
+ *     reachable from here. Each arm records the result (`{ ok, answer,
+ *     toolsExecuted, usage }` / `{ ok: false, detail }` / `{ threw }`), the
+ *     `onReasoning` calls, the log lines, and — per stream call that reaches its
+ *     terminal chunk (where v4's real `streamMessage` writes its `llm_logs` row,
+ *     BEFORE yielding it) — the `logType` that row would carry (`opts.logType ??
+ *     'CHAT_MESSAGE'`, the destructure default). Two trip hooks: a chunk whose
+ *     `reasoningContent` equals the arm's `abortOnReasoning` aborts from inside
+ *     `onReasoning` (the NEXT chunk is the mid-stream break); a raw-response
+ *     marker equal to `abortOnMarker` aborts from inside detection (after the
+ *     mid-stream check — the loop-top check is the between-turns break).
+ *
  * Run from the v4 server checkout under Node 24 (jest ignores `.claude/` worktree
  * paths, so mirror the oracle + spec to /tmp — see header of the Rust test):
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -53,6 +77,10 @@ interface ChunkSpec {
   content?: string;
   done?: boolean;
   rawResponse?: unknown;
+  /** P4.D216: a reasoning delta (cumulative, as providers send it). */
+  reasoningContent?: string;
+  /** P4.D216: usage on the terminal chunk. */
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
   /** A scripted mid-stream provider throw (P4.79's `stream_error_mid_turn`). */
   error?: string;
 }
@@ -66,9 +94,25 @@ interface CaseSpec {
    * forced-final turn to exercise the salvage. */
   maxAgentTurns?: number;
 }
+/** P4.D216: an arm that drives `runOneShotToolLoop` directly. */
+interface LoopCaseSpec {
+  name: string;
+  userId: string;
+  chatId: string;
+  userMessage: string;
+  maxAgentTurns: number;
+  logLabel?: string;
+  logType?: string;
+  abortOnReasoning?: string;
+  abortOnMarker?: string;
+  streams: ChunkSpec[][];
+}
 interface Spec {
   testPepperBase64: string;
   chatId: string;
+  loopProfile: { id: string; name: string; provider: string; modelName: string };
+  loopSystemPrompt: string;
+  loopCases: LoopCaseSpec[];
   detection: Record<
     string,
     Array<{ name: string; arguments: Record<string, unknown>; callId?: string }>
@@ -104,8 +148,13 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  let currentCase: CaseSpec = spec.cases[0];
+  let currentCase: { name: string; streams: ChunkSpec[][] } = spec.cases[0];
   let streamCallIndex = 0;
+  // P4.D216: the loop-direct arms' trip hooks and per-call log-type record.
+  let currentAbort: AbortController | null = null;
+  let currentAbortOnMarker: string | undefined;
+  let loggedTypes: string[] = [];
+  const logLines: Array<{ level: string; message: string; context: unknown }> = [];
   const cannedRows: Array<{
     provider: string;
     model: string;
@@ -129,6 +178,23 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/database/repositories', () => jest.requireActual('@/lib/database/repositories'));
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
 
+  // P4.D216: record the two services' log lines; every other logger is real.
+  jest.doMock('@/lib/logging/create-logger', () => {
+    const actual = jest.requireActual('@/lib/logging/create-logger');
+    const RECORDED = new Set(['OneShotToolLoop', 'BrahmaOneShot']);
+    return {
+      __esModule: true,
+      ...actual,
+      createServiceLogger: (serviceName: string) => {
+        if (!RECORDED.has(serviceName)) return actual.createServiceLogger(serviceName);
+        const rec = (level: string) => (message: string, context?: unknown) => {
+          logLines.push({ level, message, context: context ?? null });
+        };
+        return { debug: rec('debug'), info: rec('info'), warn: rec('warn'), error: rec('error') };
+      },
+    };
+  });
+
   // streamMessage: scripted per-case sequences popped in call order + RECORD the
   // canned key. buildTools stays REAL (its slate is invisible; the instructions +
   // modelSupportsNativeTools it feeds are what matter).
@@ -141,6 +207,7 @@ async function main(): Promise<void> {
         messages: Array<{ role: string; content: string }>;
         connectionProfile: { provider: string; modelName: string };
         modelParams?: { temperature?: number };
+        logType?: string;
       }) {
         const seq = currentCase.streams[streamCallIndex];
         streamCallIndex += 1;
@@ -160,7 +227,13 @@ async function main(): Promise<void> {
           // shape the `p4.9i2` §3 review pinned in the help loop.
           if (chunk.error) throw new Error(chunk.error);
           if (chunk.done) {
-            yield { done: true, rawResponse: chunk.rawResponse };
+            // v4's real `streamMessage` writes its `llm_logs` row HERE — as the
+            // terminal chunk passes through, before it is yielded — typed by
+            // the `logType = 'CHAT_MESSAGE'` destructure default (P4.D216).
+            loggedTypes.push(opts.logType ?? 'CHAT_MESSAGE');
+            yield { done: true, rawResponse: chunk.rawResponse, usage: chunk.usage };
+          } else if (chunk.reasoningContent !== undefined) {
+            yield { reasoningContent: chunk.reasoningContent };
           } else {
             yield { content: chunk.content };
           }
@@ -178,6 +251,9 @@ async function main(): Promise<void> {
       ...actual,
       detectToolCallsInResponse: (raw: unknown) => {
         const marker = (raw as { marker?: string } | null)?.marker;
+        // P4.D216: the between-turns trip — detection runs AFTER the loop's
+        // mid-stream abort check, so the next check is the loop top.
+        if (marker && marker === currentAbortOnMarker) currentAbort?.abort();
         return (marker && spec.detection[marker]) || [];
       },
     };
@@ -217,6 +293,7 @@ async function main(): Promise<void> {
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { runBrahmaQuery } = await import('@/lib/services/brahma-console/one-shot.service');
+  const oneShotLoop = await import('@/lib/services/agent-loop/one-shot-loop').catch(() => null);
   const { setBrahmaConsoleSettings } = await import('@/lib/instance-settings');
 
   await initializeDatabase();
@@ -258,9 +335,68 @@ async function main(): Promise<void> {
     }
 
     lines.push(JSON.stringify({ kind: 'result', call: call.name, result }));
+    lines.push(JSON.stringify({ kind: 'logs', call: call.name, lines: logLines.splice(0) }));
+  }
+
+  // P4.D216: the loop-direct arms (v4 `d1c06cd9d`'s `runOneShotToolLoop`; absent
+  // at an older pin, where nothing is emitted for them).
+  const loopCannedRows: typeof cannedRows = [];
+  if (oneShotLoop) {
+    const mainCanned = cannedRows.length;
+    for (const lc of spec.loopCases ?? []) {
+      currentCase = lc;
+      streamCallIndex = 0;
+      loggedTypes = [];
+      currentAbort = new AbortController();
+      currentAbortOnMarker = lc.abortOnMarker;
+      const reasoningCalls: string[] = [];
+      const controller = currentAbort;
+      let result: unknown;
+      try {
+        result = await oneShotLoop.runOneShotToolLoop({
+          repos,
+          userId: lc.userId,
+          chatId: lc.chatId,
+          connectionProfile: spec.loopProfile as never,
+          apiKey: 'unused-by-the-canned-stream',
+          systemPrompt: spec.loopSystemPrompt,
+          userMessage: lc.userMessage,
+          tools: { tools: [], modelSupportsNativeTools: true },
+          toolContext: {
+            chatId: lc.chatId,
+            userId: lc.userId,
+            operatorSurface: true,
+            pendingWardrobeAnnouncements: new Set<string>(),
+          } as never,
+          maxAgentTurns: lc.maxAgentTurns,
+          signal: controller.signal,
+          ...(lc.logType ? { logType: lc.logType as never } : {}),
+          ...(lc.logLabel ? { logLabel: lc.logLabel } : {}),
+          statusContext: { characterName: 'The Host', characterId: '' },
+          onReasoning: (r: string) => {
+            reasoningCalls.push(r);
+            if (lc.abortOnReasoning !== undefined && r === lc.abortOnReasoning) controller.abort();
+          },
+        });
+      } catch (err) {
+        result = { threw: err instanceof Error ? err.message : String(err) };
+      }
+      lines.push(
+        JSON.stringify({
+          kind: 'loopResult',
+          call: lc.name,
+          result,
+          reasoningCalls,
+          loggedTypes,
+          lines: logLines.splice(0),
+        })
+      );
+    }
+    loopCannedRows.push(...cannedRows.splice(mainCanned));
   }
 
   for (const row of cannedRows) lines.push(JSON.stringify({ kind: 'cannedStream', ...row }));
+  for (const row of loopCannedRows) lines.push(JSON.stringify({ kind: 'loopCannedStream', ...row }));
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

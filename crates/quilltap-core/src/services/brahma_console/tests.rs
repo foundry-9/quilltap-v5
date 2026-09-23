@@ -17,7 +17,10 @@ use crate::model::stream::{
 use crate::services::native_tool_loop::ToolCallDetector;
 use crate::services::tool_execution::{CannedToolRunner, ToolCall, ToolResult, ToolRunner};
 
+use super::orchestrator::normalize_tool_call_signature;
 use super::*;
+use crate::services::agent_loop::one_shot_loop::MAX_DUPLICATE_TOOL_CALLS;
+use crate::services::tool_call_threading::to_stream_messages;
 
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 

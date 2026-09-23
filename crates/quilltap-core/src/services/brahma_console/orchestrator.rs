@@ -80,10 +80,92 @@ use crate::services::tool_execution::{
 use crate::tools::pseudo_tool_support::ToolMode;
 
 use super::turn_budget::resolve_brahma_max_agent_turns;
-use super::{
-    b, build_brahma_system_prompt, normalize_tool_call_signature, plain_message,
-    resolve_brahma_connection_profile, s, MAX_DUPLICATE_TOOL_CALLS,
-};
+use super::{b, build_brahma_system_prompt, plain_message, resolve_brahma_connection_profile, s};
+
+/// v4's streaming-console stuck-loop threshold — a LOCAL `const
+/// MAX_DUPLICATE_TOOL_CALLS = 2` inside `processBrahmaResponse`
+/// (`orchestrator.service.ts:305`). The one-shot loop exports its own
+/// ([`crate::services::agent_loop::one_shot_loop::MAX_DUPLICATE_TOOL_CALLS`]);
+/// v4 keeps the two separately, and so does the port.
+const MAX_DUPLICATE_TOOL_CALLS: usize = 2;
+
+// ===========================================================================
+// The duplicate-call signature (shared with the one-shot loop).
+// ===========================================================================
+
+/// v4 `normalizeToolCallSignature` (`orchestrator.service.ts:78` — this module's
+/// v4 home; the one-shot loop imports it from here, as v4's `one-shot-loop.ts`
+/// imports it from the streaming console: "one rule for both loops"). The
+/// stuck-loop fingerprint: keys sorted, each
+/// STRING value whitespace-collapsed + trimmed + lowercased; non-string values
+/// pass through. Only EQUALITY matters (both differential sides feed identical
+/// tool calls, so both compute the same duplicate counts), so the exact
+/// `localeCompare`-vs-code-unit key order is not diff-critical.
+pub fn normalize_tool_call_signature(tool_calls: &[ToolCall]) -> String {
+    let projected: Vec<Value> = tool_calls
+        .iter()
+        .map(|tc| {
+            let mut args = serde_json::Map::new();
+            let mut keys: Vec<String> = tc
+                .arguments
+                .as_object()
+                .map(|o| o.keys().cloned().collect())
+                .unwrap_or_default();
+            keys.sort();
+            for k in keys {
+                let raw = tc.arguments.get(&k).cloned().unwrap_or(Value::Null);
+                let norm = match raw {
+                    Value::String(sv) => Value::String(collapse_ws_lower(&sv)),
+                    other => other,
+                };
+                args.insert(k, norm);
+            }
+            serde_json::json!({ "name": tc.name, "arguments": Value::Object(args) })
+        })
+        .collect();
+    serde_json::to_string(&projected).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// v4 `value.replace(/\s+/g, ' ').trim().toLowerCase()` (the JS `\s` set + default
+/// Unicode lowercasing; `str::to_lowercase` matches JS `toLowerCase` byte-for-byte
+/// per the ported case-mapping seam).
+fn collapse_ws_lower(v: &str) -> String {
+    let collapsed = collapse_js_whitespace(v);
+    js_trim(&collapsed).to_lowercase()
+}
+
+/// Collapse each run of JS-`\s` whitespace to a single ASCII space.
+fn collapse_js_whitespace(v: &str) -> String {
+    let mut out = String::with_capacity(v.len());
+    let mut in_ws = false;
+    for ch in v.chars() {
+        if is_js_whitespace(ch) {
+            if !in_ws {
+                out.push(' ');
+                in_ws = true;
+            }
+        } else {
+            out.push(ch);
+            in_ws = false;
+        }
+    }
+    out
+}
+
+/// JS `\s`: ` \t\n\r\x0b\x0c` + Unicode space separators + BOM/line/para sep.
+fn is_js_whitespace(ch: char) -> bool {
+    matches!(
+        ch,
+        ' ' | '\t' | '\n' | '\r' | '\u{000b}' | '\u{000c}' | '\u{00a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
+}
 
 // ===========================================================================
 // Deps + result / error types.

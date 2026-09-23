@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(agent-loop): the shared one-shot tool loop, with the Brahma one-shot as its thin wrapper (P4.D216 unit 3)
+
+_Versions: core 0.0.1016, harness 0.0.932._
+
+v4 `d1c06cd9d` moved the Brahma one-shot's inline agent loop into a shared
+`runOneShotToolLoop`. v5 does the same: new
+`services::agent_loop::one_shot_loop` holds `run_one_shot_tool_loop`,
+`build_one_shot_tool_instructions`, `resolve_one_shot_uses_text_block_tools`,
+`MAX_DUPLICATE_TOOL_CALLS`, `OneShotUsage`, `OneShotLoopResult` and the
+options struct, and `run_brahma_query` now calls it with the label
+`Brahma one-shot`. New relative to the old inline loop: the usage sum, the
+`toolsExecuted` count, an abort flag checked between turns and on every
+chunk, a reasoning callback, a log label, a log type for the stream call's
+`llm_logs` row, and a stream error returned as `Err` instead of folded in.
+The loop emits v4's eight log lines. Five of them are new in v4, and v5
+had also never emitted the stuck-loop warning, the empty-answer debug line,
+or the console's no-profile debug line. The duplicate-call signature moves
+to the streaming orchestrator, which is where v4 keeps it. The
+stream-watchdog wrap census moves its one-shot row to the new file.
+
+`brahma_console_tier3_equivalence` now diffs every case's log lines field by
+field. It also gains nine arms that call the loop directly: reasoning
+replace, the usage sum, the default label, the `SCENARIO_BUILDER` row type,
+submit after a tool call, both abort positions, an empty answer, a thrown
+stream, the stuck guard with the budget salvage, and the budget-turn JSON
+fallback. The existing corpus is byte-identical between the two v4 pins.
+With the new lines stripped, 11 of 14 cases and all 8 of the original loop
+arms go red. The budget-turn arm was added because the post-loop extraction
+mutation survived without it.
+
 #### 2026-09-23 — feat(tools): the tool slate's doc-tools mode, extras bag, and the Scenario Builder `search` variant (P4.D216 unit 2)
 
 _Versions: core 0.0.1015, harness 0.0.931._

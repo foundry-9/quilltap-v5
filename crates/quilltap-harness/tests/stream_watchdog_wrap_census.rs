@@ -96,10 +96,15 @@ const CENSUS: &[(&str, usize, usize, &str)] = &[
         "`stream_turn` — v4 help-chat/orchestrator.service.ts:361",
     ),
     (
-        "services/brahma_console/mod.rs",
+        // P4.D216 OUT-OF-MANDATE — the census owner preserves. v4 `d1c06cd9d`
+        // moved the Brahma one-shot's loop (and so its ONE stream call) into the
+        // shared `agent-loop/one-shot-loop.ts`; the port moved the row with it.
+        // The count is unchanged: one call, one wrap, in a different file.
+        "services/agent_loop/one_shot_loop.rs",
         1,
         1,
-        "the one-shot `run_stream` — v4 brahma-console/one-shot.service.ts:211",
+        "the one-shot loop's `run_stream` — v4 agent-loop/one-shot-loop.ts:219 \
+         (the Brahma one-shot's stream until `d1c06cd9d`; the Scenario Builder's too)",
     ),
     (
         "services/brahma_console/orchestrator.rs",

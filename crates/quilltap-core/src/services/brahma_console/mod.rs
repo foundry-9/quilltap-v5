@@ -21,6 +21,15 @@
 //! the no-profile error and anything else (or an internal failure) to `llm-failed`
 //! — so `run_brahma_query` NEVER throws, returning every failure as a `detail`.
 //!
+//! **Since v4 `d1c06cd9d` the loop itself is shared** — `run_brahma_query` is
+//! a thin wrapper over
+//! [`run_one_shot_tool_loop`](crate::services::agent_loop::one_shot_loop::run_one_shot_tool_loop)
+//! (label `Brahma one-shot`, the default `CHAT_MESSAGE` log type, a
+//! [`NoopSink`](crate::services::agent_loop::one_shot_loop::NoopSink)
+//! controller, no abort signal), exactly as v4's `runBrahmaQuery` became a
+//! caller of `runOneShotToolLoop`. The duplicate-call signature moved to its v4
+//! home, the streaming orchestrator.
+//!
 //! ## The seams
 //!
 //! Generic-consumed over the streaming provider / tool runner / tool detector (no
@@ -43,39 +52,20 @@ use serde_json::Value;
 use crate::db::runtime::Db;
 use crate::db::{connection_profiles, DbError};
 use crate::jsstr::js_trim;
-use crate::model::stream::{StreamParams, StreamingCompletionProvider};
-use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
+use crate::model::stream::StreamingCompletionProvider;
 use crate::provider_manifest::Registry;
-use crate::services::agent_mode::{
-    build_agent_mode_instructions, build_force_final_message,
-    extract_submit_final_response_from_text,
+use crate::services::agent_loop::one_shot_loop::{
+    build_one_shot_tool_instructions, run_one_shot_tool_loop, NoopSink, OneShotLoopDeps,
+    OneShotLoopResult, RunOneShotToolLoopOptions,
 };
 use crate::services::api_key_service::{self, ProfileApiKeyFailure, ProfileApiKeyResolution};
 use crate::services::carina_query::{BrahmaConsoleResult, RunBrahmaConsole};
-use crate::services::chat_events::{ChatEvent, EventSink};
 use crate::services::native_tool_loop::ToolCallDetector;
-use crate::services::pseudo_tool::{
-    build_native_tool_system_instructions, build_text_block_system_instructions,
-    check_should_use_text_block_tools, parse_text_blocks_from_response,
-    strip_text_block_markers_from_response, TextBlockEnabledToolOptions,
-};
-use crate::services::tool_build::{build_tools, BuildToolsInput};
-use crate::services::tool_call_threading::{
-    build_assistant_tool_call_message, build_tool_result_messages, to_stream_messages,
-    DetectedToolCall, ThreadedMessage,
-};
-use crate::services::tool_execution::{
-    process_tool_calls, StatusContext, ToolCall, ToolExecutionContext,
-};
-use crate::tools::pseudo_tool_support::ToolMode;
+use crate::services::pseudo_tool::TextBlockEnabledToolOptions;
+use crate::services::tool_build::{build_tools, BuildToolsExtras, BuildToolsInput, DocToolsMode};
+use crate::services::tool_execution::{StatusContext, ToolExecutionContext};
 
 use prompt_text::{BRAHMA_BASE_BRIEF, BRAHMA_SQL_PROMPT};
-
-/// v4's stuck-loop threshold (`MAX_DUPLICATE_TOOL_CALLS`) — consecutive duplicate
-/// or stale tool iterations before forcing a final answer. Independent of the
-/// operator-set agent-turn budget ([`turn_budget::resolve_brahma_max_agent_turns`]),
-/// which replaced v4's hardcoded `MAX_AGENT_TURNS = 25`.
-const MAX_DUPLICATE_TOOL_CALLS: usize = 2;
 
 // ===========================================================================
 // Small JSON accessors (private, mirrors carina_query's).
@@ -115,77 +105,6 @@ pub fn resolve_brahma_connection_profile(
     db.read_main(move |c| connection_profiles::find_default(c, &uid))
         .ok()
         .flatten()
-}
-
-/// v4 `normalizeToolCallSignature`. The stuck-loop fingerprint: keys sorted, each
-/// STRING value whitespace-collapsed + trimmed + lowercased; non-string values
-/// pass through. Only EQUALITY matters (both differential sides feed identical
-/// tool calls, so both compute the same duplicate counts), so the exact
-/// `localeCompare`-vs-code-unit key order is not diff-critical.
-pub fn normalize_tool_call_signature(tool_calls: &[ToolCall]) -> String {
-    let projected: Vec<Value> = tool_calls
-        .iter()
-        .map(|tc| {
-            let mut args = serde_json::Map::new();
-            let mut keys: Vec<String> = tc
-                .arguments
-                .as_object()
-                .map(|o| o.keys().cloned().collect())
-                .unwrap_or_default();
-            keys.sort();
-            for k in keys {
-                let raw = tc.arguments.get(&k).cloned().unwrap_or(Value::Null);
-                let norm = match raw {
-                    Value::String(sv) => Value::String(collapse_ws_lower(&sv)),
-                    other => other,
-                };
-                args.insert(k, norm);
-            }
-            serde_json::json!({ "name": tc.name, "arguments": Value::Object(args) })
-        })
-        .collect();
-    serde_json::to_string(&projected).unwrap_or_else(|_| "[]".to_string())
-}
-
-/// v4 `value.replace(/\s+/g, ' ').trim().toLowerCase()` (the JS `\s` set + default
-/// Unicode lowercasing; `str::to_lowercase` matches JS `toLowerCase` byte-for-byte
-/// per the ported case-mapping seam).
-fn collapse_ws_lower(v: &str) -> String {
-    let collapsed = collapse_js_whitespace(v);
-    js_trim(&collapsed).to_lowercase()
-}
-
-/// Collapse each run of JS-`\s` whitespace to a single ASCII space.
-fn collapse_js_whitespace(v: &str) -> String {
-    let mut out = String::with_capacity(v.len());
-    let mut in_ws = false;
-    for ch in v.chars() {
-        if is_js_whitespace(ch) {
-            if !in_ws {
-                out.push(' ');
-                in_ws = true;
-            }
-        } else {
-            out.push(ch);
-            in_ws = false;
-        }
-    }
-    out
-}
-
-/// JS `\s`: ` \t\n\r\x0b\x0c` + Unicode space separators + BOM/line/para sep.
-fn is_js_whitespace(ch: char) -> bool {
-    matches!(
-        ch,
-        ' ' | '\t' | '\n' | '\r' | '\u{000b}' | '\u{000c}' | '\u{00a0}' | '\u{1680}' | '\u{2000}'
-            ..='\u{200a}'
-                | '\u{2028}'
-                | '\u{2029}'
-                | '\u{202f}'
-                | '\u{205f}'
-                | '\u{3000}'
-                | '\u{feff}'
-    )
 }
 
 // ===========================================================================
@@ -235,172 +154,6 @@ where
 
 use crate::services::tool_execution::ToolRunner;
 
-/// A swallowing [`EventSink`] — the console emits NOTHING to SSE (v4's no-op
-/// `StreamController { enqueue: () => {} }`).
-struct NoopSink;
-impl EventSink for NoopSink {
-    fn emit(&self, _event: ChatEvent) {}
-}
-
-/// What one one-shot turn's `CHAT_MESSAGE` `llm_logs` row needs (v4's
-/// `streamMessage({..., userId, chatId})` — no `characterId`, no `messageId`:
-/// the console has neither). v4 logs EVERY `streamMessage` call at `chunk.done`
-/// (`streaming.service.ts:444`); the one-shot engine bypassed
-/// `primary_stream`'s logger entirely, so a real Brahma query left no row at
-/// all — dogfood finding #111's other half (2026-09-06).
-struct OneShotStreamLog<'a> {
-    db: &'a Db,
-    user_id: &'a str,
-    chat_id: &'a str,
-    profile: crate::services::primary_stream::EffectiveProfile,
-}
-
-/// The pieces one streamed LLM call yields.
-struct RunStreamResult {
-    answer: String,
-    raw_response: Option<Value>,
-    /// The turn's cumulative reasoning (last-wins; DISPLAY ONLY).
-    reasoning: String,
-    thought_signature: Option<String>,
-    /// A provider error mid-stream. v4's `for await` propagates it out of
-    /// `runBrahmaQuery` to the caller (`answerAsBrahma`'s try/catch, which
-    /// persists nothing and answers `{ok: false, error: {kind: 'llm-failed'}}`);
-    /// the chunks already forwarded stay forwarded on both sides. v5 has no
-    /// live-forward here (the one-shot's `sink` is a no-op — v4's is too), so
-    /// only the accumulated `answer` up to the throw matters.
-    error: Option<String>,
-}
-
-/// One streamed LLM call. The slate crosses the stream boundary losslessly (v4
-/// passes `ThreadedMessage[]` straight to `streamMessage`; P4.13 unit 2 made the
-/// v5 boundary carry the tool-call linkage instead of flattening it away).
-#[allow(clippy::too_many_arguments)]
-async fn run_stream<STR: StreamingCompletionProvider>(
-    streaming: &STR,
-    provider: &str,
-    base_url: Option<&str>,
-    model: &str,
-    messages: &[ThreadedMessage],
-    tools: &[Value],
-    log: Option<&OneShotStreamLog<'_>>,
-    watchdog_user_id: &str,
-    watchdog_chat_id: &str,
-) -> RunStreamResult {
-    // v4 `streaming.service.ts:382` — `const startTime = Date.now()`, captured
-    // immediately before the provider loop.
-    let started_at_ms = crate::clock::now_unix_ms();
-    // v4: `tools.length > 0 ? tools : undefined`.
-    let tools_value = if tools.is_empty() {
-        None
-    } else {
-        Some(Value::Array(tools.to_vec()))
-    };
-    let params = StreamParams {
-        messages: to_stream_messages(messages),
-        model: model.to_string(),
-        // v4 passes `modelParams: {}` — NO temperature (never the profile's).
-        temperature: None,
-        max_tokens: None,
-        top_p: None,
-        tools: tools_value,
-        // v4 hardcodes `useNativeWebSearch: false` in the Brahma stream.
-        web_search_enabled: false,
-        profile_parameters: None,
-        cache_key: None,
-        previous_response_id: None,
-        stop: Vec::new(),
-        // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
-        request_timeout_ms: None,
-    };
-    // A provider that answers with headers and then goes silent would otherwise
-    // hold this loop open forever — the SDK's own timeout stops at the headers.
-    // The watchdog turns that into an ordinary `Err` (v4 `f90144ac4`, bug 141;
-    // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
-    // consumers). v4's console calls pass `userId` + `chatId` only — the console
-    // has neither a `messageId` nor a `characterId` to carry.
-    let mut rx = watch_stream(
-        streaming.stream_message(provider, base_url, &params).await,
-        StallBudgets::default(),
-        StallWatchdogContext::streaming_service(provider, model).with_ids(
-            Some(watchdog_user_id),
-            Some(watchdog_chat_id),
-            None,
-            None,
-        ),
-    );
-    let mut answer = String::new();
-    let mut raw: Option<Value> = None;
-    let mut reasoning = String::new();
-    let mut thought_signature: Option<String> = None;
-    let mut usage: Option<crate::model::stream::StreamUsage> = None;
-    let mut cache_usage: Option<crate::model::stream::StreamCacheUsage> = None;
-    let mut raw_provider_usage: Option<Value> = None;
-    let mut error: Option<String> = None;
-    while let Some(chunk) = rx.recv().await {
-        match chunk {
-            Ok(c) => {
-                if let Some(rc) = &c.reasoning_content {
-                    if *rc != reasoning {
-                        reasoning = rc.clone();
-                    }
-                }
-                answer.push_str(&c.content);
-                if let Some(u) = c.usage {
-                    usage = Some(u);
-                }
-                if let Some(cu) = c.cache_usage {
-                    cache_usage = Some(cu);
-                }
-                if let Some(rpu) = c.raw_provider_usage {
-                    raw_provider_usage = Some(rpu);
-                }
-                if let Some(raw_r) = c.raw_response {
-                    raw = Some(raw_r);
-                }
-                if let Some(ts) = c.thought_signature {
-                    thought_signature = Some(ts);
-                }
-            }
-            Err(e) => {
-                error = Some(e.to_string());
-                break;
-            }
-        }
-    }
-    // v4 logs the call on `chunk.done` (a thrown stream logs nothing).
-    if error.is_none() {
-        if let Some(l) = log {
-            let ctx = crate::services::primary_stream::StreamLogCtx {
-                db: l.db,
-                user_id: l.user_id,
-                chat_id: l.chat_id,
-                message_id: "",
-                character_id: None,
-                log_context: &crate::services::llm_logging::LogContext::none(),
-                started_at_ms,
-            };
-            crate::services::primary_stream::log_chat_message_call(
-                &ctx,
-                &l.profile,
-                &params,
-                answer.clone(),
-                usage,
-                cache_usage,
-                raw_provider_usage,
-                raw.clone(),
-            )
-            .await;
-        }
-    }
-    RunStreamResult {
-        answer,
-        raw_response: raw,
-        reasoning,
-        thought_signature,
-        error,
-    }
-}
-
 fn fail(detail: impl Into<String>) -> BrahmaConsoleResult {
     BrahmaConsoleResult {
         ok: false,
@@ -412,6 +165,11 @@ fn fail(detail: impl Into<String>) -> BrahmaConsoleResult {
 /// Run an isolated Brahma Console query and return the final answer text (v4
 /// `runBrahmaQuery`). NEVER errors out of the function — every failure is a
 /// `BrahmaConsoleResult { ok: false, detail }`.
+///
+/// Since v4 `d1c06cd9d` the in-memory agent loop itself lives in
+/// [`run_one_shot_tool_loop`] (shared with the Scenario Builder); this function
+/// supplies the Brahma profile, slate, prompt and scope, and maps the loop's
+/// result onto the unchanged [`BrahmaConsoleResult`].
 pub async fn run_brahma_query<STR, TR, TD>(
     deps: &BrahmaQueryDeps<'_, STR, TR, TD>,
     user_id: &str,
@@ -426,12 +184,10 @@ where
     // 1. Profile (model): the user's default — no per-chat console profile from a
     //    Salon.
     let Some(profile) = resolve_brahma_connection_profile(deps.db, user_id, None) else {
+        tracing::debug!(chatId = %chat_id, "No connection profile resolvable for Brahma query");
         return fail("no-profile");
     };
     let provider = s(&profile, "provider").unwrap_or_default();
-    let model = s(&profile, "modelName").unwrap_or_default();
-    let base_url = s(&profile, "baseUrl");
-    let profile_id = s(&profile, "id").unwrap_or_default();
 
     // 2. API key: v4's `resolveConnectionProfileApiKey` (bug 81) — required where
     //    required, forwarded where merely accepted, and loud on a dangling id
@@ -459,9 +215,9 @@ where
         return fail(reason.describe());
     }
 
-    // 3. Tools — the console slate: agent mode, doc read/write, read-only run_sql,
-    //    search-without-memories; NO ask_carina (recursion guard), NO workspace
-    //    tools.
+    // 3. Tools — identical to the standalone console: agent mode, doc
+    //    read/write, the read-only run_sql tool, search-without-memories; NO
+    //    ask_carina (recursion guard), NO workspace tools.
     let provider_supports_web_search = Registry::built_in()
         .supports_capability(&provider, crate::provider_manifest::Capability::WebSearch);
     let no_disabled: [String; 0] = [];
@@ -486,8 +242,8 @@ where
             can_dress_themselves: false,
             can_create_outfits: false,
             // v4 `d1c06cd9d`: `'full'` for the old `true`.
-            doc_tools_mode: crate::services::tool_build::DocToolsMode::Full,
-            extras: crate::services::tool_build::BuildToolsExtras::default(),
+            doc_tools_mode: DocToolsMode::Full,
+            extras: BuildToolsExtras::default(),
             ask_carina_enabled: false,
             include_workspace_tools: false,
             exclude_memory_search: true,
@@ -501,23 +257,15 @@ where
         Ok(built) => built,
         Err(e) => return fail(format!("{e:?}")),
     };
-    let tools = built.tools;
-    let model_supports_native_tools = built.model_supports_native_tools;
 
-    // 4. Tool mode (native vs. text-block); simple-json COERCES to text-block.
-    let effective_pseudo_tool_mode: Option<ToolMode> =
-        match s(&profile, "pseudoToolMode").as_deref() {
-            Some("simple-json") => Some(ToolMode::TextBlock),
-            Some(other) => ToolMode::from_str(other),
-            None => Some(ToolMode::Auto), // v4 `?? 'auto'`.
-        };
-    let use_text_block_tools =
-        check_should_use_text_block_tools(model_supports_native_tools, effective_pseudo_tool_mode);
-
-    // 5. Instructions.
-    let mut tool_instructions = String::new();
-    if use_text_block_tools && !tools.is_empty() {
-        let opts = TextBlockEnabledToolOptions {
+    // 4. Operator-set turn budget (Settings → Chat → Brahma Console); shared
+    //    with the streaming orchestrator. The loop's stuck-loop guard is
+    //    independent of it.
+    let max_agent_turns = turn_budget::resolve_brahma_max_agent_turns(deps.db);
+    let tool_instructions = build_one_shot_tool_instructions(
+        &profile,
+        &built,
+        &TextBlockEnabledToolOptions {
             image_generation: false,
             search: true,
             web_search: b(&profile, "allowWebSearch").unwrap_or(false),
@@ -536,308 +284,73 @@ where
             wardrobe_create: false,
             wardrobe_update: false,
             wardrobe_archive: false,
-        };
-        tool_instructions = build_text_block_system_instructions(&opts);
-    } else if !tools.is_empty() {
-        tool_instructions = build_native_tool_system_instructions();
-    }
-    // Operator-set turn budget (Settings → Chat → Brahma Console); shared with
-    // the streaming orchestrator. The stuck-loop guard below is independent of it.
-    let max_agent_turns = turn_budget::resolve_brahma_max_agent_turns(deps.db);
-    let agent_instructions = build_agent_mode_instructions(max_agent_turns);
-    tool_instructions = if tool_instructions.is_empty() {
-        agent_instructions
-    } else {
-        format!("{tool_instructions}\n\n{agent_instructions}")
-    };
+        },
+        max_agent_turns,
+    );
 
     let system_prompt = build_brahma_system_prompt(&tool_instructions, true);
 
-    // 6. ISOLATION: system + the single question only — never the Salon transcript.
-    let mut conversation_messages: Vec<ThreadedMessage> = vec![
-        plain_message("system", &system_prompt),
-        plain_message("user", question),
-    ];
-
-    // v4: `(!useTextBlockTools && modelSupportsNativeTools) ? tools : []`.
-    let effective_tools: Vec<Value> = if !use_text_block_tools && model_supports_native_tools {
-        tools.clone()
-    } else {
-        Vec::new()
+    // 5. Operator surface (character-less, all-stores). Tool side effects (SQL
+    //    reads, doc writes) stand; the result MESSAGES are threaded in-memory
+    //    only and never persisted to the Salon.
+    let tool_context = ToolExecutionContext {
+        chat_id: chat_id.to_string(),
+        user_id: user_id.to_string(),
+        operator_surface: true,
+        pending_wardrobe_announcements: Arc::new(Mutex::new(std::collections::HashSet::new())),
+        ..Default::default()
     };
 
-    let status = StatusContext {
-        character_name: "Brahma Console".to_string(),
-        character_id: String::new(),
-    };
-
-    // v4 gates the CHAT_MESSAGE log on `if (userId)`; the one-shot console never
-    // has a `messageId` or `characterId` to carry (dogfood finding #111's other
-    // half — the one-shot engine wrote no `llm_logs` row at all).
-    let stream_log = (!user_id.is_empty()).then(|| OneShotStreamLog {
-        db: deps.db,
-        user_id,
-        chat_id,
-        profile: crate::services::primary_stream::EffectiveProfile {
-            id: profile_id.clone(),
-            name: s(&profile, "name").unwrap_or_default(),
-            provider: provider.clone(),
-            model_name: model.clone(),
-            base_url: base_url.clone(),
+    // 6. ISOLATION: the loop's slate is system + the single question only —
+    //    never the Salon transcript. No controller: nothing is surfaced live.
+    let result = run_one_shot_tool_loop(
+        &OneShotLoopDeps {
+            db: deps.db,
+            streaming: deps.streaming,
+            tool_runner: deps.tool_runner,
+            tool_detector: deps.tool_detector,
         },
-    });
-
-    // 7. The agent tool loop (its OWN loop, faithful to v4) — bounded by the
-    //    operator-set `max_agent_turns` resolved above.
-    let mut agent_turn_count: i64 = 0;
-    let mut full_response = String::new();
-    let mut tool_call_history: Vec<String> = Vec::new();
-    let mut seen_result_fingerprints: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
-    let mut stale_iterations: usize = 0;
-    let mut last_tool_result_text = String::new();
-
-    while agent_turn_count <= max_agent_turns {
-        agent_turn_count += 1;
-
-        if agent_turn_count == max_agent_turns {
-            conversation_messages.push(plain_message("user", &build_force_final_message()));
-        }
-
-        let stream = run_stream(
-            deps.streaming,
-            &provider,
-            base_url.as_deref(),
-            &model,
-            &conversation_messages,
-            &effective_tools,
-            stream_log.as_ref(),
+        RunOneShotToolLoopOptions {
             user_id,
             chat_id,
-        )
-        .await;
+            connection_profile: &profile,
+            system_prompt: &system_prompt,
+            user_message: question,
+            tools: &built,
+            tool_context: &tool_context,
+            max_agent_turns,
+            controller: &NoopSink,
+            signal: None,
+            log_type: None,
+            status_context: Some(StatusContext {
+                character_name: "Brahma Console".to_string(),
+                character_id: String::new(),
+            }),
+            on_reasoning: None,
+            log_label: Some("Brahma one-shot"),
+        },
+    )
+    .await;
+
+    match result {
+        Ok(OneShotLoopResult::Ok { answer, .. }) => BrahmaConsoleResult {
+            ok: true,
+            answer,
+            detail: None,
+        },
+        Ok(OneShotLoopResult::Failed { detail }) => fail(detail),
         // v4's `for await` propagates a mid-stream throw out of `runBrahmaQuery`
         // to the caller (`answerAsBrahma`'s own try/catch, which never persists
         // and converts it to `{ok: false, error: {kind: 'llm-failed', ...}}`) —
-        // the same class as the streaming orchestrator's finding-3 fix, mapped
-        // onto this engine's "never throws" idiom.
-        if let Some(e) = stream.error {
-            return fail(e);
-        }
-        let mut current_response = stream.answer;
-        let raw_response = stream.raw_response;
-        let turn_reasoning = stream.reasoning;
-        let turn_thought_signature = stream.thought_signature;
-
-        // Detect tool calls (native or text-block).
-        let mut has_tool_calls = false;
-        let mut tool_calls_to_process: Option<Vec<ToolCall>> = None;
-
-        if model_supports_native_tools && !use_text_block_tools {
-            if let Some(raw) = &raw_response {
-                let detected = deps.tool_detector.detect(raw, &provider);
-                if !detected.is_empty() {
-                    tool_calls_to_process = Some(detected);
-                    has_tool_calls = true;
-                }
-            }
-        } else if use_text_block_tools
-            && crate::tools::text_block_parser::has_text_block_markers(&current_response)
-        {
-            let parsed = parse_text_blocks_from_response(&current_response);
-            if !parsed.is_empty() {
-                tool_calls_to_process = Some(
-                    parsed
-                        .into_iter()
-                        .map(|p| ToolCall {
-                            name: p.name,
-                            arguments: p.arguments,
-                            call_id: None,
-                        })
-                        .collect(),
-                );
-                has_tool_calls = true;
-                current_response = strip_text_block_markers_from_response(&current_response);
-            }
-        }
-
-        // submit_final_response (agent-mode completion).
-        let mut is_submit_final = tool_calls_to_process
-            .as_ref()
-            .map(|calls| calls.iter().any(|tc| tc.name == "submit_final_response"))
-            .unwrap_or(false);
-        if is_submit_final {
-            if let Some(calls) = &tool_calls_to_process {
-                let submit = calls.iter().find(|tc| tc.name == "submit_final_response");
-                let final_content = submit
-                    .and_then(|c| c.arguments.get("response"))
-                    .and_then(Value::as_str)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-                    .unwrap_or_else(|| current_response.clone());
-                current_response = final_content;
-                full_response = current_response.clone();
-                has_tool_calls = false;
-            }
-        }
-
-        // Fallback: submit_final_response emitted as raw JSON text.
-        if !is_submit_final && !has_tool_calls {
-            let extracted = extract_submit_final_response_from_text(&current_response);
-            if extracted != current_response {
-                is_submit_final = true;
-                current_response = extracted.clone();
-                full_response = extracted;
-                has_tool_calls = false;
-            }
-        }
-
-        if has_tool_calls && !is_submit_final && agent_turn_count < max_agent_turns {
-            let calls = tool_calls_to_process.expect("has_tool_calls implies Some");
-            let call_signature = normalize_tool_call_signature(&calls);
-            let duplicate_count = tool_call_history
-                .iter()
-                .filter(|sig| **sig == call_signature)
-                .count();
-            tool_call_history.push(call_signature);
-
-            let is_stuck = duplicate_count >= MAX_DUPLICATE_TOOL_CALLS
-                || stale_iterations >= MAX_DUPLICATE_TOOL_CALLS;
-            if is_stuck {
-                let tool_data_reminder = if !last_tool_result_text.is_empty() {
-                    format!(
-                        "\n\nHere is the data you already received from your previous tool call:\n{last_tool_result_text}"
-                    )
-                } else {
-                    String::new()
-                };
-                // Content-only assistant turn — we are NOT executing these calls.
-                conversation_messages.push(plain_message("assistant", &current_response));
-                conversation_messages.push(plain_message(
-                    "user",
-                    &format!(
-                        "You have already gathered this data (a repeated call or repeated identical results). You already have what you need — do NOT call any more tools. Please call the submit_final_response tool NOW with your answer based on the data you already received.{tool_data_reminder}"
-                    ),
-                ));
-                continue;
-            }
-
-            // Thread the assistant tool-call turn (paired with its native
-            // tool_calls) so the model sees it already issued them.
-            let detected: Vec<DetectedToolCall> = calls
-                .iter()
-                .map(|tc| DetectedToolCall {
-                    name: tc.name.clone(),
-                    arguments: tc.arguments.clone(),
-                    call_id: tc.call_id.clone(),
-                })
-                .collect();
-            conversation_messages.push(build_assistant_tool_call_message(
-                &detected,
-                &current_response,
-                if turn_reasoning.is_empty() {
-                    None
-                } else {
-                    Some(turn_reasoning.as_str())
-                },
-                turn_thought_signature.as_deref(),
-            ));
-
-            // Execute the tools — operator surface (character-less, all-stores).
-            // Side effects stand; result MESSAGES are threaded in-memory only.
-            let tool_context = ToolExecutionContext {
-                chat_id: chat_id.to_string(),
-                user_id: user_id.to_string(),
-                operator_surface: true,
-                pending_wardrobe_announcements: Arc::new(Mutex::new(
-                    std::collections::HashSet::new(),
-                )),
-                ..Default::default()
-            };
-            let tool_result = process_tool_calls(
-                &calls,
-                &tool_context,
-                &NoopSink,
-                deps.tool_runner,
-                Some(&status),
-            )
-            .await;
-
-            if !tool_result.tool_messages.is_empty() {
-                conversation_messages
-                    .extend(build_tool_result_messages(&tool_result.tool_messages));
-
-                let mut produced_new_info = false;
-                for tm in &tool_result.tool_messages {
-                    last_tool_result_text = tm.content.clone();
-                    let fingerprint = format!("{}:{}:{}", tm.tool_name, tm.success, tm.content);
-                    if seen_result_fingerprints.insert(fingerprint) {
-                        produced_new_info = true;
-                    }
-                }
-                stale_iterations = if produced_new_info {
-                    0
-                } else {
-                    stale_iterations + 1
-                };
-            }
-
-            continue;
-        }
-
-        // No tool calls or a final response — done.
-        full_response = current_response;
-        break;
-    }
-
-    // Models that output submit_final_response as JSON text.
-    full_response = extract_submit_final_response_from_text(&full_response);
-
-    let mut final_answer = js_trim(&full_response).to_string();
-
-    // Budget-exhaustion salvage (Bug 47) — the mirror of the streaming
-    // orchestrator's. The forced final turn runs no tools, so a model that answers
-    // it with another native tool call instead of `submit_final_response` leaves
-    // `full_response` empty. Rather than report a bare failure to Carina after
-    // spending real budget, synthesise an explanatory answer from the last tool
-    // result we captured. With no tool data at all there is genuinely nothing to
-    // return, so fall through to the empty-response failure below.
-    if final_answer.is_empty() && !last_tool_result_text.is_empty() {
-        final_answer = format!(
-            "I reached my {max_agent_turns}-turn budget before I could compose a final answer.\n\nHere is what I gathered before I stopped:\n\n{last_tool_result_text}"
-        );
-        tracing::warn!(
-            chat_id = %chat_id,
-            max_agent_turns,
-            "Brahma one-shot exhausted its turn budget without a final response",
-        );
-    }
-
-    if final_answer.is_empty() {
-        return fail("empty response");
-    }
-
-    BrahmaConsoleResult {
-        ok: true,
-        answer: final_answer,
-        detail: None,
+        // mapped onto this engine's "never throws" idiom.
+        Err(e) => fail(e.message),
     }
 }
 
-/// A role+content-only [`ThreadedMessage`] (no tool-call / reasoning fields).
-pub(super) fn plain_message(role: &str, content: &str) -> ThreadedMessage {
-    ThreadedMessage {
-        role: role.to_string(),
-        content: content.to_string(),
-        name: None,
-        thought_signature: None,
-        reasoning_content: None,
-        tool_call_id: None,
-        tool_calls: None,
-        cache_control: None,
-        attachments: None,
-    }
-}
+/// A role+content-only [`ThreadedMessage`] — the one-shot loop's helper,
+/// re-exported for the streaming orchestrator (which builds its slate the same
+/// way).
+pub(crate) use crate::services::agent_loop::one_shot_loop::plain_message;
 
 // ===========================================================================
 // The production impl of the frozen RunBrahmaConsole seam.

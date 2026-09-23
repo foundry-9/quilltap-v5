@@ -36,6 +36,37 @@
 //! pair therefore cannot reach this family; it was regenerated and re-run at v4
 //! `ffb6b3119` alongside its two siblings and stayed green.
 //!
+//! ## P4.D216 — the shared one-shot loop (v4 `d1c06cd9d`)
+//!
+//! v4 moved the loop into `lib/services/agent-loop/one-shot-loop.ts`
+//! (`runOneShotToolLoop`); v5 moved it into
+//! `services::agent_loop::one_shot_loop`, `run_brahma_query` now its thin
+//! wrapper. Two growths:
+//!
+//! - **Log lines, every case.** The oracle records the `OneShotToolLoop` and
+//!   `BrahmaOneShot` services' lines (`{ level, message, context }`); this side
+//!   captures its tracing events STRUCTURALLY (level, message, each field by
+//!   name) from the loop module and the console module, and the two lists must
+//!   agree line for line — so a missing, extra, reordered or re-fielded line is
+//!   a red, and every case is its own silence leg. v4 `d1c06cd9d` added FIVE
+//!   lines under the `Brahma one-shot` label (`: starting`, `: aborted between
+//!   turns`, `: aborted mid-stream`, `: tool turn`, `: finished`) and a `turns`
+//!   field on `produced an empty answer`; v5 had also never emitted the
+//!   pre-existing `stuck in tool-call loop` WARN, the empty-answer DEBUG or the
+//!   no-profile DEBUG.
+//! - **Loop-direct arms** (`spec.loopCases`) call v4's REAL `runOneShotToolLoop`
+//!   and v5's `run_one_shot_tool_loop` directly — the abort seam (between turns
+//!   and per chunk mid-stream), `onReasoning`'s REPLACE semantics, the usage
+//!   sum, `toolsExecuted`, the default label, the propagated throw, and the log
+//!   TYPE (the oracle records `opts.logType ?? 'CHAT_MESSAGE'` for every stream
+//!   call that reaches its terminal chunk, which is where v4's real
+//!   `streamMessage` writes its row; this side reads the rows its real writer
+//!   put in the llm-logs partition under the arm's own chat id).
+//!
+//! The pre-existing corpus is byte-identical between the `00c290c9a` and
+//! `d1c06cd9d` pins (measured): the refactor is neutral on every result and
+//! every canned-stream key; only the log lines and the loop arms move.
+//!
 //! Generate the fixture + oracle output (Node 24, from the v4 checkout — the
 //! oracle lives under `.claude/`, which jest ignores, so mirror it to /tmp):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -57,7 +88,8 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{CompletionMessage, CompletionRole};
@@ -65,9 +97,14 @@ use quilltap_core::model::stream::{
     canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamParams, StreamUsage,
     StreamingCompletionProvider,
 };
+use quilltap_core::services::agent_loop::one_shot_loop::{
+    run_one_shot_tool_loop, BuiltTools, NoopSink, OneShotLoopDeps, OneShotLoopResult,
+    RunOneShotToolLoopOptions,
+};
 use quilltap_core::services::brahma_console::{run_brahma_query, BrahmaQueryDeps};
 use quilltap_core::services::native_tool_loop::ToolCallDetector;
 use quilltap_core::services::tool_execution::ToolCall;
+use quilltap_core::services::tool_execution::{StatusContext, ToolExecutionContext};
 use quilltap_core::tools::executor::BuiltInToolRunner;
 use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
 use serde::Deserialize;
@@ -98,6 +135,25 @@ struct CaseW {
     max_agent_turns: Option<i64>,
 }
 
+/// P4.D216: a loop-direct arm (see the oracle header for the trip hooks).
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LoopCaseW {
+    name: String,
+    user_id: String,
+    chat_id: String,
+    user_message: String,
+    max_agent_turns: i64,
+    #[serde(default)]
+    log_label: Option<String>,
+    #[serde(default)]
+    log_type: Option<String>,
+    #[serde(default)]
+    abort_on_reasoning: Option<String>,
+    #[serde(default)]
+    abort_on_marker: Option<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Spec {
@@ -105,6 +161,9 @@ struct Spec {
     chat_id: String,
     detection: HashMap<String, Vec<DetectionCall>>,
     cases: Vec<CaseW>,
+    loop_profile: Value,
+    loop_system_prompt: String,
+    loop_cases: Vec<LoopCaseW>,
 }
 
 fn spec_path() -> PathBuf {
@@ -136,6 +195,20 @@ struct ChunkW {
     /// internal try/catch there).
     #[serde(default)]
     error: Option<String>,
+    /// P4.D216: a reasoning delta.
+    #[serde(default)]
+    reasoning_content: Option<String>,
+    /// P4.D216: usage on the terminal chunk.
+    #[serde(default)]
+    usage: Option<UsageW>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct UsageW {
+    prompt_tokens: i64,
+    completion_tokens: i64,
+    total_tokens: i64,
 }
 
 #[derive(Deserialize)]
@@ -161,9 +234,19 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
         return Err(StreamError::new(e.clone()));
     }
     if c.done == Some(true) {
-        let mut chunk = StreamChunk::done(None::<StreamUsage>);
+        let mut chunk = StreamChunk::done(c.usage.as_ref().map(|u| StreamUsage {
+            prompt_tokens: u.prompt_tokens,
+            completion_tokens: u.completion_tokens,
+            total_tokens: u.total_tokens,
+        }));
         chunk.raw_response = c.raw_response.clone();
         return Ok(chunk);
+    }
+    if let Some(rc) = &c.reasoning_content {
+        return Ok(StreamChunk {
+            reasoning_content: Some(rc.clone()),
+            ..Default::default()
+        });
     }
     Ok(StreamChunk::content(c.content.clone().unwrap_or_default()))
 }
@@ -243,12 +326,19 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
 
 struct MarkerDetector {
     by_marker: HashMap<String, Vec<ToolCall>>,
+    /// P4.D216: the between-turns trip — `(marker, flag)`; detection runs AFTER
+    /// the loop's mid-stream abort check, so the next check is the loop top.
+    abort_on: Mutex<Option<(String, Arc<AtomicBool>)>>,
 }
 impl ToolCallDetector for MarkerDetector {
     fn detect(&self, raw_response: &Value, _provider: &str) -> Vec<ToolCall> {
-        raw_response
-            .get("marker")
-            .and_then(Value::as_str)
+        let marker = raw_response.get("marker").and_then(Value::as_str);
+        if let (Some(m), Some((trip, flag))) = (marker, self.abort_on.lock().unwrap().as_ref()) {
+            if m == trip {
+                flag.store(true, Ordering::SeqCst);
+            }
+        }
+        marker
             .and_then(|m| self.by_marker.get(m))
             .map(|calls| {
                 calls
@@ -288,6 +378,157 @@ fn result_to_json(r: &quilltap_core::services::carina_query::BrahmaConsoleResult
     }
 }
 
+// ---------------------------------------------------------------------------
+// P4.D216: a STRUCTURAL tracing capture (level, message, fields by name), so a
+// v4 `{ level, message, context }` line compares field for field.
+// ---------------------------------------------------------------------------
+
+/// The two v5 module targets whose lines the oracle's two services map to:
+/// the loop (`OneShotToolLoop`) and the console (`BrahmaOneShot`).
+const CAPTURED_TARGETS: &[&str] = &[
+    "quilltap_core::services::agent_loop::one_shot_loop",
+    "quilltap_core::services::brahma_console",
+];
+
+#[derive(Debug, Clone, PartialEq)]
+struct Line {
+    level: String,
+    message: String,
+    fields: Vec<(String, String)>,
+}
+
+struct LineVisitor {
+    message: String,
+    fields: Vec<(String, String)>,
+}
+impl tracing::field::Visit for LineVisitor {
+    fn record_str(&mut self, f: &tracing::field::Field, v: &str) {
+        self.fields.push((f.name().to_string(), v.to_string()));
+    }
+    fn record_i64(&mut self, f: &tracing::field::Field, v: i64) {
+        self.fields.push((f.name().to_string(), v.to_string()));
+    }
+    fn record_u64(&mut self, f: &tracing::field::Field, v: u64) {
+        self.fields.push((f.name().to_string(), v.to_string()));
+    }
+    fn record_bool(&mut self, f: &tracing::field::Field, v: bool) {
+        self.fields.push((f.name().to_string(), v.to_string()));
+    }
+    fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+        if f.name() == "message" {
+            self.message = format!("{v:?}");
+        } else {
+            self.fields.push((f.name().to_string(), format!("{v:?}")));
+        }
+    }
+}
+
+struct StructuralCapture(Arc<Mutex<Vec<Line>>>);
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for StructuralCapture {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let meta = event.metadata();
+        if !CAPTURED_TARGETS.contains(&meta.target()) {
+            return;
+        }
+        let mut v = LineVisitor {
+            message: String::new(),
+            fields: Vec::new(),
+        };
+        event.record(&mut v);
+        self.0.lock().unwrap().push(Line {
+            level: meta.level().to_string().to_lowercase(),
+            message: v.message,
+            fields: v.fields,
+        });
+    }
+}
+
+/// A v4 context value rendered the way the v5 capture renders the same field:
+/// strings bare, numbers/bools as text, a string array as Rust's `Debug` of a
+/// `Vec<&str>` (the loop logs `tools = ?names`).
+fn render_v4(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Array(items) => {
+            let strs: Vec<&str> = items.iter().filter_map(Value::as_str).collect();
+            format!("{strs:?}")
+        }
+        other => other.to_string(),
+    }
+}
+
+fn v4_lines(rows: &Value) -> Vec<Line> {
+    rows.as_array()
+        .map(|a| {
+            a.iter()
+                .map(|l| Line {
+                    level: l["level"].as_str().unwrap_or_default().to_string(),
+                    message: l["message"].as_str().unwrap_or_default().to_string(),
+                    fields: l["context"]
+                        .as_object()
+                        .map(|o| o.iter().map(|(k, v)| (k.clone(), render_v4(v))).collect())
+                        .unwrap_or_default(),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `(level, message, sorted fields)`.
+type NormLine = (String, String, Vec<(String, String)>);
+
+/// Field ORDER is not part of the comparand (v4's is object-insertion order,
+/// v5's is the macro's); the SET of `(name, value)` pairs is.
+fn assert_lines_match(case: &str, got: &[Line], want: &[Line], failures: &mut Vec<String>) {
+    let norm = |ls: &[Line]| -> Vec<NormLine> {
+        ls.iter()
+            .map(|l| {
+                let mut f = l.fields.clone();
+                f.sort();
+                (l.level.clone(), l.message.clone(), f)
+            })
+            .collect()
+    };
+    if norm(got) != norm(want) {
+        failures.push(format!(
+            "{case}: log lines diverge\n  v5: {:#?}\n  v4: {:#?}",
+            norm(got),
+            norm(want)
+        ));
+    }
+}
+
+/// A v5 loop result projected into the oracle's shape.
+fn loop_result_to_json(
+    r: &Result<
+        OneShotLoopResult,
+        quilltap_core::services::agent_loop::one_shot_loop::OneShotLoopError,
+    >,
+) -> Value {
+    match r {
+        Ok(OneShotLoopResult::Ok {
+            answer,
+            tools_executed,
+            usage,
+        }) => json!({
+            "ok": true,
+            "answer": answer,
+            "toolsExecuted": tools_executed,
+            "usage": {
+                "promptTokens": usage.prompt_tokens,
+                "completionTokens": usage.completion_tokens,
+                "totalTokens": usage.total_tokens,
+            },
+        }),
+        Ok(OneShotLoopResult::Failed { detail }) => json!({ "ok": false, "detail": detail }),
+        Err(e) => json!({ "threw": e.message }),
+    }
+}
+
 #[tokio::test]
 async fn brahma_console_tier3_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_BRAHMA") else {
@@ -312,6 +553,9 @@ async fn brahma_console_tier3_matches_oracle() {
 
     let mut oracle_results: HashMap<String, Value> = HashMap::new();
     let mut oracle_streams: Vec<CannedStreamW> = Vec::new();
+    let mut oracle_logs: HashMap<String, Value> = HashMap::new();
+    let mut oracle_loop: HashMap<String, Value> = HashMap::new();
+    let mut oracle_loop_streams: Vec<CannedStreamW> = Vec::new();
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -324,6 +568,15 @@ async fn brahma_console_tier3_matches_oracle() {
             }
             Some("cannedStream") => {
                 oracle_streams.push(serde_json::from_value(v).expect("parse cannedStream"))
+            }
+            Some("logs") => {
+                oracle_logs.insert(v["call"].as_str().unwrap().to_string(), v["lines"].clone());
+            }
+            Some("loopResult") => {
+                oracle_loop.insert(v["call"].as_str().unwrap().to_string(), v.clone());
+            }
+            Some("loopCannedStream") => {
+                oracle_loop_streams.push(serde_json::from_value(v).expect("parse loopCannedStream"))
             }
             other => panic!("unknown oracle row kind {other:?}"),
         }
@@ -354,7 +607,10 @@ async fn brahma_console_tier3_matches_oracle() {
                 .collect(),
         );
     }
-    let detector = MarkerDetector { by_marker };
+    let detector = MarkerDetector {
+        by_marker,
+        abort_on: Mutex::new(None),
+    };
 
     // An llm-logs partition beside the fixture pair, so the per-query
     // `CHAT_MESSAGE` rows are a comparand-shaped pin (dogfood finding #111's
@@ -384,6 +640,16 @@ async fn brahma_console_tier3_matches_oracle() {
 
     // The REAL tool runner — `run_sql` executes an actual SELECT over the fixture.
     let runner = BuiltInToolRunner::new(db.clone(), dummy_env());
+
+    // P4.D216: one structural capture for the WHOLE test, armed before the first
+    // callsite is ever hit (a callsite first reached with no subscriber caches
+    // "never" — the `global_capture` note), drained per case.
+    use tracing_subscriber::layer::SubscriberExt;
+    let captured = Arc::new(Mutex::new(Vec::<Line>::new()));
+    let _capture_guard = tracing::subscriber::set_default(
+        tracing_subscriber::registry().with(StructuralCapture(captured.clone())),
+    );
+    let mut log_failures: Vec<String> = Vec::new();
 
     for case in &spec.cases {
         // Per-case budget override (only the Bug-47 salvage case sets it); the
@@ -419,6 +685,14 @@ async fn brahma_console_tier3_matches_oracle() {
             .unwrap_or_else(|| panic!("oracle missing result for {}", case.name))
             .clone();
         assert_eq!(got, want, "{}: result diverges", case.name);
+
+        let got_lines: Vec<Line> = std::mem::take(&mut *captured.lock().unwrap());
+        let want_lines = v4_lines(
+            oracle_logs
+                .get(&case.name)
+                .unwrap_or_else(|| panic!("oracle missing logs for {}", case.name)),
+        );
+        assert_lines_match(&case.name, &got_lines, &want_lines, &mut log_failures);
     }
 
     // Finding #111's pin: one CHAT_MESSAGE row per completed one-shot stream
@@ -435,8 +709,8 @@ async fn brahma_console_tier3_matches_oracle() {
                  coalesce(sum(characterId IS NULL), 0), \
                  coalesce(sum(connectionProfileId IS NOT NULL), 0), \
                  coalesce(sum(durationMs >= 0), 0) \
-                 FROM llm_logs WHERE type = 'CHAT_MESSAGE'",
-                [],
+                 FROM llm_logs WHERE type = 'CHAT_MESSAGE' AND chatId = ?1",
+                [&spec.chat_id],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
             )?)
         })
@@ -458,6 +732,133 @@ async fn brahma_console_tier3_matches_oracle() {
     assert_eq!(with_profile, rows);
     assert_eq!(nonneg_dur, rows);
     eprintln!("[llm_logs] {rows} CHAT_MESSAGE row(s), expected {expected_chat_message_rows}.");
+
+    // -----------------------------------------------------------------------
+    // P4.D216: the loop-direct arms.
+    // -----------------------------------------------------------------------
+    assert!(
+        !spec.loop_cases.is_empty() && oracle_loop.len() == spec.loop_cases.len(),
+        "every loop arm must have an oracle row ({} arms, {} rows) — a pre-`d1c06cd9d` \
+         oracle emits none",
+        spec.loop_cases.len(),
+        oracle_loop.len()
+    );
+    let loop_streaming = QueuedStreamingProvider::from_oracle(&oracle_loop_streams);
+    let loop_built = BuiltTools {
+        tools: Vec::new(),
+        model_supports_native_tools: true,
+        use_native_web_search: false,
+    };
+    let mut loop_failures: Vec<String> = Vec::new();
+    for lc in &spec.loop_cases {
+        let want = oracle_loop
+            .get(&lc.name)
+            .unwrap_or_else(|| panic!("oracle missing loop row for {}", lc.name));
+        let flag = Arc::new(AtomicBool::new(false));
+        *detector.abort_on.lock().unwrap() = lc.abort_on_marker.clone().map(|m| (m, flag.clone()));
+        let mut reasoning_calls: Vec<String> = Vec::new();
+        let trip_reasoning = lc.abort_on_reasoning.clone();
+        let flag_for_cb = flag.clone();
+        let mut on_reasoning = |r: &str| {
+            reasoning_calls.push(r.to_string());
+            if trip_reasoning.as_deref() == Some(r) {
+                flag_for_cb.store(true, Ordering::SeqCst);
+            }
+        };
+        let tool_context = ToolExecutionContext {
+            chat_id: lc.chat_id.clone(),
+            user_id: lc.user_id.clone(),
+            operator_surface: true,
+            ..Default::default()
+        };
+        let log_type: Option<&'static str> = match lc.log_type.as_deref() {
+            None => None,
+            Some("SCENARIO_BUILDER") => {
+                Some(quilltap_core::services::llm_logging::log_type::SCENARIO_BUILDER)
+            }
+            Some(other) => panic!("{}: unmapped logType {other}", lc.name),
+        };
+        let result = run_one_shot_tool_loop(
+            &OneShotLoopDeps {
+                db: &db,
+                streaming: &loop_streaming,
+                tool_runner: &runner,
+                tool_detector: &detector,
+            },
+            RunOneShotToolLoopOptions {
+                user_id: &lc.user_id,
+                chat_id: &lc.chat_id,
+                connection_profile: &spec.loop_profile,
+                system_prompt: &spec.loop_system_prompt,
+                user_message: &lc.user_message,
+                tools: &loop_built,
+                tool_context: &tool_context,
+                max_agent_turns: lc.max_agent_turns,
+                controller: &NoopSink,
+                signal: Some(&flag),
+                log_type,
+                status_context: Some(StatusContext {
+                    character_name: "The Host".to_string(),
+                    character_id: String::new(),
+                }),
+                on_reasoning: Some(&mut on_reasoning),
+                log_label: lc.log_label.as_deref(),
+            },
+        )
+        .await;
+        *detector.abort_on.lock().unwrap() = None;
+
+        let got = loop_result_to_json(&result);
+        if got != want["result"] {
+            loop_failures.push(format!(
+                "{}: result diverges\n  v5: {got}\n  v4: {}",
+                lc.name, want["result"]
+            ));
+        }
+        let want_reasoning: Vec<String> =
+            serde_json::from_value(want["reasoningCalls"].clone()).expect("reasoningCalls");
+        if reasoning_calls != want_reasoning {
+            loop_failures.push(format!(
+                "{}: onReasoning calls diverge\n  v5: {reasoning_calls:?}\n  v4: {want_reasoning:?}",
+                lc.name
+            ));
+        }
+        // The log TYPE of every row the real writer put down for this arm, in
+        // write order, against the types v4's `streamMessage` would have logged.
+        let chat_id = lc.chat_id.clone();
+        let got_types: Vec<String> = db
+            .read_llm_logs(move |c| {
+                let mut st =
+                    c.prepare("SELECT type FROM llm_logs WHERE chatId = ?1 ORDER BY rowid")?;
+                let rows = st
+                    .query_map([&chat_id], |r| r.get::<_, String>(0))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .unwrap();
+        let want_types: Vec<String> =
+            serde_json::from_value(want["loggedTypes"].clone()).expect("loggedTypes");
+        if got_types != want_types {
+            loop_failures.push(format!(
+                "{}: llm_logs types diverge\n  v5: {got_types:?}\n  v4: {want_types:?}",
+                lc.name
+            ));
+        }
+        let got_lines: Vec<Line> = std::mem::take(&mut *captured.lock().unwrap());
+        assert_lines_match(
+            &lc.name,
+            &got_lines,
+            &v4_lines(&want["lines"]),
+            &mut log_failures,
+        );
+    }
+    assert!(loop_failures.is_empty(), "\n{}", loop_failures.join("\n"));
+    assert!(log_failures.is_empty(), "\n{}", log_failures.join("\n"));
+    eprintln!(
+        "[p4d216] {} case(s) + {} loop arm(s): results, log lines and llm_logs types agree.",
+        spec.cases.len(),
+        spec.loop_cases.len()
+    );
 
     drop(db);
     let _ = std::fs::remove_file(&work_main);

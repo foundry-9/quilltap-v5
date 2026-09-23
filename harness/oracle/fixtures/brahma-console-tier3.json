@@ -39,7 +39,8 @@
     "bx2": [ { "name": "run_sql", "arguments": { "database": "main", "sql": "SELECT 2 AS n" }, "callId": "call_bx2" } ],
     "bx3": [ { "name": "run_sql", "arguments": { "database": "main", "sql": "SELECT 3 AS n" }, "callId": "call_bx3" } ],
     "bx4": [ { "name": "run_sql", "arguments": { "database": "main", "sql": "SELECT 4 AS n" }, "callId": "call_bx4" } ],
-    "bx5": [ { "name": "run_sql", "arguments": { "database": "main", "sql": "SELECT 5 AS n" }, "callId": "call_bx5" } ]
+    "bx5": [ { "name": "run_sql", "arguments": { "database": "main", "sql": "SELECT 5 AS n" }, "callId": "call_bx5" } ],
+    "bxabort": [ { "name": "run_sql", "arguments": { "database": "main", "sql": "SELECT 7 AS n" }, "callId": "call_bxabort" } ]
   },
   "cases": [
     {
@@ -167,6 +168,62 @@
         [ { "content": "Half a" }, { "error": "the provider hung up" } ]
       ],
       "expect": { "ok": false, "detail": "the provider hung up" }
+    }
+  ],
+  "_loopComment": "P4.D216 (v4 d1c06cd9d): loop-direct arms driving runOneShotToolLoop itself — runBrahmaQuery passes no signal, onReasoning or logType. See the oracle header for the two trip hooks (abortOnReasoning, abortOnMarker).",
+  "loopProfile": {"id": "aaaaaaa1-0000-4000-8000-000000000001", "name": "Alpha", "provider": "ANTHROPIC", "modelName": "claude-brahma-test"},
+  "loopSystemPrompt": "You are the one-shot loop under test. Answer briefly.",
+  "loopCases": [
+    {"name": "loop_reasoning_replace_usage_and_log_type", "userId": "a1111111-1111-4111-8111-111111111111", "chatId": "a0000001-0000-4000-8000-000000000001", "userMessage": "Set a quiet scene.", "maxAgentTurns": 5, "logType": "SCENARIO_BUILDER",
+      "streams": [
+        [{"reasoningContent": "weigh"}, {"reasoningContent": "weigh"}, {"reasoningContent": "weigh the lamp"}, {"content": "The lamps are lit; "}, {"content": "the square is quiet."}, {"done": true, "usage": {"promptTokens": 11, "completionTokens": 7, "totalTokens": 18}}]
+      ]
+    },
+    {"name": "loop_tool_turn_usage_summed_default_label", "userId": "a1111111-1111-4111-8111-111111111111", "chatId": "a0000001-0000-4000-8000-000000000002", "userMessage": "Count to one with SQL.", "maxAgentTurns": 5,
+      "streams": [
+        [{"done": true, "rawResponse": {"marker": "bx1"}, "usage": {"promptTokens": 3, "completionTokens": 2, "totalTokens": 5}}],
+        [{"content": "The count is one."}, {"done": true, "usage": {"promptTokens": 13, "completionTokens": 4, "totalTokens": 17}}]
+      ]
+    },
+    {"name": "loop_submit_final_after_tool", "userId": "a1111111-1111-4111-8111-111111111111", "chatId": "a0000001-0000-4000-8000-000000000003", "userMessage": "Look it up, then submit.", "maxAgentTurns": 5, "logLabel": "Scenario Builder", "logType": "SCENARIO_BUILDER",
+      "streams": [
+        [{"done": true, "rawResponse": {"marker": "bx2"}}],
+        [{"done": true, "rawResponse": {"marker": "submit1"}}]
+      ]
+    },
+    {"name": "loop_abort_mid_stream", "userId": "a1111111-1111-4111-8111-111111111111", "chatId": "a0000001-0000-4000-8000-000000000004", "userMessage": "Begin, then be stopped.", "maxAgentTurns": 5, "logLabel": "Scenario Builder", "abortOnReasoning": "STOP-HERE",
+      "streams": [
+        [{"content": "A partial "}, {"reasoningContent": "STOP-HERE"}, {"content": "never reached"}, {"done": true, "usage": {"promptTokens": 1, "completionTokens": 1, "totalTokens": 2}}]
+      ]
+    },
+    {"name": "loop_abort_between_turns", "userId": "a1111111-1111-4111-8111-111111111111", "chatId": "a0000001-0000-4000-8000-000000000005", "userMessage": "Call a tool, then be stopped.", "maxAgentTurns": 5, "logLabel": "Scenario Builder", "abortOnMarker": "bxabort",
+      "streams": [
+        [{"done": true, "rawResponse": {"marker": "bxabort"}, "usage": {"promptTokens": 2, "completionTokens": 2, "totalTokens": 4}}]
+      ]
+    },
+    {"name": "loop_empty_answer", "userId": "a1111111-1111-4111-8111-111111111111", "chatId": "a0000001-0000-4000-8000-000000000006", "userMessage": "Say nothing.", "maxAgentTurns": 5,
+      "streams": [
+        [{"content": "   "}, {"done": true}]
+      ]
+    },
+    {"name": "loop_throw_mid_stream", "userId": "a1111111-1111-4111-8111-111111111111", "chatId": "a0000001-0000-4000-8000-000000000007", "userMessage": "Fail midway.", "maxAgentTurns": 5,
+      "streams": [
+        [{"content": "half an answer"}, {"error": "socket hang up"}]
+      ]
+    },
+    {"name": "loop_stuck_duplicate_then_salvage", "userId": "a1111111-1111-4111-8111-111111111111", "chatId": "a0000001-0000-4000-8000-000000000008", "userMessage": "Keep asking the same thing.", "maxAgentTurns": 4, "logLabel": "Scenario Builder",
+      "streams": [
+        [{"done": true, "rawResponse": {"marker": "bx3"}}],
+        [{"done": true, "rawResponse": {"marker": "bx3"}}],
+        [{"done": true, "rawResponse": {"marker": "bx3"}}],
+        [{"done": true, "rawResponse": {"marker": "bx3"}}]
+      ]
+    },
+    {"name": "loop_budget_turn_tool_call_with_json_text", "userId": "a1111111-1111-4111-8111-111111111111", "chatId": "a0000001-0000-4000-8000-000000000009", "userMessage": "On the last turn, call a tool AND write the JSON.", "maxAgentTurns": 1, "logLabel": "Scenario Builder",
+      "_why": "The ONE shape that needs the POST-loop submit extraction: on the budget turn a native tool call keeps the in-loop fallback off (it runs only with no tool calls) and the turn cap keeps the tool turn off, so the raw-JSON text falls through to fullResponse and only the post-loop pass recovers it.",
+      "streams": [
+        [{"content": "{\"response\":\"Recovered after the loop, from the budget turn's JSON text.\"}"}, {"done": true, "rawResponse": {"marker": "bx4"}}]
+      ]
     }
   ]
 }
