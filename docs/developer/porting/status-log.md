@@ -143792,3 +143792,43 @@ files, PIN REQUIRED), the three §3 rows retired to §6; `phase-4.md`'s
 UNIFIED section with the seven next items; the seven order headers; this
 record; the CHANGELOG entry; CLAUDE.md's Status bullet; the memory note
 `round-a2db63da7-bug-161-162-catch-up`.
+
+## P4.D215 — bugs 163 + 164, the auto-title chokepoint (lane, 2026-09-23, `claude/auto-title-chokepoint-bugs-7849c5`)
+
+**Order:** `docs/developer/porting/work-orders/p4.d215-bugs-163-164-auto-title-chokepoint.md`
+(the `00c290c9a` round: P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110).
+Pins: TARGET `/tmp/qt-v4-pin-p4d215-00c290c9a`, BASELINE
+`/tmp/qt-v4-pin-p4d215-a2db63da7` (both detached, both `rev-parse`d and
+`ls -ld`d, the three symlink classes). §R.2 probe PASSED at lane start
+(branch `main`, HEAD `00c290c9a`, both logs empty, tree clean). Regen
+outputs staged under `/tmp/p4d215/<sha>/` (every recipe's fixed
+`/tmp/oracle-*` rewritten there, and its `cd ~/source/quilltap-server`
+rewritten to the pin — a lane-local wrapper over `recipe_sweep.py --show`).
+
+### Unit 1 — `chat-admin-main.db` widened (BASELINE pin)
+
+- **Gap, `--report-only` BEFORE:** exactly the order's 14 columns
+  (`characters.archivedAt/archiveFileId/archivedAvatarFileId`,
+  `connection_profiles.multiCharacterPrefill/fallbackProfileId/
+  allowTierFallback`, `chat_settings.composerEmoji/composerUnicode/
+  smartTypographySettings/impersonationVoiceRewrite`,
+  `chats.cycleOrderParticipantIds/transcriptVersion`,
+  `chat_messages.routeTrail`, `files.generationKey`); `chat-admin-mount.db`
+  "already current".
+- **Pre-widen red (the measurement):** `chat_regenerate_title_tier3` at the
+  baseline pin — v4 answered **500 on 7 of 9 cases** (every case that
+  reaches a write; `_no_messages` 400 and `_chat_missing` 404 unaffected),
+  and the Rust side **panicked on the first case** (`dump_chat` → `no such
+  column: cycleOrderParticipantIds`).
+- **The widen** (from the baseline pin, MAIN only):
+  `cd /tmp/qt-v4-pin-p4d215-a2db63da7 && ~/.nvm/versions/node/v24.13.1/bin/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts $W/crates/quilltap-web/tests/fixtures/chat-admin-main.db`
+  — all 14 added; the stray `.db-journal` deleted; `--report-only` AFTER
+  "already current"; `PRAGMA integrity_check` ok;
+  `idx_files_generationKey` present. 217,088 → 221,184 bytes. The
+  `.meta.json` sidecar is a vault-id map the widen does not touch.
+- **Readers re-run from the baseline pin:** `chat_regenerate_title_tier3`
+  **ok** (9 cases × body/llmMessages/chat = 27 OK lines),
+  `chat_admin_routes` **ok**, `chat_rebuild_summary` **ok**.
+- The migrator's recipe header (P4.107's file this round) does NOT gain a
+  `chat-admin` line from this lane — the recipe above is the record; the
+  unifier may fold it into the header.

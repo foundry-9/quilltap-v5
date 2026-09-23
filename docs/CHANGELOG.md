@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(fixtures): widen chat-admin-main.db to v4's current schema (P4.D215 unit 1)
+
+_Versions: web 0.0.177._
+
+The committed `chat-admin-main.db` was 14 columns behind v4, so
+`chat_regenerate_title_tier3` failed at the baseline: v4 answered 500 on 7
+of 9 cases and the Rust side panicked on `no such column:
+cycleOrderParticipantIds`. Widened in place through v4's own migration
+statements from the `a2db63da7` pin (plus `idx_files_generationKey`); the
+mount partition was already current. All three readers
+(`chat_regenerate_title_tier3`, `chat_admin_routes`,
+`chat_rebuild_summary`) pass from the pin.
+
 #### 2026-09-23 — docs(porting): driftcheck — v4 dff00e98d + d1c06cd9d (the Scenario Builder, bugs 165/166) land past the ordered 00c290c9a; two UNPROCESSED §3 rows
 
 _Docs-only change._
