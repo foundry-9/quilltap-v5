@@ -1,0 +1,131 @@
+{
+  "label": "P4.107 post-widen reader re-run at a2db63da7",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/fixture-vintage-heal-next-list-04aa32",
+  "venue_is_worktree": true,
+  "requested": [
+    "photos_routes_equivalence",
+    "llm_logs_routes_equivalence",
+    "image_aesthetics_routes_equivalence",
+    "wardrobe_routes_equivalence",
+    "almanack_tier2_equivalence",
+    "photos_web_routes",
+    "characters_action_route",
+    "file_content_missing_404",
+    "characters_wardrobe_route",
+    "wardrobe_instructions_routes"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "blob_path_normaliser_census",
+    "generation_key_travels_as_is_guard",
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "route_trail_continuation_guard",
+    "salon_fixture_p4d171_ensure",
+    "transcript_version_isolation_guard",
+    "character_prompt_set_default_dispatch_wire",
+    "images_edge_routes",
+    "lock_conflict_boot_status",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "photos_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/almanack-main.db\n M crates/quilltap-web/tests/fixtures/inspector-main.db\n M crates/quilltap-web/tests/fixtures/inspector-nostore-main.db\n M crates/quilltap-web/tests/fixtures/photos-main.db\n M crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "llm_logs_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/almanack-main.db\n M crates/quilltap-web/tests/fixtures/inspector-main.db\n M crates/quilltap-web/tests/fixtures/inspector-nostore-main.db\n M crates/quilltap-web/tests/fixtures/photos-main.db\n M crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "image_aesthetics_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/almanack-main.db\n M crates/quilltap-web/tests/fixtures/inspector-main.db\n M crates/quilltap-web/tests/fixtures/inspector-nostore-main.db\n M crates/quilltap-web/tests/fixtures/photos-main.db\n M crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "wardrobe_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/almanack-main.db\n M crates/quilltap-web/tests/fixtures/inspector-main.db\n M crates/quilltap-web/tests/fixtures/inspector-nostore-main.db\n M crates/quilltap-web/tests/fixtures/photos-main.db\n M crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "almanack_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/almanack-main.db\n M crates/quilltap-web/tests/fixtures/inspector-main.db\n M crates/quilltap-web/tests/fixtures/inspector-nostore-main.db\n M crates/quilltap-web/tests/fixtures/photos-main.db\n M crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "photos_web_routes",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/almanack-main.db\n M crates/quilltap-web/tests/fixtures/inspector-main.db\n M crates/quilltap-web/tests/fixtures/inspector-nostore-main.db\n M crates/quilltap-web/tests/fixtures/photos-main.db\n M crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "characters_action_route",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/almanack-main.db\n M crates/quilltap-web/tests/fixtures/inspector-main.db\n M crates/quilltap-web/tests/fixtures/inspector-nostore-main.db\n M crates/quilltap-web/tests/fixtures/photos-main.db\n M crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "file_content_missing_404",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/almanack-main.db\n M crates/quilltap-web/tests/fixtures/inspector-main.db\n M crates/quilltap-web/tests/fixtures/inspector-nostore-main.db\n M crates/quilltap-web/tests/fixtures/photos-main.db\n M crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "characters_wardrobe_route",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/almanack-main.db\n M crates/quilltap-web/tests/fixtures/inspector-main.db\n M crates/quilltap-web/tests/fixtures/inspector-nostore-main.db\n M crates/quilltap-web/tests/fixtures/photos-main.db\n M crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "wardrobe_instructions_routes",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/almanack-main.db\n M crates/quilltap-web/tests/fixtures/inspector-main.db\n M crates/quilltap-web/tests/fixtures/inspector-nostore-main.db\n M crates/quilltap-web/tests/fixtures/photos-main.db\n M crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    }
+  ],
+  "totals": {
+    "ok": 10
+  }
+}

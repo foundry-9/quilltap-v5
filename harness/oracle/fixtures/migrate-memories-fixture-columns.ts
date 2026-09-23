@@ -237,6 +237,24 @@
  *   (every mount partition reports "already current"; `chat-compressed-
  *   mount.db` is not in this list — it is the ONE rebuild the round
  *   authorizes, from `build-chat-compressed-fixture.ts`, not this script)
+ *
+ * The five P4.107 main files (widened in place 2026-09-23 at v4 `a2db63da7`
+ * from `/tmp/qt-v4-pin-p4107-a2db63da7` — MAIN partitions only, every
+ * companion mount / llm-logs partition left alone; the four standing reds
+ * this closes are named in `docs/developer/porting/work-orders/p4.107-
+ * fixture-vintage-heal-next-list.md`):
+ *   F=$W/crates/quilltap-web/tests/fixtures
+ *   $N/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+ *     $F/photos-main.db $F/inspector-main.db $F/inspector-nostore-main.db \
+ *     $F/wardrobe-routes-main.db $F/almanack-main.db
+ *   (as run: photos +6 cols +INDEX idx_files_generationKey; inspector and
+ *   inspector-nostore +9 each — no `files` table, so no index; wardrobe-
+ *   routes +3 +INDEX; almanack +7 +INDEX; zero `.db-journal` residue; the
+ *   re-run `--report-only` answered "already current" for all five.
+ *   `inspector-nostore-main.db` is NOT a byte-copy of `inspector-main.db` —
+ *   widen it by name, never copy one over the other. NEVER name
+ *   `almanack-llmlogs-legacy.db`: its missing profile columns are the
+ *   builder's deliberate approximate-attribution case.)
  */
 
 import { readFileSync } from 'node:fs';

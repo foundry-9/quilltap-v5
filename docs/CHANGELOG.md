@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — fix(fixtures): widen five committed main files to v4's a2db63da7 vintage, closing four standing reds (P4.107)
+
+_Versions: web 0.0.177._
+
+`photos-main.db` (+6 columns), `inspector-main.db` and `inspector-nostore-main.db`
+(+9 each), `wardrobe-routes-main.db` (+3) and `almanack-main.db` (+7) widened in
+place through v4's own migration statements
+(`migrate-memories-fixture-columns.ts`, run from a worktree pinned at
+`a2db63da7`), plus `idx_files_generationKey` on the three with a `files` table.
+Main partitions only; no companion mount or llm-logs partition touched;
+`almanack-llmlogs-legacy.db` stays deliberately un-widened. No `.rs` change.
+Measured from the pin before and after: `photos_routes_equivalence` 5 red cases
+-> ok, `llm_logs_routes_equivalence` 4 -> ok, `wardrobe_routes_equivalence` 28 ->
+ok, `almanack_tier2_equivalence` 11 failed checks -> ok; the six other readers
+stay green. The v4 side changed only where expected (an added column in an
+emitted row, the file size) plus one real correction: v4 itself answered 500 on
+the wardrobe `set_all` modes against the old fixture (its whole-entity chat
+update names `transcriptVersion`), which had matched v5's 500 as a false
+agreement; both sides now answer 200.
+
 #### 2026-09-23 — tooling(fixtures): the vintage migrator opens every committed pair and reports index adds (P4.107 Tier 2)
 
 _No crate versions bumped._
