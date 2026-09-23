@@ -6628,6 +6628,65 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `00c290c9a` bug-163/164 drift catch-up + maintenance round (P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110) — ORDERED 2026-09-23
+
+**Baseline `a2db63da7`; v4 `main` HEAD `00c290c9a` (ONE past — the
+ledger's one §3 row, now `ORDERED(P4.D215)`), `bugfix` `1a2b2164c` and
+`release` `8fbf2afe0` unmoved; the §2 probe PASSED at planning. Regen rule
+PIN REQUIRED: the drift lane pins the target `00c290c9a` and the baseline;
+the four maintenance lanes pin the baseline only.** Five lanes, all cut
+from `main`, no keystone, no SPA lane, no cross-lane contract (§S.1 says
+so). Cherry-pick order: P4.D215 → P4.107 → P4.109 → P4.108 → P4.110. Four
+parallel read-only surveys (2026-09-23) fed the orders; the "next" list
+above was corrected by them in five places, recorded in §R.4:
+
+- **P4.D215** (`work-orders/p4.d215-bugs-163-164-auto-title-chokepoint.md`)
+  — bugs 163/164: NEW `services/auto_title.rs` under the fold, the
+  title-update job and regenerate-title. v5 reproduces BOTH bugs verbatim
+  (the fold never checks `isManuallyRenamed` and never queues the
+  background). The hunks do more than the message says: the refused arms
+  still write `extraPatch`, the job's unchanged title now queues NOTHING,
+  one line is removed and two re-prefixed. The lane also widens
+  `chat-admin-main.db` (14 columns — the largest gap, not the plan's two)
+  so `chat_regenerate_title_tier3` is green before it grows.
+- **P4.107** (`work-orders/p4.107-fixture-vintage-heal-next-list.md`) —
+  the heal's next list, FIVE main files. Corrections: `almanack-llmlogs-
+  legacy.db` is DELIBERATELY legacy (never widen); the migrator's `:461`
+  error on `wardrobe-instructions-*` is a PEPPER miss, not a gap;
+  `--report-only` hides index adds. Tier 2 teaches the migrator the other
+  peppers and MEASURES the 26 unlisted stale pairs from the pin for the
+  next heal.
+- **P4.108** (`work-orders/p4.108-animated-input-decline.md`) — the ruled
+  decline. Measured: v4 keeps frames on ONE sharp call only (the blob
+  transcode, `animated: true`); every other v4 sharp call is first-frame
+  like v5, so the decline fires on the two animated seams only. **One
+  refinement of the ruling's wording, adopted and reported:** detect by
+  FRAME COUNT ≥ 2, not the VP8X bit — a one-`ANMF` WebP is a still to sharp,
+  so declining it would be a divergence with no frame at stake. APNG is
+  never declined (sharp reads it as a still).
+- **P4.109** (`work-orders/p4.109-get-messages-safequery-update-message-
+  null.md`) — P4.105's owed edge at the right depth: v4's count/find/
+  replace never reach their own `safeQuery` arms (they call `getMessages`,
+  which swallows), so the faithful home is `get_messages` itself (76 call
+  sites, each classified against its v4 counterpart into fallback/strict),
+  which turns search & replace PREVIEW's 500 into v4's 200-with-zeros;
+  `update_message` → v4's `null` with its nine callers audited; the
+  ui-search regression arm (there is no `ui_search_routes` test — the edge
+  is `api/ui_search.rs`). The v4 warm-up trap (a lazy `CREATE TABLE IF NOT
+  EXISTS` re-creates a renamed-away table) is part of every arm.
+- **P4.110** (`work-orders/p4.110-census-lexer-salon-helper-import-
+  codec.md`) — the DRY smalls: the census lexer lifted (the two copies are
+  identical bar one blank line), `materialize_salon_instance` into the web
+  tests' `common`, `execute_import`'s codec made required.
+
+**Left out, deliberately:** the `quilltap sync` writer-hold ruling
+(P4.D210's header — the human's); the owed dogfood pass (after this round,
+with the round's surfaces added — an animated GIF through a gallery save
+and a Scriptorium upload, a hand-renamed chat through a real fold, the
+search & replace preview on a real instance); the 26 unlisted stale pairs'
+WIDEN (P4.107 measures them; the next heal widens only the ones measured
+red); the `docs/v4/CHANGELOG.md` mirror's older lag.
+
 ## The `a2db63da7` bug-161/162 drift catch-up + maintenance round (P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥ P4.106) — UNIFIED 2026-09-23
 
 **ALL SEVEN LANDED on main; the oracle baseline MOVES to `a2db63da7` and the

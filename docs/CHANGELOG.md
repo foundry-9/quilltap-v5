@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): order the `00c290c9a` bug-163/164 drift catch-up + maintenance round (P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110)
+
+_Docs-only change._
+
+Five work orders for the next round, all cut from `main`. P4.D215 ports v4's
+auto-title chokepoint (bugs 163/164) under the fold, the title-update job
+and regenerate-title, and widens `chat-admin-main.db`. P4.107 widens five
+more stale fixture files, fixes the migrator's pepper and index blind spots,
+and measures the remaining stale pairs. P4.108 implements the ruled
+animated-image decline on the two animated encode paths (detected by frame
+count). P4.109 gives `get_messages` v4's empty-on-failure fallback with a
+strict variant chosen per caller, and makes `update_message` answer v4's
+null. P4.110 lifts the duplicated census lexer and salon test helper and
+makes `execute_import`'s codec required. The drift ledger's `00c290c9a` row
+is marked ORDERED(P4.D215); the phase plan gains the round's ORDERED
+section.
+
 #### 2026-09-23 — docs(ruling): animated inputs at the blob-write seam are DECLINED at the host codec
 
 _Versions: core 0.0.1002 (a module-doc change only)._
