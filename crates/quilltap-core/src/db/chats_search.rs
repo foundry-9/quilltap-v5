@@ -230,7 +230,40 @@ impl<'c> ChatSearchRepository<'c> {
     /// fallback, ordered `createdAt DESC` and capped in SQL. Returns
     /// `{ messageId, content, chatId, role, createdAt }` per row. Over-long
     /// search OR empty `chat_ids` → `[]`.
+    ///
+    /// **Never answers `Err`** (P4.105). v4 wraps the whole body in
+    /// `safeQuery(…, 'Failed to search messages globally', { chatCount }, [])`
+    /// — FALLBACK mode — so a query that throws logs one ERROR and answers
+    /// `[]`. That arm is reachable only when the `LIKE` scan itself throws: a
+    /// missing INDEX is already caught below by the FTS path's own warn-and-
+    /// fall-back. v5 used to propagate the `Err`, and the Search page's REST
+    /// edge (`api::ui_search`, `?`) turned one broken message table into a
+    /// failed search where v4 answers the page with every other result type.
+    /// The `Result` stays in the signature so no caller moves.
     pub fn search_messages_global(
+        &self,
+        chat_ids: &[String],
+        search_text: &str,
+        limit: i64,
+    ) -> Result<Vec<Value>, DbError> {
+        match self.search_messages_global_inner(chat_ids, search_text, limit) {
+            Ok(rows) => Ok(rows),
+            Err(err) => {
+                tracing::error!(
+                    target: "quilltap::db",
+                    context = LOG_CONTEXT,
+                    chatCount = chat_ids.len(),
+                    error = %err,
+                    "Failed to search messages globally",
+                );
+                Ok(Vec::new())
+            }
+        }
+    }
+
+    /// The body [`Self::search_messages_global`] wraps — v4's `safeQuery`
+    /// operation.
+    fn search_messages_global_inner(
         &self,
         chat_ids: &[String],
         search_text: &str,
@@ -565,6 +598,72 @@ mod tests {
             .map(|r| r["messageId"].as_str().unwrap())
             .collect();
         assert_eq!(ids, ["m2", "m1"], "createdAt DESC over both rows");
+    }
+
+    /// v4's `safeQuery(…, [])` arm (P4.105): with `chat_messages` renamed out
+    /// from under BOTH shapes, an FTS plan warns, the `LIKE` scan throws, and
+    /// the search answers `[]` with ONE ERROR line carrying v4's context —
+    /// and a fallback plan reaches the same ERROR without the warn.
+    #[test]
+    fn a_scan_that_throws_answers_empty_and_logs_once() {
+        for (query, warns) in [("walk", 1usize), ("C++", 0usize)] {
+            let conn = db(true);
+            conn.execute_batch(r#"ALTER TABLE "chat_messages" RENAME TO "chat_messages_gone""#)
+                .expect("plant");
+            let (rows, lines) = crate::test_support::captured_with(|| {
+                ChatSearchRepository::new(&conn).search_messages_global(&chats(), query, 100)
+            });
+            assert_eq!(
+                rows.expect("v4's safeQuery never throws here"),
+                Vec::<Value>::new(),
+                "{query}"
+            );
+            let errors: Vec<&String> = lines
+                .iter()
+                .filter(|l| l.contains("Failed to search messages globally"))
+                .collect();
+            assert_eq!(errors.len(), 1, "{query}: one ERROR: {lines:?}");
+            let line = errors[0];
+            assert!(
+                line.starts_with("ERROR quilltap::db"),
+                "level/target: {line}"
+            );
+            assert!(line.contains("context=db.chats-search"), "{line}");
+            assert!(line.contains("chatCount=1"), "{line}");
+            assert!(line.contains("no such table: chat_messages"), "{line}");
+            assert_eq!(
+                lines
+                    .iter()
+                    .filter(|l| l.contains("falling back to an exact scan"))
+                    .count(),
+                warns,
+                "{query}: the FTS path's own warn fires only on an fts plan: {lines:?}"
+            );
+        }
+    }
+
+    /// The silence leg: a healthy search — indexed or not — never reaches the
+    /// `safeQuery` ERROR.
+    #[test]
+    fn a_healthy_search_does_not_log_the_safe_query_error() {
+        for indexed in [true, false] {
+            let conn = db(indexed);
+            let lines = captured(|| {
+                let rows = ChatSearchRepository::new(&conn)
+                    .search_messages_global(&chats(), "walk", 100)
+                    .expect("search");
+                assert!(
+                    !rows.is_empty(),
+                    "indexed={indexed}: the search must answer"
+                );
+            });
+            assert!(
+                !lines
+                    .iter()
+                    .any(|l| l.contains("Failed to search messages globally")),
+                "indexed={indexed}: {lines:?}"
+            );
+        }
     }
 
     /// The over-length guard on all three ops, with v4's three sentences, and

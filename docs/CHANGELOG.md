@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — fix(db): global message search answers `[]` when its scan throws, as v4's `safeQuery` does (P4.105)
+
+_Versions: core 0.0.994, harness 0.0.892._
+
+v4 wraps `searchMessagesGlobal` in `safeQuery(…, [])`: a query that throws
+logs `Failed to search messages globally` (`chatCount`, `error`) and answers
+`[]`. v5 returned the `Err`, and the Search page's REST edge (`api::ui_search`)
+turned it into a failed search where v4 still answers with the other result
+types. Only a failure of the `LIKE` scan reaches that arm (a missing index is
+already caught by the FTS path's own fallback). `search_messages_global` now
+logs the ERROR and answers `[]`; the signature is unchanged. The
+`chats_search` family gains a third venue, `poisoned` (`chat_messages` renamed
+on a copy of the plain fixture, one `fts` plan and one `fallback` plan),
+red-first on unported code; the log line is capture-pinned with a silence leg.
+
 #### 2026-09-22 — fix(db): `update_message` is v4's UPDATE, so the FTS triggers see an UPDATE (P4.105)
 
 _Versions: core 0.0.993, harness 0.0.891._

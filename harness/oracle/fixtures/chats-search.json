@@ -494,5 +494,25 @@
       "searchText": "colour",
       "limit": 100
     }
+  ],
+  "poisonedReads": [
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000010-0000-4000-8000-000000000001",
+        "c0000020-0000-4000-8000-000000000001"
+      ],
+      "searchText": "quick",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000010-0000-4000-8000-000000000001",
+        "c0000020-0000-4000-8000-000000000001"
+      ],
+      "searchText": "C++",
+      "limit": 100
+    }
   ]
 }

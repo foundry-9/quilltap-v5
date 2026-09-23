@@ -42,6 +42,19 @@
  *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/chats-search.ts > /tmp/oracle-chsearch.ndjson
  *   QT_VENUE=fts QT_FIXTURE_CHSEARCH=/tmp/qt-chsearch-fixture-fts.db \
  *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/chats-search.ts >> /tmp/oracle-chsearch.ndjson
+ *   QT_VENUE=poisoned QT_FIXTURE_CHSEARCH=/tmp/qt-chsearch-fixture.db \
+ *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/chats-search.ts >> /tmp/oracle-chsearch.ndjson
+ *
+ * THE POISONED VENUE (P4.105). `searchMessagesGlobal` is a `safeQuery(…, [])`
+ * in v4 — FALLBACK mode, so a query that throws logs `Failed to search
+ * messages globally` and answers `[]`. Neither of the other venues can reach
+ * that arm: a missing INDEX is already caught by the FTS path's own
+ * try/catch, which falls back to the `LIKE` scan and answers. Only a failure
+ * of the `LIKE` scan itself escapes to `safeQuery` — so this venue renames
+ * `chat_messages` out from under both shapes (on the per-run COPY of the
+ * plain fixture, after `initializeDatabase()`) and runs `poisonedReads`: one
+ * `fts` plan (the FTS query throws, warns, then the `LIKE` throws) and one
+ * `fallback` plan (straight to the `LIKE`, which throws).
  */
 
 import { fileURLToPath } from 'node:url';
@@ -75,7 +88,11 @@ interface Spec {
   reads: ReadOp[];
   replace: ReplaceOp[];
   postReplaceReads: ReadOp[];
+  poisonedReads: ReadOp[];
 }
+
+/** The poisoned venue's plant — byte-identical to the Rust test's. */
+const POISON_SQL = `ALTER TABLE "chat_messages" RENAME TO "chat_messages_p4105_poisoned"`;
 
 async function dumpTable(
   rawQuery: (sql: string) => Promise<unknown>,
@@ -95,8 +112,8 @@ async function main(): Promise<void> {
   const spec = JSON.parse(readFileSync(specPath, 'utf8')) as Spec;
 
   const venue = process.env.QT_VENUE ?? 'plain';
-  if (venue !== 'plain' && venue !== 'fts') {
-    throw new Error(`QT_VENUE must be 'plain' or 'fts', got ${venue}`);
+  if (venue !== 'plain' && venue !== 'fts' && venue !== 'poisoned') {
+    throw new Error(`QT_VENUE must be 'plain', 'fts' or 'poisoned', got ${venue}`);
   }
   const fixture = process.env.QT_FIXTURE_CHSEARCH;
   if (!fixture || !existsSync(fixture)) {
@@ -142,6 +159,19 @@ async function main(): Promise<void> {
           throw new Error(`unknown read kind: ${(op as { kind: string }).kind}`);
       }
     };
+
+    if (venue === 'poisoned') {
+      await rawQuery(POISON_SQL);
+      const poisonedReads: Array<{ kind: string; result: unknown }> = [];
+      for (const op of spec.poisonedReads) {
+        poisonedReads.push({ kind: op.kind, result: await runRead(op) });
+      }
+      await closeDatabase();
+      process.stdout.write(
+        JSON.stringify({ case: 'chats-search', venue, poisonedReads }) + '\n',
+      );
+      process.exit(0);
+    }
 
     // 1) The read methods (reads happen before any mutation).
     const reads: Array<{ kind: string; result: unknown }> = [];

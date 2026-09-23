@@ -46,7 +46,21 @@
 //! byte-identical. The grown corpus below is what turns those two rows into
 //! coverage of the whole seam.
 //!
-//! ## Regenerating (two fixtures, two invocations, ONE NDJSON)
+//! ## The third venue — `poisoned` (P4.105)
+//!
+//! v4 wraps `searchMessagesGlobal` in `safeQuery(…, [])` — FALLBACK mode: a
+//! query that throws logs `Failed to search messages globally` and answers
+//! `[]`. v5 used to propagate the `Err`, which the Search page's REST edge
+//! (`api::ui_search`, `?`) turned into a failed search where v4 answers the
+//! page with the other result types. Neither venue above reaches the arm: a
+//! missing INDEX is caught by the FTS path's own try/catch, which falls back
+//! to the `LIKE` scan and answers. So this venue renames `chat_messages` out
+//! from under BOTH shapes on a copy of the plain fixture and runs
+//! `poisonedReads` — one `fts` plan, one `fallback` plan. Measured at
+//! `f45a517a9`: v4 answers `[]` on both; v5 answered `Err` on both before the
+//! port (the red-first).
+//!
+//! ## Regenerating (two fixtures, three invocations, ONE NDJSON)
 //!
 //! ```bash
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -59,6 +73,8 @@
 //!   QT_VENUE=plain QT_FIXTURE_CHSEARCH=/tmp/qt-chsearch-fixture.db \
 //!     $N/npx tsx "$V5W/harness/oracle/cases/chats-search.ts" > /tmp/oracle-chsearch.ndjson
 //!   QT_VENUE=fts QT_FIXTURE_CHSEARCH=/tmp/qt-chsearch-fixture-fts.db \
+//!     $N/npx tsx "$V5W/harness/oracle/cases/chats-search.ts" >> /tmp/oracle-chsearch.ndjson
+//!   QT_VENUE=poisoned QT_FIXTURE_CHSEARCH=/tmp/qt-chsearch-fixture.db \
 //!     $N/npx tsx "$V5W/harness/oracle/cases/chats-search.ts" >> /tmp/oracle-chsearch.ndjson
 //!   QT_ORACLE_CHSEARCH=/tmp/oracle-chsearch.ndjson \
 //!   QT_FIXTURE_CHSEARCH=/tmp/qt-chsearch-fixture.db \
@@ -91,6 +107,17 @@ struct Spec {
     replace: Vec<ReplaceOp>,
     #[serde(rename = "postReplaceReads")]
     post_replace_reads: Vec<ReadOp>,
+    #[serde(rename = "poisonedReads")]
+    poisoned_reads: Vec<ReadOp>,
+}
+
+/// The poisoned venue's plant — byte-identical to the oracle case's.
+const POISON_SQL: &str = r#"ALTER TABLE "chat_messages" RENAME TO "chat_messages_p4105_poisoned""#;
+
+#[derive(Deserialize)]
+struct PoisonedOracle {
+    #[serde(rename = "poisonedReads")]
+    poisoned_reads: Vec<OracleRead>,
 }
 
 #[derive(Deserialize)]
@@ -299,6 +326,80 @@ fn run_venue(venue: &str, fixture: &str, spec: &Spec, oracle: &Oracle) {
     let _ = std::fs::remove_file(&work);
 }
 
+/// Split the NDJSON into the two full venues and the poisoned one, asserting
+/// exactly one line per venue.
+fn parse_oracle(text: &str) -> (Vec<Oracle>, PoisonedOracle) {
+    let lines: Vec<Value> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("parse oracle line: {e}")))
+        .collect();
+    assert_eq!(
+        lines.len(),
+        3,
+        "the oracle must carry one line per venue (plain, fts, poisoned) — regenerate all three \
+         invocations"
+    );
+    let mut full = Vec::new();
+    let mut poisoned = None;
+    for line in lines {
+        if line["venue"] == "poisoned" {
+            assert!(poisoned.is_none(), "two poisoned lines");
+            poisoned = Some(serde_json::from_value(line).expect("parse poisoned line"));
+        } else {
+            full.push(serde_json::from_value(line).expect("parse venue line"));
+        }
+    }
+    (full, poisoned.expect("no oracle line for venue poisoned"))
+}
+
+/// The poisoned venue: `chat_messages` renamed out from under both SQL
+/// shapes, so the `LIKE` scan itself throws. v4's `safeQuery(…, [])` answers
+/// `[]`; an `Err` here is recorded as a result rather than a panic, so the
+/// red-first shows the divergence per read.
+fn run_poisoned(fixture: &str, spec: &Spec, oracle: &PoisonedOracle) {
+    assert_eq!(
+        spec.poisoned_reads.len(),
+        oracle.poisoned_reads.len(),
+        "poisoned: read count: spec vs oracle"
+    );
+    let work = std::env::temp_dir().join(format!(
+        "qt-chsearch-rust-poisoned-{}.db",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&work);
+    std::fs::copy(fixture, &work).unwrap_or_else(|e| panic!("copy poisoned fixture: {e}"));
+    let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
+        .unwrap_or_else(|e| panic!("open poisoned fixture copy: {e}"));
+    writer
+        .connection()
+        .execute_batch(POISON_SQL)
+        .expect("plant the poison");
+
+    let repo = writer.chat_search();
+    for (i, op) in spec.poisoned_reads.iter().enumerate() {
+        assert_eq!(
+            op.kind, "searchMessagesGlobal",
+            "poisoned reads are global searches"
+        );
+        let got = match repo.search_messages_global(
+            op.chat_ids.as_deref().unwrap(),
+            &expand_search_text(&op.search_text),
+            op.limit.unwrap(),
+        ) {
+            Ok(rows) => Value::Array(rows),
+            Err(e) => Value::String(format!("Err: {e}")),
+        };
+        assert_eq!(
+            got, oracle.poisoned_reads[i].result,
+            "poisoned: read {i} ({:?}): v4's safeQuery answers [] — rust: {got}",
+            op.search_text
+        );
+    }
+    drop(writer);
+    let _ = std::fs::remove_file(&work);
+}
+
 #[test]
 fn chats_search_matches_oracle() {
     let oracle_path = match std::env::var("QT_ORACLE_CHSEARCH") {
@@ -325,16 +426,7 @@ fn chats_search_matches_oracle() {
 
     let spec = spec();
     let text = std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
-    let oracles: Vec<Oracle> = text
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("parse oracle line: {e}")))
-        .collect();
-    assert_eq!(
-        oracles.len(),
-        2,
-        "the oracle must carry one line per venue — regenerate both invocations"
-    );
+    let (oracles, poisoned) = parse_oracle(&text);
 
     for (venue, fixture) in [("plain", plain.as_str()), ("fts", fts.as_str())] {
         let oracle = oracles
@@ -343,12 +435,14 @@ fn chats_search_matches_oracle() {
             .unwrap_or_else(|| panic!("no oracle line for venue {venue}"));
         run_venue(venue, fixture, &spec, oracle);
     }
+    run_poisoned(&plain, &spec, &poisoned);
 
     eprintln!(
-        "OK: chats search matched oracle in BOTH venues ({} reads, {} replaces, {} post-replace reads each).",
+        "OK: chats search matched oracle in BOTH venues ({} reads, {} replaces, {} post-replace reads each) + {} poisoned reads.",
         spec.reads.len(),
         spec.replace.len(),
-        spec.post_replace_reads.len()
+        spec.post_replace_reads.len(),
+        spec.poisoned_reads.len()
     );
 }
 
@@ -364,11 +458,7 @@ fn the_two_venues_disagree_where_token_semantics_bite() {
     };
     let spec = spec();
     let text = std::fs::read_to_string(&oracle_path).expect("read oracle");
-    let oracles: Vec<Oracle> = text
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).expect("parse oracle line"))
-        .collect();
+    let (oracles, _) = parse_oracle(&text);
     let plain = oracles.iter().find(|o| o.venue == "plain").expect("plain");
     let fts = oracles.iter().find(|o| o.venue == "fts").expect("fts");
 
