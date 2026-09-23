@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): driftcheck — v4 dff00e98d + d1c06cd9d (the Scenario Builder, bugs 165/166) land past the ordered 00c290c9a; two UNPROCESSED §3 rows
+
+_Docs-only change._
+
+v4 main is now three commits past the `a2db63da7` baseline. `00c290c9a`
+stays ORDERED (P4.D215). The two new rows: `dff00e98d`, a docs-only
+feature spec (NO-PORT? candidate), and `d1c06cd9d`, the Scenario Builder —
+a new feature (service, SSE route, one-shot tool loop, SPA dialog, help
+page) plus changes to ported surfaces: the Brahma one-shot loop moved to a
+shared helper with new debug lines, `buildTools` takes a three-way
+`docToolsMode`, a `mountPool` context through the tool executor, search,
+doc-edit and path resolver, a `characterIds` filter on the groups list, a
+`SCENARIO_BUILDER` log type, and bug 165 (`addScenario` returned a
+transient id; v5 has the same shape). Bug 166 has no v5 counterpart. The
+regen rule is unchanged (pin at `a2db63da7`); the in-flight round's orders
+do not touch these surfaces.
+
 #### 2026-09-23 — docs(porting): order the `00c290c9a` bug-163/164 drift catch-up + maintenance round (P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110)
 
 _Docs-only change._
