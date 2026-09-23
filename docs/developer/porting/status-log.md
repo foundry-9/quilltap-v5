@@ -145522,3 +145522,211 @@ invalidated.
   guards) — no verb, no route file, no help file this lane.
 - Versions: core 0.0.1013 → 0.0.1014, harness 0.0.930 → 0.0.931. No other
   crate, no SPA.
+
+## P4.D216 — the Scenario Builder substrate, the KEYSTONE (lane, 2026-09-23, `claude/scenario-builder-substrate-port-654607`)
+
+**Tier 1 is COMMITTED. P4.D217: cut your worktree from branch
+`claude/scenario-builder-substrate-port-654607` at `90fed556`** (or the lane's
+final tip, recorded at close below). Commits, in order: `8f813633` (unit 1 — the
+stream call's log type), `09af2744` (unit 2 — the tool slate), `7db0a822` (unit 3
+— the shared one-shot loop), `4c4bcf02` (unit 4 — the pre-built mount pool),
+`90fed556` (unit 5 — `groupList`'s filter). Oracle pins used throughout:
+`/tmp/qt-v4-pin-p4d216-d1c06cd9d` (target) and `/tmp/qt-v4-pin-p4d216-00c290c9a`
+(baseline), each verified by `rev-parse` + `ls -ld`; the §R.2 probe passed at lane
+start and before every regen batch (branch `main`, HEAD `d1c06cd9d`, both logs
+empty, tree clean).
+
+### The contracts (the public signatures P4.D217 consumes — §R.10(b))
+
+- **`quilltap_core::services::agent_loop::one_shot_loop`** (NEW):
+  - `pub const MAX_DUPLICATE_TOOL_CALLS: usize = 2;` `pub const DEFAULT_LOG_LABEL: &str = "One-shot loop";`
+  - `pub use crate::services::tool_build::BuiltTools;` (v4's `BuiltTools` IS
+    `buildTools`' return — `{ tools, model_supports_native_tools,
+    use_native_web_search }`).
+  - `pub struct OneShotUsage { prompt_tokens: i64, completion_tokens: i64, total_tokens: i64 }` (Copy, Default).
+  - `pub enum OneShotLoopResult { Ok { answer: String, tools_executed: usize, usage: OneShotUsage }, Failed { detail: String } }` — v4's two `detail`s: `"aborted"`, `"empty response"`.
+  - `pub struct OneShotLoopError { pub message: String }` — v4's THROW (a
+    mid-stream provider error propagating out of `for await`); the Scenario
+    Builder maps it to the "detained" frame with `details: message`.
+  - `pub struct OneShotLoopDeps<'a, STR, TR, TD> { db: &'a Db, streaming: &'a STR, tool_runner: &'a TR, tool_detector: &'a TD }`.
+  - `pub struct NoopSink;` (an `EventSink` — v4's absent controller).
+  - `pub struct RunOneShotToolLoopOptions<'a, S: EventSink> { user_id: &'a str, chat_id: &'a str, connection_profile: &'a Value, system_prompt: &'a str, user_message: &'a str, tools: &'a BuiltTools, tool_context: &'a ToolExecutionContext, max_agent_turns: i64, controller: &'a S, signal: Option<&'a AtomicBool>, log_type: Option<&'static str>, status_context: Option<StatusContext>, on_reasoning: Option<&'a mut (dyn FnMut(&str) + Send)>, log_label: Option<&'a str> }` — `connection_profile` is the profile ROW (`provider`, `modelName`, `baseUrl`, `id`, `name`, `pseudoToolMode` read); v4's `apiKey` has no field (the host streaming provider resolves keys; the CALLER still runs `resolve_connection_profile_api_key` for v4's refusals); `controller` is any `EventSink` (the Brahma wrapper passes `&NoopSink`; the Scenario Builder passes its live sink — `process_tool_calls` writes the `toolsDetected`/`status`/`toolResult` frames to it); `signal` is checked between turns AND per chunk (set it from the abort verb); `on_reasoning` fires with the turn's CUMULATIVE reasoning on every change (REPLACE).
+  - `pub fn resolve_one_shot_uses_text_block_tools(connection_profile: &Value, built: &BuiltTools) -> bool`
+  - `pub fn build_one_shot_tool_instructions(connection_profile: &Value, built: &BuiltTools, text_block_options: &TextBlockEnabledToolOptions, max_agent_turns: i64) -> String`
+  - `pub async fn run_one_shot_tool_loop<STR, TR, TD, S>(deps: &OneShotLoopDeps<'_, STR, TR, TD>, opts: RunOneShotToolLoopOptions<'_, S>) -> Result<OneShotLoopResult, OneShotLoopError>` (future is `Send` when `S: Sync`).
+  - `pub fn plain_message(role: &str, content: &str) -> ThreadedMessage`.
+- **`services::tool_build`**: `pub enum DocToolsMode { Off, Read, Full }`
+  (serde `off`/`read`/`full`, `Default = Off`); `pub struct BuildToolsExtras {
+  plugin_tool_allowlist: Option<Vec<String>>, documents_only_search: bool,
+  web_search: Option<bool> }` (`Default` = v4's absent bag);
+  `BuildToolsInput.doc_tools_mode: DocToolsMode` (replaces
+  `document_editing_enabled`) + `BuildToolsInput.extras: BuildToolsExtras`;
+  `BuildToolsForProviderOptions.{doc_tools_mode, plugin_tool_allowlist,
+  documents_only_search}` (replace `document_editing`). The Scenario Builder
+  slate: `doc_tools_mode: Read`, `extras: { documents_only_search: true,
+  plugin_tool_allowlist: Some(vec!["curl"]) | Some(vec![]), web_search:
+  Some(real_mode) }` — both slates are rows in `tool_build_equivalence`
+  (`p4d216_scenario_builder_{real,in_world}_slate`).
+- **`tools::definitions`**: catalog key `"searchScriptoriumScenario"` (wire
+  name `search`) — 59 entries.
+- **`services::llm_logging::log_type::SCENARIO_BUILDER`** (`&'static str`);
+  `primary_stream::log_stream_message_call(log, row_log_type, …)` (`pub(crate)`)
+  — the loop calls it; nothing else needs to.
+- **`ToolExecutionContext.mount_pool: Option<TieredMountPool>`**
+  (`db::tiered_mount_pool::TieredMountPool`, unmodified) — mutually exclusive
+  with `operator_surface` (the runner refuses both, first). Copied onto
+  `SearchContext.mount_pool` and `DocEditToolContext.mount_pool`;
+  `PathResolutionContext.mount_pool`; `AccessibleMountPointsQuery.mount_pool:
+  Option<&TieredMountPool>`.
+- **`Request::GroupList { character_ids: Option<Vec<String>> }`** (wire
+  `{ type: 'groupList', characterIds?: string[] }`) and
+  `api::groups::group_list(db, user_id, character_ids)` — §S.2, for P4.D218.
+
+### Unit records
+
+1. **The log type** (`8f813633`). No single funnel in v5, so the parameter
+   lives on `log_stream_message_call`; `log_chat_message_call` delegates at
+   `CHAT_MESSAGE` (help-chat / failover / Brahma orchestrator untouched). No
+   other closed `LLMLogTypeEnum` copy exists in core (grepped `VOICE_REWRITE`:
+   only the constant, its unit asserts, and SPA files — P4.D218's). Pin: a
+   default row + a typed row through the real writer into a provisioned
+   llm-logs partition — **red-first** with the type still hard-coded (`chat-scenario`
+   read back `CHAT_MESSAGE`).
+2. **The tool slate** (`09af2744`). `tool_build_equivalence` +12 cases. The
+   oracle shapes index 13 by what the pinned tree EXPORTS (a pre-`d1c06cd9d`
+   pin still takes the boolean, and `!!'off'` is true there), so one case runs
+   at both pins: **the 27 pre-existing cases are byte-identical at both pins**;
+   exactly the 6 v4-moved cases differ (read mode, documents-only ×2,
+   `webSearch:false`, the two scenario slates). **Red-first: exactly those 6**
+   (pre-port behaviour simulated by a backed-up patch). The two allowlist cases,
+   `webSearch:true` ×2 and explicit `full`/`off` are neutral by construction on
+   both sides (recorded, not claimed). The catalog regenerated through
+   `gen-tool-catalog.mjs` from the target oracle (58 → 59; the unit tripwire in
+   `tools/definitions/mod.rs` moved with it); `tool_definitions_equivalence` red
+   on completeness first (58 ≠ 59), green after. Mutation: `webSearch: true`
+   GRANTS → exactly `p4d216_web_search_extra_true_cannot_grant` red. Pin marker:
+   the target NDJSON carries `What to look up in the document stores: a place,
+   its history, a custom, an event, a season.` (1), the baseline's does not (0).
+   `build_tools` caller census (the pre-declared spills, each marked
+   `P4.D216 OUT-OF-MANDATE`): Salon `orchestrator.rs` → `if
+   document_editing_enabled { Full } else { Off }`; `carina_query.rs` → same;
+   `help_chat/orchestrator.rs` → `Off`; `brahma_console/mod.rs` → `Full`;
+   `brahma_console/orchestrator.rs` → `Full`; `pascal_build_tools_roster.rs`
+   (a harness literal) → `Off`.
+3. **The shared loop** (`7db0a822`). The Brahma inline loop MOVED into
+   `agent_loop::one_shot_loop` (the private const, `run_stream`,
+   `OneShotStreamLog`, `plain_message`), then diffed arm by arm against v4's
+   file. New vs the old inline loop: the usage sum, `tools_executed`, the abort
+   flag (between turns + per chunk; a chunk after the abort is still LOGGED by
+   the generator side if it is the terminal one — v4's `streamMessage` writes its
+   row before yielding — and never reaches the turn), `on_reasoning`, the label,
+   the log type, and a stream throw as `Err` rather than folded in.
+   `normalize_tool_call_signature` moved to its v4 home
+   (`brahma_console::orchestrator` — v4's `one-shot-loop.ts` imports it from the
+   streaming console); the streaming orchestrator keeps its OWN local
+   `MAX_DUPLICATE_TOOL_CALLS` (v4 `orchestrator.service.ts:305` — a local const);
+   a source grep leaves no loop copy in `brahma_console/mod.rs`. **The eight log
+   lines**, camelCase fields: v5 had emitted ONE of them (`exhausted …`); the
+   five v4-new lines (`: starting`, `: aborted between turns`, `: aborted
+   mid-stream`, `: tool turn`, `: finished`) plus the pre-existing `stuck in
+   tool-call loop` WARN and `produced an empty answer` DEBUG (now with `turns`)
+   were all absent, and so was the console's `No connection profile resolvable
+   for Brahma query` DEBUG — all added. **Order correction (§R.4(a)):** the
+   ledger said "four" new lines; the hunks show FIVE (the order already said
+   five). `brahma_console_tier3_equivalence`: every case's lines diffed field for
+   field through a structural tracing layer (the oracle wraps
+   `createServiceLogger` for `OneShotToolLoop` + `BrahmaOneShot`); +9 loop-direct
+   arms driving v4's REAL `runOneShotToolLoop` (reasoning replace + usage +
+   `SCENARIO_BUILDER` rows; tool turn + summed usage + the default label; submit
+   after a tool; abort MID-STREAM via an `onReasoning` trip; abort BETWEEN TURNS
+   via a detection trip; empty; a thrown stream; the stuck guard + bug-47
+   salvage; the budget-turn JSON fallback). The log TYPE is compared per arm:
+   v4's oracle records `opts.logType ?? 'CHAT_MESSAGE'` as the mocked stream
+   passes its terminal chunk; v5 reads the rows its real writer wrote under the
+   arm's own chat id. **Neutral:** the pre-existing corpus's oracle is
+   byte-identical between the two pins (`cmp`), and v5 is green on it (17/17
+   `CHAT_MESSAGE` rows). **Red-first** (the new lines stripped): 11 of 14 cases +
+   all 8 original loop arms (the three silent api-key refusals are silence legs).
+   **Mutations:** drop the plain-text break → `oac_keyless_proceeds` red; drop
+   the per-chunk abort break → exactly `loop_abort_mid_stream` (its llm_logs type
+   list); drop the POST-loop extraction → **SURVIVED on the first corpus** (the
+   in-loop fallback covers every shape but one) — a finding fixed by the ninth
+   arm, `loop_budget_turn_tool_call_with_json_text` (a native tool call on the
+   budget turn keeps the in-loop fallback off, so only the post-loop pass
+   recovers the JSON text); it now reddens exactly that arm. The stream-watchdog
+   wrap census's one-shot row moved to `services/agent_loop/one_shot_loop.rs`
+   (1/1, unchanged count; marked out-of-mandate — the census file is shared).
+4. **The pre-built mount pool** (`4c4bcf02`). Every reader v4 threads it
+   through, file by file (§Tier 1 item 6). The resolver's arm sits AFTER the
+   operator arm and BEFORE the covenant (v4's position — the pool is not subject
+   to the opacity covenant); its flatten is `include_participants: true` with
+   `include_character_tier` at its default (the spec's §5.2 said false; that
+   would drop the participant tier too — the code wins). One helper
+   (`path_resolver::prebuilt_pool_accessible_ids`, `pub(crate)`) serves both
+   `collect_accessible_mount_point_ids` and `get_accessible_mount_points` (v4
+   routes enumeration through the same function, so its DEBUG fires on both).
+   The resolver's operator-override DEBUG (`Path resolver: operator override —
+   all enabled stores accessible`) was ALSO absent in v5 and is added beside it.
+   Families at the target: **`doc_opacity_equivalence` +25 ops** (a `pool`
+   actor — character-less, project-less, a hand-built pool of the fixture's REAL
+   ids, both cast vaults in the participant tier — plus a `nobody` actor for the
+   guards' refusal legs; pool ops also diff the `DocEdit:PathResolver` lines);
+   **`doc_edit_path_resolver_equivalence` +7 rows** (incl. `pool-and-operator`
+   — the operator arm wins, proving the pool arm's position — and
+   `pool-project-scope-still-needs-project`); **`search_tools_equivalence` +9
+   pool searches + 3 executor arms** (memories/conversations forced to zero hits
+   even WITH a character; the cast vault searched as documents and as the
+   `character` knowledge tier; the refusal's exact result + ERROR fields
+   `{context: tool-executor, toolName, chatId}` through v4's REAL
+   `executeToolCallWithContext`; pool-only and operator-only run with NO refusal
+   line). **Red-first:** all 21 opacity pool ops with no pool reaching v5.
+   **Baseline legs:** every pre-existing row of all three families passes
+   against the `00c290c9a` oracles; only the new pool rows move. **Mutations:**
+   resolver `include_participants: false` → the vault/enumeration pool ops (and
+   every pool op's `count`); the resolver guard's pool conjunct dropped →
+   `pool-no-context-name`; the refusal as WARN → exactly the refusal arm;
+   conversations not forced off → `pool_conversations_forced_off`; the documents
+   flatten without participants → `pool_documents`. Log-compare scoping (named,
+   both deliberate): v5's refusal WARNs carry structured fields v4 bakes into
+   the message (P4.100's convenience) — compared on level + message where v4
+   passes no context; and **v4's per-call INFO `Search scriptorium completed` has
+   never had a v5 emitter** (a pre-existing absence on EVERY search — excluded
+   from the search-handler compare BY NAME; a follow-up, not this order's).
+   Pool `doc_list_files` rows blank `modified` on both sides (the run's own blob
+   writes' epoch-ms). Out-of-mandate `mount_pool: None` lines (each marked):
+   `documents/mod.rs:176` (Document Mode is the operator surface), and the harness
+   literals in `doc_fs`, `doc_enum`, `doc_text`, `photo_tools`, `doc_ui`,
+   `doc_blob` (×2), `doc_fm` — all seven re-run green at the target.
+5. **`groupList`'s filter** (`90fed556`). §S.2 verbatim; the DEBUG line uses
+   `SINGLE_USER_ID` at the engine arm. `groups_routes_equivalence` +8 reads (body
+   + DEBUG line through a spy on v4's root logger) — **red-first** on all seven
+   filter reads with the filter ignored; the absent-key read logs nothing on both
+   sides. **Mutation finding:** gating on a non-empty RAW list SURVIVED the
+   first corpus (both "empty" arms send a non-empty raw list — `[""]`,
+   `[" "," "]`); the SPA's own `characterIds: []` arm (answering v4's
+   `?characterIds=` row) was added, and now both the raw and the post-trim
+   gate mutations redden. Baseline leg: only the new filter rows move. Decode
+   pin in `api/types.rs`: bare `{"type":"groupList"}` → `None`; `[]` →
+   `Some(vec![])`. **`dispatch_wrong_type_census` 446 → 447** (measured red at
+   447 first): `character_ids` is a v4 QUERY key the `*_ids` rule drops —
+   recorded honestly in the comment.
+
+### Findings outside this order (for the unifier / follow-ups)
+
+- **The tool-call doc-edit context hard-codes `operator_override: false`**
+  (`tools/executor.rs` `run_doc_edit` + `doc_context`), where v4 passes
+  `operatorOverride: context.operatorSurface` (`tool-executor.ts:1147`, present
+  at BOTH pins). So the Brahma one-shot's `doc_*` tools resolve WITHOUT the
+  operator's all-stores set on v5. Pre-existing, not this order's scope; a
+  candidate follow-up (it would move `brahma_console_tier3` only on a corpus
+  that calls a doc tool).
+- **v4's INFO `Search scriptorium completed`** has no v5 emitter (above).
+- **The one-shot `run_stream` does not normalize content-block-format chunks**
+  (v4's `streamMessage` runs `normalizeContentBlockFormat` on every chunk).
+  Pre-existing in the Brahma path; now shared with the Scenario Builder. Not
+  taken (no differential arm reaches it).
+- **v4 nit (Tier 3 item 12):** `BrahmaOneShot`'s logger keeps exactly one line
+  (the no-profile DEBUG) after the refactor — not dead, as the order supposed.
+- **§R.9 mirror paths this lane's rows move:** none beyond the round's list
+  (the substrate is code-only in v4's commit; the doc rows are P4.D217's
+  help tree and the unifier's `docs/v4/` mirror).

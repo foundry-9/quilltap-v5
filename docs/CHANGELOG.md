@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): P4.D216 lane record — Tier 1 committed; the contracts published for P4.D217
+
+_Docs-only change._
+
+The P4.D216 lane record in `status-log.md`: the branch and commit P4.D217
+stacks on, every public signature the substrate delivers (the one-shot loop,
+the doc-tools mode and extras, the catalog key, the log type, the mount pool
+fields, `groupList`'s field), the per-unit red-first counts and mutation
+results, and four findings outside the order's scope.
+
 #### 2026-09-23 — feat(groups): `groupList` filters by character membership (P4.D216 unit 5)
 
 _Versions: core 0.0.1018, harness 0.0.934, web 0.0.180._
