@@ -144059,3 +144059,227 @@ then each stage run with `cd /tmp/qt-v4-pin-p4d215-<sha>`. The regenerate
 family's planted seeds land beside its NDJSON
 (`<QT_ORACLE_REGENERATE_TITLE>.<case>.{main,mount}.db`) — regenerate the
 oracle, never copy the NDJSON alone.
+
+## P4.107 — the fixture-vintage heal, next list (lane, 2026-09-23, `claude/fixture-vintage-heal-next-list-04aa32`)
+
+**Order:** `docs/developer/porting/work-orders/p4.107-fixture-vintage-heal-next-list.md`
+(the `00c290c9a` round: P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110). Pin:
+`/tmp/qt-v4-pin-p4107-a2db63da7` (the BASELINE; verified by `rev-parse` =
+`a2db63da785a…` and `ls -ld`, clean `status` before every batch). No `.rs`
+file touched.
+
+**§R.2 probe:** PASSED at lane start (branch `main`, HEAD `00c290c9a`, both
+logs empty, tree clean). ⚠ **FAILED before the second regen batch:** v4
+`main` moved to **`dff00e98d`** ("docs: add Scenario Builder handoff spec",
+2026-09-23 12:55 UTC — `.claude/commands/update-documentation.md`,
+`docs/CHANGELOG.md`, `docs/developer/features/ROADMAP.md`, NEW
+`docs/developer/features/scenario-builder.md`; no `lib/`/`app/`/`packages/`/
+`plugins/` path). The lane STOPPED and reported; **the human instructed the
+lane in chat to carry out the whole order** — recorded here as that waiver
+(not written to the ledger; lanes never write it). At the 26-pair batch the
+checkout was ALSO dirty in `lib/` (19 modified paths under `lib/`/
+`components/` plus an untracked `lib/scenario-builder/` — the human's
+in-flight work); every regen of this lane runs from the pinned worktree,
+whose own `status` stayed clean, so neither the commit nor the dirt reaches
+any oracle here. **For the unifier / `/driftcheck`: `dff00e98d` is an
+unrecorded §3 row, and the checkout's dirt is unrecorded.**
+
+### Tier 1 — landed whole
+
+1. **Pre-widen measurement from the pin** (`recipe_sweep.py --run-all`,
+   un-widened tree `01e52897`):
+
+   | family | pre-widen | post-widen |
+   |---|---|---|
+   | `photos_routes_equivalence` | **5 red**: `save_ok`, `save_duplicate`, `save_not_an_image`, `save_not_owned`, `save_missing_file` → 500 "Failed to save image" | ok |
+   | `llm_logs_routes_equivalence` (`QT_ORACLE_LLM_LOGS_ROUTES`) | **4 red**: `list_by_chat`, `list_by_chat_include_messages`, `list_by_chat_include_messages_not_exact` ("Failed to list LLM logs"), `list_by_chat_missing` (500 vs 404) | ok |
+   | `wardrobe_routes_equivalence` | **28 red**: `delete_ok__outfit`, `outfit_preset`, `outfit_preset_key_order`, `outfit_empty`, `outfit_missing_chat`, `eq_wear`, `eq_wear__outfit`, `eq_wear_replaceflag`, `eq_alias`, `eq_replace`, `eq_add_present`, `eq_add_new`, `eq_remove`, `eq_remove__outfit`, `eq_clear`, `eq_set_all_key_order`, `eq_set_all__outfit`, `eq_set_all_partial__outfit`, `eq_missing_chat`, `eq_missing_chat__outfit`, `eq_project_tier`, `eq_general_tier`, `regen_ok`, `regen_default`, `regen_slots_override`, `regen_chat_missing`, `regen_not_participant`, `pv_ok` (500 "Failed to fetch equipped outfit" / "Failed to update equipped slot" / "Failed to queue avatar regeneration" / "Failed to save avatar preview"; `eq_project_tier` 404 "Wardrobe item not found") | ok |
+   | `almanack_tier2_equivalence` | **11 failed checks** (`generate_route` 500, `…:content_is_the_report`, `…:size_is_content_len`, `progress_frames` — v5's last frame `sqlite error: table files has no column named generationKey`, `persisted_after_generate`, `list_route`, `get_route` 404, …, `persisted_after_delete`) | ok |
+   | `image_aesthetics_routes_equivalence` | ok | ok |
+   | `photos_web_routes`, `characters_action_route`, `file_content_missing_404`, `characters_wardrobe_route`, `wardrobe_instructions_routes` | ok ×5 | ok ×5 |
+
+   `--report-only` over the five mains, verbatim, matched the order column
+   for column: photos +6 (`characters.archivedAt`, `archiveFileId`,
+   `archivedAvatarFileId`, `chats.cycleOrderParticipantIds`,
+   `transcriptVersion`, `files.generationKey`); inspector and
+   inspector-nostore +9 each (the archive trio, `connection_profiles.
+   multiCharacterPrefill`/`fallbackProfileId`/`allowTierFallback`,
+   `chats.cycleOrderParticipantIds`, `chat_messages.routeTrail`,
+   `chats.transcriptVersion`); wardrobe-routes +3; almanack +7
+   (`connection_profiles.fallbackProfileId`/`allowTierFallback`,
+   `chat_settings.impersonationVoiceRewrite`, the two `chats` columns,
+   `routeTrail`, `generationKey`).
+2. **The widen** (`2a393f7e`): ONE apply run naming the five MAIN files only,
+   from the pin:
+   `cd /tmp/qt-v4-pin-p4107-a2db63da7 && ~/.nvm/versions/node/v24.13.1/bin/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts $F/photos-main.db $F/inspector-main.db $F/inspector-nostore-main.db $F/wardrobe-routes-main.db $F/almanack-main.db`.
+   Output: the five gaps above plus `+INDEX idx_files_generationKey` on
+   photos / wardrobe-routes / almanack (inspector has no `files` table).
+   ZERO `.db-journal` residue. `--report-only` after: "already current" ×5.
+   On scratch copies with the `web-fixture` pepper: `PRAGMA integrity_check`
+   ok ×5, every added column present, the index present wherever `files`
+   exists. Sizes: photos 110,592 → 114,688; inspector ×2 106,496 →
+   106,496; wardrobe-routes 172,032 → 176,128; almanack 581,632 → 585,728.
+   `git diff --stat`: exactly the five `.db` files (plus the recipe header,
+   the sweep artifact, the version bump). Recipe appended to the migrator's
+   header AS RUN.
+3. **Every reader re-run from the pin** (sweep artifact
+   `harness/tools/sweep-results/2026-09-23-a2db63da7-p4107-heal.json`,
+   10 families): **10 ok, zero `SKIP:`**. The v4 NDJSON before vs after,
+   normalized for minted UUIDs and timestamps: `llm-logs` and
+   `image-aesthetics` **byte-identical**; `photos` differs only in the
+   clock-stamped `relativePath`s; `almanack` only in environment noise
+   (free memory, uptime, the temp data dir), the Main file size
+   (568.0 KB → 572.0 KB — the widen itself, emitted by the report) and
+   `persisted_after_generate`'s `files_rows` gaining `"generationKey": null`
+   (the added column in an emitted row, as the order predicts).
+   **`wardrobe-routes` changed on the v4 side for real:** `eq_set_all` and
+   `eq_set_all_partial` were **v4 500 "Failed to update equipped slot"**
+   pre-widen and are 200 now, with their four `…__outfit` follow-ups moving
+   accordingly (plus a clock-stamped preview filename). Mechanism read at the
+   pin: `set_all` calls `repos.chats.setEquippedOutfit` →
+   `this.update(chatId, { equippedOutfit })` (`chats.repository.ts:635`),
+   v4's whole-entity `$set`, which names `chats.transcriptVersion` and died on
+   the un-widened table — while the other equip modes take a path that does
+   not. So pre-widen those two rows were a **mutual-500 false agreement**
+   (both sides failing on vintage, compared equal); the widen retires it and
+   both sides now answer 200. Not suspect: the only fixture change is the
+   added columns.
+4. **The dead per-case heal:** `crates/quilltap-web/tests/
+   photos_routes_equivalence.rs:222-237`'s guarded `ALTER TABLE files ADD
+   COLUMN generationKey` is now a no-op on the widened pair (the family is
+   green with it present). No other reader of the five carries a guarded
+   `ALTER`/`ensure_*` (grepped: the ten readers + their five oracle cases +
+   `apps/web/e2e/`). Left in place for a later cleanup (Tier 3 item 9).
+
+### Tier 2 — landed
+
+5. **The migrator's two blind spots** (`b88970df`): (a) `TEST_PEPPERS` gains
+   `tier-2` (`wardrobe-instructions.json`), `chat-cast` (`chat-cast.json`),
+   `oracle-test` (`episodic-recall.json`), each READ from the spec's
+   `testPepperBase64` at run time (`images-collection` moved to the same
+   read; `web-fixture` stays a literal — its home is the Rust helper); a
+   file no pepper opens still throws, naming all five tried (proven on an
+   8 KiB random file). (b) `--report-only` prints `WOULD CREATE INDEX
+   <name>` for an `extraSql` index `sqlite_master` lacks, and an apply now
+   prints `+INDEX <name>` for one it created. Proven on scratch copies:
+   `wardrobe-instructions-main.db` opens → "already current";
+   `inspector-llm.db` and `almanack-llmlogs.db` → both `idx_llm_logs_*`
+   lines each; `photos-main.db` (pre-widen) → its six columns +
+   `idx_files_generationKey`. No committed fixture changed by this item.
+6. **The 26-pair measurement** (report only — NO committed widen). Every
+   pair now opens. Readers found by filename + the four `common/mod.rs`
+   helpers (`materialize_fixture_instance` = chat-send,
+   `…_help_chat_…`, `…_text_replacements_…`, `…_in_scene_voiced_…`); run
+   from the pin on the un-widened tree: 75 families through the sweep
+   driver (`/tmp/p4107/26-sweep.json`: 64 ok, 10 `run_failed`, 1
+   `regen_failed`, zero `SKIP:`) plus five suites the driver does not list
+   run direct (`quilltap-tauri` `ipc_contract` 7/0; `quilltap-host`
+   `host_headshoulders_backfill` 2/0, `host_scenario_seeded_summary_heal`
+   3/0, `host_generated_image_placeholder_heal` 2/0; `quilltap-web`
+   `avatar_rolls_routes` 2/0).
+
+   | pair | gap (`--report-only`) | readers run | RED | green |
+   |---|---|---|---|---|
+   | `chat-send` | main: 13 cols (+ `chats.turnSkippingEnabled`, not in the migrator — per the order) | 23 | — | 23 |
+   | `salon-long` | main: 14 cols + 1 idx (DELIBERATE, P4.94) | 0 Rust (one e2e spec) | — | — |
+   | `embedding-remainder` | main: 13 cols | 1 | **`embedding_remainder_equivalence`** — both sides error `no such column: cycleOrderParticipantIds` on 4 cases; on `empty-chat-returns-early` / `missing-chat-returns-early` v4 answers ok, v5 errors | 0 |
+   | `autonomous` | main: 12 cols | 1 | **`autonomous_rooms_routes_equivalence`** — `start_idle`/`start_already_running` 500 "Failed to start autonomous run" (v4 ALSO 500s on `start_idle`), `pause` 500 vs 200 | 0 |
+   | `chat-cast` | main: 10 cols + 1 idx | 2 | **`chat_cast_routes_equivalence`** — the v4 REGEN fails (`SqliteError: no such column: cycleOrderParticipantIds` in `chats-participants.ops.ts:105`) | 1 |
+   | `llm-log-cleanup` | llmlogs: 2 cols + 2 idx; main: 7 cols | 1 | — | 1 |
+   | `conversation-summaries-regen` | main: 6 cols | 1 | **`conversation_summaries_regen_equivalence`** — v5 handler `no such column: cycleOrderParticipantIds` | 0 |
+   | `documents` | main: 6 cols | 2 | **`documents_routes_equivalence`** — six `chat_*` cases 500 (`no such column: cycleOrderParticipantIds` / "Failed to resolve accessible document stores") | 1 |
+   | `cost-background` | main: 5 cols + 1 idx | 2 | **`cost_background_routes_equivalence`** (`cost_*` `no such column: cycleOrderParticipantIds`; `regen_*` "Failed to queue story background regeneration") + **`title_update_tier3_equivalence`** (17 cases — the v4 side THROWS `no such column: cycleOrderParticipantIds`, v5 does not) | 0 |
+   | `headshoulders` | main: 5 cols + 1 idx | 3 | — | 3 |
+   | `system-data` | llmlogs: 2 idx; main: 5 cols + 1 idx | 11 | **`system_delete_data_equivalence`** — v5's summary counts `files`/`backups`/`archiveBundles` as 0 where v4 counts 5–6/1/1 | 10 |
+   | `chat-scenario` | main: 4 cols | 3 | — | 3 |
+   | `episodic-recall` | main: 4 cols | 3 | **`recall_replay_equivalence`** — `retro_full` 500 vs 200 (`no such column: cycleOrderParticipantIds`) | 2 |
+   | `files` | main: 4 cols + 1 idx | 5 | — | 5 |
+   | `home` | main: 4 cols + 1 idx | 1 | **`home_routes_equivalence`** — `route_primary` "Failed to load the home dashboard" | 0 |
+   | `post-office` | main: 4 cols + 1 idx | 2 | — | 2 |
+   | `character-archive` | main: 3 cols + 1 idx | 3 | — | 3 |
+   | `embedding-generate` | main: 3 cols | 1 | — | 1 |
+   | `embedding-profiles` | main: 3 cols | 3 | — | 3 |
+   | `memories` | main: 3 cols | 1 Rust (+ two e2e specs) | — | 1 |
+   | `text-replacements` | main: 3 cols + 1 idx | 2 | **`text_replacements_routes_equivalence`** — the four `bg_*` cases (`no such column: cycleOrderParticipantIds`) | 1 |
+   | `workbench` | main: 3 cols | 2 | — | 2 |
+   | `help-chat` | main: 2 cols + 1 idx | 4 | — | 4 |
+   | `avatar-rolls` | main: 1 col + 1 idx (**has `generationKey` but NOT its index** — the order said 1 gap; the index lag is new) | 2 | — | 2 |
+   | `brahma` | main: 1 col (`transcriptVersion`) | 3 | — | 3 |
+   | `in-scene-voiced` | main: 1 col | 2 | — | 2 |
+
+   **11 red families across 10 pairs.** Classified at the pin by a
+   TEMPORARY widen: the ten red pairs' MAIN files were widened in the
+   worktree (uncommitted), the 11 families re-run through the driver
+   (`/tmp/p4107/classify-sweep.json`: **11 ok**), and the ten files restored
+   by `git checkout` (md5 verified identical to HEAD; tree clean, zero
+   journals). **Every one of the 11 is pure fixture vintage** — including the
+   four whose error text hid the cause (`home`, `autonomous`,
+   `system_delete_data`, `cost_background`'s regen arms). **The next heal's
+   list is exactly these ten main files:** `embedding-remainder`,
+   `autonomous`, `chat-cast`, `conversation-summaries-regen`, `documents`,
+   `cost-background` (⚠ P4.D215 grows `title_update_tier3` on COPIES of it
+   this round — sequence the widen after that lands), `system-data`,
+   `episodic-recall`, `home`, `text-replacements`. The other 16 pairs carry a
+   gap no reader trips today.
+
+### Tier 3 — deferrals, loud
+
+7. **`almanack-main.db`'s `help_docs` table** keeps its builder-invented
+   `slug` shape (`build-almanack-fixture.ts:1462-1479`) — no v4 migration
+   produces it; a builder question, NOT a vintage gap. Untouched.
+8. **Index-only lags recorded, not healed:** `inspector-llm.db` and
+   `almanack-llmlogs.db` (both `idx_llm_logs_*`), `system-data-llmlogs.db`
+   (the same two), `avatar-rolls-main.db` (`idx_files_generationKey`), and
+   the mount-index `idx_doc_mount_files_sha256` lag on most committed mounts.
+   No family is red on any of them.
+9. **The dead reader-side `ALTER`** at `photos_routes_equivalence.rs:222-237`
+   — a later cleanup (an `.rs` edit, outside this lane).
+10. **Not run:** the Playwright readers of the 26 pairs (`salon-scroll.spec.ts`
+    over `salon-long-*`, the two specs that copy `memories-*`) — no oracle
+    regen applies to them, their pairs are untouched here, and their last
+    state is the previous unified gate's full suite. The unifier's full
+    Playwright run covers them.
+
+### Fixtures changed → oracles invalidated
+
+The five widened mains. Every oracle reading them was regenerated from the
+pin in this lane (the ten-family artifact above); the unifier re-runs the
+same ten from the NEW baseline pin (none moves at `00c290c9a`). No other
+family reads these five files (grepped `crates/*/tests`, `crates/*/src`,
+`apps/web/e2e`).
+
+### Regen recipes (as run)
+
+`python3 harness/tools/recipe_sweep.py --run-all --v4 /tmp/qt-v4-pin-p4107-a2db63da7 --v5w <ABSOLUTE worktree> --families photos_routes_equivalence,llm_logs_routes_equivalence,image_aesthetics_routes_equivalence,wardrobe_routes_equivalence,almanack_tier2_equivalence,photos_web_routes,characters_action_route,file_content_missing_404,characters_wardrobe_route,wardrobe_instructions_routes --results harness/tools/sweep-results/2026-09-23-a2db63da7-p4107-heal.json`
+(`CARGO_INCREMENTAL=0 TZ=UTC`); the fresh NDJSON copied to the lane-private
+`/tmp/p4107/post/` before the workspace gate (the recipes write fixed
+`/tmp/oracle-{photos,llm-logs,image-aesthetics,wardrobe-routes,almanack}.ndjson`).
+
+### Lane gate (tree `2a393f7e`, `CARGO_INCREMENTAL=0 TZ=UTC`)
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+-D warnings` clean in BOTH feature sets (default; `--features
+quilltap-core/native-transport`); `cargo build --workspace --release`
+clean; `cargo test --workspace --no-fail-fast -- --nocapture` with the
+lane's env block (`QT_ORACLE_PHOTOS`, `QT_ORACLE_LLM_LOGS_ROUTES`,
+`QT_ORACLE_IMAGE_AESTHETICS`, `QT_ORACLE_WARDROBE_ROUTES`,
+`QT_ORACLE_ALMANACK_TIER2` → `/tmp/p4107/post/*.ndjson`; every other
+family's var withheld): **614 binaries, 620 `test result:` lines, 3,646
+passed / 0 failed / 3 ignored**; all five lane families RUN by name with
+non-zero durations and no `SKIP:` line (the 516 `SKIP:` lines are families
+outside the block). The standing `/tmp/qt-imggen-*` intermittent did not
+fire. No mutation proof is named by this order (no `.rs` changed; the proof
+is the red→green measurement from the pin). Censuses run inside the
+workspace gate, unmoved (`dispatch_wrong_type_census` et al.).
+
+**Versions:** web 0.0.176 → 0.0.177 (the fixture pairs live under
+`crates/quilltap-web/tests/fixtures/`). No other crate touched; the
+migrator and the sweep artifact are harness tooling outside any crate.
+
+**What the order got wrong (measured):** (a) `avatar-rolls-main.db`'s gap is
+1 column + 1 index, not 1 — it carries `generationKey` without
+`idx_files_generationKey`; (b) `system-data-llmlogs.db` has the same
+index-only `idx_llm_logs_*` lag as the two the order named; (c) the order's
+"`set_all`" rows were not among the 28 wardrobe reds because v4 ALSO 500ed on
+them pre-widen — a mutual-500 agreement the widen retired (item 3); (d) v4
+moved to `dff00e98d` mid-lane (the waiver above).

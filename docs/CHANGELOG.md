@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): P4.107 lane record, the 26-pair vintage measurement, and the order's status header
+
+_Docs-only change._
+
+The P4.107 lane record in `status-log.md`: the pre/post measurements from the
+`a2db63da7` pin, the v4-side NDJSON comparison, the 26 unlisted stale pairs'
+gaps and reader results (11 red families across 10 pairs, each confirmed as
+fixture vintage by a temporary, reverted widen), the deferrals, and the lane
+gate. The order's status header records what landed.
+
 #### 2026-09-23 — fix(fixtures): widen five committed main files to v4's a2db63da7 vintage, closing four standing reds (P4.107)
 
 _Versions: web 0.0.177._
