@@ -37,7 +37,7 @@
 //!
 //! | site | encoder |
 //! |---|---|
-//! | the sync applier (`sync/apply_store.rs`) | the engine's `blob_webp` (P4.D209) |
+//! | the sync applier (`sync/apply_store.rs`) | the engine's `blob_webp` (P4.D209) — ⚠ the ONE site whose `None` arm builds `::new` quietly instead of the refusing encoder (P4.104 was forbidden the applier; align it in a quiet round — both store the original bytes, only the warn differs) |
 //! | `store_mount_file` | its `webp` argument — the engine's `blob_webp` |
 //! | `file_ops` copy / move / write | a `webp` argument — the engine's `blob_webp` through the four mount-file arms |
 //! | `save_to_character_gallery` (+ the save-by-link leg, the avatar-roll album save) | a `blob_webp` argument — the engine's `blob_webp`, or the byte store's |
@@ -53,6 +53,16 @@
 //! one `sharp`, used by both the bridges' pre-transcode and the normalization,
 //! and on every production path the codec is the host's `HostImageCodec` — the
 //! same encoder the engine's `blob_webp` holds.
+//! ⚠ **Recorded divergence (the `a2db63da7` unification):** the host codec
+//! encodes a single frame (`quilltap-host/src/image_codec.rs`, no libwebpmux),
+//! so an ANIMATED GIF/WebP reaching any of these sites is stored as a still
+//! WebP where v4's `sharp(input, { animated: true })` keeps every frame.
+//! Before P4.104 these sites stored the original bytes (frames kept, mime and
+//! path un-normalized); after it the D19 decision matches v4 and the frames do
+//! not. No corpus row carries an animated input — the human's call whether to
+//! decline animated inputs at the codec (store the original) or grow the host
+//! codec; recorded, not decided here.
+//!
 //!
 //! **No encoder wired** (a host that supplies none, a canned test store) is
 //! decided ONCE for every site: [`blob_codec_or_refusing`] hands over the

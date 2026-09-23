@@ -4272,12 +4272,17 @@ export class SalonConversation {
    * is the established idiom here (the almanack / wardrobe / character-edit
    * precedent). The sentence is v4's, verbatim.
    *
-   * v4's success/error toasts are two DISTINCT shapes, not one fallback: a
-   * refused dispatch (409 on a running autonomous room, 400 with no
-   * connection profiles, 500) carries the server's sentence in
-   * `CoreDispatchError.message`, reported as `Failed to rebuild the summary:
-   * <sentence>`; anything else thrown reports the bare fallback. No
-   * self-invalidation: the server's `chats` realtime publish (§S.1) reaches
+   * v4's error toasts are two shapes: a non-ok response carries the server's
+   * sentence (`Failed to rebuild the summary: <sentence>`), and a fetch that
+   * THREW (the network down) reports the bare `Failed to rebuild the summary`.
+   * DIVERGENCE (deliberate, recorded at the `a2db63da7` unification): every
+   * v5 transport turns a failed fetch into a synthetic `CoreDispatchError`
+   * (`Connection lost. The server may still be starting. …`), which IS an
+   * `Error`, so a network failure here reads `Failed to rebuild the summary:
+   * Connection lost. …` — this file's uniform `err instanceof Error` idiom
+   * (every sibling handler collapses the same way). The bare fallback stays
+   * as the non-`Error` guard, which no client path produces; the unit spec's
+   * string-throw case pins the guard, not v4's branch. No self-invalidation: the server's `chats` realtime publish (§S.1) reaches
    * the Salon through the EXISTING `chatKeys.detail` subscription, the same
    * way every other realtime-pushed chat field does.
    */

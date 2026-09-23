@@ -124,9 +124,26 @@ fn every_installed_provider_sdk_matches_the_recorded_version() {
         return;
     }
 
+    // `@anthropic-ai/sdk` and `@google/genai` live ONLY under the plugin dirs'
+    // installs (`plugins/dist/*/node_modules`), never the root. A checkout with a
+    // root `npm ci` but no plugin installs (a fresh clone, a bare pinned worktree
+    // without the third symlink class) can prove nothing about them — SKIP with
+    // its own sentence rather than FAIL for a reason that has nothing to do
+    // with v5 (the `a2db63da7` unification's §3 review).
+    let locations = install_locations(&checkout);
+    if locations.len() == 1 {
+        println!(
+            "SKIP: {} has no plugins/dist/*/node_modules installs (run `npm ci` in each plugin \
+             dir, or symlink them into a pinned worktree) — the plugin-only SDKs cannot be \
+             verified",
+            checkout.display()
+        );
+        return;
+    }
+
     let mut found: Vec<(&str, usize)> = SDKS.iter().map(|(p, _)| (*p, 0usize)).collect();
     let mut mismatches = Vec::new();
-    for loc in install_locations(&checkout) {
+    for loc in locations {
         for (i, (pkg, recorded)) in SDKS.iter().enumerate() {
             let pkg_json = loc.join(pkg).join("package.json");
             if !pkg_json.is_file() {

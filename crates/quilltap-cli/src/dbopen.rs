@@ -82,13 +82,30 @@ pub fn open_encrypted(
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX
     };
     let conn = Connection::open_with_flags(db_path, flags).map_err(|e| {
-        // rusqlite appends `: <path>` to a failed open's engine text
-        // (`unable to open database file: /…/quilltap.db`); better-sqlite3's
-        // constructor throws `sqlite3_errmsg` alone. Strip exactly that suffix
-        // — measured by the `db unreadable database` Tier R case.
+        // rusqlite appends `: <path>` to a failed open's engine text — and ONLY
+        // on `CannotOpen` (`inner_connection.rs`, the `open_with_flags` arm);
+        // better-sqlite3's constructor throws `sqlite3_errmsg` alone. Strip
+        // exactly that suffix on exactly that code — measured by the `db
+        // unreadable database` Tier R case (`unable to open database file`).
+        // Any other engine text is v4's bytes already and is left whole.
         let msg = sqlite_msg(&e);
+        let cannot_open = matches!(
+            &e,
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error {
+                    code: rusqlite::ErrorCode::CannotOpen,
+                    ..
+                },
+                _
+            )
+        );
         let suffix = format!(": {db_path}");
-        OpenFailure::bare(msg.strip_suffix(&suffix).map(str::to_string).unwrap_or(msg))
+        let stripped = if cannot_open {
+            msg.strip_suffix(&suffix).map(str::to_string)
+        } else {
+            None
+        };
+        OpenFailure::bare(stripped.unwrap_or(msg))
     })?;
     if let Some(pepper) = pepper {
         // v4 `Buffer.from(pepper, 'base64')` never throws; a pepper that

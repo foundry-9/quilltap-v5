@@ -1976,12 +1976,11 @@ fn orchestrator_tier3_matches_oracle() {
     normalize_informs(&mut got_informs, &idmap);
     normalize_informs(&mut want_informs, &idmap2);
 
-    pin_summary_fold_last_turn_divergence(&got_chats, &mut want_chats, &want_events);
     assert_table_eq("chats", &got_chats, &want_chats);
     assert_table_eq("chat_messages", &got_msgs, &want_msgs);
     assert_table_eq("background_jobs", &got_jobs, &want_jobs);
     assert_table_eq("chat_informs", &got_informs, &want_informs);
-    // Non-vacuous by construction: the corpus plants five rows and three calls
+    // Non-vacuous by construction: the corpus plants seven rows and three calls
     // consume; the dump must carry them and at least one consumption.
     {
         let rows = got_informs["rows"].as_array().expect("chat_informs rows");
@@ -2406,87 +2405,15 @@ fn assert_events_eq(name: &str, got: &[Value], want: &[Value]) {
     }
 }
 
-/// **A RECORDED DIVERGENCE — and v4 disagreeing with ITSELF (P4.D172).**
-///
-/// The `summary_fold` chat (`c860cf74`) ends with v5 holding
-/// `lastTurnParticipantId = c96713aa…` and v4 holding NULL — yet v4's OWN
-/// `chain_complete` frame for that call carries `nextSpeakerId: c96713aa…`,
-/// which is precisely the value its `persistTurnParticipant(finalNextSpeaker)`
-/// was handed (`turn-orchestrator.service.ts:370-372`). v4 writes the id and
-/// then loses it; every later `repos.chats.update` in the fold
-/// (`context-summary.ts:429`, `:566`, `:640`) is a PARTIAL patch that never
-/// names the column, so the loss is not an explicit overwrite.
-///
-/// v5 is self-consistent: the frame and the row agree. So this pin does NOT
-/// subtract the field and move on — it asserts, in both directions:
-///   * v5 persisted exactly what v4's own frame announced (a positive claim
-///     about the port, not a hole in the comparison), and
-///   * v4's row is still NULL (so when v4 stops losing the write, this trips and
-///     the pin is retired rather than quietly surviving).
-///
-/// This became visible only at P4.D172: before the rotation port the per-call
-/// event assertions failed first and the table comparison never ran. It is NOT
-/// caused by this lane — measured by reverting the whole-room map and the
-/// `cycleOrderParticipantIds` argument independently, each of which left the
-/// divergence in place. ⚠ Candidate v4 filing.
-fn pin_summary_fold_last_turn_divergence(
-    got: &Value,
-    want: &mut Value,
-    want_events: &HashMap<String, Vec<Value>>,
-) {
-    const CHAT: &str = "c860cf74-128f-4a81-9a5c-6c2275f24302";
-    const FIELD: &str = "lastTurnParticipantId";
-
-    // What v4's own chain_complete frame announced for this call.
-    let announced = want_events
-        .get("summary_fold")
-        .and_then(|evs| {
-            evs.iter()
-                .find(|e| e.get("chainComplete") == Some(&Value::Bool(true)))
-        })
-        .and_then(|e| e.get("nextSpeakerId"))
-        .and_then(Value::as_str)
-        .map(String::from);
-    let Some(announced) = announced else {
-        panic!(
-            "the `summary_fold` chain_complete frame no longer names a next \
-             speaker — re-measure the {FIELD} divergence and retire this pin"
-        );
-    };
-
-    let row_of = |v: &Value| -> Option<Value> {
-        v.get("rows")?
-            .as_array()?
-            .iter()
-            .find(|r| r.get("id").and_then(Value::as_str) == Some(CHAT))
-            .cloned()
-    };
-    let (Some(g), Some(w)) = (row_of(got), row_of(want)) else {
-        panic!("the `summary_fold` chat {CHAT} left the corpus — retire this pin");
-    };
-
-    assert_eq!(
-        g.get(FIELD).and_then(Value::as_str),
-        Some(announced.as_str()),
-        "v5's {FIELD} must equal what v4's OWN frame announced"
-    );
-    assert!(
-        w.get(FIELD).map(|v| v.is_null()).unwrap_or(false),
-        "v4 now PERSISTS {FIELD} for {CHAT} (it used to lose its own write) — \
-         the divergence has converged; delete this pin and compare the field"
-    );
-
-    // Both sides pinned; let the row-wise compare below see them as equal.
-    if let Some(rows) = want.get_mut("rows").and_then(Value::as_array_mut) {
-        for r in rows.iter_mut() {
-            if r.get("id").and_then(Value::as_str) == Some(CHAT) {
-                r[FIELD] = Value::String(announced.clone());
-            }
-        }
-    }
-}
-
-/// P4.106 item 2: `chat_informs` rows (seeded ids, sorted by id). A row the
+// The `pin_summary_fold_last_turn_divergence` that stood here from P4.D172 to
+// the `a2db63da7` unification asserted that v4 LOST its own `lastTurnParticipantId`
+// write on the `summary_fold` row while v5 persisted what v4's frame announced.
+// At `a2db63da7` v4 persists it too (measured by P4.D212 across two regens; the
+// only code commit in range touching that path is `e7821606f`'s fold rewrite —
+// the fold's new `await resolveSpeakerNames` moves the interleaving that used to
+// lose the write). The divergence CONVERGED, so the row-wise `chats` compare now
+// sees the field raw on both sides; the candidate v4 filing that pin carried is
+// moot./// P4.106 item 2: `chat_informs` rows (seeded ids, sorted by id). A row the
 /// run touched (`updatedAt` moved off `createdAt`) has its `updatedAt` and
 /// `consumedAt` placeholdered — v4's frozen clock vs v5's real one — and every
 /// `consumedByMessageId` goes through the side's message idmap.

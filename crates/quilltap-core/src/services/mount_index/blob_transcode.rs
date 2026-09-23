@@ -162,9 +162,10 @@ pub struct RefusingWebpTranscoder;
 impl WebpTranscoder for RefusingWebpTranscoder {
     fn encode_webp(&self, _bytes: &[u8], _quality: u8) -> Result<Vec<u8>, String> {
         Err(
-            "WebP transcoding is not available in this build (the production codec is \
-             deferred by work order P4.6y); storing the original bytes — v4's own \
-             fallback arm for an encode failure"
+            "no WebP encoder is wired on this host for this write site (the composition \
+             root hands every production site the host codec; a bare `None` reaches \
+             this refusal); storing the original bytes — v4's own fallback arm for an \
+             encode failure"
                 .to_string(),
         )
     }
