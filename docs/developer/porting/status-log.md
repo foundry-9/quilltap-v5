@@ -142380,3 +142380,207 @@ future order: the `inspector-{main,mount,nostore-main}.db` widen (the
 SAME column gap, a clean repeat of this order's method — no surprises
 expected); `ai_import_tier3_equivalence`'s stale `V4_APP_VERSION`
 constant (a one-line fix). Both recorded above with exact evidence.
+## Lane record — P4.105: `update_message` as v4's UPDATE under the FTS triggers + the search `safeQuery` arm (2026-09-22)
+
+Branch `claude/message-fts-update-work-order-6e618f`, cut from `main`
+`4b05cf97`. Pin: `/tmp/qt-v4-pin-p4105-f45a517a9` (detached at `f45a517a9`,
+`rev-parse` verified; the three symlink classes). The §2 probe PASSED at lane
+start and again before the gate (v4 `main` at `a2db63da7`, clean, both logs
+empty).
+
+### Unit 1 — `update_message` is an UPDATE (commit `fix(db): update_message is v4's UPDATE…`)
+
+- **The port.** `update_message` builds ONE `UPDATE chat_messages SET
+  "<col>" = ?n, … WHERE "id" = ?N` from `member_columns(event)` — the SAME
+  marshaler `insert_event`'s INSERT now binds (`insert_statement` =
+  `chatId` + `member_columns`; three per-member marshalers replace the three
+  hand-written INSERTs). The stored row bytes of every insert are unchanged:
+  a unit test pins each member's INSERT column set to the retired SQL's list
+  verbatim (`insert_names_exactly_the_pre_p4105_columns`), and every
+  insert-reading family below stayed green. The why-comment names the four
+  consequences and `f45a517a9`. `find_event_value` is unchanged (see finding
+  1 — it is NOT findOne-shaped).
+- **The column census** the order asked for is a unit test in
+  `chats_messages.rs` (`update_sets_exactly_the_insert_columns_but_chat_id`):
+  UPDATE SET list = INSERT list less `chatId`, no duplicates, WHERE by `id`
+  bound last.
+- **NEW family `chat_message_update_fts_tier2_equivalence`** (a SIBLING
+  builder, `build-chat-message-update-fts-fixture.ts`, not an arm of the ops
+  builder — that fixture stays trigger-free as the neutrality leg): seed via
+  v4's real `addMessages`, then v4's real `ensureChatMessageFtsSchema` +
+  `rebuildChatMessageFtsIndex`. Case `chat-message-update-fts-tier2.ts`
+  drives v4's REAL `ChatsRepository.updateMessage`. Comparand: per op, what
+  the op MOVED (each message's `ftsId` incl. gaining/losing a map row, and
+  its base rowid — per-op DELTAS, because the cumulative snapshots let one
+  broken op redden every later one); at the end the FTS index rowids, its
+  tokens per rowid (a temp `fts5vocab(main, chat_messages_fts, instance)` —
+  the index is contentless, so `SELECT content` is NULL on both engines),
+  and the `chat_messages` + `chats` dumps. A companion test asserts the
+  oracle itself shows v4's four properties.
+- **Red-first on the DELETE+INSERT tree (measured):** 9 divergences — ops
+  a, b, c, d, e, f1 and the context-summary op each moved their row
+  (`ftsId` 1→6, 2→7, 3→8, none→9 [op d, the newly-eligible row INDEXED],
+  4→10; rowids 1→9 … 7→15), plus the index rowids and tokens. **Op f2 did
+  NOT move** — after f1 the row held the max of both id spaces, so the
+  re-INSERT reused them: correct by luck (`a-limit-1-fallback-can-be-correct-
+  by-luck`'s cousin). (f)'s "one `ftsId` throughout" is therefore proven by
+  f1, and the corpus's untouched last row is what makes every earlier op
+  discriminate. Green after the port: 8 ops, 5 indexed rows.
+- **Measured against the order:** v4 `findOne` returned the planted
+  NULL-content row and `updateMessage` wrote it (op d as ordered, NOT
+  indexed in v4) — but v5 could not run the family at all: see finding 1.
+  Op (d) was re-planted as a `TOOL` row made a `USER` row with new text
+  (the same property: a row that BECOMES eligible through an update; v4's
+  UPDATE can only fire `_au`, which needs a map row). The order's "(or
+  `type`/`role` — never, per the corpus)" is right about callers; the plant
+  is deliberate.
+- **Mutation proofs** (file-backup reverts, `cmp`-verified):
+
+  | Mutation | Reddens |
+  |---|---|
+  | revert to DELETE + re-INSERT | the red-first above (a, b, c, d, e, f1, cs + index) |
+  | drop `content` from the SET list | the FTS index tokens (op a's edit never indexed) |
+  | a non-member column (`chatId`) in the SET list | `update_sets_exactly_the_insert_columns_but_chat_id` |
+  | re-store op c's SAME text as plaintext (decoded text equal, bytes not) | ONLY the `chat_messages` row dump — map, rowids and index untouched: `_au`'s `IS NOT` compares `qt_text`, proven on v5's engine. The codec is deterministic, so the order's "different brotli quality" variant cannot be built from `text_to_blob`; plaintext is the equivalent re-encoding |
+  | WHERE by `id` AND `chatId` | NOTHING (survives, as the order predicted — v4's WHERE is by `id` alone and the find already scoped the chat; unobservable) |
+
+- **`compressed_column_write_sites_census`** (§R.10(j) OUT-OF-MANDATE,
+  marked): the `db/chats_messages.rs` note rewritten; the count stays **4**
+  and the total **14** — the UPDATE is a write site on all four columns but
+  binds the one marshaler, so it adds no call (the arithmetic is in the
+  comment). Green.
+- **Neutrality at the baseline pin** (sweep driver `--run-all --v4
+  /tmp/qt-v4-pin-p4105-f45a517a9`, results `/tmp/p4105/neutrality-sweep.json`,
+  zero `SKIP:`): `chats_messages_ops_tier2` ✅ (trigger-free; the only delta a
+  DELETE+INSERT ever made there was the rowid, which that family does not
+  read), `salon_mutations` ✅ (`message_edit` over the trigger-free `salon-*`
+  pair), `files_routes` ✅, `character_rename` ✅,
+  `carina_memory_extraction_tier3` ✅, `orchestrator_tier3` ✅,
+  `courier_transport_tier3` ✅, `memory_pipeline_jobs_tier3` ✅,
+  `regenerate_swipe_tier3` ✅ **by hand** 2/2 (finding 3), and
+  `message_reattribute` ❌ **pre-existing** (finding 2).
+
+### Unit 2 — `search_messages_global`'s `safeQuery` arm (commit `fix(db): global message search answers [] …`)
+
+- **v4 measured:** the whole body is `safeQuery(…, 'Failed to search
+  messages globally', { chatCount }, [])` — FALLBACK mode. The FTS path's own
+  try/catch already catches a missing INDEX (warn + `LIKE`), so the
+  `safeQuery` arm is reachable ONLY when the `LIKE` scan throws. The order's
+  suggested plant (`DROP TABLE chat_messages_fts`) therefore cannot reach it
+  — that state is the existing `plain` venue, already green. The plant used:
+  `ALTER TABLE "chat_messages" RENAME TO "chat_messages_p4105_poisoned"` on
+  the per-run copy. v4 at the pin: both reads `[]`, logging (at error)
+  `Failed to search messages globally` `{ chatCount: 2, error: "no such
+  table: chat_messages" }` — plus two `Raw query failed` lines from v4's
+  backend `rawQuery`, which v5 has no equivalent of anywhere (not this
+  lane's; noted).
+- **The REST edge:** `api/ui_search.rs:403` calls
+  `search_messages_global(…)?`, so the `Err` escaped the whole Search page
+  — the divergence was real at the edge (measured by reading; `ui_search.rs`
+  is not this lane's file and does not change — the signature keeps its
+  `Result`).
+- **The port:** the body moved to `search_messages_global_inner`; the pub fn
+  logs `tracing::error!(target "quilltap::db", context, chatCount, error,
+  "Failed to search messages globally")` and answers `Ok([])`.
+- **Differential:** `chats_search` gains a third venue `poisoned` (spec key
+  `poisonedReads`: one `fts` plan `quick`, one `fallback` plan `C++`), the
+  NDJSON now three lines. **Red-first:** `poisoned: read 0 ("quick")` —
+  rust `Err: sqlite error: no such table: chat_messages`, oracle `[]`.
+  Green after.
+- **Capture pin + silence leg** (`chats_search.rs` unit tests):
+  `a_scan_that_throws_answers_empty_and_logs_once` (one ERROR, context,
+  `chatCount=1`, the error text; the FTS warn present on the `fts` plan only)
+  and `a_healthy_search_does_not_log_the_safe_query_error` (indexed and
+  not). Mutation — `[]` without the log — reddens the capture pin only.
+
+### Findings for the unifier (outside this lane's ownership — recorded, not fixed)
+
+1. **NEW — v5's chat-wide message read fails on ONE NULL-content message
+   row; v4 skips it.** Measured at the pin: v4 `getMessages` logs `Skipping
+   corrupted chat message` (warn, `errors: [": Invalid input"]`) and returns
+   the other rows; v5's `chats_messages_read::marshal_message` does
+   `row.get::<_, CompressedText>(3)?` and the `?` fails the whole
+   `get_messages` (`Invalid column type Null at index: 3, name: content`). So
+   a single NULL cell makes every transcript read of that chat — and every
+   `update_message` in it, since `find_event_value` walks `get_messages` —
+   an error. Related: `find_event_value` is NOT v4's `findOne({ id, chatId
+   })` shape (it reads the whole chat and filters); a single-row read would
+   need a new fn in `chats_messages_read.rs`. That file is nobody's this
+   round (§R.10(j)); the shape for a future order: marshal NULL `content`
+   as v4's corrupted-row skip (warn + omit) in `marshal_row`, and give
+   `find_event_value` a `WHERE id = ? AND chatId = ?` read. Only corrupt or
+   hand-edited data produces a NULL `content` (v4 writes it through a
+   required Zod string), so severity is low.
+2. **`message_reattribute_equivalence` is RED on main at the pin, identical
+   with this lane's change reverted** (`[reattribute_with_memories] BODY
+   MISMATCH` — rust `sqlite error: no such column:
+   cycleOrderParticipantIds`, oracle `Internal server error`; panics at
+   `:155` in `chats_read::find_by_id`, upstream of `update_message`). It
+   reads the un-widened `chat-dialogs-*` pair — fixture vintage, P4.103's
+   pair. It is NOT among §R.5's seven named standing reds, so it is an
+   eighth for P4.103's list; expected green after the widen. Its
+   `update_message` neutrality is unmeasurable until then — the unifier's
+   re-run.
+3. **`regenerate_swipe_tier3_equivalence`'s committed recipe runs ZERO
+   tests** — its run line ends `-- --test-threads=1 -- --nocapture`, so the
+   second `--` makes `--nocapture` a name FILTER; the driver prints
+   `running 0 tests … 2 filtered out` and reports the family **ok**. (P4.106
+   owns the file.) Run correctly by hand from the same oracle: 2/2 green.
+4. `count_messages_with_text` / `find_messages_with_text` are also
+   `safeQuery` fallbacks in v4 (`0` / `[]`) and still propagate `Err` in v5 —
+   outside this order's item; a candidate for the next maintenance round.
+
+### Deferred (loud)
+
+- Tier 3 item 6 — `chat_message_fts_equivalence`'s raw-UPDATE rows stay as
+  they are (they prove the trigger; the new family proves the repo method).
+  Restated, no merge.
+- The order's NULL-content op (d) — replaced by the role-change plant
+  (finding 1 blocks it on v5).
+
+### Regen recipes (as run, from the pin)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+V5W=<this worktree>
+cd /tmp/qt-v4-pin-p4105-f45a517a9
+QT_FIXTURE_OUT=/tmp/p4105/qt-chatmsgupdatefts-fixture.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-chat-message-update-fts-fixture.ts"
+QT_FIXTURE_CHATMSGUPDATEFTS=/tmp/p4105/qt-chatmsgupdatefts-fixture.db \
+  $N/npx tsx "$V5W/harness/oracle/cases/chat-message-update-fts-tier2.ts" > /tmp/p4105/oracle-chatmsgupdatefts.ndjson
+QT_FIXTURE_OUT=/tmp/p4105/qt-chsearch-fixture.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-chats-search-fixture.ts"
+QT_FIXTURE_FTS=1 QT_FIXTURE_OUT=/tmp/p4105/qt-chsearch-fixture-fts.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-chats-search-fixture.ts"
+# three venues, one NDJSON: plain + poisoned read the plain fixture, fts the fts one
+for v in plain fts poisoned; do … QT_VENUE=$v QT_FIXTURE_CHSEARCH=<fixture> \
+  $N/npx tsx "$V5W/harness/oracle/cases/chats-search.ts" >> /tmp/p4105/oracle-chsearch.ndjson; done
+```
+
+The committed headers carry the canonical `cd ~/source/quilltap-server`
+form (the driver's `--v4` is the pin). Fixtures changed: NONE committed; the
+spec `chats-search.json` grew a `poisonedReads` key (additive — the two
+existing venues' outputs are unchanged, re-run green), which invalidates no
+other family.
+
+### The gate (lane close)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (the first run caught a
+  `drop(&repo)`-of-a-reference in the new poisoned-venue helper; fixed
+  before unit 1 committed); `cargo build --workspace --release` clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture` (TZ=UTC,
+  `CARGO_INCREMENTAL=0`) on the tip with the lane's block
+  (`QT_ORACLE_CHATMSGUPDATEFTS`/`QT_FIXTURE_CHATMSGUPDATEFTS`,
+  `QT_ORACLE_CHSEARCH`/`QT_FIXTURE_CHSEARCH`/`QT_FIXTURE_CHSEARCH_FTS`,
+  `QT_ORACLE_CHATSMSGOPS`/`QT_FIXTURE_CHATSMSGOPS`, all regenerated from the
+  pin): **612 test binaries / 3,619 passed / 0 failed / 3 ignored**; the three
+  families confirmed RUN by their `OK:` lines; the 511 `SKIP:` lines are
+  families outside the block. The workspace gate ran ONCE, on the tip holding
+  both commits (unit 1 was committed on fmt + clippy + its targeted families).
+- `compressed_column_write_sites_census` green at 14.
+
+### Versions
+
+core 0.0.992 → 0.0.994, harness 0.0.890 → 0.0.892 (two bumps each — one per
+unit commit). host, web, cli, tauri, fixture-sanitizer, SPA untouched.

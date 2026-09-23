@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — docs(porting): the P4.105 lane record and order status
+
+_Docs-only change._
+
+The P4.105 lane record (both units, the red-first counts, the mutation
+table, the neutrality sweep at the `f45a517a9` pin, the gate) and the order's
+closing status header, including four findings for the unifier: v5's
+chat-wide message read fails on a NULL-content row that v4 skips;
+`message_reattribute` is a pre-existing fixture-vintage red on the
+`chat-dialogs-*` pair; `regenerate_swipe_tier3`'s recipe runs zero tests;
+`count`/`find_messages_with_text` still propagate errors v4 swallows.
+
 #### 2026-09-22 — fix(db): global message search answers `[]` when its scan throws, as v4's `safeQuery` does (P4.105)
 
 _Versions: core 0.0.994, harness 0.0.892._
