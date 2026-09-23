@@ -916,10 +916,39 @@ records THERE. Update this summary only when a phase or round completes.
   0.0.27, SPA 0.5.748. **Next: the bug-163/164 catch-up when v4 commits it,
   the heal's next list, the animated ruling, then the owed dogfood pass** —
   `phase-4.md`. Round record: `status-log.md`.
-- **Oracle baseline: `a2db63da7` (2026-09-21, v4 main — "Fix bug 162: CLI
-  raw-SQL path opens without qt_text() (#63)", `4.10.0-dev.63`), adopted at
-  the `a2db63da7` bug-161/162 drift catch-up + maintenance round unification
-  (2026-09-23).**
+- **The `00c290c9a` bug-163/164 drift catch-up + maintenance round (P4.D215
+  ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110): UNIFIED on main (2026-09-23) — ALL
+  FIVE LANDED; the oracle baseline MOVES to `00c290c9a`; v4 HEAD `d1c06cd9d`
+  (the Scenario Builder + its spec) sits UNPROCESSED in the ledger's §3, so
+  the regen rule is PIN REQUIRED at `00c290c9a`.** Bugs 163/164 absorbed
+  whole: ONE `services/auto_title.rs` chokepoint (v4's four outcomes, the
+  post-LLM re-read, the refused arms' `extraPatch`-only write, the Lantern
+  enqueue moved in) under the fold (v5 had reproduced BOTH bugs verbatim),
+  the title-update job and regenerate-title; the fixture heal's five mains
+  (four standing reds closed; the next ten measured); the ruled animated
+  decline at the host codec (frame count ≥ 2); `get_messages` as v4's
+  fallback `safeQuery` with a census-chosen strict sibling, and
+  `update_message` answering v4's `null`; the shared census lexer + walkers,
+  one `materialize_salon_instance`, `execute_import`'s required codec. **The
+  §3 review found ONE BLOCKING defect — P4.108's frame counter ran the
+  animation decoders with NO allocation limit** (a tiny crafted GIF/WebP
+  declaring a huge canvas → ~17 GB per frame on every upload/import/sync);
+  fixed to charge `decode`'s own 512 MiB limit the way `decode` charges it
+  (the reviewer's RGBA suggestion was measured WRONG — it would flatten a
+  large legal no-alpha animation), pinned on both sides, red-first. Also
+  fixed: the importer's two reads to STRICT (P4.109's recorded handoff),
+  unknown-type rows WARN as v4, regenerate-title's reads under v4's one outer
+  catch + the `missing` arm; the `docs/v4/developer/bugs/` mirror made
+  current. Gate: sweep 32/32 from the new pin; 621 binaries / 3,663 / 1 (the
+  unification's own census trip, fixed) / 3 ignored; Tier R 266/0; SPA 441 /
+  7,474; full Playwright **331 passed / 0 failed / 6 skipped (10.1 m)** (the six skips the standing parks). Versions: core 0.0.1013,
+  harness 0.0.930, host 0.0.149, web 0.0.179. **Next: the Scenario Builder
+  catch-up, the ten-file heal, then the owed dogfood pass** — `phase-4.md`.
+  Round record: `status-log.md`.
+- **Oracle baseline: `00c290c9a` (2026-09-23, v4 main — "fix(titles): route
+  every auto-title through applyAutoTitle (bugs 163, 164)",
+  `4.10.0-dev.65`), adopted at the `00c290c9a` bug-163/164 drift catch-up +
+  maintenance round unification (2026-09-23).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

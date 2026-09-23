@@ -144985,3 +144985,146 @@ superseded by the ledger, which is the record.
   `strip_comments_and_attrs` / `dispatch_wrong_type_census` logic onto a
   shared module (a different crate); item 8 — removing the reader-side
   guarded `ALTER` heals P4.107 names as dead.
+
+## Round record — the `00c290c9a` bug-163/164 drift catch-up + maintenance round unification (P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110, 2026-09-23)
+
+**All five lanes on main; the oracle baseline MOVES `a2db63da7` → `00c290c9a`.**
+v4 `main` HEAD is `d1c06cd9d` (two commits past the new baseline — `dff00e98d`
+docs + `d1c06cd9d` the Scenario Builder, both UNPROCESSED in the ledger's §3),
+so the regen rule stays PIN REQUIRED, now at `00c290c9a`. The §2 probe passed at
+unification start (HEAD `d1c06cd9d`, `bugfix` `1a2b2164c`, tree CLEAN).
+
+### Survey
+
+Five worktrees, all clean. Delivered scope re-checked against each order's tier
+list (four parallel readers + the unifier's own reads):
+
+- **P4.D215** — Tier 1 items 1–7 and Tier 2 items 8–10 LANDED; Tier 3 11–12
+  deferred as ordered. Gaps found by the review (fixed below): no `missing`
+  arm; item 8's `Error regenerating title` fired on one of v4's four throw paths.
+- **P4.107** — Tier 1 whole (five mains widened, four standing reds GREEN, ten
+  readers green); Tier 2 (migrator peppers + index reporting; 26 pairs measured
+  → the next heal is TEN main files, 11 red families); Tier 3 deferred.
+- **P4.108** — Tier 1 1–6, Tier 2 7–8 LANDED; frame-count rule (≥ 2) shipped,
+  not the VP8X bit (the ruling's refinement, reported). BLOCKING defect below.
+- **P4.109** — Tier 1 1–5, Tier 2 6–8 LANDED; the two importer sites RECORDED for
+  the unifier (P4.110's files).
+- **P4.110** — Tier 1 1–4, Tier 2 5–6 LANDED; Tier 3 7–8 named. The two
+  "must-not-touch" scanners (`stream_watchdog_wrap_census`, `zod_issues_home_guard`)
+  had only their WALKERS repointed — verified byte-identical to the shared ones;
+  their scanners untouched.
+
+### Reconcile
+
+`unify/00c290c9a` from `main` `4136d21c`; 23 lane commits cherry-picked in the
+ordered sequence P4.D215 → P4.107 → P4.109 → P4.108 → P4.110. Conflicts:
+CHANGELOG/status-log (union, every lane line verified present by a
+line-membership check), the `Cargo.toml` versions (the silent-merge trap fired
+AGAIN — web landed at 0.0.177, not 0.0.179; recounted as base + the sum: core
++8, harness +12, web +3, host +1 — `chore(versions)` commit), and P4.104's
+status header (both lanes' appended sentences unioned by hand). Lane-branch
+hashes cited in the lane records map to the unify branch as: P4.108
+`beac9e4a`→`b6a6f303`, `1b03b486`→`b23f47ca`; P4.107 `b88970df`→`bd881eb8`,
+`2a393f7e`→`22905bb4`; P4.D215 `c9cf3be5`→`01bb0633`; P4.109
+`c2064372`→`a3ec4d98`; P4.110 `176a798f`→`8fa92c4c`, `c4253f40`→`6519352d`.
+
+### §3 review — findings (four parallel readers; the verdict and every fix are the unifier's)
+
+1. **BLOCKING (P4.108) — `is_multi_frame` had no allocation cap.** The `image`
+   crate's `GifDecoder::new` sets `Limits::no_limits()` and the WebP frame
+   iterator allocates its whole canvas unchecked (image-webp caps a VP8X canvas
+   only at `u32::MAX` pixels), so a few-hundred-byte GIF/WebP declaring a
+   ~65535² canvas around two tiny frames asked for ~17 GB of RGBA per frame on
+   both animated seams — every Scriptorium upload, import, sync — where
+   `ImageReader::decode` (default `Limits`, 512 MiB) answers a polite `Err`.
+   **Fix:** charge the decoder's `total_bytes()` against `Limits::default()`
+   exactly as `decode` does, and carry the limits into the GIF iterator.
+   **The reviewer's suggested fix was measured WRONG:** it charged RGBA, but
+   `decode` charges a no-alpha WebP as RGB — so a 12000² animation `decode`
+   accepts (432 MB) would have been refused by the counter and FLATTENED by
+   `decode`. The unifier's first attempt did exactly that and its own test
+   caught it (96 s encoding a 12000² still). Pinned by
+   `a_huge_declared_canvas_is_bounded_like_decode` on BOTH sides of the charge
+   (14000² GIF + WebP refused by `decode`; a 12000² no-alpha WebP still counted);
+   red-first with the charge disabled (the WebP counted and declined with the
+   ruling). A second measurement trap on the way: the first test patched the
+   canvas to 2^24 and PASSED under the mutation — image-webp's `u32::MAX`-pixel
+   cap refused it at `new()`, so it never reached the counter. Commit `0140b8d7`.
+2. **SHOULD-FIX (the cross-lane handoff) — the importer's two message reads.**
+   P4.109's census found both STRICT (v4's `withStrictRepositoryFailures`,
+   `execute.ts:430`) and recorded them for the unifier. Repointed to
+   `get_messages_strict`; census rows → `(0, 1)`. NEW
+   `a_failed_informs_message_read_warns_under_the_strict_scope` — red-first on
+   the swallowing read (the swallow's ERROR fired; v4's informs warn did not).
+   Commit `bc09156a`.
+3. **SHOULD-FIX (P4.109) — unknown-type rows dropped SILENTLY.** v4's
+   `ChatEventSchema.safeParse` fails on a type outside the union exactly as on
+   a bad cell and WARNs `Skipping corrupted chat message`; the WARN's
+   `msg?.id || 'unknown'` is JS `||`, so an EMPTY id falls back too. Both fixed;
+   `an_unknown_type_row_is_skipped_with_the_same_warn` over both variants.
+   Commit `6736f457`. The census then tripped on that very test in the
+   workspace gate (`a-new-harness-test-can-trip-a-source-census`, again) —
+   recounted to `(76, 8)`, commit after the gate.
+4. **SHOULD-FIX (P4.D215) — regenerate-title's reads.** v4's one outer
+   try/catch (`title.ts:92-94`) spans the settings, profiles and messages reads
+   and the chokepoint; the lane routed only the chokepoint, so the reads
+   answered the raw `DbError` text with no line. All four now share one arm.
+   New capture arms: (d) the 500 BODY asserted; (e) a poisoned
+   `connection_profiles` — red-first on the lane's code (`no such table` in the
+   body, no line); (f) the `missing` outcome the lane had no arm for (chat
+   deleted mid-call → DEBUG `Chat vanished…`, 200 `{success, title}`,
+   `outcome=missing`). Commit `156061dd`.
+5. **Recorded in place, not changed:** `update_chat_metadata`'s importer path
+   (v4 would rethrow under the strict scope; v5 writes `messageCount` from `[]`
+   — unreachable after a successful INSERT; beside P4.109's Tier 3 item 9);
+   the enqueue helper's swallowed writer round-trip (pre-existing, moved
+   verbatim; v4's `resolveImageProfileForChat` sits outside the try).
+6. **NITs fixed:** the shared lexer's three stale "this census" sentences
+   (`9241e614`); `normalize_blob_image_equivalence`'s OK-line arithmetic.
+7. **NITs recorded, not fixed:** v5's corrupted-row skip covers cell errors +
+   unknown types only, not v4's Zod failures on a bad `role`/non-uuid id/bad
+   `hostEvent` (no data-loss divergence — measured by the reviewer over the one
+   whole-transcript rewrite); the census counts per FILE (a swap of two sites'
+   variants inside one file passes); a GIF/WebP with a corrupt SECOND frame
+   counts 1 and is encoded first-frame; `auto_title_capture` duplicates
+   `global_capture`'s design (a consolidation candidate); the dead
+   `fold_hand_renamed` title input in `context-summary-service-ops.json`; the
+   title-update job has no `missing` arm (the route's arm covers the chokepoint).
+   v4-faithful data loss worth filing upstream: bulk re-attribute deletes any
+   corrupted row `getMessages` skipped (v5 matches).
+
+### Wires
+
+- The importer repoint (finding 2) — the round's one cross-lane handoff.
+- `docs/v4/developer/bugs/` mirrored at `00c290c9a`: bugs 163/164 (NEW),
+  `bugs.md` (308,274), and the recorded lag cleared — `bug-146` refreshed
+  (13,717), bugs 147/148/149/150/154 NEW; the directory is now `diff -rq`
+  identical to v4's (164 files under `fixed/`). Commit `bcd38f16`.
+
+### Gate (final code tree; `CARGO_INCREMENTAL=0 TZ=UTC`, one logged chain)
+
+- `cargo fmt --all --check` clean; clippy `-D warnings` clean in BOTH feature
+  sets; `cargo build --workspace --release` clean.
+- **The sweep** (`recipe_sweep.py --run-all --v4 /tmp/qt-v4-pin-unify-00c290c9a`,
+  pin verified by `rev-parse` and by `help/story-backgrounds.md` carrying `the
+  Lantern's cue that the scene has shifted`): **32 families, 32 ok** —
+  every round family's oracle regenerated fresh from the NEW baseline with every
+  lane's growth present (the five title/fold families, the four fold/background
+  neutrality legs, P4.107's ten readers, P4.109's four, `normalize_blob_image`,
+  P4.110's three import families + three web binaries,
+  `help_tree_equivalence`). Artifact:
+  `harness/tools/sweep-results/2026-09-23-00c290c9a-unify.json`.
+- **`cargo test --workspace --no-fail-fast -- --nocapture`** with the round's
+  42-var env block (every family's oracle at its driver-staged `/tmp` path from
+  the pin; `QT_FIXTURE_QTAPIMPORT_*` set to `qtap_import`'s, `seed_avatars` proven
+  by the sweep; `QT_V4_CHECKOUT` at the pin; `QT_NODE` the real Node 24 path):
+  **621 test binaries / 3,663 passed / 1 failed / 3 ignored**; the one red
+  `get_messages_caller_census` (finding 3's own trip), fixed and green by name
+  (2/2). 487 `SKIP:` lines, all families outside the block. Tier R inside the
+  run: **266 cases, 0 failures** at the `00c290c9a` pin. Every unification test
+  confirmed RUN by name.
+- **SPA:** `npm test` 441 files / 7,474 passed; `npm run build` clean (no SPA
+  delta this round).
+- **Full Playwright** against the final release binary + the fresh `dist`:
+  **331 passed / 0 failed / 6 skipped (10.1 m)** — the six skips the standing
+  parks; zero reds, so nothing to re-run by file.

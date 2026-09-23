@@ -12,6 +12,62 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): unify the `00c290c9a` bug-163/164 drift catch-up + maintenance round (P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110)
+
+_Versions: core 0.0.1013, harness 0.0.930, host 0.0.149, web 0.0.179._
+
+All five lanes are on main, and the oracle baseline moves from `a2db63da7`
+to `00c290c9a`. Scope:
+
+- P4.D215: v4's auto-title chokepoint (bugs 163/164) sits under the fold,
+  the title-update job and regenerate-title. The lane also widened
+  `chat-admin-main.db`.
+- P4.107: five committed main fixtures widened, closing four standing reds.
+  The next heal's list is measured: ten pairs.
+- P4.108: the host codec declines animated GIF/WebP inputs of two or more
+  frames on its two animated seams, as ruled.
+- P4.109: `get_messages` falls back to `[]` with an ERROR, as v4 does. A
+  strict sibling is chosen per call site by a census, and `update_message`
+  answers v4's `null`.
+- P4.110: the shared census lexer and walkers,
+  `materialize_salon_instance` in the web tests' `common` module, and a
+  required codec for `execute_import`.
+
+The review found one blocking defect, fixed on the unify branch: P4.108's
+frame counter ran the `image` crate's animation decoders with no allocation
+limit. A tiny GIF or WebP declaring a ~65535-square canvas could ask for
+~17 GB per frame on every upload, import or sync. It now charges `decode`'s
+own 512 MiB limit first. A boundary test covers both sides of the limit,
+and it went red before the fix.
+
+Should-fixes, also fixed:
+
+- The two importer message reads P4.109 recorded now take the strict
+  variant. This makes v4's informs warn reachable again (red-first).
+- Unknown-type message rows now take v4's corrupted-row WARN instead of
+  being dropped silently. The WARN's ids now fall back to `unknown` on an
+  empty string, as JS `||` does.
+- Regenerate-title's settings, profiles and messages reads now land on v4's
+  single catch (500 `Failed to regenerate title` plus the ERROR). Before,
+  they answered the raw DB error with no log line (red-first). The
+  `missing` outcome now has an arm.
+- Stale doc comments in the shared lexer are corrected.
+
+The unifier also brought the `docs/v4/developer/bugs/` mirror current with
+v4 (bugs 163/164, plus the lag for bugs 146–150 and 154).
+
+Gate:
+
+- fmt, clippy in both feature sets and the release build: clean.
+- The 32-family sweep from the `00c290c9a` pin: 32 ok.
+- `cargo test --workspace` with the round's env block: 621 binaries, 3,663
+  passed, 1 failed, 3 ignored. The one failure was the census tripping on
+  the unification's own new unit test; it is fixed and green by name.
+- Tier R: 266/0 at the pin.
+- SPA: 441 files, 7,474 tests; the build is clean.
+- Full Playwright against the release binary: 331 passed, 0 failed, 6
+  skipped (the standing parks), 10.1 minutes.
+
 #### 2026-09-23 — docs(porting): the P4.110 lane close — gate, status header
 
 _Versions: harness 0.0.916 (Cargo.lock catch-up; the version was bumped in the previous commit)._

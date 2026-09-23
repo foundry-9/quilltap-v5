@@ -6628,6 +6628,61 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `00c290c9a` bug-163/164 drift catch-up + maintenance round (P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110) — UNIFIED 2026-09-23
+
+**ALL FIVE LANDED on main; the oracle baseline MOVES to `00c290c9a`. v4 HEAD
+is `d1c06cd9d` — two UNPROCESSED §3 rows (`dff00e98d` docs, `d1c06cd9d` the
+Scenario Builder) — so the regen rule is PIN REQUIRED at `00c290c9a`.** The
+§3 review (four parallel readers, the verdict the unifier's) found **ONE
+BLOCKING defect — P4.108's frame counter decoded with no allocation limit** (a
+tiny crafted GIF/WebP declaring a huge canvas → ~17 GB per frame on every
+upload, import, sync) — fixed to charge `decode`'s own 512 MiB limit exactly
+as `decode` does (RGB for a no-alpha WebP; the reviewer's RGBA suggestion
+would have flattened large legal animations — measured), pinned both sides,
+red-first. Should-fixes fixed: the importer's two message reads to STRICT (the
+round's one cross-lane handoff, red-first); unknown-type message rows now WARN
+as v4; regenerate-title's reads under v4's one outer catch (red-first) + the
+`missing` arm. The `docs/v4/developer/bugs/` mirror is current. Gate: the
+32-family sweep 32/32 from the new pin; `cargo test --workspace` 621 binaries /
+3,663 passed / 1 failed (the unification's own census trip, fixed, green by
+name) / 3 ignored; Tier R 266/0; SPA 441 / 7,474; 
+full Playwright **331 passed / 0 failed / 6 skipped (10.1 m)** (the six skips the standing parks). Round record: `status-log.md`.
+
+**Next (in order):**
+
+1. **The Scenario Builder catch-up** (`d1c06cd9d` + the `dff00e98d` spec, the
+   ledger's two §3 rows) — a multi-order vertical: SUBSTRATE first (the Brahma
+   one-shot loop → a shared `run_one_shot_tool_loop` with v4's four new debug
+   lines; `build_tools`' `docToolsMode` + `extras`; `streamMessage`'s
+   `logType` + `SCENARIO_BUILDER`; the `mountPool` context through the tool
+   executor / search / doc-edit / path resolver — P4.D200's covenant
+   surfaces; `GET /api/v1/groups?characterIds=`), then the service + route +
+   SSE, then the SPA dialog + save dialog; **bug 165** (`add_scenario` returns
+   the minted id for vault-backed characters — v5 HAS it) as a small lane; bug
+   166 NO-COUNTERPART; `help/` 126 → 127 (the hard-coded count in several
+   crates). Pin the target `d1c06cd9d`.
+2. **The fixture-vintage heal's next list** (P4.107 measured it, every one
+   proven pure vintage by a temporary widen): TEN main files —
+   `embedding-remainder`, `autonomous`, `chat-cast`,
+   `conversation-summaries-regen`, `documents`, `cost-background` (P4.D215's
+   grown `title_update_tier3` copies it — now landed, so the widen is
+   unblocked), `system-data`, `episodic-recall`, `home`, `text-replacements`
+   (11 red families). P4.103's method.
+3. **Small follow-ups the review recorded:** the title-update job's own
+   `missing` arm; consolidating `auto_title_capture` onto `global_capture`
+   (field rendering); the dead `fold_hand_renamed` title input; the census's
+   per-file swap blindness; v5's corrupted-row skip vs v4's Zod-only
+   failures (a measured non-data-loss gap); `update_chat_metadata`'s importer
+   residual; the corrupt-second-frame animated input; the dead reader-side
+   `ALTER` heals; P4.110's Tier 3 item 7 (the web crate's scanners).
+4. **The `quilltap sync` writer-hold ruling** (P4.D210's header) — human.
+5. **The owed dogfood pass** on a Friday copy — now with this round's
+   surfaces: a hand-renamed chat through a real fold (title kept, no
+   background), a changed title queueing the Lantern, regenerate on a renamed
+   chat, an animated GIF through a gallery save and a Scriptorium upload
+   (frames kept), search & replace preview on a real instance; plus the
+   standing queue.
+
 ## The `00c290c9a` bug-163/164 drift catch-up + maintenance round (P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110) — ORDERED 2026-09-23
 
 **Baseline `a2db63da7`; v4 `main` HEAD `00c290c9a` (ONE past — the

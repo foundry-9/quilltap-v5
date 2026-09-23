@@ -19,93 +19,72 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `a2db63da7`** — "Fix bug 162: CLI raw-SQL path opens
-  without qt_text() (#63)" (v4 main, 2026-09-21 22:20, `4.10.0-dev.63`),
-  adopted at the `a2db63da7` bug-161/162 drift catch-up + maintenance round
-  unification (P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥
-  P4.106, 2026-09-23). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-23, 09:04 CDT (`/driftcheck`; the prior entry was the
-  ~02:05 fast-forward probe that recorded `00c290c9a`). The `00c290c9a`
-  round (P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110) is **ORDERED and its
-  lanes are IN FLIGHT** — their §2 probe against the previous §1 now FAILS
-  on the two commits below (see the verdict for why the lanes' pins still
-  stand).
+- **Oracle baseline: `00c290c9a`** — "fix(titles): route every auto-title
+  through applyAutoTitle (bugs 163, 164)" (v4 main, 2026-09-23 00:20,
+  `4.10.0-dev.65`), adopted at the `00c290c9a` bug-163/164 drift catch-up +
+  maintenance round unification (P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110,
+  2026-09-23). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-09-23, 13:05 CDT (`/unify`'s closing probe; the
+  unification-start probe at ~12:10 read the same).
 - **v4 `main` HEAD at check:** `d1c06cd9d` ("feat(scenarios): Scenario
   Builder — the Host researches and drafts a starting scene", 2026-09-23
-  09:02 −0500, `4.10.0-dev.67`) — **THREE commits past the baseline**:
-  `00c290c9a` (ORDERED, P4.D215), then `dff00e98d` (docs-only spec) and
-  `d1c06cd9d` (73 files, +6,010/−436).
+  09:02 −0500, `4.10.0-dev.67`) — **TWO commits past the baseline**:
+  `dff00e98d` (docs-only spec) and `d1c06cd9d` (73 files, +6,010/−436).
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch") — **UNMOVED**; only pre-absorbed lineage.
+  branch") — UNMOVED.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 3 commits: 1 ORDERED (`00c290c9a`, P4.D215),
-  2 UNPROCESSED** (§3): `dff00e98d` (a NO-PORT? docs-only handoff spec) and
-  `d1c06cd9d` — **a PORT-NEW feature (the Scenario Builder) with PORT riders
-  on ported surfaces**: the Brahma one-shot loop refactored into a shared
-  `runOneShotToolLoop` (four NEW debug lines on the Brahma-as-Carina path),
-  `buildTools`' boolean `documentEditingEnabled` → a three-way
-  `docToolsMode` + an `extras` argument, `streamMessage`'s `logType`, the
-  `mountPool` context threaded through the tool executor / search handler /
-  doc-edit handlers / path resolver, `GET /api/v1/groups?characterIds=`, a
-  new `SCENARIO_BUILDER` log type, **bug 165** (`addScenario` returned a
-  transient id for vault-backed characters — **v5's `add_scenario` has the
-  same shape**), and **bug 166** (the workspace New Chat modal never passed
-  group scenarios — **NO counterpart in v5**, which never ported the modal).
-  Neither bug is a port filing coming back (both "Original to v4", "v5
-  status: Not assessed") — no CONVERGENCE. **The in-flight round is
-  unaffected in substance:** none of its five orders touches the
-  Scenario-Builder surfaces (the auto-title chokepoint, fixture widening,
-  the animated decline, `get_messages`/`update_message`, the census lexer),
-  and every lane already pins (`a2db63da7`, or `00c290c9a` for P4.D215's
-  moving families), so a lane whose §2 probe fails on `dff00e98d`/
-  `d1c06cd9d` may proceed under the human's waiver as at the `89fcc3c0d`
-  round — the rows stay out of this round. **Next round: the Scenario
-  Builder catch-up** (a multi-order vertical: substrate refactors first —
-  the one-shot loop, `docToolsMode`, `mountPool` — then the service + route
-  + SSE, then the SPA dialog; bug 165 as a small lane).
-- **Regen rule: PIN REQUIRED at `a2db63da7` — UNCHANGED.** HEAD is three
-  commits past the baseline. Every oracle regen runs from a detached
-  worktree pinned at `a2db63da7` (§5.1, lane-unique path); P4.D215 pins its
-  TARGET `00c290c9a` for the moving families — **never HEAD**, since
-  `d1c06cd9d` moves Brahma one-shot log capture, the tool-slate builder,
-  the search/doc-edit handlers and `addScenario`, all of which have
-  regenerating families. **Do not reason about which families "could" be
-  affected — pin.**
-- **The workspace gate at the baseline:** `qtap_schema_embed_guard` GREEN
-  (95,266), `zod_version_guard` GREEN (4.6.5), `provider_sdk_version_guard`
-  GREEN (NEW, P4.106 — openai 7.20.0 / anthropic 0.115.0 / google genai
-  1.52.0 / openrouter 1.3.11; it SKIPs on a checkout without plugin installs),
-  `public_schemas_vendor_guard` GREEN, `help_tree_embed_guard` GREEN at 126,
-  `dispatch_wrong_type_census` at **446** (P4.D212's `chatId`),
-  `blob_write_sites_census` (NEW, P4.104) 12 / 12 + one EXEMPT,
-  `compressed_column_write_sites_census` at 14. `help_tree_equivalence` at
-  the `a2db63da7` pin is the proof the tree is v4's (md5-identical, 126
-  files — `help/chats.md` re-vendored by P4.D212).
-- **Schema state:** unchanged from the `f45a517a9` move — the D23 re-dump
-  from `e7d77bb60` stands; the FTS objects come from P4.D204's boot
-  reconciler. Neither new commit moves the schema (`d1c06cd9d` adds a
-  `LLMLogTypeEnum` member — a Zod enum on a TEXT column, no DDL).
+- **Verdict: DRIFT PENDING — 2 commits, both UNPROCESSED** (§3):
+  `dff00e98d` (a NO-PORT? docs-only handoff spec) and `d1c06cd9d` — **a
+  PORT-NEW feature (the Scenario Builder) with PORT riders on ported
+  surfaces** (the Brahma one-shot loop refactored into a shared
+  `runOneShotToolLoop` with four new debug lines, `buildTools`'
+  `docToolsMode` + `extras`, `streamMessage`'s `logType` + the
+  `SCENARIO_BUILDER` log type, the `mountPool` context through the tool
+  executor / search / doc-edit / path resolver, `GET
+  /api/v1/groups?characterIds=`, **bug 165** — v5's `add_scenario` has the
+  pre-fix shape — and **bug 166**, no v5 counterpart). **Next round: the
+  Scenario Builder catch-up** (a multi-order vertical: the substrate
+  refactors first — the one-shot loop, `docToolsMode`, `mountPool` — then the
+  service + route + SSE, then the SPA dialog; bug 165 as a small lane).
+- **Regen rule: PIN REQUIRED at `00c290c9a`.** HEAD is two commits past the
+  baseline and `d1c06cd9d` moves Brahma one-shot log capture, the tool-slate
+  builder, the search/doc-edit handlers and `addScenario`, all of which have
+  regenerating families. Every oracle regen runs from a detached worktree
+  pinned at `00c290c9a` (§5.1, lane-unique path) — **never HEAD**. **Do not
+  reason about which families "could" be affected — pin.**
+- **The workspace gate at the baseline** (the unification's final tree):
+  `qtap_schema_embed_guard`, `zod_version_guard` (4.6.5),
+  `provider_sdk_version_guard`, `public_schemas_vendor_guard` GREEN;
+  `help_tree_embed_guard` GREEN at 126; `dispatch_wrong_type_census` at 446
+  (unmoved — no verb this round); `blob_write_sites_census` 12 / 12 + one
+  EXEMPT and `compressed_column_write_sites_census` 14 (both now over the
+  shared `tests/source_census` lexer, P4.110; the latter with a > 500-file
+  walk floor); NEW `get_messages_caller_census` at `(76, 8)` (P4.109 + the
+  unification's importer repoint). `help_tree_equivalence` at the
+  `00c290c9a` pin is the proof the tree is v4's (126 files —
+  `help/story-backgrounds.md` re-vendored by P4.D215). Tier R 266/0 at the pin.
+- **Schema state:** unchanged — the D23 re-dump from `e7d77bb60` stands; the
+  FTS objects come from P4.D204's boot reconciler. Neither pending commit
+  moves the schema (`d1c06cd9d` adds a `LLMLogTypeEnum` member — a Zod enum on
+  a TEXT column, no DDL).
 - **`help/**` vs v4 HEAD `d1c06cd9d`:** **126 → 127 files** (NEW
-  `scenario-builder.md`); **FOUR differ** — `story-backgrounds.md`
-  (`00c290c9a`, P4.D215's), `chats.md` (+7), `general-scenarios.md` (+3),
-  `project-scenarios.md` (+3) (`d1c06cd9d`). The 126 → 127 count is a
-  hard-coded literal in several crates (a memory note) — the Scenario
-  Builder catch-up moves all of them.
-- **The three text-compression migrations and the image re-encode
-  migration stay DEFERRED as reclamation** (named in
-  `db/text_compression.rs`, the P4.D209 record, and P4.104's module doc); a
-  v5 boot never compresses or re-encodes existing rows, and does not need
-  to — every read and write is codec-aware, so a mixed instance is the
-  normal state. **Recorded divergence (P4.104), RULED by the human 2026-09-23 —
-  DECLINE animated inputs at the codec:** the host WebP codec encodes a
-  single frame, so an ANIMATED image reaching any blob-write site is today
-  stored as a still WebP where v4 keeps every frame; the ruling is that the
-  host codec detects an animated GIF/WebP and answers the cannot-transcode
-  arm, so v4's own store-original fallback keeps the frames (a D19
-  divergence on mime/path, never a lost frame). Growing the codec
-  (libwebpmux) is NOT taken. The detection is ORDERED as P4.108.
+  `scenario-builder.md`); THREE differ — `chats.md` (+7),
+  `general-scenarios.md` (+3), `project-scenarios.md` (+3). The count is a
+  hard-coded literal in several crates (a memory note) — the Scenario Builder
+  catch-up moves all of them.
+- **The three text-compression migrations and the image re-encode migration
+  stay DEFERRED as reclamation** (named in `db/text_compression.rs`, the
+  P4.D209 record, and P4.104's module doc). **The animated-input ruling
+  (the human, 2026-09-23) is LANDED (P4.108):** the host codec counts frames
+  on its two animated seams and declines a ≥ 2-frame GIF/WebP, so v4's
+  store-original fallback keeps every frame (a D19 divergence on mime/path,
+  pinned both ways); the frame counter is bounded by `decode`'s own 512 MiB
+  charge (the round's §3 blocking fix).
+- **`docs/v4/developer/bugs/`** is `diff -rq` identical to v4's at
+  `00c290c9a` (the unification cleared the bug-146–154 lag). `docs/v4/
+  CHANGELOG.md`'s older lag (~385 lines) stays a named housekeeping item.
 
 ## §2 The freshness probe
 
@@ -144,7 +123,6 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `00c290c9a` | 2026-09-23 | fix(titles): route every auto-title through applyAutoTitle (bugs 163, 164) | **PORT** | **17 files, +662/−115; the code: NEW `lib/chat/auto-title.ts` (167 — `applyAutoTitle` + `queueStoryBackgroundIfEnabled` MOVED here from the title-update handler), `lib/chat/context-summary.ts` (+20/−?: the fold's title write goes through the chokepoint, and a `chat.isManuallyRenamed` chat SKIPS the fold title with a new debug line `[Context Summary] Chat renamed by hand; skipping fold title`), `lib/background-jobs/handlers/title-update.ts` (109 → the chokepoint with `extraPatch: { lastRenameCheckInterchange }`, `source: 'title-check'`), `app/api/v1/chats/[id]/actions/title.ts` (regenerate-title through the chokepoint with `clearManualRename: true`, `source: 'regenerate'`; the info line gains `outcome`); three tests (two NEW). Bug 164: the fold used to OVERWRITE a hand-renamed chat's title; bug 163: the fold renamed without queueing the story background (the Lantern's cue is a CHANGED title, whatever the source). The chokepoint's two rules: a manually-renamed chat keeps its title unless `clearManualRename`; a title that actually changed queues the background; it re-reads the chat after the LLM call so a hand rename mid-flight wins; outcomes `applied` / `unchanged` / `manually-renamed` / `missing`. **v5 intersection — three ported surfaces, all carrying the PRE-fix shape:** `services/context_summary.rs` (the fold's title write — P4.D212's file this round; check whether v5's fold gates on `isManuallyRenamed` at all), `services/title_update_job.rs:192` (its own `isManuallyRenamed` gate + `queue_story_background_if_enabled` at `:476` — the enqueue that MOVES into the chokepoint), `services/chat_admin.rs:688` (regenerate-title clearing `isManuallyRenamed`; the `cast_or_first_profile` factoring P4.D212 just made), `services/image_profile_resolution.rs:126` (`queue_story_background_if_enabled` — v4 moved its home; v5's stays unless the port moves it). Families that move: `context_summary_service_tier3` (a new debug line + the fold's title outcome), `memory_pipeline_jobs_tier3`, `orchestrator_tier3`, `chat_regenerate_title_tier3` (RED today on the un-widened `chat-admin-*` pair — heal it first or widen per case), the title-update job's tier-3 family, `story_background_job_tier3` (neutral). `help/story-backgrounds.md` re-vendor (8,976). Mirrors: `docs/v4/developer/bugs/fixed/bug-163-fold-rename-no-background.md` (NEW), `bug-164-fold-overwrites-manual-title.md` (NEW), `bugs.md`; `CLAUDE.md`/`README.md`/`CHANGELOG`/the stamps NO-PORT. | **ORDERED(P4.D215)** (2026-09-23; `chat-admin-main.db` widened in the same lane; the two bug mirrors + `bugs.md` + the recorded bug-146–154 mirror lag are the unifier's, §R.9) |
 | `dff00e98d` | 2026-09-23 | docs: add Scenario Builder handoff spec | **NO-PORT?** | **4 files, +304; docs-only:** `docs/developer/features/scenario-builder.md` (NEW, 292 — the pre-implementation plan; `d1c06cd9d` then edits it +53 to the design of record), `ROADMAP.md`, `docs/CHANGELOG.md`, `.claude/commands/update-documentation.md`. Zero `lib/`/`app/`/`components/`/`help/`/`packages/`/`plugins/` hunks (measured by `git show --stat`). Useful as the Scenario Builder order's REFERENCE (the settled decisions: both surfaces, the Host as persona, real = web + stores, in-world = visible stores only, cast-agnostic, ~1,000 tokens, the four save tiers) — but the spec is prose; port from `d1c06cd9d`'s hunks (§5.3). Ratify with the Scenario Builder catch-up. | UNPROCESSED |
 | `d1c06cd9d` | 2026-09-23 | feat(scenarios): Scenario Builder — the Host researches and drafts a starting scene | **PORT-NEW** (+ PORT riders) | **73 files, +6,010/−436, `4.10.0-dev.67`.** **NEW (no v5 counterpart):** `lib/services/scenario-builder/scenario-builder.service.ts` (305), `lib/scenario-builder/{mount-pool,request-schema,system-prompt}.ts` (`resolveScenarioBuilderMountPool` — cast vaults in the PARTICIPANT tier + their groups + project + General), `app/api/v1/scenario-builder/route.ts` (205; `POST ?action=build` streamed over SSE, a capabilities probe), `lib/services/agent-loop/one-shot-loop.ts` (401, `runOneShotToolLoop`), `lib/tools/search-scriptorium-tool.ts`'s third `search` variant (`sources: documents|knowledge` only — its tool-definition bytes are in the snapshot, +47), the SPA (`components/scenario-builder/*` — dialog 454, save dialog 242, run hook 143; `components/agent-stream/parse-agent-stream.ts` MOVED out of the Brahma console hook; `NewChatForm` +131, `ChatScenarioControl` +89, `ChatSidebar` +17, `useNewChat`'s `refetchScenarioTiers`, `useConnectionProfiles`, the LLM Inspector's new type label), `help/scenario-builder.md` (NEW, 85). **PORT riders on ported surfaces:** (1) **the Brahma one-shot** refactored onto `runOneShotToolLoop` (−293/+ in `one-shot.service.ts`; claims neutral, but the loop now emits `<label>: starting` / `: tool turn` / `: aborted …` / `: finished` debug lines the old file never emitted (measured: `00c290c9a`'s file has only the two warns, the empty-answer debug and a no-profile debug), and the empty-answer line gains a `turns` field; v5: `services/brahma_console/mod.rs` + `carina_query.rs`, `brahma_console_tier3_equivalence`); (2) **`buildTools`**: `documentEditingEnabled: boolean` → `docToolsMode: 'off'|'read'|'full'` (callers map `true→'full'`/`false→'off'` — neutral for every existing slate; `'read'` = the five read-only `doc_*` alone) + an `extras` argument (`pluginToolAllowlist` applied at CONSTRUCTION, `documentsOnlySearch`, `webSearch: false` narrowing); v5: `services/tool_build.rs:197/:315/:425`, the callers `orchestrator.rs:1893`, `carina_query.rs:511`, `brahma_console/{mod,orchestrator}.rs`, `help_chat/orchestrator.rs:767`; (3) **`streamMessage`'s `logType`** (default `CHAT_MESSAGE`) + `LLMLogTypeEnum` gains `SCENARIO_BUILDER`; v5: `services/llm_logging.rs:392` `log_type`, `db/llm_logs.rs`; (4) **the `mountPool` context** through `tool-executor.ts` (a new refusal when both `mountPool` and `operatorSurface` are set, with its own error line), `search-scriptorium-handler.ts` (memories/conversations forced off, the participant tier searched and boosted as `character`), the doc-edit handlers (`handleGrep`/`handleListFiles` guards now `!projectId && !mountPool`; two `&& context.projectId` conjuncts that are NEUTRAL on every pre-existing path because the earlier guard already required `projectId`) and `path-resolver.ts` (`collectAccessibleMountPointIds`' new first-class arm + debug line, `getAccessibleMountPoints`' query field) — P4.D200's covenant surfaces; (5) **`GET /api/v1/groups?characterIds=`** — a NEW optional membership filter on the collection GET (+ a debug line); v5: `api/groups.rs` `GroupList`; (6) **bug 165** — `CharactersRepository.addScenario` now re-reads and returns the vault-PROJECTED scenario (matched by title among fresh ids, else the sole fresh one) with a debug line; **v5 `db/vault_character_arrays.rs:348` `add_scenario` returns the minted `uuid::new_v4()` item — the pre-fix shape**, reaching the character-scenarios create route; (7) **bug 166** — `NewChatModal` passes `groupScenarios`: **NO-COUNTERPART** (v5 never ported the modal; `apps/web/src/app/screens/new-chat/new-chat-form.ts:52-66` records the standing no-modal divergence and reads `NewChatState` directly) — but the `refetchScenarioTiers` path it rides with IS part of the SPA port. **Help:** `chats.md` (+7), `general-scenarios.md` (+3), `project-scenarios.md` (+3), `scenario-builder.md` NEW → 127 files (the hard-coded count moves in several crates). **Mirrors:** `bug-165-…`, `bug-166-…` (NEW), `bugs.md`, `API.md` (+33), `PROMPT_ARCHITECTURE.md`, the feature spec; `CLAUDE.md`/`README.md`/`CHANGELOG`/`package*.json` stamps NO-PORT. **Tests-only files** (twelve `__tests__`) are the oracle's source of cases. Neither bug is a port filing (both "Original to v4") — no CONVERGENCE. | UNPROCESSED |
 
@@ -299,6 +277,20 @@ the disposable copy proves the mechanism but is a weaker claim — offer it,
 don't silently swap it in.
 
 ## §6 History
+
+- **The `00c290c9a` bug-163/164 drift catch-up + maintenance round
+  (2026-09-23, baseline `a2db63da7` → `00c290c9a`):** `00c290c9a` (bugs
+  163/164, the auto-title chokepoint) ABSORBED(P4.D215 — NEW
+  `services/auto_title.rs` with v4's four outcomes, the post-LLM re-read, the
+  refused arms' `extraPatch`-only write, the enqueue MOVED in with its lines
+  re-prefixed; under the fold [its hand-renamed early return + its catch], the
+  title-update job [the removed `Updated title` line; an unchanged title queues
+  nothing] and regenerate-title [`clearManualRename`; v4's one outer catch over
+  every read, fixed at unification]; `help/story-backgrounds.md`;
+  `chat-admin-main.db` widened; the two bug mirrors + `bugs.md` and the
+  bug-146–154 mirror lag by the unifier). Round record: `status-log.md` →
+  "Round record — the `00c290c9a` bug-163/164 drift catch-up + maintenance
+  round unification".
 
 - **The `a2db63da7` bug-161/162 drift catch-up + maintenance round
   (2026-09-23, baseline `f45a517a9` → `a2db63da7`):** `4e1a8e061` (docs:
