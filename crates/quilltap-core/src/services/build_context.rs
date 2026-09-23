@@ -1434,6 +1434,12 @@ impl CadenceEvents<'_> {
         // read is memoised. Caching the `Err` too would be one read fewer on a
         // broken table and a read-count divergence from v4; the unification
         // review (2026-09-09) put it back to v4's shape.
+        //
+        // P4.109: v4's `getMessages` never rejects — it is a FALLBACK
+        // `safeQuery` answering `[]` — and neither does v5's `get_messages`
+        // since that lane, so a broken `chat_messages` table now reads `[]`
+        // ONCE and is memoised, exactly as v4's `??=` assigns the `[]`. The
+        // `Err` arm below remains only for a failure of `read_main` itself.
         if self.cached.is_none() {
             self.reads += 1;
             let cid = self.chat_id.clone();
@@ -4884,12 +4890,14 @@ mod cadence_memo_tests {
         assert_eq!(cadence.reads, 1, "still one read after four asks");
     }
 
-    /// A failed read is NOT memoised — v4's `??=` never assigns on a rejected
-    /// promise, so the next cadence retries the read and sees its own `Err`.
-    /// (The first shape of this test pinned the opposite; the unification
-    /// review restored v4's.)
+    /// A broken message table reads as `[]` ONCE and that `[]` is memoised
+    /// (P4.109). v4's `??=` never assigns on a rejected promise — but
+    /// `getMessages` never rejects: it is a FALLBACK `safeQuery` that logs
+    /// `Failed to get messages for chat` and answers `[]`, which `??=` then
+    /// assigns. (Before P4.109 this test pinned a retried `Err`, the shape v5
+    /// had while its `get_messages` still propagated.)
     #[test]
-    fn a_failed_cadence_read_is_retried_by_the_next_caller() {
+    fn a_broken_message_table_reads_empty_once_and_is_memoised() {
         let dir = tempfile::tempdir().expect("tempdir");
         // No provisioning: `chat_messages` does not exist, so the read fails.
         let path = dir.path().join("quilltap.db");
@@ -4906,11 +4914,11 @@ mod cadence_memo_tests {
             cached: None,
             reads: 0,
         };
-        assert!(cadence.load().is_err(), "no such table");
-        assert!(cadence.load().is_err(), "and again");
+        assert_eq!(cadence.load().expect("v4's fallback `[]`").len(), 0);
+        assert_eq!(cadence.load().expect("served from the memo").len(), 0);
         assert_eq!(
-            cadence.reads, 2,
-            "a failure is retried by the next caller, as v4's `??=` retries it"
+            cadence.reads, 1,
+            "v4's `??=` assigns the fallback `[]`, so the second caller reads the memo"
         );
     }
 }

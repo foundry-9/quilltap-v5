@@ -513,6 +513,16 @@
       ],
       "searchText": "C++",
       "limit": 100
+    },
+    {
+      "kind": "countMessagesWithText",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "searchText": "quick"
+    },
+    {
+      "kind": "findMessagesWithText",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "searchText": "quick"
     }
   ]
 }

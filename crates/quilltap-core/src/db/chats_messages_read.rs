@@ -292,10 +292,48 @@ fn marshal_row(row: &Row) -> Result<Option<Value>, rusqlite::Error> {
     })
 }
 
+/// The `context` field on this module's `safeQuery`-arm lines (the house shape of
+/// `db::chats_search`'s `LOG_CONTEXT`; v4's lines come from
+/// `chats-messages.ops.ts`).
+const LOG_CONTEXT: &str = "db.chats-messages";
+
 /// `getMessages` — all events for a chat, ordered by `createdAt` ascending
 /// (v4 `find({ chatId }, { sort: { createdAt: 1 } })`), each marshaled through
 /// its union member; unrecognized rows are skipped.
+///
+/// **Never answers `Err`** (P4.109). v4's `getMessages`
+/// (`chats-messages.ops.ts:315-366`) is `safeQuery(…, 'Failed to get messages
+/// for chat', { chatId }, [])` — FALLBACK mode — so a read that throws logs one
+/// ERROR and answers `[]`. That is where v4's `countMessagesWithText`,
+/// `findMessagesWithText` and `replaceInMessages` actually swallow on SQLite:
+/// their own `safeQuery` arms are unreachable, because the only thing in them
+/// that can throw is this call. The `Result` stays in the signature (the
+/// P4.105 precedent) so no caller moves.
+///
+/// A caller whose v4 counterpart does NOT read through `getMessages` — it
+/// rethrows, or reads another way — calls [`get_messages_strict`] instead. The
+/// choice is made per call site by the caller census (P4.109's lane record,
+/// guarded by `get_messages_caller_census`), never by blanket rule.
 pub fn get_messages(conn: &Connection, chat_id: &str) -> Result<Vec<Value>, DbError> {
+    match get_messages_strict(conn, chat_id) {
+        Ok(events) => Ok(events),
+        Err(err) => {
+            tracing::error!(
+                target: "quilltap::db",
+                context = LOG_CONTEXT,
+                chatId = chat_id,
+                error = %err,
+                "Failed to get messages for chat",
+            );
+            Ok(Vec::new())
+        }
+    }
+}
+
+/// [`get_messages`] WITHOUT v4's `safeQuery` fallback: a failing read answers
+/// `Err`. For the call sites whose v4 counterpart rethrows or reads the rows
+/// some other way (see [`get_messages`]).
+pub fn get_messages_strict(conn: &Connection, chat_id: &str) -> Result<Vec<Value>, DbError> {
     let sql =
         format!("SELECT {COLUMNS} FROM chat_messages WHERE chatId = ?1 ORDER BY createdAt ASC");
     let mut stmt = conn.prepare(&sql)?;
@@ -438,5 +476,72 @@ mod tests {
         .unwrap();
         let msgs = get_messages(&conn, "c1").unwrap();
         assert_eq!(msgs[0]["isSilentMessage"], Value::Bool(true));
+    }
+
+    /// A three-row chat on the migrated DDL: `m1`, `m2`, `m3` in order.
+    fn three_rows() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(MIGRATED_DDL).unwrap();
+        crate::test_support::ensure_p4d171_columns(&conn);
+        for (id, at) in [
+            ("m1", "2026-09-23T00:00:01.000Z"),
+            ("m2", "2026-09-23T00:00:02.000Z"),
+            ("m3", "2026-09-23T00:00:03.000Z"),
+        ] {
+            conn.execute(
+                "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt) \
+                 VALUES (?1, 'c1', 'message', 'USER', 'hi', ?2)",
+                rusqlite::params![id, at],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    fn ids(events: &[Value]) -> Vec<&str> {
+        events.iter().filter_map(|e| e["id"].as_str()).collect()
+    }
+
+    /// P4.109: v4's `getMessages` is a FALLBACK `safeQuery` — a read that
+    /// throws logs ONE `Failed to get messages for chat` ERROR `{chatId,
+    /// error}` and answers `[]`. The strict sibling still answers `Err` and
+    /// logs nothing.
+    #[test]
+    fn a_read_that_throws_answers_empty_and_logs_once() {
+        let conn = three_rows();
+        conn.execute_batch(r#"ALTER TABLE "chat_messages" RENAME TO "chat_messages_gone""#)
+            .expect("plant");
+        let (events, lines) = crate::test_support::captured_with(|| get_messages(&conn, "c1"));
+        assert_eq!(
+            events.expect("v4's safeQuery never throws here"),
+            Vec::<Value>::new()
+        );
+        let errors: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Failed to get messages for chat"))
+            .collect();
+        assert_eq!(errors.len(), 1, "one ERROR: {lines:?}");
+        let line = errors[0];
+        assert!(
+            line.starts_with("ERROR quilltap::db"),
+            "level/target: {line}"
+        );
+        assert!(line.contains("context=db.chats-messages"), "{line}");
+        assert!(line.contains("chatId=c1"), "{line}");
+        assert!(line.contains("no such table: chat_messages"), "{line}");
+
+        let (strict, lines) =
+            crate::test_support::captured_with(|| get_messages_strict(&conn, "c1"));
+        assert!(strict.is_err(), "the strict variant rethrows");
+        assert!(lines.is_empty(), "and logs nothing of its own: {lines:?}");
+    }
+
+    /// The silence leg: a healthy read never reaches the `safeQuery` ERROR.
+    #[test]
+    fn a_healthy_read_does_not_log_the_safe_query_error() {
+        let conn = three_rows();
+        let (events, lines) = crate::test_support::captured_with(|| get_messages(&conn, "c1"));
+        assert_eq!(ids(&events.unwrap()), ["m1", "m2", "m3"]);
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }

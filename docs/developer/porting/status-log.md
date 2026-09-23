@@ -144283,3 +144283,191 @@ index-only `idx_llm_logs_*` lag as the two the order named; (c) the order's
 "`set_all`" rows were not among the 28 wardrobe reds because v4 ALSO 500ed on
 them pre-widen — a mutual-500 agreement the widen retired (item 3); (d) v4
 moved to `dff00e98d` mid-lane (the waiver above).
+
+## Lane record — P4.109: `get_messages`' `safeQuery` fallback + `updateMessage`'s `null` + the ui-search regression arm (2026-09-23)
+
+Branch `claude/p4-109-safequery-message-null-b11e37`, cut from `main`
+`01e52897`. Pin: `/tmp/qt-v4-pin-p4109-a2db63da7` (detached at `a2db63da7`,
+`rev-parse` verified; the three symlink classes). Every regen ran from the
+pin, never from the checkout.
+
+**The §R.2 probe — FAILED mid-lane; the lane resumed on the human's waiver.**
+At lane start the probe PASSED (v4 `main` at `00c290c9a`, clean, both logs
+empty). Before the first regen batch it FAILED: v4 `main` had moved to
+`dff00e98d` ("docs: add Scenario Builder handoff spec") and the tree was
+DIRTY in `lib/` (`lib/doc-edit/path-resolver.ts`,
+`lib/tools/handlers/doc-edit/{blob-handlers,shared,text-handlers}.ts`
+modified; `lib/scenario-builder/` untracked). The lane STOPped and reported.
+⚠ Honest record: the lane's own probe check was wrong — it echoed a pass
+whenever the four commands SUCCEEDED rather than when their output was empty
+— so the first `chats-search` regen ran (from the pin) before the failure
+was noticed; it was re-run after the waiver. **The human's waiver
+(2026-09-23, in chat): "docs-only change, ignore dirty tree and work off
+committed main in v4, keep going."** Every regen after it came from the
+`a2db63da7` pin; the ledger was NOT written (it is the unifier's /
+`/driftcheck`'s to record `dff00e98d` and the dirt).
+
+### Unit 1 — the caller census + `get_messages` → v4's fallback (commit `fix(db): get_messages is v4's safeQuery fallback…`)
+
+- **v4 measured (the pin):** `getMessages` is `safeQuery(…, 'Failed to get
+  messages for chat', { chatId }, [])` (`chats-messages.ops.ts:315-366`);
+  `safeQuery` (`safe-query.ts:51-72`) logs `{...context, error}` at ERROR and
+  returns the fallback unless strict mode (bug 79's AsyncLocalStorage) is
+  active. Strict mode has exactly TWO entry points: the importer's execute
+  (`execute.ts:430`) and preview (`preview.ts:31`).
+- **The census (Tier 1 item 1)** — all 76 sites, each checked against its v4
+  counterpart (three parallel read-only surveys over the pin + the `db/`
+  internals by hand). Verdict: every site reads through v4's `getMessages`
+  (directly, via `lib/repositories/user-scoped.ts:189`, or through a helper
+  that calls it) EXCEPT:
+  - `db/chats_messages.rs` `find_event_value` → **strict** (v4's `findOne`
+    inside `updateMessage`'s own `safeQuery`; the order's item 3);
+  - `services/help_chat/orchestrator.rs:1609` → **strict** (a test helper,
+    no v4 counterpart — the order's STOP-on-site rule: left strict, named);
+  - `services/quilltap_import/files.rs:195` and `services/quilltap_import/
+    mod.rs:1552` → **strict, RECORDED NOT EDITED** (P4.110's files, §R.10(c)/
+    (d)). v4 runs both inside `withStrictRepositoryFailures`, where
+    `safeQuery` RETHROWS even in fallback mode. `mod.rs:1552`'s `match` arm
+    is v4's `:737` warn `Failed to read chat while importing informs`, which
+    the swallowing variant makes unreachable, and `files.rs:195`'s `?` is
+    v4's rethrow. **Unifier: repoint both to `get_messages_strict` and move
+    their `get_messages_caller_census` rows from `(1, 0)` to `(0, 1)`.**
+    Until then the importer swallows a failed message read (the Tier 3
+    item 9 residual, now named twice). Note also: under strict mode v4
+    STILL logs `Failed to get messages for chat` (with `strictFailures:
+    true`) before rethrowing; `get_messages_strict` logs nothing — part of
+    the named strict-mode deferral.
+  Two sites have NO `getMessages` in v4 yet stay on the swallowing variant
+  BY OUTCOME: `api/salon.rs:1090` and `services/message_reattribute.rs:137`
+  read back the row just updated, where v4 uses `updateMessage`'s own return
+  (`findOne` inside ITS fallback `safeQuery` → `null` → 404). The swallowing
+  read gives v5 the same 404 (not found in `[]`); strict would give a 500
+  v4 cannot produce. Both are all-but-unreachable (the read follows a
+  successful write of the same row).
+  The full per-site table (v5 site, fn, v4 read file:line, read path,
+  verdict, v5 error handling today) follows this record.
+- **The port:** `get_messages_strict` = the old body; `get_messages` =
+  strict + on `Err` `tracing::error!(target "quilltap::db", context =
+  "db.chats-messages", chatId, error, "Failed to get messages for chat")` →
+  `Ok(vec![])` (P4.105's shape). `count/find/replace_in_messages` comments
+  say where their swallow lives (no new lines, §Survey A1).
+- **A consequence the census found:** `build_context`'s `CadenceEvents`
+  test `a_failed_cadence_read_is_retried_by_the_next_caller` pinned a
+  retried `Err` that v4 can never produce (`getMessages` never rejects, so
+  v4's `??=` assigns the fallback `[]`). Rewritten as
+  `a_broken_message_table_reads_empty_once_and_is_memoised` (one read) with
+  the comment updated; the `Err` arm remains for a `read_main` failure.
+- **Observable changes the census recorded** (v5 errored / 500'd where v4
+  carries on over `[]`): the chat transcript, brahma/help-chat list + GET,
+  message-edit/reattribute resolve (→ v4's 404), bulk reattribute, regenerate
+  title (→ v4's 400 "No messages…"), markdown export, cascade delete, backup
+  (a chat written with `messages: []`), the courier (→ `MessageNotFound`),
+  the turn/participant resolvers, memory extraction (no retry), summaries
+  regen (mirrored with count 0), the enclave step. Several v4 caller-side
+  catch warns (Carina, the whisper sweep, summaries regen, the chat-media
+  `.catch`) are unreachable in v4 for the same reason; v5's matching branches
+  became unreachable with them.
+- **Differentials, red-first (Tier 1 item 4).**
+  - `chats_search_equivalence`: `poisonedReads` grows `countMessagesWithText`
+    and `findMessagesWithText` (`quick`, chat `c0000010…`); `run_poisoned`
+    dispatches by kind. The oracle now (a) WARMS the messages collection
+    (`repo.getMessages` on the same instance) before the rename, and (b)
+    records each poisoned read's ERROR/WARN lines off `Logger.prototype`
+    (before the level check). v4 at the pin: count `0`, find `[]`, each with
+    `SQLite find error` (backend) + `Failed to get messages for chat {chatId}`
+    — NOT the count/find sentence. The Rust side compares v5's captured lines
+    by level, message and `chatId`/`chatCount`, dropping v4's
+    backend-level lines by name (`Raw query failed`, `SQLite find error`,
+    `findOne error` — Tier 3 item 10) and asserting v4 logged a repository
+    ERROR (the warm-up trap's tripwire). **Red-first** (`get_messages`
+    rethrowing): read 2 (count) `Err: sqlite error: no such table:
+    chat_messages` vs v4 `0`.
+  - `search_replace_equivalence`: `preview_poisoned` + `execute_poisoned` on
+    the per-case COPY (never the committed pair); the jest oracle warms the
+    route's `getRepositories()` singleton, renames, and records the route's
+    lines. v4: preview **200** `{messageMatches: 0, memoryMatches: 4,
+    affectedChats: 0, affectedMemories: 4}`; execute **200** `{messagesUpdated:
+    0, memoriesUpdated: 3, chatsAffected: 0, errors: []}` — the memory half
+    runs untouched. The Rust side uses a PROCESS-GLOBAL capture (execute's
+    read runs on the writer thread; the binary holds one test). **Red-first:**
+    preview 500 vs 200; execute 200 with a non-empty `errors` vs `[]`; both
+    missing the ERROR line.
+  - `services/search_replace.rs` needed NO hunk (the repo move was enough).
+
+
+#### The census table (Tier 1 item 1 — every site, its v4 counterpart, the verdict)
+
+| v5 site | v5 fn | v4 counterpart (file:line of the read) | v4 read path | verdict | v5 error handling / note |
+|---|---|---|---|---|---|
+| tools/generate_image.rs:1585 | `gather_db_context` | lib/tools/handlers/image-generation-handler.ts:905 | `repos.chats.getMessages(context.chatId)` (inside an outer try) | fallback | `.ok()` → None → empty list; not observable except the new ERROR log line |
+| enclave/step.rs:628 | enclave `step` (speaker selection §5) | lib/background-jobs/handlers/autonomous-room-turn.ts:579 | `repos.chats.getMessages(chatId)` | fallback | `?` propagation; OBSERVABLE (v4 proceeds with empty history, v5 errors the step) |
+| api/llm_logs.rs:248 | llm-logs list (chatId + includeMessages arm) | app/api/v1/llm-logs/route.ts:52 | `repos.chats.getMessages(chatId)` | fallback | `?` → error; OBSERVABLE (v4 queries logs with empty messageIds) |
+| api/brahma.rs:191 | `message_count` (helper for list :224 and GET :358) | app/api/v1/brahma-console/route.ts:48 (list) and app/api/v1/brahma-console/[id]/route.ts:53 (GET) | `repos.chats.getMessages(...)`.length | fallback | `.map_err(internal)` → 500; OBSERVABLE (v4 `messageCount: 0`). One helper = two v4 callers |
+| api/brahma.rs:491 | `brahma_console_messages` | app/api/v1/brahma-console/[id]/messages/route.ts:65 | `repos.chats.getMessages(id)` | fallback | `match` → `internal` 500; OBSERVABLE (v4 `{messages: []}`) |
+| api/chat_media.rs:268 | save-image to album (v4 `handleSaveImage`) | app/api/v1/chats/[id]/messages/[messageId]/route.ts:305 | `repos.chats.getMessages(id)` then `.find` | fallback | `match` → 500; OBSERVABLE (v4 → `notFound('Message')` 404) |
+| api/chat_media.rs:994 | chat files listing, mount-file announcement walk | app/api/v1/chats/[id]/files/route.ts:471 | `repos.chats.getMessages(chatId).catch(...)` | fallback | `match` → warn + degrade; result identical; v4's `.catch` warn is dead (safeQuery swallows first) so v5's warn arm becomes likewise dead, ERROR line from get_messages instead |
+| api/chat_transcript.rs:177 | `chat_message_events` (v4 `handleListMessages`) | app/api/v1/messages/route.ts:51 | `repos.chats.getMessages(chatId)` | fallback | `match` → ERROR log + 500; OBSERVABLE (v4 `{messages: [], count: 0}`; its catch never fires for this read) |
+| api/files.rs:643 | file dissociation (v4 `dissociateFileFromAll`) | app/api/v1/files/[id]/shared.ts:60 | `repos.chats.getMessages(chat.id)` inside per-chat try/catch | fallback | `Err(_) => continue`; not observable in result (empty → no match → next chat); log differs (v4 ERROR from safeQuery, per-chat warn not hit) |
+| api/files.rs:820 | file associations (messages scan) | lib/files/get-file-associations.ts:99 | `repos.chats.getMessages(chat.id)` inside per-chat try | fallback | `Err(_) => continue`; not observable in result; log line only |
+| api/help_chats.rs:151 | `message_count` (helper for list :224 and GET :542) | app/api/v1/help-chats/route.ts:57 (list) and app/api/v1/help-chats/[id]/route.ts:84 (GET) | `repos.chats.getMessages(...)`.length | fallback | `.map_err(internal)` → 500; OBSERVABLE (v4 `messageCount: 0`). One helper = two v4 callers |
+| api/help_chats.rs:666 | `help_chat_messages` | app/api/v1/help-chats/[id]/messages/route.ts:99 | `repos.chats.getMessages(id)` | fallback | `match` → 500; OBSERVABLE (v4 `{messages: []}`) |
+| api/characters.rs:528 | character conversations listing (search/limit/offset) | app/api/v1/characters/[id]/handlers/get.ts:129 | `repos.chats.getMessages(chat.id)` per user chat | fallback | `?` → whole request errors; OBSERVABLE (v4 keeps the chat with empty messages) |
+| api/memories.rs:293 | `memory_by_message` (v4 `getMemoriesByMessage`) | app/api/v1/memories/route.ts:441 | `repos.chats.getMessages(chat.id)` per user chat | fallback | `?` → 500; OBSERVABLE (v4 skips that chat, keeps searching) |
+| api/memories.rs:1798 | `chat_queue_memories` (v4 `handleQueueMemories`) | app/api/v1/chats/[id]/actions/memories.ts:95 | `repos.chats.getMessages(chatId)` | fallback | `match` → 500; OBSERVABLE (v4 → empty batch → the branch-specific 400) |
+| api/salon.rs:887 | turn action, skipUserTurn eligibility guard | app/api/v1/chats/[id]/actions/turn.ts:68 (the one read; reused as `messageEvents` at :115) | `repos.chats.getMessages(chatId)` | fallback | `match` → 500; OBSERVABLE (v4 computes eligibility over empty events). Note: v4 reads once for turn state + guard; v5 re-reads here |
+| api/salon.rs:1029 | `resolve_message` (v4 `findMessageInUserChats`) | app/api/v1/messages/[id]/route.ts:76 | `repos.chats.getMessages(chatId)` after `findChatIdForMessage` + ownership | fallback | `?` → callers map `Err` → 500; OBSERVABLE (v4 → null → `notFound('Message')`). One helper = v4's GET :98, PUT :119, DELETE :153, and :286/:420/:451 |
+| api/salon.rs:1090 | `message_edit` post-update read-back | app/api/v1/messages/[id]/route.ts:127 → lib/database/repositories/chats-messages.ops.ts:524 | NOT getMessages: the merged row is `updateMessage`'s return value (`messagesCollection.findOne` + merge), itself inside a FALLBACK `safeQuery` (→ null → `notFound('Message')`) | fallback (by outcome — see notes) | `match` → 500; with fallback, error → empty → `None` → 404 `Message`, which is what v4's null return yields; strict would 500 where v4 cannot |
+| api/transcript_projection.rs:65 | `project_chat_transcript` | lib/chat/transcript-projection.ts:93 | `repos.chats.getMessages(chatId)` | fallback | `?` propagation; OBSERVABLE (v4 projects an empty transcript) |
+| generators/rename.rs:673 | character rename/replace, §7 chats | lib/services/character-rename.service.ts:365 | `repos.chats.getMessages(chat.id)` | fallback | `?` → whole rename fails; OBSERVABLE (v4 skips that chat's message bodies) |
+| photos/chat_gallery.rs:454 | chat gallery (message pass) | lib/photos/chat-gallery.ts:269 | `repos.chats.getMessages(chatId).catch(...)` | fallback | `match` → warn + `Vec::new()`; result identical; v4's `.catch` warn is dead, so v5's warn becomes dead too, ERROR from get_messages instead |
+| services/help_chat/orchestrator.rs:836 | `handle_help_chat_message` history build | lib/services/help-chat/orchestrator.service.ts:295 | `repos.chats.getMessages(chatId)` | fallback | `.map_err(HelpSendError)?`; OBSERVABLE (v4 sends with system prompt only) |
+| services/help_chat/orchestrator.rs:1609 | `message_count` in `#[cfg(test)]` module (test helper) | none — test-only helper | n/a | **strict** (TAKEN — no v4 counterpart, the STOP-on-site rule) | `.unwrap()`; with fallback a DB error reads as 0 rather than panicking |
+| services/announcer/in_scene_voiced.rs:518 | in-scene voiced announcer, transcript for seat | lib/services/announcer/in-scene-voiced.ts:243 | `repos.chats.getMessages(chat.id)` | fallback | `.map_err(to_string)?`; OBSERVABLE (v4 builds from an empty transcript) |
+| services/commonplace_notifications.rs:466 | `sweep_prior_relevant_conversation_whispers` | lib/services/commonplace-notifications/relevant-conversations-refresh.ts:150 | `repos.chats.getMessages(chatId)` inside try/catch | fallback | `Err(_) => return`; not observable (empty → nothing to sweep); log line only |
+| services/markdown_transcript.rs:521 | `chat_export_markdown` | `app/api/v1/chats/[id]/actions/export-markdown.ts:31` (`handleExportMarkdown`) | `repos.chats.getMessages` | **fallback** | `?` inside `read_main` closure → outer `DbError` → error response. Observable: v4 exports a header-only transcript, v5 today errors. |
+| services/cascade_delete.rs:198 | `find_exclusive_images_for_chats` | `lib/cascade-delete.ts:211` (`findExclusiveImagesForChats`) | `repos.chats.getMessages` | **fallback** | `?` propagates out of the fn. Observable: v4 treats the chat as having no attachments and carries on. Not reached under a strict scope. |
+| services/recall_replay.rs:176 | `run_recall_replay` | `lib/memory/recall-replay.ts:127` | `repos.chats.getMessages` | **fallback** | `.map_err(to_string)?`. Observable: v4 gets `[]` → throws "Chat has no turns to replay" (:129); v5 today surfaces the DB error text instead. |
+| services/chat_export.rs:215 | `chat_export` (the `?action=export` ST JSONL) | `app/api/v1/chats/[id]/handlers/get.ts:55` | `repos.chats.getMessages` | **fallback** | `?` in closure → error response. Observable: v4 exports header-only JSONL. |
+| services/context_summary.rs:655 | `generate_inner` | `lib/chat/context-summary.ts:368` (`generateContextSummary`) | `repos.chats.getMessages` | **fallback** | `?` fails the generate. Observable: v4 proceeds with zero turns. |
+| services/context_summary.rs:1000 | `sweep_prior_summary_whispers` | `lib/chat/context-summary.ts:471` (inside the sweep try, `generateContextSummary`) | `repos.chats.getMessages` | **fallback** | `?` out of the helper; caller `:809` swallows the `Err` silently (`if let Err(_e)`), then posts anyway. With the change: v4's ERROR line now appears; sweep finds nothing; post still happens — same as v4. |
+| services/context_summary.rs:1208 | `check_and_generate_summary_if_needed_with_seams` | `lib/chat/context-summary.ts:727` (`checkAndGenerateSummaryIfNeeded`) | `repos.chats.getMessages` | **fallback** | `?` propagates. Observable: v4 computes interchange 0 and gates off. |
+| services/quilltap_import/files.rs:195 | `remap_linked_to` | `lib/import/quilltap-import/import-files.ts:158` (`remapLinkedTo`, called via `importFiles` from `execute.ts:909`) | `repos.chats.getMessages` **inside `withStrictRepositoryFailures`** (execute.ts:430 → `executeImportStrict` :433; `:909` is not inside the `withRepositoryFallbacks` at :959) | **strict** | `?` propagates. v4's safeQuery logs (with `strictFailures: true`) and RETHROWS, so v5 must keep erroring → `get_messages_strict`. (v4's logged ERROR line is still emitted before the rethrow — v5 strict does not log it; a separate fidelity question.) |
+| services/quilltap_import/mod.rs:1552 | `import_body` (informs' `knownFor`) | `lib/import/quilltap-import/execute.ts:732` (`knownFor` inside `executeImportStrict`) | `repos.chats.getMessages` **inside `withStrictRepositoryFailures`**; the rethrow is caught by the local try/catch (:737) → warn `'Failed to read chat while importing informs'` | **strict** | `match` → `Err` arm warns the same sentence and continues. Must use `get_messages_strict`, else the warn arm becomes unreachable and the swallowing variant would silently yield an empty set (v4 under strict does reach the warn). Same log-before-rethrow caveat as above. |
+| services/story_background_job.rs:327 | `handle_story_background_generation` | `lib/background-jobs/handlers/story-background.ts:230` | `repos.chats.getMessages` | **fallback** | `.map_err(to_string)?` fails the job. Observable: v4 proceeds with no recent messages. |
+| services/dangerous_content/gatekeeper_job.rs:184 | `handle_chat_danger_classification` | `lib/background-jobs/handlers/chat-danger-classification.ts:101` | `repos.chats.getMessages` | **fallback** | `?` fails the job. Observable: v4 classifies over an empty message set. |
+| services/qtap_export/records.rs:241 | `stream_chats` | `lib/export/ndjson-writer.ts:328` (the export's message stream) | `repos.chats.getMessages` (in a try/catch whose `'Failed to load chat messages for export'` warn is unreachable in fallback mode; export is not under a strict scope) | **fallback** | `if let Ok(..)` — silently skips on `Err` today. With the change: output identical (no messages), plus v4's ERROR line now logged. Note v5 emits neither v4's ERROR nor the (unreachable-in-v4) warn today. |
+| services/brahma_console/orchestrator.rs:392 | `process_brahma_response` | `lib/services/brahma-console/orchestrator.service.ts:283` | `repos.chats.getMessages` | **fallback** | `.map_err(BrahmaSendError)?`. Observable: v4 sends with empty history. |
+| services/off_scene.rs:311 | `scan_off_scene_newcomers_inner` | `lib/chat/context-manager.ts:861` (off-scene scan block, `fullChatMessages`) | `repos.chats.getMessages` | **fallback** | `?` → outer `scan_off_scene_newcomers` does `.unwrap_or_default()` → `None`. Observable: v4 continues with an empty corpus (can still diff; with no mentions likely no newcomers → same outcome in practice), and logs ERROR; v5 today is silent. |
+| services/message_finalizer.rs:848 | `finalize_message_response` (answer-confirmation active gate) | `lib/services/chat-message/answer-confirmation.service.ts:533` (`maybeConfirmAnswer`, called from `message-finalizer.service.ts:29/198`) | `repos.chats.getMessages` | **fallback** | `?` fails the whole finalize. Observable: v4 finds no whisper → skips confirmation. |
+| services/message_finalizer.rs:1515 | `trigger_turn_memory_extraction` | `lib/services/chat-message/memory-trigger.service.ts:70` (`triggerTurnMemoryExtraction`, called from `message-finalizer.service.ts:517`) | `repos.chats.getMessages` (whole fn also in try/catch → `'Failed to enqueue per-turn memory extraction'`, unreachable for this read) | **fallback** | `?` → caller `:1405` `.await?` fails finalize. Observable: v4 proceeds with no opener/anchor. |
+| services/message_finalizer.rs:1711 | `calculate_next_speaker` | `lib/services/chat-message/message-finalizer.service.ts:677` (`calculateNextSpeaker`) | `repos.chats.getMessages` | **fallback** | `?` → caller `:1292` propagates. Observable: v4 computes turn state over no messages. |
+| services/carina_memory_extraction.rs:120 | `handle_carina_memory_extraction` | `lib/background-jobs/handlers/carina-memory-extraction.ts:68` | `repos.chats.getMessages` | **fallback** | `.map_err(CarinaExtractionError)?` fails the job. Observable: v4 finds no carina message → its not-found path. |
+| services/title_update_job.rs:271 | `handle_title_update` | `lib/background-jobs/handlers/title-update.ts:118` | `repos.chats.getMessages` | **fallback** | `.map_err(to_string)?` fails the job. Observable: v4 proceeds with an empty window. |
+| services/conversation_render_job.rs:173 | `handle_inner` | `lib/background-jobs/handlers/conversation-render.ts:49` | `repos.chats.getMessages` | **fallback** | `?` fails the job. Observable: v4 hits `allEvents.length === 0 → return` (silent success); v5 has the same early return, so with the change it becomes exactly v4's. |
+| services/participant_resolver.rs:387 | `resolve_responding_participant` | lib/services/chat-message/participant-resolver.service.ts:145 (multi-LLM-candidate branch) | `repos.chats.getMessages(chat.id)` | **fallback** | `?` propagation. Observable: v4 continues with an empty history (turn state computed from `[]`). v5 today errors the resolve. |
+| services/chat_admin.rs:537 | `chat_bulk_reattribute` | app/api/v1/chats/[id]/actions/bulk.ts:46 | `repos.chats.getMessages(chatId)` | **fallback** | `match` → `internal(e)` (500). Observable: v4 gets `[]`, so zero affected messages and a success response. |
+| services/chat_admin.rs:770 | `chat_regenerate_title` | app/api/v1/chats/[id]/actions/title.ts:60 | `repos.chats.getMessages(chatId)` | **fallback** | `match` → `internal(e)` (500). Observable: v4 gets `[]` and answers 400 `No messages in chat to generate title from` (title.ts:63-65). The outer try at title.ts is not reached. |
+| services/chat_continuation.rs:304 | `apply_chat_continuation` | lib/chat/apply-chat-continuation.ts:279 | `repos.chats.getMessages(sourceChatId)` | **fallback** | `?` propagation. Observable: v4 replays nothing (no anchor, empty carryover) and continues. |
+| services/carina_query.rs:1019 | `load_prior_carina_exchanges` | lib/services/carina/carina.service.ts:136 | `repos.chats.getMessages(chatId)` inside a try/catch (warn `[Carina] Failed to load prior exchanges…`) | **fallback** | `match Err(_) => Vec::new()`. The result is the same either way (empty pairs). Only the log differs: v4 logs the repo ERROR and does not reach its catch-warn, because getMessages does not throw. |
+| services/courier_transport.rs:316 | `build_courier_delta_events` | lib/services/chat-message/courier-transport.service.ts:231 | `repos.chats.getMessages(chatId)` | **fallback** | `?` (fn returns `Result<_, DbError>`). Observable: v4 builds an empty delta list. |
+| services/courier_transport.rs:567 | `resolve_external_turn` | app/api/v1/chats/[id]/messages/[messageId]/route.ts:117 (`handleResolveExternalTurn`) | `repos.chats.getMessages(id)` | **fallback** | `?` propagation (error). Observable: v4 answers `notFound('Message')`, and v5 would reach `MessageNotFound`. |
+| services/courier_transport.rs:922 | `cancel_external_turn` | app/api/v1/chats/[id]/messages/[messageId]/route.ts:252 (`handleCancelExternalTurn`) | `repos.chats.getMessages(id)` | **fallback** | `?` propagation. Observable: same as above, 404 Message. |
+| services/build_context.rs:957 | `sweep_stale_whispers` (shared by the core-whisper and commonplace sweeps) | lib/chat/context-manager.ts:2267 (CoreWhisper sweep) and :2548 (CommonplaceWhisper sweep) | `getRepositories().chats.getMessages(chat.id)`, each inside a try/catch that logs `…Failed to sweep stale whispers` | **fallback** (one v5 helper stands for both v4 callers) | `match Err(_) => return`. There is no deletion either way. Only the log differs (v4 logs the repo ERROR, not the sweep's catch line). |
+| services/build_context.rs:1442 | `CadenceEvents::load` | lib/chat/context-manager.ts:2229 (`loadChatEventsForCadence`) | `chatEventsForCadence ??= await getRepositories().chats.getMessages(chat.id)` | **fallback** | Returns `Err(String)` and does not memoise it. Observable: v4 memoises `[]` (a resolved read assigns), so it makes ONE read, not a retry per caller. With the swallowing `get_messages`, v5's `Ok(vec![])` is cached, which matches v4. The `Err` arm becomes unreachable. The `reads` counter / `cadence_events_are_read_at_most_once` test rationale ("a REJECTED read never assigns") describes a case v4 cannot reach through `getMessages`. |
+| services/build_context.rs:1688 | `collect_fold_whisper_conversation_ids` | lib/chat/context-manager.ts:73 (`collectFoldWhisperConversationIds`) | `getRepositories().chats.getMessages(chatId)` in try/catch-empty | **fallback** | `.unwrap_or_default()`. No observable change, apart from the log. |
+| services/message_reattribute.rs:57 | `message_reattribute` (lookup) | app/api/v1/messages/[id]/route.ts:76 (`findMessageInUserChats`, called at :451 by `handleReattributeAction`) | `repos.chats.getMessages(chatId)` | **fallback** | `match` → `ErrorKind::Internal` (500). Observable: v4 finds no message and answers 404 `Message not found`. |
+| services/message_reattribute.rs:137 | `message_reattribute` (read-back of the updated row) | app/api/v1/messages/[id]/route.ts:485 → lib/database/repositories/chats-messages.ops.ts:524 (`updateMessage`: `messagesCollection.findOne` + merge + `ChatEventSchema.parse`) | NOT getMessages. v4 returns `updateMessage`'s own value, which comes from a direct `findOne` inside `updateMessage`'s own **fallback** `safeQuery(..., null)` (:571). A DB error gives `null`, which gives `notFound('Message')` | **fallback** (see note) | `match` → `ErrorKind::Internal` (500). v4 does not read through getMessages here, but its read is also fallback-mode (null → 404). The swallowing `get_messages` gives `[]` → `not_found("Message")` = v4's 404. `get_messages_strict` would keep a 500 v4 never emits. Keep the swallowing `get_messages`. |
+| services/orchestrator.rs:1520 | `process_message` | lib/services/chat-message/orchestrator.service.ts:597 | `repos.chats.getMessages(chatId)` | **fallback** | `?` propagation. Observable: v4 proceeds with empty `existingMessages`. |
+| services/memory_extraction_job.rs:134 | `handle_memory_extraction` | lib/background-jobs/handlers/memory-extraction.ts:52 | `repos.chats.getMessages(payload.chatId)` | **fallback** | `.map_err(...)?` → the job FAILS (retry/backoff). Observable: v4 continues on `[]`, so no job failure or retry. |
+| services/conversation_summaries_regen.rs:94 | `handle_regenerate_conversation_summaries` | lib/background-jobs/handlers/regenerate-conversation-summaries.ts:46 | `repos.chats.getMessages(chat.id)` inside a per-chat try/catch | **fallback** | `match Err` → `failed += 1` + warn. Observable: v4 never reaches its catch for this read. It computes stats over `[]`, mirrors the summary with messageCount 0, and counts `mirrored++`, so the `mirrored`/`failed` tally in the completion log differs. |
+| services/backup/collect.rs:495 | `collect_user_data` (backup collector) | lib/backup/backup-service.ts:194 (`collectUserData`) | `repos.chats.getMessages(chat.id)` then filter `type === 'message'` | **fallback** | `?` → the whole backup fails (`create_backup` → Err). Not strict in v4: `collectUserData` is only reached from `createBackup` (backup-service.ts:623), and `createBackup` is only called from `app/api/v1/system/backup/route.ts:36`. Neither is inside `withStrictRepositoryFailures` (only import execute/preview are). Observable: v4 writes that chat with `messages: []` and completes the backup. |
+| services/turn_orchestrator.rs:366 | `should_chain_next` | lib/services/chat-message/turn-orchestrator.service.ts:99 (`shouldChainNext`) | `repos.chats.getMessages(chatId)` | **fallback** | `?` propagation. Observable: v4 computes the turn state from `[]`. |
+| services/turn_orchestrator.rs:659 | `handle_turn_action` | app/api/v1/chats/[id]/actions/turn.ts:68 | `repos.chats.getMessages(chatId)` | **fallback** | `?` propagation. Observable: v4 computes the turn state from `[]`. |
+| services/cost_estimation.rs:161 | `get_detailed_chat_cost_breakdown` | lib/services/cost-estimation.service.ts:204 | `repos.chats.getMessages(chatId)` inside a try/catch returning zeros | **fallback** | `let Ok(..) else { return zeros() }`. v4 takes the empty-messages early return (:205) and not the catch (:275-284). The result is identical only if v5's `zeros()` matches v4's empty-branch shape (worth a glance, since the two v4 zero objects may differ). |
+| db/chats_messages_read.rs:`get_message_count` | `get_message_count` | chats-messages.ops.ts:576-581 | `safeQuery(… getMessages …, 0)` — the inner `getMessages` swallows first | fallback | `?` — never fires now |
+| db/chats_messages.rs:`delete_bookkeeping` | `delete_messages_by_ids` bookkeeping | chats-messages.ops.ts:670 | `this.getMessages(chatId)` | fallback | `?` — a failed read now recounts from `[]`, as v4 does |
+| db/chats_messages.rs:`find_event_value` | `update_message`'s find | chats-messages.ops.ts:525 | `messagesCollection.findOne` INSIDE `updateMessage`'s own `safeQuery` | **strict** | a read failure must log `Failed to update message in chat` |
+| db/chats_messages.rs:`update_chat_metadata` | add/add-batch metadata | chats-messages.ops.ts:410 (+ addMessages) | `this.getMessages(chatId)` | fallback | `?` — never fires now |
+| db/chats_search.rs:`count_messages_with_text` / `find_messages_with_text` / `replace_in_messages` | — | chats-search.ops.ts:123 / :154 / :286 | `this.messagesOps.getMessages` | fallback | the order's point: the swallow is here |
+| db/chats_messages_read.rs tests (2 pre-existing) · brahma_console/orchestrator/tests.rs (2) | unit tests | — | — | fallback | healthy fixtures; unchanged |
+

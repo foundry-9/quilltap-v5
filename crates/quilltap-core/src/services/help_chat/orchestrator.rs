@@ -1606,7 +1606,9 @@ mod log_context_tests {
     }
     fn message_count(db: &Db, chat: &str) -> usize {
         let cid = chat.to_string();
-        db.read_main(move |c| chats_messages_read::get_messages(c, &cid))
+        // P4.109 census: a test helper with no v4 counterpart, so STRICT — a
+        // broken fixture fails loudly instead of counting 0.
+        db.read_main(move |c| chats_messages_read::get_messages_strict(c, &cid))
             .unwrap()
             .len()
     }

@@ -165,6 +165,15 @@ impl<'c> ChatSearchRepository<'c> {
 
     /// `countMessagesWithText` — count `type==='message'` events in a chat whose
     /// `content` contains `search_text` (substring). Over-long search → `0`.
+    ///
+    /// **A broken message table answers `0`, and the ERROR is
+    /// `getMessages`' own** (P4.109). v4 wraps this body in
+    /// `safeQuery(…, 'Failed to count messages with text',
+    /// { chatId }, 0)`, but on SQLite that arm is UNREACHABLE: the only thing
+    /// in the body that can throw is `getMessages`, which is itself a FALLBACK
+    /// `safeQuery` answering `[]` with `Failed to get messages for chat`. So
+    /// the swallow lives in [`get_messages`], and this fn logs nothing new —
+    /// the `?` below can no longer fire on a read failure.
     pub fn count_messages_with_text(
         &self,
         chat_id: &str,
@@ -194,6 +203,15 @@ impl<'c> ChatSearchRepository<'c> {
     /// `findMessagesWithText` — `{ messageId, content, chatId }` for each
     /// `type==='message'` event in a chat whose `content` contains `search_text`.
     /// Over-long search → `[]`.
+    ///
+    /// **A broken message table answers ``[]``, and the ERROR is
+    /// `getMessages`' own** (P4.109). v4 wraps this body in
+    /// `safeQuery(…, 'Failed to find messages with text',
+    /// { chatId }, [])`, but on SQLite that arm is UNREACHABLE: the only thing
+    /// in the body that can throw is `getMessages`, which is itself a FALLBACK
+    /// `safeQuery` answering `[]` with `Failed to get messages for chat`. So
+    /// the swallow lives in [`get_messages`], and this fn logs nothing new —
+    /// the `?` below can no longer fire on a read failure.
     pub fn find_messages_with_text(
         &self,
         chat_id: &str,
@@ -388,6 +406,13 @@ impl<'c> ChatSearchRepository<'c> {
     /// `content` contains `search_text`, compute `content.split(search).join(replace)`
     /// (replace ALL occurrences) and `UPDATE` the row when it changed. Returns
     /// the updated count. **Does not touch any chat/message timestamp.**
+    ///
+    /// **A broken message table answers `0`** (P4.109). v4's
+    /// `replaceInMessages` is a RETHROW-mode `safeQuery` (`Failed to replace
+    /// text in messages`) — but its first statement is `getMessages`, which
+    /// swallows first and answers `[]`, so the loop does nothing and the op
+    /// answers `0`. That is what [`get_messages`] now does here too; a failing
+    /// `UPDATE` inside the loop still propagates, as v4's rethrow does.
     pub fn replace_in_messages(
         &self,
         chat_id: &str,

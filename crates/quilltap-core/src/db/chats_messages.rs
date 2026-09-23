@@ -691,8 +691,14 @@ impl<'c> ChatMessagesRepository<'c> {
     /// The hydrated event for `(chatId, messageId)`, or `None` if absent — v4
     /// `findOne({ id, chatId })`, reusing the sub-unit-3 per-member marshaling
     /// (a dropped-null vs kept-null cell both rewrite back to SQL `NULL`).
+    ///
+    /// Reads through [`chats_messages_read::get_messages_strict`], never the
+    /// swallowing variant (P4.109): v4's `findOne` is inside `updateMessage`'s
+    /// own `safeQuery`, so a read failure here must surface as `Failed to
+    /// update message in chat` — not as `Failed to get messages for chat`
+    /// followed by a silent "not found".
     fn find_event_value(&self, chat_id: &str, message_id: &str) -> Result<Option<Value>, DbError> {
-        let all = chats_messages_read::get_messages(self.conn, chat_id)?;
+        let all = chats_messages_read::get_messages_strict(self.conn, chat_id)?;
         Ok(all
             .into_iter()
             .find(|e| e.get("id").and_then(Value::as_str) == Some(message_id)))

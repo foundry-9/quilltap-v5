@@ -60,6 +60,21 @@
 //! `f45a517a9`: v4 answers `[]` on both; v5 answered `Err` on both before the
 //! port (the red-first).
 //!
+//! **P4.109 grew the venue by `countMessagesWithText` and
+//! `findMessagesWithText`.** Their own `safeQuery` arms are unreachable in v4
+//! on SQLite — `getMessages` is itself a FALLBACK `safeQuery` answering `[]`,
+//! and it swallows first — so v4 answers `0`/`[]` with ONE repository ERROR,
+//! `Failed to get messages for chat {chatId}`, not the count/find sentence.
+//! Two things make that measurable: the oracle WARMS the messages collection
+//! before the rename (`ensureMessagesCollectionInitialized` would otherwise
+//! re-create an EMPTY `chat_messages` on first touch, and v4 would answer the
+//! right value with NO error), and each poisoned read now carries v4's
+//! ERROR/WARN lines, compared here against v5's captured lines by level,
+//! message and context field — with v4's backend-level lines
+//! ([`UNPORTED_BACKEND_LINES`]) dropped by name. Red-first at `a2db63da7` on a
+//! tree whose `get_messages` still rethrew: read 2 (count) answered `Err: sqlite
+//! error: no such table: chat_messages` where v4 answers `0`.
+//!
 //! ## Regenerating (two fixtures, three invocations, ONE NDJSON)
 //!
 //! ```bash
@@ -117,7 +132,7 @@ const POISON_SQL: &str = r#"ALTER TABLE "chat_messages" RENAME TO "chat_messages
 #[derive(Deserialize)]
 struct PoisonedOracle {
     #[serde(rename = "poisonedReads")]
-    poisoned_reads: Vec<OracleRead>,
+    poisoned_reads: Vec<OraclePoisonedRead>,
 }
 
 #[derive(Deserialize)]
@@ -353,10 +368,59 @@ fn parse_oracle(text: &str) -> (Vec<Oracle>, PoisonedOracle) {
     (full, poisoned.expect("no oracle line for venue poisoned"))
 }
 
-/// The poisoned venue: `chat_messages` renamed out from under both SQL
-/// shapes, so the `LIKE` scan itself throws. v4's `safeQuery(…, [])` answers
-/// `[]`; an `Err` here is recorded as a result rather than a panic, so the
-/// red-first shows the divergence per read.
+/// v4's BACKEND-level ERROR lines — logged beneath the repository by the
+/// SQLite backend's own `find`/`findOne`/`rawQuery` before they rethrow. v5
+/// has no port of that layer anywhere (P4.109 Tier 3 item 10, named); the
+/// log comparison drops exactly these messages from v4's side and nothing
+/// else.
+const UNPORTED_BACKEND_LINES: &[&str] = &["Raw query failed", "SQLite find error", "findOne error"];
+
+/// One v4 line the poisoned oracle recorded (P4.109): level, message, and the
+/// two context fields the repository arms carry.
+#[derive(Deserialize, Debug)]
+struct OracleLog {
+    level: String,
+    message: String,
+    #[serde(default, rename = "chatId")]
+    chat_id: Option<String>,
+    #[serde(default, rename = "chatCount")]
+    chat_count: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct OraclePoisonedRead {
+    kind: String,
+    result: Value,
+    logs: Vec<OracleLog>,
+}
+
+/// One read on the poisoned copy. An `Err` is recorded as a result rather
+/// than a panic, so a red-first shows the divergence per read.
+fn run_poisoned_read(writer: &Writer, op: &ReadOp) -> Value {
+    let repo = writer.chat_search();
+    let search = expand_search_text(&op.search_text);
+    let err = |e: quilltap_core::db::DbError| Value::String(format!("Err: {e}"));
+    match op.kind.as_str() {
+        "countMessagesWithText" => repo
+            .count_messages_with_text(op.chat_id.as_deref().unwrap(), &search)
+            .map_or_else(err, Value::from),
+        "findMessagesWithText" => repo
+            .find_messages_with_text(op.chat_id.as_deref().unwrap(), &search)
+            .map_or_else(err, Value::Array),
+        "searchMessagesGlobal" => repo
+            .search_messages_global(op.chat_ids.as_deref().unwrap(), &search, op.limit.unwrap())
+            .map_or_else(err, Value::Array),
+        other => panic!("unknown read kind: {other}"),
+    }
+}
+
+/// The poisoned venue: `chat_messages` renamed out from under every read
+/// (P4.105: the global search's two SQL shapes; P4.109: count/find, which
+/// swallow in v4's `getMessages` — the oracle WARMS the messages collection
+/// first, or v4 silently re-creates an empty table and answers `0`/`[]` with
+/// no error). Per read: the result, AND v4's ERROR/WARN lines — the proof the
+/// arm fired, since a `0` without its line is the warm-up trap — against
+/// v5's captured lines by level, message and context field.
 fn run_poisoned(fixture: &str, spec: &Spec, oracle: &PoisonedOracle) {
     assert_eq!(
         spec.poisoned_reads.len(),
@@ -376,25 +440,65 @@ fn run_poisoned(fixture: &str, spec: &Spec, oracle: &PoisonedOracle) {
         .execute_batch(POISON_SQL)
         .expect("plant the poison");
 
-    let repo = writer.chat_search();
     for (i, op) in spec.poisoned_reads.iter().enumerate() {
+        let want = &oracle.poisoned_reads[i];
         assert_eq!(
-            op.kind, "searchMessagesGlobal",
-            "poisoned reads are global searches"
+            op.kind, want.kind,
+            "poisoned: read {i}: kind spec vs oracle"
         );
-        let got = match repo.search_messages_global(
-            op.chat_ids.as_deref().unwrap(),
-            &expand_search_text(&op.search_text),
-            op.limit.unwrap(),
-        ) {
-            Ok(rows) => Value::Array(rows),
-            Err(e) => Value::String(format!("Err: {e}")),
-        };
+        let (got, lines) =
+            quilltap_core::test_support::captured_with(|| run_poisoned_read(&writer, op));
         assert_eq!(
-            got, oracle.poisoned_reads[i].result,
-            "poisoned: read {i} ({:?}): v4's safeQuery answers [] — rust: {got}",
-            op.search_text
+            got, want.result,
+            "poisoned: read {i} ({} {:?}): v4's safeQuery fallback — rust: {got}",
+            op.kind, op.search_text
         );
+
+        let v4: Vec<&OracleLog> = want
+            .logs
+            .iter()
+            .filter(|l| !UNPORTED_BACKEND_LINES.contains(&l.message.as_str()))
+            .collect();
+        assert!(
+            v4.iter().any(|l| l.level == "error"),
+            "poisoned: read {i} ({}): v4 logged no repository ERROR — the warm-up trap \
+             (an answer without its line is the right value for the wrong reason): {:?}",
+            op.kind,
+            want.logs
+        );
+        let v5: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+            .collect();
+        assert_eq!(
+            v5.len(),
+            v4.len(),
+            "poisoned: read {i} ({}): ERROR/WARN line count — v4 {v4:?} rust {v5:?}",
+            op.kind
+        );
+        for (want_line, got_line) in v4.iter().zip(&v5) {
+            let level = want_line.level.to_uppercase();
+            assert!(
+                got_line.starts_with(&format!("{level} quilltap::db")),
+                "poisoned: read {i}: level/target of {want_line:?}: {got_line}"
+            );
+            assert!(
+                got_line.contains(&want_line.message),
+                "poisoned: read {i}: message {want_line:?}: {got_line}"
+            );
+            if let Some(chat_id) = &want_line.chat_id {
+                assert!(
+                    got_line.contains(&format!("chatId={chat_id}")),
+                    "poisoned: read {i}: chatId {want_line:?}: {got_line}"
+                );
+            }
+            if let Some(n) = want_line.chat_count {
+                assert!(
+                    got_line.contains(&format!("chatCount={n}")),
+                    "poisoned: read {i}: chatCount {want_line:?}: {got_line}"
+                );
+            }
+        }
     }
     drop(writer);
     let _ = std::fs::remove_file(&work);

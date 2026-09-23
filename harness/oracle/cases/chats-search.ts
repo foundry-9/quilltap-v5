@@ -161,10 +161,40 @@ async function main(): Promise<void> {
     };
 
     if (venue === 'poisoned') {
+      // P4.109 — THE WARM-UP. `ChatsRepository.ensureMessagesCollection
+      // Initialized` runs `CREATE TABLE IF NOT EXISTS "chat_messages"` the
+      // FIRST time this repository instance touches the messages collection.
+      // Poison before that and v4 silently re-creates an EMPTY table, so
+      // count/find answer `0`/`[]` with NO error — the right value for the
+      // wrong reason. One read on the SAME instance first; then the rename.
+      // (`searchMessagesGlobal` never needed it: it goes through `rawQuery`.)
+      await repo.getMessages(spec.poisonedReads.find((op) => op.chatId)?.chatId ?? '');
       await rawQuery(POISON_SQL);
-      const poisonedReads: Array<{ kind: string; result: unknown }> = [];
+
+      // P4.109 — the proof the arm FIRED. Every v4 logger is a `Logger`
+      // instance (the singleton or a `.child`), so wrapping the prototype
+      // records every ERROR/WARN line — before the level check, so
+      // `LOG_LEVEL=error` hides nothing — with the two context fields the
+      // Rust side compares. A `0` without its line is the warm-up trap.
+      const { Logger } = await import('@/lib/logger');
+      let opLogs: Array<Record<string, unknown>> = [];
+      for (const level of ['error', 'warn'] as const) {
+        const original = Logger.prototype[level];
+        Logger.prototype[level] = function (this: unknown, message: string, context?: Record<string, unknown>, ...rest: unknown[]) {
+          const line: Record<string, unknown> = { level, message };
+          for (const key of ['chatId', 'chatCount']) {
+            if (context && key in context) line[key] = context[key];
+          }
+          opLogs.push(line);
+          return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+        } as never;
+      }
+
+      const poisonedReads: Array<{ kind: string; result: unknown; logs: unknown[] }> = [];
       for (const op of spec.poisonedReads) {
-        poisonedReads.push({ kind: op.kind, result: await runRead(op) });
+        opLogs = [];
+        const result = await runRead(op);
+        poisonedReads.push({ kind: op.kind, result, logs: opLogs });
       }
       await closeDatabase();
       process.stdout.write(

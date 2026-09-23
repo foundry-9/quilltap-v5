@@ -19,6 +19,22 @@
 //! selection, and no REST edge exists, matching the message-op precedent).
 //! Their oracle rows are asserted by shape so upstream copy drift is caught.
 //!
+//! ## The poisoned message table (P4.109)
+//!
+//! `preview_poisoned` / `execute_poisoned` rename `chat_messages` away on the
+//! per-case copy (never the committed pair). v4's count and replace never
+//! reach their own `safeQuery` arms: `getMessages` swallows first (`[]` + ERROR
+//! `Failed to get messages for chat {chatId}`), so preview answers 200 with
+//! zero message matches and execute 200 with zero messages changed, while the
+//! memory half of each still runs. The oracle WARMS the repository's messages
+//! collection before the rename (v4 would otherwise re-create an empty table
+//! on first touch and answer the same zeros with NO error) and records the
+//! route's ERROR/WARN lines; [`compare_poisoned_logs`] holds v5's to them,
+//! through a PROCESS-GLOBAL capture (execute's read runs on the writer
+//! thread). Red-first at `a2db63da7` with `get_messages` still rethrowing:
+//! preview 500 where v4 answers 200; execute 200 with a non-empty `errors`
+//! where v4's is `[]`; both missing the ERROR line.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-search-replace.ndjson npx jest -- chat-dialogs-search-replace
 //! Run:
@@ -83,6 +99,68 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         &spec.test_pepper_base64,
     )
     .expect("open db")
+}
+
+/// P4.109's plant — byte-identical to the oracle case's.
+const POISON_SQL: &str = r#"ALTER TABLE "chat_messages" RENAME TO "chat_messages_p4105_poisoned""#;
+
+/// v4's BACKEND-level ERROR lines, logged beneath the repository by the
+/// SQLite backend before it rethrows — never ported (P4.109 Tier 3 item 10,
+/// named). Dropped from v4's side of the log comparison by name, nothing else.
+const UNPORTED_BACKEND_LINES: &[&str] = &["Raw query failed", "SQLite find error", "findOne error"];
+
+/// A PROCESS-GLOBAL capture: the execute path's message read runs inside
+/// `db.write`, on the WRITER thread, where a thread-scoped subscriber sees
+/// nothing. This binary holds one test, so a global default steals nothing.
+fn install_global_capture() -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+    use tracing_subscriber::layer::SubscriberExt;
+    let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let subscriber =
+        tracing_subscriber::registry().with(quilltap_core::test_support::CaptureLayer(buf.clone()));
+    tracing::subscriber::set_global_default(subscriber).expect("one global capture per binary");
+    buf
+}
+
+/// The poisoned arms' proof that the swallow FIRED: v4's recorded ERROR/WARN
+/// lines (less [`UNPORTED_BACKEND_LINES`]) against v5's, by level, message and
+/// `chatId`. A zero without its line is the warm-up trap on v4's side.
+fn compare_poisoned_logs(name: &str, want: &Value, got: &[String]) -> Vec<String> {
+    let v4: Vec<&Value> = want["logs"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter(|l| !UNPORTED_BACKEND_LINES.contains(&l["message"].as_str().unwrap_or("")))
+                .collect()
+        })
+        .unwrap_or_default();
+    if !v4.iter().any(|l| l["level"] == "error") {
+        eprintln!("[{name}] v4 logged no repository ERROR — the warm-up trap: {want:?}");
+        return vec![format!("{name}_v4_no_error_line")];
+    }
+    let v5: Vec<&String> = got
+        .iter()
+        .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+        .collect();
+    if v5.len() != v4.len() {
+        eprintln!("[{name}] LOG COUNT — v4 {v4:?}\n  rust {v5:?}");
+        return vec![format!("{name}_log_count")];
+    }
+    let mut failed = Vec::new();
+    for (w, g) in v4.iter().zip(&v5) {
+        let level = w["level"].as_str().unwrap_or("").to_uppercase();
+        let mut ok = g.starts_with(&format!("{level} quilltap::db"))
+            && g.contains(w["message"].as_str().unwrap_or("\u{0}"));
+        if let Some(chat_id) = w["chatId"].as_str() {
+            ok &= g.contains(&format!("chatId={chat_id}"));
+        }
+        if !ok {
+            eprintln!("[{name}] LOG LINE — v4 {w}\n  rust {g}");
+            failed.push(format!("{name}_log_line"));
+        } else {
+            eprintln!("[{name}] log line OK: {g}");
+        }
+    }
+    failed
 }
 
 fn canon_numbers(v: &mut Value) {
@@ -279,6 +357,7 @@ fn search_replace_matches_oracle() {
         include_messages: Option<bool>,
         include_memories: Option<bool>,
         dump: bool,
+        poison: bool,
     }
     let cases = [
         Case {
@@ -290,6 +369,7 @@ fn search_replace_matches_oracle() {
             include_messages: None,
             include_memories: None,
             dump: false,
+            poison: false,
         },
         Case {
             name: "preview_character_scope",
@@ -300,6 +380,7 @@ fn search_replace_matches_oracle() {
             include_messages: None,
             include_memories: None,
             dump: false,
+            poison: false,
         },
         Case {
             name: "preview_messages_only",
@@ -310,6 +391,7 @@ fn search_replace_matches_oracle() {
             include_messages: None,
             include_memories: Some(false),
             dump: false,
+            poison: false,
         },
         Case {
             name: "preview_memories_only",
@@ -320,6 +402,7 @@ fn search_replace_matches_oracle() {
             include_messages: Some(false),
             include_memories: None,
             dump: false,
+            poison: false,
         },
         Case {
             name: "preview_no_match",
@@ -330,6 +413,7 @@ fn search_replace_matches_oracle() {
             include_messages: None,
             include_memories: None,
             dump: false,
+            poison: false,
         },
         Case {
             name: "preview_chat_missing",
@@ -340,6 +424,7 @@ fn search_replace_matches_oracle() {
             include_messages: None,
             include_memories: None,
             dump: false,
+            poison: false,
         },
         Case {
             name: "execute_chat_scope",
@@ -350,6 +435,7 @@ fn search_replace_matches_oracle() {
             include_messages: None,
             include_memories: None,
             dump: true,
+            poison: false,
         },
         Case {
             name: "execute_character_scope",
@@ -360,6 +446,7 @@ fn search_replace_matches_oracle() {
             include_messages: None,
             include_memories: None,
             dump: true,
+            poison: false,
         },
         Case {
             name: "execute_case_asymmetry",
@@ -370,6 +457,7 @@ fn search_replace_matches_oracle() {
             include_messages: None,
             include_memories: None,
             dump: true,
+            poison: false,
         },
         Case {
             name: "execute_memories_only",
@@ -380,6 +468,7 @@ fn search_replace_matches_oracle() {
             include_messages: Some(false),
             include_memories: None,
             dump: true,
+            poison: false,
         },
         Case {
             name: "execute_no_match",
@@ -390,6 +479,7 @@ fn search_replace_matches_oracle() {
             include_messages: None,
             include_memories: None,
             dump: true,
+            poison: false,
         },
         Case {
             name: "execute_invalid_scope",
@@ -400,6 +490,7 @@ fn search_replace_matches_oracle() {
             include_messages: None,
             include_memories: None,
             dump: false,
+            poison: false,
         },
         Case {
             name: "preview_empty_search",
@@ -410,11 +501,43 @@ fn search_replace_matches_oracle() {
             include_messages: None,
             include_memories: None,
             dump: false,
+            poison: false,
+        },
+        Case {
+            name: "preview_poisoned",
+            action: Action::Preview,
+            scope: chat_scope.clone(),
+            search: "lantern",
+            replace: "beacon",
+            include_messages: None,
+            include_memories: None,
+            dump: false,
+            poison: true,
+        },
+        Case {
+            name: "execute_poisoned",
+            action: Action::Execute,
+            scope: chat_scope.clone(),
+            search: "lantern",
+            replace: "beacon",
+            include_messages: None,
+            include_memories: None,
+            dump: true,
+            poison: true,
         },
     ];
 
+    let log_buf = install_global_capture();
     for c in cases {
         let db = fresh_db(&spec, c.name);
+        if c.poison {
+            rt.block_on(db.write(|w| {
+                w.main().connection().execute_batch(POISON_SQL)?;
+                Ok(())
+            }))
+            .expect("plant the poison");
+        }
+        log_buf.lock().unwrap().clear();
         let r = rt.block_on(search_replace(
             &db,
             &spec.user_id,
@@ -430,6 +553,10 @@ fn search_replace_matches_oracle() {
             failed.push(format!("{}_MISSING_FROM_ORACLE", c.name));
             continue;
         };
+        let route_lines: Vec<String> = std::mem::take(&mut *log_buf.lock().unwrap());
+        if c.poison {
+            failed.extend(compare_poisoned_logs(c.name, want, &route_lines));
+        }
         let (status, body) = status_body(&r);
         if u64::from(status) != want["status"].as_u64().unwrap_or(0) {
             eprintln!("[{}] STATUS {status} != {}", c.name, want["status"]);

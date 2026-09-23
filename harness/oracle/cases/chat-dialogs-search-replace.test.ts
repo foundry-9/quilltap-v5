@@ -46,6 +46,10 @@ const MISSING_ID = '99999999-9999-4999-8999-999999999999';
 
 const RealDate = Date;
 
+/** P4.109's plant — byte-identical to the Rust test's (and to the
+ * chats-search family's). */
+const POISON_SQL = `ALTER TABLE "chat_messages" RENAME TO "chat_messages_p4105_poisoned"`;
+
 function mockRequest(url: string, body?: unknown): unknown {
   return {
     method: 'POST',
@@ -133,6 +137,8 @@ interface CaseSpec {
   action: string;
   body: unknown;
   dump?: boolean;
+  /** P4.109 — rename `chat_messages` away (after the warm-up) before the call. */
+  poison?: boolean;
 }
 
 async function runCase(
@@ -157,6 +163,39 @@ async function runCase(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+
+  // P4.109 — THE WARM-UP, then the plant. `ChatsRepository` runs `CREATE
+  // TABLE IF NOT EXISTS "chat_messages"` the first time the repository
+  // touches its messages collection; poisoned before that, v4 silently
+  // re-creates an EMPTY table and the route answers zeros with NO error — the
+  // right value for the wrong reason. One read on the SAME repositories the
+  // route uses (the factory singleton of this module generation) first.
+  let logs: Array<Record<string, unknown>> | null = null;
+  if (c.poison) {
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    await getRepositories().chats.getMessages(SR_CHAT);
+    const { rawQuery } = await import('@/lib/database/manager');
+    await rawQuery(POISON_SQL);
+    // The proof the arm FIRED: every ERROR/WARN line the route logs, recorded
+    // off the `Logger` prototype (singleton and children alike, before the
+    // level check), with the one context field the Rust side compares.
+    logs = [];
+    const { Logger } = await import('@/lib/logger');
+    for (const level of ['error', 'warn'] as const) {
+      const original = Logger.prototype[level];
+      Logger.prototype[level] = function (
+        this: unknown,
+        message: string,
+        context?: Record<string, unknown>,
+        ...rest: unknown[]
+      ) {
+        const line: Record<string, unknown> = { level, message };
+        if (context && 'chatId' in context) line.chatId = context.chatId;
+        logs?.push(line);
+        return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+      } as never;
+    }
+  }
 
   // Ticking frozen clock — the execute path mints memory `updatedAt`s.
   let tick = 0;
@@ -184,10 +223,13 @@ async function runCase(
       resp.body !== undefined && typeof resp.body === 'object'
         ? resp.body
         : await (resp as { json: () => Promise<unknown> }).json();
+    const routeLogs = logs;
+    logs = null; // the dump's own reads are not the route's lines
     return {
       name: c.name,
       status: resp.status,
       body,
+      ...(routeLogs ? { logs: routeLogs } : {}),
       ...(c.dump ? { tables: await readTables() } : {}),
     };
   } finally {
@@ -295,6 +337,24 @@ async function main(): Promise<void> {
       action: 'execute',
       body: { scope: chatScope, searchText: 'gryphon', replaceText: 'beacon' },
       dump: true,
+    },
+    // P4.109 — the poisoned message table. v4's count/replace never reach
+    // their own `safeQuery` arms: `getMessages` swallows first (`[]` + ERROR
+    // `Failed to get messages for chat`), so preview answers 200 with zero
+    // message matches and execute answers 200 with zero messages changed —
+    // while the memory half of each runs untouched.
+    {
+      name: 'preview_poisoned',
+      action: 'preview',
+      body: { scope: chatScope, searchText: 'lantern', replaceText: 'beacon' },
+      poison: true,
+    },
+    {
+      name: 'execute_poisoned',
+      action: 'execute',
+      body: { scope: chatScope, searchText: 'lantern', replaceText: 'beacon' },
+      dump: true,
+      poison: true,
     },
     // The validation arms.
     {

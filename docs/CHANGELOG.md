@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — fix(db): get_messages is v4's safeQuery fallback — [] + ERROR, with a get_messages_strict sibling chosen per caller
+
+_Versions: core 0.0.1003, harness 0.0.914._
+
+`chats_messages_read::get_messages` now answers `Ok(vec![])` and logs v4's
+ERROR `Failed to get messages for chat {chatId, error}` when the read fails,
+matching v4's fallback-mode `safeQuery`. The old rethrowing body is
+`get_messages_strict`. A census of all 76 call sites against v4 chose the
+variant per site: every one reads through v4's `getMessages` except
+`update_message`'s find (v4's `findOne` inside `updateMessage`'s own
+`safeQuery`) and a test helper with no v4 counterpart, which take the strict
+variant. The two importer sites (`services/quilltap_import/**`, P4.110's
+files) also need the strict variant because v4 runs them under its
+strict-failures scope; they are recorded for the unifier, not edited.
+
+Observable result: search & replace preview on a broken message table
+answers v4's 200 with zero message matches instead of a 500, and execute
+answers zero messages changed with an empty `errors` list.
+`count_messages_with_text` / `find_messages_with_text` answer `0` / `[]`.
+`build_context`'s cadence memo test now pins v4's memoised `[]`.
+Differentials: `chats_search` (the poisoned venue grows count and find) and
+`search_replace` (`preview_poisoned`, `execute_poisoned`). Both oracles warm
+v4's messages collection before breaking the table and record v4's
+ERROR/WARN lines, which the Rust side compares.
+
 #### 2026-09-23 — docs(porting): P4.107 lane record, the 26-pair vintage measurement, and the order's status header
 
 _Docs-only change._
