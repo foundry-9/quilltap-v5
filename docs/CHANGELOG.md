@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(fixtures): the animated-input fixtures + their generator (P4.108 item 1)
+
+_No crate versions bumped._
+
+Six small image fixtures under `harness/oracle/fixtures/normalize-blob-image/`
+for the animated-input decline: a two-frame GIF, a large one-frame GIF, a
+one-frame GIF behind a comment full of `0x2C` bytes, a two-frame animated
+WebP, a hand-assembled WebP with the animation bit and one `ANMF` frame, and
+a two-frame APNG. `generate.py` writes the GIFs and the APNG from the
+standard library alone (`--check` verifies them byte for byte) and rebuilds
+the two WebPs with libwebp 1.6.0's tools under `--webp`. Measured through
+v4's sharp 0.35.4 at `a2db63da7`: pages 2 / 1 / 1 / 2 / 1 / none (APNG reads
+as a still PNG).
+
 #### 2026-09-23 — docs(porting): the P4.109 lane record close-out — mutation table, gate, deferrals, and both status headers
 
 _Docs-only change._
