@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): P4.D216 lane close-out — the verification gate and the order's status header
+
+_Docs-only change._
+
+The P4.D216 order header records what landed (Tier 1 whole, Tier 2 whole,
+Tier 3 as ordered), what the lane measured that the order got wrong, and
+three findings outside its scope. The status-log close-out records the gate:
+fmt and clippy clean in both feature sets, a clean release build,
+`cargo test --workspace` at 621 binaries with 3,668 passed and 0 failed, Tier R
+at 266/0, the dispatch census at 447, every other census unmoved, and the
+out-of-mandate audit.
+
 #### 2026-09-23 — docs(porting): P4.D216 lane record — Tier 1 committed; the contracts published for P4.D217
 
 _Docs-only change._
