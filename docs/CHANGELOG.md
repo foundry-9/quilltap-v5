@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): close the P4.D218 Scenario Builder SPA lane
+
+_Docs-only change._
+
+Recorded the lane close in the status log and the work order's status
+header: everything in Tier 1 landed, the named mutation proofs ran, the
+dialog-geometry item was measured as not applicable, the two Tier 3 items
+were recorded, and the beats wait on the unifier's flag flip.
+
 #### 2026-09-23 — test(e2e): gated Scenario Builder beats (P4.D218 unit 6)
 
 _Versions: SPA 0.5.754._

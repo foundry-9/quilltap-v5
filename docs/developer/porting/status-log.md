@@ -146576,3 +146576,62 @@ tool (§R.4(k), Tier 3 item 14); `withCollectionActionDispatch` not re-proven be
   run live here — the verbs do not exist on this branch; the unifier's flip
   is the beats' first run, not a formality.
 - SPA 0.5.754 (no `src/` change; lint clean).
+
+### Lane close
+
+- **Commits (6):** `3a6f86c9` unit 1 (contract + twins + run state) →
+  `fcf823bf` unit 2 (the two dialogs) → `6480bb0e` unit 3 (New Chat) →
+  `74c5894d` unit 4 (Salon) → `695137f6` unit 5 (log labels) → `ced94c2f`
+  unit 6 (gated beats), plus this close-out. **SPA 0.5.748 → 0.5.754**
+  (six bumps; nothing else versioned — no cargo was run, per the order).
+- **Landed vs the order:** Tier 1 items 1–10 whole. Tier 2 item 11
+  **measured N/A** (v4's `BaseModal` takes no geometry); item 12's five named
+  mutation proofs M1–M5 all redden their targets (M2 only after its case was
+  fixed — recorded above), plus M6. Tier 3 item 13 — bug 166's
+  `NewChatModal.tsx` half is **NO-COUNTERPART** (the standing no-modal
+  divergence; `new-chat-form.ts:52-66`), while the `refetchScenarioTiers`
+  path it rides with IS ported (unit 3); item 14 — the `curl` activity row
+  renders `Reading …` but can never fire on v5 (§R.4(k)), kept for fidelity.
+- **For the unifier:** (1) flip `P4D217_SERVER_LANDED` in
+  `e2e/scenario-builder-flow.spec.ts` once P4.D216 + P4.D217 are picked —
+  the flip run is the beats' first; beat (b) creates its own chat and beat
+  (c) deletes the General scenario it files. (2) Diff §S.1/§S.2
+  name-for-name: the SPA sends `{ type: 'scenarioBuilderBuild', runId, body
+  }` (body RAW, trimmed `location`/`time`, `details` raw, `projectId`/`chatId`
+  `null` when absent, `characterIds` always an array), `{ type:
+  'scenarioBuilderAbort', runId }`, `{ type: 'scenarioBuilderCapabilities' }`,
+  `{ type: 'groupList', characterIds: <sorted cast> }` (only for a non-empty
+  cast); reads `{ type: 'scenarioBuilderProgress', progressId, frame }` and
+  the reply `{ type: 'scenarioBuilder', data }`. (3) The reply's terminal
+  object IS read (as the race fallback) — P4.D217's reply must carry the
+  terminal frame's object exactly as §S.1 says, and `{ aborted: true }` after
+  an abort. (4) §S.3 is consumed as `data.scenario.id` from
+  `characterScenarioCreate` — no shape change needed.
+- **Findings outside this lane's ownership (named, not fixed):** v5's
+  `ThinkingBlock` has no `streaming` arm (v4 forces the block open and reads
+  `Thinking…` while streaming) — shared with the Brahma console's live
+  block; v5's `LlmLogType` union lags v4's enum by `CUSTOM_TOOL_CONSULT` and
+  `VOICE_REWRITE` (pre-existing; nothing narrows on it); `qt-modal` has no
+  Escape handling (a standing convention, so v4's `closeOnEscape` rules have
+  no counterpart anywhere).
+- **Fixtures:** none changed. The one corpus authored —
+  `apps/web/src/app/scenario-builder/__fixtures__/scenario-builder-oracle.json`
+  (29 + 40) — is read by `agent-tool-calls.spec.ts` and `host-activity.spec.ts`
+  alone; its recipe is in unit 1. No Rust oracle, family or census moves.
+- **§R.9 mirror pre-list:** this lane's rows move NO `docs/v4/` path; the
+  related bug-166 note (`docs/v4/developer/bugs/fixed/bug-166-modal-no-group-
+  scenarios.md`, 2,223 bytes at `d1c06cd9d`) belongs to the unifier's
+  byte-copy list already.
+- **Disk / cleanup:** no `target/` was ever created (no cargo); the pin
+  worktree `/tmp/qt-v4-pin-p4d218-d1c06cd9d` removed with `git worktree
+  remove`; `apps/web/dist` removed.
+- **Final gate (the finished code tree, `ced94c2f`, one logged background
+  chain):** `npm run lint` clean; `npm test` **447 files / 7,652 passed / 0
+  failed** (base 441 / 7,474 → +6 spec files / +178 cases, every new file
+  confirmed in the run's chunk list: `agent-tool-calls`, `host-activity`,
+  `scenario-builder-run.state`, `scenario-builder-dialog`,
+  `new-chat-form.host`, `chat-scenario-control.host`); `npm run build` clean,
+  no budget warning; `npx playwright test e2e/scenario-builder-flow.spec.ts
+  --list` → 4 tests. No cargo step (the order: "P4.D218 runs no cargo at
+  all"; nothing outside `apps/web/**` changed, so no crate, census or
+  differential can have moved).
