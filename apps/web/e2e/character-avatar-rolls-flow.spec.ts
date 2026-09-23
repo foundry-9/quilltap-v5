@@ -68,13 +68,24 @@ const USER_TABLES = ['characters', 'chats', 'tags', 'files'];
  * roll promoted to the portrait loses its Discard control (v4 `GalleryImage`'s
  * `!isAvatar` gate — the first activation waited 90 s for a button the
  * portrait plate cannot have), so A is kept and promoted, and B is discarded.
- * Different bytes (a PNG and a GIF) so the two blobs carry different shas.
+ * Different bytes (a lossy WebP and a GIF) so the two blobs carry different
+ * shas. Plate A is a WebP, as every production roll is (the generation
+ * pipeline converts to WebP before the cache write): since the `a2db63da7`
+ * round (P4.104) the album save normalizes its copy through the real encoder
+ * on BOTH sides — v4's `linkBlobContent` has always done so — and the roll
+ * listing classifies album membership by the ROLL file's sha
+ * (`getPhotoLinkSummaryBySha256`), so a PNG plate's album copy would land as
+ * a different-sha WebP and the plate could never read "Already in the photo
+ * album" on either side. A lossy WebP declines the normalization (lossy →
+ * lossy is generation loss) and keeps its sha, which is the production shape.
+ * This beat seeded a PNG until the seam became real and it failed on its first
+ * full-suite run after P4.104.
  */
 const ROLL_FILE_ID = 'p4d188-roll-1';
 const ROLL_MOUNT_FILE_ID = 'p4d188-roll-mount-file-1';
 const ROLL_LINK_ID = 'p4d188-roll-link-1';
 const ROLL_BLOB_ID = 'p4d188-roll-blob-1';
-const ROLL_NAME = 'plate-of-aria.png';
+const ROLL_NAME = 'plate-of-aria.webp';
 const ROLL2_FILE_ID = 'p4d188-roll-2';
 const ROLL2_MOUNT_FILE_ID = 'p4d188-roll-mount-file-2';
 const ROLL2_LINK_ID = 'p4d188-roll-link-2';
@@ -84,13 +95,14 @@ const ROLL2_NAME = 'second-plate-of-aria.gif';
 const ROLL2_BYTES = Buffer.from('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==', 'base64');
 const ROLL2_SHA = createHash('sha256').update(ROLL2_BYTES).digest('hex');
 /**
- * A real 1×1 PNG: the tile is an `<img>`, and four bytes of "RIFF" would fire
- * its `error` handler, mark the roll missing, and take the Download button
- * with it. The sha is the bytes' own, so the link resolves by sha as the
- * service resolves it.
+ * A real 2×2 LOSSY WebP (encoded by v4's own sharp, `quality: 80`): the tile is
+ * an `<img>`, and four junk bytes would fire its `error` handler, mark the roll
+ * missing, and take the Download button with it. The sha is the bytes' own, so
+ * the link resolves by sha as the service resolves it — and stays so after the
+ * keep, because the album save's normalization declines a lossy WebP.
  */
 const ROLL_BYTES = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'UklGRjQAAABXRUJQVlA4ICgAAACQAQCdASoCAAIAAUAmJZgCdLoAA5gA/vCbQ/4DdfFtMv0fmXJznAAA',
   'base64',
 );
 const ROLL_SHA = createHash('sha256').update(ROLL_BYTES).digest('hex');
@@ -215,7 +227,7 @@ test.describe('P4.D188 — Avatar Rolls in the Photo Gallery tab', () => {
     };
     plantRoll({
       fileId: ROLL_FILE_ID, mountFileId: ROLL_MOUNT_FILE_ID, linkId: ROLL_LINK_ID,
-      blobId: ROLL_BLOB_ID, name: ROLL_NAME, mime: 'image/png', bytes: ROLL_BYTES,
+      blobId: ROLL_BLOB_ID, name: ROLL_NAME, mime: 'image/webp', bytes: ROLL_BYTES,
       sha: ROLL_SHA, key: 'p4d188-config-key-v1',
     });
     plantRoll({
