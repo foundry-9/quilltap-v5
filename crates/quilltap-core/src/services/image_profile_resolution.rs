@@ -1,24 +1,17 @@
-//! Image-profile resolution + the story-background enqueue gate.
+//! Image-profile resolution — v4 `lib/image-gen/profile-resolution.ts`
+//! `resolveImageProfileForChat`: the four-tier chain (chat → story-backgrounds
+//! default → project default → user default), each candidate ownership- and
+//! `apiKeyId`-checked.
 //!
-//!   - [`resolve_image_profile_for_chat`] — v4 `lib/image-gen/profile-resolution.ts`
-//!     `resolveImageProfileForChat`: the four-tier chain (chat → story-backgrounds
-//!     default → project default → user default), each candidate ownership- and
-//!     `apiKeyId`-checked.
-//!   - [`queue_story_background_if_enabled`] — v4
-//!     `lib/background-jobs/handlers/title-update.ts` `queueStoryBackgroundIfEnabled`:
-//!     the `storyBackgroundsSettings.enabled` gate + autonomous-chat skip +
-//!     profile resolution + participant characterIds + the enqueue.
-//!
-//! **Wiring point (tracked):** v4 calls `queueStoryBackgroundIfEnabled` INSIDE the
-//! `TITLE_UPDATE` job handler, after a successful (non-help-chat) rename. v5 has
-//! no `TITLE_UPDATE` handler registered yet; when it lands it must invoke
-//! [`queue_story_background_if_enabled`] with the resolved chat, chat settings,
-//! and new title. This module ports the gate so the handler wiring is a one-liner.
+//! The story-background enqueue gate that used to live here
+//! (`queue_story_background_if_enabled`) MOVED to
+//! [`crate::services::auto_title`] with v4 `00c290c9a` (bugs 163/164), where v4
+//! moved it too: a changed title is the only thing that pulls the Lantern's
+//! auto-trigger, so the gate sits beside the one chokepoint every automatic
+//! title goes through.
 
 use rusqlite::Connection;
 use serde_json::Value;
-
-use crate::db::runtime::Db;
 
 /// v4 `resolveImageProfileForChat`: the four-tier image-profile resolution. Sync —
 /// the caller supplies the main connection and the (optional) mount-index
@@ -117,130 +110,4 @@ pub fn resolve_image_profile_for_chat(
     }
 
     None
-}
-
-/// v4 `queueStoryBackgroundIfEnabled`: enqueue a story-background job only when
-/// story backgrounds are enabled and the chat is not an autonomous room, an image
-/// profile resolves, and the chat has participants. Errors are swallowed
-/// (automatic path). `chat` is the chats row, `chat_settings` the user's settings.
-pub async fn queue_story_background_if_enabled(
-    db: &Db,
-    user_id: &str,
-    chat: &Value,
-    chat_settings: Option<&Value>,
-    new_title: &str,
-) {
-    // 1. `storyBackgroundsSettings?.enabled` gate.
-    let enabled = chat_settings
-        .and_then(|cs| cs.get("storyBackgroundsSettings"))
-        .and_then(|s| s.get("enabled"))
-        .and_then(Value::as_bool)
-        == Some(true);
-    if !enabled {
-        return;
-    }
-    // 2. Autonomous-chat skip.
-    if chat.get("chatType").and_then(Value::as_str) == Some("autonomous") {
-        return;
-    }
-    // 3. Resolve the image profile (dual-connection read).
-    let chat_owned = chat.clone();
-    let settings_owned = chat_settings.cloned();
-    let user_owned = user_id.to_string();
-    let image_profile_id = db
-        .write(move |writers| {
-            let main = writers.main().connection();
-            let mount = writers.mount_index().map(|w| w.connection());
-            Ok(resolve_image_profile_for_chat(
-                main,
-                mount,
-                &user_owned,
-                &chat_owned,
-                settings_owned.as_ref(),
-            ))
-        })
-        .await
-        .ok()
-        .flatten();
-    let Some(image_profile_id) = image_profile_id else {
-        return;
-    };
-    // 4. Participant characterIds — of participants who are actually in the
-    //    scene. [70505745a] Absent and (soft-)removed participants must never be
-    //    painted into the background; the crafter is told to place every
-    //    enumerated character as a figure in the frame, so a stale enumeration
-    //    puts someone in the room who walked out of it. 'silent' counts as
-    //    present: they are standing there, just not speaking.
-    //
-    //    `.filter(p => isParticipantPresent(p.status) && p.characterId)` — the
-    //    second conjunct is v4's pre-existing JS truthiness, so an empty-string
-    //    characterId drops out here exactly as it does at the manual-regenerate
-    //    twin (`api::chat_media::chat_regenerate_background`).
-    let character_ids: Vec<String> = chat
-        .get("participants")
-        .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter(|p| crate::chat_predicates::json_participant_is_present(p))
-                .filter_map(|p| p.get("characterId").and_then(Value::as_str))
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default();
-    if character_ids.is_empty() {
-        return;
-    }
-
-    let chat_id = chat.get("id").and_then(Value::as_str).unwrap_or_default();
-    let project_id = chat
-        .get("projectId")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    // Errors swallowed — the automatic path must never affect the caller. v4
-    // says so out loud, though: the enqueue's two outcomes are the last two log
-    // sites of `title-update.ts` (`:294` info / `:303` warn), and P4.61 carries
-    // them so a background that never got queued is visible in `combined.log`.
-    //
-    // The `isNew` gate is v4's: a dedupe hit (a story-background job already
-    // pending for this chat) returns the EXISTING id with `isNew: false` and
-    // says nothing.
-    //
-    // Recorded shape divergence: v4 carries the failure text inside the context
-    // bag (`{context, chatId, error}` — `logger.warn` has no error parameter),
-    // while v5's `error = %e` is the house idiom at 130-odd sites and the P4.49
-    // file layer hoists a field named `error` into the record's own `error` key.
-    // The text is present and greppable either way; the placement differs.
-    match crate::services::queue_service::enqueue_story_background_generation(
-        db,
-        user_id,
-        chat_id,
-        &image_profile_id,
-        &character_ids,
-        Some(new_title),
-        project_id,
-    )
-    .await
-    {
-        Ok((job_id, is_new)) => {
-            if is_new {
-                tracing::info!(
-                    context = crate::services::title_update_job::CONTEXT,
-                    chat_id = %chat_id,
-                    job_id = %job_id,
-                    image_profile_id = %image_profile_id,
-                    character_count = character_ids.len(),
-                    "[Title Update] Queued story background generation"
-                );
-            }
-        }
-        Err(e) => {
-            tracing::warn!(
-                context = crate::services::title_update_job::CONTEXT,
-                chat_id = %chat_id,
-                error = %e,
-                "[Title Update] Failed to queue story background generation"
-            );
-        }
-    }
 }

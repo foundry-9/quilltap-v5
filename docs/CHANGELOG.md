@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(titles): the auto-title chokepoint, with the title-update job routed through it (P4.D215 unit 2)
+
+_Versions: core 0.0.1003, harness 0.0.914._
+
+Ports v4 `00c290c9a`'s `applyAutoTitle` as `services/auto_title.rs`. It
+re-reads the chat after the LLM call, keeps a hand-renamed title unless the
+caller clears the flag, skips a title that has not changed (writing only
+the caller's extra fields), writes a changed title, logs `[Auto Title] Chat
+retitled`, and queues the story background. `queue_story_background_if_enabled`
+moved into it from `image_profile_resolution.rs`; its two log lines now
+read `[Auto Title]` with no `context` field. The `TITLE_UPDATE` job now
+renames through it: an unchanged suggestion writes only the checkpoint
+cursor and queues nothing, and a rename made during the LLM call is kept.
+`title_update_tier3` gains two cases (unchanged title, rename mid-flight)
+and re-pointed log pins. The family was failing at both pins because its
+oracle never added the P4.D171 columns to its fixture copy; the oracle now
+does, matching the Rust side. A shared log-capture helper for the three
+title families replaces the thread-scoped subscribers, which lost events
+when a parallel test touched the same log sites first.
+
 #### 2026-09-23 — test(fixtures): widen chat-admin-main.db to v4's current schema (P4.D215 unit 1)
 
 _Versions: web 0.0.177._

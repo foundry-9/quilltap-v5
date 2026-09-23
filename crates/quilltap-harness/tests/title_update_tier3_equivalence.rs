@@ -114,7 +114,15 @@ struct CannedTitleProvider {
     /// timeout-shaped one drives `is_timeout_failure` → the same-route retry →
     /// `timed_out` → the lost-pass failure (v4 `a1d88aa3a`, bug 107).
     throw_message: String,
+    /// P4.D215 (v4 `00c290c9a`, bug 164): a hand rename planted INSIDE the
+    /// canned call — the oracle's `midFlightRename`, which writes the same two
+    /// fields through v4's real `chats.update` (stamping the frozen clock, as
+    /// v4's repository does when no `updatedAt` is given).
+    mid_flight: Option<(Db, String, String)>,
 }
+
+/// The hand rename `mid_flight` plants (the oracle's `MID_FLIGHT_TITLE`).
+const MID_FLIGHT_TITLE: &str = "A Title Chosen Mid-Flight";
 
 /// v4's `keyForSystemPrompt`: the help evaluator names itself in its first line.
 fn key_for_system_prompt(system: &str) -> &'static str {
@@ -134,6 +142,21 @@ impl CompletionProvider for CannedTitleProvider {
     ) -> Result<CompletionResponse, CompletionError> {
         if self.throws {
             return Err(CompletionError::new(self.throw_message.clone()));
+        }
+        if let Some((db, chat_id, now_iso)) = &self.mid_flight {
+            let (cid, stamp) = (chat_id.clone(), now_iso.clone());
+            db.write(move |w| {
+                let patch = quilltap_core::db::chats::ChatUpdate {
+                    title: Some(MID_FLIGHT_TITLE.to_string()),
+                    is_manually_renamed: Some(true),
+                    updated_at: Some(stamp),
+                    ..Default::default()
+                };
+                w.main().chats().update(&cid, &patch)?;
+                Ok(())
+            })
+            .await
+            .expect("plant the mid-flight rename");
         }
         let system = params
             .messages
@@ -252,6 +275,7 @@ fn dump_state(db: &Db, chat_id: &str) -> Value {
 
 #[test]
 fn title_update_matches_oracle() {
+    auto_title_capture::install();
     let Some(oracle_path) = env_or_skip("QT_ORACLE_TITLE_UPDATE") else {
         return;
     };
@@ -492,7 +516,41 @@ fn title_update_matches_oracle() {
             false,
             "",
         ),
+        // ── P4.D215 (v4 `00c290c9a`, bugs 163/164): the rename through the
+        // auto-title chokepoint. The verdict suggests the title the chat
+        // already has → the cursor alone is written and NO background queues.
+        (
+            "unchanged_title",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            Some(CannedTitle {
+                content: r#"{"needsNewTitle":true,"reason":"the title should say what it already says","suggestedTitle":"New Chat"}"#.to_string(),
+                prompt_tokens: 40,
+                completion_tokens: 9,
+            }),
+            false,
+            "",
+        ),
+        // A hand rename lands while the LLM call is in flight (planted by the
+        // provider — see `mid_flight`); the chokepoint's re-read keeps it.
+        (
+            "renamed_mid_flight",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            None,
+            false,
+            "",
+        ),
     ];
+    let now_iso = quilltap_core::clock::iso_from_unix_ms(spec.frozen_now_ms);
+    // Shape, not a hand-written count: every oracle row is driven, and only those.
+    let driven: std::collections::BTreeSet<String> =
+        cases.iter().map(|c| c.0.to_string()).collect();
+    let recorded: std::collections::BTreeSet<String> = oracle.keys().cloned().collect();
+    assert_eq!(
+        driven, recorded,
+        "case-set drift between the driven cases and the oracle"
+    );
 
     for (name, chat_id, user_id, override_reply, throws, throw_message) in cases {
         let db = fresh_db(name);
@@ -501,6 +559,8 @@ fn title_update_matches_oracle() {
             override_reply,
             throws,
             throw_message: throw_message.to_string(),
+            mid_flight: (name == "renamed_mid_flight")
+                .then(|| (db.clone(), chat_id.to_string(), now_iso.clone())),
         };
         let executor = CheapLlmTaskExecutor::new();
         let payload = TitleUpdatePayload {
@@ -567,6 +627,7 @@ fn title_update_matches_oracle() {
 /// fixture alone.
 #[test]
 fn title_update_runner_registration_e2e() {
+    auto_title_capture::install();
     use quilltap_core::db::background_jobs::BackgroundJobsRepository;
     use quilltap_core::services::job_runner::{HandlerRegistry, JobRunner};
     use quilltap_core::services::queue_service::enqueue_title_update;
@@ -601,6 +662,7 @@ fn title_update_runner_registration_e2e() {
                 override_reply: None,
                 throws: false,
                 throw_message: String::new(),
+                mid_flight: None,
             },
             executor: CheapLlmTaskExecutor::new(),
             cost: NoMessageCost,
@@ -673,9 +735,10 @@ fn title_update_runner_registration_e2e() {
 //     sentence, and returns null (`system-events.service.ts:73`). v5's seams are
 //     `Option`-returning for the same reason.
 
-use quilltap_core::test_support::CaptureLayer;
-use std::sync::{Arc, Mutex};
-use tracing_subscriber::layer::SubscriberExt;
+// P4.D215: the capture rig. This binary's capture tests used thread-scoped
+// `CaptureLayer` subscribers beside a parallel differential over the same
+// callsites — the cross-thread `Interest` race the rig's module doc measures.
+mod auto_title_capture;
 
 /// Drive the REAL handler `runs` times over ONE fresh copy of the committed
 /// fixture and return every line it logged.
@@ -684,9 +747,10 @@ use tracing_subscriber::layer::SubscriberExt;
 /// * `break_jobs_table` drops `background_jobs` first, so the story-background
 ///   enqueue really fails — v4's `:303` catch arm has no other way in, since the
 ///   enqueue's only failure mode is the database refusing it.
-/// * `runs > 1` re-drives the same chat on the same DB, which exercises v4's
-///   `isNew: false` dedupe arm (the second enqueue finds the first job pending
-///   and must say nothing).
+/// * `runs > 1` re-drives the same chat on the same DB with the SAME reply —
+///   which, since `00c290c9a`, is the chokepoint's UNCHANGED arm on every run
+///   after the first. The `isNew: false` dedupe arm needs a DIFFERENT second
+///   title; see [`capture_replies`].
 #[allow(clippy::too_many_arguments)]
 fn capture_runs(
     spec: &Spec,
@@ -697,6 +761,28 @@ fn capture_runs(
     throws: bool,
     break_jobs_table: bool,
     runs: usize,
+) -> Vec<String> {
+    capture_replies(
+        spec,
+        tag,
+        chat_id,
+        user_id,
+        vec![override_reply; runs],
+        throws,
+        break_jobs_table,
+    )
+}
+
+/// [`capture_runs`] with one reply override per run (`None` = the spec's
+/// canned reply for the prompt's key).
+fn capture_replies(
+    spec: &Spec,
+    tag: &str,
+    chat_id: &str,
+    user_id: &str,
+    replies: Vec<Option<CannedTitle>>,
+    throws: bool,
+    break_jobs_table: bool,
 ) -> Vec<String> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -713,16 +799,14 @@ fn capture_runs(
         .expect("drop background_jobs");
     }
 
-    let logs = Arc::new(Mutex::new(Vec::<String>::new()));
-    let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
-    {
-        let _guard = tracing::subscriber::set_default(subscriber);
-        for _ in 0..runs {
+    let ((), out) = auto_title_capture::capture(|| {
+        for override_reply in replies {
             let provider = CannedTitleProvider {
                 canned: spec.canned_titles.clone(),
-                override_reply: override_reply.clone(),
+                override_reply,
                 throws,
                 throw_message: "canned provider failure".to_string(),
+                mid_flight: None,
             };
             let payload = TitleUpdatePayload {
                 chat_id: chat_id.to_string(),
@@ -740,8 +824,7 @@ fn capture_runs(
             ))
             .expect("handler");
         }
-    }
-    let out = logs.lock().unwrap().clone();
+    });
     out
 }
 
@@ -781,6 +864,7 @@ fn none(lines: &[String], needle: &str) {
 /// say so instead of burning the checkpoint in silence.
 #[test]
 fn checkpoint_burned_warn_fires_only_when_a_rename_had_no_usable_title() {
+    auto_title_capture::install();
     let spec = read_spec();
 
     // (a) The bug-96 residue: a rename asked for under a key nothing can read.
@@ -834,6 +918,7 @@ fn checkpoint_burned_warn_fires_only_when_a_rename_had_no_usable_title() {
 /// checkpoints in complete silence.
 #[test]
 fn failed_call_warn_fires_only_when_the_cheap_llm_call_failed() {
+    auto_title_capture::install();
     let spec = read_spec();
 
     // (a) The provider throws — v4's `!result.success` arm.
@@ -870,11 +955,14 @@ fn failed_call_warn_fires_only_when_the_cheap_llm_call_failed() {
     none(&lines, "[Title Update] Failed for chat");
 }
 
-/// v4 `:213` + `:224` — the decided-to-rename line and the wrote-the-title line.
-/// Both are single rendered sentences; `:224` quotes the title, and the quotes
-/// are v4's own bytes.
+/// v4 `:213` — the decided-to-rename line — and, since `00c290c9a`, the
+/// chokepoint's `[Auto Title] Chat retitled` in place of the removed `:224`
+/// `[Title Update] Updated title for chat … to: "…"` (the HUNK deletes it; the
+/// commit message does not say so). The retitled line carries v4's four
+/// camelCase fields: `chatId`, `source`, `from` (the RE-READ title), `to`.
 #[test]
 fn rename_info_lines_fire_only_when_a_title_is_written() {
+    auto_title_capture::install();
     let spec = read_spec();
 
     // (a) The canned literary verdict renames the chat.
@@ -895,13 +983,20 @@ fn rename_info_lines_fire_only_when_a_title_is_written() {
             spec.chat_title_id
         ),
     );
-    one(
-        &lines,
-        &format!(
-            "[Title Update] Updated title for chat {} to: \"The Ballonet's Slow Betrayal\"",
-            spec.chat_title_id
-        ),
+    let retitled = one(&lines, "[Auto Title] Chat retitled");
+    assert!(retitled.starts_with("INFO "), "{retitled}");
+    assert!(
+        retitled.contains(&format!("chatId={}", spec.chat_title_id)),
+        "{retitled}"
     );
+    assert!(retitled.contains("source=title-check"), "{retitled}");
+    assert!(retitled.contains("from=New Chat"), "{retitled}");
+    assert!(
+        retitled.contains("to=The Ballonet's Slow Betrayal"),
+        "{retitled}"
+    );
+    // The removed line is gone everywhere.
+    none(&lines, "Updated title for chat");
 
     // (b) A decline writes no title, so neither line may appear.
     let lines = capture_runs(
@@ -915,7 +1010,7 @@ fn rename_info_lines_fire_only_when_a_title_is_written() {
         1,
     );
     none(&lines, "needsNewTitle: true");
-    none(&lines, "[Title Update] Updated title for chat");
+    none(&lines, "[Auto Title] Chat retitled");
 
     // (c) So does a failed call — the earlier return must not reach either line.
     let lines = capture_runs(
@@ -929,14 +1024,58 @@ fn rename_info_lines_fire_only_when_a_title_is_written() {
         1,
     );
     none(&lines, "needsNewTitle: true");
-    none(&lines, "[Title Update] Updated title for chat");
+    none(&lines, "[Auto Title] Chat retitled");
+
+    // (d) A verdict naming the title the chat already has reaches the
+    //     chokepoint (the decided-to-rename line fires) but writes no title:
+    //     the chokepoint's unchanged DEBUG line, never the retitled one.
+    let lines = capture_runs(
+        &spec,
+        "rename_info_unchanged",
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        canned(
+            r#"{"needsNewTitle":true,"reason":"the title should say what it already says","suggestedTitle":"New Chat"}"#,
+        ),
+        false,
+        false,
+        1,
+    );
+    one(&lines, "needsNewTitle: true");
+    none(&lines, "[Auto Title] Chat retitled");
+    let unchanged = one(&lines, "[Auto Title] Title unchanged");
+    assert!(unchanged.starts_with("DEBUG "), "{unchanged}");
+    assert!(unchanged.contains("source=title-check"), "{unchanged}");
+    assert!(
+        unchanged.contains(&format!("chatId={}", spec.chat_title_id)),
+        "{unchanged}"
+    );
+    none(&lines, "Queued story background generation");
+    none(&lines, "renamed by hand");
+    // …and a real rename never says "unchanged".
+    let lines = capture_runs(
+        &spec,
+        "rename_info_unchanged_silent",
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        None,
+        false,
+        false,
+        1,
+    );
+    none(&lines, "[Auto Title] Title unchanged");
+    none(&lines, "renamed by hand");
 }
 
-/// v4 `:294` — the queued-a-background line, gated on `isNew`, with the fields
-/// an operator needs to find the job. The three gates that skip the enqueue
-/// (settings disabled, an autonomous room, a dedupe hit) must each stay silent.
+/// v4 `auto-title.ts:154` (moved from `title-update.ts:294` at `00c290c9a`) —
+/// the queued-a-background line, gated on `isNew`, with the fields an operator
+/// needs to find the job. The commit re-prefixed it `[Auto Title]` and DROPPED
+/// its `context` field; the fields are v4's camelCase names. The three gates
+/// that skip the enqueue (settings disabled, an autonomous room, a dedupe hit)
+/// must each stay silent.
 #[test]
 fn queued_story_background_info_fires_once_per_new_job() {
+    auto_title_capture::install();
     let spec = read_spec();
 
     // (a) A fresh rename on a story-backgrounds-enabled user queues one.
@@ -950,24 +1089,50 @@ fn queued_story_background_info_fires_once_per_new_job() {
         false,
         1,
     );
-    let queued = one(&lines, "[Title Update] Queued story background generation");
+    let queued = one(&lines, "[Auto Title] Queued story background generation");
+    assert!(!queued.contains("context="), "{queued}");
     assert!(
-        queued.contains("context=background-jobs.title-update"),
+        queued.contains(&format!("chatId={}", spec.chat_title_id)),
         "{queued}"
     );
-    assert!(
-        queued.contains(&format!("chat_id={}", spec.chat_title_id)),
-        "{queued}"
-    );
-    assert!(queued.contains("job_id="), "{queued}");
-    assert!(queued.contains("image_profile_id="), "{queued}");
-    assert!(queued.contains("character_count=2"), "{queued}");
+    assert!(queued.contains("jobId="), "{queued}");
+    assert!(queued.contains("imageProfileId="), "{queued}");
+    assert!(queued.contains("characterCount=2"), "{queued}");
+    none(&lines, "[Title Update] Queued");
 
-    // (b) The dedupe arm: a second run finds the first job pending, so
+    // (b) The dedupe arm: a second rename finds the first job pending, so
     //     `isNew` is false and v4 says nothing. Exactly ONE line across both.
-    let lines = capture_runs(
+    //     The second run must suggest a DIFFERENT title — the same one is the
+    //     chokepoint's unchanged arm, which never reaches the enqueue (b').
+    let lines = capture_replies(
         &spec,
         "queued_info_dedupe",
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        vec![
+            None,
+            canned(
+                r#"{"needsNewTitle":true,"reason":"the scene moved on","suggestedTitle":"A Second Title Entirely"}"#,
+            ),
+        ],
+        false,
+        false,
+    );
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|l| l.contains("[Auto Title] Chat retitled"))
+            .count(),
+        2,
+        "both runs must RENAME, or the dedupe arm is not reached: {lines:#?}"
+    );
+    one(&lines, "[Auto Title] Queued story background generation");
+
+    // (b') The same title twice: run two is the unchanged arm — one rename,
+    //      one queue, one unchanged line.
+    let lines = capture_runs(
+        &spec,
+        "queued_info_same_twice",
         &spec.chat_title_id,
         &spec.user_enabled_id,
         None,
@@ -975,7 +1140,9 @@ fn queued_story_background_info_fires_once_per_new_job() {
         false,
         2,
     );
-    one(&lines, "[Title Update] Queued story background generation");
+    one(&lines, "[Auto Title] Chat retitled");
+    one(&lines, "[Auto Title] Title unchanged");
+    one(&lines, "[Auto Title] Queued story background generation");
 
     // (c) Story backgrounds disabled — renamed, but nothing queued.
     let lines = capture_runs(
@@ -988,7 +1155,7 @@ fn queued_story_background_info_fires_once_per_new_job() {
         false,
         1,
     );
-    one(&lines, "[Title Update] Updated title for chat");
+    one(&lines, "[Auto Title] Chat retitled");
     none(&lines, "Queued story background generation");
 
     // (d) An autonomous room — the Lantern's auto-trigger is off there.
@@ -1002,14 +1169,17 @@ fn queued_story_background_info_fires_once_per_new_job() {
         false,
         1,
     );
-    one(&lines, "[Title Update] Updated title for chat");
+    one(&lines, "[Auto Title] Chat retitled");
     none(&lines, "Queued story background generation");
 }
 
-/// v4 `:303` — the enqueue's catch arm. The only way in is the database refusing
-/// the job row, so the fixture copy loses its `background_jobs` table first.
+/// v4 `auto-title.ts:162` (moved from `title-update.ts:303`) — the enqueue's
+/// catch arm, re-prefixed `[Auto Title]` with its `context` field dropped. The
+/// only way in is the database refusing the job row, so the fixture copy loses
+/// its `background_jobs` table first.
 #[test]
 fn failed_to_queue_warn_fires_only_when_the_enqueue_errors() {
+    auto_title_capture::install();
     let spec = read_spec();
 
     // (a) No `background_jobs` table — the enqueue errors and says so.
@@ -1025,21 +1195,20 @@ fn failed_to_queue_warn_fires_only_when_the_enqueue_errors() {
     );
     let failed = one(
         &lines,
-        "[Title Update] Failed to queue story background generation",
+        "[Auto Title] Failed to queue story background generation",
     );
+    assert!(failed.starts_with("WARN "), "{failed}");
+    assert!(!failed.contains("context="), "{failed}");
     assert!(
-        failed.contains("context=background-jobs.title-update"),
-        "{failed}"
-    );
-    assert!(
-        failed.contains(&format!("chat_id={}", spec.chat_title_id)),
+        failed.contains(&format!("chatId={}", spec.chat_title_id)),
         "{failed}"
     );
     assert!(failed.contains("error="), "{failed}");
     // The failure is loud INSTEAD of the success line, not alongside it.
     none(&lines, "Queued story background generation");
     // And the handler still completed — the enqueue stays best-effort.
-    one(&lines, "[Title Update] Updated title for chat");
+    one(&lines, "[Auto Title] Chat retitled");
+    none(&lines, "[Title Update] Failed to queue");
 
     // (b) A healthy enqueue must not warn.
     let lines = capture_runs(
@@ -1053,4 +1222,75 @@ fn failed_to_queue_warn_fires_only_when_the_enqueue_errors() {
         1,
     );
     none(&lines, "Failed to queue story background generation");
+}
+
+/// v4 `auto-title.ts:71-75` — the chokepoint's hand-rename DEBUG line, reached
+/// from the job ONLY through the post-call re-read (the job's own up-front
+/// `isManuallyRenamed` gate returns before the LLM call and says nothing). The
+/// rename is planted inside the canned call, as in the differential's
+/// `renamed_mid_flight`.
+#[test]
+fn renamed_by_hand_debug_fires_only_on_a_mid_flight_rename() {
+    auto_title_capture::install();
+    let spec = read_spec();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let now_iso = quilltap_core::clock::iso_from_unix_ms(spec.frozen_now_ms);
+    let drive = |tag: &str, chat_id: &str, mid_flight: bool| -> Vec<String> {
+        let db = fresh_db(tag);
+        let ((), out) = auto_title_capture::capture(|| {
+            let provider = CannedTitleProvider {
+                canned: spec.canned_titles.clone(),
+                override_reply: None,
+                throws: false,
+                throw_message: String::new(),
+                mid_flight: mid_flight.then(|| (db.clone(), chat_id.to_string(), now_iso.clone())),
+            };
+            let payload = TitleUpdatePayload {
+                chat_id: chat_id.to_string(),
+                connection_profile_id: spec.connection_profile_id.clone(),
+                current_interchange: 5.0,
+            };
+            rt.block_on(handle_title_update(
+                &db,
+                &provider,
+                &CheapLlmTaskExecutor::new(),
+                &NoMessageCost,
+                &spec.user_enabled_id,
+                &payload,
+                spec.frozen_now_ms,
+            ))
+            .expect("handler");
+        });
+        out
+    };
+
+    // (a) The mid-flight rename: the chokepoint keeps the user's title.
+    let lines = drive("hand_debug", &spec.chat_title_id, true);
+    let kept = one(
+        &lines,
+        "[Auto Title] Chat was renamed by hand; keeping its title",
+    );
+    assert!(kept.starts_with("DEBUG "), "{kept}");
+    assert!(kept.contains("source=title-check"), "{kept}");
+    assert!(
+        kept.contains(&format!("chatId={}", spec.chat_title_id)),
+        "{kept}"
+    );
+    none(&lines, "[Auto Title] Chat retitled");
+    none(&lines, "[Auto Title] Title unchanged");
+    none(&lines, "Queued story background generation");
+
+    // (b) The up-front gate on an ALREADY-renamed chat returns before the
+    //     chokepoint — silent there.
+    let lines = drive("hand_debug_upfront", &spec.chat_renamed_id, false);
+    none(&lines, "renamed by hand");
+    none(&lines, "[Auto Title]");
+
+    // (c) An ordinary rename never claims a hand rename.
+    let lines = drive("hand_debug_silent", &spec.chat_title_id, false);
+    none(&lines, "renamed by hand");
+    one(&lines, "[Auto Title] Chat retitled");
 }

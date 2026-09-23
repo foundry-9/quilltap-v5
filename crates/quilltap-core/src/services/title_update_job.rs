@@ -1,9 +1,10 @@
 //! The `TITLE_UPDATE` job handler (v4
 //! `lib/background-jobs/handlers/title-update.ts`).
 //!
-//! Evaluates whether a chat has outgrown its title, renames it if so, and — for
-//! non-help chats — kicks the story-background generation that a fresh title
-//! implies. `context_summary` enqueues one of these at each title checkpoint
+//! Evaluates whether a chat has outgrown its title and, if so, hands the
+//! suggestion to the auto-title chokepoint ([`crate::services::auto_title`]),
+//! which renames it and — for non-help chats — kicks the story-background
+//! generation that a fresh title implies. `context_summary` enqueues one of these at each title checkpoint
 //! (`shouldCheckTitleAtInterchange`), so before P4.6ao every real instance's
 //! title jobs died on the runner's "recognized but not yet available" loud
 //! fallback — which ALSO meant the automatic background trigger never fired.
@@ -56,10 +57,10 @@ use crate::services::context_summary::tasks::{
 // === P4.D110 (v4 `3c041e46`, bug 96) ===
 use crate::services::context_summary::title_verdict::TitleVerdict;
 // === end P4.D110 ===
+use crate::services::auto_title::{apply_auto_title, AutoTitleExtraPatch, AutoTitleSource};
 use crate::services::cost_estimation::{MessageCostEstimator, NoMessageCost};
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
-use crate::services::image_profile_resolution::queue_story_background_if_enabled;
 use crate::services::job_runner::{JobFuture, JobHandler, JobOutcome};
 
 /// v4's `context: 'background-jobs.title-update'` for this handler's warn lines
@@ -447,42 +448,32 @@ where
         verdict.reason
     );
 
-    write_chat(
+    // v4 `00c290c9a` (bugs 163/164): the rename goes through the auto-title
+    // chokepoint, which re-reads the chat (a hand rename during the LLM call
+    // still wins), writes only a CHANGED title — the cursor rides along as its
+    // extra patch, so the refused arms still burn the checkpoint — and queues
+    // the story background when the title changed. The removed
+    // `[Title Update] Updated title for chat …` line became the chokepoint's
+    // `[Auto Title] Chat retitled`; the local re-read + `!isHelpChat` enqueue
+    // moved inside it (now gated on the RE-READ row's type). Unlike this
+    // handler's other writes, a chokepoint error FAILS the job — v4's
+    // `applyAutoTitle` has no catch and the handler does not add one. The
+    // outcome is discarded, as v4 discards it.
+    apply_auto_title(
         db,
+        user_id,
         &payload.chat_id,
-        ChatUpdate {
-            title: Some(new_title.clone()),
+        &new_title,
+        Some(&chat_settings),
+        AutoTitleExtraPatch {
             last_rename_check_interchange: Some(payload.current_interchange),
-            updated_at: Some(iso_from_unix_ms(now_ms)),
-            ..Default::default()
         },
+        false,
+        AutoTitleSource::TitleCheck,
+        &iso_from_unix_ms(now_ms),
     )
-    .await;
-
-    // v4 `:224` — the written title, quoted, after the write.
-    tracing::info!(
-        "[Title Update] Updated title for chat {} to: \"{}\"",
-        payload.chat_id,
-        new_title
-    );
-
-    // Story backgrounds run for normal chats only — help chats are skipped here,
-    // autonomous rooms inside the gate.
-    if !is_help_chat {
-        // Re-fetch: the helper must see the freshly written title (the `chat` we
-        // loaded above still carries the old one).
-        let cid = payload.chat_id.clone();
-        if let Ok(Some(updated_chat)) = db.read_main(move |c| chats_read::find_by_id(c, &cid)) {
-            queue_story_background_if_enabled(
-                db,
-                user_id,
-                &updated_chat,
-                Some(&chat_settings),
-                &new_title,
-            )
-            .await;
-        }
-    }
+    .await
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }

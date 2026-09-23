@@ -29,6 +29,13 @@
  * second trim), an overlong title recovered from a near-miss key, and an
  * explicit-null canonical key falling through to a later one.
  *
+ * P4.D215 (v4 `00c290c9a`, bugs 163/164) routes the rename through
+ * `applyAutoTitle` and adds two arms only the chokepoint can produce: a verdict
+ * suggesting the title the chat already has (`unchanged_title` — cursor only,
+ * NO background), and a hand rename made while the LLM call is in flight
+ * (`renamed_mid_flight` — planted by the canned provider through v4's real
+ * `chats.update`, then kept by the chokepoint's post-call re-read).
+ *
  * Seams mocked, and why:
  *   - `createLLMProvider` — the tier-3 model boundary (the Rust side injects the
  *     same canned reply).
@@ -100,7 +107,17 @@ interface CaseSpec {
   providerThrowMessage?: string;
   /** The handler is expected to throw; record the message instead of state. */
   expectThrow?: boolean;
+  /**
+   * P4.D215 (v4 `00c290c9a`, bug 164): the user renames the chat by hand WHILE
+   * the cheap-LLM call is in flight. The canned provider writes the rename
+   * through v4's real `chats.update` before it answers, so the chokepoint's
+   * post-call re-read is the only thing that can see it.
+   */
+  midFlightRename?: boolean;
 }
+
+/** The hand rename `midFlightRename` plants (both sides write these bytes). */
+const MID_FLIGHT_TITLE = 'A Title Chosen Mid-Flight';
 
 function buildCases(): CaseSpec[] {
   return [
@@ -275,6 +292,28 @@ function buildCases(): CaseSpec[] {
     { name: 'all_participants_left', chat: (s) => s.chatAllLeftId },
     // The throwing read.
     { name: 'chat_missing', chat: (s) => s.missingId, expectThrow: true },
+    // ── P4.D215 (v4 `00c290c9a`, bugs 163/164): the job through `applyAutoTitle`.
+    // The verdict suggests the title the chat already has: the chokepoint's
+    // unchanged arm writes ONLY the cursor (its `extraPatch`) and queues NO
+    // background — before the commit the handler wrote the title and queued.
+    {
+      name: 'unchanged_title',
+      chat: (s) => s.chatTitleId,
+      reply: () => ({
+        content: JSON.stringify({
+          needsNewTitle: true,
+          reason: 'the title should say what it already says',
+          suggestedTitle: 'New Chat',
+        }),
+        promptTokens: 40,
+        completionTokens: 9,
+      }),
+    },
+    // A hand rename during the LLM call wins: the chokepoint re-reads the chat
+    // after the call, keeps the user's title, writes only the cursor, queues
+    // nothing. (The up-front `isManuallyRenamed` gate read the chat BEFORE the
+    // rename, so only the re-read can catch it.)
+    { name: 'renamed_mid_flight', chat: (s) => s.chatTitleId, midFlightRename: true },
   ];
 }
 
@@ -302,6 +341,15 @@ function applyMocks(spec: Spec, c: CaseSpec): void {
       createLLMProvider: async () => ({
         sendMessage: async (params: { messages: Array<{ role: string; content: string }> }) => {
           if (c.providerThrows) throw new Error(c.providerThrowMessage ?? 'canned provider failure');
+          if (c.midFlightRename) {
+            // The same registry generation the handler imported (resetModules ran
+            // before it), so this is v4's real repository on the case's DB copy.
+            const { getRepositories } = await import('@/lib/repositories/factory');
+            await getRepositories().chats.update(c.chat(spec), {
+              title: MID_FLIGHT_TITLE,
+              isManuallyRenamed: true,
+            } as never);
+          }
           const system = params.messages.find((m) => m.role === 'system')?.content ?? '';
           const key = keyForSystemPrompt(system);
           const canned = c.reply ? c.reply(key) : spec.cannedTitles[key];
@@ -347,6 +395,31 @@ function applyMocks(spec: Spec, c: CaseSpec): void {
       getApiKeyForCheapLLMSelection: async () => 'canned-test-key',
     };
   });
+}
+
+/**
+ * P4.D215: the committed `cost-background-main.db` predates the two P4.D171
+ * columns (v4 `78b381a96`). The Rust side has always healed its per-case copy
+ * (`test_support::ensure_p4d171_columns`); this side never did, so v4's
+ * `chats.update` — whose `$set` names every Zod-defaulted field — threw
+ * `no such column: cycleOrderParticipantIds` on EVERY chat write, and the
+ * family was red on both pins (19 of 20 rows threw, measured 2026-09-23).
+ * Same DDL as the Rust helpers, on the per-case COPY only — the committed pair
+ * is never widened here (P4.107's list).
+ */
+async function ensureP4d171Columns(
+  rawQuery: (q: string) => Promise<unknown>,
+): Promise<void> {
+  const has = async (table: string, col: string) =>
+    ((await rawQuery(`PRAGMA table_info(${table})`)) as Array<{ name: string }>).some(
+      (c) => c.name === col,
+    );
+  if (!(await has('chats', 'cycleOrderParticipantIds'))) {
+    await rawQuery(`ALTER TABLE "chats" ADD COLUMN "cycleOrderParticipantIds" TEXT DEFAULT '[]'`);
+  }
+  if (!(await has('chat_messages', 'routeTrail'))) {
+    await rawQuery(`ALTER TABLE "chat_messages" ADD COLUMN "routeTrail" TEXT DEFAULT NULL`);
+  }
 }
 
 /** The tier-2 diff surface: what the handler wrote. */
@@ -405,11 +478,12 @@ async function runCase(
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+  await ensureP4d171Columns(rawQuery);
 
   const frozen = spec.frozenNowMs;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
