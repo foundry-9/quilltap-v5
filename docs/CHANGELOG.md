@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(ruling): animated inputs at the blob-write seam are DECLINED at the host codec
+
+_Versions: core 0.0.1002 (a module-doc change only)._
+
+The human's ruling on the divergence P4.104 recorded: the host WebP codec
+encodes a single frame, so an animated GIF or WebP reaching any blob-write
+site lands as a still where v4 keeps every frame. The codec will detect an
+animated input and answer the cannot-transcode arm, so v4's own
+store-original fallback keeps the frames (a D19 divergence on mime and path,
+never a lost frame). Growing the codec through libwebpmux is not taken. The
+detection is the next round's small order; until it lands the still-frame
+behaviour is what ships. Recorded in the seam's module doc, the drift
+ledger's §1, the phase plan's next items, P4.104's header and CLAUDE.md.
+
 #### 2026-09-23 — chore(unify): the `a2db63da7` bug-161/162 drift catch-up + maintenance round (P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥ P4.106) unified — the baseline moves to `a2db63da7`
 
 _Versions: core 0.0.1001, harness 0.0.913, host 0.0.147, web 0.0.176, cli 0.0.27, tauri 0.0.7, fixture-sanitizer 0.0.4, SPA 0.5.748._
