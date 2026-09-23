@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): order the `d1c06cd9d` Scenario Builder drift catch-up + maintenance round (P4.D216 → {P4.D217} ∥ P4.D218 ∥ P4.D219 ∥ P4.111 ∥ P4.112)
+
+_Docs-only change._
+
+Six work orders for v4's Scenario Builder commit plus two maintenance
+lanes, with the drift ledger's two rows marked ORDERED and the phase plan
+carrying the round's section:
+
+- P4.D216 (the keystone): the substrate — the shared one-shot tool loop
+  extracted from the Brahma console, the tool-slate builder's doc-tools
+  mode and extras bag, the stream call's log type, the pre-built mount
+  pool through the tool executor, search, doc-edit and path-resolver
+  readers, and the groups list's membership filter.
+- P4.D217 (stacked on P4.D216): the Scenario Builder service, its three
+  dispatch verbs with frames on the Event channel, the host driver, the
+  SSE edge, and the help tree re-vendored.
+- P4.D218: the SPA dialog, save dialog and the two entry points, beats
+  gated until the server lands.
+- P4.D219: bug 165, the projected scenario id on create.
+- P4.111: the fixture-vintage heal's next ten main files.
+- P4.112: the previous round's review follow-ups.
+
 #### 2026-09-23 — docs(porting): unify the `00c290c9a` bug-163/164 drift catch-up + maintenance round (P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110)
 
 _Versions: core 0.0.1013, harness 0.0.930, host 0.0.149, web 0.0.179._

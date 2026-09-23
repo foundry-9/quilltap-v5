@@ -6628,6 +6628,87 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `d1c06cd9d` Scenario Builder drift catch-up + maintenance round (P4.D216 → {P4.D217} ∥ P4.D218 ∥ P4.D219 ∥ P4.111 ∥ P4.112) — ORDERED 2026-09-23
+
+**Baseline `00c290c9a`; v4 `main` HEAD `d1c06cd9d` (TWO past — `dff00e98d`
+the docs-only handoff spec, `d1c06cd9d` the Scenario Builder: 73 files,
++6,010/−436); `bugfix` `1a2b2164c` and `release` `8fbf2afe0` unmoved; the
+checkout on `main`, CLEAN at the planning probe. PIN REQUIRED: the four
+drift lanes pin the target `d1c06cd9d` and the baseline; the two maintenance
+lanes pin the baseline only. Both §3 rows marked `ORDERED(…)`.**
+
+The largest single v4 feature since FTS, split along the seam v4's own
+hunks draw — the substrate riders on ported surfaces first, then the feature
+as their caller, with the SPA against a pinned contract:
+
+- **P4.D216 — the KEYSTONE (from `main`)**: the Scenario Builder substrate —
+  ONE shared `run_one_shot_tool_loop` (v4's NEW `agent-loop/one-shot-loop.
+  ts`; the Brahma one-shot's inline loop EXTRACTED, its five NEW debug lines
+  + the `turns` field — the ledger row said four; measured five), `build_
+  tools`' `DocToolsMode` (`off`/`read`/`full`) + the `BuildToolsExtras` bag
+  (`pluginToolAllowlist`, `documentsOnlySearch`, `webSearch` narrowing
+  only) + the third `search` variant's catalog bytes, the stream call's
+  `log_type` parameter + `SCENARIO_BUILDER` (v5 hard-codes `CHAT_MESSAGE`
+  at `primary_stream.rs:1028`), the `mount_pool` context through the
+  executor's mutual-exclusion refusal, the search handler, the three
+  doc-edit handler files and the path resolver (P4.D200's covenant
+  surfaces), `groupList { characterIds? }` (no REST edge exists for groups
+  — measured). Every existing caller neutral; every new arm red-first.
+  `docs/developer/porting/work-orders/p4.d216-scenario-builder-substrate.md`.
+- **P4.D217 — STACKED on P4.D216's tip**: the service + verbs + SSE + help —
+  `services/scenario_builder/{request_schema,system_prompt,mount_pool,
+  capabilities,mod}.rs` (the Zod twin producing v4's issue list, the two
+  prompt builders with the clock injected and the `currentScenario`
+  untrimmed asymmetry reproduced, the mount pool over the EXISTING tiered-
+  pool helpers with v4's fail-soft rules, the capabilities probe with
+  `curlConfigured` ALWAYS false — v5 builds no plugin tools, a recorded
+  divergence), the three verbs `scenarioBuilderBuild { runId, body }` /
+  `scenarioBuilderAbort` / `scenarioBuilderCapabilities` with the run
+  registry + abort token, `EventPayload::ScenarioBuilderProgress` frames
+  (the swipe precedent, v4's encoders' bytes), the driver seam composed in
+  the host, `POST /api/v1/scenario-builder?action=build` re-framed as v4's
+  SSE with the refusals as JSON before the stream and disconnect = abort,
+  `help/` 126 → 127; FIVE new families. `docs/developer/porting/work-
+  orders/p4.d217-scenario-builder-service-verbs-sse-help.md`.
+- **P4.D218 — the SPA (from `main`, against §S)**: the Host's dialog + the
+  save dialog + the run state folding frames off the ONE Event channel by a
+  client-minted `runId`, the New Chat and Salon-sidebar entries with v4's
+  pointer-clearing and select-only-if-offered rules, the three log-surface
+  labels, the profile flag coercions; the pure fold measured against v4's
+  real `applyAgentStreamEvent`; beats gated on `P4D217_SERVER_LANDED`. Bug
+  166's modal half NO-COUNTERPART. `docs/developer/porting/work-orders/
+  p4.d218-scenario-builder-spa.md`.
+- **P4.D219 — bug 165 (from `main`)**: `add_scenario` returns the vault-
+  projected item (v5 has the bug verbatim — the minted uuid the vault
+  re-keys); five mirrored planted arms, RED at the target and GREEN at the
+  baseline. `docs/developer/porting/work-orders/p4.d219-bug-165-add-
+  scenario-projected-id.md`.
+- **P4.111 — the fixture-vintage heal, the ten mains (from `main`)**: the
+  list P4.107 measured, widened through v4's own DDL from the baseline pin;
+  eleven reds measured before, green after; no `.rs` edits. `docs/
+  developer/porting/work-orders/p4.111-fixture-vintage-heal-ten-mains.md`.
+- **P4.112 — the review smalls (from `main`, wave 2)**: the job's `missing`
+  arm, ONE capture rig, the dead corpus input, the census per (file,
+  variant), the corrupted-row skip's three Zod shapes, the corrupt-second-
+  frame measurement, the dead reader-side heals over P4.107's five. P4.110's
+  Tier 3 item 7 deliberately NOT taken (its file is recounted by two drift
+  lanes). `docs/developer/porting/work-orders/p4.112-review-smalls-missing-
+  arm-capture-census-skip-alter.md`.
+
+**Shared contract (§S, byte-identical in all six):** §S.1 the three verbs,
+the frame set and the terminal frames (P4.D217 → P4.D218); §S.2 `groupList`'s
+membership filter with the present-but-empty rule (P4.D216 → P4.D218); §S.3
+the projected `scenario.id` (P4.D219 → P4.D218). **Fences:** `api/types.rs`
++ `api/engine.rs` — P4.D216's `GroupList` field only and P4.D217's fenced
+append-only blocks; the dispatch census recounted by BOTH drift lanes
+(base + both at unification). **Execution:** wave 1 = P4.D216 (the most
+capable tier) ∥ P4.D219 ∥ P4.111 ∥ P4.D218 (no cargo); wave 2 = P4.D217
+(stacked, the most capable tier) ∥ P4.112. Cherry-pick order P4.111 →
+P4.D219 → P4.D216 → P4.D217 → P4.D218 → P4.112. **Left out:** the
+`quilltap sync` writer-hold ruling (human), the owed dogfood pass (after
+this round — it gains the Host end to end on the Friday copy), P4.110's
+Tier 3 item 7, the dead heals over P4.111's ten (the next smalls).
+
 ## The `00c290c9a` bug-163/164 drift catch-up + maintenance round (P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110) — UNIFIED 2026-09-23
 
 **ALL FIVE LANDED on main; the oracle baseline MOVES to `00c290c9a`. v4 HEAD
