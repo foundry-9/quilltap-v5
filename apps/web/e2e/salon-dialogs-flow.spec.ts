@@ -167,7 +167,7 @@ const P4D60_CHAT_GET_PROJECTION_LANDED = true;
  * 161, `e7821606f`) does not exist on this lane's branch. FLIPPED at the
  * round's unification (the `a2db63da7` bug-161/162 catch-up round).
  */
-const P4D212_SERVER_LANDED = false;
+const P4D212_SERVER_LANDED = true;
 
 test.describe('P4.9E3C — Rename Chat', () => {
   test('renames through the real chat update, and reverts the automatic-naming tick when the title cannot be generated', async ({
@@ -783,30 +783,22 @@ test.describe('P4.42 — Web search', () => {
 });
 
 /** The three summary columns `chatRebuildSummary` clears, straight off the chat read. */
-async function readSummaryState(
-  page: Page,
-  chatId: string,
-): Promise<{
-  contextSummary: string | null;
-  summaryAnchorMessageIds: unknown;
-  lastSummaryTurn: number | null;
-}> {
+/**
+ * The chat's running summary as the Salon reads it — through `chatGet`, whose
+ * `chat` projection is v4's hand-built object (`handlers/get.ts`): it carries
+ * `contextSummary` and NOT the fold cursor (`summaryAnchorMessageIds`,
+ * `lastSummaryTurn`, `lastFullRebuildTurn`), on either side. The first live run
+ * of this beat asserted the cursor here and read `undefined` — the projection,
+ * not the port. The cursor's clearing (and `lastFullRebuildTurn` staying put) is
+ * proven column-for-column against v4's real route by the server family
+ * `chat_rebuild_summary_equivalence`; this beat proves the SPA's half: the entry,
+ * the confirm, the dispatch, the toast, the summary gone, the job row.
+ */
+async function readContextSummary(page: Page, chatId: string): Promise<string | null> {
   const resp = await page.request.post('/api/dispatch', { data: { type: 'chatGet', chatId } });
   expect(resp.ok(), `chatGet → ${resp.status()}`).toBe(true);
-  const body = (await resp.json()) as {
-    data?: {
-      chat?: {
-        contextSummary?: string | null;
-        summaryAnchorMessageIds?: unknown;
-        lastSummaryTurn?: number | null;
-      };
-    };
-  };
-  return {
-    contextSummary: body.data?.chat?.contextSummary ?? null,
-    summaryAnchorMessageIds: body.data?.chat?.summaryAnchorMessageIds,
-    lastSummaryTurn: body.data?.chat?.lastSummaryTurn ?? null,
-  };
+  const body = (await resp.json()) as { data?: { chat?: { contextSummary?: string | null } } };
+  return body.data?.chat?.contextSummary ?? null;
 }
 
 test.describe('P4.D213 — Rebuild Summary', () => {
@@ -819,20 +811,19 @@ test.describe('P4.D213 — Rebuild Summary', () => {
     const chatId = await openChat(page, 'Solo Voyage');
 
     // Plant a stale summary so the beat proves it CLEARS one rather than
-    // merely reading a chat that already has none.
+    // merely reading a chat that already has none. Only `contextSummary` is
+    // planted: the chat-update bag honours it and silently drops the fold
+    // cursor keys (v4's `updateChatSchema` strips them the same way), so a
+    // cursor plant here would be vacuous.
     const planted = await page.request.post('/api/dispatch', {
       data: {
         type: 'chatUpdate',
         chatId,
-        chat: {
-          contextSummary: 'Stale summary text from a prior fold.',
-          summaryAnchorMessageIds: ['some-message-id'],
-          lastSummaryTurn: 4,
-        },
+        chat: { contextSummary: 'Stale summary text from a prior fold.' },
       },
     });
     expect(planted.ok(), `plant → ${planted.status()}`).toBe(true);
-    expect((await readSummaryState(page, chatId)).contextSummary).toBe(
+    expect(await readContextSummary(page, chatId)).toBe(
       'Stale summary text from a prior fold.',
     );
 
@@ -848,12 +839,12 @@ test.describe('P4.D213 — Rebuild Summary', () => {
     // beat cannot pass by never having been able to rebuild at all.
     page.once('dialog', (d) => void d.dismiss());
     await entry.click();
-    expect((await readSummaryState(page, chatId)).contextSummary).toBe(
+    expect(await readContextSummary(page, chatId)).toBe(
       'Stale summary text from a prior fold.',
     );
 
     // Confirmed: v4's sentence, the dispatch's own jobId, the success toast,
-    // and the cleared columns — read IMMEDIATELY after the toast, before the
+    // and the cleared summary — read IMMEDIATELY after the toast, before the
     // mock LLM's fold cadence can refill anything (the corpus's `CONTEXT_
     // SUMMARY` job runs on the host pump once enqueued).
     let asked = '';
@@ -883,11 +874,7 @@ test.describe('P4.D213 — Rebuild Summary', () => {
       }),
     ).toBeVisible({ timeout: 15_000 });
 
-    expect(await readSummaryState(page, chatId)).toEqual({
-      contextSummary: null,
-      summaryAnchorMessageIds: [],
-      lastSummaryTurn: 0,
-    });
+    expect(await readContextSummary(page, chatId)).toBeNull();
 
     const jobResp = await page.request.post('/api/dispatch', {
       data: { type: 'systemJobGet', jobId },
