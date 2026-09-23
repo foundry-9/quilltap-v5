@@ -7,7 +7,7 @@
  * diff byte-for-byte (including key ORDER: `countsByType`'s insertion order and
  * every result object's literal field order).
  *
- * Case coverage (28): the all-types fan-out (SIX types since `b220999d` + the
+ * Case coverage (28, plus the two P4.109 poisoned-table rows at the end): the all-types fan-out (SIX types since `b220999d` + the
  * sort + the
  * broken-`participant.id` characterNames quirk in BOTH directions + the
  * Untitled-Chat message enrichment), each single-type filter, unknown-type
@@ -123,7 +123,13 @@ const search = async (query: string) => {
 interface CaseSpec {
   name: string;
   run: () => Promise<{ status: number; body: unknown }>;
+  /** P4.109 — rename `chat_messages` away (after the warm-up) before the call. */
+  poison?: boolean;
 }
+
+/** P4.109's plant — byte-identical to the Rust test's (and to the
+ * chats-search / search-replace families'). */
+const POISON_SQL = `ALTER TABLE "chat_messages" RENAME TO "chat_messages_p4105_poisoned"`;
 
 function buildCases(): CaseSpec[] {
   return [
@@ -235,6 +241,17 @@ function buildCases(): CaseSpec[] {
     // The fold map's own astral coverage is `snippet_diacritic_fold`, whose
     // needle (`cafe`) is absent literally and must go through the map.
     { name: 'snippet_astral_offsets', run: () => search('?q=ankara&types=messages') },
+
+    // P4.109 — the poisoned message table (the regression arm P4.105 owed).
+    // `searchMessagesGlobal` is a FALLBACK `safeQuery` (`[]` + ERROR `Failed to
+    // search messages globally`), so the page still answers 200 with every
+    // other type; the messages-only query answers 200 with nothing.
+    { name: 'messages_poisoned_all', run: () => search('?q=airship'), poison: true },
+    {
+      name: 'messages_poisoned_messages',
+      run: () => search('?q=airship&types=messages'),
+      poison: true,
+    },
   ];
 }
 
@@ -261,9 +278,48 @@ async function runCase(
   );
   await initializeDatabase();
 
+  // P4.109 — THE WARM-UP, then the plant, then the log spy. `ChatsRepository`
+  // runs `CREATE TABLE IF NOT EXISTS "chat_messages"` the first time it
+  // touches its messages collection; if any read in the route took that path
+  // after the rename, v4 would answer from a silently re-created EMPTY table
+  // with no error. One read on the route's own repositories first. The spy
+  // records every ERROR/WARN line the route logs (off the `Logger` prototype —
+  // singleton and children alike, before the level check) with the two
+  // context fields the Rust side compares: the proof the arm FIRED.
+  let logs: Array<Record<string, unknown>> | null = null;
+  if (c.poison) {
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    await getRepositories().chats.getMessages('warm-up');
+    const { rawQuery } = await import('@/lib/database/manager');
+    await rawQuery(POISON_SQL);
+    logs = [];
+    const { Logger } = await import('@/lib/logger');
+    for (const level of ['error', 'warn'] as const) {
+      const original = Logger.prototype[level];
+      Logger.prototype[level] = function (
+        this: unknown,
+        message: string,
+        context?: Record<string, unknown>,
+        ...rest: unknown[]
+      ) {
+        const line: Record<string, unknown> = { level, message };
+        for (const key of ['chatId', 'chatCount']) {
+          if (context && key in context) line[key] = context[key];
+        }
+        logs?.push(line);
+        return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+      } as never;
+    }
+  }
+
   try {
     const out = await c.run();
-    return { name: c.name, status: out.status, body: out.body };
+    return {
+      name: c.name,
+      status: out.status,
+      body: out.body,
+      ...(logs ? { logs } : {}),
+    };
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();

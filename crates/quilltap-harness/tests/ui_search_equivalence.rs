@@ -36,7 +36,20 @@
 //!   QT_FIXTURE_UI_SEARCH_MAIN=/tmp/qt-ui-search-fixture/main.db \
 //!   QT_FIXTURE_UI_SEARCH_MOUNT=/tmp/qt-ui-search-fixture/mount.db \
 //!     cargo test -p quilltap-harness --test ui_search_equivalence -- --nocapture
-
+//!
+//! ## The poisoned message table (P4.109 — the regression arm P4.105 owed)
+//!
+//! `messages_poisoned_all` / `messages_poisoned_messages` run on their OWN
+//! copy with `chat_messages` renamed away. v4's `searchMessagesGlobal` is a
+//! FALLBACK `safeQuery` (`[]` + `Failed to search messages globally`), so the
+//! page answers 200 with every other type, and the messages-only query 200
+//! with nothing. GREEN on arrival — P4.105 already swallows — so the proof is
+//! the mutation: reverting `search_messages_global`'s wrap turns BOTH rows red
+//! (`Search failed` 500 where v4 answers 200, and the ERROR line missing).
+//! The oracle warms the route's repositories before the rename and records
+//! the route's ERROR/WARN lines, compared here by level, message and
+//! `chatCount` — v4's backend-level lines dropped by name
+//! ([`UNPORTED_BACKEND_LINES`]).
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -70,8 +83,9 @@ fn env_or_skip(key: &str) -> Option<String> {
 
 /// One Db over a private copy of the /tmp fixture — the whole surface is
 /// read-only, so a single copy serves every case.
-fn fresh_db(main_src: &str, mount_src: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-ui-search-diff-{}", std::process::id()));
+fn fresh_db(main_src: &str, mount_src: &str, tag: &str) -> Db {
+    let scratch =
+        std::env::temp_dir().join(format!("qt-ui-search-diff-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).unwrap();
     let main = scratch.join("main.db");
@@ -211,11 +225,14 @@ fn case_params(name: &str) -> UiSearchParams<'static> {
         // whose prefix is astral. The fold map's astral coverage is
         // `snippet_diacritic_fold`, whose needle is absent literally.
         "snippet_astral_offsets" => p(Some("ankara"), Some("messages"), None, None),
+        // ── The poisoned message table (P4.109) ──
+        "messages_poisoned_all" => p(Some("airship"), None, None, None),
+        "messages_poisoned_messages" => p(Some("airship"), Some("messages"), None, None),
         other => panic!("unknown oracle case {other:?} — regenerate both sides together"),
     }
 }
 
-const EXPECTED_CASES: [&str; 35] = [
+const EXPECTED_CASES: [&str; 37] = [
     "all_types_default",
     "characters_only",
     "chats_and_messages",
@@ -251,7 +268,59 @@ const EXPECTED_CASES: [&str; 35] = [
     "snippet_token_needle",
     "snippet_length_changing_fold",
     "snippet_astral_offsets",
+    "messages_poisoned_all",
+    "messages_poisoned_messages",
 ];
+
+/// P4.109's plant — byte-identical to the oracle case's.
+const POISON_SQL: &str = r#"ALTER TABLE "chat_messages" RENAME TO "chat_messages_p4105_poisoned""#;
+
+/// v4's BACKEND-level ERROR lines (the SQLite backend's own `rawQuery` /
+/// `find` / `findOne` failures, logged beneath the repository) — never ported
+/// (P4.109 Tier 3 item 10, named). Dropped from v4's side of the log
+/// comparison by name, nothing else.
+const UNPORTED_BACKEND_LINES: &[&str] = &["Raw query failed", "SQLite find error", "findOne error"];
+
+/// The poisoned rows' proof the arm FIRED: v4's recorded ERROR/WARN lines
+/// (less [`UNPORTED_BACKEND_LINES`]) against v5's captured ones, by level,
+/// message and the `chatId`/`chatCount` context field.
+fn compare_poisoned_logs(name: &str, want: &Value, got: &[String]) -> Vec<String> {
+    let v4: Vec<&Value> = want["logs"]
+        .as_array()
+        .expect("a poisoned row carries logs")
+        .iter()
+        .filter(|l| !UNPORTED_BACKEND_LINES.contains(&l["message"].as_str().unwrap_or("")))
+        .collect();
+    if !v4.iter().any(|l| l["level"] == "error") {
+        eprintln!("[{name}] v4 logged no repository ERROR — the plant did not bite: {want:?}");
+        return vec![format!("{name}:v4NoErrorLine")];
+    }
+    let v5: Vec<&String> = got
+        .iter()
+        .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+        .collect();
+    if v5.len() != v4.len() {
+        eprintln!("[{name}] LOG COUNT — v4 {v4:?}\n  rust {v5:?}");
+        return vec![format!("{name}:logCount")];
+    }
+    let mut failed = Vec::new();
+    for (w, g) in v4.iter().zip(&v5) {
+        let level = w["level"].as_str().unwrap_or("").to_uppercase();
+        let mut ok = g.starts_with(&format!("{level} quilltap::db"))
+            && g.contains(w["message"].as_str().unwrap_or("\u{0}"));
+        if let Some(chat_id) = w["chatId"].as_str() {
+            ok &= g.contains(&format!("chatId={chat_id}"));
+        }
+        if let Some(n) = w["chatCount"].as_u64() {
+            ok &= g.contains(&format!("chatCount={n}"));
+        }
+        if !ok {
+            eprintln!("[{name}] LOG LINE — v4 {w}\n  rust {g}");
+            failed.push(format!("{name}:logLine"));
+        }
+    }
+    failed
+}
 
 #[test]
 fn ui_search_matches_oracle() {
@@ -376,13 +445,37 @@ fn ui_search_matches_oracle() {
          `50-plans.md` decoy"
     );
 
-    let db = fresh_db(&main_src, &mount_src);
+    let db = fresh_db(&main_src, &mount_src, "shared");
+    // P4.109: the poisoned rows get their OWN copy — the shared one must keep
+    // its message table for every other row.
+    let poisoned_db = fresh_db(&main_src, &mount_src, "poisoned");
+    poisoned_db
+        .write_blocking(|w| {
+            w.main().connection().execute_batch(POISON_SQL)?;
+            Ok(())
+        })
+        .expect("plant the poison");
     let mut failed: Vec<String> = Vec::new();
 
     for name in EXPECTED_CASES {
         let want = &oracle[name];
         let want_status = want["status"].as_u64().unwrap() as u16;
-        let resp = ui_search(&db, &spec.user_id, &case_params(name));
+        let poisoned = want.get("logs").is_some();
+        assert_eq!(
+            poisoned,
+            name.starts_with("messages_poisoned"),
+            "[{name}] only the poisoned rows carry v4's log lines"
+        );
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            ui_search(
+                if poisoned { &poisoned_db } else { &db },
+                &spec.user_id,
+                &case_params(name),
+            )
+        });
+        if poisoned {
+            failed.extend(compare_poisoned_logs(name, want, &lines));
+        }
 
         if (200..300).contains(&want_status) {
             let Response::UiSearch(body) = &resp else {

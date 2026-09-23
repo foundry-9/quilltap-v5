@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(harness): ui-search poisoned-message-table regression arm
+
+_Versions: harness 0.0.917._
+
+`ui_search_equivalence` gains two rows run on their own copy with
+`chat_messages` renamed away: the all-types query and the messages-only query.
+v4 answers 200 for both (the global message search swallows), and so does v5
+since P4.105. The rows compare v4's logged ERROR/WARN lines too. Reverting
+`search_messages_global`'s wrap turns both rows red.
+
 #### 2026-09-23 — fix(db): get_messages skips a corrupted row with v4's WARN instead of failing the whole chat
 
 _Versions: core 0.0.1005, harness 0.0.916._

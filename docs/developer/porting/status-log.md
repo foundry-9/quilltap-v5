@@ -144533,3 +144533,14 @@ committed main in v4, keep going."** Every regen after it came from the
   merge then passes Zod). P4.105's finding 1 named a `WHERE id = ? AND
   chatId = ?` read for this; not in this order's scope.
 
+### Unit 4 — the ui-search regression arm (commit `test(harness): ui-search poisoned-message-table…`) — Tier 1 item 5
+
+- `messages_poisoned_all` (`?q=airship`) + `messages_poisoned_messages`
+  (`?q=airship&types=messages`) on their OWN `fresh_db` copy (the shared one
+  keeps its table; `fresh_db` now takes a tag). The jest oracle warms, plants
+  and records the route's lines. v4: 200 with `types` lacking `messages`
+  (totalCount 10) / 200 empty; lines: `Raw query failed` ×2 (backend), the FTS
+  warn, `Failed to search messages globally {chatCount: 5}`. **No other read
+  in the route touches `chat_messages`** (measured: the recorded lines are the
+  search's alone). GREEN on arrival. `EXPECTED_CASES` 35 → 37.
+
