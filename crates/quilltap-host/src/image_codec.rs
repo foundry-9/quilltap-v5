@@ -59,7 +59,10 @@ use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::{CompressionType, FilterType as PngFilterType, PngEncoder};
 use image::codecs::webp::WebPDecoder;
 use image::imageops::FilterType;
-use image::{AnimationDecoder, DynamicImage, GenericImageView, ImageFormat, ImageReader};
+use image::{
+    AnimationDecoder, DynamicImage, GenericImageView, ImageDecoder, ImageFormat, ImageReader,
+    Limits,
+};
 
 use quilltap_core::files::image_processing::{
     ImageMetadata, ImageTranscoder as ResizeTranscoder, OutputFormat,
@@ -92,18 +95,44 @@ fn decode(bytes: &[u8]) -> Result<DynamicImage, String> {
 /// decoder error: an input this cannot read falls through to [`decode`],
 /// which fails or succeeds exactly as it always did. `take(2)` stops the
 /// count at the answer, so a long animation is never decoded whole.
+///
+/// **Bounded like [`decode`]** (the `00c290c9a` unification's review — the
+/// round's one BLOCKING finding): the animation decoders start with NO
+/// allocation limit (`GifDecoder::new` sets `Limits::no_limits()`; the WebP
+/// frame iterator allocates its whole canvas unchecked, and image-webp caps a
+/// VP8X canvas only at `u32::MAX` pixels), so a few-hundred-byte GIF declaring
+/// a 65535×65535 screen, or a WebP with a ~65535² canvas around two tiny
+/// frames, would have asked for ~17 GB of RGBA per frame here and could
+/// exhaust or abort the process — where `ImageReader::decode` (default
+/// `Limits`, a 512 MiB cap) answers a polite `Err`. So the decoder's
+/// `total_bytes()` is charged against the SAME default limits, exactly as
+/// `ImageReader::decode` charges it, before any frame is decoded, and the GIF
+/// decoder carries them into its frame iterator too. Over the limit →
+/// `false`, and `decode` refuses it exactly as before P4.108; under it, the
+/// input is counted — so a large-but-legal animation is still declined rather
+/// than flattened (charging RGBA where `decode` charges a no-alpha WebP's RGB
+/// would open exactly that gap).
 fn is_multi_frame(bytes: &[u8]) -> bool {
-    fn at_least_two<'a>(frames: image::Frames<'a>) -> bool {
-        frames.take(2).take_while(|f| f.is_ok()).count() >= 2
+    fn at_least_two<'a, D: ImageDecoder + AnimationDecoder<'a>>(decoder: D) -> bool {
+        if Limits::default().reserve(decoder.total_bytes()).is_err() {
+            return false;
+        }
+        decoder
+            .into_frames()
+            .take(2)
+            .take_while(|f| f.is_ok())
+            .count()
+            >= 2
     }
     match image::guess_format(bytes) {
-        Ok(ImageFormat::Gif) => GifDecoder::new(Cursor::new(bytes))
-            .map(|d| at_least_two(d.into_frames()))
-            .unwrap_or(false),
+        Ok(ImageFormat::Gif) => match GifDecoder::new(Cursor::new(bytes)) {
+            Ok(mut d) => d.set_limits(Limits::default()).is_ok() && at_least_two(d),
+            Err(_) => false,
+        },
         // A still WebP reports zero animation frames, so its iterator is
         // empty; the animation bit with ONE `ANMF` counts one.
         Ok(ImageFormat::WebP) => WebPDecoder::new(Cursor::new(bytes))
-            .map(|d| at_least_two(d.into_frames()))
+            .map(at_least_two)
             .unwrap_or(false),
         _ => false,
     }
@@ -776,6 +805,58 @@ mod tests {
         assert!(!is_multi_frame(&noise_webp(8, 8)));
         assert!(!is_multi_frame(b"GIF89a truncated"));
         assert!(!is_multi_frame(b"not an image"));
+    }
+
+    /// The `00c290c9a` unification's review (BLOCKING, fixed): a tiny
+    /// animated input DECLARING a huge canvas must not reach an unbounded
+    /// allocation in the frame counter (the real exposure is ~17 GB of RGBA
+    /// per frame — a 65535² canvas). The committed two-frame fixtures with
+    /// only their canvas patched, around the same tiny frames, pin the bound
+    /// on BOTH sides of `decode`'s own 512 MiB charge:
+    /// - 14000×14000 (GIF RGBA 784 MB; the no-alpha WebP RGB 588 MB — both
+    ///   over): answered `false`, and both animated seams refuse through
+    ///   `decode` rather than being counted and declined;
+    /// - a 12000×12000 no-alpha WebP (RGB 432 MB — UNDER `decode`'s charge):
+    ///   still counted and declined, so the bound never flattens an animation
+    ///   `decode` would accept (the review's own first fix charged RGBA and
+    ///   let this one through to `decode` as a still).
+    ///
+    /// Red-first: with the charge disabled, the 14000² WebP allocated its two
+    /// frames, was counted, and declined with the RULING.
+    #[test]
+    fn a_huge_declared_canvas_is_bounded_like_decode() {
+        fn gif_canvas(side: u16) -> Vec<u8> {
+            let mut gif = anim_fixture("anim-2frame.gif");
+            let [lo, hi] = side.to_le_bytes();
+            gif[6..10].copy_from_slice(&[lo, hi, lo, hi]);
+            gif
+        }
+        // The VP8X canvas stores width-1 and height-1 as u24 LE.
+        fn webp_canvas(side: u32) -> Vec<u8> {
+            let mut webp = anim_fixture("anim-2frame.webp");
+            assert_eq!(&webp[12..16], b"VP8X");
+            let [a, b, c, _] = (side - 1).to_le_bytes();
+            webp[24..30].copy_from_slice(&[a, b, c, a, b, c]);
+            webp
+        }
+        let codec = HostImageCodec;
+        for (name, bytes) in [("gif", gif_canvas(14000)), ("webp", webp_canvas(14000))] {
+            assert!(
+                !is_multi_frame(&bytes),
+                "{name}: over decode's limit is not counted"
+            );
+            let e = PixelCodec::encode_webp(&codec, &bytes, 85, Some(4), true).unwrap_err();
+            assert_ne!(
+                e, ANIMATED_DECLINED,
+                "{name}: refused by decode, not declined"
+            );
+            let e = BlobWebpTranscoder::encode_webp(&codec, &bytes, 85).unwrap_err();
+            assert_ne!(e, ANIMATED_DECLINED, "{name}");
+        }
+        assert!(
+            is_multi_frame(&webp_canvas(12000)),
+            "a no-alpha WebP decode would accept is still counted"
+        );
     }
 
     /// P4.108 Tier-1 item 3 — the two ANIMATED seams decline a multi-frame

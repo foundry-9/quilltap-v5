@@ -456,7 +456,10 @@ fn normalize_link_blob_image_matches_oracle() {
          alone) — decision, mime, path, name, size direction and decoded dimensions — and \
          diverged as RULED on the {} animated-decline rows.",
         CASES.len() - RULED_ANIMATED_DECLINE.len(),
-        CASES.len() - changed,
+        // Left alone AMONG the matched rows: v5 leaves the ruled rows alone
+        // too, so they come off this count as well as off the total (the
+        // `00c290c9a` unification's review — "9 + 7" of 14 did not add up).
+        CASES.len() - changed - RULED_ANIMATED_DECLINE.len(),
         RULED_ANIMATED_DECLINE.len()
     );
 }
