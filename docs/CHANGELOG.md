@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — fix(fixtures): P4.103 widens six committed test-fixture pairs to v4's current column vintage, closing seven standing differential reds
+
+_Versions: web 0.0.171._
+
+Six committed `.db` pairs under `crates/quilltap-web/tests/fixtures/`
+(`subprompts-*`, `chat-delete-*`, `character-generators-*`, `chat-dialogs-*`,
+`profile-*`, `groups-projects-*`) predated v4's `cycleOrderParticipantIds` /
+`transcriptVersion` / `routeTrail` / `generationKey` columns, standing red on
+seven differential families (`subprompts_routes`, `subprompts_prompt_tier2`,
+`chat_delete`, `character_wizard_tier3`, `search_replace`, `profile_routes`,
+`projects_routes`). Widened in place through v4's own migration ALTER
+statements (`migrate-memories-fixture-columns.ts`, run from a v4 worktree
+pinned at the oracle baseline `f45a517a9`) — no cell re-encoded, only columns
+added. All seven reds confirmed RED-FIRST on the un-widened pairs (pre-fix
+counts recorded), then GREEN after the widen; every other reader of the six
+pairs re-run (22 families, four `quilltap-web` route suites, five Playwright
+specs), all green. `chat-compressed-main.db` widened the same way for its
+`transcriptVersion` gap; `chat-compressed-mount.db` rebuilt from its builder
+at the same pin (the one rebuild this round permits — an empty mount-index
+schema carries no cell to re-encode) and reproduced byte-identical (still
+0 bytes); its three sidecar `.meta.json` files rewritten to describe the
+healed state. `chat-delete-llmlogs.db` and `chat-compressed-llmlogs.db` each
+gained their `idx_llm_logs_connectionProfileId`/`imageProfileId` indexes
+(the columns were already present). A compressed `llm_logs` row planted into
+`inspector-llm.db` (through v4's real repository, main/mount left untouched)
+proves the read marshal over a compressed cell on that surface too. Two
+pre-existing, unrelated reds surfaced during the re-run and are recorded but
+not fixed here (out of this order's ownership): `ai_import_tier3_equivalence`
+carries a stale hardcoded `V4_APP_VERSION` constant several versions behind
+the pin, and `llm_logs_routes_equivalence` fails four `list_by_chat*` cases
+because `inspector-main.db` — a different, untouched pair — lags the same
+class of columns. Mutation proof: reverting the widened `subprompts-*.db`
+pair via `git checkout` reddens `subprompts_prompt_tier2_equivalence`;
+restoring it greens again.
 #### 2026-09-22 — docs(porting): P4.D214 lane gate record
 
 _Docs-only change._

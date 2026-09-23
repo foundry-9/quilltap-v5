@@ -1,0 +1,79 @@
+{
+  "order": "P4.103 — the fixture-vintage heal",
+  "v4_pin": "f45a517a9",
+  "pin_path": "/tmp/qt-v4-pin-p4103-f45a517a9",
+  "date": "2026-09-22",
+  "seven_reds_pre_widen": {
+    "subprompts_routes_equivalence": { "status": "run_failed", "mismatched_cases": 7 },
+    "subprompts_prompt_tier2_equivalence": { "status": "run_failed", "cause": "no such column: cycleOrderParticipantIds" },
+    "chat_delete_equivalence": { "status": "run_failed", "cases_failed": 30 },
+    "character_wizard_tier3_equivalence": { "status": "run_failed", "cases_differ": 10, "of_cases": 37 },
+    "search_replace_equivalence": { "status": "run_failed", "cause": "no such column: cycleOrderParticipantIds" },
+    "profile_routes_equivalence": { "status": "run_failed", "cases_failed": 4, "of_cases": 18 },
+    "projects_routes_equivalence": { "status": "run_failed", "cases_failed": 17 }
+  },
+  "seven_reds_post_widen": {
+    "subprompts_routes_equivalence": "ok",
+    "subprompts_prompt_tier2_equivalence": "ok",
+    "chat_delete_equivalence": "ok",
+    "character_wizard_tier3_equivalence": "ok",
+    "search_replace_equivalence": "ok",
+    "profile_routes_equivalence": "ok",
+    "projects_routes_equivalence": "ok"
+  },
+  "every_other_reader_post_widen": {
+    "subprompts_storage_tier2_equivalence": "ok",
+    "ai_import_tier3_equivalence": "run_failed (NEW FINDING, unrelated: stale hardcoded V4_APP_VERSION='4.10.0-dev.5' constant in the test file vs the f45a517a9 pin's '4.10.0-dev.61' — pre-existing, reproducible on unwidened main too)",
+    "character_optimizer_tier3_equivalence": "ok",
+    "chat_export_equivalence": "ok",
+    "message_reattribute_equivalence": "ok (transiently false-red mid-lane from a clobbered shared /tmp/oracle-message-reattribute.ndjson path — a sibling lane in this round shares the non-lane-unique recipe output path; re-verified green from a lane-private regen, twice)",
+    "outfit_llm_choose_tier3_equivalence": "ok",
+    "tools_inventory_equivalence": "ok",
+    "groups_routes_equivalence": "ok",
+    "image_profiles_routes_equivalence": "ok",
+    "mount_points_routes_equivalence": "ok",
+    "roleplay_templates_routes_equivalence": "ok",
+    "scenarios_routes_equivalence": "ok",
+    "compressed_collect_equivalence": "ok (run manually — the sweep driver refused it 'stale_v4_pin_path' over its own hardcoded /tmp/qt-v4-pin-p4d203-f45a517a9 header path, same v4 sha as this lane's pin)",
+    "llm_logs_routes_equivalence": "run_failed (NEW FINDING, unrelated: inspector-main.db lags the SAME fixture-vintage columns as the six pairs this order widens, but inspector-main/mount/nostore-main.db are explicitly OUT OF SCOPE for P4.103 — only inspector-llm.db is owned, conditionally, for Tier 2 item 6. Four list_by_chat* cases 500 on 'no such column' reads against the un-widened inspector-main.db; unrelated to any pair P4.103 touches.)"
+  },
+  "web_route_suites": {
+    "subprompts_web_routes": "ok",
+    "characters_generators_routes": "ok",
+    "generators_wizard_routes": "ok",
+    "profile_web_routes": "ok"
+  },
+  "playwright_specs": {
+    "projects-flow.spec.ts": "5/5 passed",
+    "scenarios-flow.spec.ts": "2/2 passed",
+    "settings-flow.spec.ts": "8/8 passed",
+    "toast-open-rows-flow.spec.ts": "3/3 passed",
+    "groups-flow.spec.ts": "4/4 passed"
+  },
+  "tier2_item6_inspector_llm_plant": {
+    "status": "landed",
+    "row_id": "e0000000-0000-4000-8000-00000000000f",
+    "bytes_before": 36864,
+    "bytes_after": 40960,
+    "method": "planted via v4's real LLMLogsRepository.create() at the pin, SQLITE_LLM_LOGS_PATH pointed at the committed inspector-llm.db in place, SQLITE_PATH/SQLITE_MOUNT_INDEX_PATH pointed at disposable scratch — main/mount never touched",
+    "proof": "list_recent_default and its seven siblings all OK (70 objects, up from 65) — the compressed cell round-trips; the pre-existing list_by_chat* reds are untouched by the plant"
+  },
+  "tier2_item7_llmlogs_partitions": {
+    "chat-delete-llmlogs.db": "already had connectionProfileId/imageProfileId columns; gained their indexes (28672 -> 36864 bytes)",
+    "chat-compressed-llmlogs.db": "same: already had the columns; gained the indexes (28672 -> 36864 bytes)"
+  },
+  "workspace_gate_final": {
+    "binaries_ok": 610,
+    "binaries_failed": 2,
+    "failed": ["ai_import_tier3_equivalence (pre-existing, unrelated)", "llm_logs_routes_equivalence (pre-existing, unrelated)"],
+    "exit_code": 101,
+    "note": "the two failures are the NEW findings above, confirmed unrelated to this order's widen and out of P4.103's ownership"
+  },
+  "mutation_proof": {
+    "pair": "subprompts-{main,mount}.db",
+    "family": "subprompts_prompt_tier2_equivalence",
+    "revert_method": "git checkout -- <fixture>.db (authorized exception — the pair is the artifact)",
+    "reverted_result": "FAILED — no such column: cycleOrderParticipantIds",
+    "restored_result": "ok"
+  }
+}

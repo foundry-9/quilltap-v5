@@ -214,6 +214,29 @@
  *
  * ⚠ Applying (not `--report-only`) leaves a `<fixture>.db-journal` beside each
  * widened file — delete it; it is not part of the fixture.
+ *
+ * The six P4.103 fixture-vintage-heal pairs (widened in place 2026-09-22 at
+ * v4 `f45a517a9` — the seven standing reds this closes are named in
+ * `docs/developer/porting/work-orders/p4.103-fixture-vintage-heal.md`; no
+ * index-gating surprises this time, every partition already carried its
+ * indexes or gained them alongside its columns in one pass):
+ *   F=$W/crates/quilltap-web/tests/fixtures
+ *   $N/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+ *     $F/subprompts-main.db $F/subprompts-mount.db \
+ *     $F/chat-delete-main.db $F/chat-delete-mount.db $F/chat-delete-llmlogs.db \
+ *     $F/character-generators-main.db $F/character-generators-mount.db \
+ *     $F/chat-dialogs-main.db $F/chat-dialogs-mount.db \
+ *     $F/profile-main.db $F/profile-mount.db \
+ *     $F/groups-projects-main.db $F/groups-projects-mount.db \
+ *     $F/chat-compressed-main.db
+ *   (run a second time, alone, for the llm-logs partition P4.103 also
+ *   widened for its indexes — already current on columns, gained
+ *   idx_llm_logs_connectionProfileId/imageProfileId on this pass — Tier 2
+ *   item 7: `$F/chat-compressed-llmlogs.db`; `chat-delete-llmlogs.db` above
+ *   got the same treatment in its own pass)
+ *   (every mount partition reports "already current"; `chat-compressed-
+ *   mount.db` is not in this list — it is the ONE rebuild the round
+ *   authorizes, from `build-chat-compressed-fixture.ts`, not this script)
  */
 
 import { createRequire } from 'node:module';

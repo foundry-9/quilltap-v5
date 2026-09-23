@@ -142162,3 +142162,221 @@ ONE logged chain (`/tmp/p4d214/gate-16dc14c0.log`):
 - For the unifier: nothing outside `crates/quilltap-cli/**` + the two
   append-only files + the two order headers (this order's, and P4.D210's
   one sentence). cli 0.0.25 → 0.0.27 (two bumps). No other crate bumped.
+## P4.103 — the fixture-vintage heal (lane, 2026-09-22, `claude/fixture-vintage-heal-workorder-91f4b5`)
+
+**Order:** `docs/developer/porting/work-orders/p4.103-fixture-vintage-heal.md`
+(part of the `a2db63da7` round: P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥
+P4.104 ∥ P4.105 ∥ P4.106). Pin: `/tmp/qt-v4-pin-p4103-f45a517a9` (the
+oracle BASELINE, `f45a517a9` — maintenance lanes pin the baseline only).
+§R.2 freshness probe PASSED at lane start (branch `main`, HEAD
+`a2db63da7`, both logs empty, tree clean).
+
+### Tier 1 — landed whole
+
+1. **`--report-only` BEFORE**, all six pairs + `chat-compressed-main.db`:
+   every gap matched the survey exactly (`subprompts-main` +3 cols,
+   `chat-delete-main` +5, `character-generators-main` +4,
+   `chat-dialogs-main` +8, `profile-main` +1, `groups-projects-main` +7,
+   `chat-compressed-main` +1 `transcriptVersion`; every mount partition
+   already current).
+2. **The widen**, one migrator run over all fourteen targets from the pin;
+   zero `.db-journal` residue (better-sqlite3 cleaned up on commit, no
+   crash). `--report-only` AFTER: every target "already current".
+   `PRAGMA integrity_check` on all fifteen touched files (the fourteen +
+   `chat-compressed-llmlogs.db`, widened separately for Tier 2 item 7):
+   **all "ok"**.
+3. **The seven reds, RED-FIRST then GREEN** (pre-fix counts, the
+   measurement the heal is for):
+
+   | family | pre-widen | post-widen |
+   |---|---|---|
+   | `subprompts_routes_equivalence` | 7 mismatched cases | ok |
+   | `subprompts_prompt_tier2_equivalence` | 1/1 failed (`no such column: cycleOrderParticipantIds`) | ok |
+   | `chat_delete_equivalence` | 30 case(s) failed | ok |
+   | `character_wizard_tier3_equivalence` | 10/37 cases DIFFER (`no such column: generationKey`) | ok |
+   | `search_replace_equivalence` | 1/1 failed (`no such column: cycleOrderParticipantIds`) | ok |
+   | `profile_routes_equivalence` | 4/18 cases (`patch_avatar_*`, `no such column: generationKey`) | ok |
+   | `projects_routes_equivalence` | 17 cases failed | ok |
+
+4. **Every other reader re-run from the pin** (the 22-family sweep, the
+   four `quilltap-web` route suites, the five Playwright specs) — all
+   green, with two NEW findings surfaced (below, neither this lane's to
+   fix; neither caused by this widen).
+5. **The `chat-compressed` triple**: `chat-compressed-main.db` widened
+   (`+chats.transcriptVersion`); `chat-compressed-mount.db` REBUILT from
+   `build-chat-compressed-fixture.ts` at the SAME pin (`QT_FIXTURE_CZ_MAIN`
+   / `_LLM` pointed at disposable scratch so only the mount partition
+   touched the committed file) — reproduced **byte-identical, still 0
+   bytes** (an empty mount-index schema carries no cell to re-encode, so
+   the "rebuild" the round permits changed nothing observable); all three
+   `.meta.json` sidecars rewritten to describe the healed state and kept
+   byte-identical to each other (md5 `6970900c84d3d678938ed4450831e41f`
+   all three). `compressed_collect_equivalence` re-run manually (the sweep
+   driver refused it `stale_v4_pin_path` over its own header's hardcoded
+   `/tmp/qt-v4-pin-p4d203-f45a517a9` — the SAME v4 sha as this lane's pin,
+   just a different lane's path; ran the recipe by hand): **ok**.
+
+### Tier 2 — landed
+
+6. **`inspector-llm.db`'s compressed row**: `build-inspector-fixture.ts`
+   rebuilds all four files together from scratch, which this order
+   forbids (a rebuild re-encodes the OTHER partitions' cells too). Instead:
+   a standalone script opened the llm-logs partition of the COMMITTED
+   `inspector-llm.db` in place (via `SQLITE_LLM_LOGS_PATH`), with
+   `SQLITE_PATH`/`SQLITE_MOUNT_INDEX_PATH` pointed at disposable scratch,
+   and inserted ONE row through v4's real `LLMLogsRepository.create()`
+   (`type: SUMMARIZATION`, standalone — no message/chat/character link, so
+   only the unfiltered `list_recent*` cases see it) with request/response
+   text well over the 512-byte compression floor. File: 36,864 → 40,960
+   bytes; `PRAGMA integrity_check` ok. `llm_logs_routes_equivalence`
+   re-run: `list_recent_default` and its seven `list_recent*` siblings all
+   **OK** (65 → 70 objects in the key-order check) — the compressed-cell
+   read marshal is proven on the inspector surface. The family's own
+   OTHER four cases (`list_by_chat*`) are unaffected by the plant and stay
+   red for the unrelated reason below (finding, not this lane's).
+7. **The `llm_logs` partition indexes**: `chat-delete-llmlogs.db` and
+   `chat-compressed-llmlogs.db` both already had
+   `connectionProfileId`/`imageProfileId` (P4.D49) but were missing their
+   `idx_llm_logs_*` indexes — the migrator's `extraSql` loop runs
+   unconditionally per table (v4-faithful; see the script's own comment).
+   Both gained the indexes (28,672 → 36,864 bytes each); included in the
+   Tier 1 widen run / a follow-up pass.
+
+### Tier 3 — deferrals, as ordered
+
+8. No pair rebuilt bar `chat-compressed-mount.db` (recorded above as
+   "widened, not rebuilt — cells untouched" for the other five; the mount
+   file's rebuild changed nothing observable).
+9. `chat_delete_equivalence.rs:160`'s `ensure_p4d171_columns` call and
+   `chat_export_equivalence.rs:77,81`'s two `ensure_*` calls are LEFT IN
+   PLACE — now dead on the widened committed pair (idempotent no-ops),
+   confirmed by both families passing green with them still present.
+
+### Two NEW findings (surfaced by the full re-run, NEITHER caused by this
+widen, NEITHER this lane's to fix — recorded for the unifier / next order)
+
+- **`ai_import_tier3_equivalence`**: `crates/quilltap-harness/tests/
+  ai_import_tier3_equivalence.rs:115` hardcodes
+  `const V4_APP_VERSION: &str = "4.10.0-dev.5"`; the pin's real stamp is
+  `4.10.0-dev.61` (56 versions later). The family aborts on the first
+  `assert_eq!` over the manifest's `appVersion` field before any real
+  comparison runs. Reproducible on an UNTOUCHED `character-generators-*`
+  pair too (the appVersion mismatch fires before any schema-dependent
+  read). Fix: bump the constant (a one-line `.rs` edit, out of P4.103's
+  ownership — fixtures only).
+- **`llm_logs_routes_equivalence`**: four `list_by_chat*` cases 500 with
+  `no such column` reads against `inspector-main.db`, which lags the SAME
+  class of columns (`cycleOrderParticipantIds`, `routeTrail`,
+  `transcriptVersion`, the three `characters.archive*` columns, the
+  `connection_profiles` fallback trio) the six P4.103 pairs just closed —
+  but `inspector-{main,mount,nostore-main}.db` are explicitly OUT OF
+  SCOPE for this order (only `inspector-llm.db` is owned, conditionally,
+  for Tier 2 item 6). `--report-only` on the triple: `inspector-main.db`
+  needs NINE columns, `inspector-nostore-main.db` the same nine (it is a
+  byte-copy of main), `inspector-mount.db` and `inspector-llm.db` already
+  current. A future order should widen this pair the same way; it is a
+  clean instance of the SAME defect class, no schema surprises expected.
+
+### A shared-`/tmp` collision, caught and corrected (worth its own line)
+
+`message_reattribute_equivalence` reported `ok` in the atomic 22-family
+sweep (regen immediately followed by compare), then FAILED when its
+cached `/tmp/oracle-message-reattribute.ndjson` was reused minutes later
+in a separate `cargo test --workspace` invocation — GOT 200 where the
+file now said WANT 500 on `reattribute_with_memories`/`reattribute_no_
+memories`. The recipe's output path is NOT lane-unique
+(`QT_ORACLE_OUT=/tmp/oracle-message-reattribute.ndjson`, fixed in the
+`.ts` header), and this round runs seven concurrent lanes — a sibling
+almost certainly regenerated the same family against a DIFFERENT (older
+or different-pin) `chat-dialogs-main.db` in the gap. Re-derived fresh into
+a lane-private scratch path, isolated from every other lane: **ok**, both
+via the sweep driver's own atomic run and a from-scratch regen. All 22
+families' oracle NDJSON snapshotted into a lane-private directory before
+the final `cargo test --workspace` gate to close the window. Also found:
+`llm_logs_routes_equivalence`'s real env var is `QT_ORACLE_LLM_LOGS_
+ROUTES`, not `QT_ORACLE_LLM_LOGS` — the file's own header carries an
+explicit ⚠ about this that a plain grep for `QT_ORACLE_[A-Z0-9_]+` walked
+past (multiple string literals in one file, `sort -u` picked the wrong
+one). Fixed before the final gate run; the family then ran for real
+(previously silently `SKIP`ped) and reproduced its true, unrelated red.
+
+### Regen recipes AS RUN
+
+```
+PIN=/tmp/qt-v4-pin-p4103-f45a517a9 ; N=~/.nvm/versions/node/v24.13.1/bin
+V5W=<this worktree> ; F=$V5W/crates/quilltap-web/tests/fixtures
+
+# the widen (report-only before, apply, report-only after, integrity check)
+cd "$PIN" && $N/node --import tsx $V5W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+  $F/subprompts-main.db $F/subprompts-mount.db \
+  $F/chat-delete-main.db $F/chat-delete-mount.db $F/chat-delete-llmlogs.db \
+  $F/character-generators-main.db $F/character-generators-mount.db \
+  $F/chat-dialogs-main.db $F/chat-dialogs-mount.db \
+  $F/profile-main.db $F/profile-mount.db \
+  $F/groups-projects-main.db $F/groups-projects-mount.db \
+  $F/chat-compressed-main.db
+cd "$PIN" && $N/node --import tsx $V5W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+  $F/chat-compressed-llmlogs.db   # Tier 2 item 7, its own pass
+
+# every family + web suite, through the sanctioned driver, at the pin
+python3 harness/tools/recipe_sweep.py --run-all --v4 "$PIN" --v5w "$V5W" \
+  --families subprompts_routes_equivalence,subprompts_storage_tier2_equivalence,\
+subprompts_prompt_tier2_equivalence,chat_delete_equivalence,ai_import_tier3_equivalence,\
+character_wizard_tier3_equivalence,character_optimizer_tier3_equivalence,chat_export_equivalence,\
+message_reattribute_equivalence,outfit_llm_choose_tier3_equivalence,search_replace_equivalence,\
+tools_inventory_equivalence,profile_routes_equivalence,groups_routes_equivalence,\
+image_profiles_routes_equivalence,mount_points_routes_equivalence,projects_routes_equivalence,\
+roleplay_templates_routes_equivalence,scenarios_routes_equivalence,compressed_collect_equivalence,\
+llm_logs_routes_equivalence,image_aesthetics_routes_equivalence
+cargo test -p quilltap-web --test subprompts_web_routes --test characters_generators_routes \
+  --test generators_wizard_routes --test profile_web_routes -- --nocapture
+
+# the chat-compressed-mount.db rebuild (the ONE rebuild this round permits)
+cd "$PIN" && QT_FIXTURE_CZ_MAIN=<scratch> QT_FIXTURE_CZ_MOUNT=$F/chat-compressed-mount.db \
+  QT_FIXTURE_CZ_LLM=<scratch> $N/npx tsx $V5W/harness/oracle/fixtures/build-chat-compressed-fixture.ts
+
+# the five Playwright specs, one at a time (port 4319 is repo-wide)
+cd apps/web && npx playwright test e2e/projects-flow.spec.ts
+cd apps/web && npx playwright test e2e/scenarios-flow.spec.ts
+cd apps/web && npx playwright test e2e/settings-flow.spec.ts
+cd apps/web && npx playwright test e2e/toast-open-rows-flow.spec.ts
+cd apps/web && npx playwright test e2e/groups-flow.spec.ts
+```
+
+### Mutation proof
+
+`subprompts-{main,mount}.db` reverted via `git checkout` (the authorized
+exception — the pair is the artifact, not source) →
+`subprompts_prompt_tier2_equivalence` reddens (`no such column:
+cycleOrderParticipantIds`) → restored from a pre-revert backup → greens
+again.
+
+### §5 The gate
+
+- `cargo fmt --all --check` clean (no `.rs` file touched by this lane).
+- `cargo clippy --workspace --all-targets -- -D warnings` clean in BOTH
+  feature sets (default; `--features quilltap-core/native-transport`).
+- `cargo build --workspace --release` clean (6m 12s cold).
+- `cargo test --workspace --no-fail-fast` with the lane's 22-family
+  env block, lane-private oracle paths: **610 test binaries ok, 2
+  failed** (`ai_import_tier3_equivalence`, `llm_logs_routes_equivalence`
+  — both the NEW findings above, confirmed pre-existing and unrelated).
+- SPA: `npm ci` + `npm run build` clean (needed fresh — this worktree had
+  no `apps/web/node_modules`); the five named Playwright specs green
+  (22/22 tests) against the release binary.
+- `PRAGMA integrity_check`: "ok" on every one of the fifteen touched `.db`
+  files.
+
+### §6 Versions
+
+web 0.0.171 (the fixtures live under `crates/quilltap-web/tests/
+fixtures/`). core, harness, host, cli, fixture-sanitizer, tauri, SPA:
+unchanged (no source in those crates moved).
+
+### §7 Onward
+
+The seven fixture-vintage reds this round names are CLOSED. Open for a
+future order: the `inspector-{main,mount,nostore-main}.db` widen (the
+SAME column gap, a clean repeat of this order's method — no surprises
+expected); `ai_import_tier3_equivalence`'s stale `V4_APP_VERSION`
+constant (a one-line fix). Both recorded above with exact evidence.
