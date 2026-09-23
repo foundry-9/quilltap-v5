@@ -472,12 +472,77 @@ fn characters_subresources_match_oracle() {
         check("scenario_update_null_archived", r, &mut failed);
     }
 
+    // ── [P4.D219 / v4 `d1c06cd9d`, bug 165] the create route's `{ scenario }`
+    // reply carries the id a LATER READ will show. Every other row here blanks
+    // the item `id` (`strip_subitem_ts`) — which is exactly why this family could
+    // never see the bug: v4 and v5 both handed back the minted transient the
+    // vault re-keys away. This row keeps the id: Aria's vault lives in the
+    // committed pair with a BAKED mount id, and a projected id is
+    // `stableUuidFromString("scenario:<mount>:<path>")` — deterministic, so it
+    // compares literally and is NOT a minted value to remap. Only the item's
+    // timestamps (minted by the document write) are blanked. The round trip:
+    // the returned id must be LISTED in the character's readback, on both sides.
+    {
+        let db = fresh_db(&spec, "sc_proj");
+        let r = rt.block_on(characters::character_scenario_create(
+            &db,
+            &uid,
+            ARIA,
+            "Dusk Bell",
+            "The bell tolls at dusk.",
+            &None,
+        ));
+        let row = "scenario_create_projected_id";
+        let listed = |id: &Value, character: &Value| -> bool {
+            character
+                .get("scenarios")
+                .and_then(Value::as_array)
+                .is_some_and(|ss| ss.iter().any(|s| s.get("id") == Some(id)))
+        };
+        // A LISTED id is kept literally; an unlisted one is the minted transient
+        // (a random uuid on each side — what both v4 at the baseline pin and
+        // unported v5 return) and becomes `<unlisted>`, so the baseline-pin run
+        // compares too.
+        let keep_id = |body: &Value, character: &Value| -> (Value, bool) {
+            let mut b = body.clone();
+            let is_listed = listed(&b["scenario"]["id"], character);
+            if let Some(item) = b.get_mut("scenario").and_then(Value::as_object_mut) {
+                for f in ["createdAt", "updatedAt"] {
+                    if item.contains_key(f) {
+                        item.insert(f.into(), Value::String(format!("<{f}>")));
+                    }
+                }
+                if !is_listed {
+                    item.insert("id".into(), Value::String("<unlisted>".into()));
+                }
+            }
+            (b, is_listed)
+        };
+        let rb = response_data(&characters::character_get(&db, &uid, ARIA));
+        let (got, got_listed) = keep_id(&response_data(&r), &rb["character"]);
+        let (want, want_listed) = keep_id(
+            &oracle[row]["body"],
+            &oracle[row]["readback"]["body"]["character"],
+        );
+        if norm(&got) != norm(&want) || got_listed != want_listed {
+            eprintln!(
+                "[{row}] MISMATCH (listed rust={got_listed} oracle={want_listed}):\n  GOT : {}\n  WANT: {}",
+                norm(&got),
+                norm(&want)
+            );
+            failed.push(row.to_string());
+        } else {
+            eprintln!("[{row}] OK (listed={got_listed}).");
+        }
+    }
+
     // Every oracle row must have been DRIVEN — a case added to the corpus and
     // not to this list would otherwise pass in silence.
-    // 16 before P4.D201; +1 for `prompt_update_promotes` (v4 `baa85e19b`).
+    // 16 before P4.D201; +1 for `prompt_update_promotes` (v4 `baa85e19b`);
+    // +1 for `scenario_create_projected_id` (P4.D219, v4 `d1c06cd9d`) = 18.
     assert_eq!(
         oracle.len(),
-        17,
+        18,
         "the shared corpus grew; add the new case(s) to this list"
     );
     assert!(

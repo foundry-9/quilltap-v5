@@ -145362,3 +145362,163 @@ plants (fixed under the human's ruling, item 3); (c) the reader list was 26
 families, including `mount_refresh` and `inform_drop_lives_on_the_action`,
 which P4.107's table counted under different pairs, and the system-data
 row's eleven readers (`title_update_tier3` sits under cost-background).
+
+## P4.D219 — bug 165: `add_scenario` returns the vault-projected scenario (lane record, 2026-09-23)
+
+Branch `claude/scenario-projected-id-work-order-d9e1cb` (cut from `main`
+`602c5f87`). Order: `work-orders/p4.d219-bug-165-add-scenario-projected-id.md`.
+§R.2 probe PASSED at lane start and before each regen batch (v4 `main` at
+`d1c06cd9d`, tree clean, both logs empty). Pins (lane-unique, verified by
+`rev-parse` + `ls -ld`): TARGET `/tmp/qt-v4-pin-p4d219-d1c06cd9d`, BASELINE
+`/tmp/qt-v4-pin-p4d219-00c290c9a`.
+
+### The unit
+
+`db/vault_character_arrays.rs` `add_scenario` transcribes v4's `d1c06cd9d`
+hunk (`characters.repository.ts` `addScenario`): the overlay-applying
+`find_by_id` pre-read and its id set, the UNCHANGED add (split out as the
+private `add_scenario_item`, byte-for-byte the old body — v4's
+`addToSubArray`, which does its own read, so the read count matches v4's three
+on success / two on a missing character), the post-read, `fresh`, the title
+match then the sole fresh item, the DEBUG `addScenario: returning the
+vault-projected scenario id` `{ characterId, transientId, projectedId }` when
+the ids differ, `projected ?? added`. `api/characters.rs` is UNTOUCHED (`git
+diff main` empty) — the arm already wraps whatever `add_scenario` returns.
+
+### Measurements (what the order got wrong or could not know)
+
+- **The "DB-backed character keeps the minted id" case is NOT a shape real
+  v4 produces.** v4's mocked unit test asserts it; the real repository sends a
+  vaultless character's `scenarios` patch through the write overlay's
+  loud-logged provision-on-the-fly branch (`applyDocumentStoreWriteOverlay:
+  character has no linked vault …`, measured firing in the oracle's stderr),
+  so the read-back re-keys and v4 returns the PROJECTED item. v5 ports the
+  same branch (`provision_vault_on_the_fly`) and matches. The arm is kept as a
+  planted vaultless row (`plantVaultlessCharacter`) and is a SECOND designed
+  red, not a silence leg. The minted-item-kept outcome is reached instead by a
+  whitespace body the scenario parser drops (fresh = []), which is also the
+  DEBUG's silence leg.
+- **The "title match among several" arm is reachable WITHOUT a seam.** A vault
+  file not named after its title (`Scenarios/legacy-notes.md`, frontmatter
+  `name: Aardvark Arrival`), planted through the REAL `writeDatabaseDocument` /
+  `database_store::write_database_document` BEFORE the pre-read, is rewritten
+  as `Aardvark Arrival.md` and swept by the add's re-projection — its id is
+  fresh too. `Aardvark` sorts before `Dusk Bell`, so a `fresh[0]` pick is
+  wrong (mutation M5). The sole-fresh fallback is reached separately by a
+  padded title (`'  Lantern Walk  '`) the parser trims.
+- **The projected id is a deterministic uuid, not a path string** —
+  `stableUuidFromString("scenario:<mount>:<path>")` (v5 `stable_uuid_from_string`,
+  `vault_overlay.rs` `parse_scenario_file`). The order's pin marker ("a
+  path-keyed id, not a uuid") is therefore read as: the target NDJSON's
+  `addScenarioReturns` carries non-null `readbackIndex` values (target:
+  `[0,0,0,1,3,null,null,0]`; baseline: all null).
+- **The order's two named route families do not reach the arm.**
+  `scenarios_routes_equivalence` drives `api::{groups,projects,scenarios}` and
+  `chat_scenario_routes_equivalence` the chat resolver; neither calls
+  `character_scenario_create` (grep). The family that drives v4's real `POST
+  /api/v1/characters/[id]/scenarios` is `characters_subresources_equivalence`
+  — owned by no lane this round — and it BLANKED the item `id` on every row,
+  which is why it could never see the bug. It is the one grown (one row); the
+  two named families ran as NEUTRALITY legs, unchanged, green at both pins.
+
+### Tests grown
+
+- `characters_arrays_tier2_equivalence` (+ `harness/oracle/cases/
+  characters-arrays.ts`, `fixtures/characters-arrays-tier2.json`): ops 24–30
+  (two plants + five adds) and a per-op `addScenarioReturns` comparand over
+  EVERY `addScenario` (the returned item's key order, title, content,
+  archived, its index in the next read-back or null, and the literal id when
+  the mount is the shared fixture's — deliberately NOT remapped). The DEBUG
+  line capture-pinned per op (all three fields, `transientId ≠ projectedId`)
+  with its silence leg on the minted and failed arms. An input-based corpus
+  guard (an outcome guard would make the baseline proof un-runnable).
+- `characters_subresources_equivalence` (+ `characters-subresources.test.ts`):
+  `scenario_create_projected_id` — the `{ scenario }` reply with the id KEPT
+  when listed in the character's readback (`<unlisted>` otherwise, so the
+  baseline compares too) and the listed flag compared; oracle row count 17 → 18.
+
+### Red-first matrix (both families; `CARGO_INCREMENTAL=0 TZ=UTC`)
+
+| source \ oracle pin | `d1c06cd9d` (target) | `00c290c9a` (baseline) |
+|---|---|---|
+| ported | arrays GREEN; subres GREEN (listed=true) | arrays RED (6 of 8 returns: ops 9, 11, 12, 24, 25, 29); subres RED |
+| unported (`main`) | arrays RED (the same 6); subres RED (listed=false) | arrays GREEN; subres GREEN |
+
+The two neutral records (26 minted-kept, 27 failed add) and the 17 other
+subres rows stay green in all four cells; the six-table census and the
+default-prompt trail green in all four.
+
+### Mutation proofs (target pin, file-backup revert)
+
+| # | mutation | red at |
+|---|---|---|
+| M1 | return `added` (drop the re-read's result) | the DEBUG silence leg, op 9 (the DEBUG still fires on a return the read-back does not show); the returns diff is the unported cell above |
+| M2 | match by `id` instead of `title` | returns diff, op 24 only |
+| M3 | drop the sole-fresh fallback | returns diff, op 25 only |
+| M4 | DEBUG unconditional | the silence leg (the minted-kept op) |
+| M5 | `fresh[0]` instead of the title match | returns diff, op 24 only |
+
+The failed add's ONE-pre-read property (v4's `findById` called once) has no
+observable in the DB layer (no read counter; a post-read of an absent
+character is `None` and harmless) — the early `return Ok(None)` is by
+inspection; recorded, not proved.
+
+### Tier 3 (deferred loudly)
+
+- Bug 166 — NO-COUNTERPART, P4.D218's.
+- **The other `add_*` writers:** v4's `addSystemPrompt` has the SAME
+  transient-id shape (it returns `addToSubArray`'s minted item for a
+  vault-backed character; v5 mirrors it, and `project_system_prompts` already
+  names the id transient for the column). `addPartnerLink` does not (a slim
+  column; the minted id persists). Wardrobe adds are outside
+  `vault_character_arrays.rs`. **Candidate upstream filing** (addSystemPrompt)
+  for the human — NOT filed from the lane (the v4 checkout must stay clean for
+  every lane's probe), NOT changed here.
+
+### Mirror (§R.9, the unifier's)
+
+`docs/v4/developer/bugs/fixed/bug-165-scenario-create-transient-id.md` — NEW,
+3,161 bytes at `d1c06cd9d` (md5 `dd70b47b1a37f5dcd73c94548b784d19`).
+
+### Regen recipes (as run; lane-private staging)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin; W=<this worktree>
+# characters_arrays — builder + case, from EACH pin (target shown)
+cd /tmp/qt-v4-pin-p4d219-d1c06cd9d
+QT_FIXTURE_CHARARR_MAIN=/tmp/p4d219/target/chararr-main.db \
+QT_FIXTURE_CHARARR_MOUNT=/tmp/p4d219/target/chararr-mount.db \
+  $N/npx tsx $W/harness/oracle/fixtures/build-characters-arrays-fixture.ts
+QT_FIXTURE_CHARARR_MAIN=… QT_FIXTURE_CHARARR_MOUNT=… \
+  $N/npx tsx $W/harness/oracle/cases/characters-arrays.ts > /tmp/p4d219/target/oracle-chararr.ndjson
+# characters_subresources — staged mirror /tmp/p4d219/qt-characters-oracle
+QT_FIXTURE_CHARACTERS_MAIN=$W/crates/quilltap-web/tests/fixtures/characters-main.db \
+QT_FIXTURE_CHARACTERS_MOUNT=$W/crates/quilltap-web/tests/fixtures/characters-mount.db \
+QT_ORACLE_OUT=/tmp/p4d219/target/oracle-subres.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots /tmp/p4d219/qt-characters-oracle/cases -- characters-subresources
+# scenarios_routes / chat_scenario_routes — their committed recipes with the
+# staging + QT_ORACLE_OUT redirected under /tmp/p4d219/<pin>/{gp,cs}
+```
+
+No committed fixture pair changed; the arrays family's fixture stays
+`/tmp`-built by its committed builder (unchanged). Nothing else is
+invalidated.
+
+### Gate (final tree; `CARGO_INCREMENTAL=0 TZ=UTC`, one sentinel-guarded chain)
+
+- `cargo fmt --all --check` clean; clippy `-D warnings` clean in BOTH feature
+  sets; `cargo build --workspace --release` clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's env
+  block (the four families' oracles from the TARGET pin, `QT_V4_CHECKOUT` at
+  the target pin, `QT_NODE` the real Node 24): **621 test binaries / 3,664
+  passed / 0 failed / 3 ignored**; 516 `SKIP:` lines, all families outside the
+  block; the four lane families confirmed RUN by name (`OK: characters arrays
+  tier-2 matched oracle (… 30 ops …)`, `[scenario_create_projected_id] OK
+  (listed=true)`, both route families green). **Tier R 266 cases / 0
+  failures** at `d1c06cd9d`. Every census and guard the gate names ran
+  UNMOVED inside the run (`dispatch_wrong_type_census` 446,
+  `help_tree_embed_guard` 126, the write-site censuses, the four vendor
+  guards) — no verb, no route file, no help file this lane.
+- Versions: core 0.0.1013 → 0.0.1014, harness 0.0.930 → 0.0.931. No other
+  crate, no SPA.

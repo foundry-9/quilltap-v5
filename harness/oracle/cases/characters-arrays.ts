@@ -53,6 +53,11 @@ interface Op {
   promptId?: string;
   partnerId?: string;
   value?: unknown;
+  /** [P4.D219] `addScenario` on a character OTHER than the baked one (a planted
+   *  vaultless row, or an id that does not exist); `plantVaultlessCharacter`'s id. */
+  characterId?: string;
+  /** [P4.D219] `plantScenarioFile`'s vault path + bytes. */
+  path?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -146,6 +151,28 @@ async function main(): Promise<void> {
   };
   await snapshot('<initial>');
 
+  /**
+   * [P4.D219 / v4 `d1c06cd9d`, bug 165] What each `addScenario` RETURNED. The
+   * six-table census cannot see a return value, and the returned id is the
+   * whole bug: v4 used to hand back the id `addToSubArray` minted, which the
+   * vault re-keys from the file path on the very next read. Per op: the
+   * returned item's KEY ORDER (the create route's reply body), its title /
+   * content / archived, and `readbackIndex` — the item's position in the next
+   * read-back, or null when the returned id is one no read will ever show (the
+   * minted transient). The literal id rides along only when the character's
+   * mount is the shared fixture's (a projected id is deterministic there:
+   * `stableUuidFromString("scenario:<mount>:<path>")`); a vault provisioned
+   * mid-op mints its mount id, so there only the index compares.
+   */
+  const bakedMount = (
+    (await rawQuery('SELECT characterDocumentMountPointId AS m FROM characters WHERE id = ?', [
+      characterId,
+    ])) as Array<{ m: string }>
+  )[0].m;
+  const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+  const addScenarioReturns: Array<Record<string, unknown>> = [];
+  let opIndex = 0;
+
   for (const op of spec.ops) {
     switch (op.op) {
       case 'addSystemPrompt':
@@ -187,13 +214,57 @@ async function main(): Promise<void> {
         await repos.characters.deleteSystemPrompt(characterId, id);
         break;
       }
-      case 'addScenario':
-        await repos.characters.addScenario(characterId, {
+      case 'addScenario': {
+        const target = op.characterId ?? characterId;
+        const returned = await repos.characters.addScenario(target, {
           title: op.title as string,
           content: op.content as string,
           // [P4.D120 / v4 `d25dacc1`] the optional `archived` flag.
           ...(op.archived !== undefined && { archived: op.archived as boolean }),
         });
+        const after = await repos.characters.findById(target);
+        const ids = (after?.scenarios ?? []).map((s) => s.id);
+        let record: Record<string, unknown> | null = null;
+        if (returned) {
+          const idx = ids.indexOf(returned.id);
+          const r = returned as unknown as Record<string, unknown>;
+          record = {
+            keys: Object.keys(r),
+            title: r.title,
+            content: r.content,
+            archived: r.archived ?? null,
+            readbackIndex: idx >= 0 ? idx : null,
+            id: idx >= 0 && target === characterId ? returned.id : null,
+          };
+        }
+        addScenarioReturns.push({
+          opIndex,
+          title: op.title,
+          readbackTitles: (after?.scenarios ?? []).map((s) => s.title),
+          returned: record,
+        });
+        break;
+      }
+      // [P4.D219] a vault file NOT named after its title, planted through the
+      // REAL writer: the next re-projection rewrites it under its title and
+      // sweeps it, so its id is FRESH beside the new scenario's.
+      case 'plantScenarioFile':
+        await writeDatabaseDocument(bakedMount, op.path as string, op.content as string);
+        break;
+      // [P4.D219] a copy of the baked row with a new id/name and NO vault — the
+      // same four statements the Rust side runs.
+      case 'plantVaultlessCharacter':
+        for (const [sql, params] of [
+          ['CREATE TEMP TABLE qt_p4d219_plant AS SELECT * FROM characters WHERE id = ?', [characterId]],
+          [
+            'UPDATE qt_p4d219_plant SET id = ?, name = ?, characterDocumentMountPointId = NULL',
+            [op.characterId, op.name],
+          ],
+          ['INSERT INTO characters SELECT * FROM qt_p4d219_plant', []],
+          ['DROP TABLE qt_p4d219_plant', []],
+        ] as Array<[string, unknown[]]>) {
+          await rawQuery(sql, params);
+        }
         break;
       case 'updateScenario': {
         const id = await resolveScenarioId(op.targetTitle as string);
@@ -228,6 +299,7 @@ async function main(): Promise<void> {
         throw new Error(`unknown op: ${op.op}`);
     }
     await snapshot(op.op);
+    opIndex += 1;
   }
 
   // MAIN db: the slim characters row.
@@ -270,6 +342,7 @@ async function main(): Promise<void> {
     JSON.stringify({
       case: 'characters-arrays-tier2',
       defaultColumnTrail: trail,
+      addScenarioReturns,
       characters,
       points,
       folders,

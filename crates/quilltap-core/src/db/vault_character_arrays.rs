@@ -343,9 +343,97 @@ pub fn set_default_system_prompt(
 // SCENARIO OPERATIONS
 // ============================================================================
 
-/// Add a scenario (v4 `addScenario` via `addToSubArray`; no default logic).
-/// Returns the added item, or `None` when the character is absent.
+/// Add a scenario (v4 `addScenario`), returning **the item a later read will
+/// show** — bug 165, v4 `d1c06cd9d`.
+///
+/// A vault-backed character re-keys every scenario from its file path when the
+/// vault is read back (`stableUuidFromString("scenario:<mount>:<path>")`), so the
+/// id [`add_scenario_item`] mints never reaches disk. v5 used to hand that dead id
+/// back exactly as v4 did (the create route's `{ scenario }`, and through it the
+/// Scenario Builder's save-then-select). v4's fix, transcribed from the hunk:
+///
+///   1. `before = findById(characterId)` — the overlay-applying read — and the
+///      set of scenario ids it already shows;
+///   2. the UNCHANGED add (`addToSubArray`, here [`add_scenario_item`]) — a
+///      failed add returns `None` without the post-read (v4 returns `null`
+///      before its second `findById`);
+///   3. `after = findById(characterId)`; `fresh` = the scenarios whose id was not
+///      in the pre-read (a re-projection can re-key an EXISTING item too — a
+///      file whose name is not `<sanitize(title)>.md` is rewritten under its
+///      title and swept — so more than one id can be fresh);
+///   4. `projected = fresh.find(title === data.title) ?? (fresh.length === 1 ?
+///      fresh[0] : undefined)` — the title match wins among several; the sole
+///      fresh item is taken otherwise (the parser trims the title, so a padded
+///      title never matches);
+///   5. DEBUG when the projection moved the id, and `projected ?? added` — the
+///      minted item survives only when the read-back shows nothing to take
+///      (e.g. an item the parser drops, like an empty body).
+///
+/// Every character reaching here is vault-backed in practice: a vaultless one is
+/// provisioned a vault mid-write by the write overlay, so its read-back re-keys
+/// too (measured on v4 at `d1c06cd9d`; v4's mocked "DB-backed" unit case names a
+/// shape the post-4.6 repository no longer produces).
 pub fn add_scenario(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+    title: &str,
+    content: &str,
+    archived: Option<bool>,
+) -> Result<Option<Value>, DbError> {
+    let scenarios_of = |character: Option<Value>| -> Vec<Value> {
+        character
+            .map(|c| array_of(&c, "scenarios"))
+            .unwrap_or_default()
+    };
+    let prior_ids: Vec<String> = scenarios_of(find_by_id(main, mount, character_id)?)
+        .iter()
+        .filter_map(|s| s.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect();
+
+    let Some(added) = add_scenario_item(main, mount, character_id, title, content, archived)?
+    else {
+        return Ok(None);
+    };
+
+    let fresh: Vec<Value> = scenarios_of(find_by_id(main, mount, character_id)?)
+        .into_iter()
+        .filter(|s| {
+            !s.get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| prior_ids.iter().any(|p| p == id))
+        })
+        .collect();
+    let projected = fresh
+        .iter()
+        .find(|s| s.get("title").and_then(Value::as_str) == Some(title))
+        .or(if fresh.len() == 1 {
+            fresh.first()
+        } else {
+            None
+        })
+        .cloned();
+
+    let transient_id = added.get("id").and_then(Value::as_str).unwrap_or_default();
+    if let Some(p) = &projected {
+        let projected_id = p.get("id").and_then(Value::as_str).unwrap_or_default();
+        if projected_id != transient_id {
+            tracing::debug!(
+                characterId = %character_id,
+                transientId = %transient_id,
+                projectedId = %projected_id,
+                "addScenario: returning the vault-projected scenario id"
+            );
+        }
+    }
+    Ok(Some(projected.unwrap_or(added)))
+}
+
+/// The unchanged add (v4 `addToSubArray` for scenarios; no default logic): mints
+/// the item, pushes it, and re-projects the `Scenarios/` folder. Returns the
+/// MINTED item — whose id the vault discards — or `None` when the character is
+/// absent. [`add_scenario`] is the only caller.
+fn add_scenario_item(
     main: &Connection,
     mount: &Connection,
     character_id: &str,

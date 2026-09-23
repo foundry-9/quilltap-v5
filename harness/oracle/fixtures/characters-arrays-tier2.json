@@ -57,7 +57,33 @@
     "vault file's content diff EXACTLY.",
     "",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the same one folders/tags/",
-    "wardrobe use). NOT the real Friday pepper; safe to commit."
+    "wardrobe use). NOT the real Friday pepper; safe to commit.",
+    "",
+    "[P4.D219 / v4 `d1c06cd9d`, bug 165] addScenario RETURNS the item a later read",
+    "will show. Every addScenario op above and below is also recorded in the",
+    "per-op `addScenarioReturns` comparand (the returned item's key order, title,",
+    "content, archived, and its INDEX in the next read-back — null for a minted",
+    "id the vault never kept; the literal id when the character's mount is the",
+    "shared fixture's, so the projected id compares EXACTLY). The five mirrored",
+    "arms of v4's mocked unit test, as PLANTED real-DB rows (ops 24-30):",
+    "  24. plantScenarioFile Scenarios/legacy-notes.md (frontmatter name Aardvark",
+    "      Arrival — a file NOT named after its title) through the REAL",
+    "      writeDatabaseDocument on both sides.",
+    "  25. addScenario Dusk Bell -> the re-projection rewrites the plant as",
+    "      Aardvark Arrival.md and sweeps legacy-notes.md, so TWO ids are fresh:",
+    "      the TITLE MATCH wins (Aardvark sorts first, so a fresh[0] pick is wrong).",
+    "  26. addScenario '  Lantern Walk  ' -> the parser trims the title, so no",
+    "      fresh item matches: the SOLE-FRESH fallback.",
+    "  27. addScenario Blank Page with a whitespace body -> the parser drops the",
+    "      file, nothing is fresh: the MINTED item is kept, the DEBUG silent.",
+    "  28. addScenario on a character id that does not exist -> null (the failed",
+    "      add).",
+    "  29. plantVaultlessCharacter: a copy of the baked row with a new id/name and",
+    "      a NULL vault pointer (four raw statements, identical on both sides).",
+    "  30. addScenario on it -> the write overlay provisions a vault on the fly",
+    "      (v4's loud-logged bug path) and the read-back re-keys: v4's 'DB-backed",
+    "      keeps the minted id' mock case is NOT a shape the real repository",
+    "      produces — measured, recorded; the arm returns the PROJECTED item."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "character": {
@@ -259,6 +285,43 @@
     {
       "op": "setCanBeCarina",
       "value": true
+    },
+    {
+      "op": "plantScenarioFile",
+      "path": "Scenarios/legacy-notes.md",
+      "content": "---\nname: Aardvark Arrival\n---\n\nAn old note filed under the wrong name.\n"
+    },
+    {
+      "op": "addScenario",
+      "title": "Dusk Bell",
+      "content": "The bell tolls at dusk."
+    },
+    {
+      "op": "addScenario",
+      "title": "  Lantern Walk  ",
+      "content": "Lamps bob along the towpath."
+    },
+    {
+      "op": "addScenario",
+      "title": "Blank Page",
+      "content": "   "
+    },
+    {
+      "op": "addScenario",
+      "characterId": "c0ffee00-0000-4000-8000-000000000404",
+      "title": "Nowhere",
+      "content": "No one to hold it."
+    },
+    {
+      "op": "plantVaultlessCharacter",
+      "characterId": "c0ffee00-0000-4000-8000-000000000001",
+      "name": "Varnava"
+    },
+    {
+      "op": "addScenario",
+      "characterId": "c0ffee00-0000-4000-8000-000000000001",
+      "title": "First Light",
+      "content": "Dawn over the harbour."
     }
   ]
 }

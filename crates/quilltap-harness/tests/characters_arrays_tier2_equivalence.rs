@@ -23,6 +23,18 @@
 //! addPartnerLink / removePartnerLink (slim column), and the
 //! setFavorite / setControlledBy / setCanBeCarina setters.
 //!
+//! [P4.D219 / v4 `d1c06cd9d`, bug 165] Every `addScenario` op's RETURN is a
+//! per-op comparand too (`addScenarioReturns`): the census cannot see a return
+//! value, and the returned id is the whole bug. v4's mocked unit test
+//! (`character-add-scenario-projected-id.test.ts`) supplies case NAMES only; its
+//! arms are mirrored here as PLANTED real-DB ops (a vault file not named after its
+//! title → several fresh ids → the title match; a padded title → the sole-fresh
+//! fallback; a whitespace body the parser drops → the minted item kept; an absent
+//! character → null; a vaultless row → the vault provisioned mid-write, so the
+//! 'DB-backed keeps the minted id' mock case is NOT a shape real v4 produces).
+//! The v5 DEBUG line is capture-pinned per op, with its silence leg. Designed
+//! proof that v5 HAD the bug: unported v5 is GREEN against a `00c290c9a`-pinned
+//! oracle and RED against a `d1c06cd9d`-pinned one (and the port the reverse).//!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -84,6 +96,14 @@ struct Op {
     partner_id: Option<String>,
     #[serde(default)]
     value: Option<Value>,
+    /// [P4.D219] `addScenario` on a character OTHER than the baked one (the
+    /// planted vaultless row, or an id that does not exist);
+    /// `plantVaultlessCharacter`'s new id.
+    #[serde(default)]
+    character_id: Option<String>,
+    /// [P4.D219] `plantScenarioFile`'s vault-relative path.
+    #[serde(default)]
+    path: Option<String>,
 }
 
 struct TableSpec {
@@ -225,7 +245,60 @@ fn resolve_item_id(
         .unwrap_or_else(|| panic!("{array_key} item not found for {name_key}={name_value}"))
 }
 
-fn run_op(main: &Writer, mount: &Writer, character_id: &str, op: &Op) {
+/// [P4.D219 / v4 `d1c06cd9d`, bug 165] one `addScenario` op's RETURN, in the
+/// oracle's `addScenarioReturns` shape: the returned item's key order (the
+/// create route's reply body), title / content / archived, and `readbackIndex`
+/// — its position in the NEXT read-back, or null when the returned id is one no
+/// read will ever show (the minted transient the vault re-keys away). The
+/// literal id rides along only for the baked character: its mount id is the
+/// shared fixture's, so the projected id (`stableUuidFromString("scenario:
+/// <mount>:<path>")`) is deterministic and compares EXACTLY — deliberately NOT
+/// through the minted-uuid remap. A vault provisioned mid-op mints its mount id,
+/// so there only the index compares.
+fn add_scenario_record(
+    main: &Writer,
+    mount: &Writer,
+    baked_id: &str,
+    target: &str,
+    op_index: usize,
+    op: &Op,
+    returned: Option<&Value>,
+) -> Value {
+    let after = arr::find_by_id(main.connection(), mount.connection(), target)
+        .unwrap_or_else(|e| panic!("find_by_id after addScenario: {e}"));
+    let scenarios: Vec<Value> = after
+        .as_ref()
+        .and_then(|c| c.get("scenarios"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let record = returned.map(|r| {
+        let idx = scenarios.iter().position(|s| s.get("id") == r.get("id"));
+        serde_json::json!({
+            "keys": r.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()),
+            "title": r.get("title"),
+            "content": r.get("content"),
+            "archived": r.get("archived").cloned().unwrap_or(Value::Null),
+            "readbackIndex": idx,
+            "id": if idx.is_some() && target == baked_id { r.get("id").cloned() } else { None },
+        })
+    });
+    serde_json::json!({
+        "opIndex": op_index,
+        "title": op.title,
+        "readbackTitles": scenarios.iter().map(|s| s.get("title").cloned()).collect::<Vec<_>>(),
+        "returned": record,
+    })
+}
+
+fn run_op(
+    main: &Writer,
+    mount: &Writer,
+    character_id: &str,
+    op_index: usize,
+    op: &Op,
+    returns: &mut Vec<Value>,
+) {
     let cid = character_id;
     let m = main.connection();
     let mo = mount.connection();
@@ -308,15 +381,94 @@ fn run_op(main: &Writer, mount: &Writer, character_id: &str, op: &Op) {
             arr::delete_system_prompt(m, mo, cid, &id).expect("delete_system_prompt");
         }
         "addScenario" => {
-            arr::add_scenario(
-                m,
+            let target = op.character_id.as_deref().unwrap_or(cid);
+            let (returned, lines) = quilltap_core::test_support::captured_with(|| {
+                arr::add_scenario(
+                    m,
+                    mo,
+                    target,
+                    op.title.as_deref().expect("title"),
+                    op.content.as_deref().expect("content"),
+                    op.archived,
+                )
+                .expect("add_scenario")
+            });
+            let record =
+                add_scenario_record(main, mount, cid, target, op_index, op, returned.as_ref());
+            // [P4.D219] v4's DEBUG `addScenario: returning the vault-projected
+            // scenario id` `{ characterId, transientId, projectedId }` fires
+            // exactly when the returned item is one the read-back SHOWS (the
+            // projection moved the id off the minted one) — and is SILENT when
+            // the minted item is kept (nothing fresh) or the add failed.
+            let debug: Vec<&String> = lines
+                .iter()
+                .filter(|l| l.contains("addScenario: returning the vault-projected scenario id"))
+                .collect();
+            let projected = !record["returned"]["readbackIndex"].is_null();
+            if projected {
+                let rid = returned
+                    .as_ref()
+                    .and_then(|r| r.get("id"))
+                    .and_then(Value::as_str)
+                    .expect("a projected return carries an id");
+                assert!(
+                    debug.len() == 1
+                        && debug[0].starts_with("DEBUG ")
+                        && debug[0].contains(&format!("characterId={target}"))
+                        && debug[0].contains(&format!("projectedId={rid}"))
+                        && debug[0].contains(" transientId=")
+                        && !debug[0].contains(&format!("transientId={rid}")),
+                    "addScenario op {op_index}: v4's projected-id DEBUG with its three fields \
+                     is missing: {lines:?}"
+                );
+            } else {
+                assert!(
+                    debug.is_empty(),
+                    "addScenario op {op_index}: the projected-id DEBUG fired on a return the \
+                     read-back does not show: {lines:?}"
+                );
+            }
+            returns.push(record);
+        }
+        // [P4.D219] a vault file NOT named after its title, planted through the
+        // REAL `write_database_document` (v4's `writeDatabaseDocument`): the next
+        // re-projection rewrites it under its title and sweeps it, so its id is
+        // FRESH beside the new scenario's.
+        "plantScenarioFile" => {
+            let mount_id: String = m
+                .query_row(
+                    "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+                    [cid],
+                    |row| row.get(0),
+                )
+                .expect("read the baked vault pointer");
+            quilltap_core::db::database_store::write_database_document(
                 mo,
-                cid,
-                op.title.as_deref().expect("title"),
+                &mount_id,
+                op.path.as_deref().expect("path"),
                 op.content.as_deref().expect("content"),
-                op.archived,
             )
-            .expect("add_scenario");
+            .unwrap_or_else(|e| panic!("plant scenario file: {e}"));
+        }
+        // [P4.D219] a copy of the baked row with a new id/name and NO vault — the
+        // same four statements the oracle runs.
+        "plantVaultlessCharacter" => {
+            let new_id = op.character_id.as_deref().expect("characterId");
+            let name = op.name.as_deref().expect("name");
+            m.execute(
+                "CREATE TEMP TABLE qt_p4d219_plant AS SELECT * FROM characters WHERE id = ?1",
+                [cid],
+            )
+            .expect("plant: copy");
+            m.execute(
+                "UPDATE qt_p4d219_plant SET id = ?1, name = ?2, characterDocumentMountPointId = NULL",
+                [new_id, name],
+            )
+            .expect("plant: rekey");
+            m.execute("INSERT INTO characters SELECT * FROM qt_p4d219_plant", [])
+                .expect("plant: insert");
+            m.execute("DROP TABLE qt_p4d219_plant", [])
+                .expect("plant: drop");
         }
         "updateScenario" => {
             let id = resolve_item_id(
@@ -484,10 +636,83 @@ fn characters_arrays_tier2_matches_oracle() {
     };
 
     let mut trail: Vec<Value> = vec![snapshot("<initial>")];
-    for op in &spec.ops {
-        run_op(&main, &mount, &character_id, op);
+    let mut returns: Vec<Value> = Vec::new();
+    for (i, op) in spec.ops.iter().enumerate() {
+        run_op(&main, &mount, &character_id, i, op, &mut returns);
         trail.push(snapshot(&op.op));
     }
+
+    // [P4.D219 / v4 `d1c06cd9d`, bug 165] what every `addScenario` RETURNED.
+    let want_returns = oracle
+        .get("addScenarioReturns")
+        .unwrap_or_else(|| panic!("oracle carries no addScenarioReturns — stale NDJSON?"));
+    let got_returns = Value::Array(returns.clone());
+    if &got_returns != want_returns {
+        let want = want_returns.as_array().cloned().unwrap_or_default();
+        for (g, w) in returns.iter().zip(want.iter()) {
+            if g != w {
+                eprintln!(
+                    "addScenario op {} RETURN diverged:\n  rust:   {g}\n  oracle: {w}",
+                    g["opIndex"]
+                );
+            }
+        }
+        panic!(
+            "the per-op addScenario returns diverged ({} rust vs {} oracle records)",
+            returns.len(),
+            want.len()
+        );
+    }
+    // The arms the corpus must actually ask, so a trimmed spec cannot go green
+    // having stopped asking bug 165's questions. Guarded on the INPUTS, not the
+    // outcomes: at the baseline pin (`00c290c9a`) v4 still returns the minted
+    // item everywhere, and that pin's run is the designed proof that v5 HAD the
+    // bug — an outcome guard would make it un-runnable. The outcomes are the
+    // diff's business (above), against the target-pinned oracle.
+    let op_at = |i: usize| -> &Op { &spec.ops[i] };
+    let add_after_plant =
+        spec.ops.iter().enumerate().any(|(i, op)| {
+            op.op == "addScenario" && i > 0 && op_at(i - 1).op == "plantScenarioFile"
+        });
+    assert!(
+        add_after_plant,
+        "the corpus asks no title-match-among-several arm (an addScenario right after a \
+         plantScenarioFile)"
+    );
+    let asks = |pred: &dyn Fn(&Op) -> bool, what: &str| {
+        assert!(
+            spec.ops.iter().any(|op| op.op == "addScenario" && pred(op)),
+            "the corpus asks no {what} arm"
+        );
+    };
+    asks(
+        &|op| op.title.as_deref().is_some_and(|t| t.trim() != t),
+        "sole-fresh fallback (a padded title the parser trims)",
+    );
+    asks(
+        &|op| op.content.as_deref().is_some_and(|c| c.trim().is_empty()),
+        "minted-item-kept (a body the parser drops)",
+    );
+    asks(
+        &|op| {
+            op.character_id.as_deref().is_some_and(|id| {
+                !spec.ops.iter().any(|p| {
+                    p.op == "plantVaultlessCharacter" && p.character_id.as_deref() == Some(id)
+                })
+            })
+        },
+        "failed-add (an absent character)",
+    );
+    asks(
+        &|op| {
+            op.character_id.as_deref().is_some_and(|id| {
+                spec.ops.iter().any(|p| {
+                    p.op == "plantVaultlessCharacter" && p.character_id.as_deref() == Some(id)
+                })
+            })
+        },
+        "provisioned-vault (a vaultless character)",
+    );
 
     let want_trail = oracle
         .get("defaultColumnTrail")

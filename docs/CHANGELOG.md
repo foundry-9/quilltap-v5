@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — fix(characters): addScenario returns the vault-projected scenario id (bug 165, P4.D219)
+
+_Versions: core 0.0.1014, harness 0.0.931._
+
+`add_scenario` now returns the scenario a later read will show. For a
+vault-backed character the id minted during the add never reaches disk (the
+vault re-keys each scenario from its file path), so the create route handed
+back a dead id. Ported from v4 `d1c06cd9d`: read the character's scenario ids
+before the add, add, re-read, and return the new item whose title matches,
+else the only new item, else the minted one; a DEBUG line records the id
+swap. A failed add still returns nothing without the second read.
+
+Tests: `characters_arrays_tier2_equivalence` records every `addScenario`
+return and covers v4's five unit cases as planted real-DB ops (several new
+ids with a title match, the sole-new fallback, a body the parser drops, a
+missing character, a vaultless character that gets a vault provisioned
+mid-write — which, measured, returns the projected item on v4 too). The
+DEBUG line is capture-pinned with a silence leg. `characters_subresources_
+equivalence` gains a create row that keeps the id and checks it is listed on
+the readback. Red at the `d1c06cd9d` pin before the port, green at the
+`00c290c9a` pin before it, and the reverse after.
+
 #### 2026-09-23 — docs(porting): the P4.111 lane close — lane record, status headers
 
 _Docs-only change._

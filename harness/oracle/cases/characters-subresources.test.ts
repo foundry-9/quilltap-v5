@@ -219,6 +219,13 @@ async function main(): Promise<void> {
     //    these routes, so no character read happens either).
     { name: 'scenario_create_null_archived', module: SCENARIOS, method: 'POST', body: { title: 'Nulled', content: 'Never lands.', archived: null } },
     { name: 'scenario_update_null_archived', module: SCENARIOS, method: 'PUT', target: { kind: 'scenario', byName: 'Prologue' }, query: (id) => `scenarioId=${id}`, body: { archived: null } },
+    // ── [P4.D219 / v4 `d1c06cd9d`, bug 165] the create route's `{ scenario }`
+    //    reply carries the id a LATER READ will show. Aria is vault-backed, so
+    //    the id `addToSubArray` mints never reaches disk; the fixed repository
+    //    re-reads and returns the vault-PROJECTED item. The Rust side compares
+    //    this row's id LITERALLY (the committed pair's mount id is baked, so the
+    //    projected id is deterministic) and checks it is LISTED in the readback.
+    { name: 'scenario_create_projected_id', module: SCENARIOS, method: 'POST', body: { title: 'Dusk Bell', content: 'The bell tolls at dusk.' }, postRead: true },
     { name: 'plugin_upsert_existing', module: PLUGIN, method: 'POST', body: { pluginName: 'com.example.notes', data: { color: 'crimson' } } },
     { name: 'plugin_upsert_new', module: PLUGIN, method: 'POST', body: { pluginName: 'com.example.flags', data: { beta: true } } },
     { name: 'plugin_delete', module: PLUGIN_ITEM, method: 'DELETE', target: { kind: 'plugin', byName: 'com.example.notes' }, params: (id) => ({ id: ARIA, pluginName: id }), body: {} },
