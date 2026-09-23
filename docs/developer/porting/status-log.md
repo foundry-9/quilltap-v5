@@ -144553,3 +144553,75 @@ committed main in v4, keep going."** Every regen after it came from the
   this base; the unifier may repoint it. The two importer rows carry the
   RECORDED note.
 
+### Mutation proofs (file-backup reverts, `cmp`-verified)
+
+| Mutation | Reddens |
+|---|---|
+| `get_messages` rethrows (`return get_messages_strict(…)`) | `chats_search` poisoned read 2 (count); `search_replace` `preview_poisoned` (500) + `execute_poisoned` (errors) |
+| `update_message` wrap dropped | `chats_messages_ops_tier2` op 3's return (`Err` vs `null`) |
+| `find_event_value` through the swallowing `get_messages` | `a_read_failure_inside_the_update_logs_the_update_line_not_the_read_line` ONLY |
+| the corrupted-row skip disabled | `chats_messages_ops_tier2` read 0 |
+| `search_messages_global`'s wrap reverted | `ui_search` both poisoned rows (500 + missing line) ONLY |
+| one site repointed (`cost_estimation.rs` → strict) | `get_messages_caller_census` |
+
+### Deferred (loud)
+
+- **Tier 3 item 9** — v4's strict-failures mode (bug 79) is not ported; the
+  importer keeps `Err` ONLY once the unifier repoints its two sites (above).
+- **Tier 3 item 10** — v4's backend-level `SQLite find error` / `findOne
+  error` / `Raw query failed` lines: never ported; every new comparison drops
+  exactly these three by name.
+- The `find_event_value` single-row read (unit 3's residual).
+
+### Findings for the unifier
+
+1. The two importer sites (unit 1) — repoint + census rows.
+2. v4 `main` moved to `dff00e98d` (docs) with a dirty `lib/` during this
+   lane — the ledger needs it recorded (`/driftcheck`).
+3. `docs/v4/` mirror: this lane moves no mirror path.
+
+### Regen recipes (as run, from the pin)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+V5W=<this worktree>
+PIN=/tmp/qt-v4-pin-p4109-a2db63da7
+cd "$PIN"
+# chats-search (two fixtures, three venues, one NDJSON)
+QT_FIXTURE_OUT=/tmp/p4109/qt-chsearch-fixture.db $N/npx tsx "$V5W/harness/oracle/fixtures/build-chats-search-fixture.ts"
+QT_FIXTURE_FTS=1 QT_FIXTURE_OUT=/tmp/p4109/qt-chsearch-fixture-fts.db $N/npx tsx "$V5W/harness/oracle/fixtures/build-chats-search-fixture.ts"
+for v in plain fts poisoned; do f=/tmp/p4109/qt-chsearch-fixture.db; [ $v = fts ] && f=/tmp/p4109/qt-chsearch-fixture-fts.db
+  QT_VENUE=$v QT_FIXTURE_CHSEARCH=$f $N/npx tsx "$V5W/harness/oracle/cases/chats-search.ts" >> /tmp/p4109/oracle-chsearch.ndjson; done
+# chats-messages-ops
+QT_FIXTURE_OUT=/tmp/p4109/qt-chatsmsgops-fixture.db $N/npx tsx "$V5W/harness/oracle/fixtures/build-chats-messages-ops-fixture.ts"
+QT_FIXTURE_CHATSMSGOPS=/tmp/p4109/qt-chatsmsgops-fixture.db $N/npx tsx "$V5W/harness/oracle/cases/chats-messages-ops-tier2.ts" > /tmp/p4109/oracle-chatsmsgops.ndjson
+# search-replace (jest, /tmp mirror, TZ=UTC, copies of the committed pair per case)
+TMPO=/tmp/p4109/cd-oracle; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/chat-dialogs-search-replace.test.ts" "$TMPO/cases/"; cp "$V5W/harness/oracle/fixtures/chat-dialogs-web.json" "$TMPO/fixtures/"
+QT_FIXTURE_CD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-dialogs-main.db QT_FIXTURE_CD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/chat-dialogs-mount.db \
+QT_ORACLE_OUT=/tmp/p4109/oracle-search-replace.ndjson TZ=UTC $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$TMPO/cases" -- chat-dialogs-search-replace
+# ui-search (jest, /tmp mirror, /tmp-built fixture)
+TMPO=/tmp/p4109/ui-oracle; mkdir -p "$TMPO/cases" "$TMPO/fixtures" /tmp/p4109/ui-fixture
+cp "$V5W/harness/oracle/cases/ui-search.test.ts" "$TMPO/cases/"; cp "$V5W/harness/oracle/fixtures/ui-search.json" "$TMPO/fixtures/"
+QT_FIXTURE_UI_SEARCH_MAIN=/tmp/p4109/ui-fixture/main.db QT_FIXTURE_UI_SEARCH_MOUNT=/tmp/p4109/ui-fixture/mount.db $N/node --import tsx "$V5W/harness/oracle/fixtures/build-ui-search-fixture.ts"
+QT_FIXTURE_UI_SEARCH_MAIN=/tmp/p4109/ui-fixture/main.db QT_FIXTURE_UI_SEARCH_MOUNT=/tmp/p4109/ui-fixture/mount.db QT_ORACLE_OUT=/tmp/p4109/oracle-ui-search.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$TMPO/cases" -- ui-search
+```
+
+Env block: `QT_ORACLE_CHSEARCH`, `QT_FIXTURE_CHSEARCH`, `QT_FIXTURE_CHSEARCH_FTS`,
+`QT_ORACLE_CHATSMSGOPS`, `QT_FIXTURE_CHATSMSGOPS`, `QT_ORACLE_SEARCH_REPLACE`
+(+ `TZ=UTC`), `QT_ORACLE_UI_SEARCH`, `QT_FIXTURE_UI_SEARCH_MAIN`, `_MOUNT`.
+The committed recipe headers stay canonical (`cd ~/source/quilltap-server`).
+Every regen was checked non-empty and for the changed bytes (the poisoned
+lines / `updateReturns` / `reads` present) before a diff was believed.
+
+### Gate (on tip `b154bb8d`, `CARGO_INCREMENTAL=0`, `TZ=UTC`, one sentinel-guarded chain, full logs)
+
+- `cargo fmt --all --check` ✅; `cargo clippy --workspace --all-targets -D warnings` ✅ in BOTH feature sets (default; `--features quilltap-core/native-transport`); `cargo build --workspace --release` ✅.
+- `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's env block + Tier R (`QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4109-a2db63da7`, `QT_NODE` = the real Node 24 path): **621 test binaries / 3,654 passed / 0 failed / 3 ignored.** Every lane family RUN by name with no `SKIP:` for its vars: `chats_search_equivalence` (2; "26 reads … + 4 poisoned reads"), `search_replace_equivalence` (the two poisoned rows' log lines + bodies + tables OK), `chats_messages_ops_tier2_equivalence`, `ui_search_equivalence` (both poisoned rows OK), `get_messages_caller_census` (2). Every other family's var WITHHELD (they SKIP honestly — 515 `SKIP:` lines, none of this lane's).
+- **Tier R at the baseline pin: 266 cases, 0 failures** (411 s).
+- Censuses the round names, run by name inside the workspace run: `dispatch_wrong_type_census` ✅ (UNMOVED — no verb), `blob_write_sites_census` ✅, `compressed_column_write_sites_census` ✅, `help_tree_embed_guard` ✅, the NEW `get_messages_caller_census` ✅.
+- **The intermediate commits** (units 1–3) were each gated on fmt + clippy (default) + `cargo test -p quilltap-core --lib` (2,557 / 2,560 / 2,561) + the families the commit moves, each against an oracle regenerated for THAT commit's corpus (`oracle-chatsmsgops-c1.ndjson` — the HEAD corpus, which doubles as unit 1's neutrality leg for the ops family — and `-c2`); units 4–5 are harness-only and were run by name on their final tree. The full `--workspace` run above is on the tip, not repeated per commit — recorded, not hidden.
+- **Neutrality:** every pre-existing row of the four grown families stayed green at the pin (the full diffs above compare them all); `chats_messages_ops_tier2` at the HEAD corpus under unit 1's code is green.
+- **The `docs/v4/` mirror:** this lane moves no mirror path. **Versions:** core 0.0.1002 → **0.0.1005** (+3), harness 0.0.913 → **0.0.918** (+5); web/host/cli/tauri/SPA untouched (no web test added).
+- **Target cleaned** after the gate (`rm -rf <worktree>/target`); the pin worktree and `/tmp/p4109` scratch removed at close.

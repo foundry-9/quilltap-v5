@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): the P4.109 lane record close-out — mutation table, gate, deferrals, and both status headers
+
+_Docs-only change._
+
+Appends the rest of P4.109's lane record (mutation proofs, loud deferrals,
+findings for the unifier, the regen recipes as run, and the gate: 621 test
+binaries, 3,654 passed, 0 failed; Tier R 266/0 at the baseline pin), closes
+the order's status header, and adds one sentence to P4.105's header saying
+its owed edge is closed.
+
 #### 2026-09-23 — test(harness): get_messages caller census guard
 
 _Versions: harness 0.0.918._
