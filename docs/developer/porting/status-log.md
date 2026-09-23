@@ -146546,3 +146546,33 @@ tool (§R.4(k), Tier 3 item 14); `withCollectionActionDispatch` not re-proven be
   `VOICE_REWRITE` cases stay green.
 - **Gate:** lint clean; `npm test` 447 files / 7,652 passed; build clean.
   SPA 0.5.753.
+
+### Unit 6 — the gated live beats (Tier 1 item 9)
+
+- NEW `apps/web/e2e/scenario-builder-flow.spec.ts`, **`P4D217_SERVER_LANDED
+  = false`** (the named-constant gate, the `P4D205_SERVER_LANDED`
+  precedent: a defined-but-unimplemented verb defeats a probe). Four beats,
+  each `test.skip`ping loudly with the verbs it awaits:
+  (a) New Chat — pick the first roster character, open the Host, fill
+  Location/Time, the fixture profile preselected, `Set the scene`, the review
+  pane carrying `MOCK_LLM_REPLY`, `Use this scene` → the `Starting scenario`
+  editor holds it and the preset select (when rendered) reads Custom;
+  (b) the Salon — in a chat the beat CREATES (a scenario change posts a Host
+  record and recompiles every seat, so no shared fixture chat is touched),
+  expand the sidebar, open Chat, the Host, build, Use → the custom textarea
+  holds the reply, `Change scenario` → `Scenario updated` → the `scenario
+  change` chip opens on `The Host revises the scene for the proceedings:`;
+  (c) `Save as scenario…` → General (the default target) with a unique name
+  → the curly-quoted toast → the builder's Cancel → the New Chat preset
+  select on `general:<path>` naming it → the file DELETED through
+  `scenarioDelete` (the file sorts BEFORE `scenarios-flow.spec.ts`,
+  `'scenario-' < 'scenarios'`, which counts General scenarios);
+  (d) a second describe binds a SLOW mock (7 words, 1.5 s apart) to the same
+  port → `Set the scene` → the running pane's two sentences → `Stop` → back
+  on the inputs as filled, no draft, no alert, still so after the slow reply
+  would have finished, `Set the scene` enabled.
+- **Verified:** `npx playwright test e2e/scenario-builder-flow.spec.ts
+  --list` → 4 tests in 1 file (compiles under Playwright's transpiler). Not
+  run live here — the verbs do not exist on this branch; the unifier's flip
+  is the beats' first run, not a formality.
+- SPA 0.5.754 (no `src/` change; lint clean).

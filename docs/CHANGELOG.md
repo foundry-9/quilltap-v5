@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(e2e): gated Scenario Builder beats (P4.D218 unit 6)
+
+_Versions: SPA 0.5.754._
+
+Added `e2e/scenario-builder-flow.spec.ts` with four browser beats for the
+Scenario Builder: using a built scene on the New Chat form, using one in
+the Salon sidebar and saving it (the Host announces the change), saving a
+scene to Quilltap General and seeing it selected, and stopping a slow run.
+All four skip until `P4D217_SERVER_LANDED` is set to true at unification,
+since the server verbs land in another lane.
+
 #### 2026-09-23 — feat(spa): SCENARIO_BUILDER log type in the LLM Inspector and Wire Records (P4.D218 unit 5)
 
 _Versions: SPA 0.5.753._
