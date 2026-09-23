@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(spa): Scenario Builder contract types, the tool-call fold and host-activity twins, and the run state (P4.D218 unit 1)
+
+_Versions: SPA 0.5.749._
+
+The SPA side of the Scenario Builder's wire (the round's §S.1/§S.2): the
+three dispatch verbs, the progress event and its narrowing guard, the
+`scenarioBuilder` response, and `groupList`'s optional `characterIds`.
+Ported v4's `applyAgentStreamEvent` and `describeHostActivity` as pure
+functions, checked against a corpus recorded from v4's real functions
+(29 fold sequences, 40 activity lines). v4's SSE line parser is not ported
+because v5 frames arrive already parsed. Added `ScenarioBuilderRun`, which
+mints a run id, subscribes to the event stream before dispatching, folds
+frames, and aborts on stop, supersede, or destroy; the dispatch reply is
+used as a fallback when the terminal frame loses the race.
+
 #### 2026-09-23 — chore(lock): Cargo.lock catches up with the web 0.0.183 bump (P4.D217)
 
 _No crate versions bumped._

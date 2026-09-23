@@ -1,0 +1,1864 @@
+{
+  "source": "v4 d1c06cd9d — parse-agent-stream.ts applyAgentStreamEvent + ScenarioBuilderDialog.tsx describeHostActivity",
+  "empty": {
+    "toolCalls": [],
+    "batchBase": 0
+  },
+  "toolCallCases": [
+    {
+      "name": "returns the same state object when the event carries nothing tool-related",
+      "events": [
+        {
+          "reasoning": "thinking…"
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": true,
+          "state": {
+            "toolCalls": [],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "adds pending entries for a toolsDetected batch",
+      "events": [
+        {
+          "toolsDetected": 2,
+          "toolNames": [
+            "search_web",
+            "curl"
+          ],
+          "toolArguments": [
+            {
+              "query": "Gare du Nord"
+            },
+            {
+              "url": "https://example.com"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search_web",
+                "arguments": {
+                  "query": "Gare du Nord"
+                },
+                "pending": true
+              },
+              {
+                "name": "curl",
+                "arguments": {
+                  "url": "https://example.com"
+                },
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "falls back to \"unknown\" name and {} arguments for a malformed entry",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            42
+          ],
+          "toolArguments": [
+            "not an object"
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "unknown",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "settles a pending call by index on a matching toolResult",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "search"
+          ],
+          "toolArguments": [
+            {
+              "query": "inn"
+            }
+          ]
+        },
+        {
+          "toolResult": {
+            "index": 0,
+            "success": true,
+            "result": {
+              "hits": 3
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {
+                  "query": "inn"
+                },
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {
+                  "query": "inn"
+                },
+                "pending": false,
+                "result": {
+                  "hits": 3
+                },
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "records a string error on a failed toolResult",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "curl"
+          ],
+          "toolArguments": [
+            {
+              "url": "https://example.com"
+            }
+          ]
+        },
+        {
+          "toolResult": {
+            "index": 0,
+            "success": false,
+            "error": "timed out"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "curl",
+                "arguments": {
+                  "url": "https://example.com"
+                },
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "curl",
+                "arguments": {
+                  "url": "https://example.com"
+                },
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": false,
+                "error": "timed out"
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "ignores a toolResult with no matching pending entry",
+      "events": [
+        {
+          "toolResult": {
+            "index": 5,
+            "success": true
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": true,
+          "state": {
+            "toolCalls": [],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "batches tool-call indices across two detection batches from separate agent turns",
+      "events": [
+        {
+          "toolsDetected": 2,
+          "toolNames": [
+            "search",
+            "doc_read_file"
+          ],
+          "toolArguments": [
+            {
+              "query": "lore"
+            },
+            {
+              "path": "Knowledge/history.md"
+            }
+          ]
+        },
+        {
+          "toolResult": {
+            "index": 0,
+            "success": true
+          }
+        },
+        {
+          "toolResult": {
+            "index": 1,
+            "success": true
+          }
+        },
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "curl"
+          ],
+          "toolArguments": [
+            {
+              "url": "https://example.com"
+            }
+          ]
+        },
+        {
+          "toolResult": {
+            "index": 0,
+            "success": false,
+            "error": "blocked"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {
+                  "query": "lore"
+                },
+                "pending": true
+              },
+              {
+                "name": "doc_read_file",
+                "arguments": {
+                  "path": "Knowledge/history.md"
+                },
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {
+                  "query": "lore"
+                },
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              },
+              {
+                "name": "doc_read_file",
+                "arguments": {
+                  "path": "Knowledge/history.md"
+                },
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {
+                  "query": "lore"
+                },
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              },
+              {
+                "name": "doc_read_file",
+                "arguments": {
+                  "path": "Knowledge/history.md"
+                },
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {
+                  "query": "lore"
+                },
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              },
+              {
+                "name": "doc_read_file",
+                "arguments": {
+                  "path": "Knowledge/history.md"
+                },
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              },
+              {
+                "name": "curl",
+                "arguments": {
+                  "url": "https://example.com"
+                },
+                "pending": true
+              }
+            ],
+            "batchBase": 2
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {
+                  "query": "lore"
+                },
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              },
+              {
+                "name": "doc_read_file",
+                "arguments": {
+                  "path": "Knowledge/history.md"
+                },
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              },
+              {
+                "name": "curl",
+                "arguments": {
+                  "url": "https://example.com"
+                },
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": false,
+                "error": "blocked"
+              }
+            ],
+            "batchBase": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolsDetected larger than toolNames pads with unknown/{}",
+      "events": [
+        {
+          "toolsDetected": 3,
+          "toolNames": [
+            "search"
+          ],
+          "toolArguments": [
+            {
+              "query": "a"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {
+                  "query": "a"
+                },
+                "pending": true
+              },
+              {
+                "name": "unknown",
+                "arguments": {},
+                "pending": true
+              },
+              {
+                "name": "unknown",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolsDetected smaller than toolNames truncates",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "search",
+            "curl"
+          ],
+          "toolArguments": [
+            {},
+            {}
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolsDetected 0 adds nothing but re-bases to the current length",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "search"
+          ],
+          "toolArguments": [
+            {}
+          ]
+        },
+        {
+          "toolsDetected": 0
+        },
+        {
+          "toolResult": {
+            "index": 0,
+            "success": true
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 1
+          }
+        },
+        {
+          "sameReference": true,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolsDetected as a string is ignored",
+      "events": [
+        {
+          "toolsDetected": "2",
+          "toolNames": [
+            "a",
+            "b"
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": true,
+          "state": {
+            "toolCalls": [],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolsDetected true is ignored",
+      "events": [
+        {
+          "toolsDetected": true,
+          "toolNames": [
+            "a"
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": true,
+          "state": {
+            "toolCalls": [],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolsDetected NaN is a number: re-bases, adds nothing",
+      "events": [
+        {
+          "toolsDetected": {
+            "$nan": true
+          },
+          "toolNames": [
+            "a"
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolsDetected fractional loops to the ceiling",
+      "events": [
+        {
+          "toolsDetected": 1.5,
+          "toolNames": [
+            "a",
+            "b",
+            "c"
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "a",
+                "arguments": {},
+                "pending": true
+              },
+              {
+                "name": "b",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolsDetected negative adds nothing",
+      "events": [
+        {
+          "toolsDetected": -1,
+          "toolNames": [
+            "a"
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolNames not an array reads as empty",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": "search",
+          "toolArguments": {
+            "query": "x"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "unknown",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolArguments entry that is an array is accepted as an object",
+      "events": [
+        {
+          "toolsDetected": 2,
+          "toolNames": [
+            "a",
+            "b"
+          ],
+          "toolArguments": [
+            [
+              1,
+              2
+            ],
+            null
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "a",
+                "arguments": [
+                  1,
+                  2
+                ],
+                "pending": true
+              },
+              {
+                "name": "b",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolResult without an index settles batch index 0",
+      "events": [
+        {
+          "toolsDetected": 2,
+          "toolNames": [
+            "search",
+            "curl"
+          ],
+          "toolArguments": [
+            {},
+            {}
+          ]
+        },
+        {
+          "toolResult": {
+            "name": "curl",
+            "success": true
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              },
+              {
+                "name": "curl",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              },
+              {
+                "name": "curl",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolResult with a string index settles batch index 0",
+      "events": [
+        {
+          "toolsDetected": 2,
+          "toolNames": [
+            "search",
+            "curl"
+          ],
+          "toolArguments": [
+            {},
+            {}
+          ]
+        },
+        {
+          "toolResult": {
+            "index": "1",
+            "success": true
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              },
+              {
+                "name": "curl",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              },
+              {
+                "name": "curl",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolResult with a fractional index matches nothing",
+      "events": [
+        {
+          "toolsDetected": 2,
+          "toolNames": [
+            "search",
+            "curl"
+          ],
+          "toolArguments": [
+            {},
+            {}
+          ]
+        },
+        {
+          "toolResult": {
+            "index": 0.5,
+            "success": true
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              },
+              {
+                "name": "curl",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": true,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              },
+              {
+                "name": "curl",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolResult with a negative index can reach the previous batch",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "search"
+          ],
+          "toolArguments": [
+            {}
+          ]
+        },
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "curl"
+          ],
+          "toolArguments": [
+            {}
+          ]
+        },
+        {
+          "toolResult": {
+            "index": -1,
+            "success": false,
+            "error": "reached back"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              },
+              {
+                "name": "curl",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 1
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": false,
+                "error": "reached back"
+              },
+              {
+                "name": "curl",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "duplicate tool names settle by index, not by name",
+      "events": [
+        {
+          "toolsDetected": 2,
+          "toolNames": [
+            "search",
+            "search"
+          ],
+          "toolArguments": [
+            {
+              "query": "a"
+            },
+            {
+              "query": "b"
+            }
+          ]
+        },
+        {
+          "toolResult": {
+            "index": 1,
+            "name": "search",
+            "success": true,
+            "result": "second"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {
+                  "query": "a"
+                },
+                "pending": true
+              },
+              {
+                "name": "search",
+                "arguments": {
+                  "query": "b"
+                },
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {
+                  "query": "a"
+                },
+                "pending": true
+              },
+              {
+                "name": "search",
+                "arguments": {
+                  "query": "b"
+                },
+                "pending": false,
+                "result": "second",
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "a non-string error is dropped to undefined",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "curl"
+          ],
+          "toolArguments": [
+            {}
+          ]
+        },
+        {
+          "toolResult": {
+            "index": 0,
+            "success": false,
+            "error": {
+              "message": "nope"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "curl",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "curl",
+                "arguments": {},
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": false,
+                "error": {
+                  "$undefined": true
+                }
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "success absent settles with success undefined",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "search"
+          ],
+          "toolArguments": [
+            {}
+          ]
+        },
+        {
+          "toolResult": {
+            "index": 0
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": {
+                  "$undefined": true
+                },
+                "error": {
+                  "$undefined": true
+                }
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "a second toolResult for the same index overwrites the first",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "search"
+          ],
+          "toolArguments": [
+            {}
+          ]
+        },
+        {
+          "toolResult": {
+            "index": 0,
+            "success": false,
+            "error": "first"
+          }
+        },
+        {
+          "toolResult": {
+            "index": 0,
+            "success": true,
+            "result": "second"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": false,
+                "error": "first"
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": false,
+                "result": "second",
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolResult as a string is ignored",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "a"
+          ]
+        },
+        {
+          "toolResult": "done"
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "a",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": true,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "a",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolResult null is ignored",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "a"
+          ]
+        },
+        {
+          "toolResult": null
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "a",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": true,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "a",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "toolsDetected and toolResult in ONE frame settle against the new batch",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "search"
+          ],
+          "toolArguments": [
+            {}
+          ]
+        },
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "curl"
+          ],
+          "toolArguments": [
+            {}
+          ],
+          "toolResult": {
+            "index": 0,
+            "success": true
+          }
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              },
+              {
+                "name": "curl",
+                "arguments": {},
+                "pending": false,
+                "result": {
+                  "$undefined": true
+                },
+                "success": true,
+                "error": {
+                  "$undefined": true
+                }
+              }
+            ],
+            "batchBase": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "status, reasoning, done and error frames leave the state untouched",
+      "events": [
+        {
+          "toolsDetected": 1,
+          "toolNames": [
+            "search"
+          ],
+          "toolArguments": [
+            {}
+          ]
+        },
+        {
+          "status": {
+            "kind": "status",
+            "stage": "tool_executing",
+            "message": "x",
+            "toolName": "search"
+          }
+        },
+        {
+          "reasoning": "hmm"
+        },
+        {
+          "done": true,
+          "scenario": "A scene."
+        },
+        {
+          "error": "boom",
+          "errorType": "scenario_builder_failed"
+        }
+      ],
+      "steps": [
+        {
+          "sameReference": false,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": true,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": true,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": true,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        },
+        {
+          "sameReference": true,
+          "state": {
+            "toolCalls": [
+              {
+                "name": "search",
+                "arguments": {},
+                "pending": true
+              }
+            ],
+            "batchBase": 0
+          }
+        }
+      ]
+    }
+  ],
+  "activityCases": [
+    {
+      "name": "search_web",
+      "arguments": {
+        "query": "Gare du Nord"
+      },
+      "line": "Consulting the wider world about “Gare du Nord”"
+    },
+    {
+      "name": "curl",
+      "arguments": {
+        "url": "https://example.com"
+      },
+      "line": "Reading https://example.com"
+    },
+    {
+      "name": "curl",
+      "arguments": {},
+      "line": "Reading a page from the wider world"
+    },
+    {
+      "name": "search",
+      "arguments": {
+        "query": "inn"
+      },
+      "line": "Leafing through the stores for “inn”"
+    },
+    {
+      "name": "doc_read_file",
+      "arguments": {
+        "path": "Knowledge/lore.md"
+      },
+      "line": "Opening Knowledge/lore.md"
+    },
+    {
+      "name": "doc_read_file",
+      "arguments": {},
+      "line": "Opening a document"
+    },
+    {
+      "name": "mystery_tool",
+      "arguments": {},
+      "line": "Busying himself with mystery_tool"
+    },
+    {
+      "name": "search_web",
+      "arguments": {},
+      "line": "Consulting the wider world about “”"
+    },
+    {
+      "name": "search",
+      "arguments": {},
+      "line": "Leafing through the stores for “”"
+    },
+    {
+      "name": "doc_read_file",
+      "arguments": {
+        "uri": "qtap://store/a.md"
+      },
+      "line": "Opening qtap://store/a.md"
+    },
+    {
+      "name": "doc_read_file",
+      "arguments": {
+        "path": "",
+        "uri": "qtap://store/b.md"
+      },
+      "line": "Opening qtap://store/b.md"
+    },
+    {
+      "name": "doc_grep",
+      "arguments": {
+        "query": "the siege"
+      },
+      "line": "Hunting through the papers for “the siege”"
+    },
+    {
+      "name": "doc_grep",
+      "arguments": {},
+      "line": "Hunting through the papers for “”"
+    },
+    {
+      "name": "doc_list_files",
+      "arguments": {
+        "folder": "Knowledge"
+      },
+      "line": "Surveying the shelves of Knowledge"
+    },
+    {
+      "name": "doc_list_files",
+      "arguments": {
+        "folder": ""
+      },
+      "line": "Surveying the shelves"
+    },
+    {
+      "name": "doc_list_files",
+      "arguments": {},
+      "line": "Surveying the shelves"
+    },
+    {
+      "name": "doc_read_frontmatter",
+      "arguments": {
+        "path": "Scenarios/x.md"
+      },
+      "line": "Consulting Scenarios/x.md"
+    },
+    {
+      "name": "doc_read_frontmatter",
+      "arguments": {
+        "uri": "qtap://u"
+      },
+      "line": "Consulting qtap://u"
+    },
+    {
+      "name": "doc_read_frontmatter",
+      "arguments": {},
+      "line": "Consulting a document"
+    },
+    {
+      "name": "doc_read_heading",
+      "arguments": {
+        "path": "Knowledge/y.md",
+        "heading": "History"
+      },
+      "line": "Consulting Knowledge/y.md"
+    },
+    {
+      "name": "doc_read_heading",
+      "arguments": {},
+      "line": "Consulting a document"
+    },
+    {
+      "name": "submit_final_response",
+      "arguments": {
+        "response": "ignored"
+      },
+      "line": "Setting the scene down on paper"
+    },
+    {
+      "name": "search_web",
+      "arguments": {
+        "query": "\"Gare du Nord\""
+      },
+      "line": "Consulting the wider world about “Gare du Nord”"
+    },
+    {
+      "name": "search_web",
+      "arguments": {
+        "query": "  'Gare'  "
+      },
+      "line": "Consulting the wider world about “Gare”"
+    },
+    {
+      "name": "search_web",
+      "arguments": {
+        "query": "“‘Vey’s Crossing’”"
+      },
+      "line": "Consulting the wider world about “Vey’s Crossing”"
+    },
+    {
+      "name": "search",
+      "arguments": {
+        "query": "the \"Lantern\" Inn"
+      },
+      "line": "Leafing through the stores for “the \"Lantern\" Inn”"
+    },
+    {
+      "name": "doc_grep",
+      "arguments": {
+        "query": "\"\""
+      },
+      "line": "Hunting through the papers for “”"
+    },
+    {
+      "name": "search",
+      "arguments": {
+        "query": "   "
+      },
+      "line": "Leafing through the stores for “”"
+    },
+    {
+      "name": "search_web",
+      "arguments": {
+        "query": "\" spaced \""
+      },
+      "line": "Consulting the wider world about “ spaced ”"
+    },
+    {
+      "name": "search_web",
+      "arguments": {
+        "query": 42
+      },
+      "line": "Consulting the wider world about “”"
+    },
+    {
+      "name": "curl",
+      "arguments": {
+        "url": null
+      },
+      "line": "Reading a page from the wider world"
+    },
+    {
+      "name": "doc_read_file",
+      "arguments": {
+        "path": [
+          "a"
+        ],
+        "uri": 7
+      },
+      "line": "Opening a document"
+    },
+    {
+      "name": "doc_list_files",
+      "arguments": {
+        "folder": true
+      },
+      "line": "Surveying the shelves"
+    },
+    {
+      "name": "search_web",
+      "arguments": {
+        "$undefined": true
+      },
+      "line": "Consulting the wider world about “”"
+    },
+    {
+      "name": "doc_read_file",
+      "arguments": {
+        "$undefined": true
+      },
+      "line": "Opening a document"
+    },
+    {
+      "name": "",
+      "arguments": {},
+      "line": "Busying himself with "
+    },
+    {
+      "name": "unknown",
+      "arguments": {},
+      "line": "Busying himself with unknown"
+    },
+    {
+      "name": "Search_Web",
+      "arguments": {
+        "query": "case matters"
+      },
+      "line": "Busying himself with Search_Web"
+    },
+    {
+      "name": "search_web",
+      "arguments": {
+        "query": "Café de Flore ☕"
+      },
+      "line": "Consulting the wider world about “Café de Flore ☕”"
+    },
+    {
+      "name": "doc_read_file",
+      "arguments": {
+        "path": "Knowledge/Ünïcode—dash.md"
+      },
+      "line": "Opening Knowledge/Ünïcode—dash.md"
+    }
+  ]
+}

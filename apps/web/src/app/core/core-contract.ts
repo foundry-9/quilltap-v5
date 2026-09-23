@@ -1526,6 +1526,14 @@ export interface TagDeleteRequest {
 /** List groups with `_count.members` (v4 GET `/groups`, createdAt desc). */
 export interface GroupListRequest {
   type: 'groupList';
+  /**
+   * v4 `GET /api/v1/groups?characterIds=` (`d1c06cd9d`, `groups/route.ts:34-52`;
+   * the round's §S.2, P4.D216 serves it): keep only the groups any of these
+   * characters belongs to. PRESENT-but-empty yields ZERO groups — v4 filters on
+   * `!== null`, not on a non-empty list — so a caller with no cast must OMIT
+   * the key, never send `[]`. Absent = today's unfiltered list.
+   */
+  characterIds?: string[];
 }
 
 /** Create a group (v4 POST `/groups`). */
@@ -2635,6 +2643,11 @@ export type CoreRequest =
   | ChatInformRequest
   | ChatInformsListRequest
   | ChatInformCancelRequest
+  // --- The Host's Scenario Builder (the d1c06cd9d round's §S.1; P4.D217 serves
+  //     it) ---
+  | ScenarioBuilderBuildRequest
+  | ScenarioBuilderAbortRequest
+  | ScenarioBuilderCapabilitiesRequest
   | ChatImpersonationVoicePreviewRequest
   | ChatSendMailRequest
   | ChatMailboxListRequest
@@ -4304,6 +4317,11 @@ export type CoreResponse =
   | { type: 'models'; data: ModelsDto }
   // --- Autonomous rooms (P4.6ad) — one opaque body; the client casts per verb ---
   | { type: 'autonomousRoom'; data: Record<string, unknown> }
+  // --- The Scenario Builder (P4.D218 consumes, P4.D217 serves — §S.1): one
+  //     opaque body for all three verbs; the terminal frame's object after a
+  //     build, `{ aborted }` after an abort or a stopped build, the
+  //     capabilities body after a probe ---
+  | { type: 'scenarioBuilder'; data: Record<string, unknown> }
   | { type: 'error'; data: CoreError };
 
 export type ResponseType = CoreResponse['type'];
@@ -8133,3 +8151,119 @@ export function isSwipeProgressEvent(
 }
 
 // === end P4.D206 ===
+
+// ===========================================================================
+// === P4.D218 — the Host's Scenario Builder (v4 `d1c06cd9d`) ===
+// ---------------------------------------------------------------------------
+// The SPA's half of the round's §S.1 shared contract, transcribed from v4
+// `lib/scenario-builder/request-schema.ts`, `lib/services/scenario-builder/
+// scenario-builder.service.ts` and `app/api/v1/scenario-builder/route.ts` at
+// `d1c06cd9d`. P4.D217 serves the three verbs and the progress event; the
+// unifier diffs the wire name-for-name against its Rust.
+// ===========================================================================
+
+/**
+ * v4's `ScenarioBuildRequestInput` — the build request body, sent RAW (the
+ * server's Zod twin sees exactly what v4's `safeParse` would). `priorDraft` and
+ * `revision` travel together or not at all (v4's root `.refine`).
+ */
+export interface ScenarioBuildRequestInput {
+  mode: 'real' | 'in-world';
+  location: string;
+  time: string;
+  details?: string;
+  connectionProfileId: string;
+  projectId?: string | null;
+  characterIds?: string[];
+  chatId?: string | null;
+  priorDraft?: string | null;
+  revision?: string | null;
+}
+
+/**
+ * v4 `POST /api/v1/scenario-builder?action=build`. `runId` is CLIENT-MINTED —
+ * v5's scope tag, which v4 does not need because its SSE response IS the run.
+ * The SPA subscribes to {@link ScenarioBuilderProgressEvent}s for it BEFORE
+ * dispatching, so no frame can race the subscription. The dispatch resolves
+ * AFTER the run, carrying the terminal frame's object (`done` or `error`), or
+ * `{ aborted: true }` after an abort; its only error envelopes are the
+ * pre-stream refusals.
+ */
+export interface ScenarioBuilderBuildRequest {
+  type: 'scenarioBuilderBuild';
+  runId: string;
+  body: ScenarioBuildRequestInput;
+}
+
+/**
+ * Stop a run (v4 aborts the fetch). Answers `{ aborted }` — `true` iff a run
+ * with that id was live; NEVER an error for an unknown id, since Stop races the
+ * finish.
+ */
+export interface ScenarioBuilderAbortRequest {
+  type: 'scenarioBuilderAbort';
+  runId: string;
+}
+
+/** v4 `GET /api/v1/scenario-builder?action=capabilities`. */
+export interface ScenarioBuilderCapabilitiesRequest {
+  type: 'scenarioBuilderCapabilities';
+}
+
+/**
+ * The capabilities body. ⚠ `curlConfigured` is ALWAYS `false` on v5 — v5 builds
+ * no plugin tools and has no curl plugin (the round's §R.4(k) recorded
+ * divergence); v4 answers true only with the curl plugin installed and URL
+ * patterns configured. The dialog reads only `webSearchConfigured`.
+ */
+export interface ScenarioBuilderCapabilities {
+  webSearchConfigured: boolean;
+  curlConfigured: boolean;
+}
+
+/**
+ * The frames a build writes, as v4's REAL encoders write them (§S.1): the tool
+ * loop's `{ toolsDetected, toolNames, toolArguments }`, `{ status: {...} }` and
+ * `{ toolResult: { index, success, result, error } }`; `{ reasoning }` —
+ * CUMULATIVE, so the client REPLACES; then EXACTLY ONE terminal frame, `done`
+ * or `error`. **No content frames**: the scene arrives whole on `done`. An
+ * aborted run emits no terminal frame.
+ */
+export interface ScenarioBuilderDoneFrame {
+  done: true;
+  scenario: string;
+  provider: string;
+  modelName: string;
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+  toolsExecuted: number;
+  webAvailable: boolean;
+}
+
+export interface ScenarioBuilderErrorFrame {
+  error: string;
+  errorType?: 'scenario_builder_failed';
+  details?: string;
+}
+
+/**
+ * `Event::ScenarioBuilderProgress` on the wire: `{ type:
+ * 'scenarioBuilderProgress', progressId, frame }` — the `swipeProgress` shape,
+ * with `progressId` the client-minted `runId` and `frame` v4's SSE payload
+ * object verbatim (key order and all).
+ */
+export interface ScenarioBuilderProgressEvent {
+  type: 'scenarioBuilderProgress';
+  progressId: string;
+  frame: Record<string, unknown>;
+}
+
+/** Narrow a raw stream frame to a Scenario Builder frame for run `mine`. */
+export function isScenarioBuilderProgressEvent(
+  frame: ScopedEvent | Record<string, unknown>,
+  mine: string,
+): frame is ScenarioBuilderProgressEvent {
+  const f = frame as Record<string, unknown>;
+  return f['type'] === 'scenarioBuilderProgress' && f['progressId'] === mine;
+}
+
+// === end P4.D218 ===

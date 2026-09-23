@@ -146245,3 +146245,103 @@ result key order differs from v4's (`tools/doc_edit/**`) — the bytes a model s
 Builder (no arm reaches it). **Deferred, typed and loud:** `curlConfigured` always `false` / no curl
 tool (§R.4(k), Tier 3 item 14); `withCollectionActionDispatch` not re-proven beyond its sentences
 (Tier 3 item 15). **Order corrections** are in the order's status header.
+
+## Lane record — P4.D218, the Scenario Builder SPA (v4 `d1c06cd9d`; branch `claude/scenario-builder-spa-porting-4ce3ca`, cut from `main` `602c5f87`)
+
+### Opening
+
+- **§R.2 probe PASSED** (2026-09-23 ~14:10): v4 checkout on `main`, HEAD
+  `d1c06cd9d`, tree CLEAN, `d1c06cd9d..main` and `1a2b2164c..bugfix` both
+  EMPTY. Re-run before each regen batch (all PASS).
+- **Pin:** `/tmp/qt-v4-pin-p4d218-d1c06cd9d` (detached worktree, root
+  `node_modules` symlinked — the recorder needs no package or plugin
+  installs); verified by `git -C … rev-parse HEAD` = `d1c06cd9d786…` and
+  `ls -ld`. No Rust regen (the order: "P4.D218 runs no cargo at all").
+- **Order paths measured wrong:** v4's run hook is
+  `components/scenario-builder/hooks/useScenarioBuilderRun.ts`, not
+  `hooks/useScenarioBuilderRun.ts`. v4's `ScenarioBuilderDialog.test.tsx`
+  has **18** `it` cases (5 `describeHostActivity` + 2 model + 2 warning + 5
+  running + 4 saving), not the order's 22.
+
+### Unit 1 — the contract types, the pure twins, the run state (Tier 1 items 1–3)
+
+- **Contract** (`core-contract.ts`, appended block fenced `=== P4.D218 ===`):
+  `ScenarioBuildRequestInput`, the three §S.1 verbs in `CoreRequest`,
+  `ScenarioBuilderCapabilities`, the done/error frame types,
+  `ScenarioBuilderProgressEvent` + `isScenarioBuilderProgressEvent` (the
+  `isSwipeProgressEvent` shape), `{ type: 'scenarioBuilder' }` in
+  `CoreResponse`, and `GroupListRequest.characterIds?` (§S.2 — commented that
+  present-but-empty is ZERO groups, so a castless caller must omit it).
+- **`agent-tool-calls.ts`** — the twin of v4's `applyAgentStreamEvent` +
+  `AgentToolCallState` + `EMPTY_AGENT_TOOL_CALL_STATE`. **Overlap with
+  `core/chat-stream.reducer.ts`'s tool fold MEASURED — not reusable, four
+  axes:** (1) the reducer maps over `toolNames` where v4 loops
+  `toolsDetected` times padding `'unknown'`/`{}`; (2) an absent `index` falls
+  to a by-NAME match in the reducer, index 0 in v4; (3) the reducer settles
+  only the most recent batch, v4 addresses `batchBase + index` across the
+  whole run (a negative index reaches the previous batch); (4) no
+  same-reference rule. Each axis has a corpus case. `parseAgentSseLine` /
+  `splitSseBuffer` are **NOT PORTED** — v5 never reads SSE bytes (frames
+  arrive parsed on the one Event channel); recorded in the module doc.
+- **`host-activity.ts`** — `describeHostActivity`, the nine arms; the `curl`
+  arm kept for fidelity though it can never fire on v5 (§R.4(k); Tier 3
+  item 14).
+- **The recorder** `apps/web/oracle/scenario-builder.recorder.ts` imports
+  v4's REAL `applyAgentStreamEvent` and `describeHostActivity` (the dialog
+  module imports cleanly under tsx — measured, so nothing is extracted by
+  hand). Corpus `apps/web/src/app/scenario-builder/__fixtures__/
+  scenario-builder-oracle.json`: **29 fold cases** (v4's 7 test cases by name
+  + 22 edges: count vs names length, zero/NaN/fractional/negative counts,
+  string/fractional/negative/absent index, duplicate names, non-string
+  error, overwrite, one-frame detect+settle, the non-tool frames) and **40
+  activity lines**. JSON cannot carry `undefined`/`NaN`, both of which
+  matter (v4's settle writes `error: undefined` as an OWN key), so both sides
+  use a `{"$undefined":true}`/`{"$nan":true}` tagging decoded by
+  `oracle-corpus.testing.ts`; the spec replays with `toStrictEqual` and
+  checks the same-reference rule at every step. 35 tagged values in the
+  corpus.
+  **Regen recipe (AS RUN):**
+  ```bash
+  PIN=/tmp/qt-v4-pin-p4d218-d1c06cd9d
+  git -C ~/source/quilltap-server worktree add --detach "$PIN" d1c06cd9d
+  ln -s ~/source/quilltap-server/node_modules "$PIN/node_modules"
+  V=<worktree>/apps/web; OUT=$V/src/app/scenario-builder/__fixtures__/scenario-builder-oracle.json
+  rm -f "$OUT"; cp $V/oracle/scenario-builder.recorder.ts "$PIN/"
+  (cd "$PIN" && PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx scenario-builder.recorder.ts > "$OUT")
+  rm -f "$PIN/scenario-builder.recorder.ts"
+  python3 -c "import json;d=json.load(open('$OUT'));print(len(d['toolCallCases']),len(d['activityCases']))"   # 29 40
+  ```
+- **`scenario-builder-run.state.ts`** (`ScenarioBuilderRun`, provided per
+  dialog): mint a uuid `runId`, subscribe to `events$` BEFORE dispatching
+  `scenarioBuilderBuild`, fold each frame as v4 folds a parsed line (tool
+  state → reasoning REPLACE → `error` fails → `done` finishes; first terminal
+  frame wins, later frames ignored); `stop()` dispatches
+  `scenarioBuilderAbort { runId }` and resets; a new `run()` aborts the
+  prior; `DestroyRef` aborts. **⚠ Deviation from §S.1's sentence "uses the
+  dispatch value only for the pre-stream refusals", measured:** frames and
+  the dispatch reply ride different channels, so a `done` frame can land
+  after the dispatch resolves — the race the P4.D206 unification review
+  found in the streamed swipe. Since §S.1 also fixes the reply as the
+  terminal frame's object, the reply is folded as the race's FALLBACK (a
+  terminal frame that came first wins; `{ aborted: true }` resolves quietly;
+  neither → "went quiet"). v4's four fallback strings mapped: the refusal
+  envelope's `message` shown as-is (no HTTP status exists on a dispatch
+  envelope, so `(HTTP ${status})` has no v5 input); an empty message →
+  `…no response arrived.`; no terminal anywhere → `…went quiet…`; a
+  messageless throw → `…could not complete the enquiry.` v4's
+  new-run-while-running clobber (its aborted prior's `AbortError` arm
+  `setState(INITIAL)` lands after the new run's `running`) is unreachable
+  from the dialog (no run button is visible while running) and is not
+  reproduced — a superseded run returns `null` without touching state.
+- **Specs:** `agent-tool-calls.spec.ts` 38 (v4's 8 by name + guard + 29),
+  `host-activity.spec.ts` 46 (v4's 5 + guard + 40),
+  `scenario-builder-run.state.spec.ts` 23 (both orderings: frames-first and
+  reply-first; refusals; throws; stop/supersede/destroy).
+- **Mutation proofs (Tier 2 item 12), each reverted by file backup:**
+  | Mutation | Reddened |
+  |---|---|
+  | M1 drop the `batchBase` re-base | 5 — v4's own two-batch case (both layers), zero-count re-base, negative index, detect+settle in one frame |
+  | M2 settle by name before index | **first run SURVIVED on the duplicate-name case** (its `toolResult` carried no `name`, so a by-name fold matched nothing and fell back to the index) — the case now names its tool as the Salon's frames do, re-recorded; then 2 — duplicate names, absent index |
+  | M3 subscribe AFTER the dispatch resolves | 3 — frames-first done, frames-first error, reply-first (its detect frame lost) |
+- **Gate:** `npm run lint` clean; `npm test` 444 files / 7,581 passed
+  (7,474 + 107); `npm run build` clean. SPA 0.5.749.
