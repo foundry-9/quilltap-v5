@@ -157,6 +157,17 @@ pub enum ZodIssue {
         path: Vec<Value>,
         message: String,
     },
+    // === P4.D217 ===
+    /// A `.refine(fn, { message })` failure — `code, path, message`, nothing
+    /// else (measured against real zod 4.6.5 at the `d1c06cd9d` pin through
+    /// `scenarioBuildRequestSchema`'s root refine: `{"code":"custom","path":[],
+    /// "message":"priorDraft and revision travel together"}`).
+    Custom {
+        code: &'static str,
+        path: Vec<Value>,
+        message: String,
+    },
+    // === end P4.D217 ===
 }
 
 /// JS `Number.MAX_SAFE_INTEGER` — the bound `z.number().int()` reports as
@@ -357,6 +368,32 @@ impl ZodIssue {
         }
     }
 
+    // === P4.D217 ===
+    /// `z.array(...).max(n)` — the size issue with `origin: "array"` and Zod's
+    /// `items` sentence (measured at 4.6.5: `Too big: expected array to have
+    /// <=32 items`).
+    pub fn too_big_array(maximum: Value, path: Vec<Value>) -> Self {
+        let message = format!("Too big: expected array to have <={maximum} items");
+        Self::TooBig {
+            origin: "array",
+            code: "too_big",
+            maximum,
+            inclusive: true,
+            path,
+            message,
+        }
+    }
+
+    /// A `.refine(fn, { message, path? })` failure.
+    pub fn custom(path: Vec<Value>, message: impl Into<String>) -> Self {
+        Self::Custom {
+            code: "custom",
+            path,
+            message: message.into(),
+        }
+    }
+    // === end P4.D217 ===
+
     /// This issue as a `serde_json::Value`, for the call sites that carry issue
     /// bags as raw JSON rather than as typed values. `preserve_order` keeps the
     /// key order the variant declares.
@@ -374,7 +411,8 @@ impl ZodIssue {
             | Self::TooSmall { path, .. }
             | Self::TooBig { path, .. }
             | Self::TooSmallInt { path, .. }
-            | Self::TooBigInt { path, .. } => path,
+            | Self::TooBigInt { path, .. }
+            | Self::Custom { path, .. } => path,
         }
     }
 
@@ -388,7 +426,8 @@ impl ZodIssue {
             | Self::TooSmall { message, .. }
             | Self::TooBig { message, .. }
             | Self::TooSmallInt { message, .. }
-            | Self::TooBigInt { message, .. } => message,
+            | Self::TooBigInt { message, .. }
+            | Self::Custom { message, .. } => message,
         }
     }
 }
@@ -566,6 +605,18 @@ mod tests {
                 "too_small/int-safeint",
                 ZodIssue::too_small_int(vec![key("a")]),
                 r#"{"code":"too_small","minimum":-9007199254740991,"note":"Integers must be within the safe integer range.","origin":"int","inclusive":true,"path":["a"],"message":"Too small: expected int to be >=-9007199254740991"}"#,
+            ),
+            // P4.D217 — measured at 4.6.5 through `scenarioBuildRequestSchema`
+            // (the `scenario_build_request_schema_equivalence` oracle).
+            (
+                "too_big/array",
+                ZodIssue::too_big_array(json!(32), vec![key("characterIds")]),
+                r#"{"origin":"array","code":"too_big","maximum":32,"inclusive":true,"path":["characterIds"],"message":"Too big: expected array to have <=32 items"}"#,
+            ),
+            (
+                "custom/refine-root",
+                ZodIssue::custom(vec![], "priorDraft and revision travel together"),
+                r#"{"code":"custom","path":[],"message":"priorDraft and revision travel together"}"#,
             ),
         ];
         for (label, issue, want) in rows {

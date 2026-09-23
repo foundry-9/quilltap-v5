@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(scenario-builder): the request body's Zod twin (P4.D217 unit 1)
+
+_Versions: core 0.0.1019, harness 0.0.935._
+
+Adds `services::scenario_builder::request_schema`, a hand-written twin of
+v4's `scenarioBuildRequestSchema` that returns either the parsed body (trims
+and defaults applied, key order as Zod renders it) or Zod's issue list. The
+Zod issue home gains the `custom` refine issue and the array `too_big` issue.
+A new tier-1 differential, `scenario_build_request_schema_equivalence`, checks
+91 bodies against v4's real schema, including which field issues suppress the
+root refine and Zod 4.5's code-point length rule.
+
 #### 2026-09-23 — docs(porting): P4.D216 lane close-out — the verification gate and the order's status header
 
 _Docs-only change._
