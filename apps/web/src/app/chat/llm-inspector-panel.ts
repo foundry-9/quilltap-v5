@@ -31,7 +31,14 @@ const FILTER_GROUPS: Record<FilterCategory, string[] | null> = {
   system: ['TITLE_GENERATION', 'SUMMARIZATION', 'CONTEXT_COMPRESSION'],
   image: ['IMAGE_PROMPT_CRAFTING', 'IMAGE_DESCRIPTION', 'APPEARANCE_RESOLUTION'],
   safety: ['DANGER_CLASSIFICATION'],
-  other: ['CHARACTER_WIZARD', 'AI_IMPORT', 'CUSTOM_TOOL_CONSULT', 'VOICE_REWRITE'],
+  other: [
+    'CHARACTER_WIZARD',
+    'AI_IMPORT',
+    'CUSTOM_TOOL_CONSULT',
+    'VOICE_REWRITE',
+    // The Host's Scenario Builder (v4 `d1c06cd9d`, `LLMInspectorPanel.tsx:18`).
+    'SCENARIO_BUILDER',
+  ],
 };
 
 /** Filter copy (v4 `:21-29`) — VERBATIM. */

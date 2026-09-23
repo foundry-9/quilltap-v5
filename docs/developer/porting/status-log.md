@@ -146527,3 +146527,22 @@ tool (§R.4(k), Tier 3 item 14); `withCollectionActionDispatch` not re-proven be
   SPA 0.5.752. (A first gate launch was backgrounded with a bare `&` inside a
   foreground command — the recorded trap; it was killed and relaunched as one
   `run_in_background` chain before any result was read.)
+
+### Unit 5 — the `SCENARIO_BUILDER` rows in the three log surfaces (Tier 1 item 8)
+
+- The Inspector entry's badge `qt-bg-info/15 qt-text-info` + label
+  `Scenario` (v4 `LLMInspectorEntry.tsx:29,47`); the Inspector panel's
+  `other` filter group gains it after `VOICE_REWRITE` (`LLMInspectorPanel.tsx
+  :18`); Wire Records' label `Scenario Builder` (`llm-logs-card.tsx:45`) —
+  a DIFFERENT word from the Inspector's, both v4's, carried as-is.
+- **`LlmLogType` measured:** v4's `LLMLogTypeEnum` at `d1c06cd9d` HAS
+  `SCENARIO_BUILDER`, so it joins v5's client union. The same measurement
+  shows the union has never carried `CUSTOM_TOOL_CONSULT` or
+  `VOICE_REWRITE` (v4: 22 members; v5 now 20). Nothing narrows on the union
+  today, so the lag is recorded in the type's doc comment and here for a
+  housekeeping pass, NOT widened in this lane.
+- **Red-first:** the three new cases (one per surface) run against HEAD's
+  three tables → 3 red; green with the rows. The four existing
+  `VOICE_REWRITE` cases stay green.
+- **Gate:** lint clean; `npm test` 447 files / 7,652 passed; build clean.
+  SPA 0.5.753.

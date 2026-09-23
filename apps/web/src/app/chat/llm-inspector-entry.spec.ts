@@ -526,3 +526,19 @@ describe('the VOICE_REWRITE type (v4 686954937)', () => {
   });
 });
 
+/**
+ * The `d1c06cd9d` drift (P4.D218): the Scenario Builder's own log type. v4
+ * anchors: `LLMInspectorEntry.tsx:29` (badge class) and `:47` (label).
+ */
+describe('the SCENARIO_BUILDER type (v4 d1c06cd9d)', () => {
+  it('carries the info badge and reads "Scenario"', () => {
+    const fixture = render(log({ type: 'SCENARIO_BUILDER' }));
+    const el = fixture.nativeElement as HTMLElement;
+    const badge = Array.from(el.querySelectorAll('span')).find(
+      (s) => s.textContent?.trim() === 'Scenario',
+    );
+    expect(badge).toBeDefined();
+    expect(badge?.className).toContain('qt-bg-info/15');
+    expect(badge?.className).toContain('qt-text-info');
+  });
+});

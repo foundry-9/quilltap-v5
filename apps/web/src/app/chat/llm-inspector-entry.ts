@@ -30,6 +30,8 @@ const TYPE_BADGE_CLASSES: Record<string, string> = {
   AI_IMPORT: 'qt-bg-success/15 qt-text-success',
   CUSTOM_TOOL_CONSULT: 'qt-bg-info/15 qt-text-info',
   VOICE_REWRITE: 'qt-bg-info/15 qt-text-info',
+  // The Host's Scenario Builder (v4 `d1c06cd9d`, `LLMInspectorEntry.tsx:29`).
+  SCENARIO_BUILDER: 'qt-bg-info/15 qt-text-info',
 };
 
 /** Badge copy per log type (v4 `:29-42`) — VERBATIM; same twelve-of-nineteen note. */
@@ -48,6 +50,8 @@ const TYPE_LABELS: Record<string, string> = {
   AI_IMPORT: 'Import',
   CUSTOM_TOOL_CONSULT: 'Consult',
   VOICE_REWRITE: 'Voice',
+  // v4 `d1c06cd9d` (`:47`) — "Scenario" here; Wire Records says "Scenario Builder".
+  SCENARIO_BUILDER: 'Scenario',
 };
 
 /** UI truncation threshold for display (v4 `:243` — full content is stored in the DB). */

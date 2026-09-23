@@ -80,3 +80,16 @@ describe('LlmLogsCard — the VOICE_REWRITE label (v4 686954937)', () => {
   });
 });
 
+/**
+ * The `d1c06cd9d` drift (P4.D218): Wire Records labels the Scenario Builder's
+ * log type (v4 `llm-logs-card.tsx:45`) — "Scenario Builder", NOT the
+ * Inspector's shorter "Scenario"; unlisted it would read as the raw enum.
+ */
+describe('LlmLogsCard — the SCENARIO_BUILDER label (v4 d1c06cd9d)', () => {
+  it('reads "Scenario Builder", not the raw type', async () => {
+    const fixture = await mount([sampleLog({ type: 'SCENARIO_BUILDER' })]);
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Scenario Builder');
+    expect(text).not.toContain('SCENARIO_BUILDER');
+  });
+});

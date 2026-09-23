@@ -19,6 +19,9 @@ const TYPE_LABELS: Record<string, string> = {
   IMAGE_DESCRIPTION: 'Image Desc',
   CUSTOM_TOOL_CONSULT: 'Custom Tool',
   VOICE_REWRITE: 'Voice Rewrite',
+  // v4 `d1c06cd9d` (`llm-logs-card.tsx:45`) — a DIFFERENT label from the
+  // Inspector's "Scenario"; both are v4's, carried as-is.
+  SCENARIO_BUILDER: 'Scenario Builder',
 };
 
 /** v4 `formatDateTime(str, {includeYear:false})` — month/day + time, no year. */

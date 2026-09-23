@@ -371,3 +371,25 @@ describe('the VOICE_REWRITE filter group (v4 686954937)', () => {
   });
 });
 
+/**
+ * The `d1c06cd9d` drift (P4.D218): `SCENARIO_BUILDER` joins the `other` filter
+ * group (v4 `LLMInspectorPanel.tsx:18`), after `VOICE_REWRITE`.
+ */
+describe('the SCENARIO_BUILDER filter group (v4 d1c06cd9d)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('is reachable under other, and nowhere else', () => {
+    const logs = [
+      log({ id: 'scene', type: 'SCENARIO_BUILDER' }),
+      log({ id: 'voice', type: 'VOICE_REWRITE' }),
+      log({ id: 'chat', type: 'CHAT_MESSAGE' }),
+    ];
+    const other = render({ logs });
+    setFilter(other, 'other');
+    expect(entryIds(other).sort()).toEqual(['scene', 'voice']);
+    TestBed.resetTestingModule();
+    const chat = render({ logs });
+    setFilter(chat, 'chat');
+    expect(entryIds(chat)).toEqual(['chat']);
+  });
+});

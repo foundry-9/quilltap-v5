@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(spa): SCENARIO_BUILDER log type in the LLM Inspector and Wire Records (P4.D218 unit 5)
+
+_Versions: SPA 0.5.753._
+
+The LLM Inspector shows Scenario Builder calls with an info badge labelled
+"Scenario" and lists them under the Other filter; Wire Records labels them
+"Scenario Builder", matching v4's two different labels. `SCENARIO_BUILDER`
+joins the client log-type union. Three new spec cases, red against the
+previous tables.
+
 #### 2026-09-23 — feat(spa): "Ask the Host to set the scene" in the Salon sidebar's scenario control (P4.D218 unit 4)
 
 _Versions: SPA 0.5.752._

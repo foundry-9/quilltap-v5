@@ -19,7 +19,11 @@ import type { LlmLogsListRequest } from '../core/core-contract';
 export type { LlmLogsListRequest } from '../core/core-contract';
 
 /**
- * The nineteen log types (v4 `LLMLogTypeEnum`, `llm-log.types.ts:17-37`).
+ * The log types (v4 `LLMLogTypeEnum`, `llm-log.types.ts`) — nineteen, plus
+ * `SCENARIO_BUILDER` (v4 `d1c06cd9d`). ⚠ v4's enum ALSO carries
+ * `CUSTOM_TOOL_CONSULT` and `VOICE_REWRITE`, which this union has never
+ * picked up (22 in v4 at `d1c06cd9d`); nothing narrows on it today, so the lag
+ * is recorded for a housekeeping pass rather than widened here (P4.D218).
  *
  * Note the Inspector's badge/filter tables cover only twelve of them — the other
  * seven fall through to the unknown-type arms BY DESIGN (see
@@ -44,7 +48,9 @@ export type LlmLogType =
   | 'AUTO_CONFIGURE'
   | 'IMAGE_GENERATION'
   | 'WARDROBE_IMAGE_ANALYSIS'
-  | 'ANSWER_CONFIRMATION';
+  | 'ANSWER_CONFIRMATION'
+  // The Host's Scenario Builder (v4 `d1c06cd9d` adds it to `LLMLogTypeEnum`).
+  | 'SCENARIO_BUILDER';
 
 /** One prompt message in a logged request (v4 `LLMLogMessageSummarySchema` :44-49). */
 export interface LlmLogMessageSummary {
