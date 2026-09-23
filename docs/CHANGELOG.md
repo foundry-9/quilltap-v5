@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): the P4.110 lane close — gate, status header
+
+_Versions: harness 0.0.916 (Cargo.lock catch-up; the version was bumped in the previous commit)._
+
+Closed the P4.110 lane: the work order's status header records what landed
+and what the order got wrong (the "ten" walker copies were two different
+walkers; 22 import call sites, not about 15), and the status log gains the
+gate record. Lane gate on the final tree: formatting, clippy in both
+feature sets, a release build, and the full workspace test run — 620 test
+binaries, 3,647 passed, 0 failed — with the CLI differential at 266 cases
+and 0 failures against the `a2db63da7` pin.
+
 #### 2026-09-23 — test(harness): eight source guards share the census walkers; a floor on the compressed-column census's walk (P4.110 item 5)
 
 _Versions: harness 0.0.916._

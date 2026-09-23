@@ -144952,3 +144952,36 @@ superseded by the ledger, which is the record.
   green after the revert (3/3).
 - `repo_root()` is also copied across ~14 guards (seen in passing) — not in
   this order's list; left, named here.
+
+### Lane gate + close
+
+- **The final tree `c4253f40`, one logged chain** (`CARGO_INCREMENTAL=0
+  TZ=UTC`): `cargo fmt --all --check` clean; `cargo clippy --workspace
+  --all-targets -- -D warnings` clean, and again with `--features
+  quilltap-core/native-transport` clean; `cargo build --workspace
+  --release` clean; `cargo test --workspace --no-fail-fast -- --nocapture`
+  with the lane block (`QT_ORACLE_SALON_SWIPE`, `QT_ORACLE_QTAPIMPORT` +
+  `QT_FIXTURE_QTAPIMPORT_{MAIN,MOUNT}` → the lane-private `/tmp/p4110/`
+  copies, `QT_ORACLE_SYSTEM_IMPORT_EXECUTE`, `QT_V4_CHECKOUT=/tmp/
+  qt-v4-pin-p4110-a2db63da7`, `QT_NODE` the real Node 24 path; every other
+  family's var withheld): **620 test binaries / 3,647 passed / 0 failed /
+  3 ignored.** Confirmed RUN by their result lines: `qtap_import_equivalence`
+  1/1, `system_import_state` 1/1, `messages_swipe_sse_route` 4/4,
+  `salon_swipe_generate_equivalence` 1/1, `chat_informs_rest_routes` 4/4,
+  `chat_informs_dispatch_wire` 3/3, both census files (2/2, 3/3),
+  `dispatch_wrong_type_census` 12/12 (446 unmoved), `help_tree_embed_guard`
+  + `host_help_docs_boot` (126 unmoved), **Tier R `cli_differential`:
+  "266 cases, 0 failures" at the baseline pin**. `seed_avatars_equivalence`
+  SKIPs in the block by design (its recipe shares the
+  `QT_FIXTURE_QTAPIMPORT_*` names with `qtap_import` over different files —
+  the standing collision) and ran 1/1 by name from the pin (unit 3).
+- **§R.2 probe** re-run before the import regen batch: PASS.
+- **Findings for the unifier:** none in another lane's files. The two
+  OUT-OF-MANDATE hunks (`api/system_qtap.rs`, `services/character_archive/
+  service.rs`) are the `execute_import(` argument only (`git diff main --`
+  audited). `repo_root()` is copied across ~14 harness guards — a later DRY
+  candidate, not in this order.
+- **Deferred, named (Tier 3):** item 7 — lifting the web crate's
+  `strip_comments_and_attrs` / `dispatch_wrong_type_census` logic onto a
+  shared module (a different crate); item 8 — removing the reader-side
+  guarded `ALTER` heals P4.107 names as dead.
