@@ -494,12 +494,33 @@ fn capture_regen(
     throws: bool,
     mid_call_sql: Option<&'static str>,
 ) -> (Vec<String>, u16) {
+    let (lines, status, _) = capture_regen_with(tag, chat_id, reply, throws, None, mid_call_sql);
+    (lines, status)
+}
+
+/// [`capture_regen`] with a `pre_sql` plant (run before the verb's own reads)
+/// and the response body (the `00c290c9a` unification's review arms).
+fn capture_regen_with(
+    tag: &str,
+    chat_id: &str,
+    reply: Option<Canned>,
+    throws: bool,
+    pre_sql: Option<&'static str>,
+    mid_call_sql: Option<&'static str>,
+) -> (Vec<String>, u16, Value) {
     let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
     let db = fresh_db(&spec, tag, None);
+    if let Some(sql) = pre_sql {
+        rt.block_on(db.write(move |w| {
+            w.main().connection().execute_batch(sql)?;
+            Ok(())
+        }))
+        .expect("pre-call plant");
+    }
     let provider = CannedTitleProvider {
         canned: spec.canned_titles.clone(),
         override_reply: reply,
@@ -508,7 +529,7 @@ fn capture_regen(
         mid_call_sql: mid_call_sql.map(|sql| (db.clone(), sql)),
     };
     let now_iso = quilltap_core::clock::iso_from_unix_ms(spec.frozen_now_ms);
-    let (status, out) = auto_title_capture::capture(|| {
+    let ((status, body), out) = auto_title_capture::capture(|| {
         let r = rt.block_on(chat_admin::chat_regenerate_title(
             &db,
             &spec.user_id,
@@ -517,9 +538,9 @@ fn capture_regen(
             &CheapLlmTaskExecutor::new(),
             &now_iso,
         ));
-        status_body(&r).0
+        status_body(&r)
     });
-    (out, status)
+    (out, status, body)
 }
 
 fn one<'a>(lines: &'a [String], needle: &str) -> &'a String {
@@ -587,12 +608,70 @@ fn regenerate_title_log_lines_fire_on_their_own_branches() {
     // (d) The chokepoint's re-read fails (the `chats` table is gone by the time
     //     the LLM answers): v4's outer catch — the ERROR, the 500, and no
     //     success line.
-    let (lines, status) = capture_regen("log_error", CHAT, None, false, Some("DROP TABLE chats;"));
+    let (lines, status, body) = capture_regen_with(
+        "log_error",
+        CHAT,
+        None,
+        false,
+        None,
+        Some("DROP TABLE chats;"),
+    );
     assert_eq!(status, 500);
+    assert_eq!(body, json!({ "error": "Failed to regenerate title" }));
     let err = one(&lines, "[Chats v1] Error regenerating title");
     assert!(err.starts_with("ERROR "), "{err}");
     assert!(err.contains(&format!("chatId={CHAT}")), "{err}");
     assert!(err.contains("error="), "{err}");
     none(&lines, "[Chats v1] Title regenerated");
     none(&lines, "Title generation failed");
+
+    // (e) The `00c290c9a` unification's review: a repository read BEFORE the
+    //     LLM call fails — v4's ONE outer catch (`title.ts:92-94`) spans it
+    //     too, so it is the same ERROR and the same 500 body, not the raw
+    //     `DbError` text unlogged (red-first: 500 with `no such table` in the
+    //     body and no line).
+    let (lines, status, body) = capture_regen_with(
+        "log_read_error",
+        CHAT,
+        None,
+        false,
+        Some(r#"ALTER TABLE "connection_profiles" RENAME TO "connection_profiles_poisoned";"#),
+        None,
+    );
+    assert_eq!(status, 500);
+    assert_eq!(body, json!({ "error": "Failed to regenerate title" }));
+    let err = one(&lines, "[Chats v1] Error regenerating title");
+    assert!(err.starts_with("ERROR "), "{err}");
+    assert!(err.contains("no such table"), "{err}");
+    none(&lines, "[Chats v1] Title regenerated");
+
+    // (f) The `missing` outcome (the review: the lane had no arm for it) — the
+    //     chat is deleted while the LLM answers, so the chokepoint's re-read
+    //     finds nothing: DEBUG `Chat vanished…`, nothing written, and the body
+    //     is STILL v4's `{success, title}` with `outcome=missing` on the INFO.
+    let (lines, status, body) = capture_regen_with(
+        "log_missing",
+        CHAT,
+        None,
+        false,
+        None,
+        // `CHAT`, spelled out: the plant is a `&'static str`.
+        Some("DELETE FROM chats WHERE id = 'c1000000-0000-4000-8000-000000000001';"),
+    );
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["success"], json!(true), "{body}");
+    assert!(
+        body["title"].as_str().is_some_and(|t| !t.is_empty()),
+        "{body}"
+    );
+    let gone = one(
+        &lines,
+        "[Auto Title] Chat vanished before title could be applied",
+    );
+    assert!(gone.starts_with("DEBUG "), "{gone}");
+    assert!(gone.contains("source=regenerate"), "{gone}");
+    let done = one(&lines, "[Chats v1] Title regenerated");
+    assert!(done.contains("outcome=missing"), "{done}");
+    none(&lines, "[Auto Title] Chat retitled");
+    none(&lines, "Error regenerating title");
 }

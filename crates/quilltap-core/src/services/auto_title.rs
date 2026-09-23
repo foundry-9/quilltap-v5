@@ -269,6 +269,14 @@ pub async fn queue_story_background_if_enabled(
             ))
         })
         .await
+        // ⚠ A recorded divergence (the `00c290c9a` unification's review): in
+        // v4 this call sits OUTSIDE the enqueue's try, so a throw here would
+        // propagate out of `applyAutoTitle` (the fold's catch logs it, the job
+        // fails, regenerate answers 500). v5's resolver answers `Option` — its
+        // reads fold failure to "no profile", as v4's fallback repository reads
+        // mostly do — and only a failed writer round-trip can land here, where
+        // it queues nothing, silently. Pre-existing (moved verbatim from
+        // `image_profile_resolution.rs`); not widened here.
         .ok()
         .flatten();
     let Some(image_profile_id) = image_profile_id else {

@@ -729,10 +729,26 @@ pub async fn chat_regenerate_title<C: crate::model::completion::CompletionProvid
         Err(e) => return internal(e),
     };
 
+    // v4's ONE outer try/catch (`title.ts:92-94`) spans everything after the
+    // chat lookup (which the dispatcher does before the handler): the settings
+    // and profiles reads, `getMessages` and the chokepoint all land on the same
+    // ERROR + 500 `Failed to regenerate title` — the error riding as the
+    // logger's error argument, so it is v5's `error` field here. (The
+    // `00c290c9a` unification's review: the lane had routed only the
+    // chokepoint through it; the reads answered the raw `DbError` unlogged.)
+    let regenerate_failed = |e: &dyn std::fmt::Display| {
+        tracing::error!(
+            chatId = chat_id,
+            error = %e,
+            "[Chats v1] Error regenerating title"
+        );
+        server_error("Failed to regenerate title")
+    };
+
     let uid = user_id.to_string();
     let chat_settings = match db.read_main(move |c| chat_settings::find_by_user_id(c, &uid)) {
         Ok(v) => v,
-        Err(e) => return internal(e),
+        Err(e) => return regenerate_failed(&e),
     };
     let cheap_settings = chat_settings
         .as_ref()
@@ -745,7 +761,7 @@ pub async fn chat_regenerate_title<C: crate::model::completion::CompletionProvid
     let uid = user_id.to_string();
     let profiles = match db.read_main(move |c| connection_profiles::find_by_user_id(c, &uid)) {
         Ok(v) => v,
-        Err(e) => return internal(e),
+        Err(e) => return regenerate_failed(&e),
     };
     if profiles.is_empty() {
         return bad_request("No connection profiles available");
@@ -771,7 +787,7 @@ pub async fn chat_regenerate_title<C: crate::model::completion::CompletionProvid
     let cid = chat_id.to_string();
     let raw = match db.read_main(move |c| chats_messages_read::get_messages(c, &cid)) {
         Ok(v) => v,
-        Err(e) => return internal(e),
+        Err(e) => return regenerate_failed(&e),
     };
     let visible = crate::chat_tasks::extract_visible_conversation(&raw_messages(&raw));
     if visible.is_empty() {
@@ -857,16 +873,7 @@ pub async fn chat_regenerate_title<C: crate::model::completion::CompletionProvid
     .await
     {
         Ok(outcome) => outcome,
-        Err(e) => {
-            // v4's outer try/catch (`title.ts:92-94`) — the error rides as the
-            // logger's error argument, so it is v5's `error` field here.
-            tracing::error!(
-                chatId = chat_id,
-                error = %e,
-                "[Chats v1] Error regenerating title"
-            );
-            return server_error("Failed to regenerate title");
-        }
+        Err(e) => return regenerate_failed(&e),
     };
 
     tracing::info!(
