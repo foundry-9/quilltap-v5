@@ -144842,3 +144842,30 @@ superseded by the ledger, which is the record.
   real tree in cc stayed green under the mutation — its tree-wide arm does not
   happen to cross a char-literal brace — so the literal-braces pin is the one
   that guards the cc file, as designed.
+
+### Unit 2 — `materialize_salon_instance` in the web tests' `common` (Tier 1 item 2)
+
+- `crates/quilltap-web/tests/common/mod.rs` gains `materialize_salon_instance`
+  under `#[allow(dead_code)]`, its doc carrying the swipe copy's reasoning
+  (why it had been local: the `rewrite_fixture_user_ids` doc's own case) and
+  why three copies moved it. The three local copies DELETED
+  (`chat_informs_rest_routes.rs`, `messages_swipe_sse_route.rs`,
+  `chat_informs_dispatch_wire.rs`) — code byte-identical, measured, comments
+  only differing; SEVEN call sites repointed to `common::` (1 + 5 + 1).
+- **The swipe oracle, regenerated from the lane pin** (`/tmp/qt-v4-pin-p4110-
+  a2db63da7`, verified `rev-parse` = `a2db63da7…` and `ls -ld`): `rm -f
+  /tmp/oracle-salon-swipe.ndjson; CARGO_INCREMENTAL=0 TZ=UTC python3
+  harness/tools/recipe_sweep.py --run messages_swipe_sse_route --v4
+  /tmp/qt-v4-pin-p4110-a2db63da7 --v5w <abs worktree>` → "wrote … (4 cases)",
+  jest 1/1, the family 4/4, `OK: … ran end-to-end`, zero `SKIP`; copied to the
+  lane-private `/tmp/p4110/oracle-salon-swipe.ndjson` (126,157 bytes).
+- **By name** (`CARGO_INCREMENTAL=0 TZ=UTC QT_ORACLE_SALON_SWIPE=/tmp/p4110/
+  oracle-salon-swipe.ndjson cargo test -p quilltap-web --test
+  chat_informs_rest_routes --test chat_informs_dispatch_wire --test
+  messages_swipe_sse_route -- --nocapture`): `chat_informs_dispatch_wire`
+  3/3, `chat_informs_rest_routes` 4/4, `messages_swipe_sse_route` 4/4 (the
+  oracle leg RAN — no `SKIP:`). Clippy `-D warnings` over the three clean.
+  No mutation is owed (a pure move; the three families ARE the proof the
+  helper still heals the pair — without `ensure_p4d171_columns` the swipe
+  family's writes fail on the missing columns, as its P4.D172 comment
+  records).

@@ -53,32 +53,6 @@ const CHAT: &str = "c1000000-0000-4000-8000-000000000002";
 const SEAT_ARIA: &str = "b2000000-0000-4000-8000-000000000001";
 const SEAT_TWO: &str = "b2000000-0000-4000-8000-000000000002";
 
-fn materialize_salon_instance() -> tempfile::TempDir {
-    let base = tempfile::tempdir().expect("tempdir");
-    let data = base.path().join("data");
-    std::fs::create_dir_all(&data).unwrap();
-    std::fs::copy(
-        common::fixtures_dir().join("salon-main.db"),
-        data.join("quilltap.db"),
-    )
-    .unwrap();
-    std::fs::copy(
-        common::fixtures_dir().join("salon-mount.db"),
-        data.join("quilltap-mount-index.db"),
-    )
-    .unwrap();
-    {
-        let w = quilltap_core::db::Writer::open_writable(
-            &data.join("quilltap.db"),
-            common::TEST_PEPPER,
-        )
-        .unwrap();
-        common::rewrite_fixture_user_ids(w.connection());
-        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
-    }
-    base
-}
-
 struct Wire {
     client: reqwest::Client,
     url: String,
@@ -98,7 +72,7 @@ impl Wire {
 }
 
 async fn boot() -> (tempfile::TempDir, Wire) {
-    let base = materialize_salon_instance();
+    let base = common::materialize_salon_instance();
     let (addr, _state) = common::serve_instance(base.path(), |mut c| {
         c.terminal = false;
         c

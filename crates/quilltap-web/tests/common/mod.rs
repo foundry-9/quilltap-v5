@@ -459,3 +459,41 @@ pub fn materialize_generators_instance() -> tempfile::TempDir {
     }
     base
 }
+
+/// P4.110: materialize an instance dir from the committed SALON pair
+/// (`salon-main.db` + `salon-mount.db`) — the fixture
+/// `harness/oracle/fixtures/salon.json` describes and the Salon oracles run
+/// against. The fixture owner is rewritten to the engine's single user, and the
+/// pair is healed with the two `78b381a96` schema moves it predates
+/// (`ensure_p4d171_columns`), exactly as `salon_swipe_generate_equivalence`
+/// heals it.
+///
+/// Until P4.110 this body lived in THREE families as byte-identical local
+/// copies (`messages_swipe_sse_route`, `chat_informs_rest_routes`,
+/// `chat_informs_dispatch_wire`). The first was deliberately local — the
+/// [`rewrite_fixture_user_ids`] doc's own case, a family materializing its own
+/// dir rather than growing a twin here — and the other two copied it verbatim.
+/// Three copies of one fixture's heal is the point where the heal belongs in
+/// one place: a fourth schema move the pair predates is now one edit.
+#[allow(dead_code)]
+pub fn materialize_salon_instance() -> tempfile::TempDir {
+    let base = tempfile::tempdir().expect("tempdir");
+    let data = base.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::copy(
+        fixtures_dir().join("salon-main.db"),
+        data.join("quilltap.db"),
+    )
+    .unwrap();
+    std::fs::copy(
+        fixtures_dir().join("salon-mount.db"),
+        data.join("quilltap-mount-index.db"),
+    )
+    .unwrap();
+    {
+        let w = Writer::open_writable(&data.join("quilltap.db"), TEST_PEPPER).unwrap();
+        rewrite_fixture_user_ids(w.connection());
+        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+    }
+    base
+}

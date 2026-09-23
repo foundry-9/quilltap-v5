@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(web): one materialize_salon_instance in the web tests' common (P4.110 item 2)
+
+_Versions: web 0.0.177._
+
+Three web test files each carried a byte-identical local helper that builds
+an instance directory from the committed salon fixture pair (copy both
+databases, rewrite the fixture user id, add the two columns the pair
+predates). The helper now lives once in `crates/quilltap-web/tests/common/mod.rs`
+beside the other fixture materializers; the three copies are deleted and
+all seven call sites use the shared one. Test-only refactor: the three
+binaries are green by name (3, 4 and 4 tests), the swipe route against an
+oracle regenerated from the `a2db63da7` pin.
+
 #### 2026-09-23 — test(harness): one shared source-census lexer under the blob and compressed-column censuses (P4.110 item 1)
 
 _Versions: harness 0.0.914._

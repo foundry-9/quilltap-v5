@@ -59,37 +59,6 @@ const GROUP_USER: &str = "d2000000-0000-4000-8000-000000000001";
 const GROUP_HOST: &str = "d2000000-0000-4000-8000-000000000003";
 const MISSING: &str = "99999999-9999-4999-8999-999999999999";
 
-/// Materialize an instance dir from the committed SALON pair — the fixture the
-/// oracle runs against. Built here rather than as a `common::materialize_*`
-/// twin (the `rewrite_fixture_user_ids` doc's own case).
-fn materialize_salon_instance() -> tempfile::TempDir {
-    let base = tempfile::tempdir().expect("tempdir");
-    let data = base.path().join("data");
-    std::fs::create_dir_all(&data).unwrap();
-    std::fs::copy(
-        common::fixtures_dir().join("salon-main.db"),
-        data.join("quilltap.db"),
-    )
-    .unwrap();
-    std::fs::copy(
-        common::fixtures_dir().join("salon-mount.db"),
-        data.join("quilltap-mount-index.db"),
-    )
-    .unwrap();
-    {
-        let w = quilltap_core::db::Writer::open_writable(
-            &data.join("quilltap.db"),
-            common::TEST_PEPPER,
-        )
-        .unwrap();
-        common::rewrite_fixture_user_ids(w.connection());
-        // P4.D172: the committed salon pair predates the two `78b381a96`
-        // schema moves, exactly as `salon_swipe_generate_equivalence` heals it.
-        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
-    }
-    base
-}
-
 /// The oracle's per-case record.
 fn oracle_case(text: &str, name: &str) -> Value {
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -151,7 +120,7 @@ async fn the_sse_edge_matches_v4s_real_route() {
              `resolveSwipeTarget`'s position"
         );
 
-        let base = materialize_salon_instance();
+        let base = common::materialize_salon_instance();
         let base_dir = base.path().to_path_buf();
         let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
             c.terminal = false;
@@ -202,7 +171,7 @@ async fn the_sse_edge_matches_v4s_real_route() {
     let want_stream = &want["stream"];
     assert_eq!(want_stream["kind"].as_str(), Some("sse"));
 
-    let base = materialize_salon_instance();
+    let base = common::materialize_salon_instance();
     let base_dir = base.path().to_path_buf();
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
@@ -345,7 +314,7 @@ async fn without_the_flag_the_edge_answers_201_json() {
         "v4's non-stream leg is a 201"
     );
 
-    let base = materialize_salon_instance();
+    let base = common::materialize_salon_instance();
     let base_dir = base.path().to_path_buf();
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
@@ -378,7 +347,7 @@ async fn without_the_flag_the_edge_answers_201_json() {
 /// deferral, and v4's sentence for everything else.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_post_dispatcher_serves_swipe_defers_reattribute_and_refuses_the_rest() {
-    let base = materialize_salon_instance();
+    let base = common::materialize_salon_instance();
     let base_dir = base.path().to_path_buf();
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
@@ -474,7 +443,7 @@ async fn the_post_dispatcher_serves_swipe_defers_reattribute_and_refuses_the_res
 /// after).
 #[tokio::test(flavor = "multi_thread")]
 async fn a_body_that_is_not_json_takes_the_generate_path() {
-    let base = materialize_salon_instance();
+    let base = common::materialize_salon_instance();
     let base_dir = base.path().to_path_buf();
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
