@@ -6692,9 +6692,20 @@ per-family results: the round record in `status-log.md`.
    `wardrobe-instructions-*` pair — not a red family, but measure why before
    the heal touches it. The `ai_import_tier3` constant and the
    `courier_images_routes` raw read were fixed at this unification.
-3. **A ruling: animated inputs at the blob-write seam** — the host codec
-   encodes one frame; v4 keeps every frame. Decline animated inputs at the
-   codec (store the original) or grow the host codec (libwebpmux).
+3. **RULED 2026-09-23 (the human): animated inputs at the blob-write seam
+   are DECLINED at the codec, not encoded.** The host codec encodes one
+   frame; v4 keeps every frame. The order to write: the host codec detects
+   an animated input (a GIF with more than one image descriptor; a WebP
+   whose VP8X chunk carries the animation bit) and returns the
+   cannot-transcode arm, so v4's own store-original fallback keeps the
+   frames — a recorded D19 divergence on mime and path. Prove it with an
+   animated-GIF and an animated-WebP seed row in
+   `normalize_blob_image_equivalence` (v4's row lands `image/webp` with
+   `pages > 1`; v5's keeps the original mime and every frame — pinned as
+   the ruled divergence, red by design on mime/path), plus a still-input
+   neutrality row. Growing the codec (libwebpmux, the `webp-animation`
+   family) is NOT taken; it becomes its own order only if animated images
+   matter on real instances.
 4. **P4.105's owed edge:** a `ui_search_routes` arm over the poisoned-table
    plant; the two `safeQuery` siblings (`count_messages_with_text` /
    `find_messages_with_text`) and `updateMessage`'s own `safeQuery` wrap.

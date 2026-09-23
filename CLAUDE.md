@@ -907,9 +907,11 @@ records THERE. Update this summary only when a phase or round completes.
   guard SKIPs without plugin installs. **The wire's first live run of the
   P4.D213 beat FAILED on its own assertion** (it read the fold cursor through
   `chatGet`, whose projection is v4's hand-built object carrying
-  `contextSummary` alone — v5 matches) and was repaired. **Recorded for a
-  ruling:** the host WebP codec encodes ONE frame, so wiring the seam stores
-  an animated GIF as a still where v4 keeps every frame. Gate: fmt/clippy both feature sets/release clean; the 91-family sweep from the pin 86 ok after the sweep's three catches (a courier oracle case serializing a Node Buffer for a compressed column; a recipe assuming an unstaged mirror; a stale version constant), the five reds fixture-vintage pairs measured for the heal; Tier R 266/0 at the target, nine designed reds at the baseline; `cargo test --workspace` (148-var block) **620 binaries / 3,640 / 6 (the five vintage families + the recorded imggen staging collision, green by name) / 3 ignored**; SPA 441 / 7,474 / build + lint clean; full Playwright **326 / 5 / 6** — four reds green by file alone, the fifth REAL: the avatar-rolls beat's PNG plate can no longer read as kept once the album save normalizes for real (v4 identical); its seed made a WebP as production rolls are (green alone after the re-seed: 1/1 (53 s)).
+  `contextSummary` alone — v5 matches) and was repaired. **RULED (the
+  human, 2026-09-23):** the host WebP codec encodes ONE frame, so wiring the
+  seam stores an animated GIF as a still where v4 keeps every frame — the
+  codec will DECLINE animated inputs (v4's store-original fallback keeps the
+  frames); a small order, not yet landed. Gate: fmt/clippy both feature sets/release clean; the 91-family sweep from the pin 86 ok after the sweep's three catches (a courier oracle case serializing a Node Buffer for a compressed column; a recipe assuming an unstaged mirror; a stale version constant), the five reds fixture-vintage pairs measured for the heal; Tier R 266/0 at the target, nine designed reds at the baseline; `cargo test --workspace` (148-var block) **620 binaries / 3,640 / 6 (the five vintage families + the recorded imggen staging collision, green by name) / 3 ignored**; SPA 441 / 7,474 / build + lint clean; full Playwright **326 / 5 / 6** — four reds green by file alone, the fifth REAL: the avatar-rolls beat's PNG plate can no longer read as kept once the album save normalizes for real (v4 identical); its seed made a WebP as production rolls are (green alone after the re-seed: 1/1 (53 s)).
   Versions: core 0.0.1001, harness 0.0.913, host 0.0.147, web 0.0.176, cli
   0.0.27, SPA 0.5.748. **Next: the bug-163/164 catch-up when v4 commits it,
   the heal's next list, the animated ruling, then the owed dogfood pass** —

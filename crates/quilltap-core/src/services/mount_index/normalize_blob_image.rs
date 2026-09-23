@@ -53,15 +53,23 @@
 //! one `sharp`, used by both the bridges' pre-transcode and the normalization,
 //! and on every production path the codec is the host's `HostImageCodec` — the
 //! same encoder the engine's `blob_webp` holds.
-//! ⚠ **Recorded divergence (the `a2db63da7` unification):** the host codec
-//! encodes a single frame (`quilltap-host/src/image_codec.rs`, no libwebpmux),
-//! so an ANIMATED GIF/WebP reaching any of these sites is stored as a still
-//! WebP where v4's `sharp(input, { animated: true })` keeps every frame.
-//! Before P4.104 these sites stored the original bytes (frames kept, mime and
-//! path un-normalized); after it the D19 decision matches v4 and the frames do
-//! not. No corpus row carries an animated input — the human's call whether to
-//! decline animated inputs at the codec (store the original) or grow the host
-//! codec; recorded, not decided here.
+//! ⚠ **Recorded divergence, RULED (the human, 2026-09-23, at the `a2db63da7`
+//! unification): DECLINE animated inputs at the codec.** The host codec
+//! encodes a single frame (`quilltap-host/src/image_codec.rs`, the `webp`
+//! crate — no libwebpmux), so an ANIMATED GIF/WebP reaching any of these
+//! sites is today stored as a still WebP where v4's
+//! `sharp(input, { animated: true })` keeps every frame. Before P4.104 these
+//! sites stored the original bytes (frames kept, mime and path
+//! un-normalized). The ruling: the host codec must DETECT an animated input
+//! (a GIF with more than one image descriptor; a WebP whose VP8X chunk sets
+//! the animation bit) and answer the "cannot transcode" arm, so v4's own
+//! store-original fallback keeps the frames — a recorded D19 divergence on
+//! mime and path, never a lost frame. The alternative (an animated encoder
+//! through libwebpmux — the `webp-animation` family — with frame timing
+//! and loop count proven tier-1 against sharp) is NOT taken now; it becomes
+//! its own order only if animated images matter on real instances. The
+//! detection is an order (`phase-4.md`, the round's next items), not yet
+//! landed: until it lands, the still-frame behaviour above is what ships.
 //!
 //!
 //! **No encoder wired** (a host that supplies none, a canned test store) is

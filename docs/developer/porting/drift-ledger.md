@@ -77,11 +77,15 @@ probe verifies against._
   `db/text_compression.rs`, the P4.D209 record, and P4.104's module doc); a
   v5 boot never compresses or re-encodes existing rows, and does not need
   to — every read and write is codec-aware, so a mixed instance is the
-  normal state. **Recorded divergence (P4.104):** the host WebP codec
-  encodes a single frame, so an ANIMATED image reaching any blob-write site
-  is stored as a still WebP where v4 keeps every frame — the human's call
-  whether to decline animated inputs at the codec or grow it
-  (`normalize_blob_image.rs`'s module doc).
+  normal state. **Recorded divergence (P4.104), RULED by the human 2026-09-23 —
+  DECLINE animated inputs at the codec:** the host WebP codec encodes a
+  single frame, so an ANIMATED image reaching any blob-write site is today
+  stored as a still WebP where v4 keeps every frame; the ruling is that the
+  host codec detects an animated GIF/WebP and answers the cannot-transcode
+  arm, so v4's own store-original fallback keeps the frames (a D19
+  divergence on mime/path, never a lost frame). Growing the codec
+  (libwebpmux) is NOT taken. The detection is a small order, not yet landed
+  (`phase-4.md` next items; `normalize_blob_image.rs`'s module doc).
 
 ## §2 The freshness probe
 
