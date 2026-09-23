@@ -60,6 +60,7 @@ use crate::db::{
     chat_settings, chats_messages_read, chats_read, memories_read, projects, tags, DbError,
 };
 use crate::services::agent_mode::{global_agent_mode_settings, resolve_agent_mode_setting};
+use crate::services::auto_title::{apply_auto_title, AutoTitleExtraPatch, AutoTitleSource};
 use crate::services::context_summary::tasks::{title_chat, title_help_chat};
 use crate::services::image_job_common::{
     cheap_llm_config_from_settings, cheap_llm_profile_from_value,
@@ -685,7 +686,8 @@ pub trait RegenerateTitleDriver: Send + Sync {
 }
 
 /// v4 `?action=regenerate-title` — generate a fresh title from the visible
-/// transcript and store it, clearing `isManuallyRenamed`.
+/// transcript and store it through the auto-title chokepoint
+/// ([`crate::services::auto_title`]), clearing `isManuallyRenamed`.
 ///
 /// ## This is NOT the `TITLE_UPDATE` job
 ///
@@ -817,30 +819,62 @@ pub async fn chat_regenerate_title<C: crate::model::completion::CompletionProvid
         (true, Some(t)) if !t.is_empty() => t,
         // v4: `!result.success || !result.result` → serverError(result.error ||
         // 'Failed to generate title'). An empty string is falsy in JS, so it
-        // lands here too.
+        // lands here too. v4 logs the task's `error` first (`undefined` when
+        // absent — a JSON field that is simply missing, so no field here).
         (_, _) => {
+            match result.error.as_deref() {
+                Some(error) => tracing::error!(
+                    chatId = chat_id,
+                    error = error,
+                    "[Chats v1] Title generation failed"
+                ),
+                None => tracing::error!(chatId = chat_id, "[Chats v1] Title generation failed"),
+            }
             return server_error(
                 result
                     .error
                     .unwrap_or_else(|| "Failed to generate title".to_string()),
-            )
+            );
         }
     };
 
-    let cid = chat_id.to_string();
-    let patch = ChatUpdate {
-        title: Some(new_title.clone()),
-        is_manually_renamed: Some(false),
-        updated_at: Some(now_iso.to_string()),
-        ..Default::default()
-    };
-    if let Err(_e) = db
-        .write(move |w| w.main().chats().update(&cid, &patch).map(|_| ()))
-        .await
+    // v4 `00c290c9a` (bug 163): through the auto-title chokepoint, so a
+    // changed title also cues the Lantern. `clear_manual_rename` overrules a
+    // hand rename and rides `isManuallyRenamed: false` along as the extra patch
+    // — written even when the title comes back unchanged. The body is
+    // `{success, title}` for EVERY outcome, `missing` included.
+    let outcome = match apply_auto_title(
+        db,
+        user_id,
+        chat_id,
+        &new_title,
+        chat_settings.as_ref(),
+        AutoTitleExtraPatch::default(),
+        true,
+        AutoTitleSource::Regenerate,
+        now_iso,
+    )
+    .await
     {
-        // v4's outer try/catch.
-        return server_error("Failed to regenerate title");
-    }
+        Ok(outcome) => outcome,
+        Err(e) => {
+            // v4's outer try/catch (`title.ts:92-94`) — the error rides as the
+            // logger's error argument, so it is v5's `error` field here.
+            tracing::error!(
+                chatId = chat_id,
+                error = %e,
+                "[Chats v1] Error regenerating title"
+            );
+            return server_error("Failed to regenerate title");
+        }
+    };
+
+    tracing::info!(
+        chatId = chat_id,
+        newTitle = new_title.as_str(),
+        outcome = outcome.as_str(),
+        "[Chats v1] Title regenerated"
+    );
 
     ok(json!({ "success": true, "title": new_title }))
 }

@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(chats): regenerate-title through the auto-title chokepoint (P4.D215 unit 3)
+
+_Versions: core 0.0.1004, harness 0.0.915._
+
+`?action=regenerate-title` now writes through `apply_auto_title` with the
+manual-rename flag cleared, so a changed title queues the story background
+(v4 bug 163). The response body is unchanged for every outcome. Adds v4's
+three log lines (`Title generation failed`, `Title regenerated` with
+`outcome`, `Error regenerating title`). `chat_regenerate_title_tier3` grows
+from 9 to 15 cases and now diffs `background_jobs`. Planted state comes
+from v4's real repositories: the oracle saves the planted copy next to its
+output and the Rust side opens it.
+
 #### 2026-09-23 — feat(titles): the auto-title chokepoint, with the title-update job routed through it (P4.D215 unit 2)
 
 _Versions: core 0.0.1003, harness 0.0.914._

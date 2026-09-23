@@ -17,6 +17,14 @@
  * (`titleChat`'s last-100 / last-10-in-full-to-500 / earlier-to-150) and the
  * never-appended "Current title" rider are pinned rather than inferred.
  *
+ * P4.D215 (v4 `00c290c9a`, bugs 163/164) sends the title through
+ * `applyAutoTitle` with `clearManualRename: true`, and grows six arms that
+ * only the chokepoint can tell apart — the overruled hand rename, the
+ * unchanged title, and the story background a CHANGED title now queues (bug
+ * 163) but an unchanged one or a help chat never does. Their state is PLANTED
+ * through v4's real repositories (see `CaseSpec.plant`), and every row now
+ * also carries the `background_jobs` rows.
+ *
  * Seams mocked, and why:
  *   - `createLLMProvider` — the tier-3 model boundary (the Rust side injects the
  *     same canned reply).
@@ -79,7 +87,26 @@ interface CaseSpec {
   reply?: Canned;
   /** Make the provider throw instead of replying. */
   providerThrows?: boolean;
+  /**
+   * P4.D215 (v4 `00c290c9a`, bugs 163/164): state planted on the case's COPY
+   * through v4's REAL repositories before the route runs (after the clock
+   * freeze, so every stamp is the frozen one). The planted copy is saved beside
+   * the oracle NDJSON (`<out>.<case>.{main,mount}.db`) and the Rust side opens
+   * THAT — so both sides start from byte-identical planted state without a
+   * second hand-written copy of v4's row shapes.
+   *   - `manualRename`: the chat is `isManuallyRenamed: true` (a hand rename).
+   *   - `backgrounds`: an image profile the user owns, WITH an `apiKeyId`, named
+   *     as `storyBackgroundsSettings.defaultImageProfileId` with `enabled:
+   *     true` — so a changed title can queue the Lantern.
+   */
+  plant?: { manualRename?: boolean; backgrounds?: boolean };
 }
+
+/** The planted image profile + its (never-resolved) API key id. */
+const PLANT_IMAGE_PROFILE = 'c9000000-0000-4000-8000-000000000001';
+const PLANT_API_KEY = 'c9000000-0000-4000-8000-000000000002';
+/** `CHAT`'s committed title — a canned reply of exactly this is "unchanged". */
+const CHAT_TITLE = 'The Evening Post';
 
 function buildCases(spec: Spec): CaseSpec[] {
   return [
@@ -115,6 +142,39 @@ function buildCases(spec: Spec): CaseSpec[] {
     // No visible conversation → the 400, before the provider is ever called.
     { name: 'regen_title_no_messages', chat: EMPTY_CHAT },
     { name: 'regen_title_chat_missing', chat: MISSING_ID },
+    // ── P4.D215 (v4 `00c290c9a`): the verb through `applyAutoTitle` with
+    // `clearManualRename: true`. The body is `{success, title}` for EVERY
+    // outcome.
+    // An explicit regenerate OVERRULES a hand rename and hands the title back
+    // to the automatic titler (the flag clears).
+    { name: 'regen_title_overrules_manual', chat: CHAT, plant: { manualRename: true } },
+    // The canned title equals the current one: the chokepoint's unchanged arm
+    // writes only its extra patch (`isManuallyRenamed: false` + `updatedAt`).
+    {
+      name: 'regen_title_unchanged',
+      chat: CHAT,
+      reply: { content: CHAT_TITLE, promptTokens: 10, completionTokens: 4 },
+    },
+    // Bug 163: a CHANGED title cues the Lantern — one STORY_BACKGROUND_GENERATION
+    // row, where before the commit this verb never queued one.
+    { name: 'regen_title_queues_background', chat: CHAT, plant: { backgrounds: true } },
+    // …and a hand-renamed chat that is overruled queues it too.
+    {
+      name: 'regen_title_overrules_manual_queues_background',
+      chat: CHAT,
+      plant: { manualRename: true, backgrounds: true },
+    },
+    // An UNCHANGED title is no scene change: backgrounds on, nothing queued.
+    {
+      name: 'regen_title_unchanged_no_background',
+      chat: CHAT,
+      reply: { content: CHAT_TITLE, promptTokens: 10, completionTokens: 4 },
+      plant: { backgrounds: true },
+    },
+    // Help-like chats never get a story background (the chokepoint's gate, on
+    // the RE-READ row's type) — the help chat HAS a present character, so only
+    // the gate stands between it and a job.
+    { name: 'regen_title_help_no_background', chat: HELP_CHAT, plant: { backgrounds: true } },
   ];
 }
 
@@ -230,6 +290,46 @@ async function readChat(chatId: string): Promise<unknown> {
   };
 }
 
+/** Every background job, in the title-update family's comparand shape. */
+async function readJobs(): Promise<unknown> {
+  const { BackgroundJobsRepository } = await import(
+    '@/lib/database/repositories/background-jobs.repository'
+  );
+  const jobs = (await new BackgroundJobsRepository().findAll()) as Array<Record<string, unknown>>;
+  return jobs
+    .map((j) => ({ type: j.type, status: j.status, priority: j.priority, payload: j.payload }))
+    .sort((a, b) => String(a.type).localeCompare(String(b.type)));
+}
+
+/** Apply `c.plant` through v4's real repositories (see `CaseSpec.plant`). */
+async function applyPlant(spec: Spec, c: CaseSpec): Promise<void> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const repos = getRepositories();
+  if (c.plant?.backgrounds) {
+    await repos.imageProfiles.create(
+      {
+        userId: spec.userId,
+        name: 'Planted Lantern Profile',
+        provider: 'OPENAI',
+        modelName: 'dall-e-3',
+        apiKeyId: PLANT_API_KEY,
+        baseUrl: null,
+        parameters: {},
+        isDefault: false,
+        isDangerousCompatible: false,
+        tags: [],
+      } as never,
+      { id: PLANT_IMAGE_PROFILE } as never,
+    );
+    await repos.chatSettings.updateForUser(spec.userId, {
+      storyBackgroundsSettings: { enabled: true, defaultImageProfileId: PLANT_IMAGE_PROFILE },
+    } as never);
+  }
+  if (c.plant?.manualRename) {
+    await repos.chats.update(c.chat, { isManuallyRenamed: true } as never);
+  }
+}
+
 async function runCase(
   spec: Spec,
   c: CaseSpec,
@@ -268,6 +368,12 @@ async function runCase(
   } as unknown as DateConstructor;
 
   try {
+    if (c.plant) {
+      await applyPlant(spec, c);
+      const out = process.env.QT_ORACLE_OUT!;
+      copyFileSync(mainWork, `${out}.${c.name}.main.db`);
+      copyFileSync(mountWork, `${out}.${c.name}.mount.db`);
+    }
     const route = (await import('@/app/api/v1/chats/[id]/route')) as never as Record<
       string,
       (...a: unknown[]) => Promise<{ status: number; json: () => Promise<unknown> }>
@@ -282,6 +388,7 @@ async function runCase(
       body: await resp.json(),
       llmMessages: seenMessages,
       chat: await readChat(c.chat),
+      jobs: await readJobs(),
     };
   } finally {
     global.Date = RealDate;

@@ -4,7 +4,20 @@
 //! over a FRESH copy of the committed `chat-admin-{main,mount}.db` fixture per
 //! case, with the SAME canned cheap-LLM reply injected at the model boundary,
 //! then diff the response body AND the chat row's `title` /
-//! `isManuallyRenamed` / `updatedAt`.
+//! `isManuallyRenamed` / `updatedAt`, AND (P4.D215) every `background_jobs`
+//! row.
+//!
+//! ## P4.D215 — through the auto-title chokepoint (v4 `00c290c9a`)
+//!
+//! The verb now writes through `apply_auto_title(…, clear_manual_rename: true)`.
+//! Six arms only the chokepoint distinguishes: an overruled hand rename, an
+//! unchanged title (only the extra patch lands), the story background a CHANGED
+//! title queues (bug 163; before the commit this verb never queued one) with
+//! and without an overruled rename, an unchanged title queueing nothing, and a
+//! help chat queueing nothing. Their state is planted by the ORACLE through v4's
+//! real repositories and saved beside the NDJSON as `<oracle>.<case>.{main,
+//! mount}.db`; this side opens that seed, so neither side hand-writes v4's row
+//! shapes.
 //!
 //! ## The system prompt is part of the diff
 //!
@@ -81,6 +94,9 @@ struct CannedTitleProvider {
     override_reply: Option<Canned>,
     throws: bool,
     seen: Mutex<Vec<Value>>,
+    /// P4.D215: SQL run on this DB INSIDE the canned call — after the verb's
+    /// own reads, before the chokepoint's re-read (the log pins' fault plant).
+    mid_call_sql: Option<(Db, &'static str)>,
 }
 
 impl CompletionProvider for CannedTitleProvider {
@@ -103,6 +119,15 @@ impl CompletionProvider for CannedTitleProvider {
                 .map(|m| json!({ "role": m.role.as_str(), "content": m.content }))
                 .collect(),
         ));
+        if let Some((db, sql)) = &self.mid_call_sql {
+            let sql = *sql;
+            db.write(move |w| {
+                w.main().connection().execute_batch(sql)?;
+                Ok(())
+            })
+            .await
+            .expect("mid-call plant");
+        }
         if self.throws {
             return Err(CompletionError::new("canned provider failure"));
         }
@@ -142,14 +167,24 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
+/// A fresh copy per case: of the committed pair, or — for a P4.D215 planted
+/// case — of the planted seed the oracle saved beside its NDJSON
+/// (`<oracle>.<case>.{main,mount}.db`; see the oracle's `CaseSpec.plant`).
+fn fresh_db(spec: &Spec, tag: &str, seed: Option<(PathBuf, PathBuf)>) -> Db {
     let scratch = std::env::temp_dir().join(format!("qt-rt-{}-{}", tag, std::process::id()));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).unwrap();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
-    std::fs::copy(fixtures_dir().join("chat-admin-main.db"), &main).unwrap();
-    std::fs::copy(fixtures_dir().join("chat-admin-mount.db"), &mount).unwrap();
+    let (src_main, src_mount) = seed.unwrap_or_else(|| {
+        (
+            fixtures_dir().join("chat-admin-main.db"),
+            fixtures_dir().join("chat-admin-mount.db"),
+        )
+    });
+    std::fs::copy(&src_main, &main)
+        .unwrap_or_else(|e| panic!("copy seed {}: {e}", src_main.display()));
+    std::fs::copy(&src_mount, &mount).unwrap();
     Db::open(
         DbPaths {
             main,
@@ -208,6 +243,36 @@ fn status_body(r: &Response) -> (u16, Value) {
     }
 }
 
+/// Every background job, in the oracle's `readJobs` shape (P4.D215 — the
+/// story background a changed title now queues, bug 163).
+fn dump_jobs(db: &Db) -> Value {
+    let mut jobs: Vec<Value> = db
+        .read_main(|c| {
+            Ok(
+                quilltap_core::db::background_jobs::BackgroundJobsRepository::new(c)
+                    .find_all()?
+                    .into_iter()
+                    .map(|j| {
+                        let priority = if j.priority.fract() == 0.0 {
+                            json!(j.priority as i64)
+                        } else {
+                            json!(j.priority)
+                        };
+                        json!({
+                            "type": j.job_type,
+                            "status": j.status,
+                            "priority": priority,
+                            "payload": serde_json::from_str::<Value>(&j.payload).unwrap_or(Value::Null),
+                        })
+                    })
+                    .collect(),
+            )
+        })
+        .expect("dump jobs");
+    jobs.sort_by_key(|v| v["type"].as_str().unwrap_or("").to_string());
+    Value::Array(jobs)
+}
+
 /// The chat row's title-bearing columns (the oracle's `readChat`).
 fn dump_chat(db: &Db, chat_id: &str) -> Value {
     let cid = chat_id.to_string();
@@ -227,6 +292,8 @@ fn dump_chat(db: &Db, chat_id: &str) -> Value {
 
 #[test]
 fn chat_regenerate_title_matches_oracle() {
+    // Before any callsite is touched — see `auto_title_capture`'s module doc.
+    auto_title_capture::install();
     let Some(oracle_path) = env_or_skip("QT_ORACLE_REGENERATE_TITLE") else {
         return;
     };
@@ -271,6 +338,20 @@ fn chat_regenerate_title_matches_oracle() {
         prompt_tokens: 10,
         completion_tokens: 1,
     };
+    // P4.D215: `CHAT`'s committed title, so the chokepoint reads it unchanged.
+    let same_title = Canned {
+        content: "The Evening Post".to_string(),
+        prompt_tokens: 10,
+        completion_tokens: 4,
+    };
+    // The cases whose state the oracle PLANTED through v4's real repositories.
+    let planted = [
+        "regen_title_overrules_manual",
+        "regen_title_queues_background",
+        "regen_title_overrules_manual_queues_background",
+        "regen_title_unchanged_no_background",
+        "regen_title_help_no_background",
+    ];
 
     for (name, chat_id, override_reply, throws) in [
         ("regen_title_normal", CHAT, None, false),
@@ -297,14 +378,43 @@ fn chat_regenerate_title_matches_oracle() {
         ("regen_title_provider_throws", CHAT, None, true),
         ("regen_title_no_messages", EMPTY_CHAT, None, false),
         ("regen_title_chat_missing", MISSING_ID, None, false),
+        // ── P4.D215 (v4 `00c290c9a`, bugs 163/164) — the chokepoint arms.
+        ("regen_title_overrules_manual", CHAT, None, false),
+        (
+            "regen_title_unchanged",
+            CHAT,
+            Some(same_title.clone()),
+            false,
+        ),
+        ("regen_title_queues_background", CHAT, None, false),
+        (
+            "regen_title_overrules_manual_queues_background",
+            CHAT,
+            None,
+            false,
+        ),
+        (
+            "regen_title_unchanged_no_background",
+            CHAT,
+            Some(same_title.clone()),
+            false,
+        ),
+        ("regen_title_help_no_background", HELP_CHAT, None, false),
     ] {
         driven.insert(name.to_string());
-        let db = fresh_db(&spec, name);
+        let seed = planted.contains(&name).then(|| {
+            (
+                PathBuf::from(format!("{oracle_path}.{name}.main.db")),
+                PathBuf::from(format!("{oracle_path}.{name}.mount.db")),
+            )
+        });
+        let db = fresh_db(&spec, name, seed);
         let provider = CannedTitleProvider {
             canned: spec.canned_titles.clone(),
             override_reply,
             throws,
             seen: Mutex::new(Vec::new()),
+            mid_call_sql: None,
         };
         // The executor is the NON-logging one: the fixture has no llm-logs
         // partition and v4's own logging is best-effort, so neither side writes
@@ -337,6 +447,7 @@ fn chat_regenerate_title_matches_oracle() {
                 want["llmMessages"].clone(),
             ),
             ("chat", dump_chat(&db, chat_id), want["chat"].clone()),
+            ("jobs", dump_jobs(&db), want["jobs"].clone()),
         ] {
             if norm(&got) != norm(&wanted) {
                 eprintln!(
@@ -359,4 +470,129 @@ fn chat_regenerate_title_matches_oracle() {
         "case-set drift — oracle-only: {missing:?}; driven-only: {extra:?}"
     );
     assert!(failed.is_empty(), "regenerate-title mismatches: {failed:?}");
+}
+
+// ===========================================================================
+// P4.D215 — the verb's three log lines, pinned with a capturing layer
+// ===========================================================================
+//
+// v4 `title.ts` logs three lines the port never carried before this lane:
+// `[Chats v1] Title generation failed` `{chatId, error}` (ERROR, `:72`),
+// `[Chats v1] Title regenerated` `{chatId, newTitle, outcome}` (INFO, `:89` —
+// `outcome` is NEW at `00c290c9a`), and `[Chats v1] Error regenerating title`
+// `{chatId}` + the error (ERROR, `:93`). A log line writes no row, so the proof
+// is a capture over the REAL verb on the committed fixture, each line on its
+// own branch and silent on the siblings.
+
+// The capture rig (see its module doc for why not `CaptureLayer`).
+mod auto_title_capture;
+
+fn capture_regen(
+    tag: &str,
+    chat_id: &str,
+    reply: Option<Canned>,
+    throws: bool,
+    mid_call_sql: Option<&'static str>,
+) -> (Vec<String>, u16) {
+    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let db = fresh_db(&spec, tag, None);
+    let provider = CannedTitleProvider {
+        canned: spec.canned_titles.clone(),
+        override_reply: reply,
+        throws,
+        seen: Mutex::new(Vec::new()),
+        mid_call_sql: mid_call_sql.map(|sql| (db.clone(), sql)),
+    };
+    let now_iso = quilltap_core::clock::iso_from_unix_ms(spec.frozen_now_ms);
+    let (status, out) = auto_title_capture::capture(|| {
+        let r = rt.block_on(chat_admin::chat_regenerate_title(
+            &db,
+            &spec.user_id,
+            chat_id,
+            &provider,
+            &CheapLlmTaskExecutor::new(),
+            &now_iso,
+        ));
+        status_body(&r).0
+    });
+    (out, status)
+}
+
+fn one<'a>(lines: &'a [String], needle: &str) -> &'a String {
+    let hits: Vec<&String> = lines.iter().filter(|l| l.contains(needle)).collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "expected exactly one {needle:?} line: {lines:#?}"
+    );
+    hits[0]
+}
+fn none(lines: &[String], needle: &str) {
+    assert!(
+        !lines.iter().any(|l| l.contains(needle)),
+        "expected NO {needle:?} line: {lines:#?}"
+    );
+}
+
+#[test]
+fn regenerate_title_log_lines_fire_on_their_own_branches() {
+    auto_title_capture::install();
+    // (a) A changed title: INFO with the new `outcome` field.
+    let (lines, status) = capture_regen("log_applied", CHAT, None, false, None);
+    assert_eq!(status, 200);
+    let done = one(&lines, "[Chats v1] Title regenerated");
+    assert!(done.starts_with("INFO "), "{done}");
+    assert!(done.contains(&format!("chatId={CHAT}")), "{done}");
+    assert!(done.contains("outcome=applied"), "{done}");
+    assert!(done.contains("newTitle="), "{done}");
+    one(&lines, "[Auto Title] Chat retitled");
+    let retitled = one(&lines, "[Auto Title] Chat retitled");
+    assert!(retitled.contains("source=regenerate"), "{retitled}");
+    none(&lines, "Title generation failed");
+    none(&lines, "Error regenerating title");
+
+    // (b) The same title: still 200, still logged, `outcome=unchanged`.
+    let (lines, status) = capture_regen(
+        "log_unchanged",
+        CHAT,
+        Some(Canned {
+            content: "The Evening Post".to_string(),
+            prompt_tokens: 10,
+            completion_tokens: 4,
+        }),
+        false,
+        None,
+    );
+    assert_eq!(status, 200);
+    let done = one(&lines, "[Chats v1] Title regenerated");
+    assert!(done.contains("outcome=unchanged"), "{done}");
+    assert!(done.contains("newTitle=The Evening Post"), "{done}");
+    none(&lines, "[Auto Title] Chat retitled");
+
+    // (c) The provider throws: the ERROR carries the task's error, and neither
+    //     success line fires.
+    let (lines, status) = capture_regen("log_failed", CHAT, None, true, None);
+    assert_eq!(status, 500);
+    let failed = one(&lines, "[Chats v1] Title generation failed");
+    assert!(failed.starts_with("ERROR "), "{failed}");
+    assert!(failed.contains(&format!("chatId={CHAT}")), "{failed}");
+    assert!(failed.contains("error="), "{failed}");
+    none(&lines, "[Chats v1] Title regenerated");
+    none(&lines, "Error regenerating title");
+
+    // (d) The chokepoint's re-read fails (the `chats` table is gone by the time
+    //     the LLM answers): v4's outer catch — the ERROR, the 500, and no
+    //     success line.
+    let (lines, status) = capture_regen("log_error", CHAT, None, false, Some("DROP TABLE chats;"));
+    assert_eq!(status, 500);
+    let err = one(&lines, "[Chats v1] Error regenerating title");
+    assert!(err.starts_with("ERROR "), "{err}");
+    assert!(err.contains(&format!("chatId={CHAT}")), "{err}");
+    assert!(err.contains("error="), "{err}");
+    none(&lines, "[Chats v1] Title regenerated");
+    none(&lines, "Title generation failed");
 }
