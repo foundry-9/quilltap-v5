@@ -140,3 +140,14 @@ author.
 - **Recorder:** `apps/web/oracle/carina-parser.recorder.ts` (its header has the
   pinned-worktree invocation). Expect 83 lines.
 
+
+## `mention-typeahead.ndjson`
+
+**116 rows** — 1 `constants`, 39 `trigger`, 27 `rank`, 9 `candidates`, 34
+`classify`, 6 `canKeep`. Drives `app/chat/mentions/mention-typeahead.oracle.spec.ts`:
+v4's `lib/mentions/mention-typeahead.ts` (the composer's `@` typeahead, `3376b3dfa`)
+over v4's own test vectors plus a wider corpus.
+
+- **Provenance:** recorded by P4.D224 at v4 `b0b6656b5` from a pinned worktree.
+- **Recorder:** `apps/web/oracle/mention-typeahead.recorder.ts` (its header has
+  the invocation). Expect 116 lines.

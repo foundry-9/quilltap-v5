@@ -148396,6 +148396,31 @@ checked; the three symlink classes made). Node 24
   C2 `NAME_SOURCE` without the trailing `\w` → 6 RED (two parse rows, three
   name rows, the `.source` pin).
 
+### Unit 2 — the pure module `chat/mentions/mention-typeahead.ts`
+
+- Every export of v4 `lib/mentions/mention-typeahead.ts` (171 lines)
+  transcribed; `findTrigger` reused from `editor/char-insert/trigger.ts` (differs
+  from v4's only in comments, per the survey). v4's misplaced doc block
+  (`:135-144`, above `canKeepLineStartAt`) moved onto the verdict type with a
+  one-line note (Tier 2 item 8).
+- NEW recorder `apps/web/oracle/mention-typeahead.recorder.ts` → 116 rows
+  (1 constants, 39 trigger, 27 rank, 9 candidates, 34 classify, 6 canKeep):
+  v4's vectors verbatim + NFD/Cyrillic/CJK queries, `_`/`-` queries, `'`/`’`/`.`
+  ending a query, the 48/49-char boundary, every opener-context character,
+  U+FFFC and NBSP before `@`, duplicate ids, a priority id not in the list,
+  limit 0/1, `Ab`/`ab`/`AB` base-sensitivity ties, the `’` word splitter, five
+  Brahma-name variants, a tab/NBSP/newline after the separator.
+- Regen (AS RUN): `cd /tmp/qt-v4-pin-p4d224-b0b6656b5 && cp <W>/apps/web/oracle/mention-typeahead.recorder.ts . && npx tsx mention-typeahead.recorder.ts > /tmp/p4d224/mention.ndjson`
+  → 116 lines; re-run after an edit, `cmp` SAME.
+- ⚠ The Write tool decoded `\u0301`/`\uFFFC`/`\u00A0` escapes in the recorder
+  source into literal invisible characters; restored as escapes and re-recorded
+  (`cmp` SAME) — the NDJSON never changed.
+- Mutations (file-backup revert), each RED on exactly its rows: M1 max 49 → 2
+  (the 49-char row + constants); M2 `’` dropped from the splitter → 1 (`brien`);
+  M3 `sensitivity: 'variant'` → 3; M4 no `trim()` in the Brahma check → 2 (the
+  two padded-Brahma rows); M5 separator-only → `strip` → 2 (`@Aristarchus:` /
+  `?`); M6 priority ignored → 3.
+
 ## P4.D223 — the Salon Images quick-hide + the bug-169 convergence + the `has-dangerous` client half (lane record, 2026-09-24)
 
 Lane branch `claude/salon-images-quick-hide-bug-db0391`, cut from `main`

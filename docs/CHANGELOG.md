@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — feat(spa): the @ mention typeahead's pure logic (P4.D224 unit 2)
+
+_Versions: SPA 0.5.763._
+
+Adds `chat/mentions/mention-typeahead.ts`, a transcription of v4's
+`lib/mentions/mention-typeahead.ts` (`3376b3dfa`): the `@` trigger (reusing
+the char typeahead's `findTrigger`, 48-character Unicode query), name-prefix
+then word-prefix matching with cast-first ranking, the Brahma entry at line
+start, and the four line-start verdicts. A new oracle fixture recorded from
+v4's real module at `b0b6656b5` (116 rows: v4's vectors plus a wider corpus)
+pins every export. Nothing mounts it yet.
+
 #### 2026-09-24 — feat(spa): export isCarinaInvocableName from the Carina twin (P4.D224 unit 1)
 
 _Versions: SPA 0.5.762._
