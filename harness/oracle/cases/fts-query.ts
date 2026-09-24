@@ -2,8 +2,10 @@
  * Oracle case: the FTS5 query translator (P4.D204, tier 1).
  *
  * Drives the REAL functions from the v4 server's
- * `lib/database/repositories/fts-query.ts` — `tokenizeLikeUnicode61`,
- * `escapeLikePattern` and `buildFtsMatchExpression` — over the COMMITTED
+ * `lib/database/repositories/fts-query.ts` — `tokenizeLikeUnicode61` and
+ * `buildFtsMatchExpression` — plus `escapeLikeLiteral` from the sibling
+ * `lib/database/repositories/like-escape.ts` module `fts-query.ts` imports
+ * it from since `ad1c4c37f` — over the COMMITTED
  * corpus at `harness/oracle/fixtures/fts-query.json`, and prints one NDJSON
  * row per query on stdout. The Rust differential (`fts_query_equivalence`)
  * feeds the same corpus through `quilltap_core::db::fts_query` and asserts
@@ -25,7 +27,7 @@
  *
  *  - `tokens`      — `tokenizeLikeUnicode61`. The `\p{L}\p{N}` seam: V8's ICU
  *                    tables against the Rust `regex` crate's.
- *  - `escaped`     — `escapeLikePattern`, the raw escape with no `%…%` wrap
+ *  - `escaped`     — `escapeLikeLiteral`, the raw escape with no `%…%` wrap
  *                    (v5 folds this onto its single `like_escape` home, so
  *                    this row is what proves the fold is v4-faithful).
  *  - `plan`        — `buildFtsMatchExpression`, verbatim: `kind` plus either
@@ -43,9 +45,11 @@ import { readFileSync } from 'fs';
 
 import {
   buildFtsMatchExpression,
-  escapeLikePattern,
   tokenizeLikeUnicode61,
 } from '@/lib/database/repositories/fts-query';
+// v4 `ad1c4c37f` deletes `fts-query.ts`'s own `escapeLikePattern` and imports
+// `escapeLikeLiteral` from `./like-escape` instead (same regex, no lowercasing).
+import { escapeLikeLiteral } from '@/lib/database/repositories/like-escape';
 
 const fixturePath = process.argv[2];
 if (!fixturePath) {
@@ -61,7 +65,7 @@ for (const query of corpus.queries) {
     query,
     tokens,
     tokenLengths: tokens.map((t) => t.length),
-    escaped: escapeLikePattern(query),
+    escaped: escapeLikeLiteral(query),
     plan: buildFtsMatchExpression(query),
   });
 }

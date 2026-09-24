@@ -100,7 +100,9 @@ pub fn tokenize_like_unicode61(query: &str) -> Vec<String> {
 }
 
 /// Escape a user string for a `LIKE ? ESCAPE '\'` comparison (v4
-/// `escapeLikePattern`).
+/// `escapeLikeLiteral`, imported by `fts-query.ts` from `./like-escape` since
+/// `ad1c4c37f` — the module's own `escapeLikePattern` is DELETED there; v5's
+/// name here predates that merge and is kept for source stability).
 ///
 /// The backslash must go first, or it would escape the escapes we add after
 /// it. Built directly rather than through the repository's `$regex` filter:
@@ -109,12 +111,13 @@ pub fn tokenize_like_unicode61(query: &str) -> Vec<String> {
 /// repeating.
 ///
 /// **Folded onto [`super::like_escape::escape_like_literal`]**, which is v4's
-/// OTHER home for the identical function (`like-escape.ts`'s
+/// ONLY home for the function since `ad1c4c37f` (`like-escape.ts`'s
 /// `escapeLikeLiteral` — same regex, same replacement, measured character for
 /// character; only `likeContainsPattern`'s extra `toLowerCase` differs, and
-/// this path must NOT lowercase). v4 keeps two copies; v5 keeps one, with
+/// this path must NOT lowercase). v4 used to keep two copies (this module had
+/// its own `escapeLikePattern`); v5 always kept one, with
 /// `escape_set_matches_v4_fts_query_home` below pinning that the shared
-/// implementation satisfies v4's `escapeLikePattern` vectors exactly.
+/// implementation satisfies v4's `escapeLikeLiteral` vectors exactly.
 pub fn escape_like_pattern(value: &str) -> String {
     super::like_escape::escape_like_literal(value)
 }
@@ -253,9 +256,10 @@ mod tests {
         assert_eq!(escape_like_pattern("\\%"), "\\\\\\%");
     }
 
-    /// The pin the fold rests on: v4's `escapeLikePattern` vectors satisfied by
-    /// the shared `like_escape` implementation, INCLUDING the regex-metacharacter
-    /// row — this is LIKE, not a regex, so `.` and `(` are left alone.
+    /// The pin the fold rests on: v4's `escapeLikeLiteral` vectors (the fold
+    /// target since `ad1c4c37f`) satisfied by the shared `like_escape`
+    /// implementation, INCLUDING the regex-metacharacter row — this is LIKE,
+    /// not a regex, so `.` and `(` are left alone.
     #[test]
     fn escape_set_matches_v4_fts_query_home() {
         assert_eq!(escape_like_pattern("Mr. Smith (esq.)"), "Mr. Smith (esq.)");

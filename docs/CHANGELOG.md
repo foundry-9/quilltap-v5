@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(fts-query): rename the `escapeLikePattern` fold target to `escapeLikeLiteral` (P4.D221, v4 `ad1c4c37f`)
+
+_Versions: core 0.0.1047._
+
+v4's `fts-query.ts` deletes its own `escapeLikePattern` and imports
+`escapeLikeLiteral` from the sibling `like-escape.ts` instead (identical
+regex, no behaviour change — v5 already folded onto its single
+`like_escape` home). Updated `db/fts_query.rs`'s doc comments to name the
+new home instead of the deleted symbol, and repointed the
+`fts-query.ts` oracle case's import so it keeps driving v4's real
+module at the target pin (the old import throws there — the case would
+otherwise crash on the deleted symbol). Regenerated
+`fts_query_equivalence`'s oracle at both the baseline and target pins:
+byte-identical, as predicted.
+
 #### 2026-09-24 — chore(brahma): regenerate the SQL-prompt `qt_text()` compressed-column sentence (P4.D221, v4 `ad1c4c37f`)
 
 _Versions: core 0.0.1046._
