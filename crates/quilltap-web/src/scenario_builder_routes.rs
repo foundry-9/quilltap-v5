@@ -37,14 +37,23 @@
 //! silent); on a live one it trips the token and the edge logs v4's DEBUG
 //! `Scenario Builder client disconnected; aborting the run`.
 //!
-//! ## One recorded divergence (unreachable in v4 by contract)
+//! ## A failed run (v4's belt-and-braces arm)
 //!
-//! v4's belt-and-braces `{"error":"The Host could not complete the enquiry."}`
-//! frame fires when `runScenarioBuilder` itself THROWS — which it never does
-//! by contract. v5's equivalent failure (the driver's thread panicking, or no
-//! driver assembled) resolves the dispatch with an error BEFORE any frame, so
-//! the pump answers it as a JSON 500 rather than a 200 stream carrying that
-//! frame. Named here so it is not mistaken for an oversight.
+//! v4's `{"error":"The Host could not complete the enquiry."}` frame, with its
+//! ERROR `Scenario Builder stream failed` line, fires when `runScenarioBuilder`
+//! itself THROWS — which it never does by contract (`route.ts:156-163`). v5's
+//! equivalent is the dispatch resolving an ERROR (the driver's thread
+//! panicking, or no driver assembled). Where it lands decides its shape:
+//!
+//! - **before any frame** — the re-framer answers it as a JSON 500 rather than
+//!   a 200 stream carrying that frame (v4's route has already committed to its
+//!   `ReadableStream` there; v5 cannot tell a pre-run refusal from a pre-frame
+//!   failure, so this one stays a recorded divergence);
+//! - **after a frame** — the stream is committed, so the re-framer hands the
+//!   result to this route's failure tail ([`failure_tail`]): v4's ERROR line
+//!   with `error = <message>`, then v4's error frame as the stream's LAST, then
+//!   the close. A successful run's result is carried by the run's own frames
+//!   and adds nothing.
 
 use axum::body::Body;
 use axum::extract::{Query, State};
@@ -129,7 +138,7 @@ pub async fn scenario_builder_post(
         let core = core.clone();
         async move { core.dispatch(req).await }
     };
-    let response = crate::generator_sse::stream_frames(
+    let response = crate::generator_sse::stream_frames_with_tail(
         host.core().event_sender(),
         run_id.clone(),
         crate::generator_sse::scenario_builder_frame,
@@ -144,6 +153,7 @@ pub async fn scenario_builder_post(
                 serde_json::json!({ "error": "Unexpected core response" }),
             )),
         },
+        Box::new(failure_tail),
     )
     .await;
 
@@ -162,6 +172,22 @@ pub async fn scenario_builder_post(
         }))
     })
 }
+
+/// v4's committed-stream catch (`route.ts:156-163`, module header): a run that
+/// FAILED after the stream began logs ERROR `Scenario Builder stream failed`
+/// with `{ error: error.message }` and answers v4's one error frame.
+fn failure_tail(resp: CoreResponse) -> Option<Value> {
+    let message = match resp {
+        CoreResponse::ScenarioBuilder(_) => return None,
+        CoreResponse::Error(e) => e.message,
+        _ => "Unexpected core response".to_string(),
+    };
+    tracing::error!(error = %message, "Scenario Builder stream failed");
+    Some(serde_json::json!({ "error": HOST_COULD_NOT_COMPLETE }))
+}
+
+/// v4's error frame text (`route.ts:161`).
+const HOST_COULD_NOT_COMPLETE: &str = "The Host could not complete the enquiry.";
 
 /// Trips the run's abort token when the SSE body is dropped (module header).
 pub struct DisconnectGuard {

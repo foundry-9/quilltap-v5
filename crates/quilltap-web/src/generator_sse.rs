@@ -62,6 +62,18 @@
 //!   [`generator_sse_wire`]'s `a_closed_channel_before_any_frame_…` test.
 //! * `Closed` in the pump (`arm = "pump"`) — the committed stream ends early,
 //!   after whatever `try_recv` can still drain.
+//!
+//! ## An opt-in failure tail (the Scenario Builder only)
+//!
+//! Once the stream is committed, the dispatch's result has nowhere to go: the
+//! generators and the swipe carry their outcome in their own frames, so the
+//! pump drops it. The Scenario Builder's v4 route has ONE more arm — a thrown
+//! run enqueues `{"error":"The Host could not complete the enquiry."}` after
+//! whatever the run already streamed (`route.ts:156-163`). A caller that wants
+//! that passes [`stream_frames_with_tail`]'s `tail`: it receives the committed
+//! run's result after the drain and may answer ONE last object, framed like
+//! every other. Every other caller passes no tail, and its bytes are
+//! unchanged.
 
 use std::future::Future;
 
@@ -94,6 +106,10 @@ fn frame(event: &serde_json::Value) -> Vec<u8> {
 /// the pump would have duplicated the two `RecvError` arms and their reasoning
 /// with it.
 pub type FrameOf = for<'a> fn(&'a EventPayload) -> Option<&'a serde_json::Value>;
+
+/// The optional failure tail (module header): given a COMMITTED run's result,
+/// answer one last frame object, or `None` for none.
+pub type Tail<T> = Box<dyn FnOnce(T) -> Option<serde_json::Value> + Send>;
 
 /// The character generators' payload (`p4.9k`).
 pub fn generator_frame(payload: &EventPayload) -> Option<&serde_json::Value> {
@@ -166,7 +182,42 @@ where
     T: Send + 'static,
 {
     // 1. Subscribe BEFORE the dispatch future is polled.
-    stream_generator_from(events.subscribe(), progress_id, frame_of, dispatch, outcome).await
+    stream_generator_from(
+        events.subscribe(),
+        progress_id,
+        frame_of,
+        dispatch,
+        outcome,
+        None,
+    )
+    .await
+}
+
+/// [`stream_frames`] with a failure `tail` (module header): once the stream is
+/// committed, the run's result goes to `tail` after the drain, and the object
+/// it answers (if any) is the stream's LAST frame.
+pub async fn stream_frames_with_tail<F, T>(
+    events: &broadcast::Sender<Event>,
+    progress_id: String,
+    frame_of: FrameOf,
+    dispatch: F,
+    outcome: impl Fn(T) -> Result<(), (StatusCode, serde_json::Value)> + Send + 'static,
+    tail: Tail<T>,
+) -> AxumResponse
+where
+    F: Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    // 1. Subscribe BEFORE the dispatch future is polled.
+    stream_generator_from(
+        events.subscribe(),
+        progress_id,
+        frame_of,
+        dispatch,
+        outcome,
+        Some(tail),
+    )
+    .await
 }
 
 /// The body of [`stream_generator`], taking the subscription it already made.
@@ -181,6 +232,7 @@ async fn stream_generator_from<F, T>(
     frame_of: FrameOf,
     dispatch: F,
     outcome: impl Fn(T) -> Result<(), (StatusCode, serde_json::Value)> + Send + 'static,
+    tail: Option<Tail<T>>,
 ) -> AxumResponse
 where
     F: Future<Output = T> + Send + 'static,
@@ -250,6 +302,10 @@ where
                 )
                     .into_response();
             }
+        } else if let Some(last) = tail.and_then(|t| t(out)) {
+            // Frames were emitted, so the stream is committed after all: the
+            // result rides the tail, exactly as on the pump's path below.
+            pending.push(frame(&last));
         }
         for f in pending {
             let _ = tx.send(Ok(f)).await;
@@ -271,6 +327,7 @@ where
                 return; // client went away
             }
         }
+        let mut result = None;
         loop {
             tokio::select! {
                 biased;
@@ -300,15 +357,29 @@ where
                         break;
                     }
                 },
-                _ = &mut dispatch => break,
+                out = &mut dispatch => {
+                    result = Some(out);
+                    break;
+                }
             }
         }
         // Drain what landed before the run resolved, then close (v4's
         // `controller.close()` after the runner's promise settles).
+        let mut client_gone = false;
         while let Ok(ev) = rx.try_recv() {
             if let Some(inner) = matching(&ev, &progress_id, frame_of) {
                 if tx.send(Ok(frame(inner))).await.is_err() {
-                    return;
+                    client_gone = true;
+                    break;
+                }
+            }
+        }
+        // The opt-in tail runs whether or not the client is still there (v4
+        // logs its failure line either way; only the enqueue is skipped).
+        if let (Some(tail), Some(out)) = (tail, result) {
+            if let Some(last) = tail(out) {
+                if !client_gone {
+                    let _ = tx.send(Ok(frame(&last))).await;
                 }
             }
         }
@@ -376,8 +447,15 @@ mod tests {
                     std::future::pending::<()>().await;
                     Ok::<(), ()>(())
                 };
-                stream_generator_from(rx, "p1".to_string(), generator_frame, dispatch, no_refusal)
-                    .await
+                stream_generator_from(
+                    rx,
+                    "p1".to_string(),
+                    generator_frame,
+                    dispatch,
+                    no_refusal,
+                    None,
+                )
+                .await
             })
         });
         let warn = lines
@@ -430,6 +508,7 @@ mod tests {
                     generator_frame,
                     dispatch,
                     no_refusal,
+                    None,
                 )
                 .await;
                 // Draining the body drives the spawned pump to its Closed arm.
