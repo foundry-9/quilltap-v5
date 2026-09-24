@@ -148471,6 +148471,124 @@ lane outputs under `/tmp/p4d222/`.
   target oracle's `embedding_status` line is `[]`, the baseline's still
   carries the row. Unit 5 (the sync shape) closes it.
 
+### Units 5 + 6 (+ Tier 2 items 9 and 10) — the sync shape and the startup reconcile, ONE commit
+
+Landed together, deliberately: both live in `services/help_doc_sync.rs`, v4
+landed them in one commit, and the retirements cross (the old ensure read
+`find_all_needing_embedding`, which the sync-shape half retires). Recorded
+here as the order's two units.
+
+- **Sync shape** (`sync_help_docs`, now `-> Result<HelpDocSyncResult,
+  DbError>`): existing → `update(doc.id, HdUpdate{title, path, url, content,
+  contentHash})` (Tier 2 item 10: `HdUpdate.path` ADDED — same value, carried
+  so the patch is v4's) / new → `create(fields, id = uuid v4 minted HERE)`;
+  `replace_for_doc`; on update `clear_embedding` THEN
+  `embedding_status.delete_by_entity("HELP_DOC", id)`; DEBUG `Synced help
+  doc` `{context, path, docId, action, chunks}`. v4's `findAll` is outside
+  the per-file catch, so it now PROPAGATES (the old port swallowed it into an
+  empty result — a pre-existing divergence, now closed); the one other caller,
+  the reindex's `phase_help_docs`, takes it into its existing phase-1 catch
+  (`services/embedding_reindex_job.rs`, one line). `upsert_by_path`,
+  `HdUpsert`, `find_id_by_path`, `find_all_needing_embedding` RETIRED from
+  `db/help_docs.rs` (+ the now-unused `now_iso` import).
+  `db/help_doc_chunks_repair.rs` named the surviving-but-moved
+  `ensure_help_docs_synced` in one doc comment — re-homed to the gate; no
+  retiring symbol was referenced there. `help_doc_chunks::count()` has no
+  production caller left (kept for its own tests; doc says so).
+- **Tier 2 item 9 — every `eprintln!` onto `tracing`, ALL of them**
+  (`quilltap::help`, camelCase fields, `context` first, v4's levels): INFO
+  `No Markdown files found in help directory`; DEBUG `Synced help doc`;
+  ERROR `Failed to sync file` (⚠ `filePath` is the RELATIVE path — the
+  fs-free core never sees v4's absolute one); WARN the prune refusal
+  `{totalOnDisk, existingRows}`; ERROR `Failed to prune deleted help doc`
+  `{docId, path, error}`; INFO `Sync completed` (v4's eight counters,
+  `changedIds` as a count); INFO `Help docs reconciled`; WARN `Help doc
+  reconcile failed; serving help from the existing index`; DEBUG `Help docs
+  need embedding but no embedding profile is configured`; INFO `Enqueued help
+  doc embeddings` `{enqueued (isNew only), needEmbedding}`; ERROR `Failed to
+  enqueue help doc embeddings`. Host-side seams, NOT emitted: `Error reading
+  directory` (the walk) and `Help directory not found` (the embedded tree
+  cannot be missing). Capture pins (level + target + message + fields, v4's
+  order) in `services::help_doc_sync::tests` — 14 tests, incl. silence legs
+  (an unchanged doc logs no `Synced help doc`; a healthy retry logs no WARN;
+  a memoized call logs nothing).
+- **`reconcile_help_docs`**: sync (writer) → `find_all_for_reconcile()` (NEW
+  projection: id, content, `doc_vector_missing` = NULL OR a zero-length
+  decode, v4's `== null || length === 0`) → `count_by_doc()` → per doc with
+  no map entry: slice, and only if > 0 chunks `replace_for_doc` in ITS OWN
+  writer round-trip (v4 awaits per doc: a failure keeps the earlier slices and
+  fails the reconcile — the P4.D77 one-transaction divergence is RETIRED with
+  the backfill it described) → incomplete = own vector missing OR `embedded <
+  total` → INFO (six fields in v4's order) → `enqueue_help_doc_embeddings`.
+- **`HelpDocReconcileGate`** (what I built): an owned value — `tokio::sync::
+  Mutex<{done, last_error}>` + an `AtomicU64` count of FAILED runs. A caller
+  snapshots the count, queues on the mutex; holding it: `done` → return it; the
+  count moved → an in-flight run failed while it waited → share that failure;
+  else run. v4's three behaviours: success memoized, concurrent callers share
+  an in-flight failure (one WARN EACH), the next caller after a failure
+  retries. `futures::Shared` was not available (core's `futures-util` is
+  `alloc`-only; no tokio `rt`). The host constructs one per engine assembly.
+  v4's second caller (`HelpSearch.loadFromDatabase`'s lazy ensure) has NO v5
+  counterpart — `db/help_search.rs` (not this lane's) reads the table the boot
+  already reconciled — so the host's boot is the gate's only production
+  caller. The module header's two stale claims (`:29-30` "the promise guard
+  does not port", `:41-54` "Not wired at startup") are rewritten.
+- **`help_doc_ensure_equivalence` RED-FIRST, measured at BOTH pins with the
+  UNCHANGED case** (v5-before matched the baseline oracle, so the per-scenario
+  cross-pin diff IS the pre-port red set): 4 of 6 MOVED — `in-sync-chunked`
+  (jobs 0→1, chunks 1→2), `added-doc` (jobs 1→2, chunks 1→2) — both
+  predicted — plus `deleted-doc` (jobs 0→2, chunks 0→2) and `no-profile`
+  (chunks 1→2); `empty-table` and `in-sync` did NOT move. GROWN to 12
+  scenarios (§Survey 14 as planted real-DB arms): `edited-page`, `complete`,
+  `null-doc-vector`, `partial-sections`, `concurrent-then-later` (two racing
+  calls + one later: ONE reconcile), `fail-once-then-retry`. The builder takes
+  a `stale` hash. Every line now carries `logs: {reconciled,
+  reconcileFailed}`, counted on both sides.
+  ⚠ **The fail-once plant:** renaming `help_doc_chunks` away does NOT fail v4
+  — its repository `getCollection` RECREATES a missing table on first access
+  (measured: the rename-back then errored `there is already another table`).
+  The plant is a `BEFORE INSERT … RAISE(ABORT)` trigger on `help_doc_chunks`,
+  created before the first call and dropped after; byte-identical SQL both
+  sides. All 12 green at the target.
+- **`help_doc_sync_equivalence`** — the spec's `embeddingStatusSeed` grows a
+  FAILED row for the UPDATED doc (bug 168's overflowed page, profile 2) and an
+  EMBEDDED row for the UNCHANGED doc; the target oracle's `embedding_status`
+  after the sync is exactly `bbbbbbbb-…005` (the unchanged doc's). The old
+  "the surviving doc's status row must NOT be collateral" pin was pinned on the
+  UPDATED doc and INVERTS at the target — rewritten (updated doc's rows gone,
+  unchanged doc's row kept). Green at the target; the baseline oracle still
+  carries `bbbbbbbb-…003` (the designed red, recorded at unit 3).
+- **`help_doc_sync_guards_equivalence`** (three scenarios, lane-private
+  fixture `/tmp/p4d222/guards-main.db` — it shares `help-sync.json`'s builder,
+  so the grown status seed reaches it): green at the target.
+  **`help_tree_equivalence`** now runs through the gate: green at the target.
+  **`help_docs_tier2_equivalence`**: `UpdateData.path` added (no corpus op
+  names it) — compile-only change.
+- **RETIRED:** `help_docs_upsert_tier2_equivalence.rs`,
+  `harness/oracle/cases/help-docs-upsert-tier2.ts`,
+  `harness/oracle/fixtures/build-help-docs-upsert-fixture.ts`,
+  `harness/oracle/fixtures/help-docs-upsert-tier2.json` — v4 `492771aff`
+  DELETED `upsertByPath`, so the case cannot import at the target and the
+  port it checked no longer exists. No committed `.db` was named by them.
+  (Old sweep-result JSONs under `harness/tools/sweep-results/` still name the
+  family — historical artifacts, left.)
+- **Neutrality (reindex reaches the new sync):** `embedding_remainder_
+  equivalence` (the reindex-all over the `help-sync` tree) regenerated at
+  BOTH pins: the Rust diff is green against EACH; the two NDJSONs are equal
+  once uuids/timestamps are normalized and rows compared order-insensitively
+  (a byte `cmp` differs only by minted-id-driven row order).
+  `embedding_refit_tier3_equivalence` green at the target.
+- **Mutation table** (each reverted by file backup; each reddened exactly
+  its target):
+  | # | mutation | red |
+  |---|---|---|
+  | M1 | drop the update's `delete_by_entity` | `help_doc_sync` — `embedding_status diverged` |
+  | M2 | drop the memo's `done` return | `help_doc_ensure` — `[concurrent-then-later]` log counts |
+  | M3 | never forget a failure (`!= 0` for `!= ticket`) | `help_doc_ensure` — `[fail-once-then-retry]` jobs |
+  | M4 | never share an in-flight failure (`if false`) | core `concurrent_callers_share_a_failed_run…` |
+  | M5 | incomplete ignores sections | `help_doc_ensure` — `[in-sync]` jobs |
+  | M6 | re-slice even with counts | `help_doc_ensure` — `[in-sync-chunked]` jobs |
+
 ## P4.D221 — the `ad1c4c37f`/`8aafd595d` `lib/` riders + two NO-PORT ratifications (2026-09-24, branch `claude/dispatch-lib-riders-partition-f93bb0`)
 
 The `lib/` half of the `b0b6656b5` ten-commit drift catch-up round (the web

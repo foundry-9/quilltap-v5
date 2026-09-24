@@ -518,7 +518,7 @@ impl EngineAssembler for HostAssembler {
         // identical, and this is what finally makes the P4.D77 chunk BACKFILL
         // reachable on an upgraded instance (it had no production caller).
         // Best-effort as in v4 (swallow + log; help loading never blocks boot).
-        ensure_help_docs_synced_at_boot(db);
+        reconcile_help_docs_at_boot(db);
         // === end P4.9I2A ===
 
         // The terminal manager (P4.1c) — one per assembly (it holds this
@@ -584,7 +584,7 @@ impl EngineAssembler for HostAssembler {
         // server runs from its checkout; a native binary does not, and this
         // repo never had a `help/` beside the binary at all — so every
         // reindex-all since P4.6BM synced an EMPTY tree. The same table feeds
-        // the boot-time `ensure_help_docs_synced` in `assemble`, so reindex-all
+        // the boot-time help reconcile (`HelpDocReconcileGate::ensure`) in `assemble`, so reindex-all
         // and the boot ensure cannot disagree about the shipped documentation.
         let help_files = crate::files_store::embedded_help_source_files();
         registry.register(
@@ -1036,52 +1036,47 @@ impl EngineAssembler for HostAssembler {
     }
 }
 
-/// P4.9I2A — run `ensure_help_docs_synced` over the EMBEDDED help tree
-/// (`files_store::embedded_help_source_files`, the same table the
-/// `EMBEDDING_REINDEX_ALL` handler reads) on a fresh OS thread with its own
-/// current-thread runtime, so the async `Db::write` inside it is legal whether
-/// `assemble` was reached from the sync boot path or an async `Unlock` dispatch
-/// (the `seed_built_ins` thread-bridge idiom). v4's ensure swallows every
-/// failure into a log line and carries on; so does this — a boot never fails
-/// because the help tree would not sync.
-fn ensure_help_docs_synced_at_boot(db: &Db) {
-    use quilltap_core::services::help_doc_sync::ensure_help_docs_synced;
+/// P4.9I2A / P4.D222 — v4's PHASE 3.66: the help reconcile over the EMBEDDED
+/// help tree (`files_store::embedded_help_source_files`, the same table the
+/// `EMBEDDING_REINDEX_ALL` handler reads), through a [`HelpDocReconcileGate`]
+/// constructed for this assembly (v4's once-per-process memo), on a fresh OS
+/// thread with its own current-thread runtime so the async `Db::write` inside
+/// it is legal whether `assemble` was reached from the sync boot path or an
+/// async `Unlock` dispatch (the `seed_built_ins` thread-bridge idiom).
+///
+/// The gate logs its own lines (`Help docs reconciled`, or the WARN `Help doc
+/// reconcile failed; serving help from the existing index`) and never fails;
+/// the only thing left to report here is v4's instrumentation catch — a WARN
+/// `Help doc reconciliation failed`, reached in v4 only when the module
+/// import throws, and here when the thread cannot run it at all.
+///
+/// [`HelpDocReconcileGate`]: quilltap_core::services::help_doc_sync::HelpDocReconcileGate
+fn reconcile_help_docs_at_boot(db: &Db) {
+    use quilltap_core::services::help_doc_sync::HelpDocReconcileGate;
 
     let db = db.clone();
-    let outcome = std::thread::spawn(move || {
+    let outcome = std::thread::spawn(move || -> Result<(), String> {
         let files = crate::files_store::embedded_help_source_files();
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .map_err(|e| format!("help-docs sync runtime: {e}"))?;
-        rt.block_on(ensure_help_docs_synced(&db, &files))
-            .map_err(|e| e.to_string())
+            .map_err(|e| format!("help reconcile runtime: {e}"))?;
+        let gate = HelpDocReconcileGate::new();
+        rt.block_on(gate.ensure(&db, &files));
+        Ok(())
     })
     .join();
-    match outcome {
-        Ok(Ok(Some(result))) => tracing::info!(
-            target: "quilltap::boot",
-            total_on_disk = result.total_on_disk,
-            created = result.created,
-            updated = result.updated,
-            unchanged = result.unchanged,
-            deleted = result.deleted,
-            failed = result.failed,
-            chunks_written = result.chunks_written,
-            "Help documents synced from the embedded tree",
-        ),
-        // Docs current (or the chunk backfill ran) — v4 logs nothing here.
-        Ok(Ok(None)) => {}
-        Ok(Err(e)) => tracing::warn!(
-            target: "quilltap::boot",
-            error = %e,
-            "Help-docs sync failed at boot; continuing (help loads what it can)",
-        ),
-        Err(_) => tracing::warn!(
-            target: "quilltap::boot",
-            "Help-docs sync thread panicked at boot; continuing",
-        ),
-    }
+    let error = match outcome {
+        Ok(Ok(())) => return,
+        Ok(Err(e)) => e,
+        Err(_) => "the help reconcile thread panicked".to_string(),
+    };
+    tracing::warn!(
+        target: "quilltap::boot",
+        context = "instrumentation.register",
+        error = error.as_str(),
+        "Help doc reconciliation failed",
+    );
 }
 
 /// Seed the built-in roleplay templates + provision-or-adopt the three built-in
@@ -1323,8 +1318,8 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             // runner for the same reason as the repairs above. An upgraded
             // instance matches every help-doc content hash, so the sync would
             // never slice it and section search would silently never engage —
-            // the backfill in `ensure_help_docs_synced` handles that, but it
-            // needs a table to count. Fresh instances already carry the
+            // the startup reconcile (`reconcile_help_docs`, P4.D222) slices any
+            // section-less doc, but it needs the table to read. Fresh instances already carry the
             // `generateDDL` shape (the D23 re-dump); this gives an existing one
             // the MIGRATION shape, exactly as v4's own migration would.
             quilltap_core::db::help_doc_chunks_repair::ensure_help_doc_chunks_table(main)?;

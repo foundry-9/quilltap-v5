@@ -25,7 +25,8 @@ import { tmpdir } from 'node:os';
 interface SeedDoc {
   id: string;
   path: string;
-  hash: 'aurora' | 'brahma';
+  /** `stale` (P4.D222) — a contentHash that matches no file on disk. */
+  hash: 'aurora' | 'brahma' | 'stale';
   embedding: number[] | null;
 }
 
@@ -120,7 +121,12 @@ async function buildScenario(spec: Spec, scenario: Scenario, outDir: string): Pr
         path: doc.path,
         url: '/seeded',
         content: 'seeded content',
-        contentHash: doc.hash === 'aurora' ? spec.auroraHash : spec.brahmaHash,
+        contentHash:
+          doc.hash === 'aurora'
+            ? spec.auroraHash
+            : doc.hash === 'brahma'
+              ? spec.brahmaHash
+              : '0'.repeat(64),
         embedding: doc.embedding,
       } as never,
       { id: doc.id, createdAt: spec.seedSentinel, updatedAt: spec.seedSentinel }

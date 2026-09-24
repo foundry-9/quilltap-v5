@@ -352,9 +352,9 @@ pub fn load_help_source_files(cwd: &Path) -> Vec<HelpSourceFile> {
 /// `help_content::EMBEDDED_HELP` (`build.rs`) as the core sync's input list.
 /// `rel_path` is v4's `relative(process.cwd(), filePath)` (`help/<name>.md`);
 /// the order is the runtime walker's ([`find_markdown_files`] mirrored in the
-/// build script). This is the ONE source both the boot-time
-/// `ensure_help_docs_synced` and the `EMBEDDING_REINDEX_ALL` handler read, so
-/// the two cannot disagree. [`load_help_source_files`] keeps the filesystem
+/// build script). This is the ONE source both the boot-time help reconcile
+/// (`HelpDocReconcileGate::ensure`) and the `EMBEDDING_REINDEX_ALL` handler
+/// read, so the two cannot disagree. [`load_help_source_files`] keeps the filesystem
 /// walk for the differential fixture trees (`help-sync-*`, `help-ensure`),
 /// which are NOT the shipped tree.
 pub fn embedded_help_source_files() -> Vec<HelpSourceFile> {

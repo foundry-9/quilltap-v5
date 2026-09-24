@@ -4,10 +4,16 @@
 //! `lib/database/repositories/help-docs.repository.ts` (+ the
 //! `_create`/`_update`/`_delete` internals of `base.repository.ts`).
 //!
-//! Scope: `create`, `update`, `delete`, and `upsert_by_path` (v4's
-//! `upsertByPath` — find-by-path then text-only update / minted create, verified
-//! in the minted-values remap form). The embedding-only updates and the
-//! `clearAll*` / `findAll*` reads remain out of scope.
+//! Scope: `create`, `update`, `delete`, the embedding write, and the reads the
+//! sync, the reconcile and help search use.
+//!
+//! **`upsertByPath` and `findAllNeedingEmbedding` are GONE** (v4 `492771aff`,
+//! bug 167, deleted both): the sync now updates an existing row by the id it
+//! read and creates a new one under an id it minted itself, and the startup
+//! reconcile judges "needs embedding" with [`HelpDocsRepository::
+//! find_all_for_reconcile`] plus the section counts. Their port, its tier-2
+//! family (`help_docs_upsert_tier2_equivalence`) and its fixture retired with
+//! them (P4.D222).
 //!
 //! ## The first tier-2 BLOB column (the headline)
 //!
@@ -94,7 +100,6 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
 use super::DbError;
-use crate::clock::now_iso;
 use crate::embedding_blob::{blob_to_float32, float32_to_blob};
 
 /// Fields for creating a help doc (the `Omit<HelpDoc,'id'|timestamps>` shape).
@@ -125,23 +130,13 @@ pub struct CreateOptions {
 #[derive(Default)]
 pub struct HdUpdate {
     pub title: Option<String>,
+    /// v4's sync passes `path` on update since `492771aff` (always the row's
+    /// own path, so it rewrites the same value — carried so the patch is v4's).
+    pub path: Option<String>,
     pub url: Option<String>,
     pub content: Option<String>,
     pub content_hash: Option<String>,
     pub updated_at: String,
-}
-
-/// Input to [`HelpDocsRepository::upsert_by_path`] — v4's
-/// `Omit<HelpDoc,'id'|'createdAt'|'updatedAt'|'embedding'>`. There is
-/// deliberately **no `embedding` field**: an upsert that hits the create branch
-/// stores a NULL embedding, and one that hits the update branch patches only the
-/// four text columns, leaving any existing embedding BLOB untouched.
-pub struct HdUpsert {
-    pub title: String,
-    pub path: String,
-    pub url: String,
-    pub content: String,
-    pub content_hash: String,
 }
 
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
@@ -167,6 +162,15 @@ pub struct HelpDocRow {
     pub url: String,
     pub content: String,
     pub content_hash: String,
+}
+
+/// One row of [`HelpDocsRepository::find_all_for_reconcile`].
+#[derive(Debug, Clone)]
+pub struct HelpDocReconcileRow {
+    pub id: String,
+    pub content: String,
+    /// v4's `doc.embedding == null || doc.embedding.length === 0`.
+    pub doc_vector_missing: bool,
 }
 
 /// A help doc carrying its decoded embedding (v4 `HelpDocumentWithEmbedding`) —
@@ -241,7 +245,7 @@ impl<'c> HelpDocsRepository<'c> {
     /// v4 `updateEmbedding` (P4.6BL) — set just the `embedding` BLOB on a help
     /// doc (+ the minted `updatedAt`, injected as `now_iso`). This is the
     /// dedicated method the module doc reserves the embedding write for —
-    /// `HdUpdate`/`HdUpsert` deliberately carry no embedding field. The vector
+    /// `HdUpdate` deliberately carries no embedding field. The vector
     /// serializes as the create path does (`empty → SQL NULL`, else Float32 LE
     /// bytes). Returns `Ok(false)` when no row matched — v4 THROWS
     /// `` `Help doc not found for embedding update: ${id}` `` there; the
@@ -264,36 +268,30 @@ impl<'c> HelpDocsRepository<'c> {
         Ok(affected > 0)
     }
 
-    /// v4 `findAllNeedingEmbedding` — every help doc with no stored embedding
-    /// (rowid/insertion order), the enqueue's work list. Read-only.
-    ///
-    /// v4 filters the hydrated rows in JS (`_findAll().filter(doc => doc.embedding
-    /// == null)`); `WHERE embedding IS NULL` is exactly equivalent and does not
-    /// hydrate 28 vectors to throw them away. The equivalence holds on both edges:
-    /// v4 stores an empty embedding as SQL NULL (never a zero-length BLOB), and a
-    /// zero-length BLOB would hydrate to `Float32Array(0)` — which is NOT
-    /// `== null`, and is likewise not `IS NULL`. A legacy TEXT embedding hydrates
-    /// to a vector (not null) and is not `IS NULL` either.
-    pub fn find_all_needing_embedding(&self) -> Result<Vec<HelpDocRow>, DbError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, title, path, url, content, contentHash FROM help_docs \
-             WHERE embedding IS NULL",
-        )?;
+    /// The startup reconcile's re-read (v4 `reconcileHelpDocs`' `findAll()` after
+    /// the sync, `help-doc-sync.ts:343`), projected to what it reads: the id,
+    /// the content (to slice a section-less doc) and whether the doc's OWN
+    /// vector is missing — v4's `doc.embedding == null || doc.embedding.length
+    /// === 0`, so a NULL cell and a zero-length BLOB are both missing (unlike
+    /// the section counts, where a zero-length BLOB counts as embedded).
+    /// Rowid order, as `findAll`. Read-only.
+    pub fn find_all_for_reconcile(&self) -> Result<Vec<HelpDocReconcileRow>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, content, embedding FROM help_docs")?;
         let rows = stmt.query_map([], |r| {
-            Ok(HelpDocRow {
+            let blob: Option<Vec<u8>> = r.get(2)?;
+            Ok(HelpDocReconcileRow {
                 id: r.get(0)?,
-                title: r.get(1)?,
-                path: r.get(2)?,
-                url: r.get(3)?,
-                content: r.get(4)?,
-                content_hash: r.get(5)?,
+                content: r.get(1)?,
+                doc_vector_missing: blob
+                    .as_deref()
+                    .map(blob_to_float32)
+                    .unwrap_or_default()
+                    .is_empty(),
             })
         })?;
-        let mut out = Vec::new();
-        for r in rows {
-            out.push(r?);
-        }
-        Ok(out)
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     /// v4 `findAllWithEmbeddings` — every help doc with its decoded embedding
@@ -378,6 +376,10 @@ impl<'c> HelpDocsRepository<'c> {
             assignments.push(format!("title = ?{}", values.len() + 1));
             values.push(Box::new(title.clone()));
         }
+        if let Some(path) = &patch.path {
+            assignments.push(format!("path = ?{}", values.len() + 1));
+            values.push(Box::new(path.clone()));
+        }
         if let Some(url) = &patch.url {
             assignments.push(format!("url = ?{}", values.len() + 1));
             values.push(Box::new(url.clone()));
@@ -405,77 +407,6 @@ impl<'c> HelpDocsRepository<'c> {
         let params_refs: Vec<&dyn ToSql> = values.iter().map(|b| b.as_ref()).collect();
         let affected = self.conn.execute(&sql, params_refs.as_slice())?;
         Ok(affected > 0)
-    }
-
-    /// Insert or update a help doc keyed by its `path` (v4's `upsertByPath`).
-    ///
-    /// If a row with `path` already exists, patches ONLY the four text columns
-    /// (`title`, `url`, `content`, `contentHash`) plus `updatedAt` — the
-    /// `embedding` BLOB is never named, so it survives untouched, matching v4's
-    /// whole-row rewrite that re-persists the existing embedding. Otherwise it
-    /// creates a fresh row with a minted id + timestamps and a NULL embedding
-    /// (v4's `_create` over the embedding-less `data`).
-    ///
-    /// Mints `id` (`uuid::Uuid::new_v4`) and `now` ([`crate::clock::now_iso`])
-    /// just like the create/remap path, so the resulting row carries
-    /// nondeterministic id + timestamps (verified by the harness via remap +
-    /// timestamp-placeholder normalization). Returns the id of the affected row.
-    pub fn upsert_by_path(&self, data: &HdUpsert) -> Result<String, DbError> {
-        let now = now_iso();
-
-        if let Some(existing_id) = self.find_id_by_path(&data.path)? {
-            // Existing row -> text-only update. The embedding column is NOT in
-            // the patch, so the stored BLOB is left intact.
-            self.update(
-                &existing_id,
-                &HdUpdate {
-                    title: Some(data.title.clone()),
-                    url: Some(data.url.clone()),
-                    content: Some(data.content.clone()),
-                    content_hash: Some(data.content_hash.clone()),
-                    updated_at: now,
-                },
-            )?;
-            return Ok(existing_id);
-        }
-
-        // No existing row -> create with a minted id + timestamps and (since
-        // `HdUpsert` carries no embedding) a NULL embedding.
-        let id = uuid::Uuid::new_v4().to_string();
-        self.create(
-            &HdCreate {
-                title: data.title.clone(),
-                path: data.path.clone(),
-                url: data.url.clone(),
-                content: data.content.clone(),
-                content_hash: data.content_hash.clone(),
-                embedding: None,
-            },
-            &CreateOptions {
-                id: id.clone(),
-                created_at: now.clone(),
-                updated_at: now,
-            },
-        )?;
-        Ok(id)
-    }
-
-    /// The id of the row whose `path` matches, or `None` (v4's `findByPath`
-    /// non-null check; reads only the key column).
-    fn find_id_by_path(&self, path: &str) -> Result<Option<String>, DbError> {
-        let id: Option<String> = self
-            .conn
-            .query_row(
-                "SELECT id FROM help_docs WHERE path = ?1",
-                params![path],
-                |row| row.get::<_, String>(0),
-            )
-            .map(Some)
-            .or_else(|e| match e {
-                rusqlite::Error::QueryReturnedNoRows => Ok(None),
-                other => Err(other),
-            })?;
-        Ok(id)
     }
 
     /// Delete the help doc `id`. Returns `Ok(false)` when no row matched (v4's

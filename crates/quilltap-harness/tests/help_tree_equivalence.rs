@@ -1,5 +1,6 @@
 //! P4.9I2A CONTENT ORACLE differential — the SHIPPED help tree through
-//! `ensure_help_docs_synced` over the EMBEDDED table (`quilltap-host`'s
+//! the help reconcile gate (`HelpDocReconcileGate::ensure`, v4's
+//! `ensureHelpDocsSynced` since `492771aff`) over the EMBEDDED table (`quilltap-host`'s
 //! `build.rs` → `files_store::embedded_help_source_files`) vs v4's REAL
 //! `ensureHelpDocsSynced()` walking `join(process.cwd(), 'help')` at the pin.
 //!
@@ -34,7 +35,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::services::help_doc_sync::ensure_help_docs_synced;
+use quilltap_core::services::help_doc_sync::HelpDocReconcileGate;
 use quilltap_core::services::provisioning::provision_fresh_instance;
 use quilltap_host::files_store::embedded_help_source_files;
 
@@ -123,10 +124,13 @@ async fn shipped_help_tree_matches_oracle() {
         want.count,
         "embedded file count vs the oracle's synced count"
     );
-    let result = ensure_help_docs_synced(&db, &files)
+    // P4.D222: the ensure is v4's reconcile gate since `492771aff`; on an
+    // empty table its sync is the whole story.
+    let result = HelpDocReconcileGate::new()
+        .ensure(&db, &files)
         .await
-        .expect("ensure")
-        .expect("an empty table syncs");
+        .expect("the reconcile succeeds")
+        .sync;
     assert_eq!(
         result.created, want.count,
         "every file is a CREATE on an empty table"

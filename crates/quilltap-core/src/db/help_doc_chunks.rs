@@ -336,9 +336,10 @@ impl<'c> HelpDocChunksRepository<'c> {
         Ok(removed)
     }
 
-    /// v4 `count()` (the base-repo method) — the backfill's one-query emptiness
-    /// probe. Chunk rows carry embedding BLOBs, so reading them all on every
-    /// boot to answer "has this run yet?" would be absurd (v4's why).
+    /// v4 `count()` (the base-repo method). Its production caller — the P4.D77
+    /// upgrade backfill's `count() > 0` gate — retired with v4 `492771aff`
+    /// (the startup reconcile reads [`Self::count_by_doc`] instead); kept for
+    /// the repository's own tests.
     pub fn count(&self) -> Result<i64, DbError> {
         let n: i64 = self
             .conn

@@ -2,7 +2,12 @@
  * @jest-environment node
  *
  * P4.d6 oracle case — `ensureHelpDocsSynced` (v4 `6c59b1ca` bug 1 +
- * `551f090b`'s divergence trigger / prune / embedding enqueue).
+ * `551f090b`'s divergence trigger / prune / embedding enqueue). Since v4
+ * `492771aff` (P4.D222) the function is the once-per-process memo over
+ * `reconcileHelpDocs` — the full sync, the section backfill, and the enqueue
+ * of every incomplete doc — so the scenarios below exercise that instead; the
+ * `calls` field drives the memo's multi-call arms, and each line carries
+ * `logs: {reconciled, reconcileFailed}`.
  *
  * Drives v4's REAL `ensureHelpDocsSynced()` end to end against a REAL encrypted
  * database: the trigger's `helpDocsDivergeFromDisk` (private — exercised
@@ -65,6 +70,8 @@ interface Scenario {
   seedProfile: boolean;
   helpDocs: SeedDoc[];
   seedChunks?: SeedChunk[];
+  /** P4.D222 — the multi-call gate arms; absent = one call. */
+  calls?: 'concurrent-then-later' | 'fail-once-then-retry';
 }
 
 interface Spec {
@@ -72,6 +79,12 @@ interface Spec {
   seedSentinel: string;
   scenarios: Scenario[];
 }
+
+// P4.D222 — the fail-once-then-retry plant (the Rust side runs the same SQL).
+const FAIL_TRIGGER_CREATE =
+  'CREATE TRIGGER "p4d222_fail_section_insert" BEFORE INSERT ON "help_doc_chunks" ' +
+  "BEGIN SELECT RAISE(ABORT, 'planted reconcile failure'); END";
+const FAIL_TRIGGER_DROP = 'DROP TRIGGER "p4d222_fail_section_insert"';
 
 // Captured BEFORE any chdir — the cipher driver path and the jest module
 // registry both resolve from the v4 project root.
@@ -145,20 +158,47 @@ describe('help-doc-sync: ensureHelpDocsSynced', () => {
         if (msg.includes('[HelpDocSync]')) swallowed.push(JSON.stringify(args));
         return (realError as (...a: unknown[]) => void)(...args);
       };
-      // P4.D77 — the chunk backfill swallows into logger.WARN, not error, and
-      // for the same reason (never block help from loading). Watch it too, or a
-      // backfill that silently did nothing would pin as legitimate behavior.
+      // P4.D222 (v4 `492771aff`) — the gate swallows a failed reconcile into
+      // logger.WARN (`Help doc reconcile failed; …`), never block help from
+      // loading. Watch it too, or a reconcile that silently failed would pin as
+      // legitimate behavior. The ONE scenario that plants a failure counts it
+      // instead (and must see exactly one).
+      const logs = { reconciled: 0, reconcileFailed: 0 };
       const realWarn = logger.warn.bind(logger);
       (logger as unknown as { warn: (...a: unknown[]) => void }).warn = (...args: unknown[]) => {
         const msg = String(args[0] ?? '');
-        if (msg.includes('[HelpDocSync]') && msg.includes('failed')) {
+        if (msg.includes('[HelpDocSync] Help doc reconcile failed')) {
+          logs.reconcileFailed++;
+          if (scenario.calls !== 'fail-once-then-retry') swallowed.push(JSON.stringify(args));
+        } else if (msg.includes('[HelpDocSync]') && msg.includes('failed')) {
           swallowed.push(JSON.stringify(args));
         }
         return (realWarn as (...a: unknown[]) => void)(...args);
       };
+      const realInfo = logger.info.bind(logger);
+      (logger as unknown as { info: (...a: unknown[]) => void }).info = (...args: unknown[]) => {
+        if (String(args[0] ?? '') === '[HelpDocSync] Help docs reconciled') logs.reconciled++;
+        return (realInfo as (...a: unknown[]) => void)(...args);
+      };
 
       await initializeDatabase();
-      await ensureHelpDocsSynced();
+      if (scenario.calls === 'concurrent-then-later') {
+        // Two callers race the same run, then a third arrives after it settled.
+        await Promise.all([ensureHelpDocsSynced(), ensureHelpDocsSynced()]);
+        await ensureHelpDocsSynced();
+      } else if (scenario.calls === 'fail-once-then-retry') {
+        // The first run fails on a REAL database (no mock): a planted trigger
+        // aborts every section insert, so the backfill's `replaceForDoc` throws
+        // out of the reconcile. (Renaming the table away does NOT work in v4 —
+        // the repository's `getCollection` recreates a missing table on first
+        // access.) Dropped, the next call must start a fresh run.
+        await rawQuery(FAIL_TRIGGER_CREATE, []);
+        await ensureHelpDocsSynced();
+        await rawQuery(FAIL_TRIGGER_DROP, []);
+        await ensureHelpDocsSynced();
+      } else {
+        await ensureHelpDocsSynced();
+      }
 
       if (swallowed.length > 0) {
         throw new Error(
@@ -238,11 +278,12 @@ describe('help-doc-sync: ensureHelpDocsSynced', () => {
         );
 
       lines.push(
-        JSON.stringify({ kind: 'ensure', scenario: scenario.name, helpDocs, jobs, chunks }),
+        JSON.stringify({ kind: 'ensure', scenario: scenario.name, helpDocs, jobs, chunks, logs }),
       );
 
       (logger as unknown as { error: unknown }).error = realError;
       (logger as unknown as { warn: unknown }).warn = realWarn;
+      (logger as unknown as { info: unknown }).info = realInfo;
       await closeDatabase();
       process.chdir(V4_ROOT);
     }

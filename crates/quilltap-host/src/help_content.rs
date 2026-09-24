@@ -6,7 +6,8 @@
 //! generates [`EMBEDDED_HELP`] from `<repo>/help/**/*.md` in the runtime
 //! walker's exact order; `files_store::embedded_help_source_files` turns it
 //! into the core sync's input list, and that ONE table feeds BOTH the boot-time
-//! `ensure_help_docs_synced` and the `EMBEDDING_REINDEX_ALL` handler, so the two
+//! help reconcile (`HelpDocReconcileGate::ensure`) and the `EMBEDDING_REINDEX_ALL`
+//! handler, so the two
 //! can never disagree about what the help tree contains.
 //!
 //! The harness guard `help_tree_embed_guard` holds this table equal to the

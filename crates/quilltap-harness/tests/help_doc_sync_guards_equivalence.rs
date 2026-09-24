@@ -136,7 +136,7 @@ fn help_doc_sync_guards_match_oracle() {
         let files = quilltap_host::files_store::load_help_source_files(&scenario_root);
 
         let result = db
-            .write_blocking(move |ws| Ok(sync_help_docs(ws.main().connection(), &files)))
+            .write_blocking(move |ws| sync_help_docs(ws.main().connection(), &files))
             .expect("sync");
 
         let rows: Vec<(String, String)> = db

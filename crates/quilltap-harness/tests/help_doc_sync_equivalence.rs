@@ -127,7 +127,7 @@ fn help_doc_sync_matches_oracle() {
 
     let files_for_sync = files.clone();
     let result = db
-        .write_blocking(move |ws| Ok(sync_help_docs(ws.main().connection(), &files_for_sync)))
+        .write_blocking(move |ws| sync_help_docs(ws.main().connection(), &files_for_sync))
         .expect("sync");
 
     // Dump the table (same SELECT/order as the oracle).
@@ -499,12 +499,23 @@ fn help_doc_sync_matches_oracle() {
             .any(|r| r.get("entityId").and_then(Value::as_str) == Some(retired_id)),
         "the pruned doc's embedding_status rows must be deleted (both profiles)"
     );
-    let survivor_id = "aaaaaaaa-0000-4000-8000-000000000001";
+    // P4.D222 (v4 `492771aff`, bug 168): an UPDATED doc's status rows go too —
+    // its old EMBEDDED row AND its planted FAILED one (a FAILED status belongs
+    // to the old text and would keep the new text out of a partial reindex) —
+    // while the UNCHANGED doc's row is not collateral damage.
+    let updated_id = "aaaaaaaa-0000-4000-8000-000000000001";
     assert!(
-        status_rows
+        !oracle_status_rows
             .iter()
-            .any(|r| r.get("entityId").and_then(Value::as_str) == Some(survivor_id)),
-        "the surviving doc's embedding_status row must NOT be collateral damage"
+            .any(|r| r.get("entityId").and_then(Value::as_str) == Some(updated_id)),
+        "the updated doc's embedding_status rows (EMBEDDED and FAILED) must be cleared"
+    );
+    let unchanged_id = "aaaaaaaa-0000-4000-8000-000000000002";
+    assert!(
+        oracle_status_rows
+            .iter()
+            .any(|r| r.get("entityId").and_then(Value::as_str) == Some(unchanged_id)),
+        "the unchanged doc's embedding_status row must survive"
     );
 
     // ---- P4.D77 — the section slicing (v4 24633026) ----

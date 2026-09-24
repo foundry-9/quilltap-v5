@@ -142,7 +142,8 @@ pub const HELP_DOCS_INDEX_DDL: &str =
 /// Create `help_docs` (+ its `createdAt` index) if the main partition lacks it.
 /// Idempotent; a no-op on every boot after the first. Must run BEFORE
 /// [`ensure_help_doc_chunks_table`] only by convention (the two are
-/// independent), and before the boot-time `ensure_help_docs_synced`, which
+/// independent), and before the boot-time help reconcile
+/// (`help_doc_sync::HelpDocReconcileGate::ensure`, v4's Phase 3.66), which
 /// reads the table.
 pub fn ensure_help_docs_table(main: &Connection) -> Result<(), DbError> {
     main.execute_batch(HELP_DOCS_TABLE_DDL)?;

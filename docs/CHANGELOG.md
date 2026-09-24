@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — feat(help-docs): the startup help reconcile and v4's sync shape — update by id, a minted create id, the status clear (P4.D222 units 5+6, bugs 167/168)
+
+_Versions: core 0.0.1047, harness 0.0.968, host 0.0.156._
+
+Ports v4 `492771aff`'s help-doc sync and reconcile. The sync now updates an
+existing doc by the id it read and creates a new one under an id it mints
+itself (`upsert_by_path` is gone), clears an updated doc's
+`embedding_status` rows as well as its vector, and logs v4's per-doc DEBUG.
+A failing `findAll` now propagates as v4's throw does. The new
+`reconcile_help_docs` replaces the old "sync only if the file set diverges"
+gate, the `count() > 0` section backfill and the enqueue-missing pass: it
+runs the full sync, slices every doc with no section rows, and queues an
+embedding job for every doc missing its own vector or any section's. The
+new `HelpDocReconcileGate` is v4's once-per-process memo as an owned value:
+one successful run per boot, concurrent callers share an in-flight
+failure, and the next caller after a failure retries. It never errors; a
+failure logs v4's WARN. The host boot uses the gate. Every line in the
+module now goes through `tracing` at v4's level, with capture pins.
+`HdUpdate` gains `path`. `help_docs_upsert_tier2_equivalence`, its case,
+builder and fixture are deleted along with the v4 method they tested. The
+ensure family grows six planted reconcile scenarios (twelve in all); the
+sync family grows a FAILED status row that the update must clear.
+
 #### 2026-09-24 — feat(help-docs): `count_by_doc`, v4's per-doc section and embedded-section counts (P4.D222 unit 3)
 
 _Versions: core 0.0.1046, harness 0.0.967._

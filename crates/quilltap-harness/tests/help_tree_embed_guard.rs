@@ -2,8 +2,9 @@
 //!
 //! `quilltap-host`'s `build.rs` embeds `<repo>/help/**/*.md` into the binary as
 //! `help_content::EMBEDDED_HELP`, and `files_store::embedded_help_source_files`
-//! is the ONE source both the boot-time `ensure_help_docs_synced` and the
-//! `EMBEDDING_REINDEX_ALL` handler read. This test holds that table equal to
+//! is the ONE source both the boot-time help reconcile
+//! (`HelpDocReconcileGate::ensure`) and the `EMBEDDING_REINDEX_ALL` handler
+//! read. This test holds that table equal to
 //! the on-disk tree walked by the production filesystem walker
 //! (`load_help_source_files`, v4's `findMarkdownFiles` order): the same path
 //! SET, the same ORDER, the same BYTES. A build whose embedded table went stale

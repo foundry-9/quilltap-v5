@@ -87,6 +87,10 @@ struct CreateOpts {
 struct UpdateData {
     #[serde(default)]
     title: Option<String>,
+    /// P4.D222 — `HdUpdate.path` (v4's sync passes it since `492771aff`); no
+    /// corpus op names it, so it is always `None` here.
+    #[serde(default)]
+    path: Option<String>,
     #[serde(default)]
     url: Option<String>,
     #[serde(default)]
@@ -164,6 +168,7 @@ fn help_docs_tier2_matches_oracle() {
                             id,
                             &HdUpdate {
                                 title: data.title.clone(),
+                                path: data.path.clone(),
                                 url: data.url.clone(),
                                 content: data.content.clone(),
                                 content_hash: data.content_hash.clone(),

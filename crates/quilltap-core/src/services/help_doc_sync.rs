@@ -1,6 +1,7 @@
-//! The help-docs disk sync (v4 `lib/help/help-doc-sync.ts`) — read the help
-//! Markdown tree and upsert into `help_docs`, clearing a changed doc's stored
-//! embedding so it re-embeds, and pruning rows whose file is gone.
+//! The help-docs disk sync and startup reconcile (v4 `lib/help/help-doc-sync.ts`)
+//! — read the help Markdown tree into `help_docs`, re-slice changed docs into
+//! `help_doc_chunks`, prune rows whose file is gone, and (at every boot) queue
+//! the embedding work that leaves the index complete.
 //!
 //! **Design decision (documented per the P4.1b work order):** the DIRECTORY
 //! WALK is host-side — the core sync takes the already-read file list
@@ -10,7 +11,11 @@
 //! directories interleaved in raw readdir order — both Node and Rust issue the
 //! same syscall over the same directory, so the order matches for a shared
 //! fixture tree). The order only affects `changed_ids` sequencing; the
-//! differential compares path-keyed forms.
+//! differential compares path-keyed forms. Two v4 log lines therefore live on
+//! the host side of the seam and are not emitted here: `Error reading
+//! directory` (the walk) and `Help directory not found` (production reads the
+//! EMBEDDED tree, which cannot be missing; an empty list takes v4's `No
+//! Markdown files found` INFO).
 //!
 //! v4's LOCAL `parseFrontmatter` here is deliberately DISTINCT from the shared
 //! `lib/markdown/frontmatter` parser (a loose regex, not the structural
@@ -26,38 +31,42 @@
 //! a UUID that changes whenever a doc is re-created. It is ported at
 //! [`crate::help_doc_slug::help_doc_slug`]; the sync itself is not a consumer.
 //!
-//! The `ensureHelpDocsSynced` module-promise concurrency guard does not port
-//! (the single-writer runtime already serializes callers).
-//!
 //! ## Section chunks (P4.D77, v4 `24633026`)
 //!
 //! Each created/updated doc is re-sliced wholesale into `help_doc_chunks`
-//! ([`crate::services::help_doc_chunking`]), a pruned doc's chunks are deleted
-//! explicitly, and [`ensure_help_docs_synced`]'s early-return branch runs
-//! [`backfill_help_doc_chunks`] — the upgrade path, and the only way an existing
-//! instance ever gets sections, since it matches every content hash and so is
-//! never re-sliced above.
+//! ([`crate::services::help_doc_chunking`]) and a pruned doc's chunks are
+//! deleted explicitly. A doc that has NO section rows at all (an instance that
+//! upgraded into the table, or one whose reindex was rolled back by v4 bug 167)
+//! is sliced by the reconcile below.
 //!
-//! ## Not wired at startup (a standing deferral, named)
+//! ## The startup reconcile (P4.D222, v4 `492771aff`, bugs 167 + 168)
 //!
-//! [`ensure_help_docs_synced`] has **no production caller** — v4 reaches it from
-//! `HelpSearch.loadFromDatabase()`, and that class is unported (see
-//! [`crate::help_doc_slug`]). v4's OTHER sync trigger — the
-//! `EMBEDDING_REINDEX_ALL` job — IS wired (`quilltap-host` registers its
-//! handler, which drives [`sync_help_docs`] through the reindex; the "no
-//! handler exists" sentence that stood here was stale, corrected at the
-//! help-drift unification). So the SYNC half runs in production whenever a
-//! reindex-all is requested; what stays dark is the boot-time
-//! ensure/short-circuit path and, with it, the P4.D77 upgrade BACKFILL below,
-//! which only `ensure_help_docs_synced` reaches. Wiring that is the host's
-//! business (it owns the walk); the standing seam note lives at
-//! `db/help_search.rs`.
+//! [`reconcile_help_docs`] replaced v4's old gate ("sync only when the table is
+//! empty or the set of FILE NAMES diverges"), the `count() > 0` chunk backfill
+//! and the enqueue-missing pass. It runs the full sync (every file re-read and
+//! hashed — an edited page is picked up at the next boot, where before it
+//! stayed stale until a full reindex), slices every section-less doc, and
+//! queues a HELP_DOC embedding job for every doc missing its own vector or any
+//! section's. The job reuses stored section vectors, so only what is missing
+//! costs a provider call.
+//!
+//! **Wired at boot** (`quilltap-host`'s assembly, v4's Phase 3.66 — awaited,
+//! and BEFORE the embedding-dimension reconcile, Phase 3.7). v4 memoizes the
+//! run ONCE per process ([`HelpDocReconcileGate`]): the old "the promise guard
+//! does not port — the single-writer runtime serializes callers" claim no
+//! longer holds, because the memo is now what makes a second caller NOT re-run
+//! a successful reconcile, and what makes a caller after a FAILED one retry.
+//! The gate is an owned value the host constructs, never a `static` here.
+//! v4's other caller, `HelpSearch.loadFromDatabase`'s lazy ensure, has no v5
+//! counterpart (help reads run over the table the boot already reconciled —
+//! the P4.9I2A eager-boot divergence), so the host's boot is the gate's one
+//! production caller.
 
 use rusqlite::{params, Connection};
 
 use crate::db::embedding_status::EmbeddingStatusRepository;
-use crate::db::help_doc_chunks::HelpDocChunksRepository;
-use crate::db::help_docs::{HdUpsert, HelpDocsRepository};
+use crate::db::help_doc_chunks::{HelpDocChunksRepository, SectionCounts};
+use crate::db::help_docs::{CreateOptions, HdCreate, HdUpdate, HelpDocsRepository};
 use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::jsstr::{is_js_ws, js_trim};
@@ -226,24 +235,33 @@ fn clear_embedding(main: &Connection, id: &str) -> Result<(), DbError> {
     Ok(())
 }
 
-/// v4 `syncHelpDocs` (`help-doc-sync.ts:133`) over an already-walked file list
-/// (see the module docs for the host-walk decision). Conn-level: the upserts
-/// run on the caller's (writer-held) main connection. Per-file failures are
-/// swallowed into `failed` (v4's catch).
+/// v4 `syncHelpDocs` (`help-doc-sync.ts:124-297`) over an already-walked file
+/// list (see the module docs for the host-walk decision). Conn-level: the
+/// writes run on the caller's (writer-held) main connection. Per-file failures
+/// are swallowed into `failed` (v4's catch); the ONE read outside that catch —
+/// `findAll` — propagates as `Err`, as v4's throw does (the reconcile's gate
+/// then logs and lets the next caller retry; the reindex's phase-1 catch logs
+/// `Failed to process help docs`).
 ///
 /// **Enqueues nothing, deliberately** — v4's rationale, carried forward: the two
 /// callers want different things. `EMBEDDING_REINDEX_ALL` re-embeds every doc
-/// regardless of what changed and batch-inserts its jobs, so enqueueing here
-/// would RACE it; [`ensure_help_docs_synced`] instead tops up only the docs that
-/// still lack an embedding. Per-entity dedup in `enqueue_embedding_generate`
-/// covers the overlap.
-pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyncResult {
+/// regardless of what changed, while [`reconcile_help_docs`] queues only the
+/// docs left incomplete.
+pub fn sync_help_docs(
+    main: &Connection,
+    files: &[HelpSourceFile],
+) -> Result<HelpDocSyncResult, DbError> {
     let mut result = HelpDocSyncResult {
         total_on_disk: files.len(),
         ..Default::default()
     };
     if files.is_empty() {
-        return result;
+        tracing::info!(
+            target: "quilltap::help",
+            context = "syncHelpDocs",
+            "[HelpDocSync] No Markdown files found in help directory",
+        );
+        return Ok(result);
     }
 
     let repo = HelpDocsRepository::new(main);
@@ -251,15 +269,8 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
     // One read of the table, indexed by path (v4 `551f090b`). The prune below
     // needs every row anyway, and it doubles as the per-file lookup — the
     // alternative is a findByPath per file, which is ~115 queries on every sync.
-    let existing_docs = match repo.find_all() {
-        Ok(rows) => rows,
-        Err(_) => {
-            // v4's findAll is INSIDE syncHelpDocs but OUTSIDE its per-file
-            // try/catch, so a failure there propagates rather than counting a
-            // `failed`. Nothing is walked, nothing is pruned.
-            return result;
-        }
-    };
+    // Outside the per-file catch in v4, so a failure here propagates.
+    let existing_docs = repo.find_all()?;
     let existing_by_path: std::collections::HashMap<&str, &crate::db::help_docs::HelpDocRow> =
         existing_docs
             .iter()
@@ -284,7 +295,7 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
             let (url, body) = parse_frontmatter(raw);
             let title = extract_title(&body, &file.rel_path);
 
-            let existing = existing_by_path.get(file.rel_path.as_str());
+            let existing = existing_by_path.get(file.rel_path.as_str()).copied();
             if let Some(doc) = existing {
                 if doc.content_hash == content_hash {
                     result.unchanged += 1;
@@ -292,39 +303,102 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
                 }
             }
 
-            let doc_id = repo.upsert_by_path(&HdUpsert {
-                title,
-                path: file.rel_path.clone(),
-                url,
-                content: body.clone(),
-                content_hash,
-            })?;
+            // v4's *why* (bug 167), carried forward: the chunk rows below are
+            // keyed to this id, so it must be the id the row really has — never
+            // one handed back by a write. Inside v4's job child (the reindex)
+            // writes are buffered and return a synthetic result: `upsertByPath`
+            // came back with a random UUID, the parent's replay updated the real
+            // row, and every chunk insert failed its foreign key, rolling back
+            // the whole reindex batch. An existing row's id is already in hand;
+            // a new row's id is minted here and passed to `create`.
+            let now = crate::clock::now_iso();
+            let doc_id = match existing {
+                Some(doc) => {
+                    // Preserves the embedding column — cleared separately below.
+                    repo.update(
+                        &doc.id,
+                        &HdUpdate {
+                            title: Some(title),
+                            path: Some(file.rel_path.clone()),
+                            url: Some(url),
+                            content: Some(body.clone()),
+                            content_hash: Some(content_hash),
+                            updated_at: now,
+                        },
+                    )?;
+                    doc.id.clone()
+                }
+                None => {
+                    let id = uuid::Uuid::new_v4().to_string();
+                    repo.create(
+                        &HdCreate {
+                            title,
+                            path: file.rel_path.clone(),
+                            url,
+                            content: body.clone(),
+                            content_hash,
+                            embedding: None,
+                        },
+                        &CreateOptions {
+                            id: id.clone(),
+                            created_at: now.clone(),
+                            updated_at: now,
+                        },
+                    )?;
+                    id
+                }
+            };
 
             // Re-slice the doc into section chunks (v4 `24633026`). v4's *why*,
             // carried forward: boundaries move whenever the prose above them
             // changes, so the old rows are discarded wholesale rather than
-            // diffed; their embeddings are filled by the HELP_DOC embedding job
-            // that the caller enqueues for this doc.
+            // diffed; their embeddings are filled by the HELP_DOC embedding job.
             let chunks = build_help_doc_chunks(&body);
             HelpDocChunksRepository::new(main).replace_for_doc(&doc_id, &chunks)?;
             result.chunks_written += chunks.len();
 
+            // Content changed — clear the old embedding so it gets re-generated.
             if existing.is_some() {
                 clear_embedding(main, &doc_id)?;
+                // v4's *why* (bug 168): a FAILED status belongs to the old text.
+                // Left in place it would keep the new text out of a partial
+                // reindex, which skips failed entities — a page that once
+                // overflowed the provider stayed unembedded after it was fixed.
+                EmbeddingStatusRepository::new(main).delete_by_entity("HELP_DOC", &doc_id)?;
                 result.updated += 1;
             } else {
                 result.created += 1;
             }
+
+            tracing::debug!(
+                target: "quilltap::help",
+                context = "syncHelpDocs",
+                path = file.rel_path.as_str(),
+                docId = doc_id.as_str(),
+                action = if existing.is_some() { "updated" } else { "created" },
+                chunks = chunks.len(),
+                "[HelpDocSync] Synced help doc",
+            );
+
             result.changed_ids.push(doc_id);
             Ok(())
         })();
-        if outcome.is_err() {
+        if let Err(e) = outcome {
             result.failed += 1;
+            // v4 logs the ABSOLUTE `filePath` here; the fs-free core only has
+            // the relative one (the host-walk seam).
+            tracing::error!(
+                target: "quilltap::help",
+                context = "syncHelpDocs",
+                filePath = file.rel_path.as_str(),
+                error = %e,
+                "[HelpDocSync] Failed to sync file",
+            );
         }
     }
 
     // Prune rows whose file is gone from disk (v4 `551f090b` +, since bug 18
-    // (`13ddc5ee`), the widened blank-content guard, `help-doc-sync.ts:218-266`).
+    // (`13ddc5ee`), the widened blank-content guard).
     //
     // TWO guards protect the table from a wipe:
     //   - The `files.is_empty()` early return above (a missing help/ — the host
@@ -339,18 +413,19 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
     //     an instruction to wipe the Guide. Skip and leave the rows; the next
     //     healthy sync reconciles them.
     if paths_on_disk.is_empty() && !existing_docs.is_empty() {
-        // Log output is non-contractual; `eprintln!` is this module's convention.
-        eprintln!(
-            "[HelpDocSync] No help docs on disk have usable content but the table is \
-             populated ({} rows) — skipping the destructive prune",
-            existing_docs.len()
+        tracing::warn!(
+            target: "quilltap::help",
+            context = "syncHelpDocs",
+            totalOnDisk = result.total_on_disk,
+            existingRows = existing_docs.len(),
+            "[HelpDocSync] No help docs on disk have usable content but the table is populated — skipping the destructive prune",
         );
     } else {
         for doc in &existing_docs {
             if paths_on_disk.contains(doc.path.as_str()) {
                 continue;
             }
-            // v4 wraps the pair in its own try/catch that counts `failed`, so a
+            // v4 wraps the trio in its own try/catch that counts `failed`, so a
             // prune failure is NOT the per-file counter above.
             let pruned = (|| -> Result<(), DbError> {
                 // v4 `24633026` — the chunks go first, so the rows never
@@ -364,214 +439,230 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
             })();
             match pruned {
                 Ok(()) => result.deleted += 1,
-                Err(_) => result.failed += 1,
+                Err(e) => {
+                    result.failed += 1;
+                    tracing::error!(
+                        target: "quilltap::help",
+                        context = "syncHelpDocs",
+                        docId = doc.id.as_str(),
+                        path = doc.path.as_str(),
+                        error = %e,
+                        "[HelpDocSync] Failed to prune deleted help doc",
+                    );
+                }
             }
         }
     }
 
-    result
+    tracing::info!(
+        target: "quilltap::help",
+        context = "syncHelpDocs",
+        totalOnDisk = result.total_on_disk,
+        created = result.created,
+        updated = result.updated,
+        unchanged = result.unchanged,
+        deleted = result.deleted,
+        failed = result.failed,
+        chunksWritten = result.chunks_written,
+        changedIds = result.changed_ids.len(),
+        "[HelpDocSync] Sync completed",
+    );
+
+    Ok(result)
 }
 
-/// v4 `helpDocsDivergeFromDisk` (`help-doc-sync.ts:297`) — whether the help
-/// documents on disk and the rows in the database have parted ways in EITHER
-/// direction: a file with no row, or a row whose file is gone.
-///
-/// **Both directions come out of the same directory listing, and the deleted
-/// direction is load-bearing** (v4's *why*, carried forward): both need the same
-/// fix — `sync_help_docs` creates the missing rows and prunes the stale ones —
-/// and ignoring the deleted direction would leave the prune UNREACHABLE, since a
-/// deletion alone would never trigger a sync.
-///
-/// `paths_on_disk` is the raw walk listing, NOT the sync's `pathsOnDisk` (which
-/// drops empty-content files). That is v4's shape and it has a consequence worth
-/// knowing: an empty `.md` file is forever "unsynced" (it never gets a row), so
-/// its presence makes this return `true` on every call — the sync then runs and
-/// no-ops over it. Reproduced deliberately; see [`sync_help_docs`]'s prune note.
-pub fn help_docs_diverge_from_disk(existing_paths: &[&str], paths_on_disk: &[&str]) -> bool {
-    let synced: std::collections::HashSet<&str> = existing_paths.iter().copied().collect();
-    let on_disk: std::collections::HashSet<&str> = paths_on_disk.iter().copied().collect();
-
-    let unsynced = paths_on_disk.iter().any(|p| !synced.contains(p));
-    let deleted = existing_paths.iter().any(|p| !on_disk.contains(p));
-    unsynced || deleted
+/// v4 `HelpDocReconcileResult` — the sync's tallies plus what the reconcile
+/// found incomplete and queued for embedding.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HelpDocReconcileResult {
+    pub sync: HelpDocSyncResult,
+    /// Docs with no section rows, sliced by this pass.
+    pub sections_backfilled: usize,
+    /// Docs missing their own vector or any section vector.
+    pub incomplete: usize,
 }
 
-/// v4 `ensureHelpDocsSynced` (`help-doc-sync.ts:269`) — sync when `help_docs` is
-/// empty, **and when the set of Markdown files on disk no longer matches the set
-/// of rows**. Returns `Some(result)` when a sync ran.
+/// v4 `reconcileHelpDocs` (`help-doc-sync.ts:335-377`, new at `492771aff`) —
+/// bring the help index in line with the help files on disk, and queue the
+/// embedding work that leaves it complete.
 ///
-/// The divergence gate is v4 `6c59b1ca`'s fix for **bug 1**: the old gate was
-/// `if (existing.length > 0) return`, and this is the only sync trigger outside a
-/// full embedding reindex — so a doc added to `help/` after the first sync never
-/// got a row. Eleven shipped docs were invisible in the Guide.
+/// v4's *why*, carried forward: the steps are cheap when nothing changed —
+/// every file is read and hashed, and the index is checked with one row read of
+/// `help_docs` and one GROUP BY over `help_doc_chunks` — so a full content
+/// comparison is affordable on every boot. Before this, only a change in the
+/// *set* of file names triggered a sync, and an edited page stayed stale until
+/// a full reindex.
 ///
-/// Detecting divergence costs a directory scan, not a read of every file, and
-/// `sync_help_docs` skips unchanged docs by content hash. Edits to an
-/// already-synced doc are still picked up only by the next `sync_help_docs`
-/// call — a file's content is never examined here. (The module-promise
-/// concurrency guard does not port — the single-writer runtime serializes
-/// callers.)
+/// 1. [`sync_help_docs`]: new files are created, edited files are rewritten and
+///    re-sliced with their vectors and failure status cleared, and rows whose
+///    file is gone are pruned.
+/// 2. Any doc with no section rows is sliced now (an instance whose reindex was
+///    rolled back by bug 167 has an empty section table).
+/// 3. A HELP_DOC embedding job is queued for every doc that lacks its own
+///    vector or has any section without one.
 ///
-/// **v5 seam:** v4 re-walks the disk itself here; the core is fs-free, so the
-/// host's walk (`quilltap-host::files_store::load_help_source_files`) supplies
-/// `files`, whose `rel_path`s ARE v4's `listHelpDocPathsOnDisk()` output — the
-/// walker yields every `.md` it finds, empty-content ones included. No seam
-/// extension was needed for the deletion direction. The cost difference (v4's
-/// trigger reads no file CONTENTS; the host has already read them by the time it
-/// calls) is a host-side concern for the startup wiring, which is a standing
-/// deferral — see the module header.
-pub async fn ensure_help_docs_synced(
+/// Callers go through [`HelpDocReconcileGate::ensure`], which runs this once
+/// per boot and never propagates its `Err`.
+pub async fn reconcile_help_docs(
     db: &Db,
     files: &[HelpSourceFile],
-) -> Result<Option<HelpDocSyncResult>, DbError> {
-    let existing = db.read_main(|c| HelpDocsRepository::new(c).find_all())?;
-
-    let existing_paths: Vec<&str> = existing.iter().map(|d| d.path.as_str()).collect();
-    let paths_on_disk: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
-    if !existing.is_empty() && !help_docs_diverge_from_disk(&existing_paths, &paths_on_disk) {
-        // Docs are current, but their section chunks may not exist at all — an
-        // instance that upgraded into `help_doc_chunks` has every content hash
-        // matching, so nothing above would ever slice them (v4 `24633026`).
-        backfill_help_doc_chunks(db, &existing).await;
-        return Ok(None);
-    }
-
+) -> Result<HelpDocReconcileResult, DbError> {
     let files_owned = files.to_vec();
-    let result = db
-        .write(move |ws| Ok(sync_help_docs(ws.main().connection(), &files_owned)))
+    let sync = db
+        .write(move |ws| sync_help_docs(ws.main().connection(), &files_owned))
         .await?;
 
-    enqueue_missing_help_doc_embeddings(db).await;
-    Ok(Some(result))
-}
+    // Re-read AFTER the sync (v4 reads `findAll()` again here).
+    let docs = db.read_main(|c| HelpDocsRepository::new(c).find_all_for_reconcile())?;
+    let section_counts = db.read_main(|c| Ok(HelpDocChunksRepository::new(c).count_by_doc()))?;
 
-/// v4 `backfillHelpDocChunks` (`help-doc-sync.ts:327`, new at `24633026`) —
-/// slice any already-synced document that has no section chunks, and enqueue an
-/// embedding job for it.
-///
-/// **The path that matters is the upgrade** (v4's *why*, carried forward): an
-/// existing instance has a full, unchanged `help_docs` table, so the
-/// content-hash check skips every file and the chunks would stay empty forever
-/// — section search would silently never engage. Docs whose chunks already
-/// exist are left alone, so this costs one count query per boot once it has run.
-///
-/// The embedding job is enqueued **even though the document's own embedding is
-/// present**, because the job is what fills the chunk vectors.
-///
-/// Whole thing best-effort: a failure warns and never blocks help from loading,
-/// since whole-document search still works. That is why this returns `()`.
-///
-/// ## One recorded divergence: the slicing loop is ONE transaction
-///
-/// v4 awaits `replaceForDoc` per document with no transaction around the loop,
-/// so a failure part-way through **keeps the documents already written** and
-/// stops; the count gate then short-circuits every later boot, and v4's own
-/// comment names the consequence — "a half-finished backfill is healed by the
-/// next full reindex". v5's writer wraps the closure in a transaction, so the
-/// same failure rolls the whole pass back, leaves the table empty, and the NEXT
-/// boot simply retries the backfill.
-///
-/// Deliberate, and noted rather than engineered around: matching v4 would mean
-/// one writer transaction per document (≈120 on a real instance) to reproduce a
-/// state that is strictly worse and that v4 itself only tolerates. No corpus arm
-/// can reach it — a `replace_for_doc` failure means the table is broken, and
-/// then the `count()` above has already failed. If a ruling ever wants v4's
-/// exact partial-write shape, the change is per-doc `db.write` calls here.
-async fn backfill_help_doc_chunks(db: &Db, existing: &[crate::db::help_docs::HelpDocRow]) {
-    let outcome: Result<(), DbError> = async {
-        // One count, not a scan (v4's *why*): chunk rows carry embedding BLOBs,
-        // and reading them all on every boot to answer "has this run yet?" would
-        // be absurd. A non-empty table means the backfill has already happened;
-        // docs added afterwards are sliced by `sync_help_docs` on their content
-        // hash, and a half-finished backfill is healed by the next full reindex.
-        if db.read_main(|c| HelpDocChunksRepository::new(c).count())? > 0 {
-            return Ok(());
-        }
+    let mut sections_backfilled = 0usize;
+    let mut incomplete_ids: Vec<String> = Vec::new();
 
-        // v4 names the whole list `missing` and takes it wholesale — the count
-        // above is the only gate, so this is every existing doc.
-        let missing = existing;
-        if missing.is_empty() {
-            return Ok(());
-        }
+    for doc in &docs {
+        let mut counts = section_counts.get(&doc.id).copied();
 
-        let docs: Vec<(String, String)> = missing
-            .iter()
-            .map(|d| (d.id.clone(), d.content.clone()))
-            .collect();
-        db.write(move |ws| {
-            let repo = HelpDocChunksRepository::new(ws.main().connection());
-            for (doc_id, content) in &docs {
-                let chunks = build_help_doc_chunks(content);
-                // v4 skips a doc that slices to nothing rather than calling
-                // replaceForDoc with an empty list (which would still delete).
-                if chunks.is_empty() {
-                    continue;
-                }
-                repo.replace_for_doc(doc_id, &chunks)?;
+        if counts.is_none() {
+            let chunks = build_help_doc_chunks(&doc.content);
+            // A doc that slices to nothing gets no rows, and is judged on its
+            // own vector alone below.
+            if !chunks.is_empty() {
+                // One writer round-trip per doc, as v4 awaits `replaceForDoc`
+                // per doc: a failure part-way keeps the docs already sliced and
+                // fails the reconcile (its gate logs; the next caller resumes).
+                let (id, drafts) = (doc.id.clone(), chunks.clone());
+                db.write(move |ws| {
+                    HelpDocChunksRepository::new(ws.main().connection())
+                        .replace_for_doc(&id, &drafts)
+                })
+                .await?;
+                sections_backfilled += 1;
+                counts = Some(SectionCounts {
+                    total: chunks.len() as i64,
+                    embedded: 0,
+                });
             }
-            Ok(())
-        })
-        .await?;
+        }
 
-        let doc_ids: Vec<String> = missing.iter().map(|d| d.id.clone()).collect();
-        enqueue_help_doc_embeddings(db, &doc_ids).await;
-        Ok(())
+        let section_vector_missing = counts.is_some_and(|c| c.embedded < c.total);
+        if doc.doc_vector_missing || section_vector_missing {
+            incomplete_ids.push(doc.id.clone());
+        }
     }
-    .await;
 
-    if let Err(e) = outcome {
-        // v4 `logger.warn`; log output is non-contractual (P4.18) and
-        // `eprintln!` is this module's convention.
-        eprintln!("[HelpDocSync] Help doc section backfill failed: {e}");
+    tracing::info!(
+        target: "quilltap::help",
+        context = "reconcileHelpDocs",
+        created = sync.created,
+        updated = sync.updated,
+        deleted = sync.deleted,
+        unchanged = sync.unchanged,
+        sectionsBackfilled = sections_backfilled,
+        incomplete = incomplete_ids.len(),
+        "[HelpDocSync] Help docs reconciled",
+    );
+
+    enqueue_help_doc_embeddings(db, &incomplete_ids).await;
+
+    Ok(HelpDocReconcileResult {
+        sync,
+        sections_backfilled,
+        incomplete: incomplete_ids.len(),
+    })
+}
+
+/// v4's module-level `reconcilePromise` memo + `ensureHelpDocsSynced`
+/// (`help-doc-sync.ts:379-406`) as an OWNED value: the host constructs one per
+/// engine assembly and every caller goes through it.
+///
+/// v4's semantics, all three reproduced:
+///   - a SUCCESSFUL reconcile runs once — later callers get its result without
+///     re-running it;
+///   - callers that arrive WHILE a run is in flight wait for that run and share
+///     its outcome, a failure included (each logs its own WARN, as each v4
+///     `await` lands in its own `catch`);
+///   - a FAILED run is forgotten, so the next caller to arrive after it starts
+///     a fresh one.
+///
+/// It never propagates an error: failure logs v4's WARN `Help doc reconcile
+/// failed; serving help from the existing index` and answers `None` — help
+/// still loads from whatever the table holds.
+///
+/// Mechanism: the run happens under an async mutex, so a concurrent caller
+/// queues behind it. `failures` counts completed FAILED runs; a caller
+/// snapshots it before queueing, and if it moved by the time the caller holds
+/// the lock, a run that was in flight while it waited has failed — it takes
+/// that failure instead of starting its own.
+#[derive(Default)]
+pub struct HelpDocReconcileGate {
+    state: tokio::sync::Mutex<GateState>,
+    failures: std::sync::atomic::AtomicU64,
+}
+
+#[derive(Default)]
+struct GateState {
+    done: Option<HelpDocReconcileResult>,
+    last_error: String,
+}
+
+impl HelpDocReconcileGate {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// v4 `ensureHelpDocsSynced` — wait for this boot's help reconcile,
+    /// starting it if nothing has. `Some` with the reconcile's result, or `None`
+    /// when it failed (logged).
+    pub async fn ensure(
+        &self,
+        db: &Db,
+        files: &[HelpSourceFile],
+    ) -> Option<HelpDocReconcileResult> {
+        use std::sync::atomic::Ordering;
+
+        let ticket = self.failures.load(Ordering::SeqCst);
+        let mut state = self.state.lock().await;
+        if let Some(done) = &state.done {
+            return Some(done.clone());
+        }
+        let error = if self.failures.load(Ordering::SeqCst) != ticket {
+            // The run in flight while this caller waited failed: share it.
+            state.last_error.clone()
+        } else {
+            match reconcile_help_docs(db, files).await {
+                Ok(result) => {
+                    state.done = Some(result.clone());
+                    return Some(result);
+                }
+                Err(e) => {
+                    state.last_error = e.to_string();
+                    self.failures.fetch_add(1, Ordering::SeqCst);
+                    state.last_error.clone()
+                }
+            }
+        };
+        drop(state);
+        tracing::warn!(
+            target: "quilltap::help",
+            context = "ensureHelpDocsSynced",
+            error = error.as_str(),
+            "[HelpDocSync] Help doc reconcile failed; serving help from the existing index",
+        );
+        None
     }
 }
 
-/// v4 `enqueueMissingHelpDocEmbeddings` (`help-doc-sync.ts:327`) — enqueue
-/// embedding jobs for help docs that have no embedding: newly synced docs, docs
-/// whose content changed (the sync clears their stale embedding), and any left
-/// unembedded by an earlier failure. Without this a new doc lands in the Guide
-/// but stays invisible to `help_search` until a full reindex.
+/// v4 `enqueueHelpDocEmbeddings` (`help-doc-sync.ts:414-466`) — enqueue a
+/// HELP_DOC embedding job for each of `doc_ids`, resolving the default
+/// embedding profile and the single user.
+///
+/// Silent when either is unavailable (v4's *why*): an instance with no
+/// embedding profile configured simply has no semantic help search yet, which
+/// is not an error worth shouting about on every boot — hence DEBUG, not WARN.
 ///
 /// Per-entity dedup in `enqueue_embedding_generate` keeps this from duplicating
-/// jobs an `EMBEDDING_REINDEX_ALL` has already queued.
-///
-/// **Best-effort, deliberately** (v4's *why*, carried forward): every failure is
-/// swallowed, because the docs are already in the database and listable in the
-/// Guide, which is the caller's actual dependency. That is why this returns `()`
-/// and not a `Result`.
-async fn enqueue_missing_help_doc_embeddings(db: &Db) {
-    // v4 wraps the entire body in one try/catch — a failure at ANY step (not
-    // just the enqueue) lands in the same catch, so the whole body is one
-    // fallible unit here too.
-    let outcome: Result<(), DbError> = async {
-        let need_embedding =
-            db.read_main(|c| HelpDocsRepository::new(c).find_all_needing_embedding())?;
-        let doc_ids: Vec<String> = need_embedding.iter().map(|d| d.id.clone()).collect();
-        enqueue_help_doc_embeddings(db, &doc_ids).await;
-        Ok(())
-    }
-    .await;
-
-    if let Err(e) = outcome {
-        // v4 logs and moves on (`logger.error` in the catch). The core has no
-        // logging crate; `eprintln!` is the module convention here (as in
-        // `mount_index::embedding_scheduler`).
-        eprintln!("[HelpDocSync] Failed to look up help docs needing embedding: {e}");
-    }
-}
-
-/// v4 `enqueueHelpDocEmbeddings` (`help-doc-sync.ts:437`, extracted at
-/// `24633026` so the chunk backfill can share it) — enqueue a HELP_DOC
-/// embedding job for each of `doc_ids`, resolving the default embedding profile
-/// and the single user.
-///
-/// Silent when either is unavailable: an instance with no embedding profile
-/// configured simply has no semantic help search yet, which is not an error
-/// worth shouting about on every boot.
-///
-/// Per-entity dedup in `enqueue_embedding_generate` keeps this from duplicating
-/// jobs an `EMBEDDING_REINDEX_ALL` has already queued.
+/// jobs an `EMBEDDING_REINDEX_ALL` has already queued; `enqueued` counts only
+/// the NEW jobs (v4's `isNew`).
 async fn enqueue_help_doc_embeddings(db: &Db, doc_ids: &[String]) {
     let outcome: Result<(), DbError> = async {
         if doc_ids.is_empty() {
@@ -584,17 +675,22 @@ async fn enqueue_help_doc_embeddings(db: &Db, doc_ids: &[String]) {
         // the one site that still embeds under the first row when no default
         // is marked (`default_or_first_profile_id`, not `default_profile_id`).
         let Some(profile_id) = db.read_main(default_or_first_profile_id)? else {
-            // v4 debug-logs "need embedding but no profile is configured" and
-            // returns — the sync itself still counts as done.
+            tracing::debug!(
+                target: "quilltap::help",
+                context = "enqueueHelpDocEmbeddings",
+                needEmbedding = doc_ids.len(),
+                "[HelpDocSync] Help docs need embedding but no embedding profile is configured",
+            );
             return Ok(());
         };
-        // v4: `users.findAll()[0]?.id`.
+        // v4: `users.findAll()[0]?.id` — silent when absent.
         let Some(user_id) = db.read_main(first_user_id)? else {
             return Ok(());
         };
 
+        let mut enqueued = 0usize;
         for doc_id in doc_ids {
-            enqueue_embedding_generate(
+            let (_, is_new) = enqueue_embedding_generate(
                 db,
                 &user_id,
                 serde_json::json!({
@@ -604,16 +700,32 @@ async fn enqueue_help_doc_embeddings(db: &Db, doc_ids: &[String]) {
                 }),
             )
             .await?;
+            if is_new {
+                enqueued += 1;
+            }
         }
+
+        tracing::info!(
+            target: "quilltap::help",
+            context = "enqueueHelpDocEmbeddings",
+            enqueued,
+            needEmbedding = doc_ids.len(),
+            "[HelpDocSync] Enqueued help doc embeddings",
+        );
         Ok(())
     }
     .await;
 
     if let Err(e) = outcome {
-        // v4 logs and moves on (`logger.error` in the catch). The core has no
-        // logging crate; `eprintln!` is the module convention here (as in
-        // `mount_index::embedding_scheduler`).
-        eprintln!("[HelpDocSync] Failed to enqueue help doc embeddings: {e}");
+        // v4's *why*: embedding top-up is best-effort — the docs are already in
+        // the database and listable in the Guide, which is the caller's actual
+        // dependency.
+        tracing::error!(
+            target: "quilltap::help",
+            context = "enqueueHelpDocEmbeddings",
+            error = %e,
+            "[HelpDocSync] Failed to enqueue help doc embeddings",
+        );
     }
 }
 
@@ -690,5 +802,378 @@ mod tests {
             hash_content("abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    // ---- P4.D222: the reconcile gate (v4's `ensureHelpDocsSynced` memo) ----
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const FAIL_TRIGGER: &str =
+        "CREATE TRIGGER fail_section_insert BEFORE INSERT ON help_doc_chunks \
+         BEGIN SELECT RAISE(ABORT, 'planted reconcile failure'); END";
+
+    fn fresh_db(dir: &std::path::Path) -> Db {
+        let data = dir.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap()
+    }
+
+    fn one_file() -> Vec<HelpSourceFile> {
+        vec![HelpSourceFile {
+            rel_path: "help/a.md".into(),
+            raw_content: "# A\n\n## One\n\nbody".into(),
+        }]
+    }
+
+    fn count_lines(lines: &[String], needle: &str) -> usize {
+        lines.iter().filter(|l| l.contains(needle)).count()
+    }
+
+    /// Callers that arrive while a run is in flight SHARE its failure — one
+    /// attempt, one WARN per caller (each v4 `await` lands in its own catch) —
+    /// and a caller after it starts a FRESH run. The oracle's
+    /// `fail-once-then-retry` arm proves the sequential half against v4; the
+    /// concurrent half has no v4 arm, so it is pinned here.
+    #[test]
+    fn concurrent_callers_share_a_failed_run_and_the_next_caller_retries() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = fresh_db(dir.path());
+        let files = one_file();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        // The create runs, then the section insert aborts inside the SAME
+        // writer transaction — so the whole sync rolls back and fails.
+        db.write_blocking(|ws| Ok(ws.main().connection().execute_batch(FAIL_TRIGGER)?))
+            .unwrap();
+        let gate = HelpDocReconcileGate::new();
+        let ((a, b), lines) = crate::test_support::captured_with(|| {
+            rt.block_on(async { tokio::join!(gate.ensure(&db, &files), gate.ensure(&db, &files)) })
+        });
+        assert!(a.is_none() && b.is_none());
+        assert_eq!(
+            gate.failures.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "ONE attempt, shared by both callers"
+        );
+        let warns: Vec<&String> = lines
+            .iter()
+            .filter(|l| {
+                l.contains(
+                    "[HelpDocSync] Help doc reconcile failed; serving help from the existing index",
+                )
+            })
+            .collect();
+        assert_eq!(warns.len(), 2, "one WARN per caller: {lines:?}");
+        for w in &warns {
+            assert!(w.starts_with("WARN quilltap::help"), "{w}");
+            assert!(w.contains("context=ensureHelpDocsSynced"), "{w}");
+            assert!(w.contains("planted reconcile failure"), "{w}");
+        }
+        assert_eq!(count_lines(&lines, "[HelpDocSync] Help docs reconciled"), 0);
+
+        db.write_blocking(|ws| {
+            Ok(ws
+                .main()
+                .connection()
+                .execute_batch("DROP TRIGGER fail_section_insert")?)
+        })
+        .unwrap();
+        let (third, lines) =
+            crate::test_support::captured_with(|| rt.block_on(gate.ensure(&db, &files)));
+        let third = third.expect("the failure was forgotten: a fresh run succeeds");
+        // The failed run's sync kept the doc (its slice failed inside the
+        // per-file catch, counted `failed`), so the retry finds it unchanged
+        // and section-less, and backfills it — exactly the step that failed.
+        assert_eq!(third.sync.unchanged, 1);
+        assert_eq!(third.sections_backfilled, 1);
+        assert_eq!(
+            count_lines(&lines, "Help doc reconcile failed"),
+            0,
+            "silence leg"
+        );
+        assert_eq!(count_lines(&lines, "[HelpDocSync] Help docs reconciled"), 1);
+    }
+
+    /// A SUCCESSFUL run is memoized: a later caller gets its result without a
+    /// second reconcile (no second INFO), even after the tree changed.
+    #[test]
+    fn a_successful_run_is_not_repeated() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = fresh_db(dir.path());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let gate = HelpDocReconcileGate::new();
+        let first = rt
+            .block_on(gate.ensure(&db, &one_file()))
+            .expect("first run");
+        let (second, lines) =
+            crate::test_support::captured_with(|| rt.block_on(gate.ensure(&db, &[])));
+        assert_eq!(second.expect("memoized"), first);
+        assert!(lines.is_empty(), "nothing re-ran: {lines:?}");
+    }
+
+    /// The reconcile's INFO: v4's six fields, in v4's order, at INFO on
+    /// `quilltap::help`.
+    #[test]
+    fn the_reconcile_info_carries_v4s_six_fields_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = fresh_db(dir.path());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (result, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(reconcile_help_docs(&db, &one_file()))
+        });
+        let result = result.unwrap();
+        assert_eq!(result.sync.created, 1);
+        // The provisioned instance's default profile queues the new doc.
+        assert_eq!(result.incomplete, 1);
+        let info: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[HelpDocSync] Help docs reconciled"))
+            .collect();
+        assert_eq!(info.len(), 1, "{lines:?}");
+        assert_eq!(
+            info[0].as_str(),
+            "INFO quilltap::help [HelpDocSync] Help docs reconciled context=reconcileHelpDocs \
+             created=1 updated=0 deleted=0 unchanged=0 sectionsBackfilled=0 incomplete=1"
+        );
+    }
+
+    // ---- P4.D222 Tier 2 item 9: the sync's lines on `tracing`, capture-pinned.
+    // Conn-level on an in-memory database so the capture (thread-scoped) sees
+    // every line — through the writer they would land on its thread.
+
+    fn mem_conn() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(crate::db::help_doc_chunks_repair::HELP_DOCS_TABLE_DDL)
+            .unwrap();
+        c.execute_batch(crate::db::help_doc_chunks_repair::HELP_DOC_CHUNKS_TABLE_DDL)
+            .unwrap();
+        c.execute_batch(
+            "CREATE TABLE embedding_status (id TEXT PRIMARY KEY, entityType TEXT, \
+             entityId TEXT, profileId TEXT, status TEXT)",
+        )
+        .unwrap();
+        c
+    }
+
+    fn file(path: &str, body: &str) -> HelpSourceFile {
+        HelpSourceFile {
+            rel_path: path.into(),
+            raw_content: body.into(),
+        }
+    }
+
+    #[test]
+    fn a_sync_logs_v4s_lines_created_updated_and_completed() {
+        let c = mem_conn();
+        let (first, lines) = crate::test_support::captured_with(|| {
+            sync_help_docs(&c, &[file("help/a.md", "# A\n\nbody")]).unwrap()
+        });
+        assert_eq!(first.created, 1);
+        let id = &first.changed_ids[0];
+        let synced: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[HelpDocSync] Synced help doc"))
+            .collect();
+        assert_eq!(synced.len(), 1, "{lines:?}");
+        assert_eq!(
+            synced[0].as_str(),
+            format!(
+                "DEBUG quilltap::help [HelpDocSync] Synced help doc context=syncHelpDocs \
+                 path=help/a.md docId={id} action=created chunks=1"
+            )
+        );
+        let done: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[HelpDocSync] Sync completed"))
+            .collect();
+        assert_eq!(
+            done,
+            vec![
+                "INFO quilltap::help [HelpDocSync] Sync completed context=syncHelpDocs \
+                  totalOnDisk=1 created=1 updated=0 unchanged=0 deleted=0 failed=0 \
+                  chunksWritten=1 changedIds=1"
+            ]
+        );
+
+        // An edit: the update keeps the id, and a planted FAILED status goes.
+        c.execute(
+            "INSERT INTO embedding_status VALUES ('s1','HELP_DOC',?1,'p','FAILED')",
+            [id],
+        )
+        .unwrap();
+        let (second, lines) = crate::test_support::captured_with(|| {
+            sync_help_docs(&c, &[file("help/a.md", "# A\n\nedited body")]).unwrap()
+        });
+        assert_eq!(second.updated, 1);
+        assert_eq!(&second.changed_ids[0], id, "updated by the id it read");
+        assert!(
+            lines.iter().any(|l| l.contains("action=updated")),
+            "{lines:?}"
+        );
+        let status_rows: i64 = c
+            .query_row("SELECT count(*) FROM embedding_status", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(status_rows, 0, "the old text's FAILED status is cleared");
+
+        // Unchanged: silence on the per-doc DEBUG (the INFO still fires).
+        let (_, lines) = crate::test_support::captured_with(|| {
+            sync_help_docs(&c, &[file("help/a.md", "# A\n\nedited body")]).unwrap()
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains("Synced help doc")),
+            "{lines:?}"
+        );
+        assert!(lines.iter().any(|l| l.contains("unchanged=1")), "{lines:?}");
+    }
+
+    #[test]
+    fn the_guard_and_failure_lines_fire_at_v4s_levels() {
+        let c = mem_conn();
+        // No files: v4's INFO, nothing else.
+        let (_, lines) = crate::test_support::captured_with(|| sync_help_docs(&c, &[]).unwrap());
+        assert_eq!(
+            lines,
+            vec![
+                "INFO quilltap::help [HelpDocSync] No Markdown files found in help directory \
+                  context=syncHelpDocs"
+            ]
+        );
+
+        sync_help_docs(&c, &[file("help/a.md", "# A\n\nbody")]).unwrap();
+        // Only blank content against a populated table: the prune refusal.
+        let (r, lines) = crate::test_support::captured_with(|| {
+            sync_help_docs(&c, &[file("help/b.md", "   ")]).unwrap()
+        });
+        assert_eq!(r.deleted, 0);
+        assert!(
+            lines.contains(
+                &"WARN quilltap::help [HelpDocSync] No help docs on disk have usable content but \
+                  the table is populated — skipping the destructive prune context=syncHelpDocs \
+                  totalOnDisk=1 existingRows=1"
+                    .to_string()
+            ),
+            "{lines:?}"
+        );
+
+        // A per-file failure: ERROR `Failed to sync file`, counted `failed`.
+        c.execute_batch(
+            "CREATE TRIGGER no_insert BEFORE INSERT ON help_docs \
+             BEGIN SELECT RAISE(ABORT, 'planted'); END",
+        )
+        .unwrap();
+        let (r, lines) = crate::test_support::captured_with(|| {
+            sync_help_docs(
+                &c,
+                &[file("help/a.md", "# A\n\nbody"), file("help/c.md", "# C")],
+            )
+            .unwrap()
+        });
+        assert_eq!(r.failed, 1);
+        let errs: Vec<&String> = lines.iter().filter(|l| l.starts_with("ERROR")).collect();
+        assert_eq!(errs.len(), 1, "{lines:?}");
+        assert!(errs[0].starts_with(
+            "ERROR quilltap::help [HelpDocSync] Failed to sync file context=syncHelpDocs \
+             filePath=help/c.md error="
+        ));
+
+        // A prune failure: ERROR `Failed to prune deleted help doc`.
+        c.execute_batch(
+            "CREATE TRIGGER no_delete BEFORE DELETE ON help_docs \
+             BEGIN SELECT RAISE(ABORT, 'planted'); END",
+        )
+        .unwrap();
+        let (r, lines) = crate::test_support::captured_with(|| {
+            sync_help_docs(&c, &[file("help/other.md", "# O")]).unwrap()
+        });
+        assert_eq!(r.deleted, 0);
+        assert!(
+            lines.iter().any(|l| l.starts_with(
+                "ERROR quilltap::help [HelpDocSync] Failed to prune deleted help doc \
+                 context=syncHelpDocs docId="
+            ) && l.contains(" path=help/a.md error=")),
+            "{lines:?}"
+        );
+    }
+
+    /// v4's `findAll` sits OUTSIDE the per-file catch: a failing read
+    /// propagates (the reconcile's gate then logs and lets the next caller
+    /// retry) instead of answering an empty result.
+    #[test]
+    fn a_failing_find_all_propagates() {
+        let c = mem_conn();
+        c.execute_batch("DROP TABLE help_docs").unwrap();
+        assert!(sync_help_docs(&c, &[file("help/a.md", "# A")]).is_err());
+    }
+
+    /// The enqueue's two lines: INFO `Enqueued help doc embeddings` with the
+    /// NEW-job count, and DEBUG when no profile is configured.
+    #[test]
+    fn the_enqueue_logs_v4s_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = fresh_db(dir.path());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (_, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(reconcile_help_docs(&db, &one_file())).unwrap()
+        });
+        assert!(
+            lines.contains(
+                &"INFO quilltap::help [HelpDocSync] Enqueued help doc embeddings \
+                  context=enqueueHelpDocEmbeddings enqueued=1 needEmbedding=1"
+                    .to_string()
+            ),
+            "{lines:?}"
+        );
+        // A second pass finds the job already pending: needEmbedding 1,
+        // enqueued 0 (v4's `isNew`).
+        let (_, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(reconcile_help_docs(&db, &one_file())).unwrap()
+        });
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("enqueued=0 needEmbedding=1")),
+            "{lines:?}"
+        );
+
+        db.write_blocking(|ws| {
+            Ok(ws
+                .main()
+                .connection()
+                .execute_batch("DELETE FROM embedding_profiles")?)
+        })
+        .unwrap();
+        let (_, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(reconcile_help_docs(&db, &one_file())).unwrap()
+        });
+        assert!(
+            lines.contains(
+                &"DEBUG quilltap::help [HelpDocSync] Help docs need embedding but no embedding \
+                  profile is configured context=enqueueHelpDocEmbeddings needEmbedding=1"
+                    .to_string()
+            ),
+            "{lines:?}"
+        );
+        assert!(!lines
+            .iter()
+            .any(|l| l.contains("Enqueued help doc embeddings")));
     }
 }

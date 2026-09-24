@@ -60,7 +60,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use quilltap_core::db::runtime::Db;
-use quilltap_core::services::help_doc_sync::ensure_help_docs_synced;
+use quilltap_core::services::help_doc_sync::HelpDocReconcileGate;
 
 #[derive(Deserialize)]
 struct Spec {
@@ -79,6 +79,9 @@ struct SpecScenario {
     /// P4.D77 — pre-existing section chunks (the backfill's short-circuit arm).
     #[serde(rename = "seedChunks", default)]
     seed_chunks: Vec<SpecSeedDoc>,
+    /// P4.D222 — the multi-call gate arms; `None` = one call.
+    #[serde(default)]
+    calls: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -95,6 +98,24 @@ struct OracleLine {
     /// P4.D77 — the section chunks after the run: the BACKFILL's output on the
     /// early-return path, the sync's on the diverged one.
     chunks: Vec<Value>,
+    /// P4.D222 — `{reconciled, reconcileFailed}`: the reconcile's INFO and the
+    /// gate's WARN, counted.
+    logs: Value,
+}
+
+/// P4.D222 — the fail-once-then-retry plant, byte-identical to the oracle's.
+const FAIL_TRIGGER_CREATE: &str = "CREATE TRIGGER \"p4d222_fail_section_insert\" BEFORE INSERT ON \"help_doc_chunks\" BEGIN SELECT RAISE(ABORT, 'planted reconcile failure'); END";
+const FAIL_TRIGGER_DROP: &str = "DROP TRIGGER \"p4d222_fail_section_insert\"";
+
+async fn plant(db: &Db, sql: &'static str) {
+    db.write(move |ws| {
+        ws.main()
+            .connection()
+            .execute_batch(sql)
+            .map_err(quilltap_core::db::DbError::from)
+    })
+    .await
+    .expect("plant");
 }
 
 fn fixtures_dir() -> std::path::PathBuf {
@@ -177,9 +198,33 @@ fn help_doc_ensure_matches_oracle() {
         let db = Db::open_main(&work_main, &spec.test_pepper_base64).expect("open db");
         let files = quilltap_host::files_store::load_help_source_files(&tree_root);
 
-        runtime
-            .block_on(ensure_help_docs_synced(&db, &files))
-            .expect("ensure_help_docs_synced");
+        // One gate per scenario — v4's once-per-process memo, owned.
+        let gate = HelpDocReconcileGate::new();
+        let ((), lines) = quilltap_core::test_support::captured_with(|| {
+            runtime.block_on(async {
+                match def.calls.as_deref() {
+                    Some("concurrent-then-later") => {
+                        tokio::join!(gate.ensure(&db, &files), gate.ensure(&db, &files));
+                        gate.ensure(&db, &files).await;
+                    }
+                    Some("fail-once-then-retry") => {
+                        plant(&db, FAIL_TRIGGER_CREATE).await;
+                        gate.ensure(&db, &files).await;
+                        plant(&db, FAIL_TRIGGER_DROP).await;
+                        gate.ensure(&db, &files).await;
+                    }
+                    None => {
+                        gate.ensure(&db, &files).await;
+                    }
+                    Some(other) => panic!("unknown calls arm {other}"),
+                }
+            })
+        });
+        let count_lines = |needle: &str| lines.iter().filter(|l| l.contains(needle)).count();
+        let logs = json!({
+            "reconciled": count_lines("[HelpDocSync] Help docs reconciled"),
+            "reconcileFailed": count_lines("[HelpDocSync] Help doc reconcile failed"),
+        });
 
         // ---- dump help_docs (same SELECT/order/normalization as the oracle) ----
         let doc_rows: Vec<(String, String, String, String, String)> = db
@@ -367,6 +412,12 @@ fn help_doc_ensure_matches_oracle() {
             expected.chunks
         );
 
+        assert_eq!(
+            logs, expected.logs,
+            "[{}] the reconcile/gate log counts diverged",
+            def.name
+        );
+
         eprintln!(
             "ensure {}: {} help_docs, {} job(s), {} chunk(s)",
             def.name,
@@ -395,79 +446,116 @@ fn help_doc_ensure_matches_oracle() {
             .any(|d| d["path"] == "help/brahma-console.md" && d["id"] == "<minted>"),
         "added-doc must CREATE the doc that ships with no row — this is v4 bug 1"
     );
+    // P4.D222: the unchanged aurora is section-less, so it is backfilled and
+    // queued too (it was the created doc alone before the reconcile).
     assert_eq!(
         added.jobs.len(),
-        1,
-        "the newly synced doc must be enqueued for embedding, or it stays invisible to help_search"
+        2,
+        "the created doc AND the section-less unchanged one must both be queued"
     );
 
-    // The deleted direction is load-bearing: only it can trigger this sync.
+    // The prune still runs (now on every reconcile, not only on a divergence).
     let deleted = by_name("deleted-doc");
     assert!(
         !deleted
             .help_docs
             .iter()
             .any(|d| d["path"] == "help/retired.md"),
-        "deleted-doc must PRUNE the row whose file is gone — reachable only because the \
-         divergence check looks in the deleted direction too"
+        "deleted-doc must PRUNE the row whose file is gone"
     );
 
-    // in-sync must not SYNC anything: the seeded titles/timestamps survive.
+    // in-sync must not rewrite a doc: the seeded titles/timestamps survive.
     let in_sync = by_name("in-sync");
     assert!(
         in_sync
             .help_docs
             .iter()
             .all(|d| d["updatedAt"] == "<sentinel>"),
-        "in-sync must not sync or prune anything"
+        "in-sync must not rewrite or prune anything"
     );
+    // The section-less docs are sliced and queued EVEN THOUGH both carry their
+    // own vector — the job is what fills the SECTION vectors.
+    assert_eq!(in_sync.chunks.len(), 2, "in-sync must backfill both docs");
+    assert!(in_sync.chunks.iter().all(|c| c["hasEmbedding"] == false));
+    assert_eq!(in_sync.jobs.len(), 2);
+    assert!(in_sync.help_docs.iter().all(|d| d["hasEmbedding"] == true));
 
-    // ==== P4.D77 — the chunk backfill (v4 `24633026`) ====
-    //
-    // The upgrade path is the ONLY reason the backfill exists: an existing
-    // instance matches every content hash, so nothing above would ever slice it
-    // and section search would silently never engage. These pin that against
-    // v4's own behavior, since a v5 that quietly skipped the backfill would
-    // otherwise look exactly like a correct no-op.
-    assert_eq!(
-        in_sync.chunks.len(),
-        2,
-        "in-sync must BACKFILL both already-synced docs — the whole point of the \
-         backfill is that the sync above it never runs here"
-    );
-    assert!(
-        in_sync.chunks.iter().all(|c| c["hasEmbedding"] == false),
-        "backfilled chunks are written with a NULL vector; the HELP_DOC job fills them"
-    );
-    assert_eq!(
-        in_sync.jobs.len(),
-        2,
-        "the backfill must enqueue a HELP_DOC job per doc EVEN THOUGH both docs \
-         already carry their own embedding — the job is what fills the CHUNK vectors"
-    );
-    assert!(
-        in_sync.help_docs.iter().all(|d| d["hasEmbedding"] == true),
-        "the in-sync fixture must keep its doc embeddings, or the enqueue-anyway \
-         assertion above proves nothing"
-    );
-
-    // The short-circuit: a table that already has rows costs one count query.
+    // ==== P4.D222 — the reconcile (v4 `492771aff`) ====
+    // in-sync-chunked MOVED: the old `count() > 0` gate skipped the whole
+    // table; the reconcile looks per doc, so brahma (no rows) is backfilled and
+    // queued while aurora (complete) is left alone.
     let chunked = by_name("in-sync-chunked");
+    assert!(
+        chunked
+            .chunks
+            .iter()
+            .any(|c| c["docPath"] == "help/aurora.md"
+                && c["id"] != "<minted>"
+                && c["updatedAt"] == "<sentinel>"),
+        "aurora's seeded section must survive untouched"
+    );
+    assert!(chunked
+        .chunks
+        .iter()
+        .any(|c| c["docPath"] == "help/brahma-console.md" && c["id"] == "<minted>"));
+    assert_eq!(chunked.jobs.len(), 1);
+    assert_eq!(chunked.jobs[0]["entityPath"], "help/brahma-console.md");
+
+    let edited = by_name("edited-page");
+    assert!(
+        edited
+            .help_docs
+            .iter()
+            .any(|d| d["path"] == "help/aurora.md"
+                && d["id"] != "<minted>"
+                && d["hasEmbedding"] == false
+                && d["updatedAt"] == "<ts>"),
+        "the edited page is rewritten in place (its own id) and its vector cleared"
+    );
+    assert_eq!(edited.jobs.len(), 1);
+    assert_eq!(edited.jobs[0]["entityPath"], "help/aurora.md");
+
+    let complete = by_name("complete");
+    assert!(
+        complete.jobs.is_empty(),
+        "a complete index enqueues nothing"
+    );
+    assert!(complete.chunks.iter().all(|c| c["id"] != "<minted>"));
+
+    let null_vec = by_name("null-doc-vector");
+    assert_eq!(null_vec.jobs.len(), 1);
+    assert_eq!(null_vec.jobs[0]["entityPath"], "help/brahma-console.md");
+
+    let partial = by_name("partial-sections");
+    assert_eq!(partial.jobs.len(), 1);
+    assert_eq!(partial.jobs[0]["entityPath"], "help/aurora.md");
+    assert!(
+        partial.chunks.iter().all(|c| c["id"] != "<minted>"),
+        "a partial doc is queued, NOT re-sliced"
+    );
+
+    let no_profile = by_name("no-profile");
+    assert!(no_profile.jobs.is_empty());
+    assert!(
+        !no_profile.chunks.is_empty(),
+        "the reconcile still slices with no profile"
+    );
+
+    let concurrent = by_name("concurrent-then-later");
     assert_eq!(
-        chunked.chunks.len(),
-        1,
-        "in-sync-chunked must leave the pre-existing chunk table alone — one seeded \
-         row in, one row out"
+        concurrent.logs["reconciled"], 1,
+        "the reconcile runs ONCE across three calls"
     );
-    assert!(
-        chunked.chunks.iter().all(|c| c["id"] != "<minted>"
-            && c["updatedAt"] == "<sentinel>"
-            && c["hasEmbedding"] == true),
-        "the seeded chunk must survive untouched (id, timestamp AND vector) — a port \
-         that re-sliced regardless would mint a fresh row here"
+    assert_eq!(concurrent.help_docs.len(), 2);
+
+    let retry = by_name("fail-once-then-retry");
+    assert_eq!(
+        retry.logs["reconcileFailed"], 1,
+        "the planted failure is logged once"
     );
-    assert!(
-        chunked.jobs.is_empty(),
-        "the short-circuited backfill must not enqueue anything"
+    assert_eq!(
+        retry.logs["reconciled"], 1,
+        "the next call ran a FRESH reconcile"
     );
+    assert_eq!(retry.chunks.len(), 2, "…and the retry backfilled both docs");
 }

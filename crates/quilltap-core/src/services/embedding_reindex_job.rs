@@ -423,11 +423,10 @@ async fn phase_help_docs(
 ) -> Result<(Vec<BjCreate>, Counts), DbError> {
     // v4 syncs from disk FIRST, then reads the table, then (full scope) clears.
     let files = help_files.to_vec();
-    db.write(move |ws| {
-        sync_help_docs(ws.main().connection(), &files);
-        Ok(())
-    })
-    .await?;
+    // `sync_help_docs`' one propagating failure (its `findAll`) lands in this
+    // phase's catch, as v4's throw does (P4.D222 — it used to be swallowed).
+    db.write(move |ws| sync_help_docs(ws.main().connection(), &files))
+        .await?;
 
     let docs = db.read_main(|conn| {
         crate::db::help_docs::HelpDocsRepository::new(conn).find_all_with_embedding_dims()
