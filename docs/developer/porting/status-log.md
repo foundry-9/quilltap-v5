@@ -146084,3 +146084,78 @@ family's real-repository run (unit 6) MEASURED v4 keeping a planted foreign char
 dropping only the missing id; the owner filter first written here was removed to match (the
 mount pool's raw read still gives a foreign member no vault and no groups).
 
+
+### Unit 6 — the REST edge, the disconnect guard, the route family
+
+NEW `crates/quilltap-web/src/scenario_builder_routes.rs` + two fenced `lib.rs` lines + a
+`generator_sse::scenario_builder_frame` extractor (append-only): `POST
+/api/v1/scenario-builder?action=build` parses the body (400 `Request body must be JSON` on a
+non-JSON or empty body — never axum's own 415/422), MINTS the runId, and hands the body RAW to
+`scenarioBuilderBuild` through `stream_frames` (subscribe-before-dispatch; a refusal that
+publishes no frame answers its status + JSON body BEFORE any stream; v4's three SSE headers, in
+order); `GET ?action=capabilities` → 200 the bare object; an absent/unknown action → the
+existing `withCollectionActionDispatch` sentences (`query::action_required_response` /
+`unknown_action_response`, v4's `availableActions` per method). **Disconnect = abort:** the
+committed SSE body carries a `DisconnectGuard` whose `Drop` dispatches `scenarioBuilderAbort`
+for the minted runId and, only when a LIVE run was cut short, logs v4's DEBUG `Scenario Builder
+client disconnected; aborting the run`. **Recorded divergence (unreachable in v4 by contract):**
+v4's belt-and-braces `{"error":"The Host could not complete the enquiry."}` frame (a THROW out
+of `runScenarioBuilder`) — v5's equivalents (a panicked driver thread, no driver assembled)
+fail the dispatch before any frame, so the pump answers a JSON 500 instead (module doc).
+
+NEW route family `crates/quilltap-web/tests/scenario_builder_routes_equivalence.rs` (in the web
+crate, the `messages_swipe_sse_route` precedent — the comparand is the real axum edge): **24
+cases** — v4's 18 `route.test.ts` names (the salon/autonomous pair split into two) + the
+middleware's absent/unknown action on both methods + the non-JSON body — driving v4's REAL route
+(real `createContextHandler` + `withCollectionActionDispatch`, real repositories, the real
+api-key resolver with the REAL provider registry initialized, the real Zod schema) over a
+per-case copy of the committed chat-send pair with `scenario-builder-routes.json`'s plants;
+ONLY `runScenarioBuilder` canned (v4) / the driver canned (v5) — the one place a mock is right.
+Compared: status, the SSE `content-type`/`cache-control`/`connection`, the JSON body or the SSE
+bytes, and every run the route started (mode, the cast ids KEPT, the vetted chat, the revise
+pair, whether the disconnect reached it). **All 24 green.** Measured on the way (each recorded
+where it lives): (1) **v4 KEEPS a cast member owned by another user** (`findById` is not
+owner-filtered despite the route's "user-scoped" comment) — v5's first owner filter removed
+(unit 5's refinement); (2) the chat-send pair carries NO `users` table, so the oracle creates
+the owner's row through v4's own repository on each copy (v4's context handler resolves the
+session user through it; v5 never reads one); (3) an EMPTY provider registry makes v4 treat
+every provider — OLLAMA included — as key-required, so the oracle initializes the real one;
+(4) the jest env's `NextResponse.json` carries NO `content-type`, so content-type is compared
+only where v4 sets it (the SSE response). **Pinned both ways:** `500s when the capability
+lookup throws` — v4 reaches it only by a MOCKED throw, v5's probe is infallible (v4's recorded
+500 body asserted as recorded, v5 asserted to answer the 200 body, "WRONG SHAPE" otherwise);
+`returns the resolved capabilities` — `webSearchConfigured` compared, `curlConfigured` asserted
+`false` on v5 with v4's value RECORDED (`false`: no plugins in the jest env).
+
+NEW `crates/quilltap-web/tests/scenario_builder_disconnect.rs` (Tier 1 item 8): the REAL service
+over the slow canned stream (now led by one reasoning chunk, so the stream commits): POST, read
+the first frame (`{"reasoning":"weighing the quay"}`), hang up → the edge's `client
+disconnected` DEBUG, the loop's `Scenario Builder: aborted mid-stream` (its `{ok:false,
+detail:'aborted'}`), the service's `run aborted by the client`, and NO `run complete` — through
+a process-global capture (the run logs on the driver's thread).
+
+**Censuses (§R.10(h)):** `tri_state_edges_share_the_decoder` — `scenario_builder_routes.rs: 2`
+typed-only hand-built constructions (`ScenarioBuilderBuild`, `ScenarioBuilderAbort`; the
+capabilities leg is a unit variant the `{`-anchored grep does not count), total **113 → 115**
+(measured red first); `web_edge_body_parse_guard`'s `COLLAPSE_CENSUS` gains the file at **1**
+site — the guard reading the abort REPLY's `aborted`, never caller input (measured red first).
+`ALLOWED_TRI_STATE_HAND_BUILDS` unmoved. **Mutations:** the guard's `Drop` made a no-op →
+exactly the route family's signal/abort case red AND the disconnect test red (the edge's DEBUG
+missing).
+
+Regen (the committed chat-send pair is read, never written; plants on per-case copies):
+
+```bash
+STAGE=/tmp/p4d217/stage-sb-routes
+rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+cp $V5W/harness/oracle/cases/scenario-builder-routes.test.ts $STAGE/harness/oracle/cases/
+cp $V5W/harness/oracle/fixtures/scenario-builder-routes.json $STAGE/harness/oracle/fixtures/
+cd /tmp/qt-v4-pin-p4d217-d1c06cd9d
+QT_FIXTURE_SBR_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-send-main.db \
+QT_FIXTURE_SBR_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/chat-send-mount.db \
+QT_ORACLE_OUT=/tmp/p4d217/oracle-scenario-builder-routes.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=240000 --roots "$PWD" --roots "$STAGE/harness/oracle/cases" \
+  -- "scenario-builder-routes\.test\.ts$"
+QT_ORACLE_SB_ROUTES=/tmp/p4d217/oracle-scenario-builder-routes.ndjson \
+  cargo test -p quilltap-web --test scenario_builder_routes_equivalence -- --nocapture
+```

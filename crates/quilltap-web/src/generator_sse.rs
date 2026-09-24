@@ -111,6 +111,16 @@ pub fn swipe_frame(payload: &EventPayload) -> Option<&serde_json::Value> {
     }
 }
 
+// === P4.D217 ===
+/// The Scenario Builder's payload (P4.D217, v4 `d1c06cd9d`).
+pub fn scenario_builder_frame(payload: &EventPayload) -> Option<&serde_json::Value> {
+    match payload {
+        EventPayload::ScenarioBuilderProgress(p) => Some(&p.frame),
+        _ => None,
+    }
+}
+// === end P4.D217 ===
+
 /// Pull the inner v4 object out of an [`Event`] iff it is `frame_of`'s family
 /// AND carries `progress_id`.
 fn matching<'a>(

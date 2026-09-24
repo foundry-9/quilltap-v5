@@ -199,7 +199,11 @@ async fn serve(canned: Canned) -> (tempfile::TempDir, Wire, std::net::SocketAddr
     let base_dir = base.path().to_path_buf();
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
-        c.spine = Some(Arc::new(ScenarioBuilderSpineFactory { base_dir, canned }));
+        c.spine = Some(Arc::new(ScenarioBuilderSpineFactory {
+            base_dir,
+            canned,
+            driver: None,
+        }));
         c
     })
     .await;

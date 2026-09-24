@@ -44,6 +44,9 @@ pub mod log_file;
 pub mod llm_logs_routes;
 pub mod messages_routes;
 pub mod messages_swipe_routes;
+// === P4.D217: the Scenario Builder REST edge (v4 `d1c06cd9d`) ===
+pub mod scenario_builder_routes;
+// === end P4.D217 ===
 // === P4.9P: the global-search REST edge ===
 pub mod ui_search_routes;
 // === end P4.6ar ===
@@ -366,6 +369,12 @@ pub fn build_router(state: SharedState) -> Router {
         .route(
             "/api/v1/messages/{id}",
             post(messages_swipe_routes::messages_post),
+        )
+        // === P4.D217: the Scenario Builder REST edge (v4 `d1c06cd9d`) ===
+        .route(
+            "/api/v1/scenario-builder",
+            get(scenario_builder_routes::scenario_builder_get)
+                .post(scenario_builder_routes::scenario_builder_post),
         )
         .route(
             "/api/v1/terminals",

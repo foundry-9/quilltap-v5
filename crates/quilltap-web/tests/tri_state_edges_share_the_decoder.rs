@@ -627,6 +627,13 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     ("messages_swipe_routes.rs", 3),
     ("photos_routes.rs", 4),
     ("prompt_templates_routes.rs", 2),
+    // P4.D217 (v4 `d1c06cd9d`): the NEW Scenario Builder REST edge, 2
+    // typed-only constructions — `ScenarioBuilderBuild { run_id, body }` (the
+    // route-minted scope tag + v4's body carried as ONE raw `Value`, so no
+    // `Option<Option<…>>` key and nothing for `request_envelope`) and, in the
+    // disconnect guard, `ScenarioBuilderAbort { run_id }`. The capabilities leg
+    // dispatches a UNIT variant, which this `{`-anchored grep does not count.
+    ("scenario_builder_routes.rs", 2),
     ("subprompts_routes.rs", 3),
     ("system_data_routes.rs", 15),
     ("text_replacements_routes.rs", 6),
@@ -676,8 +683,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 113,
-        "113 = 114 total `*_routes.rs` variant constructions minus the 1 CharacterRename \
+        total, 115,
+        "115 = 113 + P4.D217's two `scenario_builder_routes.rs` constructions \
+         (`ScenarioBuilderBuild`, `ScenarioBuilderAbort`); the line below is the \
+         pre-P4.D217 arithmetic. 113 = 114 total `*_routes.rs` variant constructions minus the 1 CharacterRename \
          tri-state exception. 109 = 110 - 1 at the 2026-09-18 measurement; the `f45a517a9` \
          round's unification recounts as base + the lanes' sums: P4.D205's `?action=informs` \
          GET adds ONE typed-only hand-built construction (`ChatInformsList`, whose only \

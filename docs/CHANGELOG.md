@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(scenario-builder): the REST edge, re-framed as v4's SSE, with client disconnect as abort (P4.D217 unit 6)
+
+_Versions: web 0.0.182, harness 0.0.939._
+
+Adds `POST /api/v1/scenario-builder?action=build` (the same build verb,
+re-framed into v4's `data:` SSE stream, with every refusal answered as JSON
+before the stream opens) and `GET ?action=capabilities`. Dropping the
+response aborts the live run. A new route family runs 24 cases against v4's
+real route with only the run itself canned, and a disconnect test proves a
+hang-up aborts the real service mid-stream. The two file-keyed web-edge
+censuses gain the new file's rows.
+
 #### 2026-09-23 — feat(scenario-builder): the build, abort and capabilities verbs, their event frames, and the host driver (P4.D217 unit 5)
 
 _Versions: core 0.0.1023, host 0.0.150, web 0.0.181._

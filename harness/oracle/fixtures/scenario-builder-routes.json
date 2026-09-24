@@ -1,0 +1,489 @@
+{
+  "$comment": "P4.D217 \u2014 the Scenario Builder REST edge's route family. v4's REAL route (real middleware, real repositories over a per-case copy of the committed chat-send fixture pair with these plants applied) with ONLY runScenarioBuilder canned to `frames` (the one place a mock is right: the route's contract is what it does AROUND the run) and, for one case, resolveScenarioBuilderCapabilities throwing. v5: the real axum edge over the same planted instance, with a canned DRIVER publishing the same frames. The first 18 names are v4's route.test.ts cases (split where one v4 case asks two things); the last five are the middleware's.",
+  "otherUser": "5b170000-0000-4000-8000-0000000000ee",
+  "plants": [
+    {
+      "sql": "CREATE TEMP TABLE \"p4d217_clone\" AS SELECT * FROM \"connection_profiles\" ORDER BY rowid LIMIT 1",
+      "params": []
+    },
+    {
+      "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"name\" = 'Host OK', \"provider\" = 'OLLAMA', \"apiKeyId\" = NULL, \"allowToolUse\" = 1, \"isDefault\" = 0",
+      "params": [
+        "5b170000-0000-4000-8000-0000000000a1"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"connection_profiles\" SELECT * FROM \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "DROP TABLE \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "CREATE TEMP TABLE \"p4d217_clone\" AS SELECT * FROM \"connection_profiles\" ORDER BY rowid LIMIT 1",
+      "params": []
+    },
+    {
+      "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"name\" = 'Host Off', \"provider\" = 'OLLAMA', \"apiKeyId\" = NULL, \"allowToolUse\" = 0, \"isDefault\" = 0",
+      "params": [
+        "5b170000-0000-4000-8000-0000000000a2"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"connection_profiles\" SELECT * FROM \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "DROP TABLE \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "CREATE TEMP TABLE \"p4d217_clone\" AS SELECT * FROM \"connection_profiles\" ORDER BY rowid LIMIT 1",
+      "params": []
+    },
+    {
+      "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"name\" = 'Host Keyless', \"provider\" = 'ANTHROPIC', \"apiKeyId\" = NULL, \"allowToolUse\" = 1, \"isDefault\" = 0",
+      "params": [
+        "5b170000-0000-4000-8000-0000000000a3"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"connection_profiles\" SELECT * FROM \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "DROP TABLE \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "CREATE TEMP TABLE \"p4d217_clone\" AS SELECT * FROM \"connection_profiles\" ORDER BY rowid LIMIT 1",
+      "params": []
+    },
+    {
+      "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"name\" = 'Host Foreign', \"provider\" = 'OLLAMA', \"apiKeyId\" = NULL, \"allowToolUse\" = 1, \"isDefault\" = 0, \"userId\" = '5b170000-0000-4000-8000-0000000000ee'",
+      "params": [
+        "5b170000-0000-4000-8000-0000000000a4"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"connection_profiles\" SELECT * FROM \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "DROP TABLE \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "CREATE TEMP TABLE \"p4d217_clone\" AS SELECT * FROM \"chats\" ORDER BY rowid LIMIT 1",
+      "params": []
+    },
+    {
+      "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"chatType\" = 'salon'",
+      "params": [
+        "5b170000-0000-4000-8000-0000000000c1"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"chats\" SELECT * FROM \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "DROP TABLE \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "CREATE TEMP TABLE \"p4d217_clone\" AS SELECT * FROM \"chats\" ORDER BY rowid LIMIT 1",
+      "params": []
+    },
+    {
+      "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"chatType\" = 'autonomous'",
+      "params": [
+        "5b170000-0000-4000-8000-0000000000c2"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"chats\" SELECT * FROM \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "DROP TABLE \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "CREATE TEMP TABLE \"p4d217_clone\" AS SELECT * FROM \"chats\" ORDER BY rowid LIMIT 1",
+      "params": []
+    },
+    {
+      "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"chatType\" = 'help'",
+      "params": [
+        "5b170000-0000-4000-8000-0000000000c3"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"chats\" SELECT * FROM \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "DROP TABLE \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "CREATE TEMP TABLE \"p4d217_clone\" AS SELECT * FROM \"chats\" ORDER BY rowid LIMIT 1",
+      "params": []
+    },
+    {
+      "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"chatType\" = 'salon', \"userId\" = '5b170000-0000-4000-8000-0000000000ee'",
+      "params": [
+        "5b170000-0000-4000-8000-0000000000c4"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"chats\" SELECT * FROM \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "DROP TABLE \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "CREATE TEMP TABLE \"p4d217_clone\" AS SELECT * FROM \"characters\" ORDER BY rowid LIMIT 1",
+      "params": []
+    },
+    {
+      "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"name\" = 'Quayside Readable', \"characterDocumentMountPointId\" = NULL",
+      "params": [
+        "5b170000-0000-4000-8000-0000000000b1"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"characters\" SELECT * FROM \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "DROP TABLE \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "CREATE TEMP TABLE \"p4d217_clone\" AS SELECT * FROM \"characters\" ORDER BY rowid LIMIT 1",
+      "params": []
+    },
+    {
+      "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"name\" = 'Quayside Foreign', \"characterDocumentMountPointId\" = NULL, \"userId\" = '5b170000-0000-4000-8000-0000000000ee'",
+      "params": [
+        "5b170000-0000-4000-8000-0000000000b2"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"characters\" SELECT * FROM \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "DROP TABLE \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "CREATE TEMP TABLE \"p4d217_clone\" AS SELECT * FROM \"characters\" ORDER BY rowid LIMIT 1",
+      "params": []
+    },
+    {
+      "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"name\" = X'00', \"characterDocumentMountPointId\" = NULL",
+      "params": [
+        "5b170000-0000-4000-8000-0000000000b3"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"characters\" SELECT * FROM \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "DROP TABLE \"p4d217_clone\"",
+      "params": []
+    }
+  ],
+  "frames": [
+    {
+      "toolsDetected": 1,
+      "toolNames": [
+        "search"
+      ],
+      "toolArguments": [
+        {
+          "query": "quay"
+        }
+      ]
+    },
+    {
+      "done": true,
+      "scenario": "The quay at dusk.",
+      "provider": "OLLAMA",
+      "modelName": "host-model",
+      "usage": {
+        "promptTokens": 3,
+        "completionTokens": 2,
+        "totalTokens": 5
+      },
+      "toolsExecuted": 1,
+      "webAvailable": false
+    }
+  ],
+  "cases": [
+    {
+      "name": "rejects priorDraft without revision",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "priorDraft": "Draft."
+      }
+    },
+    {
+      "name": "rejects revision without priorDraft",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "revision": "Wetter."
+      }
+    },
+    {
+      "name": "accepts both priorDraft and revision together",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "priorDraft": "Draft.",
+        "revision": "Wetter."
+      }
+    },
+    {
+      "name": "accepts a request with neither priorDraft nor revision",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1"
+      }
+    },
+    {
+      "name": "404s when the profile does not exist",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000ff"
+      }
+    },
+    {
+      "name": "404s when the profile belongs to a different user",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a4"
+      }
+    },
+    {
+      "name": "400s when the profile has tool use switched off",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a2"
+      }
+    },
+    {
+      "name": "400s when the API key cannot be resolved",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a3"
+      }
+    },
+    {
+      "name": "drops cast ids the user cannot read from the ids handed to runScenarioBuilder",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "characterIds": [
+          "5b170000-0000-4000-8000-0000000000b1",
+          "5b170000-0000-4000-8000-0000000000b2",
+          "5b170000-0000-4000-8000-0000000000ff",
+          "5b170000-0000-4000-8000-0000000000b1"
+        ]
+      }
+    },
+    {
+      "name": "drops a cast id whose lookup throws",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "characterIds": [
+          "5b170000-0000-4000-8000-0000000000b3",
+          "5b170000-0000-4000-8000-0000000000b1"
+        ]
+      }
+    },
+    {
+      "name": "400s for a help chat",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "chatId": "5b170000-0000-4000-8000-0000000000c3"
+      }
+    },
+    {
+      "name": "404s for a chat owned by someone else",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "chatId": "5b170000-0000-4000-8000-0000000000c4"
+      }
+    },
+    {
+      "name": "404s for a chat that does not exist",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "chatId": "5b170000-0000-4000-8000-0000000000ff"
+      }
+    },
+    {
+      "name": "accepts a salon chat",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "chatId": "5b170000-0000-4000-8000-0000000000c1"
+      }
+    },
+    {
+      "name": "accepts an autonomous room",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "chatId": "5b170000-0000-4000-8000-0000000000c2"
+      }
+    },
+    {
+      "name": "returns a text/event-stream response whose body carries what runScenarioBuilder enqueued",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1"
+      }
+    },
+    {
+      "name": "passes the request signal through to runScenarioBuilder, and aborting it aborts that signal",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1"
+      },
+      "awaitAbort": true
+    },
+    {
+      "name": "returns the resolved capabilities",
+      "method": "GET",
+      "query": "action=capabilities"
+    },
+    {
+      "name": "500s when the capability lookup throws",
+      "method": "GET",
+      "query": "action=capabilities",
+      "capabilitiesThrow": true
+    },
+    {
+      "name": "the body must be JSON",
+      "method": "POST",
+      "query": "action=build",
+      "body": "<not json>",
+      "rawBody": true
+    },
+    {
+      "name": "no action (POST)",
+      "method": "POST",
+      "query": "",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1"
+      }
+    },
+    {
+      "name": "unknown action (POST)",
+      "method": "POST",
+      "query": "action=capabilities",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1"
+      }
+    },
+    {
+      "name": "no action (GET)",
+      "method": "GET",
+      "query": ""
+    },
+    {
+      "name": "unknown action (GET)",
+      "method": "GET",
+      "query": "action=build"
+    }
+  ]
+}

@@ -1,0 +1,194 @@
+//! **`/api/v1/scenario-builder`** — v4 `app/api/v1/scenario-builder/route.ts`
+//! (`d1c06cd9d`, P4.D217):
+//!
+//! ```text
+//! POST ?action=build          body = v4's request object → text/event-stream
+//! GET  ?action=capabilities                               → 200 { webSearchConfigured, curlConfigured }
+//! (no / unknown action)                                   → withCollectionActionDispatch's sentences
+//! ```
+//!
+//! **The SPA does not use this edge** — it dispatches `scenarioBuilderBuild`
+//! with its own `runId` and reads `scenarioBuilderProgress` frames off
+//! `/api/events`. This exists because v4 has it and a REST client may want it
+//! (the order's Tier 1 item 7). There is no business logic here: the body is
+//! handed RAW to the same verb, so the edge cannot drift from the dispatch
+//! decoder (`a-rest-edge-that-shares-the-dispatch-decoder-cannot-drift`).
+//!
+//! ## The stream, and v4's refusal rule
+//!
+//! v4 runs every refusal — the JSON parse, the Zod schema, the profile, tools,
+//! the api key, the chat — BEFORE `new ReadableStream`, so each is an ordinary
+//! JSON error with its status; only what the run itself enqueues is a frame.
+//! [`crate::generator_sse::stream_frames`] preserves exactly that: the route
+//! MINTS the runId, subscribes before dispatching, and a dispatch that fails
+//! before any frame answers its status + JSON body rather than a 200 stream.
+//! The frames are `data: <v4 payload>\n\n` — no `event:`, no `id:`, no
+//! keep-alives — with v4's three headers, in v4's order. The pump's two
+//! recorded `RecvError` divergences are inherited, not re-argued.
+//!
+//! ## Client disconnect = abort (v4's `req.signal`)
+//!
+//! v4 passes `req.signal` into the run, so closing the tab aborts the loop.
+//! v5's run executes on the host driver's OWN thread, which dropping the
+//! dispatch future does not stop, so the SSE body carries a
+//! [`DisconnectGuard`]: when hyper drops the body (the client went away, or
+//! the stream ended), the guard dispatches `scenarioBuilderAbort` for the
+//! minted runId. On a finished run that is an unknown id (`{aborted: false}`,
+//! silent); on a live one it trips the token and the edge logs v4's DEBUG
+//! `Scenario Builder client disconnected; aborting the run`.
+//!
+//! ## One recorded divergence (unreachable in v4 by contract)
+//!
+//! v4's belt-and-braces `{"error":"The Host could not complete the enquiry."}`
+//! frame fires when `runScenarioBuilder` itself THROWS — which it never does
+//! by contract. v5's equivalent failure (the driver's thread panicking, or no
+//! driver assembled) resolves the dispatch with an error BEFORE any frame, so
+//! the pump answers it as a JSON 500 rather than a 200 stream carrying that
+//! frame. Named here so it is not mistaken for an oversight.
+
+use axum::body::Body;
+use axum::extract::{Query, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response as AxumResponse};
+use quilltap_core::api::{QuilltapCore as _, Request as CoreRequest, Response as CoreResponse};
+use serde_json::Value;
+use tokio_stream::StreamExt as _;
+
+use crate::characters_routes::core_error_status_body;
+use crate::files_routes::error_json;
+use crate::state::SharedState;
+use crate::text_replacements_routes::{dispatch_core, error_to_http};
+
+/// The route's path, for the action-dispatch warn lines.
+const PATH: &str = "/api/v1/scenario-builder";
+
+/// v4's `badRequest('Request body must be JSON')` (`route.ts:40`).
+const NOT_JSON: &str = "Request body must be JSON";
+
+/// v4 `GET = createContextHandler(withCollectionActionDispatch({ capabilities }))`.
+pub async fn scenario_builder_get(
+    State(state): State<SharedState>,
+    Query(query): Query<crate::query::QueryPairs>,
+) -> AxumResponse {
+    match crate::query::action(&query) {
+        Some("capabilities") => {}
+        Some(other) => {
+            return crate::query::unknown_action_response(other, &["capabilities"], "GET", PATH)
+        }
+        None => return crate::query::action_required_response(&["capabilities"], "GET", PATH),
+    }
+    match dispatch_core(&state, CoreRequest::ScenarioBuilderCapabilities).await {
+        Ok(CoreResponse::ScenarioBuilder(v)) => (
+            StatusCode::OK,
+            [("content-type", "application/json")],
+            v.to_string(),
+        )
+            .into_response(),
+        Ok(CoreResponse::Error(e)) => error_to_http(e),
+        Ok(_) => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
+        Err(r) => r,
+    }
+}
+
+/// v4 `POST = createContextHandler(withCollectionActionDispatch({ build }))`.
+pub async fn scenario_builder_post(
+    State(state): State<SharedState>,
+    Query(query): Query<crate::query::QueryPairs>,
+    body: axum::body::Bytes,
+) -> AxumResponse {
+    match crate::query::action(&query) {
+        Some("build") => {}
+        Some(other) => {
+            return crate::query::unknown_action_response(other, &["build"], "POST", PATH)
+        }
+        None => return crate::query::action_required_response(&["build"], "POST", PATH),
+    }
+
+    // v4 `try { raw = await req.json() } catch { return badRequest(...) }` — a
+    // missing or unparseable body is this 400, never axum's own 415/422.
+    let Ok(raw) = serde_json::from_slice::<Value>(&body) else {
+        return error_json(StatusCode::BAD_REQUEST, NOT_JSON);
+    };
+    let Some(host) = state.host() else {
+        return error_json(StatusCode::SERVICE_UNAVAILABLE, "The engine is not running");
+    };
+
+    // The route MINTS the scope tag a REST caller never sees.
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let core = host.core().clone();
+    let req = CoreRequest::ScenarioBuilderBuild {
+        run_id: run_id.clone(),
+        body: raw,
+    };
+    // Handed in UN-POLLED: the re-framer subscribes first
+    // (`generator_sse`'s module header, step 1).
+    let dispatch = {
+        let core = core.clone();
+        async move { core.dispatch(req).await }
+    };
+    let response = crate::generator_sse::stream_frames(
+        host.core().event_sender(),
+        run_id.clone(),
+        crate::generator_sse::scenario_builder_frame,
+        dispatch,
+        |resp: CoreResponse| match resp {
+            CoreResponse::ScenarioBuilder(_) => Ok(()),
+            // A refusal that produced no frame answers v4's ordinary JSON error
+            // with its status — never a 200 stream.
+            CoreResponse::Error(e) => Err(core_error_status_body(e)),
+            _ => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                serde_json::json!({ "error": "Unexpected core response" }),
+            )),
+        },
+    )
+    .await;
+
+    if response.status() != StatusCode::OK {
+        return response;
+    }
+    // The stream is committed: carry the disconnect guard in its body.
+    let guard = DisconnectGuard {
+        core: Some(core),
+        run_id,
+    };
+    response.map(|body| {
+        Body::from_stream(body.into_data_stream().map(move |chunk| {
+            let _keep_alive = &guard;
+            chunk
+        }))
+    })
+}
+
+/// Trips the run's abort token when the SSE body is dropped (module header).
+pub struct DisconnectGuard {
+    core: Option<quilltap_core::api::CoreEngine>,
+    run_id: String,
+}
+
+impl Drop for DisconnectGuard {
+    fn drop(&mut self) {
+        let Some(core) = self.core.take() else {
+            return;
+        };
+        let run_id = std::mem::take(&mut self.run_id);
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        handle.spawn(async move {
+            let resp = core
+                .dispatch(CoreRequest::ScenarioBuilderAbort { run_id })
+                .await;
+            // v4's `onAbort` line fires only when a live run was cut short —
+            // a finished run's id is unknown here and answers `false`.
+            if let CoreResponse::ScenarioBuilder(v) = resp {
+                if v.get("aborted").and_then(Value::as_bool) == Some(true) {
+                    tracing::debug!("Scenario Builder client disconnected; aborting the run");
+                }
+            }
+        });
+    }
+}

@@ -9,8 +9,9 @@
 //! - [`SceneStream`] answers every call with a plain-text scene (the loop's
 //!   plain-text break → the `done` frame);
 //! - [`FailingStream`] fails before a chunk (the "detained" error frame);
-//! - [`SlowStream`] yields a chunk every 100 ms for ~20 s, so an abort or a
-//!   client disconnect lands MID-STREAM (the loop checks the token per chunk).
+//! - [`SlowStream`] yields one reasoning chunk (a frame), then a content chunk
+//!   every 100 ms for ~20 s, so an abort or a client disconnect lands
+//!   MID-STREAM (the loop checks the token per chunk).
 
 #![allow(dead_code)] // each family uses the parts it needs
 
@@ -36,6 +37,9 @@ use serde_json::Value;
 
 /// The scene [`SceneStream`] answers (padded, so the service's trim shows).
 pub const SCENE: &str = "  Lamplight on the wet quay; the tide is turning.  ";
+
+/// [`SlowStream`]'s leading reasoning — its first (and only early) frame.
+pub const SLOW_REASONING: &str = "weighing the quay";
 
 /// The text [`FailingStream`] fails with — the "detained" frame's `details`.
 pub const FAILING_STREAM_MESSAGE: &str = "the Host's cab never came";
@@ -101,6 +105,19 @@ impl StreamingCompletionProvider for SlowStream {
         async move {
             let (tx, rx) = tokio::sync::mpsc::channel(1);
             tokio::spawn(async move {
+                // A leading reasoning chunk: the service publishes it as a
+                // `{"reasoning": …}` FRAME, so a REST stream commits (and its
+                // disconnect guard exists) before the slow beats begin.
+                if tx
+                    .send(Ok(StreamChunk {
+                        reasoning_content: Some(SLOW_REASONING.to_string()),
+                        ..Default::default()
+                    }))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
                 for i in 0..200 {
                     if tx
                         .send(Ok(StreamChunk::content(format!("beat {i} "))))
@@ -166,10 +183,22 @@ fn test_env() -> SelfInventoryEnv {
     }
 }
 
+/// Builds a test-double Scenario Builder driver over the engine's event
+/// sender (the route family's canned run — v4's mocked `runScenarioBuilder`).
+pub type DriverMaker = Arc<
+    dyn Fn(
+            &tokio::sync::broadcast::Sender<Event>,
+        ) -> Arc<dyn quilltap_core::api::scenario_builder::ScenarioBuilderDriver>
+        + Send
+        + Sync,
+>;
+
 /// The factory the P4.D217 web families boot with.
 pub struct ScenarioBuilderSpineFactory {
     pub base_dir: std::path::PathBuf,
     pub canned: Canned,
+    /// `Some` replaces the spine's real driver with a canned one.
+    pub driver: Option<DriverMaker>,
 }
 
 impl SpineFactory for ScenarioBuilderSpineFactory {
@@ -187,6 +216,7 @@ impl SpineFactory for ScenarioBuilderSpineFactory {
         match self.canned {
             Canned::Scene => bundle(
                 &self.base_dir,
+                self.driver.as_ref(),
                 Arc::new(SceneStream),
                 db,
                 events,
@@ -196,6 +226,7 @@ impl SpineFactory for ScenarioBuilderSpineFactory {
             ),
             Canned::Failing => bundle(
                 &self.base_dir,
+                self.driver.as_ref(),
                 Arc::new(FailingStream),
                 db,
                 events,
@@ -205,6 +236,7 @@ impl SpineFactory for ScenarioBuilderSpineFactory {
             ),
             Canned::Slow => bundle(
                 &self.base_dir,
+                self.driver.as_ref(),
                 Arc::new(SlowStream),
                 db,
                 events,
@@ -219,6 +251,7 @@ impl SpineFactory for ScenarioBuilderSpineFactory {
 #[allow(clippy::too_many_arguments)]
 fn bundle<S>(
     base_dir: &std::path::Path,
+    driver: Option<&DriverMaker>,
     streaming: Arc<S>,
     db: &Db,
     events: &tokio::sync::broadcast::Sender<Event>,
@@ -286,6 +319,9 @@ where
         job_handlers: Vec::new(),
         generators_detail: None,
         generators_wizard: None,
-        scenario_builder: Some(Arc::clone(&spine) as _),
+        scenario_builder: Some(match driver {
+            Some(make) => make(events),
+            None => Arc::clone(&spine) as _,
+        }),
     }
 }
