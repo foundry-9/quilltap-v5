@@ -148409,6 +148409,34 @@ lane outputs under `/tmp/p4d222/`.
   restored by file backup. Gate: `npm run lint` clean, `npm test` 448 files /
   7,670, `npm run build` clean.
 
+### Unit 2 — `average_embeddings` (tier 1, NEW family)
+
+- `embedding_vector::average_embeddings<V: AsRef<[f32]>>(&[V]) ->
+  Result<Option<Vec<f32>>, AverageDimensionMismatch>`: `[]` → `Ok(None)`; the
+  differing-width arm is a TYPED refusal carrying v4's message
+  (`Cannot average embeddings of differing dimension (D vs N)`), never a
+  panic — the job pre-filters to one width, so it is unreachable from
+  production; the accumulator is written as v4 computes it
+  (`(s as f64 + x as f64) as f32`, identical to an f32 add), then
+  `normalize_vector` (unchanged).
+- NEW `harness/oracle/cases/average-embeddings.ts` (tsx, v4's REAL
+  `averageEmbeddings`; inputs from a fixed mulberry32 stream; every vector as
+  f32 LE hex) ↔ NEW `average_embeddings_equivalence.rs` (BIT-EXACT; row
+  count guard 41; arm census 1 empty / 3 refusals / 37 averaged). Regen AS
+  RUN: `cd /tmp/qt-v4-pin-p4d222-b0b6656b5 && ~/.nvm/versions/node/v24.13.1/
+  bin/npx tsx <worktree>/harness/oracle/cases/average-embeddings.ts >
+  /tmp/p4d222/avg.ndjson` (41 lines); run `QT_ORACLE_AVERAGE_EMBEDDINGS=
+  /tmp/p4d222/avg.ndjson cargo test -p quilltap-harness --test
+  average_embeddings_equivalence`. Green, 41/41.
+- Measured on the oracle: v4's overflow-to-infinity row stores canonical NaN
+  `0x7fc00000` (v5 matches); `-0 + -0` sums to `+0` (the `Float32Array` starts
+  at `+0`) and passes the zero-norm arm unchanged.
+- Mutation (an f64 accumulator, rounded once at the end): 13 rows RED
+  (`f32-absorbs-many`, `f32-rounding-ties`, `fractional-sum`, and ten random
+  rows). `f32-absorbs-small-adds` (`1e8 + 1 + 1`) SURVIVES it — 100000002
+  rounds back to 1e8 in f32 — so the order's suggested example proves nothing
+  alone; the 20-add row is the one that does. Reverted by file backup.
+
 ## P4.D221 — the `ad1c4c37f`/`8aafd595d` `lib/` riders + two NO-PORT ratifications (2026-09-24, branch `claude/dispatch-lib-riders-partition-f93bb0`)
 
 The `lib/` half of the `b0b6656b5` ten-commit drift catch-up round (the web

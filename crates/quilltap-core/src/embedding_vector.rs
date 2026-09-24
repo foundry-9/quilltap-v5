@@ -62,6 +62,71 @@ pub fn normalize_vector(v: &[f32]) -> Vec<f32> {
     v.iter().map(|&x| (x as f64 * inv) as f32).collect()
 }
 
+/// Raised by [`average_embeddings`] when the vectors disagree on dimension —
+/// v4's `throw new Error(\`Cannot average embeddings of differing dimension
+/// (${dims} vs ${v.length})\`)`. [`message`](Self::message) is that text
+/// byte-for-byte. The HELP_DOC embedding job never reaches it (it pre-filters
+/// its section vectors to one width), so it is a typed refusal rather than a
+/// panic: a caller that did hand over mixed widths gets v4's error, not a crash.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AverageDimensionMismatch {
+    /// The first vector's length — the width every other vector must match.
+    pub dims: usize,
+    /// The first offending vector's length.
+    pub found: usize,
+}
+
+impl AverageDimensionMismatch {
+    pub fn message(&self) -> String {
+        format!(
+            "Cannot average embeddings of differing dimension ({} vs {})",
+            self.dims, self.found
+        )
+    }
+}
+
+/// v4 `averageEmbeddings` (`embedding-service.ts`, new at `492771aff`, bug
+/// 168) — the unit-length mean of a set of embeddings, one vector standing for
+/// the whole of which they are the parts. `Ok(None)` for an empty set.
+///
+/// v4's *why*, carried forward: help documents are embedded this way. A long
+/// page cannot be sent to the provider in one piece (every embedding model has
+/// an input ceiling, some as low as 512 tokens), but its section chunks always
+/// can, and the normalised centroid of their vectors ranks the page by its
+/// overall subject much as a single whole-text vector would.
+///
+/// Numerics: v4 sums into a `Float32Array`, so each `sum[i] += v[i]` is an f64
+/// add of two f32 values rounded to f32 on the store. The f64 add followed by
+/// that one rounding is exactly the correctly-rounded f32 add (a 53-bit
+/// intermediate is wide enough for double rounding to be innocuous on `+`), so
+/// the accumulator here is written as v4 computes it and is bit-identical to a
+/// plain `f32` sum — `average_embeddings_equivalence` checks the bits,
+/// including `1e8 + 1 + 1`, where an f64 accumulator would differ. The
+/// division by the count is never taken: [`normalize_vector`] makes the mean
+/// and the sum the same unit vector, and v4 skips it too.
+pub fn average_embeddings<V: AsRef<[f32]>>(
+    vectors: &[V],
+) -> Result<Option<Vec<f32>>, AverageDimensionMismatch> {
+    let Some(first) = vectors.first() else {
+        return Ok(None);
+    };
+    let dims = first.as_ref().len();
+    let mut sum = vec![0.0_f32; dims];
+    for v in vectors {
+        let v = v.as_ref();
+        if v.len() != dims {
+            return Err(AverageDimensionMismatch {
+                dims,
+                found: v.len(),
+            });
+        }
+        for (s, &x) in sum.iter_mut().zip(v) {
+            *s = (*s as f64 + x as f64) as f32;
+        }
+    }
+    Ok(Some(normalize_vector(&sum)))
+}
+
 /// Apply an embedding profile's storage policy to a raw vector: optional
 /// Matryoshka slice (keep the first `truncate_to_dimensions` components when the
 /// vector is longer) followed by optional L2 normalisation. Never mutates the

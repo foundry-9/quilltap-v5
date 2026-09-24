@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — feat(embedding): `average_embeddings`, v4's unit-length mean of section vectors (P4.D222 unit 2)
+
+_Versions: core 0.0.1045, harness 0.0.966._
+
+Ports v4's new `averageEmbeddings` (bug 168) beside `normalize_vector`:
+an empty set gives `None`, vectors of differing width give v4's exact
+error as a typed refusal, and otherwise the vectors are summed in an f32
+accumulator (v4's `Float32Array`) and normalized. A new tier-1 family,
+`average_embeddings_equivalence`, compares 41 rows against v4's real
+function bit for bit, including f32 absorption, subnormals, `-0`, the
+zero-norm pass-through and an overflow to NaN.
+
 #### 2026-09-24 — feat(help): re-vendor the help tree whole at v4 `b0b6656b5` (127 → 129) and re-capture the Guide's category table (P4.D222 unit 1)
 
 _Versions: harness 0.0.965, host 0.0.155, SPA 0.5.762._
