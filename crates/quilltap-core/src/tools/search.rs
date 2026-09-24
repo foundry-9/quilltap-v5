@@ -1134,11 +1134,13 @@ mod tests {
             .collect();
         assert_eq!(errors.len(), 1, "exactly one ERROR: {lines:#?}");
         let line = errors[0];
-        assert!(line.starts_with("ERROR quilltap_core::tools::search"), "{line}");
+        assert!(
+            line.starts_with("ERROR quilltap_core::tools::search"),
+            "{line}"
+        );
         let at = |k: &str| line.find(k).unwrap_or_else(|| panic!("{k} in {line}"));
         assert!(
-            at(" context=search-scriptorium-handler")
-                < at(" userId=")
+            at(" context=search-scriptorium-handler") < at(" userId=")
                 && at(" userId=") < at(" characterId=c0000000-0000-4000-8000-00000000c001")
                 && at(" characterId=") < at(" error="),
             "v4's field order: {line}"
