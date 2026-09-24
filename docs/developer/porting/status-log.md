@@ -145884,3 +145884,62 @@ cd /tmp/qt-v4-pin-p4d217-d1c06cd9d && $N/npx tsx $V5W/harness/oracle/cases/scena
 QT_ORACLE_SCENARIO_BUILDER_PROMPTS=/tmp/p4d217/oracle-scenario-builder-prompts.ndjson \
   cargo test -p quilltap-harness --test scenario_builder_prompts_equivalence -- --nocapture
 ```
+
+### Unit 3 — the mount pool
+
+`services/scenario_builder/mount_pool.rs`: `resolve_scenario_builder_mount_pool(main, mount,
+user_id, project_id, character_ids) -> TieredMountPool` over `characters_read::find_by_id_raw`
+(the RAW read — no overlay), `resolve_group_mount_point_ids_for_character`, the project-link
+read (v5 never grew v4's `resolveProjectMountPointIds` as a function —
+`resolve_tiered_mount_pool` inlines it; `db/**` is outside this lane, so the same read is
+inlined here with v4's fail-soft WARN), `get_general_mount_point_id` and `dedupe_tier_triple`.
+NEW tier-2 family `scenario_builder_mount_pool_equivalence`: **15 arms** over the doc-opacity
+fixture (built by its own UNCHANGED builder — P4.D216's — never grown) plus plants applied IN
+ORDER on a per-run COPY through each side's own SQL connection (v4 `rawQuery`, v5 `Writer`):
+Leilani's raw row cloned into an ARCHIVED, a FOREIGN, a group-COLLIDING, a vault-LESS, a
+TWIN (shared vault) and an UNREADABLE (BLOB `name`) member; then General's setting deleted;
+then the settings table dropped. v4's `mount-pool.test.ts` mocks the repositories, so its eight
+shapes are arm NAMES (planted, not mocked). Comparand: the five pool fields (arrays in v4's
+order) + the `ScenarioBuilderMountPool` logger's lines. A NEW shared harness module,
+`tests/scenario_builder_capture/`, carries P4.D216's structural tracing layer for this lane's
+three log-comparing families. **Pin proof:** the jest case fails to import at the baseline
+(`Cannot find module …/lib/scenario-builder/mount-pool`).
+
+**MEASURED — two of v4's four pool lines are UNREACHABLE through v4's real code:**
+`Cast vault lookup failed; tier dropped for this character` sits behind `findByIdRaw` =
+`_findById` = a FALLBACK-mode `safeQuery` (`base.repository.ts:236-246`) that never throws —
+the UNREADABLE arm's v4 pool logger is SILENT (the member skipped, `liveCastCount` 1). v5's raw
+read surfaces its decode error instead, and the first run went RED on exactly that arm (v5
+WARNed); the fix reproduces the `safeQuery` fallback (the `api::chat_media` precedent — ERROR
+`Error finding entity by ID` `{collection, id, error}` then skip), and the family pins that
+repository line on the v5 side alone (exactly once, on that arm) because v4 logs it on a logger
+the oracle does not record. `Quilltap General lookup failed; global tier dropped` sits behind
+`readSetting`, which catches its own failure and answers `null` (logging
+`[InstanceSettings] Failed to read setting`); the settings-dropped arm proves both pools lose
+the global tier with neither pool logger warning. **For the unifier:** v4's
+`[InstanceSettings] Failed to read setting` WARN has NO v5 emitter (`db/instance_settings.rs`
+`read_setting` answers `None` silently) — pre-existing, `db/**`, not taken.
+
+**Mutations:** the participant exclusion dropped → exactly
+`vault-colliding-with-group-appears-once` red (pool + the `participants` count); the archive
+gate dropped → exactly `archived-member-contributes-nothing` red. Both restored by file backup.
+
+Regen (the fixture is minted by the opacity builder; plants are applied by the case):
+
+```bash
+STAGE=/tmp/p4d217/stage-sb-pool
+rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+cp $V5W/harness/oracle/cases/scenario-builder-mount-pool.test.ts $STAGE/harness/oracle/cases/
+cp $V5W/harness/oracle/fixtures/scenario-builder-mount-pool.json $STAGE/harness/oracle/fixtures/
+cd /tmp/qt-v4-pin-p4d217-d1c06cd9d
+rm -f /tmp/p4d217/sbpool-main.db /tmp/p4d217/sbpool-mount.db
+QT_FIXTURE_DOPA_MAIN=/tmp/p4d217/sbpool-main.db QT_FIXTURE_DOPA_MOUNT=/tmp/p4d217/sbpool-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-doc-opacity-fixture.ts
+QT_FIXTURE_SBPOOL_MAIN=/tmp/p4d217/sbpool-main.db QT_FIXTURE_SBPOOL_MOUNT=/tmp/p4d217/sbpool-mount.db \
+QT_ORACLE_OUT=/tmp/p4d217/oracle-scenario-builder-mount-pool.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=240000 --roots "$PWD" --roots "$STAGE/harness/oracle/cases" \
+  -- "scenario-builder-mount-pool\.test\.ts$"
+QT_ORACLE_SBPOOL=/tmp/p4d217/oracle-scenario-builder-mount-pool.ndjson \
+QT_FIXTURE_SBPOOL_MAIN=/tmp/p4d217/sbpool-main.db QT_FIXTURE_SBPOOL_MOUNT=/tmp/p4d217/sbpool-mount.db \
+  cargo test -p quilltap-harness --test scenario_builder_mount_pool_equivalence -- --nocapture
+```

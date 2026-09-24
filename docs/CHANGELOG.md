@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(scenario-builder): the cast-scoped mount pool (P4.D217 unit 3)
+
+_Versions: core 0.0.1021, harness 0.0.937._
+
+Adds `services::scenario_builder::mount_pool`, which assembles the stores a
+chat with a given cast and project could reach: each live cast member's vault
+(participant tier), the union of their group stores, the project's stores, and
+Quilltap General. A failed character read is skipped the way v4's repository
+fallback skips it. A new tier-2 differential,
+`scenario_builder_mount_pool_equivalence`, runs 15 arms over a real
+two-partition fixture with archived, foreign, colliding, vaultless and
+unreadable members planted, comparing each pool and its log lines with v4.
+
 #### 2026-09-23 — feat(scenario-builder): the system prompt and user message builders (P4.D217 unit 2)
 
 _Versions: core 0.0.1020, harness 0.0.936._

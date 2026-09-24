@@ -1,0 +1,319 @@
+{
+  "$comment": "P4.D217 \u2014 resolveScenarioBuilderMountPool (v4 d1c06cd9d) over the doc-opacity fixture (built by its own UNCHANGED builder \u2014 P4.D216's) plus the plants below, applied IN ORDER on a per-run COPY on both sides through each side's own SQL connection. The eight mount-pool.test.ts shapes are the arms' names (that suite mocks the repositories; this family does not). Plants clone Leilani's raw row, so every other column is the real creator's.",
+  "testPepperBase64": "3q2+796tvu3erb7t3q2+796tvu3erb7t3q2+796tvu0=",
+  "leilaniId": "c2000000-0000-4000-8000-0000000000a1",
+  "abigailId": "c2000000-0000-4000-8000-0000000000a2",
+  "steps": [
+    {
+      "kind": "plant",
+      "name": "cast-clones",
+      "statements": [
+        {
+          "sql": "CREATE TEMP TABLE \"sb_clone\" AS SELECT * FROM \"characters\" WHERE \"id\" = ?",
+          "params": [
+            "c2000000-0000-4000-8000-0000000000a1"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_clone\" SET \"id\" = ?, \"name\" = 'Archie', \"archivedAt\" = ?, \"characterDocumentMountPointId\" = ?",
+          "params": [
+            "c2170000-0000-4000-8000-0000000000b1",
+            "2026-09-01T00:00:00.000Z",
+            "e2000000-0000-4000-8000-0000000000f3"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"characters\" SELECT * FROM \"sb_clone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_clone\"",
+          "params": []
+        },
+        {
+          "sql": "CREATE TEMP TABLE \"sb_clone\" AS SELECT * FROM \"characters\" WHERE \"id\" = ?",
+          "params": [
+            "c2000000-0000-4000-8000-0000000000a1"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_clone\" SET \"id\" = ?, \"name\" = 'Forrest', \"userId\" = ?, \"characterDocumentMountPointId\" = ?",
+          "params": [
+            "c2170000-0000-4000-8000-0000000000b2",
+            "a2170000-0000-4000-8000-0000000000ee",
+            "e2000000-0000-4000-8000-0000000000f3"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"characters\" SELECT * FROM \"sb_clone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_clone\"",
+          "params": []
+        },
+        {
+          "sql": "CREATE TEMP TABLE \"sb_clone\" AS SELECT * FROM \"characters\" WHERE \"id\" = ?",
+          "params": [
+            "c2000000-0000-4000-8000-0000000000a1"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_clone\" SET \"id\" = ?, \"name\" = 'Colette', \"characterDocumentMountPointId\" = ?",
+          "params": [
+            "c2170000-0000-4000-8000-0000000000b3",
+            "e2000000-0000-4000-8000-0000000000f1"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"characters\" SELECT * FROM \"sb_clone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_clone\"",
+          "params": []
+        },
+        {
+          "sql": "CREATE TEMP TABLE \"sb_clone\" AS SELECT * FROM \"characters\" WHERE \"id\" = ?",
+          "params": [
+            "c2000000-0000-4000-8000-0000000000a1"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_clone\" SET \"id\" = ?, \"name\" = 'Noel', \"characterDocumentMountPointId\" = NULL",
+          "params": [
+            "c2170000-0000-4000-8000-0000000000b4"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"characters\" SELECT * FROM \"sb_clone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_clone\"",
+          "params": []
+        },
+        {
+          "sql": "CREATE TEMP TABLE \"sb_clone\" AS SELECT * FROM \"characters\" WHERE \"id\" = ?",
+          "params": [
+            "c2000000-0000-4000-8000-0000000000a1"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_clone\" SET \"id\" = ?, \"name\" = 'Twyla', \"characterDocumentMountPointId\" = ?",
+          "params": [
+            "c2170000-0000-4000-8000-0000000000b5",
+            "{{leilaniVaultId}}"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"characters\" SELECT * FROM \"sb_clone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_clone\"",
+          "params": []
+        },
+        {
+          "sql": "CREATE TEMP TABLE \"sb_clone\" AS SELECT * FROM \"characters\" WHERE \"id\" = ?",
+          "params": [
+            "c2000000-0000-4000-8000-0000000000a1"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_clone\" SET \"id\" = ?, \"name\" = X'00'",
+          "params": [
+            "c2170000-0000-4000-8000-0000000000b6"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"characters\" SELECT * FROM \"sb_clone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_clone\"",
+          "params": []
+        }
+      ]
+    },
+    {
+      "kind": "arm",
+      "name": "union-of-two-members-groups",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "note": "mount-pool.test.ts: 'returns the union of every cast member's group stores' \u2014 both members of Severed; the union dedups to the group's two stores; both vaults in the participant tier; the project's stores; General"
+    },
+    {
+      "kind": "arm",
+      "name": "archived-member-contributes-nothing",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2170000-0000-4000-8000-0000000000b1"
+      ],
+      "note": "'an archived cast member contributes nothing' \u2014 the DEBUG line; the stranger store it points at never appears"
+    },
+    {
+      "kind": "arm",
+      "name": "no-project",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": null,
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1"
+      ],
+      "note": "'no project: the project tier is empty'"
+    },
+    {
+      "kind": "arm",
+      "name": "foreign-character-skipped",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2170000-0000-4000-8000-0000000000b2",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "note": "'a character owned by another user contributes nothing' \u2014 silently (no line)"
+    },
+    {
+      "kind": "arm",
+      "name": "vaults-are-participants-character-tier-null",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "note": "'cast vaults sit in the participant tier; characterMountPointId is always null'"
+    },
+    {
+      "kind": "arm",
+      "name": "vault-colliding-with-group-appears-once",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2170000-0000-4000-8000-0000000000b3"
+      ],
+      "note": "'a vault that is also a scoped-tier mount appears ONCE, in the scoped tier' \u2014 Colette's vault IS the group's official store"
+    },
+    {
+      "kind": "arm",
+      "name": "duplicates-and-empty-ids",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a2",
+        "c2000000-0000-4000-8000-0000000000a2",
+        "",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "note": "`[...new Set(characterIds.filter(Boolean))]` \u2014 castCount 1"
+    },
+    {
+      "kind": "arm",
+      "name": "unknown-id-skipped",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2170000-0000-4000-8000-0000000000ff"
+      ],
+      "note": "a raw read that finds nothing: skipped silently"
+    },
+    {
+      "kind": "arm",
+      "name": "vaultless-member-keeps-groups",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2170000-0000-4000-8000-0000000000b4"
+      ],
+      "note": "a live member with no vault pointer: counted live, no participant (Noel is NOT a group member \u2014 no groups either)"
+    },
+    {
+      "kind": "arm",
+      "name": "two-members-share-a-vault",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2170000-0000-4000-8000-0000000000b5"
+      ],
+      "note": "two live members pointing at the SAME vault: the participant tier dedups it"
+    },
+    {
+      "kind": "arm",
+      "name": "unreadable-member-warns",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2170000-0000-4000-8000-0000000000b6",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "note": "a raw read that FAILS (a BLOB name): the per-character WARN, the run continues"
+    },
+    {
+      "kind": "arm",
+      "name": "empty-cast",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "note": "no cast: project + General only"
+    },
+    {
+      "kind": "arm",
+      "name": "bad-project-id",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2170000-0000-4000-8000-00000000dead",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "note": "a project with no links: []"
+    },
+    {
+      "kind": "plant",
+      "name": "general-removed",
+      "statements": [
+        {
+          "sql": "DELETE FROM \"instance_settings\" WHERE \"key\" = ?",
+          "params": [
+            "generalMountPointId"
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "arm",
+      "name": "general-absent",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1"
+      ],
+      "note": "'the general lookup resolving null: the global tier is empty'"
+    },
+    {
+      "kind": "plant",
+      "name": "settings-table-dropped",
+      "statements": [
+        {
+          "sql": "DROP TABLE \"instance_settings\"",
+          "params": []
+        }
+      ]
+    },
+    {
+      "kind": "arm",
+      "name": "general-read-fails",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1"
+      ],
+      "note": "'the general lookup THROWING' as v4's REAL code reaches it: readSetting catches and answers null, so the pool's WARN arm does NOT fire on either side (v4 logs its own [InstanceSettings] WARN \u2014 no v5 emitter; recorded)"
+    }
+  ]
+}

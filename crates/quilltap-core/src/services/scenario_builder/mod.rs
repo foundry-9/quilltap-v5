@@ -5,5 +5,6 @@
 //! server: no chat row, no messages, no participant; the only durable trace is
 //! the `llm_logs` rows the loop writes, typed `SCENARIO_BUILDER`.
 
+pub mod mount_pool;
 pub mod request_schema;
 pub mod system_prompt;
