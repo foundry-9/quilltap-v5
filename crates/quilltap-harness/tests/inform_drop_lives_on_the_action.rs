@@ -96,10 +96,12 @@ async fn seed(db: &Db, chat_id: &str, target: &str, bystander: &str) {
     let bystander = bystander.to_string();
     db.write(move |w| {
         let conn = w.main().connection();
-        // The committed pair predates three later schema moves; the same
-        // repaired-at-boot healers every other reader of it uses.
-        quilltap_core::test_support::ensure_p4d171_columns(conn);
-        quilltap_core::test_support::ensure_p4d182_columns(conn);
+        // The committed pair predates `chat_informs` (a TABLE, not a
+        // column — P4.111 widened columns only), so the boot chain's
+        // `ensure_chat_informs_table` still applies here. The P4.D171/
+        // P4.D182 column heals that used to run beside it are dead:
+        // P4.111 widened the pair to carry them natively (`pragma_
+        // table_info` proof: P4.117 lane record).
         quilltap_core::db::chat_informs::ensure_chat_informs_table(conn)?;
         let repo = ChatInformsRepository::new(conn);
         repo.create(&row(

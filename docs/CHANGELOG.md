@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — test(harness): remove the dead `ensure_p4d171_columns`/`ensure_p4d182_columns` heals over the widened chat-cast pair (P4.117 units 2–3)
+
+_Versions: harness 0.0.950._
+
+Same class, next pair: P4.111 widened the committed `chat-cast-main.db` to
+carry the P4.D171/P4.D182 columns natively, making the two `ensure_*_
+columns` heals in `inform_drop_lives_on_the_action.rs` dead. Removed; the
+`ensure_chat_informs_table` call beside them stays (the pair still predates
+that TABLE, which the widen never touches — confirmed absent by the same
+`pragma_table_info` proof). The family was re-run and stays green (no
+oracle regen needed — it drives v5's own two entrances directly, per its
+own header).
+
 #### 2026-09-24 — test(harness): remove the dead `ensure_p4d171_columns` heal over the widened cost-background pair (P4.117 unit 1)
 
 _Versions: harness 0.0.949._
