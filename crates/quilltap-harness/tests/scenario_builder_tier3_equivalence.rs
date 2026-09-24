@@ -328,9 +328,9 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
                 Some((seq, want_sigs)) => {
                     let got_sigs = thought_signatures(&params.messages);
-                    if want_sigs.is_some_and(|w| w != got_sigs) {
+                    if let Some(want_sigs) = want_sigs.filter(|w| *w != got_sigs) {
                         self.signature_mismatches.lock().unwrap().push(format!(
-                            "thought signatures diverge (model {}, {} msgs): v5 {got_sigs:?}",
+                            "thought signatures diverge (model {}, {} msgs)\n  v4: {want_sigs:?}\n  v5: {got_sigs:?}",
                             params.model,
                             params.messages.len()
                         ));
