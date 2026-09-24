@@ -72,6 +72,39 @@ describe('charTypeaheadPlugin — emoji profile', () => {
     await Promise.resolve();
   }
 
+  describe('after a soft line break (P4.D224)', () => {
+    // v4 reads the anchor TEXT NODE only, and asks whether the node before it is
+    // glued to the trigger; a `LineBreakNode`'s text is `\n` (measured on
+    // `lexical` at `b0b6656b5`), which is whitespace, so `:smi` at the start of
+    // a soft-broken line opens. v5 reads the whole textblock, where a
+    // `hard_break` leaf must therefore read as `\n` too — not the U+FFFC every
+    // other leaf collapses to, which is not word-opening context.
+    it('opens the menu on a trigger that starts a soft-broken line', async () => {
+      const h = mount();
+      await warmIndex(h);
+
+      h.seedLines('first line', ':smi');
+      expect(h.menuRows()).not.toBeNull();
+    });
+
+    it('commits an exact shortcode there', async () => {
+      const h = mount();
+      await warmIndex(h);
+
+      h.seedLines('first line', ':smile');
+      expect(h.pressKey(':').handled).toBe(true);
+      expect(h.text()).toBe(`first line\n${SMILE}`);
+    });
+
+    it('still refuses a trigger glued to any OTHER leaf (an inline image)', async () => {
+      const h = mount();
+      await warmIndex(h);
+
+      h.seedAfterImage(':smi');
+      expect(h.menuRows()).toBeNull();
+    });
+  });
+
   describe('the closing-colon commit', () => {
     it('commits an exact shortcode without the menu ever mattering', async () => {
       const h = mount();

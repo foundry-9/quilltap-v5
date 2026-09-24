@@ -29,7 +29,8 @@
  * rule with no second check, and the math bail sees the same prefix a reader
  * would. Inline leaf nodes collapse to one placeholder character so the string
  * stays 1:1 with document positions (the {@link textReplacementPlugin}
- * precedent).
+ * precedent) — except a soft line break, which reads as the `\n` v4's
+ * LineBreakNode is (`trigger-context.ts`, shared with the `@` typeahead).
  *
  * Registered BEFORE `textReplacementPlugin` in `buildPlugins()`, which is v5's
  * equivalent of v4 sitting at `COMMAND_PRIORITY_NORMAL` above Layer 1.5's
@@ -44,25 +45,16 @@
 import { Plugin, type EditorState } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 
-import { isInCodeContext } from '../code-context';
 import { commitCharOverTrigger } from './insert-char';
 import { isInsideMathSpan } from './math-span';
 import { findByAlias, findByCodePoint, searchChars } from './search';
 import { findTrigger } from './trigger';
+import { textBeforeCursor } from './trigger-context';
 import { TypeaheadMenu, type TypeaheadRow } from './typeahead-menu';
 import type { CharEntry, CharIndex, CharProfile, TriggerMatch } from './types';
 
 /** Rows visible at once; the menu scrolls with the keyboard beyond this. */
 const MENU_LIMIT = 10;
-
-/**
- * Inline leaf nodes (an image) collapse to ONE placeholder so the extracted
- * string stays 1:1 with document positions — the same device
- * `text-replacement.ts` uses. U+FFFC is in no query alphabet and is not
- * word-opening context, so a leaf immediately before an opener correctly
- * refuses to trigger.
- */
-const LEAF = '￼';
 
 export interface CharTypeaheadOptions {
   /**
@@ -94,29 +86,6 @@ function toRow(profile: CharProfile, entry: CharEntry): TypeaheadRow {
     glyph: entry.char,
     label: entry.name,
     detail: entry.aliases[0] ? profile.ui.formatAlias(entry.aliases[0]) : undefined,
-  };
-}
-
-/**
- * The text of the current textblock up to the caret, with its document offset.
- *
- * Returns null in every position a typing aid must stay out of: a non-collapsed
- * selection, a fenced code block, an inline `code` run (both via the shared
- * {@link isInCodeContext}).
- */
-function textBeforeCursor(state: EditorState): { text: string; blockStart: number } | null {
-  const { selection } = state;
-  if (!selection.empty) return null;
-  if (isInCodeContext(state)) return null;
-
-  const $from = selection.$from;
-  const parent = $from.parent;
-  if (!parent.isTextblock) return null;
-
-  const offset = $from.parentOffset;
-  return {
-    text: parent.textBetween(0, offset, undefined, LEAF),
-    blockStart: $from.start(),
   };
 }
 

@@ -148421,6 +148421,34 @@ checked; the three symlink classes made). Node 24
   two padded-Brahma rows); M5 separator-only → `strip` → 2 (`@Aristarchus:` /
   `?`); M6 priority ignored → 3.
 
+### Unit 3 — the soft-line-break hazard (§Survey 11), resolved by measurement
+
+- **Measured** on `lexical` at the target pin (`lb-probe.mjs`, a throwaway run
+  from the pin): a `LineBreakNode`'s `getTextContent()` is `"\n"`, the
+  paragraph reads `first\n:smi`, and the third child's previous sibling is the
+  `linebreak`. So v4's char typeahead, which reads the anchor text node and asks
+  `$isGluedToPreviousRun` (whitespace → not glued), OPENS on a trigger at the
+  start of a soft-broken line. v5's adapter read the whole textblock with every
+  leaf as U+FFFC (not opener context — the mention corpus's `after U+FFFC` row
+  is `null` on v4's own `findTrigger`), so it did NOT: **the existing adapter
+  carried the latent defect.**
+- **Fix:** the mapping in `textBeforeCursor` (not a schema `leafText`, which
+  would move `textContent`/`textBetween` for every other reader): `hard_break`
+  → `\n`, any other leaf → U+FFFC, still one char per leaf. The helper moved to
+  NEW `editor/char-insert/trigger-context.ts` (v4 moved its two to
+  `typeahead/trigger-context.ts` in the same commit), shared with the mention
+  plugin. The harness grew `seedLines`/`seedAfterImage`/`softBrokenLines`, and
+  its `text()` reads a soft break as `\n` (v4's `readText`).
+- Red-first: the two new emoji cases (menu opens / exact commit after a soft
+  break) RED 2/29 before the fix. After: `editor/**` 22 files / 627 green —
+  every existing char-typeahead vector unchanged.
+- Mutations: L1 every leaf → `\n` → exactly the image-leaf case RED; L2
+  `hard_break` back to U+FFFC → exactly the two soft-break cases RED.
+- Not widened: `text-replacement.ts:123` and `smart-typography-plugin.ts:119`
+  use the same U+FFFC collapse for their own word-boundary reads; whether v4's
+  Layer 1.5 plugins see a line break as a boundary was not measured here —
+  named for a follow-up, not changed.
+
 ## P4.D223 — the Salon Images quick-hide + the bug-169 convergence + the `has-dangerous` client half (lane record, 2026-09-24)
 
 Lane branch `claude/salon-images-quick-hide-bug-db0391`, cut from `main`

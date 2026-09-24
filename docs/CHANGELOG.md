@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(spa): the char typeahead opens after a soft line break (P4.D224 unit 3)
+
+_Versions: SPA 0.5.764._
+
+The composer's `:` and `\` typeaheads now open on a trigger that starts a
+line after Shift+Enter. The adapter reads the textblock with every inline
+leaf collapsed to U+FFFC, which is not word-opening context, so a trigger
+right after a soft break never opened; v4 reads a line break as `\n`
+(measured on `lexical`), which is whitespace. A soft break now reads as
+`\n` and every other leaf still as U+FFFC. The helper moved into a shared
+`trigger-context.ts`, as v4 moved its own when the `@` typeahead arrived.
+Every existing char-typeahead case is unchanged.
+
 #### 2026-09-24 — feat(spa): the @ mention typeahead's pure logic (P4.D224 unit 2)
 
 _Versions: SPA 0.5.763._

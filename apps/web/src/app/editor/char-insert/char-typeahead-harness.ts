@@ -43,6 +43,14 @@ export interface Harness {
    */
   seed(text: string): void;
   /**
+   * ONE paragraph whose `lines` are joined by soft line breaks (`hard_break`
+   * leaves — v4's `LineBreakNode`s), caret at the end (v4 `seed(editor, ...lines)`
+   * in `MentionTypeaheadPlugin.test.tsx`).
+   */
+  seedLines(...lines: string[]): void;
+  /** A paragraph whose `text` follows an inline image leaf (reads as U+FFFC). */
+  seedAfterImage(text: string): void;
+  /**
    * A paragraph whose trigger text follows a bold run (v4 `seedAfterBoldRun`) —
    * `**bold**:smile` must not open a menu.
    */
@@ -59,7 +67,7 @@ export interface Harness {
    * the v5 stand-in for v4 seeding Lexical's composition key.
    */
   setComposing(composing: boolean): void;
-  /** The document as the dialect serializes it back — here, plain text. */
+  /** The document as plain text; a soft line break reads as `\n`. */
   text(): string;
   /** Caret offset within its textblock. */
   caretOffset(): number;
@@ -154,6 +162,17 @@ export function mountHarness(options: HarnessOptions): Harness {
     seed(text: string) {
       install(paragraph(text ? [dialectSchema.text(text)] : []));
     },
+    seedLines(...lines: string[]) {
+      install(paragraph(softBrokenLines(lines)));
+    },
+    seedAfterImage(text: string) {
+      install(
+        paragraph([
+          dialectSchema.nodes['image'].create({ src: 'x.png', alt: 'x' }),
+          dialectSchema.text(text),
+        ]),
+      );
+    },
     seedAfterBoldRun(bold: string, text: string) {
       install(
         paragraph([
@@ -179,7 +198,11 @@ export function mountHarness(options: HarnessOptions): Harness {
       return { handled: handled === true };
     },
     text() {
-      return view.state.doc.textBetween(0, view.state.doc.content.size, '\n');
+      // A soft line break reads as the `\n` v4's `readText` sees (a
+      // LineBreakNode's text); any other leaf contributes nothing.
+      return view.state.doc.textBetween(0, view.state.doc.content.size, '\n', (leaf) =>
+        leaf.type.name === 'hard_break' ? '\n' : '',
+      );
     },
     caretOffset() {
       return view.state.selection.$from.parentOffset;
@@ -199,6 +222,20 @@ export function mountHarness(options: HarnessOptions): Harness {
       mount.remove();
     },
   };
+}
+
+/**
+ * Inline content for one paragraph of `lines` joined by `hard_break` leaves —
+ * what Shift+Enter produces in the composer. An empty line contributes no text
+ * node (a zero-length text node is illegal in ProseMirror).
+ */
+export function softBrokenLines(lines: readonly string[]): Node[] {
+  const content: Node[] = [];
+  lines.forEach((line, index) => {
+    if (index > 0) content.push(dialectSchema.nodes['hard_break'].create());
+    if (line) content.push(dialectSchema.text(line));
+  });
+  return content;
 }
 
 /** The dialect schema, for specs that need to build a document by hand. */
