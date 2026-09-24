@@ -12,6 +12,60 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): unify the `d1c06cd9d` Scenario Builder drift catch-up + maintenance round (P4.D216 → {P4.D217} ∥ P4.D218 ∥ P4.D219 ∥ P4.111 ∥ P4.112)
+
+_Versions: core 0.0.1027, harness 0.0.947, host 0.0.152, web 0.0.186, SPA 0.5.755._
+
+All six lanes are on main, and the oracle baseline moves from `00c290c9a`
+to `d1c06cd9d`. The drift ledger's §3 is empty. Scope:
+
+- P4.D216: the Scenario Builder substrate. The shared one-shot tool loop
+  under the Brahma one-shot, the tool slate's doc-tools mode and extras,
+  the stream call's log type, the pre-built mount pool through every
+  reader, and the groups membership filter.
+- P4.D217: the service, the three verbs and their progress frames, the
+  host driver, the SSE route, and the help page (127 files).
+- P4.D218: the SPA dialog and save dialog on New Chat and the Salon
+  sidebar, plus the log-type labels.
+- P4.D219: bug 165. `add_scenario` returns the vault-projected id.
+- P4.111: ten committed main fixtures widened; ten vintage reds closed.
+- P4.112: the previous round's review follow-ups.
+
+Wires: the four Scenario Builder Playwright beats were flipped live and
+passed 4/4 on their first run. The v4 developer-docs mirror is current.
+
+The review found no blocking defect. Fixed on the unify branch:
+
+- v5 logged a WARN (`dropped an unreadable cast id`) that v4 never emits,
+  since v4's character read returns null rather than throwing. Found by
+  comparing the route's log lines with v4's for the first time (16 lines,
+  24 cases).
+- A driver failure after the first SSE frame ended the stream silently.
+  It now sends v4's error frame and logs v4's ERROR line.
+- The tier-3 corpus ran only native tool mode. Two text-block cases now
+  cover the text-block tool instructions.
+- The one-shot loop logged `tools` as a Debug string. It is now v4's array;
+  the tests had been matching the divergence.
+- The SPA dialog shared a profile cache key with surfaces that store a
+  narrower shape, so a tool-less profile could become pickable. It now
+  has its own key under the same prefix.
+- An error reply arriving after a `done` frame overturned the delivered
+  scene.
+- The global capture rig ignored a failed subscriber install; it now
+  fails loudly.
+
+Awaiting a ruling: the corrupt-second-frame animated input (P4.112 item 7).
+
+Gate:
+
+- fmt, clippy in both feature sets and the release build: clean.
+- The 67-family sweep from the `d1c06cd9d` pin: 67 ok.
+- `cargo test --workspace` with the round's env block: 629 binaries,
+  3,696 passed, 0 failed, 3 ignored.
+- Tier R: 266/0 at the pin.
+- SPA: 447 files, 7,654 tests; build and lint clean.
+- Full Playwright against the release binary: 328 passed, 7 failed, 6 skipped (the standing parks), 12.1 minutes. The seven failures were one timing cluster in five Salon streaming spec files this round did not touch; each file passed on its own (3/3, 2/2, 2/2, 1/1, 2/2). The Scenario Builder beats passed 4/4.
+
 #### 2026-09-23 — docs(porting): P4.112 lane close-out — the gate, the deferrals, three order headers, and the corrupt-second-frame ruling request
 
 _Docs-only change._

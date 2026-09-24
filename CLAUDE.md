@@ -945,10 +945,42 @@ records THERE. Update this summary only when a phase or round completes.
   harness 0.0.930, host 0.0.149, web 0.0.179. **Next: the Scenario Builder
   catch-up, the ten-file heal, then the owed dogfood pass** — `phase-4.md`.
   Round record: `status-log.md`.
-- **Oracle baseline: `00c290c9a` (2026-09-23, v4 main — "fix(titles): route
-  every auto-title through applyAutoTitle (bugs 163, 164)",
-  `4.10.0-dev.65`), adopted at the `00c290c9a` bug-163/164 drift catch-up +
-  maintenance round unification (2026-09-23).**
+- **The `d1c06cd9d` Scenario Builder drift catch-up + maintenance round
+  (P4.D216 → {P4.D217} ∥ P4.D218 ∥ P4.D219 ∥ P4.111 ∥ P4.112): UNIFIED on
+  main (2026-09-23) — ALL SIX LANDED; the oracle baseline MOVES to
+  `d1c06cd9d` and the ledger's §3 is EMPTY (v4 AT the baseline, clean).** The
+  Scenario Builder ported end to end: the substrate (ONE shared
+  `run_one_shot_tool_loop` under the Brahma one-shot with v4's five new debug
+  lines, `DocToolsMode` + the extras bag + the third `search` variant, the
+  stream call's `log_type` + `SCENARIO_BUILDER`, the pre-built mount pool
+  through the executor / search / doc-edit / path resolver without weakening
+  P4.D200's covenant, `groupList { characterIds }`), the service + three verbs
+  + `scenarioBuilderProgress` frames + the host driver + the SSE edge
+  (disconnect = abort) + `help/` 126 → 127, the SPA dialog + save dialog on New
+  Chat and the Salon sidebar — **the four beats LIVE at unification, 4/4 on
+  their first run** — and bug 165 (v5 had it verbatim). P4.111 closed TEN
+  vintage reds; P4.112 the previous review's smalls. **The §3 review (four
+  parallel readers): NO blocking defect — the ninth such round; seven
+  should-fixes fixed on the unify branch, headline: v5 logged a WARN v4 can
+  never emit** (the route's unreadable-cast-id line — v4's `findById` is a
+  fallback `safeQuery` and never throws), found by pinning the route log
+  lines for the first time; also v4's mid-stream error frame + ERROR line
+  (a silent SSE end before), a text-block tool-mode corpus (one-mode before),
+  the loop's `tools` field as v4's array (the test had been built on the
+  divergence), the SPA's profile cache key shared with two flag-less shapes,
+  an error reply overturning a delivered scene, the capture rig's loud
+  install. ⚠ **AWAITS THE HUMAN: the corrupt-second-frame ruling** (P4.112
+  item 7 — v4 stores the original; v5 writes a first-frame still). Gate:
+  67/67 sweep families from the pin; 629 binaries / 3,696 / 0 / 3 ignored;
+  Tier R 266/0; SPA 447 / 7,654; full Playwright **328 / 7 / 6 (12.1 m)** — the seven reds one Salon-streaming timing cluster in five untouched files, each green alone (3/3, 2/2, 2/2, 1/1, 2/2). Versions: core
+  0.0.1027, harness 0.0.947, host 0.0.152, web 0.0.186, SPA 0.5.755. **Next:
+  the ruling, the review follow-ups as a smalls lane, then the owed dogfood
+  pass (the Host end to end, real spend)** — `phase-4.md`. Round record:
+  `status-log.md`.
+- **Oracle baseline: `d1c06cd9d` (2026-09-23, v4 main — "feat(scenarios):
+  Scenario Builder — the Host researches and drafts a starting scene",
+  `4.10.0-dev.67`), adopted at the `d1c06cd9d` Scenario Builder drift
+  catch-up + maintenance round unification (2026-09-23).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

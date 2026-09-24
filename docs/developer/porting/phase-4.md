@@ -6628,6 +6628,61 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `d1c06cd9d` Scenario Builder drift catch-up + maintenance round (P4.D216 → {P4.D217} ∥ P4.D218 ∥ P4.D219 ∥ P4.111 ∥ P4.112) — UNIFIED 2026-09-23
+
+**ALL SIX LANDED on main; the oracle baseline MOVES to `d1c06cd9d` and the
+drift ledger's §3 is EMPTY (v4 AT the baseline, clean) — the regen rule is NO
+PIN REQUIRED.** The Scenario Builder is ported end to end: the substrate
+(the shared one-shot loop, `DocToolsMode` + extras, the log type, the
+pre-built mount pool, `groupList { characterIds }`), the service + three
+verbs + `scenarioBuilderProgress` frames + host driver + SSE edge + `help/`
+127, the SPA dialog + save dialog on both entry points (the four beats LIVE
+at unification, 4/4 on their first run), and bug 165; P4.111 closed ten
+vintage reds; P4.112 the previous round's smalls. The §3 review (four
+parallel readers) found **no blocking defect — the ninth such round** — and
+fixed seven should-fixes on the unify branch, headline: **v5 logged a WARN
+v4 can never emit** (the route's unreadable-cast-id line; v4's `findById`
+never throws), found by pinning the route log lines for the first time; also
+v4's mid-stream error frame + ERROR line, a text-block tool-mode corpus, the
+loop's `tools` field as v4's array, the SPA's shared profile cache key, an
+error reply overturning a delivered scene, and the capture rig's loud
+install. Gate: the 67-family sweep 67/67 from the pin; `cargo test
+--workspace` 629 binaries / 3,696 / 0 / 3 ignored; Tier R 266/0; SPA 447 /
+7,654; full Playwright **328 / 7 / 6 (12.1 m)** — the seven reds one Salon-streaming timing cluster in five untouched files, each green alone (3/3, 2/2, 2/2, 1/1, 2/2). Round record: `status-log.md`.
+
+**Next (in order):**
+
+1. **RULING (human): the corrupt-second-frame animated input** (P4.112 item
+   7) — sharp throws on a two-frame input whose second frame is corrupt, so
+   v4 stores the ORIGINAL (both frames' bytes); v5 counts one decodable
+   frame and writes a first-frame still WebP (v5 drops bytes v4 keeps).
+   Pinned as measured both ways; no behaviour change until ruled.
+2. **The review follow-ups, as one smalls lane:** `update_message`'s
+   `find_event_value` under P4.112's strict skip (v4's raw `findOne` +
+   `ChatEventSchema.parse(merged)` — repair or ERROR `Failed to update
+   message in chat`; v5 now WARNs + not-found); `doc_read_file`'s result key
+   order vs v4 (`tools/doc_edit/**`, pinned both ways in
+   `scenario_builder_tier3`); the Salon tool loop's `tools = ?` field
+   (`services/orchestrator.rs`, the `…Json` convention); the Salon-sidebar
+   Scenario Builder dialog's portal (styling / z-40 stacking); the bare
+   `['connectionProfiles']` key's three shapes (Settings / home / Brahma);
+   P4.D217's nits (the disconnect DEBUG before the first frame, SSE headers
+   held until the first frame, frames published after an abort, the
+   poisoned-registry 409, the dispatch wire's writable llm-logs open);
+   P4.D216's out-of-order finds (the doc-edit tool-call context's
+   `operator_override: false`, v4's INFO `Search scriptorium completed`, the
+   one-shot stream's missing `normalizeContentBlockFormat`); `[InstanceSettings]
+   Failed to read setting`'s missing WARN; `add_scenario_item`'s missing
+   `Character not found` WARN; unit 3's unchecked `createdAt` /
+   `participantId`; the dead reader-side `ALTER` heals over P4.111's ten
+   pairs; P4.110's Tier 3 item 7.
+3. **The `quilltap sync` writer-hold ruling** (P4.D210's header) — human.
+4. **The owed dogfood pass** on a Friday copy — now with the Host end to end
+   (💸 real spend: a build in each mode, a revise, a save to each tier incl.
+   a vault-backed character — bug 165's projected id — and Stop mid-run; the
+   `SCENARIO_BUILDER` llm-logs rows in the Inspector), plus the previous
+   rounds' queue.
+
 ## The `d1c06cd9d` Scenario Builder drift catch-up + maintenance round (P4.D216 → {P4.D217} ∥ P4.D218 ∥ P4.D219 ∥ P4.111 ∥ P4.112) — ORDERED 2026-09-23
 
 **Baseline `00c290c9a`; v4 `main` HEAD `d1c06cd9d` (TWO past — `dff00e98d`

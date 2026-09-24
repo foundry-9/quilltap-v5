@@ -146898,3 +146898,156 @@ block. No committed fixture pair changed.
   WITH the regenerate oracle's `<ndjson>.<case>.{main,mount}.db` companions
   (the first capture run missed them and failed on a copy — the recipe's
   companion files are part of its output).
+
+## The `d1c06cd9d` Scenario Builder drift catch-up + maintenance round — UNIFIED (2026-09-23, P4.D216 → {P4.D217} ∥ P4.D218 ∥ P4.D219 ∥ P4.111 ∥ P4.112)
+
+**All six lanes landed on main; the oracle baseline moves `00c290c9a` →
+`d1c06cd9d`; the drift ledger's §3 is EMPTY (v4 AT the baseline, clean, at
+both probes — start and 21:33 CDT close); the regen rule is NO PIN
+REQUIRED.**
+
+### Survey
+
+- Six clean lane worktrees, every branch 0 behind `main` `602c5f87`. The §2
+  probe passed at start (v4 HEAD `d1c06cd9d`, clean; `bugfix` / `release`
+  unmoved), so the lanes' regens at the target pin stand and nothing arrived
+  mid-round.
+- Delivered scope checked against each order's tier list and status header:
+  every lane CLOSED as its header says (P4.D216 T1 1–7 + T2 8–10; P4.D217 T1
+  1–10 + T2 11–13; P4.D218 T1 1–10 + T2 12, item 11 measured N/A; P4.D219 T1
+  whole + T2; P4.111 T1 whole — TEN standing reds, not eleven; P4.112 T1 1–6 +
+  T2 7–8). One lane escalates a ruling: **P4.112 item 7, the corrupt-second-
+  frame animated input** (sharp throws → v4 stores the original; v5 writes a
+  first-frame still) — pinned as measured both ways, NO behaviour change,
+  **the human's call**.
+
+### Reconcile
+
+- `unify/d1c06cd9d` from `main`; cherry-picked P4.111 → P4.D219 → P4.D216 +
+  P4.D217 (the stacked branch, 17 commits) → P4.D218 → P4.112 — 35 lane
+  commits. Conflicts only in `CHANGELOG.md` / `status-log.md` (both-sides
+  unions) and the version files. **Version trap:** a lane bump that coincided
+  with an earlier lane's (both `0.0.1013 → 0.0.1014`) merged as ONE, so the
+  picked tree undercounted; the bumps were re-summed per lane
+  (`0d72ce0a`): core 0.0.1026, harness 0.0.946, host 0.0.152, web 0.0.185,
+  SPA 0.5.754.
+- The union compiled and was fmt/clippy-clean in both feature sets on the
+  first try — no source conflict, no contract drift between the stacked
+  server lanes and the isolated SPA lane.
+
+### The §3 review (four parallel readers, one per lane group; the verdict the unifier's)
+
+**No blocking defect** — the ninth such round. Fixed on the unify branch:
+
+1. **(P4.D217, S2 — the one real divergence the review surfaced) v5 logged a
+   WARN v4 can never emit.** None of the route-side log lines was compared
+   against v4. The routes oracle now spies v4's route and service loggers and
+   the family compares 16 lines across 24 cases, every case a silence leg
+   (`ddd9c314`). Its first run caught v5 logging WARN `Scenario Builder
+   dropped an unreadable cast id` where v4 logs nothing: v4's
+   `characters.findById` is a fallback `safeQuery`, so a failed read answers
+   `null` and v4's try/catch never fires. v5 now treats a failed read as a
+   silent miss (red-first; a field-rename mutation reddens both cast-drop
+   cases). The v5 capture needed its own global subscriber — the lines are
+   logged on the HTTP server's worker threads, which the thread-scoped
+   `global_capture` cannot see.
+2. **(P4.D217, S3) A driver failure after the first frame ended the SSE
+   silently.** v4 logs ERROR `Scenario Builder stream failed` and sends
+   `{"error":"The Host could not complete the enquiry."}`; v5's committed pump
+   discarded the dispatch's `Err`, and the route header claimed the opposite.
+   `generator_sse.rs` gained an opt-in failure tail (`stream_frames_with_tail`
+   — the swipe, generator and AI-import routes pass none and their bytes are
+   unchanged, ten regression binaries green); red-first in the NEW
+   `scenario_builder_midstream_failure` (`49457ad0`).
+3. **(P4.D217, S1) A one-mode corpus.** Every tier-3 case ran native tool
+   mode, so the 18-field text-block instructions bag was never compared. Two
+   `pseudoToolMode: "text-block"` cases (in-world search; real with web) —
+   20 cases / 53 stream calls; mutating `web_search` / `search` in the bag
+   reddens 6 / 11 rows (`38f61909`).
+4. **(P4.D216) A test built on its divergence.** The shared loop's DEBUG
+   `<label>: tool turn` logged `tools = ?names` — a Debug STRING in the log
+   file where v4 logs a `string[]` — and both tier-3 families' v4 renderers
+   converted v4's array to Rust Debug to match. Now `toolsJson` (the `…Json`
+   convention); both renderers expect the compact array (`43ab1779`).
+5. **(P4.D218) A shared cache key holding three shapes.** The dialog cached
+   its profiles under the bare `['connectionProfiles']`, which the home page
+   and the Brahma console fill with a mapped shape lacking `allowToolUse` /
+   `allowWebSearch` — within the 5 s staleTime a tool-less profile turned
+   pickable (the server then 400s) and every Real-mode profile read
+   web-search-less. Now `['connectionProfiles', 'scenario-builder']` (under the
+   prefix, so invalidations still reach it). Red-first spec seeding the bare
+   key with the home shape (`1afef7a2`).
+6. **(P4.D218) An error reply overturned a delivered scene.** `run()` checked
+   the reply's error envelope before an already-folded `done` frame — a lost
+   connection or the driver thread's panic reply after `done` flipped success
+   to error. Red-first spec (`1afef7a2`, SPA 0.5.755).
+7. **(P4.112 unit 1) A silent capture rig.** The folded
+   `global_capture::install` ignored a failed `set_global_default` where the
+   retired `auto_title_capture` had `.expect`ed it — a lost subscriber would
+   pass every silence assertion. Restored to a loud `expect` (`43ab1779`);
+   the workspace run is green under it.
+8. The fix in (1) tripped clippy `single_match`; rewritten as `if let`
+   (`af5ac9b7`), with the unification's version bumps (core 0.0.1027,
+   harness 0.0.947, web 0.0.186).
+
+**Recorded, not fixed (named in the order headers and the phase plan):**
+P4.112 unit 3's strict skip now reaches `update_message`'s `find_event_value`
+(v4 repairs or ERRORs `Failed to update message in chat`; v5 WARNs and
+answers not-found — the P4.105 finding-1 family, widened); `doc_read_file`'s
+result key order vs v4 (P4.D217's out-of-lane find, pinned both ways — needs
+an owner); the same `tools = ?` shape at `services/orchestrator.rs`; the
+Salon-sidebar dialog not portaled (styling/stacking); the bare
+`['connectionProfiles']` key's three shapes (pre-existing); P4.D217's five
+nits (the disconnect line before the first frame, headers held until the
+first frame, frames after abort, the poisoned-registry 409, the dispatch
+wire's writable llm-logs open); P4.D216's four out-of-order finds; an empty
+`thoughtSignature`; `add_scenario_item`'s missing WARN; unit 3's unchecked
+`createdAt` / `participantId`.
+
+### The wires
+
+- **The four gated Scenario Builder beats flipped LIVE** (`ae1f4bc0`,
+  `P4D217_SERVER_LANDED = true`): first live run **4 passed / 0 failed
+  (1.1 m)** — New Chat build + Use; Salon build + Use + Change scenario (the
+  Host's record); Save as scenario to Quilltap General (toast, picker selects
+  it); Stop while the Host is out. The contract (§S.1 verbs, frame envelope,
+  terminal frames; §S.2 `characterIds`; §S.3 the projected id) diffed name for
+  name by the SPA reader: identical.
+- **The v4 docs mirror** (`8f93f30d`): `API.md`, `PROMPT_ARCHITECTURE.md`,
+  `bugs.md`, `features/ROADMAP.md`, the new `features/scenario-builder.md`
+  (ratifying `dff00e98d` NO-PORT — its text superseded by `d1c06cd9d`'s),
+  bugs 165/166. `docs/v4/developer/bugs/` is `diff -rq` identical to v4's.
+
+### The gate (final tree `af5ac9b7` + the docs)
+
+- `cargo fmt --all --check` clean; clippy clean plain AND with
+  `--features quilltap-core/native-transport`; `cargo build --workspace
+  --release` clean.
+- **The 67-family sweep** through the driver from
+  `/tmp/qt-v4-pin-unify-d1c06cd9d` (every family this round touched or whose
+  oracle case changed, P4.111's 26 readers, the tool / doc / search / groups /
+  Brahma / Carina / orchestrator / primary-stream neighbours): **67 ok**
+  (`harness/tools/sweep-results/2026-09-23-d1c06cd9d-unify.json`).
+- **`cargo test --workspace --no-fail-fast -- --nocapture` with the round's
+  111-variable env block** (every sweep family's oracle at its driver-staged
+  path; `QT_V4_CHECKOUT` at the pin + `QT_NODE` Node 24 for Tier R): **629
+  test binaries / 3,696 passed / 0 failed / 3 ignored**; 444 `SKIP:` lines,
+  none naming a block variable. Tier R **266 cases, 0 failures** at the pin.
+  By name: `scenario_builder_tier3` 20 cases / 53 stream calls,
+  `scenario_builder_routes` 24 cases / 16 v4 log lines,
+  `scenario_builder_mount_pool` 15 arms, `scenario_builder_prompts` 25 + 21
+  rows, `scenario_build_request_schema` 30 parsed / 61 refused.
+- **SPA:** `npm test` 447 files / 7,654; `npm run build` + `npm run lint`
+  clean.
+- **Full Playwright** against the final release binary + the fresh `dist`:
+  **328 passed / 7 failed / 6 skipped (12.1 m)** — the six skips the standing parks. The seven reds were one contiguous cluster of Salon streaming beats in five files, none touched this round (`salon-regenerate-stream-flow`, `salon-roleplay-template-flow` ×2, `salon-streaming-avatar-flow` ×2, `salon-thinking-indicator` — the documented quill intermittent — and `salon-transcript-subscribed-read`), all timing-shaped (a live column not yet present, a strip still visible). Each file re-run ALONE, one invocation at a time: **3/3, 2/2, 2/2, 1/1, 2/2** — the documented full-suite intermittent class. The Scenario Builder beats green in the full run (4/4).
+
+Versions: core 0.0.1027, harness 0.0.947, host 0.0.152, web 0.0.186, SPA
+0.5.755; cli 0.0.27 and tauri 0.0.7 unchanged.
+
+### Next
+
+The phase plan's `d1c06cd9d` UNIFIED section carries the ordered list: the
+corrupt-second-frame RULING (human), the review follow-ups as a smalls lane,
+the `quilltap sync` writer-hold ruling, and the owed dogfood pass (now with
+the Host end to end on the Friday copy — real spend).

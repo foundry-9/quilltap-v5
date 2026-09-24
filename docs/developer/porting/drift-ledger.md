@@ -19,61 +19,42 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `00c290c9a`** — "fix(titles): route every auto-title
-  through applyAutoTitle (bugs 163, 164)" (v4 main, 2026-09-23 00:20,
-  `4.10.0-dev.65`), adopted at the `00c290c9a` bug-163/164 drift catch-up +
-  maintenance round unification (P4.D215 ∥ P4.107 ∥ P4.108 ∥ P4.109 ∥ P4.110,
-  2026-09-23). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-23, 13:05 CDT (`/unify`'s closing probe; the
-  unification-start probe at ~12:10 read the same).
-- **v4 `main` HEAD at check:** `d1c06cd9d` ("feat(scenarios): Scenario
-  Builder — the Host researches and drafts a starting scene", 2026-09-23
-  09:02 −0500, `4.10.0-dev.67`) — **TWO commits past the baseline**:
-  `dff00e98d` (docs-only spec) and `d1c06cd9d` (73 files, +6,010/−436).
+- **Oracle baseline: `d1c06cd9d`** — "feat(scenarios): Scenario Builder —
+  the Host researches and drafts a starting scene" (v4 main, 2026-09-23
+  09:02 −0500, `4.10.0-dev.67`), adopted at the `d1c06cd9d` Scenario Builder
+  drift catch-up + maintenance round unification (P4.D216 → {P4.D217} ∥
+  P4.D218 ∥ P4.D219 ∥ P4.111 ∥ P4.112, 2026-09-23). CLAUDE.md's Status bullet
+  agrees.
+- **Checked:** 2026-09-23, 21:33 CDT (`/unify`'s closing probe; the
+  unification-start probe read the same).
+- **v4 `main` HEAD at check:** `d1c06cd9d` — **AT the baseline.**
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
   branch") — UNMOVED.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 2 commits, both UNPROCESSED** (§3):
-  `dff00e98d` (a NO-PORT? docs-only handoff spec) and `d1c06cd9d` — **a
-  PORT-NEW feature (the Scenario Builder) with PORT riders on ported
-  surfaces** (the Brahma one-shot loop refactored into a shared
-  `runOneShotToolLoop` with four new debug lines, `buildTools`'
-  `docToolsMode` + `extras`, `streamMessage`'s `logType` + the
-  `SCENARIO_BUILDER` log type, the `mountPool` context through the tool
-  executor / search / doc-edit / path resolver, `GET
-  /api/v1/groups?characterIds=`, **bug 165** — v5's `add_scenario` has the
-  pre-fix shape — and **bug 166**, no v5 counterpart). **Next round: the
-  Scenario Builder catch-up** (a multi-order vertical: the substrate
-  refactors first — the one-shot loop, `docToolsMode`, `mountPool` — then the
-  service + route + SSE, then the SPA dialog; bug 165 as a small lane).
-- **Regen rule: PIN REQUIRED at `00c290c9a`.** HEAD is two commits past the
-  baseline and `d1c06cd9d` moves Brahma one-shot log capture, the tool-slate
-  builder, the search/doc-edit handlers and `addScenario`, all of which have
-  regenerating families. Every oracle regen runs from a detached worktree
-  pinned at `00c290c9a` (§5.1, lane-unique path) — **never HEAD**. **Do not
-  reason about which families "could" be affected — pin.**
+- **Verdict: NO DRIFT — §3 is EMPTY.** Both rows (`dff00e98d`, `d1c06cd9d`)
+  retired to §6 by this round.
+- **Regen rule: NO PIN REQUIRED** while v4 HEAD is `d1c06cd9d` and the tree
+  is clean — regens may run from the checkout. The moment HEAD moves or the
+  tree dirties, the rule flips to PIN REQUIRED at `d1c06cd9d` (§5.1). **Do
+  not reason about which families "could" be affected — pin.**
 - **The workspace gate at the baseline** (the unification's final tree):
   `qtap_schema_embed_guard`, `zod_version_guard` (4.6.5),
   `provider_sdk_version_guard`, `public_schemas_vendor_guard` GREEN;
-  `help_tree_embed_guard` GREEN at 126; `dispatch_wrong_type_census` at 446
-  (unmoved — no verb this round); `blob_write_sites_census` 12 / 12 + one
-  EXEMPT and `compressed_column_write_sites_census` 14 (both now over the
-  shared `tests/source_census` lexer, P4.110; the latter with a > 500-file
-  walk floor); NEW `get_messages_caller_census` at `(76, 8)` (P4.109 + the
-  unification's importer repoint). `help_tree_equivalence` at the
-  `00c290c9a` pin is the proof the tree is v4's (126 files —
-  `help/story-backgrounds.md` re-vendored by P4.D215). Tier R 266/0 at the pin.
+  `help_tree_embed_guard` GREEN at **127**; `dispatch_wrong_type_census` at
+  **449** (P4.D216 +1 `GroupList.character_ids`, P4.D217 +2 the builder's
+  `run_id`s); `blob_write_sites_census` 12 / 12 + one EXEMPT;
+  `compressed_column_write_sites_census` 14; `get_messages_caller_census`
+  re-keyed per (file, fn, variant) over the same 84 sites (P4.112 unit 2) —
+  the round added no `get_messages` caller. `help_tree_equivalence` at the
+  `d1c06cd9d` pin is the proof the tree is v4's (127 files, md5-identical).
+  Tier R 266/0 at the pin. The tool catalog is 59 (the Scenario Builder's
+  `search` variant).
 - **Schema state:** unchanged — the D23 re-dump from `e7d77bb60` stands; the
-  FTS objects come from P4.D204's boot reconciler. Neither pending commit
-  moves the schema (`d1c06cd9d` adds a `LLMLogTypeEnum` member — a Zod enum on
-  a TEXT column, no DDL).
-- **`help/**` vs v4 HEAD `d1c06cd9d`:** **126 → 127 files** (NEW
-  `scenario-builder.md`); THREE differ — `chats.md` (+7),
-  `general-scenarios.md` (+3), `project-scenarios.md` (+3). The count is a
-  hard-coded literal in several crates (a memory note) — the Scenario Builder
-  catch-up moves all of them.
+  FTS objects come from P4.D204's boot reconciler. `d1c06cd9d` moved no DDL
+  (`SCENARIO_BUILDER` is a Zod enum member on a TEXT column).
+- **`help/**` vs v4 HEAD `d1c06cd9d`:** identical — 127 files.
 - **The three text-compression migrations and the image re-encode migration
   stay DEFERRED as reclamation** (named in `db/text_compression.rs`, the
   P4.D209 record, and P4.104's module doc). **The animated-input ruling
@@ -83,8 +64,10 @@ probe verifies against._
   pinned both ways); the frame counter is bounded by `decode`'s own 512 MiB
   charge (the round's §3 blocking fix).
 - **`docs/v4/developer/bugs/`** is `diff -rq` identical to v4's at
-  `00c290c9a` (the unification cleared the bug-146–154 lag). `docs/v4/
-  CHANGELOG.md`'s older lag (~385 lines) stays a named housekeeping item.
+  `d1c06cd9d` (bugs 165/166 mirrored at unification, with `API.md`,
+  `PROMPT_ARCHITECTURE.md`, `bugs.md`, `features/ROADMAP.md` and the new
+  `features/scenario-builder.md`). `docs/v4/CHANGELOG.md`'s older lag stays a
+  named housekeeping item.
 
 ## §2 The freshness probe
 
@@ -123,8 +106,6 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `dff00e98d` | 2026-09-23 | docs: add Scenario Builder handoff spec | **NO-PORT?** | **4 files, +304; docs-only:** `docs/developer/features/scenario-builder.md` (NEW, 292 — the pre-implementation plan; `d1c06cd9d` then edits it +53 to the design of record), `ROADMAP.md`, `docs/CHANGELOG.md`, `.claude/commands/update-documentation.md`. Zero `lib/`/`app/`/`components/`/`help/`/`packages/`/`plugins/` hunks (measured by `git show --stat`). Useful as the Scenario Builder order's REFERENCE (the settled decisions: both surfaces, the Host as persona, real = web + stores, in-world = visible stores only, cast-agnostic, ~1,000 tokens, the four save tiers) — but the spec is prose; port from `d1c06cd9d`'s hunks (§5.3). Ratify with the Scenario Builder catch-up. | **ORDERED(P4.D217 — ratified by its mirror listing at unification, §R.9)** — set by `/setupphase` 2026-09-23 |
-| `d1c06cd9d` | 2026-09-23 | feat(scenarios): Scenario Builder — the Host researches and drafts a starting scene | **PORT-NEW** (+ PORT riders) | **73 files, +6,010/−436, `4.10.0-dev.67`.** **NEW (no v5 counterpart):** `lib/services/scenario-builder/scenario-builder.service.ts` (305), `lib/scenario-builder/{mount-pool,request-schema,system-prompt}.ts` (`resolveScenarioBuilderMountPool` — cast vaults in the PARTICIPANT tier + their groups + project + General), `app/api/v1/scenario-builder/route.ts` (205; `POST ?action=build` streamed over SSE, a capabilities probe), `lib/services/agent-loop/one-shot-loop.ts` (401, `runOneShotToolLoop`), `lib/tools/search-scriptorium-tool.ts`'s third `search` variant (`sources: documents|knowledge` only — its tool-definition bytes are in the snapshot, +47), the SPA (`components/scenario-builder/*` — dialog 454, save dialog 242, run hook 143; `components/agent-stream/parse-agent-stream.ts` MOVED out of the Brahma console hook; `NewChatForm` +131, `ChatScenarioControl` +89, `ChatSidebar` +17, `useNewChat`'s `refetchScenarioTiers`, `useConnectionProfiles`, the LLM Inspector's new type label), `help/scenario-builder.md` (NEW, 85). **PORT riders on ported surfaces:** (1) **the Brahma one-shot** refactored onto `runOneShotToolLoop` (−293/+ in `one-shot.service.ts`; claims neutral, but the loop now emits `<label>: starting` / `: tool turn` / `: aborted …` / `: finished` debug lines the old file never emitted (measured: `00c290c9a`'s file has only the two warns, the empty-answer debug and a no-profile debug), and the empty-answer line gains a `turns` field; v5: `services/brahma_console/mod.rs` + `carina_query.rs`, `brahma_console_tier3_equivalence`); (2) **`buildTools`**: `documentEditingEnabled: boolean` → `docToolsMode: 'off'|'read'|'full'` (callers map `true→'full'`/`false→'off'` — neutral for every existing slate; `'read'` = the five read-only `doc_*` alone) + an `extras` argument (`pluginToolAllowlist` applied at CONSTRUCTION, `documentsOnlySearch`, `webSearch: false` narrowing); v5: `services/tool_build.rs:197/:315/:425`, the callers `orchestrator.rs:1893`, `carina_query.rs:511`, `brahma_console/{mod,orchestrator}.rs`, `help_chat/orchestrator.rs:767`; (3) **`streamMessage`'s `logType`** (default `CHAT_MESSAGE`) + `LLMLogTypeEnum` gains `SCENARIO_BUILDER`; v5: `services/llm_logging.rs:392` `log_type`, `db/llm_logs.rs`; (4) **the `mountPool` context** through `tool-executor.ts` (a new refusal when both `mountPool` and `operatorSurface` are set, with its own error line), `search-scriptorium-handler.ts` (memories/conversations forced off, the participant tier searched and boosted as `character`), the doc-edit handlers (`handleGrep`/`handleListFiles` guards now `!projectId && !mountPool`; two `&& context.projectId` conjuncts that are NEUTRAL on every pre-existing path because the earlier guard already required `projectId`) and `path-resolver.ts` (`collectAccessibleMountPointIds`' new first-class arm + debug line, `getAccessibleMountPoints`' query field) — P4.D200's covenant surfaces; (5) **`GET /api/v1/groups?characterIds=`** — a NEW optional membership filter on the collection GET (+ a debug line); v5: `api/groups.rs` `GroupList`; (6) **bug 165** — `CharactersRepository.addScenario` now re-reads and returns the vault-PROJECTED scenario (matched by title among fresh ids, else the sole fresh one) with a debug line; **v5 `db/vault_character_arrays.rs:348` `add_scenario` returns the minted `uuid::new_v4()` item — the pre-fix shape**, reaching the character-scenarios create route; (7) **bug 166** — `NewChatModal` passes `groupScenarios`: **NO-COUNTERPART** (v5 never ported the modal; `apps/web/src/app/screens/new-chat/new-chat-form.ts:52-66` records the standing no-modal divergence and reads `NewChatState` directly) — but the `refetchScenarioTiers` path it rides with IS part of the SPA port. **Help:** `chats.md` (+7), `general-scenarios.md` (+3), `project-scenarios.md` (+3), `scenario-builder.md` NEW → 127 files (the hard-coded count moves in several crates). **Mirrors:** `bug-165-…`, `bug-166-…` (NEW), `bugs.md`, `API.md` (+33), `PROMPT_ARCHITECTURE.md`, the feature spec; `CLAUDE.md`/`README.md`/`CHANGELOG`/`package*.json` stamps NO-PORT. **Tests-only files** (twelve `__tests__`) are the oracle's source of cases. Neither bug is a port filing (both "Original to v4") — no CONVERGENCE. | **ORDERED(P4.D216 keystone → P4.D217 stacked ∥ P4.D218 SPA ∥ P4.D219 bug 165)** — set by `/setupphase` 2026-09-23; the `d1c06cd9d` Scenario Builder drift catch-up + maintenance round (with P4.111 ∥ P4.112, no drift row). NOTE recorded at planning: the row's "four new debug lines" is FIVE (`: starting`, `: aborted between turns`, `: aborted mid-stream`, `: tool turn`, `: finished`); v5 builds NO plugin tools, so `curlConfigured` is always false on v5 (a recorded divergence, P4.D217) |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -278,6 +259,21 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `d1c06cd9d` Scenario Builder drift catch-up + maintenance round
+  (2026-09-23, baseline `00c290c9a` → `d1c06cd9d`):** `d1c06cd9d` (the
+  Scenario Builder) ABSORBED(P4.D216 the substrate — the shared
+  `run_one_shot_tool_loop` with v4's five new debug lines, `DocToolsMode` +
+  the extras bag + the third `search` variant, the stream call's `log_type` +
+  `SCENARIO_BUILDER`, the pre-built mount pool through the executor / search /
+  doc-edit / path resolver, `groupList { characterIds }`; P4.D217 the service,
+  the three verbs + `scenarioBuilderProgress` frames, the host driver, the SSE
+  edge, `help/` 126 → 127; P4.D218 the SPA dialog + save dialog + both entry
+  points + the log labels, beats LIVE at unification; P4.D219 bug 165 — v5 had
+  it verbatim; bug 166 NO-COUNTERPART, the modal never ported). `dff00e98d`
+  (the handoff spec) NO-PORT-RATIFIED(the same round — docs-only by `git show
+  --stat`; its file is mirrored in `d1c06cd9d`'s final text). Recorded
+  divergence: `curlConfigured` always false (v5 builds no plugin tools).
+  Round record: `status-log.md`.
 - **The `00c290c9a` bug-163/164 drift catch-up + maintenance round
   (2026-09-23, baseline `a2db63da7` → `00c290c9a`):** `00c290c9a` (bugs
   163/164, the auto-title chokepoint) ABSORBED(P4.D215 — NEW
