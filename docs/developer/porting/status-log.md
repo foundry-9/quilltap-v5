@@ -146691,3 +146691,59 @@ rows). **Mutation proof:** `db/chats_messages.rs:738` strict→fallback AND
 passed) → RED, naming exactly `db/chats_messages.rs: census [… find_event_value
 S, update_chat_metadata F] source [… find_event_value F, update_chat_metadata
 S]`; reverted by file backup, green again.
+
+### Unit 3 — the Zod-shape skips (Tier 1 item 5)
+
+v4 at the pin (`chats-messages.ops.ts:315-366` → `ChatEventSchema` in
+`lib/schemas/chat.types.ts`, read from `git show 00c290c9a:`): every member's
+`id: UUIDSchema` (= `z.uuid()`); `MessageEventSchema.role: RoleEnum`
+(`SYSTEM|USER|ASSISTANT|TOOL`, `common.types.ts:38`); `hostEvent:
+z.object({participantId: UUIDSchema.optional(), toStatus: z.enum([active,
+silent, absent, removed]).optional(), introducedCharacterIds:
+z.array(UUIDSchema).optional()}).nullable().optional()`. NEW
+`zod_shape_failure` in `db/chats_messages_read.rs` checks exactly those
+three (uuid via the existing `api::zod_issues::zod_uuid_ok` home, v4's zod
+`uuid()` pattern), run on every row `marshal_row` accepts; a failure is a
+`RowOutcome::Corrupted` → v4's WARN with the unchanged `||` id fallback
+(`messageId=not-a-uuid` for the id arm, as v4 logs). **Named, NOT checked**
+(every other field v4's schema can reject on a raw cell — `recoveryType`,
+`attachments`' uuids, `participantId`, `targetParticipantIds`,
+`systemSender`, `systemEventType`, the nested `dangerFlags` /
+`reasoningSegments` / `customAnnouncer` / `carinaMeta` / `pascalMeta` /
+`pendingExternalAttachments` / `summaryAnchor` / `routeTrail` shapes): the
+review named three; the rest stays a recorded residual, same class.
+
+The corpus (`chats-messages-ops-tier2.json`): a ninth chat `c0000090` with
+eight seeded rows at DISTINCT `createdAt`s (the first regen, with tied
+timestamps, showed v4 returning tied rows in REVERSE insertion order — an
+incidental order; distinct stamps make it defined), a `plantCell` op on both
+sides (closed column set `id|role|hostEvent`, the name spliced, the value
+bound on v5 / quoted on v4), six planted failures — `role='narrator'`,
+`id='not-a-uuid'`, `hostEvent='42'`, `{"toStatus":"asleep"}`,
+`{"participantId":"not-a-participant"}`, `{"introducedCharacterIds":[uuid,
+"not-a-character"]}` — plus a well-formed `hostEvent` and an untouched row,
+then a `getMessages`. v4 kept `[…04, …06]` and WARNed six times in row order.
+**Red-first:** v5 kept all eight (`ids` mismatch at read 1). Green after the
+port. **Mutations (each compiling, each RED on this family, reverted by file
+backup):** the id check off; the role check off; `hostEvent.as_object()`
+`is_some_and` → `is_none_or`; the `participantId` conjunct forced true; the
+`toStatus` conjunct widened to any non-empty string (a first attempt did not
+COMPILE — rewritten; a build red proves nothing); the
+`introducedCharacterIds` conjunct forced true; `read_row` ignoring the
+failure. All seven RED.
+
+**Blast radius, measured:** `cargo test -p quilltap-core --lib` went 10 red —
+every one a hand-rolled test row with an id like `m1`/`m-1` that the read now
+skips as v4 would. Fixed as TEST-ONLY hunks with uuid constants in the four
+test modules: `db/chats_messages_read.rs` (this lane's), and three files no
+lane owns this round — `db/chats_messages.rs`
+(`update_message_safe_query_tests`), `db/chats_search.rs` (`replace_venue`),
+`realtime/publish_sites.rs` (`transcript_publish_sites` — where two SILENCE
+legs, `editing_a_message_that_is_not_there…` and `replacing_nothing…`, would
+otherwise have passed vacuously on a skipped row). No production message-id
+minting is non-uuid (grepped; `api/ui_search.rs`'s `msg-<id>` is a search
+result id, not a row). The census is unmoved (no call site added).
+`db::chats_search::tests::the_plan_line_names_the_fallback_and_its_reason`
+went red ONCE in a filtered run and is green 3/3 by name and in the full core
+run — it never reaches `get_messages`; the thread-scoped `captured` +
+`Interest` race shape. Recorded, not this lane's.

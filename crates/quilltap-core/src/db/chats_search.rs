@@ -840,7 +840,8 @@ mod tests {
                     "c1",
                     &serde_json::from_value(serde_json::json!({
                         "type": "message",
-                        "id": "m-1",
+                        // A Zod uuid (P4.112): `get_messages` skips any other id.
+                        "id": "a0000000-0000-4000-8000-000000000001",
                         "role": "USER",
                         "content": content,
                         "createdAt": "2020-01-01T00:00:01.000Z",

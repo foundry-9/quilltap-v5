@@ -1110,6 +1110,12 @@ mod transcript_publish_sites {
         (dir, path)
     }
 
+    // P4.112: Zod uuids — `get_messages` (and so the update's find and the
+    // search-and-replace read) skips a row whose id is not one, as v4's
+    // `ChatEventSchema` does, which would make these arms pass vacuously.
+    const M1: &str = "a0000000-0000-4000-8000-000000000001";
+    const M2: &str = "a0000000-0000-4000-8000-000000000002";
+
     fn msg(id: &str, content: &str) -> ChatEventInput {
         serde_json::from_value(json!({
             "type": "message",
@@ -1140,7 +1146,7 @@ mod transcript_publish_sites {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             w.chat_messages()
-                .add_message("chat-1", &msg("m-1", "hello"))
+                .add_message("chat-1", &msg(M1, "hello"))
                 .unwrap();
         }
         assert_eq!(cap.drain_expecting(1).await, vec![chats("chat-1")]);
@@ -1154,7 +1160,7 @@ mod transcript_publish_sites {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             w.chat_messages()
-                .add_messages("chat-1", &[msg("m-1", "a"), msg("m-2", "b")])
+                .add_messages("chat-1", &[msg(M1, "a"), msg(M2, "b")])
                 .unwrap();
         }
         // ONE announce for the batch, not one per row — v4 commits once after
@@ -1174,7 +1180,7 @@ mod transcript_publish_sites {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             w.chat_messages()
-                .add_message("ghost", &msg("m-1", "hello"))
+                .add_message("ghost", &msg(M1, "hello"))
                 .unwrap();
         }
         assert_eq!(cap.drain_expecting(1).await, vec![chats("ghost")]);
@@ -1192,10 +1198,10 @@ mod transcript_publish_sites {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             let repo = w.chat_messages();
-            repo.add_message("chat-1", &msg("m-1", "before")).unwrap();
+            repo.add_message("chat-1", &msg(M1, "before")).unwrap();
             let _ = cap.drain_expecting(1).await; // the add's own hint
             assert!(repo
-                .update_message("chat-1", "m-1", &json!({"content": "after"}))
+                .update_message("chat-1", M1, &json!({"content": "after"}))
                 .unwrap());
         }
         assert_eq!(cap.drain_expecting(1).await, vec![chats("chat-1")]);
@@ -1211,7 +1217,7 @@ mod transcript_publish_sites {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             let repo = w.chat_messages();
-            repo.add_message("chat-1", &msg("m-1", "x")).unwrap();
+            repo.add_message("chat-1", &msg(M1, "x")).unwrap();
             let _ = cap.drain_expecting(1).await;
             before = version(&path, "chat-1");
             assert!(!repo
@@ -1231,11 +1237,11 @@ mod transcript_publish_sites {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             let repo = w.chat_messages();
-            repo.add_messages("chat-1", &[msg("m-1", "a"), msg("m-2", "b")])
+            repo.add_messages("chat-1", &[msg(M1, "a"), msg(M2, "b")])
                 .unwrap();
             let _ = cap.drain_expecting(1).await;
             assert_eq!(
-                repo.delete_messages_by_ids("chat-1", &["m-1".to_string()])
+                repo.delete_messages_by_ids("chat-1", &[M1.to_string()])
                     .unwrap(),
                 1
             );
@@ -1253,7 +1259,7 @@ mod transcript_publish_sites {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             let repo = w.chat_messages();
-            repo.add_message("chat-1", &msg("m-1", "a")).unwrap();
+            repo.add_message("chat-1", &msg(M1, "a")).unwrap();
             let _ = cap.drain_expecting(1).await;
             before = version(&path, "chat-1");
             assert_eq!(
@@ -1275,7 +1281,7 @@ mod transcript_publish_sites {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             let repo = w.chat_messages();
-            repo.add_message("chat-1", &msg("m-1", "a")).unwrap();
+            repo.add_message("chat-1", &msg(M1, "a")).unwrap();
             let _ = cap.drain_expecting(1).await;
             assert!(repo.clear_messages("chat-1").unwrap());
         }
@@ -1305,7 +1311,7 @@ mod transcript_publish_sites {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             w.chat_messages()
-                .add_message("chat-1", &msg("m-1", "hello world"))
+                .add_message("chat-1", &msg(M1, "hello world"))
                 .unwrap();
             let _ = cap.drain_expecting(1).await;
             assert_eq!(
@@ -1330,7 +1336,7 @@ mod transcript_publish_sites {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             w.chat_messages()
-                .add_message("chat-1", &msg("m-1", "hello world"))
+                .add_message("chat-1", &msg(M1, "hello world"))
                 .unwrap();
             let _ = cap.drain_expecting(1).await;
             before = version(&path, "chat-1");
@@ -1406,7 +1412,7 @@ mod transcript_publish_sites {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             w.chat_messages()
-                .add_message("chat-1", &msg("m-1", "a"))
+                .add_message("chat-1", &msg(M1, "a"))
                 .unwrap();
             let _ = cap.drain_expecting(1).await;
             assert!(crate::db::chats::ChatsRepository::new(w.connection())
@@ -1443,7 +1449,7 @@ mod transcript_publish_sites {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             w.chat_messages()
-                .add_message("chat-1", &msg("m-1", "a"))
+                .add_message("chat-1", &msg(M1, "a"))
                 .unwrap();
             // Give the sweep something to actually collapse, so the silence is
             // measured on a pass that DID write rather than one that no-opped.

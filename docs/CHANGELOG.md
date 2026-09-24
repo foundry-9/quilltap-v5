@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — fix(db): get_messages skips v4's Zod-only row failures — a bad role, a non-uuid id, a malformed hostEvent — with the corrupted-row WARN (P4.112 unit 3)
+
+_Versions: core 0.0.1015, harness 0.0.933._
+
+v4's per-row `ChatEventSchema.safeParse` rejects rows whose cells read
+fine but fail the schema; v5 skipped only unreadable cells and unknown
+types. `get_messages` now also skips, with the same `Skipping corrupted
+chat message` WARN, a row whose `id` is not a Zod uuid, a message whose
+`role` is outside `RoleEnum`, and a message whose `hostEvent` is not its
+object shape (`participantId` uuid, `toStatus` enum,
+`introducedCharacterIds` uuid array — each optional, none nullable). The
+WARN's `messageId` still falls back as JS `||`. Other Zod-rejectable
+fields are not checked and are listed in the lane record.
+
+`chats_messages_ops_tier2` grows a ninth chat with eight seeded rows and a
+`plantCell` op: six planted failures (a `narrator` role, a `not-a-uuid`
+id, a `hostEvent` of `42`, a bad `toStatus`, a non-uuid `participantId`, a
+non-uuid introduced character) are skipped with v4's WARN in row order,
+and a well-formed `hostEvent` plus an untouched row are kept — red-first
+(v5 kept all eight), then green; seven mutations, one per check, each red.
+Test-only fixtures in `db/chats_messages.rs`, `db/chats_search.rs` and
+`realtime/publish_sites.rs` that used ids like `m1` now use uuids, since
+the read skips any other id as v4 does.
+
 #### 2026-09-23 — test(harness): the get_messages caller census keys each call site by (file, fn, variant) (P4.112 unit 2)
 
 _Versions: harness 0.0.932._

@@ -1335,8 +1335,11 @@ mod member_column_tests {
 #[cfg(test)]
 mod update_message_safe_query_tests {
     const PEPPER: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    // P4.112: a Zod uuid — `get_messages` (and so the update's find) skips a
+    // row whose id is not one, as v4's `ChatEventSchema` does.
+    const M1: &str = "a0000000-0000-4000-8000-000000000001";
 
-    /// A provisioned instance with one chat row and one message `m1` in it.
+    /// A provisioned instance with one chat row and one message `M1` in it.
     fn seeded() -> (tempfile::TempDir, crate::db::Writer) {
         let dir = tempfile::tempdir().expect("tempdir");
         crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER)
@@ -1346,10 +1349,10 @@ mod update_message_safe_query_tests {
         w.connection()
             .execute(
                 "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt) \
-                 VALUES ('m1', 'c1', 'message', 'USER', 'hi', '2026-09-23T00:00:01.000Z')",
+                 VALUES ('a0000000-0000-4000-8000-000000000001', 'c1', 'message', 'USER', 'hi', '2026-09-23T00:00:01.000Z')",
                 [],
             )
-            .expect("seed m1");
+            .expect("seed M1");
         (dir, w)
     }
 
@@ -1370,7 +1373,7 @@ mod update_message_safe_query_tests {
         let (_dir, w) = seeded();
         let (found, lines) = crate::test_support::captured_with(|| {
             w.chat_messages()
-                .update_message("c1", "m1", &serde_json::json!({ "content": 42 }))
+                .update_message("c1", M1, &serde_json::json!({ "content": 42 }))
         });
         assert!(!found.expect("v4's safeQuery never throws here"));
         let errors = update_errors(&lines);
@@ -1382,12 +1385,12 @@ mod update_message_safe_query_tests {
         );
         assert!(line.contains("context=db.chats-messages"), "{line}");
         assert!(line.contains("chatId=c1"), "{line}");
-        assert!(line.contains("messageId=m1"), "{line}");
+        assert!(line.contains(&format!("messageId={M1}")), "{line}");
         assert!(line.contains("updateMessage parse"), "{line}");
         let content: String = w
             .connection()
             .query_row(
-                "SELECT content FROM chat_messages WHERE id = 'm1'",
+                "SELECT content FROM chat_messages WHERE id = 'a0000000-0000-4000-8000-000000000001'",
                 [],
                 |r| r.get(0),
             )
@@ -1406,7 +1409,7 @@ mod update_message_safe_query_tests {
             .expect("plant");
         let (found, lines) = crate::test_support::captured_with(|| {
             w.chat_messages()
-                .update_message("c1", "m1", &serde_json::json!({ "content": "x" }))
+                .update_message("c1", M1, &serde_json::json!({ "content": "x" }))
         });
         assert!(!found.expect("v4's safeQuery never throws here"));
         assert_eq!(update_errors(&lines).len(), 1, "{lines:?}");
@@ -1425,7 +1428,7 @@ mod update_message_safe_query_tests {
         let (_dir, w) = seeded();
         let (found, lines) = crate::test_support::captured_with(|| {
             w.chat_messages()
-                .update_message("c1", "m1", &serde_json::json!({ "content": "x" }))
+                .update_message("c1", M1, &serde_json::json!({ "content": "x" }))
         });
         assert!(found.unwrap());
         assert!(update_errors(&lines).is_empty(), "{lines:?}");

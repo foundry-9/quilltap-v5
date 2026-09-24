@@ -49,6 +49,11 @@ interface Op {
     // copy (only corrupt or hand-edited data carries one; v4 writes `content`
     // through a required Zod string), then a read that must SKIP it.
     | 'plantNullContent'
+    // P4.112: the `00c290c9a` unification review's nit — v4's per-row
+    // `ChatEventSchema.safeParse` ALSO fails on Zod-only shapes a raw cell can
+    // carry (a `role` outside `RoleEnum`, a non-uuid `id`, a `hostEvent` that
+    // is not its object shape). One cell planted on the per-run copy.
+    | 'plantCell'
     | 'getMessages';
   chatId: string;
   messageId?: string;
@@ -59,7 +64,12 @@ interface Op {
   searchText?: string;
   replaceText?: string;
   data?: Record<string, unknown>;
+  column?: string;
+  value?: string;
 }
+
+/** The columns a `plantCell` op may name (a closed set — it is spliced). */
+const PLANTABLE_COLUMNS = new Set(['id', 'role', 'hostEvent']);
 interface Spec {
   testPepperBase64: string;
   ops: Op[];
@@ -159,6 +169,13 @@ async function main(): Promise<void> {
     } else if (op.kind === 'plantNullContent') {
       await rawQuery(
         `UPDATE chat_messages SET content = NULL WHERE id = '${op.messageId as string}'`,
+      );
+    } else if (op.kind === 'plantCell') {
+      const column = op.column as string;
+      if (!PLANTABLE_COLUMNS.has(column)) throw new Error(`plantCell: unplantable column ${column}`);
+      const value = (op.value as string).replace(/'/g, "''");
+      await rawQuery(
+        `UPDATE chat_messages SET "${column}" = '${value}' WHERE id = '${op.messageId as string}'`,
       );
     } else if (op.kind === 'getMessages') {
       // v4 `getMessages`: the per-row `ChatEventSchema.safeParse` skips the

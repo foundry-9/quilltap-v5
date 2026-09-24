@@ -177,6 +177,29 @@
           "updatedAt": "2026-02-01T00:00:00.000Z"
         }
       ]
+    },
+    {
+      "id": "c0000090-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Corrupted-Rows Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000090-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000090-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "seedMessages": [
@@ -367,6 +390,67 @@
           "createdAt": "2026-03-01T00:00:00.000Z"
         }
       ]
+    },
+    {
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "will lose its role",
+          "createdAt": "2026-03-01T00:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-000000000002",
+          "role": "USER",
+          "content": "will lose its uuid",
+          "createdAt": "2026-03-01T00:00:02.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-000000000003",
+          "role": "USER",
+          "content": "will carry a number for a hostEvent",
+          "createdAt": "2026-03-01T00:00:03.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-000000000004",
+          "role": "USER",
+          "content": "will carry a well-formed hostEvent",
+          "createdAt": "2026-03-01T00:00:04.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-000000000005",
+          "role": "USER",
+          "content": "will carry a hostEvent with a bad status",
+          "createdAt": "2026-03-01T00:00:05.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-000000000006",
+          "role": "USER",
+          "content": "untouched",
+          "createdAt": "2026-03-01T00:00:06.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-000000000007",
+          "role": "USER",
+          "content": "will carry a hostEvent with a non-uuid participant",
+          "createdAt": "2026-03-01T00:00:07.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-000000000008",
+          "role": "USER",
+          "content": "will carry a hostEvent introducing a non-uuid character",
+          "createdAt": "2026-03-01T00:00:08.000Z"
+        }
+      ]
     }
   ],
   "ops": [
@@ -507,6 +591,59 @@
       "chatId": "c0000070-0000-4000-8000-000000000001",
       "searchText": "hello",
       "replaceText": "howdy"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000001",
+      "column": "role",
+      "value": "narrator"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000002",
+      "column": "id",
+      "value": "not-a-uuid"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000003",
+      "column": "hostEvent",
+      "value": "42"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000004",
+      "column": "hostEvent",
+      "value": "{\"participantId\":\"fb000090-0000-4000-8000-000000000001\",\"toStatus\":\"active\",\"introducedCharacterIds\":[]}"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000005",
+      "column": "hostEvent",
+      "value": "{\"toStatus\":\"asleep\"}"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000007",
+      "column": "hostEvent",
+      "value": "{\"participantId\":\"not-a-participant\"}"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000008",
+      "column": "hostEvent",
+      "value": "{\"introducedCharacterIds\":[\"fb000090-0000-4000-8000-000000000001\",\"not-a-character\"]}"
+    },
+    {
+      "kind": "getMessages",
+      "chatId": "c0000090-0000-4000-8000-000000000001"
     }
   ]
 }

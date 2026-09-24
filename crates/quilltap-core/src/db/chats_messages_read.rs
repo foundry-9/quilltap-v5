@@ -292,14 +292,64 @@ fn marshal_row(row: &Row) -> Result<Option<Value>, rusqlite::Error> {
     })
 }
 
+/// v4's `RoleEnum` (`lib/schemas/common.types.ts:38`).
+const ROLE_ENUM: [&str; 4] = ["SYSTEM", "USER", "ASSISTANT", "TOOL"];
+
+/// `hostEvent.toStatus`'s enum (`lib/schemas/chat.types.ts`, `MessageEventSchema`).
+const HOST_EVENT_STATUSES: [&str; 4] = ["active", "silent", "absent", "removed"];
+
+/// P4.112 — the Zod-only half of v4's per-row `ChatEventSchema.safeParse`: the
+/// shapes a raw cell can carry that still MARSHAL here (every cell reads as
+/// its column's type) but that v4's schema rejects, so v4 skips the row with
+/// `Skipping corrupted chat message` exactly as it does a bad cell. The
+/// `00c290c9a` unification review named three, and those three are what this
+/// checks: an `id` that is not a Zod uuid (every member's `id: UUIDSchema`), a
+/// message `role` outside `RoleEnum`, and a message `hostEvent` that is not
+/// its object shape (`{ participantId?: uuid, toStatus?: enum,
+/// introducedCharacterIds?: uuid[] }` — `.optional()`, not `.nullable()`, so a
+/// PRESENT `null` inside it fails too). Returns the failing path + reason, the
+/// stand-in for v4's issue list (v5 has no Zod issue source here). Every
+/// other `MessageEventSchema` field v4 can reject on a raw cell (`recoveryType`,
+/// `attachments`' uuids, `systemEventType`, the nested JSON shapes …) is NOT
+/// checked — named in P4.112's lane record, never silently claimed.
+fn zod_shape_failure(event: &Value) -> Option<String> {
+    use crate::api::zod_issues::zod_uuid_ok;
+    let obj = event.as_object()?;
+    let is_uuid = |v: &Value| v.as_str().is_some_and(zod_uuid_ok);
+    if !obj.get("id").is_some_and(is_uuid) {
+        return Some("id: Invalid UUID".to_string());
+    }
+    if obj.get("type").and_then(Value::as_str) != Some("message") {
+        return None;
+    }
+    let role = obj.get("role").and_then(Value::as_str).unwrap_or_default();
+    if !ROLE_ENUM.contains(&role) {
+        return Some(format!("role: invalid option {role:?}"));
+    }
+    if let Some(host) = obj.get("hostEvent") {
+        let ok = host.as_object().is_some_and(|h| {
+            h.get("participantId").is_none_or(is_uuid)
+                && h.get("toStatus")
+                    .is_none_or(|s| s.as_str().is_some_and(|s| HOST_EVENT_STATUSES.contains(&s)))
+                && h.get("introducedCharacterIds")
+                    .is_none_or(|ids| ids.as_array().is_some_and(|a| a.iter().all(is_uuid)))
+        });
+        if !ok {
+            return Some(format!("hostEvent: not its object shape ({host})"));
+        }
+    }
+    None
+}
+
 /// The `context` field on this module's `safeQuery`-arm lines (the house shape of
 /// `db::chats_search`'s `LOG_CONTEXT`; v4's lines come from
 /// `chats-messages.ops.ts`).
 const LOG_CONTEXT: &str = "db.chats-messages";
 
 /// One row as `get_messages` sees it: kept, or CORRUPTED — an unknown `type`,
-/// or a cell `marshal_row` cannot read as its member's type. Both are v4's
-/// per-row `ChatEventSchema.safeParse` failing, so both take its WARN.
+/// a cell `marshal_row` cannot read as its member's type, or (P4.112) a
+/// marshaled event [`zod_shape_failure`] rejects. All are v4's per-row
+/// `ChatEventSchema.safeParse` failing, so all take its WARN.
 enum RowOutcome {
     Event(Value),
     Corrupted {
@@ -328,7 +378,11 @@ fn read_row(row: &Row) -> Result<RowOutcome, rusqlite::Error> {
         error,
     };
     match marshal_row(row) {
-        Ok(Some(v)) => Ok(RowOutcome::Event(v)),
+        // P4.112: a row whose cells all read can still fail v4's Zod shape.
+        Ok(Some(v)) => Ok(match zod_shape_failure(&v) {
+            None => RowOutcome::Event(v),
+            Some(error) => corrupted(error),
+        }),
         // The `00c290c9a` unification: an unknown `type` fails v4's
         // discriminated-union `safeParse` exactly like a bad cell, so it takes
         // the same WARN (P4.109 had dropped it silently).
@@ -482,6 +536,12 @@ pub fn find_chat_id_for_message(
 mod tests {
     use super::*;
 
+    // P4.112: message ids must be Zod uuids — v4's `ChatEventSchema` (and so
+    // `get_messages`) skips any other id as a corrupted row.
+    const M1: &str = "a0000000-0000-4000-8000-000000000001";
+    const M2: &str = "a0000000-0000-4000-8000-000000000002";
+    const M3: &str = "a0000000-0000-4000-8000-000000000003";
+
     /// The MIGRATION-shape table (`add-silent-message-field`:
     /// `ADD COLUMN "isSilentMessage" INTEGER DEFAULT NULL`) — a real v4 instance
     /// stores INTEGER 1/0 cells where a fresh-`generateDDL` table stores numeric
@@ -519,9 +579,9 @@ mod tests {
             )
             .unwrap();
         };
-        insert("m1", Some(1), "2026-07-10T00:00:01.000Z");
-        insert("m2", Some(0), "2026-07-10T00:00:02.000Z");
-        insert("m3", None, "2026-07-10T00:00:03.000Z");
+        insert(M1, Some(1), "2026-07-10T00:00:01.000Z");
+        insert(M2, Some(0), "2026-07-10T00:00:02.000Z");
+        insert(M3, None, "2026-07-10T00:00:03.000Z");
 
         let msgs = get_messages(&conn, "c1").unwrap();
         assert_eq!(msgs.len(), 3);
@@ -541,7 +601,7 @@ mod tests {
         crate::test_support::ensure_p4d171_columns(&conn);
         conn.execute(
             "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, \
-             isSilentMessage) VALUES ('m1', 'c1', 'message', 'ASSISTANT', 'hi', \
+             isSilentMessage) VALUES ('a0000000-0000-4000-8000-000000000001', 'c1', 'message', 'ASSISTANT', 'hi', \
              '2026-07-10T00:00:01.000Z', '1.0')",
             [],
         )
@@ -550,15 +610,15 @@ mod tests {
         assert_eq!(msgs[0]["isSilentMessage"], Value::Bool(true));
     }
 
-    /// A three-row chat on the migrated DDL: `m1`, `m2`, `m3` in order.
+    /// A three-row chat on the migrated DDL: `M1`, `M2`, `M3` in order.
     fn three_rows() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(MIGRATED_DDL).unwrap();
         crate::test_support::ensure_p4d171_columns(&conn);
         for (id, at) in [
-            ("m1", "2026-09-23T00:00:01.000Z"),
-            ("m2", "2026-09-23T00:00:02.000Z"),
-            ("m3", "2026-09-23T00:00:03.000Z"),
+            (M1, "2026-09-23T00:00:01.000Z"),
+            (M2, "2026-09-23T00:00:02.000Z"),
+            (M3, "2026-09-23T00:00:03.000Z"),
         ] {
             conn.execute(
                 "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt) \
@@ -613,7 +673,7 @@ mod tests {
     fn a_healthy_read_does_not_log_the_safe_query_error() {
         let conn = three_rows();
         let (events, lines) = crate::test_support::captured_with(|| get_messages(&conn, "c1"));
-        assert_eq!(ids(&events.unwrap()), ["m1", "m2", "m3"]);
+        assert_eq!(ids(&events.unwrap()), [M1, M2, M3]);
         assert!(lines.is_empty(), "{lines:?}");
     }
 
@@ -626,7 +686,7 @@ mod tests {
     fn a_null_content_row_is_skipped_with_a_warn_not_fatal() {
         let conn = three_rows();
         conn.execute(
-            "UPDATE chat_messages SET content = NULL WHERE id = 'm2'",
+            "UPDATE chat_messages SET content = NULL WHERE id = 'a0000000-0000-4000-8000-000000000002'",
             [],
         )
         .unwrap();
@@ -640,7 +700,7 @@ mod tests {
             });
             assert_eq!(
                 ids(&events.expect("one bad row never fails the chat")),
-                ["m1", "m3"]
+                [M1, M3]
             );
             assert_eq!(lines.len(), 1, "strict={strict}: {lines:?}");
             let line = &lines[0];
@@ -650,7 +710,7 @@ mod tests {
             );
             assert!(line.contains("Skipping corrupted chat message"), "{line}");
             assert!(line.contains("chatId=c1"), "{line}");
-            assert!(line.contains("messageId=m2"), "{line}");
+            assert!(line.contains(&format!("messageId={M2}")), "{line}");
             assert!(line.contains("messageType=message"), "{line}");
         }
     }
@@ -663,7 +723,7 @@ mod tests {
     fn an_unknown_type_row_is_skipped_with_the_same_warn() {
         let conn = three_rows();
         conn.execute(
-            "UPDATE chat_messages SET type = 'bogus', id = '' WHERE id = 'm2'",
+            "UPDATE chat_messages SET type = 'bogus', id = '' WHERE id = 'a0000000-0000-4000-8000-000000000002'",
             [],
         )
         .unwrap();
@@ -675,7 +735,7 @@ mod tests {
                     get_messages(&conn, "c1")
                 }
             });
-            assert_eq!(ids(&events.unwrap()), ["m1", "m3"]);
+            assert_eq!(ids(&events.unwrap()), [M1, M3]);
             assert_eq!(lines.len(), 1, "strict={strict}: {lines:?}");
             let line = &lines[0];
             assert!(line.starts_with("WARN quilltap::db"), "{line}");

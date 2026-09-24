@@ -71,6 +71,14 @@ enum Op {
         #[serde(rename = "messageId")]
         message_id: String,
     },
+    // ── P4.112: v4's Zod-only row failures, one planted cell each ──
+    #[serde(rename = "plantCell")]
+    PlantCell {
+        #[serde(rename = "messageId")]
+        message_id: String,
+        column: String,
+        value: String,
+    },
     #[serde(rename = "getMessages")]
     GetMessages {
         #[serde(rename = "chatId")]
@@ -307,6 +315,24 @@ fn chats_messages_ops_tier2_matches_oracle() {
                         )
                         .expect("plant the NULL content");
                 }
+                Op::PlantCell {
+                    message_id,
+                    column,
+                    value,
+                } => {
+                    // The oracle's closed set — the name is spliced into SQL.
+                    assert!(
+                        ["id", "role", "hostEvent"].contains(&column.as_str()),
+                        "plantCell: unplantable column {column}"
+                    );
+                    writer
+                        .connection()
+                        .execute(
+                            &format!("UPDATE chat_messages SET \"{column}\" = ?1 WHERE id = ?2"),
+                            [value, message_id],
+                        )
+                        .expect("plant the cell");
+                }
                 Op::GetMessages { chat_id } => {
                     let (got, lines) = quilltap_core::test_support::captured_with(|| {
                         quilltap_core::db::chats_messages_read::get_messages(
@@ -441,6 +467,12 @@ fn assert_update_returns(got: &[(Value, Vec<String>)], want: &Value) {
 /// `ChatEventSchema.safeParse` with WARN `Skipping corrupted chat message
 /// {chatId, messageId, messageType}` — the rest of the chat still reads (and
 /// the replace after it still lands, which the `chat_messages` dump holds).
+///
+/// P4.112: the second read covers the Zod-only failures a cell that still
+/// marshals can carry — a `role` outside `RoleEnum`, a non-uuid `id` (whose
+/// WARN names that id), a `hostEvent` of `42`, and a `hostEvent` object with a
+/// `toStatus` outside its enum — each skipped with the same WARN, in row
+/// order; a well-formed `hostEvent` and an untouched row are kept.
 fn assert_reads(got: &[(String, Value, Vec<String>)], want: &Value) {
     let want = want
         .as_array()
