@@ -74,8 +74,7 @@ use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{CompletionMessage, CompletionRole};
 use quilltap_core::model::stream::{
     canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamMessage, StreamParams,
-    StreamUsage,
-    StreamingCompletionProvider,
+    StreamUsage, StreamingCompletionProvider,
 };
 use quilltap_core::services::native_tool_loop::ToolCallDetector;
 use quilltap_core::services::scenario_builder::request_schema::ScenarioBuilderMode;
@@ -661,7 +660,14 @@ async fn scenario_builder_tier3_matches_oracle() {
     // against the one v4 threaded (`inworld_grep_thought_signature_empty_after_
     // real` is the arm — an EMPTY signature after a real one must not overwrite
     // it; v4 `one-shot-loop.ts:241` reads it by truthiness).
-    failures.extend(streaming.signature_mismatches.lock().unwrap().iter().cloned());
+    failures.extend(
+        streaming
+            .signature_mismatches
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned(),
+    );
     let signed_rows = canned
         .iter()
         .filter(|r| {

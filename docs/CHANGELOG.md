@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): close P4.114 — the tool / agent-loop smalls lane record; fmt
+
+_Versions: harness 0.0.954._
+
+`cargo fmt` over two harness test files (whitespace only). The P4.114 lane
+record in `status-log.md` (units, mutation table, regen recipes as run, the
+gate, deferrals and findings for the unifier); this order's status header;
+one sentence each on P4.D216's and P4.D217's headers naming the OPEN items
+this lane took.
+
 #### 2026-09-24 — fix(agent-loop): the one-shot stream normalizes content blocks per chunk and ignores an empty thought signature (P4.114)
 
 _Versions: core 0.0.1032, harness 0.0.953._

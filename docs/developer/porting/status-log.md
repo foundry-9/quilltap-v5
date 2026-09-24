@@ -147503,3 +147503,178 @@ by hand with lane-private paths instead of through the driver).
 - **Out-of-ownership edits, both test/corpus-only and named above:**
   `doc_edit/path_resolver.rs`'s `warn_fixture` (unit 5 commit) and
   `harness/oracle/cases/vault-legacy-wardrobe.ts` (unit 6).
+
+## P4.114 — the tool / agent-loop review smalls (LANE CLOSED 2026-09-24, branch `claude/p4-114-tool-loop-smalls-3377ed`, from `main` `7529fbca`)
+
+Six recorded divergences from the `d1c06cd9d` unification review, each
+red-first against v4's REAL code from the lane pin
+`/tmp/qt-v4-pin-p4114-d1c06cd9d` (the §R.2 probe PASSED at lane start and
+before every regen batch: v4 `main` HEAD `d1c06cd9d`, `bugfix` unmoved, tree
+clean). No drift absorbed, no wire change, no committed fixture touched.
+
+### Units (one commit each)
+
+1. **`cd742138` — `doc_read_file`'s key order.** `handle_read_file` now builds
+   `content, rawContent, parsed, parseError, mimeType, path, uri, mtime,
+   totalLines, truncated` (v4 `text-handlers.ts:202-213`; JSON-only keys and an
+   absent mime omitted). **Red-first = VANISHED:** re-run with
+   `OUT_OF_LANE_DIVERGENCES` still declared, the family failed
+   `inworld_read_notes_then_submit: divergence VANISHED (doc_read_file result
+   key order)`; the row, its branch, the counter and the exercised-count
+   assert were then retired. `inworld_read_notes_then_submit` runs its full
+   canned chain (20 cases / 53 stream calls green); `failing_tool_then_text`
+   unmoved. The blob `derivedFromBlob` branch stays the recorded deferral.
+2. **`bff0be64` — the operator override.** `run_doc_edit` and `doc_context`
+   take `ctx.operator_surface` (v4 `tool-executor.ts:1147`). **The photo site
+   was decided from v4's code, not assumed:** v4's `keep_image` /
+   `list_images` / `attach_image` ARE doc-edit tools (`doc-edit-handler.ts`)
+   and share the ONE `docEditContext`, so the flag rides there too — inert,
+   since `collectPeerCharacterIdsForReads` never reads it. The two false
+   comments corrected. Arm: the Brahma fixture BUILDER plants one standalone
+   database store (`Operator Ledger`, `ledger/notes.md`) linked to no project
+   and owned by no character; `operator_doc_store_read_and_list` reads then
+   lists it. v4 threads the file (`qtap://Operator%20Ledger/ledger/notes.md`)
+   into the continuation. **Red-first (= M2):** with `operator_override: false`
+   the case's result diverged (`no canned stream queued for key (… 4 msgs)` —
+   the refusal changed the continuation).
+3. **`5bb51611` — the search INFO.** `Search scriptorium completed` at the
+   success return, thirteen fields in v4's order over the LIMITED results,
+   `query` through the shared `jsstr::utf16_truncate` (no new copy). **Found
+   beyond the order:** v4 ALSO emits WARN `Search scriptorium tool validation
+   failed` (`:72`, `{ context, userId, characterId, input }`) on both refusal
+   cases, which v5 never had — ported in the same file (`inputJson`,
+   `characterId` omitted when absent as v4's `undefined` is). The oracle now
+   records the handler's lines on EVERY search case (not just the 9 pool
+   cases), the exclusion filter is gone, and the family compares all 30 whole
+   AND in field order (the capture no longer sorts fields on either side; its
+   visitor applies the `…Json` convention). **Red-first: 30 of 30 cases
+   diverged** (28 missing INFO + 2 missing WARN). Counts pinned: 28 INFO
+   cases, 2 silence legs, 9 pool cases. The committed recipe gains
+   `--testTimeout=240000` (jest's 5 s default timed out at the pin — measured).
+4. **`aed2344c` — the tool-change INFO.** `chatId` / `toolCount` / `toolsJson`.
+   The orchestrator oracle spies `Logger.prototype.info` for the one message
+   (the `chats-messages-ops-tier2` recipe) and records a `toolChangeLog` row per
+   case; the family renders v4's context through the `…Json` convention and
+   compares every case's initial-turn AND chain capture. `tool_settings_changed`
+   fires it once (19 tools); every other case is a silence leg. **Red-first
+   (= M4):** the snake_case line (`chat_id=… tool_count=19 tools=[…Debug…]`)
+   against v4's `chatId=… toolCount=19 toolsJson=[…]`.
+5. **`492f1273` — the one-shot stream's normalizer + the empty signature.**
+   `run_stream` normalizes each chunk (`normalize_content_block_format`) before
+   the log text and the answer (v4 `streaming.service.ts:449-456`), and a `""`
+   signature is absent (v4 `one-shot-loop.ts:241`). Both tier-3 oracles' chunk
+   types gained `thoughtSignature`; every canned row now records each message's
+   `thoughtSignatures`, which both Rust families compare per served call (a
+   presence assert catches a stale oracle). **The mock moved below
+   `streamMessage` for ONE arm without re-recording the corpus:** cases marked
+   `realStreamMessage` run v4's REAL generator over a provider scripted at
+   `@/lib/llm`'s `createLLMProvider` (re-mocked with jest.setup's same five
+   members, answering undefined outside those cases, exactly as before) — the
+   existing corpus is untouched. **Measured: per-chunk ≠ whole-answer.**
+   `normalize_block_in_one_chunk` → v4 `"The lamps are lit. And the square is
+   quiet."`; `normalize_block_split_across_chunks` → v4 keeps the block RAW,
+   which a whole-answer normalization would have unwrapped. **Red-first:** the
+   pre-fix loop answered the one-chunk block raw; with the signature rule
+   reverted (= M5) both families reported `v5 [None, None, Some(""), None]` vs
+   v4's `Some("sig-real-brahma")` / `Some("sig-real-host")`.
+
+### Mutation proofs (each reverted by file backup, `cmp`-verified)
+
+| # | Mutation | Reddened |
+|---|---|---|
+| M1 | `content` back LAST on the plain branch | `scenario_builder_tier3` (4 failures, starting at `inworld_read_notes_then_submit: FRAMES differ`) |
+| M2 | `operator_override: false` in `run_doc_edit` | `brahma_console_tier3` (`operator_doc_store_read_and_list: result diverges`) |
+| M3 | `knowledgeGlobal` dropped from the INFO | `search_tools` (28 cases — every INFO case) |
+| M4 | the snake_case `tools = ?` line restored | `orchestrator_tier3` (`tool_settings_changed: the tool-change INFO line(s)`) |
+| M5 | `if let Some(ts) = c.thought_signature` restored | `brahma_console_tier3` AND `scenario_builder_tier3` (the signature mismatch) |
+
+### Neutrality legs (regenerated from the pin, lane-private paths)
+
+`tool_execution_process_tier3` (4 batches), `doc_opacity`,
+`doc_edit_path_resolver`, `doc_text` — all green; `stream_watchdog_wrap_census`
+green (the normalize edit did not move the wrap).
+
+### Regen recipes AS RUN (Node 24, from the pin, outputs under `/tmp/p4114/`)
+
+Each is the family's committed header recipe with `/tmp/…` → `/tmp/p4114/…`
+and `cd ~/source/quilltap-server` → `cd /tmp/qt-v4-pin-p4114-d1c06cd9d`:
+`scenario_builder_tier3` (doc-opacity builder → `/tmp/p4114/sbt3/{main,mount}.db`,
+oracle `/tmp/p4114/sbt3/oracle.ndjson`), `brahma_console_tier3`
+(`build-brahma-console-fixture.ts` → `/tmp/p4114/brahma/{main,mount}.db`,
+oracle `/tmp/p4114/brahma/oracle.ndjson`), `search_tools` (fixture →
+`/tmp/p4114/search/{main,mount}.db`, oracles `rw.ndjson` + `search.ndjson`,
+both jest runs with `--testTimeout=240000`), `orchestrator_tier3`
+(`/tmp/p4114/orch/`); the neutrality legs through
+`recipe_sweep.py --show <family>` rewritten the same way into `/tmp/p4114/sw/`.
+Fixtures are MINTED: rebuild, regenerate, then `cargo test` against that build.
+
+### Tier 3 — deferred loudly (recorded, not fixed)
+
+- **Item 8 — the Google decoder/builder's `""` signature on the Salon path
+  (`model/**`, out of mandate). Evidence:** `decoders/google_parts.rs:118`
+  returns `Some("")` whenever `parts[0].thoughtSignature` exists (v4
+  `provider.ts:211` `if (firstPart?.thoughtSignature)` is truthiness, so `""`
+  falls through to the `functionCall` scan and then `undefined`); and
+  `request_builder/google.rs:322-324,345-348` write `"thoughtSignature": ""`
+  for a `Some("")` where v4 `provider.ts:416,452` (`if (msg.thoughtSignature)`)
+  omit it, and v4's `:335` missing-signature filter counts `""` as missing.
+  Needs a `model/**` owner and the google request-envelope family.
+- **Item 9 —** `generators/rename.rs:727` and
+  `services/dangerous_content/provider_routing.rs:277-278` still log Debug
+  vectors (the `…Json` class) — a later smalls lane.
+- **Item 10 —** `handle_read_file`'s converted-blob `extractedText` branch
+  stays the recorded deferral (`text.rs`, the `is_text_file` refusal).
+
+### Found outside the lane's ownership (for the unifier)
+
+- **The same snake_case class elsewhere in `services/orchestrator.rs`:**
+  `[Orchestrator] Chat paused …` (`chat_id user_id has_content
+  attachment_count`) and `[TurnOrchestrator] Chain stopped: empty response` /
+  `Chain error, stopping` (`chat_id chain_depth user_id`) — v4 logs `chatId`,
+  `userId`, `hasContent`, `attachmentCount`, `chainDepth`. Their pins in
+  `orchestrator_tier3` assert the snake_case bytes, so a fix moves those pins
+  too. The order scoped this lane to the ONE tool-change line.
+- **Per-chunk normalization on the OTHER stream consumers.** v4 runs
+  `normalizeContentBlockFormat` inside its ONE `streamMessage` funnel, so every
+  Salon-side consumer (the primary stream's live frames, the tool loops, the
+  greeting, …) sees per-chunk-normalized content. v5 has no funnel (the
+  P4.D189 watchdog census counted eleven wrap sites); this lane fixed only the
+  one-shot loop. The Salon's WHOLE-response normalizations
+  (`primary_stream.rs:739` partial preserve, `message_finalizer.rs`) match v4's
+  own whole-response calls and are not the gap; the gap is the live chunks.
+  Unmeasured — a candidate census + order.
+
+### Measured against the order
+
+- §Survey 3's field list was right; it missed the validation WARN (ported).
+- §Survey 4's "may not" — measured: per-chunk and whole-answer DIFFER (the
+  split-block arm).
+- §Survey 2's photo-site question — answered from v4's code (the photo tools
+  are doc-edit tools; the flag is inert there).
+- The search family's committed recipe could not run as written at the pin
+  (the 5 s jest default) — fixed in the header.
+
+### The gate (lane HEAD `492f1273`, then the fmt + close-out commit)
+
+- `cargo clippy --workspace --all-targets -- -D warnings` clean in BOTH feature
+  sets; `cargo build --workspace --release` clean. `cargo fmt --all --check`
+  flagged whitespace in two harness test files on the first pass — `cargo fmt`
+  applied in the close-out commit, re-checked clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture` (`CARGO_INCREMENTAL=0
+  TZ=UTC`) with the lane's env block (SBT3, BRAHMA, SEARCH_RW + SEARCH,
+  ORCHESTRATOR, TOOLEXEC_PROCESS, DOPA, DPR, DT, `QT_V4_CHECKOUT` at the pin +
+  `QT_NODE` Node 24; every other family's var withheld): **629 test binaries /
+  3,696 passed / 0 failed / 3 ignored**. Confirmed RUN by name:
+  `scenario_builder_tier3` (21 cases / 55 stream calls),
+  `brahma_console_tier3` (18 cases + 9 loop arms), `search_tools`,
+  `orchestrator_tier3`, `doc_opacity`, `doc_edit_path_resolver`, `doc_text`,
+  `tool_execution_process_tier3` (4 batches), `stream_watchdog_wrap_census`.
+  **Tier R: 266 cases, 0 failures** at the pin. The 504 `SKIP:` lines name
+  only withheld families.
+- Censuses: no lane change reaches `dispatch_wrong_type_census` (449),
+  `tri_state_edges_share_the_decoder`, `get_messages_caller_census`,
+  `blob_write_sites_census`, `compressed_column_write_sites_census` or the
+  embed/version guards — all inside the green workspace run.
+
+Versions: core 0.0.1027 → 0.0.1032 (five bumps), harness 0.0.948 → 0.0.954
+(six bumps). No other crate touched.

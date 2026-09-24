@@ -897,7 +897,10 @@ async fn run_search(
                 c.label
             ));
         }
-        if want_lines.iter().any(|l| l.1 == "Search scriptorium completed") {
+        if want_lines
+            .iter()
+            .any(|l| l.1 == "Search scriptorium completed")
+        {
             info_cases_run += 1;
         } else {
             silent_cases_run += 1;
@@ -915,7 +918,10 @@ async fn run_search(
     assert_eq!(pool_cases_run, 9, "every P4.D216 pool case must run");
     // P4.114: 28 successes carry the INFO; the two validation refusals are its
     // silence legs (measured against the regenerated oracle).
-    assert_eq!(info_cases_run, 28, "every successful search compares the INFO");
+    assert_eq!(
+        info_cases_run, 28,
+        "every successful search compares the INFO"
+    );
     assert_eq!(silent_cases_run, 2, "both refusals are silence legs");
 
     // ---- P4.D216: the executor's pool/operator mutual-exclusion refusal ----
