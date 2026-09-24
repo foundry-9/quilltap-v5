@@ -876,6 +876,8 @@ fn orchestrator_tier3_matches_oracle() {
     let mut canned_completions: Vec<CannedCompletionW> = Vec::new();
     let mut want_tables: HashMap<String, Value> = HashMap::new();
     let mut want_llm_logs: Option<Vec<Value>> = None;
+    // P4.114: v4's `Injected tool change notification` INFO lines, per case.
+    let mut want_tool_change: HashMap<String, Vec<Value>> = HashMap::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let parsed: OracleLine = serde_json::from_str(line).expect("oracle line parses");
         match parsed.kind.as_str() {
@@ -914,6 +916,15 @@ fn orchestrator_tier3_matches_oracle() {
                 want_tables.insert(table, parsed.rest);
             }
             "llmlogs" => want_llm_logs = Some(common::oracle_llm_logs(&parsed.rest)),
+            "toolChangeLog" => {
+                let lines = parsed
+                    .rest
+                    .get("lines")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .expect("toolChangeLog carries `lines`");
+                want_tool_change.insert(parsed.call.clone().unwrap(), lines);
+            }
             other => panic!("unknown oracle line kind: {other}"),
         }
     }
@@ -1537,6 +1548,55 @@ fn orchestrator_tier3_matches_oracle() {
             );
         }
     }
+
+    // --- P4.114: the Salon's `Injected tool change notification` INFO ---
+    // v4 `orchestrator.service.ts:1329` `logger.info('Injected tool change
+    // notification', { chatId, toolCount: toolNames.length, tools: toolNames })`,
+    // recorded off the `Logger` prototype per case and rendered here the way
+    // the captured line carries it: camelCase names as v4 writes them, and the
+    // array through the `…Json` file-layer convention (`toolsJson=<JSON>`). Every
+    // case compares — `tool_settings_changed` is the one that fires; every other
+    // case (initial turn AND chain) is its silence leg.
+    assert_eq!(
+        want_tool_change.len(),
+        spec.calls.len(),
+        "every case must record its toolChangeLog row (regenerate from THIS tree's oracle case)"
+    );
+    let mut tool_change_fired = 0usize;
+    for call in &spec.calls {
+        let want: Vec<String> = want_tool_change[&call.name]
+            .iter()
+            .map(|l| {
+                let mut line = format!(
+                    "{} quilltap_core::services::orchestrator {}",
+                    l["level"].as_str().unwrap_or_default().to_uppercase(),
+                    l["message"].as_str().unwrap_or_default()
+                );
+                for (k, v) in l["context"].as_object().into_iter().flatten() {
+                    match v {
+                        Value::String(s) => line.push_str(&format!(" {k}={s}")),
+                        Value::Array(_) | Value::Object(_) => {
+                            line.push_str(&format!(" {k}Json={v}"))
+                        }
+                        other => line.push_str(&format!(" {k}={other}")),
+                    }
+                }
+                line
+            })
+            .collect();
+        let got: Vec<String> = initial_logs[&call.name]
+            .iter()
+            .chain(chain_logs.get(&call.name).into_iter().flatten())
+            .filter(|l| l.contains("Injected tool change notification"))
+            .cloned()
+            .collect();
+        assert_eq!(got, want, "{}: the tool-change INFO line(s)", call.name);
+        tool_change_fired += want.len();
+    }
+    assert_eq!(
+        tool_change_fired, 1,
+        "exactly one corpus case (tool_settings_changed) fires the tool-change INFO"
+    );
 
     // --- P4.81 item 4: the chain-stop log lines, pinned per case ---
     // v4 `turn-orchestrator.service.ts`'s `logger.info('[TurnOrchestrator] Chain

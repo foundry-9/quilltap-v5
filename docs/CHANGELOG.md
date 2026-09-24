@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(orchestrator): `Injected tool change notification` with v4's field names (P4.114)
+
+_Versions: core 0.0.1031, harness 0.0.952._
+
+The Salon's tool-change INFO now logs `chatId`, `toolCount` and `toolsJson`
+(the `…Json` convention) where it logged `chat_id`, `tool_count` and a Rust
+Debug string. The orchestrator oracle records v4's line off the `Logger`
+prototype per case, and `orchestrator_tier3_equivalence` compares every case:
+`tool_settings_changed` fires it once, every other case (initial turn and
+chain) is a silence leg. Red-first on the snake_case fields.
+
 #### 2026-09-24 — fix(search): v4's `Search scriptorium completed` INFO and validation WARN (P4.114)
 
 _Versions: core 0.0.1030, harness 0.0.951._

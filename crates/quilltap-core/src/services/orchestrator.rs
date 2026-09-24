@@ -2587,10 +2587,12 @@ where
             _ => formatted_messages.push(tool_change_message),
         }
         let tool_names = crate::services::turn_extras::extract_tool_names(&actual_tools);
+        // v4 `orchestrator.service.ts:1329` — v4's camelCase names; the array
+        // rides the `…Json` file-layer convention (P4.114).
         tracing::info!(
-            chat_id = %chat_id,
-            tool_count = tool_names.len(),
-            tools = ?tool_names,
+            chatId = %chat_id,
+            toolCount = tool_names.len(),
+            toolsJson = %serde_json::to_string(&tool_names).unwrap_or_default(),
             "Injected tool change notification"
         );
     }

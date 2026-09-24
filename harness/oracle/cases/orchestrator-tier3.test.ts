@@ -700,6 +700,27 @@ async function main(): Promise<void> {
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { handleSendMessage } = await import('@/lib/services/chat-message/orchestrator.service');
 
+  // P4.114: the Salon's `Injected tool change notification` INFO
+  // (`orchestrator.service.ts:1329`), recorded off the `Logger` prototype
+  // (singleton and children alike, before the level check) — the
+  // `chats-messages-ops-tier2` recipe. Per case, message + context verbatim.
+  let toolChangeLines: Array<Record<string, unknown>> = [];
+  {
+    const { Logger } = await import('@/lib/logger');
+    const original = Logger.prototype.info;
+    Logger.prototype.info = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (message === 'Injected tool change notification') {
+        toolChangeLines.push({ level: 'info', message, context: context ?? null });
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+
   // W4.7c: initialize the REAL provider registry (the nine built plugins/dist
   // bundles) so v4's `buildTools` → `buildToolsForProvider` → `plugin.formatTools`
   // reshapes the canonical slate to the provider's native shape (Anthropic
@@ -829,6 +850,8 @@ async function main(): Promise<void> {
       );
     }
     lines.push(JSON.stringify({ kind: 'events', call: call.name, events, threw }));
+    lines.push(JSON.stringify({ kind: 'toolChangeLog', call: call.name, lines: toolChangeLines }));
+    toolChangeLines = [];
 
     // Let the fire-and-forget background triggers settle before the next call.
     await new Promise((resolve) => setTimeout(resolve, 200));
