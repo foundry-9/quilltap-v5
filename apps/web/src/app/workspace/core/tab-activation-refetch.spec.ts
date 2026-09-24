@@ -204,7 +204,6 @@ describe('tabActivationQueryKeys', () => {
   it('invalidates BOTH live spellings of every split key (v5-only)', () => {
     const settings = tabActivationQueryKeys(tab('settings'));
     for (const pair of [
-      [['connectionProfiles'], ['connection-profiles']],
       [['apiKeys'], ['api-keys']],
       [['chatSettings'], ['chat-settings']],
     ]) {
@@ -215,7 +214,6 @@ describe('tabActivationQueryKeys', () => {
     // The salon list reads chat settings and connection profiles too.
     const salonList = tabActivationQueryKeys(tab('salon-list'));
     for (const spelling of [
-      ['connectionProfiles'],
       ['connection-profiles'],
       ['chatSettings'],
       ['chat-settings'],
@@ -229,7 +227,6 @@ describe('tabActivationQueryKeys', () => {
       ['chatSettings'],
       ['chat-settings'],
       ['textReplacements'],
-      ['connectionProfiles'],
       ['connection-profiles'],
       ['embedding-profiles'],
       imageProfileKeys.all,

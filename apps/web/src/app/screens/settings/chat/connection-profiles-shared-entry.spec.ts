@@ -171,7 +171,7 @@ describe('the connection-profiles cache entry holds the RAW rows (P4.116)', () =
     const card = await mountDangerCard();
     const brahma = TestBed.inject(BrahmaConsoleService);
     await tick();
-    await qc.invalidateQueries({ queryKey: ['connectionProfiles'] });
+    await qc.invalidateQueries({ queryKey: ['connection-profiles'] });
     await tick();
     card.detectChanges();
     await settle(card);
@@ -189,5 +189,10 @@ describe('the connection-profiles cache entry holds the RAW rows (P4.116)', () =
     await settle(list);
     expect(c.profileFetches()).toBe(1);
     expect(qc.getQueryData(['connection-profiles'])).toEqual(ROWS);
+
+    // One spelling (v4's): the Settings card mounted next reads the SAME entry.
+    const card = await mountDangerCard();
+    expect(c.profileFetches()).toBe(1);
+    expect(uncensoredOptions(card)).toEqual(['', 'p-danger']);
   });
 });

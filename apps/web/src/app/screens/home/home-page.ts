@@ -74,7 +74,7 @@ export class HomePage {
   protected readonly home = computed(() => this.homeQuery.data());
 
   protected readonly profilesQuery = injectQuery(() => ({
-    queryKey: ['connectionProfiles'] as const,
+    queryKey: ['connection-profiles'] as const,
     // RAW rows in the shared entry, mapped on read (P4.116 — v4 caches the raw
     // envelope and maps with `select`, `hooks/useConnectionProfiles.ts:43-49`).
     queryFn: (): Promise<ConnectionProfileDto[]> => fetchConnectionProfileRows(this.core),

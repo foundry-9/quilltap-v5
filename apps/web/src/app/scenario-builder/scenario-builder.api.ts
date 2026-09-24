@@ -28,17 +28,17 @@ export const groupsByCharactersKey = (characterIdsKey: string) =>
   ['groups', 'by-characters', characterIdsKey] as const;
 
 /**
- * The connection-profile list's query key — UNDER the `['connectionProfiles']`
- * prefix, so every Settings-card invalidation (prefix match) and the tab
- * refetch reach it and the dialog never shows a profile list staler than the
- * one the user just edited (v4's dialog shares `queryKeys.connectionProfiles`).
- * NOT the bare key itself: the home page and the Brahma console cache MAPPED
- * shapes under the bare key (`{id, name, provider, modelName[, isDefault]}`),
- * which lack `allowToolUse`/`allowWebSearch` — read here through a shared
- * cache entry, every tool-less profile would turn pickable and every Real-mode
- * profile would read as web-search-less (the d1c06cd9d unification review).
+ * The connection-profile list's query key — v4's ONE entry,
+ * `queryKeys.connectionProfiles.all` (`lib/query/keys.ts:108-109` at
+ * `d1c06cd9d`), shared with every other reader, so every Settings-card
+ * invalidation and the tab refetch reach it. The entry holds the RAW rows
+ * (P4.116 — no reader stores a mapped shape any more); the dialog maps them
+ * with {@link mapScenarioBuilderProfiles} in a `computed`, as v4's hook does
+ * with `select`. (It had a sub-key of its own while the home page and the
+ * Brahma console stored flag-less rows in the shared entry — the d1c06cd9d
+ * unification review.)
  */
-export const connectionProfilesKey = ['connectionProfiles', 'scenario-builder'] as const;
+export const connectionProfilesKey = ['connection-profiles'] as const;
 
 /** The profile as the Scenario Builder reads it (v4 `ConnectionProfileInfo` at `d1c06cd9d`). */
 export interface ScenarioBuilderProfile {

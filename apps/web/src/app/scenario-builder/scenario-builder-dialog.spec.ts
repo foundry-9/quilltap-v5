@@ -189,26 +189,16 @@ describe('ScenarioBuilderDialog — model selection (v4)', () => {
   });
 });
 
-describe('ScenarioBuilderDialog — the profile cache entry (the d1c06cd9d unification review)', () => {
-  it('reads its own entry, not the bare key the home page fills with a flag-less shape', async () => {
-    // The home page / Brahma console cache `{id, name, provider, modelName[,
-    // isDefault]}` under the bare `['connectionProfiles']` — no tool flags.
+describe('ScenarioBuilderDialog — the profile cache entry (P4.116)', () => {
+  it('reads the ONE shared entry of raw rows another reader filled, and maps the flags itself', async () => {
+    // v4's single `queryKeys.connectionProfiles.all` (`lib/query/keys.ts:
+    // 108-109` at `d1c06cd9d`); every reader now stores the raw rows there.
     const r = await render({
-      profiles: [DEFAULT_PROFILE, NO_TOOLS_PROFILE],
-      seed: (qc) =>
-        qc.setQueryData(
-          ['connectionProfiles'],
-          [DEFAULT_PROFILE, NO_TOOLS_PROFILE].map(
-            ({ id, name, provider, modelName, isDefault }) => ({
-              id,
-              name,
-              provider,
-              modelName,
-              isDefault,
-            }),
-          ),
-        ),
+      profiles: [DEFAULT_PROFILE],
+      seed: (qc) => qc.setQueryData(['connection-profiles'], [DEFAULT_PROFILE, NO_TOOLS_PROFILE]),
     });
+    // Inside the 5 s window: no fetch of its own (the fake would answer one row).
+    expect(r.fake.requests.filter((q) => q['type'] === 'connectionProfileList')).toHaveLength(0);
     const option = Array.from(r.el.querySelectorAll('option')).find((o) =>
       /Cheap Model \(no tools\)/.test(o.textContent ?? ''),
     ) as HTMLOptionElement;

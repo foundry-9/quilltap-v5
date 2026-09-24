@@ -106,7 +106,7 @@ import { SettingsCard } from './settings-card';
 })
 export class ImageDescriptionSettings extends ChatSettingsCard {
   private readonly profilesQuery = injectQuery(() => ({
-    queryKey: ['connectionProfiles'],
+    queryKey: ['connection-profiles'],
     queryFn: async (): Promise<ConnectionProfileDto[]> => {
       const resp = await this.core.dispatchExpect(
         { type: 'connectionProfileList' },

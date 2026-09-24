@@ -148110,3 +148110,32 @@ deployment concern; (10) lifting the web censuses onto the HARNESS lexer
 - **Mutations:** M2 (Brahma's `queryFn` maps again) → exactly the two Brahma
   cases RED (2/3); M2b (the character list's `queryFn` maps again) → exactly
   the character case RED (1/3). Both reverted by file backup.
+
+## P4.116 unit 4 — one key spelling, v4's `['connection-profiles']` (Tier 2 item 4, 2026-09-24)
+
+- **Landed:** every raw reader and invalidation moves to `['connection-profiles']`:
+  `dangerous-content-settings.ts`, `image-description-settings.ts`,
+  `cheap-llm-card.ts`, `connection-profiles-card.ts` (the reader + four
+  invalidations), `profile-tag-editor.ts` (two invalidations + the tag
+  sub-key `['connection-profiles', id, 'tags']`, a v5-only key: v4's
+  `components/settings/connection-profiles/` uses no `queryKey` at all),
+  `home-page.ts`, and
+  `brahma-console.service.ts`. `tab-refetch.ts`'s `CONNECTION_PROFILES` is one
+  entry; the split-spellings note drops its connection-profiles line (the
+  apiKeys and chatSettings pairs stay split, out of scope). The Scenario
+  Builder's `['connectionProfiles', 'scenario-builder']` entry folds back
+  into the shared one (`connectionProfilesKey = ['connection-profiles']`).
+- **The order's grep gate:** `grep -rn "connectionProfiles'" apps/web/src`
+  returns no query key. The survivors are the dispatch response tag
+  (`dispatchExpect(…, 'connectionProfiles')`, `type: 'connectionProfiles'`),
+  `import-export.types.spec.ts`'s entity-name pair, and `defaults-tab`'s
+  `connectionProfiles` input. Four touched files were already off-Prettier
+  at HEAD (`dangerous-content-settings.ts`, `image-description-settings.ts`,
+  `cheap-llm-card.ts`, `tab-activation-refetch.spec.ts`; measured against
+  `git show HEAD:`) and were left unformatted.
+- **Specs:** the shared-entry spec's character case now also mounts the
+  Settings card against the same entry (one fetch, `['', 'p-danger']`), and
+  its invalidation targets the one key. `scenario-builder-dialog.spec`'s
+  cache case now seeds the shared entry with RAW rows and asserts no fetch
+  plus the mapped `(no tools)` option. `tab-activation-refetch.spec`'s two
+  split-spelling pins drop the camelCase connection-profiles key.

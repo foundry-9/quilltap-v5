@@ -46,12 +46,10 @@
  *    card fetch outside TanStack Query, and plugins are Rust-core (no client
  *    query). Recorded as a gap rather than invented.
  *
- * **Split key spellings.** Until a consolidation lane unifies them, three v5
- * keys exist in two spellings each and BOTH must be swept:
- *  - `['connectionProfiles']` (home, brahma console, dangerous-content,
- *    image-description, cheap-llm card, connection-profiles card, profile tag
- *    editor) and `['connection-profiles']` (character list/new/detail, salon
- *    conversation, add-character, create-npc, select-llm-profile).
+ * **Split key spellings.** Until a consolidation lane unifies them, two v5
+ * keys exist in two spellings each and BOTH must be swept (the connection
+ * profiles were the third: P4.116 moved every reader onto v4's one
+ * `['connection-profiles']`, `lib/query/keys.ts:108-109` at `d1c06cd9d`):
  *  - `['apiKeys']` (api-keys card, connection-profiles card, image-profile
  *    modal) and `['api-keys']` (the chat sidebar's chat section).
  *  - `['chatSettings']` (salon list + conversation, new-chat form, autonomous
@@ -86,8 +84,8 @@ type QueryKeyPrefix = readonly unknown[];
  */
 const CHAT_LISTS: QueryKeyPrefix = chatKeys.all;
 
-/** Both live spellings of the connection-profile key (see the module doc). */
-const CONNECTION_PROFILES: QueryKeyPrefix[] = [['connectionProfiles'], ['connection-profiles']];
+/** The connection-profile key — v4's one spelling (see the module doc). */
+const CONNECTION_PROFILES: QueryKeyPrefix[] = [['connection-profiles']];
 /** Both live spellings of the API-keys key. */
 const API_KEYS: QueryKeyPrefix[] = [['apiKeys'], ['api-keys']];
 /** Both live spellings of the chat-settings key (v4 `queryKeys.settings.chat`). */

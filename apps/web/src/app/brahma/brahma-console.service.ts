@@ -66,11 +66,11 @@ export class BrahmaConsoleService {
 
   /**
    * The user's connection profiles, shared with the settings surface via the
-   * `['connectionProfiles']` query key (dedups). The entry holds the RAW rows;
+   * `['connection-profiles']` query key (dedups; v4's one spelling). The entry holds the RAW rows;
    * {@link profiles} maps them to the picker's shape.
    */
   private readonly profilesQuery = injectQuery(() => ({
-    queryKey: ['connectionProfiles'],
+    queryKey: ['connection-profiles'],
     queryFn: async (): Promise<ConnectionProfileDto[]> => {
       const resp = await this.core.dispatchExpect(
         { type: 'connectionProfileList' },

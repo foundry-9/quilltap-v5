@@ -9,7 +9,7 @@ import { fetchTags, tagKeys } from '../../characters/characters.api';
 
 /** Query key for one profile's own tag details. */
 export const profileTagKeys = {
-  tags: (profileId: string) => ['connectionProfiles', profileId, 'tags'] as const,
+  tags: (profileId: string) => ['connection-profiles', profileId, 'tags'] as const,
 };
 
 /**
@@ -210,7 +210,7 @@ export class ProfileTagEditor {
       await Promise.all([
         this.queryClient.invalidateQueries({ queryKey: profileTagKeys.tags(this.profileId()) }),
         this.queryClient.invalidateQueries({ queryKey: tagKeys.all }),
-        this.queryClient.invalidateQueries({ queryKey: ['connectionProfiles'] }),
+        this.queryClient.invalidateQueries({ queryKey: ['connection-profiles'] }),
       ]);
       this.cancelAdding();
     } catch {
@@ -232,7 +232,7 @@ export class ProfileTagEditor {
       });
       await Promise.all([
         this.queryClient.invalidateQueries({ queryKey: profileTagKeys.tags(this.profileId()) }),
-        this.queryClient.invalidateQueries({ queryKey: ['connectionProfiles'] }),
+        this.queryClient.invalidateQueries({ queryKey: ['connection-profiles'] }),
       ]);
     } catch {
       this.toasts.showError('Failed to remove tag. Please try again.');

@@ -229,7 +229,7 @@ export class CheapLlmCard {
   }));
 
   protected readonly profilesQuery = injectQuery(() => ({
-    queryKey: ['connectionProfiles'],
+    queryKey: ['connection-profiles'],
     queryFn: async (): Promise<ConnectionProfileDto[]> => {
       const resp = await this.core.dispatchExpect(
         { type: 'connectionProfileList' },

@@ -206,7 +206,7 @@ export class ConnectionProfilesCard {
   protected readonly deletingId = signal<string | null>(null);
 
   protected readonly profilesQuery = injectQuery(() => ({
-    queryKey: ['connectionProfiles'],
+    queryKey: ['connection-profiles'],
     queryFn: async (): Promise<ConnectionProfileDto[]> => {
       const resp = await this.core.dispatchExpect(
         { type: 'connectionProfileList' },
@@ -304,7 +304,7 @@ export class ConnectionProfilesCard {
   }
 
   protected onSaved(): void {
-    void this.queryClient.invalidateQueries({ queryKey: ['connectionProfiles'] });
+    void this.queryClient.invalidateQueries({ queryKey: ['connection-profiles'] });
     void this.queryClient.invalidateQueries({ queryKey: ['apiKeys'] });
   }
 
@@ -322,7 +322,7 @@ export class ConnectionProfilesCard {
   private async reorder(orderedIds: string[]): Promise<void> {
     try {
       await this.core.dispatchExpect({ type: 'connectionProfileReorder', orderedIds }, 'ack');
-      await this.queryClient.invalidateQueries({ queryKey: ['connectionProfiles'] });
+      await this.queryClient.invalidateQueries({ queryKey: ['connection-profiles'] });
     } catch {
       // leave the list as-is; the next refetch restores the server order
     }
@@ -331,7 +331,7 @@ export class ConnectionProfilesCard {
   protected async resetSort(): Promise<void> {
     try {
       await this.core.dispatchExpect({ type: 'connectionProfileResetSort' }, 'ack');
-      await this.queryClient.invalidateQueries({ queryKey: ['connectionProfiles'] });
+      await this.queryClient.invalidateQueries({ queryKey: ['connection-profiles'] });
     } catch {
       // no-op
     }
@@ -342,7 +342,7 @@ export class ConnectionProfilesCard {
     try {
       await this.core.dispatchExpect({ type: 'connectionProfileDelete', profileId: id }, 'ack');
       this.deleteConfirmId.set(null);
-      await this.queryClient.invalidateQueries({ queryKey: ['connectionProfiles'] });
+      await this.queryClient.invalidateQueries({ queryKey: ['connection-profiles'] });
     } catch {
       // leave confirm open
     } finally {

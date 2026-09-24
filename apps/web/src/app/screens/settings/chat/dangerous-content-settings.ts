@@ -358,7 +358,7 @@ export class DangerousContentSettings extends ChatSettingsCard {
   protected readonly displayModeOptions = DANGEROUS_DISPLAY_MODE_OPTIONS;
 
   private readonly profilesQuery = injectQuery(() => ({
-    queryKey: ['connectionProfiles'],
+    queryKey: ['connection-profiles'],
     queryFn: async (): Promise<ConnectionProfileDto[]> => {
       const resp = await this.core.dispatchExpect(
         { type: 'connectionProfileList' },

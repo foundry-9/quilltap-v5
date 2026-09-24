@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — refactor(spa): one connection-profiles key spelling, v4's `['connection-profiles']` (P4.116)
+
+_Versions: SPA 0.5.759._
+
+Every reader of the connection-profile list now caches under v4's single key
+`['connection-profiles']` (`lib/query/keys.ts:108-109`), and the camelCase
+spelling is retired. The four Settings readers, the connection-profiles
+card's four invalidations, the profile tag editor's two invalidations and its
+tag sub-key (`['connection-profiles', id, 'tags']`), the home page, and the
+Brahma console all move to it. `tab-refetch.ts`'s `CONNECTION_PROFILES` drops
+to one entry, and the split-spelling note loses its connection-profiles line.
+The Scenario Builder's own `['connectionProfiles', 'scenario-builder']` entry
+folds back into the shared one: every entry is now raw, so the dialog maps
+the flags in its `computed` like v4's `select`. `grep -rn
+"connectionProfiles'" apps/web/src` now finds no query key. What remains is
+the dispatch response tag, an import-export entity name, and a component
+input name.
+
+The shared-entry spec now has the character list and the Settings card
+reading one entry with one fetch. The Scenario Builder spec's cache case
+seeds the shared entry with raw rows from another reader and checks that the
+dialog reads them without fetching and maps `allowToolUse`.
+
 #### 2026-09-24 — fix(spa): every connection-profiles cache entry holds the raw rows, mapped per reader (P4.116)
 
 _Versions: SPA 0.5.758._
