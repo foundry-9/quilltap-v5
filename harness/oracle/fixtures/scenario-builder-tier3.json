@@ -1300,6 +1300,101 @@
         ]
       ],
       "name": "abort_then_throw"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {
+        "pseudoToolMode": "text-block"
+      },
+      "streams": [
+        [
+          {
+            "content": "Let me look first. [[search]]quarry[[/search]]"
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 110,
+              "completionTokens": 12,
+              "totalTokens": 122
+            },
+            "rawResponse": {}
+          }
+        ],
+        [
+          {
+            "content": "The quarry lies silent under a thin moon."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 190,
+              "completionTokens": 20,
+              "totalTokens": 210
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "textblock_inworld_search_then_text"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "real",
+      "location": "Chicago, the Loop",
+      "time": "1927, a wet November night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": true,
+      "profile": {
+        "allowWebSearch": true,
+        "pseudoToolMode": "text-block"
+      },
+      "streams": [
+        [
+          {
+            "content": "[[search query=\"the Loop\" /]]"
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 100,
+              "completionTokens": 10,
+              "totalTokens": 110
+            },
+            "rawResponse": {}
+          }
+        ],
+        [
+          {
+            "content": "Rain drums on the El; the Loop glitters."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 180,
+              "completionTokens": 18,
+              "totalTokens": 198
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "textblock_real_web_available"
     }
   ]
 }
