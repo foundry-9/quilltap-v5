@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(doc-edit): `doc_read_file`'s result object in v4's key order; retire the pinned tier-3 divergence (P4.114)
+
+_Versions: core 0.0.1028, harness 0.0.949._
+
+`handle_read_file` now builds its result map in the order v4's
+`DocReadFileOutput` literal does (`text-handlers.ts:202-213`): `content,
+rawContent, parsed, parseError, mimeType, path, uri, mtime, totalLines,
+truncated`, with the JSON-only keys and an absent mime omitted. The tool
+result reaches the model and the SSE `toolResult` frame as JSON text, so the
+order was observable. The `scenario_builder_tier3` family's
+`OUT_OF_LANE_DIVERGENCES` pin failed "VANISHED" against the fix (the red-first
+proof), then was retired with its branch and exercised-count assert;
+`inworld_read_notes_then_submit` now runs its full canned chain.
+
 #### 2026-09-24 — docs(porting): close the P4.113 lane (gate record, status header)
 
 _Docs-only change._

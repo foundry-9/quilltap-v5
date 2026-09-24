@@ -123,28 +123,21 @@ pub fn handle_read_file(
     let offset = arg_i64(args, "offset");
     let limit = arg_i64(args, "limit");
 
-    let mut result = Map::new();
-    result.insert("path".into(), json!(path));
-    result.insert("uri".into(), json!(uri));
-    result.insert("mtime".into(), json!(mtime));
     // totalLines is always the FULL line count (result.truncated is always false;
     // only formattedText reflects the slice).
     let total_lines = raw_content.split('\n').count();
-    result.insert("totalLines".into(), json!(total_lines));
-    result.insert("truncated".into(), json!(false));
-    if let Some(m) = mime {
-        result.insert("mimeType".into(), json!(m));
-    }
 
     let formatted_text: String;
+    let content: Value;
+    let mut parsed: Option<bool> = None;
+    let mut parse_error: Option<Value> = None;
     if is_json_family(mime) {
         let mime = mime.unwrap();
-        result.insert("rawContent".into(), json!(raw_content));
         match parse_content(&raw_content, mime) {
             ParseResult::Ok(value) => {
                 if is_jsonl_mime(Some(mime)) {
                     let lines = jsonl_lines(&value);
-                    let parsed = lines.iter().any(|l| l.error.is_none());
+                    let any_ok = lines.iter().any(|l| l.error.is_none());
                     let formatted_lines: Vec<String> = lines
                         .iter()
                         .map(|l| match &l.error {
@@ -162,26 +155,26 @@ pub fn handle_read_file(
                         lines.len(),
                         formatted_lines.join("\n")
                     );
-                    result.insert("content".into(), value);
-                    result.insert("parsed".into(), json!(parsed));
+                    content = value;
+                    parsed = Some(any_ok);
                 } else {
                     formatted_text = format!(
                         "File: {path} (JSON)\n\n{}",
                         serde_json::to_string_pretty(&value).unwrap_or_default()
                     );
-                    result.insert("content".into(), value);
-                    result.insert("parsed".into(), json!(true));
+                    content = value;
+                    parsed = Some(true);
                 }
             }
             ParseResult::Err { error, line } => {
-                result.insert("content".into(), json!(raw_content));
-                result.insert("parsed".into(), json!(false));
+                content = json!(raw_content);
+                parsed = Some(false);
                 let mut pe = Map::new();
                 pe.insert("message".into(), json!(error));
                 if let Some(l) = line {
                     pe.insert("line".into(), json!(l));
                 }
-                result.insert("parseError".into(), Value::Object(pe));
+                parse_error = Some(Value::Object(pe));
                 formatted_text = format!("File: {path} — Parse Error: {error}");
             }
         }
@@ -199,7 +192,7 @@ pub fn handle_read_file(
         } else {
             (lines.clone(), false)
         };
-        let content = output_lines.join("\n");
+        let joined = output_lines.join("\n");
         let line_start = offset.unwrap_or(1);
         let numbered: Vec<String> = output_lines
             .iter()
@@ -216,8 +209,33 @@ pub fn handle_read_file(
             String::new()
         };
         formatted_text = format!("{header}{trunc_msg}\n\n{}", numbered.join("\n"));
-        result.insert("content".into(), json!(content));
+        content = json!(joined);
     }
+
+    // Key order is v4's `DocReadFileOutput` literal (`text-handlers.ts:202-213`):
+    // `content, rawContent, parsed, parseError, mimeType, path, uri, mtime,
+    // totalLines, truncated`, the JSON-only keys and an absent mime dropping out
+    // exactly as `undefined` does on serialize. The tool result reaches the
+    // model as JSON text, so the order is observable (P4.114).
+    let mut result = Map::new();
+    result.insert("content".into(), content);
+    if is_json_family(mime) {
+        result.insert("rawContent".into(), json!(raw_content));
+    }
+    if let Some(p) = parsed {
+        result.insert("parsed".into(), json!(p));
+    }
+    if let Some(pe) = parse_error {
+        result.insert("parseError".into(), pe);
+    }
+    if let Some(m) = mime {
+        result.insert("mimeType".into(), json!(m));
+    }
+    result.insert("path".into(), json!(path));
+    result.insert("uri".into(), json!(uri));
+    result.insert("mtime".into(), json!(mtime));
+    result.insert("totalLines".into(), json!(total_lines));
+    result.insert("truncated".into(), json!(false));
 
     Ok(DocEditToolResult::ok(Value::Object(result), formatted_text))
 }

@@ -22,8 +22,10 @@
 //! `streamMessage` writes at each terminal chunk — every one `SCENARIO_BUILDER`;
 //! (4) the `ScenarioBuilder`, `OneShotToolLoop` and `ScenarioBuilderMountPool`
 //! services' log lines, field for field. The served canned-stream count must
-//! equal the oracle's. One case is a MEASURED out-of-lane divergence, pinned
-//! both ways (`OUT_OF_LANE_DIVERGENCES`).
+//! equal the oracle's. P4.114 retired the one measured divergence
+//! (`doc_read_file`'s result KEY ORDER on `inworld_read_notes_then_submit`)
+//! by making v5's order v4's — it VANISHED red-first, and the case now runs
+//! its full canned chain like every other.
 //!
 //! **The curl tool is absent on BOTH sides** (the jest env registers no
 //! plugins; v5 builds no plugin tools), so real mode's slate agrees; the
@@ -84,25 +86,6 @@ use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
 use scenario_builder_capture::{normalize, v4_lines, StructuralCapture};
 use serde::Deserialize;
 use serde_json::Value;
-
-/// Divergences this family MEASURED outside P4.D217's ownership, pinned both
-/// ways (the `EXPECTED_DIVERGENCES` shape): each named case must diverge in
-/// exactly the recorded way — a "VANISHED" failure when it matches v4 (remove
-/// the row), a "WRONG SHAPE" failure when it diverges differently.
-///
-/// `doc_read_file`'s RESULT object serializes in a different KEY ORDER on v5
-/// (`formattedText, path, uri, mtime, totalLines, truncated, mimeType,
-/// content`) than v4's handler builds it (`formattedText, content, mimeType,
-/// path, uri, mtime, totalLines, truncated`). The values are equal; the BYTES
-/// differ — on the SSE `toolResult` frame and, through the threaded tool
-/// message, in the continuation the model sees (so v5's next canned key misses
-/// and the case ends in the "detained" frame). Pre-existing in the doc-edit
-/// handlers (`tools/doc_edit/**` — P4.D216's this round; recorded for the
-/// unifier in the P4.D217 lane record, not taken here).
-const OUT_OF_LANE_DIVERGENCES: &[(&str, &str)] = &[(
-    "inworld_read_notes_then_submit",
-    "doc_read_file result key order",
-)];
 
 const TARGETS: &[&str] = &[
     "quilltap_core::services::scenario_builder",
@@ -459,7 +442,6 @@ async fn scenario_builder_tier3_matches_oracle() {
     let mut failures: Vec<String> = Vec::new();
     let mut logged_so_far = 0usize;
     let mut served_so_far = 0usize;
-    let mut exercised_divergences = 0usize;
     for case in &spec.cases {
         let want = &oracle_cases[&case.name];
         captured.lock().unwrap().clear();
@@ -532,45 +514,6 @@ async fn scenario_builder_tier3_matches_oracle() {
         let got_frames = frames.lock().unwrap().clone();
         let want_frames: Vec<Value> = want["frames"].as_array().cloned().unwrap_or_default();
         let bytes = |fs: &[Value]| fs.iter().map(Value::to_string).collect::<Vec<_>>();
-        if let Some((_, what)) = OUT_OF_LANE_DIVERGENCES
-            .iter()
-            .find(|(name, _)| *name == case.name)
-        {
-            // The recorded shape: the first toolResult frame is Value-EQUAL and
-            // byte-UNEQUAL, and everything after it diverges downstream.
-            let pos = want_frames
-                .iter()
-                .position(|f| f.get("toolResult").is_some())
-                .expect("the pinned case carries a toolResult frame");
-            if bytes(&got_frames) == bytes(&want_frames) {
-                failures.push(format!(
-                    "{}: divergence VANISHED ({what}) — remove it from OUT_OF_LANE_DIVERGENCES",
-                    case.name
-                ));
-            } else if got_frames.get(pos) != want_frames.get(pos)
-                || bytes(&got_frames[pos..=pos]) == bytes(&want_frames[pos..=pos])
-                || bytes(&got_frames[..pos]) != bytes(&want_frames[..pos])
-            {
-                failures.push(format!(
-                    "{}: WRONG SHAPE for the recorded divergence ({what})\n  v4: {}\n  v5: {}",
-                    case.name,
-                    serde_json::to_string(&want_frames).unwrap(),
-                    serde_json::to_string(&got_frames).unwrap()
-                ));
-            }
-            // Downstream of the key-order split nothing else can agree; drain
-            // this case's own records so the next case starts clean.
-            served_so_far = streaming.served_tools.lock().unwrap().len();
-            logged_so_far = db
-                .read_llm_logs(|c| {
-                    c.query_row("SELECT count(*) FROM llm_logs", [], |r| r.get::<_, i64>(0))
-                        .map_err(Into::into)
-                })
-                .unwrap() as usize;
-            exercised_divergences += 1;
-            let _ = outcome;
-            continue;
-        }
         if bytes(&got_frames) != bytes(&want_frames) {
             failures.push(format!(
                 "{}: FRAMES differ\n  v4: {}\n  v5: {}",
@@ -660,13 +603,8 @@ async fn scenario_builder_tier3_matches_oracle() {
             ));
         }
     }
-    assert_eq!(
-        exercised_divergences,
-        OUT_OF_LANE_DIVERGENCES.len(),
-        "every recorded divergence must be exercised by the corpus"
-    );
-    // A canned MISS is still a served call, so the counts agree even across
-    // the pinned divergence.
+    // A canned MISS is still a served call, so the counts agree even on a
+    // diverging case.
     if served_so_far != canned.len() {
         failures.push(format!(
             "served stream count {served_so_far} != the oracle's canned-stream count {}",
