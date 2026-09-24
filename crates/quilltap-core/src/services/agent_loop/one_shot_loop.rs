@@ -49,6 +49,7 @@ use serde_json::Value;
 
 use crate::db::runtime::Db;
 use crate::jsstr::js_trim;
+use crate::message_formatter::normalize_content_block_format;
 use crate::model::stream::{StreamParams, StreamUsage, StreamingCompletionProvider};
 use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 use crate::services::agent_mode::{
@@ -364,8 +365,14 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     while let Some(chunk) = rx.recv().await {
         match chunk {
             Ok(c) => {
+                // v4 `streaming.service.ts:449-456`: `streamMessage` rewrites each
+                // chunk's content through `normalizeContentBlockFormat` BEFORE it
+                // accumulates the log text and yields the chunk — so both halves
+                // below see the normalized text, PER CHUNK (a block split across
+                // chunks matches in neither and stays raw) (P4.114).
+                let content = normalize_content_block_format(&c.content);
                 // The generator side — runs for every chunk it yields.
-                log_content.push_str(&c.content);
+                log_content.push_str(&content);
                 if let Some(u) = &c.usage {
                     log_usage = Some(*u);
                 }
@@ -398,11 +405,14 @@ async fn run_stream<STR: StreamingCompletionProvider>(
                         }
                     }
                 }
-                answer.push_str(&c.content);
+                answer.push_str(&content);
                 if let Some(raw_r) = c.raw_response {
                     raw = Some(raw_r);
                 }
-                if let Some(ts) = c.thought_signature {
+                // v4 `one-shot-loop.ts:241` `if (chunk.thoughtSignature)` — JS
+                // truthiness, so an EMPTY signature is absent and never
+                // overwrites a real one from an earlier chunk (P4.114).
+                if let Some(ts) = c.thought_signature.filter(|ts| !ts.is_empty()) {
                     thought_signature = Some(ts);
                 }
                 // Providers may repeat usage across chunks; the last one is the

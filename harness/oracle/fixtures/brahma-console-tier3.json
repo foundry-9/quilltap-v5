@@ -177,6 +177,38 @@
       "expect": { "ok": true, "answer": "Behind the clock, per the ledger." }
     },
     {
+      "name": "thought_signature_empty_after_real",
+      "_why": "P4.114: a real signature, then an EMPTY one on the terminal chunk — v4's loop reads `if (chunk.thoughtSignature)` (truthiness), so the tool-call turn threads the REAL one into the continuation; recorded per message in each canned row's `thoughtSignatures`.",
+      "userId": "a1111111-1111-4111-8111-111111111111",
+      "question": "Count to one, and keep your thoughts signed.",
+      "streams": [
+        [ { "content": "", "thoughtSignature": "sig-real-brahma" }, { "done": true, "rawResponse": { "marker": "bx1" }, "thoughtSignature": "" } ],
+        [ { "content": "One." }, { "done": true } ]
+      ],
+      "expect": { "ok": true, "answer": "One." }
+    },
+    {
+      "name": "normalize_block_in_one_chunk",
+      "_why": "P4.114: v4's REAL streamMessage runs (the provider scripted at createLLMProvider); a content-block chunk that is whole in ONE chunk is normalized per chunk (streaming.service.ts:449-456) — raw text follows untouched.",
+      "realStreamMessage": true,
+      "userId": "a1111111-1111-4111-8111-111111111111",
+      "question": "Answer in content blocks, please.",
+      "streams": [
+        [ { "content": "[{\"type\": \"text\", \"text\": \"The lamps are lit.\"}]" }, { "content": " And the square is quiet." }, { "done": true } ]
+      ],
+      "expect": { "ok": true, "answer": "The lamps are lit. And the square is quiet." }
+    },
+    {
+      "name": "normalize_block_split_across_chunks",
+      "_why": "P4.114: the SAME block split across two chunks is NOT normalized — neither chunk alone matches — which a whole-answer normalization would have unwrapped. This is the per-chunk parity the order asks for.",
+      "realStreamMessage": true,
+      "userId": "a1111111-1111-4111-8111-111111111111",
+      "question": "Answer in a split content block.",
+      "streams": [
+        [ { "content": "[{\"type\": \"text\", \"text\": \"Split " }, { "content": "across chunks.\"}]" }, { "done": true } ]
+      ]
+    },
+    {
       "name": "stream_error_mid_turn",
       "userId": "a1111111-1111-4111-8111-111111111111",
       "question": "Half a thought, please.",

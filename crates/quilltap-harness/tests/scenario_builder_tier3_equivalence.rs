@@ -25,7 +25,10 @@
 //! equal the oracle's. P4.114 retired the one measured divergence
 //! (`doc_read_file`'s result KEY ORDER on `inworld_read_notes_then_submit`)
 //! by making v5's order v4's — it VANISHED red-first, and the case now runs
-//! its full canned chain like every other.
+//! its full canned chain like every other. P4.114 also records every canned
+//! row's per-message `thoughtSignatures` and compares them on each served call:
+//! `inworld_grep_thought_signature_empty_after_real` streams a real signature,
+//! then `""` on the terminal chunk, and v4's loop (truthiness) keeps the real one.
 //!
 //! **The curl tool is absent on BOTH sides** (the jest env registers no
 //! plugins; v5 builds no plugin tools), so real mode's slate agrees; the
@@ -70,7 +73,8 @@ use std::sync::{Arc, Mutex};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{CompletionMessage, CompletionRole};
 use quilltap_core::model::stream::{
-    canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamParams, StreamUsage,
+    canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamMessage, StreamParams,
+    StreamUsage,
     StreamingCompletionProvider,
 };
 use quilltap_core::services::native_tool_loop::ToolCallDetector;
@@ -178,6 +182,9 @@ struct ChunkW {
     reasoning_content: Option<String>,
     #[serde(default)]
     usage: Option<UsageW>,
+    /// P4.114: a Gemini-style thought signature on the chunk (`""` included).
+    #[serde(default)]
+    thought_signature: Option<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -195,6 +202,10 @@ struct CannedStreamW {
     temperature: Option<f64>,
     messages: Vec<CannedMsgW>,
     sequences: Vec<Vec<ChunkW>>,
+    /// P4.114: every message's `thoughtSignature` as v4 threaded it (`None` =
+    /// absent) — the canned KEY is role + content only.
+    #[serde(default, rename = "thoughtSignatures")]
+    thought_signatures: Option<Vec<Option<String>>>,
 }
 
 fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
@@ -208,6 +219,7 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
             total_tokens: u.total_tokens,
         }));
         chunk.raw_response = c.raw_response.clone();
+        chunk.thought_signature = c.thought_signature.clone();
         return Ok(chunk);
     }
     if let Some(rc) = &c.reasoning_content {
@@ -216,13 +228,33 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
             ..Default::default()
         });
     }
-    Ok(StreamChunk::content(c.content.clone().unwrap_or_default()))
+    let mut chunk = StreamChunk::content(c.content.clone().unwrap_or_default());
+    chunk.thought_signature = c.thought_signature.clone();
+    Ok(chunk)
 }
 
-type Queues = HashMap<String, VecDeque<Vec<StreamChunkResult>>>;
+/// P4.114: every message's thought signature as v5 passes it (`None` for every
+/// role but an assistant turn that carries one).
+fn thought_signatures(messages: &[StreamMessage]) -> Vec<Option<String>> {
+    messages
+        .iter()
+        .map(|m| match m {
+            StreamMessage::Assistant {
+                thought_signature, ..
+            } => thought_signature.clone(),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A queued canned sequence and the thought signatures v4 threaded into it.
+type Queued = (Vec<StreamChunkResult>, Option<Vec<Option<String>>>);
+type Queues = HashMap<String, VecDeque<Queued>>;
 
 struct QueuedStreamingProvider {
     queues: Mutex<Queues>,
+    /// P4.114: served calls whose messages' thought signatures differ from v4's.
+    signature_mismatches: Mutex<Vec<String>>,
     /// Per served call: the tool NAMES the call carried.
     served_tools: Mutex<Vec<Vec<String>>>,
 }
@@ -243,11 +275,15 @@ impl QueuedStreamingProvider {
             let key = canned_stream_key(&row.provider, &row.model, row.temperature, &messages);
             let q = queues.entry(key).or_default();
             for seq in &row.sequences {
-                q.push_back(seq.iter().map(chunk_to_result).collect());
+                q.push_back((
+                    seq.iter().map(chunk_to_result).collect(),
+                    row.thought_signatures.clone(),
+                ));
             }
         }
         Self {
             queues: Mutex::new(queues),
+            signature_mismatches: Mutex::new(Vec::new()),
             served_tools: Mutex::new(Vec::new()),
         }
     }
@@ -291,7 +327,17 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
-                Some(seq) => seq,
+                Some((seq, want_sigs)) => {
+                    let got_sigs = thought_signatures(&params.messages);
+                    if want_sigs.is_some_and(|w| w != got_sigs) {
+                        self.signature_mismatches.lock().unwrap().push(format!(
+                            "thought signatures diverge (model {}, {} msgs): v5 {got_sigs:?}",
+                            params.model,
+                            params.messages.len()
+                        ));
+                    }
+                    seq
+                }
                 None => vec![Err(StreamError::new(format!(
                     "no canned stream queued for key ({provider}, model {}, {} msgs)",
                     params.model,
@@ -609,6 +655,26 @@ async fn scenario_builder_tier3_matches_oracle() {
         failures.push(format!(
             "served stream count {served_so_far} != the oracle's canned-stream count {}",
             canned.len()
+        ));
+    }
+    // P4.114: the thought signature each served call's messages carried,
+    // against the one v4 threaded (`inworld_grep_thought_signature_empty_after_
+    // real` is the arm — an EMPTY signature after a real one must not overwrite
+    // it; v4 `one-shot-loop.ts:241` reads it by truthiness).
+    failures.extend(streaming.signature_mismatches.lock().unwrap().iter().cloned());
+    let signed_rows = canned
+        .iter()
+        .filter(|r| {
+            r.thought_signatures
+                .as_ref()
+                .expect("every cannedStream row records `thoughtSignatures` (regenerate from THIS tree's oracle case)")
+                .iter()
+                .any(Option::is_some)
+        })
+        .count();
+    if signed_rows != 1 {
+        failures.push(format!(
+            "{signed_rows} canned continuation(s) carry a threaded thought signature; the corpus plants exactly one"
         ));
     }
     eprintln!(

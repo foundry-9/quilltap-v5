@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(agent-loop): the one-shot stream normalizes content blocks per chunk and ignores an empty thought signature (P4.114)
+
+_Versions: core 0.0.1032, harness 0.0.953._
+
+`run_stream` now runs each chunk's content through
+`normalize_content_block_format` before accumulating the logged text and the
+answer, as v4's `streamMessage` does (`streaming.service.ts:449-456`), so a
+content block whole in one chunk is unwrapped and one split across chunks
+stays raw. An empty `thoughtSignature` is now treated as absent (v4
+`one-shot-loop.ts:241` reads it by truthiness), so it no longer overwrites a
+real signature from an earlier chunk. `brahma_console_tier3` gains two cases
+that run v4's real `streamMessage` over a provider scripted at
+`createLLMProvider`, and a signature case; `scenario_builder_tier3` gains a
+signature case. Both families now record and compare every canned call's
+per-message thought signatures. Red-first on both.
+
 #### 2026-09-24 — fix(orchestrator): `Injected tool change notification` with v4's field names (P4.114)
 
 _Versions: core 0.0.1031, harness 0.0.952._

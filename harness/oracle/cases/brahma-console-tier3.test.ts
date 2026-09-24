@@ -83,6 +83,8 @@ interface ChunkSpec {
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
   /** A scripted mid-stream provider throw (P4.79's `stream_error_mid_turn`). */
   error?: string;
+  /** P4.114: a Gemini-style thought signature on the chunk (`""` included). */
+  thoughtSignature?: string;
 }
 interface CaseSpec {
   name: string;
@@ -93,6 +95,10 @@ interface CaseSpec {
    * before the case runs (absent = the default 50). A small budget forces the
    * forced-final turn to exercise the salvage. */
   maxAgentTurns?: number;
+  /** P4.114: run v4's REAL `streamMessage` for this case (the provider is
+   * scripted one level down, at `createLLMProvider`) — so its per-chunk
+   * `normalizeContentBlockFormat` runs. */
+  realStreamMessage?: boolean;
 }
 /** P4.D216: an arm that drives `runOneShotToolLoop` directly. */
 interface LoopCaseSpec {
@@ -148,7 +154,8 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  let currentCase: { name: string; streams: ChunkSpec[][] } = spec.cases[0];
+  let currentCase: { name: string; streams: ChunkSpec[][]; realStreamMessage?: boolean } =
+    spec.cases[0];
   let streamCallIndex = 0;
   // P4.D216: the loop-direct arms' trip hooks and per-call log-type record.
   let currentAbort: AbortController | null = null;
@@ -161,6 +168,8 @@ async function main(): Promise<void> {
     temperature: number | null;
     messages: Array<{ role: string; content: string }>;
     sequences: ChunkSpec[][];
+    /** P4.114: every message's `thoughtSignature` as v4 passed it (null = absent). */
+    thoughtSignatures: Array<string | null>;
   }> = [];
 
   jest.resetModules();
@@ -195,6 +204,32 @@ async function main(): Promise<void> {
     };
   });
 
+  // P4.114: `@/lib/llm` (globally mocked by jest.setup — five bare jest.fns)
+  // re-mocked with the SAME five members, `createLLMProvider` answering a
+  // scripted provider ONLY while a `realStreamMessage` case streams (undefined
+  // otherwise, exactly as before). v4's REAL `streamMessage` then runs over it:
+  // the stall watchdog, the per-chunk `normalizeContentBlockFormat`, the log
+  // call (a no-op under jest.setup's logging mock).
+  let realProviderSeq: ChunkSpec[] | null = null;
+  jest.doMock('@/lib/llm', () => ({
+    createLLMProvider: jest.fn(async () =>
+      realProviderSeq
+        ? {
+            streamMessage: async function* () {
+              for (const chunk of realProviderSeq ?? []) {
+                if (chunk.done) yield { content: '', done: true, rawResponse: chunk.rawResponse, usage: chunk.usage };
+                else yield { content: chunk.content ?? '', done: false };
+              }
+            },
+          }
+        : undefined
+    ),
+    createImageProvider: jest.fn(),
+    getAllAvailableProviders: jest.fn(() => []),
+    getAllAvailableImageProviders: jest.fn(() => []),
+    isProviderFromPlugin: jest.fn(() => true),
+  }));
+
   // streamMessage: scripted per-case sequences popped in call order + RECORD the
   // canned key. buildTools stays REAL (its slate is invisible; the instructions +
   // modelSupportsNativeTools it feeds are what matter).
@@ -204,7 +239,7 @@ async function main(): Promise<void> {
       __esModule: true,
       ...actual,
       streamMessage: async function* (opts: {
-        messages: Array<{ role: string; content: string }>;
+        messages: Array<{ role: string; content: string; thoughtSignature?: string }>;
         connectionProfile: { provider: string; modelName: string };
         modelParams?: { temperature?: number };
         logType?: string;
@@ -220,7 +255,21 @@ async function main(): Promise<void> {
           temperature: opts.modelParams?.temperature ?? null,
           messages: opts.messages.map((m) => ({ role: m.role, content: m.content })),
           sequences: [seq],
+          thoughtSignatures: opts.messages.map((m) => m.thoughtSignature ?? null),
         });
+        if (currentCase.realStreamMessage) {
+          // P4.114: v4's REAL generator over the scripted provider.
+          realProviderSeq = seq;
+          try {
+            for await (const chunk of actual.streamMessage(opts as never)) {
+              if ((chunk as { done?: boolean }).done) loggedTypes.push(opts.logType ?? 'CHAT_MESSAGE');
+              yield chunk;
+            }
+          } finally {
+            realProviderSeq = null;
+          }
+          return;
+        }
         for (const chunk of seq) {
           // A scripted mid-stream throw: v4's `for await` propagates it out of
           // `runBrahmaQuery` itself (no internal try/catch there) — the same
@@ -231,11 +280,19 @@ async function main(): Promise<void> {
             // terminal chunk passes through, before it is yielded — typed by
             // the `logType = 'CHAT_MESSAGE'` destructure default (P4.D216).
             loggedTypes.push(opts.logType ?? 'CHAT_MESSAGE');
-            yield { done: true, rawResponse: chunk.rawResponse, usage: chunk.usage };
+            yield {
+              done: true,
+              rawResponse: chunk.rawResponse,
+              usage: chunk.usage,
+              ...(chunk.thoughtSignature !== undefined ? { thoughtSignature: chunk.thoughtSignature } : {}),
+            };
           } else if (chunk.reasoningContent !== undefined) {
             yield { reasoningContent: chunk.reasoningContent };
           } else {
-            yield { content: chunk.content };
+            yield {
+              content: chunk.content,
+              ...(chunk.thoughtSignature !== undefined ? { thoughtSignature: chunk.thoughtSignature } : {}),
+            };
           }
         }
       },

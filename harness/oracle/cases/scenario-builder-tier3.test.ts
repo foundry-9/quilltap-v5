@@ -76,6 +76,8 @@ interface ChunkSpec {
   reasoningContent?: string;
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
   error?: string;
+  /** P4.114: a Gemini-style thought signature on the chunk (`""` included). */
+  thoughtSignature?: string;
 }
 interface CaseSpec {
   name: string;
@@ -148,6 +150,7 @@ async function main(): Promise<void> {
     temperature: number | null;
     messages: Array<{ role: string; content: string }>;
     sequences: ChunkSpec[][];
+    thoughtSignatures: Array<string | null>;
   }> = [];
 
   jest.resetModules();
@@ -189,7 +192,7 @@ async function main(): Promise<void> {
       __esModule: true,
       ...actual,
       streamMessage: async function* (opts: {
-        messages: Array<{ role: string; content: string }>;
+        messages: Array<{ role: string; content: string; thoughtSignature?: string }>;
         connectionProfile: { provider: string; modelName: string };
         modelParams?: { temperature?: number };
         tools?: Array<{ name?: string; function?: { name?: string } }>;
@@ -208,16 +211,26 @@ async function main(): Promise<void> {
           temperature: opts.modelParams?.temperature ?? null,
           messages: opts.messages.map((m) => ({ role: m.role, content: m.content })),
           sequences: [seq],
+          // P4.114: every message's signature as v4 threaded it (null = absent).
+          thoughtSignatures: opts.messages.map((m) => m.thoughtSignature ?? null),
         });
         for (const chunk of seq) {
           if (chunk.error) throw new Error(chunk.error);
           if (chunk.done) {
             loggedTypes.push(opts.logType ?? 'CHAT_MESSAGE');
-            yield { done: true, rawResponse: chunk.rawResponse, usage: chunk.usage };
+            yield {
+              done: true,
+              rawResponse: chunk.rawResponse,
+              usage: chunk.usage,
+              ...(chunk.thoughtSignature !== undefined ? { thoughtSignature: chunk.thoughtSignature } : {}),
+            };
           } else if (chunk.reasoningContent !== undefined) {
             yield { reasoningContent: chunk.reasoningContent };
           } else {
-            yield { content: chunk.content };
+            yield {
+              content: chunk.content,
+              ...(chunk.thoughtSignature !== undefined ? { thoughtSignature: chunk.thoughtSignature } : {}),
+            };
           }
         }
       },

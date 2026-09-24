@@ -404,6 +404,56 @@
       "mode": "in-world",
       "location": "The quarry at Severed",
       "time": "a moonlit night",
+      "details": "  sign your thoughts  ",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "content": "",
+            "thoughtSignature": "sig-real-host"
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 100,
+              "completionTokens": 10,
+              "totalTokens": 110
+            },
+            "rawResponse": {
+              "marker": "grep1"
+            },
+            "thoughtSignature": ""
+          }
+        ],
+        [
+          {
+            "content": "Moonlight on wet stone. The signature held."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 180,
+              "completionTokens": 30,
+              "totalTokens": 210
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "inworld_grep_thought_signature_empty_after_real",
+      "_why": "P4.114: a real thought signature on the tool turn's first chunk, then an EMPTY one on its terminal chunk. v4's loop reads `if (chunk.thoughtSignature)` (one-shot-loop.ts:241, truthiness), so the threaded assistant tool-call turn carries the REAL one into the continuation; the canned row records every message's signature."
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
       "details": "",
       "projectId": "d2000000-0000-4000-8000-000000000002",
       "characterIds": [
