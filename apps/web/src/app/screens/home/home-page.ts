@@ -2,8 +2,11 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../core/core-client';
-import type { CharacterConnectionProfile } from '../../core/core-contract';
-import { fetchConnectionProfiles } from '../characters/characters.api';
+import type { ConnectionProfileDto } from '../../core/core-contract';
+import {
+  fetchConnectionProfileRows,
+  mapCharacterConnectionProfiles,
+} from '../characters/characters.api';
 import { CharactersSection } from './characters-section';
 import { ProjectsSection } from './projects-section';
 import { QuickActionsRow } from './quick-actions-row';
@@ -34,9 +37,7 @@ import { fetchHome, homeKeys } from './home.api';
       </div>
     } @else if (homeQuery.isError() || !home()) {
       <div class="flex h-full items-center justify-center">
-        <p class="qt-text-destructive text-sm">
-          The home parlour could not be readied just now.
-        </p>
+        <p class="qt-text-destructive text-sm">The home parlour could not be readied just now.</p>
       </div>
     } @else if (home(); as home) {
       <div class="qt-homepage-container">
@@ -74,8 +75,12 @@ export class HomePage {
 
   protected readonly profilesQuery = injectQuery(() => ({
     queryKey: ['connectionProfiles'] as const,
-    queryFn: (): Promise<CharacterConnectionProfile[]> => fetchConnectionProfiles(this.core),
+    // RAW rows in the shared entry, mapped on read (P4.116 — v4 caches the raw
+    // envelope and maps with `select`, `hooks/useConnectionProfiles.ts:43-49`).
+    queryFn: (): Promise<ConnectionProfileDto[]> => fetchConnectionProfileRows(this.core),
   }));
 
-  protected readonly profiles = computed(() => this.profilesQuery.data() ?? []);
+  protected readonly profiles = computed(() =>
+    mapCharacterConnectionProfiles(this.profilesQuery.data() ?? []),
+  );
 }

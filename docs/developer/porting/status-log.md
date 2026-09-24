@@ -148081,3 +148081,32 @@ deployment concern; (10) lifting the web censuses onto the HARNESS lexer
 - Run-state pins (3): `onDone` fires from the frame with `phase` already
   `done` and once only; fires from a reply-first run and not for a late
   frame; never fires for error, stop, or supersede.
+
+## P4.116 unit 3 — one raw shape per connection-profiles cache entry (2026-09-24)
+
+- **v4 read at `d1c06cd9d`:** `lib/query/keys.ts:108-109` (ONE key,
+  `['connection-profiles']`), `hooks/useConnectionProfiles.ts:43-49`
+  (`select: mapProfiles`, so the mapping is never stored).
+- **Survey re-verified:** the six mapped readers are exactly as §Survey 2
+  lists them. The three raw readers of `['connection-profiles']`
+  (select-llm-profile, create-npc, add-character) and the Salon read only
+  `id`/`name`/`provider`/`modelName`/`isDefault`, which the mapped shape
+  kept. So the hyphenated collision had NO field-level symptom today. Its pin
+  is the stored-entry shape.
+- **Landed:** `home-page.ts`, `brahma-console.service.ts`,
+  `characters-list.ts`, `new-character.ts` (its `profiles()` method becomes a
+  `computed`), and `character-detail.ts` cache raw `ConnectionProfileDto[]`
+  and map in a `computed`. The pure mappers are `mapBrahmaConnectionProfiles`
+  (exported) and `mapCharacterConnectionProfiles` beside
+  `fetchConnectionProfileRows` (`characters.api.ts`). `fetchConnectionProfiles`
+  is kept, uncached, for `ai-import-state.ts`.
+- **Red-first (pre-fix, 3/3 RED)** in the new
+  `screens/settings/chat/connection-profiles-shared-entry.spec.ts` (one
+  `QueryClient` with the app's 5 s staleTime): Brahma first → the danger
+  card's options `['', '']` vs `['', 'p-danger']`; the danger card first,
+  then Brahma, then an invalidate → `['', '']` (the refetch ran Brahma's
+  mapped `queryFn`, which is the root-observer hazard the order named); the
+  character list → the stored entry has 4 keys per row vs the raw row's 8.
+- **Mutations:** M2 (Brahma's `queryFn` maps again) → exactly the two Brahma
+  cases RED (2/3); M2b (the character list's `queryFn` maps again) → exactly
+  the character case RED (1/3). Both reverted by file backup.

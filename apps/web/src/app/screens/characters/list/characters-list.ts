@@ -13,7 +13,11 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 
 import { WORKSPACE_HANDLE, WORKSPACE_TAB_ID } from '../../../workspace/workspace-contract';
 import { CoreClient } from '../../../core/core-client';
-import type { CharacterConnectionProfile, CharacterListItem } from '../../../core/core-contract';
+import type {
+  CharacterConnectionProfile,
+  CharacterListItem,
+  ConnectionProfileDto,
+} from '../../../core/core-contract';
 import { QuickHideService } from '../../../quick-hide/quick-hide.service';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { Icon } from '../../../ui/icon';
@@ -24,7 +28,8 @@ import {
   downloadCharacterPng,
   fetchCharacterExport,
   fetchCharacterList,
-  fetchConnectionProfiles,
+  fetchConnectionProfileRows,
+  mapCharacterConnectionProfiles,
   triggerJsonDownload,
 } from '../characters.api';
 import { GroupsSection } from '../../groups/groups-section';
@@ -351,14 +356,18 @@ export class CharactersList {
 
   protected readonly charactersQuery = injectQuery(() => ({
     queryKey: characterKeys.list(this.listFilter()),
-    queryFn: (): Promise<CharacterListItem[]> =>
-      fetchCharacterList(this.core, this.listFilter()),
+    queryFn: (): Promise<CharacterListItem[]> => fetchCharacterList(this.core, this.listFilter()),
   }));
 
   private readonly profilesQuery = injectQuery(() => ({
     queryKey: ['connection-profiles'],
-    queryFn: (): Promise<CharacterConnectionProfile[]> => fetchConnectionProfiles(this.core),
+    // RAW rows in the shared entry, mapped on read (P4.116 — v4 caches the raw
+    // envelope and maps with `select`, `hooks/useConnectionProfiles.ts:43-49`).
+    queryFn: (): Promise<ConnectionProfileDto[]> => fetchConnectionProfileRows(this.core),
   }));
+  private readonly profiles = computed(() =>
+    mapCharacterConnectionProfiles(this.profilesQuery.data() ?? []),
+  );
 
   /**
    * v4 `AuroraView.tsx:124-140`: the quick-hide filter runs BEFORE the sort, so
@@ -376,7 +385,7 @@ export class CharactersList {
     if (!id) {
       return null;
     }
-    return (this.profilesQuery.data() ?? []).find((p) => p.id === id) ?? null;
+    return this.profiles().find((p) => p.id === id) ?? null;
   }
 
   protected errorMessage(): string {

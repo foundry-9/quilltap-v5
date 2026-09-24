@@ -310,11 +310,24 @@ export async function fetchCascadePreview(
   return data as unknown as CascadePreview;
 }
 
-export async function fetchConnectionProfiles(
+/**
+ * The RAW profile rows — what a query caches under the shared
+ * `['connection-profiles']` entry. v4 caches the raw envelope and maps per
+ * reader (`hooks/useConnectionProfiles.ts:43-49` at `d1c06cd9d`, `select:
+ * mapProfiles`), so the mapping below is applied on READ, never stored: a
+ * stored narrow shape is what the next reader of the entry would get (P4.116).
+ */
+export async function fetchConnectionProfileRows(
   core: CoreClient,
-): Promise<CharacterConnectionProfile[]> {
+): Promise<ConnectionProfileDto[]> {
   const data = await core.dispatchData({ type: 'connectionProfileList' });
-  const profiles = (data['profiles'] as ConnectionProfileDto[]) ?? [];
+  return (data['profiles'] as ConnectionProfileDto[]) ?? [];
+}
+
+/** The character screens' narrow shape — a pure map over the raw rows. */
+export function mapCharacterConnectionProfiles(
+  profiles: readonly ConnectionProfileDto[],
+): CharacterConnectionProfile[] {
   return profiles.map((p) => ({
     id: p.id,
     name: p.name,
@@ -322,6 +335,13 @@ export async function fetchConnectionProfiles(
     modelName: p.modelName,
     isDefault: p.isDefault,
   }));
+}
+
+/** An UNCACHED read in the narrow shape (the AI-import wizard's one-off). */
+export async function fetchConnectionProfiles(
+  core: CoreClient,
+): Promise<CharacterConnectionProfile[]> {
+  return mapCharacterConnectionProfiles(await fetchConnectionProfileRows(core));
 }
 
 export async function fetchDefaultPartner(

@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(spa): every connection-profiles cache entry holds the raw rows, mapped per reader (P4.116)
+
+_Versions: SPA 0.5.758._
+
+The home page and the Brahma console stored a mapped
+`{id, name, provider, modelName[, isDefault]}` shape under the shared
+`['connectionProfiles']` entry, and the character list, new, and detail
+screens did the same under `['connection-profiles']`. The Settings cards read
+raw rows from that same `['connectionProfiles']` entry. The shape in the entry
+was whichever observer fetched last. Because the Brahma console is
+`providedIn: 'root'`, its observer lives for the whole app, so any refetch it
+ran left the Settings cards without `isDangerousCompatible` or
+`supportsImageUpload`, and the uncensored-profile picker came up empty. v4 has
+one key, stores the raw envelope, and maps per reader with `select`.
+
+All six readers now cache raw `ConnectionProfileDto[]` and map in a
+`computed`. The mappers are pure functions: `mapBrahmaConnectionProfiles`,
+and `mapCharacterConnectionProfiles` beside a new
+`fetchConnectionProfileRows` in `characters.api.ts`. The uncached
+`fetchConnectionProfiles` is kept for the AI-import wizard. A new spec,
+`connection-profiles-shared-entry.spec.ts`, covers three cases: Brahma fetches
+first and the Settings card still lists its dangerous-compatible profile; a
+refetch through either observer keeps both readers intact; and a character
+screen leaves the raw rows in the entry. All three were red before the fix.
+Putting the mapped `queryFn` back in Brahma turns the first two red, and doing
+the same in the character list turns the third red.
+
 #### 2026-09-24 — fix(scenario-builder): the review pane follows the done frame, not the dispatch reply (P4.116)
 
 _Versions: SPA 0.5.757._

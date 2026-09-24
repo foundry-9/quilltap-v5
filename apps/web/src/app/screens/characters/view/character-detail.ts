@@ -23,11 +23,11 @@ import {
 } from '../../../workspace/workspace-contract';
 import { CoreClient } from '../../../core/core-client';
 import type {
-  CharacterConnectionProfile,
   CharacterDetail as CharacterDetailDto,
   CharacterGroupBadge,
   CharacterListItem,
   CharacterStats,
+  ConnectionProfileDto,
 } from '../../../core/core-contract';
 import { HiddenPlaceholder } from '../../../quick-hide/hidden-placeholder';
 import { QuickHideService } from '../../../quick-hide/quick-hide.service';
@@ -41,8 +41,9 @@ import {
   fetchCharacter,
   fetchCharacterList,
   fetchCharacterStats,
-  fetchConnectionProfiles,
+  fetchConnectionProfileRows,
   fetchDefaultPartner,
+  mapCharacterConnectionProfiles,
   rehydrateCharacter,
 } from '../characters.api';
 import { memoryKeys } from '../../../memory/memory.api';
@@ -443,7 +444,9 @@ export class CharacterDetail {
 
   private readonly profilesQuery = injectQuery(() => ({
     queryKey: ['connection-profiles'],
-    queryFn: (): Promise<CharacterConnectionProfile[]> => fetchConnectionProfiles(this.core),
+    // RAW rows in the shared entry, mapped on read (P4.116 — v4 caches the raw
+    // envelope and maps with `select`, `hooks/useConnectionProfiles.ts:43-49`).
+    queryFn: (): Promise<ConnectionProfileDto[]> => fetchConnectionProfileRows(this.core),
   }));
 
   private readonly userControlledQuery = injectQuery(() => ({
@@ -464,7 +467,9 @@ export class CharacterDetail {
   }));
 
   protected readonly character = computed(() => this.characterQuery.data() ?? null);
-  protected readonly connectionProfiles = computed(() => this.profilesQuery.data() ?? []);
+  protected readonly connectionProfiles = computed(() =>
+    mapCharacterConnectionProfiles(this.profilesQuery.data() ?? []),
+  );
   protected readonly userControlledCharacters = computed(
     () => this.userControlledQuery.data() ?? [],
   );

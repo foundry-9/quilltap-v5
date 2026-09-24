@@ -4,13 +4,13 @@ import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { WORKSPACE_HANDLE, WORKSPACE_TAB_ID } from '../../../workspace/workspace-contract';
 import { CoreClient, coreErrorMessage } from '../../../core/core-client';
-import type { CharacterConnectionProfile } from '../../../core/core-contract';
+import type { ConnectionProfileDto } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
 import { Icon } from '../../../ui/icon';
 import { PROMPT_FIELD_HINTS } from '../../../ui/prompt-field-hints';
 import { PromptFieldLabel } from '../../../ui/prompt-field-label';
 import { ToastService } from '../../../ui/toast.service';
-import { fetchConnectionProfiles } from '../characters.api';
+import { fetchConnectionProfileRows, mapCharacterConnectionProfiles } from '../characters.api';
 import type { GeneratedCharacterData } from '../generators/edit-generators.api';
 import { CharacterPromptImportModal } from '../generators/prompts-editor/import-modal';
 import {
@@ -349,12 +349,14 @@ export class NewCharacter {
 
   private readonly profilesQuery = injectQuery(() => ({
     queryKey: ['connection-profiles'],
-    queryFn: (): Promise<CharacterConnectionProfile[]> => fetchConnectionProfiles(this.core),
+    // RAW rows in the shared entry, mapped on read (P4.116 — v4 caches the raw
+    // envelope and maps with `select`, `hooks/useConnectionProfiles.ts:43-49`).
+    queryFn: (): Promise<ConnectionProfileDto[]> => fetchConnectionProfileRows(this.core),
   }));
 
-  protected profiles(): CharacterConnectionProfile[] {
-    return this.profilesQuery.data() ?? [];
-  }
+  protected readonly profiles = computed(() =>
+    mapCharacterConnectionProfiles(this.profilesQuery.data() ?? []),
+  );
 
   protected setField<K extends keyof NewCharacterFormData>(
     key: K,

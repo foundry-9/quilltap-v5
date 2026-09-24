@@ -18,6 +18,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../core/core-client';
+import type { ConnectionProfileDto } from '../core/core-contract';
 import { BrahmaConsoleApi } from './brahma-wire';
 
 /** A connection profile as the model picker needs it (v4 `BrahmaConnectionProfile`). */
@@ -26,6 +27,24 @@ export interface BrahmaConnectionProfile {
   name: string;
   provider: string;
   modelName: string;
+}
+
+/**
+ * The picker's shape — a pure map over the raw rows, applied on READ. The rows
+ * themselves are what the shared cache entry holds (P4.116): this service is
+ * `providedIn: 'root'`, so its observer outlives every screen, and any refetch
+ * it runs rewrites the ONE entry — a mapped `queryFn` here left the Settings
+ * cards reading rows with no `isDangerousCompatible` / `supportsImageUpload`.
+ */
+export function mapBrahmaConnectionProfiles(
+  profiles: readonly ConnectionProfileDto[],
+): BrahmaConnectionProfile[] {
+  return profiles.map((p) => ({
+    id: p.id,
+    name: p.name || '',
+    provider: p.provider || '',
+    modelName: p.modelName || '',
+  }));
 }
 
 /** localStorage key for the last-open console chat (v4 `STORAGE_KEY_LAST_CHAT`). */
@@ -47,26 +66,24 @@ export class BrahmaConsoleService {
 
   /**
    * The user's connection profiles, shared with the settings surface via the
-   * `['connectionProfiles']` query key (dedups). Mapped to the picker's shape.
+   * `['connectionProfiles']` query key (dedups). The entry holds the RAW rows;
+   * {@link profiles} maps them to the picker's shape.
    */
   private readonly profilesQuery = injectQuery(() => ({
     queryKey: ['connectionProfiles'],
-    queryFn: async (): Promise<BrahmaConnectionProfile[]> => {
+    queryFn: async (): Promise<ConnectionProfileDto[]> => {
       const resp = await this.core.dispatchExpect(
         { type: 'connectionProfileList' },
         'connectionProfiles',
       );
-      return resp.data.profiles.map((p) => ({
-        id: p.id,
-        name: p.name || '',
-        provider: p.provider || '',
-        modelName: p.modelName || '',
-      }));
+      return resp.data.profiles;
     },
   }));
 
   /** All of the user's connection profiles (for the model picker). */
-  readonly profiles = computed<BrahmaConnectionProfile[]>(() => this.profilesQuery.data() ?? []);
+  readonly profiles = computed<BrahmaConnectionProfile[]>(() =>
+    mapBrahmaConnectionProfiles(this.profilesQuery.data() ?? []),
+  );
 
   /** Whether the profile list is still loading. */
   readonly profilesLoading = computed(() => this.profilesQuery.isLoading());
