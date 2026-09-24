@@ -148364,6 +148364,156 @@ dialog and aborting the run; v4 identical at `ChatSidebar.tsx:417-429`).
   `94e946728` (docs-only, committed locally in the v4 checkout, NOT pushed).
 - Gate: `npm test` 448 files / 7,670; `npm run lint` clean. SPA 0.5.761.
 
+## P4.D220 — the action-dispatch consolidation (web edges + core gates + the `has-dangerous` server half) — LANE RECORD (2026-09-24)
+
+Branch `claude/p4-d220-action-dispatch-web-edges-3ac7c5`, cut from `main`
+`72bc1faf`. §R.2 probe PASSED at lane start and before every regen batch
+(`main`, `b0b6656b5`, clean, both logs empty). Pins: TARGET
+`/tmp/qt-v4-pin-p4d220-b0b6656b5`, BASELINE `/tmp/qt-v4-pin-p4d220-d1c06cd9d`
+(both verified by `rev-parse` + `ls -ld`). Pin marker: the target
+`query_param_semantics` NDJSON carries `availableActions` 112× and
+`Available actions: has-dangerous` 0×; the baseline 24× / 1×.
+
+### Landed (three commits)
+
+1. **`fix(web)` — the ONE primitive.** `query::dispatch_action` /
+   `dispatch_required_action` (v4 `dispatchAction`, `ad1c4c37f`
+   `actions.ts:153-183`): absent → default / `Action parameter required`;
+   own-key known → handler; bare OR unknown → `{"error":"Unknown action:
+   <x>","availableActions":[…]}` (bare renders `"Unknown action: "`). The
+   folding `query::action()` is DELETED (every caller re-audited by the
+   compiler); `query::action_param` is the raw read. The two WARNs log
+   `availableActions` under v4's field NAME (the P4.72 snake_case divergence
+   CLOSED); `path` stays the route PATTERN where v4 logs the concrete
+   pathname — a value-only divergence, recorded in `query.rs`. Every consumer
+   re-based with v4's FULL list in v4's thunk-map order (incl. `POST
+   /characters/[id]`'s CHANGED order — `rename` last); known-but-unserved
+   actions keep their loud pointers (`UNSERVED_KNOWN_ACTIONS`, unchanged);
+   `theme-preference` now a named refusal instead of `Unknown action: …
+   (none)`. The chat GET's fourteen keys (`68da64d9b`) gate BEFORE any chat
+   read. Core: `chat_delete::classify_delete_action` → `Result<DeleteAction,
+   RefusedDeleteAction>` (bare no longer deletes; the route WARN `[Chats v1]
+   Unknown DELETE action…` RETIRED, its absence pinned);
+   `chat_delete_dispatch` takes the classified action; `system_data::
+   job_control` and `characters::character_avatar_roll_action` keep
+   dispatch-channel-only refusals (`Unknown action: <x>` — a `CoreError`
+   cannot carry the list; the REST edges gate first). The unlock edge's
+   awaited catch: an `Internal` (thrown) change-passphrase logs `Error in
+   database key action` `{action, error}` at ERROR + 500 `{error: msg}` — v5's
+   pre-port shape was the same 500 body with NO line (measured). Terminal
+   POST: `Missing or invalid action parameter` is the absent default only
+   (pre-existing divergence closed; `Query<ActionQuery>` last-wins also fixed
+   to FIRST-wins). Text-replacements gate before the body read.
+2. **`refactor(core)` — `ChatsHasDangerous` retired** (§S.1): both variants,
+   the engine arm, `salon::chats_has_dangerous`, the `lib.rs` comment. The
+   dispatch census UNMOVED at 449 (a unit variant; measured by the gate). A
+   stray `{"type":"chatsHasDangerous"}` over dispatch now answers the
+   dispatcher's generic 400 `Invalid request: unknown variant
+   \`chatsHasDangerous\`, expected one of …` (no new pin, per §S.1).
+3. **`test(web)` — the census + the jobs pin.** `web_edge_action_sites_census`
+   (Tier 2 item 9): zero raw `"action"` reads outside `query.rs` (lexer strip +
+   brace-balanced test-module removal over a literal-blanked copy; ONE allowed
+   non-query site, the tasks-queue BODY field). `system_jobs_routes_
+   equivalence`'s `job_bogus_action` re-pinned on the envelope (found by the
+   neutrality sweep — not in the order's §F list).
+
+### Red-first (main's source + the new tests, against the TARGET oracles)
+
+12 web targets + 5 harness targets RED: `query_param_semantics` 14 of 110
+refusal rows matching (96 red) + the unserved pin; `action_dispatch_edges`
+4/4 (restore ran, text rule created, terminal sentence, no ERROR line);
+`chat_delete_route`, `chats_collection_route` (`{"hasDangerous":true}`),
+`help_web_routes`, `messages_route`, `messages_swipe_sse_route`,
+`mount_multipart_routes`, `profile_web_routes`, `system_body_guards` (3
+unlock rows), `wardrobe_instructions_routes`, `avatar_rolls_routes`
+(`route_post_empty_action`); harness `chat_delete` (3 new rows never driven +
+`action_empty` deleted), `help_chats` (6 rows), `help_docs` (4), `images`
+(`upload_action_unknown`: v5 201 uploaded), `transcript` (the empty-action
+row). `salon_reads` / `settings_routes` / `avatar_rolls_tier2` green pre-port
+(they pin v4 bytes only). Post-port: all green at the target.
+
+### Mutation proofs (file-backup revert)
+
+| # | mutation | reddened |
+|---|---|---|
+| M1 | `dispatch_action` folds `''` → absent | query.rs 3 unit tests, `query_param_semantics` 2/3, `action_dispatch_edges` 4/5 (chat DELETE survives — gated by core, see M6) |
+| M2 | WARN field back to `available_actions` | exactly `unknown_action_warns_with_v4s_context` |
+| M3 | chat-files refusal skips the chat lookup | exactly `a_bare_action_does_not_upload_a_chat_file` |
+| M4 | unlock `tracing::error!` removed | exactly `change_passphrase_throw_is_logged_and_answered_500` |
+| M5 | `chat_delete` reads `query::first(…, "action")` | exactly the census |
+| M6 | core `classify_delete_action`: `Some("")` → Delete | `delete_action_classification`, `chat_delete_log_lines`, `chat_delete_matches_oracle`, `chat_delete_edge` |
+
+### Neutrality (both pins, normalized by case)
+
+13 action-carrying families regenerated at BOTH pins: `brahma_console_routes`,
+`chat_admin_routes`, `chat_informs_routes`, `chat_rebuild_summary`,
+`cost_background_routes`, `embedding_profiles_routes`, `files_routes`,
+`mount_sync_action`, `profile_routes`, `system_jobs_routes`,
+`text_replacements_routes`, `wardrobe_instructions_routes`,
+`wardrobe_routes`. Byte-identical: 2; the other 11 differ only by minted
+ids/clocks (same lengths) EXCEPT `system_jobs_routes`' `job_bogus_action` —
+a real move, fixed in commit 3. All 13 green at the target.
+
+### Regen recipes AS RUN
+
+Per family, the sweep driver's `--show` regen stage with (a) `cd
+~/source/quilltap-server` → the pin, (b) every `/tmp/oracle-*` and `/tmp/qt-*`
+path rewritten under `/tmp/p4d220/<sha>/`, (c) every committed
+`QT_FIXTURE_*=$V5W/…db` copied to `/tmp/p4d220/<sha>/fx-<family>-*` first —
+one clean invocation per family (`/tmp/p4d220/regen.py <sha> <family>`).
+`query_param_semantics`: its header recipe with `TMPO=/tmp/p4d220/qps-cases-
+<sha>`, `cd` the pin, `QT_ORACLE_OUT=/tmp/p4d220/qps-<sha>.ndjson`, jest
+filter `'query-param-semantics\.test\.ts$'`. Committed recipe headers left
+canonical. Oracle cases edited (all P4.D220's per §R.10(g)):
+`query-param-semantics`, `salon-reads`, `chat-delete-routes` (+3 rows:
+`action_empty_missing_chat`, `action_bogus_missing_chat`,
+`action_inherited_name`), `help-chats-routes` / `help-docs-routes` /
+`images-routes` / `transcript-route` (renamed refusal rows),
+`system-body-guards`, `avatar-rolls-tier2` (comments).
+
+### Gate
+
+fmt clean; clippy clean both feature sets; release build clean;
+`cargo test --workspace --no-fail-fast` with the lane block (the 11 families
+above + `QT_FIXTURE_SETTINGS` + Tier R at the target pin): **632 binaries /
+3,720 passed / 0 failed / 3 ignored**, every lane family confirmed RUN by
+name; Tier R **266/0** at `b0b6656b5` (the CLI links core; its `?action=sync`
+POST rides the re-based mount edge); `dispatch_wrong_type_census` 449
+unmoved; `web_edge_body_parse_guard`, `blob_write_sites_census`,
+`compressed_column_write_sites_census`, `spelling_guard`,
+`help_tree_embed_guard`, `host_help_docs_boot` green (127 — P4.D222 moves it).
+
+### Deferred / recorded (loud)
+
+- Tier 3 item 12: the seven now-awaited catches in dispatch-only v4 routes
+  (connection-profiles/[id], plugins/[name], themes/[themeId], themes (×2),
+  scenarios/[scenarioPath], scenario-item-route-factory) — NO v5 REST edge;
+  recorded, not ported.
+- Tier 3 item 13: groups/projects DELETE's bare-`?action=` arm — v5's
+  `GroupDelete` / `ProjectDelete` verbs carry NO action field (each v4 action
+  is its own verb), so a bare action cannot exist over dispatch; nothing to
+  port.
+- Tier 3 item 14 + §R.9 mirror pre-list (the UNIFIER's): `docs/v4/developer/
+  DDL.md` 125,326 → 125,835 (`ad1c4c37f`, prose); `docs/v4/developer/
+  features/complete/concierge-list-marks.md` 24,474 → 24,767 (`944127d9a`).
+- Recorded divergences: the three absent-action pointers
+  (`character_item_get`, `characters_collection_post`, `chat_item_get`) pinned
+  both ways; the gate ORDER on `character_item_post` / `chat_item_post` (v5
+  gates without an entity lookup); the WARN `path` value (pattern vs
+  pathname).
+- The `query_param_semantics` venue gains a PLANTED chat (`bb000000-…bb`,
+  cloned on the per-run copy) — the chat-files POST resolves the chat before
+  its gate. No committed fixture changed.
+
+### Findings for the unifier
+
+- `system_jobs_routes_equivalence` moves under this lane (not in §F) — done.
+- `web_edge_action_sites_census` is new: a future web edge that reads
+  `"action"` raw fails it by name.
+
+Versions: core 0.0.1046, harness 0.0.967, web 0.0.194 (three commits: core
++2, harness +3, web +3).
+
 ## P4.D222 — bugs 167/168: help docs by section + the startup reconcile + the `help/` tree at `b0b6656b5` (lane record, 2026-09-24)
 
 Lane branch `claude/work-orders-p4-doc-reconcile-93b0b3` (cut from `main`

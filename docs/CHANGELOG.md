@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — test(web): an action-sites census and the jobs envelope pin (P4.D220)
+
+_Versions: harness 0.0.967, web 0.0.194._
+
+Adds `web_edge_action_sites_census`: no web route file other than
+`query.rs` may read the `action` query key directly, so every edge goes
+through the one dispatch helper. `system_jobs_routes_equivalence` pins
+v4's new `Unknown action` envelope for an unknown job action. Appends the
+P4.D220 lane record to the status log.
+
 #### 2026-09-24 — refactor(core): retire the `chatsHasDangerous` verb (v4 `944127d9a`, P4.D220 server half)
 
 _Versions: core 0.0.1046, harness 0.0.966, web 0.0.193._

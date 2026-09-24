@@ -208,8 +208,26 @@ fn system_jobs_routes_matches_oracle() {
         check("job_pause_processing_blocked", s, b, None);
         let (s, b) = outcome(&rt.block_on(job_control_resp(&db, JOB_PENDING, "resume")));
         check("job_resume_pending_blocked", s, b, None);
+        // P4.D220 (v4 `ad1c4c37f`): the route is `dispatchAction(req, { pause,
+        // resume })`, so an unknown action is the middleware's envelope — which
+        // `quilltap-web` answers BEFORE this verb (`query::
+        // dispatch_required_action`, pinned over the wire by
+        // `query_param_semantics_equivalence`'s `system_job_post` rows). The
+        // verb keeps a dispatch-channel refusal carrying the envelope's
+        // sentence (a `CoreError` has no field for the list); both halves are
+        // pinned here against v4's recorded envelope.
         let (s, b) = outcome(&rt.block_on(job_control_resp(&db, JOB_PENDING, "frobnicate")));
-        check("job_bogus_action", s, b, None);
+        assert_eq!(
+            (s, b["error"].clone()),
+            (400, json!("Unknown action: frobnicate")),
+            "the dispatch channel carries the envelope's sentence"
+        );
+        check(
+            "job_bogus_action",
+            400,
+            json!({ "error": "Unknown action: frobnicate", "availableActions": ["pause", "resume"] }),
+            None,
+        );
     }
 
     // --- concurrency set (mutates instance_settings) ---
