@@ -266,6 +266,9 @@ where
             job_handlers: Vec::new(),
             generators_detail: None,
             generators_wizard: None,
+            // P4.D217 OUT-OF-MANDATE — the new `SpineBundle.scenario_builder` slot
+            // (an exhaustive literal); the owner preserves.
+            scenario_builder: None,
         }
     }
 }

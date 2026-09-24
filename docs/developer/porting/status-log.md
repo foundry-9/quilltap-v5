@@ -146020,3 +146020,67 @@ QT_ORACLE_SBT3=/tmp/p4d217/oracle-scenario-builder-tier3.ndjson \
 QT_FIXTURE_SBT3_MAIN=/tmp/p4d217/sbt3-main.db QT_FIXTURE_SBT3_MOUNT=/tmp/p4d217/sbt3-mount.db \
   cargo test -p quilltap-harness --test scenario_builder_tier3_equivalence -- --nocapture
 ```
+
+### Unit 5 — the three verbs, the event family, the driver seam, the host driver
+
+`api/types.rs` (fenced APPEND-ONLY `// === P4.D217 ===` blocks at the end of each enum):
+`Request::ScenarioBuilderBuild { run_id, body: Value }` (an absent `body` is `{}` — the
+order's §S.1; a NON-object `body` is passed through to the Zod twin's root `invalid_type`,
+which is what v4's `safeParse(null)` answers — the order's parenthetical said "the empty-object
+issue list" for non-objects too; recorded, not followed), `ScenarioBuilderAbort { run_id }`,
+`ScenarioBuilderCapabilities`; `Response::ScenarioBuilder(Value)` (wire `type:
+"scenarioBuilder"`); `EventPayload::ScenarioBuilderProgress(ScenarioBuilderProgressPayload {
+frame })` + `Event::scenario_builder_progress` — envelope bytes and the verb decodes pinned in
+`api::types`' P4.D217 tests. NEW `api/scenario_builder.rs`: `ScenarioBuilderBuildRequest`, the
+`ScenarioBuilderDriver` trait, **the ONE run registry `ScenarioBuilderRuns` (engine-owned)** with
+a drop-guard registration, and `scenario_builder_prepare` — every v4 refusal in v4's order
+(Zod → profile 404 missing/foreign → tools-off 400 → api-key 400 → cast scoping (overlaid,
+user-scoped read; WARN on a failed read; DEBUG on a shrunken cast) → chat 404 missing/foreign →
+not-a-Salon 400 → DEBUG accepted). `api/engine.rs` (fenced): the `EngineAssembly.
+scenario_builder` slot (`None` default), the ready engine's driver + registry, the three arms —
+the build registers its runId FIRST (the v5-only 409 precedes every v4 check), then prepares,
+then the driver (a ready engine without one answers the NAMED refusal `scenario builder not
+available: no ScenarioBuilderDriver is assembled`, never a silent no-op). **ORDER CORRECTION:**
+v4's validation DEBUG logs `{ issues: parsed.error.issues.length }` — the COUNT
+(`route.ts:48`), not the issues array §S.1 names.
+
+Host: `ChatSpine` implements `ScenarioBuilderDriver` (the Brahma send bridge's thread +
+current-thread runtime + oneshot); `run_scenario_builder_build` builds the deps (the registry
+detector, the spine's tool runner, `model_supports_native_tools: true` as `run_brahma_send`,
+the provider's web-search capability, the engine's `web_search_configured`), publishes every
+frame as `Event::scenario_builder_progress(run_id, frame)`, and passes `jiff::Zoned::now()`.
+`SpineBundle.scenario_builder` + the `host.rs` pickup and exhaustive-literal line, each marked.
+
+**Out-of-mandate, marked `P4.D217 OUT-OF-MANDATE`:** `realtime/types.rs`' `EventPayload`
+exhaustiveness tripwire (its own comment prescribes the edit — the seventh family); the three
+test-side `SpineBundle` literals (`swipe_spine/mod.rs`, `chat_create_end_to_end.rs`,
+`chat_send_smoke.rs`) gain `scenario_builder: None`.
+
+NEW `crates/quilltap-web/tests/scenario_builder_dispatch_wire.rs` (+ `scenario_builder_spine/`,
+three canned streams): **four arms, all green** — every §S.1 refusal over `/api/dispatch` with
+its exact status and body (an explicit `null` `mode`, a missing `connectionProfileId`,
+`characterIds: "x"` and an absent `body` all reach the Zod twin; 404 missing AND foreign
+profile; 400 tools-off; 400 `No API key configured for this connection profile`; 404 missing
+AND foreign chat; 400 not-a-Salon; two multi-fault ORDER pins), the capabilities body
+`{webSearchConfigured:false, curlConfigured:false}`, an unknown abort → `{aborted:false}`; a
+canned run's ONE `done` frame off `/api/events` by `progressId` (bytes in v4's key order, the
+scene trimmed) with the dispatch reply carrying the same object; a throwing stream → the
+"detained" frame; the 409 on a live duplicate id, abort → `{aborted:true}`, the run's reply
+`{aborted:true}`, NO terminal frame, the id free again. The refusal matrix is PLANTED on the
+per-run copy of the chat-send fixture (rows cloned from its own). **Mutation:** the registry's
+duplicate check disabled → exactly the 409 arm red.
+
+`dispatch_wrong_type_census` **447 → 449** (measured red at 449 first): the two `run_id`s — a
+v5 scope tag, neither a URL segment nor a v4 body key; recorded honestly in the comment.
+`tri_state_edges_share_the_decoder` UNMOVED at this unit (no `Option<Option<…>>` key — the
+build's body is ONE raw `Value`).
+
+Two refinements after the first wire run: (1) **dropping a registration now TRIPS its token**
+(unit-pinned): the run executes on the driver's own thread, which dropping the build future does
+not stop, so a caller that goes away mid-run (an `/api/dispatch` client closing, the REST pump
+ending) aborts its run instead of orphaning it; (2) **the cast scoping keeps a character owned by
+another user** — v4's route comment says `repos.characters` is user-scoped, but the route
+family's real-repository run (unit 6) MEASURED v4 keeping a planted foreign character and
+dropping only the missing id; the owner filter first written here was removed to match (the
+mount pool's raw read still gives a foreign member no vault and no groups).
+

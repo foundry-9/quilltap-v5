@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(scenario-builder): the build, abort and capabilities verbs, their event frames, and the host driver (P4.D217 unit 5)
+
+_Versions: core 0.0.1023, host 0.0.150, web 0.0.181._
+
+Adds three dispatch verbs: `scenarioBuilderBuild` (a client-minted `runId`
+plus v4's raw request body), `scenarioBuilderAbort`, and
+`scenarioBuilderCapabilities`. The engine owns the in-flight run registry
+(a duplicate `runId` answers 409 first) and runs every v4 refusal in v4's
+order before handing the vetted request to the host's driver, which runs the
+service on its own thread and publishes each frame as a
+`scenarioBuilderProgress` event keyed by the `runId`. A new dispatch wire
+test covers every refusal, the frames, a failing stream, and abort. The
+dispatch census moves from 447 to 449 for the two `runId` fields.
+
 #### 2026-09-23 — feat(scenario-builder): the Scenario Builder service and its capability probe (P4.D217 unit 4)
 
 _Versions: core 0.0.1022, harness 0.0.938._

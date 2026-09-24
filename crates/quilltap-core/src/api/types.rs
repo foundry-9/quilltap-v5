@@ -3990,7 +3990,40 @@ pub enum Request {
         chat_id: String,
     },
     // === end P4.D212 ===
+
+    // === P4.D217 ===
+    /// v4 `POST /api/v1/scenario-builder?action=build` — run the Scenario
+    /// Builder (§S.1). `run_id` is a CLIENT-minted uuid: v5's scope tag for the
+    /// frames (`progressId`) and the abort verb; v4 has none (its SSE response
+    /// IS the run) — neither a URL segment nor a v4 body key. `body` is v4's
+    /// request object RAW, so absent / `null` / wrong-typed keys reach the Zod
+    /// twin exactly as v4's `safeParse(raw)` sees them (the tri-state rule at
+    /// object granularity; an absent `body` is `{}`, a non-object is passed
+    /// through to the twin's root `invalid_type`, as v4's `safeParse(null)`
+    /// answers). Replies `Response::ScenarioBuilder` AFTER the run.
+    #[serde(rename_all = "camelCase")]
+    ScenarioBuilderBuild {
+        run_id: String,
+        #[serde(default = "empty_json_object")]
+        body: serde_json::Value,
+    },
+    /// Abort an in-flight build (v5-only; v4's abort is the closed request).
+    /// `{ aborted: bool }` — never an error for an unknown id.
+    #[serde(rename_all = "camelCase")]
+    ScenarioBuilderAbort {
+        run_id: String,
+    },
+    /// v4 `GET /api/v1/scenario-builder?action=capabilities`.
+    ScenarioBuilderCapabilities,
+    // === end P4.D217 ===
 }
+
+// === P4.D217 ===
+/// `ScenarioBuilderBuild.body`'s default: an absent body is v4's `{}`.
+fn empty_json_object() -> serde_json::Value {
+    serde_json::Value::Object(serde_json::Map::new())
+}
+// === end P4.D217 ===
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===
 
@@ -4527,6 +4560,14 @@ pub enum Response {
     /// the client side.
     MountSync(serde_json::Value),
     // === end P4.D210 ===
+
+    // === P4.D217 ===
+    /// The Scenario Builder's three replies (wire `type: "scenarioBuilder"`):
+    /// a finished build's terminal frame object (`{done: true, …}` or
+    /// `{error, errorType, details}`) or `{aborted: true}`; the abort verb's
+    /// `{aborted: bool}`; the capabilities body.
+    ScenarioBuilder(serde_json::Value),
+    // === end P4.D217 ===
 }
 
 impl Response {
@@ -5166,6 +5207,13 @@ pub enum EventPayload {
     /// (the [`EventPayload::GeneratorProgress`] precedent, same discipline).
     SwipeProgress(SwipeProgressPayload),
     // === end P4.D207 ===
+    // === P4.D217 ===
+    /// One frame of a Scenario Builder run, scope-tagged by `progress_id` =
+    /// the client-minted `runId` (§S.1). `frame` is v4's SSE payload object
+    /// VERBATIM (the `SwipeProgress` discipline) — the tool-loop frames,
+    /// `{reasoning}`, and one terminal `{done: true, …}` / `{error, …}`.
+    ScenarioBuilderProgress(ScenarioBuilderProgressPayload),
+    // === end P4.D217 ===
 }
 
 // === P4.9K0 ===
@@ -5233,6 +5281,21 @@ pub struct SwipeProgressPayload {
     pub frame: serde_json::Value,
 }
 // === end P4.D207 ===
+
+// === P4.D217 ===
+/// The `scenarioBuilderProgress` payload — flattens into the [`Event`]
+/// envelope as `{"progressId":…,"type":"scenarioBuilderProgress","frame":{…}}`.
+/// `frame` passes through UNTOUCHED (`preserve_order` keeps v4's key order).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(
+    tag = "type",
+    rename = "scenarioBuilderProgress",
+    rename_all = "camelCase"
+)]
+pub struct ScenarioBuilderProgressPayload {
+    pub frame: serde_json::Value,
+}
+// === end P4.D217 ===
 
 /// v4 `encodeErrorEvent(encoder, error, errorType, details)`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -5320,6 +5383,23 @@ impl Event {
         }
     }
     // === end P4.D207 ===
+
+    // === P4.D217 ===
+    /// One frame of a Scenario Builder run, scope-tagged by its `runId`.
+    pub fn scenario_builder_progress(
+        progress_id: impl Into<String>,
+        frame: serde_json::Value,
+    ) -> Event {
+        Event {
+            chat_id: None,
+            room_id: None,
+            progress_id: Some(progress_id.into()),
+            payload: EventPayload::ScenarioBuilderProgress(ScenarioBuilderProgressPayload {
+                frame,
+            }),
+        }
+    }
+    // === end P4.D217 ===
 }
 
 #[cfg(test)]
@@ -5622,4 +5702,53 @@ mod db_error_surface_tests {
             Some(("project", "p1"))
         );
     }
+
+    // === P4.D217 ===
+    /// The `scenarioBuilderProgress` envelope's bytes: the scope tag first,
+    /// then the flattened `type`, then v4's frame UNTOUCHED (key order kept).
+    #[test]
+    fn scenario_builder_progress_event_bytes() {
+        let frame: serde_json::Value = serde_json::from_str(
+            r#"{"done":true,"scenario":"S","provider":"P","modelName":"M","usage":{"promptTokens":1,"completionTokens":2,"totalTokens":3},"toolsExecuted":0,"webAvailable":false}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_string(&super::Event::scenario_builder_progress("run-1", frame))
+                .unwrap(),
+            r#"{"progressId":"run-1","type":"scenarioBuilderProgress","frame":{"done":true,"scenario":"S","provider":"P","modelName":"M","usage":{"promptTokens":1,"completionTokens":2,"totalTokens":3},"toolsExecuted":0,"webAvailable":false}}"#
+        );
+    }
+
+    /// The three verbs decode from their wire shapes; `body` is RAW (an
+    /// explicit `null` survives as `null`), and an absent `body` is `{}`.
+    #[test]
+    fn scenario_builder_verbs_decode() {
+        let decode = |s: &str| serde_json::from_str::<super::Request>(s).unwrap();
+        match decode(r#"{"type":"scenarioBuilderBuild","runId":"r","body":{"mode":null}}"#) {
+            super::Request::ScenarioBuilderBuild { run_id, body } => {
+                assert_eq!(run_id, "r");
+                assert_eq!(body, serde_json::json!({ "mode": null }));
+            }
+            other => panic!("{other:?}"),
+        }
+        match decode(r#"{"type":"scenarioBuilderBuild","runId":"r"}"#) {
+            super::Request::ScenarioBuilderBuild { body, .. } => {
+                assert_eq!(body, serde_json::json!({}))
+            }
+            other => panic!("{other:?}"),
+        }
+        match decode(r#"{"type":"scenarioBuilderBuild","runId":"r","body":null}"#) {
+            super::Request::ScenarioBuilderBuild { body, .. } => assert!(body.is_null()),
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(
+            decode(r#"{"type":"scenarioBuilderAbort","runId":"r"}"#),
+            super::Request::ScenarioBuilderAbort { run_id } if run_id == "r"
+        ));
+        assert!(matches!(
+            decode(r#"{"type":"scenarioBuilderCapabilities"}"#),
+            super::Request::ScenarioBuilderCapabilities
+        ));
+    }
+    // === end P4.D217 ===
 }

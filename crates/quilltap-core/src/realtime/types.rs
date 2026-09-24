@@ -229,7 +229,7 @@ mod tests {
             .unwrap(),
             r#"{"progressId":"p1","kind":"done","ts":7}"#
         );
-        // And the payload enum still has exactly the six families. (P4.9K0
+        // And the payload enum still has exactly the seven families. (P4.9K0
         // added the fifth — `generatorProgress`, whose own wire bytes are
         // pinned in `services::generator_progress`; P4.D207 the sixth —
         // `swipeProgress`, pinned in `services::regenerate_swipe`. This
@@ -246,7 +246,12 @@ mod tests {
                 | EventPayload::CreationProgress(_)
                 | EventPayload::Realtime(_)
                 | EventPayload::GeneratorProgress(_)
-                | EventPayload::SwipeProgress(_) => {}
+                | EventPayload::SwipeProgress(_)
+                // P4.D217 OUT-OF-MANDATE — the seventh family,
+                // `scenarioBuilderProgress` (its bytes pinned in
+                // `api::types`' P4.D217 test); this tripwire's own comment
+                // prescribes the edit. Recorded for the unifier.
+                | EventPayload::ScenarioBuilderProgress(_) => {}
             }
         }
     }

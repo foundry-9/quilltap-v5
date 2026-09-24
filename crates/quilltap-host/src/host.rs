@@ -649,6 +649,11 @@ impl EngineAssembler for HostAssembler {
             .as_ref()
             .and_then(|bundle| bundle.generators_wizard.clone());
         // === end P4.9K2 ===
+        // === P4.D217: the Scenario Builder driver, the same pickup shape. ===
+        let scenario_builder = spine_bundle
+            .as_ref()
+            .and_then(|bundle| bundle.scenario_builder.clone());
+        // === end P4.D217 ===
         let (
             chat_send,
             chat_create,
@@ -1023,6 +1028,10 @@ impl EngineAssembler for HostAssembler {
             // refusal after v4's parse arms. ===
             generators_wizard,
             // === end P4.9K2 ===
+            // === P4.D217: the Scenario Builder run driver (LIVE from the spine;
+            // spine-less assemblies keep `None` → the named refusal). ===
+            scenario_builder,
+            // === end P4.D217 ===
         })
     }
 }

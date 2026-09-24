@@ -2600,7 +2600,18 @@ fn is_route_identifier(field: &str) -> bool {
 // suffix rule drops it all the same — recorded honestly here as one more real
 // v4 input the heuristic excludes, beside the body keys the constant's doc
 // lists. Measured by running the test (red at 447 against 446 first).
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 447;
+//
+// **P4.D217 (+2): 447 → 449** — `Request::ScenarioBuilderBuild.run_id` and
+// `Request::ScenarioBuilderAbort.run_id`. Neither is a v4 input at all: the
+// runId is v5's CLIENT-minted scope tag for the build's Event frames and the
+// abort verb (v4's SSE response IS the run and has no id) — neither a URL
+// segment nor a v4 body key. The `*_id` rule drops them all the same; recorded
+// honestly. The build's v4 BODY rides as ONE raw `serde_json::Value` (`body`),
+// which `typed_request_fields` never sees — so no body key entered the typed
+// set, and `request_envelope`'s tri-state guard is unmoved (no
+// `Option<Option<…>>` key). Measured by running the test (red at 449 against
+// 447 first). Stacked on P4.D216: the unifier recounts as base + both lanes.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 449;
 
 #[test]
 fn census_covers_every_typed_request_field() {

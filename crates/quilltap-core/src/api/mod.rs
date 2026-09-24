@@ -116,6 +116,9 @@ pub mod generators_detail;
 // === P4.9K2: the creation-pair generator verbs (§B.3) ===
 pub mod generators_wizard;
 // === end P4.9K2 ===
+// === P4.D217: the Scenario Builder verbs + driver seam + run registry ===
+pub mod scenario_builder;
+// === end P4.D217 ===
 pub mod types;
 // === P4.101: the ONE Zod-4 issue home (the type, its constructors, the
 // parsedType word, the uuid gate, and both renderers) ===

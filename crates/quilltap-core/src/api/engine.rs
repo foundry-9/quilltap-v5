@@ -325,6 +325,14 @@ pub struct EngineAssembly {
     /// `Unavailable` refusal AFTER v4's parse arms. ⚠ 💸 LIVE once wired.
     pub generators_wizard: Option<Arc<dyn super::generators_wizard::GeneratorsWizardDriver>>,
     // === end P4.9K2 ===
+    // === P4.D217 ===
+    /// The Scenario Builder run driver (v4 `runScenarioBuilder` over the
+    /// host's streaming / tool bundle). `None` (read-only embedders, canned
+    /// test factories) → `scenarioBuilderBuild` answers the NAMED
+    /// not-assembled refusal AFTER the 409 and every v4 refusal (all DB-only,
+    /// engine-side). ⚠ 💸 LIVE once wired: real model spend per build.
+    pub scenario_builder: Option<Arc<dyn super::scenario_builder::ScenarioBuilderDriver>>,
+    // === end P4.D217 ===
 }
 
 impl EngineAssembly {
@@ -393,6 +401,9 @@ impl EngineAssembly {
             // === P4.9K2 ===
             generators_wizard: None,
             // === end P4.9K2 ===
+            // === P4.D217 ===
+            scenario_builder: None,
+            // === end P4.D217 ===
         }
     }
 }
@@ -626,6 +637,14 @@ struct ReadyEngine {
     /// embedders — the three model-calling verbs answer the named refusal).
     generators_wizard: Option<Arc<dyn super::generators_wizard::GeneratorsWizardDriver>>,
     // === end P4.9K2 ===
+    // === P4.D217 ===
+    /// The Scenario Builder run driver (`None` → the named refusal).
+    scenario_builder: Option<Arc<dyn super::scenario_builder::ScenarioBuilderDriver>>,
+    /// The ONE in-flight run registry (`runId` → abort token) — engine-owned
+    /// so the 409 precedes every v4 check and `scenarioBuilderAbort` needs no
+    /// driver.
+    scenario_builder_runs: Arc<super::scenario_builder::ScenarioBuilderRuns>,
+    // === end P4.D217 ===
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -5759,6 +5778,25 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.D212 ===
+            // === P4.D217 ===
+            Request::ScenarioBuilderBuild { run_id, body } => {
+                self.scenario_builder_build(run_id, body).await
+            }
+            Request::ScenarioBuilderAbort { run_id } => match self.scenario_builder_runs() {
+                Ok(runs) => Response::ScenarioBuilder(
+                    serde_json::json!({ "aborted": runs.abort(&run_id) }),
+                ),
+                Err(r) => r,
+            },
+            Request::ScenarioBuilderCapabilities => match self.ready_db() {
+                Ok(_) => Response::ScenarioBuilder(
+                    crate::services::scenario_builder::capabilities::resolve_scenario_builder_capabilities(
+                        self.web_search_configured(),
+                    ),
+                ),
+                Err(r) => r,
+            },
+            // === end P4.D217 ===
         }
     }
 
@@ -6393,6 +6431,71 @@ impl CoreEngine {
         }
     }
 
+    // === P4.D217 ===
+    /// The engine-owned run registry, under the readiness gate.
+    fn scenario_builder_runs(
+        &self,
+    ) -> Result<Arc<super::scenario_builder::ScenarioBuilderRuns>, Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok(Arc::clone(&r.scenario_builder_runs)),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The `ScenarioBuilderBuild` arm (§S.1): readiness-gated (D2); the runId
+    /// registered FIRST (a live duplicate answers the v5-only 409 before any v4
+    /// check); then v4's refusals in v4's order (all DB-only —
+    /// [`super::scenario_builder::scenario_builder_prepare`]); then the driver
+    /// (a ready engine without one answers a NAMED refusal, never a silent
+    /// no-op). The registration drops — unregistering — however this ends.
+    async fn scenario_builder_build(&self, run_id: String, body: serde_json::Value) -> Response {
+        let db = match self.ready_db() {
+            Ok(db) => db,
+            Err(r) => return r,
+        };
+        let (runs, driver) = {
+            let state = self.inner.state.lock().unwrap();
+            match &*state {
+                EngineState::Ready(r) => (
+                    Arc::clone(&r.scenario_builder_runs),
+                    r.scenario_builder.as_ref().map(Arc::clone),
+                ),
+                EngineState::Locked { pepper_state, .. } => {
+                    return Response::locked(*pepper_state);
+                }
+            }
+        };
+        let Some(registration) = runs.register(&run_id) else {
+            return Response::error(ErrorKind::Conflict, super::scenario_builder::DUPLICATE_RUN);
+        };
+        let (profile, input) =
+            match super::scenario_builder::scenario_builder_prepare(&db, SINGLE_USER_ID, &body) {
+                Ok(p) => p,
+                Err(r) => return r,
+            };
+        let Some(driver) = driver else {
+            return Response::error(
+                ErrorKind::Internal,
+                "scenario builder not available: no ScenarioBuilderDriver is assembled",
+            );
+        };
+        let req = super::scenario_builder::ScenarioBuilderBuildRequest {
+            user_id: SINGLE_USER_ID.to_string(),
+            run_id,
+            connection_profile: profile,
+            input,
+            web_search_configured: self.web_search_configured(),
+            abort: Arc::clone(&registration.token),
+        };
+        let outcome = driver.build(req).await;
+        drop(registration);
+        match outcome {
+            Ok(o) => Response::ScenarioBuilder(super::scenario_builder::outcome_body(o)),
+            Err(e) => Response::Error(e),
+        }
+    }
+    // === end P4.D217 ===
+
     /// The `HelpChatSend` arm (P4.9I2A): readiness-gated (D2), then delegated to
     /// the assembly's help-chat orchestrator driver (mirrors
     /// [`Self::brahma_console_send`]). A ready engine without a driver (a
@@ -6965,6 +7068,10 @@ fn open_ready(
         // === P4.9K2 ===
         generators_wizard: assembly.generators_wizard,
         // === end P4.9K2 ===
+        // === P4.D217 ===
+        scenario_builder: assembly.scenario_builder,
+        scenario_builder_runs: Arc::new(super::scenario_builder::ScenarioBuilderRuns::default()),
+        // === end P4.D217 ===
     })
 }
 

@@ -1745,6 +1745,71 @@ where
         }
     }
 
+    // === P4.D217: the Scenario Builder run (the driver's body) ===
+    /// One Scenario Builder run (v4 `runScenarioBuilder` inside the route's
+    /// `ReadableStream`): the streaming provider + the built-in tool runner +
+    /// the registry tool-call detector around the ported
+    /// [`run_scenario_builder`](quilltap_core::services::scenario_builder::run_scenario_builder).
+    /// Every frame is published on the Event broadcast under `progress_id =
+    /// run_id` (the REST edge re-frames them into v4's SSE; the SPA reads them
+    /// off `/api/events`). The engine arm has already run every v4 refusal;
+    /// this never fails for a model-side reason — the outcome carries it.
+    /// ⚠ 💸 LIVE: one streamed model call per agent turn (≤ 25), plus tools.
+    async fn run_scenario_builder_build(
+        self,
+        req: quilltap_core::api::scenario_builder::ScenarioBuilderBuildRequest,
+    ) -> Result<quilltap_core::services::scenario_builder::ScenarioRunOutcome, CoreError> {
+        use quilltap_core::services::scenario_builder::{
+            run_scenario_builder, RunScenarioBuilderOptions, ScenarioBuilderDeps,
+        };
+
+        let detector = RegistryToolCallDetector::built_in();
+        let runner = self.tool_runner();
+        let provider = req
+            .connection_profile
+            .get("provider")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let deps = ScenarioBuilderDeps {
+            db: &self.db,
+            streaming: &*self.streaming,
+            tool_runner: &runner,
+            tool_detector: &detector,
+            // v4's `checkModelSupportsTools` default for models absent from the
+            // fallback table — the choice `run_brahma_send` makes.
+            model_supports_native_tools: true,
+            provider_supports_web_search: quilltap_core::provider_manifest::Registry::built_in()
+                .supports_capability(
+                    &provider,
+                    quilltap_core::provider_manifest::Capability::WebSearch,
+                ),
+            web_search_configured: req.web_search_configured,
+        };
+        let events = self.events.clone();
+        let run_id = req.run_id.clone();
+        let publish = move |frame: serde_json::Value| {
+            let _ = events.send(Event::scenario_builder_progress(&run_id, frame));
+        };
+        // The server's local zone — v4's `new Date()` rendered by
+        // `formatIsoWithOffset` in the process zone.
+        let now = jiff::Zoned::now();
+        Ok(run_scenario_builder(
+            &deps,
+            RunScenarioBuilderOptions {
+                user_id: &req.user_id,
+                connection_profile: &req.connection_profile,
+                input: &req.input,
+                now,
+                synthetic_chat_id: None,
+            },
+            &publish,
+            Some(&*req.abort),
+        )
+        .await)
+    }
+    // === end P4.D217 ===
+
     /// One help-chat send turn (P4.9I2A — the help orchestrator, `run_brahma_send`'s
     /// sibling): the streaming provider + the built-in tool runner/detector + the
     /// pricing cost tracker + the production summary-check seam (the spine's
@@ -2446,6 +2511,65 @@ where
         })
     }
 }
+
+// === P4.D217: the Scenario Builder driver (the Brahma send bridge's shape) ===
+impl<EMB, CMP, STR, PF> quilltap_core::api::scenario_builder::ScenarioBuilderDriver
+    for ChatSpine<EMB, CMP, STR, PF>
+where
+    EMB: EmbeddingProvider + Send + Sync + 'static,
+    CMP: CompletionProvider + Send + Sync + 'static,
+    STR: StreamingCompletionProvider + Send + Sync + 'static,
+    PF: PricingFetch + Send + Sync + 'static,
+{
+    fn build(
+        &self,
+        req: quilltap_core::api::scenario_builder::ScenarioBuilderBuildRequest,
+    ) -> quilltap_core::api::scenario_builder::ScenarioBuilderFuture<'_> {
+        let state = self.clone_state();
+        Box::pin(async move {
+            // The Send bridge (module header): the run executes on its own
+            // thread + current-thread runtime; this future awaits a oneshot.
+            // Dropping THIS future does not stop that thread — a caller that
+            // goes away trips the run's abort token instead (the REST edge's
+            // disconnect guard; the abort verb).
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            std::thread::spawn(move || {
+                let result = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt.block_on(state.run_scenario_builder_build(req)),
+                    Err(e) => Err(CoreError {
+                        kind: ErrorKind::Internal,
+                        message: format!("spine runtime: {e}"),
+                        pepper_state: None,
+                        code: None,
+                        associations: None,
+                        character_id: None,
+                        entity: None,
+                        details: None,
+                        already_saved: None,
+                    }),
+                };
+                let _ = tx.send(result);
+            });
+            rx.await.unwrap_or_else(|_| {
+                Err(CoreError {
+                    kind: ErrorKind::Internal,
+                    message: "scenario builder thread panicked".to_string(),
+                    pepper_state: None,
+                    code: None,
+                    associations: None,
+                    character_id: None,
+                    entity: None,
+                    details: None,
+                    already_saved: None,
+                })
+            })
+        })
+    }
+}
+// === end P4.D217 ===
 
 impl<EMB, CMP, STR, PF> quilltap_core::api::chat_send::SwipeGenerateDriver
     for ChatSpine<EMB, CMP, STR, PF>
@@ -3406,6 +3530,13 @@ pub struct SpineBundle {
     pub generators_wizard:
         Option<Arc<dyn quilltap_core::api::generators_wizard::GeneratorsWizardDriver>>,
     // === end P4.9K2 ===
+    // === P4.D217 ===
+    /// The Scenario Builder run driver — the same spine backs it (streaming +
+    /// tool runner). `None` for canned test factories — the build verb answers
+    /// its NAMED refusal after every v4 refusal. ⚠ 💸 LIVE spend.
+    pub scenario_builder:
+        Option<Arc<dyn quilltap_core::api::scenario_builder::ScenarioBuilderDriver>>,
+    // === end P4.D217 ===
 }
 
 /// Builds the chat-send + chat-create drivers + the model-dependent job
@@ -3776,6 +3907,10 @@ impl SpineFactory for ProductionSpineFactory {
                 },
             )),
             // === end P4.9K2 ===
+            // === P4.D217: the Scenario Builder — the same spine backs it,
+            // on real spend. ===
+            scenario_builder: Some(Arc::clone(&spine) as _),
+            // === end P4.D217 ===
         }
     }
 }

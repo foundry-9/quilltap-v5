@@ -207,6 +207,9 @@ impl SpineFactory for SmokeSpineFactory {
             generators_detail: None,
             // P4.9K2: nor the creation-pair one.
             generators_wizard: None,
+            // P4.D217 OUT-OF-MANDATE — the new `SpineBundle.scenario_builder` slot
+            // (an exhaustive literal); the owner preserves.
+            scenario_builder: None,
         }
     }
 }
