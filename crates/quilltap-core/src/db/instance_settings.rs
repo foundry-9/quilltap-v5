@@ -81,6 +81,43 @@ fn read_setting(main: &Connection, key: &str) -> Option<String> {
     }
 }
 
+/// v4 `readJsonSetting(key, schema, defaults)` (`index.ts:130-145`) — the ONE
+/// home of the JSON-setting read for its five getters (P4.113): an unwritten
+/// row is `defaults` SILENTLY; a stored value that fails `JSON.parse` or the
+/// schema (`parse` answering `None` — each getter's Zod twin) is `defaults`
+/// with v4's WARN `` `[InstanceSettings] ${key} failed to parse — using
+/// defaults` `` `{ error }`. v4's `error` carries V8's `JSON.parse` wording or a
+/// `ZodError`'s issue JSON; v5's carries serde's wording or a schema sentence —
+/// the FIELD is v4's, the text is not transcribed (compared by presence in
+/// `instance_settings_json_warns_equivalence`). Before this, three getters fell
+/// back silently and two warned without the `error` field.
+fn read_json_setting<T>(
+    main: &Connection,
+    key: &str,
+    parse: impl FnOnce(&serde_json::Value) -> Option<T>,
+    defaults: impl FnOnce() -> T,
+) -> T {
+    let Some(raw) = read_setting(main, key) else {
+        return defaults();
+    };
+    let parsed = serde_json::from_str::<serde_json::Value>(&raw)
+        .map_err(|e| e.to_string())
+        .and_then(|v| {
+            parse(&v).ok_or_else(|| format!("the stored {key} value does not match its schema"))
+        });
+    match parsed {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "[InstanceSettings] {} failed to parse — using defaults",
+                key
+            );
+            defaults()
+        }
+    }
+}
+
 /// v4 `writeSetting(key, value)` — upsert one `instance_settings` value.
 fn write_setting(main: &Connection, key: &str, value: &str) -> Result<(), DbError> {
     main.execute(
@@ -148,40 +185,46 @@ impl MemoryRecallSettings {
 /// v4 `getMemoryRecallSettings()` — the per-instance Commonplace-Book recall
 /// settings. Returns the documented default (`down-weight`, no expand, no
 /// per-turn conversations) when the setting is unwritten OR fails to parse (v4's
-/// Zod `safeParse` → `catch` → default). The Zod schema has `scopePolicy` enum
+/// `readJsonSetting`: `schema.parse` → `catch` → WARN + default, P4.113 — a
+/// non-object value fails too, where v5 had read its absent keys as defaults). The Zod schema has `scopePolicy` enum
 /// `['down-weight','exclude']` (`.default('down-weight')`), `expandRelated`
 /// boolean (`.default(false)`) and `perTurnConversationSummaries` boolean
 /// (`.default(false)`); an out-of-enum / non-bool value fails the parse (a
 /// `.default`-carrying key means a bad *value* still fails, not defaults —
 /// faithful to `.parse` throwing on a present-but-wrong value).
 pub fn get_memory_recall_settings(main: &Connection) -> Result<MemoryRecallSettings, DbError> {
-    let Some(raw) = read_setting(main, KEY_MEMORY_RECALL) else {
-        return Ok(MemoryRecallSettings::default());
-    };
-    let parsed: Result<serde_json::Value, _> = serde_json::from_str(&raw);
-    let Ok(obj) = parsed else {
-        return Ok(MemoryRecallSettings::default());
-    };
-    // scopePolicy: enum, `.default('down-weight')` (absent → default; present but
-    // out-of-enum → parse fails → whole-object default).
+    Ok(read_json_setting(
+        main,
+        KEY_MEMORY_RECALL,
+        parse_memory_recall_settings,
+        MemoryRecallSettings::default,
+    ))
+}
+
+/// `MemoryRecallSettingsSchema.parse` — `None` is the throw (a non-object —
+/// `null`, an array, a scalar — or a present field of the wrong shape).
+fn parse_memory_recall_settings(value: &serde_json::Value) -> Option<MemoryRecallSettings> {
+    let obj = value.as_object()?; // `z.object` throws on a non-object
+                                  // scopePolicy: enum, `.default('down-weight')` (absent → default; present but
+                                  // out-of-enum → parse fails → whole-object default).
     let scope_policy = match obj.get("scopePolicy") {
         None => MemoryRecallSettings::default().scope_policy,
         Some(serde_json::Value::String(s)) if s == "down-weight" || s == "exclude" => s.clone(),
-        Some(_) => return Ok(MemoryRecallSettings::default()),
+        Some(_) => return None,
     };
     // expandRelated: boolean, `.default(false)`.
     let expand_related = match obj.get("expandRelated") {
         None => false,
         Some(serde_json::Value::Bool(b)) => *b,
-        Some(_) => return Ok(MemoryRecallSettings::default()),
+        Some(_) => return None,
     };
     // perTurnConversationSummaries: boolean, `.default(false)` — same arm shape.
     let per_turn_conversation_summaries = match obj.get("perTurnConversationSummaries") {
         None => false,
         Some(serde_json::Value::Bool(b)) => *b,
-        Some(_) => return Ok(MemoryRecallSettings::default()),
+        Some(_) => return None,
     };
-    Ok(MemoryRecallSettings {
+    Some(MemoryRecallSettings {
         scope_policy,
         expand_related,
         per_turn_conversation_summaries,
@@ -219,22 +262,26 @@ pub fn validate_stale_chat_days(value: &serde_json::Value) -> Option<i64> {
 /// Returns the documented default (30) when the setting is unset. When the
 /// stored blob is present but not a valid `DataRetentionSettingsSchema` object
 /// (unparseable, non-object, or a `staleChatDays` outside `[1, 3650]` / not an
-/// integer) v4 logs a warning and falls back to the default — reproduced here.
+/// integer) v4 logs a warning and falls back to the default — reproduced here
+/// since P4.113 (this doc claimed it before the code did).
 /// A stored object that OMITS `staleChatDays` parses via Zod `.default(30)` → 30.
 pub fn get_data_retention_settings(main: &Connection) -> Result<i64, DbError> {
-    let Some(raw) = read_setting(main, KEY_DATA_RETENTION) else {
-        return Ok(DEFAULT_STALE_CHAT_DAYS);
-    };
-    let parsed = match serde_json::from_str::<serde_json::Value>(&raw) {
-        Ok(serde_json::Value::Object(map)) => match map.get("staleChatDays") {
-            // Zod `.default(30)` — a present object with the key absent.
-            None => DEFAULT_STALE_CHAT_DAYS,
-            Some(v) => validate_stale_chat_days(v).unwrap_or(DEFAULT_STALE_CHAT_DAYS),
-        },
-        // Non-object JSON (`z.object` throws) or unparseable → warn + default.
-        _ => DEFAULT_STALE_CHAT_DAYS,
-    };
-    Ok(parsed)
+    Ok(read_json_setting(
+        main,
+        KEY_DATA_RETENTION,
+        parse_data_retention_settings,
+        || DEFAULT_STALE_CHAT_DAYS,
+    ))
+}
+
+/// `DataRetentionSettingsSchema.parse` — `None` is the throw.
+fn parse_data_retention_settings(value: &serde_json::Value) -> Option<i64> {
+    let obj = value.as_object()?; // `z.object` throws on a non-object
+    match obj.get("staleChatDays") {
+        // Zod `.default(30)` — a present object with the key absent.
+        None => Some(DEFAULT_STALE_CHAT_DAYS),
+        Some(v) => validate_stale_chat_days(v),
+    }
 }
 
 /// v4 `setDataRetentionSettings(value)` — validate then persist the
@@ -343,19 +390,12 @@ pub fn normalize_taboo_phrases(phrases: &[String]) -> Vec<String> {
 /// warn and fall back to the default. Read once per turn on the conversational
 /// path ([`crate::services::build_context::build_context`]).
 pub fn get_taboo_settings(main: &Connection) -> Result<Vec<String>, DbError> {
-    let Some(raw) = read_setting(main, KEY_TABOO) else {
-        return Ok(Vec::new());
-    };
-    let parsed = serde_json::from_str::<serde_json::Value>(&raw)
-        .ok()
-        .and_then(|v| parse_taboo_settings(&v));
-    match parsed {
-        Some(phrases) => Ok(phrases),
-        None => {
-            tracing::warn!("[InstanceSettings] taboo failed to parse — using defaults");
-            Ok(Vec::new())
-        }
-    }
+    Ok(read_json_setting(
+        main,
+        KEY_TABOO,
+        parse_taboo_settings,
+        Vec::new,
+    ))
 }
 
 /// v4 `setTabooSettings(value)` — persist the Taboo list, normalized (see
@@ -445,19 +485,12 @@ pub fn parse_brahma_console_settings(value: &serde_json::Value) -> Option<i64> {
 /// (no warning). The read itself is fallible-tolerant (a missing table on a
 /// pre-provisioning instance resolves to the default).
 pub fn get_brahma_console_settings(main: &Connection) -> Result<i64, DbError> {
-    let Some(raw) = read_setting(main, KEY_BRAHMA_CONSOLE) else {
-        return Ok(DEFAULT_BRAHMA_MAX_AGENT_TURNS);
-    };
-    let parsed = serde_json::from_str::<serde_json::Value>(&raw)
-        .ok()
-        .and_then(|v| parse_brahma_console_settings(&v));
-    match parsed {
-        Some(turns) => Ok(turns),
-        None => {
-            tracing::warn!("[InstanceSettings] brahmaConsole failed to parse — using defaults");
-            Ok(DEFAULT_BRAHMA_MAX_AGENT_TURNS)
-        }
-    }
+    Ok(read_json_setting(
+        main,
+        KEY_BRAHMA_CONSOLE,
+        parse_brahma_console_settings,
+        || DEFAULT_BRAHMA_MAX_AGENT_TURNS,
+    ))
 }
 
 /// v4 `setBrahmaConsoleSettings(value)` — validate then persist the Brahma
@@ -517,19 +550,66 @@ pub fn set_memory_extraction_concurrency(main: &Connection, value: i64) -> Resul
 }
 
 /// v4 `getMemoryExtractionLimits()` — the `{enabled, maxPerHour, softStartFraction,
-/// softFloor}` object; documented defaults `{false, 20, 0.7, 0.7}` when unset /
-/// malformed.
+/// softFloor}` object; documented defaults `{false, 20, 0.7, 0.7}` when unset,
+/// and — with v4's WARN — when the stored value fails `MemoryExtractionLimitsSchema`
+/// (P4.113: v5 had returned ANY stored object verbatim — unknown keys kept,
+/// absent keys missing, out-of-range values passed through — and fell back
+/// silently only on bad JSON or a non-object).
 pub fn get_memory_extraction_limits(main: &Connection) -> Result<serde_json::Value, DbError> {
-    let default = serde_json::json!({
-        "enabled": false, "maxPerHour": 20, "softStartFraction": 0.7, "softFloor": 0.7,
-    });
-    let Some(raw) = read_setting(main, KEY_MEMORY_EXTRACTION_LIMITS) else {
-        return Ok(default);
+    Ok(read_json_setting(
+        main,
+        KEY_MEMORY_EXTRACTION_LIMITS,
+        parse_memory_extraction_limits,
+        || parse_memory_extraction_limits(&serde_json::json!({})).expect("the schema defaults"),
+    ))
+}
+
+/// Zod 4's `.int()` bound: `Number.isSafeInteger` (measured at the pin — a
+/// `maxPerHour` of 2^53 fails the parse).
+const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+
+/// `MemoryExtractionLimitsSchema.parse` (`lib/schemas/settings.types.ts:218`) —
+/// `None` is the throw. The OUTPUT is Zod's: the four keys in schema order,
+/// every absent one `.default`ed, unknown keys stripped, numbers rendered as JS
+/// renders them (`20.0` → `20`).
+///
+/// ```text
+/// enabled:           z.boolean().default(false)
+/// maxPerHour:        z.number().int().positive().default(20)
+/// softStartFraction: z.number().min(0).max(1).default(0.7)
+/// softFloor:         z.number().min(0).max(1).default(0.7)
+/// ```
+fn parse_memory_extraction_limits(value: &serde_json::Value) -> Option<serde_json::Value> {
+    let obj = value.as_object()?; // `z.object` throws on a non-object
+    let enabled = match obj.get("enabled") {
+        None => false,
+        Some(serde_json::Value::Bool(b)) => *b,
+        Some(_) => return None,
     };
-    match serde_json::from_str::<serde_json::Value>(&raw) {
-        Ok(v) if v.is_object() => Ok(v),
-        _ => Ok(default),
-    }
+    let max_per_hour = match obj.get("maxPerHour") {
+        None => 20.0,
+        Some(v) => {
+            let n = v.as_f64()?; // `null` / non-number → `z.number()` throws
+            if n.fract() != 0.0 || n.abs() > MAX_SAFE_INTEGER || n <= 0.0 {
+                return None; // `.int()` (safe integers) + `.positive()`
+            }
+            n
+        }
+    };
+    let fraction = |k: &str| -> Option<f64> {
+        match obj.get(k) {
+            None => Some(0.7),
+            Some(v) => v.as_f64().filter(|n| (0.0..=1.0).contains(n)),
+        }
+    };
+    let soft_start_fraction = fraction("softStartFraction")?;
+    let soft_floor = fraction("softFloor")?;
+    Some(serde_json::json!({
+        "enabled": enabled,
+        "maxPerHour": super::js_number_to_json(max_per_hour),
+        "softStartFraction": super::js_number_to_json(soft_start_fraction),
+        "softFloor": super::js_number_to_json(soft_floor),
+    }))
 }
 
 /// v4 `setMemoryExtractionLimits(value)` — store the validated object (the route

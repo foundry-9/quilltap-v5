@@ -147379,3 +147379,50 @@ by hand with lane-private paths instead of through the driver).
   must still log it exactly twice there — else VANISHED; v5 never — else
   WRONG SHAPE, retire the row). Porting the eleven is its own unit (the
   parser is not this lane's file bar the datetime regex).
+
+### Unit 5 (Tier 2 item 5) — the JSON-setting parse WARNs, ONE helper
+
+- `read_json_setting` (`db/instance_settings.rs`) is v4's `readJsonSetting`
+  for all five getters: unset → defaults SILENT; bad JSON or a schema
+  failure → defaults + WARN `` `[InstanceSettings] ${key} failed to parse —
+  using defaults` `` `{ error }` (serde's wording or a schema sentence — the
+  field is v4's, the text compared by presence). Each getter's schema is a
+  `parse_*` twin answering `None` for the throw: `parse_memory_recall_settings`
+  (NEW — a non-object now FAILS; v5 had read an absent-key scalar/array/`null`
+  as all-defaults, silently), `parse_data_retention_settings` (NEW),
+  `parse_taboo_settings` / `parse_brahma_console_settings` (existing), and
+  `parse_memory_extraction_limits` (NEW).
+- ⚠ **Beyond the order — `get_memory_extraction_limits` validated NOTHING:**
+  it returned any stored object verbatim (unknown keys kept, absent keys
+  missing, `maxPerHour: 0` / `2.5` / 2^53, `softStartFraction: 1.5`,
+  `enabled: 1` all passed through; `20.0` rendered as `20.0`). Faithful WARNs
+  needed the schema, so `MemoryExtractionLimitsSchema` is ported: Zod's
+  OUTPUT (schema key order, `.default`s filled, unknowns stripped, JS number
+  rendering), `.int()` measured at the pin as SAFE-integer. Consequence:
+  `memory_extraction_limits_set`'s `current[key]` merge can no longer read a
+  `null` off a partial stored object.
+- **NEW family** `instance_settings_json_warns_equivalence` over a NEW jest
+  oracle `instance-settings-json-warns.test.ts` (v4's REAL five getters over a
+  fresh test-pepper DB; `Logger.prototype.warn` spy) and spec
+  `instance-settings-json-warns.json` — 36 cases, 21 warning / 15 silent,
+  every key armed both ways; value AND WARNs compared.
+- **Red-first:** 29 of 36 cases differed pre-fix (the silent getters' ~20
+  missing WARNs, taboo/brahma's 4 WARNs without `error`, 9 wrong extraction-
+  limit VALUES). Fixed: green.
+- Regen (`/tmp/p4113/regen-isjson.sh`): stage case + spec under
+  `/tmp/p4113/stage-is-json-warns`, `cd` the pin, jest with
+  `QT_ORACLE_OUT=/tmp/p4113/oracle-isjson.ndjson`; run with
+  `QT_ORACLE_ISJSONWARNS=/tmp/p4113/oracle-isjson.ndjson`.
+- **Neutrality (driver, from the pin, `/tmp/p4113/sweep-neutral.json`):**
+  `memories_routes`, `settings_routes`, `maintenance_ops_tier2`,
+  `build_context_tier3`, `almanack_tier2`, `vault_legacy_wardrobe`,
+  `system_jobs_routes`, `chat_settings_tier2` — **8/8 ok, zero SKIP.**
+  (`brahma_console_tier3` left to P4.114, which re-runs it.)
+- ⚠ **Out-of-ownership test-only edit (unit 3's consequence, loud):** the
+  mid-lane `cargo test --workspace` (629 binaries) had exactly ONE red —
+  `doc_edit::path_resolver::tests::an_enabled_store_resolves_on_the_pool_path_with_no_warn_at_all`:
+  its in-memory `main` had no `instance_settings` table, so unit 3's WARN
+  fired inside a "no WARN at all" silence leg (v4 would log it too). The
+  fixture (`warn_fixture`) now creates the empty table every provisioned
+  instance has. `doc_edit/path_resolver.rs` is owned by no lane this round
+  (P4.114 consumes it); test module only.

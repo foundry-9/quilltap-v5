@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(db): the five JSON instance settings warn on a bad stored value, as v4's readJsonSetting does (P4.113 unit 5)
+
+_Versions: core 0.0.1032, harness 0.0.953._
+
+One `read_json_setting` helper now serves the memory-recall, data-retention,
+Brahma console, taboo and memory-extraction-limits getters. A stored value
+that fails to parse or validate falls back to the defaults and logs v4's WARN
+`[InstanceSettings] <key> failed to parse — using defaults` with an `error`
+field. Before, three of them fell back silently and two warned without
+`error`. `get_memory_extraction_limits` also returned any stored object
+unchecked; it now applies v4's schema (defaults filled, unknown keys dropped,
+out-of-range values rejected). There is a new tier-2 family with a jest oracle
+over v4's real getters: 36 cases, 29 red before the fix. A path-resolver unit
+test fixture gains the `instance_settings` table, because unit 3's WARN fires
+without it.
+
 #### 2026-09-24 — fix(db): add_scenario logs v4's Character not found: Error adding scenario WARN (P4.113 unit 4)
 
 _Versions: core 0.0.1031, harness 0.0.952._

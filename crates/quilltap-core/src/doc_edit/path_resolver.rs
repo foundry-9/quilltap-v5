@@ -900,6 +900,15 @@ mod tests {
     /// the indistinguishable NOT_FOUND), with NOTHING accessible to the context.
     fn warn_fixture() -> (rusqlite::Connection, rusqlite::Connection) {
         let main = rusqlite::Connection::open_in_memory().unwrap();
+        // P4.113: `read_setting` logs v4's `[InstanceSettings] Failed to read
+        // setting` WARN on a missing TABLE (a missing ROW stays silent), so the
+        // main partition carries the (empty) table every provisioned instance
+        // has — without it the General lookup WARNs and the silence leg below
+        // would be measuring the fixture, not the resolver.
+        main.execute_batch(
+            r#"CREATE TABLE "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL);"#,
+        )
+        .unwrap();
         let mount = rusqlite::Connection::open_in_memory().unwrap();
         mount
             .execute_batch(
