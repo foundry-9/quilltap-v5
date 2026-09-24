@@ -508,18 +508,22 @@ impl EngineAssembler for HostAssembler {
             seed_sample_content(db)?;
         }
 
-        // === P4.9I2A: the boot-time help-docs sync ===
-        // v4's `ensureHelpDocsSynced()` is LAZY — it runs on the first read of
-        // any help route or tool (`HelpSearch.loadFromDatabase`). v5 runs it
-        // EAGERLY here, after the partitions are open and the built-in seeds
-        // have run (so `help_doc_chunks` exists) and BEFORE the job pump starts
-        // below (the sync enqueues HELP_DOC embedding jobs). A recorded
-        // divergence: observable only as timing and log lines — the rows are
-        // identical, and this is what finally makes the P4.D77 chunk BACKFILL
-        // reachable on an upgraded instance (it had no production caller).
-        // Best-effort as in v4 (swallow + log; help loading never blocks boot).
+        // === P4.9I2A / P4.D222: v4's PHASE 3.66, the help reconcile ===
+        // Since v4 `492771aff` the help reconcile is a STARTUP phase in v4 too
+        // (awaited in `instrumentation.ts`, not only the lazy
+        // `HelpSearch.loadFromDatabase` ensure it used to be), so the P4.9I2A
+        // eager-boot divergence has converged for the boot half. It runs after
+        // the partitions are open and the built-in seeds have run (so
+        // `help_doc_chunks` exists), BEFORE the job pump starts below (it
+        // enqueues HELP_DOC embedding jobs) — and, as v4 orders it, BEFORE the
+        // embedding-dimension reconcile (3.7) next, which used to run inside
+        // `seed_built_ins` ahead of it. Best-effort (help never blocks boot).
         reconcile_help_docs_at_boot(db);
-        // === end P4.9I2A ===
+        // === end P4.9I2A / P4.D222 ===
+
+        // === P4.d27 / P4.D222: v4's PHASE 3.7, after 3.66 ===
+        reconcile_embedding_dimensions_at_boot(db)?;
+        // === end P4.d27 / P4.D222 ===
 
         // The terminal manager (P4.1c) — one per assembly (it holds this
         // assembly's Db); published on the host slot for the transport's
@@ -1079,6 +1083,69 @@ fn reconcile_help_docs_at_boot(db: &Db) {
     );
 }
 
+/// v4's PHASE 3.7 (`reconcileEmbeddingDimensions`), lifted OUT of
+/// [`seed_built_ins`]' writer closure by P4.D222 so the help reconcile (Phase
+/// 3.66, v4 `492771aff`) can run BEFORE it — v4 awaits 3.66 precisely so its
+/// writes land before 3.7 can enqueue a reindex whose sync would race it. Same
+/// fresh-thread `write_blocking` idiom as `seed_built_ins`; never fails the boot.
+fn reconcile_embedding_dimensions_at_boot(db: &Db) -> Result<(), String> {
+    use quilltap_core::db::DbError;
+
+    let db = db.clone();
+    std::thread::spawn(move || -> Result<(), DbError> {
+        db.write_blocking(|ws| {
+            let main = ws.main().connection();
+            // === P4.d27 (v4 `7391404e`) ===
+            // v4's PHASE 3.7 — since P4.D222 its own writer closure, run after
+            // the help reconcile (3.66). One embedding standard per instance:
+            // delete non-conforming vector-index entries, snap the index meta,
+            // converge stale chats to the cold tier, and enqueue ONE deduped
+            // `mismatched-dim` reindex for whatever still needs re-embedding.
+            // COUNT-only (nothing hydrated) on a conforming corpus, and the
+            // repair is enqueued rather than run inline, so a big backlog cannot
+            // block the loading screen. Never fails the boot.
+            //
+            // The mount-index connection is passed for fidelity with v4's call
+            // shape; v4's own guard reads `doc_mount_points` from the MAIN
+            // database, where that table does not live, so the mount-chunk count
+            // is dead in v4 and reproduced dead here — see the module doc's ⚠.
+            let dim_reconcile =
+                quilltap_core::services::embedding_dimension_reconcile::reconcile_embedding_dimensions(
+                    main,
+                    ws.mount_index().map(|mi| mi.connection()),
+                    quilltap_core::clock::now_unix_ms(),
+                );
+            // Same lesson as the gate above: report the pass whenever it had a
+            // profile to enforce, so a healthy "corpus conforms" is visible too.
+            if let Some(target) = dim_reconcile.target_dimensions {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    target_dimensions = target,
+                    vector_entries_deleted = dim_reconcile.vector_entries_deleted,
+                    vector_index_meta_fixed = dim_reconcile.vector_index_meta_fixed,
+                    stale_chunk_embeddings_cleared = dim_reconcile.stale_chunk_embeddings_cleared,
+                    mismatched_memories = dim_reconcile.mismatched.memories,
+                    mismatched_conversation_chunks = dim_reconcile.mismatched.conversation_chunks,
+                    mismatched_help_docs = dim_reconcile.mismatched.help_docs,
+                    reindex_enqueued = dim_reconcile.reindex_enqueued,
+                    "Embedding dimension reconciliation complete",
+                );
+            } else if let Some(reason) = dim_reconcile.skipped_reason {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    reason = reason.as_str(),
+                    "Embedding dimension reconciliation skipped",
+                );
+            }
+            // === end P4.d27 ===
+            Ok(())
+        })
+    })
+    .join()
+    .map_err(|_| "embedding dimension reconcile thread panicked".to_string())?
+    .map_err(|e| format!("embedding dimension reconcile: {e}"))
+}
+
 /// Seed the built-in roleplay templates + provision-or-adopt the three built-in
 /// mount stores (P4.4u3, families 1 & 2) through the writer thread, and run the
 /// main partition's boot repairs. Spawned on a fresh OS thread and joined so
@@ -1371,49 +1438,6 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 );
             }
             // === end P4.6BM ===
-            // === P4.d27 (v4 `7391404e`) ===
-            // v4's PHASE 3.7, immediately behind 3.6 and inside the same closure
-            // so the order is preserved. One embedding standard per instance:
-            // delete non-conforming vector-index entries, snap the index meta,
-            // converge stale chats to the cold tier, and enqueue ONE deduped
-            // `mismatched-dim` reindex for whatever still needs re-embedding.
-            // COUNT-only (nothing hydrated) on a conforming corpus, and the
-            // repair is enqueued rather than run inline, so a big backlog cannot
-            // block the loading screen. Never fails the boot.
-            //
-            // The mount-index connection is passed for fidelity with v4's call
-            // shape; v4's own guard reads `doc_mount_points` from the MAIN
-            // database, where that table does not live, so the mount-chunk count
-            // is dead in v4 and reproduced dead here — see the module doc's ⚠.
-            let dim_reconcile =
-                quilltap_core::services::embedding_dimension_reconcile::reconcile_embedding_dimensions(
-                    main,
-                    ws.mount_index().map(|mi| mi.connection()),
-                    quilltap_core::clock::now_unix_ms(),
-                );
-            // Same lesson as the gate above: report the pass whenever it had a
-            // profile to enforce, so a healthy "corpus conforms" is visible too.
-            if let Some(target) = dim_reconcile.target_dimensions {
-                tracing::info!(
-                    target: "quilltap::boot",
-                    target_dimensions = target,
-                    vector_entries_deleted = dim_reconcile.vector_entries_deleted,
-                    vector_index_meta_fixed = dim_reconcile.vector_index_meta_fixed,
-                    stale_chunk_embeddings_cleared = dim_reconcile.stale_chunk_embeddings_cleared,
-                    mismatched_memories = dim_reconcile.mismatched.memories,
-                    mismatched_conversation_chunks = dim_reconcile.mismatched.conversation_chunks,
-                    mismatched_help_docs = dim_reconcile.mismatched.help_docs,
-                    reindex_enqueued = dim_reconcile.reindex_enqueued,
-                    "Embedding dimension reconciliation complete",
-                );
-            } else if let Some(reason) = dim_reconcile.skipped_reason {
-                tracing::info!(
-                    target: "quilltap::boot",
-                    reason = reason.as_str(),
-                    "Embedding dimension reconciliation skipped",
-                );
-            }
-            // === end P4.d27 ===
             // === P4.D205 (v4 `e7d77bb60`, migration
             // `add-chat-informs-table-v1`) ===
             // The `chat_informs` table, re-homed from v4's migration runner to

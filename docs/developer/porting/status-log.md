@@ -148589,6 +148589,33 @@ here as the order's two units.
   | M5 | incomplete ignores sections | `help_doc_ensure` — `[in-sync]` jobs |
   | M6 | re-slice even with counts | `help_doc_ensure` — `[in-sync-chunked]` jobs |
 
+### Unit 7 — the boot order (v4 Phase 3.66 before 3.7)
+
+- Built: **split `seed_built_ins`** — the P4.d27 dimension-reconcile block
+  moved VERBATIM into a new `reconcile_embedding_dimensions_at_boot(db)` (the
+  same fresh-thread `write_blocking` idiom; a writer failure still fails the
+  boot, as before), called from `assemble` immediately AFTER
+  `reconcile_help_docs_at_boot` (the gate, one per assembly; its only failure
+  line of its own is v4's instrumentation-catch WARN `Help doc reconciliation
+  failed` `{context: 'instrumentation.register', error}`, reached here only if
+  the thread/runtime cannot run). v5's resulting order: seeds + boot repairs +
+  FTS (3.65, still inside `seed_built_ins`) → sample seed (v5-only, flag-gated)
+  → help reconcile (3.66) → dimensions (3.7). The P4.9I2A "LAZY vs EAGER"
+  divergence note at the call site is rewritten: v4 now reconciles at startup
+  too, so the boot half has CONVERGED.
+- NEW `crates/quilltap-host/tests/host_help_boot_order.rs` — ONE test in its
+  own binary, the shared `CaptureLayer` installed as the process-GLOBAL
+  default (both phases log from boot-spawned threads a thread-scoped capture
+  cannot see): `[HelpDocSync] Help docs reconciled` must precede `Embedding
+  dimension reconciliation …` (a builtin-profile instance logs `… skipped
+  reason=builtin-profile`; either form is 3.7's line). RED-FIRST against
+  the previous commit's `host.rs`: `Phase 3.66 (help, line 138) must
+  precede Phase 3.7 (dimensions, line 1)`; green after. M7 (swap the two
+  calls) → the same red.
+- `host_help_docs_boot` KEPT whole and green, including its second-boot
+  pin: no row changes on a second boot with the tree unchanged. The reconcile
+  re-reads and hashes every file but writes nothing when nothing changed.
+
 ## P4.D221 — the `ad1c4c37f`/`8aafd595d` `lib/` riders + two NO-PORT ratifications (2026-09-24, branch `claude/dispatch-lib-riders-partition-f93bb0`)
 
 The `lib/` half of the `b0b6656b5` ten-commit drift catch-up round (the web

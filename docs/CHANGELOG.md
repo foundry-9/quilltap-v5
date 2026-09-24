@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(boot): the help reconcile runs before the embedding-dimension reconcile, v4's Phase 3.66 before 3.7 (P4.D222 unit 7)
+
+_Versions: host 0.0.157._
+
+v4 `492771aff` awaits the help reconcile (Phase 3.66) before the
+embedding-dimension reconcile (Phase 3.7), so the help writes land before
+3.7 can enqueue a reindex that would race them. v5 ran the dimension
+reconcile inside `seed_built_ins`, before the help sync. It now runs in
+its own writer pass, called from `assemble` right after the help
+reconcile. The new `host_help_boot_order` test captures the boot's log
+lines from every thread and checks the order. It is red on the previous
+order.
+
 #### 2026-09-24 — feat(help-docs): the startup help reconcile and v4's sync shape — update by id, a minted create id, the status clear (P4.D222 units 5+6, bugs 167/168)
 
 _Versions: core 0.0.1047, harness 0.0.968, host 0.0.156._
