@@ -148437,6 +148437,40 @@ lane outputs under `/tmp/p4d222/`.
   rounds back to 1e8 in f32 — so the order's suggested example proves nothing
   alone; the 20-add row is the one that does. Reverted by file backup.
 
+### Unit 3 — `count_by_doc` (tier 2, grown into `help_doc_sync_equivalence`)
+
+- `HelpDocChunksRepository::count_by_doc() -> HashMap<String,
+  SectionCounts>`: v4's SQL verbatim (quoted identifiers, the `CASE`,
+  `embedded ?? 0`), never `Err` — v4's FALLBACK `safeQuery`, so a failing read
+  logs ONE ERROR `Error counting help doc chunks by doc` `{error}` (target
+  `quilltap::db`, no `context`: v4 passes `{}`) and answers an empty map.
+  Capture pin + silence leg in `db::help_doc_chunks::tests`.
+- The spec (`harness/oracle/fixtures/help-sync.json`) gains
+  `countByDocPlants`: SQL run on BOTH sides after every other dump —
+  `getting-started` gets a planted embedded chunk at index 99 (SOME, 2/1),
+  `crlf` gets `X''` (a ZERO-LENGTH BLOB, counted embedded), plus an orphan
+  chunk (`<unknown:…dead>` in the map); `no-frontmatter` is ALL (1/1) by its
+  seed; `close-no-newline` has NO rows (absent). `help-sync-tier2.ts` emits a
+  `count_by_doc` line from v4's REAL `getRepositories().helpDocChunks.
+  countByDoc()` — omitted at a pin without the method (the baseline), where
+  the Rust side then fails asking for a target regen. Oracle-pinned asserts
+  on each shape.
+- Regen AS RUN (target): `cd /tmp/qt-v4-pin-p4d222-b0b6656b5;
+  QT_FIXTURE_HELP_MAIN=/tmp/p4d222/help-sync-main.db node --import tsx
+  <wt>/harness/oracle/fixtures/build-help-sync-fixture.ts;
+  QT_FIXTURE_HELP_MAIN=/tmp/p4d222/help-sync-main.db node --import tsx
+  <wt>/harness/oracle/cases/help-sync-tier2.ts >
+  /tmp/p4d222/help-sync-b0.ndjson` (the baseline twin →
+  `help-sync-d1.ndjson`, `grep -c count_by_doc` = 0 there, 1 at the target).
+- `count_by_doc` agrees with the target oracle. Mutation (`AND
+  length("embedding") > 0` in the `CASE`) → `count_by_doc diverged` RED;
+  reverted by file backup.
+- ⚠ The FAMILY stays RED at this commit on its designed unit-5 arm: at the
+  target v4 clears the UPDATED doc's `embedding_status` row
+  (`bbbbbbbb-…03` for `getting-started`), which the old sync keeps — the
+  target oracle's `embedding_status` line is `[]`, the baseline's still
+  carries the row. Unit 5 (the sync shape) closes it.
+
 ## P4.D221 — the `ad1c4c37f`/`8aafd595d` `lib/` riders + two NO-PORT ratifications (2026-09-24, branch `claude/dispatch-lib-riders-partition-f93bb0`)
 
 The `lib/` half of the `b0b6656b5` ten-commit drift catch-up round (the web

@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — feat(help-docs): `count_by_doc`, v4's per-doc section and embedded-section counts (P4.D222 unit 3)
+
+_Versions: core 0.0.1046, harness 0.0.967._
+
+Ports v4's new `countByDoc` from `492771aff`: one GROUP BY over
+`help_doc_chunks` with v4's SQL, used by the startup reconcile. As in v4,
+a zero-length BLOB counts as embedded, docs with no sections are absent,
+and a failing read logs one ERROR and returns an empty map. The help-sync
+tier-2 family grows a `count_by_doc` line over planted shapes (all, some,
+a zero-length BLOB, none, and an orphan chunk) compared against v4's real
+method.
+
 #### 2026-09-24 — feat(embedding): `average_embeddings`, v4's unit-length mean of section vectors (P4.D222 unit 2)
 
 _Versions: core 0.0.1045, harness 0.0.966._

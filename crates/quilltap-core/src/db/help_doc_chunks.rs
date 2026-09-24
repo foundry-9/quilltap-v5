@@ -52,6 +52,8 @@
 //! of the help library") likewise has no v5 analog — v5 surfaces no migration
 //! labels anywhere. NO-PORT, the `231be14c` precedent.
 
+use std::collections::HashMap;
+
 use rusqlite::{params, Connection};
 
 use super::DbError;
@@ -343,6 +345,68 @@ impl<'c> HelpDocChunksRepository<'c> {
             .query_row("SELECT COUNT(*) FROM help_doc_chunks", [], |r| r.get(0))?;
         Ok(n)
     }
+
+    /// v4 `countByDoc` (`help-doc-chunks.repository.ts:80-101`, new at
+    /// `492771aff`) — section and embedded-section counts for every help
+    /// document that has any sections, in one GROUP BY. v4's *why*, carried
+    /// forward: it reads no vectors — the embedding column is only tested for
+    /// NULL — so the startup reconcile can find incomplete docs without
+    /// decoding ~700 BLOBs. Docs with no sections are ABSENT from the map.
+    ///
+    /// ⚠ A zero-length BLOB counts as EMBEDDED here (`IS NOT NULL`), while the
+    /// HELP_DOC job treats the same cell as no vector (`length > 0`). Both are
+    /// v4's; reproduced, not reconciled.
+    ///
+    /// **Never answers `Err`:** v4 runs it through a FALLBACK `safeQuery`, so a
+    /// failing read logs one ERROR `Error counting help doc chunks by doc`
+    /// `{error}` (v4 passes an empty context) and answers an EMPTY map — which
+    /// the reconcile then reads as "every doc is section-less" and re-slices.
+    pub fn count_by_doc(&self) -> HashMap<String, SectionCounts> {
+        match self.count_by_doc_strict() {
+            Ok(map) => map,
+            Err(err) => {
+                tracing::error!(
+                    target: "quilltap::db",
+                    error = %err,
+                    "Error counting help doc chunks by doc",
+                );
+                HashMap::new()
+            }
+        }
+    }
+
+    /// [`Self::count_by_doc`]'s query without v4's fallback.
+    fn count_by_doc_strict(&self) -> Result<HashMap<String, SectionCounts>, DbError> {
+        let mut stmt = self.conn.prepare(
+            r#"SELECT "docId" AS docId,
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN "embedding" IS NOT NULL THEN 1 ELSE 0 END) AS embedded
+           FROM "help_doc_chunks"
+           GROUP BY "docId""#,
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                // v4's `Number(r.embedded ?? 0)`.
+                r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+            ))
+        })?;
+        let mut out = HashMap::new();
+        for r in rows {
+            let (doc_id, total, embedded) = r?;
+            out.insert(doc_id, SectionCounts { total, embedded });
+        }
+        Ok(out)
+    }
+}
+
+/// One entry of [`HelpDocChunksRepository::count_by_doc`] — v4's `{ total,
+/// embedded }`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SectionCounts {
+    pub total: i64,
+    pub embedded: i64,
 }
 
 fn row_to_chunk(r: &rusqlite::Row<'_>) -> rusqlite::Result<HelpDocChunkRow> {
@@ -509,5 +573,67 @@ mod tests {
         conn.execute("DELETE FROM help_docs WHERE id = 'doc-a'", [])
             .unwrap();
         assert_eq!(repo.count().unwrap(), 0);
+    }
+
+    /// P4.D222: v4's `countByDoc` is a FALLBACK `safeQuery` — a failing read
+    /// logs ONE ERROR `Error counting help doc chunks by doc` `{error}` (no
+    /// context: v4 passes `{}`) and answers an EMPTY map.
+    #[test]
+    fn count_by_doc_falls_back_to_an_empty_map_with_one_error() {
+        let conn = open();
+        conn.execute_batch(r#"ALTER TABLE "help_doc_chunks" RENAME TO "help_doc_chunks_gone""#)
+            .expect("plant");
+        let (counts, lines) = crate::test_support::captured_with(|| {
+            HelpDocChunksRepository::new(&conn).count_by_doc()
+        });
+        assert!(counts.is_empty());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let line = &lines[0];
+        assert!(
+            line.starts_with("ERROR quilltap::db"),
+            "level/target: {line}"
+        );
+        assert!(
+            line.contains(" Error counting help doc chunks by doc "),
+            "{line}"
+        );
+        assert!(line.contains("no such table: help_doc_chunks"), "{line}");
+    }
+
+    /// The silence leg, and the counts over the shapes the reconcile reads.
+    #[test]
+    fn count_by_doc_counts_sections_and_is_silent_when_healthy() {
+        let conn = open();
+        let repo = HelpDocChunksRepository::new(&conn);
+        repo.replace_for_doc("doc-a", &[draft(0, None, "a0"), draft(1, None, "a1")])
+            .unwrap();
+        repo.replace_for_doc("doc-b", &[draft(0, None, "b0")])
+            .unwrap();
+        let a0 = repo.find_by_doc_id("doc-a").unwrap().remove(0);
+        repo.update_embedding(&a0.id, &[1.0, 0.0], "2026-01-02T00:00:00.000Z")
+            .unwrap();
+        // A zero-length BLOB counts as embedded here (v4's `IS NOT NULL`).
+        conn.execute(
+            "UPDATE help_doc_chunks SET embedding = X'' WHERE docId = 'doc-b'",
+            [],
+        )
+        .unwrap();
+        let (counts, lines) = crate::test_support::captured_with(|| repo.count_by_doc());
+        assert!(lines.is_empty(), "{lines:?}");
+        assert_eq!(counts.len(), 2);
+        assert_eq!(
+            counts["doc-a"],
+            SectionCounts {
+                total: 2,
+                embedded: 1
+            }
+        );
+        assert_eq!(
+            counts["doc-b"],
+            SectionCounts {
+                total: 1,
+                embedded: 1
+            }
+        );
     }
 }

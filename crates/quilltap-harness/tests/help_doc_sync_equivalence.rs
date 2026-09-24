@@ -48,6 +48,10 @@ struct Spec {
     /// P4.D77 — the pre-existing chunk rows (replaced / survived / pruned).
     #[serde(rename = "helpDocChunkSeed")]
     help_doc_chunk_seed: Vec<SeedRow>,
+    /// P4.D222 — SQL both sides run after every other dump, before
+    /// `count_by_doc` (see the spec's comment for the four shapes).
+    #[serde(rename = "countByDocPlants")]
+    count_by_doc_plants: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -281,12 +285,53 @@ fn help_doc_sync_matches_oracle() {
         })
         .expect("dump embedding_status");
 
+    // P4.D222 (v4 `492771aff`) — the planted shapes, then the REAL
+    // `count_by_doc`, keyed by path exactly as the oracle keys it.
+    let plants = spec.count_by_doc_plants.clone();
+    db.write_blocking(move |ws| {
+        for sql in &plants {
+            ws.main()
+                .connection()
+                .execute_batch(sql)
+                .map_err(quilltap_core::db::DbError::from)?;
+        }
+        Ok(())
+    })
+    .expect("count_by_doc plants");
+    let counts = db
+        .read_main(|c| {
+            Ok(quilltap_core::db::help_doc_chunks::HelpDocChunksRepository::new(c).count_by_doc())
+        })
+        .expect("count_by_doc");
+    let mut present: Vec<Value> = counts
+        .iter()
+        .map(|(doc_id, c)| {
+            json!({
+                "path": path_by_id
+                    .get(doc_id.as_str())
+                    .map(|p| p.to_string())
+                    .unwrap_or_else(|| format!("<unknown:{doc_id}>")),
+                "total": c.total,
+                "embedded": c.embedded,
+            })
+        })
+        .collect();
+    present.sort_by(|a, b| a["path"].as_str().cmp(&b["path"].as_str()));
+    let mut absent: Vec<String> = rows
+        .iter()
+        .filter(|r| !counts.contains_key(r["id"].as_str().unwrap_or_default()))
+        .map(|r| r["path"].as_str().unwrap_or_default().to_string())
+        .collect();
+    absent.sort();
+    let rust_count_by_doc = json!({ "kind": "count_by_doc", "present": present, "absent": absent });
+
     // Parse the oracle NDJSON.
     let oracle_text = std::fs::read_to_string(&oracle_path).expect("oracle ndjson");
     let mut oracle_summary = None;
     let mut oracle_rows: Vec<Value> = Vec::new();
     let mut oracle_status_rows: Option<Vec<Value>> = None;
     let mut oracle_chunks: Option<Vec<Value>> = None;
+    let mut oracle_count_by_doc: Option<Value> = None;
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let v: Value = serde_json::from_str(line).expect("oracle line");
         match v.get("kind").and_then(Value::as_str) {
@@ -314,12 +359,62 @@ fn help_doc_sync_matches_oracle() {
                         .unwrap_or_default(),
                 )
             }
+            Some("count_by_doc") => oracle_count_by_doc = Some(v),
             other => panic!("unexpected oracle line kind: {other:?}"),
         }
     }
     let oracle_summary = oracle_summary.expect("oracle summary line");
     let oracle_status_rows = oracle_status_rows.expect("oracle embedding_status line");
     let oracle_chunks = oracle_chunks.expect("oracle help_doc_chunks line — regenerate the oracle");
+
+    // ---- P4.D222 — `count_by_doc` (v4 492771aff) ----
+    let oracle_count_by_doc = oracle_count_by_doc
+        .expect("oracle count_by_doc line — regenerate at a pin with v4 492771aff (countByDoc)");
+    assert_eq!(
+        rust_count_by_doc, oracle_count_by_doc,
+        "count_by_doc diverged\nrust:   {rust_count_by_doc}\noracle: {oracle_count_by_doc}"
+    );
+    // Pinned against the ORACLE: each planted shape is really there.
+    let count_of = |path: &str| {
+        oracle_count_by_doc["present"]
+            .as_array()
+            .and_then(|a| a.iter().find(|e| e["path"] == path))
+            .map(|e| {
+                (
+                    e["total"].as_i64().unwrap(),
+                    e["embedded"].as_i64().unwrap(),
+                )
+            })
+    };
+    assert_eq!(
+        count_of("help/no-frontmatter.md"),
+        Some((1, 1)),
+        "ALL embedded"
+    );
+    assert_eq!(
+        count_of("help/getting-started.md"),
+        Some((2, 1)),
+        "SOME embedded"
+    );
+    let crlf = count_of("help/crlf.md").expect("the zero-length-BLOB doc");
+    assert!(
+        crlf.0 > 0 && crlf.0 == crlf.1,
+        "a zero-length BLOB counts as EMBEDDED here: {crlf:?}"
+    );
+    assert!(
+        oracle_count_by_doc["absent"]
+            .as_array()
+            .is_some_and(|a| a.iter().any(|p| p == "help/close-no-newline.md")),
+        "the doc with NO section rows is absent from the map"
+    );
+    assert!(
+        oracle_count_by_doc["present"]
+            .as_array()
+            .is_some_and(|a| a.iter().any(|e| e["path"]
+                .as_str()
+                .is_some_and(|p| p.starts_with("<unknown:")))),
+        "the orphan chunk's docId is in the map though no doc owns it"
+    );
 
     assert_eq!(
         rust_summary, oracle_summary,

@@ -9,7 +9,9 @@
  *   - a `summary` line: the returned `HelpDocSyncResult` with `changedIds`
  *     replaced by the corresponding row PATHS, sorted (walk order is
  *     readdir-dependent; paths are the stable identity);
- *   - a `help_docs` line: the full table (embedding as hex) ordered by path.
+ *   - a `help_docs` line: the full table (embedding as hex) ordered by path;
+ *   - (P4.D222) a `count_by_doc` line: v4's REAL `countByDoc` over planted
+ *     shapes, run LAST.
  * The Rust side copies the SAME fixture, walks the SAME committed help tree,
  * runs `sync_help_docs`, and diffs both lines (minted ids/timestamps
  * normalized sentinel-aware; the seeded 2020 sentinel must SURVIVE on the
@@ -31,6 +33,7 @@ interface Spec {
   testPepperBase64: string;
   seedSentinel: string;
   helpDocChunkSeed: Array<{ id: string }>;
+  countByDocPlants: string[];
 }
 
 async function main(): Promise<void> {
@@ -129,6 +132,33 @@ async function main(): Promise<void> {
       [],
     )) ?? [];
   process.stdout.write(JSON.stringify({ kind: 'embedding_status', rows: statusRows }) + '\n');
+
+  // P4.D222 (v4 `492771aff`): v4's REAL `countByDoc` over the planted shapes
+  // (the spec's `countByDocPlants` — see its comment). Keyed by doc PATH (ids
+  // are minted on both sides); a key with no doc surfaces as `<unknown:id>`,
+  // and every doc absent from the map is listed as `absent`. At a pin that
+  // predates `492771aff` the method does not exist and the line is omitted —
+  // the Rust side then fails asking for a regen at the target.
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const chunkRepo = getRepositories().helpDocChunks as unknown as {
+    countByDoc?: () => Promise<Map<string, { total: number; embedded: number }>>;
+  };
+  if (typeof chunkRepo.countByDoc === 'function') {
+    for (const sql of spec.countByDocPlants) await rawQuery(sql, []);
+    const counts = await chunkRepo.countByDoc();
+    const present = [...counts.entries()]
+      .map(([docId, c]) => ({
+        path: pathById.get(docId) ?? `<unknown:${docId}>`,
+        total: c.total,
+        embedded: c.embedded,
+      }))
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    const absent = rows
+      .filter((r) => !counts.has(String(r.id)))
+      .map((r) => String(r.path))
+      .sort();
+    process.stdout.write(JSON.stringify({ kind: 'count_by_doc', present, absent }) + '\n');
+  }
 
   await closeDatabase();
   process.exit(0);
