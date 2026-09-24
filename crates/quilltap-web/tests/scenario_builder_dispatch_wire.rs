@@ -382,7 +382,7 @@ async fn every_refusal_answers_v4s_status_and_body_before_any_frame() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_canned_run_publishes_its_frames_under_the_run_id_and_replies_the_terminal_frame() {
-    let (_base, wire, addr) = serve(Canned::Scene).await;
+    let (base, wire, addr) = serve(Canned::Scene).await;
     let events = wire
         .client
         .get(format!("http://{addr}/api/events"))
@@ -431,6 +431,32 @@ async fn a_canned_run_publishes_its_frames_under_the_run_id_and_replies_the_term
         reply,
         json!({ "type": "scenarioBuilder", "data": done }),
         "the reply IS the terminal frame"
+    );
+
+    // P4.D217 Tier 2 item 12 — the ONE proof jest cannot give (every jest
+    // oracle writes ZERO `llm_logs` rows): the REAL writer, through the host
+    // spine, typed the run's one stream call `SCENARIO_BUILDER`.
+    let types: Vec<String> = {
+        let r = quilltap_core::db::Writer::open_writable(
+            &base.path().join("data").join("quilltap-llm-logs.db"),
+            common::TEST_PEPPER,
+        )
+        .unwrap();
+        let mut st = r
+            .connection()
+            .prepare("SELECT \"type\" FROM \"llm_logs\" ORDER BY rowid")
+            .unwrap();
+        let rows = st
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        rows
+    };
+    assert_eq!(
+        types,
+        vec!["SCENARIO_BUILDER".to_string()],
+        "one stream call, one row, typed by the Scenario Builder"
     );
 }
 

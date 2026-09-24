@@ -146179,3 +146179,11 @@ help families walk synthetic roots) — so those three are the "tree-reading fam
 order's "two other help_* families". **Mutation:** `help/chats.md` reverted to its pre-drift
 bytes → `help_tree_equivalence` RED, `help_tree_embed_guard` GREEN (it compares embedded to
 disk, not to v4 — the note's lesson, re-measured); restored by file backup.
+
+### Unit 8 (Tier 2 item 12) — `SCENARIO_BUILDER` on a REAL `llm_logs` write
+
+The dispatch wire test's canned-run arm now reads the instance's llm-logs partition after the run:
+exactly ONE row, typed `SCENARIO_BUILDER` — the real writer, through the host spine (the one proof
+no jest oracle can give: every jest oracle writes zero `llm_logs` rows). **Red-first:** the
+service's `log_type` set to `None` (the loop's `CHAT_MESSAGE` default) → `["CHAT_MESSAGE"]` vs
+`["SCENARIO_BUILDER"]`, red; restored by file backup.

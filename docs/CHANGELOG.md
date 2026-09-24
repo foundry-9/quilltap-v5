@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(scenario-builder): pin the SCENARIO_BUILDER type on a real llm_logs row (P4.D217 unit 8)
+
+_Versions: web 0.0.183._
+
+The Scenario Builder dispatch wire test now reads the instance's llm-logs
+partition after a canned run and asserts one row typed `SCENARIO_BUILDER`,
+written by the real logger through the host spine.
+
 #### 2026-09-23 — docs(help): vendor the Scenario Builder help page and three updated pages from v4 d1c06cd9d (P4.D217 unit 7)
 
 _Versions: harness 0.0.940, host 0.0.151._
