@@ -148697,6 +148697,41 @@ here as the order's two units.
   | M11 | blank text not silent | processed-sequence length |
   | M12 | reused sections re-embedded anyway | `provider calls diverge` |
 
+### Tier 2 item 8 — the help-section size proof (NO Rust tokenizer; Tier 3 item 11 stands)
+
+- `js-tiktoken` measured PRESENT in the checkout's `node_modules` at lane
+  start, so the item was not blocked. Nothing installed.
+- `services::help_doc_chunking::HELP_SECTION_EMBEDDING_MAX_TOKENS = 1000`
+  (documented; only a test consumes it, as in v4). The module header takes
+  v4's rewritten sentence ("a settings page can cover…"), plus the "sections
+  are the only help text sent to a provider" paragraph.
+- NEW `harness/oracle/cases/help-section-size.ts` (tsx, the target pin):
+  v4's `help-doc-size.test.ts` measure verbatim — flat sorted `help/*.md`,
+  `trim()`, the REAL `parseFrontmatter` / `extractTitle` (exported
+  test-only at `492771aff`) / `buildHelpDocChunks` /
+  `helpChunkEmbeddingText`, REAL `cl100k_base`. Emits a `meta` line
+  `{maxTokens: 1000, files: 129, sections: 729}` and one `section` line
+  `{file, chunkIndex, heading, text, tokens}` per section. ⚠ A bare
+  `import 'js-tiktoken'` fails from a case outside the v4 tree
+  (ERR_MODULE_NOT_FOUND: it resolves from the FILE, while `@/` resolves from
+  the cwd), so the case uses `createRequire(<cwd>/package.json)`. This is the
+  trap in the memory note on bare-importing a v4 dependency.
+- NEW `help_section_size_equivalence.rs`: the EMBEDDED tree through the
+  PRODUCTION `sync_help_docs` into an in-memory table, then `(file,
+  chunkIndex)` key sets equal, every composed text byte-identical to the one
+  v4 counted, every count ≤ the v5 constant (asserted equal to v4's), and v4's
+  message shape `help/<file> section <i> (<heading|no heading>): <n> tokens`.
+  Largest section: `cli-memories.md` #1 at 783 tokens. Negative proofs, on
+  edited COPIES of the oracle output: one count set to 1001 fails with `help/
+  agent-mode.md section 2 (Troubleshooting): 1001 tokens`; one text given an
+  extra byte fails with `v5 composes different section texts than v4
+  counted`.
+- Regen AS RUN: `cd /tmp/qt-v4-pin-p4d222-b0b6656b5 && npx tsx
+  <wt>/harness/oracle/cases/help-section-size.ts >
+  /tmp/p4d222/section-size.ndjson`; run `QT_ORACLE_HELP_SECTION_SIZE=
+  /tmp/p4d222/section-size.ndjson cargo test -p quilltap-harness --test
+  help_section_size_equivalence`.
+
 ## P4.D221 — the `ad1c4c37f`/`8aafd595d` `lib/` riders + two NO-PORT ratifications (2026-09-24, branch `claude/dispatch-lib-riders-partition-f93bb0`)
 
 The `lib/` half of the `b0b6656b5` ten-commit drift catch-up round (the web

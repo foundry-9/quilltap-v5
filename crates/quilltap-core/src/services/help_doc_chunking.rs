@@ -2,11 +2,16 @@
 //! `24633026`).
 //!
 //! Slices a help document into section-sized pieces for embedding. v4's *why*,
-//! carried forward: help docs are long and topically broad — `help/chat-settings.md`
-//! alone covers a dozen unrelated subsystems — so a single whole-document
+//! carried forward: help docs are long and topically broad — a settings page
+//! can cover a dozen unrelated subsystems — so a single whole-document
 //! embedding is a smear that matches any specific question only weakly. Chunking
 //! gives each section its own vector, which is what lets "how do I describe an
 //! image for a model that can't see?" land on the paragraph that answers it.
+//!
+//! Sections are also the ONLY help text sent to an embedding provider (v4
+//! `492771aff`, bug 168): a doc's own vector is the average of its sections'
+//! (the HELP_DOC branch of `services::embedding_generate_job`), because a whole
+//! page can outrun a provider's input ceiling and a section cannot.
 //!
 //! **The chunker itself is the Scriptorium's** ([`super::mount_index::chunker`],
 //! v4 `lib/mount-index/chunker.ts`) — same Markdown-aware paragraph
@@ -28,6 +33,22 @@ pub const HELP_CHUNK_OPTIONS: ChunkOptions = ChunkOptions {
     target_max_tokens: Some(700),
     overlap_tokens: Some(100),
 };
+
+/// v4 `HELP_SECTION_EMBEDDING_MAX_TOKENS` (new at `492771aff`) — the most
+/// tokens (OpenAI `cl100k_base`) the embedding text of any one help section may
+/// run to, title path included, as [`help_chunk_embedding_text`] builds it.
+///
+/// v4's *why*, carried forward: sections are the only help text ever sent to an
+/// embedding provider, so this is the one size limit the help set has to
+/// respect. The chunker aims for at most `target_max_tokens` by its own
+/// estimate; this ceiling leaves headroom over that while staying far below the
+/// 8,192-token input of OpenAI's embedding models.
+///
+/// As in v4, its only consumer is a test: `help_section_size_equivalence` holds
+/// every vendored file to it. v5 has no `cl100k` tokenizer (P4.D222 declined the
+/// dependency), so the counts come from v4's REAL `js-tiktoken` through the
+/// oracle, and the test proves v5 slices and composes the very texts counted.
+pub const HELP_SECTION_EMBEDDING_MAX_TOKENS: usize = 1000;
 
 /// v4 `buildHelpDocChunks` — split a help document into chunk drafts, in
 /// document order; empty for empty input.

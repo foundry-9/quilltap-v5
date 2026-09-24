@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — test(help): every help section's embedding text is v4's and within 1,000 `cl100k` tokens, proved without a Rust tokenizer (P4.D222 Tier 2 item 8)
+
+_Versions: core 0.0.1049, harness 0.0.970._
+
+Adds v4's `HELP_SECTION_EMBEDDING_MAX_TOKENS = 1000` to the help chunking
+module and a new family, `help_section_size_equivalence`. It mirrors v4's
+`help-doc-size.test.ts`. The oracle runs v4's real chunker and
+`js-tiktoken` `cl100k_base` over the help tree and records each section's
+composed text and token count (129 files, 729 sections, largest 783
+tokens). The Rust side slices the embedded tree through the production
+sync, checks that every composed text matches v4's exactly, and checks
+every count against the ceiling using v4's failure message.
+
 #### 2026-09-24 — feat(embedding): a help doc's vector is the mean of its section vectors, never the whole text (P4.D222 unit 4, bug 168)
 
 _Versions: core 0.0.1048, harness 0.0.969._
