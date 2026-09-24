@@ -146836,3 +146836,65 @@ naming `photos-main`, `inspector-main`, `inspector-nostore-main`,
 `wardrobe-routes-main`, `almanack-main` (Rust tests + oracle cases/builders):
 only `photos_routes_equivalence.rs` (the migrator's own hits aside). Nothing
 else to remove.
+
+### Tier 2 item 8 — the header sentences
+
+P4.D215's (all three follow-ups taken), P4.109's (both nits taken), P4.110's
+(item 8 taken; item 7 NOT taken) — one sentence each, naming this round.
+
+### Deliberately NOT taken (Tier 3, loud)
+
+- **Item 9** — P4.110's Tier 3 item 7 (lifting `dispatch_wrong_type_census`
+  onto the shared lexer): NOT taken; two drift lanes recount that file this
+  round. `dispatch_wrong_type_census` run by name: unmoved, green (12/12).
+- **Item 10** — the dead heals over P4.111's ten pairs: the next smalls (the
+  pairs are being widened this round).
+- **Item 11** — `update_chat_metadata`'s importer residual: stays RECORDED
+  (unreachable after a successful INSERT, marked in the code).
+- **New, recorded:** the Zod-shape skip checks only `id` / `role` /
+  `hostEvent` (unit 3 names the rest); the corrupt-second-frame RULING (unit
+  6); `db/memories.rs:1117`'s now-stale "renders the MESSAGE only" comment
+  (unit 1); the `chats_search` plan-line capture intermittent (unit 3).
+
+### Gate (lane tip, `CARGO_INCREMENTAL=0 TZ=UTC`)
+
+§R.2 probe PASSED before every regen batch (five batches). `cargo fmt --all
+--check` clean; `cargo clippy --workspace --all-targets -D warnings` clean in
+BOTH feature sets; `cargo build --workspace --release` clean (3 m 59 s);
+`cargo test --workspace --no-fail-fast -- --nocapture` with the lane block
+**621 test binaries / 3,667 passed / 0 failed / 3 ignored** — the lane's
+families confirmed RUN by name with their OK lines (`title_update_tier3` 9
+incl. `[deleted_mid_flight] OK`, `chat_regenerate_title_tier3` 2,
+`context_summary_service_tier3` 1, `chats_messages_ops_tier2` `OK: … matched
+oracle`, `normalize_blob_image` 2 with `14 matched / 2 RULED / 2 MEASURED`,
+`photos_routes_equivalence` 1, the host codec's new unit test,
+`get_messages_caller_census` 3); **Tier R** (`QT_V4_CHECKOUT` = the pin)
+`266 cases, 0 failures`; the censuses/guards green by name —
+`dispatch_wrong_type_census` (unmoved), `help_tree_embed_guard` (126),
+`blob_write_sites_census`, `compressed_column_write_sites_census`,
+`get_messages_caller_census` (reshaped, 76/8/50), `qtap_schema_embed_guard`,
+`zod_version_guard`, `provider_sdk_version_guard`,
+`public_schemas_vendor_guard`, `tri_state_edges_share_the_decoder`,
+`web_edge_body_parse_guard`. 513 `SKIP:` lines, all families outside the
+block. No committed fixture pair changed.
+
+### Regen recipes AS RUN (all from `/tmp/qt-v4-pin-p4112-00c290c9a`, Node 24, lane-private outputs)
+
+- `title_update_tier3`: the committed recipe with `TMPO=/tmp/p4112/stage-title-update`
+  and `QT_ORACLE_OUT=/tmp/p4112/oracle-title-update.ndjson` (23 cases; 22
+  byte-identical to the baseline regen). Its pair (`cost-background-*`) is
+  P4.111's to widen — the new `deleted_mid_flight` arm reads only `chats` /
+  `chat_messages` / `background_jobs` through the same per-case
+  `ensure_p4d171_columns` heal, so it needs NO widen; the unifier re-runs the
+  family with both lanes' changes.
+- `context_summary_service_tier3`: fixture builder → `/tmp/p4112/qt-ctxsum-{main,mount}.db`,
+  jest → `/tmp/p4112/oracle-context-summary-service.ndjson` (anchored filter).
+- `chats_messages_ops_tier2`: builder → `/tmp/p4112/qt-chatsmsgops-fixture.db`
+  (9 chats), case → `/tmp/p4112/oracle-chatsmsgops.ndjson`.
+- `normalize_blob_image`: `QT_FIXTURE_NORMALIZE_BLOB_IMAGE=<worktree>/harness/oracle/fixtures/normalize-blob-image`
+  → `/tmp/p4112/oracle-normalize-blob-image.ndjson` (18 rows).
+- `chat_regenerate_title_tier3`, `photos_routes`: the baseline sweep's fresh
+  regen from the pin (unchanged cases), copied to `/tmp/p4112/baseline/`
+  WITH the regenerate oracle's `<ndjson>.<case>.{main,mount}.db` companions
+  (the first capture run missed them and failed on a copy — the recipe's
+  companion files are part of its output).

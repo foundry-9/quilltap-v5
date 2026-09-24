@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): P4.112 lane close-out — the gate, the deferrals, three order headers, and the corrupt-second-frame ruling request
+
+_Docs-only change._
+
+The lane record's gate (621 test binaries / 3,667 passed / 0 failed;
+Tier R 266/0 at the pin; clippy both feature sets; release build), the
+regen recipes as run, the Tier 3 items not taken, and the order's status
+header. P4.D215's, P4.109's and P4.110's headers each gain one sentence
+naming what this lane took. The corrupt-second-frame measurement is
+flagged for a human ruling.
+
 #### 2026-09-23 — test(web): remove photos_routes' dead generationKey ALTER heal (P4.112 unit 7)
 
 _Versions: web 0.0.180._
