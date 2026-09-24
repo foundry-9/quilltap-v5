@@ -33,6 +33,7 @@ import { EditSection } from './edit-section';
 import { OrganizeSection } from './organize-section';
 import type { ConnectionProfileOption } from './participant-card';
 import { ParticipantsSection } from './participants-section';
+import { shouldDismissSidebarOverlay } from './sidebar-overlay-dismiss';
 import { VisibilitySection, type VisibilityState } from './visibility-section';
 
 const STORAGE_KEY = 'quilltap.chat-sidebar.collapsed';
@@ -511,23 +512,19 @@ export class ChatSidebar implements OnInit {
       }
     });
 
-    // Overlay: a click outside the panel, or Escape, collapses it to the strip.
-    //
-    // A DELIBERATE DIVERGENCE from v4 (`ChatSidebar.tsx:417-429` at
-    // `d1c06cd9d`; filed as v4 bug 169): a dialog the sidebar opens is portaled
-    // to the body (v4's `BaseModal`, v5's builder/save dialogs), so it is no
-    // longer a DOM descendant of this host and every click inside it read as
-    // "outside" — the first click collapsed the sidebar, which unmounted the
-    // section that owns the dialog, closing it and aborting its run. A click
-    // inside any `.qt-dialog-overlay` (the dialog or its backdrop) is the
-    // dialog's to handle, never a dismissal of the sidebar.
+    // Overlay: a click outside the panel (but not inside a dialog portaled from
+    // it), or Escape, collapses it to the strip. Faithful since v4 `b0b6656b5`
+    // (`sidebar-overlay-dismiss.ts`, v4's fix for bug 169, which this port filed
+    // after fixing it first): a dialog the sidebar opens is portaled to the body
+    // (the builder/save dialogs), so it is no longer a DOM descendant of this
+    // host — a click inside any `.qt-dialog-overlay` is the dialog's to handle,
+    // never a dismissal of the sidebar.
     effect((onCleanup) => {
       if (!this.isOverlay()) return;
       const onPointerDown = (e: PointerEvent) => {
-        const target = e.target as Node;
-        if (this.host.nativeElement.contains(target)) return;
-        if (target instanceof Element && target.closest('.qt-dialog-overlay')) return;
-        this.narrowOpen.set(false);
+        if (shouldDismissSidebarOverlay(this.host.nativeElement, e.target)) {
+          this.narrowOpen.set(false);
+        }
       };
       const onKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'Escape') this.narrowOpen.set(false);

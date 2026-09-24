@@ -148364,6 +148364,45 @@ dialog and aborting the run; v4 identical at `ChatSidebar.tsx:417-429`).
   `94e946728` (docs-only, committed locally in the v4 checkout, NOT pushed).
 - Gate: `npm test` 448 files / 7,670; `npm run lint` clean. SPA 0.5.761.
 
+## P4.D223 — the Salon Images quick-hide + the bug-169 convergence + the `has-dangerous` client half (lane record, 2026-09-24)
+
+Lane branch `claude/salon-images-quick-hide-bug-db0391`, cut from `main`
+`72bc1faf`. SPA only — no crate, no cargo. §R.2 probe at lane start: v4
+checkout on `main`, HEAD `b0b6656b5`, `status --short` empty, both logs
+empty — PASS. v4's post-commit files were read by `git show <sha>:<path>`
+from the checkout's object store (no pinned worktree was needed: the lane
+grew no oracle recorder, so nothing executed v4 code).
+
+### Unit 1 — the bug-169 convergence (v4 `b0b6656b5`)
+
+- **Port:** NEW `chat/sidebar/sidebar-overlay-dismiss.ts` —
+  `DIALOG_OVERLAY_SELECTOR` + `shouldDismissSidebarOverlay(panel, target)`,
+  v4's 20-line module byte-for-byte in logic (the `!(target instanceof
+  Node)` exit and the `parentElement` fallback). `chat-sidebar.ts`'s
+  overlay `pointerdown` now calls it with the host element; Escape
+  unchanged (v4 unchanged).
+- **Vectors:** `sidebar-overlay-dismiss.spec.ts` transcribes v4's
+  `__tests__/unit/components/chat/sidebar-overlay-dismiss.test.ts` — six
+  `it`s, seven assertions — verbatim. The component-level pair in
+  `chat-sidebar.spec.ts` stands (the wiring proof).
+- **Red-first (mutation, reverted by file backup):** the predicate body
+  swapped for v5's pre-convergence `af6ed7e7` logic → exactly TWO red, "a
+  text node inside a dialog" and "without a mounted panel or a node
+  target" (4 passed). Restored → 6/6.
+- **Wording retired** to "faithful since v4 `b0b6656b5`":
+  `chat-sidebar.ts` overlay comment, `chat-sidebar.spec.ts` describe +
+  doc comment, `e2e/scenario-builder-flow.spec.ts` beat (e) title +
+  comment.
+- **For the unifier (§R.9, pre-listed — not a lane edit):**
+  `phase-4.md:6649-6655`'s ruling paragraph should read, in place of the
+  divergence ruling: "RULED 2026-09-24 as a divergence; CONVERGED at v4
+  `b0b6656b5` (`components/chat/sidebar-overlay-dismiss.ts`) — v5's
+  predicate is now v4's twin (P4.D223), including the text-node
+  `parentElement` fallback and the non-`Node` exit." The mirror copy
+  `docs/v4/developer/bugs/fixed/bug-169-narrow-sidebar-closes-portaled-
+  dialog.md` (5,048 bytes at `b0b6656b5`) + the `bugs.md` row are the
+  unifier's.
+
 ## P4.D220 — the action-dispatch consolidation (web edges + core gates + the `has-dangerous` server half) — LANE RECORD (2026-09-24)
 
 Branch `claude/p4-d220-action-dispatch-web-edges-3ac7c5`, cut from `main`

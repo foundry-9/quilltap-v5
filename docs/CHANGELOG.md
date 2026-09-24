@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(chat-sidebar): the narrow-pane overlay predicate as v4's bug-169 twin (P4.D223)
+
+_Versions: SPA 0.5.762._
+
+v4 `b0b6656b5` adopted this port's bug-169 fix as
+`shouldDismissSidebarOverlay`. The predicate now lives in
+`chat/sidebar/sidebar-overlay-dismiss.ts` as v4's exact twin: a null panel
+or a non-`Node` target never dismisses, and a text-node target is judged by
+its `parentElement`. v5's first fix dismissed on both. v4's seven unit
+vectors are transcribed in `sidebar-overlay-dismiss.spec.ts`; the old v5
+predicate reddens exactly the text-node and null-target vectors. The
+"deliberate divergence" wording in the component, its spec and the
+Scenario Builder e2e beat now reads "faithful since v4 `b0b6656b5`".
+
 #### 2026-09-24 — test(web): an action-sites census and the jobs envelope pin (P4.D220)
 
 _Versions: harness 0.0.967, web 0.0.194._

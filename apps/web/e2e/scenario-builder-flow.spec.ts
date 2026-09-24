@@ -198,16 +198,17 @@ test.describe('P4.D218 — the Host sets the scene', () => {
     });
   });
 
-  test('(e) a narrow Salon pane: the overlay sidebar survives clicks inside the portaled builder (v4 bug 169)', async ({
+  test('(e) a narrow Salon pane: the overlay sidebar survives clicks inside the portaled builder (bug 169)', async ({
     page,
   }) => {
     test.skip(!P4D217_SERVER_LANDED, GATE_REASON);
     // Below 640 px the chat sidebar is an OVERLAY whose outside-click collapse
     // used to read every click inside the body-portaled builder as "outside":
     // the first click collapsed the sidebar, unmounted the Chat section that
-    // owns the dialog, and the dialog — and its run — went with it. v4 does
-    // exactly that (`ChatSidebar.tsx:417-429` at `d1c06cd9d`, filed as v4 bug
-    // 169); v5 ignores clicks inside a `.qt-dialog-overlay`.
+    // owns the dialog, and the dialog — and its run — went with it (bug 169,
+    // which this port filed). Faithful since v4 `b0b6656b5`
+    // (`sidebar-overlay-dismiss.ts`): a click inside a `.qt-dialog-overlay`
+    // never dismisses the overlay.
     await page.setViewportSize({ width: 600, height: 900 });
     await openNewChatWithACharacter(page);
     await page.getByRole('button', { name: 'Create Chat' }).click();

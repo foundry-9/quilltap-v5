@@ -449,14 +449,14 @@ describe('ChatSidebar — the Scenario Builder cast (v4 d1c06cd9d)', () => {
 });
 
 /**
- * The narrow-pane overlay's outside-click collapse, and the deliberate
- * divergence from v4 (bug 169): a click inside a PORTALED dialog — one the
- * sidebar opened, now a child of the body (the Scenario Builder and its save
- * dialog) — is the dialog's, not a dismissal of the sidebar. v4
- * (`ChatSidebar.tsx:417-429` at `d1c06cd9d`) collapses on it, which unmounts
- * the dialog's owner and aborts its run.
+ * The narrow-pane overlay's outside-click collapse, wired through the
+ * component (bug 169): a click inside a PORTALED dialog — one the sidebar
+ * opened, now a child of the body (the Scenario Builder and its save dialog) —
+ * is the dialog's, not a dismissal of the sidebar. Faithful since v4
+ * `b0b6656b5` (`sidebar-overlay-dismiss.ts`); the predicate's own seven
+ * vectors live in `sidebar-overlay-dismiss.spec.ts`.
  */
-describe('ChatSidebar — the narrow overlay and a portaled dialog (v4 bug 169)', () => {
+describe('ChatSidebar — the narrow overlay and a portaled dialog (bug 169, faithful since v4 b0b6656b5)', () => {
   let rect: ReturnType<typeof vi.spyOn>;
   const outside: HTMLElement[] = [];
 
