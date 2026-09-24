@@ -6628,7 +6628,51 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
-## The `d1c06cd9d` review-follow-ups smalls round (P4.113 ∥ P4.114 ∥ P4.115 ∥ P4.116 ∥ P4.117) — ORDERED 2026-09-23
+## The `d1c06cd9d` review-follow-ups smalls round (P4.113 ∥ P4.114 ∥ P4.115 ∥ P4.116 ∥ P4.117) — UNIFIED 2026-09-24
+
+**ALL FIVE LANDED on main; the oracle baseline STAYS `d1c06cd9d` (v4 AT the
+baseline, clean, at both probes; the ledger's §3 EMPTY).** The §3 review ran
+five parallel readers plus the unifier's own reads: **no blocking defect in
+any lane's code; ONE blocking gate red** — P4.115's recorded handoff (the
+`web_edge_body_parse_guard` census row for `scenario_builder_routes.rs`,
+emptied by the lane) nobody took, red on the union, fixed red-first. Also
+fixed at unification: v4's third search-handler line (ERROR `Search
+scriptorium tool execution failed`) ported with a capture pin; P4.113's
+per-cell `update_message` divergence PINNED both ways; P4.115's M3 re-measured
+SURVIVING (docs corrected); the portal hosts' destroy hooks mutation-proven;
+the understudy-remap coverage overclaim corrected; `ai_import_tier3`'s
+`V4_APP_VERSION` → `dev.67`. Each order's status header enumerates its OPEN
+items. Gate + versions: the round record in `status-log.md`.
+
+**Next (in order):**
+
+1. **⚠ RULING (human): the narrow-pane Scenario Builder close** — P4.116's
+   portal makes every click inside the builder/save dialog an OUTSIDE click
+   for the Salon's overlay sidebar (< 640 px), which collapses, destroys the
+   dialog and aborts the run. v4 is identical (`ChatSidebar.tsx:417-429`), so
+   either match v4 (and file it upstream) or have the sidebar ignore targets
+   inside a portaled `.qt-dialog-overlay` (a deliberate divergence). P4.116's
+   header carries the evidence.
+2. **The four-commit drift catch-up** — v4 landed PRs #64–#67 DURING this
+   round (`drift-ledger.md` §3: the Salon image quick-hide, the `@` mention
+   typeahead, the chats `?action=has-dangerous` removal — v5 ported that
+   verb in P4.D143 — and a release script), plus an in-flight dirty help-doc
+   split to re-probe (apparently dogfood #120). PIN REQUIRED at `d1c06cd9d`.
+3. **The owed dogfood pass** — the Host end to end (real spend), now with
+   this round's surfaces: the acceptance-committed SSE head, the disconnect
+   DEBUG, the portaled dialogs at BOTH widths, the raw profile cache on the
+   Settings cards after a Brahma visit, and a DOUBLE re-roll's swipe counter
+   (the unification's `2/3` watch item — `salon-regenerate-stream-flow` is
+   flaky alone on main too; see the round record).
+4. **A follow-up smalls lane** over the named OPEN items in the five headers
+   (the sibling `Character not found` WARNs; P4.115 item 5's strip-rule
+   switch 449 → 450; the normalizer's log-half proof; the two
+   `fetchConnectionProfiles`; …).
+5. Still left out as before: the `quilltap sync` writer-hold ruling (P4.D210),
+   `ui/modal.ts` portaling for every dialog, the heals over un-widened pairs,
+   `db/prompt_templates.rs`'s datetime checks, the Debug-vector log fields.
+
+### As ordered (2026-09-23)
 
 **Baseline `d1c06cd9d`; v4 `main` HEAD `d1c06cd9d` (AT the baseline),
 `bugfix` `1a2b2164c` and `release` `8fbf2afe0` unmoved, the checkout on

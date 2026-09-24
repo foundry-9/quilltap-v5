@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): unify the `d1c06cd9d` review-follow-ups smalls round (P4.113 ∥ P4.114 ∥ P4.115 ∥ P4.116 ∥ P4.117)
+
+_Versions: core 0.0.1044, harness 0.0.964, host 0.0.154, web 0.0.191, SPA 0.5.760._
+
+Unified five maintenance lanes onto main: the db-layer smalls (P4.113), the
+tool/agent-loop smalls (P4.114), the Scenario Builder edge nits and web
+census lift (P4.115), the SPA smalls (P4.116), and the dead reader-side heals
+over P4.111's widened pairs (P4.117). The oracle baseline stays `d1c06cd9d`.
+v4 landed four commits during the round (PRs #64–#67); every regen was
+pinned, and the drift ledger now carries them as unprocessed rows.
+
+The unification review found no blocking defect in lane code and one blocking
+gate failure: a collapse-census row for `scenario_builder_routes.rs` that
+P4.115 had emptied (fixed red-first). Also fixed on the unify branch: v4's
+`Search scriptorium tool execution failed` ERROR (ported with a capture pin);
+P4.113's NULL-content `updateMessage` divergence, now pinned both ways; a
+stale P4.115 mutation proof (M3 survives since the stream commits at
+acceptance; docs corrected); the portaled dialogs' destroy hooks, now
+mutation-proven; an understudy-remap coverage overclaim; `ai_import_tier3`'s
+stale `V4_APP_VERSION`. Escalated for a ruling: the portaled Scenario Builder
+closes on its first click in a narrow Salon pane (v4 does the same).
+
+Gate: fmt, clippy (both feature sets), release build clean; 101-family sweep
+from the pin all ok; `cargo test --workspace` with a 163-variable env block
+630 binaries / 3,710 passed / 0 failed / 3 ignored, Tier R 266/0; SPA 448
+files / 7,668, build + lint clean; full Playwright 328 passed / 7 failed / 6
+skipped — the previous round's Salon-streaming cluster; four files green
+alone, `salon-regenerate-stream-flow` flaky alone on this tree and on main
+(measured on a main build). Round record in `status-log.md`.
+
 #### 2026-09-24 — docs(porting): P4.116 lane close-out — the gate, the measurements, and the P4.D218 header
 
 _Docs-only change._

@@ -148180,3 +148180,156 @@ deployment concern; (10) lifting the web censuses onto the HARNESS lexer
   The two split key spellings that remain (`apiKeys`/`api-keys`,
   `chatSettings`/`chat-settings`) are still recorded in `tab-refetch.ts`'s
   module doc, and they are out of this order's scope.
+
+## The `d1c06cd9d` review-follow-ups smalls round — UNIFIED (2026-09-24, P4.113 ∥ P4.114 ∥ P4.115 ∥ P4.116 ∥ P4.117)
+
+Branch `unify/d1c06cd9d-smalls` from `main` `7529fbca`; the five lanes
+cherry-picked in the ordered sequence P4.117 → P4.113 → P4.114 → P4.115 →
+P4.116 (30 commits). The ledger's §2 probe PASSED at start (v4 `main` AT `d1c06cd9d`, clean) and
+FAILED at close: **v4 landed FOUR commits mid-round** (`e3937d7aa` Salon image
+quick-hide, `7ebb74143` a release script, `3376b3dfa` the `@` mention
+typeahead, `944127d9a` the chats `?action=has-dangerous` removal — all
+2026-09-24 09:49–10:32) and the checkout went DIRTY (an in-flight help-doc
+split, apparently dogfood #120). **Every regen of this round ran from a
+`d1c06cd9d` pin** (`/tmp/qt-v4-pin-unify-smalls-d1c06cd9d`), so the gate is
+unaffected; `/driftcheck` recorded the four as UNPROCESSED §3 rows and the
+regen rule is now PIN REQUIRED. **The baseline STAYS `d1c06cd9d`.**
+
+### Reconciliation
+
+Conflicts were the expected four kinds only — crate versions (accumulated
+per conflicting commit), `Cargo.lock` (re-synced), CHANGELOG (union, newest
+first), status-log (union, lane order). One doc conflict needed a hand merge:
+P4.114 and P4.115 each appended a sentence to P4.D217's ONE status line, and
+the union produced two `**Status:**` lines (`357f8ecd`). No source conflict.
+
+### The §3 review — five parallel readers + the unifier's own reads
+
+**No blocking defect in any lane's code. ONE blocking gate red, fixed:**
+
+- **`web_route_body_reads_match_the_census` was RED on the union** — P4.115's
+  disconnect guard no longer reads `scenarioBuilderAbort`'s `aborted` reply,
+  so `scenario_builder_routes.rs` has ZERO collapsing sites and the
+  `COLLAPSE_CENSUS` row expecting one failed `census_walk`. The lane recorded
+  it as a handoff "for the unifier" (a harness file outside its ownership);
+  nobody took it. Row dropped, red-first on HEAD then green (`3983154a`).
+
+**Should-fixes landed on the unify branch:**
+
+- **P4.114 — v4's third search-handler line was absent.** v4's outer catch
+  (`search-scriptorium-handler.ts:544-549`) logs ERROR `Search scriptorium tool
+  execution failed` `{ context, userId, characterId }` + the error; v5's
+  counterpart (the pool context's read failing) returned silently while the
+  lane record read as a full sweep of the handler's lines. Ported with a
+  red-first capture pin (an instance opened without its mount-index
+  partition; field order asserted) — `8779f7ef`.
+- **P4.113 — a recorded divergence named but not pinned (§R.6).** v4's
+  `updateMessage` repairs a NULL-`content` row (it hydrates untyped, merges,
+  the merged event passes Zod) where v5's typed marshal fails first.
+  `NULL_CONTENT_REPAIR_DIVERGENCE` in `chats_messages_ops_tier2_equivalence`
+  over a DEDICATED chat `c00000a0-…` (so the blast radius is one op): v4
+  returns the id, logs nothing and bumps `transcriptVersion` (+1); v5 logs
+  ERROR `Failed to update message in chat` and returns `null`, the cell stays
+  NULL. VANISHED / WRONG SHAPE both ways; three mutations each RED; fresh
+  oracle from the pin (`667a63f6`). The `find_event_raw` doc's unknown-`type`
+  claim corrected (v4 merges first — a recorded, UNPINNED divergence) and
+  `zod_shape_failure`'s "the last two" → "two more".
+- **P4.115 — M3 re-measured SURVIVING.** Recorded RED at unit 4, before item
+  6 existed; item 6 commits the stream at acceptance, so a pre-frame leave now
+  drops the committed BODY. With M3 applied at HEAD the family is 2/2 green.
+  The test's doc and the route's module doc now say what is proven (the
+  guard's live-run DECISION) and record the handler-drop arm as an
+  undiscriminated window (`c6f1e678`, with a comment on the acceptance watch's
+  separate registry read).
+- **P4.116 — "removal on destroy" was unproven.** The `@if` toggle's view
+  detach removes the host itself, so deleting either `DestroyRef` hook left
+  every spec green. Two parent-destroy-while-open cases; mutation: dropping
+  the builder's hook reddens 2/51, the save dialog's 4+/51 (`6929fc33`).
+- **P4.117 — a coverage overclaim.** The corrected `reconcile.rs` comment and
+  `system_import_state.rs`'s header both said the family differential-covers
+  the `.qtap` understudy remap; the fixture's one `connection_profiles` row has
+  a NULL `fallbackProfileId` (measured by the reviewer through v4's cipher
+  driver), so the unit test is the ONLY non-null pin on that side
+  (`3df84770`).
+- Smaller: the Scenario Builder tier-3 signature mismatch prints both sides
+  (`554361c6`); `mount_pool.rs`'s now-false "no v5 emitter" note
+  (`6c1382ed`); P4.115's handoff (b) — `ai_import_tier3`'s `V4_APP_VERSION`
+  `dev.63` → `dev.67`, the family RED at the pin before (it had been since the
+  `d1c06cd9d` baseline move) and green through the driver after (`6e4da0e1`).
+
+**⚠ ESCALATED for a ruling (not changed):** P4.116's portal makes every click
+inside the builder/save dialog an OUTSIDE click for the Salon's overlay
+sidebar in a pane narrower than 640 px (`chat-sidebar.ts:515-524`'s
+capture-phase `host.contains(target)`), which collapses the sidebar, destroys
+the dialog and aborts the run. v4 is identical (`ChatSidebar.tsx:417-429`) —
+a v4-faithful v5 regression and a candidate v4 bug filing. P4.116's
+measurement (a) ("the clipping premise did not reproduce") was taken at
+1280×720, where the sidebar is not an overlay.
+
+**Reviewed and sound (no change):** P4.114's operator override against
+P4.D200's covenant (only the two character-less Brahma surfaces set it; v4
+`tool-executor.ts:1147` identical; the executor still refuses pool +
+operator); P4.113's `createdAt` read filter against v5's own writers (every
+one mints `clock::now_iso()`, v4's `toISOString()` shape — no v5-written row
+is skipped); P4.115's acceptance watch (no hang on any refusal/failure arm;
+`Notify` created before the check; poison recovery is sound — one
+`insert`/`remove` per mutation, lock order fixed); P4.116's cache (every
+`['connection-profiles']` reader stores raw rows; no camelCase spelling left);
+P4.117's thirteen removals (all three pairs carry every healed column natively,
+no heal backfilled data, no helper left dead).
+
+Every OPEN item is named in its order's status header.
+
+### The gate (final tree `1e2221fb` + the docs)
+
+- `cargo fmt --all --check` clean; clippy clean plain AND with
+  `--features quilltap-core/native-transport`; `cargo build --workspace
+  --release` clean.
+- **The 101-family sweep** through the driver from the pin (the previous
+  round's 67, every family this round touched, and the message-read /
+  wardrobe / scenario / search neighbours of the `createdAt` filter and the
+  `read_setting` WARN): **101 ok**
+  (`harness/tools/sweep-results/2026-09-24-d1c06cd9d-smalls-unify.json`);
+  plus `ai_import_tier3` through the driver after its constant moved, and
+  `chats_messages_ops_tier2` regenerated fresh for the new pin.
+- **`cargo test --workspace --no-fail-fast -- --nocapture` with a 163-variable
+  env block** (every swept family's run-stage vars + `QT_V4_CHECKOUT` at the
+  pin + `QT_NODE`): **630 test binaries / 3,710 passed / 0 failed / 3
+  ignored**; 413 `SKIP:` lines, NONE naming a block variable (checked by
+  `grep -wFf`). Tier R **266 cases, 0 failures**. By name:
+  `NULL_CONTENT_REPAIR_DIVERGENCE: pinned both ways`,
+  `an_outer_failure_logs_v4s_execution_failed_error`,
+  `web_route_body_reads_match_the_census`, the disconnect pair,
+  `ai_import_matches_oracle`.
+- **SPA:** `npm test` 448 files / 7,668; `npm run build` + `npm run lint`
+  clean.
+- **Full Playwright** against the final release binary + a fresh `dist`:
+  **328 passed / 7 failed / 6 skipped (11.9 m)** — the six skips the standing
+  parks; the seven reds EXACTLY the previous round's Salon-streaming cluster
+  (`salon-regenerate-stream-flow` ×1, `salon-roleplay-template-flow` ×2,
+  `salon-streaming-avatar-flow` ×2, `salon-thinking-indicator`,
+  `salon-transcript-subscribed-read`), none in a file this round touched; the
+  four Scenario Builder beats green. Each file re-run ALONE, one invocation at
+  a time: roleplay 2/2, streaming-avatar 2/2, thinking-indicator 1/1,
+  transcript 2/2 — **but `salon-regenerate-stream-flow` failed ONE beat in
+  each of three solo file runs** (`:221` the strip still up at 30 s once; `:101`
+  the second re-roll's counter `2/3` for `3/3` twice), and its `:101` beat
+  passed alone under `-g` (1/1, 1.5 m, the server log free of any
+  `update_message` failure). **Baseline measured, not argued:** `main`
+  (`7529fbca`) built in a scratch worktree and the same file run three times
+  alone: **3/3, then 2/3, 2/3** — `:101` failing on main too, at the
+  plate-snapshot race (`:126`). So the spec is unreliable alone on the
+  baseline; this round's diff touches no swipe-selection path (the one
+  `update_message` on it runs on the FIRST re-roll only, which reached `2/2`
+  every time). ⚠ **Named watch item:** the `2/3` counter shape (v4 bug (b)'s
+  signature) was not seen in main's three runs — the next dogfood pass
+  re-rolls twice on a real chat.
+
+Versions: core 0.0.1044, harness 0.0.964, host 0.0.154, web 0.0.191, SPA
+0.5.760; cli 0.0.27 and tauri 0.0.7 unchanged.
+
+### Next
+
+`phase-4.md`'s UNIFIED section for this round: the narrow-pane ruling, the
+owed Host dogfood pass, then a follow-up smalls lane over the headers' named
+OPEN items.

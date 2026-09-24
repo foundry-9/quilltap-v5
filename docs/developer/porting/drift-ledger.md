@@ -22,52 +22,71 @@ probe verifies against._
 - **Oracle baseline: `d1c06cd9d`** — "feat(scenarios): Scenario Builder —
   the Host researches and drafts a starting scene" (v4 main, 2026-09-23
   09:02 −0500, `4.10.0-dev.67`), adopted at the `d1c06cd9d` Scenario Builder
-  drift catch-up + maintenance round unification (P4.D216 → {P4.D217} ∥
-  P4.D218 ∥ P4.D219 ∥ P4.111 ∥ P4.112, 2026-09-23). CLAUDE.md's Status bullet
-  agrees.
-- **Checked:** 2026-09-23, 21:33 CDT (`/unify`'s closing probe; the
-  unification-start probe read the same).
-- **v4 `main` HEAD at check:** `d1c06cd9d` — **AT the baseline.**
+  drift catch-up + maintenance round unification (2026-09-23) and UNMOVED by
+  the `d1c06cd9d` review-follow-ups smalls round (P4.113–P4.117, unified
+  2026-09-24 — every regen of that round ran from a `d1c06cd9d` pin, so the
+  drift below arrived mid-round without touching it). CLAUDE.md's Status
+  bullet agrees.
+- **Checked:** 2026-09-24, 11:34 CDT (`/driftcheck`, run from the smalls
+  round's `/unify` after its closing probe FAILED; the unification-start
+  probe that morning had passed).
+- **v4 `main` HEAD at check:** `944127d9a` — **FOUR commits past the
+  baseline** (§3).
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch") — UNMOVED.
+  branch") — UNMOVED (its `main..bugfix -- lib/ app/ packages/` candidate list
+  is the same historical lineage recorded before; nothing new).
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: NO DRIFT — §3 is EMPTY.** Both rows (`dff00e98d`, `d1c06cd9d`)
-  retired to §6 by this round.
-- **Regen rule: NO PIN REQUIRED** while v4 HEAD is `d1c06cd9d` and the tree
-  is clean — regens may run from the checkout. The moment HEAD moves or the
-  tree dirties, the rule flips to PIN REQUIRED at `d1c06cd9d` (§5.1). **Do
-  not reason about which families "could" be affected — pin.**
-- **The workspace gate at the baseline** (the unification's final tree):
-  `qtap_schema_embed_guard`, `zod_version_guard` (4.6.5),
+- **Checkout at check:** branch **`main`**, tree **DIRTY** — uncommitted work
+  in `lib/help/help-doc-sync.ts`, `lib/help/help-doc-chunking.ts`,
+  `lib/database/repositories/help-docs.repository.ts`,
+  `lib/embedding/embedding-service.ts`,
+  `lib/background-jobs/handlers/embedding-generate.ts`,
+  `lib/help-guide/categories.ts`, ten `help/*.md` pages, two NEW pages
+  (`help/chat-settings-ai-services.md`, `help/chat-settings-composer.md`), a
+  NEW `__tests__/unit/lib/help/help-doc-size.test.ts`, `package.json` +
+  lock. The shape (a help-doc size test, the largest page split, the
+  chunk/embed path edited) reads as v4 taking up this port's dogfood finding
+  **#120** (the five largest help docs have no embeddings — both
+  implementations cap `EMBEDDING_MAX_CHARS` at 128 KiB). **In flight — NOT a
+  row until committed; expect a CONVERGENCE-shaped row for #120 then.**
+- **Verdict: DRIFT PENDING — 4 commits** (§3): two PORT (`944127d9a` the
+  chats GET action removal; `e3937d7aa` the Salon image quick-hide, SPA +
+  help), one PORT-NEW (`3376b3dfa` the `@` mention typeahead, SPA + help),
+  one NO-PORT? (`7ebb74143` a release script).
+- **Regen rule: PIN REQUIRED at `d1c06cd9d`** — HEAD is past the baseline
+  AND the checkout is dirty in `lib/`. Every regen runs from a detached
+  `d1c06cd9d` worktree per §5.1. **Do not reason about which families "could"
+  be affected — pin.**
+- **The workspace gate at the baseline** (the smalls round's final tree
+  `1e2221fb`): `qtap_schema_embed_guard`, `zod_version_guard` (4.6.5),
   `provider_sdk_version_guard`, `public_schemas_vendor_guard` GREEN;
   `help_tree_embed_guard` GREEN at **127**; `dispatch_wrong_type_census` at
-  **449** (P4.D216 +1 `GroupList.character_ids`, P4.D217 +2 the builder's
-  `run_id`s); `blob_write_sites_census` 12 / 12 + one EXEMPT;
-  `compressed_column_write_sites_census` 14; `get_messages_caller_census`
-  re-keyed per (file, fn, variant) over the same 84 sites (P4.112 unit 2) —
-  the round added no `get_messages` caller. `help_tree_equivalence` at the
-  `d1c06cd9d` pin is the proof the tree is v4's (127 files, md5-identical).
-  Tier R 266/0 at the pin. The tool catalog is 59 (the Scenario Builder's
-  `search` variant).
+  **449** (P4.115 item 5's `ChatUpdate.remove_participant_id` strip-rule
+  switch to 450 left OPEN, pinned both ways); `blob_write_sites_census` 12 /
+  12 + one EXEMPT; `compressed_column_write_sites_census` 14;
+  `get_messages_caller_census` (76, 7) after P4.113's `update_message` read
+  moved off `get_messages_strict`; `web_edge_body_parse_guard`'s collapse
+  census without a `scenario_builder_routes.rs` row (zero sites since
+  P4.115). `help_tree_equivalence` at the `d1c06cd9d` pin is the proof the
+  tree is v4's (127 files, md5-identical). Tier R 266/0 at the pin. The tool
+  catalog is 59.
 - **Schema state:** unchanged — the D23 re-dump from `e7d77bb60` stands; the
-  FTS objects come from P4.D204's boot reconciler. `d1c06cd9d` moved no DDL
-  (`SCENARIO_BUILDER` is a Zod enum member on a TEXT column).
-- **`help/**` vs v4 HEAD `d1c06cd9d`:** identical — 127 files.
+  FTS objects come from P4.D204's boot reconciler. None of the four new
+  commits moves DDL.
+- **`help/**` vs v4 HEAD `944127d9a`:** DIFFERS — `e3937d7aa` edits
+  `help/quick-hide.md` + `help/dangerous-content.md`, `3376b3dfa` edits
+  `help/carina.md` + `help/chats.md` (and the dirty tree edits more). v5's
+  tree is v4's at `d1c06cd9d` (127 files).
 - **The three text-compression migrations and the image re-encode migration
   stay DEFERRED as reclamation** (named in `db/text_compression.rs`, the
-  P4.D209 record, and P4.104's module doc). **The animated-input ruling
-  (the human, 2026-09-23) is LANDED (P4.108):** the host codec counts frames
-  on its two animated seams and declines a ≥ 2-frame GIF/WebP, so v4's
-  store-original fallback keeps every frame (a D19 divergence on mime/path,
-  pinned both ways); the frame counter is bounded by `decode`'s own 512 MiB
-  charge (the round's §3 blocking fix).
+  P4.D209 record, and P4.104's module doc). The animated-input ruling is
+  LANDED (P4.108); the corrupt-second-frame ruling (2026-09-23) keeps v5's
+  first-frame still.
 - **`docs/v4/developer/bugs/`** is `diff -rq` identical to v4's at
-  `d1c06cd9d` (bugs 165/166 mirrored at unification, with `API.md`,
-  `PROMPT_ARCHITECTURE.md`, `bugs.md`, `features/ROADMAP.md` and the new
-  `features/scenario-builder.md`). `docs/v4/CHANGELOG.md`'s older lag stays a
-  named housekeeping item.
+  `d1c06cd9d`; the four new commits touch no bug docs (they edit
+  `docs/developer/features/…` only). `docs/v4/CHANGELOG.md`'s older lag stays
+  a named housekeeping item.
 
 ## §2 The freshness probe
 
@@ -106,6 +125,10 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+| `e3937d7aa` | 2026-09-24 | Add quick-hide toggle for Salon images (#64) | PORT (SPA + help) | The quick-hide SPA vertical (P4.9d; P4.D144's uncensored-row half): a NEW images-hidden context (`components/quick-hide/images-hidden-context.tsx`) threaded through `SalonView` / `MessageRow` / `SpeakingAsAvatar` / `MessageContent` / `LazyMessageContent` / `ToolMessage` / `ui/Avatar` / four chat dialogs + a user-menu toggle; the sidebar-footer quick-hide button made always-visible and **`useHasDangerousChats` DELETED** (the only reader of `?action=has-dangerous` — see `944127d9a`). `help/quick-hide.md` + `help/dangerous-content.md` re-vendor (`p4.9i2`'s tree, 127 → 127). No `lib/`/`app/api/` hunk. | UNPROCESSED |
+| `7ebb74143` | 2026-09-24 | fix(scripts): update_version uses dev channel for non-release/bugfix branches (#67) | NO-PORT? | `scripts/update_version.sh` + CHANGELOG only — v4's release tooling; v5 has no counterpart. Needs ratification on the file list. | UNPROCESSED |
+| `3376b3dfa` | 2026-09-24 | Add `@` character mention typeahead to composer (#65) | PORT-NEW (SPA + help); server NO-PORT? | The composer typeahead family (P4.D75's ProseMirror typeahead adapter, the Salon composer): a NEW `@` trigger (`MentionTypeaheadPlugin.tsx`, pure logic in NEW `lib/mentions/mention-typeahead.ts` — a CLIENT module despite its `lib/` home; the shared cursor helpers moved to `typeahead/trigger-context.ts`), the Brahma entry at line start, loading/error labels, undo re-arm. **`lib/chat/carina-parser.ts` is behaviour-NEUTRAL** — `LINE_RE` rebuilt from a `NAME_SOURCE` string to the SAME pattern plus a NEW exported `isCarinaInvocableName` (the SPA's consumer); v5's Carina parser port needs no change, but the export's grammar must be the SPA twin's. `help/carina.md` + `help/chats.md` re-vendor. | UNPROCESSED |
+| `944127d9a` | 2026-09-24 | Remove unused `GET /api/v1/chats?action=has-dangerous` endpoint (#66) | PORT | **v5 ported the endpoint** (P4.D143 unit 5 — `Request::ChatsHasDangerous` / `api::salon::chats_has_dangerous` / `chats_routes.rs`, the `Unknown action: X. Available actions: has-dangerous` 400): v4 DELETES `handleHasDangerous`, and GET now answers **`Unknown action: ${action}. GET /api/v1/chats takes no actions`** for ANY non-null action — **including a bare `?action` or `?action=`** (the hunk's `!== null` check; before, an empty action fell through to the list). The verb, its response variant, the SPA's reader (if any remains after `e3937d7aa`'s port) and the `dispatch_wrong_type_census` / route census rows move with it. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
