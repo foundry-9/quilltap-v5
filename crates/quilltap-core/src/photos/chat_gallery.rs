@@ -173,18 +173,35 @@ pub fn resolve_message_attachment_entries_db(
 /// read as ABSENT. Length in CHARACTERS, as Zod counts them.
 const BLOB_SHA256_LENGTH: usize = 64;
 
-/// v4's `safeQuery(…, 'Error finding file link by id', {id}, null)` — log the
-/// repository's own error line and answer `None`.
-fn link_or_none<T>(
+/// v4 `8aafd595d`: the joined link+file read (`queryJoined`,
+/// `doc-mount-file-links.repository.ts:1445-1506`) now runs inside
+/// `withRawDb`, whose own `safeQuery` catches a SQL failure and logs ONCE
+/// here — `Error querying joined file links` `{collection: 'doc_mount_
+/// file_links', whereClause, error}` — before answering the fallback (`[]` /
+/// `null`). Because `queryJoined` never rethrows in fallback mode (v5's only
+/// mode on these call sites), the OUTER `safeQuery` around `findByIdWithContent`
+/// / `findByFileId` never sees the error, so the pre-commit outer lines
+/// ("Error finding file link(s) by …") are unreachable now — this is the ONLY
+/// line a SQL failure on the joined read logs.
+fn joined_read_error(err: &DbError, where_clause: &'static str) {
+    tracing::error!(
+        collection = "doc_mount_file_links",
+        whereClause = where_clause,
+        error = %err,
+        "Error querying joined file links"
+    );
+}
+
+/// Answer `None` on a joined-read failure, having already logged it via
+/// [`joined_read_error`].
+fn joined_link_or_none<T>(
     read: Result<Option<T>, DbError>,
-    message: &'static str,
-    collection: &'static str,
-    id: &str,
+    where_clause: &'static str,
 ) -> Option<T> {
     match read {
         Ok(found) => found,
         Err(err) => {
-            tracing::error!(collection = collection, id = %id, error = %err, "{}", message);
+            joined_read_error(&err, where_clause);
             None
         }
     }
@@ -237,11 +254,9 @@ fn walk_message_attachments(
                 // at the first failure and silently dropped every later
                 // attachment that would have resolved. The outer `try` v4 keeps
                 // around the walk is defensive on both sides now.
-                let mount_link = match link_or_none(
+                let mount_link = match joined_link_or_none(
                     links.find_by_id_with_content(&attachment_id),
-                    "Error finding file link by id",
-                    "doc_mount_file_links",
-                    &attachment_id,
+                    "WHERE l.id = ?",
                 ) {
                     Some(l) => Some(l),
                     None => {
@@ -250,21 +265,14 @@ fn walk_message_attachments(
                         let first = match links.find_by_file_id(&attachment_id) {
                             Ok(rows) => rows.into_iter().next(),
                             Err(err) => {
-                                tracing::error!(
-                                    collection = "doc_mount_file_links",
-                                    fileId = %attachment_id,
-                                    error = %err,
-                                    "Error finding file links by file ID"
-                                );
+                                joined_read_error(&err, "WHERE l.fileId = ?");
                                 None
                             }
                         };
                         match first {
-                            Some(first) => link_or_none(
+                            Some(first) => joined_link_or_none(
                                 links.find_by_id_with_content(&first.id),
-                                "Error finding file link by id",
-                                "doc_mount_file_links",
-                                &first.id,
+                                "WHERE l.id = ?",
                             ),
                             None => None,
                         }
@@ -1852,6 +1860,51 @@ mod walk_degrade_tests {
         );
         assert_eq!(out[0].id, LINK_DOC);
         assert!(!out[0].has_blob);
+    }
+
+    /// v4 `8aafd595d`: a SQL failure inside `queryJoined` (the shared read
+    /// `findByIdWithContent`/`findByFileId` both run through) now logs ONCE
+    /// under the NEW inner message — `Error querying joined file links` —
+    /// and v5's pre-commit OUTER lines ("Error finding file link(s) by …")
+    /// must stay silent: `queryJoined` never rethrows in fallback mode, so
+    /// the outer `safeQuery` around those two methods never sees the error.
+    /// Renaming `relativePath` poisons BOTH queries (both select it), so the
+    /// walk hits `find_by_id_with_content` (`WHERE l.id = ?`) then falls
+    /// back to `find_by_file_id` (`WHERE l.fileId = ?`) — both arms proven.
+    #[test]
+    fn a_poisoned_link_table_logs_the_new_inner_line_not_the_old_outer_ones() {
+        let db = mount("storedMimeType");
+        db.execute_batch(
+            "ALTER TABLE doc_mount_file_links RENAME COLUMN relativePath TO relativePath_x",
+        )
+        .unwrap();
+        let lines = crate::test_support::captured(|| {
+            let out = resolve_message_attachment_entries(&db, &one_message(), &HashSet::new());
+            assert!(
+                out.is_empty(),
+                "a poisoned link table must resolve nothing: {out:#?}"
+            );
+        });
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Error querying joined file links")
+                    && l.contains("collection=doc_mount_file_links")
+                    && l.contains("whereClause=WHERE l.id = ?")),
+            "v4's new inner line (WHERE l.id = ? arm): {lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Error querying joined file links")
+                    && l.contains("collection=doc_mount_file_links")
+                    && l.contains("whereClause=WHERE l.fileId = ?")),
+            "v4's new inner line (WHERE l.fileId = ? arm): {lines:?}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("Error finding file link")),
+            "the pre-commit outer lines must be silent now (queryJoined never rethrows): {lines:?}"
+        );
     }
 
     /// v4's `repos.chats.findById` is `_findById`'s `safeQuery(…, null)` —

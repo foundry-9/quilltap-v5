@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(photos): log v4's new inner error on a poisoned joined file-link read (P4.D221, v4 `8aafd595d`)
+
+_Versions: core 0.0.1049._
+
+v4's `queryJoined` (the shared read behind `findByIdWithContent`/
+`findByFileId`) now runs inside `withRawDb`, whose own `safeQuery`
+catches a SQL failure and logs it ONCE under a NEW inner message —
+`Error querying joined file links` `{collection: 'doc_mount_file_links',
+whereClause, error}` — before answering the fallback. Because
+`queryJoined` never rethrows in fallback mode, the OUTER `safeQuery`
+around those two v4 methods never sees the error, so v5's pre-commit
+outer lines ("Error finding file link(s) by …") became unreachable.
+`photos/chat_gallery.rs`'s three call sites now log the same inner line
+(with the two real `whereClause` literals, `WHERE l.id = ?` and
+`WHERE l.fileId = ?`) and stay silent on the old outer ones. Proved with
+a capture-pin unit test over a poisoned `doc_mount_file_links` table
+(a renamed `relativePath` column breaks both queries): both arms fire
+the new line with the right fields, and neither old line appears.
+
 #### 2026-09-24 — refactor(db): retire six read/delete methods v4 deleted as dead code (P4.D221, v4 `ad1c4c37f`)
 
 _Versions: core 0.0.1048, harness 0.0.966._
