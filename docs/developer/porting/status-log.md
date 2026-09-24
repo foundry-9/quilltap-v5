@@ -147704,3 +147704,35 @@ three paths re-measured as described (`register`'s `lock().ok()?`, `abort`'s
   registration (`a fresh id registers — never the 409`); 4/4 after.
 - **M2** (`lock().ok()?` restored in `register`) is exactly that pre-fix run —
   the red-first IS the mutation, recorded rather than re-run.
+
+### Unit 2 — item 1: no frame after an abort (core 0.0.1029)
+
+**The order's premise corrected (§R.4):** `FrameSink::emit` is NOT the
+chokepoint every frame passes — the loop's `on_reasoning` callback calls the
+run's `frames` DIRECTLY (`services/scenario_builder/mod.rs`, the
+`on_reasoning` closure), as do the three terminal-frame sites. So the ONE gate
+is a shadowed `frames` at the top of `run_scenario_builder` (`if !aborted()`),
+which every frame of the run passes: the sink, the reasoning callback and the
+terminals. **Measured: the host publish closure (`spine.rs`
+`run_scenario_builder_build`) receives only what that gated callback
+forwards, so it stays ungated — `spine.rs` is untouched and host is NOT
+bumped** (§R.8 predicted a host bump by this lane; none is needed).
+
+**The arm moved from the order's placement, with the reason:** the order
+asked for the routes family's abort case to assert zero post-abort frames
+from "a canned driver that emits a frame AFTER observing the token" — but
+that family's `CannedDriver` REPLACES the service (it publishes straight onto
+the Event bus, v4's mocked `runScenarioBuilder`), so no gate in the service
+could ever reach it, and a gate placed at the edge would not be v4's shape.
+The arm is instead the REAL service (`run_scenario_builder` over a fresh
+provisioned instance) in `services/scenario_builder/mod.rs`'s tests —
+`no_frame_is_published_after_the_run_is_aborted`: a detector that reads turn
+1 as one `search` call and a tool runner that trips the token mid-call, so the
+loop (which reads the token only between turns and per chunk) still produces
+its `toolResult` frame after the abort point; every frame is recorded with
+the token's state at emission.
+
+- **Red-first:** FAILED pre-fix with exactly ONE post-abort frame —
+  `{"toolResult":{"index":0,"name":"search","success":true,"result":{"found":"the quay"}}}`;
+  green after (10/10 in the module).
+- **M1** (the gate removed) is that pre-fix run.

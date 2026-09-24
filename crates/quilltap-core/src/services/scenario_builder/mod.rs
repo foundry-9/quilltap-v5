@@ -263,6 +263,18 @@ where
     let web_available =
         is_scenario_web_available(input.mode, connection_profile, deps.web_search_configured);
     let aborted = || signal.is_some_and(|s| s.load(Ordering::SeqCst));
+    // v4's `safeController.enqueue`: `if (closed || signal.aborted) return`
+    // (`route.ts:118-127`) — once the client has gone, nothing more is sent.
+    // ONE gate for every frame this run produces: the loop's controller
+    // ([`FrameSink`]), its reasoning callback (which calls `frames` directly,
+    // not through the sink) and the terminal frames below all go through this
+    // shadowed `frames`, so the host's publish closure needs no gate of its
+    // own (P4.115 item 1).
+    let frames = &|v: Value| {
+        if !aborted() {
+            frames(v);
+        }
+    };
 
     // v4's ONE try/catch spans everything below: a throw anywhere ends in the
     // catch's two arms. v5's throwing steps are the DB reads (the pool, the
@@ -523,6 +535,190 @@ mod tests {
         assert!(ctx.embedding_profile_id.is_none());
         assert!(ctx.character_id.is_none());
     }
+
+    // === P4.115 ===
+    /// Turn 1: a raw response the [`OneToolCall`] detector reads as ONE
+    /// `search` call; any later turn: a plain-text scene (never reached when
+    /// the abort lands mid-tool).
+    struct ToolThenScene(std::sync::Mutex<usize>);
+    impl crate::model::stream::StreamingCompletionProvider for ToolThenScene {
+        fn stream_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &crate::model::stream::StreamParams,
+        ) -> impl std::future::Future<
+            Output = tokio::sync::mpsc::Receiver<crate::model::stream::StreamChunkResult>,
+        > + Send {
+            let turn = {
+                let mut n = self.0.lock().unwrap();
+                *n += 1;
+                *n
+            };
+            async move {
+                use crate::model::stream::StreamChunk;
+                let (tx, rx) = tokio::sync::mpsc::channel(4);
+                let chunk = if turn == 1 {
+                    StreamChunk {
+                        raw_response: Some(json!({ "tool": "search" })),
+                        done: true,
+                        ..Default::default()
+                    }
+                } else {
+                    StreamChunk {
+                        content: "The quay at dusk.".to_string(),
+                        done: true,
+                        ..Default::default()
+                    }
+                };
+                let _ = tx.send(Ok(chunk)).await;
+                rx
+            }
+        }
+    }
+
+    struct OneToolCall;
+    impl crate::services::native_tool_loop::ToolCallDetector for OneToolCall {
+        fn detect(
+            &self,
+            raw: &Value,
+            _provider: &str,
+        ) -> Vec<crate::services::tool_execution::ToolCall> {
+            if raw.get("tool").is_none() {
+                return Vec::new();
+            }
+            vec![crate::services::tool_execution::ToolCall {
+                name: "search".to_string(),
+                arguments: json!({ "query": "quay" }),
+                call_id: Some("call-1".to_string()),
+            }]
+        }
+    }
+
+    /// The client's abort lands WHILE the tool runs: the runner trips the
+    /// run's token, then answers — so the loop's `tool_result` frame is the
+    /// first one produced after the abort point.
+    struct AbortingRunner(Arc<AtomicBool>);
+    impl crate::services::tool_execution::ToolRunner for AbortingRunner {
+        fn run(
+            &self,
+            tool_call: &crate::services::tool_execution::ToolCall,
+            _ctx: &ToolExecutionContext,
+        ) -> impl std::future::Future<Output = crate::services::tool_execution::ToolResult> + Send
+        {
+            self.0.store(true, Ordering::SeqCst);
+            let name = tool_call.name.clone();
+            async move {
+                crate::services::tool_execution::ToolResult {
+                    tool_name: name,
+                    success: true,
+                    result: json!({ "found": "the quay" }),
+                    error: None,
+                    message: None,
+                    metadata: None,
+                }
+            }
+        }
+    }
+
+    /// P4.115 item 1 — **no frame after an abort** (v4 `route.ts:118-127`:
+    /// `safeController.enqueue` returns when `closed || signal.aborted`).
+    /// The REAL service over a fresh provisioned instance; the abort trips
+    /// mid-tool, so the loop still emits the `tool_result` frame (the loop
+    /// reads the token only between turns and per chunk) — which must never
+    /// reach the run's frame callback. Every frame is recorded with the
+    /// token's state at the moment it was emitted.
+    ///
+    /// Mutation M1: remove the gate at the top of [`run_scenario_builder`] →
+    /// the post-abort `tool_result` frame is published and this is RED.
+    #[tokio::test]
+    async fn no_frame_is_published_after_the_run_is_aborted() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+
+        let token = Arc::new(AtomicBool::new(false));
+        let streaming = ToolThenScene(std::sync::Mutex::new(0));
+        let runner = AbortingRunner(Arc::clone(&token));
+        let deps = ScenarioBuilderDeps {
+            db: &db,
+            streaming: &streaming,
+            tool_runner: &runner,
+            tool_detector: &OneToolCall,
+            model_supports_native_tools: true,
+            provider_supports_web_search: false,
+            web_search_configured: false,
+        };
+        let profile = json!({
+            "id": "5b170000-0000-4000-8000-0000000000a1",
+            "name": "Host OK",
+            "provider": "OLLAMA",
+            "modelName": "host-model",
+            "allowToolUse": true,
+        });
+        let input = ScenarioBuilderInput {
+            mode: ScenarioBuilderMode::InWorld,
+            location: "The quay".to_string(),
+            time: "dusk".to_string(),
+            details: String::new(),
+            project_id: None,
+            character_ids: Vec::new(),
+            chat: None,
+            prior_draft: None,
+            revision: None,
+        };
+        let emitted: std::sync::Mutex<Vec<(bool, Value)>> = std::sync::Mutex::new(Vec::new());
+        let frames = |v: Value| {
+            emitted
+                .lock()
+                .unwrap()
+                .push((token.load(Ordering::SeqCst), v));
+        };
+        let outcome = run_scenario_builder(
+            &deps,
+            RunScenarioBuilderOptions {
+                user_id: crate::api::SINGLE_USER_ID,
+                connection_profile: &profile,
+                input: &input,
+                now: jiff::Zoned::now(),
+                synthetic_chat_id: Some("c0000000-0000-4000-8000-0000000000b1".to_string()),
+            },
+            &frames,
+            Some(&*token),
+        )
+        .await;
+
+        assert!(
+            matches!(outcome, ScenarioRunOutcome::Aborted),
+            "the run ends aborted between turns: {outcome:?}"
+        );
+        let emitted = emitted.into_inner().unwrap();
+        assert!(
+            emitted.iter().any(|(after, _)| !after),
+            "the pre-abort frames still reach the callback: {emitted:#?}"
+        );
+        let after: Vec<&Value> = emitted
+            .iter()
+            .filter(|(after, _)| *after)
+            .map(|(_, v)| v)
+            .collect();
+        assert!(
+            after.is_empty(),
+            "ZERO frames may be published after the abort point; got {after:#?}"
+        );
+    }
+    // === end P4.115 ===
 
     #[test]
     fn web_is_available_only_in_real_mode_with_both_facts() {

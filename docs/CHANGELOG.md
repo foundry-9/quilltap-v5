@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(scenario-builder): no frame is published after the run is aborted (P4.115 item 1)
+
+_Versions: core 0.0.1029._
+
+v4's route drops every enqueue once the request signal has aborted. v5 had
+no such gate: a frame produced after the abort (a tool result that finished
+after the client left, or a terminal frame) was still published. The run now
+wraps its frame callback once at the top of `run_scenario_builder`, so the
+loop's controller, the reasoning callback (which bypassed the controller)
+and the terminal frames are all checked against the abort token. The host's
+publish closure needs no gate of its own. New service test runs the real
+service with a tool that trips the abort mid-call and asserts no frame after
+the abort point. It failed before the fix with the `toolResult` frame.
+
 #### 2026-09-24 — fix(scenario-builder): a poisoned run registry recovers instead of answering 409 (P4.115 item 2)
 
 _Versions: core 0.0.1028._
