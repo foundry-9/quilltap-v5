@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(scenario-builder): the Scenario Builder service and its capability probe (P4.D217 unit 4)
+
+_Versions: core 0.0.1022, harness 0.0.938._
+
+Adds `run_scenario_builder`: the Host's read-only tool loop over the
+cast-scoped mount pool, with the Scenario Builder's tool slate, prompts and
+`SCENARIO_BUILDER` log type, emitting v4's tool, reasoning and terminal
+frames (`done` with the scene, one of two error frames, or nothing on an
+abort). Adds the capability probe (`curlConfigured` is always false; v5 has no
+curl plugin). A new tier-3 differential,
+`scenario_builder_tier3_equivalence`, runs 18 cases against v4's real service
+with only the model boundaries canned. It also records a pre-existing key-order
+difference in `doc_read_file` results outside this change.
+
 #### 2026-09-23 — feat(scenario-builder): the cast-scoped mount pool (P4.D217 unit 3)
 
 _Versions: core 0.0.1021, harness 0.0.937._

@@ -1,0 +1,1305 @@
+{
+  "$comment": "P4.D217 — tier-3 corpus for v4's REAL runScenarioBuilder (d1c06cd9d) over the doc-opacity fixture (built by its own unchanged builder). Model boundaries canned: streamMessage per case (recorded key + logType + tool names), detectToolCallsInResponse by the raw response's marker. Everything else REAL: buildTools, the loop, processToolCalls, every handler, the mount pool. `now` is fixed (fake Date) in UTC on both sides. `webSearchConfigured` is driven through the REAL isWebSearchConfigured via SERPER_API_KEY. The curl tool is absent on both sides (no plugin registered in jest; v5 builds no plugin tools).",
+  "testPepperBase64": "3q2+796tvu3erb7t3q2+796tvu3erb7t3q2+796tvu0=",
+  "nowEpochMs": 1790190309000,
+  "nowTz": "UTC",
+  "syntheticChatId": "d2170000-0000-4000-8000-00000000c0de",
+  "profileBase": {
+    "id": "a2170000-0000-4000-8000-0000000000f0",
+    "name": "Host Test",
+    "provider": "ANTHROPIC",
+    "modelName": "claude-scenario-test",
+    "allowToolUse": true,
+    "allowWebSearch": false,
+    "useNativeWebSearch": false
+  },
+  "detection": {
+    "search1": [
+      {
+        "name": "search",
+        "arguments": {
+          "query": "quarry"
+        },
+        "callId": "sb_s1"
+      }
+    ],
+    "grep1": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "quarry"
+        },
+        "callId": "sb_g1"
+      }
+    ],
+    "grepdup": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "quarry"
+        },
+        "callId": "sb_gd"
+      }
+    ],
+    "grepabort": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "moonlight"
+        },
+        "callId": "sb_ga"
+      }
+    ],
+    "readmissing": [
+      {
+        "name": "doc_read_file",
+        "arguments": {
+          "mount_point": "Group Files: Severed",
+          "path": "no-such-file.md"
+        },
+        "callId": "sb_rm"
+      }
+    ],
+    "readnotes": [
+      {
+        "name": "doc_read_file",
+        "arguments": {
+          "mount_point": "Group Files: Severed",
+          "path": "notes.md"
+        },
+        "callId": "sb_rn"
+      }
+    ],
+    "submit1": [
+      {
+        "name": "submit_final_response",
+        "arguments": {
+          "response": "  The quarry lies silent under a thin moon; the pumps have stopped.  "
+        },
+        "callId": "sb_sub1"
+      }
+    ],
+    "budget1": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-1"
+        },
+        "callId": "sb_b1"
+      }
+    ],
+    "budget2": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-2"
+        },
+        "callId": "sb_b2"
+      }
+    ],
+    "budget3": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-3"
+        },
+        "callId": "sb_b3"
+      }
+    ],
+    "budget4": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-4"
+        },
+        "callId": "sb_b4"
+      }
+    ],
+    "budget5": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-5"
+        },
+        "callId": "sb_b5"
+      }
+    ],
+    "budget6": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-6"
+        },
+        "callId": "sb_b6"
+      }
+    ],
+    "budget7": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-7"
+        },
+        "callId": "sb_b7"
+      }
+    ],
+    "budget8": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-8"
+        },
+        "callId": "sb_b8"
+      }
+    ],
+    "budget9": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-9"
+        },
+        "callId": "sb_b9"
+      }
+    ],
+    "budget10": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-10"
+        },
+        "callId": "sb_b10"
+      }
+    ],
+    "budget11": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-11"
+        },
+        "callId": "sb_b11"
+      }
+    ],
+    "budget12": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-12"
+        },
+        "callId": "sb_b12"
+      }
+    ],
+    "budget13": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-13"
+        },
+        "callId": "sb_b13"
+      }
+    ],
+    "budget14": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-14"
+        },
+        "callId": "sb_b14"
+      }
+    ],
+    "budget15": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-15"
+        },
+        "callId": "sb_b15"
+      }
+    ],
+    "budget16": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-16"
+        },
+        "callId": "sb_b16"
+      }
+    ],
+    "budget17": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-17"
+        },
+        "callId": "sb_b17"
+      }
+    ],
+    "budget18": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-18"
+        },
+        "callId": "sb_b18"
+      }
+    ],
+    "budget19": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-19"
+        },
+        "callId": "sb_b19"
+      }
+    ],
+    "budget20": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-20"
+        },
+        "callId": "sb_b20"
+      }
+    ],
+    "budget21": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-21"
+        },
+        "callId": "sb_b21"
+      }
+    ],
+    "budget22": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-22"
+        },
+        "callId": "sb_b22"
+      }
+    ],
+    "budget23": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-23"
+        },
+        "callId": "sb_b23"
+      }
+    ],
+    "budget24": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-24"
+        },
+        "callId": "sb_b24"
+      }
+    ],
+    "budget25": [
+      {
+        "name": "doc_grep",
+        "arguments": {
+          "query": "lantern-25"
+        },
+        "callId": "sb_b25"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "reasoningContent": "I should look"
+          },
+          {
+            "reasoningContent": "I should look up the quarry"
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 120,
+              "completionTokens": 20,
+              "totalTokens": 140
+            },
+            "rawResponse": {
+              "marker": "search1"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 200,
+              "completionTokens": 40,
+              "totalTokens": 240
+            },
+            "rawResponse": {
+              "marker": "submit1"
+            }
+          }
+        ]
+      ],
+      "name": "inworld_search_then_submit"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "  keep it short  ",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 100,
+              "completionTokens": 10,
+              "totalTokens": 110
+            },
+            "rawResponse": {
+              "marker": "grep1"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Moonlight on wet stone. The pumps are quiet."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 180,
+              "completionTokens": 30,
+              "totalTokens": 210
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "inworld_grep_then_plain_text"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 90,
+              "completionTokens": 9,
+              "totalTokens": 99
+            },
+            "rawResponse": {
+              "marker": "readnotes"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 150,
+              "completionTokens": 15,
+              "totalTokens": 165
+            },
+            "rawResponse": {
+              "marker": "submit1"
+            }
+          }
+        ]
+      ],
+      "name": "inworld_read_notes_then_submit"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "real",
+      "location": "Chicago, the Loop",
+      "time": "1927, a wet November night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": true,
+      "profile": {
+        "allowWebSearch": true
+      },
+      "streams": [
+        [
+          {
+            "content": "Rain drums on the El."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "real_web_available"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "real",
+      "location": "Chicago, the Loop",
+      "time": "1927",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": true,
+      "profile": {
+        "allowWebSearch": false
+      },
+      "streams": [
+        [
+          {
+            "content": "Rain on the El."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "real_web_profile_forbids"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "real",
+      "location": "Chicago, the Loop",
+      "time": "1927",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {
+        "allowWebSearch": true
+      },
+      "streams": [
+        [
+          {
+            "content": "Rain."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "real_web_unconfigured"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "priorDraft": "The draft scene.",
+      "revision": "More rain.",
+      "streams": [
+        [
+          {
+            "content": "The draft scene, wetter."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "revision_pair"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "chat": {
+        "id": "d2000000-0000-4000-8000-000000000003",
+        "scenarioText": "  The old scene.  ",
+        "contextSummary": " They argued about the lamps. "
+      },
+      "streams": [
+        [
+          {
+            "content": "A new scene."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "in_chat_scene_and_summary"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": null,
+      "characterIds": [],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "content": "An empty stage."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "no_cast_no_project"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "content": "\n\n  The wind rises.  \n"
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "plain_text_padded_answer"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "grepdup"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "grepdup"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "grepdup"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Forced to finish: stone and moon."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "stuck_loop_guard"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget1"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget2"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget3"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget4"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget5"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget6"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget7"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget8"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget9"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget10"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget11"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget12"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget13"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget14"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget15"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget16"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget17"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget18"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget19"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget20"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget21"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget22"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget23"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget24"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "budget25"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Salvaged at the end: the lantern gutters."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "budget_salvage"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "content": ""
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "empty_response"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "readmissing"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Nothing to read; the scene stands."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "failing_tool_then_text"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "abortOnMarker": "grepabort",
+      "streams": [
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {
+              "marker": "grepabort"
+            }
+          }
+        ],
+        [
+          {
+            "content": "never reached"
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "abort_between_turns"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "abortOnReasoning": "stop here",
+      "streams": [
+        [
+          {
+            "reasoningContent": "stop here"
+          },
+          {
+            "content": "never kept"
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "abort_mid_stream"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "content": "The quar"
+          },
+          {
+            "error": "upstream connection reset"
+          }
+        ]
+      ],
+      "name": "stream_throw"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1",
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "webSearchConfigured": false,
+      "profile": {},
+      "abortOnReasoning": "halt",
+      "streams": [
+        [
+          {
+            "reasoningContent": "halt"
+          },
+          {
+            "error": "late upstream failure"
+          }
+        ]
+      ],
+      "name": "abort_then_throw"
+    }
+  ]
+}

@@ -145943,3 +145943,80 @@ QT_ORACLE_SBPOOL=/tmp/p4d217/oracle-scenario-builder-mount-pool.ndjson \
 QT_FIXTURE_SBPOOL_MAIN=/tmp/p4d217/sbpool-main.db QT_FIXTURE_SBPOOL_MOUNT=/tmp/p4d217/sbpool-mount.db \
   cargo test -p quilltap-harness --test scenario_builder_mount_pool_equivalence -- --nocapture
 ```
+
+### Unit 4 — the capabilities probe and the service (`run_scenario_builder`)
+
+`services/scenario_builder/capabilities.rs`: `resolve_scenario_builder_capabilities(web_search_configured)`
+→ `{ webSearchConfigured, curlConfigured: false }` + the DEBUG. **`curlConfigured` is ALWAYS
+`false` on v5 — the RECORDED divergence (§R.4(k)):** v5 builds no plugin tools and has no curl
+plugin; v4's own value is `false` too wherever the plugin is not installed (the jest env
+registers none). Pinned in the route family (unit 6), both ways. The WARN `Curl capability
+lookup failed; treating curl as unavailable` has no v5 emitter for the same reason.
+
+`services/scenario_builder/mod.rs`: `run_scenario_builder(deps, opts, frames, signal) ->
+ScenarioRunOutcome { Done(frame) | Failed(frame) | Aborted }` — the synthetic chat id (a v4 uuid,
+or `opts.synthetic_chat_id` for the family), `is_scenario_web_available`, the pool, the
+`build_tools` call with all 20 positionals mapped (a table in the module doc — `disabled_tools:
+Some(&[])`, NOT `None`, which is v4's legacy "no tools" skip), `build_one_shot_tool_instructions`
+with v4's `textBlockOptions`, the two prompts with the injected `jiff::Zoned`, the tool context
+WITHOUT `operator_surface` (`scenario_tool_context`, unit-pinned), P4.D216's loop with `log_type:
+SCENARIO_BUILDER`, `The Host` / `''`, `log_label: "Scenario Builder"`, the reasoning frames, the
+three outcomes and the service's log lines. The loop's `ChatEvent` frames and the service's own
+frames reach one `Fn(Value)` callback (`FrameSink`), each serialized with its key order intact.
+**P4.D216's keystone shapes were sufficient — no change needed** (§R.10(b)).
+
+NEW tier-3 family `scenario_builder_tier3_equivalence` (cloned from `brahma_console_tier3`):
+**18 cases, 49 stream calls** driving v4's REAL `runScenarioBuilder` over the doc-opacity
+fixture — `streamMessage` canned + recorded (key, `logType`, tool NAMES), detection canned by
+marker, everything else real (`buildTools` with the registry initialized, the loop,
+`processToolCalls`, the `search` / `doc_grep` / `doc_read_file` handlers over the pre-built
+pool, the mount pool). `Date` faked (timers real) + `TZ`; `crypto.randomUUID` answers the
+spec's synthetic id once per chat-less case (spied on the CJS module object — a first attempt
+on the ESM namespace did not take, visible as the only differing log field). Cases: in-world
+search→submit (with reasoning), grep→plain text, read→submit, real mode × web
+available/profile-forbids/unconfigured (the slate carries `search_web` only when available),
+the revision pair, in-chat scene + summary, no cast/no project, a padded plain answer, the
+stuck-loop guard, the 25-turn budget salvage, `empty response`, a failing tool, abort between
+turns, abort mid-stream, a stream throw (the "detained" frame), abort-then-throw (the "during a
+throw" line). Comparand: the ordered frames BYTE-exact, the per-call tool names, the
+`llm_logs` row types the REAL writer put down (every one `SCENARIO_BUILDER`, against v4's
+terminal-chunk record), the three services' log lines, and the served-call count. **The
+`curl` tool is absent on BOTH sides** (recorded). **Pin proof:** the service does not exist at
+the baseline.
+
+**MEASURED, recorded for the unifier (outside this lane):** `doc_read_file`'s RESULT object
+serializes in a different KEY ORDER on v5 (`formattedText, path, uri, mtime, totalLines,
+truncated, mimeType, content`) than v4's handler builds it (`formattedText, content, mimeType,
+path, uri, mtime, totalLines, truncated`) — values equal, bytes different, on the SSE
+`toolResult` frame AND in the threaded tool message the model sees on the next turn (so a
+continuation after `doc_read_file` differs from v4's on EVERY one-shot surface — Brahma
+included). Pre-existing in `tools/doc_edit/**` (P4.D216's this round; §R.10(b) — not
+edited). Pinned both ways in the family (`OUT_OF_LANE_DIVERGENCES`: "VANISHED" if it matches,
+"WRONG SHAPE" if it diverges differently). **ORDER CORRECTION:** §S.1's `status` frame example
+carries `"kind":"status"` first; v4's REAL `processToolCalls` frame is `{"status":{"stage":…,
+"message":…,"toolName":…,"characterName":"The Host","characterId":""}}` with NO `kind` — both
+sides agree on the real bytes.
+
+**Mutations:** `operator_surface: true` on the tool context → every tool-running case red (the
+executor's pool+operator refusal fires on `search`, `doc_grep`, `doc_read_file`); the aborted
+arm made to emit an error frame → exactly `abort_between_turns` + `abort_mid_stream` red. Both
+restored by file backup. (The served-count assert was first a panic that hid the per-case list
+under M1; it now joins the failure list.)
+
+Regen:
+
+```bash
+STAGE=/tmp/p4d217/stage-sb-tier3
+rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+cp $V5W/harness/oracle/cases/scenario-builder-tier3.test.ts $STAGE/harness/oracle/cases/
+cp $V5W/harness/oracle/fixtures/scenario-builder-tier3.json $STAGE/harness/oracle/fixtures/
+cd /tmp/qt-v4-pin-p4d217-d1c06cd9d
+# the fixture: the doc-opacity builder's output (the same build the pool family uses)
+QT_FIXTURE_SBT3_MAIN=/tmp/p4d217/sbt3-main.db QT_FIXTURE_SBT3_MOUNT=/tmp/p4d217/sbt3-mount.db \
+QT_ORACLE_OUT=/tmp/p4d217/oracle-scenario-builder-tier3.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=240000 --roots "$PWD" --roots "$STAGE/harness/oracle/cases" \
+  -- "scenario-builder-tier3\.test\.ts$"
+QT_ORACLE_SBT3=/tmp/p4d217/oracle-scenario-builder-tier3.ndjson \
+QT_FIXTURE_SBT3_MAIN=/tmp/p4d217/sbt3-main.db QT_FIXTURE_SBT3_MOUNT=/tmp/p4d217/sbt3-mount.db \
+  cargo test -p quilltap-harness --test scenario_builder_tier3_equivalence -- --nocapture
+```
