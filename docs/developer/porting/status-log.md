@@ -148363,3 +148363,259 @@ dialog and aborting the run; v4 identical at `ChatSidebar.tsx:417-429`).
   sidebar-closes-portaled-dialog.md` + its `bugs.md` row, v4 commit
   `94e946728` (docs-only, committed locally in the v4 checkout, NOT pushed).
 - Gate: `npm test` 448 files / 7,670; `npm run lint` clean. SPA 0.5.761.
+
+## P4.D221 — the `ad1c4c37f`/`8aafd595d` `lib/` riders + two NO-PORT ratifications (2026-09-24, branch `claude/dispatch-lib-riders-partition-f93bb0`)
+
+The `lib/` half of the `b0b6656b5` ten-commit drift catch-up round (the web
+edges are P4.D220's). §2 freshness probe PASSED at lane start (branch `main`,
+HEAD `b0b6656b5`, both logs empty, tree clean) — regen rule PIN REQUIRED,
+per `docs/developer/porting/drift-ledger.md` §1/§5.1. Two lane-unique pinned
+worktrees built and symlinked per §5.1: `/tmp/qt-v4-pin-p4d221-b0b6656b5`
+(target) and `/tmp/qt-v4-pin-p4d221-d1c06cd9d` (baseline).
+
+**Tier 1**
+
+1. **Write-partition mount-index keys** (`0a3a3ef6`). `MOUNT_INDEX_REPO_KEYS`
+   gained `groupDocMountLinks` + `groupCharacterMembers`
+   (`crates/quilltap-core/src/write_partition.rs:47-58`), matching v4's
+   `write-partition.ts` at `ad1c4c37f`. Grew `harness/oracle/cases/
+   write-partition.ts`'s classify cases with both keys (dotted method names)
+   plus a `partition` case proving both route to `mountIndex` end to end
+   through `partitionWrites`. Added a NEW Rust-only test in
+   `write_partition_equivalence.rs`,
+   `group_character_members_write_applies_inside_mount_index_transaction`: a
+   minimal recording `ApplyHost` drives the REAL `apply_writes` orchestration
+   (`classify_write_target` → `partition_writes` → `apply_writes`) and
+   asserts `groupCharacterMembers.create`/`groupDocMountLinks.create` land
+   inside the mount-index `BEGIN IMMEDIATE`/`COMMIT` pair while an ordinary
+   `chats.update` stays in main — the applier-level proof the order asked
+   for, since `write_apply_equivalence.rs` (the corpus-driven applier family)
+   is outside this lane's ownership. **Measured at both pins, per the
+   round's §R.5** (the baseline oracle lacks the keys too, so the new rows
+   red ONLY at the target, not "always"): regenerated `write-partition` at
+   the BASELINE pin (`d1c06cd9d`) — its classify rows answer `"main"` for
+   both `groupDocMountLinks.create`/`groupCharacterMembers.create` — and
+   ran the (already-fixed) Rust classifier against that baseline-pinned
+   oracle: **RED**, `classify 'group-doc-link': left: "mountIndex" right:
+   "main"`. Regenerated at the TARGET pin — both rows answer `"mountIndex"`
+   — and ran the same Rust classifier: **GREEN**, `15 classify, 3
+   partition, 4 mainPrimary, 12 rewrite, 14 uniqueErr` (grown from the
+   pre-existing 13/2/4/12/14 by the two new classify rows + the one new
+   partition row).
+
+2. **Brahma SQL prompt** (`91377968`). Regenerated
+   `services/brahma_console/prompt_text.rs` mechanically through
+   `harness/oracle/cases/gen-brahma-prompts.mjs`, run from inside the
+   target pin (`npx tsx … $OUT`). `BRAHMA_SQL_PROMPT` 7,730 → 8,026 UTF-16
+   code units (the new "Chats and messages" sentence on `qt_text()` reads
+   for compressed columns); `BRAHMA_BASE_BRIEF` unchanged (863). Confirmed
+   RED-FIRST: reverted the regenerated file to its pre-fix content (via
+   `git show HEAD:…`) and re-ran `brahma_console_tier3_equivalence` against
+   the SAME target-pinned oracle — it fails
+   (`oac_keyless_proceeds: result diverges … no canned stream queued for
+   key (OPENAI_COMPATIBLE, model claude-brahma-test, 2 msgs)`, because the
+   replay key includes the system-prompt bytes); restored the regenerated
+   file and re-ran green (`18 case(s) + 9 loop arm(s)` agree).
+
+3. **`escapeLikePattern` → `escapeLikeLiteral`** (`a4dc5d66`). v4's
+   `fts-query.ts` deletes its own `escapeLikePattern` and imports
+   `escapeLikeLiteral` from the sibling `like-escape.ts` (same regex, no
+   lowercasing — v5 already delegates `db/fts_query.rs::escape_like_pattern`
+   onto `like_escape::escape_like_literal`, so this is a NAME-ONLY fix).
+   Updated `fts_query.rs`'s doc comments (the "v4 keeps two copies" claim
+   is now stale — v4 collapsed to one). Repointed `harness/oracle/cases/
+   fts-query.ts`'s import so it keeps driving v4's real module rather than
+   crashing on the deleted symbol at the target pin (confirmed: the
+   deleted method reads `undefined` on `CharactersRepository.prototype` —
+   wait, that check was for `findLLMControlled`; for `escapeLikePattern`
+   the crash mode is an unresolved named import, which Node/tsx raises as
+   a `SyntaxError`/binding error at module load — not independently
+   re-verified here since the fix and the check landed together, but the
+   import line the old case used no longer exists in `fts-query.ts` at the
+   target, confirmed by `grep`). Regenerated `fts-query` at BOTH pins:
+   byte-identical (48 rows each, `cmp` clean) — the predicted neutrality,
+   since the fold was already v4-faithful.
+
+4. **Method census — six v5 twins of deleted v4 methods.** `rg` census
+   across `crates/` (excluding `tests/`/harness) found **zero production
+   callers** for all six:
+
+   | v5 method | file | oracle path | disposition |
+   |---|---|---|---|
+   | `find_llm_controlled` | `db/characters_read.rs` | `characters-read.ts:112` (`findLLMControlled`) | RETIRED |
+   | `find_by_keywords` | `db/memories_read.rs` | `memories-read.ts:135` (`findByKeywords`) | RETIRED |
+   | `find_by_about_character_id` | `db/memories_read.rs` | `memories-read.ts:183` (`findByAboutCharacterId`) | RETIRED |
+   | `delete_by_source_message_ids` | `db/memories.rs` | `memories-tier2.ts:122` (`deleteBySourceMessageIds`) | RETIRED |
+   | `find_recent_for_chat` | `db/chat_documents.rs` | none (v5-only unit test) | RETIRED |
+   | `prompt_templates::find_built_in` | `db/prompt_templates.rs` | none (no caller at all) | RETIRED |
+
+   `0285e3fd`. For the four with an oracle path: the committed corpus
+   fixtures (`characters-read-tier2.json`, `memories-read-tier2.json`,
+   `memories-tier2.json`) are UNCHANGED (no fixture edit) — the retirement
+   is a case-file + harness-test edit. `characters-read.ts` / `memories-
+   read.ts` filter the retired query `kind`s out of `spec.queries` BEFORE
+   the loop (so the retired v4 call is never attempted and never emitted);
+   the matching Rust harness tests (`characters_read_equivalence.rs`,
+   `memories_read_equivalence.rs`) filter `spec.queries` the SAME way
+   before the 1:1 zip-by-index comparison against the oracle, so counts
+   stay aligned. `memories-tier2.ts`'s `deleteBySourceMessageIds` op
+   becomes an explicit no-op case (comment only, still consumes the row);
+   `memories_tier2_equivalence.rs`'s `Op` enum gains a `#[serde(other)]`
+   unit fallback variant (`Retired`) so the committed fixture's un-migrated
+   final op still deserializes, matched to a no-op arm. Regenerated all
+   three families at the target pin: `characters_read` 11 → 10 rows (10/10
+   green), `memories_read` 40 → 38 rows (38/38 green), `memories_tier2`'s
+   single structural dump unaffected (the retired op was last in the
+   sequence, so skipping it changes nothing else) — all green. For the two
+   with no oracle path: `find_recent_for_chat` (+ its own
+   `find_recent_for_chat_inactive_only` unit test) and
+   `prompt_templates::find_built_in` were deleted outright along with the
+   stale module-doc lines naming them (`prompt_templates.rs`'s header used
+   to claim "the three READS v4's routes call" including `find_built_in`,
+   which the function's OWN doc comment already contradicted — "v4's own
+   routes do not call it"; now two READS, doc fixed both places).
+
+5. **NO-PORT ratifications.**
+   - **`7ebb74143`** ("fix(scripts): update_version uses dev channel for
+     non-release/bugfix branches (#67)") — `git show --stat`:
+     `docs/CHANGELOG.md` (+7) + `scripts/update_version.sh` (+5/−3) only.
+     v5 has no release-tooling counterpart to either file. RATIFIED
+     NO-PORT.
+   - **`8aafd595d`** ("Extract dedicated-database repository base class
+     (#70)") — `git show --stat`: 25 files, 1,204 insertions / 756
+     deletions, entirely inside `lib/database/repositories/**` (the new
+     `AbstractDedicatedDbRepository` + `dbTarget`/`withRawDb` machinery),
+     `lib/database/backends/sqlite/llm-logs-guard.ts` (NEW, the LLM-logs
+     twin of the existing `mount-index-guard` — already the ratified
+     NO-PORT class, v5's `DbError::PartitionUnavailable` covers the same
+     ground), three NEW v4-only test files, and doc/version-stamp deltas.
+     **Confirmed: `write-partition.ts` changes NO key at this commit** —
+     the two group-store keys arrived in `ad1c4c37f`, landed above in item
+     1; this commit's own `write-partition-repo-keys.test.ts` NEW unit
+     test (its vector mirrored as classify-case rows in item 1's oracle
+     growth, per the order, not ported as a test) just holds the
+     partitioner to the repos' own `dbTarget` declarations. Four
+     observable deltas, none matched in v5 (recorded per-delta, not
+     re-derived — matches the ledger's `8aafd595d` row and the order's
+     survey point 5 exactly): (1) the joined file-link read's new inner
+     ERROR — **taken as the Tier-2 small, item 7 below, NOT ratified
+     NO-PORT**; (2) a NEW ERROR on the one-link filesystem-source
+     constraint — v5 has no port of that constraint at all (pre-existing
+     gap, not this commit's — no v5 change); (3) three writers'
+     degraded-mode text `Mount index database not initialized` → `…is in
+     degraded mode` — v5 has no degraded path
+     (`DbError::PartitionUnavailable`, P4.D122 — no v5 change); (4) a NEW
+     DEBUG `Dedicated database unavailable; answering with the fallback` —
+     no v5 fallback-value site to carry it (no v5 change). RATIFIED
+     NO-PORT on the file list with item (1)'s ERROR line taken as the
+     Tier-2 small.
+   - **Mirror pre-list for the unifier (§R.9, byte counts at `b0b6656b5`,
+     not re-derived — the round-wide table already gives them):**
+     `docs/v4/developer/DATABASE_ABSTRACTION.md` (13,959 → 15,160 — the
+     `8aafd595d` doc hunk, 5 lines changed in v4, is inside this delta
+     alongside other commits' hunks the round-wide table already
+     accounts for). No mirror path is exclusively this lane's beyond that
+     one; the rest of §R.9's list belongs to sibling lanes.
+
+6. **Neutrality legs at the target, recorded** (`carina_parser*` unchanged,
+   `Tier R` unchanged — RE-RUN ONLY, no source edit):
+   - **Carina parser** (`3376b3dfa`'s `lib/chat/carina-parser.ts`).
+     Regenerated `harness/oracle/cases/carina-parser.ts`'s oracle at BOTH
+     pins: 67 rows each, `cmp` byte-identical — confirms the rebuilt
+     `LINE_RE` really is byte-identical to the old literal, as the survey
+     measured. `carina_parser_equivalence` green at the target pin (67/67).
+   - **Tier R** (`crates/quilltap-cli/tests/cli_differential.rs`), run
+     with `QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d221-b0b6656b5 QT_NODE=~/.nvm/
+     versions/node/v24.13.1/bin/node`: **266 cases, 0 failures** — matches
+     the expected 266/0 exactly (unchanged from the baseline pin's count;
+     nothing in this round's `lib/` riders touches a CLI-linked surface).
+
+**Tier 2**
+
+7. **The inner ERROR on the joined file-link read** (`dd3dadd9`,
+   `8aafd595d` item (1)). Added `joined_read_error`/`joined_link_or_none`
+   in `photos/chat_gallery.rs`, replacing the three call sites' pre-commit
+   outer-message logging (`link_or_none` + one inline `tracing::error!`)
+   with v4's NEW inner line — `Error querying joined file links`
+   `{collection: 'doc_mount_file_links', whereClause, error}` — since
+   `queryJoined`'s own `withRawDb`/`safeQuery` now swallows the error
+   before the outer `safeQuery` around `findByIdWithContent`/`findByFileId`
+   ever sees it (fallback mode, v5's only mode here). `whereClause`
+   literals taken from v4's real `queryJoined` call sites: `WHERE l.id = ?`
+   (`findByIdWithContent`, used twice — the direct link-id try and the
+   file-id-resolved retry) and `WHERE l.fileId = ?` (`findByFileId`).
+   Capture-pin proof: `a_poisoned_link_table_logs_the_new_inner_line_not_
+   the_old_outer_ones` renames `doc_mount_file_links.relativePath` (a
+   column both queries select) to poison BOTH queries, then asserts BOTH
+   new-line arms fire with their exact `whereClause` and that NEITHER old
+   outer line appears — the fire leg and the silence leg in one test,
+   green.
+
+**Tier 3 — explicit deferrals (loud, never silent)**
+
+8. `8aafd595d` deltas (2)–(4) — recorded above under item 5, no v5
+   counterpart for any of the three; no v5 source change.
+9. v4's `dedicated-db-repository.test.ts` (309 lines) and `doc-mount-
+   chunks-embedding-roundtrip.test.ts` (126 lines) — unit tests of v4's
+   `AbstractDedicatedDbRepository` base class; no v5 surface exists to test
+   (v5 has no equivalent base-class abstraction — its repos are free
+   functions/structs per module). Recorded, not ported.
+
+**Regen recipes as run** (env vars + working directory, for anyone
+re-deriving): `write-partition` —
+`cd /tmp/qt-v4-pin-p4d221-b0b6656b5 && npx tsx harness/oracle/cases/
+write-partition.ts > /tmp/oracle-write-partition.ndjson`. `gen-brahma-
+prompts` — `cd /tmp/qt-v4-pin-p4d221-b0b6656b5 && npx tsx harness/oracle/
+cases/gen-brahma-prompts.mjs crates/quilltap-core/src/services/
+brahma_console/prompt_text.rs` (writes the Rust file directly — no NDJSON
+step); the tier-3 differential regen (fixture + jest oracle) followed the
+family header's recipe verbatim from the target pin, `QT_FIXTURE_OUT`/
+`QT_FIXTURE_MOUNT_OUT=/tmp/qt-brahma-{main,mount}.db`, jest roots
+`"$PWD" "/tmp/brahma-oracle/cases"`, `QT_ORACLE_OUT=/tmp/oracle-brahma.
+ndjson`. `fts-query` — `cd /tmp/qt-v4-pin-p4d221-<pin> && npx tsx harness/
+oracle/cases/fts-query.ts harness/oracle/fixtures/fts-query.json >
+/tmp/p4d221/oracle-fts-query-<pin>.ndjson`, both pins. `characters-read` /
+`memories-read` / `memories-tier2` — each family's header recipe verbatim
+from the target pin, fixtures rebuilt fresh into `/tmp/p4d221/` (lane-
+private, per §R.3) rather than the header's shared `/tmp` paths.
+`carina-parser` — `cd /tmp/qt-v4-pin-p4d221-<pin> && npx tsx harness/
+oracle/cases/carina-parser.ts > /tmp/p4d221/oracle-carina-parser-<pin>.
+ndjson`, both pins. Tier R as given above.
+
+**Gate:** `cargo fmt --all --check` clean (after `cargo fmt --all`);
+`cargo check --workspace --all-targets` clean (one dead-code warning fixed
+— `memories_read_equivalence.rs`'s now-unused `keywords` field on `Query`,
+removed rather than `#[allow]`ed, since nothing else reads it).
+`cargo clippy --workspace --all-targets -- -D warnings` clean in BOTH
+feature sets (default; `--features quilltap-core/native-transport`).
+`cargo build --workspace --release` clean. `cargo test --workspace
+--no-fail-fast -- --nocapture` with this lane's 15-variable env block
+(every other family's oracle/fixture var WITHHELD): **630 test binaries /
+3,711 passed / 0 failed / 3 ignored**, 519 `SKIP:` lines, none naming a
+block variable (checked by grep). This lane's seven families confirmed RUN
+by name with their standalone counts unchanged inside the full run:
+`write_partition_matches_oracle` (15/3/4/12/14 + the new applier test),
+`brahma_console_tier3_matches_oracle` (18 cases + 9 loop arms),
+`fts_query_matches_oracle` (48 queries) + `corpus_covers_every_plan_arm`,
+`characters_read_matches_oracle` (10 queries),
+`memories_read_matches_oracle` (38 queries), `memories_tier2_matches_
+oracle` (5 rows), `carina_parser_matches_oracle` (67 rows); plus
+`photos::chat_gallery::walk_degrade_tests::a_poisoned_link_table_logs_
+the_new_inner_line_not_the_old_outer_ones` (the Tier-2 capture pin,
+inside `quilltap-core`'s own lib tests, not a harness binary). Tier R
+(`cli_differential`, `QT_V4_CHECKOUT`/`QT_NODE` at the target pin,
+run separately — see item 6 above): **266 cases, 0 failures**. Census/
+guard re-runs (verification-gate item 9), all green, confirming UNMOVED
+for the ones this lane's changes could have touched:
+`help_tree_embed_guard`, `host_help_docs_boot`, `dispatch_wrong_type_
+census`, `blob_write_sites_census`, `compressed_column_write_sites_
+census`, `get_messages_caller_census` (none of the six retired methods
+was a `get_messages` caller), `spelling_guard`.
+
+**Not this lane's:** anything under `crates/quilltap-web/src/`, `api/`
+(P4.D220); the help/embedding modules, `crates/quilltap-host/**`, `help/**`
+(P4.D222); `apps/web/**` (P4.D223/P4.D224); the drift ledger. No spill
+into another lane's ownership was needed.
+
+Versions: core 0.0.1049, harness 0.0.966; host/web/cli/tauri/fixture-
+sanitizer/SPA unchanged.

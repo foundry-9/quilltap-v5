@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): P4.D221 lane close — NO-PORT ratifications, neutrality reruns, gate record
+
+_Docs-only change._
+
+Closes work order P4.D221. Ratifies `7ebb74143` ("fix(scripts):
+update_version uses dev channel for non-release/bugfix branches") and
+`8aafd595d` ("Extract dedicated-database repository base class") NO-PORT
+on their file lists, with `8aafd595d`'s four observable deltas recorded
+individually (one taken as the Tier-2 small landed in the previous
+commit; the other three have no v5 counterpart). Records the Carina
+parser and Tier R neutrality reruns at the target pin (byte-identical /
+266-0, both as predicted). Appends the full lane record to
+`status-log.md` with every regen recipe as run, the red-first/green
+measurements at both pins, and the final gate: `cargo fmt`/clippy (both
+feature sets)/`cargo build --release` clean, `cargo test --workspace`
+630 binaries / 3,711 passed / 0 failed / 3 ignored with this lane's
+env block, Tier R 266/0, every named census/guard green.
+
 #### 2026-09-24 — fix(photos): log v4's new inner error on a poisoned joined file-link read (P4.D221, v4 `8aafd595d`)
 
 _Versions: core 0.0.1049._
