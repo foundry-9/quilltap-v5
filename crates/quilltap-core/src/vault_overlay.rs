@@ -284,25 +284,19 @@ static UUID_RE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-/// Zod 4.4 `z.iso.datetime()` (default: no offset, no `local`, unbounded
-/// fractional precision) — a real ISO date validator with leap-year arithmetic
-/// and a `Z`-only zone. Sourced verbatim from the live Zod schema's compiled
-/// `pattern`, with JS `\d` rewritten to ASCII `[0-9]` (the Rust `regex` `\d` is
-/// Unicode-aware; JS's is ASCII). The `$` anchor rejects a trailing newline in
-/// both engines.
-static ISO_DATETIME_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"^(?:(?:[0-9][0-9][2468][048]|[0-9][0-9][13579][26]|[0-9][0-9]0[48]|[02468][048]00|[13579][26]00)-02-29|[0-9]{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|(?:02)-(?:0[1-9]|1[0-9]|2[0-8])))T(?:(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\.[0-9]+)?)?(?:Z))$",
-    )
-    .unwrap()
-});
-
 fn is_uuid(s: &str) -> bool {
     UUID_RE.is_match(s)
 }
 
+/// `z.iso.datetime()` — through the ONE home, `api::zod_issues::zod_iso_datetime_ok`
+/// (P4.113). This file used to carry its own copy sourced from Zod 4.4, whose
+/// seconds were OPTIONAL; zod 4.6.5 (v4's pin since P4.D211) REQUIRES them, so
+/// the stale copy accepted `2024-01-01T10:00Z` where v4 rejects it — the first
+/// measured counter-example to P4.D211's "the 4.6.5 move is neutral".
+/// `vault_legacy_wardrobe_equivalence`'s `w-ts-no-seconds` /
+/// `w-archived-no-seconds` rows pin it.
 fn is_iso_datetime(s: &str) -> bool {
-    ISO_DATETIME_RE.is_match(s)
+    crate::api::zod_issues::zod_iso_datetime_ok(s)
 }
 
 /// A `z.string().nullable().optional()` field. Outer `None` = schema violation

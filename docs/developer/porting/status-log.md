@@ -147426,3 +147426,29 @@ by hand with lane-private paths instead of through the driver).
   fixture (`warn_fixture`) now creates the empty table every provisioned
   instance has. `doc_edit/path_resolver.rs` is owned by no lane this round
   (P4.114 consumes it); test module only.
+
+### Unit 6 (Tier 2 items 6 + 7) — `vault_overlay.rs`'s stale datetime regex; P4.112's header
+
+- **Measured** against unit 1's 24-row table (the values run through the
+  pin's real zod 4.6.5): the private `ISO_DATETIME_RE` ("Zod 4.4", seconds
+  OPTIONAL) disagrees on exactly ONE row — it ACCEPTS `2024-01-01T10:00Z`,
+  which v4 rejects. **The first measured counter-example to P4.D211's "the
+  Zod 4.6.5 move is neutral"** (filed here; the unifier may want it in the
+  drift ledger's history).
+- **Repointed** `is_iso_datetime` at `api::zod_issues::zod_iso_datetime_ok`
+  (the private regex deleted), red-first through the family that reads it —
+  `vault_legacy_wardrobe_equivalence` (its only reader is
+  `validate_wardrobe_item`, under `parse_legacy_wardrobe_json`). Two corpus
+  rows added to `harness/oracle/cases/vault-legacy-wardrobe.ts`:
+  `w-ts-no-seconds` (`createdAt`) and `w-archived-no-seconds` (`archivedAt`) —
+  v4 answers `null` for both; pre-repoint v5 parsed both (each RED, checked
+  one at a time since the family stops at its first mismatch); repointed:
+  green. ⚠ **That case file is outside the order's ownership list** — the
+  order's item 6 routes the repoint "through the vault-overlay family that
+  reads it", which is only possible by growing its corpus; no other lane
+  touches it. Regen: from the pin, `npx tsx $W/harness/oracle/cases/vault-legacy-wardrobe.ts > /tmp/p4113/oracle-vlw.ndjson`
+  (41 rows).
+- (The order named the file `db/vault_overlay.rs`; it is
+  `crates/quilltap-core/src/vault_overlay.rs`.)
+- **Item 7:** P4.112's status header gains one sentence naming this round as
+  having taken its "recorded, not fixed" items.

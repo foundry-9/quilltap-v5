@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(vault): the wardrobe datetime check uses zod 4.6.5's rule, so a timestamp without seconds is rejected (P4.113 unit 6)
+
+_Versions: core 0.0.1033, harness 0.0.954._
+
+`vault_overlay.rs` carried its own `z.iso.datetime()` regex, copied from Zod
+4.4, which allowed a timestamp without seconds such as `2024-01-01T10:00Z`.
+v4's zod 4.6.5 rejects it. The check now calls the shared
+`zod_iso_datetime_ok`, and two new legacy-wardrobe corpus rows cover it; both
+were red before. P4.112's work order header notes that this round took its
+recorded follow-ups.
+
 #### 2026-09-24 — fix(db): the five JSON instance settings warn on a bad stored value, as v4's readJsonSetting does (P4.113 unit 5)
 
 _Versions: core 0.0.1032, harness 0.0.953._

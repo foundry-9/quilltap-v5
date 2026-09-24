@@ -120,6 +120,11 @@ wCase('w-ts-offset-zone', J({ items: [{ ...clone(minItem), createdAt: '2024-01-0
 wCase('w-ts-no-zone', J({ items: [{ ...clone(minItem), createdAt: '2024-01-01T00:00:00' }] }));
 wCase('w-ts-trailing-newline', J({ items: [{ ...clone(minItem), createdAt: T1 + '\n' }] }));
 wCase('w-archived-bad', J({ items: [{ ...clone(minItem), archivedAt: 'whenever' }] }));
+// [P4.113] zod 4.6.5 REQUIRES the seconds wherever a zone is present
+// (`regexes.js` `datetime()` → `timeSource({ seconds: true })`); the 4.4-era
+// pattern v5 carried made them optional and accepted these two.
+wCase('w-ts-no-seconds', J({ items: [{ ...clone(minItem), createdAt: '2024-01-01T10:00Z' }] }));
+wCase('w-archived-no-seconds', J({ items: [{ ...clone(minItem), archivedAt: '2024-01-01T10:00Z' }] }));
 
 // ── outfit violations ────────────────────────────────────────────────────────
 wCase('w-outfit-bad-field', J({ items: [], outfit: { top: 5 } }));
