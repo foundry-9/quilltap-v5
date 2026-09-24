@@ -145848,3 +145848,39 @@ cd /tmp/qt-v4-pin-p4d217-d1c06cd9d && $N/npx tsx $V5W/harness/oracle/cases/scena
 QT_ORACLE_SCENARIO_BUILD_REQUEST_SCHEMA=/tmp/p4d217/oracle-scenario-build-request-schema.ndjson \
   cargo test -p quilltap-harness --test scenario_build_request_schema_equivalence -- --nocapture
 ```
+
+### Unit 2 — the two prompt builders
+
+`services/scenario_builder/system_prompt.rs`: `build_scenario_builder_system_prompt(mode,
+web_available, tool_instructions, now: &jiff::Zoned)`, `build_scenario_builder_user_message`,
+`format_iso_with_offset`, `SCENARIO_TARGET_TOKENS`, and `zoned_at(epoch_ms, tz)` (so the
+harness, which has no `jiff` dependency and may not gain one — Cargo.toml deltas are
+version-only — can build the same instant). The order's `FixedOffsetInstant` is a
+`jiff::Zoned` (core already depends on `jiff` with its bundled tzdb), so the tier-1 rows
+compare the IANA zone → offset resolution as well as the formatter. NEW tier-1 family
+`scenario_builder_prompts_equivalence`: **25 system rows over 6 zones** (Chicago/Tokyo for the
+sign, Kolkata +05:30, St John's −02:30/−03:30 across DST, Kathmandu +05:45, UTC `+00:00`
+never `Z`, a 1999 instant crossing the year in some zones; the full mode × web ×
+tool-instructions grid on the first zone), **21 user rows**, and the constant — byte-exact
+against v4's REAL builders with `process.env.TZ` set per row. The baseline pin fails to
+import (the pin proof).
+
+**ORDER CORRECTION (§R.4(d)), measured:** the order says `buildScenarioBuilderUserMessage`
+tests `currentScenario?.trim()` for truthiness but interpolates the UNTRIMMED value, and
+asks for a v4 filing. It does not: v4 binds `const currentScenario =
+input.currentScenario?.trim()` and interpolates that local — the oracle's
+`current-scenario-padded` row prints the trimmed scene, exactly as `contextSummary` does.
+No asymmetry, no filing candidate. What DOES ride untrimmed is the revise pair
+(`priorDraft`, `revision`). **Mutation** (the order's, inverted to match the code):
+interpolate the untrimmed `currentScenario` → exactly `current-scenario-padded`,
+`both-in-chat`, `everything` red; restored by file backup.
+
+Regen:
+
+```bash
+rm -f /tmp/p4d217/oracle-scenario-builder-prompts.ndjson
+cd /tmp/qt-v4-pin-p4d217-d1c06cd9d && $N/npx tsx $V5W/harness/oracle/cases/scenario-builder-prompts.ts \
+  > /tmp/p4d217/oracle-scenario-builder-prompts.ndjson
+QT_ORACLE_SCENARIO_BUILDER_PROMPTS=/tmp/p4d217/oracle-scenario-builder-prompts.ndjson \
+  cargo test -p quilltap-harness --test scenario_builder_prompts_equivalence -- --nocapture
+```

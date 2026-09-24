@@ -6,3 +6,4 @@
 //! the `llm_logs` rows the loop writes, typed `SCENARIO_BUILDER`.
 
 pub mod request_schema;
+pub mod system_prompt;

@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(scenario-builder): the system prompt and user message builders (P4.D217 unit 2)
+
+_Versions: core 0.0.1020, harness 0.0.936._
+
+Adds `services::scenario_builder::system_prompt`: the Host's system prompt
+(mode, web availability, tool instructions, and the current time as local
+ISO-8601 with a `±HH:MM` offset) and the user message, with the clock
+injected as a `jiff::Zoned`. A new tier-1 differential,
+`scenario_builder_prompts_equivalence`, compares both builders byte for byte
+with v4's across six time zones and 21 user-message shapes. The order's claim
+that v4 interpolates an untrimmed `currentScenario` was measured false; v5
+matches v4's trimmed output.
+
 #### 2026-09-23 — feat(scenario-builder): the request body's Zod twin (P4.D217 unit 1)
 
 _Versions: core 0.0.1019, harness 0.0.935._
