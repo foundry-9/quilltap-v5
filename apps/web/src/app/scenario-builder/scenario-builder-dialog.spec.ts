@@ -1,3 +1,4 @@
+import { ChangeDetectionStrategy, Component, signal, type WritableSignal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
@@ -7,7 +8,11 @@ import { CoreClient } from '../core/core-client';
 import type { CoreResponse, ScopedEvent } from '../core/core-contract';
 import { RichEditor } from '../editor/rich-editor';
 import { ToastService } from '../ui/toast.service';
-import { SAVE_NEEDS_A_NAME, type SavedScenarioTarget } from './save-scenario-dialog';
+import {
+  SAVE_NEEDS_A_NAME,
+  SaveScenarioDialog,
+  type SavedScenarioTarget,
+} from './save-scenario-dialog';
 import { ScenarioBuilderDialog } from './scenario-builder-dialog';
 import { fakeCore, profile, type FakeCore } from './scenario-builder-dialog.testing';
 
@@ -101,7 +106,12 @@ async function render(
     closed,
     toasts,
     queryClient,
-    el: fixture.nativeElement as HTMLElement,
+    // DOCUMENT-scoped: both dialogs portal their hosts to the body (v4's
+    // `BaseModal`), so the save dialog is no longer inside the builder's host
+    // and a fixture-scoped query for it would be vacuous — `toBeNull()` and
+    // `not.toContain` would pass for free (`angular-body-portal-must-wait-for-
+    // render`). The portal describe block below proves the scoping bites.
+    el: document.body,
   };
 }
 
@@ -849,5 +859,119 @@ describe('ScenarioBuilderDialog — profile mapping (v4 mapProfiles)', () => {
     (r.el.querySelector('input[value="real"]') as HTMLInputElement).click();
     await settle(r.fixture);
     expect(statusText(r)).toContain('this profile does not permit web search');
+  });
+});
+
+/** The Salon's mount, in miniature: under an `@if` (+ `@defer` there), inside a `qt-label`. */
+@Component({
+  selector: 'qt-builder-pane-host',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ScenarioBuilderDialog],
+  template: `
+    <div class="pane qt-label">
+      @if (open()) {
+        <qt-scenario-builder-dialog />
+      }
+    </div>
+  `,
+})
+class BuilderPaneHost {
+  readonly open = signal(true);
+}
+
+@Component({
+  selector: 'qt-save-pane-host',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [SaveScenarioDialog],
+  template: `
+    <div class="pane">
+      @if (open()) {
+        <qt-save-scenario-dialog body="Rain on the cobbles." />
+      }
+    </div>
+  `,
+})
+class SavePaneHost {
+  readonly open = signal(true);
+}
+
+/**
+ * v4 `BaseModal` portals every modal to `document.body`
+ * (`components/ui/BaseModal.tsx:96-125` at `d1c06cd9d`); both builder dialogs
+ * are `BaseModal`s (`ScenarioBuilderDialog.tsx:18,224`,
+ * `SaveScenarioDialog.tsx:13,158`). Mounted in a pane under an `@if` — a bare
+ * `TestBed.createComponent` root already lives on the body, so it could never
+ * fail. jsdom runs no cascade: the consequence (the sidebar no longer clipping
+ * the dialog) is pinned live in `e2e/scenario-builder-flow.spec.ts` beat (b).
+ */
+describe('The builder dialogs — portaled to the body (v4 BaseModal)', () => {
+  async function mount<T extends { open: WritableSignal<boolean> }>(
+    host: new () => T,
+  ): Promise<ComponentFixture<T>> {
+    const fake = fakeCore();
+    fake.profiles = [DEFAULT_PROFILE];
+    TestBed.configureTestingModule({
+      imports: [host],
+      providers: [
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+        { provide: CoreClient, useValue: fake.core },
+        { provide: ToastService, useValue: { showSuccess: vi.fn(), showError: vi.fn() } },
+      ],
+    });
+    const fixture = TestBed.createComponent(host);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  it('the builder dialog leaves its pane (and the qt-label) for the body, and goes on close', async () => {
+    const fixture = await mount(BuilderPaneHost);
+    const pane = (fixture.nativeElement as HTMLElement).querySelector('.pane')!;
+    const dialog = document.querySelector('qt-scenario-builder-dialog');
+    expect(dialog, 'the dialog rendered').toBeTruthy();
+    expect(dialog!.parentElement).toBe(document.body);
+    expect(pane.querySelector('qt-scenario-builder-dialog')).toBeNull();
+    expect(dialog!.closest('.qt-label')).toBeNull();
+    expect(dialog!.querySelector('.qt-dialog-overlay')).toBeTruthy();
+
+    fixture.componentInstance.open.set(false);
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(document.querySelector('qt-scenario-builder-dialog')).toBeNull();
+  });
+
+  it('the save dialog leaves its pane for the body, and goes on close', async () => {
+    const fixture = await mount(SavePaneHost);
+    const pane = (fixture.nativeElement as HTMLElement).querySelector('.pane')!;
+    const dialog = document.querySelector('qt-save-scenario-dialog');
+    expect(dialog, 'the dialog rendered').toBeTruthy();
+    expect(dialog!.parentElement).toBe(document.body);
+    expect(pane.querySelector('qt-save-scenario-dialog')).toBeNull();
+    expect(dialog!.textContent).toContain('File this scene as a scenario');
+
+    fixture.componentInstance.open.set(false);
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(document.querySelector('qt-save-scenario-dialog')).toBeNull();
+  });
+
+  it('within the builder, the save dialog is the builder’s SIBLING on the body, not its child', async () => {
+    const r = await render();
+    r.fake.buildFrames.push([{ done: true, scenario: 'Rain on the cobbles.' }]);
+    await fillInputs(r);
+    await setTheScene(r);
+    button(r, 'Save as scenario…').click();
+    await settle(r.fixture);
+    // A bare `createComponent` root is a `div`, not the selector's tag.
+    const builder = r.fixture.nativeElement as HTMLElement;
+    const save = document.querySelector('qt-save-scenario-dialog');
+    expect(save, 'the save dialog rendered').toBeTruthy();
+    expect(save!.parentElement).toBe(document.body);
+    expect(builder.contains(save)).toBe(false);
+    // The fixture-scoped query every save case used to make is now EMPTY —
+    // the reason `el` is document-scoped.
+    expect((r.fixture.nativeElement as HTMLElement).textContent).not.toContain(
+      'File this scene as a scenario',
+    );
   });
 });

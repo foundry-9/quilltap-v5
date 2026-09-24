@@ -1,7 +1,10 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  ElementRef,
   OnInit,
+  afterNextRender,
   computed,
   inject,
   input,
@@ -146,6 +149,26 @@ export class SaveScenarioDialog implements OnInit {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
   private readonly toasts = inject(ToastService);
+
+  constructor() {
+    // The portal — v4's `BaseModal` renders every modal through
+    // `createPortal(…, document.body)` (`components/ui/BaseModal.tsx:96-125`
+    // at `d1c06cd9d`, "avoiding stacking context issues"), and v4's save
+    // dialog is its OWN `BaseModal` (`SaveScenarioDialog.tsx:13,158`), so it
+    // lands on the body beside the builder's rather than nested inside it.
+    // The shared `qt-modal` renders in place, so the host moves itself (the
+    // `image-detail-modal.ts` pattern). After the first render, never in the
+    // constructor: the builder mounts this under `@if`, and an
+    // embedded view's insertion would put a constructor-moved host straight
+    // back (`angular-body-portal-must-wait-for-render`).
+    const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    inject(DestroyRef).onDestroy(() => host.remove());
+    afterNextRender(() => {
+      if (typeof document !== 'undefined') {
+        document.body.appendChild(host);
+      }
+    });
+  }
 
   /** The scene body to file. */
   readonly body = input.required<string>();

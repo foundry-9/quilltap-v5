@@ -1,7 +1,10 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  ElementRef,
   OnInit,
+  afterNextRender,
   computed,
   inject,
   input,
@@ -358,6 +361,27 @@ export class ScenarioBuilderDialog implements OnInit {
   private readonly core = inject(CoreClient);
   protected readonly builder = inject(ScenarioBuilderRun);
   protected readonly hostAvatar = HOST_AVATAR;
+
+  constructor() {
+    // The portal — v4's `BaseModal` renders every modal through
+    // `createPortal(…, document.body)` (`components/ui/BaseModal.tsx:96-125`
+    // at `d1c06cd9d`, "avoiding stacking context issues"). Mounted in the
+    // Salon sidebar this dialog otherwise sits inside the overlay sidebar's
+    // `z-index: 40` stacking context, its `overflow-hidden`, the workspace's
+    // `isolation: isolate`, and a `qt-label` whose type styles leak into it.
+    // The shared `qt-modal` renders in place, so the host moves itself (the
+    // `image-detail-modal.ts` pattern). After the first render, never in the
+    // constructor: every host mounts this under `@if` + `@defer`, and an
+    // embedded view's insertion would put a constructor-moved host straight
+    // back (`angular-body-portal-must-wait-for-render`).
+    const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    inject(DestroyRef).onDestroy(() => host.remove());
+    afterNextRender(() => {
+      if (typeof document !== 'undefined') {
+        document.body.appendChild(host);
+      }
+    });
+  }
 
   /** The cast — scopes which stores the Host may read, and the save targets. */
   readonly cast = input<readonly ScenarioBuilderCastMember[]>([]);

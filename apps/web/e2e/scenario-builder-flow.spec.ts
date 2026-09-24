@@ -139,6 +139,45 @@ test.describe('P4.D218 — the Host sets the scene', () => {
     await expect(control).toBeVisible({ timeout: 15_000 });
 
     await control.getByRole('button', { name: 'Ask the Host to set the scene' }).click();
+    await expect(builderDialog(page)).toBeVisible();
+    // P4.116 — the portal (v4 `BaseModal`'s `createPortal(…, document.body)`,
+    // `components/ui/BaseModal.tsx:96-125` at `d1c06cd9d`). Opened from inside
+    // the sidebar, the dialog's host is a child of the BODY and the sidebar's
+    // `qt-label` no longer styles the dialog's text (a mode label inherits the
+    // body's weight, not `font-medium`). The overlay spanning the viewport and
+    // a centre hit test landing in the dialog guard the consequence; measured
+    // with the reparent removed (1280×720) those two HELD even in place, so
+    // they are not what detects a missing portal — the first two are.
+    const portal = await page.evaluate(() => {
+      const host = document.querySelector('qt-scenario-builder-dialog');
+      const overlay = host?.querySelector('.qt-dialog-overlay')?.getBoundingClientRect();
+      const hit = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+      const modeLabel = host?.querySelector('input[value="in-world"]')?.closest('label');
+      return {
+        parentIsBody: host?.parentElement === document.body,
+        insideSidebar: !!host?.closest('qt-chat-sidebar'),
+        overlay: overlay && {
+          left: overlay.left,
+          top: overlay.top,
+          right: overlay.right,
+          bottom: overlay.bottom,
+        },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        centreHitsDialog: !!hit?.closest('qt-scenario-builder-dialog [role="dialog"]'),
+        modeLabelWeight: modeLabel ? getComputedStyle(modeLabel).fontWeight : null,
+        bodyWeight: getComputedStyle(document.body).fontWeight,
+      };
+    });
+    expect(portal.parentIsBody).toBe(true);
+    expect(portal.insideSidebar).toBe(false);
+    expect(portal.overlay).toEqual({
+      left: 0,
+      top: 0,
+      right: portal.viewport.width,
+      bottom: portal.viewport.height,
+    });
+    expect(portal.centreHitsDialog).toBe(true);
+    expect(portal.modeLabelWeight).toBe(portal.bodyWeight);
     await buildToReview(page);
     await builderFooterButton(page, 'Use this scene').click();
     await expect(builderDialog(page)).toHaveCount(0);

@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(scenario-builder): portal both builder dialogs to the body, as v4's BaseModal does (P4.116)
+
+_Versions: SPA 0.5.756._
+
+The Scenario Builder dialog and its save dialog now move their own host
+elements to `document.body` after the first render, with removal on destroy
+(the `image-detail-modal` pattern). v4 renders every modal through
+`createPortal(…, document.body)` in `BaseModal`. Opened from the Salon
+sidebar, v5's dialog had been rendering inside a `qt-label` and inside the
+overlay sidebar's `z-index: 40` stacking context. The shared `ui/modal.ts` is
+unchanged; the portal is per host. The save dialog is now the builder's
+sibling on the body instead of its child.
+
+The dialog spec's element queries are now document-scoped, since a
+fixture-scoped query for a portaled dialog is vacuous. A new describe block
+mounts each dialog in a pane under `@if` and asserts the host ends up on the
+body and is removed on close. Skipping the reparent turns exactly those cases
+red. Beat (b) of `e2e/scenario-builder-flow.spec.ts` now asserts that the open
+dialog's host is a child of the body and not inside `qt-chat-sidebar`, that
+its overlay spans the viewport, and that a hit test at the viewport centre
+lands inside the dialog, and that a mode label inherits the body's font
+weight. Measured live with the reparent removed (1280×720): the host position
+and the font weight went red (weight 500, leaked from the sidebar's
+`qt-label`, against the body's 400). The overlay box and the hit test still
+passed, so they guard the consequence but do not detect a missing portal.
+
 #### 2026-09-24 — docs(porting): close the P4.115 lane (Scenario Builder edge nits + the web census lift)
 
 _Docs only; no version bumps._

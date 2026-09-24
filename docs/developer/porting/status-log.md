@@ -148016,3 +148016,42 @@ plugin on v5 — the recorded divergence, pinned by the routes family); (9) the
 proxy idle timeout on the build DISPATCH (Docker, P4.D218's header) — a
 deployment concern; (10) lifting the web censuses onto the HARNESS lexer
 (cross-crate) — the web-local module is this round's home.
+
+## P4.116 unit 1 — the builder dialogs portaled to the body (2026-09-24, lane `claude/spa-smalls-portal-profiles-cache-4d9cc5`)
+
+- **§R.2 probe at lane start: PASS** (v4 `main`, `d1c06cd9d..main` and
+  `1a2b2164c..bugfix` empty, tree clean). No v4 bytes were recorded through
+  a runner, so no pin was cut. v4 was READ at `d1c06cd9d`
+  (`components/ui/BaseModal.tsx:96-125`, `ScenarioBuilderDialog.tsx`,
+  `SaveScenarioDialog.tsx`).
+- **Landed:** `scenario-builder-dialog.ts` and `save-scenario-dialog.ts` each
+  reparent their own host with `afterNextRender(() =>
+  document.body.appendChild(host))` + `DestroyRef.onDestroy(() =>
+  host.remove())`. `ui/modal.ts` is untouched. The save dialog becomes the
+  builder's body SIBLING (v4's save dialog is its own `BaseModal`).
+- **Specs:** the dialog spec's `el` is `document.body` (every save-dialog
+  query had become vacuous under a fixture scope; `Cancel closes the save
+  dialog`'s `not.toContain` was the vacuous-pass shape). New describe block
+  with three cases: a `BuilderPaneHost` (`div.pane.qt-label` + `@if`), a
+  `SavePaneHost`, and the in-builder sibling case, which also asserts that
+  the fixture-scoped text no longer carries the save dialog.
+- **Mutation M1** (the `appendChild` replaced by `void host`), reverted by
+  file backup: builder → exactly `the builder dialog leaves its pane…` RED
+  (1/154); save → `the save dialog leaves its pane…` + `…SIBLING on the
+  body…` RED (2/154).
+- **Live:** beat (b) asserts `parentElement === document.body`, not inside
+  `qt-chat-sidebar`, overlay box == viewport, a centre hit test inside
+  `[role="dialog"]`, and a mode label's `fontWeight` == the body's. **The
+  live mutation** (both reparents removed, SPA rebuilt, beat (b) alone at
+  1280×720) measured `{parentIsBody: false, insideSidebar: true, overlay:
+  0/0/1280/720, centreHitsDialog: true, modeLabelWeight: "500", bodyWeight:
+  "400"}`. So the only visible consequence of the missing portal at this
+  viewport is the `qt-label` leak (`font-medium`). The overlay box and the
+  hit test HELD in place and do not detect it, and the order's "clipped by
+  the sidebar" premise did not reproduce: `overflow-hidden` does not clip a
+  `position: fixed` descendant without a transformed ancestor. The weight
+  check was added because of that measurement, and it reddens on its own
+  (`Expected "400", Received "500"`).
+- **Live, restored:** all four beats green (4 passed, 1.2 m) on the full
+  Tier-1 tree before the weight check existed. The lane-close record has the
+  run with it.
