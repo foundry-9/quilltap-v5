@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): close the P4.113 lane (gate record, status header)
+
+_Docs-only change._
+
+Records the P4.113 lane gate (630 test binaries, 3,698 passed, 0 failed; Tier R
+266/0), the mutation proofs, and the recorded-not-taken items. Updates the work
+order's status header.
+
 #### 2026-09-24 — fix(vault): the wardrobe datetime check uses zod 4.6.5's rule, so a timestamp without seconds is rejected (P4.113 unit 6)
 
 _Versions: core 0.0.1033, harness 0.0.954._

@@ -147452,3 +147452,54 @@ by hand with lane-private paths instead of through the driver).
   `crates/quilltap-core/src/vault_overlay.rs`.)
 - **Item 7:** P4.112's status header gains one sentence naming this round as
   having taken its "recorded, not fixed" items.
+
+### The lane gate (final tree `92ceb25b`)
+
+- §R.2 probe PASSED at start, before each regen batch, and before the gate
+  (v4 `main` at `d1c06cd9d`, both logs empty, tree clean); pin verified
+  `d1c06cd9d786653516e7e43a7ddca096ad957714`.
+- `cargo fmt --all --check` clean; clippy clean plain (per commit) AND with
+  `--features quilltap-core/native-transport`; `cargo build --workspace
+  --release` clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture` (`CARGO_INCREMENTAL=0
+  TZ=UTC`, the lane's block: `QT_ORACLE/FIXTURE_CHATSMSGOPS`,
+  `…CHATMSGUPDATEFTS`, `…SBPOOL(_MAIN/_MOUNT)`, `…CHARARR(_MAIN/_MOUNT)`,
+  `QT_ORACLE_ISJSONWARNS`, `QT_ORACLE_VAULT_LEGACY_WARDROBE`, all under
+  `/tmp/p4113/`, plus `QT_V4_CHECKOUT` = the pin and `QT_NODE` = Node 24):
+  **630 test binaries / 3,698 passed / 0 failed / 3 ignored.** Every lane
+  family confirmed RUN by name (chats-messages ops, FTS 8 ops / 5 rows, mount
+  pool 15 arms, characters arrays, json-warns 36 cases, legacy wardrobe);
+  **Tier R: 266 cases, 0 failures** at the pin. 519 `SKIP:` lines, none
+  naming a block variable.
+- Censuses/guards by name, all GREEN: `get_messages_caller_census` (re-keyed
+  (76, 7)), `dispatch_wrong_type_census` and `tri_state_edges_share_the_decoder`
+  (UNMOVED), `blob_write_sites_census`, `compressed_column_write_sites_census`,
+  `stream_watchdog_wrap_census`, `help_tree_embed_guard`,
+  `qtap_schema_embed_guard`, `zod_version_guard`, `provider_sdk_version_guard`,
+  `public_schemas_vendor_guard`.
+- **Mutations:** M1 RED 5 datetime rows; M2 RED the 2 no-seconds rows + the
+  unit table; M3 RED the sibling silence leg (and every other new op — it is
+  the pre-fix read); M4 RED exactly the 6 repair ops; M5 RED
+  `general-read-fails` only; M6 RED `general-absent` only. Each reverted by
+  file backup.
+- Versions (lane total): core 0.0.1027 → **0.0.1033** (+6), harness 0.0.948 →
+  **0.0.954** (+6). No other crate touched.
+
+### Lane close — what the order got wrong / what is left
+
+- The order's "three datetime plant rows" were five (the lane planted a
+  message, a system and a context-summary row across three shapes); M1 reddens
+  all five.
+- `db/vault_overlay.rs` is `crates/quilltap-core/src/vault_overlay.rs`.
+- `find_event_value` had ONE caller and was retired (not kept for others).
+- **Deferred / recorded, not taken (loud):** (a) a per-CELL failure on
+  `update_message`'s target (NULL `content` + a repairing update: v4 writes,
+  v5 ERRORs) — needs an untyped hydrate; (b) `vault-overlay/parsers.ts`'s
+  eleven WARNs, none ported (one pinned as `RECORDED_ABSENT_WARNS` in
+  `characters_arrays_tier2`); (c) `services/scenario_builder/mount_pool.rs:
+  30-37`'s now-false "NO v5 emitter" sentence (P4.115's file); Tier 3 items
+  8 (`db/prompt_templates.rs`'s `z.iso.datetime()` checks — its own order)
+  and 9 (`Raw query failed`, v4-only, pinned both ways) as ordered.
+- **Out-of-ownership edits, both test/corpus-only and named above:**
+  `doc_edit/path_resolver.rs`'s `warn_fixture` (unit 5 commit) and
+  `harness/oracle/cases/vault-legacy-wardrobe.ts` (unit 6).
