@@ -251,12 +251,16 @@ pub mod global_capture {
         static INIT: std::sync::Once = std::sync::Once::new();
         INIT.call_once(|| {
             use tracing_subscriber::layer::SubscriberExt;
-            // Ignore an error: another test binary layout could conceivably have
-            // set one already, and the capture below is a no-op if so — which
-            // the assertions would catch loudly rather than silently.
-            let _ = tracing::subscriber::set_global_default(
+            // LOUD, never ignored: if another subscriber already owns this
+            // binary, the capture is a no-op and every "no line logged"
+            // (silence) assertion would pass having captured nothing — the
+            // "a second global default silences the first" trap. The folded
+            // `auto_title_capture` rig (P4.112 unit 1) had this `expect`; the
+            // d1c06cd9d unification review restored it here.
+            tracing::subscriber::set_global_default(
                 tracing_subscriber::registry().with(GlobalCaptureLayer),
-            );
+            )
+            .expect("the global capture rig must own this binary's global subscriber");
         });
     }
 

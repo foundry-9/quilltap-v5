@@ -709,10 +709,13 @@ where
             }
 
             let tool_names: Vec<&str> = calls.iter().map(|tc| tc.name.as_str()).collect();
+            // v4 logs `tools` as a real `string[]`; the `…Json` convention lands
+            // it in the log file's context as that array (a `?` field would be
+            // a Debug STRING there — the d1c06cd9d unification review).
             tracing::debug!(
                 chatId = %chat_id,
                 turn = agent_turn_count,
-                tools = ?tool_names,
+                toolsJson = %serde_json::to_string(&tool_names).unwrap_or_default(),
                 "{log_label}: tool turn"
             );
 

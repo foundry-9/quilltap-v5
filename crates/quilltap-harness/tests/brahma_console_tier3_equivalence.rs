@@ -449,7 +449,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for StructuralCapture 
 
 /// A v4 context value rendered the way the v5 capture renders the same field:
 /// strings bare, numbers/bools as text, a string array as Rust's `Debug` of a
-/// `Vec<&str>` (the loop logs `tools = ?names`).
+/// `Vec<&str>` (the loop's `tools` goes through [`render_v4_field`]).
 fn render_v4(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -461,6 +461,18 @@ fn render_v4(v: &Value) -> String {
     }
 }
 
+/// A v4 context FIELD as the v5 capture sees it. The one-shot loop's `tools`
+/// (v4 a `string[]`) is logged under the `…Json` convention — the capture sees
+/// the RAW name `toolsJson` with the compact JSON array as its value (the file
+/// layer strips the suffix and re-parses; the d1c06cd9d unification review).
+fn render_v4_field(k: &str, v: &Value) -> (String, String) {
+    if k == "tools" && v.is_array() {
+        return ("toolsJson".to_string(), v.to_string());
+    }
+    (k.to_string(), render_v4(v))
+}
+
+
 fn v4_lines(rows: &Value) -> Vec<Line> {
     rows.as_array()
         .map(|a| {
@@ -470,7 +482,7 @@ fn v4_lines(rows: &Value) -> Vec<Line> {
                     message: l["message"].as_str().unwrap_or_default().to_string(),
                     fields: l["context"]
                         .as_object()
-                        .map(|o| o.iter().map(|(k, v)| (k.clone(), render_v4(v))).collect())
+                        .map(|o| o.iter().map(|(k, v)| render_v4_field(k, v)).collect())
                         .unwrap_or_default(),
                 })
                 .collect()
