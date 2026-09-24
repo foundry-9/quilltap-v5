@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — test(harness): remove the dead reader-side heals over the widened system-data pair (P4.117 units 4–13)
+
+_Versions: harness 0.0.951._
+
+P4.111 widened the committed `system-data-main.db` in place to carry the
+P4.D171/P4.D182 columns (`chats.cycleOrderParticipantIds`, `chat_messages.
+routeTrail`, `files.generationKey` + its index, `chats.transcriptVersion`)
+natively. That made every reader-side heal over it dead: the Rust
+`ensure_p4d171_columns`/`ensure_p4d182_columns` calls in `system_import_
+equivalence.rs`; the `_repair::ensure_*` calls in `system_export_
+equivalence.rs`, `system_backup_equivalence.rs`, `system_delete_data_
+equivalence.rs` and `system_import_state.rs`; and the oracle-side guarded
+`addColumnIfMissing`/inline `ALTER` calls in `system-export.test.ts`,
+`system-import-execute.test.ts` and `qtap-schema-validate.test.ts`. All
+removed; the value PLANTS (the non-default cells these families exist to
+compare) and the `ensure_chat_informs_table` TABLE heals (a widen adds
+columns, not tables) are kept unchanged. Every heal was proven dead first
+by a `pragma_table_info` read on a `/tmp` copy of the committed pair
+through v4's real cipher driver, and two mutation proofs confirm the
+removal is safe rather than vacuous: dropping `chat_messages.routeTrail`
+from a scratch copy via a table rebuild reddens `system_import_state` with
+v4's own `no such column` error, and deleting a kept `generationKey` plant
+UPDATE from `system-export.test.ts` reddens `system_export_equivalence` on
+exactly that field. Every family was regenerated fresh from the `d1c06cd9d`
+pin and stays green. Recorded in the P4.117 lane record.
+
 #### 2026-09-24 — test(harness): remove the dead `ensure_p4d171_columns`/`ensure_p4d182_columns` heals over the widened chat-cast pair (P4.117 units 2–3)
 
 _Versions: harness 0.0.950._

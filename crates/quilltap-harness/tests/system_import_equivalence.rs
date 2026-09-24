@@ -104,26 +104,10 @@ fn fresh_db(tag: &str) -> Db {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("system-data-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("system-data-mount.db"), &mount).unwrap();
-    // The committed pair predates two rounds of schema moves — heal the
-    // scratch copy the way boot heals a real instance, then plant.
-    //
-    // ⚠ The P4.D171 half is a PRE-EXISTING gap this lane surfaced rather than
-    // caused: every sibling family (`system_export`, `system_backup`) already
-    // healed the same fixture, this one never did, and it only shows when the
-    // family actually RUNS — without `QT_ORACLE_SYSTEM_IMPORT` it skips, so a
-    // workspace gate never saw the `no such column: cycleOrderParticipantIds`
-    // the preview read dies on. The `rerunning-an-untouched-family-surfaces-
-    // pre-existing-reds` shape.
-    {
-        let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
-        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
-        // P4.D182's two columns. HEAL only, no plant: this family's oracle
-        // (`system-import.test.ts`) plants neither, and a v5-side-only plant
-        // would be a silent asymmetry measuring nothing. The `generationKey`
-        // carry is measured where BOTH sides plant it — `system_export_
-        // equivalence` and `system_import_state`.
-        quilltap_core::test_support::ensure_p4d182_columns(w.connection());
-    }
+    // P4.111 widened the committed `system-data-main.db` to carry the
+    // P4.D171 and P4.D182 columns natively (`pragma_table_info` proof:
+    // P4.117 lane record) — the `ensure_p4d171_columns`/`ensure_p4d182_
+    // columns` heals that used to run here are now dead and removed.
     Db::open(
         DbPaths {
             main,

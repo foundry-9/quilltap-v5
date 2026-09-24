@@ -42,19 +42,13 @@ fn fresh_db(tag: &str) -> Db {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("system-data-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("system-data-mount.db"), &mount).unwrap();
-    // P4.D171: the committed `system-data-{main,mount}.db` predates the two
-    // `78b381a96`-round schema moves — the same repaired-at-boot idiom
-    // `web_search_runner_wire.rs` uses for the connection-profiles pair.
+    // P4.111 widened the committed `system-data-{main,mount}.db` to carry
+    // the P4.D171/P4.D182 columns natively (`pragma_table_info` proof:
+    // P4.117 lane record) — the `ensure_*_column[s]` heals that used to run
+    // here are dead and removed; the value PLANTS stay (the non-default
+    // cells this family exists to compare).
     {
         let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
-        quilltap_core::db::chat_messages_route_trail_repair::ensure_chat_messages_route_trail_column(
-            w.connection(),
-        )
-        .expect("ensure the route-trail column on the vintage fixture");
-        quilltap_core::db::chats_cycle_order_repair::ensure_chats_cycle_order_column(
-            w.connection(),
-        )
-        .expect("ensure the cycle-order column on the vintage fixture");
         plant_p4d171_values(w.connection());
         plant_p4d182_values(w.connection());
     }
@@ -437,14 +431,6 @@ fn plant_p4d171_values(conn: &rusqlite::Connection) {
 /// remap-shaped value surviving unchanged is the only way to tell "carried"
 /// from "carried and rewritten".
 fn plant_p4d182_values(conn: &rusqlite::Connection) {
-    quilltap_core::db::files_generation_key_repair::ensure_files_generation_key_column_and_index(
-        conn,
-    )
-    .expect("ensure the generation-key column + index on the vintage fixture");
-    quilltap_core::db::chats_transcript_version_repair::ensure_chats_transcript_version_column(
-        conn,
-    )
-    .expect("ensure the transcript-version column on the vintage fixture");
     let touched = conn
         .execute(
             "UPDATE \"files\" SET \"generationKey\" = ?1 WHERE \"id\" = ?2",

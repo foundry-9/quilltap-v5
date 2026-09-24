@@ -202,20 +202,10 @@ fn open_fixture(scratch: &Path) -> Db {
     std::fs::copy(f.join("system-data-main.db"), &main).unwrap();
     std::fs::copy(f.join("system-data-mount.db"), &mount).unwrap();
     std::fs::copy(f.join("system-data-llmlogs.db"), &llm).unwrap();
-    // P4.D171: the committed `system-data-*.db` predates the two
-    // `78b381a96`-round schema moves — the same repaired-at-boot idiom
-    // `web_search_runner_wire.rs` uses for the connection-profiles pair.
-    {
-        let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
-        quilltap_core::db::chat_messages_route_trail_repair::ensure_chat_messages_route_trail_column(
-            w.connection(),
-        )
-        .expect("ensure the route-trail column on the vintage fixture");
-        quilltap_core::db::chats_cycle_order_repair::ensure_chats_cycle_order_column(
-            w.connection(),
-        )
-        .expect("ensure the cycle-order column on the vintage fixture");
-    }
+    // P4.111 widened the committed `system-data-*.db` to carry the
+    // P4.D171 columns natively (`pragma_table_info` proof: P4.117 lane
+    // record) — the `ensure_*_column` heals that used to run here are dead
+    // and removed.
     Db::open(
         DbPaths {
             main,

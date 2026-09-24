@@ -1160,27 +1160,6 @@ const P4D182_GENERATION_KEY = 'a3000000-0000-4000-8000-000000000001';
 const P4D182_FILE_ID = 'f0000001-0000-4000-8000-000000000001';
 
 /**
- * P4.111: add a column only when the table lacks it. The committed
- * `system-data-main.db` was widened in place at v4 `00c290c9a` through v4's own
- * migration statements, so it now CARRIES the columns this case used to add —
- * an unguarded `ADD COLUMN` then throws `duplicate column name` and the regen
- * dies before the first case. The declarations below are byte-identical to the
- * migrator's (`migrate-memories-fixture-columns.ts`), so a guarded add and the
- * widen produce the same column either way; the planted VALUES are unchanged.
- */
-function addColumnIfMissing(
-  db: { exec(sql: string): unknown; prepare(sql: string): { all(...a: unknown[]): unknown } },
-  table: string,
-  column: string,
-  decl: string,
-): void {
-  const cols = db.prepare(`SELECT name FROM pragma_table_info(?)`).all(table) as Array<{ name: string }>;
-  if (!cols.some((c) => c.name === column)) {
-    db.exec(`ALTER TABLE "${table}" ADD COLUMN "${column}" ${decl}`);
-  }
-}
-
-/**
  * P4.D182 (v4 `7fbf8a55b`): plant a NON-NULL `files.generationKey`, so the
  * export/import legs measure the carry rather than a column of nulls.
  *
@@ -1191,17 +1170,20 @@ function addColumnIfMissing(
  * "carried" and "carried and rewritten".
  *
  * The other `files` rows keep NULL, which is what proves the omit-when-null
- * rule at the same time.
+ * rule at the same time. P4.111 widened the committed `system-data-main.db`
+ * in place at v4 `00c290c9a` through v4's own migration statements, so it
+ * now CARRIES `files.generationKey` (+ `idx_files_generationKey`) and
+ * `chats.transcriptVersion` natively (`pragma_table_info` proof: P4.117
+ * lane record) — the `addColumnIfMissing`/`CREATE INDEX` guards this
+ * function used to run are dead and removed; the planted VALUES are
+ * unchanged.
  */
 function plantP4d182Values(db: { exec(sql: string): unknown; prepare(sql: string): { run(...a: unknown[]): unknown; all(...a: unknown[]): unknown } }): void {
-  addColumnIfMissing(db, 'files', 'generationKey', 'TEXT');
-  db.exec(`CREATE INDEX IF NOT EXISTS "idx_files_generationKey" ON "files" ("generationKey")`);
-  addColumnIfMissing(db, 'chats', 'transcriptVersion', 'INTEGER DEFAULT 0');
   db.prepare(`UPDATE "files" SET "generationKey" = ? WHERE "id" = ?`).run(
     P4D182_GENERATION_KEY,
     P4D182_FILE_ID,
   );
-  // The column is ALTERed in but NOT pre-bumped here: this family diffs raw
+  // The column is not pre-bumped here: this family diffs raw
   // `chats` rows, and until P4.D183 lands v5's writer the imported chats'
   // counters legitimately differ (v4's funnel bumps, v5's does not). The Rust
   // side subtracts that ONE field with a both-directions tripwire rather than
@@ -1212,21 +1194,20 @@ function plantP4d182Values(db: { exec(sql: string): unknown; prepare(sql: string
 /**
  * [P4.88] Plant NON-DEFAULT values in the two `78b381a96` columns.
  *
- * The committed `system-data-*` fixture predates them, so the columns are added
- * here exactly as v4's own migration adds them (`TEXT DEFAULT '[]'` /
- * `TEXT DEFAULT NULL`), then given values no default could produce: a two-id
- * rotation on chat 1, and a two-attempt route trail with DISTINCT `profileId`s
- * on its assistant message. Without this, every export/import/restore family
- * exercises those columns only at their Zod defaults (`'[]'` and absent), which
- * is the same bytes whether the carry works or not.
+ * The committed `system-data-*` fixture now carries both columns natively
+ * (P4.111 widened it in place at v4 `00c290c9a`; `pragma_table_info` proof:
+ * P4.117 lane record), so this only UPDATEs — values no default could
+ * produce: a two-id rotation on chat 1, and a two-attempt route trail with
+ * DISTINCT `profileId`s on its assistant message. Without this, every
+ * export/import/restore family exercises those columns only at their Zod
+ * defaults (`'[]'` and absent), which is the same bytes whether the carry
+ * works or not.
  *
- * The Rust side plants the identical values through
- * `test_support::ensure_p4d171_columns` + the same two UPDATEs, so the two
- * engines provably start from the same cells.
+ * The Rust side plants the identical values through the twin
+ * `plant_p4d171_values`, so the two engines provably start from the same
+ * cells.
  */
 function plantP4d171Values(db: { exec(sql: string): unknown; prepare(sql: string): { run(...a: unknown[]): unknown; all(...a: unknown[]): unknown } }): void {
-  addColumnIfMissing(db, 'chats', 'cycleOrderParticipantIds', `TEXT DEFAULT '[]'`);
-  addColumnIfMissing(db, 'chat_messages', 'routeTrail', 'TEXT DEFAULT NULL');
   db.prepare(`UPDATE "chats" SET "cycleOrderParticipantIds" = ? WHERE "id" = ?`).run(
     P4D171_ROTATION,
     P4D171_CHAT_ID,

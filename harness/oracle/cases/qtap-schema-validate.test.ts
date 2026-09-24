@@ -258,19 +258,16 @@ async function buildSeeds(
     );
     await initializeDatabase();
     {
-      // P4.D182 (v4 `7fbf8a55b`): the committed fixture predates
-      // `files.generationKey`, so plant one non-null key before exporting —
-      // otherwise every seed's file records omit the property and the arm that
-      // is supposed to prove a carried key VALIDATES measures nothing. The
-      // other rows keep NULL, so the same seeds also carry the omitted case.
+      // P4.D182 (v4 `7fbf8a55b`): plant one non-null `files.generationKey`
+      // before exporting — otherwise every seed's file records omit the
+      // property and the arm that is supposed to prove a carried key
+      // VALIDATES measures nothing. The other rows keep NULL, so the same
+      // seeds also carry the omitted case. P4.111 widened the committed
+      // fixture in place at v4 `00c290c9a` to carry the column natively
+      // (`pragma_table_info` proof: P4.117 lane record) — the guarded
+      // `ADD COLUMN` this block used to run is dead and removed.
       const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
       const raw = getRawDatabase()!;
-      // P4.111: guarded — the widened fixture (v4 `00c290c9a`) already carries
-      // the column, and an unguarded ADD COLUMN throws `duplicate column name`.
-      const hasKey = (
-        raw.prepare(`SELECT name FROM pragma_table_info('files')`).all() as Array<{ name: string }>
-      ).some((c) => c.name === 'generationKey');
-      if (!hasKey) raw.exec(`ALTER TABLE "files" ADD COLUMN "generationKey" TEXT`);
       raw
         .prepare(`UPDATE "files" SET "generationKey" = ? WHERE "id" = ?`)
         .run('a3000000-0000-4000-8000-000000000001', 'f0000001-0000-4000-8000-000000000001');

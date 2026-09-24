@@ -186,13 +186,13 @@ fn fresh_fixture(tag: &str) -> Scratch {
     ] {
         std::fs::copy(fixtures_dir().join(src), root.join(dst)).unwrap();
     }
-    // P4.D171: the committed `system-data-main.db` predates the two
-    // `78b381a96`-round schema moves too (the same class the P4.70 doc comment
-    // above describes) — the repaired-at-boot idiom `web_search_runner_wire.rs`
-    // uses for the connection-profiles pair, rather than another in-place
-    // fixture migration (out of that lane's mandate — §R.11).
+    // P4.111 widened the committed `system-data-main.db` to carry the
+    // P4.D171/P4.D182 columns natively (`pragma_table_info` proof: P4.117
+    // lane record) — the `ensure_*_column[s]` heals that used to run here
+    // are dead and removed; the value PLANTS stay (the non-default cells
+    // this family exists to compare).
     //
-    // ⚠ P4.88: the ensure AND the plant belong HERE, on the fixture copy, not in
+    // ⚠ P4.88: the plant belongs HERE, on the fixture copy, not in
     // `open_db`. The route-validation arms read their `pre` state BEFORE opening
     // the Db, so anything `open_db` writes reads as "a validation-failure arm
     // MUTATED the database". The oracle's own `preState` is taken after its
@@ -200,25 +200,7 @@ fn fresh_fixture(tag: &str) -> Scratch {
     {
         let w =
             quilltap_core::db::Writer::open_writable(&root.join("main.db"), TEST_PEPPER).unwrap();
-        quilltap_core::db::chat_messages_route_trail_repair::ensure_chat_messages_route_trail_column(
-            w.connection(),
-        )
-        .expect("ensure the route-trail column on the vintage fixture");
-        quilltap_core::db::chats_cycle_order_repair::ensure_chats_cycle_order_column(
-            w.connection(),
-        )
-        .expect("ensure the cycle-order column on the vintage fixture");
         plant_p4d171_values(w.connection());
-        // P4.D182 (v4 `7fbf8a55b` + `5029075bb`): the same class one round on.
-        // The oracle's `plantP4d182Values` writes the identical cells on v4's
-        // copy, so the two engines provably start from the same bytes.
-        quilltap_core::db::files_generation_key_repair::
-            ensure_files_generation_key_column_and_index(w.connection())
-            .expect("ensure the generation-key column + index on the vintage fixture");
-        quilltap_core::db::chats_transcript_version_repair::ensure_chats_transcript_version_column(
-            w.connection(),
-        )
-        .expect("ensure the transcript-version column on the vintage fixture");
         // [P4.106 item 6] The committed triple predates Inform (`e7d77bb60`) too.
         // A live v5 instance has `chat_informs` before any import runs — the
         // boot chain's `ensure_chat_informs_table` — while v4's repository
