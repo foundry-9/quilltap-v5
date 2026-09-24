@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — feat(embedding): a help doc's vector is the mean of its section vectors, never the whole text (P4.D222 unit 4, bug 168)
+
+_Versions: core 0.0.1048, harness 0.0.969._
+
+Ports v4 `492771aff`'s HELP_DOC job. The job no longer embeds the whole
+page, which failed on the five largest help pages (dogfood #120). It
+embeds each section, reusing stored section vectors. A doc with no stored
+rows is sliced in memory and the slices are not saved. Vectors whose width
+differs from a fresh one are re-embedded. The doc vector is
+`average_embeddings` of the sections. One section's failure (provider or
+write) is logged and skipped; the job fails only when no section vector
+survives. With nothing to average, the job logs `Skipping empty entity`
+and marks the doc failed with no retry. HELP_DOC no longer takes the
+oversize guard. The INFO line reports the averaged, embedded, reused and
+failed section counts in place of `chunksEmbedded`, and the two old
+section WARNs are gone. The job family's `hd-happy` arm moved as
+predicted. The family grows eight planted HELP_DOC arms, run on per-run
+copies of the untouched committed fixtures, and a per-text provider
+call-count comparison.
+
 #### 2026-09-24 — fix(boot): the help reconcile runs before the embedding-dimension reconcile, v4's Phase 3.66 before 3.7 (P4.D222 unit 7)
 
 _Versions: host 0.0.157._

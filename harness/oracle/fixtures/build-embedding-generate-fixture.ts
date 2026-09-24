@@ -76,6 +76,7 @@ interface JobSeed {
   chatId?: string;
   priority: number;
   createdAt: string;
+  planted?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -341,6 +342,10 @@ async function main(): Promise<void> {
   }
 
   for (const j of spec.jobs) {
+    // P4.D222: `planted` jobs are NOT part of the committed seed — both sides
+    // insert them (with their docs/chunks/status rows) on their per-run copies
+    // from `helpDocPlants.sql`.
+    if (j.planted) continue;
     const payload: Record<string, unknown> = {
       entityType: j.entityType,
       entityId: j.entityId,

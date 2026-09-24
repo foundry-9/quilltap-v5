@@ -148616,6 +148616,87 @@ here as the order's two units.
   pin: no row changes on a second boot with the tree unchanged. The reconcile
   re-reads and hashes every file but writes nothing when nothing changed.
 
+### Unit 4 — the HELP_DOC job by section (`embed_help_doc_sections` + `help_doc_try`)
+
+- Ported in v4's order (`embedding-generate.ts:354-558` at `492771aff`):
+  stored rows (a row's vector kept only if non-empty) else an IN-MEMORY slice
+  (`build_help_doc_chunks(doc.content)`, `id: None`, never persisted); DEBUG
+  `Embedding help doc sections` `{context, docId, sections, storedRows}`;
+  `embed_section` — blank composed text → silent `None` (counted nowhere),
+  else provider → memory → `update_embedding` ONLY with an id; ONE catch over
+  provider AND write (`failed`, last error, memory-only null, WARN `Help doc
+  section embedding failed — skipping section` `{context, docId, chunkId,
+  chunkIndex, error}` — `chunkId` is an `Option` field, ABSENT for a slice,
+  v4's `undefined`); first pass over embedding-less sections; the width
+  rule (`fresh` = first vector NOT reused-at-start, evaluated AFTER the
+  first pass, else the first vector; every other width leaves the reused set
+  and is re-embedded once — a failed re-embed nulls memory only, the OLD row
+  stays); `vectors` = the settled width in chunk order; `Err(last)` ONLY when
+  none survived; `reused` counted at the end. `help_doc_try`: NO `guard_skip`
+  (MEMORY/CONVERSATION_CHUNK/MOUNT_CHUNK keep it — the family's existing
+  oversize mount-chunk arm, `Oversize: … chars exceeds 131072-char cap`, is
+  the unchanged pin); `average_embeddings` (its `Err` mapped into the catch,
+  unreachable); `None` → WARN `Skipping empty entity` `{context, entityType,
+  entityId, title}` + `markAsFailed('Empty input — nothing to embed')` + no
+  retry; `update_embedding` (+ v4's `Help doc not found for embedding update`
+  on no row); `markAsEmbedded`; INFO `Help doc embedding generated`
+  `{context, docId, title, dimensions (the AVERAGED length), sectionsAveraged,
+  sectionsEmbedded, sectionsReused, sectionsFailed}`. v4's `findByDocId` is a
+  FALLBACK `safeQuery`: a failing read logs ERROR `Error finding help doc
+  chunks by doc` `{docId, error}` (target `quilltap::db`) and takes the
+  slice — done at the job's call site (the repo method stays strict; its only
+  caller is here). RETIRED lines: `Could not embed help doc chunks`, `Help doc
+  chunk embedding failed — skipping chunk`, and v5's own `Help doc chunk
+  embedding write failed` (no v4 twin — folded into the one catch).
+- ⚠ Recorded divergence (pre-existing, every line in this file): v5's
+  `handle_embedding_generate` never receives the job id, so no line carries
+  v4's `jobId`.
+- **RED-FIRST, measured with the UNCHANGED case at both pins:** `hd-happy`'s
+  whole-text call (`Aurora\n\nAurora is the memory subsystem.`) is recorded at
+  the baseline and ABSENT at the target; the doc vector moves from the int8
+  encoding of e0 (`eb0101080000000402013c7f…`) to that of `normalize(e0+e1)`
+  (`eb010108000000d771b63b7f7f…`); the three section rows are identical
+  across pins.
+- **GROWN, planted (the committed `crates/quilltap-web/tests/fixtures/
+  embedding-generate-{main,mount}.db` pair is UNTOUCHED):** the spec's
+  `helpDocPlants.sql` (35 statements: 8 docs, their sections — planted
+  vectors as raw-f32 legacy BLOBs — 8 PENDING status rows, 8 jobs) runs on
+  both sides' per-run copies before the claim loop; `cannedVectors` gives six
+  texts their own answer (the mock now records the vector it REALLY answered);
+  three failing texts join `failingTexts`; `build-embedding-generate-
+  fixture.ts` skips `planted` jobs so a rebuild never double-seeds them. The
+  eight arms: v4's four extended-test vectors — `hd-two-null` ([1,0],[0,1] →
+  the doc their mean), `hd-eighty-sections-no-rows` (80 calls, each under a
+  tenth of the page, NO rows written), `hd-width` (the reused [1,0] row keeps
+  its planted RAW bytes, the stale [1,0,0] one is re-embedded),
+  `hd-first-fails` (EMBEDDED from the survivor) — plus
+  `hd-failed-reembed-keeps-old-row`, `hd-all-fail` (the permanent last error
+  → FAILED, job completed), `hd-blank-text` and `hd-empty-no-rows` (the
+  empty arm). Each is pinned against the ORACLE's tables. The oracle now
+  emits `embedCalls` per text and the Rust side counts through a
+  `CountingEmbedding` wrapper: call counts equal text for text (the jest
+  oracle writes zero `llm_logs` rows). Result: 22 jobs / 26 processed steps
+  green at the target.
+- Regen AS RUN: `/tmp/p4d222/eg.sh /tmp/qt-v4-pin-p4d222-b0b6656b5
+  /tmp/p4d222/eg-b0b6656b5.ndjson <wt>/harness/oracle/cases/embedding-
+  generate-jobs.test.ts <wt>/harness/oracle/fixtures/embedding-generate-
+  jobs.json` (the committed recipe with a lane-private mirror root); run
+  `TZ=UTC QT_ORACLE_EG=/tmp/p4d222/eg-b0b6656b5.ndjson cargo test -p
+  quilltap-harness --test embedding_generate_jobs_equivalence`.
+- Capture pins in `services::embedding_generate_job::tests` (three new
+  tests): the exact DEBUG / section WARN / INFO triple on a two-section doc;
+  a slice's WARN with NO `chunkId` and the all-failing throw; the `Skipping
+  empty entity` WARN + FAILED status; an oversize page NOT guarded. The four
+  retired strings (incl. `chunks_embedded`) are asserted absent in each.
+- Mutations (each reddens the family; reverted by file backup):
+  | # | mutation | red |
+  |---|---|---|
+  | M8 | width from the first REUSED vector, ignoring `fresh` | `provider calls diverge` |
+  | M9 | `guard_skip` back on HELP_DOC | `provider calls diverge` |
+  | M10 | throw whenever anything failed | processed-sequence length |
+  | M11 | blank text not silent | processed-sequence length |
+  | M12 | reused sections re-embedded anyway | `provider calls diverge` |
+
 ## P4.D221 — the `ad1c4c37f`/`8aafd595d` `lib/` riders + two NO-PORT ratifications (2026-09-24, branch `claude/dispatch-lib-riders-partition-f93bb0`)
 
 The `lib/` half of the `b0b6656b5` ten-commit drift catch-up round (the web

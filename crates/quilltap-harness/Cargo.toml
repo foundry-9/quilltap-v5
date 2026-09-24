@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-harness"
-version = "0.0.970"
+version = "0.0.971"
 edition = "2021"
 publish = false
 

@@ -61,13 +61,30 @@
 //! in `QT_FIXTURE_OUT` / `QT_FIXTURE_MOUNT_OUT`; copy those over the committed
 //! `embedding-generate-{main,mount}.db` and regenerate this family's oracle
 //! plus every sibling that reads them.
+//!
+//! ## P4.D222 (v4 `492771aff`, bug 168) — the HELP_DOC job by SECTION
+//!
+//! The doc vector is now the normalised mean of its section vectors and the
+//! whole-text call is GONE (`hd-happy` moved: its doc vector is
+//! `normalize(e0 + e1)`). Eight more HELP_DOC arms are PLANTED, never baked
+//! into the committed pair: the spec's `helpDocPlants.sql` runs on BOTH sides'
+//! per-run copies before the claim loop (v4's four extended-test vectors — two
+//! null sections, 80 sections with no rows, reused/null/stale-width, the first
+//! section failing — plus a failed width re-embed that keeps the old row,
+//! every section failing, a blank composed text, and a doc that slices to
+//! nothing). `helpDocPlants.cannedVectors` gives specific texts their own
+//! answer; the oracle records the vector it really answered, and an
+//! `embedCalls` line per text, which this side matches call for call.
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use quilltap_core::db::background_jobs::BackgroundJobsRepository;
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::model::embedding::CannedEmbeddingProvider;
+use quilltap_core::model::embedding::{
+    CannedEmbeddingProvider, EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,
+};
 use quilltap_core::services::embedding_generate_job::{
     handle_embedding_generate, EmbeddingGeneratePayload,
 };
@@ -110,9 +127,42 @@ struct RouteCaseW {
 struct Spec {
     test_pepper_base64: String,
     user_id: String,
+    help_doc_plants: HelpDocPlantsW,
     failing_texts: Vec<FailingTextW>,
     route_cases: Vec<RouteCaseW>,
     jobs: Vec<JobW>,
+}
+
+#[derive(Deserialize)]
+struct HelpDocPlantsW {
+    sql: Vec<String>,
+}
+
+/// The canned provider, counting every call per text (P4.D222 — the jest
+/// oracle writes no `llm_logs` rows, so per-text call counts are how the two
+/// sides prove they made the SAME calls, not just the same set).
+struct CountingEmbedding {
+    inner: CannedEmbeddingProvider,
+    calls: Mutex<HashMap<String, u64>>,
+}
+
+impl EmbeddingProvider for CountingEmbedding {
+    fn generate_embedding_for_user(
+        &self,
+        text: &str,
+        user_id: &str,
+        profile_id: Option<&str>,
+        priority: EmbeddingPriority,
+    ) -> impl std::future::Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
+        *self
+            .calls
+            .lock()
+            .unwrap()
+            .entry(text.to_string())
+            .or_default() += 1;
+        self.inner
+            .generate_embedding_for_user(text, user_id, profile_id, priority)
+    }
 }
 
 fn spec_path() -> PathBuf {
@@ -303,6 +353,7 @@ async fn embedding_generate_jobs_match_oracle() {
     let mut oracle_failures: Vec<(String, String)> = Vec::new();
     let mut oracle_routes: Vec<(String, u16, Value)> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
+    let mut oracle_calls: HashMap<String, u64> = HashMap::new();
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -334,6 +385,12 @@ async fn embedding_generate_jobs_match_oracle() {
                 v["status"].as_u64().unwrap() as u16,
                 v["body"].clone(),
             )),
+            Some("embedCalls") => {
+                oracle_calls.insert(
+                    v["text"].as_str().unwrap().to_string(),
+                    v["calls"].as_u64().unwrap(),
+                );
+            }
             Some("table") => {
                 oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
             }
@@ -443,13 +500,17 @@ async fn embedding_generate_jobs_match_oracle() {
 
     // Replay EXACTLY the oracle-recorded embeddings — an input the oracle never
     // saw surfaces as a canned-miss (a transient failure), not an answer.
-    let mut embedding = CannedEmbeddingProvider::new();
+    let mut canned = CannedEmbeddingProvider::new();
     for (text, vec) in &oracle_embeddings {
-        embedding = embedding.with_vector(text.clone(), vec.clone());
+        canned = canned.with_vector(text.clone(), vec.clone());
     }
     for (text, message) in &oracle_failures {
-        embedding = embedding.with_failure_for(text.clone(), message.clone());
+        canned = canned.with_failure_for(text.clone(), message.clone());
     }
+    let embedding = CountingEmbedding {
+        inner: canned,
+        calls: Mutex::new(HashMap::new()),
+    };
 
     let db = Db::open(
         DbPaths {
@@ -460,6 +521,18 @@ async fn embedding_generate_jobs_match_oracle() {
         &spec.test_pepper_base64,
     )
     .unwrap_or_else(|e| panic!("open fixture copies: {e}"));
+
+    // P4.D222 — the planted HELP_DOC arms, on this run's copy (the oracle runs
+    // the same statements on its own).
+    let plants = spec.help_doc_plants.sql.clone();
+    db.write(move |ws| {
+        for sql in &plants {
+            ws.main().connection().execute_batch(sql)?;
+        }
+        Ok(())
+    })
+    .await
+    .expect("apply the helpDocPlants");
 
     // The claim loop — identical to the oracle's (see the module doc).
     const REWIND_SQL: &str = "UPDATE background_jobs \
@@ -574,6 +647,25 @@ async fn embedding_generate_jobs_match_oracle() {
         );
     }
 
+    // P4.D222 — the SAME provider calls, text for text and count for count.
+    let got_calls = embedding.calls.lock().unwrap().clone();
+    let mut call_diff: Vec<String> = Vec::new();
+    for text in oracle_calls
+        .keys()
+        .chain(got_calls.keys())
+        .collect::<BTreeSet<_>>()
+    {
+        let (w, g) = (oracle_calls.get(text), got_calls.get(text));
+        if w != g {
+            call_diff.push(format!("{text:?}: v4 {w:?} vs v5 {g:?}"));
+        }
+    }
+    assert!(
+        call_diff.is_empty(),
+        "provider calls diverge:\n{}",
+        call_diff.join("\n")
+    );
+
     // Dump + diff the eight tables (timestamps placeholdered, all else exact).
     let mut got: Vec<Value> = TABLES
         .iter()
@@ -622,6 +714,83 @@ async fn embedding_generate_jobs_match_oracle() {
         minted_status, 1,
         "the corpus stopped exercising the mark* create arm — regenerate the oracle"
     );
+
+    // P4.D222 — each planted arm really took its path, pinned against the
+    // ORACLE (so two identically-broken sides cannot pass as agreement).
+    {
+        let table = |name: &str| -> Vec<Value> {
+            let i = TABLES.iter().position(|t| t.0 == name).unwrap();
+            want[i]["rows"].as_array().cloned().unwrap_or_default()
+        };
+        let (docs, chunks, status) = (
+            table("help_docs"),
+            table("help_doc_chunks"),
+            table("embedding_status"),
+        );
+        let row = |rows: &[Value], id: &str| -> Value {
+            rows.iter()
+                .find(|r| r["id"] == id)
+                .cloned()
+                .unwrap_or_else(|| panic!("oracle row {id} missing"))
+        };
+        let emb = |r: &Value| r["embedding"].as_str().unwrap_or("").to_string();
+        let doc_id = |n: u32| format!("bd000000-0000-4000-8000-0000000000{:02x}", 0x10 + n);
+        let chunk_id =
+            |n: u32, i: u32| format!("bc000000-0000-4000-8000-0000000001{:02x}", n * 0x10 + i);
+        let status_of = |n: u32| {
+            row(
+                &status,
+                &format!("e5000000-0000-4000-8000-0000000000{:02x}", 0x10 + n),
+            )
+        };
+        // 1 two-null: both sections written, the doc vector their mean.
+        assert!(!emb(&row(&docs, &doc_id(1))).is_empty());
+        assert!(emb(&row(&chunks, &chunk_id(1, 0))).starts_with("eb01"));
+        assert!(emb(&row(&chunks, &chunk_id(1, 1))).starts_with("eb01"));
+        // 2 eighty sections, NO rows: sliced in memory, never persisted; every
+        // call far shorter than the page.
+        let huge = row(&docs, &doc_id(2));
+        assert!(
+            !emb(&huge).is_empty(),
+            "the huge page gets a vector at last"
+        );
+        assert!(!chunks.iter().any(|c| c["docId"] == doc_id(2).as_str()));
+        let huge_len = huge["content"].as_str().unwrap().len();
+        let huge_calls: Vec<&String> = oracle_calls
+            .keys()
+            .filter(|t| t.starts_with("Huge \u{203a} "))
+            .collect();
+        assert_eq!(huge_calls.len(), 80, "one call per section");
+        assert!(huge_calls.iter().all(|t| t.len() < huge_len / 10));
+        // 3 width: the reused [1,0] row is NOT rewritten (still the planted
+        // raw-f32 bytes); the stale [1,0,0] one is re-embedded.
+        assert_eq!(emb(&row(&chunks, &chunk_id(3, 0))), "0000803f00000000");
+        assert!(emb(&row(&chunks, &chunk_id(3, 2))).starts_with("eb01"));
+        // 4 first fails: the doc still gets a vector and is marked embedded.
+        assert_eq!(status_of(4)["status"], "EMBEDDED");
+        // 5 a failed width re-embed keeps the OLD row in the database.
+        assert_eq!(
+            emb(&row(&chunks, &chunk_id(5, 1))),
+            "0000803f0000000000000000"
+        );
+        assert!(!emb(&row(&docs, &doc_id(5))).is_empty());
+        // 6 every section fails: the last (permanent) error is thrown and the
+        // status is FAILED with it.
+        assert_eq!(status_of(6)["status"], "FAILED");
+        assert!(status_of(6)["error"]
+            .as_str()
+            .unwrap()
+            .contains("maximum context length"));
+        // 7 blank text / 8 nothing to slice: the empty arm.
+        for n in [7, 8] {
+            assert_eq!(status_of(n)["status"], "FAILED");
+            assert_eq!(status_of(n)["error"], "Empty input — nothing to embed");
+            assert!(emb(&row(&docs, &doc_id(n))).is_empty());
+        }
+        // hd-happy moved: the whole-text call is GONE (its text was never
+        // asked for) and the reused e1 section is averaged in.
+        assert!(!oracle_calls.contains_key("Aurora\n\nAurora is the memory subsystem."));
+    }
 
     for (i, (table, _, _, _, _)) in TABLES.iter().enumerate() {
         assert_eq!(

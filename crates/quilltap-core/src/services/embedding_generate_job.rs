@@ -16,7 +16,10 @@
 //! deliberately do NOT match, so they still retry to `maxAttempts` → DEAD.
 //! The [`preflight_skip_reason`] guards catch the two deterministically
 //! unembeddable shapes (empty/whitespace-only and oversize input) BEFORE the
-//! provider call for the same reason.
+//! provider call for the same reason — for MEMORY, CONVERSATION_CHUNK and
+//! MOUNT_CHUNK. **Not for HELP_DOC** since v4 `492771aff` (bug 168): a help
+//! doc embeds by SECTION and averages them, so an oversize page is exactly what
+//! that path exists for; its empty case is `Skipping empty entity`.
 //!
 //! ## v4 quirks reproduced deliberately
 //!
@@ -526,7 +529,7 @@ async fn conversation_chunk_try<E: EmbeddingProvider>(
 }
 
 // ============================================================================
-// HELP_DOC (v4 :320–400)
+// HELP_DOC (v4 :324–558, rewritten at `492771aff`, bug 168)
 // ============================================================================
 
 async fn help_doc_branch<E: EmbeddingProvider>(
@@ -565,6 +568,19 @@ async fn help_doc_branch<E: EmbeddingProvider>(
     }
 }
 
+/// v4 `handleHelpDocEmbedding`'s try body (`:484-527`).
+///
+/// **The document's own vector is the normalised mean of its section vectors**
+/// ([`crate::embedding_vector::average_embeddings`]), never an embedding of the
+/// whole text. v4's *why*, carried forward: a help page can run past any
+/// provider's input ceiling — `chat-settings.md` passed OpenAI's 8,192 tokens
+/// and was left with no vector at all, and so invisible to `help_search` (bug
+/// 168; this port's dogfood #120, which found the same five pages unembedded) —
+/// while a section never can.
+///
+/// **No `guard_skip` for HELP_DOC** (v4 dropped `skipIfOversize` here; MEMORY,
+/// CONVERSATION_CHUNK and MOUNT_CHUNK keep it): an oversize page is exactly
+/// what the section path exists for, and the empty case has its own arm below.
 async fn help_doc_try<E: EmbeddingProvider>(
     db: &Db,
     embedding: &E,
@@ -573,31 +589,37 @@ async fn help_doc_try<E: EmbeddingProvider>(
     profile_id: &str,
     doc: &crate::db::help_docs::HelpDocRow,
 ) -> Result<(), String> {
-    let text = format!("{}\n\n{}", doc.title, doc.content);
-    if guard_skip(
-        db,
-        "HELP_DOC",
-        &payload.entity_id,
-        profile_id,
-        &text,
-        user_id,
-    )
-    .await?
-    .is_some()
-    {
-        return Ok(());
-    }
-    let result = embedding
-        .generate_embedding_for_user(
-            &text,
+    let sections = embed_help_doc_sections(db, embedding, user_id, payload, doc).await?;
+    // The width filter above makes the differing-dimension refusal
+    // unreachable; were it reached, v4's throw lands in the same catch.
+    let doc_embedding =
+        crate::embedding_vector::average_embeddings(&sections.vectors).map_err(|e| e.message())?;
+
+    let Some(doc_embedding) = doc_embedding else {
+        // v4's *why*: no section had any text — the same deterministic dead end
+        // as an empty memory, so it is marked failed without a retry.
+        tracing::warn!(
+            target: "quilltap::jobs",
+            context = "handleEmbeddingGenerate",
+            entityType = "HELP_DOC",
+            entityId = doc.id.as_str(),
+            title = doc.title.as_str(),
+            "[EmbeddingGenerate] Skipping empty entity",
+        );
+        mark_failed(
+            db,
+            "HELP_DOC",
+            &payload.entity_id,
+            profile_id,
+            "Empty input — nothing to embed",
             user_id,
-            payload.profile_id.as_deref(),
-            EmbeddingPriority::Background,
         )
         .await
-        .map_err(|e| e.message)?;
+        .map_err(db_str)?;
+        return Ok(());
+    };
 
-    let (vec, did) = (result.embedding.clone(), doc.id.clone());
+    let (vec, did) = (doc_embedding.clone(), doc.id.clone());
     let updated = db
         .write(move |ws| {
             let now = crate::clock::now_iso();
@@ -613,92 +635,228 @@ async fn help_doc_try<E: EmbeddingProvider>(
         ));
     }
 
-    // Section-level vectors, in the SAME job as the whole-document one (v4
-    // `24633026`). v4's *why*, carried forward: doing it here rather than
-    // through a HELP_DOC_CHUNK entity type of its own keeps one unit of work
-    // per document — the reindex enqueue, the `embedding_status` bookkeeping
-    // and the dimension reconcile all continue to count `help_docs` rows, and
-    // chunks can never carry a dimension the parent doc doesn't, because they
-    // are always written together.
-    let chunks_embedded = embed_help_doc_chunks(db, embedding, user_id, payload, doc).await;
-
     mark_embedded(db, "HELP_DOC", &payload.entity_id, profile_id, user_id)
         .await
         .map_err(db_str)?;
     tracing::info!(
         target: "quilltap::jobs",
-        doc_id = %doc.id,
-        title = %doc.title,
-        dimensions = result.dimensions,
-        chunks_embedded,
+        context = "handleEmbeddingGenerate",
+        docId = doc.id.as_str(),
+        title = doc.title.as_str(),
+        dimensions = doc_embedding.len(),
+        sectionsAveraged = sections.vectors.len(),
+        sectionsEmbedded = sections.embedded,
+        sectionsReused = sections.reused,
+        sectionsFailed = sections.failed,
         "[EmbeddingGenerate] Help doc embedding generated",
     );
     Ok(())
 }
 
-/// v4 `embedHelpDocChunks` (`embedding-generate.ts:323`, new at `24633026`) —
-/// embed every section chunk of a help document that still lacks a vector.
-/// Returns the number embedded on this pass.
+/// One section of a help doc as the embedding pass sees it (v4
+/// `HelpDocSection`, `:324-331`).
+struct HelpDocSection {
+    /// The stored chunk row id; `None` for a slice made on the fly (no rows).
+    id: Option<String>,
+    chunk_index: f64,
+    heading: Option<String>,
+    content: String,
+    embedding: Option<Vec<f32>>,
+}
+
+/// What [`embed_help_doc_sections`] hands back (v4's `{vectors, embedded,
+/// reused, failed}`).
+struct SectionsOutcome {
+    vectors: Vec<Vec<f32>>,
+    embedded: usize,
+    reused: usize,
+    failed: usize,
+}
+
+/// v4 `embedHelpDocSections` (`embedding-generate.ts:354-449`) — give every
+/// section of a help document a vector, and return them.
 ///
-/// **Chunks that already carry an embedding are skipped**, which makes a retry
-/// of a partially-completed job cheap: the rows are recreated with null
-/// embeddings whenever the doc's content changes, and a full reindex clears
-/// them, so a populated embedding is always current for its text.
-///
-/// **A single chunk's failure is logged and skipped, never thrown.** The
-/// document's own embedding has already been stored by the caller, so the doc
-/// stays findable at whole-document granularity; throwing here would fail a job
-/// whose main work succeeded, and the next sync or reindex retries the
-/// stragglers. The outer read is wrapped for the same reason — hence `()` in
-/// place of a `Result`, matching v4's swallow.
-async fn embed_help_doc_chunks<E: EmbeddingProvider>(
+/// v4's *why*, carried forward:
+///   - Sections are the stored `help_doc_chunks` rows. When a doc has none yet
+///     (a sync whose slicing has not landed) it is sliced HERE, in memory, so
+///     the document still gets a vector; those slices are never persisted —
+///     the next sync or reconcile writes the rows.
+///   - A stored vector is reused, which makes a retry cheap: rows are recreated
+///     with null embeddings whenever the doc's content changes and a full
+///     reindex clears them, so a populated vector is current for its text. A
+///     stored vector whose WIDTH differs from a freshly generated one belongs
+///     to an earlier profile and is re-embedded rather than averaged in.
+///   - A single section's failure is logged and skipped; the rest still stand
+///     for the document. If every section fails, the last error is returned so
+///     the job's permanent/transient handling decides what happens next.
+///   - Vectors are collected in memory rather than re-read (in v4's job child
+///     the writes are buffered and a read would not see them).
+async fn embed_help_doc_sections<E: EmbeddingProvider>(
     db: &Db,
     embedding: &E,
     user_id: &str,
     payload: &EmbeddingGeneratePayload,
     doc: &crate::db::help_docs::HelpDocRow,
-) -> usize {
-    let mut embedded = 0usize;
-
+) -> Result<SectionsOutcome, String> {
+    // v4's `findByDocId` is a FALLBACK `safeQuery`: a failing read logs its
+    // ERROR and answers `[]` — which then takes the in-memory slice below.
     let doc_id = doc.id.clone();
-    let chunks = match db.read_main(move |conn| {
+    let stored = match db.read_main(move |conn| {
         crate::db::help_doc_chunks::HelpDocChunksRepository::new(conn).find_by_doc_id(&doc_id)
     }) {
-        Ok(chunks) => chunks,
+        Ok(rows) => rows,
         Err(e) => {
-            tracing::warn!(
-                target: "quilltap::jobs",
-                doc_id = %doc.id,
+            tracing::error!(
+                target: "quilltap::db",
+                docId = doc.id.as_str(),
                 error = %e,
-                "[EmbeddingGenerate] Could not embed help doc chunks",
+                "Error finding help doc chunks by doc",
             );
-            return embedded;
+            Vec::new()
         }
     };
+    let stored_rows = stored.len();
+    let mut sections: Vec<HelpDocSection> = if stored.is_empty() {
+        crate::services::help_doc_chunking::build_help_doc_chunks(&doc.content)
+            .into_iter()
+            .map(|draft| HelpDocSection {
+                id: None,
+                chunk_index: draft.chunk_index as f64,
+                heading: draft.heading,
+                content: draft.content,
+                embedding: None,
+            })
+            .collect()
+    } else {
+        stored
+            .into_iter()
+            .map(|chunk| HelpDocSection {
+                id: Some(chunk.id),
+                chunk_index: chunk.chunk_index,
+                heading: chunk.heading,
+                content: chunk.content,
+                // v4: `chunk.embedding && chunk.embedding.length > 0 ? … : null`.
+                embedding: (!chunk.embedding.is_empty()).then_some(chunk.embedding),
+            })
+            .collect()
+    };
 
-    for chunk in &chunks {
-        // v4: `if (chunk.embedding && chunk.embedding.length > 0) continue`.
-        if !chunk.embedding.is_empty() {
-            continue;
+    tracing::debug!(
+        target: "quilltap::jobs",
+        context = "handleEmbeddingGenerate",
+        docId = doc.id.as_str(),
+        sections = sections.len(),
+        storedRows = stored_rows,
+        "[EmbeddingGenerate] Embedding help doc sections",
+    );
+
+    let mut tally = SectionTally::default();
+
+    // `:415-420` — every embedding-less section, in chunk order.
+    let mut reused_at_start: Vec<bool> = sections.iter().map(|s| s.embedding.is_some()).collect();
+    for section in sections.iter_mut() {
+        if section.embedding.is_none() {
+            tally.record(embed_section(db, embedding, user_id, payload, doc, section).await);
         }
+    }
 
-        let text = crate::services::help_doc_chunking::help_chunk_embedding_text(
-            &doc.title,
-            chunk.heading.as_deref(),
-            &chunk.content,
-        );
-        // v4's `text.trim().length === 0` guard. It is effectively unreachable
-        // in production — the composed text always leads with the document
-        // title, and `extractTitle` falls back to the title-cased filename, so
-        // a real doc's title is never empty. Carried anyway because v4 carries
-        // it. No corpus row can exercise it (which is why none tries);
-        // `help_doc_chunking::tests::composed_text_is_blank_only_when_every_part_is`
-        // pins the reachability claim itself.
-        if crate::jsstr::js_trim(&text).is_empty() {
-            continue;
+    // `:422-433` — settle on the current profile's width: that of the first
+    // FRESH vector (evaluated after the first pass), else of the first reused
+    // one. A vector of any other width is re-embedded (once).
+    let fresh = sections
+        .iter()
+        .enumerate()
+        .find(|(i, s)| s.embedding.is_some() && !reused_at_start[*i])
+        .map(|(_, s)| s);
+    let width = fresh
+        .or_else(|| sections.iter().find(|s| s.embedding.is_some()))
+        .and_then(|s| s.embedding.as_ref())
+        .map(Vec::len);
+    if let Some(width) = width {
+        for (i, section) in sections.iter_mut().enumerate() {
+            if section.embedding.as_ref().is_some_and(|v| v.len() != width) {
+                reused_at_start[i] = false;
+                tally.record(embed_section(db, embedding, user_id, payload, doc, section).await);
+            }
         }
+    }
 
-        match embedding
+    // `:435-437` — the vectors of the settled width, in chunk order.
+    let vectors: Vec<Vec<f32>> = sections
+        .iter()
+        .filter_map(|s| s.embedding.as_ref())
+        .filter(|v| Some(v.len()) == width)
+        .cloned()
+        .collect();
+
+    // `:439-441` — throw only when nothing survived AND something failed; zero
+    // sections or all-blank text is the empty arm, not an error.
+    if vectors.is_empty() {
+        if let Some(message) = tally.last_error {
+            return Err(message);
+        }
+    }
+
+    let reused = sections
+        .iter()
+        .enumerate()
+        .filter(|(i, s)| reused_at_start[*i] && s.embedding.is_some())
+        .count();
+    Ok(SectionsOutcome {
+        vectors,
+        embedded: tally.embedded,
+        reused,
+        failed: tally.failed,
+    })
+}
+
+/// `embedSection`'s counters (v4's closure-scoped `embedded` / `failed` /
+/// `lastError`).
+#[derive(Default)]
+struct SectionTally {
+    embedded: usize,
+    failed: usize,
+    last_error: Option<String>,
+}
+
+impl SectionTally {
+    /// `None` = the silent blank-text return, counted nowhere.
+    fn record(&mut self, outcome: Option<Result<(), String>>) {
+        match outcome {
+            Some(Ok(())) => self.embedded += 1,
+            Some(Err(message)) => {
+                self.failed += 1;
+                self.last_error = Some(message);
+            }
+            None => {}
+        }
+    }
+}
+
+/// v4's `embedSection` (`:383-413`). ONE catch covers the provider call AND the
+/// chunk write: a failure of either counts `failed`, becomes the last error,
+/// and nulls the section IN MEMORY only (a stored row keeps whatever it had —
+/// for a width re-embed, the OLD wrong-width vector). v5's separate `Help doc
+/// chunk embedding write failed` WARN had no v4 twin and folds in here. A blank
+/// composed text returns silently (`None`), counted nowhere.
+async fn embed_section<E: EmbeddingProvider>(
+    db: &Db,
+    embedding: &E,
+    user_id: &str,
+    payload: &EmbeddingGeneratePayload,
+    doc: &crate::db::help_docs::HelpDocRow,
+    section: &mut HelpDocSection,
+) -> Option<Result<(), String>> {
+    let text = crate::services::help_doc_chunking::help_chunk_embedding_text(
+        &doc.title,
+        section.heading.as_deref(),
+        &section.content,
+    );
+    if crate::jsstr::js_trim(&text).is_empty() {
+        return None;
+    }
+    let attempt: Result<(), String> = async {
+        let result = embedding
             .generate_embedding_for_user(
                 &text,
                 user_id,
@@ -706,47 +864,39 @@ async fn embed_help_doc_chunks<E: EmbeddingProvider>(
                 EmbeddingPriority::Background,
             )
             .await
-        {
-            Ok(result) => {
-                let (vec, cid) = (result.embedding.clone(), chunk.id.clone());
-                let written = db
-                    .write(move |ws| {
-                        let now = crate::clock::now_iso();
-                        crate::db::help_doc_chunks::HelpDocChunksRepository::new(
-                            ws.main().connection(),
-                        )
-                        .update_embedding(&cid, &vec, &now)
-                    })
-                    .await;
-                match written {
-                    // v4's no-fallback `safeQuery` logs and RETHROWS, so a hard
-                    // DB error lands in the per-chunk catch (the Err arm below)
-                    // and is NOT counted — but a no-row-matched update merely
-                    // returns null in v4, so a row that vanished mid-job still
-                    // increments `embedded` on both sides (hence `Ok(_)`, not
-                    // `Ok(true)`).
-                    Ok(_) => embedded += 1,
-                    Err(e) => tracing::warn!(
-                        target: "quilltap::jobs",
-                        doc_id = %doc.id,
-                        chunk_id = %chunk.id,
-                        error = %e,
-                        "[EmbeddingGenerate] Help doc chunk embedding write failed",
-                    ),
-                }
-            }
-            Err(e) => tracing::warn!(
-                target: "quilltap::jobs",
-                doc_id = %doc.id,
-                chunk_id = %chunk.id,
-                chunk_index = chunk.chunk_index,
-                error = %e.message,
-                "[EmbeddingGenerate] Help doc chunk embedding failed — skipping chunk",
-            ),
+            .map_err(|e| e.message)?;
+        section.embedding = Some(result.embedding.clone());
+        if let Some(id) = section.id.clone() {
+            // A no-row-matched update returns null in v4 (no throw), so only a
+            // hard DB error lands in the catch.
+            let vec = result.embedding;
+            db.write(move |ws| {
+                let now = crate::clock::now_iso();
+                crate::db::help_doc_chunks::HelpDocChunksRepository::new(ws.main().connection())
+                    .update_embedding(&id, &vec, &now)
+            })
+            .await
+            .map_err(db_str)?;
         }
+        Ok(())
     }
-
-    embedded
+    .await;
+    Some(match attempt {
+        Ok(()) => Ok(()),
+        Err(message) => {
+            section.embedding = None;
+            tracing::warn!(
+                target: "quilltap::jobs",
+                context = "handleEmbeddingGenerate",
+                docId = doc.id.as_str(),
+                chunkId = section.id.as_deref(),
+                chunkIndex = section.chunk_index,
+                error = message.as_str(),
+                "[EmbeddingGenerate] Help doc section embedding failed — skipping section",
+            );
+            Err(message)
+        }
+    })
 }
 
 // ============================================================================
@@ -932,5 +1082,204 @@ mod tests {
         let empty = EmbeddingGeneratePayload::from_json(&serde_json::json!({}));
         assert_eq!(empty.entity_type, None);
         assert_eq!(empty.entity_id, "");
+    }
+
+    // ---- P4.D222: the HELP_DOC section pass's log lines, capture-pinned ----
+
+    use crate::model::embedding::CannedEmbeddingProvider;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const DOC: &str = "d0000000-0000-4000-8000-000000000001";
+
+    fn fresh_db(dir: &std::path::Path) -> Db {
+        let data = dir.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap()
+    }
+
+    /// A doc titled `T` with `content`, and stored sections `(index, heading,
+    /// content)` with NULL vectors.
+    fn plant(db: &Db, content: &str, sections: &[(i64, &str, &str)]) {
+        let (content, sections): (String, Vec<(i64, String, String)>) = (
+            content.to_string(),
+            sections
+                .iter()
+                .map(|(i, h, c)| (*i, h.to_string(), c.to_string()))
+                .collect(),
+        );
+        db.write_blocking(move |ws| {
+            let c = ws.main().connection();
+            c.execute(
+                "INSERT INTO help_docs (id, title, path, url, content, contentHash, embedding, \
+                 createdAt, updatedAt) VALUES (?1, 'T', 'help/t.md', '/t', ?2, 'h', NULL, 'x', 'x')",
+                rusqlite::params![DOC, content],
+            )?;
+            for (i, h, body) in &sections {
+                c.execute(
+                    "INSERT INTO help_doc_chunks (id, docId, chunkIndex, heading, content, \
+                     embedding, createdAt, updatedAt) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 'x', 'x')",
+                    rusqlite::params![format!("c{i}"), DOC, i, h, body],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    fn run(db: &Db, embedding: &CannedEmbeddingProvider) -> (Result<(), String>, Vec<String>) {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let payload = EmbeddingGeneratePayload::from_json(&serde_json::json!({
+            "entityType": "HELP_DOC", "entityId": DOC, "profileId": "p"
+        }));
+        crate::test_support::captured_with(|| {
+            rt.block_on(handle_embedding_generate(db, embedding, "u", &payload))
+        })
+    }
+
+    /// The four lines v4 `492771aff` retired must never fire again.
+    fn assert_retired_lines_silent(lines: &[String]) {
+        for gone in [
+            "Could not embed help doc chunks",
+            "Help doc chunk embedding failed — skipping chunk",
+            "Help doc chunk embedding write failed",
+            "chunks_embedded",
+        ] {
+            assert!(!lines.iter().any(|l| l.contains(gone)), "{gone}: {lines:?}");
+        }
+    }
+
+    #[test]
+    fn the_section_pass_logs_v4s_debug_warn_and_info() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = fresh_db(dir.path());
+        plant(&db, "unused", &[(0, "A", "one"), (1, "B", "two")]);
+        let provider = CannedEmbeddingProvider::new()
+            .with_failure_for("T \u{203a} A\n\none", "boom")
+            .with_vector("T \u{203a} B\n\ntwo", vec![0.0, 1.0]);
+        let (outcome, lines) = run(&db, &provider);
+        outcome.unwrap();
+        assert_eq!(
+            lines,
+            vec![
+                format!(
+                    "DEBUG quilltap::jobs [EmbeddingGenerate] Embedding help doc sections \
+                     context=handleEmbeddingGenerate docId={DOC} sections=2 storedRows=2"
+                ),
+                format!(
+                    "WARN quilltap::jobs [EmbeddingGenerate] Help doc section embedding failed — \
+                     skipping section context=handleEmbeddingGenerate docId={DOC} chunkId=c0 \
+                     chunkIndex=0 error=boom"
+                ),
+                format!(
+                    "INFO quilltap::jobs [EmbeddingGenerate] Help doc embedding generated \
+                     context=handleEmbeddingGenerate docId={DOC} title=T dimensions=2 \
+                     sectionsAveraged=1 sectionsEmbedded=1 sectionsReused=0 sectionsFailed=1"
+                ),
+            ]
+        );
+        assert_retired_lines_silent(&lines);
+    }
+
+    /// An in-memory slice (no stored rows) has no id: the WARN carries no
+    /// `chunkId` at all (v4 logs `undefined`, which the JSON drops). Every
+    /// section failing throws the last error into the catch arm.
+    #[test]
+    fn a_slice_warn_has_no_chunk_id_and_all_failing_throws() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = fresh_db(dir.path());
+        plant(&db, "## Only\n\nbody", &[]);
+        let slices = crate::services::help_doc_chunking::build_help_doc_chunks("## Only\n\nbody");
+        assert_eq!(slices.len(), 1);
+        let text = crate::services::help_doc_chunking::help_chunk_embedding_text(
+            "T",
+            slices[0].heading.as_deref(),
+            &slices[0].content,
+        );
+        let provider = CannedEmbeddingProvider::new().with_failure_for(text, "down");
+        let (outcome, lines) = run(&db, &provider);
+        assert_eq!(
+            outcome,
+            Err("down".to_string()),
+            "transient: the job retries"
+        );
+        let warn = lines
+            .iter()
+            .find(|l| l.contains("Help doc section embedding failed"))
+            .expect("the section WARN");
+        assert!(!warn.contains("chunkId"), "{warn}");
+        assert!(
+            warn.contains("docId=") && warn.contains(" chunkIndex=0 error=down"),
+            "{warn}"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("storedRows=0")),
+            "{lines:?}"
+        );
+        assert_retired_lines_silent(&lines);
+    }
+
+    /// Nothing to average → v4's WARN `Skipping empty entity` and a FAILED
+    /// status, no retry — and HELP_DOC no longer takes the oversize guard (a
+    /// page past `EMBEDDING_MAX_CHARS` embeds by section).
+    #[test]
+    fn empty_is_skipped_and_oversize_is_not_guarded() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = fresh_db(dir.path());
+        plant(&db, "", &[]);
+        let (outcome, lines) = run(&db, &CannedEmbeddingProvider::new());
+        outcome.unwrap();
+        assert!(
+            lines.contains(&format!(
+                "WARN quilltap::jobs [EmbeddingGenerate] Skipping empty entity \
+                 context=handleEmbeddingGenerate entityType=HELP_DOC entityId={DOC} title=T"
+            )),
+            "{lines:?}"
+        );
+        let status: (String, String) = db
+            .read_main(|c| {
+                Ok(c.query_row(
+                    "SELECT status, error FROM embedding_status WHERE entityId = ?1",
+                    [DOC],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?)
+            })
+            .unwrap();
+        assert_eq!(
+            status,
+            ("FAILED".into(), "Empty input — nothing to embed".into())
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let db = fresh_db(dir.path());
+        plant(
+            &db,
+            &"x".repeat(EMBEDDING_MAX_CHARS + 1),
+            &[(0, "S", "short")],
+        );
+        let provider =
+            CannedEmbeddingProvider::new().with_vector("T \u{203a} S\n\nshort", vec![1.0]);
+        let (outcome, lines) = run(&db, &provider);
+        outcome.unwrap();
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Skipping deterministically unembeddable entity")),
+            "HELP_DOC must not take the oversize guard: {lines:?}"
+        );
+        assert!(lines
+            .iter()
+            .any(|l| l.contains("Help doc embedding generated")));
     }
 }

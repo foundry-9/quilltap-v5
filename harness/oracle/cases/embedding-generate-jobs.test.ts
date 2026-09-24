@@ -94,6 +94,8 @@ interface Spec {
   failingTexts: Array<{ text: string; message: string }>;
   routeCases: RouteCase[];
   jobs: Array<{ id: string; name: string }>;
+  /** P4.D222 — planted HELP_DOC arms, applied to the per-run copies. */
+  helpDocPlants: { cannedVectors: Array<{ text: string; vector: number[] }>; sql: string[] };
 }
 
 async function main(): Promise<void> {
@@ -124,8 +126,13 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const embeddingRecorded = new Set<string>();
+  // text → the vector answered (P4.D222: per-text canned vectors — every
+  // other text still answers the corpus `embedVector`).
+  const embeddingRecorded = new Map<string, number[]>();
   const failureRecorded = new Map<string, string>();
+  // P4.D222: every provider call, counted per text (the jest oracle writes NO
+  // llm_logs rows, so the call count is the only record of how many there were).
+  const callCounts = new Map<string, number>();
 
   jest.resetModules();
   const cipherDriverPath = require('node:path').join(
@@ -147,16 +154,20 @@ async function main(): Promise<void> {
       __esModule: true,
       ...actual,
       generateEmbeddingForUser: async (text: string) => {
+        callCounts.set(text, (callCounts.get(text) ?? 0) + 1);
         const failing = spec.failingTexts.find((f) => f.text === text);
         if (failing) {
           failureRecorded.set(text, failing.message);
           throw new Error(failing.message);
         }
-        embeddingRecorded.add(text);
+        const vector =
+          spec.helpDocPlants.cannedVectors.find((c) => c.text === text)?.vector ??
+          spec.embedVector;
+        embeddingRecorded.set(text, vector);
         return {
-          embedding: new Float32Array(spec.embedVector),
+          embedding: new Float32Array(vector),
           model: 'canned',
-          dimensions: spec.embedVector.length,
+          dimensions: vector.length,
           provider: 'canned',
         };
       },
@@ -200,6 +211,10 @@ async function main(): Promise<void> {
 
   await initializeDatabase();
   const repos = getRepositories();
+
+  // P4.D222 — the planted HELP_DOC arms (the spec's `helpDocPlants`), on this
+  // run's copy only; the Rust side runs the same statements.
+  for (const sql of spec.helpDocPlants.sql) await rawQuery(sql, []);
 
   const lines: string[] = [];
 
@@ -261,8 +276,11 @@ async function main(): Promise<void> {
     );
   }
 
-  for (const text of embeddingRecorded.values()) {
-    lines.push(JSON.stringify({ kind: 'cannedEmbedding', text, vector: spec.embedVector }));
+  for (const [text, vector] of embeddingRecorded.entries()) {
+    lines.push(JSON.stringify({ kind: 'cannedEmbedding', text, vector }));
+  }
+  for (const [text, calls] of callCounts.entries()) {
+    lines.push(JSON.stringify({ kind: 'embedCalls', text, calls }));
   }
   for (const [text, message] of failureRecorded.entries()) {
     lines.push(JSON.stringify({ kind: 'cannedEmbeddingFailure', text, message }));
