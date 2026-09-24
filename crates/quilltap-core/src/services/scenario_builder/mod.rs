@@ -263,18 +263,13 @@ where
     let web_available =
         is_scenario_web_available(input.mode, connection_profile, deps.web_search_configured);
     let aborted = || signal.is_some_and(|s| s.load(Ordering::SeqCst));
-    // v4's `safeController.enqueue`: `if (closed || signal.aborted) return`
-    // (`route.ts:118-127`) — once the client has gone, nothing more is sent.
-    // ONE gate for every frame this run produces: the loop's controller
-    // ([`FrameSink`]), its reasoning callback (which calls `frames` directly,
-    // not through the sink) and the terminal frames below all go through this
-    // shadowed `frames`, so the host's publish closure needs no gate of its
-    // own (P4.115 item 1).
-    let frames = &|v: Value| {
-        if !aborted() {
-            frames(v);
-        }
-    };
+    // NO abort gate on `frames` here — v4's `runScenarioBuilder` has none: its
+    // `controller.enqueue` is whatever the caller passes, and the gate
+    // (`closed || signal.aborted`) lives in the ROUTE's `safeController`
+    // (`route.ts:118-127`). v5's counterpart of that controller is the host's
+    // publish closure, which carries the gate (P4.115 item 1; the tier-3
+    // family's `abort_between_turns` row records v4's service enqueuing a
+    // frame after the abort).
 
     // v4's ONE try/catch spans everything below: a throw anywhere ends in the
     // catch's two arms. v5's throwing steps are the DB reads (the pool, the
@@ -621,18 +616,19 @@ mod tests {
         }
     }
 
-    /// P4.115 item 1 — **no frame after an abort** (v4 `route.ts:118-127`:
-    /// `safeController.enqueue` returns when `closed || signal.aborted`).
-    /// The REAL service over a fresh provisioned instance; the abort trips
-    /// mid-tool, so the loop still emits the `tool_result` frame (the loop
-    /// reads the token only between turns and per chunk) — which must never
-    /// reach the run's frame callback. Every frame is recorded with the
-    /// token's state at the moment it was emitted.
-    ///
-    /// Mutation M1: remove the gate at the top of [`run_scenario_builder`] →
-    /// the post-abort `tool_result` frame is published and this is RED.
+    /// P4.115 item 1 — **the service itself does NOT gate frames on the
+    /// abort** (v4's `runScenarioBuilder` has no gate — `route.ts`'s
+    /// `safeController` does, and v5's counterpart is the host's publish
+    /// closure, `spine.rs`). The REAL service over a fresh provisioned
+    /// instance; the abort trips mid-tool, so the loop (which reads the token
+    /// only between turns and per chunk) still produces its `toolResult`
+    /// frame after the abort point — and the service FORWARDS it, exactly as
+    /// v4's service enqueues it (the tier-3 family's `abort_between_turns`
+    /// row). This pins the layer: a gate added here would make the service
+    /// diverge from v4's; the host test is where "no frame after an abort"
+    /// is proven.
     #[tokio::test]
-    async fn no_frame_is_published_after_the_run_is_aborted() {
+    async fn the_service_forwards_a_frame_produced_after_the_abort() {
         const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
         let dir = tempfile::tempdir().unwrap();
         let data = dir.path().join("data");
@@ -713,9 +709,15 @@ mod tests {
             .filter(|(after, _)| *after)
             .map(|(_, v)| v)
             .collect();
-        assert!(
-            after.is_empty(),
-            "ZERO frames may be published after the abort point; got {after:#?}"
+        assert_eq!(
+            after,
+            vec![&json!({ "toolResult": {
+                "index": 0,
+                "name": "search",
+                "success": true,
+                "result": { "found": "the quay" },
+            }})],
+            "v4's service enqueues the post-abort tool result; the host gates it"
         );
     }
     // === end P4.115 ===

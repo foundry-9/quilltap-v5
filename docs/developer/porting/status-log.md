@@ -147912,3 +147912,37 @@ written three times across the two files), `split_top_level` + the
     BOTH" holds only for a tri-state-typed `*_id`** — a plain `String` `*_id`
     moves the dispatch count alone, since the tri-state census watches
     `Option<Option<…>>` fields, not ids. Recorded.
+
+### Unit 7 — item 1 CORRECTED: the gate moves to the host publisher (core 0.0.1032, host 0.0.154)
+
+**Unit 2 put the gate at the wrong layer, and the order's §Survey 3 read
+points the wrong way.** The neutrality sweep (`scenario_builder_tier3_
+equivalence` from the pin) went RED on exactly one row, `abort_between_turns`
+— v4: `[toolsDetected, status tool_executing, toolResult]`, v5: `[]`. v4's
+`runScenarioBuilder` has NO abort gate; its controller is whatever the caller
+passes. The `closed || signal.aborted` gate is the ROUTE's `safeController`
+(`route.ts:118-127`), and the tier-3 oracle drives the service with a plain
+recording controller, so v4's SERVICE enqueues frames after the abort. v5's
+counterpart of that controller is the host's publish closure, not the
+service's `frames` parameter. (The order's "the host closure then needs none"
+had it backwards: the host closure is the ONLY right place.)
+
+- `services/scenario_builder/mod.rs`: the shadowed-`frames` gate REMOVED (a
+  comment says why and names the tier-3 row); the unit test becomes
+  `the_service_forwards_a_frame_produced_after_the_abort` and asserts the
+  post-abort `toolResult` IS forwarded — pinning the layer against a later
+  "fix" in the service.
+- `crates/quilltap-host/src/spine.rs`: `scenario_builder_publisher(events,
+  run_id, abort)` (fenced `// === P4.115 ===`) — returns without sending once
+  the token is set; `run_scenario_builder_build` publishes through it. NEW
+  `the_scenario_builder_publisher_sends_nothing_after_the_abort` (host lib).
+  **M1** (the gate replaced with a no-op, by file backup): RED at the
+  zero-after-abort assert; restored, green.
+- **Neutrality:** `scenario_builder_tier3_equivalence` re-run through the
+  sweep from the pin: **ok, 20 cases / 53 stream calls**
+  (`/tmp/p4115/sweep-results-tier3.json`). The first sweep's other two
+  families: `scenario_builder_routes_equivalence` ok (26 cases),
+  `messages_swipe_sse_route` ok (4/4).
+- Lesson worth keeping: a gate named after a v4 ROUTE variable belongs at v5's
+  counterpart of that route's controller; a service-level differential that
+  replaces the route is what tells the layers apart.

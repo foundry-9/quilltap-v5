@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(scenario-builder): the post-abort frame gate belongs to the host publisher, not the service (P4.115 item 1)
+
+_Versions: core 0.0.1032, host 0.0.154._
+
+Corrects the earlier P4.115 item 1 commit. v4's `runScenarioBuilder` has no
+abort gate: it enqueues into whatever controller it is given, and the gate
+lives in the route's `safeController`. The tier-3 differential showed this.
+Its `abort_between_turns` row has v4's service enqueuing the post-abort tool
+result, and the service gate had made v5 drop it. The gate now lives in the
+host's Scenario Builder publisher, v5's counterpart of that controller, so no
+frame reaches the event bus after the abort. The service is gate-free again.
+Its test now pins that the service forwards the post-abort frame. A new host
+test pins that the publisher sends nothing after the abort, and it fails with
+the gate removed.
+
 #### 2026-09-24 — test(web): the two types.rs censuses share one source-census module (P4.115 item 5)
 
 _Versions: web 0.0.190._

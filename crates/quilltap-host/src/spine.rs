@@ -1786,11 +1786,11 @@ where
                 ),
             web_search_configured: req.web_search_configured,
         };
-        let events = self.events.clone();
-        let run_id = req.run_id.clone();
-        let publish = move |frame: serde_json::Value| {
-            let _ = events.send(Event::scenario_builder_progress(&run_id, frame));
-        };
+        let publish = scenario_builder_publisher(
+            self.events.clone(),
+            req.run_id.clone(),
+            std::sync::Arc::clone(&req.abort),
+        );
         // The server's local zone — v4's `new Date()` rendered by
         // `formatIsoWithOffset` in the process zone.
         let now = jiff::Zoned::now();
@@ -2511,6 +2511,29 @@ where
         })
     }
 }
+
+// === P4.115 ===
+/// The Scenario Builder's frame publisher — v5's counterpart of v4's route
+/// `safeController` (`route.ts:118-127`): `enqueue` returns without sending
+/// once the run's signal has aborted, so NO frame is published after the
+/// abort point, whichever layer produced it (the loop's controller, the
+/// reasoning callback, a terminal frame). v4's `runScenarioBuilder` itself has
+/// no such gate — its controller is whatever the route passes — so the gate
+/// lives here, at the controller, and the ported service stays gate-free (its
+/// own test pins that it forwards a post-abort frame, as v4's service does).
+fn scenario_builder_publisher(
+    events: tokio::sync::broadcast::Sender<Event>,
+    run_id: String,
+    abort: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> impl Fn(serde_json::Value) + Sync {
+    move |frame| {
+        if abort.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        let _ = events.send(Event::scenario_builder_progress(&run_id, frame));
+    }
+}
+// === end P4.115 ===
 
 // === P4.D217: the Scenario Builder driver (the Brahma send bridge's shape) ===
 impl<EMB, CMP, STR, PF> quilltap_core::api::scenario_builder::ScenarioBuilderDriver
@@ -3919,6 +3942,33 @@ impl SpineFactory for ProductionSpineFactory {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// P4.115 item 1 — **no frame is published after the abort** (v4's
+    /// `safeController`: `if (closed || signal.aborted) return`). Mutation M1:
+    /// remove the gate in [`scenario_builder_publisher`] → the post-abort
+    /// frame reaches the broadcast and this is RED.
+    #[test]
+    fn the_scenario_builder_publisher_sends_nothing_after_the_abort() {
+        let (events, mut rx) = tokio::sync::broadcast::channel::<Event>(8);
+        let abort = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let publish =
+            scenario_builder_publisher(events, "run-1".to_string(), std::sync::Arc::clone(&abort));
+        publish(json!({ "reasoning": "weighing the quay" }));
+        let ev = rx
+            .try_recv()
+            .expect("a frame before the abort is published");
+        assert_eq!(ev.progress_id.as_deref(), Some("run-1"));
+        abort.store(true, std::sync::atomic::Ordering::SeqCst);
+        publish(json!({ "toolResult": { "index": 0 } }));
+        publish(json!({ "done": true }));
+        assert!(
+            matches!(
+                rx.try_recv(),
+                Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+            ),
+            "ZERO frames may be published after the abort point"
+        );
+    }
 
     /// An invoker that never resolves — the hung-provider shape the timeout
     /// decorator exists for.
