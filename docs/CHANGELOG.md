@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): order the `b0b6656b5` ten-commit drift catch-up round (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224)
+
+_Docs-only change._
+
+Five work orders for the ten v4 commits past the `d1c06cd9d` baseline,
+split by ownership rather than by commit. P4.D220 takes v4's single
+`dispatchAction` rule onto every REST edge (a bare `?action=` no longer
+deletes a chat, runs a restore or uploads a file) and retires the
+`chatsHasDangerous` verb on the server. P4.D221 takes the `lib/` riders:
+the two mount-index partition keys, the Brahma prompt sentence, the four
+oracle cases that import deleted v4 methods, and two NO-PORT
+ratifications. P4.D222 takes bugs 167 and 168, the help-doc section
+embedding and startup reconcile (dogfood #120, converged by v4's own
+mechanism), and re-vendors the whole help tree at 129 files. P4.D223 takes
+the Salon Images quick-hide toggle, the client half of the verb removal,
+and v4's adoption of this port's bug-169 fix. P4.D224 takes the `@`
+mention typeahead. Every ledger row is marked ORDERED; the regen rule stays
+PIN REQUIRED at `d1c06cd9d` with every lane pinning the target
+`b0b6656b5`. The shared contract block is byte-identical across the five
+orders (md5-checked).
+
 #### 2026-09-24 — docs(porting): driftcheck — v4 ten commits past the d1c06cd9d baseline
 
 _Docs-only change._

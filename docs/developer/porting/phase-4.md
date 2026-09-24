@@ -6628,6 +6628,117 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `b0b6656b5` ten-commit drift catch-up round (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224) — ORDERED 2026-09-24
+
+**Baseline `d1c06cd9d`; v4 `main` HEAD `b0b6656b5` (TEN non-merge commits
+past + one clean merge — PRs #64–#71 plus bugs 167/168/169: the Salon image
+quick-hide, a release script, the `@` mention typeahead, the
+`?action=has-dangerous` removal, the help-doc section index + startup
+reconcile, this port's bug-169 filing, the ONE `dispatchAction` primitive,
+the chat GET through it, the dedicated-db repository base, and v4's
+adoption of the bug-169 fix); `bugfix` `1a2b2164c` and `release` `8fbf2afe0`
+unmoved; the checkout on `main`, CLEAN at the planning probe (passed
+again immediately before the orders were committed). PIN REQUIRED: every
+lane pins the target `b0b6656b5` for the families it moves and the
+baseline for the pre-port counts. All ten §3 rows marked `ORDERED(…)`.**
+
+The previous unification's "Next" item 2, grown from four commits to ten
+while the round was being planned. Split by ownership, not by v4's commit
+batching (three commits are shared across lanes along their own seams —
+the server/client halves of the verb removal, the `help/` half of every
+commit, the `lib/` riders under the dispatch commit):
+
+- **P4.D220 — the action-dispatch consolidation (Rust, from `main`)**:
+  v4's ONE `dispatchAction` rule on every v5 REST edge — absent → the
+  default (or `Action parameter required`), known (own-property) → the
+  handler, **unknown OR bare `?action=` → `{error: "Unknown action: X",
+  availableActions}` 400** with v4's two WARNs; `query::action()`'s fold
+  at the root RETIRED (a bare `?action=` DELETED a chat, RAN a restore,
+  UPLOADED a file); the nine hand-rolled sentence sites + the two core
+  ones onto ONE envelope; the unlock edge's awaited catch; the chat GET's
+  fourteen-key envelope; `Request::ChatsHasDangerous` retired end to end
+  (§S.1); `query_param_semantics_equivalence` re-recorded with its `fold`
+  claim inverted; every old-sentence pin moved. `docs/developer/porting/
+  work-orders/p4.d220-action-dispatch-consolidation-web-edges.md`.
+- **P4.D221 — the `lib/` riders (Rust, from `main`, a cheaper tier)**:
+  `MOUNT_INDEX_REPO_KEYS` + `groupDocMountLinks` + `groupCharacterMembers`
+  red-first (v5's `write_partition.rs` lacks both; the corpus never probed
+  them); the Brahma SQL prompt's `qt_text()` sentence regenerated through
+  the generator; the `escapeLikeLiteral` merge ratified neutral; the FOUR
+  oracle cases that import DELETED v4 repository methods resolved by
+  measuring the six v5 twins' production callers (retire the dead, pin the
+  live); `8aafd595d`'s inner joined-read ERROR (Tier 2); `7ebb74143` +
+  `8aafd595d` NO-PORT-ratified; Tier R + the Rust Carina parser re-run at
+  the target. `docs/developer/porting/work-orders/p4.d221-dispatch-lib-
+  riders-partition-keys-prompt-oracles.md`.
+- **P4.D222 — bugs 167/168, the help-doc section reconcile (Rust + two SPA
+  files, from `main`)**: `average_embeddings` (an f32 accumulator, tier-1
+  bit-exact); the HELP_DOC job over `embed_help_doc_sections` (stored
+  vectors reused, missing embedded, the width rule, the per-section WARN,
+  `guard_skip` dropped for HELP_DOC, the empty-input refusal); NEW
+  `count_by_doc`; the sync shape (update by id / create with a minted
+  uuid, `deleteByEntity` on update); NEW `reconcile_help_docs` replacing
+  the divergence gate + backfill + enqueue-missing, memoized once per boot
+  and never throwing; the boot order (help reconcile BEFORE the dimension
+  reconcile — v5 had them reversed); `upsert_by_path` + its family
+  RETIRED; **the WHOLE `help/` tree re-vendored at `b0b6656b5` (127 →
+  129)** with both literals and the SPA category table re-captured.
+  **Bug 168 IS dogfood #120 — a CONVERGENCE by a mechanism #120 never
+  proposed.** `docs/developer/porting/work-orders/p4.d222-help-doc-section-
+  reconcile-bugs-167-168.md`.
+- **P4.D223 — the Salon Images quick-hide + the bug-169 convergence (SPA,
+  from `main`)**: the global `hideSalonImages` flag (its own storage key,
+  cross-tab, cleared by Clear All Hidden) scoped to the Salon by a provided
+  token; v4's two stand-ins on every image site v5 HAS (avatars through
+  `ui/avatar`, the attachment tile inside its button, inline markdown
+  images through the renderer with the flag in the render-cache key, the
+  story background, the speaking-as avatar, the scenario control, the
+  three dialogs); the quick-hide menu section ALWAYS offered — the
+  `chatsHasDangerous` probe and its three-way gate RETIRED (§S.1); the
+  sidebar predicate made v4's exact twin (the `parentElement` fallback +
+  the non-`Node` exit) and every "deliberate divergence" wording retired;
+  `94e946728` NO-PORT-ratified. `docs/developer/porting/work-orders/
+  p4.d223-salon-images-quick-hide-bug-169-convergence-spa.md`.
+- **P4.D224 — the `@` mention typeahead (SPA, from `main`)**: the pure
+  module measured against v4's REAL `lib/mentions/mention-typeahead.ts`
+  through a recorder; the ProseMirror plugin beside P4.D75's two char hosts
+  (the three labels, Space commit, Enter/Tab held while loading, the
+  line-start `@Name` that waits for `:`/`?` and strips itself otherwise,
+  the undo re-arm); the composer's `mentionPriorityCharacterIds` from the
+  Salon's cast (§S.2 — the ONE pre-declared hunk into P4.D223's file); the
+  SPA Carina twin's `NAME_SOURCE` + `isCarinaInvocableName`; ⚠ the
+  adapter's soft-line-break hazard (a `hard_break` reads as U+FFFC, so `@`
+  after a soft break would never trigger) resolved by measurement.
+  `docs/developer/porting/work-orders/p4.d224-mention-typeahead-spa.md`.
+
+**Shared contract (§S, byte-identical in all five — md5 `f8463b73…` over
+the §R/§S/Ownership/Gate block):** §S.1 the `chatsHasDangerous` verb
+RETIRES in lockstep (P4.D220 the server, P4.D223 the client; nothing
+replaces it); §S.2 the composer's `mentionPriorityCharacterIds` input +
+the `castCharacterIds` predicate (P4.D224 lands the hunk in P4.D223's
+`salon-conversation.ts`; P4.D223 preserves it). **Fences:** `api/types.rs`
++ `api/engine.rs` — P4.D220's two REMOVALS only, nobody adds a variant
+(the dispatch census predicted UNMOVED at 449); `crates/quilltap-web/src/
+**` — P4.D220 alone; `crates/quilltap-host/**` + `help/**` + the two count
+literals + `apps/web/src/app/help/**` — P4.D222 alone; the rest of
+`apps/web/**` split by file list between P4.D223 and P4.D224. **Execution:**
+all five cut from `main`; wave 1 = P4.D220 (the most capable tier — the
+largest lane, ~24 callers + a tripwire family reshape) ∥ P4.D222 (the most
+capable tier) ∥ P4.D223 (no cargo) ∥ P4.D224 (no cargo); wave 2 = P4.D221
+(a cheaper tier — mechanical, measurement-first; it may start with wave 1
+if disk allows, but at most TWO Rust full gates run concurrently: 99 GB
+free at planning). Cherry-pick order P4.D221 → P4.D222 → P4.D220 →
+P4.D223 → P4.D224. **Left out:** the follow-up smalls lane over the five
+smalls headers' OPEN items (P4.113's sibling `Character not found` WARNs
+would collide with P4.D221's `db/characters.rs` edits — next round); the
+owed Host dogfood pass (after this round — it gains the covenant on 129
+help pages, the Salon Images toggle, the `@` menu, and a bare `?action=`
+that no longer deletes); the `quilltap sync` writer-hold ruling (human,
+P4.D210); `ui/modal.ts` portaling; the heals over un-widened pairs; the
+`docs/v4/CHANGELOG.md` lag; a Rust `cl100k` tokenizer (P4.D222 proves the
+section bound through the oracle instead).
+
+
 ## The `d1c06cd9d` review-follow-ups smalls round (P4.113 ∥ P4.114 ∥ P4.115 ∥ P4.116 ∥ P4.117) — UNIFIED 2026-09-24
 
 **ALL FIVE LANDED on main; the oracle baseline STAYS `d1c06cd9d` (v4 AT the
