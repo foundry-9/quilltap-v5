@@ -12,6 +12,13 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — chore(lock): Cargo.lock catches up with the web 0.0.183 bump (P4.D217)
+
+_No crate versions bumped._
+
+The unit-8 commit bumped `quilltap-web` to 0.0.183 before cargo rewrote the
+lockfile; this records the lockfile line.
+
 #### 2026-09-23 — docs(porting): P4.D217 lane close-out — the verification gate and the order's status header
 
 _Docs-only change._
