@@ -130,8 +130,9 @@ const CASES: CaseSpec[] = [
 
   // ── POST /api/v1/system/unlock — the action gate, then the body-shape gate
   { name: 'unlock_action_missing', route: 'unlock', action: '', body: {} },
-  // `?action=` with an EMPTY value: `searchParams.get('action')` is `''`, which
-  // `!action` treats as absent — NOT as an unknown action.
+  // `?action=` with an EMPTY value: `searchParams.get('action')` is `''`. Until
+  // v4 `ad1c4c37f` `!action` treated it as absent; `dispatchAction` now refuses
+  // it as an unknown action (P4.D220).
   { name: 'unlock_action_empty', route: 'unlock', action: '__EMPTY__', body: {} },
   { name: 'unlock_action_unknown', route: 'unlock', action: 'bogus', body: {} },
   { name: 'unlock_body_not_json', route: 'unlock', action: 'change-passphrase', body: null, badJson: true },

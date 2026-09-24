@@ -1832,7 +1832,10 @@ pub async fn character_avatar_roll_action(
     if !AVATAR_ROLL_ACTIONS.contains(&action) {
         // v4's `withActionDispatch` sentence. The `availableActions` array rides
         // the REST edge's envelope (v4's is route middleware, not service code);
-        // this channel carries the sentence.
+        // this channel carries the sentence. P4.D220: the REST edge gates the
+        // action itself BEFORE this verb (`query::dispatch_required_action`), so
+        // only the dispatch channel reaches here — a `CoreError` has no field
+        // for the list, which is why the sentence stays list-less.
         return bad_request(format!("Unknown action: {action}"));
     }
     let set_avatar = action == "set-avatar";

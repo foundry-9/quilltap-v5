@@ -424,9 +424,17 @@ async function main(): Promise<void> {
     { name: 'stop_impersonate_empty_body', action: 'stop-impersonate', chatId: CHAT_IMP, body: UNPARSEABLE },
     { name: 'stop_impersonate_missing_chat_empty_body', action: 'stop-impersonate', chatId: MISSING_ID, body: UNPARSEABLE },
     { name: 'action_bogus', action: 'zzz', chatId: CHAT_FULL },
-    // `?action=` is present but EMPTY, which is JS-falsy — so it takes the
-    // no-action leg and the chat IS DELETED. The census is what proves it.
+    // `?action=` is present but EMPTY. Until `ad1c4c37f` that was JS-falsy, so
+    // it took the no-action leg and the chat WAS DELETED; v4's one
+    // `dispatchAction` now refuses it as an unknown action, and the census is
+    // what proves nothing moved (P4.D220).
     { name: 'action_empty', action: '', chatId: CHAT_FULL },
+    // P4.D220: the refusal runs BEFORE any chat lookup — so a bare / unknown
+    // action on a MISSING chat is the 400, not a 404; and the own-property
+    // rule — an inherited `Object.prototype` name is unknown, not a crash.
+    { name: 'action_empty_missing_chat', action: '', chatId: MISSING_ID },
+    { name: 'action_bogus_missing_chat', action: 'zzz', chatId: MISSING_ID },
+    { name: 'action_inherited_name', action: 'toString', chatId: CHAT_FULL },
   ];
 
   const lines: string[] = [];

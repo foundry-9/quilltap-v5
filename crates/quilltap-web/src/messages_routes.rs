@@ -64,8 +64,20 @@ pub async fn messages_get(
 ) -> AxumResponse {
     let chat_id = crate::query::first(&query, "chatId");
 
-    match crate::query::action(&query) {
-        Some("transcript") => {
+    // v4 `withActionDispatch({ transcript }, list)` — rebuilt on
+    // `dispatchAction` by `ad1c4c37f`, so a bare `?action=` (which listed) is
+    // now the `Unknown action` envelope.
+    let action = match crate::query::dispatch_action(
+        &query,
+        MESSAGES_GET_ACTIONS,
+        "GET",
+        "/api/v1/messages",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    match action {
+        Some(_transcript) => {
             // v4 checks `chatId` inside the handler, so it precedes the 404.
             let Some(chat_id) = chat_id.filter(|s| !s.is_empty()) else {
                 return error_json(StatusCode::BAD_REQUEST, "Query parameter required: chatId");
@@ -89,14 +101,7 @@ pub async fn messages_get(
                 Err(r) => r,
             }
         }
-        Some(other) => crate::query::unknown_action_response(
-            other,
-            MESSAGES_GET_ACTIONS,
-            "GET",
-            "/api/v1/messages",
-        ),
-        // v4's `defaultHandler` — `handleListMessages`. An absent `?action=`
-        // and a present-but-empty one take this same leg.
+        // v4's `defaultHandler` — `handleListMessages`, for an ABSENT action.
         None => {
             let Some(chat_id) = chat_id.filter(|s| !s.is_empty()) else {
                 return error_json(StatusCode::BAD_REQUEST, "Query parameter required: chatId");

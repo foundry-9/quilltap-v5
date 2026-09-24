@@ -417,14 +417,14 @@ pub async fn avatar_roll_item_post(
     }
     let available = &quilltap_core::api::characters::AVATAR_ROLL_ACTIONS;
     let path = "/api/v1/characters/[id]/avatar-rolls/[fileId]";
-    // `?action=` is JS-falsy, so it lands on the no-action leg — and this route
-    // passes NO default handler.
-    let Some(action) = crate::query::action(&pairs) else {
-        return crate::query::action_required_response(available, "POST", path);
+    // v4 `withActionDispatch` with NO default handler: absent → `Action
+    // parameter required`; since `ad1c4c37f` a bare `?action=` is refused as
+    // unknown (it used to take the no-action leg). Gated HERE, so the verb's
+    // own list-less sentence is reached only over `/api/dispatch`.
+    let action = match crate::query::dispatch_required_action(&pairs, available, "POST", path) {
+        Ok(a) => a,
+        Err(r) => return *r,
     };
-    if !available.contains(&action) {
-        return crate::query::unknown_action_response(action, available, "POST", path);
-    }
     let req = quilltap_core::api::Request::CharacterAvatarRollAction {
         character_id: id,
         file_id,
@@ -487,6 +487,48 @@ async fn avatar_roll_dispatch(
 // ===========================================================================
 // POST /api/v1/characters/{id}?action=…  (v4 `[id]/handlers/post.ts`)
 // ===========================================================================
+
+/// v4's `POST /characters/[id]` thunk map, in literal order (`handlers/post.ts`
+/// at `ad1c4c37f` — NOTE the order moved: the retired `CHARACTER_POST_ACTIONS`
+/// constant listed `rename` before `archive, rehydrate`; the map lists it
+/// last). The `availableActions` of both refusals.
+const CHARACTER_POST_ACTIONS: &[&str] = &[
+    "favorite",
+    "avatar",
+    "add-tag",
+    "remove-tag",
+    "toggle-controlled-by",
+    "toggle-carina",
+    "set-default-partner",
+    "optimize-stream",
+    "generate-external-prompt",
+    "refresh-archive",
+    "archive",
+    "rehydrate",
+    "rename",
+];
+
+/// v4's `GET /characters/[id]` thunk map, in literal order (`handlers/get.ts`
+/// at `ad1c4c37f`); the fallback is the full character payload.
+const CHARACTER_GET_ACTIONS: &[&str] = &[
+    "export",
+    "chats",
+    "cascade-preview",
+    "default-partner",
+    "get-tags",
+    "stats",
+    "depiction-guidelines",
+];
+
+/// v4's `POST /characters` thunk map, in literal order (`handlers/post.ts` at
+/// `ad1c4c37f`); the fallback is `handleCreate`.
+const CHARACTERS_POST_ACTIONS: &[&str] = &[
+    "ai-wizard",
+    "ai-wizard-stream",
+    "import",
+    "quick-create",
+    "reset-builtins",
+];
 
 /// The actions this edge serves; every other v4 action on this URL rides
 /// `POST /api/dispatch` (recorded in `query_param_semantics_equivalence`).
@@ -658,26 +700,37 @@ pub async fn characters_action_post(
     Query(pairs): Query<crate::query::QueryPairs>,
     body: String,
 ) -> AxumResponse {
-    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
-    // so the pair list collapses to the map the rest of the handler expects.
-    let query = crate::query::first_map(&pairs);
     use quilltap_core::api::Request as CoreRequest;
 
-    match query.get("action").map(String::as_str) {
-        Some("archive") => {
+    // v4 `dispatchAction(req, { …thirteen… })` — no fallback (`ad1c4c37f`):
+    // absent → `Action parameter required`, bare / unknown → `Unknown action`,
+    // both answered here byte-for-byte. v4 looks the character up FIRST
+    // (`notFound('Character')`); this edge gates without a lookup — the
+    // recorded gate-ORDER divergence (`query_param_semantics_equivalence`).
+    let action = match crate::query::dispatch_required_action(
+        &pairs,
+        CHARACTER_POST_ACTIONS,
+        "POST",
+        "/api/v1/characters/[id]",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    match action {
+        "archive" => {
             dispatch_action_json(&state, CoreRequest::CharacterArchive { character_id: id }).await
         }
-        Some("rehydrate") => {
+        "rehydrate" => {
             dispatch_action_json(&state, CoreRequest::CharacterRehydrate { character_id: id }).await
         }
-        Some("refresh-archive") => {
+        "refresh-archive" => {
             dispatch_action_json(
                 &state,
                 CoreRequest::CharacterRefreshArchive { character_id: id },
             )
             .await
         }
-        Some("rename") => match decode_action_body(
+        "rename" => match decode_action_body(
             &body,
             "characterRename",
             &id,
@@ -687,7 +740,7 @@ pub async fn characters_action_post(
             Ok(req) => dispatch_action_json(&state, req).await,
             Err(failure) => answer_body_failure(&state, &id, failure).await,
         },
-        Some("generate-external-prompt") => match decode_action_body(
+        "generate-external-prompt" => match decode_action_body(
             &body,
             "characterGenerateExternalPrompt",
             &id,
@@ -702,7 +755,7 @@ pub async fn characters_action_post(
             Ok(req) => dispatch_action_json(&state, req).await,
             Err(failure) => answer_body_failure(&state, &id, failure).await,
         },
-        Some("optimize-stream") => {
+        "optimize-stream" => {
             let Some(host) = state.host() else {
                 return error_json(StatusCode::SERVICE_UNAVAILABLE, "The engine is not running");
             };
@@ -775,20 +828,22 @@ pub async fn characters_wardrobe_get(
     // route behind `?action=instructions` (`withActionDispatch`). The POST half
     // has no REST edge here because v5 never registered `.post` on this path —
     // it rides `POST /api/dispatch` as `characterWardrobeInstructionsSet`
-    // (recorded, the P4.D112 dispatch-only precedent).
-    let req = match crate::query::action(&pairs) {
-        Some("instructions") => {
+    // (recorded, the P4.D112 dispatch-only precedent). Since `ad1c4c37f` a
+    // bare `?action=` is refused as unknown rather than listing.
+    let action = match crate::query::dispatch_action(
+        &pairs,
+        &["instructions"],
+        "GET",
+        "/api/v1/characters/[id]/wardrobe",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    let req = match action {
+        Some(_instructions) => {
             quilltap_core::api::Request::CharacterWardrobeInstructionsGet { character_id: id }
         }
-        Some(other) => {
-            return crate::query::unknown_action_response(
-                other,
-                &["instructions"],
-                "GET",
-                "/api/v1/characters/[id]/wardrobe",
-            )
-        }
-        _ => quilltap_core::api::Request::CharacterWardrobeList {
+        None => quilltap_core::api::Request::CharacterWardrobeList {
             character_id: id,
             scope: query.get("scope").cloned(),
             include_archived: crate::wardrobe_routes::read_include_archived(&query),
@@ -832,11 +887,25 @@ pub async fn characters_get(
         Ok(v) => v,
         Err(resp) => return *resp,
     };
-    if query.get("action").map(String::as_str) != Some("export") {
-        return error_json(
-            StatusCode::BAD_REQUEST,
-            "This route serves ?action=export only; JSON reads are on /api/dispatch",
-        );
+    // v4 `dispatchAction(req, { …seven… }, payload)` (`ad1c4c37f`): a bare or
+    // unknown action is v4's envelope, byte for byte. v5 serves only the
+    // byte-out `export` leg; the ABSENT action (v4's full character payload)
+    // and the six other v4-known reads answer the loud pointer — a recorded
+    // divergence, pinned both ways in `query_param_semantics_equivalence`.
+    match crate::query::dispatch_action(
+        &pairs,
+        CHARACTER_GET_ACTIONS,
+        "GET",
+        "/api/v1/characters/[id]",
+    ) {
+        Ok(Some("export")) => {}
+        Ok(_) => {
+            return error_json(
+                StatusCode::BAD_REQUEST,
+                "This route serves ?action=export only; JSON reads are on /api/dispatch",
+            );
+        }
+        Err(r) => return *r,
     }
 
     // Ownership (single-user): the overlaid character must exist.
@@ -929,14 +998,24 @@ pub async fn characters_import_post(
     Query(pairs): Query<crate::query::QueryPairs>,
     req: Request,
 ) -> AxumResponse {
-    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
-    // so the pair list collapses to the map the rest of the handler expects.
-    let query = crate::query::first_map(&pairs);
     let (db, _backend) = match db_and_backend(&state) {
         Ok(v) => v,
         Err(resp) => return *resp,
     };
-    match query.get("action").map(String::as_str) {
+    // v4 `dispatchAction(req, { …five… }, create)` (`ad1c4c37f`): a bare or
+    // unknown action is v4's envelope; the ABSENT action (v4's `handleCreate`)
+    // and `quick-create` answer the loud pointer below — creation is a
+    // dispatch verb (a recorded divergence, pinned both ways).
+    let action = match crate::query::dispatch_action(
+        &pairs,
+        CHARACTERS_POST_ACTIONS,
+        "POST",
+        "/api/v1/characters",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    match action {
         Some("import") => {}
         Some("reset-builtins") => return characters_reset_builtins(&db).await,
         // === P4.9K2: the AI Wizard's two JSON arms (v4 `handleAiWizard` /

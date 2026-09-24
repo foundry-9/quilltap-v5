@@ -82,15 +82,25 @@ pub async fn collection_get(
     State(state): State<SharedState>,
     Query(query): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    // v4 is a plain `if (action === '…')` chain whose fallthrough is the
-    // listing, so absent / `?action=` / unknown all list — `crate::query::action`
-    // only has to keep FIRST-wins and fold the empty string.
-    let req = match crate::query::action(&query) {
+    // v4 `dispatchAction(req, {list-models, fetch-models, list-providers},
+    // list)` (`route.ts` at `ad1c4c37f`): absent lists; a bare or unknown
+    // action is the `Unknown action` envelope (it used to list too).
+    let action = match crate::query::dispatch_action(
+        &query,
+        &["list-models", "fetch-models", "list-providers"],
+        "GET",
+        "/api/v1/embedding-profiles",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    let req = match action {
         Some("list-providers") => CoreRequest::EmbeddingProfileListProviders,
         Some("list-models") => CoreRequest::EmbeddingProfileListModels {
             provider: crate::query::first(&query, "provider").map(str::to_string),
         },
-        Some("fetch-models") => CoreRequest::EmbeddingProfileFetchModels {
+        // `fetch-models` — the only name left in the list.
+        Some(_) => CoreRequest::EmbeddingProfileFetchModels {
             // v4 400s on a missing provider before the refusal, but the arm is a
             // loud refusal either way; carry the provider through if present.
             provider: crate::query::first(&query, "provider")
@@ -98,7 +108,7 @@ pub async fn collection_get(
                 .to_string(),
             base_url: crate::query::first(&query, "baseUrl").map(str::to_string),
         },
-        _ => CoreRequest::EmbeddingProfileList,
+        None => CoreRequest::EmbeddingProfileList,
     };
     match dispatch_core(&state, req).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
@@ -176,11 +186,15 @@ pub async fn item_post(
 ) -> AxumResponse {
     const AVAILABLE: &[&str] = &["refit", "reindex", "reapply"];
     const PATH: &str = "/api/v1/embedding-profiles/[id]";
-    let req = match crate::query::action(&query) {
+    let action = match crate::query::dispatch_required_action(&query, AVAILABLE, "POST", PATH) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    let req = match action {
         // v4's refit/reapply handlers never read the body; only reindex parses
         // it, leniently (see `parse_body_lenient`).
-        Some("refit") => CoreRequest::EmbeddingProfileRefit { profile_id: id },
-        Some("reindex") => {
+        "refit" => CoreRequest::EmbeddingProfileRefit { profile_id: id },
+        "reindex" => {
             let json_body = parse_body_lenient(&body);
             CoreRequest::EmbeddingProfileReindex {
                 profile_id: id,
@@ -190,14 +204,9 @@ pub async fn item_post(
                 scope: json_body.get("scope").cloned(),
             }
         }
-        Some("reapply") => CoreRequest::EmbeddingProfileReapply { profile_id: id },
-        // v4 `withActionDispatch`: unknown action / missing action → 400 with the
-        // dispatcher's exact sentence + availableActions. `?action=` is JS-falsy,
-        // so `crate::query::action` has already folded it onto `None` here.
-        Some(other) => {
-            return crate::query::unknown_action_response(other, AVAILABLE, "POST", PATH)
-        }
-        None => return crate::query::action_required_response(AVAILABLE, "POST", PATH),
+        // `reapply` — the only name left in `AVAILABLE`. v4 `withActionDispatch`
+        // (no default): the absent / bare / unknown refusals were answered above.
+        _ => CoreRequest::EmbeddingProfileReapply { profile_id: id },
     };
     match dispatch_core(&state, req).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),

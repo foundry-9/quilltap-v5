@@ -44,11 +44,11 @@
 //! v4's POST serves two actions. `MessageReattribute` exists as a v5 verb but
 //! has never had a REST edge, and wiring one is outside P4.D207's mandate. So
 //! `?action=reattribute` answers a typed, explicit refusal naming itself
-//! (the `data_dir::not_available` idiom) rather than v4's
-//! `Action parameter required: swipe or reattribute` — that sentence would
-//! claim the action is unrecognised when in fact it is recognised and not
-//! served here. An unknown or absent action does get v4's sentence, because
-//! there v4 and v5 agree.
+//! (the `data_dir::not_available` idiom) rather than v4's `Unknown action`
+//! envelope — which would list `reattribute` as available in the very answer
+//! that refuses it. An unknown, bare or absent action gets v4's envelope
+//! (`ad1c4c37f` retired the old `Action parameter required: swipe or
+//! reattribute` sentence), because there v4 and v5 agree.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -61,9 +61,10 @@ use crate::files_routes::error_json;
 use crate::state::SharedState;
 use crate::text_replacements_routes::{dispatch_core, error_to_http};
 
-/// v4's own sentence for an absent or unrecognised action on this route
-/// (`route.ts:244`).
-const ACTION_REQUIRED: &str = "Action parameter required: swipe or reattribute";
+/// v4's thunk map on this route, in its literal order — the
+/// `availableActions` of both refusals (`route.ts` at `ad1c4c37f`).
+const MESSAGE_POST_ACTIONS: &[&str] = &["swipe", "reattribute"];
+const PATH: &str = "/api/v1/messages/[id]";
 
 /// v4's `swipeActionSchema` is `{ swipeIndex: z.int().min(0).optional() }` read
 /// with `safeParse`, and the branch guard is `if (parsed.success && …)`. So a
@@ -94,19 +95,19 @@ pub async fn messages_post(
     // JSON, where v4 falls straight through to the GENERATE branch.
     let body = serde_json::from_slice::<Value>(&body).unwrap_or(Value::Null);
 
-    match crate::query::action(&query) {
-        Some("swipe") => {}
-        Some("reattribute") => {
+    // v4 `dispatchAction(req, { swipe, reattribute })` with NO fallback
+    // (`route.ts` at `ad1c4c37f`): absent → `Action parameter required`, bare
+    // or unknown → `Unknown action: <x>`, both with the two-name list.
+    match crate::query::dispatch_required_action(&query, MESSAGE_POST_ACTIONS, "POST", PATH) {
+        Ok("swipe") => {}
+        Ok(_reattribute) => {
             return error_json(
                 StatusCode::NOT_IMPLEMENTED,
                 "The 'reattribute' message action is recognized but not yet served over REST; \
                  dispatch `messageReattribute` instead.",
             );
         }
-        // An unknown action and an ABSENT one take the same leg, which is v4's
-        // shape here: its POST has no `withActionDispatch` map, just two `if`s
-        // and one fall-through sentence.
-        _ => return error_json(StatusCode::BAD_REQUEST, ACTION_REQUIRED),
+        Err(r) => return *r,
     }
 
     // The SWITCH branch. v4 reads `?stream=1` only AFTER this returns, so the

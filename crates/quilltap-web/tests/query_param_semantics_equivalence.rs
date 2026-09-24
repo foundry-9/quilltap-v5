@@ -26,12 +26,19 @@
 //! - `firstWins` — `?action=<a>&action=<b>` answers what `?action=<a>` answers.
 //! - `emptyFirstWins` — `?action=&action=<a>` answers what `?action=` answers.
 //!
-//! ⚠ `fold` is **not** always true in v4, and asserting it blindly would be a
-//! port bug of its own: the routes that hand-roll `isValidAction` with **no**
-//! `!action` carve-out (`system/tools` GET+POST, `user/profile` PATCH) render
-//! the action into their sentence, so an absent action reads `Unknown action:
-//! null` and `?action=` reads `Unknown action: `. v4 distinguishes them and so
-//! must v5. The oracle measures which, per endpoint; nothing here assumes.
+//! ## P4.D220 — `ad1c4c37f` inverted `fold`
+//!
+//! Until v4 `ad1c4c37f` ("Consolidate API action dispatch into single
+//! primitive") v4 gated on `if (action)`, so `fold` was TRUE nearly everywhere
+//! — `?action=` answered what a bare request answered — and false only where a
+//! route interpolated the action into a hand-rolled sentence. v4's ONE
+//! `dispatchAction` now refuses a bare `?action=` as an unknown action on every
+//! route, so at the target `fold` is FALSE on all 32 endpoints (asserted from
+//! the RECORDED oracle, never blind — [`V4_FOLD_TRUE_ENDPOINTS`] names the
+//! endpoints where v4 still folds, and it is empty), every `__empty` /
+//! `__empty_then_known` row is a byte-compared dispatcher refusal, and the
+//! hand-rolled sentences are gone (the dead prefixes retired from
+//! [`is_dispatcher_refusal`]).
 //!
 //! ## What P4.72 added
 //!
@@ -52,27 +59,27 @@
 //!
 //! ## Recorded divergences
 //!
-//! - `character_item_post` — v4's `handlePost` runs `repos.characters.findById`
-//!   → `notFound('Character')` BEFORE the action gate; v5's edge refuses
-//!   without a lookup. The oracle mocks the character into existence so v4's
-//!   *sentence* is on the record, but the two trees gate in different orders,
-//!   so the rows are pinned on the v5 side rather than cross-compared. v5
-//!   serves six of v4's thirteen actions here (`archive`/`rehydrate` — the
-//!   P4.D66 CLI edge — plus P4.9K1's `rename`, `refresh-archive`,
-//!   `generate-external-prompt` and `optimize-stream`); the other seven ride
-//!   `/api/dispatch`.
-//! - The other four [`V5_PINNED_ENDPOINTS`] (P4.72) — `character_item_get`,
-//!   `characters_collection_post`, `chat_item_get`, `chat_item_post` — are the
-//!   same class one route wider: v5 hosts a strict subset of the v4 route (the
-//!   rest ride `POST /api/dispatch`) and answers one loud pointer for every
-//!   shape v4 sends to a handler. Their rows are pinned v5-side; the reasons
-//!   sit beside them in [`RECORDED_DIVERGENCES`].
-//! - The SUBSET edges — `user_profile_get`/`_put` (v5 serves no action at all;
-//!   `theme-preference` is a named non-port), `system_data_dir_post`
-//!   (`?action=open` is a named refusal), `mount_point_action_post` (v5 serves
-//!   only the multipart `write-file`) — keep v5's own answer for the SERVED
-//!   shape, which is why `known` is never cross-compared. Their refusal and
-//!   equality rows are.
+//! - The ABSENT-action row (`__bare`) of the three endpoints whose v4
+//!   fallback is a payload v5 serves only over `POST /api/dispatch` —
+//!   `character_item_get` (the character), `characters_collection_post`
+//!   (`handleCreate`) and `chat_item_get` (the chat) — answers v5's loud
+//!   pointer. Pinned BOTH ways in [`RECORDED_DIVERGENCES`]: v5's pointer is
+//!   asserted, v4's row must still be a handler payload (a refusal there would
+//!   mean the divergence VANISHED), and every declared row must be exercised.
+//!   Their bare / unknown / `empty_then_known` rows are v4's envelope byte for
+//!   byte (they were pinned v5-side until P4.D220).
+//! - `character_item_post` / `chat_item_post` — v4 looks the entity up FIRST
+//!   (`notFound`) and only then dispatches; v5's edges gate without a lookup.
+//!   The oracle mocks the entity into existence, so the BYTES agree on every
+//!   shape and are cross-compared; the gate ORDER on a missing entity is the
+//!   recorded divergence (unchanged by `ad1c4c37f`).
+//! - The SUBSET edges — `user_profile_get`/`_put` (`theme-preference` is a
+//!   named non-port), `system_data_dir_post` (`?action=open` is a named
+//!   refusal), `mount_point_action_post` (v5 serves the multipart `write-file`
+//!   and `sync`), the unlock siblings, `system/tools`'
+//!   `capabilities-report-progress` — keep v5's own loud answer for a
+//!   v4-KNOWN action it does not serve ([`UNSERVED_KNOWN_ACTIONS`]), which is
+//!   why `known` is never cross-compared. Their refusal and equality rows are.
 //!
 //! Regenerate the oracle (Node 24). While v4 HEAD is past the oracle baseline
 //! this needs a PINNED worktree — but the recipe below names the CHECKOUT on
@@ -192,6 +199,9 @@ fn endpoints() -> Vec<Endpoint> {
             "chats_collection_get",
             "GET",
             "/api/v1/chats".into(),
+            // P4.D220: the RETIRED probe (v4 `944127d9a`) — an EMPTY map, so
+            // nothing is known here; kept so the first-wins row still has two
+            // distinct values (both now answer the empty-map envelope).
             "has-dangerous",
         ),
         ep_body(
@@ -397,179 +407,73 @@ fn query_for(shape: &str, known: &str) -> String {
 /// ran — and therefore comparable across the trees byte-for-byte?
 ///
 /// Derived from the recorded row rather than declared per endpoint, so it
-/// cannot drift out of step with v4: every refusal v4's dispatchers emit opens
-/// with one of the sentences below — the middleware's two envelopes, plus the
-/// three hand-rolled gates P4.72 brought in (`system/unlock`'s
-/// `Missing action parameter`, `system/jobs/[id]`'s `Invalid action.` and
-/// `system/conversation-summaries`' `Unknown or missing action.`). All five are
-/// FIXED strings decided before any repository call, so they are cross-tree
-/// comparable. Anything else is a handler's own answer — the chat list, the
-/// profile, the tool library, a Zod complaint — i.e. a payload over that tree's
-/// database, which no cross-tree byte compare could fairly make. Those rows are
-/// carried by the equality booleans instead.
+/// cannot drift out of step with v4. Since `ad1c4c37f` every refusal v4's
+/// routes emit is `dispatchAction`'s envelope — `{error: "Unknown action: …"
+/// | "Action parameter required", availableActions: [...]}` — a FIXED shape
+/// decided before any repository call. (P4.D220 retired the three hand-rolled
+/// prefixes P4.72 had added — `Missing action parameter`, `Invalid action.
+/// Available actions:`, `Unknown or missing action.` — which no v4 route
+/// answers any more.) Anything else is a handler's own answer — the chat list,
+/// the profile, the tool library, a Zod complaint — i.e. a payload over that
+/// tree's database, which no cross-tree byte compare could fairly make. Those
+/// rows are carried by the equality booleans instead.
 fn is_dispatcher_refusal(v4_body: &Value) -> bool {
     let Some(err) = v4_body.get("error").and_then(Value::as_str) else {
         return false;
     };
-    err.starts_with("Unknown action:")
-        || err.starts_with("Action parameter required")
-        || err.starts_with("Missing action parameter")
-        || err.starts_with("Invalid action. Available actions:")
-        || err == "Unknown or missing action."
+    v4_body.get("availableActions").is_some()
+        && (err.starts_with("Unknown action:") || err == "Action parameter required")
 }
 
-/// The five endpoints whose v5 edge serves a strict SUBSET of the v4 route and
-/// answers its own loud "this rides /api/dispatch" sentence for everything
-/// else. There is no cross-tree comparison to be made for their non-`known`
-/// shapes — v4 runs a handler v5 does not host — so every one of those rows is
-/// pinned v5-side in [`RECORDED_DIVERGENCES`] instead of compared.
-const V5_PINNED_ENDPOINTS: &[&str] = &[
-    "character_item_post",
-    "character_item_get",
-    "characters_collection_post",
-    "chat_item_get",
-    "chat_item_post",
-];
+/// Endpoints where v4 still answers `?action=` exactly as a bare request. At
+/// the `ad1c4c37f` target there are NONE: `dispatchAction` refuses the bare
+/// action everywhere. The recorded oracle is checked against this list, so a
+/// v4 route that regressed to the old fold would fail by name.
+const V4_FOLD_TRUE_ENDPOINTS: &[&str] = &[];
 
 /// Shapes never cross-compared regardless: `known` runs the endpoint's real
 /// work (a payload over each tree's own database — and on the SUBSET edges,
 /// where v5 does not serve the action v4 dispatches, a RECORDED divergence
-/// pinned v5-side by [`UNSERVED_KNOWN_ACTIONS`]), and the
-/// [`V5_PINNED_ENDPOINTS`] gate in a different order or host a different action
-/// set on the two sides — see the header's "Recorded divergences".
-fn cross_comparable_shape(key: &str, shape: &str) -> bool {
-    shape != "known" && shape != "known_then_unknown" && !V5_PINNED_ENDPOINTS.contains(&key)
+/// pinned v5-side by [`UNSERVED_KNOWN_ACTIONS`]). Every other shape is
+/// cross-compared unless [`RECORDED_DIVERGENCES`] pins that exact row.
+fn cross_comparable_shape(shape: &str) -> bool {
+    shape != "known" && shape != "known_then_unknown"
 }
 
 /// v5's pinned answers for the rows that cannot be cross-compared, so they
 /// cannot drift unnoticed. `(key__shape, status, error-prefix)`.
+///
+/// P4.D220: only the ABSENT-action rows remain. v4's fallback on these three
+/// routes is a payload v5 serves over `POST /api/dispatch` (the character, the
+/// create, the chat), so v5 answers its loud pointer where v4 answers the
+/// payload. The bare / unknown / `empty_then_known` rows of the same routes —
+/// and every row of `character_item_post` / `chat_item_post`, whose v4 absent
+/// arm is the `Action parameter required` envelope v5 answers too — are v4's
+/// bytes now and cross-compared. Pinned BOTH ways: v5's pointer here, v4's
+/// payload by the "VANISHED" check in the loop.
 const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[
-    (
-        "character_item_post__bare",
-        400,
-        "This route serves ?action=archive, ?action=rehydrate, ?action=rename, ?action=refresh-archive, ?action=generate-external-prompt and ?action=optimize-stream; the other JSON actions live on /api/dispatch",
-    ),
-    (
-        "character_item_post__empty",
-        400,
-        "This route serves ?action=archive, ?action=rehydrate, ?action=rename, ?action=refresh-archive, ?action=generate-external-prompt and ?action=optimize-stream; the other JSON actions live on /api/dispatch",
-    ),
-    (
-        "character_item_post__unknown",
-        400,
-        "This route serves ?action=archive, ?action=rehydrate, ?action=rename, ?action=refresh-archive, ?action=generate-external-prompt and ?action=optimize-stream; the other JSON actions live on /api/dispatch",
-    ),
-    (
-        "character_item_post__empty_then_known",
-        400,
-        "This route serves ?action=archive, ?action=rehydrate, ?action=rename, ?action=refresh-archive, ?action=generate-external-prompt and ?action=optimize-stream; the other JSON actions live on /api/dispatch",
-    ),
-    // --- P4.72 ---
-    // `GET /api/v1/characters/{id}` — v4 has NO refusal leg here at all:
-    // `handlers/get.ts:44` falls through `!action || !isValidAction(...)` to the
-    // full character payload, so v4 answers 200 for bare, `?action=`, AND an
-    // unknown action. v5 serves only the byte-out `?action=export` leg (the
-    // JSON reads ride `POST /api/dispatch`, the P4.D66 narrowing), so all four
-    // shapes fold onto its loud pointer. Recorded, not chased: closing it means
-    // hosting v4's whole character GET at this URL.
+    // `GET /api/v1/characters/{id}` — v4's fallback is the full character
+    // payload; v5 serves only the byte-out `?action=export` leg (the JSON
+    // reads ride `POST /api/dispatch`, the P4.D66 narrowing).
     (
         "character_item_get__bare",
         400,
-        "This route serves ?action=export only",
+        "This route serves ?action=export only; JSON reads are on /api/dispatch",
     ),
-    (
-        "character_item_get__empty",
-        400,
-        "This route serves ?action=export only",
-    ),
-    (
-        "character_item_get__unknown",
-        400,
-        "This route serves ?action=export only",
-    ),
-    (
-        "character_item_get__empty_then_known",
-        400,
-        "This route serves ?action=export only",
-    ),
-    // `POST /api/v1/characters` — same shape: v4's `handlers/post.ts:592` falls
-    // through to `handleCreate` for bare / `?action=` / unknown (a Zod 400 over
-    // the empty body); v5 serves the multipart `import` and `reset-builtins`
-    // legs plus (P4.9K2) the two `ai-wizard` arms, creation being a dispatch
-    // verb.
+    // `POST /api/v1/characters` — v4's fallback is `handleCreate` (a Zod 400
+    // over the empty body); creation is a dispatch verb in v5.
     (
         "characters_collection_post__bare",
         400,
         "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard and ?action=ai-wizard-stream; character creation is on /api/dispatch",
     ),
-    (
-        "characters_collection_post__empty",
-        400,
-        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard and ?action=ai-wizard-stream; character creation is on /api/dispatch",
-    ),
-    (
-        "characters_collection_post__unknown",
-        400,
-        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard and ?action=ai-wizard-stream; character creation is on /api/dispatch",
-    ),
-    (
-        "characters_collection_post__empty_then_known",
-        400,
-        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard and ?action=ai-wizard-stream; character creation is on /api/dispatch",
-    ),
-    // `GET /api/v1/chats/{id}` — v4's if-chain falls through to the whole chat
-    // payload; v5 hosts only the legs the dispatch channel cannot carry, split
-    // across TWO handlers: `wardrobe_routes::chat_action_get` serves `outfit`,
-    // `outfit-summary`, `export`, `export-markdown` and delegates everything
-    // else to `text_replacements_routes::chat_get_background`, which serves
-    // `get-background` / `cost` and is what answers the sentence pinned here
-    // (hence its wording names only those two).
+    // `GET /api/v1/chats/{id}` — v4's fallback is the whole chat payload
+    // (`68da64d9b`'s `handleGetChat`); v5 hosts only the legs the dispatch
+    // channel cannot carry and points the rest at `POST /api/dispatch`.
     (
         "chat_item_get__bare",
         400,
-        "Only the get-background and cost actions are served on this route",
-    ),
-    (
-        "chat_item_get__empty",
-        400,
-        "Only the get-background and cost actions are served on this route",
-    ),
-    (
-        "chat_item_get__unknown",
-        400,
-        "Only the get-background and cost actions are served on this route",
-    ),
-    (
-        "chat_item_get__empty_then_known",
-        400,
-        "Only the get-background and cost actions are served on this route",
-    ),
-    // `POST /api/v1/chats/{id}` — v4 DOES refuse here, but hand-rolled and after
-    // its chat-404: `Unknown action: ${action}. Available actions: <all 30>`
-    // (`chats/[id]/handlers/post.ts:120`), with the action INTERPOLATED — so v4
-    // says `Unknown action: null` for a bare request and `Unknown action: ` for
-    // `?action=`, which is why its `fold` is FALSE (see [`RECORDED_EQUALITIES`]).
-    // v5 serves two of the thirty here and answers one sentence for all four
-    // shapes, without a chat lookup.
-    (
-        "chat_item_post__bare",
-        400,
-        "Only the equip, regenerate-avatar, inform and cancel-inform actions are served on this route",
-    ),
-    (
-        "chat_item_post__empty",
-        400,
-        "Only the equip, regenerate-avatar, inform and cancel-inform actions are served on this route",
-    ),
-    (
-        "chat_item_post__unknown",
-        400,
-        "Only the equip, regenerate-avatar, inform and cancel-inform actions are served on this route",
-    ),
-    (
-        "chat_item_post__empty_then_known",
-        400,
-        "Only the equip, regenerate-avatar, inform and cancel-inform actions are served on this route",
+        "Only the get-background and cost actions are served on this route; the chat GET rides POST /api/dispatch",
     ),
 ];
 
@@ -687,6 +591,34 @@ fn materialize_instance() -> tempfile::TempDir {
         std::fs::copy(common::fixtures_dir().join(fixture), data.join(name))
             .unwrap_or_else(|e| panic!("copy {fixture}: {e}"));
     }
+    // P4.D220: `POST /chats/{id}/files` resolves the chat BEFORE its action
+    // gate (v4's order, kept by `ad1c4c37f`), so its refusal rows need the
+    // chat to exist — the oracle mocks it into existence. Planted on this
+    // per-run COPY by cloning the fixture's first chat under `CHAT` (the
+    // committed pair is never touched).
+    {
+        let w = quilltap_core::db::Writer::open_writable(
+            &data.join("quilltap.db"),
+            common::TEST_PEPPER,
+        )
+        .unwrap();
+        let n: i64 = w
+            .connection()
+            .query_row("SELECT COUNT(*) FROM \"chats\"", [], |r| r.get(0))
+            .unwrap();
+        assert!(
+            n > 0,
+            "the venue must carry a chat to clone for the planted CHAT row"
+        );
+        w.connection()
+            .execute_batch(&format!(
+                "CREATE TEMP TABLE \"qps_chat\" AS SELECT * FROM \"chats\" ORDER BY rowid LIMIT 1;
+                 UPDATE \"qps_chat\" SET \"id\" = '{CHAT}';
+                 INSERT INTO \"chats\" SELECT * FROM \"qps_chat\";
+                 DROP TABLE \"qps_chat\";"
+            ))
+            .unwrap();
+    }
     base
 }
 
@@ -751,6 +683,7 @@ async fn query_param_semantics_match_oracle() {
     // envelope bytes are actually being compared.
     let mut refusal_rows = 0usize;
     let mut handler_rows = 0usize;
+    let mut divergences_exercised = 0usize;
 
     for e in &all {
         let mut answers: HashMap<&str, Answer> = HashMap::new();
@@ -777,14 +710,27 @@ async fn query_param_semantics_match_oracle() {
             if let Some((_, want_status, want_prefix)) =
                 RECORDED_DIVERGENCES.iter().find(|(n, ..)| *n == name)
             {
+                divergences_exercised += 1;
                 let got_error = body.get("error").and_then(Value::as_str).unwrap_or("");
-                if status != *want_status || !got_error.starts_with(want_prefix) {
-                    eprintln!("[{name}] RECORDED-DIVERGENCE DRIFTED: {status} {body}");
+                // The ruled divergence is "v4 serves its fallback payload, v5
+                // points at /api/dispatch". If v4's row became a dispatcher
+                // refusal, the divergence VANISHED and the pin must go.
+                let v4_row = oracle
+                    .get(&name)
+                    .unwrap_or_else(|| panic!("oracle missing row '{name}'"));
+                if is_dispatcher_refusal(&v4_row["body"]) {
+                    eprintln!(
+                        "[{name}] divergence VANISHED — v4 now refuses: {}",
+                        v4_row["body"]
+                    );
+                    failed.push(format!("{name}_vanished"));
+                } else if status != *want_status || !got_error.starts_with(want_prefix) {
+                    eprintln!("[{name}] RECORDED-DIVERGENCE WRONG SHAPE: {status} {body}");
                     failed.push(format!("{name}_recorded"));
                 } else {
                     eprintln!("[{name}] recorded divergence intact ({status}).");
                 }
-            } else if cross_comparable_shape(e.key, shape) {
+            } else if cross_comparable_shape(shape) {
                 let want = oracle
                     .get(&name)
                     .unwrap_or_else(|| panic!("oracle missing row '{name}'"));
@@ -807,38 +753,33 @@ async fn query_param_semantics_match_oracle() {
             answers.insert(shape, Answer { status, body });
         }
 
-        // The within-tree equalities. For the endpoint whose gate ORDER
-        // differs (see the header), v5's own fold is pinned instead: v4
-        // distinguishes absent from `?action=` because it renders the action
-        // into its sentence, while v5's subset refusal names neither — so v5
-        // folds where v4 does not, and that is the recorded divergence, not a
-        // drift to chase.
-        const RECORDED_EQUALITIES: &[(&str, &str, bool)] = &[
-            ("character_item_post", "fold", true),
-            // Same cause, measured on a second route (P4.72): v4's chat POST
-            // interpolates the action into its refusal, so bare reads
-            // `Unknown action: null` and `?action=` reads `Unknown action: `
-            // — v4 does NOT fold. v5's subset pointer names neither, so it
-            // does. Pinned rather than chased: matching v4 would mean hosting
-            // all thirty chat POST actions at this URL.
-            ("chat_item_post", "fold", true),
-        ];
+        // The within-tree equalities, compared as booleans against v4's own.
+        // (P4.D220 retired `RECORDED_EQUALITIES`: its two pins —
+        // `character_item_post` / `chat_item_post` `fold = true` — recorded
+        // v5 folding where v4 interpolated the action into its sentence. At
+        // `ad1c4c37f` both trees answer `Action parameter required` for the
+        // absent action and `Unknown action: ` for the bare one, so neither
+        // folds and v4's recorded `false` is compared directly.)
         let want = oracle
             .get(&format!("{}__equalities", e.key))
             .unwrap_or_else(|| panic!("oracle missing equalities for '{}'", e.key));
+        // The `fold` inversion, read off the RECORDED oracle: v4 folds only
+        // where `V4_FOLD_TRUE_ENDPOINTS` says it does.
+        let v4_fold = want["fold"].as_bool().unwrap();
+        if v4_fold != V4_FOLD_TRUE_ENDPOINTS.contains(&e.key) {
+            eprintln!(
+                "[{}] v4 fold = {v4_fold}, not what V4_FOLD_TRUE_ENDPOINTS declares",
+                e.key
+            );
+            failed.push(format!("{}_v4_fold_drift", e.key));
+        }
         for (label, a, b) in [
             ("fold", "empty", "bare"),
             ("firstWins", "known_then_unknown", "known"),
             ("emptyFirstWins", "empty_then_known", "empty"),
         ] {
             let got = answers[a] == answers[b];
-            let expected = match RECORDED_EQUALITIES
-                .iter()
-                .find(|(k, l, _)| *k == e.key && *l == label)
-            {
-                Some((_, _, pinned)) => *pinned,
-                None => want[label].as_bool().unwrap(),
-            };
+            let expected = want[label].as_bool().unwrap();
             if got != expected {
                 eprintln!(
                     "[{}] {label} = {got}, v4 says {expected}\n  {a}: {} {}\n  {b}: {} {}",
@@ -852,12 +793,26 @@ async fn query_param_semantics_match_oracle() {
     }
 
     eprintln!(
-        "cross-compared refusal rows: {refusal_rows}; equality-only handler rows: {handler_rows}"
+        "cross-compared refusal rows: {refusal_rows}; equality-only handler rows: {handler_rows}; \
+         recorded divergences: {divergences_exercised}"
     );
+    // Re-derived at the `ad1c4c37f` target (P4.D220), not weakened: the
+    // cross-compared shapes are `bare`, `empty`, `unknown`, `empty_then_known`
+    // (4 × 32 endpoints = 128 rows), less the 3 pinned `__bare` rows = 125.
+    // v4 refuses EVERY `empty` / `unknown` / `empty_then_known` row (3 × 32 =
+    // 96) plus the `bare` row of the 14 endpoints with NO fallback (`Action
+    // parameter required`) = 110 refusal rows; the other 18 `bare` rows are a
+    // fallback payload, less the 3 pinned = 15 handler rows. 110 + 15 = 125.
+    // (Under the old `if (action)` gate the split was ~46 / ~50.)
     assert!(
-        refusal_rows >= 40 && handler_rows >= 40,
-        "the refusal/handler classification collapsed ({refusal_rows} refusal, {handler_rows} handler) \
-         — a change to v4's refusal wording would silently stop this family comparing bytes"
+        refusal_rows == 110 && handler_rows == 15,
+        "the refusal/handler classification moved ({refusal_rows} refusal, {handler_rows} handler; \
+         expected 110 / 15) — either v4's refusal shape changed or a row stopped being compared"
+    );
+    assert_eq!(
+        divergences_exercised,
+        RECORDED_DIVERGENCES.len(),
+        "every declared divergence must be exercised"
     );
     assert!(
         failed.is_empty(),
@@ -921,6 +876,21 @@ async fn unserved_known_actions_are_pinned_v5_side() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["error"], "Unknown action: foo");
     assert_eq!(body["availableActions"], json!([]));
+    // …and since `ad1c4c37f` a bare `?action=` is refused the same way (it
+    // listed until then).
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/v1/chats/00000000-0000-4000-8000-000000000002/custom-tools?action="
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 400);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(
+        body,
+        json!({"error": "Unknown action: ", "availableActions": []})
+    );
 
     // The duplicate-key class on a NON-action key is pinned where the venue
     // can discriminate it: `chats_collection_route.rs` (`?limit=1&limit=2`

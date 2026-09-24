@@ -440,11 +440,11 @@ function buildCases(): CaseSpec[] {
       }),
       dump: true,
     },
-    // THE FIRST-SHAPE PROBE: `?action=` anything-but-generate still UPLOADS.
-    // There is no `withActionDispatch` on this route and so no unknown-action
-    // envelope.
+    // THE FIRST-SHAPE PROBE, inverted by v4 `ad1c4c37f` (P4.D220): the POST
+    // is `dispatchAction` now, so `?action=` anything-but-generate is the
+    // unknown-action envelope and uploads NOTHING (the dump proves it).
     {
-      name: 'upload_action_unknown',
+      name: 'upload_action_unknown_refused',
       run: imagesUploadWithAction('zzz-not-an-action', {
         file: { name: 'shot.png', type: 'image/png', bytes: PNG_1X1 },
       }),

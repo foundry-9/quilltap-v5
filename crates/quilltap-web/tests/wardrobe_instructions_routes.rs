@@ -234,18 +234,42 @@ async fn the_instructions_action_resolves_on_the_registered_edges() {
         "a refused action must not have created anything"
     );
 
-    // v4's `if (action)` gate is JS truthiness: a PRESENT-but-empty
-    // `?action=` serves the default (collection) arm, not a refusal.
-    let body: Value = client
-        .get(format!("http://{addr}/api/v1/wardrobe?action="))
+    // Since `ad1c4c37f` v4's middleware is `dispatchAction`: a PRESENT-but-empty
+    // `?action=` is an UNKNOWN action (it served the listing / created until
+    // then), on both collection edges and the character wardrobe GET.
+    let bare = json!({
+        "error": "Unknown action: ",
+        "availableActions": ["instructions"],
+    });
+    for url in [
+        format!("http://{addr}/api/v1/wardrobe?action="),
+        format!("http://{addr}/api/v1/characters/{ARIA}/wardrobe?action="),
+    ] {
+        let resp = client.get(&url).send().await.unwrap();
+        assert_eq!(resp.status(), 400, "bare-action GET must refuse: {url}");
+        let body: Value = resp.json().await.unwrap();
+        assert_eq!(body, bare, "{url}");
+    }
+    let resp = client
+        .post(format!("http://{addr}/api/v1/wardrobe?action="))
+        .json(&json!({ "title": "Sneaky Coat", "slot": "top" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "bare-action POST must refuse");
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body, bare);
+    let after_bare: Value = client
+        .get(format!("http://{addr}/api/v1/wardrobe"))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    assert!(
-        body["wardrobeItems"].is_array(),
-        "an empty action is falsy in v4 and serves the listing: {body}"
+    assert_eq!(
+        after_bare["wardrobeItems"].as_array().map(Vec::len),
+        before["wardrobeItems"].as_array().map(Vec::len),
+        "a bare `?action=` must not create anything (it did until `ad1c4c37f`)"
     );
 }

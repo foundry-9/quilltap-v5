@@ -395,8 +395,8 @@ async fn the_post_dispatcher_serves_swipe_defers_reattribute_and_refuses_the_res
     );
 
     // `reattribute` is a v5 VERB with no REST edge — a loud, typed deferral
-    // naming itself, NOT v4's "Action parameter required" (which would claim
-    // the action is unrecognised).
+    // naming itself, NOT v4's `Unknown action` envelope (which would list the
+    // action as available in the answer that refuses it).
     let resp = client
         .post(format!(
             "http://{addr}/api/v1/messages/{GROUP_ASSISTANT}?action=reattribute"
@@ -413,11 +413,24 @@ async fn the_post_dispatcher_serves_swipe_defers_reattribute_and_refuses_the_res
         "the deferral names itself: {body}"
     );
 
-    // An unknown action and an ABSENT one take v4's one sentence.
-    for url in [
-        format!("http://{addr}/api/v1/messages/{GROUP_ASSISTANT}?action=nonsense"),
-        format!("http://{addr}/api/v1/messages/{GROUP_ASSISTANT}"),
+    // v4 `dispatchAction(req, { swipe, reattribute })`, no fallback
+    // (`ad1c4c37f` retired `Action parameter required: swipe or reattribute`):
+    // absent → `Action parameter required`, bare / unknown → `Unknown action`.
+    for (query, want) in [
+        (
+            "?action=nonsense",
+            serde_json::json!({"error": "Unknown action: nonsense", "availableActions": ["swipe", "reattribute"]}),
+        ),
+        (
+            "?action=",
+            serde_json::json!({"error": "Unknown action: ", "availableActions": ["swipe", "reattribute"]}),
+        ),
+        (
+            "",
+            serde_json::json!({"error": "Action parameter required", "availableActions": ["swipe", "reattribute"]}),
+        ),
     ] {
+        let url = format!("http://{addr}/api/v1/messages/{GROUP_ASSISTANT}{query}");
         let resp = client
             .post(&url)
             .json(&serde_json::json!({}))
@@ -426,11 +439,7 @@ async fn the_post_dispatcher_serves_swipe_defers_reattribute_and_refuses_the_res
             .unwrap();
         assert_eq!(resp.status().as_u16(), 400, "{url}");
         let body: Value = resp.json().await.unwrap();
-        assert_eq!(
-            body["error"].as_str(),
-            Some("Action parameter required: swipe or reattribute"),
-            "v4's sentence, verbatim: {url}"
-        );
+        assert_eq!(body, want, "v4's envelope, verbatim: {url}");
     }
 }
 

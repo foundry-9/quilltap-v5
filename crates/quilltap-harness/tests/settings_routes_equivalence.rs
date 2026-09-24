@@ -361,30 +361,38 @@ fn settings_routes_match_v4() {
         if req["recorded"].as_bool() == Some(true) {
             recorded_cases += 1;
             profile_tag_cases += 1;
+            // P4.D220 (v4 `ad1c4c37f`): the two gates are v4's ONE
+            // `dispatchAction` envelope now — `{error: "Unknown action: X",
+            // availableActions: [...]}` with the thunk map's keys — replacing
+            // the hand-rolled `Unknown action: X. Available actions: …`.
             let want = match name.as_str() {
                 "cp_get_unknown_action" => Some((
                     400_u64,
-                    "Unknown action: bogus. Available actions: get-tags".to_string(),
+                    serde_json::json!({
+                        "error": "Unknown action: bogus",
+                        "availableActions": ["get-tags"],
+                    }),
                 )),
                 "cp_post_unknown_action" => Some((
                     400,
-                    "Unknown action: bogus. Available actions: add-tag, remove-tag, auto-configure"
-                        .to_string(),
+                    serde_json::json!({
+                        "error": "Unknown action: bogus",
+                        "availableActions": ["add-tag", "remove-tag", "auto-configure"],
+                    }),
                 )),
                 "cp_get_no_action" => None,
                 other => panic!("unknown recorded case: {other}"),
             };
             match want {
-                Some((status, error)) => {
+                Some((status, body)) => {
                     assert_eq!(
                         row["status"].as_u64(),
                         Some(status),
                         "[{name}] recorded v4 status changed"
                     );
                     assert_eq!(
-                        row["body"]["error"].as_str(),
-                        Some(error.as_str()),
-                        "[{name}] recorded v4 action-gate sentence changed"
+                        row["body"], body,
+                        "[{name}] recorded v4 action-gate envelope changed"
                     );
                 }
                 None => {

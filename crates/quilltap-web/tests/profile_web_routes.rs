@@ -97,32 +97,84 @@ async fn profile_web_edges() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["error"], "Email already in use");
 
-    // --- PATCH: the action gate, v4's message verbatim ---
-    let resp = client
-        .patch(url("/api/v1/user/profile"))
-        .json(&json!({ "imageId": null }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 400, "absent action");
-    let body: Value = resp.json().await.unwrap();
-    assert_eq!(
-        body["error"], "Unknown action: null. Available actions: set-avatar",
-        "an absent action interpolates as the literal null, as in v4"
-    );
+    // --- PATCH: the action gate — v4's `dispatchAction` envelope since
+    //     `ad1c4c37f` (the hand-rolled `Unknown action: null. Available
+    //     actions: set-avatar` retired with it) ---
+    for (query, want) in [
+        (
+            "",
+            json!({ "error": "Action parameter required", "availableActions": ["set-avatar"] }),
+        ),
+        (
+            "?action=",
+            json!({ "error": "Unknown action: ", "availableActions": ["set-avatar"] }),
+        ),
+        (
+            "?action=bogus",
+            json!({ "error": "Unknown action: bogus", "availableActions": ["set-avatar"] }),
+        ),
+    ] {
+        let resp = client
+            .patch(url(&format!("/api/v1/user/profile{query}")))
+            .json(&json!({ "imageId": null }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400, "PATCH {query:?}");
+        let body: Value = resp.json().await.unwrap();
+        assert_eq!(body, want, "PATCH {query:?}");
+    }
 
-    let resp = client
-        .patch(url("/api/v1/user/profile?action=bogus"))
-        .json(&json!({ "imageId": null }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 400, "unknown action");
-    let body: Value = resp.json().await.unwrap();
-    assert_eq!(
-        body["error"],
-        "Unknown action: bogus. Available actions: set-avatar"
-    );
+    // --- GET / PUT: `theme-preference` is v4-KNOWN but served by
+    //     theme.service — a loud named refusal, never the envelope that would
+    //     list it as available; a bare / unknown action is the envelope ---
+    for (method, query) in [
+        ("GET", "?action=theme-preference"),
+        ("PUT", "?action=theme-preference"),
+    ] {
+        let req = if method == "GET" {
+            client.get(url(&format!("/api/v1/user/profile{query}")))
+        } else {
+            client
+                .put(url(&format!("/api/v1/user/profile{query}")))
+                .json(&json!({}))
+        };
+        let resp = req.send().await.unwrap();
+        assert_eq!(resp.status(), 400, "{method} {query}");
+        let body: Value = resp.json().await.unwrap();
+        assert!(
+            body.get("availableActions").is_none(),
+            "{method} {query}: {body}"
+        );
+        assert!(
+            body["error"]
+                .as_str()
+                .unwrap_or("")
+                .contains("'theme-preference' action is not served"),
+            "{method} {query}: {body}"
+        );
+    }
+    for (method, query, action) in [
+        ("GET", "?action=", ""),
+        ("GET", "?action=bogus", "bogus"),
+        ("PUT", "?action=", ""),
+    ] {
+        let req = if method == "GET" {
+            client.get(url(&format!("/api/v1/user/profile{query}")))
+        } else {
+            client
+                .put(url(&format!("/api/v1/user/profile{query}")))
+                .json(&json!({ "name": "should-not-land" }))
+        };
+        let resp = req.send().await.unwrap();
+        assert_eq!(resp.status(), 400, "{method} {query}");
+        let body: Value = resp.json().await.unwrap();
+        assert_eq!(
+            body,
+            json!({ "error": format!("Unknown action: {action}"), "availableActions": ["theme-preference"] }),
+            "{method} {query}"
+        );
+    }
 
     // --- PATCH set-avatar: the stored pointer shape ---
     let image_id = "9f000000-0000-4000-8000-000000000001";

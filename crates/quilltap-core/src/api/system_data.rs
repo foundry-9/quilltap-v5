@@ -461,9 +461,14 @@ pub enum JobControlOutcome {
 /// v4 `POST /api/v1/system/jobs/[id]?action=pause|resume`.
 pub async fn job_control(db: &Db, id: &str, action: &str) -> JobControlOutcome {
     if action != "pause" && action != "resume" {
-        return JobControlOutcome::Responded(bad_request(
-            "Invalid action. Available actions: pause, resume",
-        ));
+        // v4 retired `Invalid action. Available actions: pause, resume` with
+        // `ad1c4c37f`: its route is `dispatchAction(req, { pause, resume })`,
+        // whose refusal is the `{error: "Unknown action: <x>",
+        // availableActions}` envelope. The REST edge answers that envelope
+        // itself, BEFORE this verb (P4.D220), so only the `systemJobControl`
+        // dispatch verb reaches here — and a `CoreError` has no field for the
+        // list, so this channel carries the envelope's sentence alone.
+        return JobControlOutcome::Responded(bad_request(format!("Unknown action: {action}")));
     }
     let id_owned = id.to_string();
     let action_owned = action.to_string();

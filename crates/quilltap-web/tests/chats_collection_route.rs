@@ -1,21 +1,20 @@
 //! P4.D143 §H, end-to-end over a live server: `GET /api/v1/chats` — the
 //! collection route v5 had no REST edge for at all until this lane.
 //!
-//! The BODIES are pinned against v4 by `salon_reads_equivalence`, which drives
-//! the handler (and, for the unknown-action refusal, records v4's exact 400
-//! bytes). What THIS test pins is the plumbing that differential cannot see —
-//! and the P4.D65 lesson says to pin it: in that round no lane actually SERVED
-//! the URL its two halves had agreed on, and the wire defect only surfaced at
-//! unification.
+//! The refusal BYTES are pinned against v4 by `salon_reads_equivalence`, which
+//! drives v4's real GET dispatcher and records its 400s. What THIS test pins
+//! is the plumbing that differential cannot see — and the P4.D65 lesson says to
+//! pin it: in that round no lane actually SERVED the URL its two halves had
+//! agreed on, and the wire defect only surfaced at unification.
 //!
-//!   1. The route is REGISTERED and reaches the `ChatsHasDangerous` verb.
-//!   2. `CoreResponse::ChatsHasDangerous` is actually unwrapped (a variant
-//!      missing from an edge's success arm answers 500 on every success — the
-//!      P4.56 `BrahmaConsole` defect).
-//!   3. The unknown-action arm answers v4's 400 sentence, built from
-//!      `CHAT_GET_ACTIONS` rather than transcribed.
-//!   4. The no-action leg still lists (v4 serves the list here; refusing it
-//!      would be an invention), in the `{chats: [...]}` envelope.
+//!   1. The route is REGISTERED and the no-action leg lists (v4 serves the
+//!      list here), in the `{chats: [...]}` envelope.
+//!   2. P4.D220 (v4 `944127d9a` + `ad1c4c37f`): the GET is `dispatchAction(req,
+//!      {}, list)` — an EMPTY map — so v4's `route.get.test.ts` vectors each
+//!      answer the `Unknown action` envelope with `availableActions: []`:
+//!      the RETIRED `?action=has-dangerous` (the Quick-hide probe and its
+//!      `ChatsHasDangerous` verb are gone end to end), a bare `?action=`, and
+//!      a key-only `?action`. Each is also pinned to have NOT listed.
 //!
 //! Run:
 //!   cargo test -p quilltap-web --test chats_collection_route
@@ -44,48 +43,30 @@ async fn chats_collection_get_edges() {
     .await;
     let client = reqwest::Client::new();
 
-    // --- ?action=has-dangerous — both answers, driven from the same instance.
-    //     Start by taking every chat OFF the uncensored row (the committed
-    //     `chat-send` fixture seeds a chat that is already on it), so the
-    //     `false` answer is measured rather than assumed.
-    let flip = |sql: &'static str| {
-        let path = base.path().join("data/quilltap.db");
-        let w = quilltap_core::db::Writer::open_writable(&path, common::TEST_PEPPER).unwrap();
-        w.connection().execute_batch(sql).unwrap();
-    };
-    flip("UPDATE \"chats\" SET \"conciergeOverride\" = NULL, \"isDangerousChat\" = 0");
-    let (status, body) = get(&client, &addr, "/api/v1/chats?action=has-dangerous").await;
-    assert_eq!(status, 200, "has-dangerous status");
-    assert_eq!(
-        body,
-        serde_json::json!({ "hasDangerous": false }),
-        "the probe's raw body — no successResponse envelope, exactly as v4 sends it"
-    );
-
-    // --- one chat onto the uncensored row by the operator's own hand: the
-    //     label underneath stays false, so nothing but the new predicate can
-    //     make this true (the pre-`c43d3b1b4` `isDangerousChat === true` probe
-    //     would still answer false here) ---
-    flip(
-        "UPDATE \"chats\" SET \"conciergeOverride\" = 'UNCENSORED', \"isDangerousChat\" = 0 \
-         WHERE rowid = (SELECT MIN(rowid) FROM \"chats\")",
-    );
-    let (status, body) = get(&client, &addr, "/api/v1/chats?action=has-dangerous").await;
-    assert_eq!(status, 200, "has-dangerous status after the flip");
-    assert_eq!(
-        body,
-        serde_json::json!({ "hasDangerous": true }),
-        "an Uncensored chat is on the row the toggle hides"
-    );
-
-    // --- an unknown action: v4's exact sentence ---
-    let (status, body) = get(&client, &addr, "/api/v1/chats?action=no-such-action").await;
-    assert_eq!(status, 400, "unknown-action status");
-    assert_eq!(
-        body["error"].as_str(),
-        Some("Unknown action: no-such-action. Available actions: has-dangerous"),
-        "v4's unknown-action sentence, pinned against the oracle by salon_reads"
-    );
+    // --- v4's `route.get.test.ts` vectors: every `?action=` shape refuses
+    //     with the empty map's envelope — the retired probe, an unknown name, a
+    //     bare `?action=` (which LISTED until `ad1c4c37f`), a key-only
+    //     `?action` (`searchParams.get` reads `''` for it too) ---
+    for (query, action) in [
+        ("?action=has-dangerous", "has-dangerous"),
+        ("?action=no-such-action", "no-such-action"),
+        ("?action=", ""),
+        ("?action", ""),
+        // FIRST wins: the bare first value refuses even with a second behind it.
+        ("?action=&action=has-dangerous", ""),
+    ] {
+        let (status, body) = get(&client, &addr, &format!("/api/v1/chats{query}")).await;
+        assert_eq!(status, 400, "{query} status: {body}");
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "error": format!("Unknown action: {action}"),
+                "availableActions": [],
+            }),
+            "{query}: v4's empty-map envelope, pinned against the oracle by salon_reads"
+        );
+        assert!(body.get("chats").is_none(), "{query} must not list: {body}");
+    }
 
     // --- no action: v4 lists here, and so must v5 ---
     let (status, body) = get(&client, &addr, "/api/v1/chats").await;

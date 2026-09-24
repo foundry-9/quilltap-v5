@@ -122,8 +122,8 @@ const search = (q: string) => `${BASE}?action=search&q=${encodeURIComponent(q)}`
 
 const CASES: CaseSpec[] = [
   { name: 'list', run: (r) => respond(r.collection.GET(mockRequest(BASE))) },
-  { name: 'list_unknown_action_falls_through', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=bogus`))) },
-  { name: 'list_empty_action_falls_through', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=`))) },
+  { name: 'list_unknown_action_refused', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=bogus`))) },
+  { name: 'list_empty_action_refused', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=`))) },
   { name: 'chat_count_user_a', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=chat-count`))) },
   { name: 'chat_count_user_c', user: 'C', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=chat-count`))) },
   { name: 'get_by_id', run: (r) => respond(r.item.GET(mockRequest(`${BASE}/${brahmaDocId()}`), params(brahmaDocId()))) },

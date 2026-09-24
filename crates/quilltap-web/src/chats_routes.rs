@@ -1,16 +1,16 @@
 //! P4.D143 §H: the chat-collection REST edge — v4 `app/api/v1/chats/route.ts`'s
-//! `GET` dispatcher.
+//! `GET`, which is now `dispatchAction(req, {}, () => handleList(req, context))`
+//! (`ad1c4c37f`): an EMPTY action map, so ANY `?action=` — a bare one included
+//! — is the `Unknown action` envelope with `availableActions: []`, and only an
+//! absent action lists (delegated to the `ListChats` verb the SPA already
+//! dispatches; the query parsing below is v4's, parameter for parameter).
 //!
-//! - `GET /api/v1/chats?action=has-dangerous` → `{ hasDangerous: boolean }`
-//!   (v4 `handleHasDangerous`, re-based by `c43d3b1b4` onto the uncensored
-//!   route: the Quick-hide toggle hides Flagged AND Uncensored, not every chat
-//!   carrying a preserved label). v5 never had this edge before.
-//! - `GET /api/v1/chats?action=<anything else>` → v4's exact 400,
-//!   `Unknown action: X. Available actions: has-dangerous`.
-//! - `GET /api/v1/chats` with no action → `handleList`, delegated to the
-//!   `ListChats` verb the SPA already dispatches. v4 serves the list here, so
-//!   refusing it would be an invention; the query parsing below is v4's,
-//!   parameter for parameter.
+//! **`?action=has-dangerous` is RETIRED (v4 `944127d9a`, P4.D220 with
+//! P4.D223 — §S.1).** v4 deleted the Quick-hide probe and its only client; the
+//! `ChatsHasDangerous` verb went with it end to end. (`944127d9a` shipped an
+//! interim sentence, `Unknown action: X. GET /api/v1/chats takes no actions`,
+//! which `ad1c4c37f` superseded four commits later — it was never ported, and
+//! never needs to be.)
 //!
 //! The POST/PUT legs of v4's collection route are NOT registered here — they
 //! were never part of that lane and have no v5 REST edge today; the SPA reaches
@@ -32,39 +32,12 @@ use crate::files_routes::error_json;
 use crate::state::SharedState;
 use crate::text_replacements_routes::{dispatch_core, error_to_http};
 
-/// v4 `CHAT_GET_ACTIONS` — the whole list, and the source of the 400's tail.
-const CHAT_GET_ACTIONS: &[&str] = &["has-dangerous"];
-
 pub async fn chats_collection_get(
     State(state): State<SharedState>,
     Query(query): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    // v4's gate is `if (!action) return handleList(...)` — JS truthiness, so a
-    // present-but-empty `?action=` lists exactly like an absent one.
-    match crate::query::action(&query) {
-        Some("has-dangerous") => {
-            match dispatch_core(&state, CoreRequest::ChatsHasDangerous).await {
-                Ok(CoreResponse::ChatsHasDangerous(v)) => (
-                    StatusCode::OK,
-                    [("content-type", "application/json")],
-                    v.to_string(),
-                )
-                    .into_response(),
-                Ok(CoreResponse::Error(e)) => error_to_http(e),
-                Ok(_) => error_json(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Unexpected core response",
-                ),
-                Err(r) => r,
-            }
-        }
-        Some(other) => error_json(
-            StatusCode::BAD_REQUEST,
-            &format!(
-                "Unknown action: {other}. Available actions: {}",
-                CHAT_GET_ACTIONS.join(", ")
-            ),
-        ),
+    match crate::query::dispatch_action(&query, &[], "GET", "/api/v1/chats") {
+        Err(r) => *r,
         // v4 `handleList`. `excludeTagIds` splits on `,` and drops empties;
         // `limit` is v4's `limitParam ? parseInt(limitParam, 10) : undefined` —
         // a PREFIX parse (`"12abc"` → 12, `" 12"` → 12, `"12.9"` → 12), so it
@@ -72,7 +45,7 @@ pub async fn chats_collection_get(
         // whole-string `parse`; an empty or digitless value is NaN there and
         // `limit && limit > 0` is then false — `None` here (unification
         // review, 2026-09-02); `includeAutonomous` is a strict `=== 'true'`.
-        None => {
+        Ok(_) => {
             let exclude_tag_ids = crate::query::first(&query, "excludeTagIds")
                 .map(|s| {
                     s.split(',')
@@ -126,10 +99,11 @@ pub async fn chats_collection_get(
 /// sentences) lives in `quilltap_core::api::chat_delete::chat_delete_dispatch`,
 /// so both transports answer from one piece of code and the differential can
 /// drive it. What is left here is genuinely transport: read the raw
-/// `?action=` (UNFOLDED — the `if (action)` truthiness belongs to the ported
-/// dispatch, which is why `query::first` is used rather than `query::action`),
-/// turn the request bytes into the value `await req.json()` would yield, and
-/// render the typed `Response`.
+/// `?action=` and hand it to core's `classify_delete_action` (v4's
+/// `dispatchAction` for this map — a bare or unknown action is REFUSED there
+/// and rendered here as v4's envelope; until `ad1c4c37f` a bare `?action=`
+/// DELETED the chat), turn the request bytes into the value `await req.json()`
+/// would yield, and render the typed `Response`.
 pub async fn chat_delete(
     State(state): State<SharedState>,
     Path(chat_id): Path<String>,
@@ -137,8 +111,19 @@ pub async fn chat_delete(
     body: axum::body::Bytes,
 ) -> AxumResponse {
     // v4's `getActionParam` is `searchParams.get('action')` — FIRST wins, and
-    // the empty string SURVIVES to the dispatch's own `if (action)`.
-    let raw_action = crate::query::first(&query, "action");
+    // the empty string SURVIVES to the classification, which refuses it.
+    use quilltap_core::api::chat_delete::{classify_delete_action, CHAT_DELETE_ACTIONS};
+    let action = match classify_delete_action(crate::query::action_param(&query)) {
+        Ok(a) => a,
+        Err(refused) => {
+            return crate::query::unknown_action_response(
+                &refused.action,
+                CHAT_DELETE_ACTIONS,
+                "DELETE",
+                "/api/v1/chats/[id]",
+            )
+        }
+    };
 
     // `await req.json()` on an EMPTY body throws in Next just as it does here;
     // v4 only ever reaches it on the stop-impersonate leg (`participants.ts:89`
@@ -166,7 +151,7 @@ pub async fn chat_delete(
     let resp = quilltap_core::api::chat_delete::chat_delete_dispatch(
         &db,
         &chat_id,
-        raw_action,
+        action,
         json_body.as_ref(),
     )
     .await;

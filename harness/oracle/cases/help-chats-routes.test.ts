@@ -116,7 +116,7 @@ const CASES: CaseSpec[] = [
   { name: 'list_user_a', run: (r) => respond(r.collection.GET(mockRequest(BASE))) },
   { name: 'list_user_b', user: 'B', run: (r) => respond(r.collection.GET(mockRequest(BASE))) },
   { name: 'list_user_c_empty', user: 'C', run: (r) => respond(r.collection.GET(mockRequest(BASE))) },
-  { name: 'list_empty_action_lists', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=`))) },
+  { name: 'list_empty_action_refused', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=`))) },
   { name: 'eligibility_user_a', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=eligibility`))) },
   { name: 'eligibility_user_b_no_tool_capable', user: 'B', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=eligibility`))) },
   { name: 'eligibility_user_c_no_help_chars', user: 'C', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=eligibility`))) },
@@ -168,7 +168,7 @@ const CASES: CaseSpec[] = [
   { name: 'rename_wrong_type_400', run: (r) => respond(r.item.PATCH(mockRequest(itemUrl(H2), { title: 5 }), params(H2))) },
   { name: 'rename_missing_chat_bad_body_404', run: (r) => respond(r.item.PATCH(mockRequest(itemUrl(MISSING), { title: 5 }), params(MISSING))) },
   { name: 'rename_salon_bad_body_404', run: (r) => respond(r.item.PATCH(mockRequest(itemUrl(SALON), { title: '' }), params(SALON))) },
-  { name: 'patch_empty_action_renames', run: (r) => respond(r.item.PATCH(mockRequest(`${itemUrl(H3)}?action=`, { title: 'Via empty action' }), params(H3))) },
+  { name: 'patch_empty_action_refused', run: (r) => respond(r.item.PATCH(mockRequest(`${itemUrl(H3)}?action=`, { title: 'Via empty action' }), params(H3))) },
   // --- update-context ---
   {
     name: 'update_context',

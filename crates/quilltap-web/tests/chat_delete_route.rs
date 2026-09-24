@@ -22,8 +22,10 @@
 //!      by the route itself; without that arm the `details` array would vanish.
 //!   5. The guard ORDER over the wire: a missing chat with a malformed body is
 //!      a 404, not a 400.
-//!   6. `?action=` (present, empty) is JS-falsy and DELETES; `?action=zzz`
-//!      refuses and leaves the chat standing.
+//!   6. P4.D220 (v4 `ad1c4c37f`): `?action=` (present, empty) no longer
+//!      DELETES — it is v4's `Unknown action: ` envelope, as `?action=zzz`
+//!      is, and both leave the chat standing (rows counted before and after);
+//!      the refusal precedes any lookup, so a missing chat answers 400.
 //!   7. A body that is not JSON at all is the SyntaxError v4's middleware turns
 //!      into 500 `Internal server error` — not a ZodError, so not a 400.
 //!   8. An EMPTY body is that same SyntaxError (`req.json()` on zero bytes).
@@ -100,17 +102,47 @@ async fn chat_delete_edge() {
 
     // --- 2/6: an unknown action REFUSES, and the chat survives it ------------
     let victim = ids[0].clone();
+    let before = chat_ids(&client, &addr).await.len();
     let (status, body) = del(format!("/api/v1/chats/{victim}?action=zzz"), None).await;
     assert_eq!(status, 400, "unknown-action status: {body}");
     assert_eq!(
-        body["error"].as_str(),
-        Some("Unknown DELETE action: zzz. Available DELETE actions: reset-state, stop-impersonate"),
-        "v4's sentence, pinned against the oracle by `chat_delete_equivalence`"
+        body,
+        serde_json::json!({
+            "error": "Unknown action: zzz",
+            "availableActions": ["reset-state", "stop-impersonate"],
+        }),
+        "v4's `dispatchAction` envelope (`ad1c4c37f`), pinned against the \
+         oracle by `chat_delete_equivalence`"
     );
     assert!(
         chat_ids(&client, &addr).await.contains(&victim),
         "v4 refuses the unknown action precisely to PREVENT the delete"
     );
+
+    // --- 6: `?action=` (bare) — it DELETED the chat until `ad1c4c37f`; now it
+    //     is v4's `Unknown action: ` envelope and NOTHING is deleted. Counted,
+    //     not just membership-checked: no chat of the venue may vanish. ---
+    for query in ["?action=", "?action", "?action=&action=reset-state"] {
+        let (status, body) = del(format!("/api/v1/chats/{victim}{query}"), None).await;
+        assert_eq!(status, 400, "{query} status: {body}");
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "error": "Unknown action: ",
+                "availableActions": ["reset-state", "stop-impersonate"],
+            }),
+            "{query}: the bare action is refused, not a delete"
+        );
+    }
+    assert_eq!(
+        chat_ids(&client, &addr).await.len(),
+        before,
+        "a bare `?action=` must not delete ANY chat"
+    );
+    // The refusal precedes any chat lookup: a missing chat is 400, not 404.
+    let (status, body) = del(format!("/api/v1/chats/{MISSING}?action="), None).await;
+    assert_eq!(status, 400, "the gate runs before the lookup: {body}");
+    assert_eq!(body["error"].as_str(), Some("Unknown action: "));
 
     // --- 1/2: the delete itself, then the row is gone ------------------------
     let (status, body) = del(format!("/api/v1/chats/{victim}"), None).await;
@@ -139,11 +171,8 @@ async fn chat_delete_edge() {
     assert_eq!(status, 404);
     assert_eq!(body["error"].as_str(), Some("Chat not found"));
 
-    // --- 6: `?action=` is present but EMPTY — JS-falsy, so it DELETES --------
-    let empty_victim = ids[1].clone();
-    let (status, body) = del(format!("/api/v1/chats/{empty_victim}?action="), None).await;
-    assert_eq!(status, 200, "an empty action takes the delete leg: {body}");
-    assert!(!chat_ids(&client, &addr).await.contains(&empty_victim));
+    // (P4.D220: the `?action=`-deletes arm that stood here was v4's PRE-
+    // `ad1c4c37f` behaviour; its inversion is the refusal block above.)
 
     // --- 2: reset-state unwraps `CoreResponse::State` ------------------------
     let survivor = ids[2].clone();

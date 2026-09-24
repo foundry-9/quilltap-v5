@@ -16,11 +16,16 @@
 //!
 //! - `?action=theme-preference` (GET and PUT) is already live in v5 through
 //!   `theme.service` over chatSettings. Reaching it here would give one
-//!   preference two owners, so these edges answer v4's own unknown-action
-//!   shape for it rather than silently treating it as the default arm.
-//! - The PATCH's action gate is v4's (`route.ts:234-236`): any action other
-//!   than `set-avatar` — including an ABSENT one, which interpolates as the
-//!   literal `null` — is a 400 naming what is available.
+//!   preference two owners, so these edges answer a loud named refusal for
+//!   it rather than silently treating it as the default arm — and never v4's
+//!   `Unknown action` envelope, which would list the action as available in
+//!   the answer that refuses it.
+//! - Every other shape is v4's `dispatchAction` (`route.ts` at `ad1c4c37f`):
+//!   GET/PUT fall back to the profile read/update when the action is ABSENT,
+//!   and refuse a bare or unknown one with the envelope; the PATCH has no
+//!   fallback, so an absent action is `Action parameter required`. (The old
+//!   hand-rolled `Unknown action: null. Available actions: set-avatar` retired
+//!   with `ad1c4c37f`.)
 
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -55,23 +60,21 @@ fn validation_error() -> AxumResponse {
     error_json(StatusCode::BAD_REQUEST, "Validation error")
 }
 
-/// The one arm v5 refuses on this surface, worded as v4's unknown-action 400 so
-/// a client that asks for it is told plainly rather than served the default.
-fn unported_action(action: &str, available: &str) -> AxumResponse {
+/// v4's GET/PUT thunk map on this route — one key (`route.ts` at `ad1c4c37f`).
+const PROFILE_GET_PUT_ACTIONS: &[&str] = &["theme-preference"];
+/// v4's PATCH thunk map — one key, no fallback.
+const PROFILE_PATCH_ACTIONS: &[&str] = &["set-avatar"];
+const PROFILE_PATH: &str = "/api/v1/user/profile";
+
+/// The one v4-KNOWN arm v5 does not serve on this surface: a loud refusal that
+/// names the action and where it lives, so a client that asks for it is told
+/// plainly rather than served the default.
+fn unported_theme_preference() -> AxumResponse {
     error_json(
         StatusCode::BAD_REQUEST,
-        &format!("Unknown action: {action}. Available actions: {available}"),
+        "The 'theme-preference' action is not served on this route; the theme \
+         preference is served by theme.service over chat settings",
     )
-}
-
-/// v4 reads `?action=` with `searchParams.get('action')`: the FIRST value of a
-/// repeated key, `null` when absent — and v4 interpolates that `null` straight
-/// into its message. The empty string is PRESERVED here (not folded onto
-/// `None`) because `user_profile_patch` renders it: v4 answers `Unknown action:
-/// null` for an absent action and `Unknown action: ` for `?action=`, and the
-/// two must stay distinguishable.
-fn action_of(params: &crate::query::QueryPairs) -> Option<&str> {
-    crate::query::first(params, "action")
 }
 
 // ===========================================================================
@@ -82,12 +85,12 @@ pub async fn user_profile_get(
     State(state): State<SharedState>,
     Query(params): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    // The theme-preference arm belongs to `theme.service`, not here. v4's gate
-    // is a bare `if (action === 'theme-preference')` with NO else-refusal, so
-    // every other shape — absent, `?action=`, an unknown action — falls
-    // through to the profile read exactly as it does in v4.
-    if action_of(&params) == Some("theme-preference") {
-        return unported_action("theme-preference", "(none)");
+    // The theme-preference arm belongs to `theme.service`, not here. Absent
+    // falls through to the profile read; bare / unknown are v4's envelope.
+    match crate::query::dispatch_action(&params, PROFILE_GET_PUT_ACTIONS, "GET", PROFILE_PATH) {
+        Ok(None) => {}
+        Ok(Some(_theme_preference)) => return unported_theme_preference(),
+        Err(r) => return *r,
     }
     match dispatch_core(&state, CoreRequest::UserProfileGet).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
@@ -100,10 +103,11 @@ pub async fn user_profile_put(
     Query(params): Query<crate::query::QueryPairs>,
     body: String,
 ) -> AxumResponse {
-    // As on the GET: v4 refuses nothing here, so only the named non-port arm
-    // answers; everything else falls through to the update.
-    if action_of(&params) == Some("theme-preference") {
-        return unported_action("theme-preference", "(none)");
+    // As on the GET: absent falls through to the update.
+    match crate::query::dispatch_action(&params, PROFILE_GET_PUT_ACTIONS, "PUT", PROFILE_PATH) {
+        Ok(None) => {}
+        Ok(Some(_theme_preference)) => return unported_theme_preference(),
+        Err(r) => return *r,
     }
 
     // Decode through the Request itself so the absent / explicit-null / value
@@ -129,19 +133,14 @@ pub async fn user_profile_patch(
     Query(params): Query<crate::query::QueryPairs>,
     body: String,
 ) -> AxumResponse {
-    // v4 `route.ts:234-236`, verbatim — including the literal "null" an absent
-    // action interpolates to.
-    match action_of(&params) {
-        Some("set-avatar") => {}
-        other => {
-            return error_json(
-                StatusCode::BAD_REQUEST,
-                &format!(
-                    "Unknown action: {}. Available actions: set-avatar",
-                    other.unwrap_or("null")
-                ),
-            );
-        }
+    // v4 `dispatchAction(req, { 'set-avatar': … })` — no fallback.
+    if let Err(r) = crate::query::dispatch_required_action(
+        &params,
+        PROFILE_PATCH_ACTIONS,
+        "PATCH",
+        PROFILE_PATH,
+    ) {
+        return *r;
     }
 
     let Ok(Value::Object(mut map)) = serde_json::from_str::<Value>(&body) else {
@@ -175,29 +174,25 @@ pub async fn system_data_dir_get(State(state): State<SharedState>) -> AxumRespon
 /// shell-open is a named future native nicety, and the HTTP deployment has no
 /// business opening a file browser on the server's desktop.
 pub async fn system_data_dir_post(Query(params): Query<crate::query::QueryPairs>) -> AxumResponse {
-    match crate::query::action(&params) {
+    // v4 `withCollectionActionDispatch({ open: handleOpen })` passes NO
+    // default handler, so the middleware's own envelopes answer: absent gets
+    // `Action parameter required`, and — since `ad1c4c37f` — a bare `?action=`
+    // is refused as unknown alongside any other name.
+    match crate::query::dispatch_required_action(
+        &params,
+        &["open"],
+        "POST",
+        "/api/v1/system/data-dir",
+    ) {
         // The refusal's wording lives in the core (one source of truth) — this
         // edge only carries it out to HTTP.
-        Some("open") => match quilltap_core::api::data_dir::not_available("open") {
+        Ok(_open) => match quilltap_core::api::data_dir::not_available("open") {
             CoreResponse::Error(e) => error_to_http(e),
             _ => error_json(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Unexpected core response",
             ),
         },
-        // v4 `withCollectionActionDispatch({ open: handleOpen })` passes NO
-        // default handler, so the middleware's own envelopes answer: a truthy
-        // unknown action gets `Unknown action: <x>` + `availableActions`, and
-        // absent — or the JS-falsy `?action=` — gets `Action parameter
-        // required` + the same list.
-        Some(other) => crate::query::unknown_action_response(
-            other,
-            &["open"],
-            "POST",
-            "/api/v1/system/data-dir",
-        ),
-        None => {
-            crate::query::action_required_response(&["open"], "POST", "/api/v1/system/data-dir")
-        }
+        Err(r) => *r,
     }
 }

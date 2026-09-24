@@ -211,6 +211,19 @@ async fn mount_write_and_read_edges() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["error"], "Action parameter required");
 
+    // …and a BARE `?action=` is now the UNKNOWN envelope (`ad1c4c37f`), not
+    // the no-action one it took while v4 gated on `if (action)`.
+    let resp = client
+        .post(format!("http://{addr}/api/v1/mount-points/{db_id}?action="))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error"], "Unknown action: ");
+    assert_eq!(body["availableActions"].as_array().unwrap().len(), 13);
+
     // --- the multipart blob upload (201) ---
     let form = reqwest::multipart::Form::new()
         .text("path", "images/edge.bin")

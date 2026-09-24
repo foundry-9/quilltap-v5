@@ -98,10 +98,17 @@ pub async fn brahma_console_item_patch(
     body: axum::body::Bytes,
 ) -> AxumResponse {
     let parsed = parse_body(&body);
-    // v4's gate is `if (!action) return handleRename(...)` — JS truthiness, so
-    // a present-but-empty `?action=` renames exactly like an absent one.
-    match crate::query::action(&query) {
-        None => {
+    // v4 `dispatchAction(req, { 'set-model': … }, rename)` (`ad1c4c37f`):
+    // absent renames; a bare `?action=` (which renamed until then) or an
+    // unknown action is the `Unknown action` envelope.
+    match crate::query::dispatch_action(
+        &query,
+        &["set-model"],
+        "PATCH",
+        "/api/v1/brahma-console/[id]",
+    ) {
+        Err(r) => *r,
+        Ok(None) => {
             // v4 `handleRename` parses `renameSchema` AFTER `verifyBrahmaChat`,
             // so the title rides raw and the dispatch arm refuses it in v4's
             // order (P4.60).
@@ -114,7 +121,7 @@ pub async fn brahma_console_item_patch(
                 Err(r) => r,
             }
         }
-        Some("set-model") => {
+        Ok(Some(_set_model)) => {
             // Likewise `setModelSchema` — parsed after the verify (P4.60).
             let req = CoreRequest::BrahmaConsoleSetModel {
                 chat_id: id,
@@ -128,10 +135,6 @@ pub async fn brahma_console_item_patch(
                 Err(r) => r,
             }
         }
-        Some(other) => error_json(
-            StatusCode::BAD_REQUEST,
-            &format!("Unknown action: {other}. Available actions: set-model"),
-        ),
     }
 }
 

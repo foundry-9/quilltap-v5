@@ -238,14 +238,14 @@ const CASES: CaseSpec[] = [
   {
     // MEASURED, and not what the wiring suggests: `withCollectionActionDispatch`
     // has a DEFAULT handler here, yet an unrecognised action does NOT fall
-    // through to it — `withActionDispatch` tests `if (action)` first.
+    // through to it — `dispatchAction` answers only an own key.
     name: 'an_unknown_action_is_refused_not_listed',
     url: `?chatId=${SOLO}&action=no-such-action`,
   },
   {
-    // …while a present-but-EMPTY action is JS-falsy and takes the default leg,
-    // so this must equal `listing_returns_stored_message_events`.
-    name: 'an_empty_action_lists_like_an_absent_one',
+    // P4.D220 (v4 `ad1c4c37f`): a present-but-EMPTY action took the default
+    // leg while v4 gated on `if (action)`; `dispatchAction` refuses it now.
+    name: 'an_empty_action_is_refused_not_listed',
     url: `?chatId=${SOLO}&action=`,
   },
 ];

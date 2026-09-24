@@ -36,22 +36,20 @@ fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumRespons
 /// `GET /api/v1/chats/{id}/custom-tools` — the popup roster.
 ///
 /// v4 is `withActionDispatch({}, handleList)` (`custom-tools/route.ts:585`): an
-/// EMPTY action map with a default, so a truthy `?action=` answers v4's
-/// `Unknown action: <x>` envelope with an empty `availableActions` while a bare
-/// or `?action=` request lists. (The §3 unification review: this edge read no
-/// query at all and listed for every action.)
+/// EMPTY action map with a default, so ANY `?action=` — a bare one included
+/// since `ad1c4c37f` — answers v4's `Unknown action: <x>` envelope with an
+/// empty `availableActions`, while only an absent action lists. (The §3
+/// unification review of P4.67: this edge read no query at all and listed for
+/// every action.)
 pub async fn custom_tools_get(
     State(state): State<SharedState>,
     Path(id): Path<String>,
     Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    if let Some(other) = crate::query::action(&pairs) {
-        return crate::query::unknown_action_response(
-            other,
-            &[],
-            "GET",
-            "/api/v1/chats/[id]/custom-tools",
-        );
+    if let Err(r) =
+        crate::query::dispatch_action(&pairs, &[], "GET", "/api/v1/chats/[id]/custom-tools")
+    {
+        return *r;
     }
     match dispatch_core(&state, CoreRequest::ChatCustomToolsList { chat_id: id }).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
@@ -67,16 +65,12 @@ pub async fn custom_tools_post(
     body: axum::body::Bytes,
 ) -> AxumResponse {
     // v4: `POST` is `withActionDispatch({ run: handleRun })` with NO default
-    // handler, so the middleware answers its own two envelopes — a
-    // present-but-empty `?action=` is JS-falsy and lands on the no-action leg.
+    // handler, so the middleware answers its own two envelopes — and a bare
+    // `?action=` is refused as unknown since `ad1c4c37f`.
     const AVAILABLE: &[&str] = &["run"];
     const PATH: &str = "/api/v1/chats/[id]/custom-tools";
-    match crate::query::action(&query) {
-        Some("run") => {}
-        Some(other) => {
-            return crate::query::unknown_action_response(other, AVAILABLE, "POST", PATH)
-        }
-        None => return crate::query::action_required_response(AVAILABLE, "POST", PATH),
+    if let Err(r) = crate::query::dispatch_required_action(&query, AVAILABLE, "POST", PATH) {
+        return *r;
     }
     let json_body: Value = if body.is_empty() {
         Value::Object(Default::default())
@@ -146,18 +140,17 @@ pub async fn workbench_get(
     Query(query): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
     // v4 `withCollectionActionDispatch({destinations}, handleLibrary)` — the
-    // library IS the default handler, so absent AND `?action=` both list it.
-    let req = match crate::query::action(&query) {
-        Some("destinations") => CoreRequest::CustomToolsDestinations,
-        None => CoreRequest::CustomToolsLibrary,
-        Some(other) => {
-            return crate::query::unknown_action_response(
-                other,
-                &["destinations"],
-                "GET",
-                "/api/v1/custom-tools",
-            )
-        }
+    // library IS the default handler for an ABSENT action; a bare `?action=`
+    // is the `Unknown action` envelope since `ad1c4c37f`.
+    let req = match crate::query::dispatch_action(
+        &query,
+        &["destinations"],
+        "GET",
+        "/api/v1/custom-tools",
+    ) {
+        Ok(Some(_destinations)) => CoreRequest::CustomToolsDestinations,
+        Ok(None) => CoreRequest::CustomToolsLibrary,
+        Err(r) => return *r,
     };
     match dispatch_core(&state, req).await {
         Ok(resp) => workbench_unwrap(resp),
@@ -173,14 +166,10 @@ pub async fn workbench_post(
 ) -> AxumResponse {
     const AVAILABLE: &[&str] = &["preview", "audit"];
     const PATH: &str = "/api/v1/custom-tools";
-    let action = crate::query::action(&query);
-    match action {
-        Some("preview") | Some("audit") => {}
-        Some(other) => {
-            return crate::query::unknown_action_response(other, AVAILABLE, "POST", PATH)
-        }
-        None => return crate::query::action_required_response(AVAILABLE, "POST", PATH),
-    }
+    let action = match crate::query::dispatch_required_action(&query, AVAILABLE, "POST", PATH) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
 
     // v4 `parseBody`: `await req.json()` throwing is the ONLY arm handled here.
     let json_body: Value = match serde_json::from_slice(&body) {
@@ -202,7 +191,7 @@ pub async fn workbench_post(
     // core (`z.record(...).nullish()`). Named apart from the web `state` handle.
     let mock_state = obj.get("state").cloned();
 
-    let req = if action == Some("preview") {
+    let req = if action == "preview" {
         // `private` is `z.boolean().optional()`: a present non-boolean is a body
         // rejection, an absent one is simply `None`.
         let private = match obj.get("private") {

@@ -590,15 +590,6 @@ fn images_routes_match_oracle() {
             png.clone(),
             Some(vec![json!({"tagType": "CHARACTER", "tagId": CHAR_TAG})]),
         ),
-        // The `?action=` fall-through: the EDGE decides, and it reaches the
-        // same verb, so the core-side call is identical to `upload_png`'s.
-        up(
-            "upload_action_unknown",
-            "shot.png",
-            "image/png",
-            png.clone(),
-            None,
-        ),
         // ── The dedup arms (the order's Tier 1 item 5 named them; the §3
         // review of the follow-ups round 2 found them missing — and the code
         // WRONG behind them). F_INUSE's blob holds literal bytes stored as
@@ -879,6 +870,28 @@ fn images_routes_match_oracle() {
         // it wrote NOTHING rather than only that it answered 400.
         let tables = if *dump { Some(dump_tables(&db)) } else { None };
         let got = from_response(resp, 200, tables);
+        compare(name, &got, &oracle, &mut failed);
+    }
+
+    // P4.D220 (v4 `ad1c4c37f`): the POST is `dispatchAction(request,
+    // { generate }, uploadOrImport)`, so `?action=<unknown>` no longer UPLOADS —
+    // it is the middleware's envelope, answered by `quilltap-web`'s
+    // `query::dispatch_action` before any verb (the pre-`ad1c4c37f` row here
+    // proved the opposite: an unknown action uploaded). No core verb runs, so
+    // the v5 answer is the edge's two parts and a pristine dump — v4's dump
+    // must show that NOTHING was written either.
+    {
+        let name = "upload_action_unknown_refused";
+        driven.push(name.to_string());
+        let db = fresh_db(&spec, name);
+        let got = Got {
+            status: 400,
+            body: serde_json::json!({
+                "error": "Unknown action: zzz-not-an-action",
+                "availableActions": ["generate"],
+            }),
+            tables: Some(dump_tables(&db)),
+        };
         compare(name, &got, &oracle, &mut failed);
     }
 

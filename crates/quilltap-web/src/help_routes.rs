@@ -21,15 +21,16 @@
 //! - `GET    /api/v1/help-chats/{id}/messages`        → `{ messages }`
 //! - `POST   /api/v1/help-chats/{id}/messages`        → `{ messageId }`
 //!
-//! ## Two `?action=` shapes on one surface (memory note
-//! `v4-has-three-action-dispatch-shapes`)
+//! ## ONE `?action=` shape on the whole surface (since `ad1c4c37f`)
 //!
-//! The help-DOCS route is one of v4's DEFAULT-SERVING shapes: `if (action ===
-//! 'chat-count') … if (action === 'search') … return handleList` — an unknown
-//! or empty action falls through to the LIST. The help-CHATS routes use the
-//! hand-rolled `isValidAction` envelope: `if (!action) → default`, else an
-//! unknown action is `badRequest('Unknown action: X. Available actions: …')`.
-//! Both are reproduced exactly, so the two must not be "unified".
+//! Until `ad1c4c37f` this surface carried two of v4's dispatch shapes (memory
+//! note `v4-has-three-action-dispatch-shapes`): help-DOCS fell through to the
+//! list on any unknown or empty action, and help-CHATS hand-rolled
+//! `Unknown action: X. Available actions: …`. v4 unified every route on ONE
+//! `dispatchAction`, and so does this module — [`crate::query::
+//! dispatch_action`]: absent → the default (list / rename), known → the
+//! handler, a bare `?action=` or an unknown one → the `Unknown action`
+//! envelope with the route's `availableActions`.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -77,19 +78,26 @@ pub async fn help_docs_collection_get(
     State(state): State<SharedState>,
     Query(query): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    // v4 `getActionParam` = `searchParams.get('action')` (FIRST wins), compared
-    // with `===` — so `?action=` (empty) and any unknown action fall through to
-    // the list. NOT the truthiness gate of the envelope shape.
-    match crate::query::first(&query, "action") {
+    // v4 `dispatchAction(request, { 'chat-count', search }, list)`.
+    let action = match crate::query::dispatch_action(
+        &query,
+        &["chat-count", "search"],
+        "GET",
+        "/api/v1/help-docs",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    match action {
         Some("chat-count") => {
             dispatch(&state, CoreRequest::HelpDocsChatCount, StatusCode::OK).await
         }
-        Some("search") => {
+        Some(_search) => {
             // `searchParams.get('q') ?? ''` — FIRST wins; absent → ''.
             let q = crate::query::first(&query, "q").map(str::to_string);
             dispatch(&state, CoreRequest::HelpDocsSearch { q }, StatusCode::OK).await
         }
-        _ => dispatch(&state, CoreRequest::HelpDocsList, StatusCode::OK).await,
+        None => dispatch(&state, CoreRequest::HelpDocsList, StatusCode::OK).await,
     }
 }
 
@@ -112,17 +120,13 @@ pub async fn help_chats_collection_get(
     State(state): State<SharedState>,
     Query(query): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    // v4: `if (!action) return handleList` (truthiness — `?action=` lists), then
-    // `isValidAction(action, ['eligibility'])` else the envelope-shaped 400.
-    match crate::query::action(&query) {
-        None => dispatch(&state, CoreRequest::HelpChatList, StatusCode::OK).await,
-        Some("eligibility") => {
+    // v4 `dispatchAction(req, { eligibility }, list)` (`ad1c4c37f`).
+    match crate::query::dispatch_action(&query, &["eligibility"], "GET", "/api/v1/help-chats") {
+        Ok(None) => dispatch(&state, CoreRequest::HelpChatList, StatusCode::OK).await,
+        Ok(Some(_eligibility)) => {
             dispatch(&state, CoreRequest::HelpChatEligibility, StatusCode::OK).await
         }
-        Some(other) => error_json(
-            StatusCode::BAD_REQUEST,
-            &format!("Unknown action: {other}. Available actions: eligibility"),
-        ),
+        Err(r) => *r,
     }
 }
 
@@ -165,10 +169,16 @@ pub async fn help_chats_item_patch(
     body: axum::body::Bytes,
 ) -> AxumResponse {
     let parsed = parse_body(&body);
-    // v4's gate is `if (!action) return handleRename(...)` — JS truthiness, so
-    // a present-but-empty `?action=` renames exactly like an absent one.
-    match crate::query::action(&query) {
-        None => {
+    // v4 `dispatchAction(req, { 'update-context' }, rename)` (`ad1c4c37f`):
+    // a bare `?action=` no longer renames.
+    match crate::query::dispatch_action(
+        &query,
+        &["update-context"],
+        "PATCH",
+        "/api/v1/help-chats/[id]",
+    ) {
+        Err(r) => *r,
+        Ok(None) => {
             // `renameSchema` parses AFTER `verifyHelpChat` — the title rides raw.
             let req = CoreRequest::HelpChatRename {
                 chat_id: id,
@@ -176,7 +186,7 @@ pub async fn help_chats_item_patch(
             };
             dispatch(&state, req, StatusCode::OK).await
         }
-        Some("update-context") => {
+        Ok(Some(_update_context)) => {
             // Likewise `updateContextSchema` — parsed after the verify.
             let req = CoreRequest::HelpChatUpdateContext {
                 chat_id: id,
@@ -184,10 +194,6 @@ pub async fn help_chats_item_patch(
             };
             dispatch(&state, req, StatusCode::OK).await
         }
-        Some(other) => error_json(
-            StatusCode::BAD_REQUEST,
-            &format!("Unknown action: {other}. Available actions: update-context"),
-        ),
     }
 }
 

@@ -459,7 +459,8 @@ async function main(): Promise<void> {
     { name: 'route_list_both_bad', op: rGet(ROLF, '?limit=0&offset=-1') },
     { name: 'route_list_missing_character', op: rGet(NOBODY, '') },
     // `withActionDispatch`'s two refusals — this route passes NO default
-    // handler, so a missing action is `Action parameter required`.
+    // handler, so a missing action is `Action parameter required`; since v4
+    // `ad1c4c37f` a bare `?action=` is the UNKNOWN envelope (P4.D220).
     { name: 'route_post_no_action', op: rPost(ROLF, F_ROLL_NEW, '') },
     { name: 'route_post_unknown_action', op: rPost(ROLF, F_ROLL_NEW, '?action=bogus') },
     { name: 'route_post_empty_action', op: rPost(ROLF, F_ROLL_NEW, '?action=') },

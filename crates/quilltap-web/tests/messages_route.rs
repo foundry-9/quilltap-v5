@@ -203,25 +203,28 @@ async fn messages_get_edges() {
     assert_eq!(
         status, 400,
         "an unknown action is REFUSED, not quietly served by the default \
-         handler — `withActionDispatch` tests `if (action)` first"
+         handler — `dispatchAction` refuses anything but an own key"
     );
     assert_eq!(
         body,
         json!({"error": "Unknown action: no-such-action", "availableActions": ["transcript"]})
     );
 
-    // …while `?action=` is JS-falsy and takes the default leg, byte-identical
-    // to an absent one.
-    let (status, listed) = get(
+    // …and since `ad1c4c37f` a bare `?action=` is refused the same way (it was
+    // JS-falsy and LISTED until then) — v4's `dispatchAction`.
+    let (status, bare) = get(
         &client,
         &addr,
         &format!("/api/v1/messages?chatId={chat}&action="),
     )
     .await;
-    assert_eq!(status, 200);
+    assert_eq!(status, 400);
+    assert_eq!(
+        bare,
+        json!({"error": "Unknown action: ", "availableActions": ["transcript"]})
+    );
     let (status, absent) = get(&client, &addr, &format!("/api/v1/messages?chatId={chat}")).await;
     assert_eq!(status, 200);
-    assert_eq!(listed, absent, "`?action=` lists exactly like no action");
     assert_eq!(
         absent.as_object().unwrap().keys().collect::<Vec<_>>(),
         vec!["messages", "count"],

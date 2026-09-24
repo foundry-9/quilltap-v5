@@ -299,14 +299,6 @@ fn transcript_route_matches_oracle() {
             SOLO,
             Leg::Listing,
         ),
-        (
-            // v4's present-but-empty `?action=` is JS-falsy, so the dispatcher
-            // takes the DEFAULT leg — the same listing, byte for byte.
-            "an_empty_action_lists_like_an_absent_one",
-            Plant::None,
-            SOLO,
-            Leg::Listing,
-        ),
     ];
 
     for (i, (name, plant, chat_id, leg)) in cases.iter().enumerate() {
@@ -348,7 +340,7 @@ fn transcript_route_matches_oracle() {
         ran += 1;
     }
 
-    // ── the three EDGE-only arms: v4's exact bytes, pinned here and emitted by
+    // ── the four EDGE-only arms: v4's exact bytes, pinned here and emitted by
     //    `quilltap-web`'s `messages_route.rs` wire test.
     for (name, want_status, want_body) in [
         (
@@ -365,6 +357,13 @@ fn transcript_route_matches_oracle() {
             "an_unknown_action_is_refused_not_listed",
             400,
             json!({"error": "Unknown action: no-such-action", "availableActions": ["transcript"]}),
+        ),
+        (
+            // P4.D220 (v4 `ad1c4c37f`): the bare action no longer lists — it
+            // is the same envelope with an empty name.
+            "an_empty_action_is_refused_not_listed",
+            400,
+            json!({"error": "Unknown action: ", "availableActions": ["transcript"]}),
         ),
     ] {
         let want = oracle

@@ -112,7 +112,18 @@ pub async fn text_replacements_post(
 ) -> AxumResponse {
     // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
     // so the pair list collapses to the map the rest of the handler expects.
-    let query = crate::query::first_map(&pairs);
+    // v4 `dispatchAction(req, { 'bulk-replace' }, create)` (`ad1c4c37f`): the
+    // gate runs BEFORE the body is read, and a bare or unknown action is the
+    // `Unknown action` envelope — it used to create a rule.
+    let action = match crate::query::dispatch_action(
+        &pairs,
+        &["bulk-replace"],
+        "POST",
+        "/api/v1/settings/text-replacements",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
     let json_body: Value = if body.is_empty() {
         Value::Object(Default::default())
     } else {
@@ -123,7 +134,7 @@ pub async fn text_replacements_post(
     };
     // v4's action dispatch: `?action=bulk-replace` → the full-list replace (200);
     // otherwise create one rule (201).
-    if query.get("action").map(String::as_str) == Some("bulk-replace") {
+    if action.is_some() {
         let req = CoreRequest::TextReplacementsBulkReplace { body: json_body };
         return match dispatch_core(&state, req).await {
             Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
@@ -292,7 +303,9 @@ pub async fn chat_get_background(
     // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
     // so the pair list collapses to the map the rest of the handler expects.
     let query = crate::query::first_map(&pairs);
-    let req = match query.get("action").map(String::as_str) {
+    // Reached from `wardrobe_routes::chat_action_get` AFTER its fourteen-key
+    // gate, so the action here is absent or a v4-known name.
+    let req = match crate::query::action_param(&pairs) {
         Some("get-background") => CoreRequest::ChatGetBackground { chat_id: id },
         Some("cost") => CoreRequest::ChatGetCost {
             chat_id: id,

@@ -4,10 +4,11 @@
 //! and `help_chats_routes_equivalence`, which drive the handlers; what THIS
 //! test pins is the plumbing those differentials cannot see:
 //!
-//!   1. **The two `?action=` shapes.** The help-DOCS route is a default-serving
-//!      shape (`?action=bogus` and `?action=` both LIST); the help-CHATS routes
-//!      are the envelope shape (`?action=` takes the no-action leg, `?action=bogus`
-//!      is v4's fixed `Unknown action: …` 400). Both are edge decisions.
+//!   1. **ONE `?action=` shape (P4.D220, v4 `ad1c4c37f`).** Until that commit
+//!      help-DOCS listed on any unknown or empty action and help-CHATS
+//!      hand-rolled `Unknown action: X. Available actions: …`; every route is
+//!      v4's `dispatchAction` now — absent → the default, a bare `?action=` or
+//!      an unknown name → the `{error, availableActions}` 400. Edge decisions.
 //!   2. **The response variants are unwrapped** (a hand-maintained variant list
 //!      — the `BrahmaConsole`-missing-since-P4.D57 class), on every success path,
 //!      incl. create's 201.
@@ -112,18 +113,25 @@ async fn help_web_edges() {
             .any(|d| d["id"] == brahma_doc_id().as_str() && d["slug"] == "brahma-console"),
         "the fixture's unchanged rows keep their ids"
     );
-    // --- 1. help-docs: the default-serving action shape ---
-    let (_, bogus) = get(&client, &addr, "/api/v1/help-docs?action=bogus").await;
+    // --- 1. help-docs: `dispatchAction` — an unknown or bare action no longer
+    //     lists (it did until `ad1c4c37f`) ---
+    let (status, bogus) = get(&client, &addr, "/api/v1/help-docs?action=bogus").await;
     assert_eq!(
-        bogus["documents"].as_array().map(|a| a.len()),
-        Some(expected_help_docs),
-        "unknown action → list"
+        (status, bogus),
+        (
+            400,
+            json!({ "error": "Unknown action: bogus", "availableActions": ["chat-count", "search"] })
+        ),
+        "unknown action → the envelope"
     );
-    let (_, empty) = get(&client, &addr, "/api/v1/help-docs?action=").await;
+    let (status, empty) = get(&client, &addr, "/api/v1/help-docs?action=").await;
     assert_eq!(
-        empty["documents"].as_array().map(|a| a.len()),
-        Some(expected_help_docs),
-        "empty action → list"
+        (status, empty),
+        (
+            400,
+            json!({ "error": "Unknown action: ", "availableActions": ["chat-count", "search"] })
+        ),
+        "bare action → the envelope"
     );
     let (status, body) = get(&client, &addr, "/api/v1/help-docs?action=chat-count").await;
     assert_eq!(
@@ -154,18 +162,20 @@ async fn help_web_edges() {
         (404, json!({ "error": "Help document not found" }))
     );
 
-    // --- help-chats: the envelope action shape ---
+    // --- help-chats: the same `dispatchAction` shape ---
     let (status, body) = get(&client, &addr, "/api/v1/help-chats").await;
     assert_eq!(status, 200);
     // TWELVE since P4.D162 added H12, the GOOGLE seat (the fixture's only
     // non-ANTHROPIC profile — the one plugin that KEEPS an id-less tool row).
     assert_eq!(body["chats"].as_array().map(|a| a.len()), Some(12));
     let (status, body) = get(&client, &addr, "/api/v1/help-chats?action=").await;
-    assert_eq!(status, 200);
     assert_eq!(
-        body["chats"].as_array().map(|a| a.len()),
-        Some(12),
-        "empty action → the no-action leg"
+        (status, body),
+        (
+            400,
+            json!({ "error": "Unknown action: ", "availableActions": ["eligibility"] })
+        ),
+        "a bare action is refused, not listed (`ad1c4c37f`)"
     );
     let (status, body) = get(&client, &addr, "/api/v1/help-chats?action=eligibility").await;
     assert_eq!(status, 200);
@@ -175,7 +185,7 @@ async fn help_web_edges() {
         (status, body),
         (
             400,
-            json!({ "error": "Unknown action: bogus. Available actions: eligibility" })
+            json!({ "error": "Unknown action: bogus", "availableActions": ["eligibility"] })
         )
     );
 
@@ -241,9 +251,12 @@ async fn help_web_edges() {
     )
     .await;
     assert_eq!(
-        (status, body["chat"]["title"].clone()),
-        (200, json!("Via empty")),
-        "`?action=` renames"
+        (status, body),
+        (
+            400,
+            json!({ "error": "Unknown action: ", "availableActions": ["update-context"] })
+        ),
+        "`?action=` no longer renames (`ad1c4c37f`)"
     );
     let (status, body) = send(
         &client,
@@ -267,7 +280,7 @@ async fn help_web_edges() {
         (status, body),
         (
             400,
-            json!({ "error": "Unknown action: bogus. Available actions: update-context" })
+            json!({ "error": "Unknown action: bogus", "availableActions": ["update-context"] })
         )
     );
     let (status, body) = get(&client, &addr, &format!("/api/v1/help-chats/{H2}/messages")).await;

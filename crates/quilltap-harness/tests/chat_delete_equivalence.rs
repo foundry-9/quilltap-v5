@@ -94,7 +94,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
 use quilltap_core::api::chat_delete::{
-    chat_delete_dispatch, classify_delete_action, unknown_delete_action_message, DeleteAction,
+    chat_delete_dispatch, classify_delete_action, DeleteAction, RefusedDeleteAction,
     CHAT_DELETE_ACTIONS,
 };
 use quilltap_core::api::types::{ErrorKind, Response};
@@ -353,6 +353,35 @@ fn first_diff(got: &str, want: &str) -> String {
 /// The web-edge (status, body) for a `Response` — the mapping
 /// `chats_routes::chat_delete` performs, so the differential measures the bytes
 /// a client actually receives.
+/// The REST edge's two halves in order: v4's `dispatchAction` gate
+/// ([`classify_delete_action`]), then the dispatch. A refused action never
+/// reaches the dispatch; its answer is the envelope `quilltap-web`'s
+/// `query::unknown_action_response` renders from the refusal's two parts —
+/// the refused name and [`CHAT_DELETE_ACTIONS`] — re-assembled here because
+/// the harness does not link the web crate. The byte-for-byte proof that the
+/// edge emits exactly this lives in `quilltap-web`'s `chat_delete_route` and
+/// `query_param_semantics_equivalence`; THIS family pins the classification
+/// and the list against v4's recorded envelope, and the census proves the
+/// refusal wrote nothing.
+fn drive(
+    rt: &tokio::runtime::Runtime,
+    db: &Db,
+    chat_id: &str,
+    raw_action: Option<&str>,
+    body: Option<&Value>,
+) -> (u16, Value) {
+    match classify_delete_action(raw_action) {
+        Ok(action) => status_body(&rt.block_on(chat_delete_dispatch(db, chat_id, action, body))),
+        Err(RefusedDeleteAction { action }) => (
+            400,
+            json!({
+                "error": format!("Unknown action: {action}"),
+                "availableActions": CHAT_DELETE_ACTIONS,
+            }),
+        ),
+    }
+}
+
 fn status_body(r: &Response) -> (u16, Value) {
     match r {
         Response::ChatAdmin(v) | Response::State(v) | Response::ChatImpersonation(v) => {
@@ -627,10 +656,33 @@ fn chat_delete_matches_oracle() {
             chat_id: CHAT_FULL,
             body: Some(json!({})),
         },
-        // `?action=` present but EMPTY — JS-falsy, so it DELETES.
+        // `?action=` present but EMPTY. It DELETED the chat until `ad1c4c37f`
+        // (JS-falsy); v4's `dispatchAction` now refuses it (P4.D220) and the
+        // census proves nothing moved.
         Case {
             name: "action_empty",
             action: Some(""),
+            chat_id: CHAT_FULL,
+            body: Some(json!({})),
+        },
+        // The refusal precedes any chat lookup: 400, never 404.
+        Case {
+            name: "action_empty_missing_chat",
+            action: Some(""),
+            chat_id: MISSING_ID,
+            body: Some(json!({})),
+        },
+        Case {
+            name: "action_bogus_missing_chat",
+            action: Some("zzz"),
+            chat_id: MISSING_ID,
+            body: Some(json!({})),
+        },
+        // v4's own-property rule: an inherited `Object.prototype` name is
+        // unknown.
+        Case {
+            name: "action_inherited_name",
+            action: Some("toString"),
             chat_id: CHAT_FULL,
             body: Some(json!({})),
         },
@@ -639,13 +691,7 @@ fn chat_delete_matches_oracle() {
     for c in &cases {
         driven.insert(c.name.to_string());
         let db = fresh_db(&spec, c.name);
-        let r = rt.block_on(chat_delete_dispatch(
-            &db,
-            c.chat_id,
-            c.action,
-            c.body.as_ref(),
-        ));
-        let (status, body) = status_body(&r);
+        let (status, body) = drive(&rt, &db, c.chat_id, c.action, c.body.as_ref());
         let mut tables = census(&db, &spec);
 
         let Some(want) = oracle.get(c.name) else {
@@ -707,42 +753,45 @@ fn chat_delete_matches_oracle() {
     );
 }
 
-/// v4 `handleDelete`'s action classification in isolation — the arms the
-/// four-case corpus above exercises only one at a time, plus the two the corpus
+/// v4 `handleDelete`'s action classification in isolation — `dispatchAction`
+/// over the two-key map (`delete.ts` at `ad1c4c37f`) — plus the arms the corpus
 /// cannot express (a repeated key is the transport's business, and `None` and
-/// `Some("")` reach the same leg by DIFFERENT routes).
+/// `Some("")` now reach DIFFERENT legs).
 ///
-/// Needs no oracle: v4's `delete.ts:25-45` is four `if`s and the table below is
-/// their transcription. The bytes of the refusal sentence are pinned against v4
-/// by the `action_bogus` corpus row.
+/// Needs no oracle: the table below is v4's three-way rule transcribed. The
+/// refusal's bytes are pinned against v4 by the `action_*` corpus rows.
 #[test]
 fn delete_action_classification() {
-    assert_eq!(classify_delete_action(None), DeleteAction::Delete);
-    // JS truthiness: `?action=` is falsy, so it DELETES rather than refusing.
-    assert_eq!(classify_delete_action(Some("")), DeleteAction::Delete);
+    let refused = |a: &str| {
+        Err(RefusedDeleteAction {
+            action: a.to_string(),
+        })
+    };
+    assert_eq!(classify_delete_action(None), Ok(DeleteAction::Delete));
+    // `ad1c4c37f`: a bare `?action=` is an unknown action — it no longer
+    // DELETES the chat.
+    assert_eq!(classify_delete_action(Some("")), refused(""));
     assert_eq!(
         classify_delete_action(Some("reset-state")),
-        DeleteAction::ResetState
+        Ok(DeleteAction::ResetState)
     );
     assert_eq!(
         classify_delete_action(Some("stop-impersonate")),
-        DeleteAction::StopImpersonate
+        Ok(DeleteAction::StopImpersonate)
     );
-    // Case matters — v4 compares with `===`.
+    // Case matters — v4's `hasOwnProperty` is exact.
     assert_eq!(
         classify_delete_action(Some("Reset-State")),
-        DeleteAction::Unknown("Reset-State".into())
+        refused("Reset-State")
     );
+    assert_eq!(classify_delete_action(Some("delete")), refused("delete"));
+    // Own-property only: an inherited `Object.prototype` name is unknown.
     assert_eq!(
-        classify_delete_action(Some("delete")),
-        DeleteAction::Unknown("delete".into())
+        classify_delete_action(Some("toString")),
+        refused("toString")
     );
-    // The sentence's tail is JOINED from the one list, never transcribed twice.
+    // The envelope's list, in v4's map order.
     assert_eq!(CHAT_DELETE_ACTIONS, &["reset-state", "stop-impersonate"]);
-    assert_eq!(
-        unknown_delete_action_message("zzz"),
-        "Unknown DELETE action: zzz. Available DELETE actions: reset-state, stop-impersonate"
-    );
 }
 
 /// **P4.80 Tier 2, item 7 — the log lines.** A `logger.warn`/`logger.info` is
@@ -752,9 +801,10 @@ fn delete_action_classification() {
 /// vanishes, so each is pinned against v4's sentence, with the SILENCE half
 /// asserted too — without it a line moved to the wrong branch still passes.
 ///
-/// v4's five lines on this path, and where each lives:
-///   `[Chats v1] Unknown DELETE action, rejecting to prevent data loss` (warn,
-///       `delete.ts:42`)          → `api::chat_delete::chat_delete_dispatch`
+/// v4's lines on this path, and where each lives (`ad1c4c37f` RETIRED a
+/// fifth — the route's own `[Chats v1] Unknown DELETE action, rejecting to
+/// prevent data loss` warn — in favour of the middleware's `Unknown action
+/// requested`, which `quilltap-web` writes; its absence here is pinned):
 ///   `[Chats v1] Chat deleted`    (info, `delete.ts:56`)  → `api::chat_delete`
 ///   `Chat deleted`               (info, `chats.repository.ts:371`)
 ///   `Removed conversation summary from character vault` (debug,
@@ -785,7 +835,12 @@ fn chat_delete_log_lines() {
     // --- the happy delete: both `Chat deleted` lines + the per-vault debug ---
     let db = fresh_db(&spec, "log_delete");
     let lines = quilltap_core::test_support::captured(|| {
-        rt.block_on(chat_delete_dispatch(&db, CHAT_FULL, None, Some(&json!({}))));
+        rt.block_on(chat_delete_dispatch(
+            &db,
+            CHAT_FULL,
+            DeleteAction::Delete,
+            Some(&json!({})),
+        ));
     });
     let route_line = line_with(&lines, "[Chats v1] Chat deleted");
     assert!(
@@ -810,31 +865,24 @@ fn chat_delete_log_lines() {
         "one debug line per vault the sweep actually emptied; got {lines:#?}"
     );
     assert!(
-        !has(&lines, "Unknown DELETE action"),
+        !has(&lines, "Unknown DELETE action") && !has(&lines, "Unknown action requested"),
         "a no-action delete must not warn about an action: {lines:#?}"
     );
 
-    // --- the unknown-action refusal: the warn, and NOTHING about a delete ---
-    let db = fresh_db(&spec, "log_bogus");
+    // --- the unknown-action refusal: `ad1c4c37f` RETIRED the route's own
+    //     `[Chats v1] Unknown DELETE action, rejecting to prevent data loss`
+    //     warn — v4's middleware writes `Unknown action requested` instead,
+    //     at the WEB edge (`quilltap-web`'s `query::unknown_action_response`,
+    //     pinned in `chat_delete_route`). The core half is SILENT: the
+    //     classification writes no line and never reaches the cascade.
     let lines = quilltap_core::test_support::captured(|| {
-        rt.block_on(chat_delete_dispatch(
-            &db,
-            CHAT_FULL,
-            Some("zzz"),
-            Some(&json!({})),
-        ));
+        assert!(classify_delete_action(Some("zzz")).is_err());
+        assert!(classify_delete_action(Some("")).is_err());
     });
-    let warn = line_with(
-        &lines,
-        "[Chats v1] Unknown DELETE action, rejecting to prevent data loss",
-    );
-    assert!(warn.starts_with("WARN "), "v4 logs this at warn: {warn}");
-    for field in [format!("chat_id={CHAT_FULL}"), "action=zzz".to_string()] {
-        assert!(warn.contains(&field), "missing {field} in {warn}");
-    }
     assert!(
-        !has(&lines, "Chat deleted"),
-        "the refusal must not announce a delete: {lines:#?}"
+        !has(&lines, "Unknown DELETE action") && !has(&lines, "Chat deleted"),
+        "the retired route warn must stay gone, and a refusal announces no \
+         delete: {lines:#?}"
     );
 
     // --- the SILENCE half: a 404 delete announces nothing at all ---
@@ -843,7 +891,7 @@ fn chat_delete_log_lines() {
         rt.block_on(chat_delete_dispatch(
             &db,
             MISSING_ID,
-            None,
+            DeleteAction::Delete,
             Some(&json!({})),
         ));
     });
@@ -863,7 +911,7 @@ fn chat_delete_log_lines() {
         rt.block_on(chat_delete_dispatch(
             &db,
             CHAT_BROKEN,
-            None,
+            DeleteAction::Delete,
             Some(&json!({})),
         ));
     });
@@ -918,7 +966,7 @@ fn stop_impersonate_log_line() {
         rt.block_on(chat_delete_dispatch(
             &db,
             CHAT_IMP,
-            Some("stop-impersonate"),
+            DeleteAction::StopImpersonate,
             Some(&json!({ "participantId": P_IMP_CLIO })),
         ))
     });
@@ -948,7 +996,7 @@ fn stop_impersonate_log_line() {
         rt.block_on(chat_delete_dispatch(
             &db,
             MISSING_ID,
-            Some("stop-impersonate"),
+            DeleteAction::StopImpersonate,
             Some(&json!({ "participantId": P_IMP_CLIO })),
         ));
     });
@@ -963,7 +1011,7 @@ fn stop_impersonate_log_line() {
         rt.block_on(chat_delete_dispatch(
             &db,
             CHAT_IMP,
-            Some("stop-impersonate"),
+            DeleteAction::StopImpersonate,
             Some(&json!({ "participantId": P_UNKNOWN })),
         ));
     });
@@ -980,7 +1028,7 @@ fn stop_impersonate_log_line() {
         rt.block_on(chat_delete_dispatch(
             &db,
             CHAT_IMP,
-            Some("stop-impersonate"),
+            DeleteAction::StopImpersonate,
             Some(&json!({ "participantId": P_IMP_CLIO, "newConnectionProfileId": MISSING_ID })),
         ));
     });

@@ -20,11 +20,17 @@
 //! v5 read mirrors it, and a helper for it would be a rule with nothing to
 //! obey it. Add one, with its site, if v4 ever starts using it.
 //!
-//! Nothing but selection lives here. In particular [`first`] PRESERVES the
-//! empty string for `?k=`, because `URLSearchParams.get` does — the JS
-//! truthiness that turns `''` into "absent" belongs at the call site, exactly
-//! where v4 spells it. [`action`] is the one place that truthiness is shared,
-//! because v4 shares it too (one `if (action)` inside `withActionDispatch`).
+//! Nothing but selection lives here, bar ONE rule: v4's `?action=` dispatch.
+//! [`first`] PRESERVES the empty string for `?k=`, because `URLSearchParams.get`
+//! does — any JS truthiness that turns `''` into "absent" belongs at the call
+//! site, exactly where v4 spells it. The `?action=` rule is the exception
+//! because v4 shares it too: since `ad1c4c37f` ("Consolidate API action
+//! dispatch into single primitive") every v4 route reads its action through
+//! ONE `dispatchAction`, and [`dispatch_action`] / [`dispatch_required_action`]
+//! are its twin — absent → the route's default (or `Action parameter
+//! required`), a known action → its handler, and **anything else, a bare
+//! `?action=` included → `Unknown action: <x>`** with the route's
+//! `availableActions`.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
@@ -108,77 +114,127 @@ pub(crate) fn first_map(pairs: &[(String, String)]) -> std::collections::HashMap
     out
 }
 
-/// v4 `withActionDispatch`'s gate, whole: `getActionParam(request)` — which is
-/// `searchParams.get('action')`, so FIRST-wins — followed by `if (action)`.
+/// v4 `getActionParam(request)` — `searchParams.get('action')`, raw: FIRST
+/// wins, `None` when absent, and `Some("")` for BOTH a bare `?action=` and a
+/// key-only `?action` (`lib/api/middleware/actions.ts:73-75` at `ad1c4c37f`).
 ///
-/// That `if` is JS truthiness, so a **present-but-empty** `?action=` is falsy
-/// and takes the SAME no-action leg as an absent parameter. Returning `None`
-/// for both is what makes a v5 edge answer `?action=` the way v4 does; reading
-/// the raw [`first`] value at a call site would resurrect the bug.
-pub(crate) fn action(pairs: &[(String, String)]) -> Option<&str> {
-    match first(pairs, "action") {
-        None | Some("") => None,
-        Some(a) => Some(a),
+/// **There is no folding reader any more.** Until `ad1c4c37f` v4 gated on
+/// `if (action)`, so `''` took the no-action leg, and this module shipped an
+/// `action()` helper that folded `Some("")` into `None` to match. v4's ONE
+/// primitive (`dispatchAction`) now distinguishes them — absent runs the
+/// fallback, a bare `?action=` is refused as an unknown action — so the fold
+/// was deleted rather than renamed, and every edge now reads through
+/// [`dispatch_action`] / [`dispatch_required_action`] (P4.D220). Read this raw
+/// value directly only where the route has no action map at all.
+pub(crate) fn action_param(pairs: &[(String, String)]) -> Option<&str> {
+    first(pairs, "action")
+}
+
+/// v4 `dispatchAction(request, handlers, fallback)` — the gate half, for a
+/// route that HAS a fallback (`ad1c4c37f`, `actions.ts:153-183`):
+///
+/// - **absent** → `Ok(None)`: the caller runs its default (list, create,
+///   delete, download …);
+/// - **known** → `Ok(Some(name))`, the matching entry of `available` — an
+///   exact own-key match, so `?action=toString` is unknown exactly as v4's
+///   `Object.prototype.hasOwnProperty.call` makes it;
+/// - **bare `?action=` or unknown** → `Err`, v4's
+///   `{"error":"Unknown action: <x>","availableActions":[…]}` 400 plus its
+///   WARN. A bare action renders `"Unknown action: "` (trailing space) and
+///   NEVER reaches the default — on a DELETE the default deletes, on the
+///   restore POST it restores.
+///
+/// `available` is v4's `Object.keys(handlers)` — the thunk map's literal, in
+/// insertion order — and is the route's FULL v4 list even where v5 serves only
+/// some of those actions on REST (the caller answers its own loud pointer for
+/// a known-but-unserved name). The `Err` is boxed: an `AxumResponse` dwarfs
+/// the `Ok` (clippy `result_large_err`).
+pub(crate) fn dispatch_action<'a>(
+    pairs: &[(String, String)],
+    available: &[&'a str],
+    method: &str,
+    path: &str,
+) -> Result<Option<&'a str>, Box<AxumResponse>> {
+    match action_param(pairs) {
+        None => Ok(None),
+        Some(action) => match available.iter().find(|a| **a == action) {
+            Some(known) => Ok(Some(*known)),
+            None => Err(Box::new(unknown_action_response(
+                action, available, method, path,
+            ))),
+        },
     }
 }
 
-/// v4 `withActionDispatch`'s unknown-action refusal, byte-shaped:
-/// `{"error":"Unknown action: <x>","availableActions":[…]}` at **400**, plus
-/// v4's `actionLogger.warn('Unknown action requested', …)`.
+/// v4 `dispatchAction(request, handlers)` with NO fallback: the route takes
+/// only actions, so an absent one is the `Action parameter required` envelope
+/// (plus its WARN); bare and unknown refuse exactly as in [`dispatch_action`].
+pub(crate) fn dispatch_required_action<'a>(
+    pairs: &[(String, String)],
+    available: &[&'a str],
+    method: &str,
+    path: &str,
+) -> Result<&'a str, Box<AxumResponse>> {
+    match dispatch_action(pairs, available, method, path)? {
+        Some(action) => Ok(action),
+        None => Err(Box::new(action_required_response(available, method, path))),
+    }
+}
+
+/// v4 `unknownActionResponse` (`actions.ts:83-99` at `ad1c4c37f`):
+/// `{"error":"Unknown action: <x>","availableActions":[…]}` at **400** — `error`
+/// first, `availableActions` second, at the top level (`preserve_order`) —
+/// plus `actionLogger.warn('Unknown action requested', {action,
+/// availableActions, method, path})` at v4's field NAMES.
 ///
-/// `available` is v4's `Object.keys(actions)` — the route file's handler-map
-/// literal, in **insertion order**. Only a TRUTHY unknown action may reach
-/// here; `?action=` belongs on the no-action leg (see [`action`]).
+/// Reached for a bare `?action=` too (`action == ""`). `path` is the route's
+/// PATTERN (`/api/v1/mount-points/[id]`), where v4 logs
+/// `request.nextUrl.pathname` — a recorded value-only divergence on the log
+/// line (the body carries no path).
 pub(crate) fn unknown_action_response(
     action: &str,
     available: &[&str],
     method: &str,
     path: &str,
 ) -> AxumResponse {
-    // `available_actions`, not v4's `availableActions` — the tree's snake_case
-    // log-field convention, a recorded divergence (see the test module's doc).
     tracing::warn!(
         action,
-        available_actions = ?available,
+        availableActions = ?available,
         method,
         path,
         "Unknown action requested"
     );
-    (
-        StatusCode::BAD_REQUEST,
-        [("content-type", "application/json")],
-        serde_json::json!({
-            "error": format!("Unknown action: {action}"),
-            "availableActions": available,
-        })
-        .to_string(),
-    )
-        .into_response()
+    action_envelope(&format!("Unknown action: {action}"), available)
 }
 
-/// v4 `withActionDispatch`'s no-action-and-no-default refusal:
+/// v4 `actionRequiredResponse` (`actions.ts:104-118` at `ad1c4c37f`):
 /// `{"error":"Action parameter required","availableActions":[…]}` at **400**,
-/// plus `actionLogger.warn('No action param and no default handler', …)`.
+/// plus `actionLogger.warn('No action param and no default handler',
+/// {method, path, availableActions})`.
 ///
-/// Reached only where the v4 route passes NO `defaultHandler` — a route with a
-/// default answers the default here instead.
+/// Reached only where the v4 route passes NO fallback — a route with one
+/// answers its default here instead.
 pub(crate) fn action_required_response(
     available: &[&str],
     method: &str,
     path: &str,
 ) -> AxumResponse {
-    // Same recorded field-spelling divergence as the unknown-action warn.
     tracing::warn!(
-        available_actions = ?available,
         method,
         path,
+        availableActions = ?available,
         "No action param and no default handler"
     );
+    action_envelope("Action parameter required", available)
+}
+
+/// The one 400 body both refusals share.
+fn action_envelope(error: &str, available: &[&str]) -> AxumResponse {
     (
         StatusCode::BAD_REQUEST,
         [("content-type", "application/json")],
         serde_json::json!({
-            "error": "Action parameter required",
+            "error": error,
             "availableActions": available,
         })
         .to_string(),
@@ -186,23 +242,21 @@ pub(crate) fn action_required_response(
         .into_response()
 }
 
-/// **P4.72 (P4.67's Tier 3) — v4's two `actionLogger.warn` lines.**
+/// **P4.72 (P4.67's Tier 3) — v4's two `actionLogger.warn` lines**, moved to
+/// `ad1c4c37f`'s `actions.ts:88,108` by P4.D220.
 ///
-/// `withActionDispatch` writes one line beside each of its two refusals
-/// (`lib/api/middleware/actions.ts:103,124`): `Unknown action requested`
-/// with `{action, availableActions, method, path}`, and `No action param and
-/// no default handler` with `{method, path, availableActions}`. Both are
-/// emitted above; nothing but a capture layer can see them, because a
-/// differential compares bodies and a log line is not one (memory note
-/// `differential-blind-to-a-log-only-fix`).
+/// `dispatchAction` writes one line beside each of its two refusals:
+/// `Unknown action requested` with `{action, availableActions, method, path}`,
+/// and `No action param and no default handler` with `{method, path,
+/// availableActions}`. Both are emitted above; nothing but a capture layer can
+/// see them, because a differential compares bodies and a log line is not one
+/// (memory note `differential-blind-to-a-log-only-fix`).
 ///
-/// **One recorded difference, deliberate:** the field is spelled
-/// `available_actions`, not v4's `availableActions`. Every ported warn in this
-/// tree spells its fields in snake_case (`chat_id`, `profile_id`, … — see
-/// `image_gen/lora_support.rs`), and `combined.log` is read as a whole; making
-/// this one line camelCase would buy v4 parity on one line at the cost of
-/// consistency across every other. The SENTENCES are byte-exact, which is what
-/// an operator greps for.
+/// **P4.D220 closed the recorded field-NAME divergence:** P4.72 spelled the
+/// list field `available_actions` for the tree's snake_case convention; it is
+/// now v4's `availableActions`, so a `combined.log` grep written against v4
+/// matches v5 too. The remaining difference is the `path` VALUE (v5 logs the
+/// route pattern, v4 the concrete pathname — see [`unknown_action_response`]).
 #[cfg(test)]
 mod action_warn_pins {
     use super::*;
@@ -231,7 +285,7 @@ mod action_warn_pins {
         assert!(line.starts_with("WARN "), "v4 logs this at warn: {line}");
         for field in [
             "action=zzz",
-            r#"available_actions=["scan", "convert"]"#,
+            r#"availableActions=["scan", "convert"]"#,
             "method=POST",
             "path=/api/v1/mount-points/[id]",
         ] {
@@ -247,7 +301,7 @@ mod action_warn_pins {
         let line = line_with(&lines, "No action param and no default handler");
         assert!(line.starts_with("WARN "), "v4 logs this at warn: {line}");
         for field in [
-            r#"available_actions=["scan", "convert"]"#,
+            r#"availableActions=["scan", "convert"]"#,
             "method=POST",
             "path=/api/v1/mount-points/[id]",
         ] {
@@ -261,17 +315,47 @@ mod action_warn_pins {
         );
     }
 
-    /// The silence half: a SERVED action writes neither line. Without this a
-    /// warn moved to the wrong branch would still pass both tests above.
+    /// The silence half: an absent action on a route WITH a default, and a
+    /// SERVED action, write neither line. Without this a warn moved to the
+    /// wrong branch would still pass both tests above.
     #[test]
     fn a_served_action_writes_neither_line() {
         let lines = captured(|| {
-            assert_eq!(action(&[("action".into(), "scan".into())]), Some("scan"));
+            let known = [("action".to_string(), "scan".to_string())];
+            assert!(matches!(
+                dispatch_action(&known, AVAILABLE, "POST", "/p"),
+                Ok(Some("scan"))
+            ));
+            assert!(matches!(
+                dispatch_action(&[], AVAILABLE, "POST", "/p"),
+                Ok(None)
+            ));
         });
         assert!(
             !lines.iter().any(|l| l.contains("Unknown action requested")
                 || l.contains("No action param and no default handler")),
             "a served action must be silent; got {lines:#?}"
+        );
+    }
+
+    /// The bare `?action=` takes the UNKNOWN line (v4 `actions.ts:182`), never
+    /// the no-action one — the leg `ad1c4c37f` moved.
+    #[test]
+    fn a_bare_action_warns_as_unknown() {
+        let lines = captured(|| {
+            let bare = [("action".to_string(), String::new())];
+            assert!(dispatch_action(&bare, AVAILABLE, "POST", "/p").is_err());
+        });
+        let line = line_with(&lines, "Unknown action requested");
+        assert!(
+            line.contains("action= "),
+            "the empty action is named: {line}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("No action param and no default handler")),
+            "a bare action is not an absent one: {lines:#?}"
         );
     }
 }
@@ -306,28 +390,108 @@ mod tests {
         assert_eq!(first(&p, "absent"), None);
     }
 
-    /// The whole point of [`action`]: `?action=` is JS-falsy, so it takes the
-    /// no-action leg — indistinguishable from an absent parameter.
-    #[test]
-    fn action_folds_empty_into_absent() {
-        assert_eq!(action(&pairs(&[("action", "")])), None);
-        assert_eq!(action(&pairs(&[])), None);
-        assert_eq!(action(&pairs(&[("action", "export")])), Some("export"));
+    /// The status + parsed body of a refusal, for the vectors below.
+    async fn refusal(resp: Box<AxumResponse>) -> (u16, serde_json::Value) {
+        let status = resp.status().as_u16();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
     }
 
-    /// `getActionParam` is `searchParams.get`, so a repeated `action` resolves
-    /// to the FIRST value — including when the first one is the empty string,
-    /// which still takes the no-action leg.
+    const MAP: &[&str] = &["favorite", "export", "avatar"];
+
+    /// `getActionParam` is raw `searchParams.get`: `?action=` and a key-only
+    /// `?action` both read `''`, never `null` (v4 `actions.test.ts`).
     #[test]
-    fn action_is_first_wins() {
+    fn action_param_preserves_the_bare_action() {
+        assert_eq!(action_param(&pairs(&[("action", "")])), Some(""));
+        assert_eq!(action_param(&pairs(&[])), None);
         assert_eq!(
-            action(&pairs(&[("action", "export"), ("action", "bogus")])),
-            Some("export")
+            action_param(&pairs(&[("action", "first"), ("action", "second")])),
+            Some("first")
         );
         assert_eq!(
-            action(&pairs(&[("action", ""), ("action", "export")])),
-            None
+            action_param(&pairs(&[("action", ""), ("action", "export")])),
+            Some("")
         );
+    }
+
+    /// v4 `dispatchAction`'s three-way rule, vector for vector
+    /// (`__tests__/unit/lib/api/middleware/actions.test.ts` at `ad1c4c37f`).
+    #[tokio::test]
+    async fn dispatch_action_is_v4s_three_way_rule() {
+        // absent → the fallback (`Ok(None)`); known → that action.
+        assert!(matches!(
+            dispatch_action(&pairs(&[]), MAP, "GET", "/p"),
+            Ok(None)
+        ));
+        assert!(matches!(
+            dispatch_action(&pairs(&[("action", "export")]), MAP, "GET", "/p"),
+            Ok(Some("export"))
+        ));
+        // first wins: `?action=export&action=zzz` is `export`.
+        assert!(matches!(
+            dispatch_action(
+                &pairs(&[("action", "export"), ("action", "zzz")]),
+                MAP,
+                "GET",
+                "/p"
+            ),
+            Ok(Some("export"))
+        ));
+        // unknown → the envelope with the map's keys in insertion order.
+        let err = dispatch_action(&pairs(&[("action", "unknown")]), MAP, "GET", "/p").unwrap_err();
+        assert_eq!(
+            refusal(err).await,
+            (
+                400,
+                serde_json::json!({"error": "Unknown action: unknown", "availableActions": ["favorite", "export", "avatar"]})
+            )
+        );
+        // bare → `Unknown action: ` (trailing space), NEVER the fallback.
+        let err = dispatch_action(&pairs(&[("action", "")]), MAP, "GET", "/p").unwrap_err();
+        let (status, body) = refusal(err).await;
+        assert_eq!(status, 400);
+        assert_eq!(
+            serde_json::to_string(&body).unwrap(),
+            r#"{"error":"Unknown action: ","availableActions":["favorite","export","avatar"]}"#
+        );
+        // `?action=&action=export` reads the FIRST — the bare one — and refuses.
+        assert!(dispatch_action(
+            &pairs(&[("action", ""), ("action", "export")]),
+            MAP,
+            "GET",
+            "/p"
+        )
+        .is_err());
+        // own-property only: an inherited `Object.prototype` name is unknown.
+        let err = dispatch_action(&pairs(&[("action", "toString")]), MAP, "GET", "/p").unwrap_err();
+        assert_eq!(refusal(err).await.1["error"], "Unknown action: toString");
+        // an EMPTY map (v4 `dispatchAction(req, {}, list)`): `[]`.
+        let err = dispatch_action(&pairs(&[("action", "any")]), &[], "GET", "/p").unwrap_err();
+        assert_eq!(
+            refusal(err).await.1,
+            serde_json::json!({"error": "Unknown action: any", "availableActions": []})
+        );
+    }
+
+    /// No fallback: absent → `Action parameter required` with the list; the
+    /// other two arms as above.
+    #[tokio::test]
+    async fn dispatch_required_action_refuses_the_absent_action() {
+        let err = dispatch_required_action(&pairs(&[]), MAP, "POST", "/p").unwrap_err();
+        assert_eq!(
+            serde_json::to_string(&refusal(err).await.1).unwrap(),
+            r#"{"error":"Action parameter required","availableActions":["favorite","export","avatar"]}"#
+        );
+        assert!(matches!(
+            dispatch_required_action(&pairs(&[("action", "avatar")]), MAP, "POST", "/p"),
+            Ok("avatar")
+        ));
+        let err =
+            dispatch_required_action(&pairs(&[("action", "")]), MAP, "POST", "/p").unwrap_err();
+        assert_eq!(refusal(err).await.1["error"], "Unknown action: ");
     }
 
     /// v4's `wantsAttachment` truth table, whole: only the exact strings `'1'`

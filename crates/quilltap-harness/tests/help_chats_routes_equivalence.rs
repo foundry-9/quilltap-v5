@@ -253,6 +253,17 @@ fn help_chats_routes_match_oracle() {
         .enable_all()
         .build()
         .unwrap();
+    // P4.D220: the four `?action=` refusals (v4's middleware envelope).
+    let envelope_rows: Vec<(&str, &str, &[&str])> = vec![
+        ("list_empty_action_refused", "", &["eligibility"]),
+        ("get_unknown_action_400", "bogus", &["eligibility"]),
+        ("patch_empty_action_refused", "", &["update-context"]),
+        ("patch_unknown_action_400", "bogus", &["update-context"]),
+    ];
+    let envelope_failed: Vec<String> = envelope_rows
+        .iter()
+        .filter_map(|(n, a, l)| action_envelope_mismatch(&oracle, n, a, l))
+        .collect();
     let mut failed: Vec<String> = Vec::new();
     let mut checked = 0usize;
     let mut check = |name: &str, resp: &Response, created: bool, after: Option<Value>| {
@@ -303,7 +314,6 @@ fn help_chats_routes_match_oracle() {
         ("list_user_a", USER_A),
         ("list_user_b", USER_B),
         ("list_user_c_empty", USER_C),
-        ("list_empty_action_lists", USER_A),
     ] {
         let db = fresh_db(&spec, name);
         check(name, &help_chats::help_chat_list(&db, user), false, None);
@@ -321,18 +331,6 @@ fn help_chats_routes_match_oracle() {
             None,
         );
     }
-    // The envelope-shaped 400 is the WEB EDGE's (v4 `badRequest(...)` from the
-    // route module, before any handler) — reproduce the edge's exact response.
-    check(
-        "get_unknown_action_400",
-        &Response::error(
-            ErrorKind::BadRequest,
-            "Unknown action: bogus. Available actions: eligibility",
-        ),
-        false,
-        None,
-    );
-
     // --- create ---
     {
         let db = fresh_db(&spec, "create2");
@@ -414,7 +412,6 @@ fn help_chats_routes_match_oracle() {
         ("rename_wrong_type_400", H2, json!(5)),
         ("rename_missing_chat_bad_body_404", MISSING, json!(5)),
         ("rename_salon_bad_body_404", SALON, json!("")),
-        ("patch_empty_action_renames", H3, json!("Via empty action")),
     ];
     for (name, chat, title) in &renames {
         let db = fresh_db(&spec, name);
@@ -443,16 +440,6 @@ fn help_chats_routes_match_oracle() {
         let r = rt.block_on(help_chats::help_chat_update_context(&db, chat, url));
         check(name, &r, false, None);
     }
-    check(
-        "patch_unknown_action_400",
-        &Response::error(
-            ErrorKind::BadRequest,
-            "Unknown action: bogus. Available actions: update-context",
-        ),
-        false,
-        None,
-    );
-
     // --- delete ---
     for (name, chat) in [
         ("delete_h3", H3),
@@ -517,6 +504,8 @@ fn help_chats_routes_match_oracle() {
         check(name, &resp, false, None);
     }
 
+    let checked = checked + envelope_rows.len();
+    failed.extend(envelope_failed);
     assert_eq!(
         checked,
         oracle.len(),
@@ -524,4 +513,34 @@ fn help_chats_routes_match_oracle() {
         oracle.len()
     );
     assert!(failed.is_empty(), "help-chats-routes FAILED: {failed:?}");
+}
+
+/// P4.D220 (v4 `ad1c4c37f`): a `?action=` refusal is v4's ONE `dispatchAction`
+/// envelope — `{error: "Unknown action: <x>", availableActions: [...]}` at 400
+/// — produced by the route's middleware before any handler runs. In v5 it is
+/// the WEB EDGE's answer (`quilltap-web`'s `query::dispatch_action`, rendered
+/// from exactly these two parts and pinned byte-for-byte over the wire by
+/// `help_web_routes`); no core verb carries it, so this family pins v4's
+/// recorded bytes against the parts the edge renders from. `None` = match.
+fn action_envelope_mismatch(
+    oracle: &std::collections::HashMap<String, Value>,
+    name: &str,
+    action: &str,
+    available: &[&str],
+) -> Option<String> {
+    let want = serde_json::json!({
+        "error": format!("Unknown action: {action}"),
+        "availableActions": available,
+    });
+    let row = &oracle[name];
+    if row["status"].as_u64() == Some(400) && row["body"] == want {
+        eprintln!("[{name}] OK (400 envelope).");
+        None
+    } else {
+        eprintln!(
+            "[{name}] ENVELOPE MISMATCH: v4 {} {}",
+            row["status"], row["body"]
+        );
+        Some(name.to_string())
+    }
 }

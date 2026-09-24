@@ -225,6 +225,15 @@ pub async fn files_get(
     // fixed inline disposition (`files/[id]/handlers/get.ts` passes `request`
     // to `handleDownloadFile` alone).
     let disposition = crate::query::disposition_for(&pairs);
+    // v4 `dispatchAction(request, { thumbnail }, download)` (`files/[id]/
+    // handlers/get.ts` at `ad1c4c37f`): the gate runs BEFORE either leg looks
+    // the file up, so a bare or unknown action on a MISSING file is the
+    // `Unknown action` 400, not a 404 (it used to fall through to download).
+    let action =
+        match crate::query::dispatch_action(&pairs, &["thumbnail"], "GET", "/api/v1/files/[id]") {
+            Ok(a) => a,
+            Err(r) => return *r,
+        };
     let (db, backend) = match db_and_backend(&state) {
         Ok(v) => v,
         Err(resp) => return *resp,
@@ -236,7 +245,7 @@ pub async fn files_get(
         Err(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to serve file"),
     };
 
-    if query.get("action").map(String::as_str) == Some("thumbnail") {
+    if action.is_some() {
         // v4 handleGetThumbnail: parse + clamp size, gate on resizable image.
         let mut size = DEFAULT_THUMBNAIL_SIZE;
         if let Some(raw) = query.get("size") {
@@ -892,12 +901,19 @@ pub async fn mount_point_action_post(
     // CLI is a thin HTTP client posting v4's own URL, so serving it here keeps
     // the two launchers' transports identical and spares Tier R a normalizer.
     // Its body is JSON, so it is taken before the multipart gate below.
-    if crate::query::action(&query) == Some("sync") {
+    // v4 `withActionDispatch({ …thirteen… })` — no default handler. Since
+    // `ad1c4c37f` a bare `?action=` is refused as unknown (it used to take the
+    // `Action parameter required` leg).
+    let action = match crate::query::dispatch_required_action(&query, AVAILABLE, "POST", PATH) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    if action == "sync" {
         return mount_point_sync_post(state, id, req).await;
     }
     // === end P4.D210 ===
-    match crate::query::action(&query) {
-        Some("write-file") => {}
+    match action {
+        "write-file" => {}
         // A v4-KNOWN action this edge does not serve: v4 would DISPATCH it (the
         // oracle's `known` row is v4's `handleScan` running), so v4's
         // `Unknown action:` envelope would be a lie here — and one that lists
@@ -905,17 +921,13 @@ pub async fn mount_point_action_post(
         // unification review restored the loud v5 refusal the order asked
         // for; the divergence is RECORDED in `query_param_semantics_equivalence`
         // (`UNSERVED_KNOWN_ACTIONS`).
-        Some(other) if AVAILABLE.contains(&other) => {
+        _ => {
             return error_json(
                 StatusCode::BAD_REQUEST,
                 "Only the multipart 'write-file' action is served on this route; \
                  JSON mount actions ride POST /api/dispatch",
             )
         }
-        Some(other) => {
-            return crate::query::unknown_action_response(other, AVAILABLE, "POST", PATH)
-        }
-        None => return crate::query::action_required_response(AVAILABLE, "POST", PATH),
     }
     let content_type = req
         .headers()
@@ -1102,15 +1114,38 @@ pub async fn chat_files_post(
     Query(pairs): Query<crate::query::QueryPairs>,
     req: axum::extract::Request,
 ) -> AxumResponse {
-    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
-    // so the pair list collapses to the map the rest of the handler expects.
-    let params = crate::query::first_map(&pairs);
+    // v4 `dispatchAction(req, { link, 'attach-mount-file' }, upload)`
+    // (`ad1c4c37f`) — run AFTER v4's chat-404 (`route.ts` resolves the chat
+    // first). A bare or unknown action is the `Unknown action` envelope; it
+    // used to fall through to the multipart upload. The two served actions and
+    // the upload keep their chat-404 inside the core handlers, so only the
+    // refusal needs the lookup here.
+    let action = match crate::query::dispatch_action(
+        &pairs,
+        &["link", "attach-mount-file"],
+        "POST",
+        "/api/v1/chats/[id]/files",
+    ) {
+        Ok(a) => a,
+        Err(refusal) => {
+            let (db, _) = match db_and_backend(&state) {
+                Ok(v) => v,
+                Err(resp) => return *resp,
+            };
+            let cid = chat_id.clone();
+            return match db.read_main(move |c| quilltap_core::db::chats_read::find_by_id(c, &cid)) {
+                Ok(Some(_)) => *refusal,
+                Ok(None) => not_found("Chat"),
+                Err(_) => error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+            };
+        }
+    };
     // P4.9E4A: v4's `?action=attach-mount-file` leg (files/route.ts:250). The
     // two fields are read as raw JSON and coerced to `""` when absent or
     // non-string, because v4's validation is hand-rolled (`!v || typeof v !==
     // 'string'`), not Zod — so both arms answer the same `badRequest`, produced
     // by the core handler AFTER its chat-404 (v4 resolves the chat first).
-    if params.get("action").map(String::as_str) == Some("attach-mount-file") {
+    if action == Some("attach-mount-file") {
         let bytes = match axum::body::to_bytes(req.into_body(), 1024 * 1024).await {
             Ok(b) => b,
             Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid request body"),
@@ -1133,7 +1168,7 @@ pub async fn chat_files_post(
             Err(r) => r,
         };
     }
-    if params.get("action").map(String::as_str) == Some("link") {
+    if action == Some("link") {
         let bytes = match axum::body::to_bytes(req.into_body(), 1024 * 1024).await {
             Ok(b) => b,
             Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid request body"),

@@ -146,6 +146,10 @@ const ENDPOINTS: Endpoint[] = [
     mod: '@/app/api/v1/chats/route',
     method: 'GET',
     path: '/api/v1/chats',
+    // P4.D220: the map is EMPTY since `944127d9a` + `ad1c4c37f` (v4 retired
+    // the Quick-hide probe) — no action is known here any more. The probe
+    // keeps the RETIRED name so the first-wins row still has two distinct
+    // values; both halves now answer the empty-map `Unknown action` 400.
     known: 'has-dangerous',
   },
   {
@@ -454,7 +458,6 @@ function applyMocks(): void {
       list: async () => [],
       findAll: async () => [],
       countAll: async () => 0,
-      hasDangerous: async () => false,
       // `characters/[id]` GET's DEFAULT leg counts the character's chats.
       findByCharacterId: async () => [],
       getMessages: async () => [],

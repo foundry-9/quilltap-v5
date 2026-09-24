@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(web): one `?action=` dispatch rule on every REST edge — a bare action no longer deletes, restores or uploads (P4.D220)
+
+_Versions: core 0.0.1045, harness 0.0.965, web 0.0.192._
+
+Ports v4 `ad1c4c37f` (one `dispatchAction` primitive) and `68da64d9b`
+(the chat GET's fourteen actions through it) onto the web edges. Every
+`?action=` read now goes through `query::dispatch_action` /
+`dispatch_required_action`: an absent action runs the route's default (or
+answers `Action parameter required`), a known action runs its handler, and
+anything else, including a bare `?action=`, answers
+`{"error":"Unknown action: <x>","availableActions":[...]}` with v4's full
+list in v4's order. The old `query::action()`, which folded a bare action
+into an absent one, is deleted.
+
+Fixed data defects: a bare `DELETE /chats/{id}?action=` deleted the chat;
+a bare or unknown `POST /system/restore` ran a restore; a bare action
+uploaded on `POST /chats/{id}/files`, created a rule on
+`POST /settings/text-replacements`, imported on `POST /images`, and
+created a wardrobe item or renamed a help/Brahma chat on their PATCH/POST.
+The nine hand-rolled refusal sentences (tools, unlock, jobs,
+conversation summaries, profile PATCH, help chats, Brahma, the chat
+DELETE) are replaced by the envelope. The unlock edge logs
+`Error in database key action` at error when the passphrase change throws.
+The file GET refuses before its lookup; the chat-files POST refuses after
+its chat 404, as v4 does. The terminal POST's `Missing or invalid action
+parameter` is now the absent-action default only. The two middleware
+WARN lines log `availableActions` under v4's field name. v5-known actions
+it does not serve on REST keep their named pointers, and the absent-action
+pointers on the character GET, character-create POST and chat GET are
+pinned as divergences in `query_param_semantics_equivalence`, re-recorded
+at `b0b6656b5` with every endpoint's `fold` now false.
+
 #### 2026-09-24 — docs(porting): close the P4.D222 lane — neutrality legs, the full gate, the mirror pre-list
 
 _Docs-only change._

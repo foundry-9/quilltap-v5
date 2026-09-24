@@ -115,17 +115,17 @@ pub async fn wardrobe_get(
     // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
     // so the pair list collapses to the map the rest of the handler expects.
     let query = crate::query::first_map(&pairs);
-    let req = match crate::query::action(&pairs) {
-        Some("instructions") => CoreRequest::WardrobeInstructionsGet,
-        Some(other) => {
-            return crate::query::unknown_action_response(
-                other,
-                &["instructions"],
-                "GET",
-                "/api/v1/wardrobe",
-            )
-        }
-        _ => CoreRequest::WardrobeList {
+    // v4 `withCollectionActionDispatch({ instructions }, list)` — rebuilt on
+    // `dispatchAction` by `ad1c4c37f`, so a bare `?action=` (which listed)
+    // is now the `Unknown action` envelope.
+    let action =
+        match crate::query::dispatch_action(&pairs, &["instructions"], "GET", "/api/v1/wardrobe") {
+            Ok(a) => a,
+            Err(r) => return *r,
+        };
+    let req = match action {
+        Some(_instructions) => CoreRequest::WardrobeInstructionsGet,
+        None => CoreRequest::WardrobeList {
             include_archived: read_include_archived(&query),
         },
     };
@@ -142,18 +142,18 @@ pub async fn wardrobe_post(
 ) -> AxumResponse {
     // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
     // so the pair list collapses to the map the rest of the handler expects.
-    let query = crate::query::first_map(&pairs);
-    if let Some(other) = crate::query::action(&pairs) {
-        if other != "instructions" {
-            return crate::query::unknown_action_response(
-                other,
-                &["instructions"],
-                "POST",
-                "/api/v1/wardrobe",
-            );
-        }
-    }
-    if query.get("action").map(String::as_str) == Some("instructions") {
+    // v4 `withCollectionActionDispatch({ instructions }, create)` — a bare
+    // `?action=` (which created) is now refused as unknown (`ad1c4c37f`).
+    let action = match crate::query::dispatch_action(
+        &pairs,
+        &["instructions"],
+        "POST",
+        "/api/v1/wardrobe",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    if action.is_some() {
         let body = match parse_body(&body, "Internal server error") {
             Ok(v) => v,
             Err(r) => return *r,
@@ -294,10 +294,27 @@ pub async fn chat_action_get(
     path: Path<String>,
     query: Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    // v4's chat GET is a plain `if (action === '…')` chain whose fallthrough is
-    // the full chat payload, so absent / `?action=` / unknown all delegate the
-    // same way here; only FIRST-wins had to change.
-    match crate::query::first(&query.0, "action") {
+    // v4 `68da64d9b` put the chat GET's old `if (action === '…')` ladder (whose
+    // fallthrough served the full chat payload for absent / `?action=` /
+    // unknown alike) behind `dispatchAction` with the FOURTEEN-key thunk map:
+    // a bare or unknown action is now the `Unknown action` envelope, answered
+    // BEFORE any chat read (v4's test asserts `findById` is not called — so an
+    // unknown action on a MISSING chat is 400, never 404). The absent action is
+    // v4's full chat payload, which v5 serves over `/api/dispatch` only: it
+    // keeps the loud pointer in `chat_get_background` (a recorded divergence,
+    // pinned both ways in `query_param_semantics_equivalence`). (NB `68da64d9b`'s
+    // message says it "adds `dispatchAction`" — its diff never touches the
+    // middleware; the primitive is `ad1c4c37f`'s.)
+    let action = match crate::query::dispatch_action(
+        &query.0,
+        CHAT_GET_ACTIONS,
+        "GET",
+        "/api/v1/chats/[id]",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    match action {
         Some("outfit") => {
             let req = CoreRequest::ChatOutfitGet { chat_id: path.0 };
             match dispatch_core(&state.0, req).await {
@@ -370,9 +387,84 @@ pub async fn chat_action_get(
                 Err(r) => r,
             }
         }
+        // `get-background`, `cost`, the absent action and the v4-known actions
+        // v5 serves only over dispatch — the pointer lives there.
         _ => chat_get_background(state, path, query).await,
     }
 }
+
+/// v4's chat-GET thunk map, in literal order (`chats/[id]/handlers/get.ts:60-82`
+/// at `68da64d9b` — the old if-ladder's order): the `availableActions` of the
+/// unknown/bare refusal.
+const CHAT_GET_ACTIONS: &[&str] = &[
+    "export",
+    "export-markdown",
+    "get-avatars",
+    "get-state",
+    "outfit",
+    "outfit-summary",
+    "photo-albums",
+    "informs",
+    "group-stores",
+    "mailbox",
+    "accessible-stores",
+    "get-background",
+    "gallery",
+    "cost",
+];
+
+/// v4's chat-POST thunk map, in literal order (`chats/[id]/handlers/post.ts` at
+/// `ad1c4c37f` — the retired `CHAT_POST_ACTIONS` constant's order, which the
+/// map kept): the `availableActions` of both refusals. v4 has NO fallback here.
+const CHAT_POST_ACTIONS: &[&str] = &[
+    "regenerate-title",
+    "rebuild-summary",
+    "add-tag",
+    "remove-tag",
+    "impersonate",
+    "set-active-speaker",
+    "turn",
+    "add-participant",
+    "update-participant",
+    "remove-participant",
+    "rebuild-system-prompt",
+    "bulk-reattribute",
+    "set-avatar",
+    "remove-avatar",
+    "add-tool-result",
+    "queue-memories",
+    "extract-memories-dry-run",
+    "recall-replay",
+    "update-tool-settings",
+    "rng",
+    "run-tool",
+    "toggle-agent-mode",
+    "regenerate-background",
+    "reclassify-danger",
+    "equip",
+    "toggle-avatar-generation",
+    "regenerate-avatar",
+    "render-conversation",
+    "active-document",
+    "open-documents",
+    "recent-documents",
+    "open-document",
+    "close-document",
+    "read-document",
+    "resolve-document",
+    "write-document",
+    "rename-document",
+    "delete-document",
+    "announcement",
+    "inform",
+    "cancel-inform",
+    "announcement-preview",
+    "impersonation-voice-preview",
+    "send-mail",
+    "merge-conversation",
+    "scenario",
+    "save-image",
+];
 
 // ===========================================================================
 // POST /api/v1/chats/{id} — equip | regenerate-avatar
@@ -384,18 +476,29 @@ pub async fn chat_action_post(
     Query(pairs): Query<crate::query::QueryPairs>,
     body: String,
 ) -> AxumResponse {
-    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
-    // so the pair list collapses to the map the rest of the handler expects.
-    let query = crate::query::first_map(&pairs);
-    let req = match query.get("action").map(String::as_str) {
-        Some("equip") => {
+    // v4 `dispatchAction(req, { …forty-seven… })` with NO fallback
+    // (`ad1c4c37f`): absent → `Action parameter required`, bare / unknown →
+    // `Unknown action`, answered here byte-for-byte. v4 looks the chat up
+    // FIRST (`notFound('Chat')`); this edge gates without a lookup — the
+    // recorded gate-ORDER divergence (`query_param_semantics_equivalence`).
+    let action = match crate::query::dispatch_required_action(
+        &pairs,
+        CHAT_POST_ACTIONS,
+        "POST",
+        "/api/v1/chats/[id]",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    let req = match action {
+        "equip" => {
             let body = match parse_body(&body, "Failed to equip wardrobe slot") {
                 Ok(v) => v,
                 Err(r) => return *r,
             };
             CoreRequest::ChatEquip { chat_id, body }
         }
-        Some("regenerate-avatar") => {
+        "regenerate-avatar" => {
             let body = match parse_body(&body, "Failed to queue avatar regeneration") {
                 Ok(v) => v,
                 Err(r) => return *r,
@@ -408,7 +511,7 @@ pub async fn chat_action_post(
         // variant — the `tri_state_edges_share_the_decoder` census forbids the
         // second spelling, and P4.98's measured drift (an explicit `null`
         // answering two different things on the two transports) is why.
-        Some("inform") => {
+        "inform" => {
             let parsed: serde_json::Value =
                 serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
             match crate::request_envelope::request_envelope(
@@ -429,7 +532,7 @@ pub async fn chat_action_post(
                 }
             }
         }
-        Some("cancel-inform") => {
+        "cancel-inform" => {
             let parsed: serde_json::Value =
                 serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
             match crate::request_envelope::request_envelope(
@@ -446,8 +549,9 @@ pub async fn chat_action_post(
         }
         // === end P4.D205 ===
         // Only these POST actions are served on this REST edge; the other
-        // chat actions ride POST /api/dispatch (a loud pointer, not a silent
-        // 404 — the mount-point-action precedent).
+        // v4-known chat actions ride POST /api/dispatch (a loud pointer, not a
+        // silent 404 — the mount-point-action precedent — and never the
+        // `Unknown action` envelope, which would list the action it refuses).
         _ => {
             return error_json(
                 StatusCode::BAD_REQUEST,

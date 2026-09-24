@@ -116,12 +116,23 @@ pub async fn system_restore_post(
     Query(pairs): Query<crate::query::QueryPairs>,
     body: axum::body::Body,
 ) -> AxumResponse {
-    // v4 `system/restore/route.ts` hand-rolls `if (action === 'upload')` /
-    // `'preview'` / else `handleRestore`, so absent, `?action=` and an unknown
-    // action all reach the restore leg; only FIRST-wins had to change.
-    match crate::query::first(&pairs, "action").unwrap_or("") {
-        "upload" => handle_upload(&state, body).await,
-        "preview" => {
+    // v4 `dispatchAction(req, { upload, preview }, restore)` (`ad1c4c37f`):
+    // "the fallback runs a full restore, so an unknown action must be a 400
+    // rather than falling through to it". Until then v4 hand-rolled `if
+    // (action === 'upload')` / `'preview'` / else `handleRestore`, so a bare
+    // `?action=` AND an unknown action RAN a restore — and so did this edge.
+    let action = match crate::query::dispatch_action(
+        &pairs,
+        &["upload", "preview"],
+        "POST",
+        "/api/v1/system/restore",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    match action {
+        Some("upload") => handle_upload(&state, body).await,
+        Some(_preview) => {
             let Some(parsed) = collect_json(body).await else {
                 return error_json(StatusCode::BAD_REQUEST, "Invalid JSON body");
             };
@@ -131,8 +142,8 @@ pub async fn system_restore_post(
                 Err(r) => r,
             }
         }
-        // Default: restore.
-        _ => {
+        // Default (an ABSENT action only): restore.
+        None => {
             let Some(parsed) = collect_json(body).await else {
                 return error_json(StatusCode::BAD_REQUEST, "Invalid JSON body");
             };

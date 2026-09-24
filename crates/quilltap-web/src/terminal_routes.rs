@@ -221,10 +221,8 @@ pub async fn terminal_get(
     }
 }
 
-#[derive(Deserialize)]
-pub struct ActionQuery {
-    action: Option<String>,
-}
+/// v4's `withActionDispatch` map on `POST /terminals/[id]`, in literal order.
+const TERMINAL_POST_ACTIONS: &[&str] = &["kill", "signal", "write"];
 
 #[derive(Deserialize)]
 struct WriteBody {
@@ -234,14 +232,31 @@ struct WriteBody {
 pub async fn terminal_post(
     State(state): State<SharedState>,
     Path(id): Path<String>,
-    Query(query): Query<ActionQuery>,
+    Query(pairs): Query<crate::query::QueryPairs>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
     let (manager, _db) = match manager_and_db(&state) {
         Ok(v) => v,
         Err(resp) => return *resp,
     };
-    match query.action.as_deref() {
+    // v4 `withActionDispatch({ kill, signal, write }, () => badRequest('Missing
+    // or invalid action parameter'))`: the fixed sentence is v4's DEFAULT, so
+    // only an ABSENT action gets it; a bare or unknown action is the
+    // middleware's `Unknown action` envelope. (v5 used to answer the default's
+    // sentence for an unknown action too — the old `if (action)` gate sent a
+    // bare `?action=` there, but never an unknown name; P4.D220 closed it.)
+    // The pair list, not a `Query<struct>`, so a repeated `action` reads the
+    // FIRST value as `searchParams.get` does.
+    let action = match crate::query::dispatch_action(
+        &pairs,
+        TERMINAL_POST_ACTIONS,
+        "POST",
+        "/api/v1/terminals/[id]",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    match action {
         // v4 kill/signal both deliver through ptyManager.kill; the P4.1c
         // manager's kill is SIGTERM (its documented signal — see the module
         // note there on interactive shells).

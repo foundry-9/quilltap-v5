@@ -346,7 +346,8 @@ fn cases() -> Vec<Case> {
         bad_json("jobs_body_not_json", Jobs, ""),
         // ── system/unlock: the action gate, then the body-shape gate ──
         c("unlock_action_missing", Unlock, "", json!({})),
-        // `?action=` present but EMPTY — v4's `!action` reads it as absent.
+        // `?action=` present but EMPTY — an UNKNOWN action since `ad1c4c37f`
+        // (v4's old `!action` read it as absent; P4.D220).
         c("unlock_action_empty", Unlock, "__EMPTY__", json!({})),
         c("unlock_action_unknown", Unlock, "bogus", json!({})),
         bad_json("unlock_body_not_json", Unlock, "change-passphrase"),

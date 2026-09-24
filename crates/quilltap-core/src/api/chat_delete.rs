@@ -65,42 +65,51 @@ pub async fn chat_delete(db: &Db, chat_id: &str) -> Response {
 // The whole `handleDelete` dispatch
 // ---------------------------------------------------------------------------
 
-/// v4's own list, and the tail of the unknown-action sentence
-/// (`delete.ts:43` spells the two names inline; this is their single home).
+/// v4's `handleDelete` thunk map, in literal order (`delete.ts` at
+/// `ad1c4c37f`): the `availableActions` of the `Unknown action` refusal.
 pub const CHAT_DELETE_ACTIONS: &[&str] = &["reset-state", "stop-impersonate"];
 
 /// Which leg of v4's `handleDelete` a `?action=` value takes.
 ///
-/// The `Unknown` arm carries the action so the caller can build v4's sentence;
-/// `Delete` is BOTH the absent parameter and the present-but-empty one, because
-/// v4's gate is `if (action)` — JS truthiness — and `''` is falsy
-/// (`delete.ts:42`). Taking the RAW `searchParams.get('action')` here rather
-/// than a pre-folded value is what puts that fold under the differential.
+/// `Delete` is the ABSENT parameter only. Until `ad1c4c37f` it was also the
+/// present-but-empty one — v4 gated on `if (action)`, JS truthiness, so a bare
+/// `?action=` DELETED the chat; v4's one `dispatchAction` primitive now refuses
+/// it as an unknown action ([`classify_delete_action`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeleteAction {
     ResetState,
     StopImpersonate,
-    Unknown(String),
     Delete,
 }
 
-/// v4 `handleDelete`'s action classification (`delete.ts:25-45`).
-pub fn classify_delete_action(raw_action: Option<&str>) -> DeleteAction {
-    match raw_action {
-        Some("reset-state") => DeleteAction::ResetState,
-        Some("stop-impersonate") => DeleteAction::StopImpersonate,
-        // JS truthiness: `''` takes the same leg as an absent parameter.
-        Some(a) if !a.is_empty() => DeleteAction::Unknown(a.to_string()),
-        _ => DeleteAction::Delete,
-    }
+/// A `?action=` value v4's `dispatchAction` refuses on this route: a bare
+/// `?action=` (`action == ""`) or a name that is not an own key of the map.
+/// The transport renders it as v4's envelope — `{"error":"Unknown action:
+/// <action>","availableActions":`[`CHAT_DELETE_ACTIONS`]`}` at 400, plus the
+/// middleware's `Unknown action requested` WARN (`quilltap-web`'s
+/// `query::unknown_action_response`); it never reaches the cascade.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefusedDeleteAction {
+    pub action: String,
 }
 
-/// v4's unknown-DELETE-action sentence (`delete.ts:43`), verbatim.
-pub fn unknown_delete_action_message(action: &str) -> String {
-    format!(
-        "Unknown DELETE action: {action}. Available DELETE actions: {}",
-        CHAT_DELETE_ACTIONS.join(", ")
-    )
+/// v4 `handleDelete`'s action classification — `dispatchAction(req,
+/// {'reset-state', 'stop-impersonate'}, deleteChat)` (`delete.ts` at
+/// `ad1c4c37f`). Takes the RAW `searchParams.get('action')`, so the
+/// absent-vs-bare distinction is under the differential.
+pub fn classify_delete_action(
+    raw_action: Option<&str>,
+) -> Result<DeleteAction, RefusedDeleteAction> {
+    match raw_action {
+        None => Ok(DeleteAction::Delete),
+        Some("reset-state") => Ok(DeleteAction::ResetState),
+        Some("stop-impersonate") => Ok(DeleteAction::StopImpersonate),
+        // A bare `?action=` and any unknown name alike — the fallback deletes
+        // the whole chat, so neither may fall through to it.
+        Some(a) => Err(RefusedDeleteAction {
+            action: a.to_string(),
+        }),
+    }
 }
 
 /// v4 `stopImpersonateSchema` (`app/api/v1/chats/[id]/schemas.ts:140-143`):
@@ -170,10 +179,9 @@ fn parse_stop_impersonate(body: &Value) -> Result<(String, Option<String>), Valu
     }
 }
 
-/// v4 `handleDelete` (`app/api/v1/chats/[id]/handlers/delete.ts:19-64`), whole.
-///
-/// `raw_action` is `getActionParam(req)` — i.e. `searchParams.get('action')`,
-/// UNFOLDED. `body` is what `await req.json()` would yield (`{}` when there is
+/// v4 `handleDelete` (`app/api/v1/chats/[id]/handlers/delete.ts`), whole bar
+/// the action gate, which runs first ([`classify_delete_action`] — v4's
+/// middleware refuses a bare/unknown action before any thunk). `body` is what `await req.json()` would yield (`{}` when there is
 /// no body); it is read ONLY on the `stop-impersonate` leg, and only AFTER the
 /// chat exists, because that is v4's order (`delete.ts:33-40`): a malformed
 /// body against a missing chat is a **404**, not a 400.
@@ -185,7 +193,9 @@ fn parse_stop_impersonate(body: &Value) -> Result<(String, Option<String>), Valu
 pub async fn chat_delete_dispatch(
     db: &Db,
     chat_id: &str,
-    raw_action: Option<&str>,
+    // Classified by [`classify_delete_action`]; a refused action never gets
+    // here (the transport answers v4's envelope first).
+    action: DeleteAction,
     // `None` = the request bytes were not JSON at all (an EMPTY body included):
     // v4's `await req.json()` throws a `SyntaxError` the middleware turns into
     // 500 `Internal server error` — but only on the leg that READS the body,
@@ -193,7 +203,7 @@ pub async fn chat_delete_dispatch(
     // outcome; the composite decides where it matters (§3 unification review).
     body: Option<&Value>,
 ) -> Response {
-    match classify_delete_action(raw_action) {
+    match action {
         // v4 hands the chat id straight to `handleResetState`; no body is read.
         DeleteAction::ResetState => super::salon::chat_state_reset(db, chat_id).await,
         DeleteAction::StopImpersonate => {
@@ -227,18 +237,6 @@ pub async fn chat_delete_dispatch(
                 // ZodError into `validationError(err)`.
                 Err(issues) => Response::validation_error(issues),
             }
-        }
-        // v4: "Reject unrecognized actions to prevent accidental chat deletion".
-        DeleteAction::Unknown(action) => {
-            tracing::warn!(
-                chat_id = %chat_id,
-                action = %action,
-                "[Chats v1] Unknown DELETE action, rejecting to prevent data loss"
-            );
-            Response::error(
-                ErrorKind::BadRequest,
-                unknown_delete_action_message(&action),
-            )
         }
         DeleteAction::Delete => chat_delete(db, chat_id).await,
     }

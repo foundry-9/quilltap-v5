@@ -181,6 +181,20 @@ fn help_docs_routes_match_oracle() {
         oracle.insert(v["name"].as_str().unwrap().to_string(), v);
     }
 
+    // P4.D220 (v4 `ad1c4c37f`): `?action=bogus` and `?action=` no longer fall
+    // through to the list — v4's `dispatchAction` refuses both.
+    let envelope_rows: Vec<(&str, &str, &[&str])> = vec![
+        (
+            "list_unknown_action_refused",
+            "bogus",
+            &["chat-count", "search"],
+        ),
+        ("list_empty_action_refused", "", &["chat-count", "search"]),
+    ];
+    let envelope_failed: Vec<String> = envelope_rows
+        .iter()
+        .filter_map(|(n, a, l)| action_envelope_mismatch(&oracle, n, a, l))
+        .collect();
     let mut failed: Vec<String> = Vec::new();
     let mut checked = 0usize;
     let mut check = |name: &str, resp: &Response| {
@@ -203,17 +217,11 @@ fn help_docs_routes_match_oracle() {
         }
     };
 
-    // The list, and the two fallthroughs (the edge resolves `?action=bogus` /
-    // `?action=` to the same `HelpDocsList` verb — asserted here by dispatching
-    // the verb the edge would pick; the edge's selection is pinned by the web
-    // wire test).
-    for name in [
-        "list",
-        "list_unknown_action_falls_through",
-        "list_empty_action_falls_through",
-    ] {
-        let db = fresh_db(&spec, name);
-        check(name, &help_docs::help_docs_list(&db));
+    // The list. (The two `?action=` fallthrough rows that sat beside it retired
+    // with `ad1c4c37f`; they are the envelope rows above.)
+    {
+        let db = fresh_db(&spec, "list");
+        check("list", &help_docs::help_docs_list(&db));
     }
     {
         let db = fresh_db(&spec, "cca");
@@ -265,6 +273,8 @@ fn help_docs_routes_match_oracle() {
         check(name, &help_docs::help_docs_search(&db, *q));
     }
 
+    let checked = checked + envelope_rows.len();
+    failed.extend(envelope_failed);
     assert_eq!(
         checked,
         oracle.len(),
@@ -272,4 +282,34 @@ fn help_docs_routes_match_oracle() {
         oracle.len()
     );
     assert!(failed.is_empty(), "help-docs-routes FAILED: {failed:?}");
+}
+
+/// P4.D220 (v4 `ad1c4c37f`): a `?action=` refusal is v4's ONE `dispatchAction`
+/// envelope — `{error: "Unknown action: <x>", availableActions: [...]}` at 400
+/// — produced by the route's middleware before any handler runs. In v5 it is
+/// the WEB EDGE's answer (`quilltap-web`'s `query::dispatch_action`, rendered
+/// from exactly these two parts and pinned byte-for-byte over the wire by
+/// `help_web_routes`); no core verb carries it, so this family pins v4's
+/// recorded bytes against the parts the edge renders from. `None` = match.
+fn action_envelope_mismatch(
+    oracle: &std::collections::HashMap<String, Value>,
+    name: &str,
+    action: &str,
+    available: &[&str],
+) -> Option<String> {
+    let want = serde_json::json!({
+        "error": format!("Unknown action: {action}"),
+        "availableActions": available,
+    });
+    let row = &oracle[name];
+    if row["status"].as_u64() == Some(400) && row["body"] == want {
+        eprintln!("[{name}] OK (400 envelope).");
+        None
+    } else {
+        eprintln!(
+            "[{name}] ENVELOPE MISMATCH: v4 {} {}",
+            row["status"], row["body"]
+        );
+        Some(name.to_string())
+    }
 }

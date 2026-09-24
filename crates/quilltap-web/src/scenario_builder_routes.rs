@@ -99,12 +99,8 @@ pub async fn scenario_builder_get(
     State(state): State<SharedState>,
     Query(query): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    match crate::query::action(&query) {
-        Some("capabilities") => {}
-        Some(other) => {
-            return crate::query::unknown_action_response(other, &["capabilities"], "GET", PATH)
-        }
-        None => return crate::query::action_required_response(&["capabilities"], "GET", PATH),
+    if let Err(r) = crate::query::dispatch_required_action(&query, &["capabilities"], "GET", PATH) {
+        return *r;
     }
     match dispatch_core(&state, CoreRequest::ScenarioBuilderCapabilities).await {
         Ok(CoreResponse::ScenarioBuilder(v)) => (
@@ -128,12 +124,8 @@ pub async fn scenario_builder_post(
     Query(query): Query<crate::query::QueryPairs>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    match crate::query::action(&query) {
-        Some("build") => {}
-        Some(other) => {
-            return crate::query::unknown_action_response(other, &["build"], "POST", PATH)
-        }
-        None => return crate::query::action_required_response(&["build"], "POST", PATH),
+    if let Err(r) = crate::query::dispatch_required_action(&query, &["build"], "POST", PATH) {
+        return *r;
     }
 
     // v4 `try { raw = await req.json() } catch { return badRequest(...) }` — a

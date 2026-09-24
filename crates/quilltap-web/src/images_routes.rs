@@ -1,20 +1,20 @@
 //! The `/api/v1/images` COLLECTION REST edges (P4.73) — v4
 //! `app/api/v1/images/route.ts` plus the `[id]` DELETE arm.
 //!
-//! ## The POST is v4's FIRST dispatch shape, not the envelope shape
+//! ## The POST is v4's `dispatchAction` (since `ad1c4c37f`)
 //!
-//! `route.ts:161-171` reads `getActionParam(request)` and runs the generate leg
-//! only on the literal `'generate'`. There is no `withActionDispatch`, so there
-//! is no `Unknown action: …` envelope and no `Action parameter required`
-//! refusal: **every other value — an unknown action, `?action=` (empty), and no
-//! `action` key at all — falls through to the upload/import leg.**
-//! `?action=bogus` uploads. That is why this module reads the action through
-//! [`crate::query::action`] (v4's own `''`-is-falsy fold) and then compares to
-//! the one literal, rather than reaching for `unknown_action_response`.
+//! Until `ad1c4c37f` `route.ts` read `getActionParam(request)` and ran the
+//! generate leg only on the literal `'generate'`, so EVERY other value — an
+//! unknown action, a bare `?action=`, no key at all — fell through to the
+//! upload/import leg (`?action=bogus` uploaded). v4's one primitive now runs
+//! the POST: `dispatchAction(request, { generate }, uploadOrImport)`. **Only an
+//! ABSENT action uploads**; a bare or unknown one is the `Unknown action`
+//! envelope with `availableActions: ["generate"]` ([`crate::query::
+//! dispatch_action`]).
 //!
 //! Registered in `query_param_semantics_equivalence`'s `ENDPOINTS` as
-//! `images_collection_post`, whose `unknown` / `empty` probes are exactly this
-//! fall-through.
+//! `images_collection_post`, whose `unknown` / `empty` probes are exactly those
+//! refusals.
 //!
 //! ## The JSON body ceiling (P4.76, the P4.73 review's item (d))
 //!
@@ -123,10 +123,9 @@ pub async fn image_delete(
 
 /// v4 `POST /api/v1/images` (`route.ts:159-171` + `handleUploadOrImport`).
 ///
-/// ⚠ The action read is v4's FIRST dispatch shape, not the envelope shape:
-/// only the literal `'generate'` takes the generate leg, and EVERY other value
-/// — unknown, `?action=` (empty, JS-falsy), or no key at all — falls through to
-/// upload/import. There is no `Unknown action` envelope on this route.
+/// The action read is v4's `dispatchAction` (`ad1c4c37f`): `'generate'` takes
+/// the generate leg, an ABSENT action falls through to upload/import, and a
+/// bare `?action=` or an unknown one is the `Unknown action` envelope.
 ///
 /// The fall-through then dispatches on the request's own `content-type`:
 /// `application/json` → import-from-URL, `multipart/form-data` → upload,
@@ -136,10 +135,10 @@ pub async fn images_post(
     Query(pairs): Query<crate::query::QueryPairs>,
     req: axum::extract::Request,
 ) -> AxumResponse {
-    // `query::action` folds `?action=` into the no-action leg exactly as v4's
-    // JS truthiness does; on this route BOTH land in the same place.
-    if crate::query::action(&pairs) == Some("generate") {
-        return images_generate(state, req).await;
+    match crate::query::dispatch_action(&pairs, &["generate"], "POST", "/api/v1/images") {
+        Ok(Some(_generate)) => return images_generate(state, req).await,
+        Ok(None) => {}
+        Err(r) => return *r,
     }
 
     let content_type = req

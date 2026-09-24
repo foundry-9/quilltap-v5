@@ -60,10 +60,12 @@ async fn dispatch_system(
     }
 }
 
-/// v4 `TOOLS_GET_ACTIONS` / `TOOLS_POST_ACTIONS` (`app/api/v1/system/tools/
-/// route.ts`) — the whole lists, and the source of the 400's tail. v5 does not
-/// serve `capabilities-report-progress` (GET); it stays in the tail because the
-/// tail is v4's `join(', ')` over the CONSTANT, not over what this edge
+/// v4's `system/tools` GET / POST thunk maps (`app/api/v1/system/tools/
+/// route.ts` at `ad1c4c37f`, which deleted the old `TOOLS_*_ACTIONS` constants
+/// and passes the maps to `dispatchAction` with NO fallback) — the whole lists
+/// in literal order, the `availableActions` of both refusals. v5 does not
+/// serve `capabilities-report-progress` (GET); it stays in the list because the
+/// list is v4's `Object.keys` over the MAP, not over what this edge
 /// dispatches. (`ai-import-stream` on POST is SERVED since P4.9K2.)
 const TOOLS_GET_ACTIONS: &[&str] = &[
     "tasks-queue",
@@ -76,6 +78,10 @@ const TOOLS_GET_ACTIONS: &[&str] = &[
     "capabilities-report-get",
     "memory-dedup-preview",
 ];
+
+/// v4 `system/unlock`'s thunk map, in literal order (`route.ts` at
+/// `ad1c4c37f`) — the `availableActions` of both refusals.
+const UNLOCK_ACTIONS: &[&str] = &["setup", "unlock", "store", "change-passphrase", "lock"];
 
 const TOOLS_POST_ACTIONS: &[&str] = &[
     "delete-data",
@@ -90,37 +96,19 @@ const TOOLS_POST_ACTIONS: &[&str] = &[
     "ai-import-stream",
 ];
 
-/// v4's `system/tools` refusal: `isValidAction` with NO `!action` carve-out, so
-/// an ABSENT action reaches the same sentence and interpolates as the literal
-/// `null` — while `?action=` interpolates as the empty string. The two must
-/// stay distinguishable, which is why this takes `Option`.
-fn tools_unknown_action(action: Option<&str>, verb: &str, available: &[&str]) -> AxumResponse {
-    // A v4-KNOWN action this edge does not serve (`capabilities-report-progress`
-    // on GET — it rides `/api/dispatch` in v5; `ai-import-stream` on POST is
-    // served since P4.9K2) must
-    // not be refused as "unknown" by a sentence that lists it as available. The
-    // §3 unification review put the loud, honest refusal back; the divergence is
-    // RECORDED in `query_param_semantics_equivalence` (`UNSERVED_KNOWN_ACTIONS`).
-    if let Some(a) = action.filter(|a| available.contains(a)) {
-        return error_json(
-            StatusCode::BAD_REQUEST,
-            &format!("The '{a}' action is not served on this route; it rides POST /api/dispatch"),
-        );
-    }
+/// A v4-KNOWN `system/tools` action this edge does not serve
+/// (`capabilities-report-progress` on GET — it rides `/api/dispatch` in v5;
+/// `ai-import-stream` on POST is served since P4.9K2). It must not be refused
+/// with v4's `Unknown action` envelope, which would list it as available in
+/// the answer that refuses it. The §3 unification review of P4.67 put the
+/// loud, honest refusal here; the divergence is RECORDED in
+/// `query_param_semantics_equivalence` (`UNSERVED_KNOWN_ACTIONS`). The absent,
+/// bare and unknown shapes never reach it — [`crate::query::
+/// dispatch_required_action`] answered them first.
+fn tools_unserved_action(action: &str) -> AxumResponse {
     error_json(
         StatusCode::BAD_REQUEST,
-        &format!(
-            "Unknown action: {}. Available {verb} actions: {}",
-            action.unwrap_or("null"),
-            available.join(", ")
-        ),
-    )
-}
-
-fn unknown_action(action: &str) -> AxumResponse {
-    error_json(
-        StatusCode::BAD_REQUEST,
-        &format!("Unknown action: {action}"),
+        &format!("The '{action}' action is not served on this route; it rides POST /api/dispatch"),
     )
 }
 
@@ -263,8 +251,17 @@ pub async fn system_tools_get(
 ) -> AxumResponse {
     // Every query key this route reads is a v4 `searchParams.get` — FIRST wins.
     let q = crate::query::first_map(&pairs);
-    let action = crate::query::first(&pairs, "action");
-    match action.unwrap_or("") {
+    // v4 `dispatchAction(req, { …nine… })` — no fallback (`ad1c4c37f`).
+    let action = match crate::query::dispatch_required_action(
+        &pairs,
+        TOOLS_GET_ACTIONS,
+        "GET",
+        "/api/v1/system/tools",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    match action {
         "tasks-queue" => {
             dispatch_system(&state, CoreRequest::SystemTasksQueue, StatusCode::OK).await
         }
@@ -387,7 +384,7 @@ pub async fn system_tools_get(
                 .map(|s| s.parse::<f64>().unwrap_or(f64::NAN));
             dispatch_memory_maintenance(&state, CoreRequest::MemoryDedupPreview { threshold }).await
         }
-        _ => tools_unknown_action(action, "GET", TOOLS_GET_ACTIONS),
+        _ => tools_unserved_action(action),
     }
 }
 
@@ -403,7 +400,16 @@ pub async fn system_tools_post(
 ) -> AxumResponse {
     // `action` is the only key this verb reads off the URL (every other value
     // comes out of the body); v4 reads it with `searchParams.get` — FIRST wins.
-    let action = crate::query::first(&pairs, "action");
+    // v4 `dispatchAction(req, { …ten… })` — no fallback (`ad1c4c37f`).
+    let action = match crate::query::dispatch_required_action(
+        &pairs,
+        TOOLS_POST_ACTIONS,
+        "POST",
+        "/api/v1/system/tools",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
     // v4 reads the body with `await req.json()` INSIDE each handler's own try,
     // so a malformed body is not a 400 — it escapes to that handler's catch as
     // a 500 carrying the leg's own sentence. `job-concurrency` alone survives
@@ -412,7 +418,7 @@ pub async fn system_tools_post(
     // way; `Value::Null` would have collapsed the two.
     let parsed: Option<Value> = serde_json::from_slice(&body).ok();
     let body_or_null = parsed.clone().unwrap_or(Value::Null);
-    match action.unwrap_or("") {
+    match action {
         "tasks-queue" => {
             let Some(parsed) = parsed.as_ref() else {
                 return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to control queue");
@@ -561,24 +567,28 @@ pub async fn system_tools_post(
             let threshold = parsed.get("threshold").and_then(Value::as_f64);
             dispatch_memory_maintenance(&state, CoreRequest::MemoryDedupRun { threshold }).await
         }
-        _ => tools_unknown_action(action, "POST", TOOLS_POST_ACTIONS),
+        _ => tools_unserved_action(action),
     }
 }
 
 // ── /api/v1/system/conversation-summaries (P4.43) ────────────────────────────
 //
-// v4 `app/api/v1/system/conversation-summaries/route.ts` — only `?action=regenerate`
-// is recognized; anything else answers v4's `badRequest('Unknown or missing action.')`.
+// v4 `app/api/v1/system/conversation-summaries/route.ts` — `dispatchAction(req,
+// { regenerate })` on both verbs with NO fallback (`ad1c4c37f` retired the old
+// `badRequest('Unknown or missing action.')`): absent → `Action parameter
+// required`, bare / unknown → `Unknown action`, both listing `regenerate`.
 
 pub async fn system_conversation_summaries_get(
     State(state): State<SharedState>,
     Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
-    // so the pair list collapses to the map the rest of the handler expects.
-    let q = crate::query::first_map(&pairs);
-    if q.get("action").map(String::as_str) != Some("regenerate") {
-        return error_json(StatusCode::BAD_REQUEST, "Unknown or missing action.");
+    if let Err(r) = crate::query::dispatch_required_action(
+        &pairs,
+        &["regenerate"],
+        "GET",
+        "/api/v1/system/conversation-summaries",
+    ) {
+        return *r;
     }
     dispatch_memory_maintenance(&state, CoreRequest::ConversationSummariesRegenerateStatus).await
 }
@@ -587,11 +597,13 @@ pub async fn system_conversation_summaries_post(
     State(state): State<SharedState>,
     Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
-    // so the pair list collapses to the map the rest of the handler expects.
-    let q = crate::query::first_map(&pairs);
-    if q.get("action").map(String::as_str) != Some("regenerate") {
-        return error_json(StatusCode::BAD_REQUEST, "Unknown or missing action.");
+    if let Err(r) = crate::query::dispatch_required_action(
+        &pairs,
+        &["regenerate"],
+        "POST",
+        "/api/v1/system/conversation-summaries",
+    ) {
+        return *r;
     }
     dispatch_memory_maintenance(&state, CoreRequest::ConversationSummariesRegenerate).await
 }
@@ -622,10 +634,20 @@ pub async fn system_job_post(
     Path(job_id): Path<String>,
     Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
-    // so the pair list collapses to the map the rest of the handler expects.
-    let q = crate::query::first_map(&pairs);
-    let action = q.get("action").cloned().unwrap_or_default();
+    // v4 `dispatchAction(req, { pause, resume })` — no fallback (`ad1c4c37f`,
+    // which retired `Invalid action. Available actions: pause, resume`). The
+    // gate runs HERE, before the job lookup, as v4's middleware does; core's
+    // `job_control` keeps a dispatch-channel refusal of its own for the
+    // `systemJobControl` verb, which this edge can no longer reach.
+    let action = match crate::query::dispatch_required_action(
+        &pairs,
+        &["pause", "resume"],
+        "POST",
+        "/api/v1/system/jobs/[id]",
+    ) {
+        Ok(a) => a.to_string(),
+        Err(r) => return *r,
+    };
     dispatch_system(
         &state,
         CoreRequest::SystemJobControl { job_id, action },
@@ -766,44 +788,40 @@ pub async fn system_unlock_post(
     Query(pairs): Query<crate::query::QueryPairs>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    // [P4.62] v4's POST gates in three steps, in this order
-    // (`system/unlock/route.ts:75-119`): an ABSENT action gets its own long
-    // sentence naming all five, an unrecognized one gets `Unknown action: X`,
-    // and only then is the body read — by `parseRequestBody`, which refuses a
-    // malformed body and any JSON that is not a plain object. v5 had neither the
-    // absent-action sentence (it answered `Unknown action: ` with an empty name)
-    // nor the body gate at all, so a body of `42` or `[]` rode straight through
-    // to a passphrase change with two empty strings.
-    let Some(action) = crate::query::action(&pairs) else {
-        return error_json(
-            StatusCode::BAD_REQUEST,
-            "Missing action parameter. Use ?action=setup, ?action=unlock, \
-             ?action=store, ?action=change-passphrase, or ?action=lock",
-        );
+    // v4's POST is `dispatchAction(request, { setup, unlock, store,
+    // 'change-passphrase', lock })` with NO fallback (`ad1c4c37f`, which
+    // retired both of its hand-rolled sentences — `Missing action parameter.
+    // Use ?action=setup, …` and the list-less `Unknown action: X`): absent →
+    // `Action parameter required`, bare / unknown → `Unknown action`, both
+    // with the five names. Only then is the body read — by
+    // `parseRequestBody`, which refuses a malformed body and any JSON that is
+    // not a plain object ([P4.62]: before that gate a body of `42` or `[]`
+    // rode straight through to a passphrase change with two empty strings).
+    let action = match crate::query::dispatch_required_action(
+        &pairs,
+        UNLOCK_ACTIONS,
+        "POST",
+        "/api/v1/system/unlock",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
     };
     // Scope, unchanged from P4.9G3: only `change-passphrase` is aliased here,
     // because v4's four siblings (`setup` / `unlock` / `store` / `lock`) all
     // have dispatch verbs the SPA uses.
     //
-    // [P4.72] What DID change is the sentence. A v4-KNOWN action v5 does not
-    // host must not be refused as *unknown* — v4 dispatches `?action=lock`, so
-    // `Unknown action: lock` is a claim about v4 that is false. This is the
-    // shape the §3 unification review of P4.67 restored at the mount-point and
-    // `system/tools` edges; the divergence is pinned v5-side in
-    // `query_param_semantics_equivalence` (`UNSERVED_KNOWN_ACTIONS`). A
-    // genuinely unknown action still gets v4's own `Unknown action: <x>`.
-    // The four v4-KNOWN siblings this edge does not serve (`change-passphrase`
-    // itself is the served arm above this test).
-    const UNSERVED_SIBLINGS: &[&str] = &["setup", "unlock", "store", "lock"];
+    // [P4.72] A v4-KNOWN action v5 does not host must not be refused as
+    // *unknown* — v4 dispatches `?action=lock`, so the envelope (which would
+    // LIST `lock` while refusing it) is a claim about v4 that is false. This is
+    // the shape the §3 unification review of P4.67 restored at the mount-point
+    // and `system/tools` edges; the divergence is pinned v5-side in
+    // `query_param_semantics_equivalence` (`UNSERVED_KNOWN_ACTIONS`).
     if action != "change-passphrase" {
-        if UNSERVED_SIBLINGS.contains(&action) {
-            return error_json(
-                StatusCode::BAD_REQUEST,
-                "Only the 'change-passphrase' action is served on this route; \
-                 the other database-key actions ride POST /api/dispatch",
-            );
-        }
-        return unknown_action(action);
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "Only the 'change-passphrase' action is served on this route; \
+             the other database-key actions ride POST /api/dispatch",
+        );
     }
     let Ok(parsed) = serde_json::from_slice::<Value>(&body) else {
         return error_json(StatusCode::BAD_REQUEST, "Invalid JSON body");
@@ -839,6 +857,17 @@ pub async fn system_unlock_post(
             serde_json::to_string(&dto).unwrap_or_else(|_| "{\"success\":true}".to_string()),
         )
             .into_response(),
+        // v4 `runUnlockAction`'s catch (`ad1c4c37f`, `route.ts:90-109`): a
+        // THROW inside the action — v5's `Internal` kind, the `.dbkey` rewrite
+        // failing rather than a refusal the handler returns — is logged at
+        // ERROR and answered `serverError(error.message)`. Until `ad1c4c37f`
+        // v4's `return dispatchUnlockAction(…)` was not awaited inside the
+        // `try`, so an async throw escaped the catch and the line never fired;
+        // the 500 body is the same `{error: <message>}` either way.
+        Ok(CoreResponse::Error(e)) if e.kind == quilltap_core::api::ErrorKind::Internal => {
+            tracing::error!(action, error = %e.message, "Error in database key action");
+            error_to_http(e)
+        }
         Ok(CoreResponse::Error(e)) => error_to_http(e),
         Ok(_) => error_json(
             StatusCode::INTERNAL_SERVER_ERROR,
