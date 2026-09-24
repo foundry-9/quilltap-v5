@@ -489,22 +489,34 @@ export class ScenarioBuilderDialog implements OnInit {
   async startRun(revise?: { priorDraft: string; revision: string }): Promise<void> {
     const profileId = this.profileId();
     if (!profileId) return;
-    const scene = await this.builder.run({
-      mode: this.mode(),
-      location: this.location().trim(),
-      time: this.time().trim(),
-      details: this.details(),
-      connectionProfileId: profileId,
-      projectId: this.projectId() ?? null,
-      characterIds: this.cast().map((c) => c.id),
-      chatId: this.chatId() ?? null,
-      ...(revise ?? {}),
-    });
-    if (scene !== null) {
+    // v4 sets the draft once `run` resolves, and its `done` state and the
+    // draft share a render. v5's `done` FRAME can land while the dispatch
+    // reply is still out, so the draft is taken from the frame (`onDone`);
+    // the resolved value is the fallback when the reply carried the scene.
+    // Applied ONCE, so an edit made between the two survives the reply.
+    let applied = false;
+    const apply = (scene: string): void => {
+      if (applied) return;
+      applied = true;
       this.draft.set(scene);
       this.draftKey.update((k) => k + 1);
       this.revision.set('');
-    }
+    };
+    const scene = await this.builder.run(
+      {
+        mode: this.mode(),
+        location: this.location().trim(),
+        time: this.time().trim(),
+        details: this.details(),
+        connectionProfileId: profileId,
+        projectId: this.projectId() ?? null,
+        characterIds: this.cast().map((c) => c.id),
+        chatId: this.chatId() ?? null,
+        ...(revise ?? {}),
+      },
+      apply,
+    );
+    if (scene !== null) apply(scene);
   }
 
   protected revise(): void {

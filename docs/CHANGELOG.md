@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(scenario-builder): the review pane follows the done frame, not the dispatch reply (P4.116)
+
+_Versions: SPA 0.5.757._
+
+The `done` frame arrives on the event stream while the `scenarioBuilderBuild`
+dispatch is still pending. The dialog set its draft only when the dispatch
+resolved, so between the two it fell back to the Inputs pane, or showed the
+OLD draft during a Revise. v4 has no such gap: it sets `phase: 'done'` and
+returns the scene in the same read-loop pass, and `setDraft` lands in the same
+render.
+
+`ScenarioBuilderRun.run()` now takes an `onDone` callback that fires once,
+when `done` is folded from whichever channel delivers it first, after the
+signals are set. The dialog applies the scene from that callback. The resolved
+value is still applied as the fallback, but only once, so an edit made between
+the frame and the reply survives. Three new dialog cases hold the reply and
+assert between frame and reply: no Inputs pane, no old draft on Revise, and
+one application. All three were red before the fix, and all three go red again
+when the callback is not passed. Three run-state cases pin `onDone` for
+frame-first, reply-first, and error/stop/superseded runs.
+
 #### 2026-09-24 — fix(scenario-builder): portal both builder dialogs to the body, as v4's BaseModal does (P4.116)
 
 _Versions: SPA 0.5.756._

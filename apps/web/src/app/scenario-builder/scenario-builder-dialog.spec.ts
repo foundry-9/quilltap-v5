@@ -608,6 +608,95 @@ describe('ScenarioBuilderDialog — running pane', () => {
   });
 });
 
+/**
+ * The `done` frame and the dispatch reply travel on different channels, so the
+ * frame can land while the reply is still out. v4 has no gap: its read loop
+ * sets `phase: 'done'` and returns the scene in the SAME pass
+ * (`useScenarioBuilderRun.ts:110-113` at `d1c06cd9d`), and `setDraft(scene)`
+ * (`ScenarioBuilderDialog.tsx:154`) lands in the same React batch, so its view
+ * expression (`:135-136`, `running ? 'running' : draft !== null ? 'review' :
+ * 'inputs'`) goes straight from Running to Review. The reply is HELD here and
+ * the view asserted between (`a-rollback-is-invisible-once-the-refetch-lands`).
+ */
+describe('ScenarioBuilderDialog — the done frame lands before the reply (P4.116)', () => {
+  function emit(r: Rendered, runId: string, frame: Record<string, unknown>): void {
+    r.fake.stream.frames.next({
+      type: 'scenarioBuilderProgress',
+      progressId: runId,
+      frame,
+    } as unknown as ScopedEvent);
+  }
+
+  function lastRunId(r: Rendered): string {
+    const builds = r.fake.requests.filter((q) => q['type'] === 'scenarioBuilderBuild');
+    return builds.at(-1)!['runId'] as string;
+  }
+
+  it('goes straight to the review pane — never back to the inputs — while the reply is held', async () => {
+    const r = await render();
+    r.fake.holdBuild = true;
+    await fillInputs(r);
+    await setTheScene(r);
+    expect(r.el.textContent).toContain('Pray bear with me; I am out making enquiries.');
+    emit(r, lastRunId(r), { done: true, scenario: 'Rain on the cobbles.' });
+    await settle(r.fixture);
+    // The reply is still out.
+    expect(r.fake.requests.filter((q) => q['type'] === 'scenarioBuilderAbort')).toHaveLength(0);
+    expect(r.el.querySelector('#scenario-builder-location')).toBeNull();
+    expect(queryButton(r, 'Set the scene')).toBeUndefined();
+    expect(r.el.textContent).not.toContain('Tell me where and when');
+    expect(r.el.querySelector('[aria-label="The scene"]')).not.toBeNull();
+    expect(sceneEditor(r).getMarkdown()).toBe('Rain on the cobbles.');
+    expect(r.el.textContent).toContain('Here is the scene as I found it.');
+
+    // The reply lands (it carries nothing new): the review pane stands.
+    r.fake.releaseBuild();
+    await settle(r.fixture);
+    expect(sceneEditor(r).getMarkdown()).toBe('Rain on the cobbles.');
+    expect(queryButton(r, 'Use this scene')).toBeDefined();
+  });
+
+  it('on a Revise, never shows the OLD draft between the frame and the reply', async () => {
+    const r = await render();
+    await runToReview(r);
+    r.fake.holdBuild = true;
+    type(byId<HTMLInputElement>(r, 'scenario-builder-revision'), 'two hours later');
+    await settle(r.fixture);
+    button(r, 'Revise').click();
+    await settle(r.fixture);
+    expect(r.el.textContent).toContain('Pray bear with me; I am out making enquiries.');
+    emit(r, lastRunId(r), { done: true, scenario: 'Rain on the cobbles, two hours later.' });
+    await settle(r.fixture);
+    expect(sceneEditor(r).getMarkdown()).toBe('Rain on the cobbles, two hours later.');
+    // A landed scene clears the revision box, as v4's `setRevision('')`.
+    expect(byId<HTMLInputElement>(r, 'scenario-builder-revision').value).toBe('');
+
+    r.fake.releaseBuild();
+    await settle(r.fixture);
+    expect(sceneEditor(r).getMarkdown()).toBe('Rain on the cobbles, two hours later.');
+  });
+
+  it('an edit made after the frame survives the reply (the scene is applied ONCE)', async () => {
+    const r = await render();
+    r.fake.holdBuild = true;
+    await fillInputs(r);
+    await setTheScene(r);
+    emit(r, lastRunId(r), { done: true, scenario: 'Rain on the cobbles.' });
+    await settle(r.fixture);
+    const key = sceneEditor(r);
+    // The user types into the draft before the reply lands.
+    (r.fixture.componentInstance as unknown as { draft: { set(v: string): void } }).draft.set(
+      'Rain on the cobbles, and fog.',
+    );
+    await settle(r.fixture);
+    r.fake.releaseBuild();
+    await settle(r.fixture);
+    expect(sceneEditor(r)).toBe(key);
+    button(r, 'Use this scene').click();
+    expect(r.used).toEqual(['Rain on the cobbles, and fog.']);
+  });
+});
+
 describe('ScenarioBuilderDialog — review pane', () => {
   it('carries the revise placeholder, and Enter revises', async () => {
     const r = await render();

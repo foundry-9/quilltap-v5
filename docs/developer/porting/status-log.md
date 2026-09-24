@@ -148055,3 +148055,29 @@ deployment concern; (10) lifting the web censuses onto the HARNESS lexer
 - **Live, restored:** all four beats green (4 passed, 1.2 m) on the full
   Tier-1 tree before the weight check existed. The lane-close record has the
   run with it.
+
+## P4.116 unit 2 — the done-frame flash (2026-09-24)
+
+- **v4 read at `d1c06cd9d`:** `useScenarioBuilderRun.ts:110-113` (`setState(…
+  phase: 'done' …)` then `return scenario` in the same read-loop pass);
+  `ScenarioBuilderDialog.tsx:135-136` (the view expression) and `:139-157`
+  (`startRun` → `setDraft(scene)` after `await builder.run`). The same view
+  expression is kept; the fix is WHEN the draft lands.
+- **Landed:** `ScenarioBuilderRun.run(input, onDone?)`; `fold` calls
+  `onDone(scenario)` after the `done` signals are set, from whichever channel
+  folds `done` first (frame or reply). `fold` only runs for the live run, so
+  a stop or supersede never fires it. The dialog's `startRun` applies the
+  scene through a once-only `apply` passed as `onDone`, and still applies the
+  resolved value as the fallback.
+- **Red-first (pre-fix, 3/3 RED):** `goes straight to the review pane…` (the
+  location input was rendered: the Inputs pane), `on a Revise, never shows
+  the OLD draft…` (`'Rain on the cobbles.'` vs the new scene), `an edit made
+  after the frame survives the reply…` (the editor was re-created on the
+  reply).
+- **Mutations:** M3 (no `onDone` passed, so the draft is set only on the
+  reply) → exactly those three RED (3/160). M3b (the `applied` guard
+  removed) → exactly `…applied ONCE` RED (1/160). Both reverted by file
+  backup.
+- Run-state pins (3): `onDone` fires from the frame with `phase` already
+  `done` and once only; fires from a reply-first run and not for a late
+  frame; never fires for error, stop, or supersede.

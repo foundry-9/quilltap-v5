@@ -376,3 +376,49 @@ describe('ScenarioBuilderRun — stop, supersede, destroy', () => {
     expect(h.requests).toEqual([]);
   });
 });
+
+/**
+ * `onDone` — the scene handed over the moment `done` is folded, whichever
+ * channel carries it (P4.116: the dialog's review pane follows the FRAME, as
+ * v4's same-pass `phase: 'done'` + `return scenario` does,
+ * `useScenarioBuilderRun.ts:110-113` at `d1c06cd9d`).
+ */
+describe('ScenarioBuilderRun — onDone (P4.116)', () => {
+  it('fires from the done FRAME while the reply is still out, with phase already done', async () => {
+    const h = harness();
+    const seen: Array<{ scenario: string; phase: string }> = [];
+    const result = h.run.run(INPUT, (scenario) => seen.push({ scenario, phase: h.run.phase() }));
+    h.emit({ done: true, scenario: 'From the frame.' });
+    expect(seen).toEqual([{ scenario: 'From the frame.', phase: 'done' }]);
+    h.answer(ok({ done: true, scenario: 'From the frame.' }));
+    await expect(result).resolves.toBe('From the frame.');
+    expect(seen).toHaveLength(1);
+  });
+
+  it('fires from the reply when it lands first, once, and not for a late frame', async () => {
+    const h = harness();
+    const seen: string[] = [];
+    const result = h.run.run(INPUT, (scenario) => seen.push(scenario));
+    h.answer(ok({ done: true, scenario: 'From the reply.' }));
+    await expect(result).resolves.toBe('From the reply.');
+    h.emit({ done: true, scenario: 'late frame' });
+    expect(seen).toEqual(['From the reply.']);
+  });
+
+  it('never fires for an error, a stop, or a superseded run', async () => {
+    const h = harness();
+    const seen: string[] = [];
+    const failed = h.run.run(INPUT, (s) => seen.push(s));
+    h.emit({ error: 'boom' });
+    h.answer(ok({ error: 'boom' }));
+    await expect(failed).resolves.toBeNull();
+
+    const stopped = h.run.run(INPUT, (s) => seen.push(s));
+    const stoppedId = h.buildRunId();
+    h.run.stop();
+    h.emit({ done: true, scenario: 'after stop' }, stoppedId);
+    h.answer(ok({ done: true, scenario: 'after stop' }));
+    await expect(stopped).resolves.toBeNull();
+    expect(seen).toEqual([]);
+  });
+});

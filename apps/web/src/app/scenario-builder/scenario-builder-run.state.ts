@@ -100,8 +100,20 @@ export class ScenarioBuilderRun {
   /**
    * Start a run (aborting any prior one). Resolves to the scene on `done`, or
    * `null` on failure / stop — failures land in {@link error}.
+   *
+   * `onDone` is called with the scene the moment `done` is folded — from the
+   * FRAME when it lands first, while the dispatch reply is still out. v4 sets
+   * `phase: 'done'` and returns the scene in the same read-loop pass
+   * (`useScenarioBuilderRun.ts:110-113` at `d1c06cd9d`), so its caller's
+   * `setDraft` shares the render that ends the Running pane; waiting for the
+   * reply here would show the Inputs pane (or a Revise's OLD draft) between
+   * the two channels (P4.116). Called at most once per run, and only for the
+   * live run.
    */
-  async run(input: ScenarioBuildRequestInput): Promise<string | null> {
+  async run(
+    input: ScenarioBuildRequestInput,
+    onDone?: (scenario: string) => void,
+  ): Promise<string | null> {
     this.abortCurrent();
     const runId = mintRunId();
     this.currentRunId = runId;
@@ -119,7 +131,7 @@ export class ScenarioBuilderRun {
       if (!isScenarioBuilderProgressEvent(frame, runId)) return;
       // v4 stops reading at the first terminal frame; so does this.
       if (!isLive() || settled.outcome) return;
-      settled.outcome = this.fold(frame.frame);
+      settled.outcome = this.fold(frame.frame, onDone);
     });
 
     try {
@@ -140,7 +152,7 @@ export class ScenarioBuilderRun {
           this.resetSignals();
           return null;
         }
-        settled.outcome = this.fold(reply);
+        settled.outcome = this.fold(reply, onDone);
       }
       const outcome = settled.outcome;
       if (!outcome) return this.fail(HOST_WENT_QUIET);
@@ -172,9 +184,11 @@ export class ScenarioBuilderRun {
   /**
    * Fold one frame (or the dispatch's terminal object) exactly as v4 folds a
    * parsed SSE line: tool state, reasoning, then `error`, then `done`. Returns
-   * the terminal outcome when the frame carries one.
+   * the terminal outcome when the frame carries one, and hands a `done` scene to
+   * `onDone` after the signals are set (so the caller's draft and `phase` move
+   * together, before any render).
    */
-  private fold(event: AgentStreamEvent): Outcome | null {
+  private fold(event: AgentStreamEvent, onDone?: (scenario: string) => void): Outcome | null {
     const nextToolState = applyAgentStreamEvent(this.toolState, event);
     if (nextToolState !== this.toolState) {
       this.toolState = nextToolState;
@@ -194,6 +208,7 @@ export class ScenarioBuilderRun {
       this.scenario.set(scenario);
       this.error.set(null);
       this.phase.set('done');
+      onDone?.(scenario);
       return { kind: 'done', scenario };
     }
     return null;
