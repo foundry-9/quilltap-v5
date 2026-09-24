@@ -247,17 +247,16 @@ pub fn scenario_builder_prepare(
         let found = db.read_main(|main| {
             db.read_mount_index(|mount| characters_read::find_by_id(main, mount, &cid))
         });
-        match found {
-            Ok(Some(_)) => character_ids.push(id.clone()),
-            // A failed read is dropped SILENTLY, as a miss. v4's route wraps
-            // the read in a try/catch whose WARN `Scenario Builder dropped an
-            // unreadable cast id` is unreachable: `characters.findById` is a
-            // fallback-mode `safeQuery`, so a failing read answers `null` and
-            // never throws. Measured by the route family's `drops a cast id
-            // whose lookup throws` case (the d1c06cd9d unification review) —
-            // v4 logs only the `{ requested, kept }` DEBUG below; v5 had
-            // emitted the WARN too.
-            Ok(None) | Err(_) => {}
+        // `Ok(None)` and a failed read are both a miss, dropped SILENTLY. v4's route wraps
+        // the read in a try/catch whose WARN `Scenario Builder dropped an
+        // unreadable cast id` is unreachable: `characters.findById` is a
+        // fallback-mode `safeQuery`, so a failing read answers `null` and
+        // never throws. Measured by the route family's `drops a cast id
+        // whose lookup throws` case (the d1c06cd9d unification review) —
+        // v4 logs only the `{ requested, kept }` DEBUG below; v5 had
+        // emitted the WARN too.
+        if let Ok(Some(_)) = found {
+            character_ids.push(id.clone());
         }
     }
     if character_ids.len() != parsed.character_ids.len() {

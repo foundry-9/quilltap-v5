@@ -116,7 +116,6 @@ pub fn render_v4_field(k: &str, v: &Value) -> (String, String) {
     (k.to_string(), render_v4(v))
 }
 
-
 /// v4's recorded `[{ level, message, context }]` as [`Line`]s (target blank).
 pub fn v4_lines(rows: &Value) -> Vec<Line> {
     rows.as_array()
