@@ -37,7 +37,7 @@ export const LEAF = '\uFFFC';
  * to U+FFFC instead made v5's char typeahead refuse `:smi` after Shift+Enter —
  * a latent divergence closed by P4.D224.
  */
-function leafText(node: Node): string {
+export function triggerLeafText(node: Node): string {
   return node.type.name === 'hard_break' ? '\n' : LEAF;
 }
 
@@ -61,7 +61,7 @@ export function textBeforeCursor(
 
   const offset = $from.parentOffset;
   return {
-    text: parent.textBetween(0, offset, undefined, leafText),
+    text: parent.textBetween(0, offset, undefined, triggerLeafText),
     blockStart: $from.start(),
   };
 }

@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — feat(spa): the @ mention typeahead ProseMirror plugin (P4.D224 unit 4)
+
+_Versions: SPA 0.5.765._
+
+Adds `editor/mentions/mention-typeahead-plugin.ts`, the ProseMirror port of
+v4's `MentionTypeaheadPlugin`: the `@` menu (ten rows, `@` glyph, "in this
+chat" or the character's title), Enter/Tab/click completion, Space
+completion once a letter follows the `@`, Enter and Tab held while the list
+is still loading, and v4's three empty-state labels. At the start of a line
+the `@` is kept while undecided and dropped unless `:` or `?` and whitespace
+follow; the drop joins the keystroke's undo step, and an undo that restores
+the undecided form re-arms the check. The character list comes through a
+small source over the query cache. The shared menu gains an empty-label
+setter. Not mounted yet.
+
 #### 2026-09-24 — fix(spa): the char typeahead opens after a soft line break (P4.D224 unit 3)
 
 _Versions: SPA 0.5.764._

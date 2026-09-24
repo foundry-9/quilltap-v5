@@ -74,7 +74,11 @@ export function resolvePlacement(input: PlacementInput): Placement {
 export interface TypeaheadMenuOptions {
   /** `id` of the listbox, referenced by the editor's `aria-activedescendant`. */
   listboxId: string;
-  /** Shown when the query matches nothing. */
+  /**
+   * Shown when the query matches nothing. The initial value; a plugin whose
+   * empty state changes (the `@` typeahead's loading / error / no-match
+   * labels) updates it with {@link TypeaheadMenu.setEmptyLabel}.
+   */
   emptyLabel: string;
   /**
    * The contenteditable that keeps focus while the menu is open. Focus never
@@ -105,7 +109,22 @@ export class TypeaheadMenu {
    */
   private renderedKeys: string[] | null = null;
 
-  constructor(private readonly options: TypeaheadMenuOptions) {}
+  /** The label the empty state shows — see {@link setEmptyLabel}. */
+  private emptyLabel: string;
+
+  constructor(private readonly options: TypeaheadMenuOptions) {
+    this.emptyLabel = options.emptyLabel;
+  }
+
+  /**
+   * Change what the empty state says, from the next {@link render} on (v4's
+   * `useTypeaheadShell` takes `emptyLabel` afresh on every render, which is how
+   * `MentionTypeaheadPlugin` swaps its loading / error / no-match labels). An
+   * empty menu is always rebuilt, so the new label always lands.
+   */
+  setEmptyLabel(label: string): void {
+    this.emptyLabel = label;
+  }
 
   get isOpen(): boolean {
     return this.anchor !== null;
@@ -224,7 +243,7 @@ export class TypeaheadMenu {
     if (rows.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'qt-typeahead-empty';
-      empty.textContent = this.options.emptyLabel;
+      empty.textContent = this.emptyLabel;
       return [empty];
     }
 

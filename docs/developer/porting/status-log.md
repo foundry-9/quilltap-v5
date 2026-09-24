@@ -148449,6 +148449,60 @@ checked; the three symlink classes made). Node 24
   Layer 1.5 plugins see a line break as a boundary was not measured here —
   named for a follow-up, not changed.
 
+### Unit 4 — the plugin `editor/mentions/mention-typeahead-plugin.ts`
+
+- On the char typeahead's shape (per-view runtime in a WeakMap, the shared
+  `TypeaheadMenu`, `textBeforeCursor` from unit 3's `trigger-context.ts`).
+  v4's constants and labels verbatim (`MENU_LIMIT` 10, `LISTBOX_ID`, the three
+  labels). `typeahead-menu.ts` grew `setEmptyLabel` (the empty state is always
+  rebuilt, so the label always lands).
+- **The Lexical → ProseMirror mappings, each recorded in the file header:**
+  line start = opener at offset 0 or after a `\n` (a `hard_break`), in a
+  paragraph at depth 1 (v4 `$lineStartOf`); the watched paragraph by POSITION
+  mapped through every transaction (v4 uses the node key); the verdict watcher
+  as a plugin STATE field + `appendTransaction` for the strip — an appended
+  transaction never opens a new `prosemirror-history` group (read in
+  `prosemirror-history` 1.5.0 `applyTransaction`: `newGroup` requires
+  `!appended`), which IS v4's `HISTORY_MERGE_TAG`; the undo re-arm on
+  `isHistoryTransaction`; composition = the `composition` meta.
+- **A history difference found and closed:** Lexical pushes a new undo entry
+  for a keystroke after a non-typing update, but `prosemirror-history` folds a
+  keystroke inside 500 ms and adjacent into the previous event — so `@ari` +
+  Enter + `,` + undo went back to `@ari`, not v4's `@Aristarchus`. The
+  completion is dispatched with `closeHistory` and followed by an EMPTY
+  `closeHistory` transaction (which resets `prevTime` to 0), so the next
+  keystroke opens its own event. Pinned by a case with no settle between the
+  completion and the keystroke.
+- **Data:** `editor/mentions/mention-source.ts` — a `MentionCharacterSource`
+  seam (snapshot / `setActive` = v4's `enabled: query !== null` / subscribe)
+  and `createQueryMentionSource`, a `QueryObserver` over a caller-given key and
+  queryFn, so the host shares the SAME raw cache entry (unit 5 passes
+  `characterKeys.list()` + `fetchCharacterList`). TanStack's `isPending` /
+  `isError` / `data` are v4's; the app client's `retry: 1` equals v4's
+  `lib/query/query-client.ts:19`.
+- **Specs:** NEW harness `editor/mentions/mention-typeahead-harness.ts` (real
+  editor, real plugin, real source over a real `QueryClient` with `retry:
+  false` as v4's harness, `history()`, `baseKeymap`), NEW
+  `mention-typeahead-plugin.spec.ts`: every §Survey 8 vector (29) + the
+  constants, the row glyph/detail/ARIA (Tier 2 item 7 — the shared menu
+  already sets `aria-controls`/`-expanded`/`-activedescendant`, measured, not
+  duplicated), Tab held, the no-match label, a modified Space, the strip on
+  the second line, the at-once drop's undo shape, the history-grouping case —
+  33 green first run.
+- **Mutations** (file-backup revert), each RED on exactly its case(s): P1
+  no-reopen → 1; P2 strip never applied → the 5 strip cases; P3 no trailing
+  `closeHistory` → 4 (the undo cases); P4 re-arm off → 1; P5 never hold → 2
+  (Enter, Tab); P6 bare-`@` Space pass-through off → 1; P7 soft break not a
+  line start → 2; P8 no loading label → 1; P10 Space commit keeps the `@` → 1;
+  P11 no at-once drop (`canKeepLineStartAt` off) → 1 — **it SURVIVED as first
+  written** (the classifier strips a non-invocable name on the very next
+  transaction, so the TEXT is the same, in v4 too); the observable difference
+  is the undo shape (the late strip becomes its own undo step), so the
+  `@jea` + Enter + undo → `@jea` case was added and now reddens alone; P12 no
+  cast detail → 1. (Two first-draft mutations written as `if (false)` failed to
+  COMPILE — TS narrowing — and were rewritten; a build error is not a red.)
+- `editor/**` 23 files / 661 green; `npm run build` clean.
+
 ## P4.D223 — the Salon Images quick-hide + the bug-169 convergence + the `has-dangerous` client half (lane record, 2026-09-24)
 
 Lane branch `claude/salon-images-quick-hide-bug-db0391`, cut from `main`
