@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(context-summary): retire the fold_hand_renamed title input the fold can never ask for (P4.112 unit 5)
+
+_No crate versions bumped._
+
+`context-summary-service-ops.json` carried a canned title reply for the
+hand-renamed fold op, which returns before any title call. The rule is
+removed. The regenerated oracle matches the previous one (its 29 recorded
+calls never included it) apart from wall-clock `durationMs` noise, and
+the family stays green. Mutation: dropping only the fold's early
+`return` now fails the zero-title-calls pin (`left: 1`).
+
 #### 2026-09-23 — test(title-update): the job's missing arm — a chat deleted during the title call writes nothing and logs the vanished line (P4.112 unit 4)
 
 _Versions: harness 0.0.934._

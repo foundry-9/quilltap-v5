@@ -149,11 +149,6 @@
       "response": "[]"
     },
     {
-      "op": "fold_hand_renamed",
-      "kind": "title",
-      "response": "A Title The Fold Wanted"
-    },
-    {
       "op": "fold_queues_background",
       "kind": "fold",
       "response": "Active threads: the lamps are lit. Resolved decisions: paint the scene. Emotional state: bright. Open questions: the weather."

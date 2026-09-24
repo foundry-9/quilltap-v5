@@ -146777,3 +146777,18 @@ the `missing` arm the row is gone, and `ChatsRepository::update` answers
 "writes nothing, not even the cursor" and "attempts the cursor write" cannot
 be told apart by any row, hint or log line on either side. The arm pins every
 observable effect instead.
+
+### Unit 5 — the dead `fold_hand_renamed` title input retired (Tier 1 item 3)
+
+The `(fold_hand_renamed, title)` rule removed from
+`context-summary-service-ops.json` (the fold returns before any title call).
+Regenerated from the pin (fixture builder + jest oracle, lane-private
+paths): 52 rows, 29 canned calls, as before; the only differences from the
+baseline regen are minted ids/timestamps and one pair of `llm_logs` rows
+whose `durationMs` swapped 0↔1 ms (wall clock) — multiset-equal after
+masking. The retired string appears in neither oracle (never recorded).
+Family green. **Mutation:** dropping only the fold's `return Ok(result)`
+(keeping the DEBUG line) → RED exactly on the zero-title-calls pin
+(`fold_hand_renamed: v5 made a title LLM call for a hand-renamed chat (bug
+164)`, `left: 1`). A first mutation that disabled the whole branch went RED
+earlier, on the skip-line assert — it proved the line, not the pin.
