@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — test(web): the two types.rs censuses share one source-census module (P4.115 item 5)
+
+_Versions: web 0.0.190._
+
+`dispatch_wrong_type_census` and `tri_state_edges_share_the_decoder` each
+had their own `repo_root`, `types_rs`, `Request` enum walker, top-level
+splitter and strip rule. They now share a web-local `tests/source_census`
+module. The kept strip rule drops `//` comments and bracket-balanced
+attributes, and now also skips string and char literals. The tri-state
+census reads through it; its count stays at 115.
+
+Moving the dispatch census onto the stricter rule changes its count:
+the old line-prefix `strip_noise` hides `ChatUpdate.remove_participant_id`.
+`concierge_state`'s multi-line attribute leaves a stray `)` that merges the
+fields after it. That would move the route-identifier exclusion from 449 to
+450. The work order leaves that recount to the unifier, so the dispatch
+census keeps `strip_noise` for now. A new test pins the difference both ways.
+
 #### 2026-09-24 — fix(scenario-builder): the REST edge commits its stream at v4's accepted point (P4.115 item 6)
 
 _Versions: web 0.0.189._

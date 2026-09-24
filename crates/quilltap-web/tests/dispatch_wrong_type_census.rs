@@ -67,6 +67,8 @@
 //! Run standalone:
 //!   cargo test -p quilltap-web --test dispatch_wrong_type_census
 
+mod source_census;
+
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -2338,21 +2340,30 @@ const TIMESTAMP_CONFIG_IS_ALREADY_A_VALUE_CARRIER: &str =
 // The mechanical half — `Request`'s own typed fields, walked from the source
 // ===========================================================================
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("the web crate sits two levels under the repo root")
-        .to_path_buf()
-}
+// The types.rs walk — `repo_root`, `types_rs`, the enum-body walker, the
+// top-level splitter and its delimiter sets — lives in the web crate's shared
+// `source_census` module (P4.115 item 5), beside the ONE strip rule the
+// tri-state census now reads through.
+use source_census::{
+    repo_root, request_body, request_enum_body, split_top_level, types_rs, variant_name,
+    FIELD_CLOSE, FIELD_OPEN, VARIANT_CLOSE, VARIANT_OPEN,
+};
 
-fn types_rs() -> String {
-    let p: PathBuf = repo_root().join("crates/quilltap-core/src/api/types.rs");
-    std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
-}
-
-/// Strip doc comments, line comments and attributes, keeping the code shape.
-/// The census only needs names and types, and comments contain braces.
+/// ⚠ **STILL this census's strip rule — and it HIDES a field (P4.115 item 5,
+/// STOPPED for the unifier's ruling).** Blanks only a LINE that starts with
+/// `//` or `#[`. `ChatUpdate.concierge_state`'s multi-line
+/// `#[serde(\n default,\n …\n)]` leaves its continuation lines — the closing
+/// `)]` among them — in the stream; that stray `)` unbalances the field
+/// splitter, and the fields after it in `ChatUpdate` merge into one chunk.
+/// Measured with the shared module's attribute-balanced, literal-aware rule
+/// in its place: the typed-field walk gains EXACTLY ONE field,
+/// `ChatUpdate.remove_participant_id: Option<String>` (694 → 695), a `*_id`
+/// the route-identifier rule then excludes — the route-identifier
+/// exclusion constant below would move 449 → 450. The order forbids moving 449 and
+/// makes the recount the unifier's ruling, so this rule stays until then;
+/// [`strip_noise_hides_exactly_one_typed_field_the_shared_rule_finds`] pins the
+/// difference both ways, so the switch is a one-line change with its own
+/// arithmetic already measured.
 fn strip_noise(src: &str) -> String {
     src.lines()
         .map(|l| {
@@ -2367,71 +2378,26 @@ fn strip_noise(src: &str) -> String {
         .join("\n")
 }
 
-/// Split a body on top-level commas, counting only the delimiters in `open` /
-/// `close`.
-///
-/// The two call sites need DIFFERENT delimiter sets, and getting that wrong is
-/// silent: the variant split counts braces alone, because a stray `]` from a
-/// multi-line attribute (or a `[u8]` in a type) would otherwise unbalance it
-/// and make one variant swallow its neighbours — which is exactly what a first
-/// draft of this parser did, reporting fields under the wrong variant name.
-/// The field split additionally counts `<>` and `()` so `Option<Vec<String>>`
-/// stays one field. Neither counts `[]`.
-fn split_top_level(body: &str, open: &str, close: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut depth = 0i32;
-    let mut cur = String::new();
-    for ch in body.chars() {
-        if open.contains(ch) {
-            depth += 1;
-        } else if close.contains(ch) {
-            depth -= 1;
-        }
-        if ch == ',' && depth == 0 {
-            out.push(std::mem::take(&mut cur));
-        } else {
-            cur.push(ch);
-        }
-    }
-    out.push(cur);
-    out
+/// `Request`'s enum body as this census reads it (through [`strip_noise`]).
+fn census_request_body() -> String {
+    request_enum_body(&strip_noise(&types_rs()))
 }
-
-const VARIANT_OPEN: &str = "{";
-const VARIANT_CLOSE: &str = "}";
-const FIELD_OPEN: &str = "{<(";
-const FIELD_CLOSE: &str = "}>)";
 
 /// Every (`variant`, `field`, `type`) of `Request` whose type is not a
 /// `serde_json::Value` — i.e. every field serde will type-check.
 fn typed_request_fields() -> Vec<(String, String, String)> {
-    let src = strip_noise(&types_rs());
-    let start = src.find("pub enum Request").expect("the Request enum");
-    let open = src[start..].find('{').expect("enum body") + start;
-    let mut depth = 0i32;
-    let mut end = open;
-    for (i, ch) in src[open..].char_indices() {
-        match ch {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    end = open + i;
-                    break;
-                }
-            }
-            _ => {}
-        }
-    }
-    let body = &src[open + 1..end];
+    typed_request_fields_of(&census_request_body())
+}
+
+/// [`typed_request_fields`] over an already-stripped enum body.
+fn typed_request_fields_of(body: &str) -> Vec<(String, String, String)> {
     let mut out = Vec::new();
     for variant in split_top_level(body, VARIANT_OPEN, VARIANT_CLOSE) {
         let v = variant.trim();
         if v.is_empty() {
             continue;
         }
-        let head = v.split('{').next().unwrap_or("").trim();
-        let Some(name) = head.trim_end_matches(',').split_whitespace().next_back() else {
+        let Some(name) = variant_name(v) else {
             continue;
         };
         let Some(bo) = v.find('{') else { continue };
@@ -2612,6 +2578,30 @@ fn is_route_identifier(field: &str) -> bool {
 // `Option<Option<…>>` key). Measured by running the test (red at 449 against
 // 447 first). Stacked on P4.D216: the unifier recounts as base + both lanes.
 const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 449;
+
+/// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
+/// shared module's rule finds every field this census's walk finds, plus
+/// EXACTLY `ChatUpdate.remove_participant_id`. A second hidden field (or the
+/// one vanishing — say `concierge_state`'s attribute collapsing onto one line)
+/// reddens this by name; switching the census onto the shared rule is then
+/// `census_request_body` → `request_body` and 449 → 450, the unifier's call.
+#[test]
+fn strip_noise_hides_exactly_one_typed_field_the_shared_rule_finds() {
+    let old = typed_request_fields();
+    let new = typed_request_fields_of(&request_body());
+    let lost: Vec<_> = old.iter().filter(|f| !new.contains(f)).collect();
+    let gained: Vec<_> = new.iter().filter(|f| !old.contains(f)).collect();
+    assert!(lost.is_empty(), "the shared rule LOSES fields: {lost:?}");
+    assert_eq!(
+        gained,
+        vec![&(
+            "ChatUpdate".to_string(),
+            "remove_participant_id".to_string(),
+            "Option<String>".to_string()
+        )],
+        "the fields `strip_noise` hides from this census"
+    );
+}
 
 #[test]
 fn census_covers_every_typed_request_field() {
@@ -2939,30 +2929,11 @@ const IMAGE_PROFILE_GENERATE_RAW_FIVE: &[Row] = &[
 /// second raw list — [`IMAGES_GENERATE_RAW_FIVE`] — is held against the source
 /// by the SAME walk rather than by a copy of it. Every existing row is
 /// unchanged.
-fn raw_value_fields_of(variant_name: &str) -> Vec<(String, String)> {
-    let src = strip_noise(&types_rs());
-    let start = src.find("pub enum Request").expect("the Request enum");
-    let open = src[start..].find('{').expect("enum body") + start;
-    let mut depth = 0i32;
-    let mut end = open;
-    for (i, ch) in src[open..].char_indices() {
-        match ch {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    end = open + i;
-                    break;
-                }
-            }
-            _ => {}
-        }
-    }
+fn raw_value_fields_of(wanted: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    for variant in split_top_level(&src[open + 1..end], VARIANT_OPEN, VARIANT_CLOSE) {
+    for variant in split_top_level(&census_request_body(), VARIANT_OPEN, VARIANT_CLOSE) {
         let v = variant.trim();
-        let head = v.split('{').next().unwrap_or("").trim();
-        if head.trim_end_matches(',').split_whitespace().next_back() != Some(variant_name) {
+        if variant_name(v) != Some(wanted) {
             continue;
         }
         let (Some(bo), Some(bc)) = (v.find('{'), v.rfind('}')) else {

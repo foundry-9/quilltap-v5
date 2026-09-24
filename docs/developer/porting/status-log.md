@@ -147861,3 +147861,54 @@ batch; `git worktree list` showed the pin at `d1c06cd9d`):
 
 26 rows; `grep P4.115` = the 2 new rows with the predicted bytes. No committed
 fixture changed.
+
+### Unit 6 — item 5: the census lift (web 0.0.190) — PARTIAL, one sub-item STOPPED for the unifier
+
+NEW `crates/quilltap-web/tests/source_census/mod.rs` (a plain `mod
+source_census;` in each census — the harness idiom): `repo_root`, `types_rs`,
+ONE strip rule `strip_comments_and_attrs` (the tri-state census's
+attribute-balanced, comment-stripping rule, made literal-aware: string, raw
+string and char literals copied through verbatim, a string inside an
+attribute stepped over, lifetimes told from char literals — with a module
+unit test), `request_enum_body` / `request_body` (the enum walker, formerly
+written three times across the two files), `split_top_level` + the
+`VARIANT_*`/`FIELD_*` delimiter sets, `variant_name`.
+
+- `tri_state_edges_share_the_decoder.rs` — fully repointed (its own
+  `repo_root`/`types_rs`/strip/`split_top_level_braces` deleted). **115 and
+  `ALLOWED_TRI_STATE_HAND_BUILDS` UNMOVED**; 11/11 (10 + the module test).
+- `dispatch_wrong_type_census.rs` — repointed for `repo_root`, `types_rs`,
+  the walker, the splitter and its delimiters (its three copies of the walker
+  deleted). **Its STRIP RULE did NOT move — STOPPED per the order:** measured
+  (a scratch test diffing both rules' typed-field walks, deleted after), the
+  shared rule finds every field `strip_noise` finds PLUS exactly ONE,
+  `ChatUpdate.remove_participant_id: Option<String>` (694 → 695 typed fields;
+  449 → 450 excluded, it being a `*_id`). **A census defect `strip_noise` had
+  been hiding:** `ChatUpdate.concierge_state`'s multi-line
+  `#[serde(\n default,\n …\n)]` leaves its continuation lines — the closing
+  `)]` among them — in the stream; that stray `)` drives the FIELD splitter's
+  depth negative, so every later comma in `ChatUpdate` stops splitting and the
+  following fields merge into one chunk whose `split_once(':')` names only the
+  first. (`update_participant`/`add_participant` are `Value`s, skipped either
+  way — only `remove_participant_id` was lost.) The census keeps
+  `strip_noise` (loud doc naming the field) until the unifier rules;
+  `strip_noise_hides_exactly_one_typed_field_the_shared_rule_finds` pins the
+  difference BOTH ways (nothing lost, exactly that one gained), so the switch
+  is `census_request_body` → `request_body` + 449 → 450. **449 UNMOVED**;
+  14/14 (12 + the pin + the module test).
+- **Mutations (a scratch copy of `types.rs` IN MEMORY — `types.rs` itself is
+  fenced; measured in the deleted scratch test):**
+  - a multi-line `#[serde(\n default,\n rename = "runId"\n)]` planted on
+    `ScenarioBuilderAbort.run_id`: the SHARED rule's field set and tri-state
+    set are IDENTICAL to the unplanted parse (neither census would redden);
+  - **M4** — the same plant through the OLD `strip_noise`: the typed-field SET
+    changes (the census's `census_covers_every_typed_request_field` set
+    comparison would redden) — the lift is not cosmetic;
+  - a planted `planted_id: Option<Option<String>>` on `ScenarioBuilderAbort`:
+    excluded 450 → 451 (the dispatch census's count assert reddens) AND
+    `ScenarioBuilderAbort` joins the tri-state set — it is hand-built in
+    `scenario_builder_routes.rs`, so `no_new_tri_state_variant_is_hand_built_
+    outside_the_helper` reddens. **The order's "a planted `*_id` field reddens
+    BOTH" holds only for a tri-state-typed `*_id`** — a plain `String` `*_id`
+    moves the dispatch count alone, since the tri-state census watches
+    `Option<Option<…>>` fields, not ids. Recorded.

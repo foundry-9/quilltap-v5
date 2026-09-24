@@ -59,6 +59,8 @@
 //! Run standalone:
 //!   cargo test -p quilltap-web --test tri_state_edges_share_the_decoder
 
+mod source_census;
+
 use serde_json::{json, Value};
 
 use quilltap_core::api::Request as CoreRequest;
@@ -320,119 +322,25 @@ fn unknown_keys_are_stripped_and_a_non_object_folds_to_absent() {
 
 use std::path::PathBuf;
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("the web crate sits two levels under the repo root")
-        .to_path_buf()
-}
-
-fn types_rs() -> String {
-    let p = repo_root().join("crates/quilltap-core/src/api/types.rs");
-    std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
-}
-
-/// Remove `//` line comments and bracket-balanced `#[...]` attribute spans.
-///
-/// `dispatch_wrong_type_census.rs`'s `strip_noise` drops only a LINE that
-/// starts with `#[`, which leaves a continuation line's text (and its stray
-/// top-level commas) in the stream for a multi-line attribute — hit at
-/// P4.D163 (`dispatch-census-strip-noise-and-multi-line-serde-attrs`).
-/// `types.rs` has exactly ONE such attribute today
-/// (`ChatUpdate.concierge_state`'s `#[serde(\n  default,\n  …\n)]`), and this
-/// census's whole job is finding `Option<Option<` fields, so it cannot use
-/// that stripper. Operating on `char`s (not bytes) keeps this UTF-8 safe.
-fn strip_comments_and_attrs(src: &str) -> String {
-    let chars: Vec<char> = src.chars().collect();
-    let mut out = String::with_capacity(src.len());
-    let mut i = 0;
-    while i < chars.len() {
-        if chars[i] == '/' && chars.get(i + 1) == Some(&'/') {
-            while i < chars.len() && chars[i] != '\n' {
-                i += 1;
-            }
-            continue;
-        }
-        if chars[i] == '#' && chars.get(i + 1) == Some(&'[') {
-            let mut depth = 0i32;
-            while i < chars.len() {
-                match chars[i] {
-                    '[' => depth += 1,
-                    ']' => {
-                        depth -= 1;
-                        i += 1;
-                        if depth == 0 {
-                            break;
-                        }
-                        continue;
-                    }
-                    _ => {}
-                }
-                i += 1;
-            }
-            continue;
-        }
-        out.push(chars[i]);
-        i += 1;
-    }
-    out
-}
-
-/// Split a body on top-level commas, counting only `{`/`}` — the
-/// `dispatch_wrong_type_census.rs` `split_top_level(body, "{", "}")` shape,
-/// sufficient once attributes (which could otherwise unbalance on a stray
-/// `[`) are already stripped.
-fn split_top_level_braces(body: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut depth = 0i32;
-    let mut cur = String::new();
-    for ch in body.chars() {
-        match ch {
-            '{' => depth += 1,
-            '}' => depth -= 1,
-            _ => {}
-        }
-        if ch == ',' && depth == 0 {
-            out.push(std::mem::take(&mut cur));
-        } else {
-            cur.push(ch);
-        }
-    }
-    out.push(cur);
-    out
-}
+// The types.rs walk — `repo_root`, `types_rs`, the ONE strip rule, the
+// enum-body walker and the top-level splitter — lives in the web crate's
+// shared `source_census` module (P4.115 item 5); this file's old
+// `strip_comments_and_attrs` IS that rule (now also literal-aware).
+use source_census::{
+    repo_root, request_body, split_top_level, variant_name, VARIANT_CLOSE, VARIANT_OPEN,
+};
 
 /// Every `Request` variant whose body carries an `Option<Option<…>>` field —
 /// mechanically, from `api/types.rs`'s enum body.
 fn tri_state_variants() -> Vec<String> {
-    let src = strip_comments_and_attrs(&types_rs());
-    let start = src.find("pub enum Request").expect("the Request enum");
-    let open = src[start..].find('{').expect("enum body") + start;
-    let mut depth = 0i32;
-    let mut end = open;
-    for (i, ch) in src[open..].char_indices() {
-        match ch {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    end = open + i;
-                    break;
-                }
-            }
-            _ => {}
-        }
-    }
-    let body = &src[open + 1..end];
+    let body = request_body();
     let mut out = Vec::new();
-    for variant in split_top_level_braces(body) {
+    for variant in split_top_level(&body, VARIANT_OPEN, VARIANT_CLOSE) {
         let v = variant.trim();
         if v.is_empty() {
             continue;
         }
-        let head = v.split('{').next().unwrap_or("").trim();
-        let Some(name) = head.trim_end_matches(',').split_whitespace().next_back() else {
+        let Some(name) = variant_name(v) else {
             continue;
         };
         // Collapse whitespace so a field type wrapped across a line (rustfmt
