@@ -595,7 +595,10 @@ impl<'c> ChatMessagesRepository<'c> {
         message_id: &str,
         updates: &Value,
     ) -> Result<bool, DbError> {
-        let Some(existing) = self.find_event_value(chat_id, message_id)? else {
+        // v4 `findOne({ id: messageId, chatId })` — ONE raw row, no Zod, no
+        // skip (P4.113; see `find_event_raw`).
+        let Some(existing) = chats_messages_read::find_event_raw(self.conn, chat_id, message_id)?
+        else {
             return Ok(false);
         };
 
@@ -605,6 +608,15 @@ impl<'c> ChatMessagesRepository<'c> {
             for (k, v) in src {
                 dst.insert(k.clone(), v.clone());
             }
+        }
+
+        // `ChatEventSchema.parse(merged)` — the MERGED event, so an update
+        // that repairs a corrupted field writes and one that does not throws
+        // (the ERROR arm above). The Zod-only shapes go through the SAME
+        // predicate the per-row skip uses (one home); the typed shapes through
+        // the serde parse below.
+        if let Some(failure) = chats_messages_read::zod_shape_failure(&merged) {
+            return Err(DbError::Internal(format!("updateMessage parse: {failure}")));
         }
 
         let event: ChatEventInput = serde_json::from_value(merged)
@@ -723,22 +735,6 @@ impl<'c> ChatMessagesRepository<'c> {
             Ok(())
         })?;
         Ok(true)
-    }
-
-    /// The hydrated event for `(chatId, messageId)`, or `None` if absent — v4
-    /// `findOne({ id, chatId })`, reusing the sub-unit-3 per-member marshaling
-    /// (a dropped-null vs kept-null cell both rewrite back to SQL `NULL`).
-    ///
-    /// Reads through [`chats_messages_read::get_messages_strict`], never the
-    /// swallowing variant (P4.109): v4's `findOne` is inside `updateMessage`'s
-    /// own `safeQuery`, so a read failure here must surface as `Failed to
-    /// update message in chat` — not as `Failed to get messages for chat`
-    /// followed by a silent "not found".
-    fn find_event_value(&self, chat_id: &str, message_id: &str) -> Result<Option<Value>, DbError> {
-        let all = chats_messages_read::get_messages_strict(self.conn, chat_id)?;
-        Ok(all
-            .into_iter()
-            .find(|e| e.get("id").and_then(Value::as_str) == Some(message_id)))
     }
 
     /// The shared metadata side-effect: recount visible messages; bump

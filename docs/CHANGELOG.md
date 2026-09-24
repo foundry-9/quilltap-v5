@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(db): update_message reads one raw row and validates the merged event, as v4 does (P4.113 unit 2)
+
+_Versions: core 0.0.1029, harness 0.0.950._
+
+`update_message` used to read the whole chat through the corrupted-row skip
+and pick the target out of it. That answered a corrupted target as
+not-found with a WARN, and logged every corrupted sibling's WARN on a healthy
+update. It now reads one row by `(id, chatId)` with no skip, merges the
+update, and checks the merged event with the same Zod-shape predicate the skip
+uses. An update that repairs the bad field writes; one that does not logs
+`Failed to update message in chat` and answers not-found. The ops tier-2
+family gains 13 update arms, all red before the fix. The caller census drops
+the retired strict site: (76, 8) to (76, 7). A NULL-cell target that an
+update repairs still differs from v4 (v5 errors, v4 writes); recorded.
+
 #### 2026-09-24 — fix(db): the corrupted-row skip checks createdAt and participantId the way v4's Zod does (P4.113 unit 1)
 
 _Versions: core 0.0.1028, harness 0.0.949._

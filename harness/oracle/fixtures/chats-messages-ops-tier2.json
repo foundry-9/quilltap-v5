@@ -735,6 +735,114 @@
     {
       "kind": "getMessages",
       "chatId": "c0000090-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000006",
+      "updates": {
+        "content": "touched while its siblings lie corrupted"
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000001",
+      "updates": {
+        "content": "still narrating"
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000001",
+      "updates": {
+        "role": "USER"
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "not-a-uuid",
+      "updates": {
+        "content": "still without a uuid"
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "not-a-uuid",
+      "updates": {
+        "id": "e0000090-0000-4000-8000-0000000000f2"
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000003",
+      "updates": {
+        "content": "still a number"
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000003",
+      "updates": {
+        "hostEvent": null
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000009",
+      "updates": {
+        "content": "still without seconds"
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000009",
+      "updates": {
+        "createdAt": "2026-03-01T00:00:09.000Z"
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-00000000000c",
+      "updates": {
+        "context": "still dated yesterday"
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-00000000000c",
+      "updates": {
+        "createdAt": "2026-03-01T00:00:12.000Z"
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-00000000000e",
+      "updates": {
+        "content": "still a stranger"
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-00000000000e",
+      "updates": {
+        "participantId": null
+      }
+    },
+    {
+      "kind": "getMessages",
+      "chatId": "c0000090-0000-4000-8000-000000000001"
     }
   ]
 }

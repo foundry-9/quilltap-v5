@@ -147275,3 +147275,46 @@ by hand with lane-private paths instead of through the driver).
   `QT_FIXTURE_OUT=/tmp/p4113/chatsmsgops-fixture.db $N/npx tsx $W/harness/oracle/fixtures/build-chats-messages-ops-fixture.ts`
   then `QT_FIXTURE_CHATSMSGOPS=/tmp/p4113/chatsmsgops-fixture.db $N/npx tsx $W/harness/oracle/cases/chats-messages-ops-tier2.ts > /tmp/p4113/oracle-chatsmsgops.ndjson`
   (`N=~/.nvm/versions/node/v24.13.1/bin`, `W` = the lane worktree, cwd = the pin).
+
+### Unit 2 — `update_message` reads ONE raw row and validates the MERGED event
+
+- **Survey re-verified at the pin** (`chats-messages.ops.ts:517-570`): the
+  order's table holds exactly. `find_event_value` had ONE caller
+  (`update_message_inner`) and v4's twin is the raw `findOne`, so it was
+  RETIRED, not kept: the new `chats_messages_read::find_event_raw` reads
+  `WHERE id = ?1 AND chatId = ?2 LIMIT 1` through `marshal_row` with no
+  skip and no WARN; `update_message_inner` merges, then runs the SAME
+  `zod_shape_failure` the per-row skip uses (one home), then the serde parse;
+  a failure is the existing `Failed to update message in chat` ERROR arm.
+- **Arms** (appended after the final read of unit 1, then a closing read):
+  a healthy sibling (`-0006`) updated in the corrupted chat → silent, writes;
+  for `role` (`-0001`), the non-uuid `id` (`not-a-uuid`, repaired by an
+  update carrying `id: e0000090-…-00f2`), `hostEvent: 42` (`-0003`, repaired
+  by `hostEvent: null`), the no-seconds `createdAt` (`-0009`), the
+  context-summary's `yesterday` (`-000c`) and the non-uuid `participantId`
+  (`-000e`, repaired by `participantId: null`) — a non-repairing update
+  (ERROR, `null`, nothing written) then a repairing one (writes). The harness
+  maps `Ok(true)` to the WRITTEN id (the update's `id` when it carries one —
+  v4 returns the validated event, whose id the repair moved).
+  `assert_update_returns` now reports EVERY mismatching op, not the first.
+- **Red-first:** pre-fix v5 differed on ALL 13 new ops (the sibling: 12
+  sibling WARNs; each non-repair: WARN not ERROR; each repair: `null`, not
+  written). Fixed: green.
+- **Mutations:** M3 (the whole-chat strict read restored) RED on op 4 — the
+  sibling silence leg — and every other new op (it IS the pre-fix read);
+  M4 (validate the EXISTING event, not the merged one) RED on exactly the six
+  repair ops (6, 8, 10, 12, 14, 16).
+- **Neighbours:** `chat_message_update_fts_tier2` regenerated from the pin
+  (lane-private `/tmp/p4113/fts-fixture.db` + `oracle-fts.ndjson`): green, 8
+  ops / 5 indexed rows. `get_messages_caller_census` re-counted: the strict
+  `find_event_value` site LEFT (v4's `findOne` is not a `getMessages` read) —
+  **(76, 8) → (76, 7)**, still 50 files.
+- ⚠ **Recorded divergence, NOT taken (named, not pinned):** a per-CELL
+  failure on the target row. v4's `findOne` hydrates without member types, so
+  a planted NULL-`content` row plus a `{ content }` update WRITES — measured
+  on a throwaway mirror of this spec at the pin (`e0000070-…-0002` →
+  `returned` = its id, no log line); v5's typed marshal fails before the
+  merge and logs `Failed to update message in chat`. Closing it needs an
+  untyped marshal for the find (a column-by-column hydrate that drops an
+  unreadable cell) — a unit of its own. Only corrupt or hand-edited data
+  carries such a cell (v4 writes `content` through a required Zod string).

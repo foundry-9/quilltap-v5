@@ -459,6 +459,44 @@ pub fn get_messages(conn: &Connection, chat_id: &str) -> Result<Vec<Value>, DbEr
     }
 }
 
+/// P4.113 — v4 `updateMessage`'s `messagesCollection.findOne({ id: messageId,
+/// chatId })` (`chats-messages.ops.ts:524`): ONE row by `(id, chatId)`,
+/// hydrated, with **NO Zod** — so a row the per-row skip would reject (a bad
+/// `role`, a non-uuid `id`, a malformed `createdAt` …) is still FOUND here,
+/// and its fate is decided by `ChatEventSchema.parse` of the MERGED event
+/// ([`zod_shape_failure`], the caller's job): a repairing update writes, a
+/// non-repairing one throws into `Failed to update message in chat`. No WARN
+/// is ever logged here, for this row or any sibling — the whole-chat strict
+/// read this replaced emitted every corrupted SIBLING's `Skipping corrupted
+/// chat message` on a healthy update, and answered a corrupted target as
+/// not-found.
+///
+/// An unknown `type` answers `Err` (v4's hydrated row then fails the parse —
+/// the same ERROR). ⚠ **A per-CELL failure also answers `Err`** — a recorded
+/// divergence, not taken by P4.113: v4's `hydrateRow` has no member types, so
+/// a NULL `content` row hydrates and a `{ content }` update REPAIRS it, where
+/// v5's typed marshal fails before the merge and logs the ERROR (named in
+/// P4.113's lane record).
+pub(crate) fn find_event_raw(
+    conn: &Connection,
+    chat_id: &str,
+    message_id: &str,
+) -> Result<Option<Value>, DbError> {
+    let sql = format!("SELECT {COLUMNS} FROM chat_messages WHERE id = ?1 AND chatId = ?2 LIMIT 1");
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query([message_id, chat_id])?;
+    let Some(row) = rows.next()? else {
+        return Ok(None);
+    };
+    match marshal_row(row)? {
+        Some(event) => Ok(Some(event)),
+        None => Err(DbError::Internal(format!(
+            "updateMessage parse: unrecognized chat event type {:?}",
+            row.get::<_, Option<String>>(1)?.unwrap_or_default()
+        ))),
+    }
+}
+
 /// [`get_messages`] WITHOUT v4's `safeQuery` fallback: a failing read answers
 /// `Err`. For the call sites whose v4 counterpart rethrows or reads the rows
 /// some other way (see [`get_messages`]).

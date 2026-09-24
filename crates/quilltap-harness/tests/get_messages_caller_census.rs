@@ -80,12 +80,12 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     ("api/salon.rs", "resolve_message", F),
     ("api/salon.rs", "message_edit", F),
     ("api/transcript_projection.rs", "project_chat_transcript", F),
-    // `update_message`'s `find_event_value` is STRICT: v4's `findOne` sits
-    // inside `updateMessage`'s own `safeQuery`, so a failed read must log
-    // `Failed to update message in chat`. `delete_bookkeeping` and
-    // `update_chat_metadata` read through v4's `getMessages` (fallback).
+    // `update_message` no longer reads through `get_messages` at all (P4.113:
+    // v4's `findOne` is ONE raw row — `chats_messages_read::find_event_raw`
+    // — so its old strict `find_event_value` site LEFT the census).
+    // `delete_bookkeeping` and `update_chat_metadata` read through v4's
+    // `getMessages` (fallback).
     ("db/chats_messages.rs", "delete_bookkeeping", F),
-    ("db/chats_messages.rs", "find_event_value", S),
     ("db/chats_messages.rs", "update_chat_metadata", F),
     // `get_messages`' own body calls its strict sibling; `get_message_count`
     // wraps v4's `getMessages`; the rest are unit tests (the `00c290c9a`
@@ -449,8 +449,11 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // recorded: swallowing 77 − 2 = 75; strict 5 + 2 = 7; and its
     // unknown-type unit test calls each variant once: 76 and 8. P4.112
     // re-keyed the rows per call site (file, fn, variant) — the SAME 84 sites
-    // over the same 50 files, so the totals do not move.
-    assert_eq!((swallowing, strict), (76, 8), "census totals");
+    // over the same 50 files, so the totals do not move. P4.113 retired
+    // `update_message`'s strict `find_event_value` site (v4's raw `findOne`
+    // is not a `getMessages` read): strict 8 − 1 = 7; the file keeps its two
+    // fallback sites, so still 50 files.
+    assert_eq!((swallowing, strict), (76, 7), "census totals");
     assert_eq!(file_count, 50, "census files");
 }
 

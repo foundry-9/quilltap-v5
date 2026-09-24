@@ -288,8 +288,16 @@ fn chats_messages_ops_tier2_matches_oracle() {
                     let (got, lines) = quilltap_core::test_support::captured_with(|| {
                         repo.update_message(chat_id, message_id, updates)
                     });
+                    // v4 returns the VALIDATED event and the oracle records
+                    // its id — which an update carrying `id` (P4.113's
+                    // non-uuid repair) moves; v5 answers `bool`, so the id
+                    // the write left is the update's, else the op's.
+                    let written_id = updates
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or(message_id);
                     let returned = match got {
-                        Ok(true) => Value::String(message_id.clone()),
+                        Ok(true) => Value::String(written_id.to_string()),
                         Ok(false) => Value::Null,
                         Err(e) => Value::String(format!("Err: {e}")),
                     };
@@ -422,7 +430,17 @@ fn chats_messages_ops_tier2_matches_oracle() {
 /// P4.109: v4's `updateMessage` is a FALLBACK `safeQuery` answering `null` —
 /// the `content: 42` op fails `ChatEventSchema.parse` and logs ONE `Failed to
 /// update message in chat {chatId, messageId}`; every other op is a silence
-/// leg. Per `updateMessage` op, in order: the return, then the lines by level,
+/// leg.
+///
+/// P4.113: v4's find is ONE raw row (`findOne`, no Zod), and the parse runs
+/// on the MERGED event. So after the plants: a healthy sibling's update in
+/// the corrupted chat is SILENT (the whole-chat read v5 had emitted every
+/// corrupted sibling's WARN); for each planted shape (`role`, the non-uuid
+/// `id`, `hostEvent: 42`, a no-seconds `createdAt`, a `yesterday`
+/// context-summary `createdAt`, a non-uuid `participantId`) an update that
+/// leaves the field alone ERRORs and answers `null`, and one that REPAIRS it
+/// writes (the dumps and the final read show it) — where v5 had answered
+/// both with the skip WARN and `Ok(false)`. Per `updateMessage` op, in order: the return, then the lines by level,
 /// message and the two context fields.
 fn assert_update_returns(got: &[(Value, Vec<String>)], want: &Value) {
     let want = want
@@ -433,35 +451,60 @@ fn assert_update_returns(got: &[(Value, Vec<String>)], want: &Value) {
         want.len(),
         "updateMessage op count: rust vs oracle"
     );
+    // P4.113: every op is checked and EVERY mismatching op is reported (not
+    // just the first), so a red-first run counts its reds.
+    let mut reds: Vec<String> = Vec::new();
     for (i, ((returned, lines), w)) in got.iter().zip(want).enumerate() {
-        assert_eq!(
-            returned, &w["returned"],
-            "updateMessage op {i} ({}): return — v4 `null` is v5 `Ok(false)`",
+        if let Err(e) = check_update_return(i, returned, lines, w) {
+            reds.push(e);
+        }
+    }
+    assert!(
+        reds.is_empty(),
+        "{} updateMessage op(s) differ from v4:\n{}",
+        reds.len(),
+        reds.join("\n")
+    );
+}
+
+/// One `updateMessage` op against v4: the return, then the lines by level,
+/// message and the two context fields.
+fn check_update_return(
+    i: usize,
+    returned: &Value,
+    lines: &[String],
+    w: &Value,
+) -> Result<(), String> {
+    if returned != &w["returned"] {
+        return Err(format!(
+            "op {i} ({}): return — v4 {} rust {returned} (v4 `null` is v5 `Ok(false)`)",
+            w["messageId"], w["returned"]
+        ));
+    }
+    let w_logs = w["logs"].as_array().expect("logs");
+    if lines.len() != w_logs.len() {
+        return Err(format!(
+            "op {i} ({}): ERROR/WARN lines — v4 {w_logs:?} rust {lines:?}",
             w["messageId"]
-        );
-        let w_logs = w["logs"].as_array().expect("logs");
-        assert_eq!(
-            lines.len(),
-            w_logs.len(),
-            "updateMessage op {i}: ERROR/WARN lines — v4 {w_logs:?} rust {lines:?}"
-        );
-        for (g, wl) in lines.iter().zip(w_logs) {
-            let level = wl["level"].as_str().unwrap().to_uppercase();
-            assert!(
-                g.starts_with(&format!("{level} quilltap::db")),
-                "op {i}: {g}"
-            );
-            assert!(
-                g.contains(wl["message"].as_str().unwrap()),
-                "op {i}: {wl} vs {g}"
-            );
-            for key in ["chatId", "messageId"] {
-                if let Some(v) = wl[key].as_str() {
-                    assert!(g.contains(&format!("{key}={v}")), "op {i}: {key}: {g}");
+        ));
+    }
+    for (g, wl) in lines.iter().zip(w_logs) {
+        let level = wl["level"].as_str().unwrap().to_uppercase();
+        if !g.starts_with(&format!("{level} quilltap::db")) {
+            return Err(format!("op {i}: level/target: {g}"));
+        }
+        if !g.contains(wl["message"].as_str().unwrap()) {
+            return Err(format!("op {i}: {wl} vs {g}"));
+        }
+        for key in ["chatId", "messageId"] {
+            if let Some(v) = wl[key].as_str() {
+                if !g.contains(&format!("{key}={v}")) {
+                    return Err(format!("op {i}: {key}: {g}"));
                 }
             }
         }
     }
+    Ok(())
 }
 
 /// P4.109 / P4.105's finding 1: a NULL-content row is SKIPPED by v4's per-row
