@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — feat(spa): export isCarinaInvocableName from the Carina twin (P4.D224 unit 1)
+
+_Versions: SPA 0.5.762._
+
+The SPA's Carina parser twin now builds its line pattern from a shared
+`NAME_SOURCE` string and exports `isCarinaInvocableName`, as v4 `3376b3dfa`
+does, for the `@` mention typeahead. The line pattern is unchanged (its
+`.source` and `.flags` are pinned against the old literal). The oracle
+fixture was re-recorded at v4 `b0b6656b5`: the 49 existing parse rows are
+byte-identical and 34 name rows were added (v4's ten test names plus
+Unicode, digit, underscore, whitespace and punctuation edges). The Rust
+parser needs no change.
+
 #### 2026-09-24 — docs(porting): close the P4.D223 lane (Salon Images quick-hide + bug-169 convergence)
 
 _Docs-only change._

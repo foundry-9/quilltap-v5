@@ -28,11 +28,19 @@
  *   > <V5>/apps/web/src/testing/fixtures/carina-parser.ndjson
  * ```
  *
- * Expect 49 lines; a shorter file means the recorder errored and the redirect
- * already truncated the old one (the empty-file trap).
+ * Expect 49 + 34 = 83 lines; a shorter file means the recorder errored and the
+ * redirect already truncated the old one (the empty-file trap).
+ *
+ * **P4.D224 (v4 `3376b3dfa`)** appended the `isCarinaInvocableName` rows — the
+ * parser's name grammar exported for the composer's `@` typeahead. The 49
+ * `parseCarinaQuery` rows above them are UNCHANGED (byte-identical when
+ * re-recorded at `b0b6656b5`: v4 rebuilt `LINE_RE` from `NAME_SOURCE` into the
+ * same pattern). Those rows carry a `name` key instead of `content`, which is how
+ * the spec tells the two kinds apart. Pin marker: only a post-`3376b3dfa` tree
+ * can import `isCarinaInvocableName` at all.
  */
 
-import { parseCarinaQuery } from '@/lib/chat/carina-parser';
+import { isCarinaInvocableName, parseCarinaQuery } from '@/lib/chat/carina-parser';
 
 /** `[label, content]` — the label is the spec's test name, so it must be unique. */
 const VECTORS: Array<[string, string]> = [
@@ -102,9 +110,67 @@ const VECTORS: Array<[string, string]> = [
   ['trailing newline after a valid address', '@Evangeline: what year is it?\n'],
 ];
 
+/**
+ * `[label, name]` for `isCarinaInvocableName`. The first ten are v4's own test
+ * hunk (`lib/chat/__tests__/carina-parser.test.ts` at `3376b3dfa`); the rest widen
+ * the corpus along the grammar's edges. Each row also records what
+ * `parseCarinaQuery` makes of `@<name>: hello`, which is the property v4's test
+ * pairs with the verdict (an invocable name parses back as itself).
+ */
+const NAMES: Array<[string, string]> = [
+  // --- v4's test hunk, verbatim --------------------------------------------
+  ['invocable: accepts Archivist', 'Archivist'],
+  ['invocable: accepts Lady Arabella', 'Lady Arabella'],
+  ['invocable: accepts R2_D2', 'R2_D2'],
+  ['invocable: accepts Ab', 'Ab'],
+  ['invocable: rejects X', 'X'],
+  ['invocable: rejects Jean-Luc', 'Jean-Luc'],
+  ['invocable: rejects Zoë', 'Zoë'],
+  ["invocable: rejects O'Neil", "O'Neil"],
+  ['invocable: rejects a leading space', ' Lead'],
+  ['invocable: rejects a trailing space', 'Trail '],
+  // --- widening --------------------------------------------------------------
+  ['invocable: an accented Latin letter', 'Zoé'],
+  ['invocable: a combining acute (NFD)', 'Zoe\u0301'],
+  ['invocable: Cyrillic', 'Иван'],
+  ['invocable: CJK', '李白'],
+  ['invocable: an emoji', 'Owl🦉'],
+  ['invocable: digits first', '7up'],
+  ['invocable: all digits', '42'],
+  ['invocable: underscores only', '__'],
+  ['invocable: a single underscore', '_'],
+  ['invocable: internal double space', 'Lady  Arabella'],
+  ['invocable: three words', 'The Right Honourable'],
+  ['invocable: a tab inside', 'Lady\tArabella'],
+  ['invocable: a newline inside', 'Lady\nArabella'],
+  ['invocable: a trailing newline', 'Archivist\n'],
+  ['invocable: two chars with a space between', 'A B'],
+  ['invocable: a full stop', 'Mr. Smith'],
+  ['invocable: a hyphenated surname', 'Anne Smith-Jones'],
+  ['invocable: the empty string', ''],
+  ['invocable: a lone space', ' '],
+  ['invocable: Brahma', 'Brahma'],
+  ['invocable: lower-case brahma', 'brahma'],
+  ['invocable: a separator inside', 'Who:Me'],
+  ['invocable: a question mark inside', 'Who?'],
+  ['invocable: an @ inside', 'a@b'],
+];
+
 const seen = new Set<string>();
 for (const [label, content] of VECTORS) {
   if (seen.has(label)) throw new Error(`duplicate vector label: ${label}`);
   seen.add(label);
   console.log(JSON.stringify({ id: label, content, out: parseCarinaQuery(content) }));
+}
+for (const [label, name] of NAMES) {
+  if (seen.has(label)) throw new Error(`duplicate vector label: ${label}`);
+  seen.add(label);
+  console.log(
+    JSON.stringify({
+      id: label,
+      name,
+      out: isCarinaInvocableName(name),
+      parsedName: parseCarinaQuery(`@${name}: hello`)?.characterName ?? null,
+    }),
+  );
 }

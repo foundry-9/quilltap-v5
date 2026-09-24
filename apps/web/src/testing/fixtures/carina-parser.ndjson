@@ -47,3 +47,37 @@
 {"id":"an email-looking line","content":"@evangeline@example.com: ping","out":null}
 {"id":"whisper with a quoted question","content":"@Evangeline? 'is he still here'","out":{"characterName":"Evangeline","whisper":true,"question":"is he still here"}}
 {"id":"trailing newline after a valid address","content":"@Evangeline: what year is it?\n","out":{"characterName":"Evangeline","whisper":false,"question":"what year is it?"}}
+{"id":"invocable: accepts Archivist","name":"Archivist","out":true,"parsedName":"Archivist"}
+{"id":"invocable: accepts Lady Arabella","name":"Lady Arabella","out":true,"parsedName":"Lady Arabella"}
+{"id":"invocable: accepts R2_D2","name":"R2_D2","out":true,"parsedName":"R2_D2"}
+{"id":"invocable: accepts Ab","name":"Ab","out":true,"parsedName":"Ab"}
+{"id":"invocable: rejects X","name":"X","out":false,"parsedName":null}
+{"id":"invocable: rejects Jean-Luc","name":"Jean-Luc","out":false,"parsedName":null}
+{"id":"invocable: rejects Zoë","name":"Zoë","out":false,"parsedName":null}
+{"id":"invocable: rejects O'Neil","name":"O'Neil","out":false,"parsedName":null}
+{"id":"invocable: rejects a leading space","name":" Lead","out":false,"parsedName":null}
+{"id":"invocable: rejects a trailing space","name":"Trail ","out":false,"parsedName":null}
+{"id":"invocable: an accented Latin letter","name":"Zoé","out":false,"parsedName":null}
+{"id":"invocable: a combining acute (NFD)","name":"Zoé","out":false,"parsedName":null}
+{"id":"invocable: Cyrillic","name":"Иван","out":false,"parsedName":null}
+{"id":"invocable: CJK","name":"李白","out":false,"parsedName":null}
+{"id":"invocable: an emoji","name":"Owl🦉","out":false,"parsedName":null}
+{"id":"invocable: digits first","name":"7up","out":true,"parsedName":"7up"}
+{"id":"invocable: all digits","name":"42","out":true,"parsedName":"42"}
+{"id":"invocable: underscores only","name":"__","out":true,"parsedName":"__"}
+{"id":"invocable: a single underscore","name":"_","out":false,"parsedName":null}
+{"id":"invocable: internal double space","name":"Lady  Arabella","out":true,"parsedName":"Lady  Arabella"}
+{"id":"invocable: three words","name":"The Right Honourable","out":true,"parsedName":"The Right Honourable"}
+{"id":"invocable: a tab inside","name":"Lady\tArabella","out":false,"parsedName":null}
+{"id":"invocable: a newline inside","name":"Lady\nArabella","out":false,"parsedName":null}
+{"id":"invocable: a trailing newline","name":"Archivist\n","out":false,"parsedName":null}
+{"id":"invocable: two chars with a space between","name":"A B","out":true,"parsedName":"A B"}
+{"id":"invocable: a full stop","name":"Mr. Smith","out":false,"parsedName":null}
+{"id":"invocable: a hyphenated surname","name":"Anne Smith-Jones","out":false,"parsedName":null}
+{"id":"invocable: the empty string","name":"","out":false,"parsedName":null}
+{"id":"invocable: a lone space","name":" ","out":false,"parsedName":null}
+{"id":"invocable: Brahma","name":"Brahma","out":true,"parsedName":"Brahma"}
+{"id":"invocable: lower-case brahma","name":"brahma","out":true,"parsedName":"brahma"}
+{"id":"invocable: a separator inside","name":"Who:Me","out":false,"parsedName":"Who"}
+{"id":"invocable: a question mark inside","name":"Who?","out":false,"parsedName":"Who"}
+{"id":"invocable: an @ inside","name":"a@b","out":false,"parsedName":null}

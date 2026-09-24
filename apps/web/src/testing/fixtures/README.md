@@ -125,3 +125,18 @@ author.
 
   Expect 71 lines; a shorter file means the recorder errored and the redirect
   already truncated the old one.
+
+## `carina-parser.ndjson`
+
+**83 rows** — 49 `parseCarinaQuery` rows (`content` + `out`) and 34
+`isCarinaInvocableName` rows (`name` + `out` + `parsedName`). Drives
+`app/chat/carina-parser.oracle.spec.ts`.
+
+- **Provenance:** the 49 parse rows were recorded at `f4ad2c8d1` (P4.D181);
+  P4.D224 re-recorded the file at v4 `b0b6656b5` from a pinned worktree with the
+  34 name rows appended — the first 49 lines are byte-identical to the old file
+  (`cmp` on the prefix), because v4 `3376b3dfa` rebuilt `LINE_RE` from
+  `NAME_SOURCE` into the same pattern.
+- **Recorder:** `apps/web/oracle/carina-parser.recorder.ts` (its header has the
+  pinned-worktree invocation). Expect 83 lines.
+

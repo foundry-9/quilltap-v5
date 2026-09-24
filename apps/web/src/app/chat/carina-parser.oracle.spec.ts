@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import corpusText from '../../testing/fixtures/carina-parser.ndjson';
-import { parseCarinaQuery, type CarinaQuery } from './carina-parser';
+import {
+  CARINA_LINE_RE,
+  isCarinaInvocableName,
+  parseCarinaQuery,
+  type CarinaQuery,
+} from './carina-parser';
 
 /**
  * The corpus differential for v4 `lib/chat/carina-parser.ts`'s `parseCarinaQuery`
@@ -20,14 +25,27 @@ interface Row {
   out: CarinaQuery | null;
 }
 
-const ROWS: Row[] = (corpusText as unknown as string)
+/** `isCarinaInvocableName` rows (P4.D224, v4 `3376b3dfa`) carry `name`, not `content`. */
+interface NameRow {
+  id: string;
+  name: string;
+  out: boolean;
+  /** `parseCarinaQuery('@' + name + ': hello')?.characterName ?? null` on v4's side. */
+  parsedName: string | null;
+}
+
+const ALL: Array<Row | NameRow> = (corpusText as unknown as string)
   .split('\n')
   .filter((line) => line.trim() !== '')
-  .map((line) => JSON.parse(line) as Row);
+  .map((line) => JSON.parse(line) as Row | NameRow);
+
+const ROWS: Row[] = ALL.filter((r): r is Row => 'content' in r);
+const NAME_ROWS: NameRow[] = ALL.filter((r): r is NameRow => 'name' in r);
 
 describe("parseCarinaQuery agrees with v4's lib/chat/carina-parser.ts row for row", () => {
   it('carries the whole recorded corpus', () => {
     // A truncated fixture would make the it.each below vacuously green.
+    expect(ALL).toHaveLength(83);
     expect(ROWS).toHaveLength(49);
   });
 
@@ -41,5 +59,26 @@ describe("parseCarinaQuery agrees with v4's lib/chat/carina-parser.ts row for ro
 
   it.each(ROWS)('$id', (row) => {
     expect(parseCarinaQuery(row.content)).toEqual(row.out);
+  });
+});
+
+describe("isCarinaInvocableName agrees with v4's lib/chat/carina-parser.ts row for row", () => {
+  it('carries the whole recorded name corpus', () => {
+    expect(NAME_ROWS).toHaveLength(34);
+    // Both verdicts must be well populated, or a constant answer would pass.
+    expect(NAME_ROWS.filter((r) => r.out).length).toBeGreaterThanOrEqual(10);
+    expect(NAME_ROWS.filter((r) => !r.out).length).toBeGreaterThanOrEqual(15);
+  });
+
+  it.each(NAME_ROWS)('$id', (row) => {
+    expect(isCarinaInvocableName(row.name)).toBe(row.out);
+    expect(parseCarinaQuery(`@${row.name}: hello`)?.characterName ?? null).toBe(row.parsedName);
+  });
+
+  it('rebuilding LINE_RE from NAME_SOURCE left the pattern byte-identical (v4 `3376b3dfa`)', () => {
+    // The literal the SPA twin carried before the rebuild, from `f4ad2c8d1`.
+    const before = /^@([\w][\w ]*\w)([?:])\s*(.*)$/;
+    expect(CARINA_LINE_RE.source).toBe(before.source);
+    expect(CARINA_LINE_RE.flags).toBe(before.flags);
   });
 });

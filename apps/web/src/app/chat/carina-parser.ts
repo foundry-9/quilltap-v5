@@ -25,7 +25,8 @@
  * directly — one module serving both sides — which v5 cannot do across the
  * Rust/TypeScript boundary, so this is a character-for-character transcription of
  * v4's `lib/chat/carina-parser.ts` at `f4ad2c8d1`, pinned row-for-row by
- * `carina-parser.oracle.spec.ts` against a corpus recorded from v4's REAL module.
+ * `carina-parser.oracle.spec.ts` against a corpus recorded from v4's REAL module
+ * (re-recorded at `b0b6656b5` with the `isCarinaInvocableName` rows, P4.D224).
  *
  * Pure and import-free, exactly as v4's is.
  *
@@ -63,7 +64,22 @@ const QUOTE_PAIRS: Readonly<Record<string, string>> = {
  * `\w` is ASCII-only in JavaScript, so an accented or non-Latin name does NOT
  * match — a real v4 property, pinned by the corpus rather than "fixed".
  */
-const LINE_RE = /^@([\w][\w ]*\w)([?:])\s*(.*)$/;
+const NAME_SOURCE = '[\\w][\\w ]*\\w';
+export const CARINA_LINE_RE = new RegExp(`^@(${NAME_SOURCE})([?:])\\s*(.*)$`);
+const NAME_RE = new RegExp(`^${NAME_SOURCE}$`);
+
+/**
+ * Whether `name` can be addressed as `@name:` / `@name?` — the same name
+ * grammar `parseCarinaQuery` applies, shared so the composer's `@` typeahead
+ * never keeps an `@` in front of a name no query could ever fire for.
+ *
+ * v4 `3376b3dfa` rebuilt `LINE_RE` from `NAME_SOURCE` to export this; the
+ * pattern is byte-identical to the literal it replaced (`.source` and `.flags`
+ * pinned in `carina-parser.oracle.spec.ts`). The Rust parser needs no change.
+ */
+export function isCarinaInvocableName(name: string): boolean {
+  return NAME_RE.test(name);
+}
 
 /**
  * Extract the question from the post-separator remainder. When the first
@@ -99,7 +115,7 @@ export function parseCarinaQuery(content: string): CarinaQuery | null {
 
   const lines = content.split(/\r?\n/);
   for (const line of lines) {
-    const m = LINE_RE.exec(line);
+    const m = CARINA_LINE_RE.exec(line);
     if (!m) {
       continue;
     }

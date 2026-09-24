@@ -148364,6 +148364,38 @@ dialog and aborting the run; v4 identical at `ChatSidebar.tsx:417-429`).
   `94e946728` (docs-only, committed locally in the v4 checkout, NOT pushed).
 - Gate: `npm test` 448 files / 7,670; `npm run lint` clean. SPA 0.5.761.
 
+## P4.D224 — the `@` mention typeahead (lane record, 2026-09-24)
+
+Lane branch `claude/p4-mention-typeahead-spa-c010fe`, cut from `main`
+`72bc1faf`. SPA only (no cargo). §R.2 probe at lane start: PASS (v4 `main`
+at `b0b6656b5`, both logs empty, tree clean). Target pin
+`/tmp/qt-v4-pin-p4d224-b0b6656b5` (`rev-parse` = `b0b6656b5…`, `ls -ld`
+checked; the three symlink classes made). Node 24
+(`~/.nvm/versions/node/v24.13.1/bin`).
+
+### Unit 1 — the Carina twin's `NAME_SOURCE` + `isCarinaInvocableName`
+
+- `chat/carina-parser.ts`: `NAME_SOURCE`, `CARINA_LINE_RE` (exported so the
+  spec can pin it) rebuilt from it, `NAME_RE`, `isCarinaInvocableName` —
+  v4 `lib/chat/carina-parser.ts:52-63` at `3376b3dfa`.
+- **Re-record, measured:** the unchanged recorder run at the target pin
+  reproduced the committed 49-row file byte-for-byte (`cmp` IDENTICAL) before
+  any edit; the grown recorder's first 49 lines are `cmp`-identical to that
+  (§R.4(g) confirmed — the rebuild is behaviour-neutral). 49 → 83 rows (34
+  name rows: v4's ten test-hunk names + 24 widening rows incl. NFD `Zoé`,
+  Cyrillic, CJK, emoji, `7up`, `42`, `__`, `_`, `Lady  Arabella`, a tab, a
+  newline, `Archivist\n` (JS `$` without `m` does NOT match before a trailing
+  newline — false), `A B`, `Mr. Smith`, `Who:Me`, `Who?`, `a@b`). Each name
+  row also records `parseCarinaQuery('@'+name+': hello')?.characterName`, the
+  property v4's test pairs with the verdict.
+- Regen (AS RUN): `cd /tmp/qt-v4-pin-p4d224-b0b6656b5 && cp <W>/apps/web/oracle/carina-parser.recorder.ts . && npx tsx carina-parser.recorder.ts > /tmp/p4d224/carina.ndjson`
+  → 83 lines, copied to `apps/web/src/testing/fixtures/carina-parser.ndjson`.
+- Red-first: the grown spec against the unported twin failed to BUILD
+  (`TS2305` — no `CARINA_LINE_RE`, no `isCarinaInvocableName`).
+- Mutations (file-backup revert): C1 `NAME_RE` unanchored → 15 name rows RED;
+  C2 `NAME_SOURCE` without the trailing `\w` → 6 RED (two parse rows, three
+  name rows, the `.source` pin).
+
 ## P4.D223 — the Salon Images quick-hide + the bug-169 convergence + the `has-dangerous` client half (lane record, 2026-09-24)
 
 Lane branch `claude/salon-images-quick-hide-bug-db0391`, cut from `main`
