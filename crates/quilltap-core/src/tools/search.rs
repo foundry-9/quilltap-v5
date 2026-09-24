@@ -285,7 +285,18 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
     // a document/knowledge source is requested). Any DB error here → outer failure.
     let pool_ctx = match build_pool_context(db, context, search_documents || search_knowledge) {
         Ok(pc) => pc,
-        Err(e) => return SearchOutput::failure(e.to_string(), query),
+        Err(e) => {
+            // v4's outer `catch` (`search-scriptorium-handler.ts:544-549`) — the
+            // one arm of v5's that reaches it (the smalls unification).
+            tracing::error!(
+                context = "search-scriptorium-handler",
+                userId = context.user_id.as_str(),
+                characterId = context.character_id.as_deref(),
+                error = %e,
+                "Search scriptorium tool execution failed"
+            );
+            return SearchOutput::failure(e.to_string(), query);
+        }
     };
     let PoolContext {
         resolver,
@@ -1066,5 +1077,71 @@ fn capitalize(s: &str) -> String {
     match chars.next() {
         Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
         None => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The smalls unification (P4.114 review): v4's outer `catch`
+    /// (`search-scriptorium-handler.ts:544-549`) logs ERROR `Search scriptorium
+    /// tool execution failed` with `{ context, userId, characterId }` plus the
+    /// error; v5's counterpart arm — the pool context's read failing — used to
+    /// return the failure silently. Driven by an instance opened WITHOUT its
+    /// mount-index partition, so `build_pool_context` answers `Err`.
+    #[test]
+    fn an_outer_failure_logs_v4s_execution_failed_error() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let context = SearchContext {
+            user_id: crate::api::SINGLE_USER_ID.to_string(),
+            character_id: Some("c0000000-0000-4000-8000-00000000c001".to_string()),
+            embedding_profile_id: None,
+            project_id: None,
+            operator_surface: false,
+            mount_pool: None,
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (out, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(execute_search_scriptorium(
+                &db,
+                &crate::model::embedding::NoEmbeddingProvider,
+                &context,
+                &json!({ "query": "the quay" }),
+                0.0,
+            ))
+        });
+        assert!(!out.success, "the outer failure answers failure: {out:?}");
+        let errors: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Search scriptorium tool execution failed"))
+            .collect();
+        assert_eq!(errors.len(), 1, "exactly one ERROR: {lines:#?}");
+        let line = errors[0];
+        assert!(line.starts_with("ERROR quilltap_core::tools::search"), "{line}");
+        let at = |k: &str| line.find(k).unwrap_or_else(|| panic!("{k} in {line}"));
+        assert!(
+            at(" context=search-scriptorium-handler")
+                < at(" userId=")
+                && at(" userId=") < at(" characterId=c0000000-0000-4000-8000-00000000c001")
+                && at(" characterId=") < at(" error="),
+            "v4's field order: {line}"
+        );
     }
 }
