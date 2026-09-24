@@ -412,31 +412,6 @@ function applyMocks(spec: Spec, c: CaseSpec): void {
   });
 }
 
-/**
- * P4.D215: the committed `cost-background-main.db` predates the two P4.D171
- * columns (v4 `78b381a96`). The Rust side has always healed its per-case copy
- * (`test_support::ensure_p4d171_columns`); this side never did, so v4's
- * `chats.update` — whose `$set` names every Zod-defaulted field — threw
- * `no such column: cycleOrderParticipantIds` on EVERY chat write, and the
- * family was red on both pins (19 of 20 rows threw, measured 2026-09-23).
- * Same DDL as the Rust helpers, on the per-case COPY only — the committed pair
- * is never widened here (P4.107's list).
- */
-async function ensureP4d171Columns(
-  rawQuery: (q: string) => Promise<unknown>,
-): Promise<void> {
-  const has = async (table: string, col: string) =>
-    ((await rawQuery(`PRAGMA table_info(${table})`)) as Array<{ name: string }>).some(
-      (c) => c.name === col,
-    );
-  if (!(await has('chats', 'cycleOrderParticipantIds'))) {
-    await rawQuery(`ALTER TABLE "chats" ADD COLUMN "cycleOrderParticipantIds" TEXT DEFAULT '[]'`);
-  }
-  if (!(await has('chat_messages', 'routeTrail'))) {
-    await rawQuery(`ALTER TABLE "chat_messages" ADD COLUMN "routeTrail" TEXT DEFAULT NULL`);
-  }
-}
-
 /** The tier-2 diff surface: what the handler wrote. */
 async function dumpState(chatId: string): Promise<unknown> {
   const { getRepositories } = await import('@/lib/repositories/factory');
@@ -496,12 +471,11 @@ async function runCase(
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
 
-  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
-  await ensureP4d171Columns(rawQuery);
 
   const frozen = spec.frozenNowMs;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

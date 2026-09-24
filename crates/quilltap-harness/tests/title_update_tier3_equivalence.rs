@@ -83,12 +83,10 @@ fn fresh_db(tag: &str) -> Db {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("cost-background-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("cost-background-mount.db"), &mount).unwrap();
-    // P4.D171: the committed `cost-background-main.db` predates the two
-    // `78b381a96`-round schema moves.
-    {
-        let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
-        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
-    }
+    // P4.111 widened the committed `cost-background-main.db` to carry the
+    // P4.D171 columns natively (`pragma_table_info` proof: P4.117 lane
+    // record) — the `ensure_p4d171_columns` heal that used to run here is
+    // now dead and removed.
     Db::open(
         DbPaths {
             main,

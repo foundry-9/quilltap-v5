@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — test(harness): remove the dead `ensure_p4d171_columns` heal over the widened cost-background pair (P4.117 unit 1)
+
+_Versions: harness 0.0.949._
+
+P4.111 widened the committed `cost-background-main.db` in place to carry the
+P4.D171 columns (`chats.cycleOrderParticipantIds`, `chat_messages.
+routeTrail`) and the P4.D182 files index natively. That made two heals
+dead: the Rust side's `ensure_p4d171_columns` call in `title_update_tier3_
+equivalence.rs`, and the oracle side's matching `ensureP4d171Columns`
+function and its call in `title-update-tier3.test.ts`. Both are removed,
+proven dead first by a `pragma_table_info` read on a `/tmp` copy of the
+committed pair through v4's real cipher driver (recorded in the P4.117 lane
+record). The family was regenerated fresh from the `d1c06cd9d` pin and
+stays green.
+
 #### 2026-09-23 — docs(porting): order the `d1c06cd9d` review-follow-ups smalls round (P4.113 ∥ P4.114 ∥ P4.115 ∥ P4.116 ∥ P4.117)
 
 _Docs only; no version bumps._
