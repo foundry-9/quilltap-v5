@@ -56,6 +56,8 @@ interface Spec {
   profileE: ProfileSpec;
   profileF: ProfileSpec;
   profileG: ProfileSpec;
+  /** P4.114: the operator-surface document store (no project, no character). */
+  operatorStore: { id: string; name: string; path: string; content: string };
 }
 
 async function main(): Promise<void> {
@@ -187,10 +189,66 @@ async function main(): Promise<void> {
     { id: spec.profileG.id }
   );
 
+  // P4.114 — ONE standalone database-backed document store with one document,
+  // linked to NO project and owned by NO character. Only the operator surface
+  // (`operatorOverride`, every enabled store) can reach it: the Brahma console
+  // runs with no character and no project, so its `doc_*` calls resolve here
+  // only through the resolver's operator branch. The mount-index tables are
+  // created from v4's own schemas (the doc-opacity builder's recipe).
+  {
+    const { getRawMountIndexDatabase } = await import(
+      '@/lib/database/backends/sqlite/mount-index-client'
+    );
+    const { generateDDL } = await import('@/lib/database/schema-translator');
+    const {
+      DocMountPointSchema,
+      DocMountFileSchema,
+      DocMountDocumentSchema,
+      DocMountFolderSchema,
+      DocMountFileLinkSchema,
+      DocMountChunkSchema,
+      ProjectDocMountLinkSchema,
+      GroupDocMountLinkSchema,
+    } = await import('@/lib/schemas/mount-index.types');
+    const midb = getRawMountIndexDatabase();
+    if (!midb) throw new Error('mount-index DB handle unavailable');
+    const ddl: Array<[string, unknown]> = [
+      ['doc_mount_points', DocMountPointSchema],
+      ['doc_mount_files', DocMountFileSchema],
+      ['doc_mount_documents', DocMountDocumentSchema],
+      ['doc_mount_folders', DocMountFolderSchema],
+      ['doc_mount_file_links', DocMountFileLinkSchema],
+      ['doc_mount_chunks', DocMountChunkSchema],
+      ['project_doc_mount_links', ProjectDocMountLinkSchema],
+      ['group_doc_mount_links', GroupDocMountLinkSchema],
+    ];
+    for (const [name, schema] of ddl) {
+      for (const sql of generateDDL(name, schema as never)) midb.exec(sql);
+    }
+    await repos.docMountPoints.create(
+      {
+        name: spec.operatorStore.name,
+        basePath: '',
+        mountType: 'database',
+        storeType: 'documents',
+        includePatterns: [],
+        excludePatterns: [],
+        enabled: true,
+      } as never,
+      { id: spec.operatorStore.id } as never
+    );
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    await writeDatabaseDocument(
+      spec.operatorStore.id,
+      spec.operatorStore.path,
+      spec.operatorStore.content
+    );
+  }
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
   process.stderr.write(
-    `built brahma-console fixture: ${outMain} (${spec.profilesA.length + 5} profiles, 1 api key)\n`
+    `built brahma-console fixture: ${outMain} (${spec.profilesA.length + 5} profiles, 1 api key, 1 operator store)\n`
   );
   process.exit(0);
 }

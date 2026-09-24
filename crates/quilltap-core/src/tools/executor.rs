@@ -1371,15 +1371,19 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         }
     }
 
-    /// The [`DocEditToolContext`] the peer-read gate needs (operator_override is
-    /// always false on the tool-call path).
+    /// The [`DocEditToolContext`] the photo tools' peer-read gate needs. v4's
+    /// photo tools (`keep_image` / `list_images` / `attach_image`) ARE doc-edit
+    /// tools and share the one `docEditContext` (`tool-executor.ts:1140-1148`),
+    /// so `operator_override` carries `ctx.operator_surface` here too — inert
+    /// for the peer gate (`collectPeerCharacterIdsForReads` never reads it),
+    /// faithful for anything that later does (P4.114).
     fn doc_context(&self, ctx: &ToolExecutionContext) -> DocEditToolContext {
         DocEditToolContext {
             chat_id: ctx.chat_id.clone(),
             user_id: ctx.user_id.clone(),
             project_id: ctx.project_id.clone(),
             character_id: ctx.character_id.clone(),
-            operator_override: false,
+            operator_override: ctx.operator_surface,
             // v4 `d1c06cd9d` copies `mountPool` onto the doc-edit context.
             mount_pool: ctx.mount_pool.clone(),
             // P4.6bg S2: the doc-edit files-dir thread. Set to the host files dir
@@ -1723,8 +1727,11 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
     /// (the handlers read `chats`/`characters` on main + the store on mount, and
     /// write the store on mount). Builds v4's dispatch-row result shape
     /// (`{ formattedText, ...result.result }` on success; the failure `error`).
-    /// `operatorOverride` is always false on the tool-call path (the operator
-    /// surfaces — Document Mode / Brahma Console — never route through here).
+    /// `operatorOverride` is `ctx.operator_surface` (v4 `tool-executor.ts:1147`,
+    /// `operatorOverride: context.operatorSurface`): the Brahma surfaces DO route
+    /// through here, and on them a `document_store` path reaches the resolver's
+    /// operator branch and skips the per-document character gates. Every Salon
+    /// caller leaves the surface false (P4.114).
     async fn run_doc_edit(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
         let name = tc.name.clone();
         let args = tc.arguments.clone();
@@ -1733,7 +1740,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             user_id: ctx.user_id.clone(),
             project_id: ctx.project_id.clone(),
             character_id: ctx.character_id.clone(),
-            operator_override: false,
+            operator_override: ctx.operator_surface,
             // v4 `tool-executor.ts:1148` (`d1c06cd9d`): the pre-built pool rides
             // the doc-edit context straight to the path resolver.
             mount_pool: ctx.mount_pool.clone(),

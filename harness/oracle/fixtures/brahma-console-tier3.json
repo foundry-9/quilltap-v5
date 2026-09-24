@@ -25,6 +25,8 @@
   "profileE": { "id": "eeeeee01-0000-4000-8000-000000000001", "name": "OacDangling", "isDefault": true },
   "profileF": { "id": "ffffff01-0000-4000-8000-000000000001", "name": "OacKeyless", "isDefault": true },
   "profileG": { "id": "00777701-0000-4000-8000-000000000001", "name": "LocalStaleKey", "isDefault": true },
+  "_operatorStoreComment": "P4.114: a standalone database store linked to no project and owned by no character — reachable ONLY through the path resolver's operator branch (v4 tool-executor.ts:1147 operatorOverride: context.operatorSurface).",
+  "operatorStore": { "id": "0b0b0b0b-0000-4000-8000-000000000001", "name": "Operator Ledger", "path": "ledger/notes.md", "content": "# Operator Ledger\n\nThe brass key hangs behind the clock.\nSecond line of the ledger." },
   "detection": {
     "submit1": [
       { "name": "submit_final_response", "arguments": { "response": "The final answer, submitted via tool args." }, "callId": "s1" }
@@ -40,6 +42,8 @@
     "bx3": [ { "name": "run_sql", "arguments": { "database": "main", "sql": "SELECT 3 AS n" }, "callId": "call_bx3" } ],
     "bx4": [ { "name": "run_sql", "arguments": { "database": "main", "sql": "SELECT 4 AS n" }, "callId": "call_bx4" } ],
     "bx5": [ { "name": "run_sql", "arguments": { "database": "main", "sql": "SELECT 5 AS n" }, "callId": "call_bx5" } ],
+    "opread": [ { "name": "doc_read_file", "arguments": { "scope": "document_store", "mount_point": "Operator Ledger", "path": "ledger/notes.md" }, "callId": "call_opread" } ],
+    "oplist": [ { "name": "doc_list_files", "arguments": { "scope": "document_store", "mount_point": "Operator Ledger" }, "callId": "call_oplist" } ],
     "bxabort": [ { "name": "run_sql", "arguments": { "database": "main", "sql": "SELECT 7 AS n" }, "callId": "call_bxabort" } ]
   },
   "cases": [
@@ -159,6 +163,18 @@
         [ { "done": true, "rawResponse": { "marker": "bx4" } } ],
         [ { "content": "" }, { "done": true, "rawResponse": { "marker": "bx5" } } ]
       ]
+    },
+    {
+      "name": "operator_doc_store_read_and_list",
+      "_why": "P4.114: the operator surface reaches a document_store with no character and no project — v4 resolves through the operator branch and threads the file into the continuation; a v5 that drops operatorSurface answers the MISSING_CONTEXT refusal and the continuation key misses.",
+      "userId": "a1111111-1111-4111-8111-111111111111",
+      "question": "Where does the brass key hang? Check the operator ledger.",
+      "streams": [
+        [ { "done": true, "rawResponse": { "marker": "opread" } } ],
+        [ { "done": true, "rawResponse": { "marker": "oplist" } } ],
+        [ { "content": "Behind the clock, per the ledger." }, { "done": true } ]
+      ],
+      "expect": { "ok": true, "answer": "Behind the clock, per the ledger." }
     },
     {
       "name": "stream_error_mid_turn",

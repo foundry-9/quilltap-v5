@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(tools): the doc-edit tool-call context carries the operator surface (P4.114)
+
+_Versions: core 0.0.1029, harness 0.0.950._
+
+`run_doc_edit` and the photo tools' `doc_context` now set
+`operator_override` from `ctx.operator_surface`, as v4's executor does
+(`tool-executor.ts:1147`). On the Brahma surfaces a `document_store` path now
+reaches the path resolver's operator branch (every enabled store) and skips
+the per-document character gates, instead of failing with "Project ID or
+character ID is required for document_store scope". Salon callers leave the
+surface false and are unchanged. The Brahma fixture builder plants one
+standalone database store; a new `brahma_console_tier3` case reads and lists
+it (red-first: the continuation key missed with the flag hard-coded false).
+
 #### 2026-09-24 — fix(doc-edit): `doc_read_file`'s result object in v4's key order; retire the pinned tier-3 divergence (P4.114)
 
 _Versions: core 0.0.1028, harness 0.0.949._
