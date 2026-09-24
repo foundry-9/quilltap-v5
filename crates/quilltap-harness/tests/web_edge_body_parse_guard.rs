@@ -106,16 +106,6 @@ const PARSER_WIRING: &[(&str, &str, &str)] = &[
 /// listed fails outright.
 const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
     (
-        "crates/quilltap-web/src/scenario_builder_routes.rs",
-        1,
-        "FAITHFUL, measured (P4.D217): the one site reads the ENGINE's OWN \
-         reply — `aborted` off `scenarioBuilderAbort`'s `{ aborted: bool }` in \
-         the disconnect guard, to decide whether v4's `client disconnected` \
-         DEBUG fires — never caller input. The build body is parsed whole \
-         (`serde_json::from_slice`, v4's `req.json()` → `Request body must be \
-         JSON`) and handed RAW to the verb's Zod twin.",
-    ),
-    (
         "crates/quilltap-web/src/system_data_routes.rs",
         13,
         "ADJUDICATED site by site (P4.62), and every arm is driven by \
