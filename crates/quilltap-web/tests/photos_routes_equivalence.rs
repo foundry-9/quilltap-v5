@@ -219,22 +219,12 @@ async fn plant_real_png(db: &Db, user: &str) {
         file_status: "ok".to_string(),
     };
     db.write(move |w| {
-        // The committed `photos-main.db` predates v4 `7fbf8a55b`'s
-        // `files.generationKey` (a fixture-vintage gap: v4's `initializeDatabase`
-        // migrates ITS copy on open, v5 runs no migrations). Widen THIS case's
-        // copy through v4's own migration step (`add-file-generation-key-
-        // column-v1.ts`: `addColumnIfMissing('files', 'generationKey', 'TEXT')`)
-        // so the planted row and the save leg's `files` read can run; guarded,
-        // so it no-ops once the pair is healed. The committed pair is untouched.
+        // P4.112: the per-case `ALTER TABLE files ADD COLUMN generationKey`
+        // heal that stood here is gone — P4.107 widened the committed
+        // `photos-main.db` through v4's own migration (`pragma_table_info`
+        // on a copy: `generationKey TEXT` + `idx_files_generationKey`), so
+        // the guard had been a no-op since.
         let conn = w.main().connection();
-        let has: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('files') WHERE name = 'generationKey'",
-            [],
-            |r| r.get(0),
-        )?;
-        if has == 0 {
-            conn.execute("ALTER TABLE files ADD COLUMN generationKey TEXT", [])?;
-        }
         FilesRepository::new(conn).create(
             &data,
             &CreateOptions {

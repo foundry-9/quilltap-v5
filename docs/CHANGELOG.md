@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(web): remove photos_routes' dead generationKey ALTER heal (P4.112 unit 7)
+
+_Versions: web 0.0.180._
+
+P4.107 widened the committed `photos-main.db`, so the per-case guarded
+`ALTER TABLE files ADD COLUMN generationKey` in
+`photos_routes_equivalence` had become a no-op. A `pragma_table_info`
+read on a copy of the committed pair shows `generationKey TEXT` and
+`idx_files_generationKey`; the heal is removed and the family stays
+green. None of the other four widened pairs' readers carry one.
+
 #### 2026-09-23 — test(host): measure and pin the corrupt-second-frame animated input against sharp (P4.112 unit 6)
 
 _Versions: host 0.0.150, harness 0.0.935._

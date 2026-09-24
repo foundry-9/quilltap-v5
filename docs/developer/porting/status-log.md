@@ -146822,3 +146822,17 @@ Codec half pinned in `image_codec.rs`
 question for the human: should the counter treat a frame that fails to
 decode as a frame (decline → v4's bytes kept), or is first-frame
 normalization of an undecodable animation acceptable?
+
+### Unit 7 — the dead reader-side heal removed (Tier 1 item 6)
+
+`pragma_table_info('files')` on a COPY of the committed `photos-main.db`
+(through v4's cipher driver, the spec's test pepper, read-only):
+`generationKey TEXT`, plus `idx_files_generationKey`; the committed pair
+untouched (`git diff --quiet`). The guarded `ALTER TABLE files ADD COLUMN
+generationKey` in `photos_routes_equivalence.rs`'s plant is removed; the
+family re-run green. The siblings: P4.107's record says no other reader of
+its five pairs carries a guarded `ALTER`/`ensure_*`; re-grepped every file
+naming `photos-main`, `inspector-main`, `inspector-nostore-main`,
+`wardrobe-routes-main`, `almanack-main` (Rust tests + oracle cases/builders):
+only `photos_routes_equivalence.rs` (the migrator's own hits aside). Nothing
+else to remove.
