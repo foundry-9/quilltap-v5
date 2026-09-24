@@ -146792,3 +146792,33 @@ Family green. **Mutation:** dropping only the fold's `return Ok(result)`
 (`fold_hand_renamed: v5 made a title LLM call for a hand-renamed chat (bug
 164)`, `left: 1`). A first mutation that disabled the whole branch went RED
 earlier, on the skip-line assert — it proved the line, not the pin.
+
+### Unit 6 — the corrupt-second-frame input, MEASURED (Tier 2 item 7) — ⚠ STOP for a ruling
+
+Two fixtures, deterministic from `generate.py` (`--check` now covers six):
+`anim-corrupt2.gif` (the two-frame GIF with frame 2's LZW = clear, code 7,
+EOI — code 7 is outside any 4-colour dictionary after a clear) and
+`anim-corrupt2.webp` (the committed `anim-2frame.webp` with the second
+`ANMF`'s VP8 start code `9d 01 2a` zeroed; container intact). The four
+existing deterministic fixtures regenerate byte-identical. **Measured through
+v4's real `normalizeLinkBlobImage` at the pin:** sharp's `{animated: true}`
+transcode THROWS on both → the store-original fallback: v4 keeps the input
+bytes unchanged (GIF: sharp metadata `pages: 2`, 32×24; WebP: sharp cannot
+read it at all — no width/height). **v5:** `is_multi_frame` stops at the
+first frame that fails (`take_while(is_ok)`), counts ONE, and the animated
+encode path writes the FIRST frame as a still WebP (`image/webp`,
+`broken.webp`, 32×24, smaller, no `ANMF`). **So v5 drops the second frame's
+bytes that v4 keeps** — the order's STOP condition: NO behaviour change
+landed; the ruling is the human's. Pinned as MEASURED in both directions
+(`MEASURED_CORRUPT_SECOND_FRAME` beside `RULED_ANIMATED_DECLINE`): v4-kept +
+v5-first-frame shape, "VANISHED" on equality, "WRONG SHAPE" otherwise, every
+row must run. **Proofs:** removing the counter's `take_while(is_ok)` (so the
+bad frame counts and v5 declines like v4) → the GIF row VANISHED, the WebP
+row WRONG SHAPE — because v5's dimension probe reads the VP8X canvas (32×24)
+where sharp reads nothing, so a "decline" ruling would need a dimensions
+carve-out on the WebP row; an oracle doctored to `pages: 1` → WRONG SHAPE.
+Codec half pinned in `image_codec.rs`
+(`a_corrupt_second_frame_counts_one_and_encodes_the_first`). The ruling
+question for the human: should the counter treat a frame that fails to
+decode as a frame (decline → v4's bytes kept), or is first-frame
+normalization of an undecodable animation acceptable?

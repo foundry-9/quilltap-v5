@@ -213,6 +213,24 @@ const CASES: &[CaseSpec] = &[
         stored_mime_type: "image/png",
         normalize_images: Some(true),
     },
+    // P4.112 — two frames, the SECOND corrupt (P4.108's recorded nit). A
+    // measurement of sharp, pinned as measured ([`MEASURED_CORRUPT_SECOND_FRAME`]).
+    CaseSpec {
+        name: "corrupt_second_frame_gif",
+        file: "anim-corrupt2.gif",
+        relative_path: "art/broken.gif",
+        file_name: "broken.gif",
+        stored_mime_type: "image/gif",
+        normalize_images: Some(true),
+    },
+    CaseSpec {
+        name: "corrupt_second_frame_webp_mislabelled",
+        file: "anim-corrupt2.webp",
+        relative_path: "art/broken.gif",
+        file_name: "broken.gif",
+        stored_mime_type: "image/gif",
+        normalize_images: Some(true),
+    },
 ];
 
 /// P4.108 — rows where v5 deliberately does NOT match v4, with the ruling.
@@ -234,6 +252,31 @@ const RULED_ANIMATED_DECLINE: &[(&str, &str)] = &[
     (
         "anim_webp_mislabelled_declined",
         "a two-frame WebP stored as image/gif: v4 re-encodes it animated; v5 stores it unchanged",
+    ),
+];
+
+/// P4.112 — rows MEASURED against sharp, not ruled: a two-frame input whose
+/// SECOND frame cannot decode (P4.108's recorded nit). Measured at the
+/// `00c290c9a` pin, 2026-09-23: sharp's `{ animated: true }` transcode THROWS
+/// on both inputs, so v4's store-original fallback keeps the input bytes —
+/// both frames' worth (sharp's own metadata reads the GIF as `pages: 2`; the
+/// WebP it cannot read at all). v5's frame counter stops at the first frame
+/// that fails to decode, counts ONE, and the host encoder writes that first
+/// frame as a still WebP — so **v5 drops the second frame's bytes that v4
+/// keeps**. That is the order's STOP condition: no behaviour change here; the
+/// ruling is the human's (P4.112's lane record). Pinned in BOTH directions
+/// like the ruled rows: equal → "VANISHED", a different difference → "WRONG
+/// SHAPE", every declared row must have run.
+const MEASURED_CORRUPT_SECOND_FRAME: &[(&str, &str)] = &[
+    (
+        "corrupt_second_frame_gif",
+        "a GIF whose second frame is corrupt: v4 stores it unchanged (sharp: pages 2, transcode \
+         throws); v5 writes the first frame as a still WebP",
+    ),
+    (
+        "corrupt_second_frame_webp_mislabelled",
+        "a two-ANMF WebP (stored as image/gif) whose second frame is corrupt: v4 stores it \
+         unchanged (sharp cannot read it); v5 writes the first frame as a still WebP",
     ),
 ];
 
@@ -300,6 +343,8 @@ fn normalize_link_blob_image_matches_oracle() {
     // and how many times did the caller's store-original WARN fire.
     let mut kept_input: Vec<bool> = Vec::new();
     let mut store_original_warns: Vec<usize> = Vec::new();
+    // Per case: does v5's OUTPUT carry an animation frame chunk (`ANMF`)?
+    let mut out_has_anmf: Vec<bool> = Vec::new();
 
     for case in CASES {
         let data = std::fs::read(dir.join(case.file))
@@ -319,6 +364,7 @@ fn normalize_link_blob_image_matches_oracle() {
             normalize_link_blob_image(&input, normalize, Some(&codec))
         });
         kept_input.push(out.data == data);
+        out_has_anmf.push(out.data.windows(4).any(|w| w == b"ANMF"));
         store_original_warns.push(
             lines
                 .iter()
@@ -356,6 +402,7 @@ fn normalize_link_blob_image_matches_oracle() {
 
     let mut mismatches: Vec<String> = Vec::new();
     let mut seen_ruled: Vec<&str> = Vec::new();
+    let mut seen_measured: Vec<&str> = Vec::new();
     for (i, (theirs, ours)) in oracle.results.iter().zip(ours.iter()).enumerate() {
         assert_eq!(
             theirs.name, ours.name,
@@ -411,6 +458,50 @@ fn normalize_link_blob_image_matches_oracle() {
             }
             continue;
         }
+        if let Some((_, why)) = MEASURED_CORRUPT_SECOND_FRAME
+            .iter()
+            .find(|(n, _)| *n == theirs.name)
+        {
+            seen_measured.push(case.name);
+            if theirs == ours {
+                mismatches.push(format!(
+                    "  {}: the measured divergence VANISHED — v4 and v5 agree ({why}); record \
+                     what moved and retire the row\n    both {ours:?}",
+                    theirs.name
+                ));
+                continue;
+            }
+            let v4_pages = raw.results[i].get("pages").and_then(|p| p.as_i64());
+            // v4: sharp threw, the store-original fallback kept the input.
+            let v4_kept = !theirs.changed
+                && !theirs.sha_changed
+                && theirs.stored_mime_type == case.stored_mime_type
+                && theirs.relative_path == case.relative_path
+                && theirs.file_name == case.file_name
+                && theirs.bytes_grew_or_shrank == "same"
+                // The GIF: sharp still counts both frames on what it kept.
+                && (case.file != "anim-corrupt2.gif" || v4_pages == Some(2));
+            // v5: counted one frame and encoded it — a still WebP of the
+            // first frame's size, no decline.
+            let v5_first_frame = ours.changed
+                && ours.sha_changed
+                && ours.stored_mime_type == "image/webp"
+                && ours.relative_path.ends_with(".webp")
+                && ours.width == Some(32)
+                && ours.height == Some(24)
+                && !kept_input[i]
+                && !out_has_anmf[i]
+                && store_original_warns[i] == 0;
+            if !(v4_kept && v5_first_frame) {
+                mismatches.push(format!(
+                    "  {}: the measured divergence has the WRONG SHAPE ({why}) — v4 kept={v4_kept} \
+                     (pages {v4_pages:?}), v5 first-frame webp={v5_first_frame} (anmf {}, \
+                     warns {})\n    v4 {theirs:?}\n    v5 {ours:?}",
+                    theirs.name, out_has_anmf[i], store_original_warns[i]
+                ));
+            }
+            continue;
+        }
         if store_original_warns[i] != 0 {
             mismatches.push(format!(
                 "  {}: the store-original WARN fired {} times on a row that is not declined",
@@ -442,6 +533,14 @@ fn normalize_link_blob_image_matches_oracle() {
         );
     }
 
+    for (name, why) in MEASURED_CORRUPT_SECOND_FRAME {
+        assert!(
+            seen_measured.contains(name),
+            "the corpus carries no '{name}' row, so the measured divergence ({why}) is \
+             unproven — regenerate the oracle from the case file that defines it"
+        );
+    }
+
     // Both decisions in quantity, counted on v5's side: the two ruled rows
     // count as UNCHANGED here (v5 declines them), and the row-level diff above
     // is what proves each one.
@@ -452,15 +551,19 @@ fn normalize_link_blob_image_matches_oracle() {
         CASES.len()
     );
     println!(
-        "OK: normalize_link_blob_image matched v4 on {} cases ({changed} normalized, {} left \
-         alone) — decision, mime, path, name, size direction and decoded dimensions — and \
-         diverged as RULED on the {} animated-decline rows.",
-        CASES.len() - RULED_ANIMATED_DECLINE.len(),
+        "OK: normalize_link_blob_image matched v4 on {} cases ({} normalized, {} left \
+         alone) — decision, mime, path, name, size direction and decoded dimensions — \
+         diverged as RULED on the {} animated-decline rows, and as MEASURED on the {} \
+         corrupt-second-frame rows.",
+        CASES.len() - RULED_ANIMATED_DECLINE.len() - MEASURED_CORRUPT_SECOND_FRAME.len(),
+        // v5 normalizes the measured rows, so they come off `changed` here.
+        changed - MEASURED_CORRUPT_SECOND_FRAME.len(),
         // Left alone AMONG the matched rows: v5 leaves the ruled rows alone
         // too, so they come off this count as well as off the total (the
         // `00c290c9a` unification's review — "9 + 7" of 14 did not add up).
         CASES.len() - changed - RULED_ANIMATED_DECLINE.len(),
-        RULED_ANIMATED_DECLINE.len()
+        RULED_ANIMATED_DECLINE.len(),
+        MEASURED_CORRUPT_SECOND_FRAME.len()
     );
 }
 

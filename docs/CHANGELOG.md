@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(host): measure and pin the corrupt-second-frame animated input against sharp (P4.112 unit 6)
+
+_Versions: host 0.0.150, harness 0.0.935._
+
+Two new fixtures, made by `generate.py` and covered by its `--check`: a
+two-frame GIF whose second frame's LZW stream is corrupt, and the
+committed two-frame WebP with its second frame's VP8 start code zeroed.
+Measured through v4's real `normalizeLinkBlobImage` at the baseline pin:
+sharp's animated transcode throws on both, so v4 stores the original
+bytes (sharp still reads the GIF as two pages). v5 counts one frame and
+writes the first frame as a still WebP. That drops the second frame's
+bytes v4 keeps, so no behaviour changes here; the case awaits a ruling.
+`normalize_blob_image` pins the measured divergence in both directions
+(a codec mutation that counts the bad frame trips VANISHED on the GIF
+row; a doctored `pages` trips WRONG SHAPE), and a host unit test pins the
+codec side.
+
 #### 2026-09-23 — test(context-summary): retire the fold_hand_renamed title input the fold can never ask for (P4.112 unit 5)
 
 _No crate versions bumped._

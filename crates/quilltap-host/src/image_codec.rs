@@ -807,6 +807,35 @@ mod tests {
         assert!(!is_multi_frame(b"not an image"));
     }
 
+    /// P4.112 — the corrupt-SECOND-frame inputs (P4.108's recorded nit),
+    /// pinned as they behave, not as anyone would like: the counter stops at
+    /// the first frame that fails to decode, so each counts ONE, and the
+    /// animated encode path writes the first frame as a still WebP instead of
+    /// declining. sharp measures differently (its transcode throws and v4
+    /// stores the original — the GIF reads `pages: 2`), so this is the v5 half
+    /// of `normalize_blob_image_equivalence`'s MEASURED divergence, awaiting
+    /// the human's ruling (P4.112's lane record). A change here must move that
+    /// pin too.
+    #[test]
+    fn a_corrupt_second_frame_counts_one_and_encodes_the_first() {
+        for file in ["anim-corrupt2.gif", "anim-corrupt2.webp"] {
+            let bytes = anim_fixture(file);
+            assert!(!is_multi_frame(&bytes), "{file}: counted as a still");
+            let out = PixelCodec::encode_webp(&HostImageCodec, &bytes, 85, None, true)
+                .unwrap_or_else(|e| panic!("{file}: encoded, not declined: {e}"));
+            assert_eq!(&out[..4], b"RIFF", "{file}");
+            assert!(
+                !out.windows(4).any(|w| w == b"ANMF"),
+                "{file}: a still, one frame"
+            );
+            assert_eq!(
+                PixelCodec::measure(&HostImageCodec, &out),
+                (Some(32), Some(24)),
+                "{file}: the first frame's size"
+            );
+        }
+    }
+
     /// The `00c290c9a` unification's review (BLOCKING, fixed): a tiny
     /// animated input DECLARING a huge canvas must not reach an unbounded
     /// allocation in the frame counter (the real exposure is ~17 GB of RGBA

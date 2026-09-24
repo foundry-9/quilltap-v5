@@ -22,7 +22,9 @@
  *   - (P4.108) seven animated-input rows: two v4 keeps animated and v5
  *     DECLINES (a ruled divergence, pinned both ways on the Rust side), and
  *     five that must match (a WebP passthrough, a one-ANMF still, two still
- *     GIFs, an APNG sharp reads as a still).
+ *     GIFs, an APNG sharp reads as a still);
+ *   - (P4.112) two inputs whose SECOND frame is corrupt (a GIF, a mislabelled
+ *     WebP) — a measurement of sharp, pinned as measured on the Rust side.
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -191,6 +193,26 @@ const CASES: CaseSpec[] = [
     relativePath: 'art/loop.png',
     fileName: 'loop.png',
     storedMimeType: 'image/png',
+    normalizeImages: true,
+  },
+  // P4.112 — MEASURE what sharp does with a two-frame input whose SECOND
+  // frame cannot decode (P4.108's recorded nit: v5's frame counter stops at
+  // the first bad frame, counts 1, and encodes the first frame). The Rust
+  // side pins whatever this records. Fixtures: `generate.py`.
+  {
+    name: 'corrupt_second_frame_gif',
+    file: 'anim-corrupt2.gif',
+    relativePath: 'art/broken.gif',
+    fileName: 'broken.gif',
+    storedMimeType: 'image/gif',
+    normalizeImages: true,
+  },
+  {
+    name: 'corrupt_second_frame_webp_mislabelled',
+    file: 'anim-corrupt2.webp',
+    relativePath: 'art/broken.gif',
+    fileName: 'broken.gif',
+    storedMimeType: 'image/gif',
     normalizeImages: true,
   },
 ];

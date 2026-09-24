@@ -37,6 +37,19 @@ codec's unit tests):
 * `anim-2frame.apng`    hand-assembled APNG (acTL num_frames=2, fcTL + IDAT,
                         fcTL + fdAT). sharp does not decode APNG animation
                         (format=png, a still), so it must never be declined.
+* `anim-corrupt2.gif`   (P4.112) `anim-2frame.gif`'s shape with the SECOND
+                        frame's LZW stream corrupt: a clear code followed by
+                        code 7, which no 4-colour dictionary holds (the next
+                        free entry after a clear is 6). The first frame is
+                        intact. Made to MEASURE what sharp does with a
+                        two-descriptor GIF whose second frame cannot decode
+                        (v5's frame counter counts 1 and encodes the first).
+* `anim-corrupt2.webp`  (P4.112) the committed `anim-2frame.webp` with the
+                        VP8 start code (`9d 01 2a`) of the SECOND `ANMF`'s
+                        bitstream zeroed — the container stays well formed
+                        (two `ANMF` chunks), the second frame cannot decode.
+                        Derived from the committed bytes, so it IS
+                        deterministic and `--check` covers it.
 
 The GIF LZW stream is deliberately "uncompressed": a clear code precedes every
 pixel, so no dictionary entry is ever added and the code width stays at 3 bits
@@ -84,6 +97,20 @@ def _lzw_uncompressed(indices, min_code_size=2):
     return bytes(out)
 
 
+def _lzw_invalid_code(min_code_size=2):
+    """A corrupt LZW stream: a clear code, then code 7 — outside every
+    dictionary a 4-colour table can hold right after a clear (the next free
+    entry is 6) — then end-of-information."""
+    clear = 1 << min_code_size
+    width = min_code_size + 1
+    acc = 0
+    nbits = 0
+    for c in (clear, 7, clear + 1):
+        acc |= c << nbits
+        nbits += width
+    return acc.to_bytes((nbits + 7) // 8, "little")
+
+
 def _sub_blocks(data):
     out = bytearray()
     for i in range(0, len(data), 255):
@@ -109,7 +136,10 @@ def _gif(width, height, frames, loop=False, comment=None):
             # Graphic Control Extension: 100 cs delay, no transparency.
             out += b"\x21\xf9\x04\x00" + struct.pack("<H", 100) + b"\x00\x00"
         out += b"\x2c" + struct.pack("<HHHHB", 0, 0, width, height, 0)
-        out += b"\x02" + _sub_blocks(_lzw_uncompressed(indices))
+        # A frame given as `bytes` is a ready-made (possibly corrupt) LZW
+        # stream; a list is pixel indices.
+        lzw = indices if isinstance(indices, bytes) else _lzw_uncompressed(indices)
+        out += b"\x02" + _sub_blocks(lzw)
     out += b"\x3b"
     return bytes(out)
 
@@ -201,6 +231,30 @@ def _one_anmf_webp(still_webp, width, height):
     return b"RIFF" + struct.pack("<I", len(body)) + body
 
 
+def _corrupt_second_anmf(anim_webp):
+    """Zero the VP8 start code of the SECOND `ANMF`'s bitstream."""
+    data = bytearray(anim_webp)
+    assert data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    i, seen = 12, 0
+    while i < len(data):
+        kind = bytes(data[i : i + 4])
+        size = struct.unpack("<I", data[i + 4 : i + 8])[0]
+        if kind == b"ANMF":
+            seen += 1
+            if seen == 2:
+                # ANMF payload: 16 bytes of frame header, then the `VP8 `
+                # chunk (8-byte header); the start code sits 3 bytes into
+                # the VP8 payload.
+                vp8 = i + 8 + 16
+                assert data[vp8 : vp8 + 4] == b"VP8 ", "a lossy ANMF frame"
+                start = vp8 + 8 + 3
+                assert data[start : start + 3] == b"\x9d\x01\x2a", "the VP8 start code"
+                data[start : start + 3] = b"\x00\x00\x00"
+                return bytes(data)
+        i += 8 + size + (size & 1)
+    raise AssertionError("no second ANMF")
+
+
 # -------------------------------------------------------------------- main
 
 RED, BLUE = PALETTE[0], PALETTE[1]
@@ -212,6 +266,13 @@ def deterministic():
         "still-large.gif": _gif(64, 48, [_stripes(64, 48)]),
         "still-with-commas.gif": _gif(32, 24, [_solid(32, 24, 2)], comment=b"," * 200),
         "anim-2frame.apng": _apng(32, 24, [RED, BLUE]),
+        # P4.112 — the corrupt-second-frame measurement.
+        "anim-corrupt2.gif": _gif(
+            32, 24, [_solid(32, 24, 0), _lzw_invalid_code()], loop=True
+        ),
+        "anim-corrupt2.webp": _corrupt_second_anmf(
+            open(os.path.join(HERE, "anim-2frame.webp"), "rb").read()
+        ),
     }
 
 
