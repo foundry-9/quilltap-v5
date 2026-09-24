@@ -146187,3 +146187,61 @@ exactly ONE row, typed `SCENARIO_BUILDER` — the real writer, through the host 
 no jest oracle can give: every jest oracle writes zero `llm_logs` rows). **Red-first:** the
 service's `log_type` set to `None` (the loop's `CHAT_MESSAGE` default) → `["CHAT_MESSAGE"]` vs
 `["SCENARIO_BUILDER"]`, red; restored by file backup.
+
+### P4.D217 — close-out: the lane's verification gate (2026-09-23)
+
+Final code tip `6e523277`. Run from the worktree with `CARGO_INCREMENTAL=0 TZ=UTC`, one logged,
+sentinel-guarded background chain (`/tmp/p4d217/gate.sh`):
+
+- **§R.2 probe** passed at lane start and again immediately before the gate (branch `main`, HEAD
+  `d1c06cd9d`, both logs empty, tree clean); both pins present (`git worktree list`).
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean
+  in BOTH feature sets; `cargo build --workspace --release` clean (3 m 37 s).
+- **`cargo test --workspace --no-fail-fast -- --nocapture`** with the lane's env block (the five
+  new families' oracles + fixtures under `/tmp/p4d217/`, `QT_ORACLE_HELP_TREE` from the target
+  pin, `QT_V4_CHECKOUT` = the target pin, `QT_NODE` the real Node 24 path; every other family's
+  var WITHHELD): **628 test binaries / 3,692 passed / 0 failed / 3 ignored.** The 519 `SKIP:`
+  lines are other lanes' families; none from this lane's. Confirmed RUN by name with their counts:
+  `scenario_build_request_schema` (30 parse / 61 refuse), `scenario_builder_prompts` (25 system
+  rows over 6 zones / 21 user / 1 const), `scenario_builder_mount_pool` (15 arms),
+  `scenario_builder_tier3` (18 cases / 49 stream calls), `scenario_builder_routes` (24 cases),
+  `scenario_builder_disconnect`, `scenario_builder_dispatch_wire` (4 arms incl. the `llm_logs`
+  type pin), `help_tree_equivalence` (127 at the target pin).
+- **Tier R** (`cli_differential`, at the target pin): **266 cases, 0 failures.**
+- **Censuses / guards:** `dispatch_wrong_type_census` **449** (P4.D216's 447 + this lane's 2);
+  `tri_state_edges_share_the_decoder` **115** (+2, the new file's row); `web_edge_body_parse_guard`
+  (+ the new file at 1); `help_tree_embed_guard` + `host_help_docs_boot` **127**;
+  `zod_issues_home_guard` unmoved (the two new constructors are outside its `invalid_*` needles);
+  `blob_write_sites_census`, `compressed_column_write_sites_census`, `get_messages_caller_census`,
+  `qtap_schema_embed_guard`, `zod_version_guard`, `provider_sdk_version_guard`,
+  `public_schemas_vendor_guard` GREEN (unmoved).
+- **Neutrality:** no pre-existing family's inputs moved except through the census recounts above
+  and the three test-side `SpineBundle` literals (`scenario_builder: None`); every such family
+  ran green in the workspace run. The five new families have no baseline counterpart — each case
+  file FAILS TO IMPORT at `00c290c9a` (the pin proof, recorded per unit); the help oracle at the
+  baseline carries 126 docs and no `help/scenario-builder.md`.
+- **Out-of-mandate audit** (`git diff 978709bc --numstat`, each hunk marked): `api/zod_issues.rs`
+  +53/−2 (the `Custom` variant, `too_big_array`, two render-table rows — owned by no lane this
+  round); `realtime/types.rs` +7/−2 (the exhaustiveness tripwire); `swipe_spine/mod.rs`,
+  `chat_create_end_to_end.rs`, `chat_send_smoke.rs` +3 each (`scenario_builder: None`).
+- **Versions** (on top of P4.D216's core 0.0.1018 / harness 0.0.934 / web 0.0.180 / host
+  0.0.149): **core 0.0.1023 (+5), harness 0.0.940 (+6), web 0.0.183 (+3), host 0.0.151 (+2)**;
+  cli/tauri/fixture-sanitizer/sqlite3mc-sys/SPA untouched. Round base (planning) + P4.D216 +
+  P4.D217: core +10, harness +10, web +4, host +2.
+- **Fixtures:** NO committed fixture pair touched. The chat-send pair is READ by the route family
+  (plants on per-case copies); the doc-opacity fixture is MINTED by its own unchanged builder
+  (P4.D216's) for the pool and tier-3 families. No other oracle is invalidated.
+- **§R.9 mirror paths this lane's rows move** (bytes at `d1c06cd9d`, for the unifier):
+  `docs/v4/developer/API.md` 221,285 → 223,772; `docs/v4/developer/PROMPT_ARCHITECTURE.md`
+  33,334 → 34,137; `docs/v4/developer/features/scenario-builder.md` NEW 41,021 (the
+  `d1c06cd9d` version — ratifies `dff00e98d`); `docs/v4/developer/features/ROADMAP.md`
+  5,814 → 6,134. (`bugs.md` / the bug-165/166 files are P4.D219's rows.)
+
+**Findings for the unifier (outside this lane, recorded, not taken):** (1) `doc_read_file`'s
+result key order differs from v4's (`tools/doc_edit/**`) — the bytes a model sees after any
+`doc_read_file` on every one-shot surface; pinned both ways in `scenario_builder_tier3`. (2) v4's
+`[InstanceSettings] Failed to read setting` WARN has no v5 emitter (`db/instance_settings.rs`).
+(3) P4.D216's recorded `one-shot normalizeContentBlockFormat` gap is now shared with the Scenario
+Builder (no arm reaches it). **Deferred, typed and loud:** `curlConfigured` always `false` / no curl
+tool (§R.4(k), Tier 3 item 14); `withCollectionActionDispatch` not re-proven beyond its sentences
+(Tier 3 item 15). **Order corrections** are in the order's status header.

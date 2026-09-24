@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): P4.D217 lane close-out — the verification gate and the order's status header
+
+_Docs-only change._
+
+Records the lane gate: fmt and clippy clean in both feature sets, a clean
+release build, `cargo test --workspace` at 628 binaries with 3,692 passed and
+0 failed, Tier R at 266/0, the census recounts (dispatch 449, tri-state 115,
+help 127), the out-of-mandate audit, and the findings left for the unifier.
+Updates the P4.D217 order header and adds one sentence to P4.D216's header
+(its shapes needed no change).
+
 #### 2026-09-23 — test(scenario-builder): pin the SCENARIO_BUILDER type on a real llm_logs row (P4.D217 unit 8)
 
 _Versions: web 0.0.183._
