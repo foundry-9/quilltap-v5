@@ -291,6 +291,97 @@ fn add_scenario_record(
     })
 }
 
+/// [P4.113] v4 WARN lines this port does NOT emit, recorded (not ported):
+/// the vault-overlay parser's `Scenarios/*.md body is empty; skipping`
+/// (`vault-overlay/parsers.ts:541`), which v4 logs on each read of the
+/// whitespace-body scenario the "Blank Page" op plants — `vault_overlay.rs`
+/// ports none of `parsers.ts`'s eleven WARNs (named in P4.113's lane record for
+/// the unifier). Pinned both ways: v4 must still log it exactly `count` times on
+/// that op (else VANISHED), v5 never (else WRONG SHAPE — retire the row).
+const RECORDED_ABSENT_WARNS: &[(&str, &str, usize)] =
+    &[("Scenarios/*.md body is empty; skipping", "Blank Page", 2)];
+
+/// One captured `WARN <target> <message> k=v…` line as `{ message, characterId }`.
+fn warn_record(line: &str) -> Value {
+    let rest = line.strip_prefix("WARN ").unwrap_or(line);
+    let rest = rest.split_once(' ').map_or("", |(_, r)| r);
+    let (message, character_id) = match rest.find(" characterId=") {
+        Some(i) => (
+            &rest[..i],
+            rest[i + " characterId=".len()..].split(' ').next(),
+        ),
+        None => (rest, None),
+    };
+    serde_json::json!({ "message": message, "characterId": character_id })
+}
+
+/// [P4.113] v4's `addToSubArray` miss arm: `Character not found: Error adding
+/// scenario` `{ characterId }` on the absent-character op, and NO other WARN on
+/// any `addScenario` op bar [`RECORDED_ABSENT_WARNS`]. Per op, in order.
+fn assert_scenario_warns(got: &[Value], oracle: &Value) {
+    let want = oracle["addScenarioWarns"]
+        .as_array()
+        .expect("the oracle carries addScenarioWarns — regenerate it (P4.113)");
+    assert_eq!(
+        got.len(),
+        want.len(),
+        "addScenario op count: rust vs oracle"
+    );
+    let mut not_found = 0usize;
+    let mut recorded_seen = vec![0usize; RECORDED_ABSENT_WARNS.len()];
+    let mut reds: Vec<String> = Vec::new();
+    for (g, w) in got.iter().zip(want) {
+        let op = &w["opIndex"];
+        let mut w_warns: Vec<Value> = Vec::new();
+        for wl in w["warns"].as_array().unwrap() {
+            match RECORDED_ABSENT_WARNS
+                .iter()
+                .position(|(m, _, _)| wl["message"].as_str() == Some(m))
+            {
+                Some(i) => recorded_seen[i] += 1,
+                None => w_warns.push(wl.clone()),
+            }
+        }
+        let g_warns = g["warns"].as_array().unwrap();
+        for gl in g_warns {
+            if RECORDED_ABSENT_WARNS
+                .iter()
+                .any(|(m, _, _)| gl["message"].as_str() == Some(m))
+            {
+                reds.push(format!(
+                    "op {op}: v5 now logs {gl} — WRONG SHAPE for a recorded-absent line; retire it"
+                ));
+            }
+        }
+        if g_warns != &w_warns {
+            reds.push(format!(
+                "op {op}: WARN lines — v4 {w_warns:?} v5 {g_warns:?}"
+            ));
+        }
+        not_found += w_warns
+            .iter()
+            .filter(|l| l["message"] == "Character not found: Error adding scenario")
+            .count();
+    }
+    for (i, (m, _, n)) in RECORDED_ABSENT_WARNS.iter().enumerate() {
+        if recorded_seen[i] != *n {
+            reds.push(format!(
+                "v4 logged `{m}` {} time(s), recorded {n} — VANISHED or moved",
+                recorded_seen[i]
+            ));
+        }
+    }
+    assert!(
+        reds.is_empty(),
+        "addScenario WARNs differ:\n{}",
+        reds.join("\n")
+    );
+    assert_eq!(
+        not_found, 1,
+        "the absent-character addScenario op must pin v4's miss WARN exactly once"
+    );
+}
+
 fn run_op(
     main: &Writer,
     mount: &Writer,
@@ -298,6 +389,7 @@ fn run_op(
     op_index: usize,
     op: &Op,
     returns: &mut Vec<Value>,
+    scenario_warns: &mut Vec<Value>,
 ) {
     let cid = character_id;
     let m = main.connection();
@@ -428,6 +520,14 @@ fn run_op(
                      read-back does not show: {lines:?}"
                 );
             }
+            // [P4.113] every WARN the add logged, as the oracle's
+            // `addScenarioWarns` records them: message + `characterId`.
+            let warns: Vec<Value> = lines
+                .iter()
+                .filter(|l| l.starts_with("WARN "))
+                .map(|l| warn_record(l))
+                .collect();
+            scenario_warns.push(serde_json::json!({ "opIndex": op_index, "warns": warns }));
             returns.push(record);
         }
         // [P4.D219] a vault file NOT named after its title, planted through the
@@ -637,10 +737,21 @@ fn characters_arrays_tier2_matches_oracle() {
 
     let mut trail: Vec<Value> = vec![snapshot("<initial>")];
     let mut returns: Vec<Value> = Vec::new();
+    let mut scenario_warns: Vec<Value> = Vec::new();
     for (i, op) in spec.ops.iter().enumerate() {
-        run_op(&main, &mount, &character_id, i, op, &mut returns);
+        run_op(
+            &main,
+            &mount,
+            &character_id,
+            i,
+            op,
+            &mut returns,
+            &mut scenario_warns,
+        );
         trail.push(snapshot(&op.op));
     }
+
+    assert_scenario_warns(&scenario_warns, &oracle);
 
     // [P4.D219 / v4 `d1c06cd9d`, bug 165] what every `addScenario` RETURNED.
     let want_returns = oracle

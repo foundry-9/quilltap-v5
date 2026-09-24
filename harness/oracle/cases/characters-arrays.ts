@@ -171,6 +171,26 @@ async function main(): Promise<void> {
   )[0].m;
   const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
   const addScenarioReturns: Array<Record<string, unknown>> = [];
+  // [P4.113] every WARN v4 logs while an `addScenario` op runs — `addToSubArray`'s
+  // miss arm (`Character not found: Error adding scenario` `{ characterId }`)
+  // on the absent-character op, silence on every other. Recorded off the
+  // `Logger` prototype (singleton and children alike, before the level check),
+  // only while an addScenario runs.
+  const addScenarioWarns: Array<Record<string, unknown>> = [];
+  let warnSink: Array<Record<string, unknown>> | null = null;
+  const { Logger } = await import('@/lib/logger');
+  {
+    const original = Logger.prototype.warn;
+    Logger.prototype.warn = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      warnSink?.push({ message, characterId: context?.characterId ?? null });
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
   let opIndex = 0;
 
   for (const op of spec.ops) {
@@ -216,12 +236,15 @@ async function main(): Promise<void> {
       }
       case 'addScenario': {
         const target = op.characterId ?? characterId;
+        warnSink = [];
         const returned = await repos.characters.addScenario(target, {
           title: op.title as string,
           content: op.content as string,
           // [P4.D120 / v4 `d25dacc1`] the optional `archived` flag.
           ...(op.archived !== undefined && { archived: op.archived as boolean }),
         });
+        addScenarioWarns.push({ opIndex, warns: warnSink });
+        warnSink = null;
         const after = await repos.characters.findById(target);
         const ids = (after?.scenarios ?? []).map((s) => s.id);
         let record: Record<string, unknown> | null = null;
@@ -343,6 +366,7 @@ async function main(): Promise<void> {
       case: 'characters-arrays-tier2',
       defaultColumnTrail: trail,
       addScenarioReturns,
+      addScenarioWarns,
       characters,
       points,
       folders,

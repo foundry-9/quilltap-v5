@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(db): add_scenario logs v4's Character not found: Error adding scenario WARN (P4.113 unit 4)
+
+_Versions: core 0.0.1031, harness 0.0.952._
+
+The absent-character arm of the scenario add now logs v4's WARN `Character
+not found: Error adding scenario` with `characterId`. The characters-arrays
+tier-2 oracle now records every WARN v4 logs during each `addScenario` op, and
+the Rust side compares them op by op: one WARN on the absent-character op,
+none elsewhere. That comparison also found v4's vault parser logging
+`Scenarios/*.md body is empty; skipping`, which v5 does not port (none of the
+parser's eleven WARNs are ported). It is pinned as a recorded v4-only line.
+
 #### 2026-09-24 — fix(db): read_setting logs v4's [InstanceSettings] Failed to read setting WARN (P4.113 unit 3)
 
 _Versions: core 0.0.1030, harness 0.0.951._

@@ -147354,3 +147354,28 @@ by hand with lane-private paths instead of through the driver).
   emitter" — FALSE after this unit (the pool behaviour it describes is
   unchanged: both pools still lose the global tier, neither POOL logger
   warns). One sentence to correct; not this lane's file.
+
+### Unit 4 — `add_scenario_item`'s `Character not found: Error adding scenario` WARN
+
+- The miss arm WARNs v4's bytes `{ characterId }` (in-file idiom, default
+  target). v4's `addScenario` pre-read (`:893`) is silent and so is v5's
+  `add_scenario` pre-read; through the route the line is reachable only by a
+  race, so the pin is a direct repository call.
+- **The pin** (`characters_arrays_tier2`): the oracle spies
+  `Logger.prototype.warn` for the duration of each `addScenario` op and emits
+  `addScenarioWarns` `[{ opIndex, warns: [{ message, characterId }] }]`; the
+  Rust side reads every `WARN` line `captured_with` already collects around
+  each `add_scenario`. Exactly one `Character not found: Error adding
+  scenario` on op 27 (`c0ffee00-…-0404`), no other WARN on any of the eight
+  `addScenario` ops; the DEBUG pins unchanged.
+- **Red-first:** pre-fix v5 silent on op 27 (v4 one WARN) — the only red.
+- ⚠ **NEW finding (outside the lane — for the unifier):** measuring EVERY
+  WARN (not only the one ordered) found v4 logging `Scenarios/*.md body is
+  empty; skipping` `{ characterId, mountPointId, relativePath }` TWICE on op
+  26 (the whitespace-body "Blank Page" add — each read of the planted file).
+  `vault_overlay.rs` ports NONE of `vault-overlay/parsers.ts`'s eleven
+  `logger.warn` lines (the parser drops the item silently, which is why the
+  returns always matched). Pinned both ways as `RECORDED_ABSENT_WARNS` (v4
+  must still log it exactly twice there — else VANISHED; v5 never — else
+  WRONG SHAPE, retire the row). Porting the eleven is its own unit (the
+  parser is not this lane's file bar the datetime regex).

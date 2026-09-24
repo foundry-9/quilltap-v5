@@ -442,6 +442,16 @@ fn add_scenario_item(
     archived: Option<bool>,
 ) -> Result<Option<Value>, DbError> {
     let Some(character) = find_by_id(main, mount, character_id)? else {
+        // v4 `addToSubArray`'s miss arm (`characters.repository.ts:579-583`):
+        // `logger.warn(\`Character not found: ${errorMsg}\`, { characterId })`
+        // with `addScenario`'s `errorMsg` — the `title` context rides only
+        // `safeQuery`'s ERROR, never this line. Reachable through the route only
+        // by a race (`add_scenario` pre-reads the character, silently); pinned
+        // on a direct call in `characters_arrays_tier2_equivalence` (P4.113).
+        tracing::warn!(
+            characterId = %character_id,
+            "Character not found: Error adding scenario"
+        );
         return Ok(None);
     };
     let mut items = array_of(&character, "scenarios");
