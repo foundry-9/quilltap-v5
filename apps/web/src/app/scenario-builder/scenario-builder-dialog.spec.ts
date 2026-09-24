@@ -58,13 +58,18 @@ async function render(
     projectName?: string | null;
     chatId?: string | null;
     configure?: (fake: FakeCore) => void;
+    /** Pre-seed the query cache (with the app's 5 s `staleTime`, `app.config.ts`). */
+    seed?: (queryClient: QueryClient) => void;
   } = {},
 ): Promise<Rendered> {
   const fake = fakeCore();
   fake.profiles = opts.profiles ?? [DEFAULT_PROFILE];
   opts.configure?.(fake);
   const toasts = { showSuccess: vi.fn(), showError: vi.fn() };
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, ...(opts.seed ? { staleTime: 5_000 } : {}) } },
+  });
+  opts.seed?.(queryClient);
   TestBed.configureTestingModule({
     imports: [ScenarioBuilderDialog],
     providers: [
@@ -166,6 +171,34 @@ describe('ScenarioBuilderDialog — model selection (v4)', () => {
 
   it('renders a no-tools profile as a disabled option labelled "(no tools)"', async () => {
     const r = await render({ profiles: [DEFAULT_PROFILE, NO_TOOLS_PROFILE] });
+    const option = Array.from(r.el.querySelectorAll('option')).find((o) =>
+      /Cheap Model \(no tools\)/.test(o.textContent ?? ''),
+    ) as HTMLOptionElement;
+    expect(option).toBeDefined();
+    expect(option.disabled).toBe(true);
+  });
+});
+
+describe('ScenarioBuilderDialog — the profile cache entry (the d1c06cd9d unification review)', () => {
+  it('reads its own entry, not the bare key the home page fills with a flag-less shape', async () => {
+    // The home page / Brahma console cache `{id, name, provider, modelName[,
+    // isDefault]}` under the bare `['connectionProfiles']` — no tool flags.
+    const r = await render({
+      profiles: [DEFAULT_PROFILE, NO_TOOLS_PROFILE],
+      seed: (qc) =>
+        qc.setQueryData(
+          ['connectionProfiles'],
+          [DEFAULT_PROFILE, NO_TOOLS_PROFILE].map(
+            ({ id, name, provider, modelName, isDefault }) => ({
+              id,
+              name,
+              provider,
+              modelName,
+              isDefault,
+            }),
+          ),
+        ),
+    });
     const option = Array.from(r.el.querySelectorAll('option')).find((o) =>
       /Cheap Model \(no tools\)/.test(o.textContent ?? ''),
     ) as HTMLOptionElement;

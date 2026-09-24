@@ -127,10 +127,14 @@ export class ScenarioBuilderRun {
       // Stopped or superseded while in flight: v4's AbortError arm — quiet.
       if (!isLive()) return null;
       if (resp.type === 'error') {
-        // A pre-stream refusal (no frame can have preceded it).
-        return this.fail(resp.data.message || HOST_COULD_NOT_BEGIN_NO_RESPONSE);
-      }
-      if (!settled.outcome) {
+        // A pre-stream refusal — unless a terminal frame already landed: a
+        // transport error AFTER `done` (a lost connection, the driver thread's
+        // panic reply) must not overturn the outcome the Host already
+        // delivered (the d1c06cd9d unification review).
+        if (!settled.outcome) {
+          return this.fail(resp.data.message || HOST_COULD_NOT_BEGIN_NO_RESPONSE);
+        }
+      } else if (!settled.outcome) {
         const reply = (resp.data ?? {}) as AgentStreamEvent;
         if (reply['aborted'] === true) {
           this.resetSignals();

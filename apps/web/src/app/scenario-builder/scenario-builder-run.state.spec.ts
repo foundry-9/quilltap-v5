@@ -249,6 +249,16 @@ describe('ScenarioBuilderRun — the dispatch resolves before the terminal frame
 });
 
 describe('ScenarioBuilderRun — pre-stream refusals and throws', () => {
+  it('an error reply AFTER a done frame keeps the delivered scene (the d1c06cd9d unification review)', async () => {
+    const h = harness();
+    const result = h.run.run(INPUT);
+    h.emit({ done: true, scenario: 'Rain on the cobbles.', provider: 'x', modelName: 'y' });
+    h.answer(refused('scenario builder thread panicked'));
+    await expect(result).resolves.toBe('Rain on the cobbles.');
+    expect(h.run.phase()).toBe('done');
+    expect(h.run.error()).toBeNull();
+  });
+
   it('shows a refusal envelope’s message as-is (v4’s data.error rule)', async () => {
     const h = harness();
     const result = h.run.run(INPUT);
