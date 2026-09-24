@@ -11,8 +11,11 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { QueryClient } from '@tanstack/angular-query-experimental';
 
+import { CoreClient } from '../core/core-client';
 import { injectCharInsertSettings } from '../editor/char-insert/char-insert-settings';
+import { createQueryMentionSource } from '../editor/mentions/mention-source';
 import { recordRecent } from '../editor/char-insert/recents-storage';
 import {
   applyDelimiterCommand,
@@ -29,6 +32,7 @@ import { RichEditor } from '../editor/rich-editor';
 import { SmartTypographySettings } from '../smart-typography/settings';
 import type { CompiledRules } from '../editor/text-replacement';
 import type { NarrationDelimiters, TemplateDelimiter } from '../core/core-contract';
+import { characterKeys, fetchCharacterList } from '../screens/characters/characters.api';
 import { Icon } from '../ui/icon';
 import {
   uploadChatFile,
@@ -482,6 +486,8 @@ export interface PendingToolResultChip extends RngPendingResult {
           [spellcheck]="composerSpellcheck()"
           [composerEmoji]="charInsert.emoji()"
           [composerUnicode]="charInsert.unicode()"
+          [mentionSource]="mentionSource"
+          [mentionPriorityCharacterIds]="mentionPriorityCharacterIds()"
           ariaLabel="Message"
           (contentChange)="onContentChange($event)"
           (submit)="submit()"
@@ -541,6 +547,20 @@ export class ChatComposer implements OnInit {
    * shared query key means this costs no extra GET.
    */
   protected readonly charInsert = injectCharInsertSettings();
+  /**
+   * The `@` typeahead's character list (v4 `MentionTypeaheadPlugin`'s own
+   * `useQuery`): the SAME `characterKeys.list()` entry, storing the same raw
+   * list, that every other roster reader in the SPA uses — v4's "same key and
+   * URL as the spellcheck dictionary feed, so the list is shared". Fetched
+   * only once an `@` trigger is live. The composer is the typeahead's only
+   * host, as v4 mounts it in `LexicalComposerWrapper` alone.
+   */
+  private readonly core = inject(CoreClient);
+  protected readonly mentionSource = createQueryMentionSource(
+    inject(QueryClient),
+    characterKeys.list(),
+    () => fetchCharacterList(this.core),
+  );
 
   /** Streaming/awaiting in flight — swaps Send for Stop and blocks input. */
   readonly busy = input(false);
@@ -616,6 +636,11 @@ export class ChatComposer implements OnInit {
    */
   readonly templateDelimiters = input<readonly TemplateDelimiter[]>([]);
   readonly narrationDelimiters = input<NarrationDelimiters | null>(null);
+  /**
+   * Character ids the `@` typeahead lists first — this chat's cast (v4
+   * `ChatComposer.tsx`'s `mentionPriorityCharacterIds`, P4.D224 §S.2).
+   */
+  readonly mentionPriorityCharacterIds = input<readonly string[]>([]);
 
   readonly send = output<ComposerSend>();
   readonly stop = output<void>();

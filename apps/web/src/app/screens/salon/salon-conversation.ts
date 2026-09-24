@@ -469,6 +469,7 @@ interface CascadePrompt {
         [compositionMode]="compositionMode()"
         [templateDelimiters]="templateDelimiters()"
         [narrationDelimiters]="narrationDelimiters()"
+        [mentionPriorityCharacterIds]="mentionCastCharacterIds()"
         [textReplacementRules]="textReplacementRules()"
         [textReplacementsEnabled]="textReplacementsEnabled()"
         [composerSpellcheck]="composerSpellcheck()"
@@ -1832,6 +1833,21 @@ export class SalonConversation {
    */
   protected readonly informCandidates = computed<InformAudienceCandidate[]>(
     () => this.audienceCandidates() as InformAudienceCandidate[],
+  );
+
+  // P4.D224 OUT-OF-MANDATE — P4.D223 preserves
+  /**
+   * The `@` typeahead lists this chat's cast ahead of everyone else (v4
+   * `SalonView.tsx:245-251`, predicate verbatim): ids ONLY — the list itself
+   * comes from the characters query inside the composer. v4 names it
+   * `castCharacterIds`; that name is taken here by the Add-Character dialog's
+   * list (`existingCharacterIds`, which keeps removed seats), so this one is
+   * named for its reader.
+   */
+  protected readonly mentionCastCharacterIds = computed<readonly string[]>(() =>
+    (this.chat()?.participants ?? [])
+      .filter((p) => p.status !== 'removed' && p.character?.id)
+      .map((p) => p.character!.id),
   );
 
   /**

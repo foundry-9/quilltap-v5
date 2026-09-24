@@ -132,6 +132,85 @@ describe('the typeahead mounts — v4 mounts in TWO hosts, and only two', () => 
   });
 });
 
+/**
+ * The `@` mention typeahead (P4.D224, v4 `3376b3dfa`) mounts in ONE host: v4
+ * adds `MentionTypeaheadPlugin` to `LexicalComposerWrapper` alone — the Salon
+ * composer — beside the two `CharTypeaheadPlugin`s, and NOT to Document Mode's
+ * own Lexical stack. So the host inventory is now two char-typeahead hosts
+ * plus one mention host, and the mention host is a subset of the char hosts.
+ */
+describe('the @ typeahead mounts in ONE host — the composer', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function editorOf(fixture: ComponentFixture<unknown>): RichEditor {
+    return fixture.debugElement.query(By.directive(RichEditor)).componentInstance as RichEditor;
+  }
+
+  it('gives the composer editor a source, and threads the cast ids through', async () => {
+    TestBed.configureTestingModule({
+      imports: [ChatComposer],
+      providers: [
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: settingsClient({}) },
+      ],
+    });
+    const fixture = TestBed.createComponent(ChatComposer);
+    fixture.componentRef.setInput('chatId', 'chat-1');
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const editor = editorOf(fixture);
+    expect(editor.mentionSource()).not.toBeNull();
+    // v4 mounts it unconditionally: an unset cast is an empty priority set.
+    expect(editor.mentionPriorityCharacterIds()).toEqual([]);
+
+    fixture.componentRef.setInput('mentionPriorityCharacterIds', ['c-1', 'c-2']);
+    fixture.detectChanges();
+    expect(editor.mentionPriorityCharacterIds()).toEqual(['c-1', 'c-2']);
+  });
+
+  it('leaves the Document-Mode pane without one', async () => {
+    const document: ActiveDocument = {
+      id: 'd1',
+      filePath: 'notes.md',
+      scope: 'project',
+      displayTitle: 'Notes',
+      content: 'hello',
+    };
+    const entry: OpenDocEntry = {
+      document,
+      isDirty: false,
+      isSaving: false,
+      isLLMEditing: false,
+      contentVersion: 1,
+      attentionTop: null,
+      focusRequest: null,
+    };
+    TestBed.configureTestingModule({
+      imports: [DocumentPane],
+      providers: [
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: settingsClient({}) },
+      ],
+    });
+    const fixture = TestBed.createComponent(DocumentPane);
+    fixture.componentRef.setInput('entry', entry);
+    fixture.componentRef.setInput('mode', 'split');
+    fixture.detectChanges();
+    await settle(fixture);
+
+    expect(editorOf(fixture).mentionSource()).toBeNull();
+  });
+
+  it('leaves a bare editor — every form field — without one', () => {
+    TestBed.configureTestingModule({ imports: [RichEditor] });
+    const fixture = TestBed.createComponent(RichEditor);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.mentionSource()).toBeNull();
+  });
+});
+
 describe('the picker insert path on the editor handle', () => {
   afterEach(() => TestBed.resetTestingModule());
   beforeEach(() => localStorage.clear());

@@ -148503,6 +148503,46 @@ checked; the three symlink classes made). Node 24
   COMPILE — TS narrowing — and were rewritten; a build error is not a red.)
 - `editor/**` 23 files / 661 green; `npm run build` clean.
 
+### Unit 5 — the wiring (`rich-editor.ts`, `chat-composer.ts`, the §S.2 hunk)
+
+- `rich-editor.ts`: two inputs, `mentionSource` (`MentionCharacterSource |
+  null`, default `null`) and `mentionPriorityCharacterIds`; the plugin sits in
+  `buildPlugins()` right after the two char hosts (above smart typography,
+  text replacement, history and the keymaps). **The order's "gated on the
+  composer's `mentionPriorityCharacterIds` input (undefined = still mounts)"
+  was read as: gated on the SOURCE**, which only the composer passes — v4
+  mounts `MentionTypeaheadPlugin` in `LexicalComposerWrapper` ALONE (measured:
+  `git grep LexicalComposerWrapper` at `b0b6656b5` = `ChatComposer.tsx` +
+  its own module), so Document Mode and every form field must stay without
+  it, while in the composer it is on unconditionally with an empty priority
+  set by default, as the order requires.
+- `chat-composer.ts`: `mentionPriorityCharacterIds = input<readonly
+  string[]>([])` (§S.2's name and default), and `mentionSource =
+  createQueryMentionSource(QueryClient, characterKeys.list(), () =>
+  fetchCharacterList(core))` — the SAME raw entry the four other
+  `characterKeys.list()` readers store (P4.116's rule).
+- **§S.2 hunk into P4.D223's `screens/salon/salon-conversation.ts`** (marked
+  `// P4.D224 OUT-OF-MANDATE — P4.D223 preserves`), v4's predicate verbatim
+  (`status !== 'removed' && character?.id` → the id). ⚠ **Two deviations
+  from the order's letter, both forced:** (1) the computed is named
+  `mentionCastCharacterIds`, not `castCharacterIds` — that name is TAKEN in
+  the file (`:2745`, the Add-Character dialog's `existingCharacterIds`, which
+  keeps removed seats and must not change); the binding NAME
+  `[mentionPriorityCharacterIds]` is §S.2's. (2) It is two hunks, not one — a
+  class property and a template binding cannot share a hunk; the template
+  line carries no marker (an attribute list holds no comment). `git diff
+  main -- …salon-conversation.ts`: +16 lines, nothing else.
+- `char-insert-wiring.spec.ts`: a NEW describe, "the @ typeahead mounts in ONE
+  host — the composer" (the composer gets a source and threads the cast ids;
+  Document Mode and a bare editor get none). The existing "v4 mounts in TWO
+  hosts, and only two" describe is UNCHANGED and still true — it counts the
+  char-typeahead HOSTS (composer + Document Mode), not plugins; the recount is
+  two char hosts + one mention host, the mention host a subset of the char
+  hosts. Mutations: W1 composer passes no source → the new composer case RED
+  (1/10); W2 composer drops the cast ids → same case RED (1/10).
+- Gate at this commit: `npm run lint` clean; `npm test` **450 files / 7,863**
+  (base 448 / 7,670 — +2 files, +193 tests); `npm run build` clean.
+
 ## P4.D223 — the Salon Images quick-hide + the bug-169 convergence + the `has-dangerous` client half (lane record, 2026-09-24)
 
 Lane branch `claude/salon-images-quick-hide-bug-db0391`, cut from `main`

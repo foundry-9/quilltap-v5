@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — feat(spa): mount the @ mention typeahead in the Salon composer (P4.D224 unit 5)
+
+_Versions: SPA 0.5.766._
+
+The Salon composer now offers the `@` character typeahead. The rich editor
+mounts the plugin after the two character typeaheads when its host passes a
+character source; only the composer does, as in v4 (Document Mode and form
+fields stay without it). The composer builds the source over the shared
+`characterKeys.list()` cache entry and takes a new
+`mentionPriorityCharacterIds` input, which the Salon binds to the chat's
+non-removed cast so those characters list first.
+
 #### 2026-09-24 — feat(spa): the @ mention typeahead ProseMirror plugin (P4.D224 unit 4)
 
 _Versions: SPA 0.5.765._

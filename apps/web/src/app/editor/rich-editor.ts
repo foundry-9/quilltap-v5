@@ -32,6 +32,8 @@ import {
   exitCodeBlockOnBlankLine,
 } from './editing-commands';
 import { dialectSchema, parseMarkdown, serializeMarkdown } from './markdown-dialect';
+import type { MentionCharacterSource } from './mentions/mention-source';
+import { mentionTypeaheadPlugin } from './mentions/mention-typeahead-plugin';
 import { smartTypographyPlugin } from './smart-typography-plugin';
 import { textReplacementPlugin, type CompiledRules } from './text-replacement';
 
@@ -109,6 +111,16 @@ export class RichEditor {
   readonly composerEmoji = input(false);
   /** The `\` Unicode typeahead — same contract (v4 `chat_settings.composerUnicode`). */
   readonly composerUnicode = input(false);
+  /**
+   * The `@` character typeahead's list (v4 `MentionTypeaheadPlugin`). `null` —
+   * the default — leaves the plugin inert: v4 mounts it in the Salon composer
+   * ALONE (`LexicalComposerWrapper`), not in Document Mode, and a form field
+   * must not grow it either. The composer always passes one, so there the
+   * typeahead is on unconditionally, as in v4. Read live.
+   */
+  readonly mentionSource = input<MentionCharacterSource | null>(null);
+  /** Character ids the `@` typeahead lists first — the chat's cast. Read live. */
+  readonly mentionPriorityCharacterIds = input<readonly string[]>([]);
 
   /** Fired with the serialized markdown whenever the document changes. */
   readonly contentChange = output<string>();
@@ -317,6 +329,13 @@ export class RichEditor {
       // while its menu is open.
       charTypeaheadPlugin({ profile: EMOJI_PROFILE, enabled: () => this.composerEmoji() }),
       charTypeaheadPlugin({ profile: UNICODE_PROFILE, enabled: () => this.composerUnicode() }),
+      // The `@` typeahead, after the two char hosts as v4 mounts it after the two
+      // `CharTypeaheadPlugin`s — and above the keymaps, so Enter / Tab / Space
+      // reach it before the composer's submit. Inert without a source.
+      mentionTypeaheadPlugin({
+        source: () => this.mentionSource(),
+        priorityCharacterIds: () => this.mentionPriorityCharacterIds(),
+      }),
       // Smart typography sits ABOVE text replacement so `.` resolves as
       // typography before it resolves as a word boundary (v4 gets the same
       // ordering from COMMAND_PRIORITY_NORMAL over LOW), and above the keymaps
