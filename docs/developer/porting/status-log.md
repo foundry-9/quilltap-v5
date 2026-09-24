@@ -146672,3 +146672,22 @@ comment says `global_capture`'s reader "renders the MESSAGE only" — true when
 written, stale now that `capture`/`capture_async` render fields; its
 `arm_global_callsites` + thread-scoped `captured` pair could become one
 `global_capture::capture` call. Left for the file's owner.
+
+### Unit 2 — the census per call site (Tier 1 item 4)
+
+`get_messages_caller_census` now lists every call as `(file, nearest
+preceding fn, variant)` in source order, files ordered by path STRING (a
+stable sort — the sorted walker orders per directory, so
+`brahma_console/orchestrator/tests.rs` would otherwise precede
+`orchestrator.rs`; the first run tripped on exactly that and nothing else).
+The `fn` anchor is a name, not a line number, so an unrelated edit moves
+nothing. Recount: the SAME 84 sites over the same 50 files — 76 fallback, 8
+strict (the arithmetic comment extended, a `file_count == 50` assert added).
+The drift message names each moved file and prints the whole scanned table.
+New unit tests: the scanner's fn attribution (same-line declarations
+included), and `a_same_file_swap_is_visible` (equal per-file counts, unequal
+rows). **Mutation proof:** `db/chats_messages.rs:738` strict→fallback AND
+`:773` fallback→strict (the per-file counts stay `(2, 1)`, so the OLD census
+passed) → RED, naming exactly `db/chats_messages.rs: census [… find_event_value
+S, update_chat_metadata F] source [… find_event_value F, update_chat_metadata
+S]`; reverted by file backup, green again.

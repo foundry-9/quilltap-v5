@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(harness): the get_messages caller census keys each call site by (file, fn, variant) (P4.112 unit 2)
+
+_Versions: harness 0.0.932._
+
+The census counted `(get_messages, get_messages_strict)` calls per file,
+so swapping two sites' variants inside one file left every count
+unchanged and passed. It now lists every call site in source order as
+`(file, nearest preceding fn, variant)` and compares the ordered rows.
+Same 84 sites over the same 50 files; the totals (76, 8) do not move.
+Mutation: swapping `find_event_value` (strict) with
+`update_chat_metadata` (fallback) in `db/chats_messages.rs` now fails the
+census and names that file.
+
 #### 2026-09-23 — test(harness): one process-global capture rig — auto_title_capture folded into test_support::global_capture (P4.112 unit 1)
 
 _Versions: core 0.0.1014, harness 0.0.931._
