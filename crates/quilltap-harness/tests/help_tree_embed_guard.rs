@@ -62,7 +62,11 @@ use quilltap_host::help_content::EMBEDDED_HELP;
 /// re-vendored pages (`data-retention`, `search`, `insert-announcement`,
 /// `chat-message-actions`, `dangerous-content`, `cli-docs`, `mount-points`,
 /// `scriptorium`) move no count.
-const VENDORED_FILE_COUNT: usize = 126;
+///
+/// **127 at v4 `d1c06cd9d` (126 + 1, P4.D217):** the Scenario Builder adds
+/// `help/scenario-builder.md`; its three re-vendored pages (`chats`,
+/// `general-scenarios`, `project-scenarios`) move no count.
+const VENDORED_FILE_COUNT: usize = 127;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

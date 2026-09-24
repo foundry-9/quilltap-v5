@@ -115,7 +115,9 @@ async fn shipped_help_tree_matches_oracle() {
     // 125) and re-vendored `help/insert-announcement.md`; the remaining file,
     // `help/cli-sync.md`, came from P4.D210 in the same round (§R.10(d)). Both
     // are present on the unified tree, so this is 126 = 126 and any red here
-    // names a REAL missing or surplus file.
+    // names a REAL missing or surplus file. P4.D217 (v4 `d1c06cd9d`): measured
+    // RED at 126 vs the target pin's 127 before `help/scenario-builder.md` was
+    // vendored; 127 = 127 after.
     assert_eq!(
         files.len(),
         want.count,

@@ -146159,3 +146159,23 @@ QT_ORACLE_OUT=/tmp/p4d217/oracle-scenario-builder-routes.ndjson \
 QT_ORACLE_SB_ROUTES=/tmp/p4d217/oracle-scenario-builder-routes.ndjson \
   cargo test -p quilltap-web --test scenario_builder_routes_equivalence -- --nocapture
 ```
+
+### Unit 7 — the help tree re-vendored (126 → 127)
+
+Byte-copied from the TARGET pin (`/tmp/qt-v4-pin-p4d217-d1c06cd9d/help/`), md5-identical:
+`help/chats.md` (40,848 B, `bf77a292bc0bf9256b254a9c76cf310c`), `help/general-scenarios.md`
+(9,987 B, `b46ae18ae3d73b08f3340deff88e0532`), `help/project-scenarios.md` (9,784 B,
+`7c0a2720fc67eb95f80324900675972f`), NEW `help/scenario-builder.md` (7,375 B,
+`a8f6c23c3bf766411bbf9ba8e6daea21`) — `diff -rq help <pin>/help` clean (127 files). The `126`
+census was run BEFORE the copy (`grep -rnw 126 crates --include='*.rs'`): the two literals
+(`help_tree_embed_guard.rs` `VENDORED_FILE_COUNT`, `host_help_docs_boot.rs`) plus
+`help_tree_equivalence.rs`' history comment; every other hit is a different 126. Both literals
+126 → 127 with the arithmetic (126 + 1 new page; three re-vendors move no count).
+**`help_tree_equivalence` at the target pin: RED first** (embedded 126 vs the oracle's synced
+127), GREEN after (127 docs, 724 chunks); pin markers `help/scenario-builder.md` = 1 at the
+target, 0 at the baseline (126 docs, 719 chunks). `help_tree_embed_guard` + `host_help_docs_boot`
+GREEN at 127. Per the standing memory note, only those three read the vendored tree (the other
+help families walk synthetic roots) — so those three are the "tree-reading families", not the
+order's "two other help_* families". **Mutation:** `help/chats.md` reverted to its pre-drift
+bytes → `help_tree_equivalence` RED, `help_tree_embed_guard` GREEN (it compares embedded to
+disk, not to v4 — the note's lesson, re-measured); restored by file backup.

@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(help): vendor the Scenario Builder help page and three updated pages from v4 d1c06cd9d (P4.D217 unit 7)
+
+_Versions: harness 0.0.940, host 0.0.151._
+
+Copies `help/scenario-builder.md` (new) and the updated `chats.md`,
+`general-scenarios.md` and `project-scenarios.md` byte for byte from v4, and
+moves the vendored-file count from 126 to 127 in the harness guard and the
+host boot test. `help_tree_equivalence` against v4's tree is green at 127.
+
 #### 2026-09-23 — feat(scenario-builder): the REST edge, re-framed as v4's SSE, with client disconnect as abort (P4.D217 unit 6)
 
 _Versions: web 0.0.182, harness 0.0.939._

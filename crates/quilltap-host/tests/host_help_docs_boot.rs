@@ -92,7 +92,10 @@ async fn boot_syncs_the_embedded_help_tree_and_reindex_reads_it() {
     // `help/inform.md` (v4 `e7d77bb60`) and P4.D210 adds `help/cli-sync.md` (v4
     // `23da0b322`). Each lane read 125 on its own branch; the unifier recounted
     // to 126 here and in the harness guard rather than taking either number.
-    assert_eq!(expected, 126, "the vendored tree at v4 f45a517a9");
+    //
+    // 127 at v4 `d1c06cd9d` (126 + 1): P4.D217 adds `help/scenario-builder.md`
+    // and re-vendors `chats`, `general-scenarios`, `project-scenarios` (no count).
+    assert_eq!(expected, 127, "the vendored tree at v4 d1c06cd9d");
 
     // ── 1. The boot ensure. ──
     let host = Host::start(hermetic_config(dir.path())).unwrap();
