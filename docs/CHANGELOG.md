@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): P4.116 lane close-out — the gate, the measurements, and the P4.D218 header
+
+_Docs-only change._
+
+Closes the P4.116 lane. The order's status header now lists what landed
+(Tier 1 items 1–3 and Tier 2 items 4–5), the three Tier 3 deferrals, and
+three places where the measurements disagreed with the order. The main one:
+the portal's "clipped by the sidebar" premise did not reproduce live; the
+visible defect was an inherited font weight. P4.D218's header gets one
+sentence naming the three "Stays OPEN" items this round took. The
+status-log lane record has the SPA gate (448 files / 7,666), the four live
+beats (4/4), a 53-test e2e neutrality pass, and the mutation table.
+
 #### 2026-09-24 — refactor(spa): one connection-profiles key spelling, v4's `['connection-profiles']` (P4.116)
 
 _Versions: SPA 0.5.759._

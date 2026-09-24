@@ -148139,3 +148139,44 @@ deployment concern; (10) lifting the web censuses onto the HARNESS lexer
   cache case now seeds the shared entry with RAW rows and asserts no fetch
   plus the mapped `(no tools)` option. `tab-activation-refetch.spec`'s two
   split-spelling pins drop the camelCase connection-profiles key.
+
+## P4.116 lane close — the SPA smalls (2026-09-24, branch `claude/spa-smalls-portal-profiles-cache-4d9cc5`)
+
+- **Commits:** `ac605fa8` portal (SPA 0.5.756), `495c6567` done-frame flash
+  (0.5.757), `5023e7d9` raw cache shape (0.5.758), `5b3b0e87` one key
+  spelling (0.5.759), then this close-out (docs only). No `crates/**`,
+  `harness/**`, `ui/modal.ts` or `core-contract.ts` touched; no cargo run
+  besides the release build of `quilltap-web` + `quilltap` from this
+  worktree (Rust identical to main `7529fbca`) for the live beats, per
+  §R.11.
+- **The gate (final tree `5b3b0e87`):** `npm test` **448 files / 7,666
+  passed** (baseline 447 / 7,654; +1 file, +12 cases: portal 3, flash 3,
+  run-state 3, shared entry 3); `npm run lint` clean; `npm run build`
+  clean. Each unit commit ran the same three first (447/7,657 →
+  447/7,663 → 448/7,666 → 448/7,666).
+- **Live (one Playwright invocation at a time, port 4319 checked free):**
+  `scenario-builder-flow.spec.ts` **4 passed (1.2 m)** on the final tree,
+  with the portal and font-weight checks in beat (b). Neutrality over the
+  re-keyed readers' surfaces (`home-flow`, `characters-flow`,
+  `settings-flow`, `settings-chat-cards-flow`,
+  `settings-provider-options-flow`, `settings-brahma-console-flow`,
+  `workspace-brahma-console-flow`, `new-chat-flow`, `salon-dialogs-flow`):
+  **53 passed / 0 failed (2.3 m)**.
+- **Mutation table** (each reverted by file backup; each reddened exactly
+  its target): M1 builder reparent → 1/154; M1 save reparent → 2/154; M1
+  live (both reparents, rebuilt, beat b) → red on `parentIsBody`, then on
+  `modeLabelWeight` alone; M2 Brahma maps in `queryFn` → 2/3; M2b character
+  list maps in `queryFn` → 1/3; M3 no `onDone` → 3/160; M3b no apply-once
+  guard → 1/160.
+- **Measured against the order** (also in the order's status header): the
+  "clipped by the sidebar" premise did not reproduce live (the overlay box
+  and the centre hit test held with the portal removed; the visible defect
+  was the `qt-label` weight leak); the hyphenated key's mapped/raw collision
+  had no field-level symptom; the tag sub-key is v5-only.
+- **Deferred (named, Tier 3):** portaling the shared `ui/modal.ts` globally
+  (item 6); the Docker proxy idle timeout on the build dispatch (item 7);
+  v4's 30 s default staleTime vs v5's 5 s (item 8).
+- **For the unifier:** nothing outside this lane's ownership was touched.
+  The two split key spellings that remain (`apiKeys`/`api-keys`,
+  `chatSettings`/`chat-settings`) are still recorded in `tab-refetch.ts`'s
+  module doc, and they are out of this order's scope.
