@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — chore(brahma): regenerate the SQL-prompt `qt_text()` compressed-column sentence (P4.D221, v4 `ad1c4c37f`)
+
+_Versions: core 0.0.1046._
+
+Mechanically regenerated `services/brahma_console/prompt_text.rs` through
+`harness/oracle/cases/gen-brahma-prompts.mjs` from the target pin. v4's
+`BRAHMA_SQL_PROMPT` gained one sentence under "Chats and messages"
+instructing the Brahma console to read `chat_messages.content` and its
+compressed siblings via `qt_text(...)`, never a bare compare or `LIKE`
+(7,730 → 8,026 UTF-16 code units). `brahma_console_tier3_equivalence`
+reds at the target pin before this change (the replay key includes the
+system-prompt bytes) and passes after; confirmed red-first by reverting
+the file and re-running against the same target-pinned oracle.
+
 #### 2026-09-24 — fix(write-partition): route `groupDocMountLinks`/`groupCharacterMembers` writes to the mount-index transaction (P4.D221, v4 `ad1c4c37f`)
 
 _Versions: core 0.0.1045, harness 0.0.965._
