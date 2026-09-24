@@ -969,12 +969,14 @@ records THERE. Update this summary only when a phase or round completes.
   the loop's `tools` field as v4's array (the test had been built on the
   divergence), the SPA's profile cache key shared with two flag-less shapes,
   an error reply overturning a delivered scene, the capture rig's loud
-  install. ⚠ **AWAITS THE HUMAN: the corrupt-second-frame ruling** (P4.112
-  item 7 — v4 stores the original; v5 writes a first-frame still). Gate:
+  install. **RULED after unification (the human, 2026-09-23): the
+  corrupt-second-frame input keeps v5's behaviour** (P4.112 item 7 — the
+  corrupt frame is thrown away and the first frame kept as a still; v4 stores
+  the original — a deliberate divergence, pinned both ways). Gate:
   67/67 sweep families from the pin; 629 binaries / 3,696 / 0 / 3 ignored;
   Tier R 266/0; SPA 447 / 7,654; full Playwright **328 / 7 / 6 (12.1 m)** — the seven reds one Salon-streaming timing cluster in five untouched files, each green alone (3/3, 2/2, 2/2, 1/1, 2/2). Versions: core
   0.0.1027, harness 0.0.947, host 0.0.152, web 0.0.186, SPA 0.5.755. **Next:
-  the ruling, the review follow-ups as a smalls lane, then the owed dogfood
+  the review follow-ups as a smalls lane, then the owed dogfood
   pass (the Host end to end, real spend)** — `phase-4.md`. Round record:
   `status-log.md`.
 - **Oracle baseline: `d1c06cd9d` (2026-09-23, v4 main — "feat(scenarios):

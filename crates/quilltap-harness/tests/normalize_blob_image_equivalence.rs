@@ -255,7 +255,7 @@ const RULED_ANIMATED_DECLINE: &[(&str, &str)] = &[
     ),
 ];
 
-/// P4.112 — rows MEASURED against sharp, not ruled: a two-frame input whose
+/// P4.112 — rows MEASURED against sharp, then RULED: a two-frame input whose
 /// SECOND frame cannot decode (P4.108's recorded nit). Measured at the
 /// `00c290c9a` pin, 2026-09-23: sharp's `{ animated: true }` transcode THROWS
 /// on both inputs, so v4's store-original fallback keeps the input bytes —
@@ -263,8 +263,10 @@ const RULED_ANIMATED_DECLINE: &[(&str, &str)] = &[
 /// WebP it cannot read at all). v5's frame counter stops at the first frame
 /// that fails to decode, counts ONE, and the host encoder writes that first
 /// frame as a still WebP — so **v5 drops the second frame's bytes that v4
-/// keeps**. That is the order's STOP condition: no behaviour change here; the
-/// ruling is the human's (P4.112's lane record). Pinned in BOTH directions
+/// keeps**. **RULED (the human, 2026-09-23): v5's behaviour is right — the
+/// corrupt frame is thrown away and the decodable first frame kept as a
+/// still.** A deliberate divergence from v4's store-original, not a defect to
+/// close. Pinned in BOTH directions
 /// like the ruled rows: equal → "VANISHED", a different difference → "WRONG
 /// SHAPE", every declared row must have run.
 const MEASURED_CORRUPT_SECOND_FRAME: &[(&str, &str)] = &[

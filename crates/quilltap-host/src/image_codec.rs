@@ -808,14 +808,14 @@ mod tests {
     }
 
     /// P4.112 — the corrupt-SECOND-frame inputs (P4.108's recorded nit),
-    /// pinned as they behave, not as anyone would like: the counter stops at
+    /// pinned as they behave — and as RULED: the counter stops at
     /// the first frame that fails to decode, so each counts ONE, and the
     /// animated encode path writes the first frame as a still WebP instead of
     /// declining. sharp measures differently (its transcode throws and v4
     /// stores the original — the GIF reads `pages: 2`), so this is the v5 half
-    /// of `normalize_blob_image_equivalence`'s MEASURED divergence, awaiting
-    /// the human's ruling (P4.112's lane record). A change here must move that
-    /// pin too.
+    /// of `normalize_blob_image_equivalence`'s divergence. **RULED (the human,
+    /// 2026-09-23): this is right — the corrupt frame is thrown away, the first
+    /// frame kept as a still.** A change here must move that pin too.
     #[test]
     fn a_corrupt_second_frame_counts_one_and_encodes_the_first() {
         for file in ["anim-corrupt2.gif", "anim-corrupt2.webp"] {

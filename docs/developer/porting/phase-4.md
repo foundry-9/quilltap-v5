@@ -6652,11 +6652,12 @@ install. Gate: the 67-family sweep 67/67 from the pin; `cargo test
 
 **Next (in order):**
 
-1. **RULING (human): the corrupt-second-frame animated input** (P4.112 item
-   7) — sharp throws on a two-frame input whose second frame is corrupt, so
-   v4 stores the ORIGINAL (both frames' bytes); v5 counts one decodable
-   frame and writes a first-frame still WebP (v5 drops bytes v4 keeps).
-   Pinned as measured both ways; no behaviour change until ruled.
+1. ~~RULING: the corrupt-second-frame animated input~~ — **RULED (the human,
+   2026-09-23, after unification): v5's behaviour is right — throw the
+   corrupt frame away.** The first decodable frame is kept as a still WebP;
+   v4 stores the original. A deliberate divergence, pinned both ways
+   (`normalize_blob_image_equivalence`'s `MEASURED_CORRUPT_SECOND_FRAME` +
+   the host codec test); nothing to port.
 2. **The review follow-ups, as one smalls lane:** `update_message`'s
    `find_event_value` under P4.112's strict skip (v4's raw `findOne` +
    `ChatEventSchema.parse(merged)` — repair or ERROR `Failed to update

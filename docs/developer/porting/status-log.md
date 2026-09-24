@@ -147051,3 +147051,12 @@ The phase plan's `d1c06cd9d` UNIFIED section carries the ordered list: the
 corrupt-second-frame RULING (human), the review follow-ups as a smalls lane,
 the `quilltap sync` writer-hold ruling, and the owed dogfood pass (now with
 the Host end to end on the Friday copy — real spend).
+
+**Ruling recorded after unification (the human, 2026-09-23):** P4.112 item
+7's corrupt-second-frame animated input — "v5's current behavior is right,
+throw it away." The corrupt frame is discarded and the first decodable frame
+kept as a still WebP; v4 (sharp's transcode throws) stores the original. A
+deliberate divergence, not a defect: both pins (`normalize_blob_image_
+equivalence`'s `MEASURED_CORRUPT_SECOND_FRAME`, the host codec's
+`a_corrupt_second_frame_counts_one_and_encodes_the_first`) now say RULED.
+No behaviour change. harness 0.0.948, host 0.0.153.

@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): rule the corrupt-second-frame animated input — v5's still stands (P4.112 item 7)
+
+_Versions: harness 0.0.948, host 0.0.153._
+
+The human ruled on P4.112's escalation: when an animated GIF or WebP has a
+corrupt second frame, v5 keeps its current behaviour and throws that frame
+away, storing the first frame as a still WebP. v4 stores the original file.
+This is recorded as a deliberate divergence. The two pins that measure it now
+say RULED. No behaviour change.
+
 #### 2026-09-23 — docs(porting): unify the `d1c06cd9d` Scenario Builder drift catch-up + maintenance round (P4.D216 → {P4.D217} ∥ P4.D218 ∥ P4.D219 ∥ P4.111 ∥ P4.112)
 
 _Versions: core 0.0.1027, harness 0.0.947, host 0.0.152, web 0.0.186, SPA 0.5.755._
