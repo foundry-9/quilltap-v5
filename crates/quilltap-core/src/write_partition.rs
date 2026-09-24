@@ -16,6 +16,11 @@
 //! becomes an ownership rule (one writer task holds the RW connection), but this
 //! partition/remap logic ports directly — it is a correctness property, not a
 //! Node workaround.
+//!
+//! `MOUNT_INDEX_REPO_KEYS` gains `groupDocMountLinks` + `groupCharacterMembers`
+//! per v4 `ad1c4c37f` (P4.D221) — the two group-store mount-index repos were
+//! missing from this set, so their buffered writes landed in the *main*
+//! transaction against the wrong connection.
 
 use std::collections::HashMap;
 
@@ -42,8 +47,10 @@ impl WriteDbTarget {
 }
 
 /// Repository keys whose rows live in the dedicated mount-index database. Mirrors
-/// the repos that override `getCollection()` to use the mount-index DB. Keep in
-/// sync when adding a repo backed by the mount-index DB.
+/// the repos whose `dbTarget` is `'mountIndex'` (v4 `write-partition.ts`, v4
+/// `ad1c4c37f`). Keep in sync when adding a repo backed by the mount-index DB —
+/// a key missing here has its buffered writes committed inside the *main*
+/// database's transaction, against the wrong connection.
 pub const MOUNT_INDEX_REPO_KEYS: &[&str] = &[
     "docMountPoints",
     "docMountFiles",
@@ -53,6 +60,8 @@ pub const MOUNT_INDEX_REPO_KEYS: &[&str] = &[
     "docMountDocuments",
     "docMountBlobs",
     "projectDocMountLinks",
+    "groupDocMountLinks",
+    "groupCharacterMembers",
 ];
 
 /// Repository keys whose rows live in the dedicated llm-logs database.

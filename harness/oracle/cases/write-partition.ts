@@ -55,6 +55,10 @@ const classifyCases: Array<[string, string]> = [
   ['mount-folder-create', 'docMountFolders.create'],
   ['mount-file-create', 'docMountFiles.create'],
   ['project-doc-link', 'projectDocMountLinks.create'],
+  // v4 `ad1c4c37f`: MOUNT_INDEX_REPO_KEYS gained these two group-store repos
+  // (were missing entirely — their writes fell through to 'main').
+  ['group-doc-link', 'groupDocMountLinks.create'],
+  ['group-character-member', 'groupCharacterMembers.create'],
   ['llm-logs-dotted', 'llmLogs.create'],
   ['llm-logs-bare', 'llmLogs'],
   ['mount-folder-bare', 'docMountFolders'],
@@ -80,6 +84,16 @@ const partitionCases: Array<[string, Write[]]> = [
       w('memories.create', [{ id: 'm1' }]),
       w('docMountFiles.create', [{ id: 'fi1' }]),
       w('__finalizeFile', ['/tmp/x']),
+    ],
+  ],
+  [
+    // v4 `ad1c4c37f`: proves the two group-store repos partition to
+    // mountIndex end to end through partitionWrites, not just classify.
+    'group-stores-mount-index',
+    [
+      w('chats.update', [{ id: 'c1' }]),
+      w('groupDocMountLinks.create', [{ id: 'g1' }]),
+      w('groupCharacterMembers.create', [{ id: 'g2' }]),
     ],
   ],
 ];

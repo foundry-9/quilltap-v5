@@ -16,12 +16,13 @@
 
 use std::collections::HashMap;
 
+use quilltap_core::write_apply::{apply_writes, ApplyError, ApplyHost};
 use quilltap_core::write_partition::{
     classify_write_target, is_main_primary_job_type, is_unique_constraint_error, partition_writes,
-    rewrite_folder_refs, ChildWritePayload,
+    rewrite_folder_refs, ChildWritePayload, WriteDbTarget,
 };
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 #[derive(Deserialize)]
 #[serde(tag = "kind")]
@@ -131,5 +132,120 @@ fn write_partition_matches_oracle() {
     eprintln!(
         "OK: write-partition matched oracle ({} classify, {} partition, {} mainPrimary, {} rewrite, {} uniqueErr).",
         counts[0], counts[1], counts[2], counts[3], counts[4]
+    );
+}
+
+/// Minimal [`ApplyHost`] recorder: tracks which partition's transaction is
+/// currently open (set on `BEGIN IMMEDIATE`, cleared on `COMMIT`/`ROLLBACK`)
+/// and, for every dispatched write, which partition it landed under.
+struct Recorder {
+    current: Option<WriteDbTarget>,
+    dispatched: Vec<(WriteDbTarget, String)>,
+}
+
+impl ApplyHost for Recorder {
+    fn conn_available(&self, _partition: WriteDbTarget) -> bool {
+        true
+    }
+
+    fn conn_exec(&mut self, partition: WriteDbTarget, sql: &str) -> Result<(), ApplyError> {
+        match sql {
+            "BEGIN IMMEDIATE" => self.current = Some(partition),
+            "COMMIT" | "ROLLBACK" => self.current = None,
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn dispatch(&mut self, write: &ChildWritePayload) -> Result<(), ApplyError> {
+        let partition = self
+            .current
+            .expect("dispatch invoked outside an open transaction");
+        self.dispatched.push((partition, write.method.clone()));
+        Ok(())
+    }
+
+    fn find_folder(
+        &mut self,
+        _mount_point_id: &str,
+        _path: &str,
+    ) -> Result<Option<String>, ApplyError> {
+        Ok(None)
+    }
+
+    fn finalize_file(
+        &mut self,
+        _final_dir: &str,
+        _staging_path: &str,
+        _final_path: &str,
+    ) -> Result<(), ApplyError> {
+        Ok(())
+    }
+
+    fn undo_finalize(&mut self, _final_path: &str, _staging_path: &str) {}
+
+    fn cleanup_staging_dir(&mut self, _staging_root: &str) {}
+
+    fn dispatch_invalidations(
+        &mut self,
+        _vector_store_keys: &[String],
+        _mount_point_keys: &[String],
+    ) {
+    }
+}
+
+/// v4 `ad1c4c37f`: `MOUNT_INDEX_REPO_KEYS` gained `groupDocMountLinks` +
+/// `groupCharacterMembers` — before the fix, `classify_write_target` routed
+/// these two repos to `Main` (the default fallback), so their buffered writes
+/// would have committed inside the MAIN transaction against the wrong
+/// connection. This drives the real applier orchestration end to end
+/// (`classify_write_target` -> `partition_writes` -> `apply_writes`), not just
+/// the pure classifier, proving a `groupCharacterMembers` write lands inside
+/// the MOUNT-INDEX transaction while an ordinary main-DB write stays in Main.
+#[test]
+fn group_character_members_write_applies_inside_mount_index_transaction() {
+    let mut host = Recorder {
+        current: None,
+        dispatched: Vec::new(),
+    };
+    let writes = vec![
+        ChildWritePayload {
+            method: "chats.update".to_string(),
+            args: vec![json!({ "id": "c1" })],
+        },
+        ChildWritePayload {
+            method: "groupCharacterMembers.create".to_string(),
+            args: vec![json!({ "id": "g1" })],
+        },
+        ChildWritePayload {
+            method: "groupDocMountLinks.create".to_string(),
+            args: vec![json!({ "id": "g2" })],
+        },
+    ];
+
+    apply_writes(&mut host, "job-p4d221", &writes, None).expect("apply_writes");
+
+    let partition_of = |method: &str| -> WriteDbTarget {
+        host.dispatched
+            .iter()
+            .find(|(_, m)| m == method)
+            .unwrap_or_else(|| panic!("{method} was never dispatched"))
+            .0
+    };
+
+    assert_eq!(
+        partition_of("groupCharacterMembers.create"),
+        WriteDbTarget::MountIndex,
+        "groupCharacterMembers must apply inside the mount-index transaction, not main"
+    );
+    assert_eq!(
+        partition_of("groupDocMountLinks.create"),
+        WriteDbTarget::MountIndex,
+        "groupDocMountLinks must apply inside the mount-index transaction, not main"
+    );
+    assert_eq!(
+        partition_of("chats.update"),
+        WriteDbTarget::Main,
+        "an ordinary main-DB write must stay in the main transaction"
     );
 }

@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(write-partition): route `groupDocMountLinks`/`groupCharacterMembers` writes to the mount-index transaction (P4.D221, v4 `ad1c4c37f`)
+
+_Versions: core 0.0.1045, harness 0.0.965._
+
+`MOUNT_INDEX_REPO_KEYS` was missing the two group-store repos, so a
+buffered write for either one classified as `main` and would have
+committed inside the main-DB transaction against the wrong connection —
+the exact hazard the write partitioner exists to prevent. Added both keys
+(matching v4's `write-partition.ts`), grew the `write-partition` oracle
+case with red-first classify/partition rows for both, and added an
+end-to-end applier proof (`quilltap-harness`'s
+`group_character_members_write_applies_inside_mount_index_transaction`)
+driving the real `apply_writes` orchestration with a recording `ApplyHost`
+to confirm the write lands inside the mount-index `BEGIN IMMEDIATE`/`COMMIT`
+pair, not main's.
+
 #### 2026-09-24 — docs(porting): drift ledger — waive 83d0c969b for the P4.D220–P4.D224 lanes
 
 _Docs-only change._
