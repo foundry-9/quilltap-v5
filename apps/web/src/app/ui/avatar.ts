@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
+import { injectImagesHidden } from '../chat/hidden-image/images-hidden';
+
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'chat';
 
 interface SizeConfig {
@@ -20,7 +22,12 @@ const SIZE_CONFIGS: Record<AvatarSize, SizeConfig> = {
 /**
  * A slim port of v4 `components/ui/Avatar.tsx` (foundation subset — the
  * `useAvatarDisplay` style context + queue badge + labels are vertical concerns).
- * Renders an image or the name's initial in a rounded / rectangular frame.
+ * Renders an image or the name's initial in a rounded / rectangular frame —
+ * the initial also when the surrounding subtree hides its images (the Salon's
+ * quick-hide "Salon Images" switch, v4 `e3937d7aa` `Avatar.tsx:111,:129`).
+ * Every avatar in the Salon — the transcript, the streaming row, the
+ * participant cards, the collapsed strip, the speaker selector and the
+ * dialogs — hides through this one read.
  */
 @Component({
   selector: 'qt-avatar',
@@ -28,8 +35,8 @@ const SIZE_CONFIGS: Record<AvatarSize, SizeConfig> = {
   template: `
     <div class="relative flex-shrink-0" [style.width.px]="config().w" [style.height.px]="config().h">
       <div [class]="frameClass()" style="width: 100%; height: 100%;">
-        @if (src()) {
-          <img class="w-full h-full object-cover" [src]="src()" [alt]="name()" />
+        @if (avatarSrc(); as source) {
+          <img class="w-full h-full object-cover" [src]="source" [alt]="name()" />
         } @else {
           <span [class]="'font-bold qt-text-secondary ' + config().text">{{ initial() }}</span>
         }
@@ -44,6 +51,10 @@ export class Avatar {
   readonly circular = input(false);
   readonly active = input(false);
 
+  private readonly imagesHidden = injectImagesHidden();
+
+  /** v4 `avatarSrc = imagesHidden ? null : getAvatarSrc(src)`. */
+  protected readonly avatarSrc = computed(() => (this.imagesHidden() ? null : this.src()));
   protected readonly config = computed(() => SIZE_CONFIGS[this.size()]);
   protected readonly initial = computed(() => (this.name()[0] ?? '?').toUpperCase());
   protected readonly frameClass = computed(() => {

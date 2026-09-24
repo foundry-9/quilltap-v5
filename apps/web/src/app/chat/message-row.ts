@@ -16,6 +16,8 @@ import { thumbnailUrl, fileUrl } from '../images/image-urls';
 import { resolveMessageAuthor, type SwipeState } from './chat-view-model';
 import { resolveWhisperTargetLabel } from './whisper-visibility';
 import { ConfirmationBadge } from './confirmation-badge';
+import { HiddenImageTile } from './hidden-image/hidden-image-tile';
+import { injectImagesHidden } from './hidden-image/images-hidden';
 import { CourierBubble } from './courier-bubble';
 import { MessageContent } from './message-content';
 import { QuillAnimation } from './quill-animation';
@@ -60,6 +62,7 @@ export interface ImageClickEvent {
     Tooltip,
     ConfirmationBadge,
     CourierBubble,
+    HiddenImageTile,
     MessageContent,
     ProviderModelBadge,
     QuillAnimation,
@@ -288,13 +291,22 @@ export interface ImageClickEvent {
                   [attr.aria-label]="'View ' + att.filename"
                   (click)="onThumbnailClick(att)"
                 >
-                  <img
-                    [src]="thumbFor(att)"
-                    [alt]="att.filename"
-                    width="80"
-                    height="80"
-                    class="qt-chat-attachment-image"
-                  />
+                  @if (imagesHidden()) {
+                    <!-- Quick-hide "Salon Images" (v4 e3937d7aa MessageRow.tsx:
+                         484-496): the tile stays INSIDE the button, so a click
+                         still opens the viewer. -->
+                    <span class="qt-chat-attachment-image block w-20 h-20">
+                      <qt-hidden-image-tile [label]="att.filename" />
+                    </span>
+                  } @else {
+                    <img
+                      [src]="thumbFor(att)"
+                      [alt]="att.filename"
+                      width="80"
+                      height="80"
+                      class="qt-chat-attachment-image"
+                    />
+                  }
                   <div class="qt-chat-attachment-overlay">
                     <qt-icon name="zoom-in" class="w-4 h-4" />
                   </div>
@@ -484,6 +496,8 @@ export interface ImageClickEvent {
 // *reference* changes for every field at once, so there is no per-field memo
 // comparator to extend.
 export class MessageRow {
+  /** The Salon's quick-hide "Salon Images" switch (v4 `useImagesHidden()`). */
+  protected readonly imagesHidden = injectImagesHidden();
   readonly message = input.required<MessageDto>();
   readonly chat = input.required<ChatDetail>();
   readonly swipeState = input<SwipeState | null>(null);

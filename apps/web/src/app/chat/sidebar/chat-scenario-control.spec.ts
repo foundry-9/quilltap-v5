@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { CoreClient } from '../../core/core-client';
 import { CoreDispatchError } from '../../core/core-contract';
 import { ToastService } from '../../ui/toast.service';
+import { IMAGES_HIDDEN } from '../hidden-image/images-hidden';
 import { ChatScenarioControl } from './chat-scenario-control';
 
 /**
@@ -479,5 +480,43 @@ describe('ChatScenarioControl (v4 components/chat/ChatScenarioControl.tsx @ 44a8
     const fixture = await render();
     const host = fixture.nativeElement.querySelector('qt-chat-scenario-control') as HTMLElement;
     expect(host.classList.contains('block')).toBe(true);
+  });
+});
+
+/**
+ * Quick-hide "Salon Images" (v4 `e3937d7aa` `ChatScenarioControl.tsx:
+ * 349-355`): the Host's icon on "Ask the Host to set the scene" simply goes —
+ * no stand-in — and the button text stays.
+ */
+describe('ChatScenarioControl — the Salon Images switch (v4 e3937d7aa)', () => {
+  async function renderWith(hidden: boolean): Promise<HTMLButtonElement> {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [Host],
+      providers: [
+        { provide: CoreClient, useValue: stubClient() },
+        provideTanStackQuery(new QueryClient()),
+        { provide: IMAGES_HIDDEN, useValue: signal(hidden) },
+      ],
+    });
+    const fixture = TestBed.createComponent(Host);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const found = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+    ).find((b) => (b.textContent ?? '').includes('Ask the Host to set the scene'));
+    expect(found).toBeDefined();
+    return found as HTMLButtonElement;
+  }
+
+  it('shows the Host icon when images are shown', async () => {
+    expect((await renderWith(false)).querySelector('img')).not.toBeNull();
+  });
+
+  it('drops the Host icon, keeping the button text, while the Salon hides its images', async () => {
+    const button = await renderWith(true);
+    expect(button.querySelector('img')).toBeNull();
+    expect(button.textContent?.trim()).toBe('Ask the Host to set the scene');
   });
 });

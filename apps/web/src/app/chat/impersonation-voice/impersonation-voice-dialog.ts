@@ -16,6 +16,7 @@ import { CoreClient } from '../../core/core-client';
 import { MarkdownField } from '../../editor/markdown-field';
 import { Modal } from '../../ui/modal';
 import { ToastService } from '../../ui/toast.service';
+import { injectImagesHidden } from '../hidden-image/images-hidden';
 import { announcementKeys, fetchAnnouncementProfiles } from '../post-office/post-office.api';
 import { VoiceRewriteReviewPanel } from './voice-rewrite-review-panel';
 
@@ -63,7 +64,7 @@ import { VoiceRewriteReviewPanel } from './voice-rewrite-review-panel';
     >
       <!-- Seat header (v4 :150-172) -->
       <div class="mb-4 flex items-center gap-3">
-        @if (avatarUrl()) {
+        @if (avatarUrl() && !imagesHidden()) {
           <img
             [src]="avatarUrl()"
             alt=""
@@ -201,6 +202,8 @@ import { VoiceRewriteReviewPanel } from './voice-rewrite-review-panel';
   `,
 })
 export class ImpersonationVoiceDialog {
+  /** Quick-hide "Salon Images" (v4 `e3937d7aa` `ImpersonationVoiceDialog.tsx:86,:119`). */
+  protected readonly imagesHidden = injectImagesHidden();
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 

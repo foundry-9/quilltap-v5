@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -6,6 +7,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { CoreClient } from '../../core/core-client';
 import { coreStreamStub } from '../../core/core-client.testing';
 import type { ParticipantDetail } from '../../core/core-contract';
+import { IMAGES_HIDDEN } from '../hidden-image/images-hidden';
 import { ParticipantCard, USER_IMPERSONATION_VALUE } from './participant-card';
 
 /**
@@ -439,5 +441,51 @@ describe('ParticipantCard — the subprompt picker is WIRED to the output', () =
     box!.click();
     fixture.detectChanges();
     expect(seen).toEqual([{ participantId: 'p-1', subpromptIds: ['be-terse'] }]);
+  });
+});
+
+/**
+ * Quick-hide "Salon Images" (v4 `e3937d7aa`): the card's portrait hides through
+ * `qt-avatar`, v4's one route (no hunk touches `ParticipantCard` — the commit
+ * message's "participant sidebar" rides `ui/Avatar`).
+ */
+describe('ParticipantCard — the Salon Images switch (v4 e3937d7aa, via Avatar)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function mountWith(hidden: boolean): HTMLElement {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ParticipantCard],
+      providers: [...cardProviders(), { provide: IMAGES_HIDDEN, useValue: signal(hidden) }],
+    });
+    const fixture = TestBed.createComponent(ParticipantCard);
+    fixture.componentRef.setInput(
+      'participant',
+      participant({
+        character: {
+          id: 'char-1',
+          name: 'Bram',
+          title: null,
+          avatarUrl: '/img/bram.webp',
+          defaultImageId: null,
+          defaultImage: null,
+          talkativeness: 0.5,
+        },
+      }),
+    );
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  it('paints the portrait when images are shown', () => {
+    expect(mountWith(false).querySelector('qt-avatar img')?.getAttribute('src')).toBe(
+      '/img/bram.webp',
+    );
+  });
+
+  it('falls back to the initial when the Salon hides its images', () => {
+    const root = mountWith(true);
+    expect(root.querySelector('qt-avatar img')).toBeNull();
+    expect(root.querySelector('qt-avatar')?.textContent?.trim()).toBe('B');
   });
 });

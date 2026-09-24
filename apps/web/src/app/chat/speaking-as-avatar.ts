@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 import { Icon } from '../ui/icon';
+import { injectImagesHidden } from './hidden-image/images-hidden';
 
 /**
  * SpeakingAsAvatar — a persistent cue, seated inside the composer directly to
@@ -27,8 +28,8 @@ import { Icon } from '../ui/icon';
       [title]="titleText()"
       [attr.aria-label]="ariaLabel()"
     >
-      @if (avatarUrl()) {
-        <img [src]="avatarUrl()" [alt]="name()" class="w-full h-full object-cover" />
+      @if (avatarSrc(); as src) {
+        <img [src]="src" [alt]="name()" class="w-full h-full object-cover" />
       } @else {
         <span class="font-bold qt-text-secondary text-lg">{{ initial() }}</span>
       }
@@ -55,6 +56,13 @@ export class SpeakingAsAvatar {
    */
   readonly voiceRehearsal = input(false);
 
+  private readonly imagesHidden = injectImagesHidden();
+  /**
+   * v4 `e3937d7aa` `SpeakingAsAvatar.tsx:47-48`: `imagesHidden ? null : …` —
+   * the quick-hide "Salon Images" switch falls back to the initial. Read here,
+   * not threaded through the composer: the token reaches it from the Salon.
+   */
+  protected readonly avatarSrc = computed(() => (this.imagesHidden() ? null : this.avatarUrl()));
   protected readonly initial = computed(() => (this.name()[0] ?? '?').toUpperCase());
   /**
    * v4's three-arm ladder: the rehearsal cue outranks BOTH of the others, so an

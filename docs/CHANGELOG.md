@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — feat(salon): the Salon Images switch hides every image the Salon paints (P4.D223)
+
+_Versions: SPA 0.5.764._
+
+The render half of v4 `e3937d7aa`. A new `IMAGES_HIDDEN` injection token
+(root default `false`) is provided by `SalonConversation` from the
+quick-hide service's `hideSalonImages`, so only the Salon hides images.
+With the switch on: `qt-avatar` shows the initial (covering the transcript,
+streaming row, participant cards, collapsed strip, speaker selector and the
+cast/pause/reattribute/profile dialogs); image attachments become v4's
+`HiddenImageTile` inside their button, which still opens the viewer; images
+embedded in message markdown become v4's inline "Image hidden" stand-in
+(the flag is part of the render-cache key); the story background layer and
+the workspace backdrop report are withheld while the background stays
+tracked; the speaking-as cue, the scenario control's Host icon, the tool
+header portrait, and the portraits in the Inform, Insert Announcement and
+In Their Own Words dialogs all follow. v4's two tool-result thumbnail tiles
+and its header background thumbnail have no v5 counterpart. `quick-hide-
+flow.spec.ts` gains a live beat.
+
 #### 2026-09-24 — feat(quick-hide): the Salon Images switch + the quick-hide section always offered; retire the chatsHasDangerous client probe (P4.D223)
 
 _Versions: SPA 0.5.763._

@@ -46,6 +46,9 @@ import {
 } from '../../core/chat-stream.reducer';
 import { ChatComposer, type ToolExecutionStatus } from '../../chat/chat-composer';
 import { SalonConversation } from './salon-conversation';
+import { IMAGES_HIDDEN } from '../../chat/hidden-image/images-hidden';
+import { QuickHideService } from '../../quick-hide/quick-hide.service';
+import { HIDE_SALON_IMAGES_KEY } from '../../quick-hide/quick-hide.storage';
 import { ChatSidebar } from '../../chat/sidebar/chat-sidebar';
 import { By } from '@angular/platform-browser';
 import { ToastService } from '../../ui/toast.service';
@@ -4207,5 +4210,114 @@ describe('SalonConversation — Rebuild Summary (P4.D213, v4 useSummaryActions.t
     expect(toasts().slice(before)).toEqual([
       { type: 'error', message: 'Failed to rebuild the summary' },
     ]);
+  });
+});
+
+/**
+ * Quick-hide "Salon Images" (v4 `e3937d7aa` `SalonView.tsx:156-164,:1457`):
+ * the Salon PROVIDES the switch to everything it renders, and withholds its
+ * own backdrop — the `--story-background-url` layer and the workspace backdrop
+ * report both go null — while the background itself stays tracked, so a
+ * toggle is never mistaken for a new background.
+ */
+describe('SalonConversation — the Salon Images switch (v4 e3937d7aa)', () => {
+  const BACKGROUND = {
+    backgroundUrl: '/v4/path/bg.webp',
+    fileId: 'bg-7',
+    filename: 'bg.webp',
+    sha256: 's',
+    linkSummary: null,
+  };
+
+  afterEach(() => {
+    localStorage.removeItem(HIDE_SALON_IMAGES_KEY);
+    TestBed.resetTestingModule();
+  });
+
+  async function renderVeiled(): Promise<{
+    fixture: ComponentFixture<SalonConversation>;
+    reports: WorkspaceBackdropEntry[];
+    cleared: string[];
+    queryClient: QueryClient;
+  }> {
+    localStorage.setItem(HIDE_SALON_IMAGES_KEY, 'true');
+    const reports: WorkspaceBackdropEntry[] = [];
+    const cleared: string[] = [];
+    const client = stubClient(chatDetail(), new Subject<ScopedEvent>(), BACKGROUND);
+    const queryClient = new QueryClient();
+    TestBed.configureTestingModule({
+      imports: [SalonConversation],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(queryClient),
+        { provide: CoreClient, useValue: client },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-1' },
+        {
+          provide: WORKSPACE_BACKDROP_REGISTRY,
+          useValue: {
+            report: (_tabId: string, entry: WorkspaceBackdropEntry) => reports.push(entry),
+            clear: (tabId: string) => cleared.push(tabId),
+          } satisfies WorkspaceBackdropRegistry,
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(SalonConversation);
+    fixture.componentRef.setInput('chatId', 'chat-1');
+    fixture.detectChanges();
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return { fixture, reports, cleared, queryClient };
+  }
+
+  it('provides the switch to its subtree; the root default stays false', async () => {
+    const { fixture } = await renderVeiled();
+    expect(fixture.debugElement.injector.get(IMAGES_HIDDEN)()).toBe(true);
+    const sidebar = fixture.debugElement.query(By.directive(ChatSidebar));
+    expect(sidebar.injector.get(IMAGES_HIDDEN)()).toBe(true);
+    expect(TestBed.inject(IMAGES_HIDDEN)()).toBe(false);
+  });
+
+  it('withholds the backdrop layer and the workspace backdrop while hidden, and restores both', async () => {
+    const { fixture, reports, cleared } = await renderVeiled();
+    const layout = fixture.nativeElement.querySelector('.qt-chat-layout') as HTMLElement;
+    expect(layout.getAttribute('style') ?? '').not.toContain('--story-background-url');
+    expect(reports).toEqual([]);
+    expect(cleared).toContain('tab-1');
+
+    TestBed.inject(QuickHideService).toggleHideSalonImages();
+    for (let i = 0; i < 3; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(layout.style.getPropertyValue('--story-background-url')).toBe(
+      "url('/api/v1/files/bg-7')",
+    );
+    expect(reports.at(-1)).toEqual({ url: '/api/v1/files/bg-7', isSalon: true });
+  });
+
+  it('a toggle is not a background change — the change hook never fires on it', async () => {
+    // The background-change hook (v4's `onBackgroundChanged` → refetch the
+    // chat) reads the TRACKED background; only the layer and the report read
+    // the veiled one. Were the source itself gated, un-hiding would look like a
+    // brand-new backdrop and invalidate the chat.
+    const { fixture, queryClient } = await renderVeiled();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const service = TestBed.inject(QuickHideService);
+    service.toggleHideSalonImages();
+    for (let i = 0; i < 3; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    service.toggleHideSalonImages();
+    for (let i = 0; i < 3; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    const detailKey = JSON.stringify(chatKeys.detail('chat-1'));
+    expect(
+      invalidate.mock.calls.filter(([filters]) => JSON.stringify(filters?.queryKey) === detailKey),
+    ).toEqual([]);
   });
 });

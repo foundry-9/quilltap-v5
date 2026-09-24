@@ -28,6 +28,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import remarkSmartypants from 'remark-smartypants';
 
+import { hideInlineImages } from '../hidden-image/hidden-inline-image';
 import { REMARK_MATH_OPTIONS, normalizeMathDelimiters } from './math';
 import { SMARTYPANTS_OPTIONS, shouldCurlQuotes } from './typography';
 import {
@@ -64,6 +65,14 @@ export interface MarkdownRenderOptions {
    * see {@link shouldCurlQuotes}.
    */
   displayQuotes?: boolean;
+  /**
+   * The quick-hide "Salon Images" switch (v4 `e3937d7aa`): when true, every
+   * `<img>` in the finished HTML becomes the inline stand-in (v4
+   * `MessageContent`'s `img` renderer returning `HiddenInlineImage`). Only the
+   * Salon ever sets it — `MessageContent` reads the Salon-scoped
+   * `IMAGES_HIDDEN` token, `false` everywhere else.
+   */
+  imagesHidden?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +275,7 @@ export function renderMarkdownToHtml(content: string, options: MarkdownRenderOpt
     dialogueDetection = DEFAULT_DIALOGUE_DETECTION,
     blobMountPointId = null,
     displayQuotes = false,
+    imagesHidden = false,
   } = options;
 
   try {
@@ -312,6 +322,15 @@ export function renderMarkdownToHtml(content: string, options: MarkdownRenderOpt
     // is still the raw relative ref at this point (v4 applies it in the img node).
     if (blobMountPointId) {
       html = applyBlobImageRewrite(html, blobMountPointId);
+    }
+
+    // Quick-hide "Salon Images": v4's `img` renderer resolves the blob src and
+    // then returns the placeholder instead (`MessageContent.tsx:508-521`), so
+    // the swap runs after the rewrite, on the same finished `<img>` tags. This
+    // is the home rather than `message-content.ts` because the render cache
+    // memoizes THIS function's output — the flag rides the cache key below.
+    if (imagesHidden) {
+      html = hideInlineImages(html);
     }
 
     return html;

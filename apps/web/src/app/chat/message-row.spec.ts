@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,7 +10,9 @@ import type {
   MessageDto,
   ParticipantDetail,
 } from '../core/core-contract';
+import { IMAGES_HIDDEN } from './hidden-image/images-hidden';
 import { MessageRow, type ImageClickEvent } from './message-row';
+import { clearRenderCache } from './render/render-cache';
 
 function participant(over: Partial<ParticipantDetail>): ParticipantDetail {
   return {
@@ -1072,5 +1075,90 @@ describe('MessageRow — a line being regenerated (v4 f564b0de3)', () => {
     const fixture = render(message({}));
     const bar = fixture.nativeElement.querySelector('.qt-chat-message-action-bar') as HTMLElement;
     expect(bar.classList.contains('qt-chat-message-action-bar-disabled')).toBe(false);
+  });
+});
+
+/**
+ * Quick-hide "Salon Images" (v4 `e3937d7aa` `MessageRow.tsx:191,:484-496`):
+ * the author portrait falls to the initial (through `qt-avatar`), each image
+ * attachment becomes a `HiddenImageTile` INSIDE its button — so a click still
+ * opens the viewer — and an image embedded in the prose becomes the inline
+ * stand-in.
+ */
+describe('MessageRow — the Salon Images switch (v4 e3937d7aa)', () => {
+  afterEach(() => {
+    TestBed.resetTestingModule();
+    clearRenderCache();
+  });
+
+  const imageAtt: MessageAttachment = {
+    id: 'file-9',
+    filename: 'sketch.png',
+    filepath: 'uploads/sketch.png',
+    mimeType: 'image/png',
+  };
+
+  function renderHidden(hidden: boolean): ComponentFixture<MessageRow> {
+    TestBed.configureTestingModule({
+      imports: [MessageRow],
+      providers: [
+        { provide: CoreClient, useValue: { dispatch: vi.fn() } },
+        { provide: IMAGES_HIDDEN, useValue: signal(hidden) },
+      ],
+    });
+    const fixture = TestBed.createComponent(MessageRow);
+    const chat = chatDetail();
+    chat.participants = [
+      participant({
+        id: 'p1',
+        character: {
+          id: 'char1',
+          name: 'Lorian',
+          title: null,
+          avatarUrl: '/img/lorian.webp',
+          defaultImageId: null,
+          defaultImage: null,
+        },
+      }),
+    ];
+    fixture.componentRef.setInput(
+      'message',
+      message({ content: 'See ![the map](/img/map.webp)', attachments: [imageAtt] }),
+    );
+    fixture.componentRef.setInput('chat', chat);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('paints the portrait, the thumbnail and the embedded image when shown', () => {
+    const root = renderHidden(false).nativeElement as HTMLElement;
+    expect(root.querySelector('qt-avatar img')?.getAttribute('src')).toBe('/img/lorian.webp');
+    expect(root.querySelector('img.qt-chat-attachment-image')).not.toBeNull();
+    expect(root.querySelector('.qt-chat-message-content img')).not.toBeNull();
+  });
+
+  it('withholds every image: the initial, the tile, the inline stand-in — no <img> at all', () => {
+    const root = renderHidden(true).nativeElement as HTMLElement;
+    expect(root.querySelector('img')).toBeNull();
+    expect(root.querySelector('qt-avatar')?.textContent?.trim()).toBe('L');
+    const tile = root.querySelector('.qt-chat-attachment-button span[role="img"]');
+    expect(tile?.getAttribute('aria-label')).toBe('Image hidden: sketch.png');
+    expect(tile?.getAttribute('title')).toBe('Image hidden: sketch.png');
+    // v4's wrapper keeps the thumbnail's footprint.
+    const box = root.querySelector('.qt-chat-attachment-button span.qt-chat-attachment-image');
+    expect(box?.className).toBe('qt-chat-attachment-image block w-20 h-20');
+    expect(
+      root.querySelector('.qt-chat-message-content span[role="img"]')?.getAttribute('aria-label'),
+    ).toBe('Image hidden: the map');
+  });
+
+  it('a click on the hidden tile still opens the viewer', () => {
+    const fixture = renderHidden(true);
+    let event: ImageClickEvent | undefined;
+    fixture.componentInstance.imageClick.subscribe((e) => (event = e));
+    (fixture.nativeElement.querySelector(
+      '.qt-chat-attachment-button span[role="img"]',
+    ) as HTMLElement).click();
+    expect(event).toEqual({ src: '/api/v1/files/file-9', filename: 'sketch.png', fileId: 'file-9' });
   });
 });

@@ -1,3 +1,4 @@
+import { signal, type Provider } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
@@ -6,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../../core/core-client';
 import type { CharacterListItem } from '../../core/core-contract';
 import { RichEditor } from '../../editor/rich-editor';
+import { IMAGES_HIDDEN } from '../hidden-image/images-hidden';
 import { InsertAnnouncementDialog } from './insert-announcement-dialog';
 import type { AudienceCandidate } from './post-office.api';
 import { ToastService } from '../../ui/toast.service';
@@ -98,6 +100,7 @@ async function mount(
   s: Stub,
   participantCharacterIds: string[] = [],
   audienceCandidates: AudienceCandidate[] = [],
+  extra: Provider[] = [],
 ): Promise<ComponentFixture<InsertAnnouncementDialog>> {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -105,6 +108,7 @@ async function mount(
     providers: [
       provideTanStackQuery(new QueryClient()),
       { provide: CoreClient, useValue: s.client },
+      ...extra,
     ],
   });
   const fixture = TestBed.createComponent(InsertAnnouncementDialog);
@@ -664,5 +668,34 @@ describe('InsertAnnouncementDialog (v4 components/chat/InsertAnnouncementDialog.
         targetParticipantIds: ['p-cleo'],
       });
     });
+  });
+});
+
+/**
+ * Quick-hide "Salon Images" (v4 `e3937d7aa` `InsertAnnouncementDialog.tsx:
+ * :477,:600`): v4 gates two sites; v5's character picker always renders its
+ * placeholder circle (the recorded vestige), so the audience row is the one
+ * live site — its portrait falls to the `w-6 h-6` disc.
+ */
+describe('InsertAnnouncementDialog — the Salon Images switch on the audience (v4 e3937d7aa)', () => {
+  const audience = [audienceCandidate({ avatarUrl: '/img/cleo.webp' })];
+
+  function row(f: ComponentFixture<unknown>): HTMLElement {
+    const group = (f.nativeElement as HTMLElement).querySelector(
+      '[aria-labelledby="announce-audience-label"]',
+    ) as HTMLElement;
+    expect(group).not.toBeNull();
+    return group;
+  }
+
+  it('paints the audience portrait when images are shown', async () => {
+    const f = await mount(stub({}), [], audience, [{ provide: IMAGES_HIDDEN, useValue: signal(false) }]);
+    expect(row(f).querySelector('img')?.getAttribute('src')).toBe('/img/cleo.webp');
+  });
+
+  it('falls back to the disc while the Salon hides its images', async () => {
+    const f = await mount(stub({}), [], audience, [{ provide: IMAGES_HIDDEN, useValue: signal(true) }]);
+    expect(row(f).querySelector('img')).toBeNull();
+    expect(row(f).querySelector('div.w-6.h-6.rounded-full.qt-bg-secondary')).not.toBeNull();
   });
 });

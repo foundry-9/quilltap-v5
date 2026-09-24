@@ -1,7 +1,9 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { ChatDetail, MessageDto } from '../core/core-contract';
+import { IMAGES_HIDDEN } from './hidden-image/images-hidden';
 import { ToolMessage } from './tool-message';
 import { ToastService } from '../ui/toast.service';
 
@@ -368,5 +370,32 @@ describe('ToolMessage — the Staff header portrait (P4.26)', () => {
     const img = el(fixture).querySelector('img');
     expect(img?.getAttribute('src')).toBe('/images/avatars/prospero-avatar.webp');
     expect(img?.getAttribute('alt')).toBe('Prospero');
+  });
+});
+
+/**
+ * Quick-hide "Salon Images" (v4 `e3937d7aa` `ToolMessage.tsx:216,:376`): a
+ * hidden header portrait falls to the tool's emoji circle. (v4's two
+ * tool-result thumbnail tiles have no v5 subject — tool thumbnails are not
+ * ported.)
+ */
+describe('ToolMessage — the Salon Images switch (v4 e3937d7aa)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('drops the Staff portrait to the emoji circle while the Salon hides its images', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [{ provide: IMAGES_HIDDEN, useValue: signal(true) }],
+    });
+    const fixture = render({
+      message: msg({
+        content: toolContent({ initiatedBy: 'user' }),
+        systemSender: 'prospero',
+        systemKind: 'tool-run',
+      }),
+    });
+    expect(el(fixture).querySelector('img')).toBeNull();
+    expect(el(fixture).querySelector('qt-avatar')).toBeNull();
+    expect(el(fixture).querySelector('div.w-10.h-10.rounded-full.qt-bg-muted')).not.toBeNull();
   });
 });

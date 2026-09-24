@@ -1,9 +1,11 @@
+import { signal, type Provider } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { ToastService } from '../../ui/toast.service';
+import { IMAGES_HIDDEN } from '../hidden-image/images-hidden';
 import { ImpersonationVoiceDialog } from './impersonation-voice-dialog';
 
 /**
@@ -41,11 +43,16 @@ function stub(profilesAnswer: () => Promise<Record<string, unknown>> = async () 
 async function mount(
   over: Record<string, unknown> = {},
   client: CoreClient = stub(),
+  extra: Provider[] = [],
 ): Promise<ComponentFixture<ImpersonationVoiceDialog>> {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [ImpersonationVoiceDialog],
-    providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: client }],
+    providers: [
+      provideTanStackQuery(new QueryClient()),
+      { provide: CoreClient, useValue: client },
+      ...extra,
+    ],
   });
   const fixture = TestBed.createComponent(ImpersonationVoiceDialog);
   fixture.componentRef.setInput('characterName', 'Evangeline');
@@ -384,5 +391,32 @@ describe('ImpersonationVoiceDialog — the draft and the proposal', () => {
     f.componentInstance.cancel.subscribe(() => seen.push('cancel'));
     (f.nativeElement as HTMLElement).querySelector<HTMLElement>('.qt-dialog-overlay')!.click();
     expect(seen).toEqual(['cancel']);
+  });
+});
+
+/**
+ * Quick-hide "Salon Images" (v4 `e3937d7aa` `ImpersonationVoiceDialog.tsx:86,
+ * :119`): the seat header's portrait falls to the `w-10 h-10` initial disc.
+ * The dialog renders in `SalonConversation`'s own template (not portaled), so
+ * the Salon's element-level provider reaches it — pinned here by providing the
+ * token directly.
+ */
+describe('ImpersonationVoiceDialog — the Salon Images switch (v4 e3937d7aa)', () => {
+  it('paints the portrait when images are shown', async () => {
+    const f = await mount({ avatarUrl: '/img/evangeline.webp' }, stub(), [
+      { provide: IMAGES_HIDDEN, useValue: signal(false) },
+    ]);
+    expect((f.nativeElement as HTMLElement).querySelector('img')?.getAttribute('src')).toBe(
+      '/img/evangeline.webp',
+    );
+  });
+
+  it('falls back to the initial disc while the Salon hides its images', async () => {
+    const f = await mount({ avatarUrl: '/img/evangeline.webp' }, stub(), [
+      { provide: IMAGES_HIDDEN, useValue: signal(true) },
+    ]);
+    const el = f.nativeElement as HTMLElement;
+    expect(el.querySelector('img')).toBeNull();
+    expect(el.querySelector('.qt-bg-secondary span')?.textContent).toBe('E');
   });
 });

@@ -1,3 +1,4 @@
+import { signal, type Provider } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
@@ -6,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../core/core-client';
 import { RichEditor } from '../editor/rich-editor';
 import { ToastService } from '../ui/toast.service';
+import { IMAGES_HIDDEN } from './hidden-image/images-hidden';
 import { InformDialog, type InformAudienceCandidate } from './inform-dialog';
 
 /**
@@ -71,6 +73,7 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
 async function mount(
   s: Stub,
   audienceCandidates: InformAudienceCandidate[] = CANDIDATES,
+  extra: Provider[] = [],
 ): Promise<ComponentFixture<InformDialog>> {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -78,6 +81,7 @@ async function mount(
     providers: [
       provideTanStackQuery(new QueryClient()),
       { provide: CoreClient, useValue: s.client },
+      ...extra,
     ],
   });
   const fixture = TestBed.createComponent(InformDialog);
@@ -262,5 +266,29 @@ describe('InformDialog — posting (v4 components/chat/InformDialog.tsx @ f45a51
     expect(TestBed.inject(ToastService).toasts().map((t) => t.message)).toContain(
       'No LLM-controlled seat to inform.',
     );
+  });
+});
+
+/**
+ * Quick-hide "Salon Images" (v4 `e3937d7aa` `InformDialog.tsx:91,:224`):
+ * `p.avatarUrl && !imagesHidden` — a seat's portrait falls to the `w-5 h-5`
+ * disc. Rendered in `SalonConversation`'s own template, so the Salon's
+ * element-level provider reaches it.
+ */
+describe('InformDialog — the Salon Images switch (v4 e3937d7aa)', () => {
+  const WITH_PORTRAIT: InformAudienceCandidate[] = [
+    { participantId: ALICE, name: 'Alice', controlledBy: 'llm', status: 'active', avatarUrl: '/img/alice.webp' },
+  ];
+
+  it('paints the seat portrait when images are shown', async () => {
+    const f = await mount(stub(), WITH_PORTRAIT, [{ provide: IMAGES_HIDDEN, useValue: signal(false) }]);
+    expect(seat(f, 'Alice')?.querySelector('img')?.getAttribute('src')).toBe('/img/alice.webp');
+  });
+
+  it('falls back to the disc while the Salon hides its images', async () => {
+    const f = await mount(stub(), WITH_PORTRAIT, [{ provide: IMAGES_HIDDEN, useValue: signal(true) }]);
+    const button = seat(f, 'Alice')!;
+    expect(button.querySelector('img')).toBeNull();
+    expect(button.querySelector('div.w-5.h-5.rounded-full.qt-bg-secondary')).not.toBeNull();
   });
 });

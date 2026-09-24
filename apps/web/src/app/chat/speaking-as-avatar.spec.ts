@@ -1,6 +1,8 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 
+import { IMAGES_HIDDEN } from './hidden-image/images-hidden';
 import { SpeakingAsAvatar } from './speaking-as-avatar';
 
 /**
@@ -129,4 +131,32 @@ describe('SpeakingAsAvatar — the voice-rehearsal cue', () => {
    * the `salon-impersonation-voice-flow` beat, which is the only place a
    * computed style means anything.
    */
+});
+
+/**
+ * Quick-hide "Salon Images" (v4 `e3937d7aa` `SpeakingAsAvatar.tsx:47-48`): the
+ * cue reads the Salon's switch itself — nothing is threaded through the
+ * composer — and falls back to the initial.
+ */
+describe('SpeakingAsAvatar — the Salon Images switch (v4 e3937d7aa)', () => {
+  it('shows the initial, not the portrait, while the Salon hides its images', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [SpeakingAsAvatar],
+      providers: [{ provide: IMAGES_HIDDEN, useValue: signal(true) }],
+    });
+    const fixture = TestBed.createComponent(SpeakingAsAvatar);
+    fixture.componentRef.setInput('name', 'Charlie');
+    fixture.componentRef.setInput('avatarUrl', '/files/charlie.webp');
+    fixture.componentRef.setInput('canType', true);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('img')).toBeNull();
+    expect(root.querySelector('.qt-speaking-as-avatar')?.textContent?.trim()).toBe('C');
+    // The cue still names who is speaking.
+    expect(root.querySelector('.qt-speaking-as-avatar')?.getAttribute('aria-label')).toBe(
+      'Speaking as Charlie',
+    );
+    TestBed.resetTestingModule();
+  });
 });

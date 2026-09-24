@@ -22,6 +22,15 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  *
  * The walk MUTATES the shared fixture (it creates a tag and styles it), so it
  * cleans up after itself in `afterAll`.
+ *
+ * P4.D223 adds a third beat — the "Salon Images" switch (v4 `e3937d7aa`): it
+ * lives beside the tag toggles in the always-offered section, and flipping it
+ * withholds every image the Salon paints (portraits, attachment thumbnails,
+ * embedded images, the backdrop) in favour of v4's stand-ins. The switch is a
+ * browser-local preference (`quilltap.quickHide.hideSalonImages`), so the beat
+ * touches no fixture data; it finds its chat by CONTENT (the shared fixture's
+ * image-attachment chat, the one `salon-courier-images-flow.spec.ts`'s
+ * lightbox beat opens).
  */
 
 const TAG_NAME = 'E2E Quick Hide';
@@ -102,12 +111,14 @@ async function maybeUnlock(page: Page): Promise<void> {
  * state, and close the menu again. The service is signal-live, so the
  * consumers react without a reload.
  */
-async function toggleTagViaMenu(page: Page, tagName: string, expectPressed: boolean): Promise<void> {
+async function toggleTagViaMenu(
+  page: Page,
+  tagName: string,
+  expectPressed: boolean,
+): Promise<void> {
   const trigger = page.getByRole('button', { name: 'User menu' });
   await trigger.click();
-  const toggle = page
-    .locator('qt-quick-hide-menu-section')
-    .getByRole('button', { name: tagName });
+  const toggle = page.locator('qt-quick-hide-menu-section').getByRole('button', { name: tagName });
   await expect(toggle).toBeVisible({ timeout: 10_000 });
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', String(expectPressed));
@@ -146,7 +157,9 @@ test.describe('P4.9d — quick-hide authoring and hiding', () => {
     await expect(quickHideBox).toBeChecked();
 
     // The subtext is v4-verbatim.
-    await expect(tagsCard.getByText('Adds this tag to the navbar quick-hide controls.')).toBeVisible();
+    await expect(
+      tagsCard.getByText('Adds this tag to the navbar quick-hide controls.'),
+    ).toBeVisible();
 
     // It round-tripped to the server, not just the signal.
     await page.reload();
@@ -188,3 +201,105 @@ test.describe('P4.9d — quick-hide authoring and hiding', () => {
   });
 });
 
+/** Flip "Salon Images" through the always-offered quick-hide section. */
+async function toggleSalonImagesViaMenu(page: Page, expectPressed: boolean): Promise<void> {
+  const trigger = page.getByRole('button', { name: 'User menu' });
+  await trigger.click();
+  const toggle = page
+    .locator('qt-quick-hide-menu-section')
+    .getByRole('button', { name: 'Salon Images' });
+  await expect(toggle).toBeVisible({ timeout: 10_000 });
+  await expect(toggle).toHaveAttribute(
+    'title',
+    'Hide backgrounds, avatars and attached images in the Salon',
+  );
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', String(expectPressed));
+  await trigger.click();
+}
+
+/**
+ * Open chats from the Salon list until one renders an image attachment. The
+ * per-card wait (not an instant sample) is the lesson of the courier spec's
+ * `openChatWith`: a thumbnail lands a tick after the list.
+ */
+async function openChatWithImageAttachment(page: Page): Promise<boolean> {
+  await page.goto(`${BASE_URL}/salon`);
+  await maybeUnlock(page);
+  await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  const count = await page.locator('.chat-card-stack a.qt-entity-card').count();
+  for (let i = 0; i < count; i++) {
+    await page.goto(`${BASE_URL}/salon`);
+    await page.locator('.chat-card-stack a.qt-entity-card').nth(i).click();
+    // Some shared-fixture chats do not open at all (a character whose vault
+    // is unavailable answers an error panel) — those are simply not the chat
+    // this beat is looking for.
+    const opened = await page
+      .locator('.qt-chat-messages-list')
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!opened) continue;
+    const found = await page
+      .locator('img.qt-chat-attachment-image')
+      .first()
+      .waitFor({ state: 'visible', timeout: 2_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (found) return true;
+  }
+  return false;
+}
+
+test.describe('P4.D223 — the Salon Images switch (v4 e3937d7aa)', () => {
+  test('hides every Salon image behind v4’s stand-ins, survives a reload, and returns on un-hide', async ({
+    page,
+  }) => {
+    const found = await openChatWithImageAttachment(page);
+    expect(found, 'the shared fixture carries an image-attachment chat').toBe(true);
+
+    const list = page.locator('.qt-chat-messages-list');
+    const thumb = list.locator('img.qt-chat-attachment-image').first();
+    const filename = (await thumb.getAttribute('alt')) ?? '';
+    expect(filename.length).toBeGreaterThan(0);
+    expect(await list.locator('img').count()).toBeGreaterThan(0);
+
+    // Hide: not one <img> left in the transcript; the thumbnail is v4's tile,
+    // still inside its viewer button; the backdrop layer is withheld.
+    await toggleSalonImagesViaMenu(page, true);
+    const tile = list.locator(
+      `.qt-chat-attachment-button span[role="img"][aria-label="Image hidden: ${filename}"]`,
+    );
+    await expect(tile.first()).toBeVisible({ timeout: 10_000 });
+    await expect(list.locator('img')).toHaveCount(0);
+    expect((await page.locator('.qt-chat-layout').getAttribute('style')) ?? '').not.toContain(
+      '--story-background-url',
+    );
+    expect(
+      await page.evaluate(() => localStorage.getItem('quilltap.quickHide.hideSalonImages')),
+    ).toBe('true');
+
+    // A reload keeps it hidden — the storage key, read at startup.
+    await page.reload();
+    await maybeUnlock(page);
+    await expect(list).toBeVisible({ timeout: 15_000 });
+    await expect(tile.first()).toBeVisible({ timeout: 15_000 });
+    await expect(list.locator('img')).toHaveCount(0);
+
+    // The tile is still the viewer's door.
+    await tile.first().click();
+    const lightbox = page.locator('[role="dialog"][aria-modal="true"]');
+    await expect(lightbox).toBeVisible({ timeout: 10_000 });
+    await page.keyboard.press('Escape');
+    await expect(lightbox).toHaveCount(0);
+
+    // Un-hide: the thumbnail comes back.
+    await toggleSalonImagesViaMenu(page, false);
+    await expect(list.locator('img.qt-chat-attachment-image').first()).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(list.locator('span[role="img"][aria-label^="Image hidden"]')).toHaveCount(0);
+  });
+});

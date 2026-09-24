@@ -9,6 +9,10 @@ import { Icon } from '../ui/icon';
  * be read by deep-linking straight to it.
  *
  * Copy is v4-verbatim: the heading "Hidden", with an optional label beneath.
+ *
+ * Not the Salon Images stand-ins (v4 `e3937d7aa`): those are
+ * `qt-hidden-image-tile` (a thumbnail) and `hiddenInlineImageHtml` (an image in
+ * message prose), under `chat/hidden-image/`.
  */
 @Component({
   selector: 'qt-hidden-placeholder',

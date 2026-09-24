@@ -28,6 +28,7 @@ import {
 import type { RngPendingResult } from '../../chat/rng-dropdown';
 import { customToolsKeys } from '../../chat/custom-tools.api';
 import { ConversationHeader } from '../../chat/conversation-header';
+import { IMAGES_HIDDEN, provideImagesHidden } from '../../chat/hidden-image/images-hidden';
 import { resolveToolResultErrorText } from '../../chat/tool-result-error';
 import { LLMInspectorPanel } from '../../chat/llm-inspector-panel';
 import {
@@ -252,6 +253,11 @@ interface CascadePrompt {
     ImpersonationVoiceState,
     // …and so does the re-roll: ONE chat's in-flight regeneration.
     RegenerationController,
+    // The quick-hide "Salon Images" switch for everything this template renders
+    // (v4 `e3937d7aa` wraps SalonView's whole return in `ImagesHiddenProvider`):
+    // the transcript, the sidebar, the composer, the dialogs. Only the Salon
+    // provides it; every other page sees the root default, `false`.
+    provideImagesHidden(),
   ],
   imports: [
     RouterLink,
@@ -296,7 +302,7 @@ interface CascadePrompt {
     Modal,
   ],
   template: `
-    <div class="qt-chat-layout" [style.--story-background-url]="backgroundVar()">
+    <div class="qt-chat-layout" [style.--story-background-url]="visibleBackgroundVar()">
       <div class="qt-chat-main">
         @if (chatQuery.isPending()) {
           <qt-loading-state message="Loading chat..." />
@@ -1043,7 +1049,7 @@ export class SalonConversation {
     const tabId = this.workspaceTabId;
     if (registry && tabId != null) {
       effect(() => {
-        const raw = rawBackdropUrl(this.backgroundVar());
+        const raw = rawBackdropUrl(this.visibleBackgroundVar());
         if (raw) registry.report(tabId, { url: raw, isSalon: true });
         else registry.clear(tabId);
       });
@@ -1245,6 +1251,21 @@ export class SalonConversation {
   }));
   protected readonly backgroundVar = computed<string | null>(
     () => this.backgroundQuery.data() ?? null,
+  );
+
+  private readonly imagesHidden = inject(IMAGES_HIDDEN);
+  /**
+   * v4 `e3937d7aa` `visibleStoryBackgroundUrl` (`SalonView.tsx:156-159`):
+   * quick-hide "Salon Images" withholds the backdrop along with every other
+   * image in the room; the URL is still tracked so it returns on un-hide. It
+   * feeds the layer and the workspace backdrop report ONLY — the change hook
+   * and the regeneration poller keep reading {@link backgroundVar}, so a
+   * toggle is never mistaken for a new background (v4's hunk likewise leaves
+   * `useStoryBackground` alone). v4's third consumer, the header's
+   * story-background thumbnail, has no v5 counterpart.
+   */
+  protected readonly visibleBackgroundVar = computed<string | null>(() =>
+    this.imagesHidden() ? null : this.backgroundVar(),
   );
 
   /** v4 `chatSettings?.storyBackgroundsSettings?.enabled ?? false` (SalonView.tsx:107). */

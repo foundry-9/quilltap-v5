@@ -20,6 +20,7 @@ import {
 } from '../../scenario/scenario.api';
 import { ScenarioSelect, hasAnyScenarioOptions } from '../../scenario/scenario-select';
 import { HOST_AVATAR } from '../../scenario-builder/host-avatar';
+import { injectImagesHidden } from '../hidden-image/images-hidden';
 import {
   ScenarioBuilderDialog,
   type SavedScenarioTarget,
@@ -113,7 +114,11 @@ interface ScenarioDraft {
         [disabled]="saving()"
         (click)="builderOpen.set(true)"
       >
-        <img [src]="hostAvatar" alt="" class="h-4 w-4 rounded-full" />
+        <!-- Quick-hide "Salon Images" (v4 e3937d7aa ChatScenarioControl.tsx:
+             349-355): the icon simply goes; the button text stays. -->
+        @if (!imagesHidden()) {
+          <img [src]="hostAvatar" alt="" class="h-4 w-4 rounded-full" />
+        }
         Ask the Host to set the scene
       </button>
       @if (builderOpen()) {
@@ -192,6 +197,7 @@ export class ChatScenarioControl {
   readonly chatUpdated = output<void>();
 
   protected readonly hostAvatar = HOST_AVATAR;
+  protected readonly imagesHidden = injectImagesHidden();
   protected readonly builderOpen = signal(false);
 
   private readonly draft = signal<ScenarioDraft | null>(null);

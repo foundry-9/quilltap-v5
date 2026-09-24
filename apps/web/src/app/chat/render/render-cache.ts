@@ -45,7 +45,8 @@ function refId(value: object | null | undefined): string {
 
 /**
  * Render markdown through the v4-parity pipeline, memoized by
- * `(content, renderingPatterns, dialogueDetection)`. Byte-identical to calling
+ * `(content, renderingPatterns, dialogueDetection, blobMountPointId,
+ * displayQuotes, imagesHidden)`. Byte-identical to calling
  * {@link renderMarkdownToHtml} directly — only the second call for a given key is
  * cheap.
  */
@@ -67,7 +68,13 @@ export function renderMarkdownCached(
     // and a key without it would keep serving the old quotes until the content
     // itself changed. (v4 has the same problem one layer up and solves it by
     // invalidating the whole chats query when the toggle is saved.)
-    (options?.displayQuotes ? '1' : '0');
+    (options?.displayQuotes ? '1' : '0') +
+    SEP +
+    // The quick-hide "Salon Images" switch, for the same reason: v4 puts
+    // `imagesHidden` in its renderer memo's deps (`MessageContent.tsx:525`), so
+    // a flip repaints every message already rendered — without it a warm memo
+    // would keep serving the `<img>` (or the placeholder) after the toggle.
+    (options?.imagesHidden ? '1' : '0');
 
   const hit = cache.get(key);
   if (hit !== undefined) return hit;

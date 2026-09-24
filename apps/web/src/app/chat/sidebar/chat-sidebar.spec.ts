@@ -10,6 +10,7 @@ import { CoreClient } from '../../core/core-client';
 
 import type { ParticipantDetail } from '../../core/core-contract';
 import { createInitialTurnState, type TurnSelectionResult, type TurnState } from '../turn-order';
+import { IMAGES_HIDDEN } from '../hidden-image/images-hidden';
 import { ChatSidebar } from './chat-sidebar';
 import { ChatSection, type ChatSectionState } from './chat-section';
 import type { VisibilityState } from './visibility-section';
@@ -510,5 +511,55 @@ describe('ChatSidebar — the narrow overlay and a portaled dialog (bug 169, fai
     const elsewhere = onBody('<p>the transcript</p>');
     press(fixture, elsewhere.querySelector('p')!);
     expect(sidebarEl(fixture).classList.contains('qt-chat-sidebar-collapsed')).toBe(true);
+  });
+});
+
+/**
+ * Quick-hide "Salon Images" (v4 `e3937d7aa`): the collapsed strip's portraits
+ * hide through `qt-avatar` (v4's `ChatSidebar` has no hunk of its own — its
+ * `Avatar` reads the context).
+ */
+describe('ChatSidebar — the Salon Images switch on the collapsed strip (v4 e3937d7aa, via Avatar)', () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => TestBed.resetTestingModule());
+
+  async function strip(hidden: boolean): Promise<HTMLElement> {
+    // Merged into render()'s module (configureTestingModule accumulates).
+    TestBed.configureTestingModule({
+      providers: [{ provide: IMAGES_HIDDEN, useValue: signal(hidden) }],
+    });
+    const fixture = await render();
+    fixture.componentInstance.participants.set([
+      participant('user', 'You', { controlledBy: 'user' }),
+      participant('alice', 'Alice', {
+        character: {
+          id: 'char-alice',
+          name: 'Alice',
+          title: null,
+          avatarUrl: '/img/alice.webp',
+          defaultImageId: null,
+          defaultImage: null,
+          talkativeness: 0.5,
+        },
+      }),
+    ]);
+    fixture.detectChanges();
+    const el = sidebarEl(fixture);
+    expect(el.classList.contains('qt-chat-sidebar-collapsed')).toBe(true);
+    return el;
+  }
+
+  it('paints the portrait on the strip when images are shown', async () => {
+    const el = await strip(false);
+    expect(el.querySelector('qt-avatar img[alt="Alice"]')?.getAttribute('src')).toBe(
+      '/img/alice.webp',
+    );
+  });
+
+  it('falls back to the initial on the strip when the Salon hides its images', async () => {
+    const el = await strip(true);
+    expect(el.querySelector('qt-avatar img')).toBeNull();
+    const initials = Array.from(el.querySelectorAll('qt-avatar')).map((a) => a.textContent?.trim());
+    expect(initials).toContain('A');
   });
 });

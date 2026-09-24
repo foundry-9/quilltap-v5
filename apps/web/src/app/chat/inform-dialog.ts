@@ -14,6 +14,7 @@ import { MarkdownField } from '../editor/markdown-field';
 import { Modal } from '../ui/modal';
 import { ToastService } from '../ui/toast.service';
 import { chatKeys } from './chat-keys';
+import { injectImagesHidden } from './hidden-image/images-hidden';
 
 /**
  * A current participant of the chat, offered as an inform target (v4
@@ -107,7 +108,7 @@ export interface InformAudienceCandidate {
                 "
                 (click)="toggleSeat(p.participantId)"
               >
-                @if (p.avatarUrl) {
+                @if (p.avatarUrl && !imagesHidden()) {
                   <img
                     [src]="p.avatarUrl"
                     alt=""
@@ -172,6 +173,8 @@ export interface InformAudienceCandidate {
   `,
 })
 export class InformDialog {
+  /** Quick-hide "Salon Images" (v4 `e3937d7aa` `InformDialog.tsx:91,:224`). */
+  protected readonly imagesHidden = injectImagesHidden();
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 
 import { SmartTypographySettings } from '../smart-typography/settings';
+import { injectImagesHidden } from './hidden-image/images-hidden';
 import { renderMarkdownCached } from './render/render-cache';
 import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 
@@ -57,6 +58,14 @@ export class MessageContent {
    * the renderer; see `render/typography.ts`.
    */
   private readonly displayQuotes = inject(SmartTypographySettings).displayQuotes;
+  /**
+   * Quick-hide "Salon Images" (v4 `e3937d7aa`, `MessageContent.tsx:344-346`):
+   * only the Salon provides it, so every other surface keeps its embedded
+   * images. v5 has no pre-rendered `renderedHtml` fast path, so v4's
+   * `LazyMessageContent` hunk (route an image-bearing fast path to the full
+   * render) has nothing to apply to — every message already takes this render.
+   */
+  private readonly imagesHidden = injectImagesHidden();
 
   protected readonly html = computed<SafeHtml>(() =>
     this.sanitizer.bypassSecurityTrustHtml(
@@ -65,6 +74,7 @@ export class MessageContent {
         renderingPatterns: this.renderingPatterns(),
         dialogueDetection: this.dialogueDetection(),
         displayQuotes: this.displayQuotes(),
+        imagesHidden: this.imagesHidden(),
       }),
     ),
   );

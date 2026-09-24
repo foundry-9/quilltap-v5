@@ -148476,6 +148476,138 @@ grew no oracle recorder, so nothing executed v4 code).
   needs no change and no seed is dead (the Flagged/Uncensored chats are
   what the toggle hides, not what reveals it).
 
+### Unit 3 — the Salon-scoped token, the two stand-ins, and every v5 image site (v4 `e3937d7aa` render half)
+
+- **The token (NEW `chat/hidden-image/images-hidden.ts`):** `IMAGES_HIDDEN:
+  InjectionToken<Signal<boolean>>`, `providedIn: 'root'` with a `false`
+  factory (v4's `createContext<boolean>(false)`); `provideImagesHidden()`
+  maps it to `QuickHideService.hideSalonImages`; `injectImagesHidden()` is
+  v4's `useImagesHidden()`. `SalonConversation` carries the provider in its
+  `providers` (v4 wraps SalonView's whole return in `ImagesHiddenProvider`).
+- **§Survey 2f — the portal measurement:** no Salon dialog is created
+  through `createComponent` with a foreign injector. Inform, Insert
+  Announcement and In Their Own Words render in `SalonConversation`'s own
+  template (`:587/:600/:629`), not portaled; the Scenario Builder and its
+  save dialog (P4.116) MOVE their host node to `<body>` after rendering in
+  place (`scenario-builder-dialog.ts:366-381`, `appendChild`), which keeps
+  the Angular injector. So the element-level provider reaches every one;
+  each dialog is pinned by a spec providing the token directly, and the
+  Salon spec pins that the sidebar's injector resolves the Salon's value
+  while the root stays `false`.
+- **The stand-ins:** NEW `hidden-image-tile.ts` — `qt-hidden-image-tile`,
+  v4's `HiddenImageTile` (classes `w-full h-full flex items-center
+  justify-center qt-bg-muted qt-text-secondary`, `role="img"`, `title` AND
+  `aria-label` `Image hidden: <label>` / `Image hidden`, `eye-off` `w-6
+  h-6`), host `display: contents` so `w-full h-full` resolves against the
+  parent box as v4's does. NEW `hidden-inline-image.ts` —
+  `hiddenInlineImageHtml(alt?)` + `hideInlineImages(html)`: **an HTML-string
+  builder, not a component** (measured: v5's renderer emits a string bound
+  through `[innerHTML]`, where a component can never mount — a
+  `qt-hidden-inline-image` component would be defined-and-never-mounted);
+  the markup is v4's element for element, the icon exactly as `qt-icon`
+  renders it (`span.qt-icon[data-icon="eye-off"][aria-hidden]`, `w-3 h-3`),
+  the alt entity-decoded out of the emitted tag and re-escaped.
+- **Sites (§Survey 2e), each reading the token:** `ui/avatar.ts`
+  (`avatarSrc = hidden ? null : src` — the one route for message-row ×3,
+  streaming-message ×2, participant-card, the collapsed strip,
+  speaker-selector ×2, all-llm-pause, reattribute, select-llm-profile,
+  add-character ×2; pinned by spec on message-row, participant-card and the
+  strip, as ordered); `chat/message-row.ts` attachment → `<span
+  class="qt-chat-attachment-image block w-20 h-20"><qt-hidden-image-tile
+  [label]="att.filename"/></span>` INSIDE the button (a spec clicks the
+  tile and receives `imageClick`); `chat/speaking-as-avatar.ts` (reads the
+  token itself — no `chat-composer.ts` edit, P4.D224's file untouched);
+  `chat/sidebar/chat-scenario-control.ts` (`@if (!imagesHidden())` around
+  the Host icon); `chat/tool-message.ts` header portrait → the emoji circle;
+  the three dialogs' portrait conditions; `chat/message-content.ts` passes
+  `imagesHidden` to the renderer.
+- **Inline markdown — the home is the RENDERER** (`chat/render/
+  markdown-renderer.ts`, after `applyBlobImageRewrite`, the order v4's
+  `img` renderer resolves the src then returns the placeholder), not
+  `message-content.ts`, because `render-cache.ts` memoizes the renderer's
+  output — the flag rides the cache key as a sixth field (v4 puts
+  `imagesHidden` in its memo deps, `MessageContent.tsx:525`). v4's
+  `LazyMessageContent` hunk has NO v5 subject (v5 dropped the
+  `renderedHtml` fast path — `message-content.ts:12`); its three vectors are
+  recorded as not transcribable and the behaviour is pinned at the renderer
+  + cache instead.
+- **The story background:** a NEW `visibleBackgroundVar` (v4's
+  `visibleStoryBackgroundUrl`) feeds the `--story-background-url` layer AND
+  the workspace backdrop report; `backgroundVar` itself is UNTOUCHED so the
+  passive-poll change hook (`_backgroundChangeEffect` →
+  `onBackgroundChanged` → invalidate the chat) and the regeneration poller
+  never mistake a toggle for a new background.
+- **Recorded no-counterpart sites (Tier 3 items 11–12):** v4
+  `ToolMessage.tsx:569-570,:657-658` (tool-result thumbnail tiles — v5 never
+  ported tool thumbnails, `tool-message.ts:202-209`; noted at the header
+  site's comment) and `SalonView.tsx:1076,:1124-1138` (the header avatar
+  breadcrumb + story-background thumbnail — v5's `ConversationHeader` has
+  neither; noted at `visibleBackgroundVar`). v4's second
+  `InsertAnnouncementDialog` site (`:477`, the character picker) has no
+  live v5 `<img>` — v5's picker always renders the placeholder circle (the
+  vestige recorded at the file header); only the audience row (`:600`) is
+  gated.
+- **Tier 2 item 10:** one-line "which hidden thing is which" notes on
+  `quick-hide/hidden-placeholder.ts`, `hidden-image-tile.ts` and
+  `hidden-inline-image.ts`.
+- **Specs:** NEW `chat/hidden-image/salon-images.spec.ts` (19 — the token
+  default, the Salon provider over the service, element scoping; v4's two
+  Avatar vectors verbatim; the tile's and inline span's classes / role /
+  title / aria-label / text, escaping; the renderer's swap, `alt ||
+  undefined`, the blob-rewrite order + entity decode, image-free HTML
+  byte-identical; the warm-cache flip; `MessageContent` default / hidden /
+  live flip) + one describe each in `message-row`, `participant-card`,
+  `chat-sidebar` (the strip), `speaking-as-avatar`, `chat-scenario-control`,
+  `tool-message`, `impersonation-voice-dialog`, `inform-dialog`,
+  `insert-announcement-dialog`, `salon-conversation` (provides the token;
+  backdrop layer + report withheld then restored; a toggle is not a
+  background change). The three dialog specs' `mount` helpers gained an
+  optional `extra: Provider[]` parameter.
+- **Mutations (each reverted by file backup):**
+
+  | # | mutation | red |
+  |---|---|---|
+  | A1 | `qt-avatar` ignores the token | 5 — the two Avatar vectors' hidden half + element scoping, message-row, the strip |
+  | A2 | the flag dropped from the render-cache key | 2 — the warm-cache flip, `MessageContent`'s live flip |
+  | A3 | the renderer's swap removed | 6 — every inline-image hidden case |
+  | A4 | the alt entity-decode removed | 1 — the blob-rewrite/decode case |
+  | A5 | the attachment tile branch removed | 2 — message-row's hidden case + the tile click |
+  | A6 | speaking-as ignores the token | 1 |
+  | A7 | the scenario control's Host icon ungated | 1 |
+  | A8 | the tool header portrait ungated | 1 |
+  | A9 | In Their Own Words' portrait ungated | 1 |
+  | A10 | Inform's seat portrait ungated | 1 |
+  | A11 | Insert Announcement's audience portrait ungated | 1 |
+  | A12 | `provideImagesHidden()` removed from the Salon | 2 — the provider pin + the backdrop case |
+  | A13 | the layer reads `backgroundVar` | 1 — the backdrop case |
+  | A14 | the backdrop report reads `backgroundVar` | 1 — the backdrop case |
+  | A15 | the SOURCE `backgroundVar` gated instead | 1 — "a toggle is not a background change" |
+
+  ⚠ **A15 SURVIVED as first written** — the case counted `chatGet`
+  dispatches, but the change hook's `invalidateQueries` produced no
+  observable refetch in the harness. Rewritten to spy on the QueryClient's
+  `invalidateQueries` for `chatKeys.detail('chat-1')`; A15 then red, clean
+  green. (A first A2 anchor was also a no-op edit — caught by its green run
+  and redone on the real key field.)
+- **Live (Playwright, by FILE, one invocation at a time on 4319 — port
+  checked free before each; lane-built debug `quilltap-web`/`quilltap`, this
+  worktree's dist):** `quick-hide-flow.spec.ts` **3/3** (14.8 m, global setup
+  dominates) incl. the NEW Salon Images beat (19.9 s: find the shared
+  fixture's image-attachment chat by content → toggle via the menu → zero
+  `<img>` in the transcript, the tile `aria-label="Image hidden:
+  <filename>"` inside its button, no `--story-background-url`, the key
+  `'true'` → reload keeps it hidden → the tile still opens the lightbox →
+  un-hide brings the thumbnail back). ⚠ Its FIRST run failed in discovery,
+  not in the feature: one shared-fixture chat opens into an error panel
+  (`applyDocumentStoreOverlayOne: vault unavailable for character
+  a1000000-…-000000000006`) with no transcript, and the helper asserted every
+  card opened. Fixed to skip a chat that does not open (pre-existing fixture
+  state, not this lane's — noted for the unifier). `concierge-marks-flow.
+  spec.ts` **5/5** (beat 2 reaches "Dangerous Chats" with no probe).
+  `scenario-builder-flow.spec.ts` **5/5**, beat (e) (bug 169) green.
+- **Gate:** `npm run lint` clean; `npm test` **450 files / 7,724** (base
+  448 / 7,670); `npm run build` clean.
+
 ## P4.D220 — the action-dispatch consolidation (web edges + core gates + the `has-dangerous` server half) — LANE RECORD (2026-09-24)
 
 Branch `claude/p4-d220-action-dispatch-web-edges-3ac7c5`, cut from `main`

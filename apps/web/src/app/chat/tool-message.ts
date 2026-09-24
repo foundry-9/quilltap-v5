@@ -9,6 +9,7 @@ import {
 
 import type { ChatDetail, MessageDto } from '../core/core-contract';
 import { resolveMessageAuthor } from './chat-view-model';
+import { injectImagesHidden } from './hidden-image/images-hidden';
 import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
@@ -219,7 +220,11 @@ function formatResultContent(toolData: ToolResult): string {
            row/avatar and renders the card directly (v4 :383-408). -->
       <div [class]="embedded() ? 'qt-chat-tool-embedded' : 'qt-chat-message-row-tool'">
         @if (!embedded()) {
-          @if (headerAvatar()?.avatarUrl) {
+          <!-- Quick-hide "Salon Images" (v4 e3937d7aa ToolMessage.tsx:216,
+               :376): hidden portraits fall to the emoji circle below. v4's two
+               tool-result THUMBNAIL tile sites (:569-570, :657-658) have no v5
+               counterpart — tool thumbnails are not ported (see above). -->
+          @if (headerAvatar()?.avatarUrl && !imagesHidden()) {
             <div class="qt-chat-desktop-avatar">
               <qt-avatar
                 [name]="headerAvatar()!.name"
@@ -368,6 +373,7 @@ function formatResultContent(toolData: ToolResult): string {
   `,
 })
 export class ToolMessage {
+  protected readonly imagesHidden = injectImagesHidden();
   private readonly toasts = inject(ToastService);
   readonly message = input.required<MessageDto>();
   readonly chat = input.required<ChatDetail>();

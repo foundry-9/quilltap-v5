@@ -14,6 +14,7 @@ import type { AnnouncerSenderWire, CharacterListItem, StaffSenderWire } from '..
 import { MarkdownField } from '../../editor/markdown-field';
 import { characterKeys, fetchCharacterList } from '../../screens/characters/characters.api';
 import { Modal } from '../../ui/modal';
+import { injectImagesHidden } from '../hidden-image/images-hidden';
 import { VoiceRewriteReviewPanel } from '../impersonation-voice/voice-rewrite-review-panel';
 import {
   STAFF_OPTIONS,
@@ -277,7 +278,7 @@ const AS_IS = 'as-is';
                   [disabled]="isPosting() || stage() === 'generating'"
                   (change)="toggleAudience(p.participantId)"
                 />
-                @if (p.avatarUrl) {
+                @if (p.avatarUrl && !imagesHidden()) {
                   <img
                     [src]="p.avatarUrl"
                     alt=""
@@ -394,6 +395,13 @@ const AS_IS = 'as-is';
   `,
 })
 export class InsertAnnouncementDialog {
+  /**
+   * Quick-hide "Salon Images" (v4 `e3937d7aa` `InsertAnnouncementDialog.tsx:
+   * 95,:477,:600`). v4 gates TWO sites; only the audience row is live here —
+   * the character picker always renders its placeholder circle (the vestige
+   * recorded in this file's header), so there is no picker `<img>` to gate.
+   */
+  protected readonly imagesHidden = injectImagesHidden();
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 
