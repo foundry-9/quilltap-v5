@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): driftcheck — v4 nine commits past the d1c06cd9d baseline
+
+_Docs-only change._
+
+Second drift check of the day. v4 `main` is at `f51a44548`
+(`4.10.0-dev.77`), a clean merge that adds only the bug-169 docs. The local
+checkout is clean and up to date. New rows: `68da64d9b` (the chat GET's
+fourteen actions go through `dispatchAction`, so an unknown or bare
+`?action=` is a 400 instead of the whole chat) and `8aafd595d` (the
+dedicated-db repository base; mostly a refactor, no write-partition key
+change, four log/degraded-message deltas v5 never matched). Regen rule
+stays PIN REQUIRED at `d1c06cd9d`.
+
 #### 2026-09-24 — docs(porting): driftcheck — v4 seven commits past the d1c06cd9d baseline
 
 _Docs-only change._
