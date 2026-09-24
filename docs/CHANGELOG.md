@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — test(e2e): the @ mention typeahead in the live Salon composer (P4.D224 unit 6)
+
+_Versions: SPA 0.5.767._
+
+Adds `e2e/composer-mention-flow.spec.ts`: Enter held while the character
+list is loading (the request is held at the route), cast-first rows marked
+"in this chat", mid-line completion without the `@`, the line-start `@`
+kept for `: ` and dropped for `,` with one undo restoring it, and the Brahma
+row at line start only. Expectations come from the instance's own chat and
+roster, not transcribed names.
+
 #### 2026-09-24 — feat(spa): mount the @ mention typeahead in the Salon composer (P4.D224 unit 5)
 
 _Versions: SPA 0.5.766._

@@ -148543,6 +148543,62 @@ checked; the three symlink classes made). Node 24
 - Gate at this commit: `npm run lint` clean; `npm test` **450 files / 7,863**
   (base 448 / 7,670 — +2 files, +193 tests); `npm run build` clean.
 
+### Unit 6 — e2e `e2e/composer-mention-flow.spec.ts` (NEW file)
+
+- Four beats on Group Expedition, every expectation DERIVED over the dispatch
+  wire (`chatGet` → v4's cast predicate; `characterList`), so a fixture rename
+  moves data, not assertions: (1) the composer's `characterList` dispatch HELD
+  at `page.route` → `Consulting the register…`, no `No such personage`, Enter
+  held (text unchanged, no `chatSend` seen), then released → rows with every
+  `in this chat` row ahead of every other and the `@` glyph; (2) mid-line
+  Enter → the plain name, no `@`; (3) line start Enter → `@Name` with the
+  menu shut, then `: where are we` kept; again with `,` → `Name,`, and one
+  Cmd/Ctrl+Z → `@Name`; (4) `@bra` at line start → one `Brahma` row with
+  `the Brahma Console`, `ask @bra` → none (skips loudly only if a character
+  is named Brahma — it did not).
+- Run ALONE on 4319 (port free; this worktree's own release bins, `cargo
+  build --release -p quilltap-web -p quilltap-cli`, 5m17s; fresh `npm run
+  build`): **4 passed (1.6 m)**, first run. `composer-char-insert-flow.spec.ts`
+  (the shared adapter moved in unit 3) re-run alone: **7 passed (1.1 m)**.
+  The full Playwright suite is the unifier's (§R.11 gate item 11).
+
+### Lane close
+
+- **Landed:** Tier 1 items 1–6 whole; Tier 2 item 7 (measured: the shared
+  menu already sets `aria-controls`/`aria-expanded`/`aria-activedescendant` on
+  the editor root — extended by the listbox id, not duplicated) and item 8
+  (the misplaced doc block moved onto the verdict type).
+- **Tier 3 deferrals, recorded (nothing stubbed):** item 9 — a `MentionNode`
+  chip / `targetParticipantIds`: NOT in v4 either
+  (`docs/developer/features/composer-typeahead.md:189-194` "Shipped in a
+  simpler form"); item 10 — `help/carina.md` + `help/chats.md` are P4.D222's,
+  the `composer-typeahead.md` mirror is the unifier's.
+- **§R.9 mirror pre-list (the unifier's):** `docs/v4/developer/features/
+  composer-typeahead.md` 36,009 → 36,537 bytes at `b0b6656b5`.
+- **What the order got wrong / refined (measured):** (a) §S.2's computed
+  NAME collides with an existing `castCharacterIds` in `salon-conversation.ts`
+  (the Add-Character dialog's, keeps removed seats) — named
+  `mentionCastCharacterIds`; the input name is §S.2's. (b) "ONE hunk" is two
+  (a property + a template binding). (c) "gated on the
+  `mentionPriorityCharacterIds` input" — gated on the character SOURCE, which
+  only the composer passes (v4 mounts the plugin in the composer ALONE). (d)
+  §Survey 11's hazard was real AND in the existing adapter: v4's char
+  typeahead opens after a soft break, v5's did not (unit 3). (e) A
+  `prosemirror-history` grouping difference the order did not predict (unit
+  4). (f) The wiring spec's "TWO hosts" counts char HOSTS and stays true.
+- **For the unifier / other lanes:** the U+FFFC collapse also lives in
+  `text-replacement.ts:123` and `smart-typography-plugin.ts:119` — whether v4's
+  Layer 1.5 sees a soft break as a word boundary was NOT measured (a named
+  follow-up, not changed). P4.D223 must preserve the `mentionCastCharacterIds`
+  computed and the `[mentionPriorityCharacterIds]` binding.
+- **Fixtures changed:** `apps/web/src/testing/fixtures/carina-parser.ndjson`
+  (49 → 83; the 49 parse rows byte-identical) and NEW `mention-typeahead.ndjson`
+  (116). Only this lane's two specs read them; no Rust oracle reads either.
+- **Gate:** `npm run lint` clean; `npm test` 450 files / 7,863 (base 448 /
+  7,670); `npm run build` clean; the `qt-*` class guard (in lint + test)
+  clean; Playwright by file as above. No cargo gate (SPA-only; the release
+  build was only for e2e bins). SPA 0.5.761 → 0.5.767 (six bumps).
+
 ## P4.D223 — the Salon Images quick-hide + the bug-169 convergence + the `has-dangerous` client half (lane record, 2026-09-24)
 
 Lane branch `claude/salon-images-quick-hide-bug-db0391`, cut from `main`
