@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): close the P4.115 lane (Scenario Builder edge nits + the web census lift)
+
+_Docs only; no version bumps._
+
+Lane close for P4.115: the order's status header, the P4.D217 and P4.110
+header sentences, and the status-log gate record. Two items are recorded for
+the unifier. First, a harness census row that pinned the disconnect guard's
+old read of the abort reply must be dropped. Second, a stale v4 version
+constant in the AI-import tier-3 family predates this lane.
+
 #### 2026-09-24 — fix(scenario-builder): the post-abort frame gate belongs to the host publisher, not the service (P4.115 item 1)
 
 _Versions: core 0.0.1032, host 0.0.154._

@@ -147946,3 +147946,73 @@ had it backwards: the host closure is the ONLY right place.)
 - Lesson worth keeping: a gate named after a v4 ROUTE variable belongs at v5's
   counterpart of that route's controller; a service-level differential that
   replaces the route is what tells the layers apart.
+
+### P4.115 — close-out: the lane's verification gate (2026-09-24)
+
+Gate from the worktree, `CARGO_INCREMENTAL=0 TZ=UTC`, ONE chain logged to
+`/tmp/p4115/gate/` (sentinel `DONE`):
+
+- `cargo fmt --all --check` clean; clippy clean plain AND with
+  `--features quilltap-core/native-transport`; `cargo build --workspace
+  --release` clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's env
+  block (`QT_ORACLE_SB_ROUTES` → the lane's regen; `QT_ORACLE_SBT3` +
+  `QT_FIXTURE_SBT3_*` and `QT_ORACLE_SALON_SWIPE` from the sweep; Tier R's
+  `QT_V4_CHECKOUT` = the pin + `QT_NODE` Node 24; every other var withheld):
+  **629 binaries / 3,706 passed / 1 failed / 3 ignored.** The ONE red:
+  `web_edge_body_parse_guard::web_route_body_reads_match_the_census` —
+  `COLLAPSE_CENSUS` expects 1 `and_then(Value::as_` site in
+  `scenario_builder_routes.rs`, the guard's old read of the abort verb's
+  `aborted` reply, which Unit 4 REMOVED by design (the line no longer depends
+  on that answer). The census's own message says "if the collapse is
+  genuinely gone, drop the row"; it is a harness file this order forbids, so
+  it is **recorded for the unifier**: drop the row at
+  `web_edge_body_parse_guard.rs:108-117` — measured (temporary edit, reverted
+  by backup): 2/2 green with the row gone.
+- By name, all RUN with zero `SKIP:`: `scenario_builder_routes_equivalence`
+  (26 cases, 20 v4 log lines), `scenario_builder_tier3_equivalence` (20 cases
+  / 53 stream calls — neutral after Unit 7), `scenario_builder_disconnect`
+  2/2, `scenario_builder_midstream_failure` 4/4, `scenario_builder_dispatch_
+  wire` 4/4, `dispatch_wrong_type_census` 14/14 (449), `tri_state_edges_
+  share_the_decoder` 11/11 (115), `cli_differential` **Tier R 266 cases, 0
+  failures** at the pin; the censuses/guards `get_messages_caller_census`,
+  `blob_write_sites_census`, `compressed_column_write_sites_census`,
+  `stream_watchdog_wrap_census`, `help_tree_embed_guard`,
+  `qtap_schema_embed_guard`, `zod_version_guard`,
+  `provider_sdk_version_guard`, `public_schemas_vendor_guard` all GREEN (the
+  new `tests/source_census/` module tripped none of the harness censuses).
+- **`generator_sse.rs` neutrality (the four other re-framer callers):**
+  `messages_swipe_sse_route` 4/4 (sweep, from the pin),
+  `message_swipe_stream_dispatch_wire` 3/3, `characters_generators_routes`,
+  `generators_wizard_routes`, `characters_import_route`,
+  `generator_progress_events_passthrough` 1/1 each, and
+  **`generator_sse_wire` 10/10 with ZERO SKIPs** — its three v4 recorded-bytes
+  arms (optimizer / wizard / AI import) fed by
+  `character_optimizer_tier3_equivalence` (ok), `character_wizard_tier3_
+  equivalence` (ok) and `ai_import_tier3_equivalence` regenerated through the
+  sweep from the pin (`/tmp/p4115/sweep-results-gen.json`).
+- **A PRE-EXISTING red found by that sweep, not this lane's:**
+  `ai_import_tier3_equivalence` fails at `:684` "v4's appVersion stamp moved"
+  — `V4_APP_VERSION = "4.10.0-dev.63"` (`:115`) vs the `d1c06cd9d` pin's
+  `4.10.0-dev.67`. The lane changed no harness file; the AI-import NDJSON it
+  wrote still drove `generator_sse_wire` green. Recorded for the unifier (a
+  one-constant re-measure; which round owns it is theirs).
+- **Mutation table:** M1 (host publisher gate → no-op) RED; M2 (`lock().ok()?`)
+  = Unit 1's red-first; M3 (guard armed after the race) = Unit 4's red-first;
+  M4 (old `strip_noise` + a planted multi-line attribute) — the field set
+  moves (scratch, in memory); the read-only opener → READ_WRITE RED; the
+  acceptance poll-once check absent → both (f) arms RED (Unit 5's first green
+  run). Every revert by file backup.
+
+**Versions:** core 0.0.1027 → **0.0.1032** (+5), host 0.0.153 → **0.0.154**
+(+1), web 0.0.186 → **0.0.190** (+4); harness, cli, tauri, SPA,
+fixture-sanitizer, sqlite3mc-sys unchanged. No committed fixture changed; the
+routes oracle SPEC gained two cases (`harness/oracle/fixtures/scenario-
+builder-routes.json`) + the oracle case its `runThrows` mock — only
+`scenario_builder_routes_equivalence` reads them.
+
+**Tier 3 recorded, not taken:** (8) `curlConfigured` stays `false` (no curl
+plugin on v5 — the recorded divergence, pinned by the routes family); (9) the
+proxy idle timeout on the build DISPATCH (Docker, P4.D218's header) — a
+deployment concern; (10) lifting the web censuses onto the HARNESS lexer
+(cross-crate) — the web-local module is this round's home.
