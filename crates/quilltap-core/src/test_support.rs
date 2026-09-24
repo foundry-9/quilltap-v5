@@ -34,6 +34,9 @@
 //!   `job_runner`'s smoke test flaked 17 runs in 25 under
 //!   `--test-threads=8` before P4.40 fixed it exactly this way. Do not
 //!   "simplify" this back to [`capture`]'s idiom; the difference is load-bearing.
+//!   It renders either the message alone or, since P4.112, every field the
+//!   way [`captured`] does — the three auto-title harness families' rig
+//!   folded in here, so there is ONE process-global capture rig, not two.
 
 use std::sync::{Arc, Mutex};
 
@@ -166,12 +169,35 @@ pub fn ensure_p4d182_columns(conn: &rusqlite::Connection) {
 /// `job_runner.rs`'s holdout idiom: a process-global subscriber, armed once,
 /// with a per-thread buffer — see the module doc for why this is a
 /// genuinely different contract from [`captured`], not a copy that drifted.
+///
+/// Two renderings share the one subscriber, chosen per armed thread:
+///
+/// - [`capture_events`] — the MESSAGE only, `"<LEVEL> <target> <message
+///   debug>"` (`job_runner`'s original contract);
+/// - `global_capture::capture` / `capture_async` — every field, through [`FieldVisitor`],
+///   byte-identical to [`captured`]'s lines. P4.112 folded the harness's
+///   `auto_title_capture` rig in here: it was this module's design with
+///   `CaptureLayer`'s rendering, built separately because these entry points
+///   rendered the message alone and its pins assert FIELDS. A binary that
+///   runs a differential test (no capture) in parallel with capture tests over
+///   the SAME callsites needs this idiom, and every test in it calls
+///   [`install`] first so no callsite is ever registered against the no-op
+///   default (the `Interest` race in the module doc).
 pub mod global_capture {
     use std::cell::RefCell;
 
+    /// How an armed thread renders each event.
+    #[derive(Clone, Copy)]
+    enum Rendering {
+        /// `"<LEVEL> <target> <message debug>"` — [`capture_events`].
+        Message,
+        /// [`super::FieldVisitor`]'s line — [`capture`] / [`capture_async`].
+        Fields,
+    }
+
     thread_local! {
-        /// `Some` only while this thread is inside [`capture_events`].
-        static CAPTURED: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+        /// `Some` only while this thread is inside a capture.
+        static CAPTURED: RefCell<Option<(Rendering, Vec<String>)>> = const { RefCell::new(None) };
     }
 
     /// The process-global capturing layer. Reads only from [`CAPTURED`], so an
@@ -196,19 +222,32 @@ pub mod global_capture {
         ) {
             CAPTURED.with(|cell| {
                 let mut cell = cell.borrow_mut();
-                let Some(buf) = cell.as_mut() else {
+                let Some((rendering, buf)) = cell.as_mut() else {
                     return; // this thread is not capturing
                 };
-                let mut visitor = MessageVisitor(String::new());
-                event.record(&mut visitor);
                 let meta = event.metadata();
-                buf.push(format!("{} {} {}", meta.level(), meta.target(), visitor.0));
+                match rendering {
+                    Rendering::Message => {
+                        let mut visitor = MessageVisitor(String::new());
+                        event.record(&mut visitor);
+                        buf.push(format!("{} {} {}", meta.level(), meta.target(), visitor.0));
+                    }
+                    Rendering::Fields => {
+                        let mut visitor =
+                            super::FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+                        event.record(&mut visitor);
+                        buf.push(visitor.0);
+                    }
+                }
             });
         }
     }
 
     /// Install the global capturing subscriber exactly once per test binary.
-    fn install_capture_subscriber() {
+    /// Idempotent. A binary whose capture tests share callsites with an
+    /// un-armed test calls this at the top of EVERY test, before any callsite
+    /// is reached.
+    pub fn install() {
         static INIT: std::sync::Once = std::sync::Once::new();
         INIT.call_once(|| {
             use tracing_subscriber::layer::SubscriberExt;
@@ -221,15 +260,40 @@ pub mod global_capture {
         });
     }
 
-    /// Arm this thread's capture buffer, run `f`, and return everything the
-    /// callee narrated on this thread while it ran.
-    pub async fn capture_events<F: std::future::Future<Output = ()>>(f: F) -> String {
-        install_capture_subscriber();
-        CAPTURED.with(|c| *c.borrow_mut() = Some(Vec::new()));
-        f.await;
-        let lines = CAPTURED
+    fn arm(rendering: Rendering) {
+        install();
+        CAPTURED.with(|c| *c.borrow_mut() = Some((rendering, Vec::new())));
+    }
+
+    fn disarm() -> Vec<String> {
+        CAPTURED
             .with(|c| c.borrow_mut().take())
-            .expect("capture buffer armed");
-        lines.join("\n")
+            .expect("capture buffer armed")
+            .1
+    }
+
+    /// Arm this thread's capture buffer, run `f`, and return everything the
+    /// callee narrated on this thread while it ran (the message only).
+    pub async fn capture_events<F: std::future::Future<Output = ()>>(f: F) -> String {
+        arm(Rendering::Message);
+        f.await;
+        disarm().join("\n")
+    }
+
+    /// Run `f` with this thread's buffer armed; return its value and every line
+    /// it logged on this thread, rendered with every field (the
+    /// [`super::captured`] line shape).
+    pub fn capture<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
+        arm(Rendering::Fields);
+        let out = f();
+        (out, disarm())
+    }
+
+    /// [`capture`] for an async body on a current-thread runtime (every event
+    /// the future emits is on this thread).
+    pub async fn capture_async<T>(f: impl std::future::Future<Output = T>) -> (T, Vec<String>) {
+        arm(Rendering::Fields);
+        let out = f.await;
+        (out, disarm())
     }
 }

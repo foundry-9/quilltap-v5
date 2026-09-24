@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(harness): one process-global capture rig — auto_title_capture folded into test_support::global_capture (P4.112 unit 1)
+
+_Versions: core 0.0.1014, harness 0.0.931._
+
+`test_support::global_capture` gains `install`, `capture` and
+`capture_async`, which render every field through `FieldVisitor` (the
+`captured` line shape), beside the existing message-only
+`capture_events`. The harness's `auto_title_capture` rig — the same
+process-global, per-thread design with field rendering — is deleted and
+its three consumers (`title_update_tier3`, `chat_regenerate_title_tier3`,
+`context_summary_service_tier3`) now call `global_capture`. Every captured
+line was dumped before and after the move: 139 lines over 8 tests,
+identical once the 10 minted `jobId` values are masked.
+
 #### 2026-09-23 — docs(porting): close the P4.D218 Scenario Builder SPA lane
 
 _Docs-only change._

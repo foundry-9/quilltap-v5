@@ -292,8 +292,8 @@ fn dump_chat(db: &Db, chat_id: &str) -> Value {
 
 #[test]
 fn chat_regenerate_title_matches_oracle() {
-    // Before any callsite is touched — see `auto_title_capture`'s module doc.
-    auto_title_capture::install();
+    // Before any callsite is touched — see `global_capture`'s doc.
+    global_capture::install();
     let Some(oracle_path) = env_or_skip("QT_ORACLE_REGENERATE_TITLE") else {
         return;
     };
@@ -484,8 +484,9 @@ fn chat_regenerate_title_matches_oracle() {
 // is a capture over the REAL verb on the committed fixture, each line on its
 // own branch and silent on the siblings.
 
-// The capture rig (see its module doc for why not `CaptureLayer`).
-mod auto_title_capture;
+// The capture rig: `test_support::global_capture` (its doc says why not
+// `CaptureLayer`; P4.112 folded the harness's `auto_title_capture` into it).
+use quilltap_core::test_support::global_capture;
 
 fn capture_regen(
     tag: &str,
@@ -529,7 +530,7 @@ fn capture_regen_with(
         mid_call_sql: mid_call_sql.map(|sql| (db.clone(), sql)),
     };
     let now_iso = quilltap_core::clock::iso_from_unix_ms(spec.frozen_now_ms);
-    let ((status, body), out) = auto_title_capture::capture(|| {
+    let ((status, body), out) = global_capture::capture(|| {
         let r = rt.block_on(chat_admin::chat_regenerate_title(
             &db,
             &spec.user_id,
@@ -561,7 +562,7 @@ fn none(lines: &[String], needle: &str) {
 
 #[test]
 fn regenerate_title_log_lines_fire_on_their_own_branches() {
-    auto_title_capture::install();
+    global_capture::install();
     // (a) A changed title: INFO with the new `outcome` field.
     let (lines, status) = capture_regen("log_applied", CHAT, None, false, None);
     assert_eq!(status, 200);

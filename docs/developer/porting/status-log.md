@@ -146635,3 +146635,40 @@ tool (§R.4(k), Tier 3 item 14); `withCollectionActionDispatch` not re-proven be
   --list` → 4 tests. No cargo step (the order: "P4.D218 runs no cargo at
   all"; nothing outside `apps/web/**` changed, so no crate, census or
   differential can have moved).
+
+## P4.112 — the `00c290c9a` round's review smalls (lane, 2026-09-23, `claude/cranky-shirley-5d797f`)
+
+**Order:** `docs/developer/porting/work-orders/p4.112-review-smalls-missing-arm-capture-census-skip-alter.md`
+(maintenance; wave 2; cut from `main` `602c5f87` — the session worktree had
+been created at P4.D216's tip and was repointed to `main` before any work,
+since the order cuts this lane from `main`). §R.2 probe PASSED at lane start
+(v4 `main` @ `d1c06cd9d`, clean, both logs empty) and before every regen
+batch. Pin: `/tmp/qt-v4-pin-p4112-00c290c9a` (verified `rev-parse` +
+`ls -ld`). Baseline sweep of the six families from the pin, BEFORE any
+change: all six `ok` (`title_update_tier3`, `chat_regenerate_title_tier3`,
+`context_summary_service_tier3`, `chats_messages_ops_tier2`,
+`normalize_blob_image`, `photos_routes`).
+
+### Unit 1 — ONE capture rig (Tier 1 item 2)
+
+`test_support::global_capture` now carries both renderings behind its one
+process-global subscriber, chosen per armed thread: `capture_events` (the
+message only — `job_runner`'s contract, unchanged) and the new `install` /
+`capture` / `capture_async` (every field through `FieldVisitor`, byte-
+identical to `captured`). The harness's `auto_title_capture/mod.rs` is
+deleted; its three consumers call `global_capture`. **Byte-for-byte proof:**
+a temporary (uncommitted) dump hook wrote every captured line, per test
+thread, first in the OLD rig and then in the NEW one, over the same three
+binaries with the baseline-pin oracles: 8 tests, 139 lines, **zero diff
+lines** once the 10 minted `jobId=<uuid>` values are masked (the only raw
+difference; 2 of the 8 files were raw-identical). No quoting change
+(`consolidating-capture-layers-can-change-quoting` did not fire — the old rig
+already used `FieldVisitor`). One behaviour difference in the install, kept
+deliberately: the old rig `expect`ed its `set_global_default`; the
+consolidated `install` keeps `global_capture`'s `let _ =` (a lost race
+captures nothing, which every capture assertion catches loudly).
+**Finding for the unifier (not this lane's file):** `db/memories.rs:1117`'s
+comment says `global_capture`'s reader "renders the MESSAGE only" — true when
+written, stale now that `capture`/`capture_async` render fields; its
+`arm_global_callsites` + thread-scoped `captured` pair could become one
+`global_capture::capture` call. Left for the file's owner.

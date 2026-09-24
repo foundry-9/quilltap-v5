@@ -275,7 +275,7 @@ fn dump_state(db: &Db, chat_id: &str) -> Value {
 
 #[test]
 fn title_update_matches_oracle() {
-    auto_title_capture::install();
+    global_capture::install();
     let Some(oracle_path) = env_or_skip("QT_ORACLE_TITLE_UPDATE") else {
         return;
     };
@@ -627,7 +627,7 @@ fn title_update_matches_oracle() {
 /// fixture alone.
 #[test]
 fn title_update_runner_registration_e2e() {
-    auto_title_capture::install();
+    global_capture::install();
     use quilltap_core::db::background_jobs::BackgroundJobsRepository;
     use quilltap_core::services::job_runner::{HandlerRegistry, JobRunner};
     use quilltap_core::services::queue_service::enqueue_title_update;
@@ -737,8 +737,10 @@ fn title_update_runner_registration_e2e() {
 
 // P4.D215: the capture rig. This binary's capture tests used thread-scoped
 // `CaptureLayer` subscribers beside a parallel differential over the same
-// callsites — the cross-thread `Interest` race the rig's module doc measures.
-mod auto_title_capture;
+// callsites — the cross-thread `Interest` race `test_support`'s module doc
+// measures. P4.112: the rig is `test_support::global_capture` (the harness's
+// own `auto_title_capture` copy folded into it, line bytes unchanged).
+use quilltap_core::test_support::global_capture;
 
 /// Drive the REAL handler `runs` times over ONE fresh copy of the committed
 /// fixture and return every line it logged.
@@ -799,7 +801,7 @@ fn capture_replies(
         .expect("drop background_jobs");
     }
 
-    let ((), out) = auto_title_capture::capture(|| {
+    let ((), out) = global_capture::capture(|| {
         for override_reply in replies {
             let provider = CannedTitleProvider {
                 canned: spec.canned_titles.clone(),
@@ -864,7 +866,7 @@ fn none(lines: &[String], needle: &str) {
 /// say so instead of burning the checkpoint in silence.
 #[test]
 fn checkpoint_burned_warn_fires_only_when_a_rename_had_no_usable_title() {
-    auto_title_capture::install();
+    global_capture::install();
     let spec = read_spec();
 
     // (a) The bug-96 residue: a rename asked for under a key nothing can read.
@@ -918,7 +920,7 @@ fn checkpoint_burned_warn_fires_only_when_a_rename_had_no_usable_title() {
 /// checkpoints in complete silence.
 #[test]
 fn failed_call_warn_fires_only_when_the_cheap_llm_call_failed() {
-    auto_title_capture::install();
+    global_capture::install();
     let spec = read_spec();
 
     // (a) The provider throws — v4's `!result.success` arm.
@@ -962,7 +964,7 @@ fn failed_call_warn_fires_only_when_the_cheap_llm_call_failed() {
 /// camelCase fields: `chatId`, `source`, `from` (the RE-READ title), `to`.
 #[test]
 fn rename_info_lines_fire_only_when_a_title_is_written() {
-    auto_title_capture::install();
+    global_capture::install();
     let spec = read_spec();
 
     // (a) The canned literary verdict renames the chat.
@@ -1075,7 +1077,7 @@ fn rename_info_lines_fire_only_when_a_title_is_written() {
 /// must each stay silent.
 #[test]
 fn queued_story_background_info_fires_once_per_new_job() {
-    auto_title_capture::install();
+    global_capture::install();
     let spec = read_spec();
 
     // (a) A fresh rename on a story-backgrounds-enabled user queues one.
@@ -1179,7 +1181,7 @@ fn queued_story_background_info_fires_once_per_new_job() {
 /// its `background_jobs` table first.
 #[test]
 fn failed_to_queue_warn_fires_only_when_the_enqueue_errors() {
-    auto_title_capture::install();
+    global_capture::install();
     let spec = read_spec();
 
     // (a) No `background_jobs` table — the enqueue errors and says so.
@@ -1231,7 +1233,7 @@ fn failed_to_queue_warn_fires_only_when_the_enqueue_errors() {
 /// `renamed_mid_flight`.
 #[test]
 fn renamed_by_hand_debug_fires_only_on_a_mid_flight_rename() {
-    auto_title_capture::install();
+    global_capture::install();
     let spec = read_spec();
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1240,7 +1242,7 @@ fn renamed_by_hand_debug_fires_only_on_a_mid_flight_rename() {
     let now_iso = quilltap_core::clock::iso_from_unix_ms(spec.frozen_now_ms);
     let drive = |tag: &str, chat_id: &str, mid_flight: bool| -> Vec<String> {
         let db = fresh_db(tag);
-        let ((), out) = auto_title_capture::capture(|| {
+        let ((), out) = global_capture::capture(|| {
             let provider = CannedTitleProvider {
                 canned: spec.canned_titles.clone(),
                 override_reply: None,

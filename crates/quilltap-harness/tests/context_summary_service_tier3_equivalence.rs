@@ -137,16 +137,17 @@ mod common;
 
 const SPEAKER_NAMES_LINE: &str = "[Context Summary] Resolved speaker names for fold";
 
-// P4.D215: the process-global, per-thread capture rig (its module doc has the
-// cross-thread `Interest` race it closes). This binary has one test today, so
-// the old thread-scoped subscriber was safe — the rig keeps it safe if a second
-// test ever lands beside it.
-mod auto_title_capture;
+// P4.D215: the process-global, per-thread capture rig (`test_support`'s
+// module doc has the cross-thread `Interest` race it closes). This binary has
+// one test today, so the old thread-scoped subscriber was safe — the rig keeps
+// it safe if a second test ever lands beside it. P4.112: the rig is
+// `test_support::global_capture` (the harness's `auto_title_capture` folded in).
+use quilltap_core::test_support::global_capture;
 
 /// Run `f` with this thread's capture buffer armed (every `#[tokio::test]` is
 /// current-thread, so it spans the awaits) and return its lines.
 async fn capture_lines<T>(f: impl std::future::Future<Output = T>) -> (T, Vec<String>) {
-    auto_title_capture::capture_async(f).await
+    global_capture::capture_async(f).await
 }
 
 // ---------------------------------------------------------------------------
