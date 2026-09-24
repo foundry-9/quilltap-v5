@@ -30,7 +30,7 @@ import { MOCK_LLM_REPLY, startMockLlm, type MockLlm } from './support/mock-llm';
  * unifier flips it to `true` after P4.D216 + P4.D217 are picked, and the beats'
  * first live run is the unified gate's own step.**
  */
-const P4D217_SERVER_LANDED = false;
+const P4D217_SERVER_LANDED = true;
 
 const GATE_REASON =
   'awaits P4.D217 (scenarioBuilderBuild / scenarioBuilderAbort / scenarioBuilderCapabilities + the scenarioBuilderProgress event) and P4.D216 (groupList { characterIds })';
