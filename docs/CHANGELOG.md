@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(core): correct the stale `reconcile.rs` connection-profile vacuity comment (P4.117 Tier 2)
+
+_Versions: core 0.0.1028._
+
+The unit pin's doc comment in `reconcile.rs` still claimed `system_import_
+state`'s connection-profile leg "has been vacuous since v4 `aa464abf`"
+because the committed `system-data-main.db` "predates `multiCharacterPrefill`".
+That was stale before P4.111's widen (the column was never in the widen's
+list — `multiCharacterPrefill` was already present) and, per `system_
+import_state.rs`'s own module header, the vacuity was actually closed back
+at P4.70's fixture migration. The comment now says so and explains why the
+unit pin still earns its keep: it isolates the FORWARD-reference case
+specifically, which the family's own broader coverage doesn't target. No
+behaviour change. Also lands P4.111's header sentence naming this round.
+
 #### 2026-09-24 — test(harness): remove the dead reader-side heals over the widened system-data pair (P4.117 units 4–13)
 
 _Versions: harness 0.0.951._

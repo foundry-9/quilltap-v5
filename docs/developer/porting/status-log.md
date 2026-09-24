@@ -147060,3 +147060,172 @@ deliberate divergence, not a defect: both pins (`normalize_blob_image_
 equivalence`'s `MEASURED_CORRUPT_SECOND_FRAME`, the host codec's
 `a_corrupt_second_frame_counts_one_and_encodes_the_first`) now say RULED.
 No behaviour change. harness 0.0.948, host 0.0.153.
+
+## P4.117 — the dead reader-side heals over P4.111's ten pairs (lane, 2026-09-24, `claude/p4117-dead-heals-p4111-5c1e33`)
+
+**Order:** `docs/developer/porting/work-orders/p4.117-dead-heals-p4111-ten-pairs.md`
+(the `d1c06cd9d` review-follow-ups smalls round: P4.113 ∥ P4.114 ∥ P4.115 ∥
+P4.116 ∥ P4.117). Cut from `main` `7529fbca`. Pin:
+`/tmp/qt-v4-pin-p4117-d1c06cd9d` (verified `rev-parse` = `d1c06cd9d786653…`
+and `ls -ld`; the three symlink classes). **§R.2 probe PASSED** at lane
+start and again before the regen batch (branch `main`, HEAD `d1c06cd9d`,
+both logs empty, tree clean).
+
+### Tier 1 — landed whole (13 sites, three commits)
+
+1. **The proofs** (Tier 1 item 1) — `pragma_table_info` reads on `/tmp`
+   copies of the three committed pairs through the pin's cipher driver
+   (`better-sqlite3` aliased to `better-sqlite3-multiple-ciphers`, cwd =
+   the pin, `TEST_PEPPERS` trial-open exactly as
+   `migrate-memories-fixture-columns.ts`):
+   - `cost-background-main.db` (pepper `web-fixture`): `chats.
+     cycleOrderParticipantIds` present, `chats.transcriptVersion` present,
+     `chat_messages.routeTrail` present, `files.generationKey` present +
+     `idx_files_generationKey` in `pragma index_list('files')`.
+   - `chat-cast-main.db` (pepper `chat-cast`, `chat-cast.json`): same four
+     columns + index present; **no `chat_informs` table** (confirms that
+     heal is NOT dead).
+   - `system-data-main.db` (pepper `web-fixture`): same four columns +
+     index present; `connection_profiles.multiCharacterPrefill` also
+     present (relevant to the Tier 2 reconcile.rs comment fix below); **no
+     `chat_informs` table**.
+   No STOP triggered — every column every heal targets is present on the
+   committed pair.
+2. **The removals** — all 13 sites from the survey table, three commits
+   (one per pair, `title_update_tier3_equivalence.rs`/`title-update-tier3.
+   test.ts` for cost-background; `inform_drop_lives_on_the_action.rs` for
+   chat-cast; the five Rust system-data readers + three TS oracle cases for
+   system-data). Every PLANT kept (`plant_p4d171_values`/
+   `plant_p4d182_values` and their TS twins — the UPDATEs, never the
+   guarded `ADD COLUMN`/`ensure_*` halves); every `ensure_chat_informs_
+   table` call kept (a widen adds columns, not tables); the shared helpers
+   (`test_support::ensure_p4d171_columns`/`ensure_p4d182_columns`,
+   `harness/oracle/lib/p4d171-columns.ts`) untouched (still used by
+   un-widened readers per the survey — salon, chat-admin, courier-images,
+   chat-dialogs-export, etc.); no committed `.db` touched
+   (`git diff --stat` shows only `.rs`/`.ts`/doc files). Two stale TS doc
+   comments corrected in place (`system-export.test.ts`'s and
+   `system-import-execute.test.ts`'s `plantP4d171Values` headers, which
+   had claimed the columns "are added here" — now note P4.111's widen).
+3. **The re-runs** — all 8 affected families regenerated fresh from the
+   `/tmp/qt-v4-pin-p4117-d1c06cd9d` pin via the sweep driver in one batch:
+   `title_update_tier3_equivalence`, `inform_drop_lives_on_the_action`,
+   `system_import_equivalence`, `system_export_equivalence`,
+   `system_backup_equivalence`, `system_delete_data_equivalence`,
+   `system_import_state`, `qtap_schema_validate_equivalence` — **8/8 ok**,
+   zero `SKIP:`. `qtap_schema_validate_equivalence` carries its
+   pre-existing recorded ajv-vs-jsonschema count divergence (unmoved by
+   this lane — a standing, previously-recorded difference, not a new red).
+   The `system_import_state` tripwire (`:1266-1283`, untouched) ran green
+   inside the family.
+
+### Tier 2 — landed
+
+4. **The stale `reconcile.rs:708-712` comment corrected.** The unit-test
+   doc comment claimed `system_import_state`'s connection-profile leg "has
+   been vacuous since v4 `aa464abf`" because the committed
+   `system-data-main.db` "predates `multiCharacterPrefill`". Measured
+   FALSE: the `pragma_table_info` proof above shows `multiCharacterPrefill`
+   already present on the committed pair (it was never in P4.111's widen
+   list), and `system_import_state.rs`'s own module header already records
+   that the vacuity was closed back at **P4.70** (a separate, earlier
+   fixture migration, `migrate-system-data-schema.ts` — not this lane's
+   widen). Corrected to state the true history and to explain what the
+   unit pin still proves: the FORWARD-reference case specifically, which
+   the family's own now-real coverage doesn't isolate on its own. Doc-only;
+   no test logic changed.
+5. **P4.111's header sentence** (§R.7) landed, naming this round and its
+   commits.
+
+### Tier 3 — deferrals (loud, unchanged)
+
+6. The remaining heals over un-widened pairs (`chat-send`, `characters`,
+   `salon`, the restore archives, and every other reader of the shared
+   `ensure_p4d171_columns`/`ensure_p4d182_columns` helpers) are named for a
+   future widen; not dead yet — untouched.
+
+### Mutation proofs (each on a `/tmp` COPY, reverted by file `cp`, never
+`git checkout`)
+
+| # | target | mutation | result | revert verified |
+|---|---|---|---|---|
+| M1 | `system_import_state` | drop `chat_messages.routeTrail` from a `/tmp` copy of `system-data-main.db` via a table rebuild (CREATE-without-column → INSERT…SELECT → DROP → RENAME), swap the copy into the fixture path | **RED** — panic `plant the route trail: … "no such column: routeTrail"` (`system_import_state.rs:1964` — the `plant_p4d171_values` UPDATE itself throws, proving the family is genuinely sensitive to the column) | `cp` from `/tmp/p4117-fixture-backups/system-data-main.db.orig` back over the fixture; MD5 confirmed identical (`b5047a17…`); family re-run green |
+| M2 | `system_export_equivalence` | delete the kept `files.generationKey` UPDATE from `system-export.test.ts`'s `plantP4d182Values` | **RED** — `stream_files_all: line 2 differs`, exactly the `generationKey` field (v5 keeps `"a3000000-…"`, the mutated oracle omits the key) | `cp` from `/tmp/p4117-fixture-backups/system-export.test.ts.orig` back over the file; `diff` confirmed identical; family re-run green |
+
+### Regen recipes (as run)
+
+```bash
+PIN=/tmp/qt-v4-pin-p4117-d1c06cd9d
+git -C ~/source/quilltap-server worktree add --detach "$PIN" d1c06cd9d
+ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules "$PIN/packages/quilltap/node_modules"
+for d in ~/source/quilltap-server/plugins/dist/*/; do
+  [ -d "$d/node_modules" ] && ln -sfn "$d/node_modules" "$PIN/plugins/dist/$(basename "$d")/node_modules"
+done
+cd <worktree>
+CARGO_INCREMENTAL=0 TZ=UTC python3 harness/tools/recipe_sweep.py \
+  --run-all --v4 "$PIN" --v5w <ABSOLUTE worktree> \
+  --families title_update_tier3_equivalence,inform_drop_lives_on_the_action,system_import_equivalence,system_export_equivalence,system_backup_equivalence,system_delete_data_equivalence,system_import_state,qtap_schema_validate_equivalence \
+  --results /tmp/p4117/sweep-post-heal-removal.json
+```
+The fresh NDJSONs (`/tmp/oracle-{title-update,system-import,system-export,
+system-backup,system-delete-data,system-import-execute,qtap-schema}.ndjson`)
+were confirmed non-empty and freshly timestamped (§5.2 discipline); no
+`SKIP:` lines in the sweep log; every family reports `status: "ok"` in
+`/tmp/p4117/sweep-post-heal-removal.json`. The `pragma_table_info` proofs
+and the two mutation-proof scripts (`proof-pragma.ts`, `drop-route-trail.ts`)
+are lane-private scratch files (not committed — the fixtures they read are
+copies, never the committed pair).
+
+### Lane gate (`CARGO_INCREMENTAL=0 TZ=UTC`)
+
+`cargo fmt --all --check` clean. `cargo clippy --workspace --all-targets --
+-D warnings` clean in BOTH feature sets (default; `--features quilltap-
+core/native-transport`). `cargo build --workspace --release` clean (3m 44s).
+`cargo test --workspace --no-fail-fast -- --nocapture` with the lane's
+7-var env block (`QT_ORACLE_{TITLE_UPDATE,SYSTEM_IMPORT,SYSTEM_EXPORT,
+SYSTEM_BACKUP,SYSTEM_DELETE_DATA,SYSTEM_IMPORT_EXECUTE,QTAP_SCHEMA}` →
+the fresh `/tmp/oracle-*.ndjson`; every other family's var withheld):
+**629 test binaries, 3,696 passed / 0 failed / 3 ignored** — exactly the
+§R.5 standing baseline, unmoved. All 8 lane families confirmed RUN by name
+with non-zero durations and zero `SKIP:` lines
+(`title_update_tier3_equivalence` 9 passed 0.13s,
+`inform_drop_lives_on_the_action` 2 passed 0.02s,
+`system_import_equivalence` 1 passed 0.22s,
+`system_export_equivalence` 1 passed 0.59s,
+`system_backup_equivalence` 1 passed 0.73s,
+`system_delete_data_equivalence` 2 passed 0.30s,
+`system_import_state` 1 passed 4.59s,
+`qtap_schema_validate_equivalence` 1 passed 0.45s). The censuses and guards
+named in the round's verification gate (`dispatch_wrong_type_census`,
+`tri_state_edges_share_the_decoder`, `get_messages_caller_census`,
+`blob_write_sites_census`, `compressed_column_write_sites_census`,
+`stream_watchdog_wrap_census`, `help_tree_embed_guard`,
+`qtap_schema_embed_guard`, `zod_version_guard`,
+`provider_sdk_version_guard`, `public_schemas_vendor_guard`) all ran inside
+the 0-failed aggregate — unmoved (this lane touched no production source
+they scan). Tier R not run — P4.117 touches no CLI-linked code and the
+round's verification gate lists it only for P4.113/P4.114/P4.115. No SPA
+gate — P4.117 touches no `apps/web` file.
+
+**Versions:** harness 0.0.948 → 0.0.951 (one bump per Tier-1 commit:
+0.0.949 cost-background, 0.0.950 chat-cast, 0.0.951 system-data); core
+0.0.1027 → 0.0.1028 (the Tier 2 reconcile.rs comment, its own commit). No
+other crate. Four commits total:
+`240bb333` (cost-background), `d539c07f` (chat-cast), `2f4c2b53`
+(system-data), and the Tier 2 commit landing with this record.
+
+**What the order got wrong (measured):** nothing — every proof, every
+survey line, and both the "KEEP" and "dead" verdicts held exactly as
+written. The one addition: the reconcile.rs comment's vacuity claim traces
+to P4.70, not P4.111 (the order's Tier 2 item 4 already knew it was stale;
+this lane traced *why*).
+
+### Fixtures changed → oracles invalidated
+
+None. No committed `.db` file was touched (§R.10(f)) — the three pairs were
+only read (copied to `/tmp`) for the proofs and the mutation proofs.
+
+**Stays OPEN (named, Tier 3):** the remaining heals over un-widened pairs
+(`chat-send`, `characters`, `salon`, the restore archives) — not dead until
+those pairs are widened.

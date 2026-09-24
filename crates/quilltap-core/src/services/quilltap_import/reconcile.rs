@@ -702,15 +702,20 @@ mod tests {
         .unwrap()
     }
 
-    /// **The unit pin the `.qtap` import differential cannot carry.**
+    /// **A narrower unit pin for the forward-reference case, kept beside the
+    /// `.qtap` import differential's own coverage.**
     ///
-    /// `system_import_state`'s connection-profile leg has been vacuous since v4
-    /// `aa464abf`: the committed `system-data-main.db` predates
-    /// `multiCharacterPrefill`, so every profile import fails on BOTH sides with
-    /// `no column named …` and the arms stay green on matching failures (the
-    /// family header records it; widening that fixture is cross-lane). The 4.10
-    /// fallback columns land in the same hole, so the understudy remap is
-    /// pinned here instead, at the unit tier, and named in both places.
+    /// `system_import_state`'s connection-profile leg WAS vacuous at an
+    /// earlier fixture vintage (v4 `aa464abf`'s `multiCharacterPrefill`, then
+    /// `65f5021c8`'s `fallbackProfileId`/`allowTierFallback`): the committed
+    /// `system-data-main.db` predated all three, so every profile import
+    /// failed on BOTH sides with `no column named …` and the arms stayed
+    /// green on matching failures. **Closed at P4.70** — the fixture migrated
+    /// in place through v4's own `compareSchemas` (`system_import_state.rs`'s
+    /// own header records it), and the family now differential-covers the
+    /// create/overwrite/duplicate/skip strategies AND the understudy remap
+    /// directly. This unit pin stays as the narrower, single-purpose proof of
+    /// the FORWARD reference specifically — see below.
     ///
     /// What it proves is v4 `65f5021c8`'s reason for putting the remap in the
     /// reconcile pass at all: the FORWARD reference. `cp-a` names `cp-b`, and
