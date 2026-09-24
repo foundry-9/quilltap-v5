@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): driftcheck — v4 ten commits past the d1c06cd9d baseline
+
+_Docs-only change._
+
+Third drift check of the day. v4 `main` is at `b0b6656b5`
+(`4.10.0-dev.78`), v4's fix for bug 169, the narrow-pane sidebar bug this
+port filed and fixed first. Recorded as a convergence: v4's predicate
+matches v5's except that v4 also handles a text-node target, which a real
+click cannot produce. The v5 divergence notes retire and one help page
+re-vendors when the round absorbs it. Regen rule stays PIN REQUIRED at
+`d1c06cd9d`.
+
 #### 2026-09-24 — docs(porting): driftcheck — v4 nine commits past the d1c06cd9d baseline
 
 _Docs-only change._
