@@ -38,10 +38,10 @@
 //!     $N/node --import tsx $WT/harness/oracle/fixtures/build-search-tools-fixture.ts
 //!   QT_FIXTURE_TMP_MAIN=/tmp/qt-search-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-search-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-search-tools-readwrite.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- search-tools-readwrite
+//!     $N/npx jest --silent --watchman=false --testTimeout=240000 --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- search-tools-readwrite
 //!   QT_FIXTURE_TMP_MAIN=/tmp/qt-search-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-search-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-search-tools-search.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- search-tools-search
+//!     $N/npx jest --silent --watchman=false --testTimeout=240000 --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- search-tools-search
 //! Run:
 //!   QT_ORACLE_SEARCH_RW=/tmp/oracle-search-tools-readwrite.ndjson \
 //!   QT_ORACLE_SEARCH=/tmp/oracle-search-tools-search.ndjson \
@@ -137,9 +137,19 @@ impl tracing::field::Visit for LineVisitor {
     fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
         if f.name() == "message" {
             self.0 = format!("{v:?}");
-        } else {
-            self.1.push((f.name().to_string(), format!("{v:?}")));
+            return;
         }
+        let text = format!("{v:?}");
+        // The `…Json` file-layer convention (`quilltap-web` `log_file.rs`): an
+        // object/array field rides as `<stem>Json = %json` and lands in the file
+        // under `<stem>` as JSON — so compare it the same way (P4.114).
+        if let Some(stem) = f.name().strip_suffix("Json").filter(|s| !s.is_empty()) {
+            if let Ok(parsed) = serde_json::from_str::<Value>(&text) {
+                self.1.push((stem.to_string(), parsed.to_string()));
+                return;
+            }
+        }
+        self.1.push((f.name().to_string(), text));
     }
 }
 
@@ -156,9 +166,10 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Capture {
         if target != "quilltap_core::tools::search" && target != "quilltap_core::tools::executor" {
             return;
         }
+        // Fields stay in CALLSITE order (P4.114): v4's context object keeps its
+        // insertion order, so a reordered field is a red.
         let mut v = LineVisitor(String::new(), Vec::new());
         event.record(&mut v);
-        v.1.sort();
         self.0.lock().unwrap().push((
             target.to_string(),
             (meta.level().to_string().to_lowercase(), v.0, v.1),
@@ -171,7 +182,7 @@ fn v4_lines(v: Option<&Value>) -> Vec<Line> {
         .map(|a| {
             a.iter()
                 .map(|l| {
-                    let mut fields: Vec<(String, String)> = l["context"]
+                    let fields: Vec<(String, String)> = l["context"]
                         .as_object()
                         .map(|o| {
                             o.iter()
@@ -185,7 +196,6 @@ fn v4_lines(v: Option<&Value>) -> Vec<Line> {
                                 .collect()
                         })
                         .unwrap_or_default();
-                    fields.sort();
                     (
                         l["level"].as_str().unwrap_or_default().to_string(),
                         l["message"].as_str().unwrap_or_default().to_string(),
@@ -813,6 +823,9 @@ async fn run_search(
         tracing_subscriber::registry().with(Capture(captured.clone())),
     );
     let mut pool_cases_run = 0usize;
+    let mut info_cases_run = 0usize;
+    let mut silent_cases_run = 0usize;
+    let mut log_failures: Vec<String> = Vec::new();
     for c in &s_cases {
         let (main_work, mount_work) = fresh_copy(main_fixture, mount_fixture, c.label);
         let db = open_two_db(&main_work, &mount_work, &spec.test_pepper_base64);
@@ -858,35 +871,52 @@ async fn run_search(
             "formatted diverged for {}",
             c.label
         );
+        // The handler's lines, compared WHOLE on every search case (P4.114; the
+        // pool cases since P4.D216): the per-call INFO `Search scriptorium
+        // completed` on each success, the validation WARN on each early return
+        // (and so the INFO's absence there — the silence legs), the pool DEBUG.
         if c.pool {
             pool_cases_run += 1;
-            let got_lines: Vec<Line> = captured
-                .lock()
-                .unwrap()
-                .drain(..)
-                .filter(|(t, _)| t == "quilltap_core::tools::search")
-                .map(|(_, l)| l)
-                .collect();
-            // ⚠ v4's per-call INFO `Search scriptorium completed` has NEVER had a
-            // v5 emitter (a pre-existing absence on every search, not P4.D216's —
-            // recorded in the lane record for a follow-up); every OTHER line is
-            // compared, so the pool DEBUG and the absence of anything else are
-            // both pinned.
-            let want_lines: Vec<Line> = v4_lines(want.logs.as_ref())
-                .into_iter()
-                .filter(|l| l.1 != "Search scriptorium completed")
-                .collect();
-            assert_eq!(
-                got_lines, want_lines,
-                "search-handler log lines diverged for {}",
+        }
+        let got_lines: Vec<Line> = captured
+            .lock()
+            .unwrap()
+            .drain(..)
+            .filter(|(t, _)| t == "quilltap_core::tools::search")
+            .map(|(_, l)| l)
+            .collect();
+        let want_logs = want
+            .logs
+            .as_ref()
+            .unwrap_or_else(|| panic!("oracle case {} recorded no log lines", c.label));
+        let want_lines: Vec<Line> = v4_lines(Some(want_logs));
+        // Collected, not asserted in place, so a red-first run COUNTS the reds.
+        if got_lines != want_lines {
+            log_failures.push(format!(
+                "search-handler log lines diverged for {}\n  v4: {want_lines:?}\n  v5: {got_lines:?}",
                 c.label
-            );
+            ));
+        }
+        if want_lines.iter().any(|l| l.1 == "Search scriptorium completed") {
+            info_cases_run += 1;
+        } else {
+            silent_cases_run += 1;
         }
 
         drop(db);
         cleanup(&main_work, &mount_work);
     }
+    assert!(
+        log_failures.is_empty(),
+        "{} case(s) with diverging log lines:\n{}",
+        log_failures.len(),
+        log_failures.join("\n")
+    );
     assert_eq!(pool_cases_run, 9, "every P4.D216 pool case must run");
+    // P4.114: 28 successes carry the INFO; the two validation refusals are its
+    // silence legs (measured against the regenerated oracle).
+    assert_eq!(info_cases_run, 28, "every successful search compares the INFO");
+    assert_eq!(silent_cases_run, 2, "both refusals are silence legs");
 
     // ---- P4.D216: the executor's pool/operator mutual-exclusion refusal ----
     // Through the REAL `BuiltInToolRunner` (v4's `executeToolCallWithContext`):

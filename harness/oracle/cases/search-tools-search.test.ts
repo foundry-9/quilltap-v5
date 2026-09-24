@@ -193,7 +193,7 @@ async function main(): Promise<void> {
       return { __esModule: true, ...actual, ensureHelpDocsSynced: async () => undefined };
     });
 
-    // P4.D216: record the search handler's lines (pool cases compare them).
+    // P4.D216: record the search handler's lines (every search case compares them since P4.114).
     const logLines: Array<{ level: string; message: string; context: unknown }> = [];
     jest.doMock('@/lib/logging/create-logger', () => {
       const actual = jest.requireActual('@/lib/logging/create-logger');
@@ -286,10 +286,14 @@ async function main(): Promise<void> {
         context.mountPool = await buildPool();
         delete context.projectId;
       }
+      logLines.splice(0);
       const out = await executeSearchScriptoriumTool(c.args, context);
       resultJson = JSON.stringify(out);
       formatted = formatSearchScriptoriumResults(out.results ?? []);
-      if (sc.pool) extra = { logs: logLines.splice(0) };
+      // P4.114: EVERY search case records the handler's lines (the pool cases
+      // since P4.D216) — so the per-call INFO `Search scriptorium completed` is
+      // compared on each success and its absence on each early return.
+      extra = { logs: logLines.splice(0) };
     }
 
     // Let fire-and-forget promises settle before closing.

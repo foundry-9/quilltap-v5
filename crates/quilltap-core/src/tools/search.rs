@@ -191,6 +191,15 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
     now_ms: f64,
 ) -> SearchOutput {
     if !validate_input(args) {
+        // v4 `search-scriptorium-handler.ts:72`; `input` is an object, so it rides
+        // the `…Json` file-layer convention (P4.114).
+        tracing::warn!(
+            context = "search-scriptorium-handler",
+            userId = context.user_id.as_str(),
+            characterId = context.character_id.as_deref(),
+            inputJson = %serde_json::to_string(args).unwrap_or_default(),
+            "Search scriptorium tool validation failed"
+        );
         return SearchOutput::failure(
             "Invalid input: query is required and must be a non-empty string",
             "",
@@ -543,6 +552,30 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
     results.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     results.truncate(limit);
     let results: Vec<Value> = results.into_iter().map(|(_, v)| v).collect();
+
+    // v4 `search-scriptorium-handler.ts:522` — the per-call INFO, after the sort
+    // + slice, counting the LIMITED results; fields in v4's order (P4.114).
+    let count = |pred: &dyn Fn(&Value) -> bool| results.iter().filter(|r| pred(r)).count();
+    let of_source = |t: &'static str| move |r: &Value| r["sourceType"] == t;
+    let of_tier = |t: &'static str| {
+        move |r: &Value| r["sourceType"] == "knowledge" && r["metadata"]["knowledgeTier"] == t
+    };
+    tracing::info!(
+        context = "search-scriptorium-handler",
+        userId = context.user_id.as_str(),
+        query = crate::jsstr::utf16_truncate(query, 100).as_str(),
+        scope,
+        totalFound = results.len(),
+        memorySources = count(&of_source("memory")),
+        conversationSources = count(&of_source("conversation")),
+        documentSources = count(&of_source("document")),
+        knowledgeSources = count(&of_source("knowledge")),
+        knowledgeCharacter = count(&of_tier("character")),
+        knowledgeGroup = count(&of_tier("group")),
+        knowledgeProject = count(&of_tier("project")),
+        knowledgeGlobal = count(&of_tier("global")),
+        "Search scriptorium completed"
+    );
 
     SearchOutput {
         success: true,

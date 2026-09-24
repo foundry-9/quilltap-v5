@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(search): v4's `Search scriptorium completed` INFO and validation WARN (P4.114)
+
+_Versions: core 0.0.1030, harness 0.0.951._
+
+`execute_search_scriptorium` now emits v4's per-call INFO after the sort and
+slice, with v4's thirteen fields in order (the source and knowledge-tier counts
+over the limited results; `query` cut to 100 UTF-16 units), and v4's WARN
+`Search scriptorium tool validation failed` on an invalid input (`input`
+through the `…Json` convention). The search oracle now records the handler's
+lines on every `search` case, and `search_tools_equivalence` compares them
+whole and in field order on all 30 (28 successes, 2 refusals as the INFO's
+silence legs). Red-first: all 30 diverged before the fix. The committed
+recipe gains `--testTimeout=240000` (jest's 5 s default timed out at the pin).
+
 #### 2026-09-24 — fix(tools): the doc-edit tool-call context carries the operator surface (P4.114)
 
 _Versions: core 0.0.1029, harness 0.0.950._
