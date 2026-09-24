@@ -6628,6 +6628,72 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `d1c06cd9d` review-follow-ups smalls round (P4.113 ∥ P4.114 ∥ P4.115 ∥ P4.116 ∥ P4.117) — ORDERED 2026-09-23
+
+**Baseline `d1c06cd9d`; v4 `main` HEAD `d1c06cd9d` (AT the baseline),
+`bugfix` `1a2b2164c` and `release` `8fbf2afe0` unmoved, the checkout on
+`main`, CLEAN — the §2 probe PASSED at planning and the ledger's §3 is
+EMPTY, so no drift row is ordered. Regen rule NO PIN REQUIRED; every lane
+regenerates from its own `d1c06cd9d` pin anyway (five concurrent lanes;
+immunity to a mid-lane v4 commit).** The round is the previous
+unification's "Next" item 2 — the review follow-ups — split five ways by
+disjoint files, with NO wire change and NO shared contract (the only
+meeting points are file fences, §R.10):
+
+- **P4.113 — the db-layer smalls**: `update_message` reads ONE raw row and
+  validates the MERGED event (v4's repair-writes and ERROR, and no
+  corrupted-sibling WARN — a divergence the recorded wording missed); the
+  skip gains `createdAt` (all three event types, Zod 4.6.5's
+  seconds-REQUIRED datetime — v5's only existing validator, in
+  `vault_overlay.rs`, was sourced from Zod 4.4 with seconds OPTIONAL, to be
+  measured) and `participantId`; `[InstanceSettings] Failed to read
+  setting`; `Character not found: Error adding scenario`; Tier 2 the five
+  JSON-setting parse WARNs. `docs/developer/porting/work-orders/p4.113-
+  db-layer-smalls-update-message-zod-shapes-warns.md`.
+- **P4.114 — the tool / agent-loop smalls**: `doc_read_file`'s key order
+  (the `scenario_builder_tier3` divergence retired by VANISHING), the
+  doc-edit operator override (reachable — Brahma's `document_store` reads
+  refuse today), `Search scriptorium completed`, the Salon's `Injected tool
+  change notification` (an INFO whose field NAMES diverge too); Tier 2 the
+  empty `thoughtSignature` and `normalizeContentBlockFormat` (v4 runs it
+  inside `streamMessage`, which both tier-3 oracles replace — the arm needs
+  the mock moved to the provider factory). `docs/developer/porting/work-
+  orders/p4.114-tool-loop-smalls-key-order-operator-search-normalize.md`.
+- **P4.115 — the Scenario Builder edge + the web census lift**: no frame
+  after an abort (one sink gate), the poisoned registry recovers, the
+  disconnect DEBUG on every disconnect, a read-only llm-logs opener for the
+  wire test, P4.110's Tier 3 item 7 onto a web-local shared module with 449
+  / 115 UNMOVED; Tier 2 an in-process "accepted" signal closing the
+  held-headers / pre-stream-500 pair (STOP if it needs a wire change).
+  `docs/developer/porting/work-orders/p4.115-scenario-builder-edge-nits-
+  web-census-lift.md`.
+- **P4.116 — the SPA smalls**: both builder dialogs portaled per-host (v4's
+  `BaseModal` rule), every connection-profiles cache entry RAW with
+  per-reader mapping (the root-scoped Brahma observer can hand the Settings
+  cards flag-less rows today — v4 has one key and never stores a mapped
+  shape), the done-frame flash; Tier 2 v4's single key spelling.
+  `docs/developer/porting/work-orders/p4.116-spa-smalls-portal-profiles-
+  cache-done-flash.md`.
+- **P4.117 — the dead heals over P4.111's ten**: 13 sites in 11 readers
+  (only `cost-background`, `chat-cast`, `system-data` carry any), each
+  removed after a `pragma_table_info` proof, every plant and every
+  `chat_informs` table heal kept. `docs/developer/porting/work-orders/
+  p4.117-dead-heals-p4111-ten-pairs.md`.
+
+**Execution:** all five cut from `main`; wave 1 = P4.113 ∥ P4.114 ∥ P4.115
+(Rust, the most capable tier) ∥ P4.116 (no cargo); wave 2 = P4.117 (a
+cheaper tier — mechanical, proof-first). At most three Rust lanes build at
+once (134 GB free at planning). Cherry-pick order P4.117 → P4.113 → P4.114
+→ P4.115 → P4.116. **Left out:** the `quilltap sync` writer-hold ruling
+(human, P4.D210); the owed dogfood pass (after this round — the Host end to
+end, 💸); the Debug-vector log fields in `generators/rename.rs` /
+`provider_routing.rs` (P4.114 Tier 3); `db/prompt_templates.rs`'s
+unported datetime checks (P4.113 Tier 3); portaling `ui/modal.ts` for every
+dialog (P4.116 Tier 3); the heals over un-widened pairs (P4.117 Tier 3);
+the 2026-09-07 generator round's older follow-up list (the backfill scan
+detach, the AI-import format rows, `isQtapUri`, …) — not re-surveyed here,
+still named in that section.
+
 ## The `d1c06cd9d` Scenario Builder drift catch-up + maintenance round (P4.D216 → {P4.D217} ∥ P4.D218 ∥ P4.D219 ∥ P4.111 ∥ P4.112) — UNIFIED 2026-09-23
 
 **ALL SIX LANDED on main; the oracle baseline MOVES to `d1c06cd9d` and the

@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): order the `d1c06cd9d` review-follow-ups smalls round (P4.113 ∥ P4.114 ∥ P4.115 ∥ P4.116 ∥ P4.117)
+
+_Docs only; no version bumps._
+
+Five work orders for the follow-ups the `d1c06cd9d` unification review
+recorded. v4 is at the baseline, so no drift is absorbed. P4.113 covers the
+database layer: `update_message`'s single-row read, two more Zod shapes in
+the corrupted-row skip, and two missing WARN lines. P4.114 covers the tool
+and agent loop: `doc_read_file` key order, the operator override, the search
+INFO line, the tool-change INFO fields, the empty `thoughtSignature`, and the
+stream normalizer. P4.115 covers the Scenario Builder REST edge and registry,
+plus the web crate's census scanners moved onto one shared module. P4.116
+covers the SPA: the portaled dialogs, one connection-profiles cache shape,
+and the done-frame flash. P4.117 removes 13 dead fixture heals. There are no
+wire changes and no shared contract.
+
 #### 2026-09-23 — docs(porting): rule the corrupt-second-frame animated input — v5's still stands (P4.112 item 7)
 
 _Versions: harness 0.0.948, host 0.0.153._
