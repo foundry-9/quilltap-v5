@@ -7,7 +7,6 @@ import { CoreClient } from '../core/core-client';
 import { fetchProfile, profileKeys } from '../screens/profile/profile.api';
 import { Icon } from '../ui/icon';
 import { QuickHideMenuSection } from '../quick-hide/quick-hide-menu-section';
-import { QuickHideService } from '../quick-hide/quick-hide.service';
 
 /**
  * The shell-footer user menu (v4
@@ -65,17 +64,14 @@ import { QuickHideService } from '../quick-hide/quick-hide.service';
 
           <div class="qt-divider my-1"></div>
 
-          <!-- §2b wire (mounted at unification): v4 sidebar-footer.tsx:302 renders
-               the quick-hide content above the profile entries, and :145 gates
-               it on hasQuickHideFeatures — any flagged tag, the danger toggle
-               already on, or any chat on the Concierge's uncensored row (shared
-               contract §H). v5 mounted it UNGATED while the third arm had no
-               probe; the gate lands with the probe. -->
-          @if (hasQuickHideFeatures()) {
-            <qt-quick-hide-menu-section />
+          <!-- v4 sidebar-footer.tsx renders the quick-hide content above the
+               profile entries, ALWAYS offered since e3937d7aa
+               (hasQuickHideFeatures = mounted: "The Salon Images switch is
+               always meaningful"). v5's client-only SPA has no pre-mount render,
+               so the section is simply unconditional. -->
+          <qt-quick-hide-menu-section />
 
-            <div class="qt-divider my-1"></div>
-          }
+          <div class="qt-divider my-1"></div>
 
           <button
             type="button"
@@ -103,11 +99,6 @@ import { QuickHideService } from '../quick-hide/quick-hide.service';
 export class UserMenu {
   private readonly core = inject(CoreClient);
   private readonly router = inject(Router);
-  private readonly quickHide = inject(QuickHideService);
-
-  /** v4 `sidebar-footer.tsx:145` — see the template comment. */
-  protected readonly hasQuickHideFeatures = this.quickHide.hasQuickHideFeatures;
-
   protected readonly open = signal(false);
 
   private readonly profileQuery = injectQuery(() => ({

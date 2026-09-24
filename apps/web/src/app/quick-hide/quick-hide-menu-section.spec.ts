@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
 import type { TagDto } from '../core/core-contract';
-import { QuickHideIcon, QuickHideMenuSection } from './quick-hide-menu-section';
+import { QuickHideMenuSection } from './quick-hide-menu-section';
 import { QuickHideService } from './quick-hide.service';
-import { ACTIVE_TAGS_KEY } from './quick-hide.storage';
+import { ACTIVE_TAGS_KEY, HIDE_SALON_IMAGES_KEY } from './quick-hide.storage';
 
 /**
  * The toggle surface (v4 `nav-user-menu-quick-hide.tsx`). Copy and icon
@@ -67,6 +67,7 @@ describe('QuickHideMenuSection (v4 nav-user-menu-quick-hide.tsx)', () => {
     expect(text).toContain('Content Filters');
     expect(text).toContain('Dangerous Chats');
     expect(text).toContain('Show Autonomous Rooms');
+    expect(text).toContain('Salon Images');
   });
 
   it('omits the tags section entirely when no tag is flagged (v4 :62)', async () => {
@@ -140,6 +141,57 @@ describe('QuickHideMenuSection (v4 nav-user-menu-quick-hide.tsx)', () => {
     );
   });
 
+  it('the Salon Images toggle is the THIRD content filter, after Show Autonomous Rooms (v4 e3937d7aa :115-123)', async () => {
+    stubStorage();
+    const fixture = await render([]);
+    const labels = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('button span.text-sm'),
+    ).map((el) => el.textContent?.trim());
+    expect(labels).toEqual(['Dangerous Chats', 'Show Autonomous Rooms', 'Salon Images']);
+    const button = buttonByText(fixture, 'Salon Images');
+    expect(button.getAttribute('title')).toBe(
+      'Hide backgrounds, avatars and attached images in the Salon',
+    );
+    expect(button.getAttribute('type')).toBe('button');
+    expect(button.classList.contains('qt-navbar-dropdown-item')).toBe(true);
+  });
+
+  it('the Salon Images toggle hides with an eye-off — the Dangerous Chats polarity (v4 :122)', async () => {
+    stubStorage();
+    const fixture = await render([]);
+    const service = TestBed.inject(QuickHideService);
+    const button = buttonByText(fixture, 'Salon Images');
+
+    expect(iconName(button)).toBe('eye');
+    expect(button.classList.contains('qt-navbar-dropdown-item-active')).toBe(false);
+    button.click();
+    fixture.detectChanges();
+
+    expect(service.hideSalonImages()).toBe(true);
+    expect(iconName(button)).toBe('eye-off');
+    expect(button.classList.contains('qt-navbar-dropdown-item-active')).toBe(true);
+  });
+
+  it('reads a stored Salon Images choice as active (v4 :117)', async () => {
+    stubStorage({ [HIDE_SALON_IMAGES_KEY]: 'true' });
+    const fixture = await render([]);
+    const button = buttonByText(fixture, 'Salon Images');
+    expect(button.classList.contains('qt-navbar-dropdown-item-active')).toBe(true);
+    expect(iconName(button)).toBe('eye-off');
+  });
+
+  it('toggles Salon Images BEFORE notifying (v4 handleSalonImagesToggle :61-64)', async () => {
+    stubStorage();
+    const fixture = await render([]);
+    const service = TestBed.inject(QuickHideService);
+    const seenAtEmit: boolean[] = [];
+    fixture.componentInstance.visibilityChanged.subscribe(() =>
+      seenAtEmit.push(service.hideSalonImages()),
+    );
+    buttonByText(fixture, 'Salon Images').click();
+    expect(seenAtEmit).toEqual([true]);
+  });
+
   it('emits visibilityChanged on every toggle (v4 :18,:44-57)', async () => {
     stubStorage();
     const fixture = await render([{ id: 'a', name: 'Alpha', quickHide: true }]);
@@ -149,24 +201,9 @@ describe('QuickHideMenuSection (v4 nav-user-menu-quick-hide.tsx)', () => {
     buttonByText(fixture, 'Alpha').click();
     buttonByText(fixture, 'Dangerous Chats').click();
     buttonByText(fixture, 'Show Autonomous Rooms').click();
+    buttonByText(fixture, 'Salon Images').click();
     fixture.detectChanges();
 
-    expect(count).toBe(3);
-  });
-});
-
-describe('QuickHideIcon (v4 nav-user-menu-quick-hide.tsx:116)', () => {
-  beforeEach(() => TestBed.resetTestingModule());
-
-  it('is an open eye when nothing is hidden and struck-through when something is', () => {
-    TestBed.configureTestingModule({ imports: [QuickHideIcon] });
-    const fixture = TestBed.createComponent(QuickHideIcon);
-    fixture.componentRef.setInput('hasHidden', false);
-    fixture.detectChanges();
-    expect(iconName(fixture.nativeElement)).toBe('eye');
-
-    fixture.componentRef.setInput('hasHidden', true);
-    fixture.detectChanges();
-    expect(iconName(fixture.nativeElement)).toBe('eye-off');
+    expect(count).toBe(4);
   });
 });

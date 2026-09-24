@@ -35,13 +35,12 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * constant as its siblings so the whole file activates in ONE flip and gets its
  * first live run under the unifier's eye.
  *
- * ⚠ The SAME unification must also flip `CHATS_HAS_DANGEROUS_VERB_LANDED` in
- * `app/quick-hide/quick-hide.service.ts` (shared contract §H). The footer's
- * quick-hide section is now gated on `hasQuickHideFeatures` exactly as v4's
- * `sidebar-footer.tsx:145` gates it, and on a fixture with no flagged tag and
- * the toggle off, the only arm that can open it is the uncensored-row probe —
- * which the seeded Flagged and Uncensored chats satisfy. Without that flip,
- * beat 2 cannot reach the toggle at all.
+ * The quick-hide section beat 2 drives is ALWAYS offered since v4
+ * `e3937d7aa` ("The Salon Images switch is always meaningful"; P4.D223), so
+ * the toggle is reachable on any fixture — the `chatsHasDangerous` probe that
+ * once had to open the gate (shared contract §H) is retired on both sides.
+ * The seeded Flagged and Uncensored chats are still needed: they are what the
+ * toggle hides, not what reveals it.
  *
  * ## Recorded coverage gap — the bubble's `Categories` line
  *

@@ -2,10 +2,11 @@
  * The quick-hide localStorage substrate (v4
  * `components/providers/quick-hide-provider.tsx:31-33,:92-129`).
  *
- * Three keys, owned here and nowhere else (work order P4.9d §4). The
+ * Four keys, owned here and nowhere else (work order P4.9d §4; the fourth,
+ * `hideSalonImages`, from v4 `e3937d7aa` — P4.D223). The
  * `includeAutonomousRooms` key predates this module — `autonomous-visibility.ts`
  * shipped it with the Salon list header toggle and now re-exports these
- * primitives so the one service owns all three.
+ * primitives so the one service owns all four.
  *
  * v4 reads these AFTER mount because a lazy initializer would desync SSR
  * (`:89-91`); v5's SPA is client-only, so the service reads them eagerly in its
@@ -18,6 +19,11 @@ export const ACTIVE_TAGS_KEY = 'quilltap.quickHide.activeTags';
 export const HIDE_DANGEROUS_KEY = 'quilltap.quickHide.hideDangerous';
 /** v4 `AUTONOMOUS_STORAGE_KEY` (`:33`) — `'true'` / `'false'`. */
 export const INCLUDE_AUTONOMOUS_KEY = 'quilltap.quickHide.includeAutonomousRooms';
+/**
+ * v4 `SALON_IMAGES_STORAGE_KEY` (`e3937d7aa`, `quick-hide-provider.tsx:48`) —
+ * `'true'` / `'false'`. GLOBAL, not per chat: one switch for every Salon.
+ */
+export const HIDE_SALON_IMAGES_KEY = 'quilltap.quickHide.hideSalonImages';
 
 /**
  * v4 `:96-101`: parse the id array, keeping only string entries. A malformed

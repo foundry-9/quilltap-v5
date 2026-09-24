@@ -5,6 +5,7 @@ import type { ConciergeState, TagDto } from '../core/core-contract';
 import {
   ACTIVE_TAGS_KEY,
   HIDE_DANGEROUS_KEY,
+  HIDE_SALON_IMAGES_KEY,
   INCLUDE_AUTONOMOUS_KEY,
   parseActiveTags,
   readActiveTags,
@@ -12,16 +13,7 @@ import {
   writeActiveTags,
   writeBooleanKey,
 } from './quick-hide.storage';
-import { quickHideFeaturesVisible, shouldHideByIds, shouldHideChat } from './should-hide';
-
-/**
- * ACTIVATE-AT-UNIFY (shared contract §H): flip to `true` on the branch that
- * carries P4.D143's `chatsHasDangerous` verb, which is the moment the shell
- * footer's quick-hide affordance can start following the uncensored row. Until
- * then the probe is never dispatched — a false constant, not a swallowed
- * error, because the two are indistinguishable after the fact.
- */
-export const CHATS_HAS_DANGEROUS_VERB_LANDED = true;
+import { shouldHideByIds, shouldHideChat } from './should-hide';
 
 /** A tag flagged for quick-hide (v4 `QuickHideTag`, `quick-hide-provider.tsx:6-9`). */
 export interface QuickHideTag {
@@ -33,7 +25,7 @@ export interface QuickHideTag {
  * The quick-hide service — v5's port of v4's `QuickHideProvider`
  * (`components/providers/quick-hide-provider.tsx`, 239 lines).
  *
- * Holds the three §4 localStorage-backed preferences as signals and the list of
+ * Holds the four localStorage-backed preferences as signals and the list of
  * tags the user has flagged `quickHide` server-side, and exposes the one
  * predicate every consumer filters through: {@link shouldHideChat}. Since v4
  * `c43d3b1b4` that is genuinely ONE rule — tags, then the Concierge's
@@ -57,8 +49,8 @@ export class QuickHideService {
   private readonly hiddenTagIdsSignal = signal<ReadonlySet<string>>(readActiveTags());
   private readonly hideDangerousChatsSignal = signal(readBooleanKey(HIDE_DANGEROUS_KEY));
   private readonly includeAutonomousRoomsSignal = signal(readBooleanKey(INCLUDE_AUTONOMOUS_KEY));
+  private readonly hideSalonImagesSignal = signal(readBooleanKey(HIDE_SALON_IMAGES_KEY));
   private readonly quickHideTagsSignal = signal<readonly QuickHideTag[]>([]);
-  private readonly hasDangerousChatsSignal = signal(false);
   private readonly loadingSignal = signal(true);
 
   /** Tags the user flagged `quickHide` (v4 `:51`, sourced at `:37-47`). */
@@ -69,68 +61,44 @@ export class QuickHideService {
   readonly hideDangerousChats = this.hideDangerousChatsSignal.asReadonly();
   /** v4 `:54` — the autonomous-rooms INCLUDE toggle (adds rows, not hides them). */
   readonly includeAutonomousRooms = this.includeAutonomousRoomsSignal.asReadonly();
+  /**
+   * v4 `hideSalonImages` (`e3937d7aa`, `quick-hide-provider.tsx:22-27`): when
+   * true, the Salon withholds every image it would paint — the story
+   * background, avatars in the transcript and the participant sidebar, and
+   * attached or embedded images. Off by default. The Salon hands it down
+   * through `IMAGES_HIDDEN` (`chat/hidden-image/images-hidden.ts`); nothing
+   * else reads it, so every other page keeps its images.
+   */
+  readonly hideSalonImages = this.hideSalonImagesSignal.asReadonly();
   /** v4 `:55` — true until the first tag load settles. */
   readonly loading = this.loadingSignal.asReadonly();
 
   /**
-   * v4 `sidebar-footer.tsx:145` `hasAnyHidden` — drives the menu-entry badge
-   * (an open eye when nothing is hidden, a struck-through eye when something is).
+   * v4 `sidebar-footer.tsx:144` `hasAnyHidden` — hidden tags, the danger
+   * filter, or (since `e3937d7aa`) the Salon Images switch. v4 feeds it to the
+   * footer quick-hide button's icon and title; v5 has no footer button (the
+   * quick-hide section lives inside the user menu, `shell/user-menu.ts`), so it
+   * is carried as v4's predicate, pinned by spec, for the surface that grows
+   * one.
+   *
+   * v4's sibling `hasQuickHideFeatures` is gone: since `e3937d7aa` it is
+   * `mounted` alone ("The Salon Images switch is always meaningful, so the
+   * quick-hide button is always offered"), and v5's client-only SPA has no
+   * pre-mount render — so the section is simply unconditional. The
+   * `chatsHasDangerous` probe that fed its third arm was retired with it (v4
+   * deleted `useHasDangerousChats` in `e3937d7aa` and the endpoint in
+   * `944127d9a`; the client half is P4.D223's, the server half P4.D220's).
    */
   readonly hasAnyHidden = computed(
-    () => this.hiddenTagIdsSignal().size > 0 || this.hideDangerousChatsSignal(),
+    () =>
+      this.hiddenTagIdsSignal().size > 0 ||
+      this.hideDangerousChatsSignal() ||
+      this.hideSalonImagesSignal(),
   );
-
-  /**
-   * v4 `sidebar-footer.tsx:144` `hasQuickHideFeatures` — whether the quick-hide
-   * affordance is worth showing at all. The third arm is v4's
-   * `useHasDangerousChats` probe, which `c43d3b1b4` re-based onto the uncensored
-   * ROW: the affordance appears when any chat is routed uncensored, not when
-   * any chat merely carries the label (shared contract §H).
-   *
-   * ACTIVATE-AT-UNIFY behind {@link CHATS_HAS_DANGEROUS_VERB_LANDED}. Until
-   * P4.D143's `chatsHasDangerous` verb is on the branch the probe never fires
-   * and this reads exactly as it did before — a named constant rather than a
-   * try/catch, because a swallowed dispatch failure looks identical to an
-   * honest `false` and would hide the arm forever after the flip.
-   */
-  readonly hasQuickHideFeatures = computed(() =>
-    quickHideFeaturesVisible(
-      this.quickHideTagsSignal().length > 0,
-      this.hideDangerousChatsSignal(),
-      this.hasDangerousChatsSignal(),
-    ),
-  );
-
-  /** v4 `useHasDangerousChats` — false until the §H probe answers. */
-  readonly hasDangerousChats = this.hasDangerousChatsSignal.asReadonly();
 
   constructor() {
     this.listenForCrossTabChanges();
     void this.refresh();
-    void this.refreshHasDangerousChats();
-  }
-
-  /**
-   * The §H probe (v4 `useHasDangerousChats`). Fail-soft, and SILENT: v4's hook
-   * swallows the failure in a bare `catch {}` whose whole body is the comment
-   * "Silently ignore — worst case the quick-hide button doesn't appear"
-   * (`components/hooks/use-has-dangerous-chats.ts:27-29`). v5 used to
-   * `console.warn` here — a v5 invention with no v4 counterpart, retired at
-   * P4.69. The answer stays `false`, which is what v5 did before the arm
-   * existed and what v4's `useState(false)` holds.
-   *
-   * NOT the same call as {@link refresh}: v4 warns on a failed TAG load
-   * (`quick-hide-provider.tsx:82`), and that warn is a faithful port — the two
-   * fail-soft paths deliberately differ, in v4 as here.
-   */
-  private async refreshHasDangerousChats(): Promise<void> {
-    if (!CHATS_HAS_DANGEROUS_VERB_LANDED) return;
-    try {
-      const data = await this.core.dispatchData({ type: 'chatsHasDangerous' });
-      this.hasDangerousChatsSignal.set(data['hasDangerous'] === true);
-    } catch {
-      this.hasDangerousChatsSignal.set(false);
-    }
   }
 
   /**
@@ -178,8 +146,16 @@ export class QuickHideService {
     writeBooleanKey(INCLUDE_AUTONOMOUS_KEY, next);
   }
 
+  /** v4 `toggleHideSalonImages` (`e3937d7aa`, `:199-201`). */
+  toggleHideSalonImages(): void {
+    const next = !this.hideSalonImagesSignal();
+    this.hideSalonImagesSignal.set(next);
+    writeBooleanKey(HIDE_SALON_IMAGES_KEY, next);
+  }
+
   /**
-   * v4 `clearAllHidden` (`:176-181`). Note what it does NOT reset:
+   * v4 `clearAllHidden` (`:176-181`; `e3937d7aa` adds the Salon Images reset,
+   * `:206`). Note what it does NOT reset:
    * `includeAutonomousRooms` is an "include" toggle (it ADDS items), not a
    * "hide" toggle, so Clear All Hidden deliberately spares it (v4 `:179-180`).
    */
@@ -187,6 +163,8 @@ export class QuickHideService {
     this.setHiddenTagIds(new Set());
     this.hideDangerousChatsSignal.set(false);
     writeBooleanKey(HIDE_DANGEROUS_KEY, false);
+    this.hideSalonImagesSignal.set(false);
+    writeBooleanKey(HIDE_SALON_IMAGES_KEY, false);
   }
 
   /**
@@ -242,7 +220,7 @@ export class QuickHideService {
 
   /**
    * v4 `:131-153` — the cross-tab `storage` listener. It does NOT come free with
-   * a signals port, so it is wired deliberately over all three keys.
+   * a signals port, so it is wired deliberately over all four keys.
    *
    * Faithful quirk: v4 guards each arm with `&& event.newValue`, so a key being
    * CLEARED (`newValue === null`) is ignored rather than reset to defaults.
@@ -258,6 +236,10 @@ export class QuickHideService {
       }
       if (event.key === INCLUDE_AUTONOMOUS_KEY && event.newValue) {
         this.includeAutonomousRoomsSignal.set(event.newValue === 'true');
+      }
+      // v4 `e3937d7aa` `:170-172`.
+      if (event.key === HIDE_SALON_IMAGES_KEY && event.newValue) {
+        this.hideSalonImagesSignal.set(event.newValue === 'true');
       }
     };
     window.addEventListener('storage', handler);

@@ -7,10 +7,11 @@ import { QuickHideService } from './quick-hide.service';
 import {
   ACTIVE_TAGS_KEY,
   HIDE_DANGEROUS_KEY,
+  HIDE_SALON_IMAGES_KEY,
   INCLUDE_AUTONOMOUS_KEY,
   parseActiveTags,
 } from './quick-hide.storage';
-import { quickHideFeaturesVisible, shouldHideByIds } from './should-hide';
+import { shouldHideByIds } from './should-hide';
 
 // ---------------------------------------------------------------------------
 // The pure predicate (v4 `quick-hide-provider.tsx:183-196`)
@@ -224,8 +225,76 @@ describe('QuickHideService', () => {
     });
   });
 
-  describe('the badge state (v4 sidebar-footer.tsx:144-145)', () => {
-    it('hasAnyHidden covers hidden tags OR the danger filter (v4 :145)', async () => {
+  /**
+   * v4 `e3937d7aa`'s `salon-images.test.tsx` — the four `QuickHideProvider`
+   * vectors, transcribed against v4's storage key and value bytes. v4 loads
+   * after mount; v5 reads eagerly (the file-level divergence above), so
+   * "restores a stored choice on load" seeds storage before construction.
+   */
+  describe('hideSalonImages (v4 e3937d7aa salon-images.test.tsx)', () => {
+    it('is the v4 storage key, byte for byte', () => {
+      expect(HIDE_SALON_IMAGES_KEY).toBe('quilltap.quickHide.hideSalonImages');
+    });
+
+    it('shows images by default', async () => {
+      stubStorage();
+      const service = await makeService();
+      expect(service.hideSalonImages()).toBe(false);
+    });
+
+    it('toggles and persists the choice to localStorage', async () => {
+      const store = stubStorage();
+      const service = await makeService();
+      service.toggleHideSalonImages();
+      expect(service.hideSalonImages()).toBe(true);
+      expect(store.get(HIDE_SALON_IMAGES_KEY)).toBe('true');
+
+      service.toggleHideSalonImages();
+      expect(service.hideSalonImages()).toBe(false);
+      expect(store.get(HIDE_SALON_IMAGES_KEY)).toBe('false');
+    });
+
+    it('restores a stored choice on load', async () => {
+      stubStorage({ [HIDE_SALON_IMAGES_KEY]: 'true' });
+      const service = await makeService();
+      expect(service.hideSalonImages()).toBe(true);
+    });
+
+    it("treats only the literal 'true' as truthy (v4 :127 `=== 'true'`)", async () => {
+      stubStorage({ [HIDE_SALON_IMAGES_KEY]: '1' });
+      const service = await makeService();
+      expect(service.hideSalonImages()).toBe(false);
+    });
+
+    it('is reset by Clear All Hidden (v4 :206)', async () => {
+      const store = stubStorage({ [HIDE_SALON_IMAGES_KEY]: 'true' });
+      const service = await makeService();
+      expect(service.hideSalonImages()).toBe(true);
+      service.clearAllHidden();
+      expect(service.hideSalonImages()).toBe(false);
+      expect(store.get(HIDE_SALON_IMAGES_KEY)).toBe('false');
+    });
+
+    it('adopts another tab’s write, and ignores a cleared key (v4 :170-172)', async () => {
+      stubStorage();
+      const service = await makeService();
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: HIDE_SALON_IMAGES_KEY, newValue: 'true' }),
+      );
+      expect(service.hideSalonImages()).toBe(true);
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: HIDE_SALON_IMAGES_KEY, newValue: null }),
+      );
+      expect(service.hideSalonImages()).toBe(true);
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: HIDE_SALON_IMAGES_KEY, newValue: 'false' }),
+      );
+      expect(service.hideSalonImages()).toBe(false);
+    });
+  });
+
+  describe('the badge state (v4 sidebar-footer.tsx:144)', () => {
+    it('hasAnyHidden covers hidden tags, the danger filter OR Salon Images (v4 e3937d7aa :144)', async () => {
       stubStorage();
       const service = await makeService([tag({ id: 'a', name: 'Alpha' })]);
       expect(service.hasAnyHidden()).toBe(false);
@@ -235,52 +304,18 @@ describe('QuickHideService', () => {
       expect(service.hasAnyHidden()).toBe(false);
       service.toggleHideDangerousChats();
       expect(service.hasAnyHidden()).toBe(true);
+      service.clearAllHidden();
+      expect(service.hasAnyHidden()).toBe(false);
+      service.toggleHideSalonImages();
+      expect(service.hasAnyHidden()).toBe(true);
     });
 
-    it('hasQuickHideFeatures is the three-way OR, third arm included (v4 :144, §H)', () => {
-      // The service can only reach two of the three today — the uncensored-row
-      // probe is gated ACTIVATE-AT-UNIFY on P4.D143's verb — so the rule is
-      // pinned where it lives rather than through a wire that cannot move.
-      expect(quickHideFeaturesVisible(false, false, false)).toBe(false);
-      expect(quickHideFeaturesVisible(true, false, false)).toBe(true);
-      expect(quickHideFeaturesVisible(false, true, false)).toBe(true);
-      expect(quickHideFeaturesVisible(false, false, true)).toBe(true);
-    });
-
-    it('hasQuickHideFeatures covers a flagged tag existing OR the danger filter (v4 :144)', async () => {
+    it('never dispatches the retired chatsHasDangerous probe (v4 e3937d7aa / 944127d9a)', async () => {
       stubStorage();
-      const withTag = await makeService([tag({ id: 'a', name: 'Alpha' })]);
-      expect(withTag.hasQuickHideFeatures()).toBe(true);
-
-      TestBed.resetTestingModule();
-      const bare = await makeService([]);
-      expect(bare.hasQuickHideFeatures()).toBe(false);
-      bare.toggleHideDangerousChats();
-      expect(bare.hasQuickHideFeatures()).toBe(true);
-    });
-  });
-
-  /**
-   * P4.69 — the two fail-soft paths log DIFFERENTLY, in v4 as here.
-   *
-   * v4's tag load warns (`quick-hide-provider.tsx:82` —
-   * `console.warn('Unable to load quick-hide tags', { error: … })`, the exact
-   * line v5 carries), but v4's `has-dangerous` probe is a bare `catch {}` whose
-   * whole body is the comment "Silently ignore — worst case the quick-hide
-   * button doesn't appear" (`use-has-dangerous-chats.ts:27-29`). v5 had invented
-   * a `console.warn` on the probe path; P4.69 retired it and pins both halves
-   * here, so neither can drift back.
-   */
-  describe('the fail-soft logging asymmetry (P4.69)', () => {
-    it('says NOTHING when the has-dangerous probe fails (v4 use-has-dangerous-chats.ts:27-29)', async () => {
-      stubStorage();
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-      // Every dispatch throws, so BOTH the constructor's probe and its tag load
-      // take their catch arms; `refresh()` is then driven explicitly below so
-      // the tags warn is accounted for separately.
+      const seen: string[] = [];
       const client: Partial<CoreClient> = {
         dispatchData: (async (req: { type: string }) => {
-          if (req.type === 'chatsHasDangerous') throw new Error('probe down');
+          seen.push(req.type);
           return { tags: [] };
         }) as unknown as CoreClient['dispatchData'],
       };
@@ -289,14 +324,18 @@ describe('QuickHideService', () => {
       });
       const service = TestBed.inject(QuickHideService);
       await service.refresh();
-      // The probe failed and the answer stayed false...
-      expect(service.hasDangerousChats()).toBe(false);
-      // ...and not a word about it. The tag load succeeded here, so ANY warn on
-      // this run is the retired invention.
-      expect(warn).not.toHaveBeenCalled();
-      warn.mockRestore();
+      // The constructor's load + the explicit one — tags only.
+      expect(seen).toEqual(['tagList', 'tagList']);
     });
+  });
 
+  /**
+   * The tag load's fail-soft warn is v4's own line. P4.69 also pinned the
+   * silence of the `has-dangerous` probe's catch; that case was RETIRED at
+   * P4.D223 because the probe itself is gone (v4 deleted `useHasDangerousChats`
+   * in `e3937d7aa`), so there is no second fail-soft path left to pin.
+   */
+  describe('the tag-load warn (v4 :82)', () => {
     it('still warns when the TAG load fails — that one is v4’s own line (v4 :82)', async () => {
       stubStorage();
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -309,17 +348,14 @@ describe('QuickHideService', () => {
         providers: [{ provide: CoreClient, useValue: client }],
       });
       const service = TestBed.inject(QuickHideService);
-      // The constructor fires BOTH the probe and a tag load, fire-and-forget;
-      // let them settle and start the count from zero so the assertion below
-      // measures exactly one `refresh()`.
+      // The constructor fires a tag load, fire-and-forget; let it settle and
+      // start the count from zero so the assertion below measures exactly one
+      // `refresh()`.
       await service.refresh();
       warn.mockClear();
 
       await service.refresh();
-      // Exactly one warn for one failed tag load — the tags one. If the probe's
-      // invented warn came back it would not appear here (the probe only runs
-      // in the constructor), which is why the count is pinned in the sibling
-      // case above and the CONTENT is pinned here.
+      // Exactly one warn for one failed tag load, with v4's content.
       expect(warn).toHaveBeenCalledTimes(1);
       expect(warn.mock.calls[0]?.[0]).toBe('Unable to load quick-hide tags');
       expect(warn.mock.calls[0]?.[1]).toEqual({ error: 'nope' });

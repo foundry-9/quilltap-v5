@@ -148403,6 +148403,79 @@ grew no oracle recorder, so nothing executed v4 code).
   dialog.md` (5,048 bytes at `b0b6656b5`) + the `bugs.md` row are the
   unifier's.
 
+### Unit 2 — `hideSalonImages` state + the menu button + the `chatsHasDangerous` client retirement (v4 `e3937d7aa` state/menu half; `944127d9a` client half)
+
+- **State (`quick-hide/quick-hide.storage.ts`, `quick-hide.service.ts`):**
+  `HIDE_SALON_IMAGES_KEY = 'quilltap.quickHide.hideSalonImages'` (v4
+  `quick-hide-provider.tsx:48`); the signal read EAGERLY with the file's
+  existing `readBooleanKey` (`=== 'true'` only — v4 `:127`; v5's recorded
+  eager-hydration divergence, a behavioural no-op in a client-only SPA,
+  covers the fourth key as it covers the other three); `toggleHideSalonImages`
+  writes `'true'`/`'false'` (v4 `:145`); the `storage` listener's fourth arm
+  with v4's `&& event.newValue` guard (`:170-172`); `clearAllHidden` resets
+  and writes `'false'` (`:206` — **the order's `:681` is a typo**; measured
+  at `e3937d7aa`); `hasAnyHidden` gains the third arm (v4
+  `sidebar-footer.tsx:144`).
+- **The section ALWAYS offered:** v4's `hasQuickHideFeatures = mounted`;
+  v5 has no pre-mount render (client-only SPA), so `shell/user-menu.ts`
+  mounts `<qt-quick-hide-menu-section />` unconditionally — measured, no
+  `mounted` notion exists. **Deleted:** `hasQuickHideFeatures`,
+  `hasDangerousChats` + its signal, `refreshHasDangerousChats` (and its
+  constructor call), `CHATS_HAS_DANGEROUS_VERB_LANDED`,
+  `should-hide.ts`'s `quickHideFeaturesVisible`, and
+  `core/core-contract.ts`'s `ChatsHasDangerousRequest` + its union member
+  (§S.1 — the client half; no replacement). `grep -rn
+  "chatsHasDangerous\|HasDangerous"` over `apps/web/src` + `e2e` now finds
+  only the retirement comments.
+- **The button** (`quick-hide-menu-section.ts`): the third Content Filter
+  after "Show Autonomous Rooms" — `qt-navbar-dropdown-item` (+ `-active`
+  when hidden), `title="Hide backgrounds, avatars and attached images in
+  the Salon"`, `<span class="text-sm">Salon Images</span>`, `eye-off` when
+  hidden / `eye` when shown, toggle THEN `visibilityChanged` (v4
+  `:61-64,:115-123`). `aria-pressed` follows the file's existing idiom.
+- **Tier 2 item 9 — `QuickHideIcon` DELETED (measured):** v4 mounts it on
+  a separate footer button (`sidebar-footer.tsx:289-303`, title
+  `Show`/`Hide`); v5 folded that popout into the user menu, whose trigger is
+  the profile avatar, and the only slot for a footer button is
+  `shell/shell.ts` — outside this lane's ownership. The twin had been
+  defined-and-never-mounted since P4.9d; a one-line comment at its old
+  site says why it is gone. `hasAnyHidden` is kept as v4's predicate
+  (spec-pinned) for the surface that grows a footer button.
+- **Specs:** `quick-hide.spec.ts` — v4 `salon-images.test.tsx`'s four
+  provider vectors (default shown; toggle ×2 persisting `'true'` then
+  `'false'`; stored `'true'` restores; Clear All Hidden resets) + the key
+  bytes + the `=== 'true'` rule + the cross-tab arm with its null guard; the
+  `hasAnyHidden` case grown its third arm; the three-way-OR and
+  "covers a flagged tag OR the danger filter" cases RETIRED with the gate;
+  **P4.69's "says NOTHING when the has-dangerous probe fails" RETIRED** — the
+  probe is gone, so there is no second fail-soft path to pin (its sibling,
+  the tag-load warn with v4's own `:82` content, stands); a NEW
+  "never dispatches the retired probe" case (the constructor + one
+  `refresh()` dispatch `['tagList', 'tagList']`, nothing else).
+  `quick-hide-menu-section.spec.ts` — the button's order, title, type,
+  class, polarity, stored-active read, and toggle-before-notify; the
+  `visibilityChanged` count 3 → 4; the `QuickHideIcon` describe removed with
+  the component. `user-menu.spec.ts` — the gate describe rewritten as
+  "always offered" (its `hides the section when there is no flagged tag`
+  case inverted) + a no-probe case.
+- **Mutations (each reverted by file backup, filter `QuickHide|UserMenu`
+  unless noted):**
+
+  | # | mutation | red |
+  |---|---|---|
+  | M1 | drop `clearAllHidden`'s Salon Images reset | 1 — "is reset by Clear All Hidden" |
+  | M2 | drop `hasAnyHidden`'s third arm | 1 — the `hasAnyHidden` case |
+  | M3 | drop the listener arm's `&& event.newValue` | 1 — the cross-tab case |
+  | M4 | emit before toggling in the handler | 1 — "toggles … BEFORE notifying" |
+  | M5 | the section hidden outright | 3 — every "offers the section" case |
+  | M5′ | re-gated on v5's old tag/danger predicate (filter `UserMenu`) | 1 — "offers the section with no flagged tag and nothing hidden" |
+
+- **e2e:** `concierge-marks-flow.spec.ts`'s header paragraph (the
+  "flip `CHATS_HAS_DANGEROUS_VERB_LANDED`… beat 2 cannot reach the toggle"
+  warning) rewritten — measured: beat 2's `toggleDangerousChats` helper
+  needs no change and no seed is dead (the Flagged/Uncensored chats are
+  what the toggle hides, not what reveals it).
+
 ## P4.D220 — the action-dispatch consolidation (web edges + core gates + the `has-dangerous` server half) — LANE RECORD (2026-09-24)
 
 Branch `claude/p4-d220-action-dispatch-web-edges-3ac7c5`, cut from `main`

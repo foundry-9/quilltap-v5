@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — feat(quick-hide): the Salon Images switch + the quick-hide section always offered; retire the chatsHasDangerous client probe (P4.D223)
+
+_Versions: SPA 0.5.763._
+
+Port of the state and menu half of v4 `e3937d7aa`. The quick-hide service
+gains `hideSalonImages`, stored under `quilltap.quickHide.hideSalonImages`
+as `'true'`/`'false'`, followed across tabs (ignoring a cleared key, as
+v4 does), reset by Clear All Hidden, and counted by `hasAnyHidden`. The
+user menu's Content Filters gain a third button, "Salon Images", with
+v4's title and eye polarity. The quick-hide section is now always shown,
+matching v4's `hasQuickHideFeatures = mounted`. That retires the
+`chatsHasDangerous` probe, the `hasDangerousChats` signal, the three-way
+`quickHideFeaturesVisible` gate, the `CHATS_HAS_DANGEROUS_VERB_LANDED`
+constant and the `ChatsHasDangerousRequest` contract member (the client
+half of v4 `944127d9a`; P4.D220 removes the server half). The unmounted
+`QuickHideIcon` twin is deleted: v5 has no footer quick-hide button to put
+it on. v4's four provider vectors are transcribed; five mutations each
+redden their target.
+
 #### 2026-09-24 — fix(chat-sidebar): the narrow-pane overlay predicate as v4's bug-169 twin (P4.D223)
 
 _Versions: SPA 0.5.762._

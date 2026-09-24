@@ -1,12 +1,13 @@
-import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, output } from '@angular/core';
 
 import { Icon } from '../ui/icon';
 import { QuickHideService } from './quick-hide.service';
 
 /**
  * The quick-hide toggle surface (v4
- * `components/dashboard/nav-user-menu-quick-hide.tsx`, 118 lines): one eye
- * button per flagged tag, then the two content filters.
+ * `components/dashboard/nav-user-menu-quick-hide.tsx`): one eye button per
+ * flagged tag, then the three content filters (the third, "Salon Images", from
+ * v4 `e3937d7aa`).
  *
  * Self-contained over {@link QuickHideService} so it can be dropped anywhere.
  * Work order P4.9d §2b: the unifier mounts this at lane P4.9c's marker inside
@@ -111,6 +112,24 @@ import { QuickHideService } from './quick-hide.service';
               class="w-4 h-4 flex-shrink-0"
             />
           </button>
+
+          <!-- v4 e3937d7aa :115-123 — the Salon Images switch. A HIDE toggle,
+               so it takes the "Dangerous Chats" polarity: a struck eye when
+               hidden. -->
+          <button
+            type="button"
+            class="qt-navbar-dropdown-item"
+            [class.qt-navbar-dropdown-item-active]="quickHide.hideSalonImages()"
+            [attr.aria-pressed]="quickHide.hideSalonImages()"
+            title="Hide backgrounds, avatars and attached images in the Salon"
+            (click)="onToggleSalonImages()"
+          >
+            <span class="text-sm">Salon Images</span>
+            <qt-icon
+              [name]="quickHide.hideSalonImages() ? 'eye-off' : 'eye'"
+              class="w-4 h-4 flex-shrink-0"
+            />
+          </button>
         </div>
       </div>
     }
@@ -136,21 +155,16 @@ export class QuickHideMenuSection {
     this.quickHide.toggleIncludeAutonomousRooms();
     this.visibilityChanged.emit();
   }
+
+  /** v4 `handleSalonImagesToggle` (`e3937d7aa`, `:61-64`): toggle, then notify. */
+  protected onToggleSalonImages(): void {
+    this.quickHide.toggleHideSalonImages();
+    this.visibilityChanged.emit();
+  }
 }
 
-/**
- * The menu-entry badge (v4 `QuickHideIcon`, `nav-user-menu-quick-hide.tsx:116`):
- * an open eye when nothing is hidden, a struck-through eye when something is.
- * Lane P4.9c's user menu consumes this alongside
- * `QuickHideService.hasAnyHidden` / `hasQuickHideFeatures`
- * (v4 `sidebar-footer.tsx:144-145`).
- */
-@Component({
-  selector: 'qt-quick-hide-icon',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
-  template: `<qt-icon [name]="hasHidden() ? 'eye-off' : 'eye'" />`,
-})
-export class QuickHideIcon {
-  readonly hasHidden = input.required<boolean>();
-}
+// v4's `QuickHideIcon` (the footer quick-hide button's open/struck eye) has no
+// v5 port: v4 mounts it on a separate footer button (`sidebar-footer.tsx:289-
+// 303`) that v5 folded into the user menu, whose trigger is the profile avatar.
+// The unmounted twin that stood here was deleted at P4.D223 — a footer button,
+// if one is ever wanted, is a `shell/shell.ts` surface.
