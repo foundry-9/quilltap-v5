@@ -1034,6 +1034,26 @@ describe('The builder dialogs — portaled to the body (v4 BaseModal)', () => {
     expect(document.querySelector('qt-save-scenario-dialog')).toBeNull();
   });
 
+  // The `DestroyRef` hook is what these two pin: toggling the `@if` removes the
+  // host through Angular's own view detach, so the "goes on close" cases above
+  // stay green without it. Destroying the PARENT view while the dialog is open
+  // removes only the parent's root nodes — the portaled host is no longer one
+  // of its descendants — so without the hook it would be orphaned on the body
+  // (the d1c06cd9d smalls unification).
+  it('the builder dialog leaves the body when its parent view is destroyed while open', async () => {
+    const fixture = await mount(BuilderPaneHost);
+    expect(document.querySelector('qt-scenario-builder-dialog')).toBeTruthy();
+    fixture.destroy();
+    expect(document.querySelector('qt-scenario-builder-dialog')).toBeNull();
+  });
+
+  it('the save dialog leaves the body when its parent view is destroyed while open', async () => {
+    const fixture = await mount(SavePaneHost);
+    expect(document.querySelector('qt-save-scenario-dialog')).toBeTruthy();
+    fixture.destroy();
+    expect(document.querySelector('qt-save-scenario-dialog')).toBeNull();
+  });
+
   it('within the builder, the save dialog is the builder’s SIBLING on the body, not its child', async () => {
     const r = await render();
     r.fake.buildFrames.push([{ done: true, scenario: 'Rain on the cobbles.' }]);
