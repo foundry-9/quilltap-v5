@@ -114,6 +114,14 @@ interface CaseSpec {
    * post-call re-read is the only thing that can see it.
    */
   midFlightRename?: boolean;
+  /**
+   * P4.112: the chat row is DELETED while the cheap-LLM call is in flight
+   * (raw `DELETE FROM chats` — the same statement both sides, so the arm
+   * isolates the chokepoint rather than any delete cascade). The chokepoint's
+   * post-call re-read finds nothing: `applyAutoTitle`'s `missing` outcome,
+   * which writes NOTHING — not even the `extraPatch` cursor.
+   */
+  deleteInFlight?: boolean;
 }
 
 /** The hand rename `midFlightRename` plants (both sides write these bytes). */
@@ -314,6 +322,9 @@ function buildCases(): CaseSpec[] {
     // nothing. (The up-front `isManuallyRenamed` gate read the chat BEFORE the
     // rename, so only the re-read can catch it.)
     { name: 'renamed_mid_flight', chat: (s) => s.chatTitleId, midFlightRename: true },
+    // P4.112 — the chat vanishes during the LLM call: the chokepoint's
+    // `missing` arm (the job discards the outcome, as v4's handler does).
+    { name: 'deleted_mid_flight', chat: (s) => s.chatTitleId, deleteInFlight: true },
   ];
 }
 
@@ -349,6 +360,10 @@ function applyMocks(spec: Spec, c: CaseSpec): void {
               title: MID_FLIGHT_TITLE,
               isManuallyRenamed: true,
             } as never);
+          }
+          if (c.deleteInFlight) {
+            const { rawQuery } = await import('@/lib/database/manager');
+            await rawQuery(`DELETE FROM chats WHERE id = '${c.chat(spec)}'`);
           }
           const system = params.messages.find((m) => m.role === 'system')?.content ?? '';
           const key = keyForSystemPrompt(system);
@@ -431,7 +446,10 @@ async function dumpState(chatId: string): Promise<unknown> {
   const repos = getRepositories();
 
   const chat = (await repos.chats.findById(chatId)) as Record<string, unknown> | null;
-  const messages = chat ? ((await repos.chats.getMessages(chatId)) as Array<Record<string, unknown>>) : [];
+  // P4.112: read unconditionally — `getMessages` queries by `chatId` and never
+  // consults the chat row, so a chat deleted mid-job still shows any event
+  // the job wrote for it (the `deleted_mid_flight` comparand).
+  const messages = (await repos.chats.getMessages(chatId)) as Array<Record<string, unknown>>;
   const jobs = (await new BackgroundJobsRepository().findAll()) as Array<Record<string, unknown>>;
 
   return {

@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(title-update): the job's missing arm — a chat deleted during the title call writes nothing and logs the vanished line (P4.112 unit 4)
+
+_Versions: harness 0.0.934._
+
+`title_update_tier3` grows `deleted_mid_flight`: the canned provider
+deletes the chat row (the same raw `DELETE FROM chats` on both sides)
+before it answers, so the auto-title chokepoint's re-read finds nothing
+and returns `missing`. Both sides complete without error, write the
+TITLE_GENERATION event for the vanished chat id, and queue no background
+job. v5 already matched (the job discards the outcome, as v4 does), so
+there is no red-first. Both dumps now read the chat's events whether or
+not the chat row survives; the 22 existing oracle rows are unchanged. A
+capture test pins `[Auto Title] Chat vanished before title could be
+applied` (DEBUG, `source=title-check`) on the deleted arm and its absence
+on the hand-rename and ordinary-rename arms.
+
 #### 2026-09-23 — fix(db): get_messages skips v4's Zod-only row failures — a bad role, a non-uuid id, a malformed hostEvent — with the corrupted-row WARN (P4.112 unit 3)
 
 _Versions: core 0.0.1015, harness 0.0.933._

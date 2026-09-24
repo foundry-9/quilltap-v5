@@ -146747,3 +146747,33 @@ result id, not a row). The census is unmoved (no call site added).
 went red ONCE in a filtered run and is green 3/3 by name and in the full core
 run — it never reaches `get_messages`; the thread-scoped `captured` +
 `Interest` race shape. Recorded, not this lane's.
+
+### Unit 4 — the title-update job's `missing` arm (Tier 1 item 1)
+
+**Measured first:** v5 `title_update_job.rs` already discards
+`apply_auto_title`'s outcome with no separate write after it, and the
+chokepoint's `missing` arm returns before `write_extra_only` — v4's shape
+(`title-update.ts:221-230`, `auto-title.ts:60-63`). So no red-first and no
+source change to `title_update_job.rs`. The arm: `deleted_mid_flight` — the
+canned provider runs `DELETE FROM chats WHERE id = …` (raw, identical both
+sides, isolating the chokepoint from any delete-cascade parity) before it
+answers. Both dumps now read the chat's events UNCONDITIONALLY (`getMessages`
+queries by `chatId`, never the chat row), so the comparand sees what the job
+wrote for the vanished id: v4 = `{chat: null, systemEvents: [the
+TITLE_GENERATION event, 42/11/53 tokens], jobs: []}`, no throw; v5 identical.
+The 22 pre-existing oracle rows are byte-identical to the baseline regen
+(neutrality of the dump change). Capture pin
+`chat_vanished_debug_fires_only_when_the_chat_is_deleted_mid_flight`: the
+DEBUG `[Auto Title] Chat vanished before title could be applied` with
+`source=title-check` + `chatId`, beside the decided-to-rename INFO, and with
+none of retitled / unchanged / hand-rename / queued; silent on a mid-flight
+hand rename and on an ordinary rename. **Mutations:** the job turning
+`missing` into `Err` → RED (the differential's throw row + the capture test);
+the vanished line's text changed → RED (the capture test). **SURVIVED, by
+construction — a finding, recorded, no fix possible:** a cursor write added
+after the chokepoint (`advance_cursor` on every outcome) is invisible — on
+the `missing` arm the row is gone, and `ChatsRepository::update` answers
+`Ok(false)` before any SQL or publish (v4's `_update` → `null` likewise), so
+"writes nothing, not even the cursor" and "attempts the cursor write" cannot
+be told apart by any row, hint or log line on either side. The arm pins every
+observable effect instead.

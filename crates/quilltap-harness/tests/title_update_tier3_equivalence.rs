@@ -119,6 +119,10 @@ struct CannedTitleProvider {
     /// fields through v4's real `chats.update` (stamping the frozen clock, as
     /// v4's repository does when no `updatedAt` is given).
     mid_flight: Option<(Db, String, String)>,
+    /// P4.112: the chat row DELETED inside the canned call — the oracle's
+    /// `deleteInFlight`, the same raw `DELETE FROM chats` on both sides, so
+    /// the chokepoint's re-read finds nothing (its `missing` outcome).
+    delete_in_flight: Option<(Db, String)>,
 }
 
 /// The hand rename `mid_flight` plants (the oracle's `MID_FLIGHT_TITLE`).
@@ -157,6 +161,17 @@ impl CompletionProvider for CannedTitleProvider {
             })
             .await
             .expect("plant the mid-flight rename");
+        }
+        if let Some((db, chat_id)) = &self.delete_in_flight {
+            let cid = chat_id.clone();
+            db.write(move |w| {
+                w.main()
+                    .connection()
+                    .execute("DELETE FROM chats WHERE id = ?1", [&cid])?;
+                Ok(())
+            })
+            .await
+            .expect("delete the chat mid-flight");
         }
         let system = params
             .messages
@@ -227,8 +242,11 @@ fn dump_state(db: &Db, chat_id: &str) -> Value {
             None => Value::Null,
         };
 
+        // P4.112: read unconditionally, as the oracle does — `get_messages`
+        // queries by `chatId` and never consults the chat row, so a chat
+        // deleted mid-job still shows the event the job wrote for it.
         let mut events: Vec<Value> = Vec::new();
-        if chat.is_some() {
+        {
             for m in quilltap_core::db::chats_messages_read::get_messages(conn, &cid)? {
                 if m.get("type").and_then(Value::as_str) != Some("system")
                     || m.get("systemEventType").and_then(Value::as_str) != Some("TITLE_GENERATION")
@@ -541,6 +559,19 @@ fn title_update_matches_oracle() {
             false,
             "",
         ),
+        // P4.112: the chat vanishes during the LLM call (deleted by the
+        // provider — see `delete_in_flight`). The chokepoint's `missing` arm
+        // writes NOTHING, not even the cursor its extra patch carries, and
+        // the job discards the outcome — so no row moves but the TITLE_
+        // GENERATION event the handler wrote before the chokepoint.
+        (
+            "deleted_mid_flight",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            None,
+            false,
+            "",
+        ),
     ];
     let now_iso = quilltap_core::clock::iso_from_unix_ms(spec.frozen_now_ms);
     // Shape, not a hand-written count: every oracle row is driven, and only those.
@@ -561,6 +592,8 @@ fn title_update_matches_oracle() {
             throw_message: throw_message.to_string(),
             mid_flight: (name == "renamed_mid_flight")
                 .then(|| (db.clone(), chat_id.to_string(), now_iso.clone())),
+            delete_in_flight: (name == "deleted_mid_flight")
+                .then(|| (db.clone(), chat_id.to_string())),
         };
         let executor = CheapLlmTaskExecutor::new();
         let payload = TitleUpdatePayload {
@@ -663,6 +696,7 @@ fn title_update_runner_registration_e2e() {
                 throws: false,
                 throw_message: String::new(),
                 mid_flight: None,
+                delete_in_flight: None,
             },
             executor: CheapLlmTaskExecutor::new(),
             cost: NoMessageCost,
@@ -809,6 +843,7 @@ fn capture_replies(
                 throws,
                 throw_message: "canned provider failure".to_string(),
                 mid_flight: None,
+                delete_in_flight: None,
             };
             let payload = TitleUpdatePayload {
                 chat_id: chat_id.to_string(),
@@ -1249,6 +1284,7 @@ fn renamed_by_hand_debug_fires_only_on_a_mid_flight_rename() {
                 throws: false,
                 throw_message: String::new(),
                 mid_flight: mid_flight.then(|| (db.clone(), chat_id.to_string(), now_iso.clone())),
+                delete_in_flight: None,
             };
             let payload = TitleUpdatePayload {
                 chat_id: chat_id.to_string(),
@@ -1295,4 +1331,82 @@ fn renamed_by_hand_debug_fires_only_on_a_mid_flight_rename() {
     let lines = drive("hand_debug_silent", &spec.chat_title_id, false);
     none(&lines, "renamed by hand");
     one(&lines, "[Auto Title] Chat retitled");
+}
+
+/// v4 `auto-title.ts:60-63` — the chokepoint's `missing` arm: the chat is gone
+/// when the post-call re-read runs, so it DEBUGs `[Auto Title] Chat vanished
+/// before title could be applied` `{ chatId, source }` and writes nothing (the
+/// differential's `deleted_mid_flight` holds the rows). Reached from the job
+/// ONLY through a deletion during the LLM call — the job's own up-front read
+/// fails the job on a chat that is already gone (`chat_missing`).
+#[test]
+fn chat_vanished_debug_fires_only_when_the_chat_is_deleted_mid_flight() {
+    global_capture::install();
+    let spec = read_spec();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let now_iso = quilltap_core::clock::iso_from_unix_ms(spec.frozen_now_ms);
+    const VANISHED: &str = "[Auto Title] Chat vanished before title could be applied";
+    let drive = |tag: &str, vanish: bool, rename: bool| -> Vec<String> {
+        let db = fresh_db(tag);
+        let chat_id = spec.chat_title_id.clone();
+        let ((), out) = global_capture::capture(|| {
+            let provider = CannedTitleProvider {
+                canned: spec.canned_titles.clone(),
+                override_reply: None,
+                throws: false,
+                throw_message: String::new(),
+                mid_flight: rename.then(|| (db.clone(), chat_id.clone(), now_iso.clone())),
+                delete_in_flight: vanish.then(|| (db.clone(), chat_id.clone())),
+            };
+            let payload = TitleUpdatePayload {
+                chat_id: chat_id.clone(),
+                connection_profile_id: spec.connection_profile_id.clone(),
+                current_interchange: 5.0,
+            };
+            rt.block_on(handle_title_update(
+                &db,
+                &provider,
+                &CheapLlmTaskExecutor::new(),
+                &NoMessageCost,
+                &spec.user_enabled_id,
+                &payload,
+                spec.frozen_now_ms,
+            ))
+            .expect("the job completes — v4 discards the outcome");
+        });
+        out
+    };
+
+    // (a) The chat vanishes mid-call: the job still decided to rename (the
+    //     decided-to-rename INFO fires), the chokepoint finds nothing.
+    let lines = drive("vanished_debug", true, false);
+    one(&lines, "needsNewTitle: true");
+    let vanished = one(&lines, VANISHED);
+    assert!(vanished.starts_with("DEBUG "), "{vanished}");
+    assert!(vanished.contains("source=title-check"), "{vanished}");
+    assert!(
+        vanished.contains(&format!("chatId={}", spec.chat_title_id)),
+        "{vanished}"
+    );
+    for sibling in [
+        "[Auto Title] Chat retitled",
+        "[Auto Title] Title unchanged",
+        "renamed by hand",
+        "Queued story background generation",
+    ] {
+        none(&lines, sibling);
+    }
+
+    // (b) A mid-flight hand rename takes its own arm, never this one.
+    let lines = drive("vanished_debug_silent_rename", false, true);
+    one(&lines, "renamed by hand");
+    none(&lines, VANISHED);
+
+    // (c) An ordinary rename never says the chat vanished.
+    let lines = drive("vanished_debug_silent", false, false);
+    one(&lines, "[Auto Title] Chat retitled");
+    none(&lines, VANISHED);
 }
