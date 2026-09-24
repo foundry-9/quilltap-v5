@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): driftcheck — v4 seven commits past the d1c06cd9d baseline
+
+_Docs-only change._
+
+Re-ran the drift check after the morning's ledger went stale. v4 `origin/main`
+is at `ad1c4c37f` (`4.10.0-dev.74`), seven commits past the baseline; the
+local v4 checkout is clean but one commit behind origin. New rows:
+`492771aff` (bugs 167/168 — help docs indexed by section and reconciled at
+startup; bug 168 is dogfood #120 fixed upstream), `94e946728` (this port's
+bug-169 filing, docs-only), and `ad1c4c37f` (one `?action=` dispatcher: an
+unknown or bare `?action=` is now a 400 on every route, plus two data-layer
+changes v5 ported). `944127d9a`'s error string is superseded by `ad1c4c37f`.
+Regen rule stays PIN REQUIRED at `d1c06cd9d`.
+
 #### 2026-09-24 — fix(chat-sidebar): a click inside a portaled dialog no longer collapses the narrow-pane overlay
 
 _Versions: SPA 0.5.761._
