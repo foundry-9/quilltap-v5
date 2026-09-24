@@ -104,8 +104,13 @@ enum Op {
         #[serde(rename = "sourceMessageId")]
         source_message_id: String,
     },
-    #[serde(rename = "deleteBySourceMessageIds")]
-    DeleteBySourceMessageIds { ids: Vec<String> },
+    /// v4 `ad1c4c37f` deletes `deleteBySourceMessageIds` as dead code (v5
+    /// never had a production caller either — retired, not ported). Catches
+    /// that tag (and any other future-unknown one) as a no-op so the
+    /// committed fixture's final op still deserializes unchanged
+    /// (§R.7/no-fixture-edit).
+    #[serde(other)]
+    Retired,
 }
 
 #[derive(Deserialize)]
@@ -329,10 +334,7 @@ fn memories_tier2_matches_oracle() {
                     repo.delete_by_source_message_id(source_message_id)
                         .expect("deleteBySourceMessageId");
                 }
-                Op::DeleteBySourceMessageIds { ids } => {
-                    repo.delete_by_source_message_ids(ids)
-                        .expect("deleteBySourceMessageIds");
-                }
+                Op::Retired => {}
             }
         }
     }

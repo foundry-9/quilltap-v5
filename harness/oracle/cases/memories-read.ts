@@ -91,8 +91,15 @@ async function main(): Promise<void> {
   await initializeDatabase();
   const repo = new MemoriesRepository();
 
+  // v4 `ad1c4c37f` deletes `findByKeywords` + `findByAboutCharacterId` as dead
+  // code (v5 never had a production caller either — retired, not ported). The
+  // committed fixture keeps their rows (§R.7/no-fixture-edit); skip them here
+  // rather than crash on the deleted methods.
+  const retiredKinds = new Set(['findByKeywords', 'findByAboutCharacterId']);
+  const queries = spec.queries.filter((q) => !retiredKinds.has(q.kind));
+
   const results: Array<{ kind: string; result: unknown }> = [];
-  for (const q of spec.queries) {
+  for (const q of queries) {
     let result: unknown;
     switch (q.kind) {
       case 'findById':
@@ -131,9 +138,6 @@ async function main(): Promise<void> {
           source: q.source as 'AUTO' | 'MANUAL' | undefined,
           minImportance: q.minImportance,
         });
-        break;
-      case 'findByKeywords':
-        result = await repo.findByKeywords(q.characterId as string, q.keywords as string[]);
         break;
       case 'searchByContent':
         result = await repo.searchByContent(q.characterId as string, q.query as string);
@@ -175,9 +179,6 @@ async function main(): Promise<void> {
         break;
       case 'findBySourceMessageId':
         result = await repo.findBySourceMessageId(q.sourceMessageId as string);
-        break;
-      case 'findByAboutCharacterId':
-        result = await repo.findByAboutCharacterId(q.aboutCharacterId as string);
         break;
       case 'findMemoriesWithText':
         result = await repo.findMemoriesWithText(

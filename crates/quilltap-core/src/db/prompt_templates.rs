@@ -3,14 +3,16 @@
 //! `lib/database/repositories/prompt-templates.repository.ts` (+ the
 //! `_create`/`_update`/`_delete` internals of `base.repository.ts`).
 //!
-//! Scope: `create`, `update`, `delete`, and (since P4.83) the three READS
-//! v4's routes call — [`find_all_for_user`], [`find_built_in`] and
-//! [`find_by_id`] — plus [`built_in_name_exists`], the lookup v4's
-//! `seedSamplePrompts` uses to decide whether a sample prompt is already on
-//! file. (The seeding itself is
+//! Scope: `create`, `update`, `delete`, and (since P4.83) the two READS v4's
+//! routes call — [`find_all_for_user`] and [`find_by_id`] — plus
+//! [`built_in_name_exists`], the lookup v4's `seedSamplePrompts` uses to
+//! decide whether a sample prompt is already on file. (The seeding itself is
 //! [`crate::services::builtin_prompt_templates`]. The header used to say
 //! seeding "is a startup concern, not a CRUD op": that was wrong about v4 —
-//! v4 seeds LAZILY, from inside these very reads.)
+//! v4 seeds LAZILY, from inside these very reads.) `findBuiltIn` — v4's own
+//! routes never called it either — was deleted at v4 `ad1c4c37f`; v5's
+//! `find_built_in` twin had no production caller and is retired with it
+//! (P4.D221).
 //! `prompt_templates` uses the plain `AbstractBaseRepository`
 //! because `userId` is nullable (built-in templates have `userId = null`). It
 //! widens the tier-2 marshaling surface past `text_replacement_rules` with:
@@ -467,23 +469,6 @@ pub fn find_all_for_user(
     let sql = format!("{SELECT_COLUMNS} WHERE (isBuiltIn = 1 OR userId = ?1)");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![user_id], raw_row)?;
-    let mut out = Vec::new();
-    for r in rows {
-        if let Some(rec) = validate_safe(r?) {
-            out.push(rec);
-        }
-    }
-    Ok(out)
-}
-
-/// v4 `promptTemplates.findBuiltIn()` (`:204-217`) — `findByFilter({isBuiltIn:
-/// true})`, same no-`ORDER BY` rowid order. (v4's own routes do not call it;
-/// it is the sibling read the seeding site is shared with, and the `.qtap`
-/// exporter's natural entry point.)
-pub fn find_built_in(conn: &Connection) -> Result<Vec<PromptTemplateRecord>, DbError> {
-    let sql = format!("{SELECT_COLUMNS} WHERE isBuiltIn = 1");
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map([], raw_row)?;
     let mut out = Vec::new();
     for r in rows {
         if let Some(rec) = validate_safe(r?) {

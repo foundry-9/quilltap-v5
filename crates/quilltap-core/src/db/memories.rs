@@ -432,19 +432,6 @@ impl<'c> MemoriesRepository<'c> {
         Ok(n as i64)
     }
 
-    /// `deleteBySourceMessageIds` — `deleteMany({ sourceMessageId: { $in } })`;
-    /// empty → 0.
-    pub fn delete_by_source_message_ids(&self, ids: &[String]) -> Result<i64, DbError> {
-        if ids.is_empty() {
-            return Ok(0);
-        }
-        let placeholders = (0..ids.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
-        let sql = format!("DELETE FROM memories WHERE sourceMessageId IN ({placeholders})");
-        let p: Vec<&dyn ToSql> = ids.iter().map(|s| s as &dyn ToSql).collect();
-        let n = self.conn.execute(&sql, p.as_slice())?;
-        Ok(n as i64)
-    }
-
     /// `replaceInMemories` — for each id, literal substring replace across
     /// content / summary / keywords (`split(search).join(replace)` = replace
     /// ALL); only `update`s a memory if something changed. Returns the ids of

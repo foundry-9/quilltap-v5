@@ -6,12 +6,14 @@
 //!
 //! Scope: `create`, `update`, and `delete` (the three abstract methods over the
 //! base repo). The custom query / mutation helpers — `findActiveForChat`,
-//! `findOpenForChat`, `findByChatId`, `findRecentForChat`, `findRecentAcrossChats`,
+//! `findOpenForChat`, `findByChatId`, `findRecentAcrossChats`,
 //! `openDocument`, `closeDocumentById`, `closeDocument`, `renameFilePath`,
 //! `renameFilePathInStore`, `renameFolderPathInStore`, `deleteByChatId` — are out
 //! of scope here. v4's `update` strips `id` and `createdAt` before `_update`,
 //! which is a no-op for this port since we preserve both anyway. There is **no
-//! built-in guard** (unlike `prompt_templates`).
+//! built-in guard** (unlike `prompt_templates`). (`findRecentForChat` — v5's
+//! `find_recent_for_chat` twin — was deleted at v4 `ad1c4c37f` as dead code;
+//! v5 never had a production caller either and retires it with v4, P4.D221.)
 //!
 //! ## What this repo banks for the tier-2 marshaling surface
 //!
@@ -480,24 +482,6 @@ impl<'c> ChatDocumentsRepository<'c> {
         Ok(rows)
     }
 
-    /// v4 `findRecentForChat` (`chat-documents.repository.ts:117`): the inactive
-    /// rows for a chat, most-recently-updated first, capped at `limit`.
-    pub fn find_recent_for_chat(
-        &self,
-        chat_id: &str,
-        limit: usize,
-    ) -> Result<Vec<ChatDocumentFull>, DbError> {
-        let mut rows: Vec<ChatDocumentFull> = self
-            .find_by_chat_id_full(chat_id)?
-            .into_iter()
-            .filter(|r| !r.is_active)
-            .collect();
-        // updatedAt DESC; stable (JS Array.sort) so ties keep rowid order.
-        rows.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-        rows.truncate(limit);
-        Ok(rows)
-    }
-
     /// v4 `findRecentAcrossChats` (`chat-documents.repository.ts:139`): every row
     /// across ALL chats, most-recently-updated first, capped at `limit`. Callers
     /// over-fetch, then dedupe by file identity + re-rank current-chat-first.
@@ -812,51 +796,6 @@ mod tests {
         assert_eq!(
             recent.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
             ["d2", "d3"]
-        );
-    }
-
-    #[test]
-    fn find_recent_for_chat_inactive_only() {
-        let conn = setup();
-        insert(
-            &conn,
-            "d1",
-            "c1",
-            "a.md",
-            "general",
-            None,
-            true,
-            "t",
-            "2026-01-05T00:00:00.000Z",
-        );
-        insert(
-            &conn,
-            "d2",
-            "c1",
-            "b.md",
-            "general",
-            None,
-            false,
-            "t",
-            "2026-01-04T00:00:00.000Z",
-        );
-        insert(
-            &conn,
-            "d3",
-            "c1",
-            "c.md",
-            "general",
-            None,
-            false,
-            "t",
-            "2026-01-06T00:00:00.000Z",
-        );
-        let repo = ChatDocumentsRepository::new(&conn);
-        let recent = repo.find_recent_for_chat("c1", 5).unwrap();
-        // Inactive only, newest-updated first: d3 then d2.
-        assert_eq!(
-            recent.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
-            ["d3", "d2"]
         );
     }
 

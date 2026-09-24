@@ -120,7 +120,11 @@ async function main(): Promise<void> {
         await repo.deleteBySourceMessageId(op.sourceMessageId as string);
         break;
       case 'deleteBySourceMessageIds':
-        await repo.deleteBySourceMessageIds(op.ids as string[]);
+        // v4 `ad1c4c37f` deletes `deleteBySourceMessageIds` as dead code (v5
+        // never had a production caller either — retired, not ported). The
+        // committed fixture keeps its final op unchanged (§R.7/no-fixture-
+        // edit); no-op here (matching the Rust side's retirement) rather than
+        // call the deleted method.
         break;
       default:
         throw new Error(`unknown op kind: ${op.kind}`);

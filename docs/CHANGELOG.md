@@ -12,6 +12,37 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — refactor(db): retire six read/delete methods v4 deleted as dead code (P4.D221, v4 `ad1c4c37f`)
+
+_Versions: core 0.0.1048, harness 0.0.966._
+
+`ad1c4c37f` deletes 33 v4 repository methods as unreachable dead code.
+Six had a v5 Rust twin; a production-caller census (`rg` across
+`crates/`, excluding test/harness code) found none of the six ever had
+one — each was reachable only from its own oracle case, harness
+equivalence test, or (for two of them) a v5-only unit test. Per the
+work order's rule (v4 is the oracle; a method v4 deleted as dead has no
+oracle path), all six retire:
+
+- `characters_read::find_llm_controlled`, `memories_read::find_by_keywords`,
+  `memories_read::find_by_about_character_id`,
+  `memories::delete_by_source_message_ids` — each had an oracle case
+  driving the now-deleted v4 method directly
+  (`characters-read.ts`/`memories-read.ts`/`memories-tier2.ts`). The
+  committed corpus fixtures keep their rows unchanged (a retired row is
+  a case-file/harness-test edit, not a fixture edit): the oracle cases
+  now filter the retired query kinds before emitting, the harness tests
+  filter the same kinds before comparing, and `memories-tier2`'s mutation
+  op sequence gains a `#[serde(other)]` catch-all variant so its
+  committed final op still deserializes as a no-op. All three families
+  regenerated at the target pin and green (`characters_read` 11 → 10
+  rows, `memories_read` 40 → 38 rows, `memories_tier2`'s single dump
+  unaffected since the retired op was last in the sequence).
+- `chat_documents::find_recent_for_chat`, `prompt_templates::find_built_in`
+  — no oracle case ever imported either deleted symbol directly (their
+  callers were v5-only unit tests); retired along with their tests and
+  the stale module-doc mentions.
+
 #### 2026-09-24 — docs(fts-query): rename the `escapeLikePattern` fold target to `escapeLikeLiteral` (P4.D221, v4 `ad1c4c37f`)
 
 _Versions: core 0.0.1047._

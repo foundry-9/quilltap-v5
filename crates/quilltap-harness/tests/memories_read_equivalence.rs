@@ -60,8 +60,6 @@ struct Query {
     #[serde(default)]
     ids: Option<Vec<String>>,
     #[serde(default)]
-    keywords: Option<Vec<String>>,
-    #[serde(default)]
     query: Option<String>,
     #[serde(default, rename = "searchText")]
     search_text: Option<String>,
@@ -143,10 +141,6 @@ fn run_query(writer: &Writer, q: &Query) -> Value {
                 .expect("findByCharacterIdPaginated");
             json!({ "memories": page, "totalCount": total })
         }
-        "findByKeywords" => Value::Array(
-            mr::find_by_keywords(conn, cid(), q.keywords.as_ref().unwrap())
-                .expect("findByKeywords"),
-        ),
         "searchByContent" => Value::Array(
             mr::search_by_content(conn, cid(), q.query.as_deref().unwrap())
                 .expect("searchByContent"),
@@ -198,10 +192,6 @@ fn run_query(writer: &Writer, q: &Query) -> Value {
         "findBySourceMessageId" => Value::Array(
             mr::find_by_source_message_id(conn, q.source_message_id.as_deref().unwrap())
                 .expect("findBySourceMessageId"),
-        ),
-        "findByAboutCharacterId" => Value::Array(
-            mr::find_by_about_character_id(conn, q.about_character_id.as_deref().unwrap())
-                .expect("findByAboutCharacterId"),
         ),
         "findMemoriesWithText" => Value::Array(
             mr::find_memories_with_text(
@@ -320,13 +310,25 @@ fn memories_read_matches_oracle() {
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open: {e}"));
 
+    // v4 `ad1c4c37f` deleted `findByKeywords` + `findByAboutCharacterId` as
+    // dead code (v5 never had a production caller either — retired, not
+    // ported). The committed fixture keeps their rows unchanged; skip them
+    // here, matching the oracle case's own filter, rather than call the
+    // retired methods.
+    let retired = ["findByKeywords", "findByAboutCharacterId"];
+    let queries: Vec<&Query> = spec
+        .queries
+        .iter()
+        .filter(|q| !retired.contains(&q.kind.as_str()))
+        .collect();
+
     assert_eq!(
-        spec.queries.len(),
+        queries.len(),
         oracle.queries.len(),
         "query count: spec vs oracle"
     );
 
-    for (i, q) in spec.queries.iter().enumerate() {
+    for (i, q) in queries.iter().enumerate() {
         let got = run_query(&writer, q);
         let oq = &oracle.queries[i];
         assert_eq!(oq.kind, q.kind, "query {i}: kind mismatch");
@@ -343,6 +345,6 @@ fn memories_read_matches_oracle() {
     let _ = std::fs::remove_file(&work);
     eprintln!(
         "OK: memories read matched oracle ({} queries).",
-        spec.queries.len()
+        queries.len()
     );
 }

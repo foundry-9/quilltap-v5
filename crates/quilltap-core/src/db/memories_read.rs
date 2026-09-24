@@ -461,31 +461,6 @@ fn memory_matches_search(m: &Value, needle_lower: &str) -> bool {
         })
 }
 
-/// `findByKeywords` — `{ characterId, keywords: { $in } }`; `keywords` is a JSON
-/// column so `$in` lowers to `EXISTS(json_each … value IN (…))`.
-pub fn find_by_keywords(
-    conn: &Connection,
-    character_id: &str,
-    keywords: &[String],
-) -> Result<Vec<Value>, DbError> {
-    if keywords.is_empty() {
-        return Ok(Vec::new());
-    }
-    let placeholders = (0..keywords.len())
-        .map(|_| "?")
-        .collect::<Vec<_>>()
-        .join(", ");
-    let where_order = format!(
-        "WHERE characterId = ? AND EXISTS (SELECT 1 FROM json_each(keywords) WHERE value IN ({placeholders}))"
-    );
-    let mut params: Vec<&dyn ToSql> = Vec::with_capacity(1 + keywords.len());
-    params.push(&character_id);
-    for k in keywords {
-        params.push(k);
-    }
-    query_memories(conn, &where_order, &params)
-}
-
 /// `searchByContent` — `{ characterId, $or:[{content:{$regex}},{summary:{$regex}}] }`.
 pub fn search_by_content(
     conn: &Connection,
@@ -685,13 +660,6 @@ pub fn find_by_character_and_source_message_ids(
         &format!("WHERE characterId = ?1 AND sourceMessageId IN ({placeholders})"),
         &params,
     )
-}
-
-pub fn find_by_about_character_id(
-    conn: &Connection,
-    about_character_id: &str,
-) -> Result<Vec<Value>, DbError> {
-    query_memories(conn, "WHERE aboutCharacterId = ?1", &[&about_character_id])
 }
 
 /// `searchByContentAboutCharacter` — `{ characterId, aboutCharacterId,

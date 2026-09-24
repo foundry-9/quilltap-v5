@@ -40,8 +40,10 @@
 //! ## The queries
 //!
 //! `find_by_id` / `find_by_id_raw` / `find_all` / `find_by_user_id` /
-//! `find_user_controlled` / `find_llm_controlled` / `find_by_ids` /
-//! `find_by_default_image_id` / `find_by_avatar_override_image_id` / `find_by_tag`.
+//! `find_user_controlled` / `find_by_ids` / `find_by_default_image_id` /
+//! `find_by_avatar_override_image_id` / `find_by_tag`. (`find_llm_controlled`
+//! — v4 `findLLMControlled` — was retired at v4 `ad1c4c37f`: v4 deleted the
+//! method as dead code and v5 never had a production caller either.)
 //! Each (except the `…_raw` variant) overlays the vault via
 //! [`apply_document_store_overlay`] (batched) / [`apply_document_store_overlay_one`].
 //! The JSON-array filters (`tags`, `avatarOverrides.imageId`) use SQLite
@@ -322,23 +324,6 @@ pub fn find_user_controlled(
     overlay_many(
         mount,
         query_raw(main, "userId = ?1 AND controlledBy = 'user'", &[&user_id])?,
-    )
-}
-
-/// Find LLM-controlled characters for a user (v4 `findLLMControlled` — `controlledBy
-/// = 'llm'` OR unset/NULL, which defaults to llm).
-pub fn find_llm_controlled(
-    main: &Connection,
-    mount: &Connection,
-    user_id: &str,
-) -> Result<Vec<Value>, DbError> {
-    overlay_many(
-        mount,
-        query_raw(
-            main,
-            "userId = ?1 AND (controlledBy = 'llm' OR controlledBy IS NULL)",
-            &[&user_id],
-        )?,
     )
 }
 

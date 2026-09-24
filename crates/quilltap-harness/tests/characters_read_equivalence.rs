@@ -133,8 +133,6 @@ fn run_query(
         }
         "findUserControlled" => cr::find_user_controlled(m, mo, q.user_id.as_deref().unwrap())
             .expect("findUserControlled"),
-        "findLLMControlled" => cr::find_llm_controlled(m, mo, q.user_id.as_deref().unwrap())
-            .expect("findLLMControlled"),
         "findByIds" => {
             let ids: Vec<String> = q
                 .target_names
@@ -226,13 +224,23 @@ fn characters_read_matches_oracle() {
         }
     }
 
+    // v4 `ad1c4c37f` deleted `findLLMControlled` as dead code (v5 never had a
+    // production caller either — retired, not ported). The committed fixture
+    // keeps its row unchanged; skip it here, matching the oracle case's own
+    // filter, rather than call the retired method.
+    let queries: Vec<&Query> = spec
+        .queries
+        .iter()
+        .filter(|q| q.kind != "findLLMControlled")
+        .collect();
+
     assert_eq!(
-        spec.queries.len(),
+        queries.len(),
         oracle.queries.len(),
         "query count: spec vs oracle"
     );
 
-    for (i, q) in spec.queries.iter().enumerate() {
+    for (i, q) in queries.iter().enumerate() {
         let mut got = run_query(&main, &mount, q, &id_by_name);
         let oq = &oracle.queries[i];
         assert_eq!(oq.kind, q.kind, "query {i}: kind mismatch");
@@ -254,6 +262,6 @@ fn characters_read_matches_oracle() {
 
     eprintln!(
         "OK: characters read matched oracle ({} queries).",
-        spec.queries.len()
+        queries.len()
     );
 }

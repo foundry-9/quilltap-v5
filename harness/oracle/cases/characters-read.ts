@@ -90,8 +90,14 @@ async function main(): Promise<void> {
 
   const toArray = (v: unknown): unknown[] => (v === null || v === undefined ? [] : [v]);
 
+  // v4 `ad1c4c37f` deletes `findLLMControlled` as dead code (v5 never had a
+  // production caller either — retired, not ported). The committed fixture
+  // keeps its row (§R.7/no-fixture-edit); skip it here rather than crash on
+  // the deleted method.
+  const queries = spec.queries.filter((q) => q.kind !== 'findLLMControlled');
+
   const results: Array<{ kind: string; result: unknown[] }> = [];
-  for (const q of spec.queries) {
+  for (const q of queries) {
     let result: unknown[];
     switch (q.kind) {
       case 'findByIdRaw':
@@ -108,9 +114,6 @@ async function main(): Promise<void> {
         break;
       case 'findUserControlled':
         result = await repos.characters.findUserControlled(q.userId as string);
-        break;
-      case 'findLLMControlled':
-        result = await repos.characters.findLLMControlled(q.userId as string);
         break;
       case 'findByIds':
         result = await repos.characters.findByIds(
