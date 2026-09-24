@@ -35,9 +35,12 @@
 //! executes on the host driver's OWN thread, which dropping the dispatch
 //! future does not stop, so the edge carries a [`DisconnectGuard`], armed
 //! BEFORE the dispatch is first polled (P4.115 item 3) and moved into the SSE
-//! body once the stream commits: a client that leaves before the first frame
-//! drops the handler (and with it the guard), one that leaves later drops the
-//! body. The guard OWNS the decision — "was a live run cut short?" — and reads
+//! body once the stream commits. Since the stream commits at acceptance (the
+//! next section), a client that leaves before the first frame almost always
+//! drops the committed, frameless body; the handler-drop arm covers only the
+//! window between acceptance firing inside the dispatch's poll and the race's
+//! next poll (no test discriminates it — the `d1c06cd9d` smalls unification
+//! re-measured the arm-after-the-race mutation as surviving). The guard OWNS the decision — "was a live run cut short?" — and reads
 //! it from two in-process facts rather than from the abort verb's answer:
 //! the build was ACCEPTED (the engine's acceptance watch, fired at v4's
 //! `request accepted` point) and its dispatch has not FINISHED. That closes the
@@ -147,6 +150,11 @@ pub async fn scenario_builder_post(
     let core = host.core().clone();
     // Watch for v4's "accepted" point BEFORE dispatching (the registration
     // takes the watch); a locked engine has no registry and refuses anyway.
+    // The watch is taken from a SEPARATE registry read than the dispatch's: an
+    // engine re-lock + unlock between the two would register the build on a
+    // NEW registry, so the watch never fires and the request falls back to
+    // committing on the first frame, with no disconnect DEBUG — never a hang
+    // (the dispatch still resolves). Recorded at the smalls unification.
     let watch = core
         .scenario_builder_runs()
         .ok()

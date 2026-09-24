@@ -230,8 +230,17 @@ impl ScenarioBuilderDriver for HoldsItsFirstFrame {
 /// P4.115 item 3 — **a leave BEFORE the first frame logs v4's disconnect
 /// DEBUG exactly once and aborts the run** (module header).
 ///
-/// Mutation M3: arm the guard only after the pre-commit race again (the
-/// P4.D217 shape) → the DEBUG is never logged and this is RED.
+/// Since item 6 the stream COMMITS at v4's `accepted` point, so the response
+/// head is out before any frame and this client's leave drops the committed,
+/// frameless BODY — the guard's body-drop arm, not the handler-drop arm. What
+/// this pins is the guard's live-run DECISION (accepted and not finished),
+/// which the P4.D217 shape (reading the abort verb's `aborted` reply) lost on
+/// exactly this leave. Mutation M3 (arm the guard only after the pre-commit
+/// race) was RED when recorded at unit 4, before item 6 existed; re-measured
+/// at the unification it SURVIVES — the handler-drop arm is now only the
+/// window between acceptance firing inside the dispatch's poll and the
+/// race's next poll, and no test here discriminates it (recorded in the
+/// round record, the `d1c06cd9d` smalls unification).
 #[tokio::test(flavor = "multi_thread")]
 async fn leaving_before_the_first_frame_logs_the_disconnect_and_aborts_the_run() {
     let _serial = SERIAL.lock().await;
