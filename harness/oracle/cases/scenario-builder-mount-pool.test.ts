@@ -18,7 +18,9 @@
  * doc-opacity recipe). The `ScenarioBuilderMountPool` service logger is wrapped
  * to RECORD its lines (and only its lines) per arm.
  *
- * Emits ONE NDJSON line per arm: { arm, pool, logs } in step order.
+ * Emits ONE NDJSON line per arm: { arm, pool, logs, settingsLogs } in step
+ * order (`settingsLogs`, P4.113: v4's `[InstanceSettings]` WARN + the backend's
+ * `Raw query failed` ERROR, off the plain logger).
  *
  * Run (Node 24, from the v4 checkout or a PINNED worktree). STAGE this case
  * OUTSIDE `.claude/` — v4's jest ignores those paths, so `--roots` into a
@@ -133,6 +135,36 @@ async function main(): Promise<void> {
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { resolveScenarioBuilderMountPool } = await import('@/lib/scenario-builder/mount-pool');
 
+  // P4.113: v4's `readSetting` WARNs `[InstanceSettings] Failed to read
+  // setting` on the plain `@/lib/logger` singleton (not the pool's service
+  // logger), and v4's backend logs ERROR `Raw query failed` before the
+  // rethrow — recorded off the `Logger` prototype (singleton and children
+  // alike, before the level check) of THIS registry generation (imported
+  // after `resetModules`, so it is the one the modules under test resolve),
+  // filtered to those two lines, per arm.
+  const settingsLines: Array<Record<string, unknown>> = [];
+  const { Logger } = await import('@/lib/logger');
+  for (const level of ['error', 'warn'] as const) {
+    const original = Logger.prototype[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (message.startsWith('[InstanceSettings]') || message === 'Raw query failed') {
+        settingsLines.push({
+          level,
+          message,
+          key: context?.key ?? null,
+          query: context?.query ?? null,
+          hasError: typeof context?.error === 'string' && context.error.length > 0,
+        });
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+
   await initializeDatabase();
   const repos = getRepositories();
   const leilani = await repos.characters.findByIdRaw(spec.leilaniId);
@@ -149,12 +181,20 @@ async function main(): Promise<void> {
         continue;
       }
       logLines.splice(0);
+      settingsLines.splice(0);
       const pool = await resolveScenarioBuilderMountPool({
         userId: step.userId,
         projectId: step.projectId,
         characterIds: step.characterIds,
       });
-      outLines.push(JSON.stringify({ arm: step.name, pool, logs: logLines.splice(0) }));
+      outLines.push(
+        JSON.stringify({
+          arm: step.name,
+          pool,
+          logs: logLines.splice(0),
+          settingsLogs: settingsLines.splice(0),
+        }),
+      );
     }
   } finally {
     await closeDatabase();

@@ -313,7 +313,7 @@
       "characterIds": [
         "c2000000-0000-4000-8000-0000000000a1"
       ],
-      "note": "'the general lookup THROWING' as v4's REAL code reaches it: readSetting catches and answers null, so the pool's WARN arm does NOT fire on either side (v4 logs its own [InstanceSettings] WARN \u2014 no v5 emitter; recorded)"
+      "note": "'the general lookup THROWING' as v4's REAL code reaches it: readSetting catches and answers null, so the pool's WARN arm does NOT fire on either side (P4.113: both sides log `[InstanceSettings] Failed to read setting` {key, error} exactly here, compared; v4 also logs its backend ERROR `Raw query failed`, v4-only and pinned both ways)"
     }
   ]
 }

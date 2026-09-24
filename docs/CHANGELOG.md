@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(db): read_setting logs v4's [InstanceSettings] Failed to read setting WARN (P4.113 unit 3)
+
+_Versions: core 0.0.1030, harness 0.0.951._
+
+`read_setting` used to turn every error into `None` with no log line, while
+its docs said it logged a warning as v4 does. A missing row or a NULL value
+is still silent. Any other failure, such as a missing table, now logs v4's
+WARN `[InstanceSettings] Failed to read setting` with `key` and `error`. The
+scenario-builder mount-pool family pins it: one WARN on the dropped-table arm
+and none on the other 14. v4's backend `Raw query failed` ERROR has no v5
+counterpart (v5 has no `rawQuery` layer); it is pinned as a v4-only line.
+
 #### 2026-09-24 — fix(db): update_message reads one raw row and validates the merged event, as v4 does (P4.113 unit 2)
 
 _Versions: core 0.0.1029, harness 0.0.950._

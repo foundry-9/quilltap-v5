@@ -147318,3 +147318,39 @@ by hand with lane-private paths instead of through the driver).
   untyped marshal for the find (a column-by-column hydrate that drops an
   unreadable cell) — a unit of its own. Only corrupt or hand-edited data
   carries such a cell (v4 writes `content` through a required Zod string).
+
+### Unit 3 — `[InstanceSettings] Failed to read setting`
+
+- `read_setting` now matches the error (v4 `index.ts:100-114`): the value
+  is read as `Option<String>`, so a NULL `value` is `None` with no type
+  error; `QueryReturnedNoRows` → `None` SILENT; every other error → `None`
+  with WARN `[InstanceSettings] Failed to read setting` `{ key, error }`
+  (default target `quilltap_core::db::instance_settings`, the file's idiom).
+  The module doc and `read_setting`'s doc, both of which CLAIMED the warning,
+  now describe what the code does.
+- **The pin** (`scenario_builder_mount_pool`): the oracle spies
+  `Logger.prototype.warn/error` of the post-`resetModules` registry
+  generation, filtered to `[InstanceSettings]…` and `Raw query failed`, and
+  emits `settingsLogs` per arm; the Rust side records
+  `quilltap_core::db::instance_settings` through its OWN layer in the family
+  file (`SettingsCapture`, added to the same registry as the shared
+  `StructuralCapture` — the shared module untouched, §R.10(c)). Exactly ONE
+  WARN on `general-read-fails`, silence on all 14 other arms including
+  `general-absent`. v4's backend `Raw query failed` ERROR (`backend.ts:
+  861-886`) is the recorded v4-only line, pinned both ways
+  (`RAW_QUERY_FAILED_ARMS` — VANISHED if v4 stops logging it there, WRONG
+  SHAPE if v5 ever does, an exercised-count assert).
+- **Red-first = M5** (`.ok()`-equivalent `Err(_) => None` restored): RED on
+  `general-read-fails` only (v4 one WARN, v5 none). **M6** (WARN on
+  `QueryReturnedNoRows`): RED on `general-absent` only.
+- Regen (lane-private; the `/tmp/p4113/regen-sbpool.sh` script): stage the
+  case + spec under `/tmp/p4113/stage-sb-pool`, `cd` the pin, build the
+  doc-opacity pair to `/tmp/p4113/sbpool-{main,mount}.db`, then jest with
+  `QT_ORACLE_OUT=/tmp/p4113/oracle-sbpool.ndjson` — the committed header's
+  recipe with the paths changed. 15 arms.
+- ⚠ **For the unifier (P4.115's file):**
+  `services/scenario_builder/mount_pool.rs:30-37` says "v5's `read_setting`
+  answers `None` on any failure … v4's `[InstanceSettings]` WARN has NO v5
+  emitter" — FALSE after this unit (the pool behaviour it describes is
+  unchanged: both pools still lose the global tier, neither POOL logger
+  warns). One sentence to correct; not this lane's file.

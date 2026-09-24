@@ -9,8 +9,10 @@
 //!
 //! v4's `readSetting` wraps the `SELECT` in a try/catch and returns `null` on any
 //! error (a freshly-cloned instance may not have the table yet — the provisioning
-//! migration writes the key on first boot). We reproduce that: a query error
-//! (including `no such table`) resolves to `None`, never propagating.
+//! migration writes the key on first boot), logging the WARN `[InstanceSettings]
+//! Failed to read setting` `{ key, error }` as it does; a missing row or a NULL
+//! `value` is `null` with no line at all. We reproduce that (P4.113 — before it,
+//! v5 swallowed every error silently while this paragraph claimed the warning).
 
 use rusqlite::{params, Connection};
 
@@ -54,15 +56,29 @@ pub const STALE_CHAT_DAYS_MAX: i64 = 3650;
 
 /// v4 `readSetting(key)` — read one `instance_settings` value, or `None`.
 ///
-/// Faithful to v4: the whole read is fallible-tolerant — a missing table or any
-/// other SQLite error resolves to `None` (v4 logs a warning and returns null).
+/// Faithful to v4 (`lib/instance-settings/index.ts:100-114`): `rows[0]?.value
+/// ?? null`, so a missing row (`QueryReturnedNoRows`) and a NULL `value` (read
+/// as `Option`, so it never becomes a type error) are `None` SILENTLY; EVERY
+/// other failure — a missing table first among them — is `None` with v4's
+/// WARN `[InstanceSettings] Failed to read setting` `{ key, error }` (P4.113;
+/// `.ok()` had swallowed all three alike). v4's backend ALSO logs ERROR `Raw
+/// query failed` `{ query, error }` before rethrowing
+/// (`backends/sqlite/backend.ts:861-886`); v5 has no `rawQuery` layer, so that
+/// line is v4-only — recorded and pinned both ways in
+/// `scenario_builder_mount_pool_equivalence`, not ported.
 fn read_setting(main: &Connection, key: &str) -> Option<String> {
-    main.query_row(
+    match main.query_row(
         "SELECT \"value\" FROM \"instance_settings\" WHERE \"key\" = ?1",
         params![key],
-        |row| row.get::<_, String>(0),
-    )
-    .ok()
+        |row| row.get::<_, Option<String>>(0),
+    ) {
+        Ok(value) => value,
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(err) => {
+            tracing::warn!(key, error = %err, "[InstanceSettings] Failed to read setting");
+            None
+        }
+    }
 }
 
 /// v4 `writeSetting(key, value)` — upsert one `instance_settings` value.

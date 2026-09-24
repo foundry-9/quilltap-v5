@@ -23,6 +23,13 @@
 //! reaches in v4 on a logger the oracle does not record — is pinned on the v5
 //! side alone: exactly once on that arm, never elsewhere (see `mount_pool.rs`).
 //!
+//! **P4.113:** plus v4's `[InstanceSettings] Failed to read setting` WARN
+//! (`readSetting`'s catch, on the plain `@/lib/logger`) — exactly one on
+//! `general-read-fails`, silence on every other arm (`general-absent`'s missing
+//! row is SILENT) — through this file's OWN capture of
+//! `quilltap_core::db::instance_settings`; and v4's backend `Raw query failed`
+//! ERROR on that same arm, a recorded v4-only line pinned both ways.
+//!
 //! ⚠ PIN REQUIRED at the TARGET `d1c06cd9d` (the module does not exist at the
 //! `00c290c9a` baseline — the jest import fails there, the pin proof). The
 //! fixture pair is MINTED — rebuild, regenerate, THEN `cargo test` against that
@@ -59,6 +66,87 @@ use serde::Deserialize;
 use serde_json::Value;
 
 const TARGETS: &[&str] = &["quilltap_core::services::scenario_builder::mount_pool"];
+
+/// P4.113 — the `read_setting` WARN's target. Captured by this file's OWN
+/// layer ([`SettingsCapture`]), never by widening the shared
+/// `scenario_builder_capture` module (P4.114's this round, §R.10(c)).
+const SETTINGS_TARGET: &str = "quilltap_core::db::instance_settings";
+
+/// v4's backend ERROR logged before `readSetting`'s catch — v4-only (v5 has
+/// no `rawQuery` layer). Pinned both ways: v4 must still log it exactly on
+/// the arms named here (else VANISHED), v5 must never.
+const RAW_QUERY_FAILED: &str = "Raw query failed";
+const RAW_QUERY_FAILED_ARMS: &[&str] = &["general-read-fails"];
+
+/// One captured `instance_settings` line: level, message, `key`, and whether
+/// a non-empty `error` field was present.
+type SettingsLine = (String, String, Option<String>, bool);
+
+#[derive(Clone, Default)]
+struct SettingsCapture(std::sync::Arc<std::sync::Mutex<Vec<SettingsLine>>>);
+
+#[derive(Default)]
+struct SettingsFields {
+    message: String,
+    key: Option<String>,
+    has_error: bool,
+}
+
+impl tracing::field::Visit for SettingsFields {
+    fn record_str(&mut self, f: &tracing::field::Field, v: &str) {
+        match f.name() {
+            "key" => self.key = Some(v.to_string()),
+            "error" => self.has_error = !v.is_empty(),
+            "message" => self.message = v.to_string(),
+            _ => {}
+        }
+    }
+    fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+        let rendered = format!("{v:?}");
+        match f.name() {
+            "message" => self.message = rendered,
+            "error" => self.has_error = !rendered.is_empty(),
+            "key" => self.key = Some(rendered.trim_matches('"').to_string()),
+            _ => {}
+        }
+    }
+}
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for SettingsCapture {
+    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+        if !event.metadata().target().starts_with(SETTINGS_TARGET) {
+            return;
+        }
+        let mut f = SettingsFields::default();
+        event.record(&mut f);
+        self.0.lock().unwrap().push((
+            event.metadata().level().to_string(),
+            f.message,
+            f.key,
+            f.has_error,
+        ));
+    }
+}
+
+/// v4's `settingsLogs` for one arm, as [`SettingsLine`]s — the `[InstanceSettings]`
+/// lines only (the `Raw query failed` ERROR is the recorded divergence,
+/// counted separately).
+fn v4_settings_lines(want: &Value) -> Vec<SettingsLine> {
+    want["settingsLogs"]
+        .as_array()
+        .expect("the oracle carries settingsLogs — regenerate it (P4.113)")
+        .iter()
+        .filter(|l| l["message"].as_str() != Some(RAW_QUERY_FAILED))
+        .map(|l| {
+            (
+                l["level"].as_str().unwrap().to_uppercase(),
+                l["message"].as_str().unwrap().to_string(),
+                l["key"].as_str().map(str::to_string),
+                l["hasError"].as_bool().unwrap(),
+            )
+        })
+        .collect()
+}
 
 #[derive(Deserialize)]
 struct Statement {
@@ -180,7 +268,14 @@ fn scenario_builder_mount_pool_matches_oracle() {
 
     use tracing_subscriber::layer::SubscriberExt;
     let (layer, captured) = StructuralCapture::new(TARGETS);
-    let _guard = tracing::subscriber::set_default(tracing_subscriber::registry().with(layer));
+    let settings = SettingsCapture::default();
+    let _guard = tracing::subscriber::set_default(
+        tracing_subscriber::registry()
+            .with(layer)
+            .with(settings.clone()),
+    );
+    let mut raw_query_failed_seen = 0usize;
+    let mut settings_warns_seen = 0usize;
 
     let mut failures: Vec<String> = Vec::new();
     let mut idx = 0usize;
@@ -204,6 +299,7 @@ fn scenario_builder_mount_pool_matches_oracle() {
                 idx += 1;
                 assert_eq!(want["arm"].as_str(), Some(name.as_str()), "arm order");
                 captured.lock().unwrap().clear();
+                settings.0.lock().unwrap().clear();
                 let pool = resolve_scenario_builder_mount_pool(
                     main,
                     mount,
@@ -242,6 +338,37 @@ fn scenario_builder_mount_pool_matches_oracle() {
                         "{name}: LOG lines differ\n  v4: {wl:#?}\n  v5: {gl:#?}"
                     ));
                 }
+                // P4.113: v4's `[InstanceSettings] Failed to read setting`
+                // WARN (`readSetting`'s catch) — exactly the dropped-table arm;
+                // silence on every other (a missing row is SILENT).
+                let got_settings = settings.0.lock().unwrap().clone();
+                let want_settings = v4_settings_lines(want);
+                if got_settings != want_settings {
+                    failures.push(format!(
+                        "{name}: [InstanceSettings] lines differ\n  v4: {want_settings:?}\n  v5: {got_settings:?}"
+                    ));
+                }
+                settings_warns_seen += want_settings.len();
+                // The recorded v4-only `Raw query failed` ERROR, both ways.
+                let v4_raw = want["settingsLogs"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|l| l["message"].as_str() == Some(RAW_QUERY_FAILED))
+                    .count();
+                let want_raw = usize::from(RAW_QUERY_FAILED_ARMS.contains(&name.as_str()));
+                if v4_raw != want_raw {
+                    failures.push(format!(
+                        "{name}: v4 `{RAW_QUERY_FAILED}` count {v4_raw}, recorded {want_raw} — \
+                         the divergence VANISHED or moved; re-survey the backend"
+                    ));
+                }
+                raw_query_failed_seen += v4_raw;
+                if got_settings.iter().any(|l| l.1 == RAW_QUERY_FAILED) {
+                    failures.push(format!(
+                        "{name}: v5 logged `{RAW_QUERY_FAILED}` — WRONG SHAPE (v5 has no rawQuery layer)"
+                    ));
+                }
                 if wl
                     .iter()
                     .any(|l| l.1 == "Archived cast member contributes nothing to the pool")
@@ -256,6 +383,12 @@ fn scenario_builder_mount_pool_matches_oracle() {
     let _ = std::fs::remove_dir_all(&scratch);
     eprintln!("scenario_builder_mount_pool: {arms} arms");
     assert!(saw_archived_line, "no arm pins the archived-member DEBUG");
+    assert_eq!(
+        (settings_warns_seen, raw_query_failed_seen),
+        (1, RAW_QUERY_FAILED_ARMS.len()),
+        "the [InstanceSettings] WARN pin and the v4-only `{RAW_QUERY_FAILED}` pin must each be \
+         exercised exactly once"
+    );
     assert!(
         failures.is_empty(),
         "{} arm(s) differ:\n{}",
