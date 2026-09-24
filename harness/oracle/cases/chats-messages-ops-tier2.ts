@@ -53,6 +53,9 @@ interface Op {
     // `ChatEventSchema.safeParse` ALSO fails on Zod-only shapes a raw cell can
     // carry (a `role` outside `RoleEnum`, a non-uuid `id`, a `hostEvent` that
     // is not its object shape). One cell planted on the per-run copy.
+    // P4.113: + a `createdAt` that fails zod 4.6.5's `z.iso.datetime()` (on a
+    // message, a context-summary and a system row) and a non-uuid message
+    // `participantId` — the last two shapes a raw cell can carry.
     | 'plantCell'
     | 'getMessages';
   chatId: string;
@@ -69,7 +72,7 @@ interface Op {
 }
 
 /** The columns a `plantCell` op may name (a closed set — it is spliced). */
-const PLANTABLE_COLUMNS = new Set(['id', 'role', 'hostEvent']);
+const PLANTABLE_COLUMNS = new Set(['id', 'role', 'hostEvent', 'createdAt', 'participantId']);
 interface Spec {
   testPepperBase64: string;
   ops: Op[];

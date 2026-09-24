@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(db): the corrupted-row skip checks createdAt and participantId the way v4's Zod does (P4.113 unit 1)
+
+_Versions: core 0.0.1028, harness 0.0.949._
+
+`get_messages` now skips a chat event whose `createdAt` fails zod 4.6.5's
+`z.iso.datetime()` (seconds required, `Z` only) on all three event types, and
+a message whose `participantId` is not a uuid, with v4's `Skipping corrupted
+chat message` WARN. The datetime check lives in one place,
+`api::zod_issues::zod_iso_datetime_ok`, with a unit table measured against
+v4's real zod. The chats-messages ops tier-2 family plants six new shapes;
+v5 kept all six before the fix.
+
 #### 2026-09-24 — docs(core): correct the stale `reconcile.rs` connection-profile vacuity comment (P4.117 Tier 2)
 
 _Versions: core 0.0.1028._

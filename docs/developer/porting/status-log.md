@@ -147229,3 +147229,49 @@ only read (copied to `/tmp`) for the proofs and the mutation proofs.
 **Stays OPEN (named, Tier 3):** the remaining heals over un-widened pairs
 (`chat-send`, `characters`, `salon`, the restore archives) — not dead until
 those pairs are widened.
+
+## P4.113 — the db-layer review smalls (lane record, 2026-09-24)
+
+Branch `claude/p4-113-db-layer-zod-d514b1`, cut from `main` `7529fbca`.
+v4 pin `/tmp/qt-v4-pin-p4113-d1c06cd9d` (detached at `d1c06cd9d`, the three
+symlink classes); the §2 probe PASSED at lane start (branch `main`, both logs
+empty, tree clean). Regen outputs staged under `/tmp/p4113/` (the committed
+recipes write fixed `/tmp/oracle-*.ndjson` paths — the lane ran each recipe
+by hand with lane-private paths instead of through the driver).
+
+### Unit 1 — the two missing Zod shapes (`createdAt`, `participantId`)
+
+- **ONE `z.iso.datetime()` home:** `api::zod_issues::ZOD_ISO_DATETIME_PATTERN`
+  + `zod_iso_datetime_ok`, beside `zod_uuid_ok`, sourced from the compiled
+  `pattern` of a live `z.iso.datetime()` at the pin (zod **4.6.5** — seconds
+  REQUIRED, `Z` only), JS `\d` → `[0-9]`. The unit table
+  (`iso_datetime_table_matches_real_zod_465`, 24 rows) was MEASURED, not
+  reasoned — the probe, run from the pin:
+  `import { createRequire } from 'module'; const { z } = createRequire(process.cwd() + '/package.json')('zod');`
+  then `z.iso.datetime().safeParse(row).success` per row
+  (`cd /tmp/qt-v4-pin-p4113-d1c06cd9d && PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx /tmp/p4113/dt-probe.ts`).
+  A bare `import { z } from 'zod'` from a case outside the v4 tree fails
+  (`Cannot find module 'zod'` — package names resolve from the FILE).
+- `zod_shape_failure` (now `pub(crate)`) gains `createdAt` on all three
+  members (BEFORE the non-message early return) and the message's
+  `participantId` (null/absent pass); a `null` `hostEvent` now passes
+  (`.nullable().optional()` — invisible on the read path, which drops it,
+  but the merged update event of unit 2 carries it).
+- **Arms** (`chats-messages-ops-tier2.json`): seven seed rows in the
+  corrupted-rows chat (`e0000090-…-0009` … `-000f`: three messages, a
+  context-summary, a system event, a non-uuid-participant message, and a
+  well-formed-participant silence row) and six `plantCell`s — `2024-01-01T10:00Z`
+  (message `-0009`, system `-000d`), `2024-01-01T10:00:00+01:00` (`-000a`),
+  `yesterday` (message `-000b`, context-summary `-000c`), `participantId:
+  not-a-participant` (`-000e`). `PLANTABLE_COLUMNS` widened identically on both
+  sides (`+ createdAt, participantId`).
+- **Red-first:** pre-fix v5 kept all SIX new plants (9 ids vs v4's 3 —
+  `-0004`, `-0006`, `-000f`); fixed: green. v4 skips all six with the WARN.
+- **Mutations:** M1 (`createdAt` conjunct → always-true) RED on the five
+  datetime rows (the order said "three" — the lane planted five); M2 (seconds
+  optional in the pattern) RED on exactly the two no-seconds rows (`-0009`,
+  `-000d`) AND the unit table.
+- Regen (from the pin, lane-private paths):
+  `QT_FIXTURE_OUT=/tmp/p4113/chatsmsgops-fixture.db $N/npx tsx $W/harness/oracle/fixtures/build-chats-messages-ops-fixture.ts`
+  then `QT_FIXTURE_CHATSMSGOPS=/tmp/p4113/chatsmsgops-fixture.db $N/npx tsx $W/harness/oracle/cases/chats-messages-ops-tier2.ts > /tmp/p4113/oracle-chatsmsgops.ndjson`
+  (`N=~/.nvm/versions/node/v24.13.1/bin`, `W` = the lane worktree, cwd = the pin).

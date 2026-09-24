@@ -322,7 +322,8 @@ fn chats_messages_ops_tier2_matches_oracle() {
                 } => {
                     // The oracle's closed set — the name is spliced into SQL.
                     assert!(
-                        ["id", "role", "hostEvent"].contains(&column.as_str()),
+                        ["id", "role", "hostEvent", "createdAt", "participantId"]
+                            .contains(&column.as_str()),
                         "plantCell: unplantable column {column}"
                     );
                     writer
@@ -473,6 +474,11 @@ fn assert_update_returns(got: &[(Value, Vec<String>)], want: &Value) {
 /// WARN names that id), a `hostEvent` of `42`, and a `hostEvent` object with a
 /// `toStatus` outside its enum — each skipped with the same WARN, in row
 /// order; a well-formed `hostEvent` and an untouched row are kept.
+///
+/// P4.113: the same read also skips a `createdAt` that fails zod 4.6.5's
+/// `z.iso.datetime()` — no seconds, an offset, `yesterday` — on a message, a
+/// context-summary AND a system row, and a non-uuid message `participantId`;
+/// a well-formed `participantId` is kept.
 fn assert_reads(got: &[(String, Value, Vec<String>)], want: &Value) {
     let want = want
         .as_array()

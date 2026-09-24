@@ -449,6 +449,55 @@
           "role": "USER",
           "content": "will carry a hostEvent introducing a non-uuid character",
           "createdAt": "2026-03-01T00:00:08.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-000000000009",
+          "role": "USER",
+          "content": "will lose its seconds",
+          "createdAt": "2026-03-01T00:00:09.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-00000000000a",
+          "role": "USER",
+          "content": "will carry an offset",
+          "createdAt": "2026-03-01T00:00:10.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-00000000000b",
+          "role": "USER",
+          "content": "will be dated yesterday",
+          "createdAt": "2026-03-01T00:00:11.000Z"
+        },
+        {
+          "type": "context-summary",
+          "id": "e0000090-0000-4000-8000-00000000000c",
+          "context": "a summary that will be dated yesterday",
+          "createdAt": "2026-03-01T00:00:12.000Z"
+        },
+        {
+          "type": "system",
+          "id": "e0000090-0000-4000-8000-00000000000d",
+          "systemEventType": "SUMMARIZATION",
+          "description": "a system event that will lose its seconds",
+          "createdAt": "2026-03-01T00:00:13.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-00000000000e",
+          "role": "USER",
+          "content": "will carry a non-uuid participant",
+          "createdAt": "2026-03-01T00:00:14.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000090-0000-4000-8000-00000000000f",
+          "role": "USER",
+          "content": "carries a well-formed participant",
+          "createdAt": "2026-03-01T00:00:15.000Z",
+          "participantId": "fb000090-0000-4000-8000-000000000001"
         }
       ]
     }
@@ -640,6 +689,48 @@
       "messageId": "e0000090-0000-4000-8000-000000000008",
       "column": "hostEvent",
       "value": "{\"introducedCharacterIds\":[\"fb000090-0000-4000-8000-000000000001\",\"not-a-character\"]}"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-000000000009",
+      "column": "createdAt",
+      "value": "2024-01-01T10:00Z"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-00000000000a",
+      "column": "createdAt",
+      "value": "2024-01-01T10:00:00+01:00"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-00000000000b",
+      "column": "createdAt",
+      "value": "yesterday"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-00000000000c",
+      "column": "createdAt",
+      "value": "yesterday"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-00000000000d",
+      "column": "createdAt",
+      "value": "2024-01-01T10:00Z"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c0000090-0000-4000-8000-000000000001",
+      "messageId": "e0000090-0000-4000-8000-00000000000e",
+      "column": "participantId",
+      "value": "not-a-participant"
     },
     {
       "kind": "getMessages",

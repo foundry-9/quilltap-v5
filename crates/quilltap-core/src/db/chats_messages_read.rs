@@ -307,17 +307,36 @@ const HOST_EVENT_STATUSES: [&str; 4] = ["active", "silent", "absent", "removed"]
 /// message `role` outside `RoleEnum`, and a message `hostEvent` that is not
 /// its object shape (`{ participantId?: uuid, toStatus?: enum,
 /// introducedCharacterIds?: uuid[] }` — `.optional()`, not `.nullable()`, so a
-/// PRESENT `null` inside it fails too). Returns the failing path + reason, the
+/// PRESENT `null` inside it fails too). P4.113 adds the last two a raw cell
+/// can carry: `createdAt` (`TimestampSchema`, all three members — through the
+/// ONE [`zod_iso_datetime_ok`](crate::api::zod_issues::zod_iso_datetime_ok)
+/// home) and the message's `participantId` (`UUIDSchema.nullable().optional()`);
+/// and makes this the ONE home of the check for BOTH the per-row skip and
+/// `updateMessage`'s `ChatEventSchema.parse` of the MERGED event
+/// (`chats_messages.rs`). Returns the failing path + reason, the
 /// stand-in for v4's issue list (v5 has no Zod issue source here). Every
 /// other `MessageEventSchema` field v4 can reject on a raw cell (`recoveryType`,
 /// `attachments`' uuids, `systemEventType`, the nested JSON shapes …) is NOT
 /// checked — named in P4.112's lane record, never silently claimed.
-fn zod_shape_failure(event: &Value) -> Option<String> {
-    use crate::api::zod_issues::zod_uuid_ok;
+pub(crate) fn zod_shape_failure(event: &Value) -> Option<String> {
+    use crate::api::zod_issues::{zod_iso_datetime_ok, zod_uuid_ok};
     let obj = event.as_object()?;
     let is_uuid = |v: &Value| v.as_str().is_some_and(zod_uuid_ok);
     if !obj.get("id").is_some_and(is_uuid) {
         return Some("id: Invalid UUID".to_string());
+    }
+    // P4.113: `createdAt: TimestampSchema` on ALL THREE members —
+    // `z.iso.datetime().or(z.date())`; a JSON value is never a `Date`, so the
+    // string arm is the whole check.
+    if !obj
+        .get("createdAt")
+        .and_then(Value::as_str)
+        .is_some_and(zod_iso_datetime_ok)
+    {
+        return Some(format!(
+            "createdAt: Invalid ISO datetime ({})",
+            obj.get("createdAt").unwrap_or(&Value::Null)
+        ));
     }
     if obj.get("type").and_then(Value::as_str) != Some("message") {
         return None;
@@ -326,7 +345,16 @@ fn zod_shape_failure(event: &Value) -> Option<String> {
     if !ROLE_ENUM.contains(&role) {
         return Some(format!("role: invalid option {role:?}"));
     }
-    if let Some(host) = obj.get("hostEvent") {
+    // P4.113: `participantId: UUIDSchema.nullable().optional()` (message only).
+    if let Some(p) = obj.get("participantId") {
+        if !p.is_null() && !is_uuid(p) {
+            return Some(format!("participantId: Invalid UUID ({p})"));
+        }
+    }
+    // `.nullable().optional()` on the object itself: a `null` hostEvent passes
+    // (the read path never sees one — `put_opt_json` drops it — but a MERGED
+    // update event does: `{ hostEvent: null }` is the repair, P4.113).
+    if let Some(host) = obj.get("hostEvent").filter(|h| !h.is_null()) {
         let ok = host.as_object().is_some_and(|h| {
             h.get("participantId").is_none_or(is_uuid)
                 && h.get("toStatus")

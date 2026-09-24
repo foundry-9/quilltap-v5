@@ -471,6 +471,27 @@ pub fn zod_uuid_ok(s: &str) -> bool {
     matches!(b[14], b'1'..=b'8') && matches!(b[19], b'8' | b'9' | b'a' | b'b' | b'A' | b'B')
 }
 
+/// v4 zod **4.6.5**'s `z.iso.datetime()` (no options: no `offset`, no `local`,
+/// unbounded `precision`) — the ONE server-side home of that check (P4.113).
+/// Sourced from the compiled `pattern` of a live `z.iso.datetime()` at the
+/// `d1c06cd9d` pin (`node_modules/zod/v4/core/regexes.js` `datetime()` over
+/// `timeSource({ precision, seconds: true })`), with JS `\d` rewritten to ASCII
+/// `[0-9]` (Rust's `\d` is Unicode-aware; JS's is ASCII). Since 4.6 the
+/// seconds are REQUIRED wherever the time carries a zone (RFC 3339), so
+/// `2024-01-01T10:00Z` FAILS — which is what makes this pattern differ from
+/// the 4.4-era copy `vault_overlay.rs` used to carry. The zone is `Z` only
+/// (case-sensitive), the fraction any length ≥ 1, and the date arm does real
+/// leap-year arithmetic. `$` rejects a trailing newline in both engines.
+pub const ZOD_ISO_DATETIME_PATTERN: &str = r"^(?:(?:[0-9][0-9][2468][048]|[0-9][0-9][13579][26]|[0-9][0-9]0[48]|[02468][048]00|[13579][26]00)-02-29|[0-9]{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|(?:02)-(?:0[1-9]|1[0-9]|2[0-8])))T(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]+)?(?:Z))$";
+
+static ZOD_ISO_DATETIME_RE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(ZOD_ISO_DATETIME_PATTERN).unwrap());
+
+/// `true` when `s` passes v4's `z.iso.datetime()` ([`ZOD_ISO_DATETIME_PATTERN`]).
+pub fn zod_iso_datetime_ok(s: &str) -> bool {
+    ZOD_ISO_DATETIME_RE.is_match(s)
+}
+
 /// v4 `util.parsedType` (the same table the Pascal Zod port pins). `None` is
 /// JS `undefined` — a missing key.
 pub fn zod_parsed_type(v: Option<&Value>) -> &'static str {
@@ -538,6 +559,42 @@ pub fn key(k: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P4.113 — every expected value MEASURED by running the `d1c06cd9d` pin's
+    /// real `z.iso.datetime().safeParse(row)` (zod 4.6.5) through a tsx probe
+    /// (the recipe is in P4.113's lane record), never reasoned from the regex.
+    #[test]
+    fn iso_datetime_table_matches_real_zod_465() {
+        let rows: &[(&str, bool)] = &[
+            ("2024-01-01T10:00:00Z", true),
+            ("2024-01-01T10:00:00.5Z", true),
+            ("2024-01-01T10:00:00.123Z", true),
+            ("2024-01-01T10:00:00.123456789Z", true),
+            ("2024-01-01T10:00Z", false),
+            ("2024-01-01T10:00:00+01:00", false),
+            ("2024-01-01T10:00:00", false),
+            ("2024-01-01", false),
+            ("2024-01-01T23:59:60Z", false),
+            ("2024-01-01T24:00:00Z", false),
+            ("2024-01-01t10:00:00Z", false),
+            ("2024-01-01T10:00:00z", false),
+            ("2024-02-29T10:00:00Z", true),
+            ("2023-02-29T10:00:00Z", false),
+            ("1900-02-29T00:00:00Z", false),
+            ("2000-02-29T00:00:00Z", true),
+            ("yesterday", false),
+            ("2024-01-01T10:00:00.Z", false),
+            ("2024-01-01T10:00:00Z\n", false),
+            ("2024-04-31T00:00:00Z", false),
+            ("2024-01-01T10:00:00.1234567890123Z", true),
+            ("2024-13-01T00:00:00Z", false),
+            ("\u{662}\u{660}\u{662}\u{664}-01-01T10:00:00Z", false),
+            ("", false),
+        ];
+        for (row, want) in rows {
+            assert_eq!(zod_iso_datetime_ok(row), *want, "{row:?}");
+        }
+    }
 
     /// The render table: one row per Zod code, each transcribed from the real
     /// `zod` 4.5.4 output recorded in this module's header. The whole point is
