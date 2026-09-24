@@ -147800,3 +147800,64 @@ count of `scenario_builder_routes.rs` is unmoved at 2).
   run failed on that instrument, not on the edge.
 - The existing post-first-frame test unchanged, green; the two tests share
   the binary's one global subscriber under a `tokio::sync::Mutex` `SERIAL`.
+
+### Unit 5 — item 6 (Tier 2): the stream commits at v4's accepted point (web 0.0.189)
+
+**Measured: YES — an in-process signal carries it, with no wire change.**
+Unit 4's acceptance watch IS that signal (fired at v4's `request accepted`
+point, after every refusal, before the not-assembled check). `generator_sse.rs`
+(OPT-IN): `stream_frames_committed_on(events, progress_id, frame_of, dispatch,
+outcome, tail, accepted)` — the race gains an `accepted` arm polled BEFORE the
+dispatch; when it resolves the stream commits with `pending` empty (the head
+goes out, no frame yet) and every later result rides the pump + the tail.
+`stream_frames_with_tail` had one caller (this route) and is REPLACED by it;
+`stream_generator_from` (the no-commit-point path every other caller takes)
+delegates with a `pending()` commit point, so the four other callers' races
+are unchanged.
+
+**A finding the first green run caught:** the acceptance fires INSIDE the
+dispatch's own poll, so a driver that fails in the same tick (both of the
+order's (f) sources: `FailBeforeFrame`, and no driver assembled) resolves the
+dispatch before the race ever sees the commit point — the first green run was
+still 500 on both. The finished-before-any-frame branch now polls the commit
+point once (`std::future::poll_fn`, no new dependency — `futures-util` is a
+dev-dep only and §R.8 forbids a dependency change) and, if it has fired,
+treats the result as committed (tail), never as a refusal. That first green
+run is the mutation proof for the check (both (f) arms RED without it).
+
+**The v4 differential (§R.6 — retired by VANISHING):** the routes oracle
+spec gains two cases, `runThrows: "before"` / `"after"` (v4's mocked
+`runScenarioBuilder` throws `the Host fell into the harbour` before enqueueing
+/ after `frames[0]`; v5's canned driver resolves `Err` with the same text).
+v4 recorded both as 200 + `text/event-stream` + v4's error frame LAST + ERROR
+`Scenario Builder stream failed [["error", …]]`. **Red-first:** the pre-fix
+edge (routes + generator_sse swapped back by backup) failed the family with
+**6 failures, all on the "before" case** (status 500 vs 200, content-type,
+headers, body `{"error":"the Host fell into the harbour"}`, sse, and the
+missing ERROR line); the "after" case already agreed (P4.D217's S3 fix). After:
+**26 cases, 20 v4 log lines compared, 0 failures** (was 24 / 16).
+
+**The v5-only arms** (`scenario_builder_midstream_failure.rs`, 4/4):
+`a_driver_failure_before_any_frame_is_v4s_error_frame_inside_the_stream` and
+`no_driver_assembled_is_v4s_error_frame_inside_the_stream` (a ready engine
+with `spine = None`; the ERROR line carries the named refusal's text) — both
+RED pre-fix (`(500, "application/json", {"error": …})`);
+`the_response_head_arrives_before_the_first_frame` — a driver that holds its
+frame 1.5 s; the head must arrive within 0.5 s — RED pre-fix (timeout), green
+after, with the held frame still delivered.
+
+Oracle regen (from the pin, lane-private staging; §R.2 probe PASS before the
+batch; `git worktree list` showed the pin at `d1c06cd9d`):
+
+    N=~/.nvm/versions/node/v24.13.1/bin; W=<worktree>; PIN=/tmp/qt-v4-pin-p4115-d1c06cd9d
+    STAGE=/tmp/p4115/stage-sb-routes; OUT=/tmp/p4115/oracle-scenario-builder-routes.ndjson
+    rm -rf $STAGE; rm -f $OUT; mkdir -p $STAGE/harness/oracle/{cases,fixtures}
+    cp $W/harness/oracle/cases/scenario-builder-routes.test.ts $STAGE/harness/oracle/cases/
+    cp $W/harness/oracle/fixtures/scenario-builder-routes.json $STAGE/harness/oracle/fixtures/
+    cd $PIN; PATH=$N:$PATH QT_FIXTURE_SBR_MAIN=$W/crates/quilltap-web/tests/fixtures/chat-send-main.db \
+      QT_FIXTURE_SBR_MOUNT=$W/crates/quilltap-web/tests/fixtures/chat-send-mount.db QT_ORACLE_OUT=$OUT \
+      $N/npx jest --silent --watchman=false --testTimeout=240000 --roots "$PWD" \
+      --roots "$STAGE/harness/oracle/cases" -- "scenario-builder-routes\.test\.ts$"
+
+26 rows; `grep P4.115` = the 2 new rows with the predicted bytes. No committed
+fixture changed.

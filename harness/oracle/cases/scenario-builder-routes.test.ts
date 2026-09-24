@@ -14,7 +14,9 @@
  * canned to enqueue the spec's `frames`, recording the `input` it was handed
  * and whether its `signal` aborted. That is the ONE place a mock is right: the
  * route's contract is what it does AROUND the run. One case also swaps in a
- * throwing `resolveScenarioBuilderCapabilities` (the 500 arm).
+ * throwing `resolveScenarioBuilderCapabilities` (the 500 arm); two more
+ * (P4.115) make the canned run THROW, before and after its first frame — the
+ * route's `Scenario Builder stream failed` catch, inside the committed stream.
  *
  * Emits per case: { name, status, contentType, body (JSON) | sse (text),
  * runs: [{ mode, characterIds, chat, priorDraft, revision, aborted }],
@@ -50,6 +52,10 @@ import { createRequire } from 'node:module';
 
 const PEPPER = 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=';
 
+/** P4.115: the canned run's thrown message — v5's canned driver fails with
+ *  the same text, so v4's ERROR `{ error }` context compares byte-for-byte. */
+const RUN_THROWS_MESSAGE = 'the Host fell into the harbour';
+
 interface CaseSpec {
   name: string;
   method: 'GET' | 'POST';
@@ -58,6 +64,9 @@ interface CaseSpec {
   rawBody?: boolean;
   awaitAbort?: boolean;
   capabilitiesThrow?: boolean;
+  /** P4.115: the canned run THROWS — before enqueueing anything, or after
+   *  the first frame — driving the route's belt-and-braces catch. */
+  runThrows?: 'before' | 'after';
 }
 interface Spec {
   plants: Array<{ sql: string; params: unknown[] }>;
@@ -145,6 +154,11 @@ async function main(): Promise<void> {
             aborted: false,
           };
           runs.push(run);
+          if (c.runThrows === 'before') throw new Error(RUN_THROWS_MESSAGE);
+          if (c.runThrows === 'after') {
+            controller.enqueue(enc.encode(`data: ${JSON.stringify(spec.frames[0])}\n\n`));
+            throw new Error(RUN_THROWS_MESSAGE);
+          }
           if (c.awaitAbort) {
             controller.enqueue(enc.encode(`data: ${JSON.stringify(spec.frames[0])}\n\n`));
             await new Promise<void>((resolve) => {

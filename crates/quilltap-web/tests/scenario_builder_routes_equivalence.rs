@@ -18,6 +18,14 @@
 //! profiles, Salon / autonomous / help / foreign chats, a readable, a foreign
 //! and an unreadable (BLOB-named) character.
 //!
+//! **P4.115 — two cases where the canned run THROWS** (`runThrows: "before"`
+//! / `"after"` its first frame; v5's driver resolves `Err` with the same
+//! message). v4 answers both inside its already-committed stream: 200, v4's
+//! error frame last, ERROR `Scenario Builder stream failed { error }`. The
+//! "before" case is the P4.D217 recorded divergence (v5 had answered a JSON
+//! 500) — retired by VANISHING when v5 began committing at v4's `accepted`
+//! point; it was RED on all six compared fields before that.
+//!
 //! **Pinned both ways (the `EXPECTED_DIVERGENCES` shape):**
 //! - `500s when the capability lookup throws` — v4 reaches its 500 arm only by
 //!   a MOCKED throwing probe (its real `resolveScenarioBuilderCapabilities`
@@ -167,6 +175,9 @@ struct CaseW {
     raw_body: bool,
     #[serde(default)]
     await_abort: bool,
+    /// P4.115: the canned run fails `"before"` any frame or `"after"` one.
+    #[serde(default)]
+    run_throws: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -187,7 +198,27 @@ struct Spec {
 #[derive(Default)]
 struct Recorder {
     await_abort: bool,
+    run_throws: Option<String>,
     runs: Vec<Value>,
+}
+
+/// P4.115: the canned run's failure text — the oracle's `RUN_THROWS_MESSAGE`,
+/// so v4's ERROR `{ error }` context compares byte-for-byte.
+const RUN_THROWS_MESSAGE: &str = "the Host fell into the harbour";
+
+/// v5's equivalent of v4's canned run THROWING: the driver resolving `Err`.
+fn run_threw() -> quilltap_core::api::types::CoreError {
+    quilltap_core::api::types::CoreError {
+        kind: quilltap_core::api::types::ErrorKind::Internal,
+        message: RUN_THROWS_MESSAGE.to_string(),
+        pepper_state: None,
+        code: None,
+        associations: None,
+        character_id: None,
+        entity: None,
+        details: None,
+        already_saved: None,
+    }
 }
 
 struct CannedDriver {
@@ -212,7 +243,7 @@ impl ScenarioBuilderDriver for CannedDriver {
                 }
                 Value::Object(chat.clone())
             });
-            let (await_abort, index) = {
+            let (await_abort, run_throws, index) = {
                 let mut r = self.recorder.lock().unwrap();
                 r.runs.push(json!({
                     "mode": req.input.mode.as_str(),
@@ -222,13 +253,21 @@ impl ScenarioBuilderDriver for CannedDriver {
                     "revision": req.input.revision,
                     "aborted": false,
                 }));
-                (r.await_abort, r.runs.len() - 1)
+                (r.await_abort, r.run_throws.clone(), r.runs.len() - 1)
             };
             let publish = |f: &Value| {
                 let _ = self
                     .events
                     .send(Event::scenario_builder_progress(&req.run_id, f.clone()));
             };
+            match run_throws.as_deref() {
+                Some("before") => return Err(run_threw()),
+                Some("after") => {
+                    publish(&self.frames[0]);
+                    return Err(run_threw());
+                }
+                _ => {}
+            }
             if await_abort {
                 publish(&self.frames[0]);
                 for _ in 0..200 {
@@ -333,6 +372,7 @@ async fn scenario_builder_routes_match_oracle() {
             let mut r = recorder.lock().unwrap();
             r.runs.clear();
             r.await_abort = case.await_abort;
+            r.run_throws = case.run_throws.clone();
         }
         LOGGED.lock().unwrap().clear();
         let url = if case.query.is_empty() {

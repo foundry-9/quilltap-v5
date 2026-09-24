@@ -424,6 +424,30 @@
       }
     },
     {
+      "name": "P4.115: a run that throws before enqueueing anything answers 200 and the error frame inside the stream",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1"
+      },
+      "runThrows": "before"
+    },
+    {
+      "name": "P4.115: a run that throws after one frame ends the stream with the error frame",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1"
+      },
+      "runThrows": "after"
+    },
+    {
       "name": "passes the request signal through to runScenarioBuilder, and aborting it aborts that signal",
       "method": "POST",
       "query": "action=build",

@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(scenario-builder): the REST edge commits its stream at v4's accepted point (P4.115 item 6)
+
+_Versions: web 0.0.189._
+
+v4 returns the Scenario Builder's `ReadableStream` as soon as its refusals
+pass, so the response headers go out before any frame and a run that throws
+before its first frame still answers 200 with the error frame inside the
+stream. v5 committed only on the first frame: headers waited for it, and a
+pre-frame driver failure (a panicked driver thread, or no driver assembled)
+answered a JSON 500.
+
+`generator_sse` gains `stream_frames_committed_on`, an opt-in commit point
+that replaces the tail-only entry. When the caller's `accepted` future
+resolves, the stream commits with no frame yet and every later result rides
+the tail. The Scenario Builder edge passes the engine's acceptance watch.
+The other four re-framer callers pass nothing and are unchanged. The routes
+family gains two v4 cases where the canned run throws before and after its
+first frame; the "before" case failed on six fields before the fix. Three new
+edge tests cover a pre-frame driver failure, no driver assembled, and the
+response head arriving before a held first frame.
+
 #### 2026-09-24 — fix(scenario-builder): the REST edge logs the disconnect on every disconnect of an accepted run (P4.115 item 3)
 
 _Versions: core 0.0.1031, web 0.0.188._

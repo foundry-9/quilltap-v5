@@ -19,9 +19,9 @@
 //! v4 runs every refusal — the JSON parse, the Zod schema, the profile, tools,
 //! the api key, the chat — BEFORE `new ReadableStream`, so each is an ordinary
 //! JSON error with its status; only what the run itself enqueues is a frame.
-//! [`crate::generator_sse::stream_frames`] preserves exactly that: the route
-//! MINTS the runId, subscribes before dispatching, and a dispatch that fails
-//! before any frame answers its status + JSON body rather than a 200 stream.
+//! The re-framer preserves exactly that: the route MINTS the runId, subscribes
+//! before dispatching, and a dispatch refused before v4's `accepted` point
+//! answers its status + JSON body rather than a 200 stream.
 //! The frames are `data: <v4 payload>\n\n` — no `event:`, no `id:`, no
 //! keep-alives — with v4's three headers, in v4's order. The pump's two
 //! recorded `RecvError` divergences are inherited, not re-argued.
@@ -46,23 +46,27 @@
 //! line was lost. It then dispatches `scenarioBuilderAbort` to trip the token
 //! (a no-op on a run that already unregistered — whose own drop tripped it).
 //!
-//! ## A failed run (v4's belt-and-braces arm)
+//! ## The commit point, and a failed run (v4's belt-and-braces arm)
+//!
+//! v4 returns its `ReadableStream` as soon as the refusals pass
+//! (`route.ts:178-184`): the response head goes out before any frame, and the
+//! run executes inside `start()`. P4.115 gives v5 the same point: the engine's
+//! in-process acceptance watch fires at v4's `request accepted` DEBUG, and the
+//! re-framer ([`crate::generator_sse::stream_frames_committed_on`]) commits the
+//! stream right then. A dispatch that resolves BEFORE it is a refusal (JSON,
+//! its status); everything after it rides the committed stream.
 //!
 //! v4's `{"error":"The Host could not complete the enquiry."}` frame, with its
 //! ERROR `Scenario Builder stream failed` line, fires when `runScenarioBuilder`
 //! itself THROWS — which it never does by contract (`route.ts:156-163`). v5's
-//! equivalent is the dispatch resolving an ERROR (the driver's thread
-//! panicking, or no driver assembled). Where it lands decides its shape:
-//!
-//! - **before any frame** — the re-framer answers it as a JSON 500 rather than
-//!   a 200 stream carrying that frame (v4's route has already committed to its
-//!   `ReadableStream` there; v5 cannot tell a pre-run refusal from a pre-frame
-//!   failure, so this one stays a recorded divergence);
-//! - **after a frame** — the stream is committed, so the re-framer hands the
-//!   result to this route's failure tail ([`failure_tail`]): v4's ERROR line
-//!   with `error = <message>`, then v4's error frame as the stream's LAST, then
-//!   the close. A successful run's result is carried by the run's own frames
-//!   and adds nothing.
+//! equivalent is the dispatch resolving an ERROR after acceptance (the
+//! driver's thread panicking, or no driver assembled) — before or after the
+//! first frame alike, since the stream is already committed: the re-framer
+//! hands the result to this route's failure tail ([`failure_tail`]): v4's
+//! ERROR line with `error = <message>`, then v4's error frame as the stream's
+//! LAST, then the close. A successful run's result is carried by the run's own
+//! frames and adds nothing. (Before P4.115 a pre-frame failure answered a JSON
+//! 500 — the recorded divergence this retires.)
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -170,15 +174,23 @@ pub async fn scenario_builder_post(
             out
         }
     };
-    let response = crate::generator_sse::stream_frames_with_tail(
+    // The commit point: v4's `request accepted` (module header). A locked
+    // engine has no registry, and its dispatch refuses before any frame.
+    let accepted: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> =
+        match watch.as_ref().map(|w| w.acceptance()) {
+            Some(a) => Box::pin(async move { a.accepted().await }),
+            None => Box::pin(std::future::pending()),
+        };
+    let response = crate::generator_sse::stream_frames_committed_on(
         host.core().event_sender(),
         run_id.clone(),
         crate::generator_sse::scenario_builder_frame,
         dispatch,
         |resp: CoreResponse| match resp {
             CoreResponse::ScenarioBuilder(_) => Ok(()),
-            // A refusal that produced no frame answers v4's ordinary JSON error
-            // with its status — never a 200 stream.
+            // A refusal (the build never reached v4's `accepted` point)
+            // answers v4's ordinary JSON error with its status — never a 200
+            // stream.
             CoreResponse::Error(e) => Err(core_error_status_body(e)),
             _ => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -186,6 +198,7 @@ pub async fn scenario_builder_post(
             )),
         },
         Box::new(failure_tail),
+        accepted,
     )
     .await;
 

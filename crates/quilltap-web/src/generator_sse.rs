@@ -70,10 +70,24 @@
 //! pump drops it. The Scenario Builder's v4 route has ONE more arm — a thrown
 //! run enqueues `{"error":"The Host could not complete the enquiry."}` after
 //! whatever the run already streamed (`route.ts:156-163`). A caller that wants
-//! that passes [`stream_frames_with_tail`]'s `tail`: it receives the committed
+//! that passes [`stream_frames_committed_on`]'s `tail`: it receives the committed
 //! run's result after the drain and may answer ONE last object, framed like
 //! every other. Every other caller passes no tail, and its bytes are
 //! unchanged.
+//!
+//! ## An opt-in commit point (the Scenario Builder only, P4.115)
+//!
+//! Step 2's rule — "a failure before any frame is a JSON refusal" — is right
+//! for the generators and the swipe, whose runs cannot fail between their
+//! refusals and their first frame in a way v4 would stream. The Scenario
+//! Builder's v4 route returns its `ReadableStream` the moment its refusals pass
+//! (`route.ts:178-184`), so its headers go out before any frame, and a failure
+//! after that point is the in-stream error frame, never a JSON 500. A caller
+//! that can tell when that point is reached passes
+//! [`stream_frames_committed_on`]'s `accepted` future: when it resolves, the
+//! race commits the stream at once (the response head goes out with no frame
+//! yet) and every later outcome rides the pump and the tail. Every other
+//! caller passes none, and its race is exactly as before.
 
 use std::future::Future;
 
@@ -193,29 +207,34 @@ where
     .await
 }
 
-/// [`stream_frames`] with a failure `tail` (module header): once the stream is
-/// committed, the run's result goes to `tail` after the drain, and the object
-/// it answers (if any) is the stream's LAST frame.
-pub async fn stream_frames_with_tail<F, T>(
+/// [`stream_frames`] with a failure `tail` and an opt-in commit point (module
+/// header): once the stream is committed the run's result goes to `tail`
+/// after the drain, and the object it answers (if any) is the stream's LAST
+/// frame; when `accepted` resolves before any frame or result, the stream
+/// commits then — headers out, no frame yet. `outcome` still answers a result
+/// that arrives BEFORE `accepted` (a refusal).
+pub async fn stream_frames_committed_on<F, T>(
     events: &broadcast::Sender<Event>,
     progress_id: String,
     frame_of: FrameOf,
     dispatch: F,
     outcome: impl Fn(T) -> Result<(), (StatusCode, serde_json::Value)> + Send + 'static,
     tail: Tail<T>,
+    accepted: std::pin::Pin<Box<dyn Future<Output = ()> + Send>>,
 ) -> AxumResponse
 where
     F: Future<Output = T> + Send + 'static,
     T: Send + 'static,
 {
     // 1. Subscribe BEFORE the dispatch future is polled.
-    stream_generator_from(
+    stream_generator_from_committed_on(
         events.subscribe(),
         progress_id,
         frame_of,
         dispatch,
         outcome,
         Some(tail),
+        accepted,
     )
     .await
 }
@@ -227,12 +246,40 @@ where
 /// through the public entry point and could not be pinned. Taking the receiver
 /// by value lets [`tests`] drop the last sender and drive them.
 async fn stream_generator_from<F, T>(
+    rx: broadcast::Receiver<Event>,
+    progress_id: String,
+    frame_of: FrameOf,
+    dispatch: F,
+    outcome: impl Fn(T) -> Result<(), (StatusCode, serde_json::Value)> + Send + 'static,
+    tail: Option<Tail<T>>,
+) -> AxumResponse
+where
+    F: Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    // No commit point: the race below can only end on a frame, a result, or
+    // the channel closing — every caller but the opt-in one.
+    stream_generator_from_committed_on(
+        rx,
+        progress_id,
+        frame_of,
+        dispatch,
+        outcome,
+        tail,
+        Box::pin(std::future::pending()),
+    )
+    .await
+}
+
+/// [`stream_generator_from`] with the opt-in commit point (module header).
+async fn stream_generator_from_committed_on<F, T>(
     mut rx: broadcast::Receiver<Event>,
     progress_id: String,
     frame_of: FrameOf,
     dispatch: F,
     outcome: impl Fn(T) -> Result<(), (StatusCode, serde_json::Value)> + Send + 'static,
     tail: Option<Tail<T>>,
+    mut accepted: std::pin::Pin<Box<dyn Future<Output = ()> + Send>>,
 ) -> AxumResponse
 where
     F: Future<Output = T> + Send + 'static,
@@ -277,6 +324,10 @@ where
                     break None;
                 }
             },
+            // The opt-in commit point, polled BEFORE the dispatch: a run
+            // accepted and then failed in the same tick is a committed stream
+            // whose failure rides the tail, never a refusal.
+            () = &mut accepted => break None,
             out = &mut dispatch => break Some(out),
         }
         // A frame has arrived: the stream is committed, stop racing.
@@ -293,7 +344,17 @@ where
                 pending.push(frame(inner));
             }
         }
-        if pending.is_empty() {
+        // The opt-in commit point can fire INSIDE the dispatch's own poll
+        // (the Scenario Builder accepts, then its driver fails in the same
+        // tick), so the race above saw the result first. A run that was
+        // accepted is a committed stream whatever it produced: its result
+        // rides the tail, never the refusal body. (Always pending for every
+        // caller without a commit point.)
+        let committed = std::future::poll_fn(|cx| {
+            std::task::Poll::Ready(accepted.as_mut().poll(cx).is_ready())
+        })
+        .await;
+        if pending.is_empty() && !committed {
             if let Err((status, body)) = outcome(out) {
                 return (
                     status,
@@ -303,8 +364,9 @@ where
                     .into_response();
             }
         } else if let Some(last) = tail.and_then(|t| t(out)) {
-            // Frames were emitted, so the stream is committed after all: the
-            // result rides the tail, exactly as on the pump's path below.
+            // Frames were emitted (or the run was accepted), so the stream is
+            // committed after all: the result rides the tail, exactly as on the
+            // pump's path below.
             pending.push(frame(&last));
         }
         for f in pending {
