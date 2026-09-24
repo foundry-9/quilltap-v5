@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(scenario-builder): the REST edge logs the disconnect on every disconnect of an accepted run (P4.115 item 3)
+
+_Versions: core 0.0.1031, web 0.0.188._
+
+v4 logs `Scenario Builder client disconnected; aborting the run` on any
+abort once its stream exists, which is right after the refusals. v5 attached
+its disconnect guard only after the first frame committed the stream, so a
+client that left earlier aborted the run but lost the line. After the stream
+committed, the line also depended on the abort verb's answer, which a
+dropped dispatch could beat.
+
+The engine now signals v4's "request accepted" point in process: the REST
+edge registers an acceptance watch on its minted run id before dispatching,
+and the build arm fires it when every refusal has passed. No request,
+response or event shape changes. The guard is armed before the dispatch is
+first polled and logs when the build was accepted and its dispatch has not
+finished, then dispatches the abort. New test: a client that leaves before
+the first frame gets the line exactly once and the run's token trips. It
+failed before the fix.
+
 #### 2026-09-24 — test(scenario-builder): the dispatch-wire test reads llm-logs through a read-only open (P4.115 item 4)
 
 _Versions: core 0.0.1030, web 0.0.187._

@@ -147753,3 +147753,50 @@ private `db::runtime::open_readonly` shape, rebuilt in `test_support` because
 - **Mutation** (the helper's `SQLITE_OPEN_READ_ONLY` → `READ_WRITE`, by file
   backup): the pin RED — `a write through the read-only opener must fail:
   Ok(1)`; restored, green.
+
+### Unit 4 — item 3: the disconnect DEBUG on every disconnect (core 0.0.1031, web 0.0.188)
+
+**The substrate: v4's "accepted" point, in-process** (built here because the
+guard needs it to know a run was LIVE; Unit 5 reuses it). `api/scenario_
+builder.rs`: `Acceptance` (an `AtomicBool` + `tokio::sync::Notify`,
+`is_accepted()` / `async accepted()`), `ScenarioBuilderRuns::watch_acceptance
+(self: &Arc<Self>, run_id) -> AcceptanceWatch` (a pending-watch map, poison-
+recovered like the runs map; the handle's `Drop` forgets a watch no build
+took — a locked engine, a duplicate id), `register` moves the watch into the
+`RunRegistration`, and `RunRegistration::accept()` fires it. `engine.rs` (the
+build arm's hunk only, §R.10(a)): `scenario_builder_runs` made `pub`, and
+`registration.accept()` right after `scenario_builder_prepare` answers `Ok` —
+v4's `request accepted` DEBUG point, BEFORE the not-assembled check. **No
+`Request`/`Response`/`Event` shape moved**; the SPA's dispatch path registers
+no watch and is unaffected.
+
+**The guard** (`scenario_builder_routes.rs`): armed BEFORE the pre-commit race
+(a pre-frame leave drops the handler and with it the guard); on a 200 it is
+moved into the body as before. It decides "a live run was cut short" from two
+in-process facts — accepted AND the dispatch not finished (a flag the
+wrapped dispatch sets) — logs v4's DEBUG synchronously, THEN dispatches
+`scenarioBuilderAbort` to trip the token. The line no longer depends on the
+abort verb's answer, so the post-commit race the order measured (the pump
+dropping the dispatch — unregistering the run — before the guard's spawned
+abort, answering `{aborted:false}`) is closed by construction. The route file
+still carries exactly its two `Request` constructions (the typed-only census
+count of `scenario_builder_routes.rs` is unmoved at 2).
+
+- `api::scenario_builder` unit test `an_acceptance_watch_fires_only_on_accept_
+  and_never_leaks` (fired only by `accept`; an unaccepted registration never
+  fires it; an orphan watch is forgotten; the map is empty after).
+- **Red-first:** `scenario_builder_disconnect.rs` gains `leaving_before_the_
+  first_frame_logs_the_disconnect_and_aborts_the_run` (a canned driver that
+  publishes nothing until its token trips and hands the token out; the client
+  gives up before any frame). Run against the pre-fix routes file (swapped in
+  by backup): RED — the token DID trip (the dropped handler dropped the
+  registration) but the lines held only `Scenario Builder request accepted`,
+  no disconnect DEBUG; after: 2/2 (4.2 s). **That pre-fix run IS M3** (the
+  guard armed after the race).
+- **Finding in the test's own first draft:** the canned driver runs INLINE in
+  the dispatch future, so a dropped handler drops it too — it can never record
+  "I saw the abort". The observable is the run's TOKEN (what the real spine's
+  detached thread watches), which the driver now hands out. The first red-first
+  run failed on that instrument, not on the edge.
+- The existing post-first-frame test unchanged, green; the two tests share
+  the binary's one global subscriber under a `tokio::sync::Mutex` `SERIAL`.

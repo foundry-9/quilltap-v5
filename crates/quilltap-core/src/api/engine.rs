@@ -6432,8 +6432,10 @@ impl CoreEngine {
     }
 
     // === P4.D217 ===
-    /// The engine-owned run registry, under the readiness gate.
-    fn scenario_builder_runs(
+    /// The engine-owned run registry, under the readiness gate. Public for the
+    /// REST edge's in-process acceptance watch (P4.115,
+    /// [`super::scenario_builder::Acceptance`]) — no wire shape moves.
+    pub fn scenario_builder_runs(
         &self,
     ) -> Result<Arc<super::scenario_builder::ScenarioBuilderRuns>, Response> {
         match &*self.inner.state.lock().unwrap() {
@@ -6473,6 +6475,9 @@ impl CoreEngine {
                 Ok(p) => p,
                 Err(r) => return r,
             };
+        // v4's `request accepted` point (P4.115): every refusal has passed;
+        // a watching REST edge commits its stream here.
+        registration.accept();
         let Some(driver) = driver else {
             return Response::error(
                 ErrorKind::Internal,

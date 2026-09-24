@@ -28,14 +28,23 @@
 //!
 //! ## Client disconnect = abort (v4's `req.signal`)
 //!
-//! v4 passes `req.signal` into the run, so closing the tab aborts the loop.
-//! v5's run executes on the host driver's OWN thread, which dropping the
-//! dispatch future does not stop, so the SSE body carries a
-//! [`DisconnectGuard`]: when hyper drops the body (the client went away, or
-//! the stream ended), the guard dispatches `scenarioBuilderAbort` for the
-//! minted runId. On a finished run that is an unknown id (`{aborted: false}`,
-//! silent); on a live one it trips the token and the edge logs v4's DEBUG
-//! `Scenario Builder client disconnected; aborting the run`.
+//! v4 passes `req.signal` into the run, so closing the tab aborts the loop,
+//! and its `onAbort` listener — registered as soon as the stream exists, i.e.
+//! right after the refusals — logs DEBUG `Scenario Builder client
+//! disconnected; aborting the run` on ANY abort of a live run. v5's run
+//! executes on the host driver's OWN thread, which dropping the dispatch
+//! future does not stop, so the edge carries a [`DisconnectGuard`], armed
+//! BEFORE the dispatch is first polled (P4.115 item 3) and moved into the SSE
+//! body once the stream commits: a client that leaves before the first frame
+//! drops the handler (and with it the guard), one that leaves later drops the
+//! body. The guard OWNS the decision — "was a live run cut short?" — and reads
+//! it from two in-process facts rather than from the abort verb's answer:
+//! the build was ACCEPTED (the engine's acceptance watch, fired at v4's
+//! `request accepted` point) and its dispatch has not FINISHED. That closes the
+//! race where the pump (or the dropped handler) dropped the dispatch first —
+//! unregistering the run, so the abort verb answered `{aborted: false}` and the
+//! line was lost. It then dispatches `scenarioBuilderAbort` to trip the token
+//! (a no-op on a run that already unregistered — whose own drop tripped it).
 //!
 //! ## A failed run (v4's belt-and-braces arm)
 //!
@@ -55,10 +64,14 @@
 //!   the close. A successful run's result is carried by the run's own frames
 //!   and adds nothing.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use axum::body::Body;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
+use quilltap_core::api::scenario_builder::Acceptance;
 use quilltap_core::api::{QuilltapCore as _, Request as CoreRequest, Response as CoreResponse};
 use serde_json::Value;
 use tokio_stream::StreamExt as _;
@@ -128,6 +141,21 @@ pub async fn scenario_builder_post(
     // The route MINTS the scope tag a REST caller never sees.
     let run_id = uuid::Uuid::new_v4().to_string();
     let core = host.core().clone();
+    // Watch for v4's "accepted" point BEFORE dispatching (the registration
+    // takes the watch); a locked engine has no registry and refuses anyway.
+    let watch = core
+        .scenario_builder_runs()
+        .ok()
+        .map(|runs| runs.watch_acceptance(&run_id));
+    let finished = Arc::new(AtomicBool::new(false));
+    // Armed BEFORE the race (module header): its `Drop` fires on a pre-frame
+    // leave too.
+    let guard = DisconnectGuard {
+        core: Some(core.clone()),
+        run_id: run_id.clone(),
+        acceptance: watch.as_ref().map(|w| w.acceptance()),
+        finished: Arc::clone(&finished),
+    };
     let req = CoreRequest::ScenarioBuilderBuild {
         run_id: run_id.clone(),
         body: raw,
@@ -136,7 +164,11 @@ pub async fn scenario_builder_post(
     // (`generator_sse`'s module header, step 1).
     let dispatch = {
         let core = core.clone();
-        async move { core.dispatch(req).await }
+        async move {
+            let out = core.dispatch(req).await;
+            finished.store(true, Ordering::SeqCst);
+            out
+        }
     };
     let response = crate::generator_sse::stream_frames_with_tail(
         host.core().event_sender(),
@@ -157,14 +189,12 @@ pub async fn scenario_builder_post(
     )
     .await;
 
+    drop(watch);
     if response.status() != StatusCode::OK {
+        // A refusal: the build was never accepted, so the guard is silent.
         return response;
     }
     // The stream is committed: carry the disconnect guard in its body.
-    let guard = DisconnectGuard {
-        core: Some(core),
-        run_id,
-    };
     response.map(|body| {
         Body::from_stream(body.into_data_stream().map(move |chunk| {
             let _keep_alive = &guard;
@@ -189,10 +219,15 @@ fn failure_tail(resp: CoreResponse) -> Option<Value> {
 /// v4's error frame text (`route.ts:161`).
 const HOST_COULD_NOT_COMPLETE: &str = "The Host could not complete the enquiry.";
 
-/// Trips the run's abort token when the SSE body is dropped (module header).
+/// Logs v4's disconnect DEBUG and trips the run's abort token when a LIVE run
+/// loses its client (module header).
 pub struct DisconnectGuard {
     core: Option<quilltap_core::api::CoreEngine>,
     run_id: String,
+    /// The build's acceptance (`None` when the engine had no registry).
+    acceptance: Option<Arc<Acceptance>>,
+    /// Set when the build's dispatch resolved.
+    finished: Arc<AtomicBool>,
 }
 
 impl Drop for DisconnectGuard {
@@ -200,21 +235,23 @@ impl Drop for DisconnectGuard {
         let Some(core) = self.core.take() else {
             return;
         };
+        // v4's `onAbort` is registered only once the stream exists (after the
+        // refusals) and removed in the run's `finally` — so the line means
+        // exactly "accepted, and not yet finished".
+        let live = self.acceptance.as_ref().is_some_and(|a| a.is_accepted())
+            && !self.finished.load(Ordering::SeqCst);
+        if !live {
+            return;
+        }
+        tracing::debug!("Scenario Builder client disconnected; aborting the run");
         let run_id = std::mem::take(&mut self.run_id);
         let Ok(handle) = tokio::runtime::Handle::try_current() else {
             return;
         };
         handle.spawn(async move {
-            let resp = core
+            let _ = core
                 .dispatch(CoreRequest::ScenarioBuilderAbort { run_id })
                 .await;
-            // v4's `onAbort` line fires only when a live run was cut short —
-            // a finished run's id is unknown here and answers `false`.
-            if let CoreResponse::ScenarioBuilder(v) = resp {
-                if v.get("aborted").and_then(Value::as_bool) == Some(true) {
-                    tracing::debug!("Scenario Builder client disconnected; aborting the run");
-                }
-            }
         });
     }
 }

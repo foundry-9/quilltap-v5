@@ -104,7 +104,83 @@ pub trait ScenarioBuilderDriver: Send + Sync {
 #[derive(Default)]
 pub struct ScenarioBuilderRuns {
     runs: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    // === P4.115 ===
+    /// Pending [`Acceptance`] watches by `runId`, taken by [`Self::register`].
+    watches: Mutex<HashMap<String, Arc<Acceptance>>>,
+    // === end P4.115 ===
 }
+
+// === P4.115 ===
+/// **v4's "accepted" point, signalled IN-PROCESS** (P4.115). v4's route runs
+/// every refusal, logs DEBUG `Scenario Builder request accepted`, and only
+/// then builds its `ReadableStream` — so from that point on a client
+/// disconnect is its `onAbort` (logged), and every later failure rides the
+/// already-committed stream. The dispatch reply cannot say "accepted" before
+/// the run ends (it IS the run's result), and no `Request`/`Response`/`Event`
+/// shape moves for this; instead the REST edge, which is in the same process
+/// as the engine, registers a watch on its minted `runId` BEFORE dispatching,
+/// and the build arm fires it the moment [`scenario_builder_prepare`] answers
+/// `Ok` — v4's exact point. A refused build never fires it.
+#[derive(Default)]
+pub struct Acceptance {
+    accepted: AtomicBool,
+    notify: tokio::sync::Notify,
+}
+
+impl Acceptance {
+    /// `true` once the build passed every refusal.
+    pub fn is_accepted(&self) -> bool {
+        self.accepted.load(Ordering::SeqCst)
+    }
+
+    /// Resolves when the build is accepted (never, for a refused one — race
+    /// it against the dispatch).
+    pub async fn accepted(&self) {
+        loop {
+            // Created BEFORE the check: `notify_waiters` wakes every
+            // `Notified` that exists, polled or not.
+            let notified = self.notify.notified();
+            if self.is_accepted() {
+                return;
+            }
+            notified.await;
+        }
+    }
+
+    fn fire(&self) {
+        self.accepted.store(true, Ordering::SeqCst);
+        self.notify.notify_waiters();
+    }
+}
+
+/// The edge's handle on one pending watch; dropping it forgets a watch no
+/// build ever took (a locked engine, a duplicate id), so none leaks.
+pub struct AcceptanceWatch {
+    runs: Arc<ScenarioBuilderRuns>,
+    run_id: String,
+    acceptance: Arc<Acceptance>,
+}
+
+impl AcceptanceWatch {
+    /// The shared acceptance state (for a guard that must read it after this
+    /// handle is gone).
+    pub fn acceptance(&self) -> Arc<Acceptance> {
+        Arc::clone(&self.acceptance)
+    }
+}
+
+impl Drop for AcceptanceWatch {
+    fn drop(&mut self) {
+        let mut watches = self.runs.lock_watches();
+        if watches
+            .get(&self.run_id)
+            .is_some_and(|a| Arc::ptr_eq(a, &self.acceptance))
+        {
+            watches.remove(&self.run_id);
+        }
+    }
+}
+// === end P4.115 ===
 
 /// Unregisters its run when dropped — so a run removes itself however its
 /// future ends (completed, refused, or dropped mid-await) — and TRIPS the
@@ -118,6 +194,18 @@ pub struct RunRegistration<'a> {
     runs: &'a ScenarioBuilderRuns,
     run_id: String,
     pub token: Arc<AtomicBool>,
+    /// The edge's pending watch for this id, if one was registered (P4.115).
+    acceptance: Option<Arc<Acceptance>>,
+}
+
+impl RunRegistration<'_> {
+    /// Signal v4's "accepted" point to a watching edge (P4.115; see
+    /// [`Acceptance`]). A no-op when nothing watches this run.
+    pub fn accept(&self) {
+        if let Some(a) = &self.acceptance {
+            a.fire();
+        }
+    }
 }
 
 impl Drop for RunRegistration<'_> {
@@ -141,6 +229,28 @@ impl ScenarioBuilderRuns {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// The pending watches, recovered from a poison for the same reason as
+    /// [`Self::lock`] (one `insert`/`remove` per mutation).
+    fn lock_watches(&self) -> std::sync::MutexGuard<'_, HashMap<String, Arc<Acceptance>>> {
+        self.watches
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Watch `run_id` for v4's "accepted" point (P4.115, [`Acceptance`]).
+    /// Call BEFORE dispatching the build; the build's registration takes the
+    /// watch.
+    pub fn watch_acceptance(self: &Arc<Self>, run_id: &str) -> AcceptanceWatch {
+        let acceptance = Arc::new(Acceptance::default());
+        self.lock_watches()
+            .insert(run_id.to_string(), Arc::clone(&acceptance));
+        AcceptanceWatch {
+            runs: Arc::clone(self),
+            run_id: run_id.to_string(),
+            acceptance,
+        }
+    }
+
     /// Register `run_id`; `None` when a run with that id is already in flight.
     pub fn register(&self, run_id: &str) -> Option<RunRegistration<'_>> {
         let mut runs = self.lock();
@@ -149,10 +259,12 @@ impl ScenarioBuilderRuns {
         }
         let token = Arc::new(AtomicBool::new(false));
         runs.insert(run_id.to_string(), Arc::clone(&token));
+        let acceptance = self.lock_watches().remove(run_id);
         Some(RunRegistration {
             runs: self,
             run_id: run_id.to_string(),
             token,
+            acceptance,
         })
     }
 
@@ -362,6 +474,31 @@ mod tests {
     #[test]
     fn aborting_an_unknown_id_is_false_never_an_error() {
         assert!(!ScenarioBuilderRuns::default().abort("nope"));
+    }
+
+    /// P4.115 — the acceptance watch: fired only by `accept`, never by a
+    /// registration that ends unaccepted, and forgotten when the edge drops it.
+    #[test]
+    fn an_acceptance_watch_fires_only_on_accept_and_never_leaks() {
+        let runs = Arc::new(ScenarioBuilderRuns::default());
+        let watch = runs.watch_acceptance("w1");
+        let a = watch.acceptance();
+        let reg = runs.register("w1").unwrap();
+        assert!(!a.is_accepted(), "registering is not accepting");
+        reg.accept();
+        assert!(a.is_accepted());
+        drop(reg);
+
+        let refused = runs.watch_acceptance("w2");
+        let r = runs.register("w2").unwrap();
+        drop(r); // a refusal: the registration ends unaccepted
+        assert!(!refused.acceptance().is_accepted());
+
+        let orphan = runs.watch_acceptance("w3"); // never registered
+        drop(orphan);
+        drop(watch);
+        drop(refused);
+        assert!(runs.lock_watches().is_empty(), "no watch outlives its edge");
     }
 
     /// P4.115 item 2 — **a poisoned registry recovers; it never answers the

@@ -17,7 +17,17 @@
 //! - and NO `Scenario Builder run complete` / terminal frame.
 //!
 //! The run's lines are emitted on the driver's thread, so the capture is a
-//! PROCESS-GLOBAL subscriber (this binary holds exactly this one test).
+//! PROCESS-GLOBAL subscriber, installed once; the binary's tests take
+//! [`SERIAL`] so each reads only its own lines.
+//!
+//! **P4.115 item 3 — the SECOND test, a leave BEFORE any frame.** v4's
+//! `onAbort` is registered as soon as the stream exists (right after the
+//! refusals), so it logs on a pre-frame abort too. A canned driver holds its
+//! first frame until the token trips; the client gives up on the request
+//! before any frame arrives. Before P4.115 the edge's guard was attached only
+//! after the first frame committed the stream, so this leave dropped the
+//! handler with no guard at all: the run aborted (its registration's `Drop`
+//! trips the token) but the edge's DEBUG was lost.
 //!
 //! Run:
 //!   cargo test -p quilltap-web --test scenario_builder_disconnect -- --nocapture
@@ -25,16 +35,30 @@
 mod common;
 mod scenario_builder_spine;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use futures_util::StreamExt;
+use quilltap_core::api::scenario_builder::{
+    ScenarioBuilderBuildRequest, ScenarioBuilderDriver, ScenarioBuilderFuture,
+};
+use quilltap_core::services::scenario_builder::ScenarioRunOutcome;
 use serde_json::{json, Value};
 use tracing_subscriber::layer::SubscriberExt;
 
-use scenario_builder_spine::{Canned, ScenarioBuilderSpineFactory, SLOW_REASONING};
+use scenario_builder_spine::{Canned, DriverMaker, ScenarioBuilderSpineFactory, SLOW_REASONING};
 
 static LINES: OnceLock<Arc<Mutex<Vec<String>>>> = OnceLock::new();
+
+/// One test at a time: both read the one global line store.
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// v4's `onAbort` line.
+const DISCONNECTED: &str = "Scenario Builder client disconnected; aborting the run";
+
+/// The tools-on OLLAMA profile both tests build with.
+const PROFILE_ID: &str = "5b170000-0000-4000-8000-0000000000a1";
 
 struct Global(Arc<Mutex<Vec<String>>>);
 impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Global {
@@ -59,15 +83,21 @@ fn lines() -> Vec<String> {
     LINES.get().unwrap().lock().unwrap().clone()
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn dropping_the_sse_response_aborts_the_live_run() {
-    let store = Arc::new(Mutex::new(Vec::new()));
-    LINES.set(Arc::clone(&store)).unwrap();
-    tracing::subscriber::set_global_default(
-        tracing_subscriber::registry().with(Global(Arc::clone(&store))),
-    )
-    .expect("the one global subscriber of this binary");
+/// Install the one global subscriber (first caller) and clear the store.
+fn fresh_capture() {
+    let store = LINES.get_or_init(|| {
+        let store = Arc::new(Mutex::new(Vec::new()));
+        tracing::subscriber::set_global_default(
+            tracing_subscriber::registry().with(Global(Arc::clone(&store))),
+        )
+        .expect("the one global subscriber of this binary");
+        store
+    });
+    store.lock().unwrap().clear();
+}
 
+/// A per-run instance copy with one tools-on OLLAMA profile.
+fn instance() -> tempfile::TempDir {
     let base = common::materialize_fixture_instance();
     {
         // One tools-on OLLAMA profile (a provider that takes no key), cloned
@@ -86,6 +116,31 @@ async fn dropping_the_sse_response_aborts_the_live_run() {
             )
             .unwrap();
     }
+    base
+}
+
+fn build_request(addr: std::net::SocketAddr) -> reqwest::RequestBuilder {
+    reqwest::Client::new()
+        .post(format!(
+            "http://{addr}/api/v1/scenario-builder?action=build"
+        ))
+        .header("content-type", "application/json")
+        .body(
+            json!({
+                "mode": "in-world",
+                "location": "The quay",
+                "time": "dusk",
+                "connectionProfileId": PROFILE_ID,
+            })
+            .to_string(),
+        )
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn dropping_the_sse_response_aborts_the_live_run() {
+    let _serial = SERIAL.lock().await;
+    fresh_capture();
+    let base = instance();
     let base_dir = base.path().to_path_buf();
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
@@ -98,23 +153,7 @@ async fn dropping_the_sse_response_aborts_the_live_run() {
     })
     .await;
 
-    let resp = reqwest::Client::new()
-        .post(format!(
-            "http://{addr}/api/v1/scenario-builder?action=build"
-        ))
-        .header("content-type", "application/json")
-        .body(
-            json!({
-                "mode": "in-world",
-                "location": "The quay",
-                "time": "dusk",
-                "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
-            })
-            .to_string(),
-        )
-        .send()
-        .await
-        .unwrap();
+    let resp = build_request(addr).send().await.unwrap();
     assert_eq!(resp.status(), 200);
     assert_eq!(
         resp.headers().get("content-type").unwrap(),
@@ -140,7 +179,7 @@ async fn dropping_the_sse_response_aborts_the_live_run() {
     drop(stream);
 
     let want = [
-        "Scenario Builder client disconnected; aborting the run",
+        DISCONNECTED,
         "Scenario Builder: aborted mid-stream",
         "Scenario Builder run aborted by the client",
     ];
@@ -161,5 +200,106 @@ async fn dropping_the_sse_response_aborts_the_live_run() {
     assert!(
         !seen.iter().any(|l| l == "Scenario Builder run complete"),
         "an aborted run must not complete: {seen:#?}"
+    );
+}
+
+/// A driver that publishes NOTHING until its abort token trips, handing the
+/// run's token out so the test reads what a real driver's thread would see.
+/// (This double runs INLINE in the dispatch future, so a dropped handler
+/// drops it too — only the token outlives it, which is exactly what the real
+/// spine's detached thread watches.)
+struct HoldsItsFirstFrame {
+    tokens: Arc<Mutex<Vec<Arc<AtomicBool>>>>,
+}
+
+impl ScenarioBuilderDriver for HoldsItsFirstFrame {
+    fn build(&self, req: ScenarioBuilderBuildRequest) -> ScenarioBuilderFuture<'_> {
+        self.tokens.lock().unwrap().push(Arc::clone(&req.abort));
+        Box::pin(async move {
+            for _ in 0..400 {
+                if req.abort.load(Ordering::SeqCst) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            Ok(ScenarioRunOutcome::Aborted)
+        })
+    }
+}
+
+/// P4.115 item 3 — **a leave BEFORE the first frame logs v4's disconnect
+/// DEBUG exactly once and aborts the run** (module header).
+///
+/// Mutation M3: arm the guard only after the pre-commit race again (the
+/// P4.D217 shape) → the DEBUG is never logged and this is RED.
+#[tokio::test(flavor = "multi_thread")]
+async fn leaving_before_the_first_frame_logs_the_disconnect_and_aborts_the_run() {
+    let _serial = SERIAL.lock().await;
+    fresh_capture();
+    let base = instance();
+    let base_dir = base.path().to_path_buf();
+    let tokens: Arc<Mutex<Vec<Arc<AtomicBool>>>> = Arc::new(Mutex::new(Vec::new()));
+    let maker: DriverMaker = {
+        let tokens = Arc::clone(&tokens);
+        Arc::new(move |_events| {
+            Arc::new(HoldsItsFirstFrame {
+                tokens: Arc::clone(&tokens),
+            }) as _
+        })
+    };
+    let started = || !tokens.lock().unwrap().is_empty();
+    let aborted = || {
+        tokens
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|t| t.load(Ordering::SeqCst))
+            .count()
+    };
+    let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
+        c.terminal = false;
+        c.spine = Some(Arc::new(ScenarioBuilderSpineFactory {
+            base_dir,
+            canned: Canned::Scene,
+            driver: Some(maker),
+        }));
+        c
+    })
+    .await;
+
+    // Give up on the request while the run holds its first frame: whether the
+    // response head has arrived or not, no frame has, and dropping the future
+    // (or the response) closes the connection.
+    let pending = tokio::spawn(async move {
+        let resp = build_request(addr).send().await.ok();
+        // Hold the response (if any) without reading a byte, then leave.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        drop(resp);
+    });
+    for _ in 0..200 {
+        if started() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(started(), "the run started");
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    pending.abort();
+    let _ = pending.await;
+
+    for _ in 0..200 {
+        if aborted() == 1 && lines().iter().any(|l| l == DISCONNECTED) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    // Let any late duplicate land before counting.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let seen = lines();
+    assert_eq!(aborted(), 1, "the client's leave aborts the run: {seen:#?}");
+    assert_eq!(
+        seen.iter().filter(|l| *l == DISCONNECTED).count(),
+        1,
+        "v4's disconnect DEBUG, exactly once, on a pre-frame leave: {seen:#?}"
     );
 }
