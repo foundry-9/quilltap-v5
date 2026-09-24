@@ -30,11 +30,10 @@
 //! - Quilltap General is `get_general_mount_point_id`. **Its WARN arm is
 //!   unreachable on BOTH sides**: v4's `readSetting` catches its own failure
 //!   (logging `[InstanceSettings] Failed to read setting` and answering `null`),
-//!   and v5's `read_setting` answers `None` on any failure. The family's
-//!   poisoned-settings arm measures exactly that (both pools lose the global
-//!   tier; neither pool logger warns). v4's `[InstanceSettings]` WARN has NO v5
-//!   emitter — a pre-existing absence in `db/instance_settings.rs`, recorded
-//!   for the unifier in the P4.D217 lane record, not taken here.
+//!   and v5's `read_setting` does the same since P4.113 (the WARN, then
+//!   `None`). The family's poisoned-settings arm measures exactly that (both
+//!   pools lose the global tier; neither pool logger warns; the
+//!   `[InstanceSettings]` WARN is pinned on both sides).
 //!
 //! ## The four log lines (logger `ScenarioBuilderMountPool`) — two unreachable
 //!
