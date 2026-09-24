@@ -17,6 +17,9 @@
 //!
 //! NORMALIZATION: NONE. The seed's minted timestamps are baked once and read by
 //! both sides, and no 4b op mints a new chat timestamp, so every cell is pinned.
+//! ONE recorded v5 divergence is pinned BOTH ways instead of compared for
+//! equality — `NULL_CONTENT_REPAIR_DIVERGENCE` (one op, the row's `content`
+//! cell, its chat's `transcriptVersion`); see its doc below.
 //!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -166,6 +169,166 @@ const ADD_MINTS_TIMESTAMPS_ON: &str = "c0000060-0000-4000-8000-000000000001";
 /// is pinned exactly as the mint carve-out's is: an equality whose row has left
 /// the corpus is measuring nothing (the `ffb6b3119` round's §3 review).
 const CONVERGED_DELETE_MISS_CHAT: &str = "c0000020-0000-4000-8000-000000000001";
+
+/// **A RECORDED v5 divergence, pinned in BOTH directions** (P4.113's lane
+/// record; see `find_event_raw` in `quilltap-core/src/db/chats_messages_read.rs`).
+///
+/// A row whose `content` cell is NULL (planted — v4 only ever writes `content`
+/// through a required Zod string). v4's `updateMessage` finds it with
+/// `findOne`, whose `hydrateRow` has NO member types, so the NULL hydrates;
+/// `{ ...existing, ...updates }` then overwrites it and the MERGED event passes
+/// `ChatEventSchema.parse` — v4 WRITES the repair, bumps the chat's
+/// `transcriptVersion`, logs nothing, and returns the event. v5's
+/// `find_event_raw` marshals the row TYPED, so the NULL fails BEFORE the merge:
+/// v5 logs v4's ERROR arm `Failed to update message in chat`, answers
+/// `Ok(false)` (v4's `null`), and writes nothing.
+///
+/// The row lives in its own chat (`c00000a0-…`, one seed message, planted and
+/// updated as the corpus's LAST two ops) so the blast radius is exactly: this
+/// ONE `updateMessage` op's return + lines, the row's `content` cell, and that
+/// chat's `transcriptVersion` cell (v4 = v5 + 1). Every other cell of the row
+/// and the chat still compares. If v5 converges (or v4 moves) the checks below
+/// FAIL by name — `VANISHED` means retire this pin to a plain equality,
+/// `WRONG SHAPE` means one side moved and the record must be re-measured.
+struct UpdateDivergence {
+    chat_id: &'static str,
+    message_id: &'static str,
+    /// The `content` the op's `{ content }` update carries — v4's written cell.
+    repair_content: &'static str,
+}
+
+const NULL_CONTENT_REPAIR_DIVERGENCE: UpdateDivergence = UpdateDivergence {
+    chat_id: "c00000a0-0000-4000-8000-000000000001",
+    message_id: "e00000a0-0000-4000-8000-000000000001",
+    repair_content: "content restored by an update",
+};
+
+/// The divergent `updateMessage` op, both ways: v4's recorded shape (returns
+/// the id, logs nothing) is asserted EXACTLY, v5's (`null` + ONE `Failed to
+/// update message in chat` ERROR naming the chat and message) EXACTLY, and a
+/// v5 that now answers v4's shape is `VANISHED`.
+fn check_null_content_repair_divergence(
+    i: usize,
+    returned: &Value,
+    lines: &[String],
+    w: &Value,
+) -> Result<(), String> {
+    let d = &NULL_CONTENT_REPAIR_DIVERGENCE;
+    let v4_recorded = serde_json::json!({
+        "messageId": d.message_id,
+        "returned": d.message_id,
+        "logs": [],
+    });
+    if w != &v4_recorded {
+        return Err(format!(
+            "op {i} NULL_CONTENT_REPAIR_DIVERGENCE: WRONG SHAPE on the v4 side — \
+             recorded {v4_recorded}, the oracle now answers {w}; re-measure the divergence"
+        ));
+    }
+    if check_update_return(i, returned, lines, w).is_ok() {
+        return Err(format!(
+            "op {i} NULL_CONTENT_REPAIR_DIVERGENCE: VANISHED — v5 now answers v4's shape \
+             ({returned}, {lines:?}); retire the divergence to a plain equality"
+        ));
+    }
+    let v5_recorded = serde_json::json!({
+        "messageId": d.message_id,
+        "returned": null,
+        "logs": [{
+            "level": "error",
+            "message": "Failed to update message in chat",
+            "chatId": d.chat_id,
+            "messageId": d.message_id,
+        }],
+    });
+    check_update_return(i, returned, lines, &v5_recorded).map_err(|e| {
+        format!(
+            "op {i} NULL_CONTENT_REPAIR_DIVERGENCE: WRONG SHAPE on the v5 side — \
+             expected {v5_recorded}, got ({returned}, {lines:?}): {e}"
+        )
+    })
+}
+
+/// The divergence's two cells, both ways, then neutralized: the row's
+/// `content` (v4 the repair, v5 still NULL) and the chat's `transcriptVersion`
+/// (v4 bumped once more than v5). Each must be PRESENT on both sides — a pin
+/// whose row has left the corpus is measuring nothing.
+fn apply_null_content_repair_divergence(
+    got_messages: &mut Value,
+    want_messages: &mut Value,
+    got_chats: &mut Value,
+    want_chats: &mut Value,
+) {
+    let d = &NULL_CONTENT_REPAIR_DIVERGENCE;
+    fn row_mut<'a>(
+        dump: &'a mut Value,
+        id: &str,
+        side: &str,
+    ) -> &'a mut serde_json::Map<String, Value> {
+        dump.get_mut("rows")
+            .and_then(Value::as_array_mut)
+            .and_then(|rows| {
+                rows.iter_mut()
+                    .find(|r| r.get("id").and_then(Value::as_str) == Some(id))
+            })
+            .and_then(Value::as_object_mut)
+            .unwrap_or_else(|| {
+                panic!("NULL_CONTENT_REPAIR_DIVERGENCE: [{side}] row {id} is not in the dump")
+            })
+    }
+
+    let got = row_mut(got_messages, d.message_id, "rust");
+    let want = row_mut(want_messages, d.message_id, "oracle");
+    let (g, w) = (got["content"].clone(), want["content"].clone());
+    assert!(
+        g != w,
+        "NULL_CONTENT_REPAIR_DIVERGENCE: VANISHED — the `content` cell now agrees \
+         ({g}); retire the divergence to a plain equality"
+    );
+    assert_eq!(
+        w,
+        Value::String(d.repair_content.into()),
+        "NULL_CONTENT_REPAIR_DIVERGENCE: WRONG SHAPE on the v4 side — v4 should have \
+         WRITTEN the repair"
+    );
+    assert_eq!(
+        g,
+        Value::Null,
+        "NULL_CONTENT_REPAIR_DIVERGENCE: WRONG SHAPE on the v5 side — v5 should have \
+         left the planted NULL"
+    );
+    for o in [got, want] {
+        o.insert(
+            "content".into(),
+            Value::String("<divergent: null-content repair>".into()),
+        );
+    }
+
+    let got = row_mut(got_chats, d.chat_id, "rust");
+    let want = row_mut(want_chats, d.chat_id, "oracle");
+    let g = got["transcriptVersion"].as_i64();
+    let w = want["transcriptVersion"].as_i64();
+    assert!(
+        g != w,
+        "NULL_CONTENT_REPAIR_DIVERGENCE: VANISHED — the chat's transcriptVersion now \
+         agrees ({g:?}); retire the divergence to a plain equality"
+    );
+    assert!(
+        g.is_some() && w == g.map(|v| v + 1),
+        "NULL_CONTENT_REPAIR_DIVERGENCE: WRONG SHAPE — v4's transcriptVersion should be \
+         v5's + 1 (the repair's one bump), got v4 {w:?} rust {g:?}"
+    );
+    for o in [got, want] {
+        o.insert(
+            "transcriptVersion".into(),
+            Value::String("<divergent: +1 on v4>".into()),
+        );
+    }
+    eprintln!(
+        "NULL_CONTENT_REPAIR_DIVERGENCE: pinned both ways — v4 wrote the repair (+1 \
+         transcriptVersion), v5 left the NULL with the ERROR arm"
+    );
+}
 
 /// Apply the ONE remaining carve-out to a `chats` dump, asserting it is REAL
 /// (present and of the expected shape) before neutralizing it — a carve-out
@@ -418,9 +581,17 @@ fn chats_messages_ops_tier2_matches_oracle() {
 
     assert_update_returns(&update_returns, &oracle["updateReturns"]);
     assert_reads(&reads, &oracle["reads"]);
-    assert_dump_eq(&got_messages, &oracle["messages"], "chat_messages");
+    let mut got_messages = got_messages;
+    let mut want_messages = oracle["messages"].clone();
     let mut got_chats = got_chats;
     let mut want_chats = oracle["chats"].clone();
+    apply_null_content_repair_divergence(
+        &mut got_messages,
+        &mut want_messages,
+        &mut got_chats,
+        &mut want_chats,
+    );
+    assert_dump_eq(&got_messages, &want_messages, "chat_messages");
     apply_chats_carve_outs(&mut got_chats, &mut want_chats);
     assert_dump_eq(&got_chats, &want_chats, "chats");
 
@@ -454,11 +625,25 @@ fn assert_update_returns(got: &[(Value, Vec<String>)], want: &Value) {
     // P4.113: every op is checked and EVERY mismatching op is reported (not
     // just the first), so a red-first run counts its reds.
     let mut reds: Vec<String> = Vec::new();
+    let mut saw_divergence = 0;
     for (i, ((returned, lines), w)) in got.iter().zip(want).enumerate() {
-        if let Err(e) = check_update_return(i, returned, lines, w) {
+        // The ONE recorded divergence is checked both ways instead of for
+        // equality — keyed on the op's message id, which no other op names.
+        let check = if w["messageId"] == NULL_CONTENT_REPAIR_DIVERGENCE.message_id {
+            saw_divergence += 1;
+            check_null_content_repair_divergence
+        } else {
+            check_update_return
+        };
+        if let Err(e) = check(i, returned, lines, w) {
             reds.push(e);
         }
     }
+    assert_eq!(
+        saw_divergence, 1,
+        "NULL_CONTENT_REPAIR_DIVERGENCE must key exactly ONE updateMessage op — a pin \
+         whose op has left the corpus is measuring nothing"
+    );
     assert!(
         reds.is_empty(),
         "{} updateMessage op(s) differ from v4:\n{}",

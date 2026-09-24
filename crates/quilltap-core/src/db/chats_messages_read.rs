@@ -307,8 +307,8 @@ const HOST_EVENT_STATUSES: [&str; 4] = ["active", "silent", "absent", "removed"]
 /// message `role` outside `RoleEnum`, and a message `hostEvent` that is not
 /// its object shape (`{ participantId?: uuid, toStatus?: enum,
 /// introducedCharacterIds?: uuid[] }` — `.optional()`, not `.nullable()`, so a
-/// PRESENT `null` inside it fails too). P4.113 adds the last two a raw cell
-/// can carry: `createdAt` (`TimestampSchema`, all three members — through the
+/// PRESENT `null` inside it fails too). P4.113 adds two more shapes a raw
+/// cell can carry: `createdAt` (`TimestampSchema`, all three members — through the
 /// ONE [`zod_iso_datetime_ok`](crate::api::zod_issues::zod_iso_datetime_ok)
 /// home) and the message's `participantId` (`UUIDSchema.nullable().optional()`);
 /// and makes this the ONE home of the check for BOTH the per-row skip and
@@ -471,12 +471,22 @@ pub fn get_messages(conn: &Connection, chat_id: &str) -> Result<Vec<Value>, DbEr
 /// chat message` on a healthy update, and answered a corrupted target as
 /// not-found.
 ///
-/// An unknown `type` answers `Err` (v4's hydrated row then fails the parse —
-/// the same ERROR). ⚠ **A per-CELL failure also answers `Err`** — a recorded
-/// divergence, not taken by P4.113: v4's `hydrateRow` has no member types, so
-/// a NULL `content` row hydrates and a `{ content }` update REPAIRS it, where
-/// v5's typed marshal fails before the merge and logs the ERROR (named in
-/// P4.113's lane record).
+/// Two RECORDED divergences, both from v5 failing BEFORE the merge where v4
+/// parses AFTER it (named in P4.113's lane record):
+///
+/// - ⚠ **A per-CELL failure answers `Err`** — v4's `hydrateRow` has no member
+///   types, so a NULL `content` row hydrates and a `{ content }` update
+///   REPAIRS it (writes the cell, bumps `transcriptVersion`, returns the
+///   event), where v5's typed marshal fails first and logs the ERROR `Failed
+///   to update message in chat`, writing nothing. **PINNED both ways** as
+///   `NULL_CONTENT_REPAIR_DIVERGENCE` in
+///   `crates/quilltap-harness/tests/chats_messages_ops_tier2_equivalence.rs`:
+///   it reds `VANISHED` if v5 converges and `WRONG SHAPE` if either side
+///   moves.
+/// - ⚠ **An unknown `type` answers `Err`** — the same ERROR as v4 only when
+///   the update leaves `type` alone. v4 merges first, so an update carrying a
+///   VALID `type` (with the member's fields) can REPAIR such a row, where v5
+///   errors before the merge. Recorded, NOT pinned by any differential.
 pub(crate) fn find_event_raw(
     conn: &Connection,
     chat_id: &str,

@@ -55,7 +55,7 @@ interface Op {
     // is not its object shape). One cell planted on the per-run copy.
     // P4.113: + a `createdAt` that fails zod 4.6.5's `z.iso.datetime()` (on a
     // message, a context-summary and a system row) and a non-uuid message
-    // `participantId` — the last two shapes a raw cell can carry.
+    // `participantId` — two more shapes a raw cell can carry.
     | 'plantCell'
     | 'getMessages';
   chatId: string;
