@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — feat(help): re-vendor the help tree whole at v4 `b0b6656b5` (127 → 129) and re-capture the Guide's category table (P4.D222 unit 1)
+
+_Versions: harness 0.0.965, host 0.0.155, SPA 0.5.762._
+
+The workspace `help/` tree is replaced wholesale with v4's at `b0b6656b5`:
+bug 168 (`492771aff`) splits `chat-settings.md` into three pages (adding
+`chat-settings-composer.md` and `chat-settings-ai-services.md`) and touches
+ten more, and the round's other commits re-vendor `quick-hide`,
+`dangerous-content`, `carina`, `chats` and `chat-participants`. Sixteen
+files move; `diff -r` against the pinned tree is empty. Both count
+literals (`help_tree_embed_guard`, `host_help_docs_boot`) move to 129.
+The SPA's Guide categories were re-recorded from v4's real
+`categories.ts` at the pin; the two new slugs follow `chat-settings` in
+the Chats category.
+
 #### 2026-09-24 — docs(porting): P4.D221 lane close — NO-PORT ratifications, neutrality reruns, gate record
 
 _Docs-only change._

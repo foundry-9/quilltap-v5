@@ -95,7 +95,12 @@ async fn boot_syncs_the_embedded_help_tree_and_reindex_reads_it() {
     //
     // 127 at v4 `d1c06cd9d` (126 + 1): P4.D217 adds `help/scenario-builder.md`
     // and re-vendors `chats`, `general-scenarios`, `project-scenarios` (no count).
-    assert_eq!(expected, 127, "the vendored tree at v4 d1c06cd9d");
+    //
+    // 129 at v4 `b0b6656b5` (127 + 2, P4.D222): bug 168 (`492771aff`) splits
+    // `chat-settings` into it plus `chat-settings-composer` and
+    // `chat-settings-ai-services`; the tree re-vendored WHOLE at the target
+    // (fourteen modified pages move no count).
+    assert_eq!(expected, 129, "the vendored tree at v4 b0b6656b5");
 
     // ── 1. The boot ensure. ──
     let host = Host::start(hermetic_config(dir.path())).unwrap();

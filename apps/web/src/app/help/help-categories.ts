@@ -1,6 +1,7 @@
 /**
  * Help Guide categories — a 1:1 transcription of v4 `lib/help-guide/categories.ts`
- * (baseline `d883a5ee1`).
+ * (baseline `d883a5ee1`; the `chats` category re-captured at `b0b6656b5` —
+ * P4.D222, bug 168's `chat-settings-composer` + `chat-settings-ai-services`).
  *
  * Static configuration for the browseable Guide tab in the Help dialog. Maps
  * help documents to navigable categories and provides URL-based context
@@ -56,6 +57,8 @@ export const HELP_CATEGORIES: readonly HelpCategory[] = [
       'chat-message-actions',
       'chat-state',
       'chat-settings',
+      'chat-settings-composer',
+      'chat-settings-ai-services',
       'math-notation',
       'answer-confirmation',
       'templates-in-chats',

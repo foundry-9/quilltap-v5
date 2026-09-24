@@ -16,4 +16,6 @@ and `help-entity-picker.ts` byte-for-byte (memory note
 **The recorder is `apps/web/oracle/help-guide-capture.test.tsx`**; its header
 carries the regen recipe (a pinned v4 worktree — jest ignores paths outside the
 checkout, so the file is copied in). Recorded at v4 `d883a5ee1`, this lane's
-oracle baseline. Fix the PORT, never these files.
+oracle baseline; RE-CAPTURED at `b0b6656b5` by P4.D222 (the only moved bytes:
+two slugs after `chat-settings` in `help-guide-tables.json`; the other four
+files re-recorded byte-identical). Fix the PORT, never these files.

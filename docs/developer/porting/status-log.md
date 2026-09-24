@@ -148364,6 +148364,51 @@ dialog and aborting the run; v4 identical at `ChatSidebar.tsx:417-429`).
   `94e946728` (docs-only, committed locally in the v4 checkout, NOT pushed).
 - Gate: `npm test` 448 files / 7,670; `npm run lint` clean. SPA 0.5.761.
 
+## P4.D222 — bugs 167/168: help docs by section + the startup reconcile + the `help/` tree at `b0b6656b5` (lane record, 2026-09-24)
+
+Lane branch `claude/work-orders-p4-doc-reconcile-93b0b3` (cut from `main`
+`72bc1faf`). §2 probe at lane start: v4 on `main`, HEAD `b0b6656b5`, tree
+CLEAN, `b0b6656b5..main` and `1a2b2164c..bugfix` both EMPTY — PASS.
+`~/source/quilltap-server/node_modules/js-tiktoken` PRESENT (item 8 is not
+blocked). Pins: `/tmp/qt-v4-pin-p4d222-b0b6656b5` (target) and
+`/tmp/qt-v4-pin-p4d222-d1c06cd9d` (baseline), the three symlink classes each;
+lane outputs under `/tmp/p4d222/`.
+
+### Unit 1 — the `help/` tree re-vendored WHOLE at `b0b6656b5`
+
+- `rm -rf help && git -C ~/source/quilltap-server archive b0b6656b5 help/ |
+  tar -x -C <worktree>`. Before: `diff -rq` named 16 files (14 modified —
+  `carina`, `chat-participants`, `chat-settings`, `chats`,
+  `connection-profiles`, `dangerous-content`, `embedding-profiles`,
+  `file-uploads`, `memory-housekeeping`, `memory-regenerate`,
+  `provider-recommendations`, `quick-hide`, `story-backgrounds`, `taboo` — and
+  2 only-at-target: `chat-settings-ai-services`, `chat-settings-composer`).
+  After: `diff -r help /tmp/qt-v4-pin-p4d222-b0b6656b5/help` EMPTY; 129 files;
+  whole-tree md5 (`find . -type f | LC_ALL=C sort | xargs md5 -q | md5 -q`)
+  `d9eaa3d85d2515d89bdf7e4ece8c6d8e`.
+- Literals 127 → 129: `help_tree_embed_guard.rs::VENDORED_FILE_COUNT` and
+  `host_help_docs_boot.rs`'s assert, arithmetic in both comments. A
+  whole-tree `grep -rnw 127 crates apps/web/src` found no third home (the
+  web crate derives its count since P4.D168).
+- `help_tree_equivalence` regenerated at BOTH pins (lane-private output,
+  `/tmp/p4d222/jest.sh <pin> harness/oracle/cases/help-tree-sync.test.ts
+  /tmp/p4d222/help-tree-<sha>.ndjson` — the committed recipe staged into a
+  lane `jestroot-*`): pin marker `grep -c chat-settings-composer` = 1 at the
+  target, 0 at the baseline. v5 (129) vs the TARGET oracle: green; vs the
+  BASELINE oracle: RED `left: 129 right: 127` (the count assert). The target
+  oracle ran v4's NEW `ensureHelpDocsSynced` (the reconcile) and the
+  unchanged v5 ensure still matched it — an empty table with no profile is
+  the one scenario where the two shapes agree.
+- SPA: `help-guide-capture.test.tsx` copied into the TARGET pin as
+  `__tests__/unit/zz-p4d222-capture.test.tsx` and run with
+  `P49I2B_OUT=<worktree>/apps/web/src/app/help/__fixtures__`; the ONLY moved
+  bytes were two slugs after `chat-settings` in `help-guide-tables.json` (the
+  other four fixtures re-recorded byte-identical). `help-categories.ts`
+  transcribes them. Mutation: the two slugs removed from the `.ts` → exactly
+  `HELP_CATEGORIES matches v4 row for row, slug for slug` RED (1 of 7,670);
+  restored by file backup. Gate: `npm run lint` clean, `npm test` 448 files /
+  7,670, `npm run build` clean.
+
 ## P4.D221 — the `ad1c4c37f`/`8aafd595d` `lib/` riders + two NO-PORT ratifications (2026-09-24, branch `claude/dispatch-lib-riders-partition-f93bb0`)
 
 The `lib/` half of the `b0b6656b5` ten-commit drift catch-up round (the web

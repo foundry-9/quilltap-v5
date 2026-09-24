@@ -66,7 +66,13 @@ use quilltap_host::help_content::EMBEDDED_HELP;
 /// **127 at v4 `d1c06cd9d` (126 + 1, P4.D217):** the Scenario Builder adds
 /// `help/scenario-builder.md`; its three re-vendored pages (`chats`,
 /// `general-scenarios`, `project-scenarios`) move no count.
-const VENDORED_FILE_COUNT: usize = 127;
+///
+/// **129 at v4 `b0b6656b5` (127 + 2, P4.D222):** bug 168 (`492771aff`) splits
+/// `chat-settings` into it plus `chat-settings-composer` and
+/// `chat-settings-ai-services`; the whole tree re-vendored at the target (the
+/// fourteen modified pages move no count). `host_help_docs_boot.rs` carries
+/// the same number in the host crate.
+const VENDORED_FILE_COUNT: usize = 129;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

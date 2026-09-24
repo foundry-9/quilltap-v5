@@ -188,6 +188,12 @@ See [Chat Sidebar](chat-participants.md) for the full tour.
 
 **A word on mathematics.** The Salon typesets LaTeX mathematics — `$$e^{i\pi}+1=0$$` between double dollar signs, or the backslashed `\(...\)` and `\[...\]` forms — into proper printed-monograph equations. Single dollar signs remain honest currency and are never mistaken for algebra. The full particulars are catalogued in [Mathematical Notation](math-notation.md).
 
+**Summoning a name with `@`.** Begin a word with `@` and a little register of your characters drops open beside the caret — the players in the present chat listed first, the remainder of your acquaintance after. Each letter you add pares the list down (`@ar` offers *Arabella* and *Aristarchus*, and — since any word of a name will answer — *Lady Arabella* besides). **Enter**, **Tab** or a click takes the name at the top (or whichever you have arrowed to); a **space** does likewise once you have typed at least one letter, and keeps its space, so you may carry on without breaking stride. A bare `@` followed by a space is taken for honest punctuation and left alone, as is any `@` lodged inside an address such as `name@example.com`.
+
+What lands is the character's plain name, and the `@` quietly excuses itself — `see @ari` becomes `see Aristarchus`. The single exception is the **start of a line**, where `@Name:` and `@Name?` summon a [Carina](carina.md) answerer. There the `@` lingers a moment to learn your intentions: follow the name with a colon or question mark and then a space, and it stays put for the query; type anything else, and it withdraws. (A name the reference desk cannot be rung by — one bearing a hyphen, an apostrophe or an accented letter, or a single initial — drops its `@` at once, wherever it stands.) One Cmd/Ctrl+Z restores it, should it have withdrawn in error, and the restored `@` is judged afresh by whatever you type next. At the start of a line the register also offers **Brahma**, the [Brahma Console](carina.md#consulting-the-brahma-console), who keeps no character file but answers to `@Brahma:` and `@Brahma?` all the same.
+
+The very first time you summon the register it may need a moment to fetch your characters; the menu says *Consulting the register…* meanwhile, and Enter and Tab politely wait rather than sending your half-typed name. Escape dismisses the menu should you prefer not to wait.
+
 ### Viewing History
 
 Scroll up to see earlier messages in the conversation. Long chats may have:
@@ -420,7 +426,7 @@ Quilltap can extract and store memories from your chats:
 
 For Semantic Search to find a conversation by meaning, Quilltap first renders it into a tidy transcript and commits that to memory — an *embedding*, in the parlance — quiet clerical work performed in the background after each exchange. Should the indexing-clerk be indisposed at the decisive moment — the embedding provider abed, or the whole establishment shuttered mid-sentence — a conversation may slip through un-indexed and sit, unsearchable, in the stacks. No matter: at every startup Quilltap takes a discreet inventory and sets any half-finished conversation to rights, re-rendering and re-indexing whatever was left undone, so your library of past chats stays complete without the slightest intervention on your part.
 
-See [Chat Settings](chat-settings.md) for memory configuration.
+See [Chat Settings — The Staff Behind the Scenes](chat-settings-ai-services.md) for memory configuration.
 
 ### Mentioned Characters
 
