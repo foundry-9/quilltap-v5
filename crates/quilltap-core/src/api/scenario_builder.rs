@@ -123,16 +123,27 @@ pub struct RunRegistration<'a> {
 impl Drop for RunRegistration<'_> {
     fn drop(&mut self) {
         self.token.store(true, Ordering::SeqCst);
-        if let Ok(mut runs) = self.runs.runs.lock() {
-            runs.remove(&self.run_id);
-        }
+        self.runs.lock().remove(&self.run_id);
     }
 }
 
 impl ScenarioBuilderRuns {
+    /// The map, RECOVERED if a panic poisoned the lock (P4.115 item 2). The
+    /// registry holds a plain `runId → token` map whose every mutation is one
+    /// `insert` or `remove` — there is no multi-step invariant a panic can
+    /// leave half-applied — so the poison carries no information here, and
+    /// honouring it would turn every later build into the duplicate-id 409 (a
+    /// fresh id indistinguishable from a live one), every Stop into
+    /// `{aborted: false}`, and every finished run into a leaked entry.
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Arc<AtomicBool>>> {
+        self.runs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// Register `run_id`; `None` when a run with that id is already in flight.
     pub fn register(&self, run_id: &str) -> Option<RunRegistration<'_>> {
-        let mut runs = self.runs.lock().ok()?;
+        let mut runs = self.lock();
         if runs.contains_key(run_id) {
             return None;
         }
@@ -148,15 +159,12 @@ impl ScenarioBuilderRuns {
     /// Trip `run_id`'s token; `true` iff a run with that id was live. Never an
     /// error for an unknown id — a Stop can race the finish.
     pub fn abort(&self, run_id: &str) -> bool {
-        match self.runs.lock() {
-            Ok(runs) => match runs.get(run_id) {
-                Some(token) => {
-                    token.store(true, Ordering::SeqCst);
-                    true
-                }
-                None => false,
-            },
-            Err(_) => false,
+        match self.lock().get(run_id) {
+            Some(token) => {
+                token.store(true, Ordering::SeqCst);
+                true
+            }
+            None => false,
         }
     }
 }
@@ -354,5 +362,39 @@ mod tests {
     #[test]
     fn aborting_an_unknown_id_is_false_never_an_error() {
         assert!(!ScenarioBuilderRuns::default().abort("nope"));
+    }
+
+    /// P4.115 item 2 — **a poisoned registry recovers; it never answers the
+    /// duplicate-id 409.** A panic while holding the lock (here, in a scoped
+    /// thread) poisons the mutex; `register`, `abort` and the registration's
+    /// `Drop` must all go on working over the map, which a panic cannot leave
+    /// half-updated. Before P4.115, `register` did `lock().ok()?`, so every
+    /// later build answered `DUPLICATE_RUN` for a fresh id.
+    #[test]
+    fn a_poisoned_registry_still_registers_aborts_and_unregisters() {
+        let runs = ScenarioBuilderRuns::default();
+        let live = runs.register("live").expect("registers before the poison");
+        std::thread::scope(|s| {
+            let _ = s
+                .spawn(|| {
+                    let _held = runs.runs.lock().unwrap();
+                    panic!("poison the registry (P4.115 item 2)");
+                })
+                .join();
+        });
+        assert!(runs.runs.is_poisoned(), "the setup must poison the lock");
+
+        let fresh = runs
+            .register("fresh")
+            .expect("a fresh id registers — never the 409");
+        assert!(
+            runs.register("fresh").is_none(),
+            "a live duplicate still refuses"
+        );
+        assert!(runs.abort("live"), "abort still finds a live run");
+        assert!(live.token.load(Ordering::SeqCst));
+        drop(fresh);
+        assert!(!runs.abort("fresh"), "`Drop` still unregisters");
+        assert!(runs.register("fresh").is_some(), "the id is free again");
     }
 }

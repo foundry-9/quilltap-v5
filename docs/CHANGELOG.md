@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(scenario-builder): a poisoned run registry recovers instead of answering 409 (P4.115 item 2)
+
+_Versions: core 0.0.1028._
+
+The Scenario Builder run registry used `lock().ok()?` in `register`, so a
+panic while any thread held the lock turned every later build into the
+duplicate-id 409 for a fresh id. `abort` answered `false` and a finished
+run's `Drop` skipped its removal. All three now recover the map with
+`PoisonError::into_inner`. The map has no multi-step invariant a panic could
+break. New unit test poisons the lock in a scoped thread, then registers,
+aborts and unregisters. It failed before the fix.
+
 #### 2026-09-24 — docs(porting): close P4.114 — the tool / agent-loop smalls lane record; fmt
 
 _Versions: harness 0.0.954._

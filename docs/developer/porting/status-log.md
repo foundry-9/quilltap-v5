@@ -147678,3 +147678,29 @@ Fixtures are MINTED: rebuild, regenerate, then `cargo test` against that build.
 
 Versions: core 0.0.1027 → 0.0.1032 (five bumps), harness 0.0.948 → 0.0.954
 (six bumps). No other crate touched.
+
+## P4.115 — the Scenario Builder edge nits + the web-crate census lift (lane, 2026-09-24, `claude/scenario-builder-edge-cases-f2f201`)
+
+Cut from `main` `7529fbca` (the round's ordering commit). §R.2 probe at lane
+start: PASS (v4 `main` at `d1c06cd9d`, `d1c06cd9d..main` and
+`1a2b2164c..bugfix` both EMPTY, tree CLEAN). Lane pin:
+`/tmp/qt-v4-pin-p4115-d1c06cd9d` (`git rev-parse HEAD` =
+`d1c06cd9d786653516e7e43a7ddca096ad957714`; the three symlink classes).
+`CARGO_INCREMENTAL=0` throughout.
+
+### Unit 1 — item 2: the poisoned registry recovers (core 0.0.1028)
+
+`ScenarioBuilderRuns` gains ONE private `lock()` that recovers a poisoned
+mutex with `PoisonError::into_inner` (with the why-comment: the map's every
+mutation is one `insert`/`remove`, so the poison carries no information);
+`register`, `abort` and `RunRegistration::drop` all go through it. The order's
+three paths re-measured as described (`register`'s `lock().ok()?`, `abort`'s
+`Err(_) => false`, `Drop`'s `if let Ok`).
+
+- **Red-first:** `a_poisoned_registry_still_registers_aborts_and_unregisters`
+  (poisons the lock from a panicking scoped thread, asserts `is_poisoned()`,
+  then registers a fresh id, refuses its duplicate, aborts a pre-poison run,
+  drops and re-registers) — FAILED on the pre-fix tree at the fresh
+  registration (`a fresh id registers — never the 409`); 4/4 after.
+- **M2** (`lock().ok()?` restored in `register`) is exactly that pre-fix run —
+  the red-first IS the mutation, recorded rather than re-run.
