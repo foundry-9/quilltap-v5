@@ -436,14 +436,14 @@ async fn a_canned_run_publishes_its_frames_under_the_run_id_and_replies_the_term
     // P4.D217 Tier 2 item 12 — the ONE proof jest cannot give (every jest
     // oracle writes ZERO `llm_logs` rows): the REAL writer, through the host
     // spine, typed the run's one stream call `SCENARIO_BUILDER`.
+    // Read through a READ-ONLY open (P4.115 item 4): this test only reads
+    // what the run wrote, and a writable open's own sequence writes.
+    let logs = quilltap_core::test_support::open_readonly(
+        &base.path().join("data").join("quilltap-llm-logs.db"),
+        common::TEST_PEPPER,
+    );
     let types: Vec<String> = {
-        let r = quilltap_core::db::Writer::open_writable(
-            &base.path().join("data").join("quilltap-llm-logs.db"),
-            common::TEST_PEPPER,
-        )
-        .unwrap();
-        let mut st = r
-            .connection()
+        let mut st = logs
             .prepare("SELECT \"type\" FROM \"llm_logs\" ORDER BY rowid")
             .unwrap();
         let rows = st
@@ -453,6 +453,16 @@ async fn a_canned_run_publishes_its_frames_under_the_run_id_and_replies_the_term
             .unwrap();
         rows
     };
+    // …and it IS read-only: a write through it is SQLite's read-only refusal.
+    match logs.execute("DELETE FROM \"llm_logs\"", []) {
+        Err(rusqlite::Error::SqliteFailure(e, _)) => assert_eq!(
+            e.code,
+            rusqlite::ErrorCode::ReadOnly,
+            "a write through the test opener must be refused as read-only"
+        ),
+        other => panic!("a write through the read-only opener must fail: {other:?}"),
+    }
+    drop(logs);
     assert_eq!(
         types,
         vec!["SCENARIO_BUILDER".to_string()],

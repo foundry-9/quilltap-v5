@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — test(scenario-builder): the dispatch-wire test reads llm-logs through a read-only open (P4.115 item 4)
+
+_Versions: core 0.0.1030, web 0.0.187._
+
+The Scenario Builder dispatch-wire test read the run's `llm_logs` row
+through `Writer::open_writable`, whose open sequence writes
+(`foreign_keys`, `journal_mode = TRUNCATE`). `test_support` gains a fenced
+`open_readonly` helper: `SQLITE_OPEN_READ_ONLY`, the raw-hex key as the first
+and only pragma, then `qt_text()`, matching the engine's private read opener.
+The test now reads through it and pins that a write through it fails with
+SQLite's read-only error. Switching the helper to read-write fails the test.
+
 #### 2026-09-24 — fix(scenario-builder): no frame is published after the run is aborted (P4.115 item 1)
 
 _Versions: core 0.0.1029._

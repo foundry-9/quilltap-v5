@@ -147736,3 +147736,20 @@ the token's state at emission.
   `{"toolResult":{"index":0,"name":"search","success":true,"result":{"found":"the quay"}}}`;
   green after (10/10 in the module).
 - **M1** (the gate removed) is that pre-fix run.
+
+### Unit 3 — item 4: the read-only llm-logs open (core 0.0.1030, web 0.0.187)
+
+`test_support.rs`'s fenced `// === P4.115 ===` block: `open_readonly(path,
+pepper_b64) -> rusqlite::Connection` — `SQLITE_OPEN_READ_ONLY | NO_MUTEX |
+URI`, `PRAGMA key = "x'<hex>'"` first and only (via
+`dbkey::pepper_b64_to_key_hex`), then `register_qt_text` — the engine's
+private `db::runtime::open_readonly` shape, rebuilt in `test_support` because
+`db/**` is outside this lane (the private opener stays private).
+`scenario_builder_dispatch_wire.rs`'s `a_canned_run_publishes_…` reads
+`llm_logs` through it and pins a `DELETE` through it answering
+`ErrorCode::ReadOnly`.
+
+- Family: `scenario_builder_dispatch_wire` 4/4 (11.2 s).
+- **Mutation** (the helper's `SQLITE_OPEN_READ_ONLY` → `READ_WRITE`, by file
+  backup): the pin RED — `a write through the read-only opener must fail:
+  Ok(1)`; restored, green.

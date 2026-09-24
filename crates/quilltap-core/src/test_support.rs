@@ -301,3 +301,33 @@ pub mod global_capture {
         (out, disarm())
     }
 }
+
+// === P4.115 ===
+/// Open an existing encrypted database **read-only**, for a test that only
+/// READS what the code under test wrote (P4.115 item 4 — the Scenario
+/// Builder dispatch-wire test's `llm_logs` read had used
+/// [`crate::db::Writer::open_writable`], whose open sequence WRITES:
+/// `foreign_keys`, `journal_mode = TRUNCATE`).
+///
+/// The CLAUDE.md read path, mirroring the engine's own private read opener
+/// (`db::runtime`'s `open_readonly`): `SQLITE_OPEN_READ_ONLY`, then
+/// `PRAGMA key = "x'<hex>'"` as the first and ONLY pragma (the raw-hex form,
+/// KDF skipped), then `qt_text()` registered as on every engine connection —
+/// no `journal_mode`, no `foreign_keys`. Any write through the returned
+/// connection fails with SQLite's read-only error.
+pub fn open_readonly(path: &std::path::Path, pepper_b64: &str) -> rusqlite::Connection {
+    use rusqlite::OpenFlags;
+    let key_hex = crate::dbkey::pepper_b64_to_key_hex(pepper_b64).expect("a valid test pepper");
+    let conn = rusqlite::Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | OpenFlags::SQLITE_OPEN_URI,
+    )
+    .unwrap_or_else(|e| panic!("read-only open of {}: {e}", path.display()));
+    conn.pragma_update(None, "key", format!("x'{key_hex}'"))
+        .expect("the cipher key, first and only pragma");
+    crate::db::text_compression::register_qt_text(&conn).expect("register qt_text");
+    conn
+}
+// === end P4.115 ===
