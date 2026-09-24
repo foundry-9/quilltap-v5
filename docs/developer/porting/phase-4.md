@@ -6646,7 +6646,7 @@ items. Gate + versions: the round record in `status-log.md`.
 
 **Next (in order):**
 
-1. **⚠ RULING (human): the narrow-pane Scenario Builder close** — P4.116's
+1. ~~**RULING (human): the narrow-pane Scenario Builder close**~~ — **RULED (the human, 2026-09-24) and FIXED:** the sidebar now ignores a click inside a `.qt-dialog-overlay` — a deliberate divergence from v4, filed upstream as **v4 bug 169** (v4 `94e946728`); pinned by a unit spec (mutation-proven) and a live e2e beat (e) at a 600 px viewport, RED without the fix. What it was: P4.116's
    portal makes every click inside the builder/save dialog an OUTSIDE click
    for the Salon's overlay sidebar (< 640 px), which collapses, destroys the
    dialog and aborts the run. v4 is identical (`ChatSidebar.tsx:417-429`), so

@@ -50,6 +50,7 @@ probe verifies against._
   **#120** (the five largest help docs have no embeddings — both
   implementations cap `EMBEDDING_MAX_CHARS` at 128 KiB). **In flight — NOT a
   row until committed; expect a CONVERGENCE-shaped row for #120 then.**
+- **⚠ STALE SINCE (2026-09-24, afternoon):** v4 moved again after this check — `492771aff` (bugs 167/168, the help-doc split the dirty tree above was carrying) and further commits to `4.10.0-dev.72`, then this port's own filing `94e946728` (docs-only: **bug 169**, the narrow-pane sidebar/portaled-dialog collapse — v5 already diverges, fixed). **Re-run `/driftcheck` before the catch-up round.**
 - **Verdict: DRIFT PENDING — 4 commits** (§3): two PORT (`944127d9a` the
   chats GET action removal; `e3937d7aa` the Salon image quick-hide, SPA +
   help), one PORT-NEW (`3376b3dfa` the `@` mention typeahead, SPA + help),

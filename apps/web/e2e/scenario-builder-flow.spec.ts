@@ -198,6 +198,42 @@ test.describe('P4.D218 — the Host sets the scene', () => {
     });
   });
 
+  test('(e) a narrow Salon pane: the overlay sidebar survives clicks inside the portaled builder (v4 bug 169)', async ({
+    page,
+  }) => {
+    test.skip(!P4D217_SERVER_LANDED, GATE_REASON);
+    // Below 640 px the chat sidebar is an OVERLAY whose outside-click collapse
+    // used to read every click inside the body-portaled builder as "outside":
+    // the first click collapsed the sidebar, unmounted the Chat section that
+    // owns the dialog, and the dialog — and its run — went with it. v4 does
+    // exactly that (`ChatSidebar.tsx:417-429` at `d1c06cd9d`, filed as v4 bug
+    // 169); v5 ignores clicks inside a `.qt-dialog-overlay`.
+    await page.setViewportSize({ width: 600, height: 900 });
+    await openNewChatWithACharacter(page);
+    await page.getByRole('button', { name: 'Create Chat' }).click();
+    await expect(page).toHaveURL(/\/salon\/[0-9a-f-]{16,}/, { timeout: 20_000 });
+    await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 20_000 });
+
+    await page.getByRole('button', { name: 'Expand chat sidebar' }).click();
+    const sidebar = page.locator('qt-chat-sidebar');
+    await expect(page.locator('qt-chat-sidebar.qt-chat-sidebar-overlay')).toHaveCount(1);
+    await sidebar
+      .locator('.qt-collapsible-card-header')
+      .filter({ hasText: 'Chat' })
+      .first()
+      .click();
+    const control = page.locator('qt-chat-scenario-control');
+    await expect(control).toBeVisible({ timeout: 15_000 });
+    await control.getByRole('button', { name: 'Ask the Host to set the scene' }).click();
+
+    // Every click and keystroke below lands inside the portaled dialog.
+    await buildToReview(page);
+    await expect(page.locator('qt-chat-sidebar.qt-chat-sidebar-overlay')).toHaveCount(1);
+    await builderFooterButton(page, 'Use this scene').click();
+    await expect(builderDialog(page)).toHaveCount(0);
+    await expect(control.locator('textarea')).toHaveValue(MOCK_LLM_REPLY);
+  });
+
   test('(c) Save as scenario… to Quilltap General: toast, then the New Chat picker selects it', async ({
     page,
   }) => {

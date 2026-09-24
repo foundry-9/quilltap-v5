@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { coreStreamStub } from '../../core/core-client.testing';
 import { CoreClient } from '../../core/core-client';
@@ -445,5 +445,70 @@ describe('ChatSidebar — the Scenario Builder cast (v4 d1c06cd9d)', () => {
       { id: 'char-alice', name: 'Alice' },
       { id: 'char-dora', name: 'Dora' },
     ]);
+  });
+});
+
+/**
+ * The narrow-pane overlay's outside-click collapse, and the deliberate
+ * divergence from v4 (bug 169): a click inside a PORTALED dialog — one the
+ * sidebar opened, now a child of the body (the Scenario Builder and its save
+ * dialog) — is the dialog's, not a dismissal of the sidebar. v4
+ * (`ChatSidebar.tsx:417-429` at `d1c06cd9d`) collapses on it, which unmounts
+ * the dialog's owner and aborts its run.
+ */
+describe('ChatSidebar — the narrow overlay and a portaled dialog (v4 bug 169)', () => {
+  let rect: ReturnType<typeof vi.spyOn>;
+  const outside: HTMLElement[] = [];
+
+  beforeEach(() => {
+    localStorage.clear();
+    // jsdom has no ResizeObserver, so the sidebar measures its parent ONCE in
+    // `ngOnInit` — a pane narrower than 640 px puts it in overlay mode.
+    rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ width: 500, height: 800 } as DOMRect);
+  });
+  afterEach(() => {
+    rect.mockRestore();
+    for (const el of outside.splice(0)) el.remove();
+  });
+
+  async function openOverlay(): Promise<ComponentFixture<Host>> {
+    const fixture = await render();
+    button(fixture, 'Expand chat sidebar').click();
+    fixture.detectChanges();
+    expect(sidebarEl(fixture).classList.contains('qt-chat-sidebar-collapsed')).toBe(false);
+    return fixture;
+  }
+
+  function onBody(html: string): HTMLElement {
+    const host = document.createElement('div');
+    host.innerHTML = html;
+    document.body.appendChild(host);
+    outside.push(host);
+    return host;
+  }
+
+  function press(fixture: ComponentFixture<Host>, target: Element): void {
+    target.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    fixture.detectChanges();
+  }
+
+  it('a click inside a body-level dialog overlay leaves the overlay open', async () => {
+    const fixture = await openOverlay();
+    const dialog = onBody(
+      '<div class="qt-dialog-overlay"><div class="qt-dialog"><button>Set the scene</button></div></div>',
+    );
+    press(fixture, dialog.querySelector('button')!);
+    // The backdrop itself is inside the overlay too.
+    press(fixture, dialog.querySelector('.qt-dialog-overlay')!);
+    expect(sidebarEl(fixture).classList.contains('qt-chat-sidebar-collapsed')).toBe(false);
+  });
+
+  it('a click anywhere else outside the panel still collapses it to the strip', async () => {
+    const fixture = await openOverlay();
+    const elsewhere = onBody('<p>the transcript</p>');
+    press(fixture, elsewhere.querySelector('p')!);
+    expect(sidebarEl(fixture).classList.contains('qt-chat-sidebar-collapsed')).toBe(true);
   });
 });

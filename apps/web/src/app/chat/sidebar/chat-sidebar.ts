@@ -512,10 +512,22 @@ export class ChatSidebar implements OnInit {
     });
 
     // Overlay: a click outside the panel, or Escape, collapses it to the strip.
+    //
+    // A DELIBERATE DIVERGENCE from v4 (`ChatSidebar.tsx:417-429` at
+    // `d1c06cd9d`; filed as v4 bug 169): a dialog the sidebar opens is portaled
+    // to the body (v4's `BaseModal`, v5's builder/save dialogs), so it is no
+    // longer a DOM descendant of this host and every click inside it read as
+    // "outside" — the first click collapsed the sidebar, which unmounted the
+    // section that owns the dialog, closing it and aborting its run. A click
+    // inside any `.qt-dialog-overlay` (the dialog or its backdrop) is the
+    // dialog's to handle, never a dismissal of the sidebar.
     effect((onCleanup) => {
       if (!this.isOverlay()) return;
       const onPointerDown = (e: PointerEvent) => {
-        if (!this.host.nativeElement.contains(e.target as Node)) this.narrowOpen.set(false);
+        const target = e.target as Node;
+        if (this.host.nativeElement.contains(target)) return;
+        if (target instanceof Element && target.closest('.qt-dialog-overlay')) return;
+        this.narrowOpen.set(false);
       };
       const onKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'Escape') this.narrowOpen.set(false);

@@ -148333,3 +148333,33 @@ Versions: core 0.0.1044, harness 0.0.964, host 0.0.154, web 0.0.191, SPA
 `phase-4.md`'s UNIFIED section for this round: the narrow-pane ruling, the
 owed Host dogfood pass, then a follow-up smalls lane over the headers' named
 OPEN items.
+
+## The narrow-pane sidebar ruling — RULED + FIXED (2026-09-24, after the smalls unification)
+
+**The human ruled:** the Salon sidebar ignores clicks inside a portaled dialog
+overlay, and the defect is filed against v4. Escalated by the `d1c06cd9d`
+smalls unification's §3 review of P4.116 (the builder/save dialogs portaled to
+the body are no longer DOM descendants of the overlay sidebar, whose
+capture-phase `host.contains(target)` collapse then fired on every click
+inside them — collapsing the sidebar, unmounting the Chat section, closing the
+dialog and aborting the run; v4 identical at `ChatSidebar.tsx:417-429`).
+
+- **Fix:** `chat/sidebar/chat-sidebar.ts`'s overlay `pointerdown` returns early
+  when the target is inside a `.qt-dialog-overlay` (dialog or backdrop). A
+  deliberate divergence, commented at the site. Escape is unchanged (the
+  overlay still collapses on Escape from inside a dialog — v4-faithful, noted
+  in the bug).
+- **Unit:** two cases in `chat-sidebar.spec.ts` with overlay mode forced by a
+  500 px `getBoundingClientRect` stub (jsdom has no `ResizeObserver`): a
+  `pointerdown` inside a body-level `.qt-dialog-overlay` (child and backdrop)
+  leaves it open; one elsewhere collapses it. Mutation (the guard line
+  removed): exactly the first case RED, 1/15.
+- **Live:** `scenario-builder-flow.spec.ts` beat (e) at a 600 × 900 viewport —
+  expand the overlay, open the Chat card, open the builder, fill, build,
+  review, Use. **RED against a `dist` built without the fix** (the dialog is
+  gone before the review pane: `getByLabel('The scene')` never visible);
+  green with it, the file 5/5 (1.0 m).
+- **Filed upstream as v4 bug 169** — `docs/developer/bugs/bug-169-narrow-
+  sidebar-closes-portaled-dialog.md` + its `bugs.md` row, v4 commit
+  `94e946728` (docs-only, committed locally in the v4 checkout, NOT pushed).
+- Gate: `npm test` 448 files / 7,670; `npm run lint` clean. SPA 0.5.761.

@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — fix(chat-sidebar): a click inside a portaled dialog no longer collapses the narrow-pane overlay
+
+_Versions: SPA 0.5.761._
+
+In a chat pane narrower than 640 px the sidebar is an overlay that collapses
+on any click outside it. The Scenario Builder and its save dialog are
+portaled to the page body, so every click inside them counted as outside:
+the sidebar collapsed, the dialog closed, and a running build was aborted.
+The sidebar now ignores clicks inside a `.qt-dialog-overlay`. This diverges
+from v4, which has the same bug; filed there as bug 169. Covered by a unit
+spec (mutation-proven) and a new e2e beat at a 600 px viewport that fails
+without the fix.
+
 #### 2026-09-24 — docs(porting): unify the `d1c06cd9d` review-follow-ups smalls round (P4.113 ∥ P4.114 ∥ P4.115 ∥ P4.116 ∥ P4.117)
 
 _Versions: core 0.0.1044, harness 0.0.964, host 0.0.154, web 0.0.191, SPA 0.5.760._

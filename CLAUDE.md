@@ -1003,14 +1003,15 @@ records THERE. Update this summary only when a phase or round completes.
   ERROR; P4.113's NULL-content update divergence pinned both ways; P4.115's
   M3 re-measured SURVIVING; the portal destroy hooks mutation-proven; an
   understudy-remap coverage overclaim; `ai_import_tier3`'s `V4_APP_VERSION`.
-  **⚠ ESCALATED:** the portaled builder closes on its first click in a
-  narrow (< 640 px) Salon pane — v4 identical; a ruling. Gate: 101/101 sweep
+  **RULED + FIXED (2026-09-24):** the portaled builder closed on its first
+  click in a narrow (< 640 px) Salon pane — the sidebar now ignores clicks
+  inside a `.qt-dialog-overlay` (a divergence; filed as v4 bug 169). Gate: 101/101 sweep
   families from the pin; 630 binaries / 3,710 / 0 / 3 ignored, Tier R 266/0;
   SPA 448 / 7,668; Playwright 328 / 7 / 6 (the known Salon-streaming
   cluster; `salon-regenerate-stream-flow` flaky alone on this tree AND on a
   main build — a `2/3` counter watch item). Versions: core 0.0.1044, harness
-  0.0.964, host 0.0.154, web 0.0.191, SPA 0.5.760. **Next: the narrow-pane
-  ruling, the four-commit drift catch-up, the owed Host dogfood pass** —
+  0.0.964, host 0.0.154, web 0.0.191, SPA 0.5.760. **Next: the drift catch-up
+  (re-run `/driftcheck` first — v4 moved again), the owed Host dogfood pass** —
   `phase-4.md`. Round record: `status-log.md`.
 - **Oracle baseline: `d1c06cd9d` (2026-09-23, v4 main — "feat(scenarios):
   Scenario Builder — the Host researches and drafts a starting scene",
