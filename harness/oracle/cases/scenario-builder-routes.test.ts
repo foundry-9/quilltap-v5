@@ -17,7 +17,14 @@
  * throwing `resolveScenarioBuilderCapabilities` (the 500 arm).
  *
  * Emits per case: { name, status, contentType, body (JSON) | sse (text),
- * runs: [{ mode, characterIds, chat, priorDraft, revision, aborted }] }.
+ * runs: [{ mode, characterIds, chat, priorDraft, revision, aborted }],
+ * lines: [{ level, message, context: [[key, value], …] | null }] } — `lines`
+ * being every call on a `ScenarioBuilder` logger (the route's
+ * `logger.child({ context: 'ScenarioBuilder' })` and the service's
+ * `createServiceLogger('ScenarioBuilder')`, i.e. `resolveScenarioBuilder
+ * Capabilities`'s DEBUG), recorded by a spy on the case registry's
+ * `Logger.prototype` BEFORE the level gate (LOG_LEVEL=error would drop every
+ * DEBUG). The context is emitted as ordered entries so key ORDER is compared.
  *
  * Run (Node 24, from the v4 checkout or a PINNED worktree; stage outside
  * `.claude/`, which v4's jest ignores):
@@ -182,6 +189,30 @@ async function main(): Promise<void> {
       );
       await import('@/lib/plugins/provider-validation');
     }
+    // The ScenarioBuilder log lines, recorded on THIS registry's Logger class
+    // (the route's and the service's module-level loggers are built from it).
+    const logLines: Array<{ level: string; message: string; context: unknown }> = [];
+    const { Logger } = (await import('@/lib/logger')) as unknown as {
+      Logger: { prototype: Record<string, (...a: unknown[]) => void> };
+    };
+    const logSpies = (['error', 'warn', 'info', 'debug'] as const).map((level) => {
+      const original = Logger.prototype[level];
+      return jest
+        .spyOn(Logger.prototype, level)
+        .mockImplementation(function (this: { context?: Record<string, unknown> }, ...args: unknown[]) {
+          const ctx = this.context ?? {};
+          if (ctx.context === 'ScenarioBuilder' || ctx.service === 'ScenarioBuilder') {
+            const [message, context] = args as [string, Record<string, unknown> | undefined];
+            logLines.push({
+              level,
+              message,
+              context: context === undefined ? null : Object.entries(context),
+            });
+            return;
+          }
+          return original.apply(this, args);
+        });
+    });
     const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
     const { closeMountIndexSQLiteClient } = await import(
       '@/lib/database/backends/sqlite/mount-index-client'
@@ -256,8 +287,10 @@ async function main(): Promise<void> {
         out.body = await resp.json();
       }
       out.runs = runs;
+      out.lines = logLines;
       lines.push(JSON.stringify(out));
     } finally {
+      for (const spy of logSpies) spy.mockRestore();
       await closeDatabase();
       closeMountIndexSQLiteClient();
       rmSync(work, { recursive: true, force: true });

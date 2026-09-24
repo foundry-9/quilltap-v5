@@ -249,14 +249,15 @@ pub fn scenario_builder_prepare(
         });
         match found {
             Ok(Some(_)) => character_ids.push(id.clone()),
-            Ok(None) => {}
-            Err(e) => {
-                tracing::warn!(
-                    characterId = %id,
-                    error = %e,
-                    "Scenario Builder dropped an unreadable cast id"
-                );
-            }
+            // A failed read is dropped SILENTLY, as a miss. v4's route wraps
+            // the read in a try/catch whose WARN `Scenario Builder dropped an
+            // unreadable cast id` is unreachable: `characters.findById` is a
+            // fallback-mode `safeQuery`, so a failing read answers `null` and
+            // never throws. Measured by the route family's `drops a cast id
+            // whose lookup throws` case (the d1c06cd9d unification review) —
+            // v4 logs only the `{ requested, kept }` DEBUG below; v5 had
+            // emitted the WARN too.
+            Ok(None) | Err(_) => {}
         }
     }
     if character_ids.len() != parsed.character_ids.len() {

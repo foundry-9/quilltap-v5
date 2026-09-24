@@ -30,6 +30,23 @@
 //!   plugin exists on v5) with v4's value RECORDED — v4 answers `false` too
 //!   here only because the jest env registers no plugins.
 //!
+//! **The log lines (the d1c06cd9d unification review).** Per case, the lines
+//! v4 logged on a `ScenarioBuilder` logger (the route's `context` child and
+//! `resolveScenarioBuilderCapabilities`'s `service` logger) are compared —
+//! level, message, and the context's keys IN ORDER with their JSON values —
+//! against every event v5 emitted on the matching targets ([`LOG_TARGETS`]).
+//! It is an equality over the whole per-case list, so every case is also a
+//! silence leg: a line v4 did not log must not appear on v5. v5's route runs
+//! on the server's worker threads, not the test thread, so the thread-scoped
+//! `test_support::global_capture` cannot see it; this binary (ONE test)
+//! installs its own process-global [`StructuredCapture`] layer instead, which
+//! records typed field values (a count stays a number, a flag a bool) where
+//! `FieldVisitor` would flatten them to text. The WARN `Scenario Builder
+//! dropped an unreadable cast id` is unreachable through v4's real code (its
+//! `characters.findById` is a fallback-mode `safeQuery`, so a failing read is
+//! `null`, never a throw) — the unreadable-character case pins its ABSENCE on
+//! both sides rather than inventing a trigger.
+//!
 //! Regenerate (Node 24; stage outside `.claude/`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; W=${V5W:-$(git rev-parse --show-toplevel)}
 //!   STAGE=/tmp/qt-oracle-stage-sb-routes
@@ -67,6 +84,76 @@ use scenario_builder_spine::{Canned, DriverMaker, ScenarioBuilderSpineFactory};
 
 /// Cases whose v4 row is reachable only through a mock (see the header).
 const V4_MOCK_ONLY: &[&str] = &["500s when the capability lookup throws"];
+
+/// The v5 homes of v4's `ScenarioBuilder`-logger lines this family compares:
+/// the route's prepare, the capability probe, and the SSE edge's disconnect.
+const LOG_TARGETS: &[&str] = &[
+    "quilltap_core::api::scenario_builder",
+    "quilltap_core::services::scenario_builder::capabilities",
+    "quilltap_web::scenario_builder_routes",
+];
+
+/// Every event on [`LOG_TARGETS`], as `{ level, message, context }` with the
+/// context as ordered `[key, value]` entries (`null` when the event carries no
+/// field besides its message) — the oracle's own row shape.
+static LOGGED: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+
+struct StructuredCapture;
+
+struct JsonFields {
+    message: Option<String>,
+    fields: Vec<Value>,
+}
+
+impl tracing::field::Visit for JsonFields {
+    fn record_str(&mut self, f: &tracing::field::Field, v: &str) {
+        self.fields.push(json!([f.name(), v]));
+    }
+    fn record_u64(&mut self, f: &tracing::field::Field, v: u64) {
+        self.fields.push(json!([f.name(), v]));
+    }
+    fn record_i64(&mut self, f: &tracing::field::Field, v: i64) {
+        self.fields.push(json!([f.name(), v]));
+    }
+    fn record_bool(&mut self, f: &tracing::field::Field, v: bool) {
+        self.fields.push(json!([f.name(), v]));
+    }
+    fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+        // `%` fields arrive here as a Display wrapper, so `{:?}` is their
+        // Display text — a string, as v4's context value is.
+        if f.name() == "message" {
+            self.message = Some(format!("{v:?}"));
+        } else {
+            self.fields.push(json!([f.name(), format!("{v:?}")]));
+        }
+    }
+}
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for StructuredCapture {
+    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+        let meta = event.metadata();
+        if !LOG_TARGETS.contains(&meta.target()) {
+            return;
+        }
+        let mut v = JsonFields {
+            message: None,
+            fields: Vec::new(),
+        };
+        event.record(&mut v);
+        LOGGED.lock().unwrap().push(json!({
+            "level": meta.level().as_str().to_ascii_lowercase(),
+            "message": v.message,
+            "context": if v.fields.is_empty() { Value::Null } else { Value::Array(v.fields) },
+        }));
+    }
+}
+
+fn install_capture() {
+    use tracing_subscriber::layer::SubscriberExt;
+    // LOUD: a second global subscriber would make every silence leg vacuous.
+    tracing::subscriber::set_global_default(tracing_subscriber::registry().with(StructuredCapture))
+        .expect("this binary's one test owns the global subscriber");
+}
 
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -186,6 +273,7 @@ async fn scenario_builder_routes_match_oracle() {
         eprintln!("SKIP: set QT_ORACLE_SB_ROUTES to the oracle NDJSON (see header).");
         return;
     };
+    install_capture();
     let spec: Spec = serde_json::from_str(
         &std::fs::read_to_string(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -238,6 +326,7 @@ async fn scenario_builder_routes_match_oracle() {
 
     let mut failures: Vec<String> = Vec::new();
     let mut divergences_exercised = 0usize;
+    let mut lines_seen = 0usize;
     for case in &spec.cases {
         let want = &oracle[&case.name];
         {
@@ -245,6 +334,7 @@ async fn scenario_builder_routes_match_oracle() {
             r.runs.clear();
             r.await_abort = case.await_abort;
         }
+        LOGGED.lock().unwrap().clear();
         let url = if case.query.is_empty() {
             format!("http://{addr}/api/v1/scenario-builder")
         } else {
@@ -303,6 +393,16 @@ async fn scenario_builder_routes_match_oracle() {
                     }
                     tokio::time::sleep(Duration::from_millis(25)).await;
                 }
+                // The disconnect DEBUG is logged by a spawned task once the
+                // abort dispatch answers — let it land (bounded) before the
+                // case's lines are read.
+                let want_len = want["lines"].as_array().map_or(0, Vec::len);
+                for _ in 0..80 {
+                    if LOGGED.lock().unwrap().len() >= want_len {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
             } else {
                 got["sse"] = json!(resp.text().await.unwrap());
             }
@@ -310,6 +410,7 @@ async fn scenario_builder_routes_match_oracle() {
             got["body"] = resp.json::<Value>().await.unwrap_or(Value::Null);
         }
         got["runs"] = json!(recorder.lock().unwrap().runs.clone());
+        got["lines"] = json!(LOGGED.lock().unwrap().clone());
 
         if V4_MOCK_ONLY.contains(&case.name.as_str()) {
             divergences_exercised += 1;
@@ -338,6 +439,9 @@ async fn scenario_builder_routes_match_oracle() {
             got["body"]["curlConfigured"] = want["body"]["curlConfigured"].clone();
         }
 
+        let want_lines = want.get("lines").expect("the oracle row carries `lines`");
+        lines_seen += want_lines.as_array().map_or(0, Vec::len);
+
         // `content-type` is compared only where v4 SETS it — the SSE response's
         // explicit headers. v4's JSON answers go through the jest env's
         // `NextResponse.json`, which carries no `content-type` at all (real
@@ -346,7 +450,15 @@ async fn scenario_builder_routes_match_oracle() {
         if want["contentType"].is_null() {
             got["contentType"] = Value::Null;
         }
-        for key in ["status", "contentType", "headers", "body", "sse", "runs"] {
+        for key in [
+            "status",
+            "contentType",
+            "headers",
+            "body",
+            "sse",
+            "runs",
+            "lines",
+        ] {
             let (g, w) = (got.get(key), want.get(key));
             let (g, w) = (g.filter(|v| !v.is_null()), w.filter(|v| !v.is_null()));
             if g.map(Value::to_string) != w.map(Value::to_string) {
@@ -360,7 +472,14 @@ async fn scenario_builder_routes_match_oracle() {
         }
     }
     drop(base);
-    eprintln!("scenario_builder_routes: {} cases", spec.cases.len());
+    eprintln!(
+        "scenario_builder_routes: {} cases, {lines_seen} v4 log lines compared",
+        spec.cases.len()
+    );
+    assert!(
+        lines_seen > 0,
+        "the oracle recorded no ScenarioBuilder log line"
+    );
     assert_eq!(divergences_exercised, V4_MOCK_ONLY.len());
     assert!(
         failures.is_empty(),
