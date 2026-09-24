@@ -401,58 +401,13 @@ fn salon_reads_match_oracle() {
         );
         cases.push(("get_vouched_keeps_raw_trio".into(), got, want));
     }
-    // P4.D143 §H (v4 `c43d3b1b4`): the Quick-hide probe. v4 answers true iff
-    // ANY chat takes the uncensored route — Flagged or Uncensored — so a
-    // preserved TRUE label under a Vouched Safe override must NOT count. The
-    // jest side gets a fresh fixture copy per case; the Rust side shares one
-    // Db, so each arm resets all three chats to Monitored first.
-    let reset = |rt: &tokio::runtime::Runtime, db: &Db| {
-        rt.block_on(db.write(|w| {
-            w.main().connection().execute_batch(
-                "UPDATE \"chats\" SET \"conciergeOverride\" = NULL, \"isDangerousChat\" = 0, \
-                 \"dangerCategories\" = NULL",
-            )?;
-            Ok(())
-        }))
-        .expect("reset concierge states");
-    };
-    for (name, paint) in [
-        ("has_dangerous_none", None),
-        (
-            "has_dangerous_vouched_only",
-            Some("\"conciergeOverride\" = 'OFF', \"isDangerousChat\" = 1"),
-        ),
-        (
-            "has_dangerous_flagged",
-            Some("\"conciergeOverride\" = NULL, \"isDangerousChat\" = 1"),
-        ),
-        (
-            "has_dangerous_uncensored",
-            Some("\"conciergeOverride\" = 'UNCENSORED', \"isDangerousChat\" = 0"),
-        ),
-    ] {
-        reset(&rt, &db);
-        if let Some(set) = paint {
-            let sql = format!("UPDATE \"chats\" SET {set} WHERE \"id\" = '{solo}'");
-            rt.block_on(db.write(move |w| {
-                w.main().connection().execute_batch(&sql)?;
-                Ok(())
-            }))
-            .expect("paint has-dangerous state");
-        }
-        let got = response_data(&salon::chats_has_dangerous(&db, uid));
-        let want = oracle[name]["body"].clone();
-        cases.push((name.into(), got, want));
-    }
-
     // P4.D171: the route trail (on a message) and the drawn rotation (on the
     // chat) — the two `78b381a96`-round schema moves. The oracle's
     // `setRouteTrail`/`setCycleOrder` mirror these exactly. LAST case: shared
-    // db, and the mutation cannot affect earlier reads — but it must first
-    // undo the `has_dangerous_*` loop's own leftover concierge paint back to
-    // the PRISTINE fixture state (the oracle gets a fresh fixture copy per
-    // case; the Rust side shares one; `reset`'s `isDangerousChat = 0` is
-    // that loop's own baseline, not the fixture's untouched NULL).
+    // db, and the mutation cannot affect earlier reads. (Until P4.D220 it first
+    // undid the retired `has_dangerous_*` loop's leftover concierge paint; the
+    // reset below stays, restoring the PRISTINE fixture's untouched NULLs, so
+    // the case cannot depend on what ran before it.)
     {
         rt.block_on(db.write(|w| {
             w.main().connection().execute_batch(
@@ -657,24 +612,32 @@ fn salon_reads_match_oracle() {
         }
     }
 
-    // P4.D143 §H: v4's unknown-action refusal on the same collection route. The
-    // 400 is answered at the REST edge (v5 has no core verb for it), so the
-    // differential's job is to pin v4's exact BYTES; `chats_routes.rs` builds
-    // the same sentence from `CHAT_GET_ACTIONS` and the wire test
-    // `chats_collection_route` proves the edge emits it.
-    {
-        let rec = &oracle["has_dangerous_unknown_action"];
-        let want_status = rec["status"].as_i64().unwrap_or(0);
-        let want_msg = rec["body"]["error"].as_str().unwrap_or("");
-        if want_status != 400
-            || want_msg != "Unknown action: no-such-action. Available actions: has-dangerous"
-        {
-            eprintln!(
-                "[has_dangerous_unknown_action] MISMATCH: v4 answers {want_status} {want_msg:?}"
-            );
-            failed.push("has_dangerous_unknown_action".into());
+    // P4.D220 (v4 `944127d9a` + `ad1c4c37f`): the collection GET's refusals.
+    // The `has-dangerous` probe is RETIRED; v4's GET is now `dispatchAction(req,
+    // {}, list)`, so every `?action=` shape — the retired name, an unknown one,
+    // a bare `?action=`, a key-only `?action` — is the `Unknown action`
+    // envelope with an EMPTY `availableActions`. The 400 is answered at the
+    // REST edge (v5 has no core verb for it), so the differential's job is to
+    // pin v4's exact BYTES; `chats_routes.rs` answers them through
+    // `query::dispatch_action(&[])` and the wire test `chats_collection_route`
+    // proves the edge emits them.
+    for (name, action) in [
+        ("list_action_retired_has_dangerous", "has-dangerous"),
+        ("list_action_unknown", "no-such-action"),
+        ("list_action_bare", ""),
+        ("list_action_key_only", ""),
+    ] {
+        let rec = &oracle[name];
+        let want = serde_json::json!({
+            "error": format!("Unknown action: {action}"),
+            "availableActions": [],
+        });
+        let status = rec["status"].as_i64().unwrap_or(0);
+        if status != 400 || rec["body"] != want {
+            eprintln!("[{name}] MISMATCH: v4 answers {status} {}", rec["body"]);
+            failed.push(name.into());
         } else {
-            eprintln!("[has_dangerous_unknown_action] OK (400).");
+            eprintln!("[{name}] OK (400).");
         }
     }
 

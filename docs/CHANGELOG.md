@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — refactor(core): retire the `chatsHasDangerous` verb (v4 `944127d9a`, P4.D220 server half)
+
+_Versions: core 0.0.1046, harness 0.0.966, web 0.0.193._
+
+v4 deleted `GET /api/v1/chats?action=has-dangerous` and its only client.
+Removes `Request::ChatsHasDangerous`, `Response::ChatsHasDangerous`, the
+engine arm and `api::salon::chats_has_dangerous`; the REST edge already
+answers the empty-map `Unknown action` envelope for it. The
+`salon_reads_equivalence` oracle drops its four has-dangerous rows and pins
+v4's four refusal vectors (the retired name, an unknown name, a bare and a
+key-only `?action`) instead. The client half is P4.D223's. A stray
+`{"type":"chatsHasDangerous"}` over dispatch now answers the dispatcher's
+unknown-type refusal.
+
 #### 2026-09-24 — fix(web): one `?action=` dispatch rule on every REST edge — a bare action no longer deletes, restores or uploads (P4.D220)
 
 _Versions: core 0.0.1045, harness 0.0.965, web 0.0.192._

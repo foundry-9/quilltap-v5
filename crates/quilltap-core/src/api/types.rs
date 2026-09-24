@@ -109,14 +109,6 @@ pub enum Request {
         #[serde(default)]
         include_autonomous: bool,
     },
-    /// v4 `GET /api/v1/chats?action=has-dangerous` → `handleHasDangerous`.
-    /// Does the user have anything for Quick-hide's "Dangerous Chats" to hide?
-    ///
-    /// True iff ANY chat of the user takes the uncensored route — Flagged (the
-    /// Concierge's verdict) or Uncensored (the operator's) — so the affordance
-    /// appears on exactly that set, not on every chat carrying a preserved
-    /// label (v4 `c43d3b1b4` re-based it off the raw `isDangerousChat`).
-    ChatsHasDangerous,
     /// The single-chat GET (v4 `GET /api/v1/chats/{id}` → `handleGet` default
     /// branch): the fully-enriched chat + all messages (minus `renderedHtml`).
     #[serde(rename_all = "camelCase")]
@@ -4181,8 +4173,6 @@ pub enum Response {
     ChatCreate(ChatCreateResultDto),
     /// The single-chat GET / chat PUT body (`{ chat: {...} }`).
     Chat(ChatWrapDto),
-    /// v4 `handleHasDangerous`'s body — `{ hasDangerous: boolean }`.
-    ChatsHasDangerous(serde_json::Value),
     // === P4.D183 ===
     /// v4 `handleTranscript`'s body, BARE — `{unchanged: true, version}` when
     /// the counter agrees, else `{unchanged: false, version, messages,

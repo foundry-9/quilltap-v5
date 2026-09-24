@@ -429,8 +429,9 @@ pub fn build_router(state: SharedState) -> Router {
                 .delete(text_replacements_routes::text_replacement_delete),
         )
         // === P4.D143 §H: the chat-collection GET (v4 route.ts's GET
-        // dispatcher). `?action=has-dangerous` is the Quick-hide probe v5
-        // never had; no action delegates to the ListChats verb. ===
+        // dispatcher) — an EMPTY action map since `ad1c4c37f`: no action
+        // delegates to the ListChats verb, any `?action=` is refused (the
+        // `has-dangerous` probe retired with v4 `944127d9a`, P4.D220). ===
         .route("/api/v1/chats", get(chats_routes::chats_collection_get))
         .route(
             "/api/v1/chats/{id}",
