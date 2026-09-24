@@ -702,8 +702,7 @@ mod tests {
         .unwrap()
     }
 
-    /// **A narrower unit pin for the forward-reference case, kept beside the
-    /// `.qtap` import differential's own coverage.**
+    /// **The ONLY pin of the non-null understudy remap on the `.qtap` path.**
     ///
     /// `system_import_state`'s connection-profile leg WAS vacuous at an
     /// earlier fixture vintage (v4 `aa464abf`'s `multiCharacterPrefill`, then
@@ -713,9 +712,12 @@ mod tests {
     /// green on matching failures. **Closed at P4.70** — the fixture migrated
     /// in place through v4's own `compareSchemas` (`system_import_state.rs`'s
     /// own header records it), and the family now differential-covers the
-    /// create/overwrite/duplicate/skip strategies AND the understudy remap
-    /// directly. This unit pin stays as the narrower, single-purpose proof of
-    /// the FORWARD reference specifically — see below.
+    /// create/overwrite/duplicate/skip strategies. It does NOT cover the
+    /// understudy remap: the fixture's one `connection_profiles` row has a
+    /// NULL `fallbackProfileId` (measured at the `d1c06cd9d` smalls
+    /// unification), so the family reconciles only null fallbacks, and a
+    /// non-null remap — forward reference or not — is proven here alone on the
+    /// `.qtap` side (`backup_uuid_remap` covers the backup side).
     ///
     /// What it proves is v4 `65f5021c8`'s reason for putting the remap in the
     /// reconcile pass at all: the FORWARD reference. `cp-a` names `cp-b`, and

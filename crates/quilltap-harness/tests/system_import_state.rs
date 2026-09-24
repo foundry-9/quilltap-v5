@@ -126,8 +126,12 @@
 //! `execute_cross_instance_skip` and `route_replace_remap` carry
 //! `connectionProfiles: 1` where they carried 0, and `execute_legacy_folds`
 //! carries 2. The create / overwrite / duplicate / skip strategies over
-//! connection profiles, and the P4.D135 understudy remap the `.qtap` reconcile
-//! pass performs, are differential-covered here for the first time.
+//! connection profiles are differential-covered here for the first time. The
+//! P4.D135 understudy remap the `.qtap` reconcile pass performs is NOT: the
+//! fixture's one profile row has a NULL `fallbackProfileId` (measured at the
+//! `d1c06cd9d` smalls unification), so only the null arm runs here; the
+//! non-null remap is pinned by `reconcile.rs`'s
+//! `the_understudy_is_remapped_including_a_forward_reference` alone.
 //!
 //! Two arms change meaning with it, for the better:
 //! `execute_named_item_failures`'s `Failed to import connection profile
