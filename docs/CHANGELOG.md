@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): drift ledger — waive 83d0c969b for the P4.D220–P4.D224 lanes
+
+_Docs-only change._
+
+Records the human's waiver so the five lanes' freshness probe passes with
+v4 at `83d0c969b` (bug 170, NO-PORT: one client-hook line, no path a regen
+reads). The waiver covers that one commit only: any further commit or a
+dirty checkout still stops a lane. The round's target pin and the
+baseline it moves to at unification stay `b0b6656b5`. The bug-170 row
+stays unordered for the next catch-up.
+
 #### 2026-09-24 — docs(porting): driftcheck — v4 eleven commits past the d1c06cd9d baseline
 
 _Docs-only change._
