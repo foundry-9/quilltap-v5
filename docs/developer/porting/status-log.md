@@ -149866,6 +149866,100 @@ Salon Images switch on a real transcript (a crafted-alt image included); the
 `@` menu over a real cast; the `:` typeahead after Shift+Enter; the
 corrupt-`.dbkey` 401 and the read-only-`.dbkey` 500 + line.
 
+## P4.D229 — the Concierge overhaul's CLIENT, Salon side (lane record, 2026-09-25)
+
+Lane branch `claude/p4-d229-concierge-spa-salon-47eff0`, cut from `main`
+`446671a7d`. SPA-only (no cargo). §R.2 probe PASSED at lane start and before
+each regen batch (v4 `main`, HEAD `acadcc7cd`, both logs empty, tree clean).
+Pin: `/tmp/qt-v4-pin-p4d229-acadcc7cd` (`git worktree add --detach`, the three
+symlink classes; `rev-parse` = `acadcc7cd0174a0f…`; marker
+`findLeftBehindCharacters` present). Baseline SPA gate before any edit:
+452 files / 7,919 passed (matches planning).
+
+### Unit 1–7 (one commit): the three-state twin + contract, presentation, marks + list plumbing, sidebar, header pill, New Chat, quick-hide
+
+**Why one commit.** `ConciergeState` is one union shared by every consumer,
+and the Angular unit-test builder typechecks the WHOLE app + every spec before
+running any test (`--include` narrows the run, not the compile) — so no subset
+of units 1–7 compiles alone. Measured: with the old four-state twin restored
+over the new contract, the build failed with TS2339/TS2322/TS2305 across 70+
+sites (the red-first for the twin's new spec is therefore BY CONSTRUCTION —
+`getConciergeProvenance`/`getConciergeReason`/`mayFailOver`/`CONCIERGE_STATES`
+do not exist on `main`, and `'moderated'` is not a `main` `ConciergeState`).
+
+**Regens (as run, each `rm -f` first, `QT_V4_PIN=acadcc7cd`, Node
+v24.13.1):**
+
+- NEW `harness/oracle/cases/concierge-chat-override.mjs` →
+  `apps/web/src/app/chat/concierge-state.v4.json`: `git show
+  acadcc7cd:lib/services/dangerous-content/chat-override.ts` → Node type
+  stripping → 484 rows (2 chatless + 360 mode×setBy×reason in each of the two
+  shapes + 36 legacy-pair riders + 36 column-vs-payload state + 20 setBy + 30
+  reason precedence rows) + the state-only twins over the three states and a
+  retired `flagged`. `grep -c '"state":"unmoderated"'` = 95.
+- `harness/oracle/cases/concierge-presentation.mjs` (pin default moved
+  `c43d3b1b4` → `acadcc7cd`, the corpus re-shaped for the 3-arg signature) →
+  `concierge-state-presentation.v4.json`: 3 rows, `grep -c '"info"'` = 0 (the
+  pin marker), 144 describe rows (3 states × 16 provenance notes × 3 category
+  shapes); the count phrases `after one refusal` / `two` / `ten` / `11` each
+  ×3.
+
+**Ported (v4 at `ce2f1dabf` unless named):** `chat-override.ts` (client
+getters; `deriveConciergeModeFromLegacy`/`withConciergeModeFromLegacy` are
+server-only — the chain's); `concierge-state-presentation.ts` whole (the
+`ConciergeProvenanceNote` gains a `length?: never` member so a stale
+`string[]` second argument cannot compile — pinned by a spec's
+`@ts-expect-error`, which the test build enforces); `ConciergeMark` (two new
+inputs, `4d370a90f`); the list DTOs (`EnrichedChatSummary`,
+`CharacterChatSummary`, `RecentChat`) gain `conciergeSetBy?`/`conciergeReason?`
+— OPTIONAL because a pre-P4.D226 server omits them; `ChatDetail` gains
+`conciergeState?`/`conciergeSetBy?`/`conciergeReason?`/`conciergeRefusalCount?`
+and LOSES `conciergeOverride` (§S.1's keys, not the ledger's working names);
+`RouteAttempt.evidence` five-valued + `profileKind?` (consumed by the trails
+unit); `ChatCreateRequest.conciergeState` doc; the sidebar (`ChatSidebar.tsx
+:940-975,1097-1186`) incl. NEW `chat/concierge-off-duty-hint.ts`
+(`ConciergeOffDutyHint.tsx`, `3b463d6b1`) with `isConciergeOnDuty` /
+`conciergeNewChatDefault` taking the settings row as an opaque `object` (so
+this lane does not depend on P4.D230's `ChatSettingsDto` hunk — the unifier
+may tighten the parameter once the union carries `conciergeSettings`); the
+header pill (`SalonView.tsx:1190-1222`); New Chat (`NewChatForm.tsx:700-728`,
+`useNewChat.ts:240-252,425-445,625-645,820-829`); quick-hide (comment-only in
+v4; the meaning moved with the predicate).
+
+**v4 test names transcribed:** `chat-override.test.ts` (all client cases, the
+TABLE row for row); `concierge-state-presentation.test.ts` (all);
+`concierge-mark.test.tsx` (ConciergeMark + tooltip + ConciergeTooltipBody; the
+`ChatCard — the Concierge mark` block onto `chat-card.spec.ts`);
+`homepage-components.test.tsx` `RecentChatItem — the Concierge mark` (NEW
+`recent-chat-item.spec.ts`) + the `RecentChatsSection` quick-hide case;
+`quick-hide-provider.test.tsx` `QuickHideProvider — shouldHideChat` (onto the
+pure rule in `quick-hide.spec.ts`); `NewChatForm Concierge picker` +
+`useNewChat create request — Concierge state`. v5-only arms (no v4 test pins
+them — written against v4's hook/component bodies): the off-duty select + hint
+(sidebar and New Chat), `(default)` following `newChatsStartAs`, the
+once-only seed, the explicit-`moderated` create rule, the live flip on a
+`setQueryData` of the shared key, the list mark never naming a count, the
+header pill naming it, the cast-card tint on Unmoderated.
+
+**Mutation proofs (file-backup revert):** M1 (`'concierge'` provenance as a
+second colour on the mark) → reddens exactly `keeps one tone for Unmoderated
+whoever set it` (1/19); M2 (the list mark passes `refusalCount: 2`) → exactly
+`never names a refusal count on a list mark` (1/19); M4 (re-seed on every
+load) → exactly `seeds ONCE — a later reference-data load never undoes the
+user's own pick` (1/33); M5 (send `conciergeState` only when non-moderated) →
+exactly the two explicit-Moderated arms (logic + state, 2/72).
+
+**Measured, not assumed:** the sidebar's chat-settings query shares
+`chatSettingsKeys.all` with the Salon's own query (one fetch); a spec whose
+`CoreClient` stub lacks `dispatchExpect` leaves the query errored → on duty
+(v4's `data = true` default), so `chat-sidebar.spec.ts` gained a stub. The
+realtime subsystem refreshes lists after a per-chat flip as before; nothing
+added (trap D.7).
+
+Gate for the commit: `npm run lint` clean (956 qt-* classes, every guarded
+reference resolves — the two `-info` rules deleted with every reference);
+`npm test` **454 files / 8,578 passed**; `npm run build` clean.
+
 ### P4.D231 unit 1 — the build request's `groupIds` (2026-09-25)
 
 The Zod twin gains `groupIds` between `characterIds` and `chatId` (output and

@@ -12,6 +12,43 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(spa): the Concierge's three states on the Salon side — twin, presentation, marks, sidebar, header pill, New Chat, quick-hide (P4.D229 units 1–7)
+
+_Versions: SPA 0.5.774._
+
+Replaces the four-state Concierge client (`monitored`/`flagged`/`vouched`/
+`uncensored`) with v4's three states (`moderated`/`unmoderated`/`locked`, v4
+`4d370a90f` #75, `3b463d6b1` #76). One compile-coupled unit, because the
+`ConciergeState` union is shared by every consumer and the test build
+typechecks the whole tree.
+
+- `chat/concierge-state.ts` is v4's `chat-override.ts` twin: columns first,
+  then the payload keys; the legacy pair ignored; provenance and reason
+  getters; `shouldShowDangerStyling` is Unmoderated whoever set it;
+  `mayFailOver`. The contract's `ConciergeState` / `ConciergeProvenance` /
+  `ConciergeReason` are the one declaration both homes use. A NEW recorder
+  (`harness/oracle/cases/concierge-chat-override.mjs`) runs v4's real module
+  at `acadcc7cd` over 484 corpus rows; `concierge-state.oracle.spec.ts`
+  diffs every getter.
+- The presentation table is re-recorded at `acadcc7cd` (three rows, no
+  `info`, 144 describe shapes over every provenance note), with v4's new
+  `describeConciergeState(state, provenance, categories)` signature — a stale
+  two-argument call no longer compiles (pinned by `@ts-expect-error`). The
+  two `-info` CSS rules are deleted.
+- `ConciergeMark` and the three list cards carry `conciergeSetBy` /
+  `conciergeReason`; the list tooltip never names a refusal count.
+- The sidebar's select is a flat three-option list, disabled off duty
+  (`conciergeSettings.enabled === false`, read off the shared
+  `chatSettingsKeys.all` query) behind a new off-duty hint; the helper text is
+  provenance-aware with the refusal count; three success toasts. The sidebar
+  loses `isDangerousChat`/`conciergeOverride`; the cast cards tint on
+  Unmoderated.
+- The header pill passes the refusal count ("after two refusals").
+- New Chat: flat list, `(default)` follows `newChatsStartAs` on duty, the
+  select is disabled off duty, the default is seeded once per form life, and
+  an explicit `moderated` is sent under an Unmoderated default.
+- Quick-hide now hides Unmoderated only (never Locked).
+
 #### 2026-09-25 — docs(porting): P4.D231 lane record — LANE COMPLETE
 
 _Docs-only change._

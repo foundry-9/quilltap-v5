@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import type { EnrichedChatSummary } from '../../core/core-contract';
@@ -27,7 +27,7 @@ function chat(over: Partial<EnrichedChatSummary>): EnrichedChatSummary {
     tags: [],
     project: null,
     storyBackground: null,
-    conciergeState: 'monitored',
+    conciergeState: 'moderated',
     dangerCategories: [],
     chatType: 'salon',
     scriptoriumStatus: 'none',
@@ -107,5 +107,68 @@ describe('ChatCard — the delete action', () => {
     fixture.detectChanges();
     expect(seen).toEqual(['c-victim']);
     expect(event.defaultPrevented).toBe(true);
+  });
+});
+
+/**
+ * v4 `concierge-mark.test.tsx` `ChatCard — the Concierge mark` (at
+ * `ce2f1dabf`), transcribed onto v5's card, which binds the list DTO directly
+ * (v5 has no `ChatCardData` / `chat-utils` transform layer — the two new keys
+ * ride on `EnrichedChatSummary`).
+ */
+describe('ChatCard — the Concierge mark', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    TestBed.resetTestingModule();
+  });
+
+  it('draws no mark for a Moderated chat', () => {
+    const el = render(chat({ conciergeState: 'moderated' }));
+    expect(el.querySelector('.qt-concierge-mark')).toBeNull();
+  });
+
+  it('draws no mark when the payload carries no state at all', () => {
+    const el = render(chat({ conciergeState: undefined }));
+    expect(el.querySelector('.qt-concierge-mark')).toBeNull();
+  });
+
+  for (const [conciergeState, label, modifier] of [
+    ['unmoderated', 'Concierge: Unmoderated', ''],
+    ['locked', 'Concierge: Locked', 'qt-concierge-mark-muted'],
+  ] as const) {
+    it(`marks a ${conciergeState} chat`, () => {
+      const el = render(chat({ conciergeState }));
+
+      const mark = el.querySelector(`[aria-label="${label}"]`) as HTMLElement;
+      expect(mark.textContent).toContain('*');
+      expect(mark.classList.contains('qt-concierge-mark')).toBe(true);
+      if (modifier) {
+        expect(mark.classList.contains(modifier)).toBe(true);
+      } else {
+        expect(el.querySelector('.qt-concierge-mark-muted')).toBeNull();
+      }
+    });
+  }
+
+  it("passes provenance through to the mark's tooltip", async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] });
+    const fixture = mount(
+      chat({
+        conciergeState: 'unmoderated',
+        conciergeSetBy: 'concierge',
+        conciergeReason: 'classifier',
+        dangerCategories: ['NSFW'],
+      }),
+    );
+    const el = fixture.nativeElement as HTMLElement;
+    el.querySelector('qt-concierge-mark qt-tooltip')!.dispatchEvent(new Event('pointerenter'));
+    await vi.advanceTimersByTimeAsync(250);
+    fixture.detectChanges();
+    await vi.advanceTimersByTimeAsync(0);
+    fixture.detectChanges();
+
+    const bubble = document.body.querySelector('.qt-tooltip')!;
+    expect(bubble.textContent).toMatch(/The Concierge moved this chat/);
+    expect(bubble.textContent).toContain('NSFW');
   });
 });

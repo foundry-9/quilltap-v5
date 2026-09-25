@@ -11,7 +11,7 @@
  */
 
 import type { CoreClient } from '../../core/core-client';
-import type { ConciergeState } from '../../core/core-contract';
+import type { ConciergeProvenance, ConciergeReason, ConciergeState } from '../../core/core-contract';
 
 /** Lightweight chat data for homepage display (v4 `RecentChat`). */
 export interface RecentChat {
@@ -25,9 +25,13 @@ export interface RecentChat {
   createdAt: string;
   updatedAt: string;
   lastMessageAt: string | null;
-  /** The derived Concierge four-state — never the raw danger label (§A). */
+  /** The derived Concierge three-state — never a stored column (§S.1). */
   conciergeState?: ConciergeState;
-  /** The classifier's categories, shown on the mark's tooltip when Flagged. */
+  /** Who put the chat in its state; `null` for Moderated (§S.1, v4 `4d370a90f`). */
+  conciergeSetBy?: ConciergeProvenance;
+  /** Why the chat is in its state; `null` for Moderated (§S.1). */
+  conciergeReason?: ConciergeReason | null;
+  /** The classifier's categories, shown on the mark's tooltip when the classifier moved the chat. */
   dangerCategories?: string[];
   /** Story background image URL - displayed instead of avatars when present */
   storyBackgroundUrl?: string | null;

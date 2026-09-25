@@ -103,11 +103,12 @@ export interface NewChatSelectedCharacter {
 export interface NewChatFormState {
   imageProfileId: string;
   /**
-   * The Concierge state the chat is created with (v4 `303288fb4`) — the
-   * sidebar's four-state control, moved earlier in time so the choice is in
-   * force for the opening greeting. `'monitored'` is the default and is
-   * omitted from the create request; anything else is applied server-side
-   * through `applyConciergeFlip` right after the system-prompt message.
+   * The Concierge state the chat is created with (v4 `303288fb4`, three states
+   * since `4d370a90f`) — the sidebar's control, moved earlier in time so the
+   * choice is in force for the opening greeting. `'moderated'` is the initial
+   * value; the first successful settings read seeds `newChatsStartAs` ONCE
+   * (`NewChatState.load`). The create request omits it only when both the pick
+   * and the server default are Moderated (`buildCreateRequest`).
    */
   conciergeState: ConciergeState;
   /**
@@ -139,7 +140,7 @@ export interface NewChatFormState {
 /** The pristine form state (v4 `INITIAL_STATE`). */
 export const INITIAL_FORM_STATE: NewChatFormState = {
   imageProfileId: '',
-  conciergeState: 'monitored',
+  conciergeState: 'moderated',
   roleplayTemplateId: null,
   roleplayTemplateTouched: false,
   scenario: '',

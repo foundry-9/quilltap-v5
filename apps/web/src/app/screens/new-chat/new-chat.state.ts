@@ -40,6 +40,8 @@ import {
   fetchProjectScenarios,
   toScenarioOption,
 } from '../../scenario/scenario.api';
+import { conciergeNewChatDefault, isConciergeOnDuty } from '../../chat/concierge-off-duty-hint';
+import type { ConciergeState } from '../../chat/concierge-state';
 import { resolveDefaultSystemPromptId } from '../../shared/default-system-prompt';
 import type { ToastService } from '../../ui/toast.service';
 import type { GreenRoomController } from './green-room.types';
@@ -132,6 +134,16 @@ export class NewChatState {
    * is seeded from it; the form uses it only to label that option as default.
    */
   readonly defaultRoleplayTemplateId = signal<string | null>(null);
+  /**
+   * The Concierge's global posture, read from chat settings (v4 `useNewChat`
+   * at `3b463d6b1`): whether he is on duty — the form's select is disabled and
+   * points at Settings → The Concierge when he is not — and the state the
+   * server gives a new chat whose request names none (`newChatsStartAs` on
+   * duty, else Moderated). Both keep their last value when a load's settings
+   * read fails, as v4's `useState` does.
+   */
+  readonly conciergeOnDuty = signal(true);
+  readonly conciergeServerDefault = signal<ConciergeState>('moderated');
   readonly selectedProjectId: WritableSignal<string | null>;
 
   readonly selectedCharacters = signal<NewChatSelectedCharacter[]>([]);
@@ -170,6 +182,17 @@ export class NewChatState {
    * deliberate "no template" and override a default the server knows about.
    */
   private templateDefaultsLoaded = false;
+  /**
+   * v4 `conciergeSeededRef`: `newChatsStartAs` pre-selects the form ONCE per
+   * form life; later reference-data loads (a project change, a cast change)
+   * must not undo the user's own choice. A DIFFERENT once-rule from the
+   * template's, which re-seeds on every load until touched (survey §E.7 —
+   * v4's rule, deliberately). v4 also skips the seed when a continuation's
+   * `initialConciergeState` is set; v5 has no continuation Concierge source
+   * (see the create path's continuation note), so that arm has nothing to
+   * bind to — recorded, not stubbed.
+   */
+  private conciergeSeeded = false;
 
   constructor(
     private readonly core: CoreClient,
@@ -298,6 +321,15 @@ export class NewChatState {
         ? ((chatSettingsRes.value.data['defaultRoleplayTemplateId'] as string | null | undefined) ??
           null)
         : null;
+      // Off duty the server ignores `newChatsStartAs` and every chat is created
+      // Moderated, so that is the default the form shows too (v4 :436-442).
+      let conciergeNewChatsStartAs: ConciergeState | null = null;
+      if (chatSettingsRes.ok) {
+        const settings = chatSettingsRes.value.data;
+        conciergeNewChatsStartAs = conciergeNewChatDefault(settings);
+        this.conciergeServerDefault.set(conciergeNewChatsStartAs);
+        this.conciergeOnDuty.set(isConciergeOnDuty(settings));
+      }
 
       // The seed character + its default partner (?characterId=).
       let seededChar: CharacterListItem | null = null;
@@ -338,9 +370,14 @@ export class NewChatState {
       this.templateDefaultsLoaded =
         templatesRes.ok && chatSettingsRes.ok && (!projectId || projectOk);
       // The template re-seeds on every reference-data load (a new project, a
-      // changed cast) until the user picks one by hand.
+      // changed cast) until the user picks one by hand; the Concierge state is
+      // seeded ONCE (v4 :632-639).
+      const seedConciergeState =
+        conciergeNewChatsStartAs !== null && !this.conciergeSeeded ? conciergeNewChatsStartAs : null;
+      if (conciergeNewChatsStartAs !== null) this.conciergeSeeded = true;
       this.form.update((prev) => ({
         ...prev,
+        conciergeState: seedConciergeState ?? prev.conciergeState,
         roleplayTemplateId: prev.roleplayTemplateTouched
           ? prev.roleplayTemplateId
           : defaultTemplateStillExists
@@ -663,6 +700,7 @@ export class NewChatState {
     try {
       const body = buildCreateRequest(cast, this.form(), this.selectedProjectId(), progressId, {
         templateDefaultsLoaded: this.templateDefaultsLoaded,
+        conciergeServerDefault: this.conciergeServerDefault(),
       });
       if (progressId) this.greenRoom?.begin(progressId);
       const resp = await this.core.dispatchExpect(body, 'chatCreate');

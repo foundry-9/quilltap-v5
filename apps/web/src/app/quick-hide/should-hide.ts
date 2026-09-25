@@ -40,10 +40,13 @@ export function shouldHideByIds(
 }
 
 /**
- * THE quick-hide rule for a chat, in one place (v4 `:203-215`). "Dangerous
- * Chats" hides whatever takes the uncensored route — Flagged (the Concierge's
- * verdict) and Uncensored (the operator's) — never a Vouched Safe chat that
- * merely carries a preserved label underneath.
+ * THE quick-hide rule for a chat, in one place (v4 `:226-234` at
+ * `4d370a90f`). "Dangerous Chats" hides whatever takes the uncensored route —
+ * since v4's three states (#75) that is Unmoderated ONLY, whoever set it (the
+ * operator or the Concierge); Moderated and Locked are never hidden by the
+ * danger toggle. The code is unchanged from the four-state rule: it delegates
+ * to `conciergeStateUsesUncensoredRoute`, and the meaning moved with that
+ * predicate.
  *
  * Note the arm order against v5's four pre-lane filters: v4 asks the TAG
  * question first and the danger question second, where three of v5's four

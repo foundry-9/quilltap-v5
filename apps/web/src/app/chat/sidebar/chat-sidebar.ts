@@ -13,10 +13,8 @@ import {
 } from '@angular/core';
 
 import type { ParticipantDetail, ParticipantStatusWire } from '../../core/core-contract';
-import {
-  shouldShowDangerStyling,
-  type ConciergeOverrideValue,
-} from '../concierge-state';
+import { shouldShowDangerStyling, type ConciergeState } from '../concierge-state';
+import type { ConciergeProvenanceNote } from '../concierge-state-presentation';
 import { Avatar } from '../../ui/avatar';
 import { normalizeAvatarSrc } from '../../ui/avatar-stack';
 import { CollapsibleCard } from '../../ui/collapsible-card';
@@ -290,8 +288,8 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             [llmCharacterIds]="llmCharacterIds()"
             [singleLlmCharacterId]="singleLlmCharacterId()"
             [castCharacters]="castCharacters()"
-            [isDangerousChat]="isDangerousChat()"
-            [conciergeOverride]="conciergeOverride()"
+            [conciergeState]="conciergeState()"
+            [conciergeProvenance]="conciergeProvenance()"
             (chatUpdated)="chatUpdated.emit()"
             (regenerateBackground)="regenerateBackground.emit()"
             (openProject)="openProject.emit()"
@@ -375,31 +373,23 @@ export class ChatSidebar implements OnInit {
   readonly respondingParticipantId = input<string | null>(null);
   readonly impersonatingParticipantIds = input<string[]>([]);
   readonly activeTypingParticipantId = input<string | null>(null);
-  readonly isDangerousChat = input(false);
   /**
-   * The operator's per-chat Concierge override (P4.D141), the sibling of
-   * `isDangerousChat` — v4's `ChatSidebarProps` carries both for the same
-   * reason: neither field is meaningful alone.
-   *
-   * Bound by `screens/salon/salon-conversation.ts` as
-   * `[conciergeOverride]="c.conciergeOverride ?? null"` on the `<qt-chat-sidebar>`
-   * element (the round-2 unification wire; pinned by the Salon spec). A host
-   * that leaves it unbound gets `null`, and the control can then DISPLAY only
-   * Monitored/Flagged — an operator state written through it would not read back.
+   * The chat's Concierge state as the server derived it (v4 `ChatSidebarProps.
+   * conciergeState` at `4d370a90f` — "Absent reads as Moderated"). v4 REMOVED
+   * the `isDangerousChat` prop in the same commit: no display reads the
+   * classifier's telemetry any more.
    */
-  readonly conciergeOverride = input<ConciergeOverrideValue | null>(null);
+  readonly conciergeState = input<ConciergeState | null | undefined>(undefined);
+  /** Who set the Concierge state and why, and the refusal count — the helper text's note. */
+  readonly conciergeProvenance = input<ConciergeProvenanceNote>({});
 
   /**
-   * What the participant cards paint. v4 `60e3c4a0a` switched
-   * `ParticipantsSection` from the raw label to `shouldShowDangerStyling`, so an
-   * operator-Uncensored chat takes the uncensored routes without the cards being
-   * painted as a hazard.
+   * What the participant cards paint (v4 `ChatSidebar.tsx:877`
+   * `shouldShowDangerStyling({ conciergeState })`): Unmoderated, WHOEVER set
+   * it — an operator-set Unmoderated chat IS tinted since v4 `4d370a90f`.
    */
   protected readonly participantDangerStyling = computed(() =>
-    shouldShowDangerStyling({
-      isDangerousChat: this.isDangerousChat(),
-      conciergeOverride: this.conciergeOverride(),
-    }),
+    shouldShowDangerStyling({ conciergeState: this.conciergeState() }),
   );
   readonly chatId = input<string | null>(null);
   /** The user's connection profiles, threaded to each participant card. */

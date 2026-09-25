@@ -214,7 +214,7 @@ function chatSummary(): EnrichedChatSummary {
     tags: [],
     project: { id: 'proj1', name: 'The Expedition' },
     storyBackground: null,
-    conciergeState: 'monitored',
+    conciergeState: 'moderated',
     dangerCategories: [],
     chatType: 'salon',
     scriptoriumStatus: 'none',

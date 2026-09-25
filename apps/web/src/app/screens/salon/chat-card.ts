@@ -102,6 +102,8 @@ import { ToastService } from '../../ui/toast.service';
               @if (chat().conciergeState; as conciergeState) {
                 <qt-concierge-mark
                   [conciergeState]="conciergeState"
+                  [conciergeSetBy]="chat().conciergeSetBy"
+                  [conciergeReason]="chat().conciergeReason"
                   [dangerCategories]="chat().dangerCategories"
                   className="text-sm flex-shrink-0"
                 />

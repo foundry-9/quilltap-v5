@@ -11,7 +11,8 @@ import {
   INCLUDE_AUTONOMOUS_KEY,
   parseActiveTags,
 } from './quick-hide.storage';
-import { shouldHideByIds } from './should-hide';
+import type { ConciergeState } from '../core/core-contract';
+import { shouldHideByIds, shouldHideChat } from './should-hide';
 
 // ---------------------------------------------------------------------------
 // The pure predicate (v4 `quick-hide-provider.tsx:183-196`)
@@ -47,6 +48,55 @@ describe('shouldHideByIds (v4 quick-hide-provider.tsx:183-196)', () => {
 // ---------------------------------------------------------------------------
 // The storage substrate (v4 `:92-129`)
 // ---------------------------------------------------------------------------
+
+/**
+ * v4 `quick-hide-provider.test.tsx` `QuickHideProvider — shouldHideChat` (at
+ * `4d370a90f`), by name, over v5's pure rule. v4 drives it through the
+ * provider's toggle; the rule itself is the pure function here (the consumers'
+ * spec exercises the service end to end).
+ */
+describe('QuickHideProvider — shouldHideChat', () => {
+  const THREE_STATES: Array<{ id: string; conciergeState: ConciergeState }> = [
+    { id: 'moderated', conciergeState: 'moderated' },
+    { id: 'unmoderated', conciergeState: 'unmoderated' },
+    { id: 'locked', conciergeState: 'locked' },
+  ];
+  const NONE = new Set<string>();
+  const HIDDEN_TAGS = new Set(['tag-hidden']);
+
+  it('hides nothing while the toggle is off, whatever the state', () => {
+    for (const chat of THREE_STATES) {
+      expect(shouldHideChat(NONE, false, chat)).toBe(false);
+    }
+  });
+
+  it('hides the Unmoderated chat — and only that — when the toggle is on', () => {
+    expect(shouldHideChat(NONE, true, THREE_STATES[1])).toBe(true);
+    // Moderated is the default; Locked takes the ordinary route, even with a
+    // dangerous label preserved underneath.
+    expect(shouldHideChat(NONE, true, THREE_STATES[0])).toBe(false);
+    expect(shouldHideChat(NONE, true, THREE_STATES[2])).toBe(false);
+  });
+
+  it('leaves a chat with no state visible', () => {
+    expect(shouldHideChat(NONE, true, {})).toBe(false);
+  });
+
+  it('hides by character tag independently of the danger toggle', () => {
+    expect(
+      shouldHideChat(HIDDEN_TAGS, false, { characterTags: ['tag-hidden'], conciergeState: 'moderated' }),
+    ).toBe(true);
+    expect(
+      shouldHideChat(HIDDEN_TAGS, false, { characterTags: ['tag-other'], conciergeState: 'moderated' }),
+    ).toBe(false);
+  });
+
+  it('hides a tagged chat even when its state is one the danger toggle ignores', () => {
+    expect(
+      shouldHideChat(HIDDEN_TAGS, true, { characterTags: ['tag-hidden'], conciergeState: 'locked' }),
+    ).toBe(true);
+  });
+});
 
 describe('parseActiveTags (v4 quick-hide-provider.tsx:96-101)', () => {
   it('keeps only string entries (v4 :100)', () => {

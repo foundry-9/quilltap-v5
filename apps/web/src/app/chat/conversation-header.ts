@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 import { RouterLink } from '@angular/router';
 
 import type { ChatDetail, ChatSettingsDto } from '../core/core-contract';
-import { getConciergeState } from './concierge-state';
+import { getConciergeProvenance, getConciergeReason, getConciergeState } from './concierge-state';
 import { ConciergeTooltipBody } from './concierge-mark';
 import {
   CONCIERGE_STATE_PRESENTATION,
@@ -57,18 +57,18 @@ import { ChatCostSummary } from './chat-cost-summary';
         >{{ chat().title || 'Untitled chat' }}</a
       >
 
-      <!-- The Concierge badge (v4 SalonView.tsx:1088-1112). ONE pill, derived
-           from the four-state; Monitored is the default and renders no badge at
-           all — "the pill means something other than the default is set". Until
-           P4.D141 v5 rendered two INDEPENDENT @if pills, so an off-duty chat
-           that was also flagged showed both where v4's ternary shows one.
+      <!-- The Concierge badge (v4 SalonView.tsx:1190-1222 at ce2f1dabf). ONE
+           pill, derived from the three-state; Moderated is the default and
+           renders no badge at all — "the pill means something other than the
+           default is set".
 
-           Since v4 c43d3b1b4 every word, icon and tone comes from the ONE
-           presentation table, so the pill speaks the same sentences as the list
-           marks and the sidebar's helper text; and the four native title
-           strings are retired in favour of the drawn bubble, which is also the
-           only place the classifier's categories are named now. -->
-      @if (conciergeState() !== 'monitored') {
+           Every word, icon and tone comes from the ONE presentation table, so
+           the pill speaks the same sentences as the list marks and the
+           sidebar's helper text; the drawn bubble is the only place the
+           classifier's categories are named. The pill is THE one place that
+           passes the refusal count ("after two refusals") — list payloads
+           carry none. -->
+      @if (conciergeState() !== 'moderated') {
         <qt-tooltip [contentTemplate]="conciergeTip" placement="bottom">
           <span
             [class]="'qt-danger-badge' + badgeSuffixClass() + ' flex-shrink-0'"
@@ -152,9 +152,9 @@ export class ConversationHeader {
   protected readonly isAutonomous = computed(() => this.chat().chatType === 'autonomous');
 
   /**
-   * The four-state, derived through the shared predicate module so the badge can
-   * never disagree with the sidebar control or the message-list danger styling
-   * (P4.D141, v4 `getConciergeState`).
+   * The three-state, derived through the shared predicate module so the badge
+   * can never disagree with the sidebar control or the message-list danger
+   * styling (v4 `getConciergeState`).
    */
   protected readonly conciergeState = computed(() => getConciergeState(this.chat()));
 
@@ -164,23 +164,30 @@ export class ConversationHeader {
   );
 
   /**
-   * The bubble's contents. The categories reach it only on Flagged — on the
-   * two operator states a preserved list is a stale artefact of an earlier
-   * scan, not a live verdict — which is what retires the old Flagged `title`
-   * without losing what it said.
+   * The bubble's contents (v4 `SalonView.tsx:1197-1201`): the provenance picks
+   * Unmoderated's sentence, the refusal count names "after N refusals", and the
+   * categories reach it only when the classifier moved the chat.
    */
-  protected readonly conciergeDescription = computed(() =>
-    describeConciergeState(this.conciergeState(), this.chat().dangerCategories ?? undefined),
-  );
+  protected readonly conciergeDescription = computed(() => {
+    const chat = this.chat();
+    return describeConciergeState(
+      this.conciergeState(),
+      {
+        setBy: getConciergeProvenance(chat),
+        reason: getConciergeReason(chat),
+        refusalCount: chat.conciergeRefusalCount,
+      },
+      chat.dangerCategories ?? undefined,
+    );
+  });
 
   /**
-   * `danger` is the base rule, so it adds nothing; only the two operator tones
-   * carry a modifier. This IS an interpolation — the same one v4's
+   * `danger` is the base rule, so it adds nothing; only Locked's muted tone
+   * carries a modifier. This IS an interpolation — the same one v4's
    * `SalonView.tsx` builds — so `check-qt-classes` cannot see
-   * `qt-danger-badge-muted` / `-info` from here; the two rules live in
-   * `_chat.css` and are referenced by name only in specs. The guard flags
-   * references without rules, not rules without references, so this is safe
-   * as long as those rules stay (unification review, 2026-09-02).
+   * `qt-danger-badge-muted` from here; the rule lives in `_chat.css` and is
+   * referenced by name only in specs. The guard flags references without rules,
+   * not rules without references, so this is safe as long as that rule stays.
    */
   protected readonly badgeSuffixClass = computed(() => {
     const suffix = conciergeToneSuffix(this.conciergePresentation().tone);

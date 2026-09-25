@@ -22,14 +22,15 @@ import type {
   ImageProfileDto,
   RoleplayTemplateDto,
 } from '../../core/core-contract';
-import {
-  getConciergeState,
-  type ConciergeOverrideValue,
-} from '../concierge-state';
+import { ConciergeOffDutyHint, isConciergeOnDuty } from '../concierge-off-duty-hint';
+import { CONCIERGE_STATES, getConciergeState } from '../concierge-state';
 import {
   CONCIERGE_STATE_PRESENTATION,
+  type ConciergeProvenanceNote,
   conciergeToneTextClass,
+  describeConciergeState,
 } from '../concierge-state-presentation';
+import { chatSettingsKeys, fetchChatSettings } from '../../screens/settings/chat/chat-settings.api';
 import { fetchImageProfiles, imageProfileKeys } from '../../screens/settings/images/image-profiles.api';
 import { fetchRoleplayTemplates, templateKeys } from '../../screens/settings/templates/templates.api';
 import { Icon, type IconName } from '../../ui/icon';
@@ -37,12 +38,11 @@ import { ToastService } from '../../ui/toast.service';
 import { ChatScenarioControl } from './chat-scenario-control';
 
 /** The chat-record fields this section edits. `null` ⇒ not set / inherit. */
-/** v4's four success sentences (`ChatSidebar.tsx:1080-1088`), byte for byte. */
+/** v4's three success sentences (`ChatSidebar.tsx:1109-1115` at `ce2f1dabf`), byte for byte. */
 const CONCIERGE_TOASTS: Record<ConciergeStateWire, string> = {
-  monitored: 'The Concierge is on watch',
-  flagged: 'Marked as flagged',
-  vouched: 'You have vouched for this chat',
-  uncensored: 'The uncensored door stands open',
+  moderated: 'The Concierge is on watch',
+  unmoderated: 'The uncensored door stands open',
+  locked: 'Locked to the usual desks',
 };
 
 export interface ChatSectionState {
@@ -133,15 +133,16 @@ export interface ChatSectionState {
 @Component({
   selector: 'qt-chat-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ChatScenarioControl, Icon],
+  imports: [ChatScenarioControl, ConciergeOffDutyHint, Icon],
   template: `
     <div class="qt-chat-sidebar-section qt-chat-sidebar-section-chat flex flex-col gap-3">
       <!--
-        The Concierge — per-chat four-state (v4 ChatSidebar.tsx:1146-1170).
-        Four states, one 2x2: rows are the route (ordinary vs uncensored),
-        columns are the provenance (the Concierge's classifier vs the operator).
-        The optgroups carry the provenance structurally; the helper text names
-        the actor; the icon/color pair gives a third, colorblind-safe channel.
+        The Concierge — per-chat state (v4 ChatSidebar.tsx:1159-1186 at
+        ce2f1dabf). Three states in a FLAT list — no optgroups, bare labels.
+        Who set Unmoderated — you or the Concierge — is a note in the helper
+        text, never a separate option; the icon/colour pair is a second,
+        colourblind-safe channel. Off duty the select is disabled (not hidden)
+        and the helper becomes the hint that points at the switch.
       -->
       <label class="qt-label">
         <span class="mb-1 flex items-center gap-1.5">
@@ -155,19 +156,18 @@ export interface ChatSectionState {
           #conciergeSelect
           class="qt-select text-sm"
           [value]="conciergeState()"
-          [disabled]="conciergeSaving()"
+          [disabled]="conciergeSaving() || !conciergeOnDuty()"
           (change)="onConciergeStateChange($event)"
         >
-          <optgroup label="The Concierge decides">
-            <option value="monitored">Monitored</option>
-            <option value="flagged">Flagged</option>
-          </optgroup>
-          <optgroup label="You decide">
-            <option value="vouched">Vouched Safe</option>
-            <option value="uncensored">Uncensored</option>
-          </optgroup>
+          @for (value of conciergeStates; track value) {
+            <option [value]="value">{{ conciergeLabels[value].label }}</option>
+          }
         </select>
-        <span class="block mt-1 qt-text-secondary text-xs">{{ conciergeHelperText() }}</span>
+        @if (conciergeOnDuty()) {
+          <span class="block mt-1 qt-text-secondary text-xs">{{ conciergeHelperText() }}</span>
+        } @else {
+          <qt-concierge-off-duty-hint className="block mt-1 qt-text-secondary text-xs" />
+        }
       </label>
 
       <!-- Agent Mode (v4 :1116-1127), which v4 places directly after the
@@ -363,22 +363,18 @@ export class ChatSection {
   /** Every present character (any controller), for the Scenario Builder (v4 `d1c06cd9d`). */
   readonly castCharacters = input<readonly { id: string; name: string }[]>([]);
   /**
-   * The Concierge's two stored fields (P4.D141), mirroring v4's own
-   * `ChatSidebarProps` — which carries `isDangerousChat` and `conciergeOverride`
-   * as siblings for exactly this reason. They are meaningful only read TOGETHER
-   * (see `chat/concierge-state.ts`), so they arrive as a pair rather than
-   * through the `ChatSectionState` bag.
-   *
-   * ⚠ **`conciergeOverride` needs a cross-lane wire.** Its value originates in
-   * `screens/salon/salon-conversation.ts`, which **P4.66 owns**, so P4.D141 may
-   * not add the binding. Until the unifier does (one line — see this lane's
-   * record), the input defaults to `null` and the control can show only
-   * Monitored / Flagged: it will never DISPLAY an operator state, though writing
-   * one works end to end. This is recorded loudly rather than hidden behind a
-   * silent default.
+   * The chat's Concierge state as the server derived it (v4 `ChatSectionProps.
+   * conciergeState` at `4d370a90f`). Absent reads as Moderated.
    */
-  readonly isDangerousChat = input<boolean | null>(null);
-  readonly conciergeOverride = input<ConciergeOverrideValue | null>(null);
+  readonly conciergeStateInput = input<ConciergeStateWire | null | undefined>(undefined, {
+    alias: 'conciergeState',
+  });
+  /**
+   * Who set the state and why, and the refusal count — the helper text's note
+   * (v4 `conciergeProvenance`). The sidebar is one of the TWO places that pass
+   * `refusalCount` (with the header pill); list marks never do.
+   */
+  readonly conciergeProvenance = input<ConciergeProvenanceNote>({});
 
   /** Fired after any chat-record field is mutated (v4 `onChatUpdated` → fetchChat). */
   readonly chatUpdated = output<void>();
@@ -475,9 +471,12 @@ export class ChatSection {
     // writes only when the BOUND value changes, which would let the user's pick
     // stand until the next change — so the element is re-written from the
     // derived state after each render instead (the P4.D115 ScenarioSelect idiom).
+    // It reads the on-duty signal too: a disabled→enabled flip (a Concierge-tab
+    // save landing on the shared settings key) must re-sync the element.
     afterRenderEffect(() => {
       const value = this.conciergeState();
       this.conciergeSaving();
+      this.conciergeOnDuty();
       const select = this.conciergeSelectRef()?.nativeElement;
       if (select && select.value !== value) select.value = value;
     });
@@ -619,13 +618,13 @@ export class ChatSection {
     );
   }
 
-  // ── The Concierge four-state (v4 `ChatSidebar.tsx:1123-1170`, P4.D141) ──
+  // ── The Concierge three-state (v4 `ChatSidebar.tsx:1097-1186` at `ce2f1dabf`) ──
 
   /**
-   * The displayed state — derived from the chat's two stored fields through the
-   * SHARED predicate and from NOTHING else, exactly as v4's `ChatSidebar.tsx:1123`
-   * computes `getConciergeState({isDangerousChat, conciergeOverride})` straight
-   * from props. There is deliberately no optimistic latch: a local "last pick"
+   * The displayed state — derived from the server's `conciergeState` through
+   * the SHARED predicate and from NOTHING else, exactly as v4's
+   * `getConciergeState({ conciergeState: conciergeStateProp })` straight from
+   * props. There is deliberately no optimistic latch: a local "last pick"
    * that outlived the write would ignore a refetch, a classifier auto-flip and
    * another tab's change for the rest of the session, and let this control
    * disagree with the header badge (the P4.D141 unification review's catch).
@@ -634,29 +633,47 @@ export class ChatSection {
    * render (see the constructor's `afterRenderEffect`).
    */
   protected readonly conciergeState = computed<ConciergeStateWire>(() =>
-    getConciergeState({
-      isDangerousChat: this.isDangerousChat(),
-      conciergeOverride: this.conciergeOverride(),
-    }),
+    getConciergeState({ conciergeState: this.conciergeStateInput() }),
   );
+  protected readonly conciergeStates = CONCIERGE_STATES;
+  protected readonly conciergeLabels = CONCIERGE_STATE_PRESENTATION;
+
+  /**
+   * The chat-settings row on the SHARED `chatSettingsKeys.all` key (v4
+   * `useChatSettingsQuery` on `queryKeys.settings.chat`), so a Concierge-tab
+   * save — which `setQueryData`s that key — flips the disabled select live.
+   */
+  private readonly chatSettingsQuery = injectQuery(() => ({
+    queryKey: chatSettingsKeys.all,
+    queryFn: () => fetchChatSettings(this.core),
+  }));
+
+  /**
+   * v4 `const { data: conciergeOnDuty = true } = useChatSettingsQuery((s) =>
+   * s.conciergeSettings?.enabled !== false)`: TRUE while loading. Off duty
+   * globally the per-chat state does nothing; the select is disabled (not
+   * hidden) and points at the switch.
+   */
+  protected readonly conciergeOnDuty = computed(() => isConciergeOnDuty(this.chatSettingsQuery.data()));
   protected readonly conciergeSaving = signal(false);
   private readonly conciergeSelectRef = viewChild<ElementRef<HTMLSelectElement>>('conciergeSelect');
 
   /**
    * v4's helper text and its icon/colour pair, both off the ONE presentation
-   * table (v4 `ChatSidebar.tsx:1132-1140` at `c43d3b1b4`).
-   *
-   * These four sentences seeded that table — they were moved into it verbatim
-   * — so this is two table reads with ZERO visible string change; the list
-   * marks and the Salon header pill now say the same words, and a copy edit
-   * lands in all three at once.
+   * table (v4 `ChatSidebar.tsx:1150-1161` at `ce2f1dabf`).
    */
   private readonly conciergePresentation = computed(
     () => CONCIERGE_STATE_PRESENTATION[this.conciergeState()],
   );
 
-  /** v4's helper text, byte for byte — it names the ACTOR, not the effect. */
-  protected readonly conciergeHelperText = computed(() => this.conciergePresentation().detail);
+  /**
+   * v4 `describeConciergeState(conciergeState, conciergeProvenance).detail` —
+   * provenance-aware (the Concierge's sentence, with the refusal count, when he
+   * set Unmoderated); no categories.
+   */
+  protected readonly conciergeHelperText = computed(
+    () => describeConciergeState(this.conciergeState(), this.conciergeProvenance()).detail,
+  );
 
   /** The third, colorblind-safe channel (v4 `conciergeStateIcon`). */
   protected readonly conciergeStateIcon = computed<{ name: IconName; className: string }>(() => {
@@ -665,7 +682,7 @@ export class ChatSection {
   });
 
   /**
-   * v4 `handleConciergeStateChange` (`ChatSidebar.tsx:1068-1095`): PUT
+   * v4 `handleConciergeStateChange` (`ChatSidebar.tsx:1097-1123`): PUT
    * `{conciergeState: next}` — a SIBLING of the `chat` bag, not a bag key —
    * then the state's own success copy and a parent refetch. v4 fires the PUT
    * unconditionally (no "already there" short-circuit) and holds no local

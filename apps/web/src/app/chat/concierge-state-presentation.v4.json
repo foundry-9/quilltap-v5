@@ -1,112 +1,1437 @@
 {
   "_source": {
     "checkout": "quilltap-server",
-    "pin": "c43d3b1b4",
+    "pin": "acadcc7cd",
     "file": "lib/services/dangerous-content/concierge-state-presentation.ts"
   },
   "presentation": {
-    "monitored": {
-      "label": "Monitored",
+    "moderated": {
+      "label": "Moderated",
       "icon": "eye",
       "tone": "success",
-      "detail": "The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.",
+      "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
       "hint": "Change it from the Salon sidebar's Chat section."
     },
-    "flagged": {
-      "label": "Flagged",
-      "icon": "alert-triangle",
-      "tone": "danger",
-      "detail": "The Concierge has this chat down as dangerous, and routes it through the uncensored providers.",
-      "hint": "Change it from the Salon sidebar's Chat section."
-    },
-    "vouched": {
-      "label": "Vouched Safe",
-      "icon": "check-circle",
-      "tone": "muted",
-      "detail": "You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.",
-      "hint": "Change it from the Salon sidebar's Chat section."
-    },
-    "uncensored": {
-      "label": "Uncensored",
+    "unmoderated": {
+      "label": "Unmoderated",
       "icon": "eye-off",
-      "tone": "info",
-      "detail": "You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.",
+      "tone": "danger",
+      "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+      "hint": "Change it from the Salon sidebar's Chat section."
+    },
+    "locked": {
+      "label": "Locked",
+      "icon": "shield",
+      "tone": "muted",
+      "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
       "hint": "Change it from the Salon sidebar's Chat section."
     }
   },
   "toneSuffix": {
     "danger": "",
     "muted": "-muted",
-    "info": "-info",
     "success": ""
   },
   "toneTextClass": {
     "danger": "qt-text-danger",
     "muted": "qt-text-muted",
-    "info": "qt-text-info",
     "success": "qt-text-success"
   },
   "describe": [
     {
-      "state": "monitored",
+      "state": "moderated",
+      "provenance": "omitted",
+      "note": null,
+      "dangerCategories": null,
       "result": {
-        "title": "Monitored",
-        "detail": "The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.",
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
         "categories": null,
         "hint": "Change it from the Salon sidebar's Chat section."
       }
     },
     {
-      "state": "monitored",
+      "state": "moderated",
+      "provenance": "omitted",
+      "note": null,
       "dangerCategories": [],
       "result": {
-        "title": "Monitored",
-        "detail": "The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.",
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
         "categories": null,
         "hint": "Change it from the Salon sidebar's Chat section."
       }
     },
     {
-      "state": "monitored",
+      "state": "moderated",
+      "provenance": "omitted",
+      "note": null,
       "dangerCategories": [
         "NSFW",
         "Violence"
       ],
       "result": {
-        "title": "Monitored",
-        "detail": "The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.",
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
         "categories": null,
         "hint": "Change it from the Salon sidebar's Chat section."
       }
     },
     {
-      "state": "flagged",
+      "state": "moderated",
+      "provenance": "empty",
+      "note": {},
+      "dangerCategories": null,
       "result": {
-        "title": "Flagged",
-        "detail": "The Concierge has this chat down as dangerous, and routes it through the uncensored providers.",
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
         "categories": null,
         "hint": "Change it from the Salon sidebar's Chat section."
       }
     },
     {
-      "state": "flagged",
+      "state": "moderated",
+      "provenance": "empty",
+      "note": {},
       "dangerCategories": [],
       "result": {
-        "title": "Flagged",
-        "detail": "The Concierge has this chat down as dangerous, and routes it through the uncensored providers.",
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
         "categories": null,
         "hint": "Change it from the Salon sidebar's Chat section."
       }
     },
     {
-      "state": "flagged",
+      "state": "moderated",
+      "provenance": "empty",
+      "note": {},
       "dangerCategories": [
         "NSFW",
         "Violence"
       ],
       "result": {
-        "title": "Flagged",
-        "detail": "The Concierge has this chat down as dangerous, and routes it through the uncensored providers.",
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "operator-manual",
+      "note": {
+        "setBy": "operator",
+        "reason": "manual"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "operator-manual",
+      "note": {
+        "setBy": "operator",
+        "reason": "manual"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "operator-manual",
+      "note": {
+        "setBy": "operator",
+        "reason": "manual"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "operator-migration",
+      "note": {
+        "setBy": "operator",
+        "reason": "migration"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "operator-migration",
+      "note": {
+        "setBy": "operator",
+        "reason": "migration"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "operator-migration",
+      "note": {
+        "setBy": "operator",
+        "reason": "migration"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "operator-refusals-2",
+      "note": {
+        "setBy": "operator",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "operator-refusals-2",
+      "note": {
+        "setBy": "operator",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "operator-refusals-2",
+      "note": {
+        "setBy": "operator",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-nocount",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-nocount",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-nocount",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-null",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": null
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-null",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": null
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-null",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": null
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-0",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 0
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-0",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 0
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-0",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 0
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-1",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 1
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-1",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 1
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-1",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 1
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-2",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-2",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-2",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-10",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 10
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-10",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 10
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-10",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 10
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-11",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 11
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-11",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 11
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-refusals-11",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 11
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-classifier",
+      "note": {
+        "setBy": "concierge",
+        "reason": "classifier"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-classifier",
+      "note": {
+        "setBy": "concierge",
+        "reason": "classifier"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-classifier",
+      "note": {
+        "setBy": "concierge",
+        "reason": "classifier"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-migration",
+      "note": {
+        "setBy": "concierge",
+        "reason": "migration"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-migration",
+      "note": {
+        "setBy": "concierge",
+        "reason": "migration"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-migration",
+      "note": {
+        "setBy": "concierge",
+        "reason": "migration"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-null-reason",
+      "note": {
+        "setBy": "concierge",
+        "reason": null
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-null-reason",
+      "note": {
+        "setBy": "concierge",
+        "reason": null
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "concierge-null-reason",
+      "note": {
+        "setBy": "concierge",
+        "reason": null
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "setby-null",
+      "note": {
+        "setBy": null,
+        "reason": "manual"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "setby-null",
+      "note": {
+        "setBy": null,
+        "reason": "manual"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "moderated",
+      "provenance": "setby-null",
+      "note": {
+        "setBy": null,
+        "reason": "manual"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Moderated",
+        "detail": "The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "omitted",
+      "note": null,
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "omitted",
+      "note": null,
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "omitted",
+      "note": null,
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "empty",
+      "note": {},
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "empty",
+      "note": {},
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "empty",
+      "note": {},
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "operator-manual",
+      "note": {
+        "setBy": "operator",
+        "reason": "manual"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "operator-manual",
+      "note": {
+        "setBy": "operator",
+        "reason": "manual"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "operator-manual",
+      "note": {
+        "setBy": "operator",
+        "reason": "manual"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "operator-migration",
+      "note": {
+        "setBy": "operator",
+        "reason": "migration"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "operator-migration",
+      "note": {
+        "setBy": "operator",
+        "reason": "migration"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "operator-migration",
+      "note": {
+        "setBy": "operator",
+        "reason": "migration"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "operator-refusals-2",
+      "note": {
+        "setBy": "operator",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "operator-refusals-2",
+      "note": {
+        "setBy": "operator",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "operator-refusals-2",
+      "note": {
+        "setBy": "operator",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-nocount",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after the usual providers refused it. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-nocount",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after the usual providers refused it. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-nocount",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after the usual providers refused it. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-null",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": null
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after the usual providers refused it. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-null",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": null
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after the usual providers refused it. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-null",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": null
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after the usual providers refused it. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-0",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 0
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after the usual providers refused it. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-0",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 0
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after the usual providers refused it. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-0",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 0
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after the usual providers refused it. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-1",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 1
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after one refusal. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-1",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 1
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after one refusal. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-1",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 1
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after one refusal. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-2",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after two refusals. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-2",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after two refusals. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-2",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after two refusals. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-10",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 10
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after ten refusals. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-10",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 10
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after ten refusals. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-10",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 10
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after ten refusals. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-11",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 11
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after 11 refusals. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-11",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 11
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after 11 refusals. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-refusals-11",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 11
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk after 11 refusals. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-classifier",
+      "note": {
+        "setBy": "concierge",
+        "reason": "classifier"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-classifier",
+      "note": {
+        "setBy": "concierge",
+        "reason": "classifier"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "concierge-classifier",
+      "note": {
+        "setBy": "concierge",
+        "reason": "classifier"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.",
         "categories": [
           "NSFW",
           "Violence"
@@ -115,65 +1440,922 @@
       }
     },
     {
-      "state": "vouched",
+      "state": "unmoderated",
+      "provenance": "concierge-migration",
+      "note": {
+        "setBy": "concierge",
+        "reason": "migration"
+      },
+      "dangerCategories": null,
       "result": {
-        "title": "Vouched Safe",
-        "detail": "You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.",
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.",
         "categories": null,
         "hint": "Change it from the Salon sidebar's Chat section."
       }
     },
     {
-      "state": "vouched",
+      "state": "unmoderated",
+      "provenance": "concierge-migration",
+      "note": {
+        "setBy": "concierge",
+        "reason": "migration"
+      },
       "dangerCategories": [],
       "result": {
-        "title": "Vouched Safe",
-        "detail": "You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.",
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.",
         "categories": null,
         "hint": "Change it from the Salon sidebar's Chat section."
       }
     },
     {
-      "state": "vouched",
+      "state": "unmoderated",
+      "provenance": "concierge-migration",
+      "note": {
+        "setBy": "concierge",
+        "reason": "migration"
+      },
       "dangerCategories": [
         "NSFW",
         "Violence"
       ],
       "result": {
-        "title": "Vouched Safe",
-        "detail": "You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.",
-        "categories": null,
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.",
+        "categories": [
+          "NSFW",
+          "Violence"
+        ],
         "hint": "Change it from the Salon sidebar's Chat section."
       }
     },
     {
-      "state": "uncensored",
+      "state": "unmoderated",
+      "provenance": "concierge-null-reason",
+      "note": {
+        "setBy": "concierge",
+        "reason": null
+      },
+      "dangerCategories": null,
       "result": {
-        "title": "Uncensored",
-        "detail": "You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.",
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.",
         "categories": null,
         "hint": "Change it from the Salon sidebar's Chat section."
       }
     },
     {
-      "state": "uncensored",
+      "state": "unmoderated",
+      "provenance": "concierge-null-reason",
+      "note": {
+        "setBy": "concierge",
+        "reason": null
+      },
       "dangerCategories": [],
       "result": {
-        "title": "Uncensored",
-        "detail": "You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.",
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.",
         "categories": null,
         "hint": "Change it from the Salon sidebar's Chat section."
       }
     },
     {
-      "state": "uncensored",
+      "state": "unmoderated",
+      "provenance": "concierge-null-reason",
+      "note": {
+        "setBy": "concierge",
+        "reason": null
+      },
       "dangerCategories": [
         "NSFW",
         "Violence"
       ],
       "result": {
-        "title": "Uncensored",
-        "detail": "You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.",
+        "title": "Unmoderated",
+        "detail": "The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.",
+        "categories": [
+          "NSFW",
+          "Violence"
+        ],
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "setby-null",
+      "note": {
+        "setBy": null,
+        "reason": "manual"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "setby-null",
+      "note": {
+        "setBy": null,
+        "reason": "manual"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "unmoderated",
+      "provenance": "setby-null",
+      "note": {
+        "setBy": null,
+        "reason": "manual"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Unmoderated",
+        "detail": "You have opened the uncensored door yourself. Nothing here goes near a moderated provider.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "omitted",
+      "note": null,
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "omitted",
+      "note": null,
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "omitted",
+      "note": null,
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "empty",
+      "note": {},
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "empty",
+      "note": {},
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "empty",
+      "note": {},
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "operator-manual",
+      "note": {
+        "setBy": "operator",
+        "reason": "manual"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "operator-manual",
+      "note": {
+        "setBy": "operator",
+        "reason": "manual"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "operator-manual",
+      "note": {
+        "setBy": "operator",
+        "reason": "manual"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "operator-migration",
+      "note": {
+        "setBy": "operator",
+        "reason": "migration"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "operator-migration",
+      "note": {
+        "setBy": "operator",
+        "reason": "migration"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "operator-migration",
+      "note": {
+        "setBy": "operator",
+        "reason": "migration"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "operator-refusals-2",
+      "note": {
+        "setBy": "operator",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "operator-refusals-2",
+      "note": {
+        "setBy": "operator",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "operator-refusals-2",
+      "note": {
+        "setBy": "operator",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-nocount",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-nocount",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-nocount",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-null",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": null
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-null",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": null
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-null",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": null
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-0",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 0
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-0",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 0
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-0",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 0
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-1",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 1
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-1",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 1
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-1",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 1
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-2",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-2",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-2",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 2
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-10",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 10
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-10",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 10
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-10",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 10
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-11",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 11
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-11",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 11
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-refusals-11",
+      "note": {
+        "setBy": "concierge",
+        "reason": "refusals",
+        "refusalCount": 11
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-classifier",
+      "note": {
+        "setBy": "concierge",
+        "reason": "classifier"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-classifier",
+      "note": {
+        "setBy": "concierge",
+        "reason": "classifier"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-classifier",
+      "note": {
+        "setBy": "concierge",
+        "reason": "classifier"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-migration",
+      "note": {
+        "setBy": "concierge",
+        "reason": "migration"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-migration",
+      "note": {
+        "setBy": "concierge",
+        "reason": "migration"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-migration",
+      "note": {
+        "setBy": "concierge",
+        "reason": "migration"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-null-reason",
+      "note": {
+        "setBy": "concierge",
+        "reason": null
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-null-reason",
+      "note": {
+        "setBy": "concierge",
+        "reason": null
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "concierge-null-reason",
+      "note": {
+        "setBy": "concierge",
+        "reason": null
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "setby-null",
+      "note": {
+        "setBy": null,
+        "reason": "manual"
+      },
+      "dangerCategories": null,
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "setby-null",
+      "note": {
+        "setBy": null,
+        "reason": "manual"
+      },
+      "dangerCategories": [],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "locked",
+      "provenance": "setby-null",
+      "note": {
+        "setBy": null,
+        "reason": "manual"
+      },
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Locked",
+        "detail": "Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.",
         "categories": null,
         "hint": "Change it from the Salon sidebar's Chat section."
       }

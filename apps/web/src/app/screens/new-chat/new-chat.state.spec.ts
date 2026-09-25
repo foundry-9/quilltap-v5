@@ -566,3 +566,97 @@ describe('NewChatState system-prompt seed (v4 baa85e19b, bug 154)', () => {
     expect(await seededPromptId(withPrompts([], 'gone'))).toBeNull();
   });
 });
+
+/**
+ * P4.D229 — the Concierge's global posture on the New Chat form (v4
+ * `useNewChat.ts` at `3b463d6b1`, #76). No v4 test pins these arms; they are
+ * written red-first against v4's hook body (:245-249, :431-442, :632-639,
+ * :827-829).
+ */
+describe('NewChatState Concierge seed + create rule (v4 3b463d6b1)', () => {
+  const UNMODERATED_START = { conciergeSettings: { enabled: true, newChatsStartAs: 'unmoderated' } };
+
+  function captureCore(base: CoreClient, sink: { body?: Record<string, unknown> }): CoreClient {
+    const b = base as unknown as {
+      dispatchData: (r: { type: string }) => Promise<unknown>;
+      dispatchExpect: (r: { type: string }, k: string) => Promise<unknown>;
+    };
+    return {
+      dispatchData: b.dispatchData,
+      dispatchExpect: async (req: Record<string, unknown>, key: string) => {
+        if (req['type'] === 'chatCreate') {
+          sink.body = req;
+          return { type: 'chatCreate', data: { chat: { id: 'new-chat' } } };
+        }
+        return b.dispatchExpect(req as { type: string }, key);
+      },
+    } as unknown as CoreClient;
+  }
+
+  it('starts on duty with a Moderated default before anything loads', () => {
+    const state = new NewChatState(scriptedCore({}), {});
+    expect(state.conciergeOnDuty()).toBe(true);
+    expect(state.conciergeServerDefault()).toBe('moderated');
+    expect(state.form().conciergeState).toBe('moderated');
+  });
+
+  it('pre-selects newChatsStartAs on the first load', async () => {
+    const state = new NewChatState(scriptedCore({ chatSettings: UNMODERATED_START }), {});
+    await state.load();
+    expect(state.conciergeServerDefault()).toBe('unmoderated');
+    expect(state.form().conciergeState).toBe('unmoderated');
+  });
+
+  it('seeds ONCE — a later reference-data load never undoes the user’s own pick', async () => {
+    const state = new NewChatState(scriptedCore({ chatSettings: UNMODERATED_START }), {});
+    await state.load();
+    state.patchForm({ conciergeState: 'locked' });
+    // A project change / cast change re-runs the load.
+    await state.load();
+    expect(state.form().conciergeState).toBe('locked');
+    // Even a pick back to Moderated sticks (it is not "untouched").
+    state.patchForm({ conciergeState: 'moderated' });
+    await state.load();
+    expect(state.form().conciergeState).toBe('moderated');
+  });
+
+  it('off duty: Moderated is the default whatever newChatsStartAs says, and the form knows', async () => {
+    const state = new NewChatState(
+      scriptedCore({ chatSettings: { conciergeSettings: { enabled: false, newChatsStartAs: 'unmoderated' } } }),
+      {},
+    );
+    await state.load();
+    expect(state.conciergeOnDuty()).toBe(false);
+    expect(state.conciergeServerDefault()).toBe('moderated');
+    expect(state.form().conciergeState).toBe('moderated');
+  });
+
+  it('a failed settings read seeds nothing and leaves him on duty', async () => {
+    const state = new NewChatState(scriptedCore({ chatSettings: 'fail' }), {});
+    await state.load();
+    expect(state.conciergeOnDuty()).toBe(true);
+    expect(state.conciergeServerDefault()).toBe('moderated');
+    expect(state.form().conciergeState).toBe('moderated');
+  });
+
+  it('sends an explicit Moderated on create under an Unmoderated default', async () => {
+    const sink: { body?: Record<string, unknown> } = {};
+    const state = new NewChatState(captureCore(scriptedCore({ chatSettings: UNMODERATED_START }), sink), {});
+    await state.load();
+    state.profiles.set([{ id: 'p1', name: 'Anthropic' }]);
+    state.selectedCharacters.set([selected(char('a', 'Alice'))]);
+    state.patchForm({ conciergeState: 'moderated' });
+    await state.handleCreate();
+    expect(sink.body).toHaveProperty('conciergeState', 'moderated');
+  });
+
+  it('omits the key under a Moderated default when the pick is Moderated', async () => {
+    const sink: { body?: Record<string, unknown> } = {};
+    const state = new NewChatState(captureCore(scriptedCore({ chatSettings: {} }), sink), {});
+    await state.load();
+    state.profiles.set([{ id: 'p1', name: 'Anthropic' }]);
+    state.selectedCharacters.set([selected(char('a', 'Alice'))]);
+    await state.handleCreate();
+    expect(sink.body).not.toHaveProperty('conciergeState');
+  });
+});

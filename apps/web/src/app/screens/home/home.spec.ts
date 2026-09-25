@@ -229,26 +229,26 @@ describe('HomePage', () => {
     expect(generate!.getAttribute('href')).toBe('/generate-image');
   });
 
-  it('marks a flagged chat with the Concierge asterisk (v4 RecentChatItem @ c43d3b1b4)', async () => {
+  it('marks an Unmoderated chat with the Concierge asterisk (v4 RecentChatItem @ 4d370a90f)', async () => {
     const fixture = await render(
-      homeClient(homeData({ recentChats: [chat({ conciergeState: 'flagged' })] })),
+      homeClient(homeData({ recentChats: [chat({ conciergeState: 'unmoderated' })] })),
     );
     const marker = fixture.nativeElement.querySelector('.qt-concierge-mark') as HTMLElement;
     expect(marker).not.toBeNull();
     expect(marker.textContent).toBe('*');
-    expect(marker.getAttribute('aria-label')).toBe('Concierge: Flagged');
+    expect(marker.getAttribute('aria-label')).toBe('Concierge: Unmoderated');
     // The bubble replaced the native tooltip; the mark must not carry both.
     expect(marker.hasAttribute('title')).toBe(false);
   });
 
-  it('gives Vouched Safe and Uncensored their own tones, and Monitored none', async () => {
+  it('gives Locked its own tone, Unmoderated the base, and Moderated none', async () => {
     const fixture = await render(
       homeClient(
         homeData({
           recentChats: [
-            chat({ id: 'm', conciergeState: 'monitored' }),
-            chat({ id: 'v', conciergeState: 'vouched' }),
-            chat({ id: 'u', conciergeState: 'uncensored' }),
+            chat({ id: 'm', conciergeState: 'moderated' }),
+            chat({ id: 'l', conciergeState: 'locked' }),
+            chat({ id: 'u', conciergeState: 'unmoderated' }),
           ],
         }),
       ),
@@ -258,7 +258,7 @@ describe('HomePage', () => {
     ) as HTMLElement[];
     expect(marks).toHaveLength(2);
     expect(marks[0].classList.contains('qt-concierge-mark-muted')).toBe(true);
-    expect(marks[1].classList.contains('qt-concierge-mark-info')).toBe(true);
+    expect(marks[1].className).toBe('qt-concierge-mark');
   });
 
   it('draws no mark when the payload carries no state at all', async () => {

@@ -183,7 +183,10 @@ function chatDetail(): ChatDetail {
     agentModeSource: 'global',
     isDangerousChat: false,
     dangerCategories: [],
-    conciergeOverride: null,
+    conciergeState: 'moderated',
+    conciergeSetBy: null,
+    conciergeReason: null,
+    conciergeRefusalCount: 0,
     offSceneCharacters: [],
     lastTurnParticipantId: null,
     // P4.D195 (v4 `1fefadb9a`, bug 147): the server projects both cycle
@@ -1289,19 +1292,46 @@ describe('SalonConversation — the standalone generate-image dialog (v4 ChatMod
     expect(call['selectedSubpromptIds']).toEqual([]);
   });
 
-  it('the sidebar receives the chat’s conciergeOverride beside isDangerousChat (v4 SalonView :1883/:1897 — the P4.D141 unification wire)', async () => {
-    // v4 hands ChatSidebar BOTH stored fields because neither is meaningful
-    // alone; the four-state control reads the pair to show an operator state.
-    // A host that binds only isDangerousChat leaves the input at its null
-    // default, and Vouched/Uncensored can be WRITTEN through the control but
-    // never read back. Pinned here because the binding lives in this file while
-    // the control lives in the sidebar (P4.D141 ∥ P4.66 ownership split).
+  it('the sidebar receives the chat’s conciergeState and provenance, refusal count included (v4 SalonView @ 4d370a90f)', async () => {
+    // v4 REMOVED the sidebar's isDangerousChat and conciergeOverride props in
+    // #75 and hands it `conciergeState={getConciergeState(chat)}` plus
+    // `conciergeProvenance={{ setBy, reason, refusalCount }}`. Pinned here
+    // because the binding lives in this file while the control lives in the
+    // sidebar.
     const events$ = new Subject<ScopedEvent>();
-    const client = stubClient({ ...chatDetail(), conciergeOverride: 'UNCENSORED', isDangerousChat: true }, events$);
+    const client = stubClient(
+      {
+        ...chatDetail(),
+        isDangerousChat: false,
+        conciergeState: 'unmoderated',
+        conciergeSetBy: 'concierge',
+        conciergeReason: 'refusals',
+        conciergeRefusalCount: 3,
+      },
+      events$,
+    );
     const fixture = await render(client);
     const sidebar = fixture.debugElement.query(By.directive(ChatSidebar)).componentInstance as ChatSidebar;
-    expect(sidebar.conciergeOverride()).toBe('UNCENSORED');
-    expect(sidebar.isDangerousChat()).toBe(true);
+    expect(sidebar.conciergeState()).toBe('unmoderated');
+    expect(sidebar.conciergeProvenance()).toEqual({
+      setBy: 'concierge',
+      reason: 'refusals',
+      refusalCount: 3,
+    });
+    // The message list's danger styling follows the STATE, not the telemetry.
+    const inst = fixture.componentInstance as unknown as { isDangerousChat(): boolean };
+    expect(inst.isDangerousChat()).toBe(true);
+  });
+
+  it('paints an operator-set Unmoderated chat as danger too — provenance is never a colour (v4 4d370a90f)', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const client = stubClient(
+      { ...chatDetail(), conciergeState: 'unmoderated', conciergeSetBy: 'operator', conciergeReason: 'manual' },
+      events$,
+    );
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as { isDangerousChat(): boolean };
+    expect(inst.isDangerousChat()).toBe(true);
   });
 
   it('the status select sends v4’s derived isActive alongside status (ChatSidebar :818)', async () => {

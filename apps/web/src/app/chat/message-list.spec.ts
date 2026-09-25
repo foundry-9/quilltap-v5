@@ -124,7 +124,10 @@ function chatDetail(): ChatDetail {
     agentModeSource: 'global',
     isDangerousChat: false,
     dangerCategories: [],
-    conciergeOverride: null,
+    conciergeState: 'moderated',
+    conciergeSetBy: null,
+    conciergeReason: null,
+    conciergeRefusalCount: 0,
     offSceneCharacters: [],
     lastTurnParticipantId: null,
   };

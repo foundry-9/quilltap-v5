@@ -9,6 +9,7 @@ import { coreStreamStub } from '../../core/core-client.testing';
 import { CoreClient } from '../../core/core-client';
 
 import type { ParticipantDetail } from '../../core/core-contract';
+import type { ConciergeState } from '../concierge-state';
 import { createInitialTurnState, type TurnSelectionResult, type TurnState } from '../turn-order';
 import { IMAGES_HIDDEN } from '../hidden-image/images-hidden';
 import { ChatSidebar } from './chat-sidebar';
@@ -62,6 +63,7 @@ function participant(
         [turnState]="turnState()"
         [turnSelectionResult]="turnSelectionResult()"
         [isPaused]="isPaused()"
+        [conciergeState]="conciergeState()"
         [userParticipantId]="'user'"
         (togglePause)="paused.push(true)"
         (nudge)="nudged.push($event)"
@@ -84,6 +86,7 @@ class Host {
     cycleComplete: false,
   });
   readonly isPaused = signal(false);
+  readonly conciergeState = signal<ConciergeState | undefined>(undefined);
   readonly chatSectionState: ChatSectionState = {
     roleplayTemplateId: null,
     avatarGenerationEnabled: null,
@@ -121,6 +124,8 @@ async function render(): Promise<ComponentFixture<Host>> {
         useValue: {
           ...coreStreamStub(),
           dispatch: async () => ({ type: 'chat', data: {} }),
+          // The Chat section's on-duty read (the shared chatSettings key).
+          dispatchExpect: async () => ({ type: 'chatSettings', data: {} }),
           // One subprompt on file for every character, so a picker can be
           // opened and ticked (the re-emit wiring spec below).
           dispatchData: async () => ({
@@ -561,5 +566,38 @@ describe('ChatSidebar — the Salon Images switch on the collapsed strip (v4 e39
     expect(el.querySelector('qt-avatar img')).toBeNull();
     const initials = Array.from(el.querySelectorAll('qt-avatar')).map((a) => a.textContent?.trim());
     expect(initials).toContain('A');
+  });
+});
+
+/**
+ * v4 `ChatSidebar.tsx:877` at `4d370a90f`: the cast cards' tint is
+ * `shouldShowDangerStyling({ conciergeState })` — Unmoderated, WHOEVER set it.
+ * v4 removed the sidebar's own `isDangerousChat` prop in the same commit.
+ */
+describe('ChatSidebar — the participant cards follow the Concierge state', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const tinted = (fixture: ComponentFixture<Host>) =>
+    fixture.nativeElement.querySelectorAll('.qt-participant-card-dangerous').length;
+
+  it('tints every card on an Unmoderated chat, and none otherwise', async () => {
+    localStorage.clear();
+    // The cards render only in the expanded panel.
+    localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
+    const fixture = await render();
+    expect(fixture.nativeElement.querySelectorAll('qt-participant-card').length).toBe(3);
+    expect(tinted(fixture)).toBe(0);
+
+    for (const [state, expected] of [
+      ['unmoderated', true],
+      ['locked', false],
+      ['moderated', false],
+    ] as const) {
+      fixture.componentInstance.conciergeState.set(state);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(tinted(fixture)).toBe(expected ? 3 : 0);
+    }
   });
 });

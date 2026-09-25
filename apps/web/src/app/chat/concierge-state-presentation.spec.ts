@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ConciergeState } from './concierge-state';
+import { CONCIERGE_STATES, type ConciergeState } from './concierge-state';
 import {
   CONCIERGE_STATE_PRESENTATION,
+  type ConciergeProvenanceNote,
   type ConciergeTone,
   conciergeToneSuffix,
   conciergeToneTextClass,
@@ -12,56 +13,50 @@ import V4 from './concierge-state-presentation.v4.json';
 
 /**
  * The Concierge presentation table (v4
- * `lib/services/dangerous-content/concierge-state-presentation.ts`, new at
- * `c43d3b1b4`).
+ * `lib/services/dangerous-content/concierge-state-presentation.ts` at
+ * `ce2f1dabf`: three states since `4d370a90f`, the `info` tone retired at
+ * `3b463d6b1`).
  *
- * Two layers, because the table is the single source for every word the four
+ * Two layers, because the table is the single source for every word the
  * states wear and a copy edit on EITHER side must redden:
  *
  *  1. **The transcribed corpus** — v4's `__tests__/unit/lib/services/
- *     dangerous-content/concierge-state-presentation.test.ts`, 1:1, including
- *     its `it.each` tables (the client-parity precedent of P4.D132 / P4.D86).
+ *     dangerous-content/concierge-state-presentation.test.ts`, 1:1 by name,
+ *     including its `it.each` tables.
  *  2. **The executed-v4 oracle** — `concierge-state-presentation.v4.json`,
- *     emitted by RUNNING v4's real module (its imports are all `import type`,
- *     which Node 24's type stripping erases, so it needs no bundler). Every row
- *     of v5's table, both tone functions over all four tones, and all twelve
- *     `describeConciergeState` shapes are diffed against v4's own bytes.
+ *     emitted by RUNNING v4's real module at the round-target pin over every
+ *     state × provenance note × category shape (144 `describe` rows).
  *
  * Regen recipe for the oracle (drift-ledger §5.1: reading through `git show` at
  * the pin makes it independent of the v4 working tree):
  *
  * ```bash
  * export PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH
- * node ~/source/quilltap-v5/harness/oracle/cases/concierge-presentation.mjs \
+ * QT_V4_PIN=acadcc7cd node ~/source/quilltap-v5/harness/oracle/cases/concierge-presentation.mjs \
  *   > ~/source/quilltap-v5/apps/web/src/app/chat/concierge-state-presentation.v4.json
  * ```
  */
 
-const ALL_STATES: ConciergeState[] = ['monitored', 'flagged', 'vouched', 'uncensored'];
-const ALL_TONES: ConciergeTone[] = ['danger', 'muted', 'info', 'success'];
+const ALL_STATES: readonly ConciergeState[] = CONCIERGE_STATES;
+const ALL_TONES: ConciergeTone[] = ['danger', 'muted', 'success'];
 
 // ---------------------------------------------------------------------------
 // 1. v4's corpus, transcribed 1:1
 // ---------------------------------------------------------------------------
 
 describe('CONCIERGE_STATE_PRESENTATION', () => {
-  const ROWS: Array<[string, string, string, string]> = [
-    ['monitored', 'Monitored', 'eye', 'success'],
-    ['flagged', 'Flagged', 'alert-triangle', 'danger'],
-    ['vouched', 'Vouched Safe', 'check-circle', 'muted'],
-    ['uncensored', 'Uncensored', 'eye-off', 'info'],
-  ];
+  it.each([
+    ['moderated', 'Moderated', 'eye', 'success'],
+    ['unmoderated', 'Unmoderated', 'eye-off', 'danger'],
+    ['locked', 'Locked', 'shield', 'muted'],
+  ])('describes %s as %s / %s / %s', (state, label, icon, tone) => {
+    const presentation = CONCIERGE_STATE_PRESENTATION[state as ConciergeState];
+    expect(presentation.label).toBe(label);
+    expect(presentation.icon).toBe(icon);
+    expect(presentation.tone).toBe(tone);
+  });
 
-  for (const [state, label, icon, tone] of ROWS) {
-    it(`describes ${state} as ${label} / ${icon} / ${tone}`, () => {
-      const presentation = CONCIERGE_STATE_PRESENTATION[state as ConciergeState];
-      expect(presentation.label).toBe(label);
-      expect(presentation.icon).toBe(icon);
-      expect(presentation.tone).toBe(tone);
-    });
-  }
-
-  it('covers all four states, each with a detail sentence and the same hint', () => {
+  it('covers all three states, each with a detail sentence and the same hint', () => {
     expect(Object.keys(CONCIERGE_STATE_PRESENTATION).sort()).toEqual([...ALL_STATES].sort());
     for (const state of ALL_STATES) {
       expect(CONCIERGE_STATE_PRESENTATION[state].detail.length).toBeGreaterThan(0);
@@ -71,112 +66,179 @@ describe('CONCIERGE_STATE_PRESENTATION', () => {
     }
   });
 
-  it('keeps the sidebar helper sentences verbatim', () => {
-    expect(CONCIERGE_STATE_PRESENTATION.monitored.detail).toBe(
-      'The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.',
+  it('keeps the helper sentences verbatim', () => {
+    expect(CONCIERGE_STATE_PRESENTATION.moderated.detail).toBe(
+      'The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.',
     );
-    expect(CONCIERGE_STATE_PRESENTATION.flagged.detail).toBe(
-      'The Concierge has this chat down as dangerous, and routes it through the uncensored providers.',
+    expect(CONCIERGE_STATE_PRESENTATION.unmoderated.detail).toBe(
+      'You have opened the uncensored door yourself. Nothing here goes near a moderated provider.',
     );
-    expect(CONCIERGE_STATE_PRESENTATION.vouched.detail).toBe(
-      'You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.',
-    );
-    expect(CONCIERGE_STATE_PRESENTATION.uncensored.detail).toBe(
-      'You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.',
+    expect(CONCIERGE_STATE_PRESENTATION.locked.detail).toBe(
+      'Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.',
     );
   });
 
-  it('gives every state a distinct label and icon', () => {
+  it('gives every state a distinct label, icon and tone', () => {
     const labels = ALL_STATES.map((s) => CONCIERGE_STATE_PRESENTATION[s].label);
     const icons = ALL_STATES.map((s) => CONCIERGE_STATE_PRESENTATION[s].icon);
-    expect(new Set(labels).size).toBe(4);
-    expect(new Set(icons).size).toBe(4);
+    const tones = ALL_STATES.map((s) => CONCIERGE_STATE_PRESENTATION[s].tone);
+    expect(new Set(labels).size).toBe(3);
+    expect(new Set(icons).size).toBe(3);
+    expect(new Set(tones).size).toBe(3);
   });
 });
 
 describe('conciergeToneSuffix', () => {
-  it('leaves the danger base rule unsuffixed and names the two modifiers', () => {
+  it('leaves the danger base rule unsuffixed and names the one modifier', () => {
     expect(conciergeToneSuffix('danger')).toBe('');
     expect(conciergeToneSuffix('muted')).toBe('-muted');
-    expect(conciergeToneSuffix('info')).toBe('-info');
   });
 
-  it('falls through to the base for success (Monitored draws no badge and no mark)', () => {
+  it('falls through to the base for success (Moderated draws no badge and no mark)', () => {
     expect(conciergeToneSuffix('success')).toBe('');
   });
 
-  for (const [state, suffix] of [
-    ['flagged', ''],
-    ['vouched', '-muted'],
-    ['uncensored', '-info'],
-  ] as const) {
-    it(`gives ${state} the class suffix "${suffix}"`, () => {
-      expect(conciergeToneSuffix(CONCIERGE_STATE_PRESENTATION[state].tone)).toBe(suffix);
-    });
-  }
+  it.each([
+    ['unmoderated', ''],
+    ['locked', '-muted'],
+  ])('gives %s the class suffix "%s"', (state, suffix) => {
+    expect(conciergeToneSuffix(CONCIERGE_STATE_PRESENTATION[state as ConciergeState].tone)).toBe(
+      suffix,
+    );
+  });
 });
 
 describe('conciergeToneTextClass', () => {
-  for (const [state, expected] of [
-    ['monitored', 'qt-text-success'],
-    ['flagged', 'qt-text-danger'],
-    ['vouched', 'qt-text-muted'],
-    ['uncensored', 'qt-text-info'],
-  ] as const) {
-    it(`gives ${state} the text class ${expected}`, () => {
-      expect(conciergeToneTextClass(CONCIERGE_STATE_PRESENTATION[state].tone)).toBe(expected);
-    });
-  }
+  it.each([
+    ['moderated', 'qt-text-success'],
+    ['unmoderated', 'qt-text-danger'],
+    ['locked', 'qt-text-muted'],
+  ])('gives %s the text class %s', (state, expected) => {
+    expect(
+      conciergeToneTextClass(CONCIERGE_STATE_PRESENTATION[state as ConciergeState].tone),
+    ).toBe(expected);
+  });
 });
 
 describe('describeConciergeState', () => {
-  for (const state of ALL_STATES) {
-    it(`reads ${state} straight off the table`, () => {
-      const presentation = CONCIERGE_STATE_PRESENTATION[state];
-      expect(describeConciergeState(state)).toEqual({
-        title: presentation.label,
-        detail: presentation.detail,
-        categories: null,
-        hint: presentation.hint,
-      });
+  it.each([...ALL_STATES])('reads %s straight off the table with no provenance', (state) => {
+    const presentation = CONCIERGE_STATE_PRESENTATION[state];
+    expect(describeConciergeState(state)).toEqual({
+      title: presentation.label,
+      detail: presentation.detail,
+      categories: null,
+      hint: presentation.hint,
     });
-  }
-
-  it('surfaces categories for Flagged when the chat carries any', () => {
-    expect(describeConciergeState('flagged', ['NSFW', 'Violence']).categories).toEqual([
-      'NSFW',
-      'Violence',
-    ]);
   });
 
-  it('omits an empty category list even for Flagged', () => {
-    expect(describeConciergeState('flagged', []).categories).toBeNull();
-    expect(describeConciergeState('flagged', undefined).categories).toBeNull();
+  it("uses the operator's sentence for Unmoderated set by the operator", () => {
+    expect(
+      describeConciergeState('unmoderated', { setBy: 'operator', reason: 'manual' }).detail,
+    ).toBe(CONCIERGE_STATE_PRESENTATION.unmoderated.detail);
   });
 
-  for (const state of ['monitored', 'vouched', 'uncensored'] as ConciergeState[]) {
-    it(`never surfaces the preserved categories on ${state}`, () => {
-      // The categories are the classifier's reasons; on the two operator states
-      // (and on Monitored) they are a stale artefact, not a live verdict.
-      expect(describeConciergeState(state, ['NSFW']).categories).toBeNull();
-    });
-  }
+  it('names the refusal count when the Concierge moved the chat after refusals', () => {
+    expect(
+      describeConciergeState('unmoderated', {
+        setBy: 'concierge',
+        reason: 'refusals',
+        refusalCount: 2,
+      }).detail,
+    ).toBe(
+      'The Concierge moved this chat to the uncensored desk after two refusals. Set it back to Moderated if you disagree.',
+    );
+    expect(
+      describeConciergeState('unmoderated', {
+        setBy: 'concierge',
+        reason: 'refusals',
+        refusalCount: 1,
+      }).detail,
+    ).toBe(
+      'The Concierge moved this chat to the uncensored desk after one refusal. Set it back to Moderated if you disagree.',
+    );
+  });
+
+  it('still reads sensibly when the refusal count is unknown', () => {
+    expect(
+      describeConciergeState('unmoderated', { setBy: 'concierge', reason: 'refusals' }).detail,
+    ).toBe(
+      'The Concierge moved this chat to the uncensored desk after the usual providers refused it. Set it back to Moderated if you disagree.',
+    );
+  });
+
+  it("says the classifier's reading when the Concierge moved the chat on the conversation", () => {
+    expect(
+      describeConciergeState('unmoderated', { setBy: 'concierge', reason: 'classifier' }).detail,
+    ).toBe(
+      'The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.',
+    );
+  });
+
+  it("surfaces categories only for the classifier's own move", () => {
+    expect(
+      describeConciergeState('unmoderated', { setBy: 'concierge', reason: 'classifier' }, [
+        'NSFW',
+        'Violence',
+      ]).categories,
+    ).toEqual(['NSFW', 'Violence']);
+    expect(
+      describeConciergeState('unmoderated', { setBy: 'concierge', reason: 'classifier' }, [])
+        .categories,
+    ).toBeNull();
+    expect(
+      describeConciergeState('unmoderated', { setBy: 'concierge', reason: 'refusals' }, ['NSFW'])
+        .categories,
+    ).toBeNull();
+    expect(
+      describeConciergeState('unmoderated', { setBy: 'operator' }, ['NSFW']).categories,
+    ).toBeNull();
+  });
+
+  it.each(['moderated', 'locked'] as ConciergeState[])(
+    'never surfaces the preserved categories or a Concierge sentence on %s',
+    (state) => {
+      const description = describeConciergeState(
+        state,
+        { setBy: 'concierge', reason: 'classifier' },
+        ['NSFW'],
+      );
+      expect(description.categories).toBeNull();
+      expect(description.detail).toBe(CONCIERGE_STATE_PRESENTATION[state].detail);
+    },
+  );
+});
+
+describe('the v4 signature move (provenance 2nd, categories 3rd)', () => {
+  it('refuses, at compile time, a stale two-argument call that passes the categories second', () => {
+    // The test builder typechecks specs, so each `@ts-expect-error` is a
+    // compile-time assertion: were the provenance parameter loosened enough to
+    // accept an array, the directive would be unused and the BUILD would fail.
+    // @ts-expect-error — a string[] is not a ConciergeProvenanceNote.
+    const stale = describeConciergeState('unmoderated', ['NSFW']);
+    // Runtime: the array reads as "no setBy", so the operator's sentence.
+    expect(stale.categories).toBeNull();
+    const note: ConciergeProvenanceNote = { setBy: 'concierge', reason: 'classifier' };
+    expect(describeConciergeState('unmoderated', note, ['NSFW']).categories).toEqual(['NSFW']);
+  });
 });
 
 // ---------------------------------------------------------------------------
 // 2. The executed-v4 oracle — a copy edit on EITHER side reddens
 // ---------------------------------------------------------------------------
 
-describe('the presentation table against v4’s own module (executed at c43d3b1b4)', () => {
-  it('was emitted from the pin this lane ports', () => {
-    expect(V4._source.pin).toBe('c43d3b1b4');
-    expect(V4._source.file).toBe(
-      'lib/services/dangerous-content/concierge-state-presentation.ts',
-    );
+describe('the presentation table against v4’s own module (executed at acadcc7cd)', () => {
+  it('was emitted from the round-target pin', () => {
+    expect(V4._source.pin).toBe('acadcc7cd');
+    expect(V4._source.file).toBe('lib/services/dangerous-content/concierge-state-presentation.ts');
   });
 
-  it('carries the same four states and nothing more', () => {
+  it('carries the same three states and nothing more', () => {
     expect(Object.keys(CONCIERGE_STATE_PRESENTATION)).toEqual(Object.keys(V4.presentation));
+  });
+
+  it('carries the whole describe corpus', () => {
+    // A truncated fixture would make the loop below vacuously green.
+    expect(V4.describe).toHaveLength(144);
   });
 
   for (const state of ALL_STATES) {
@@ -196,11 +258,17 @@ describe('the presentation table against v4’s own module (executed at c43d3b1b
     });
   }
 
+  it('records no tone beyond the three', () => {
+    expect(Object.keys(V4.toneSuffix).sort()).toEqual([...ALL_TONES].sort());
+  });
+
   for (const [index, row] of V4.describe.entries()) {
-    it(`describes ${row.state} exactly as v4 does (categories=${JSON.stringify(row.dangerCategories)})`, () => {
-      expect(
-        describeConciergeState(row.state as ConciergeState, row.dangerCategories ?? undefined),
-      ).toEqual(V4.describe[index].result);
+    it(`#${index} describes ${row.state} / ${row.provenance} exactly as v4 does (categories=${JSON.stringify(row.dangerCategories)})`, () => {
+      const note = (row.note ?? undefined) as ConciergeProvenanceNote | undefined;
+      const categories = (row.dangerCategories ?? undefined) as string[] | undefined;
+      expect(describeConciergeState(row.state as ConciergeState, note, categories)).toEqual(
+        row.result,
+      );
     });
   }
 });

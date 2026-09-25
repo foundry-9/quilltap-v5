@@ -100,13 +100,25 @@ export interface ChatTranscriptDto {
 }
 
 /**
- * The four-state per-chat Concierge status on the wire (P4.D141, widened at
- * P4.D144). The canonical derivation from the two stored fields lives in
- * `app/chat/concierge-state.ts`; this union is both the manual-flip PUT's
- * accepted domain AND — since v4 `c43d3b1b4` — the DERIVED state every chat
- * LIST payload carries in place of the raw pair (shared contract §A).
+ * The three-state per-chat Concierge status on the wire (P4.D229, v4
+ * `4d370a90f` #75 — v4 `ConciergeModeSchema`). The canonical derivation lives
+ * in `app/chat/concierge-state.ts` (which re-exports these three types — the
+ * two homes are ONE declaration, so they cannot drift). This union is the
+ * manual-flip PUT's and the create's accepted domain AND the DERIVED state the
+ * chat GET and every chat LIST payload carry (round shared contract §S.1). The
+ * four retired values (`monitored`/`flagged`/`vouched`/`uncensored`) are a
+ * server 400.
  */
-export type ConciergeState = 'monitored' | 'flagged' | 'vouched' | 'uncensored';
+export type ConciergeState = 'moderated' | 'unmoderated' | 'locked';
+
+/**
+ * Who put the chat in its Concierge state (v4 `ConciergeModeSetBySchema` +
+ * `null`); `null` when the chat is Moderated (§S.1 `conciergeSetBy`).
+ */
+export type ConciergeProvenance = 'operator' | 'concierge' | null;
+
+/** Why the chat is in its Concierge state (v4 `ConciergeModeReasonSchema`; §S.1 `conciergeReason`). */
+export type ConciergeReason = 'manual' | 'refusals' | 'classifier' | 'migration';
 
 /** A partial chat update (v4 PUT `/chats/:id`). */
 export interface ChatUpdateRequest {
@@ -114,11 +126,11 @@ export interface ChatUpdateRequest {
   chatId: string;
   chat: Record<string, unknown>;
   /**
-   * The per-chat Concierge four-state (P4.D141, v4 `60e3c4a0a`). A SIBLING of
+   * The per-chat Concierge three-state (P4.D229, v4 `4d370a90f`). A SIBLING of
    * `chat`, not a bag key — v4's `chatUpdateRequestSchema` declares it at the
    * top level and `processChatUpdates` routes it through `applyConciergeFlip`.
-   * Anything outside the four values is a 400 `Validation error` with nothing
-   * written, so the client must never send a free-form string.
+   * Anything outside the three values — the four retired ones included — is a
+   * 400 with nothing written, so the client must never send a free-form string.
    */
   conciergeState?: ConciergeState;
 }
@@ -898,12 +910,14 @@ export interface ChatCreateRequest {
    *
    * NOT a tri-state: v4's `createChatSchema` spells it `z.enum([...]).optional()`,
    * which is optional but NOT nullable, so an explicit JSON `null` is REJECTED
-   * exactly as `timestampConfig`'s is. Absent ≡ `'monitored'`: no write, no
-   * announcement, the request and the created chat byte-identical to what a
-   * plain create has always produced. Anything else is applied server-side
-   * through the existing `applyConciergeFlip` chokepoint, immediately after the
-   * system-prompt message. The CLIENT therefore OMITS the key when the form
-   * holds `'monitored'`.
+   * exactly as `timestampConfig`'s is. Three values since v4 `4d370a90f` (§S.1;
+   * a retired value is a 400). ABSENT ⇒ the Concierge settings'
+   * `newChatsStartAs` while he is on duty (v4 `3b463d6b1`), else nothing; a
+   * non-`moderated` value while OFF DUTY is ignored (a WARN, not a 400).
+   * Anything applied goes through the `applyConciergeFlip` chokepoint. The
+   * CLIENT therefore omits the key ONLY when the pick is `'moderated'` AND the
+   * server default is `'moderated'` — under an Unmoderated default an explicit
+   * `'moderated'` must be SENT (`new-chat.logic.ts`, v4 `useNewChat` :820-829).
    */
   conciergeState?: ConciergeState;
   scenario?: string;
@@ -2945,14 +2959,16 @@ export interface EnrichedChatSummary {
   project: EnrichedProject | null;
   storyBackground: EnrichedStoryBackground | null;
   /**
-   * The DERIVED Concierge four-state — never the raw danger label (shared
-   * contract §A, v4 `c43d3b1b4`). `isDangerousChat` and `conciergeOverride`
-   * were both dropped here: the server derives the state once, so no list has
-   * to read the two stored fields together (and get it wrong). The single-chat
-   * GET keeps the raw trio — the sidebar's control needs it.
+   * The DERIVED Concierge three-state — never a stored column (§S.1, v4
+   * `4d370a90f`). The server derives the state once, so no list reads the
+   * stored columns (and gets it wrong).
    */
   conciergeState: ConciergeState;
-  /** The classifier's categories, shown on the mark's tooltip when Flagged. */
+  /** Who put the chat in its state; `null` for Moderated (§S.1). Optional: a pre-P4.D226 server omits it. */
+  conciergeSetBy?: ConciergeProvenance;
+  /** Why the chat is in its state; `null` for Moderated (§S.1). NO refusal count on a list — only the chat GET carries one. */
+  conciergeReason?: ConciergeReason | null;
+  /** The classifier's categories, shown on the mark's tooltip when the classifier moved the chat. */
   dangerCategories: string[];
   chatType: 'salon' | 'help' | 'autonomous' | 'brahma';
   scriptoriumStatus: 'none' | 'rendered' | 'embedded';
@@ -3164,9 +3180,13 @@ export interface RouteAttempt {
   outcome: RouteAttemptOutcome;
   /** Absent when answered. */
   trigger?: RouteAttemptTrigger;
-  /** How a refusal was established: the provider said so, or it was inferred
-   *  from an empty body on a Concierge-flagged turn. */
-  evidence?: 'finish-reason' | 'inferred';
+  /** How a refusal was established (v4 `8bd080267` #73 widened it to five):
+   *  a typed error, a provider code, a finish reason, the message's wording, or
+   *  inferred from an empty body. */
+  evidence?: 'typed-error' | 'provider-code' | 'finish-reason' | 'message-pattern' | 'inferred';
+  /** A connection profile (absent — the default) or an image profile (v4 #73:
+   *  the image failover chokepoint writes `'image'` rows on a TOOL row's trail). */
+  profileKind?: 'connection' | 'image';
   /** ≤ 200 UTF-16 units (199 + U+2026 when truncated). Never the full error body. */
   detail?: string;
 }
@@ -3332,10 +3352,25 @@ export interface ChatDetail {
   agentModeEnabled: boolean;
   resolvedAgentModeEnabled: boolean;
   agentModeSource: string;
+  /** The classifier's telemetry (§S.1 KEEPS it); no display decision reads it since v4 `4d370a90f`. */
   isDangerousChat: boolean | null;
   dangerCategories: string[];
-  /** NULL = follow global, 'OFF' = Vouched Safe, 'UNCENSORED' = operator-asserted uncensored (P4.D141). */
-  conciergeOverride: 'OFF' | 'UNCENSORED' | null;
+  /**
+   * The chat's Concierge posture as the server derived it (§S.1, v4
+   * `4d370a90f` `handlers/get.ts`) — `conciergeOverride` is GONE from the wire.
+   * Optional: absent reads as Moderated (`getConciergeState`).
+   */
+  conciergeState?: ConciergeState;
+  /** Who set the state; `null` when Moderated. */
+  conciergeSetBy?: ConciergeProvenance;
+  /** Why; `null` when Moderated. */
+  conciergeReason?: ConciergeReason | null;
+  /**
+   * Moderation refusals on the Concierge's ledger since the chat was last
+   * Moderated (v4 `repos.chats.getModerationRefusalLedger(chatId).count`) —
+   * the header pill's "after N refusals". Only the chat GET carries it.
+   */
+  conciergeRefusalCount?: number;
   /**
    * The chat sidebar's slice of the record (P4.9H1). All of these are in the
    * server's projection (`api/salon.rs:303-422`, v4 `handlers/get.ts:528-568`).
@@ -3670,9 +3705,13 @@ export interface CharacterChatSummary {
   /** Up to three most-recent messages, recent-first (v4 `slice(0, 3)`). */
   messages: CharacterChatMessagePreview[];
   tags: Array<{ tag: { id: string; name: string } }>;
-  /** The derived Concierge four-state — never the raw label (§A). */
+  /** The derived Concierge three-state — never a stored column (§S.1). */
   conciergeState: ConciergeState;
-  /** The classifier's categories, shown on the mark's tooltip when Flagged. */
+  /** Who put the chat in its state; `null` for Moderated (§S.1). */
+  conciergeSetBy?: ConciergeProvenance;
+  /** Why the chat is in its state; `null` for Moderated (§S.1). */
+  conciergeReason?: ConciergeReason | null;
+  /** The classifier's categories, shown on the mark's tooltip when the classifier moved the chat. */
   dangerCategories: string[];
   _count: { messages: number; memories: number };
   scriptoriumStatus: 'none' | 'rendered' | 'embedded';

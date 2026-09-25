@@ -19,7 +19,7 @@ function chat(over: Partial<EnrichedChatSummary> = {}): EnrichedChatSummary {
     tags: [],
     project: null,
     storyBackground: null,
-    conciergeState: 'monitored',
+    conciergeState: 'moderated',
     dangerCategories: [],
     chatType: 'salon',
     scriptoriumStatus: 'none',

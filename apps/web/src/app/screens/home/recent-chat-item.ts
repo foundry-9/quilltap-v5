@@ -13,8 +13,9 @@ import type { RecentChat } from './home.api';
  * `components/homepage/RecentChatItem.tsx`): the story-background thumbnail
  * when present (preferred), else the participant avatar stack; the title +
  * joined character names; the relative time + message count with the
- * Concierge mark (v4 `c43d3b1b4` — the derived four-state, never the raw
- * danger label; Monitored draws nothing). v4's workspace-tab `openInWorkspace` glue is not
+ * Concierge mark (v4 `c43d3b1b4`, three states since `4d370a90f` — the
+ * derived state with its provenance, never a stored column; Moderated draws
+ * nothing). v4's workspace-tab `openInWorkspace` glue is not
  * ported (no tabbed workspace in v5) — the link navigates.
  *
  * §2: every server-relative path resolves through the shared helpers
@@ -48,6 +49,8 @@ import type { RecentChat } from './home.api';
           >{{ chat()._count.messages }} msgs@if (chat().conciergeState; as conciergeState) {
             <qt-concierge-mark
               [conciergeState]="conciergeState"
+              [conciergeSetBy]="chat().conciergeSetBy"
+              [conciergeReason]="chat().conciergeReason"
               [dangerCategories]="chat().dangerCategories"
             />
           }</span

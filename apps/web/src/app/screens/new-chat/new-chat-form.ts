@@ -15,6 +15,8 @@ import type {
   ConciergeState,
   TimestampConfig,
 } from '../../core/core-contract';
+import { ConciergeOffDutyHint } from '../../chat/concierge-off-duty-hint';
+import { CONCIERGE_STATES } from '../../chat/concierge-state';
 import {
   CONCIERGE_STATE_PRESENTATION,
   conciergeToneTextClass,
@@ -88,6 +90,7 @@ interface PlayAsOption {
   selector: 'qt-new-chat-form',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ConciergeOffDutyHint,
     FormsModule,
     Icon,
     ImageProfilePicker,
@@ -201,13 +204,15 @@ interface PlayAsOption {
         </div>
 
         <!--
-          The Concierge (v4 303288fb4) — settle the chat's state before the
-          first word is spoken, so the opening greeting is generated under it.
-          The same four options in the same two optgroups as the Salon
-          sidebar's control, off the same presentation table, EXCEPT that the
-          first option here says "Monitored (default)" where the sidebar says
-          plain "Monitored" — v4's form deliberately differs, because this is
-          the control that establishes the default rather than reporting it.
+          The Concierge (v4 303288fb4; three states since 4d370a90f, the
+          on-duty gate and the followed default since 3b463d6b1) — settle the
+          chat's state before the first word is spoken, so the opening greeting
+          is generated under it. The same three options in the same FLAT list
+          as the Salon sidebar's control, off the same presentation table,
+          EXCEPT that the option the server would pick anyway carries
+          "(default)" — Moderated normally, Unmoderated when the Concierge
+          settings start new chats Unmoderated and he is on duty. Off duty the
+          select is disabled and the helper becomes the hint.
 
           The presentation table's hint ("Change it from the Salon sidebar's
           Chat section.") is deliberately NOT shown: the reader is looking at
@@ -228,19 +233,21 @@ interface PlayAsOption {
             id="new-chat-concierge"
             [ngModel]="form().conciergeState"
             (ngModelChange)="onConciergeState($event)"
-            [disabled]="creating()"
+            [disabled]="creating() || !conciergeOnDuty()"
             class="qt-select"
           >
-            <optgroup label="The Concierge decides">
-              <option value="monitored">Monitored (default)</option>
-              <option value="flagged">Flagged</option>
-            </optgroup>
-            <optgroup label="You decide">
-              <option value="vouched">Vouched Safe</option>
-              <option value="uncensored">Uncensored</option>
-            </optgroup>
+            @for (value of conciergeStates; track value) {
+              <option [value]="value">
+                {{ conciergeLabels[value].label
+                }}{{ value === conciergeDefaultState() ? ' (default)' : '' }}
+              </option>
+            }
           </select>
-          <p class="qt-text-xs qt-text-muted mt-1">{{ conciergeDetail() }}</p>
+          @if (conciergeOnDuty()) {
+            <p class="qt-text-xs qt-text-muted mt-1">{{ conciergeDetail() }}</p>
+          } @else {
+            <qt-concierge-off-duty-hint className="block qt-text-xs qt-text-muted mt-1" />
+          }
         </div>
 
         <div>
@@ -480,8 +487,15 @@ export class NewChatForm {
     return { name: presentation.icon, className: conciergeToneTextClass(presentation.tone) };
   });
 
-  /** The helper sentence beneath the control — the table's `detail`, never its `hint`. */
+  /** The helper sentence beneath the control — the table's plain `detail` (no provenance), never its `hint`. */
   protected readonly conciergeDetail = computed(() => this.conciergePresentation().detail);
+
+  protected readonly conciergeStates = CONCIERGE_STATES;
+  protected readonly conciergeLabels = CONCIERGE_STATE_PRESENTATION;
+  /** v4 `conciergeOnDuty` — off duty the select is disabled and the hint points at the switch. */
+  protected readonly conciergeOnDuty = computed(() => this.core().conciergeOnDuty());
+  /** v4 `conciergeDefaultState` — the option that says "(default)". */
+  protected readonly conciergeDefaultState = computed(() => this.core().conciergeServerDefault());
 
   // --- Autonomous room --------------------------------------------------------
 

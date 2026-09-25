@@ -101,7 +101,7 @@ function enrichedChat(over: Partial<EnrichedChatSummary>): EnrichedChatSummary {
     tags: [],
     project: null,
     storyBackground: null,
-    conciergeState: 'monitored',
+    conciergeState: 'moderated',
     dangerCategories: [],
     chatType: 'salon',
     scriptoriumStatus: 'none',
@@ -200,7 +200,7 @@ function characterChat(over: Partial<CharacterChatSummary>): CharacterChatSummar
     storyBackground: null,
     messages: [],
     tags: [],
-    conciergeState: 'monitored',
+    conciergeState: 'moderated',
     dangerCategories: [],
     _count: { messages: 4, memories: 0 },
     scriptoriumStatus: 'none',
@@ -280,31 +280,43 @@ describe('quick-hide consumers', () => {
       seedHidden({ dangerous: true });
       const fixture = await render([
         enrichedChat({ id: 'keep', title: 'Kept' }),
-        enrichedChat({ id: 'drop', title: 'Dropped', conciergeState: 'flagged' }),
+        enrichedChat({ id: 'drop', title: 'Dropped', conciergeState: 'unmoderated' }),
       ]);
       const text = fixture.nativeElement.textContent as string;
       expect(text).toContain('Kept');
       expect(text).not.toContain('Dropped');
     });
 
-    it('follows the uncensored ROW, not the raw label (v4 c43d3b1b4)', async () => {
-      // The behaviour delta: a Vouched Safe chat keeps its dangerous label
-      // underneath by design and used to vanish; an Uncensored chat takes
-      // every spicy route and never did.
+    it('hides Unmoderated whoever set it, and never Locked (v4 4d370a90f)', async () => {
+      // Three states since #75: the rule delegates to
+      // conciergeStateUsesUncensoredRoute, which is Unmoderated ONLY. A Locked
+      // chat takes the ordinary route and is never hidden by the danger toggle.
       seedHidden({ dangerous: true });
       const fixture = await render([
-        enrichedChat({ id: 'v', title: 'Vouched Kept', conciergeState: 'vouched' }),
-        enrichedChat({ id: 'u', title: 'Uncensored Dropped', conciergeState: 'uncensored' }),
+        enrichedChat({ id: 'l', title: 'Locked Kept', conciergeState: 'locked' }),
+        enrichedChat({
+          id: 'o',
+          title: 'Operator Dropped',
+          conciergeState: 'unmoderated',
+          conciergeSetBy: 'operator',
+        }),
+        enrichedChat({
+          id: 'c',
+          title: 'Concierge Dropped',
+          conciergeState: 'unmoderated',
+          conciergeSetBy: 'concierge',
+        }),
       ]);
       const text = fixture.nativeElement.textContent as string;
-      expect(text).toContain('Vouched Kept');
-      expect(text).not.toContain('Uncensored Dropped');
+      expect(text).toContain('Locked Kept');
+      expect(text).not.toContain('Operator Dropped');
+      expect(text).not.toContain('Concierge Dropped');
     });
 
     it('hides nothing by default', async () => {
       seedHidden();
       const fixture = await render([
-        enrichedChat({ id: 'a', title: 'Kept', conciergeState: 'flagged' }),
+        enrichedChat({ id: 'a', title: 'Kept', conciergeState: 'unmoderated' }),
         enrichedChat({ id: 'b', title: 'Also', tags: [{ tag: { id: HIDDEN, name: 'H' } }] }),
       ]);
       const text = fixture.nativeElement.textContent as string;
@@ -372,28 +384,31 @@ describe('quick-hide consumers', () => {
       seedHidden({ dangerous: true });
       const fixture = await render([
         recentChat({ id: 'keep', title: 'Kept' }),
-        recentChat({ id: 'drop', title: 'Dropped', conciergeState: 'flagged' }),
+        recentChat({ id: 'drop', title: 'Dropped', conciergeState: 'unmoderated' }),
       ]);
       const text = fixture.nativeElement.textContent as string;
       expect(text).toContain('Kept');
       expect(text).not.toContain('Dropped');
     });
 
-    it('keeps a Vouched Safe chat and drops an Uncensored one (v4 c43d3b1b4)', async () => {
+    it('hides the Unmoderated chat and keeps the rest when "Dangerous Chats" is on', async () => {
+      // v4 homepage-components.test.tsx `RecentChatsSection` (at 4d370a90f).
       seedHidden({ dangerous: true });
       const fixture = await render([
-        recentChat({ id: 'v', title: 'Vouched Kept', conciergeState: 'vouched' }),
-        recentChat({ id: 'u', title: 'Uncensored Dropped', conciergeState: 'uncensored' }),
+        recentChat({ id: 'm', title: 'Moderated Kept', conciergeState: 'moderated' }),
+        recentChat({ id: 'l', title: 'Locked Kept', conciergeState: 'locked' }),
+        recentChat({ id: 'u', title: 'Unmoderated Dropped', conciergeState: 'unmoderated' }),
       ]);
       const text = fixture.nativeElement.textContent as string;
-      expect(text).toContain('Vouched Kept');
-      expect(text).not.toContain('Uncensored Dropped');
+      expect(text).toContain('Moderated Kept');
+      expect(text).toContain('Locked Kept');
+      expect(text).not.toContain('Unmoderated Dropped');
     });
 
     it('falls to the empty arm when everything is hidden', async () => {
       seedHidden({ dangerous: true });
       const fixture = await render([
-        recentChat({ id: 'drop', title: 'Dropped', conciergeState: 'uncensored' }),
+        recentChat({ id: 'drop', title: 'Dropped', conciergeState: 'unmoderated' }),
       ]);
       expect(fixture.nativeElement.textContent).toContain('No chats yet');
     });
@@ -487,19 +502,19 @@ describe('quick-hide consumers', () => {
       seedHidden({ dangerous: true });
       const fixture = await render([
         characterChat({ id: 'keep', title: 'Kept' }),
-        characterChat({ id: 'drop', title: 'Dropped', conciergeState: 'uncensored' }),
+        characterChat({ id: 'drop', title: 'Dropped', conciergeState: 'unmoderated' }),
       ]);
       const text = fixture.nativeElement.textContent as string;
       expect(text).toContain('Kept');
       expect(text).not.toContain('Dropped');
     });
 
-    it('keeps a Vouched Safe chat the raw label would have hidden (v4 c43d3b1b4)', async () => {
+    it('keeps a Locked chat — Locked never takes the uncensored route (v4 4d370a90f)', async () => {
       seedHidden({ dangerous: true });
       const fixture = await render([
-        characterChat({ id: 'v', title: 'Vouched Kept', conciergeState: 'vouched' }),
+        characterChat({ id: 'l', title: 'Locked Kept', conciergeState: 'locked' }),
       ]);
-      expect(fixture.nativeElement.textContent).toContain('Vouched Kept');
+      expect(fixture.nativeElement.textContent).toContain('Locked Kept');
     });
   });
 

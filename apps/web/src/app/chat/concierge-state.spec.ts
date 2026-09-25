@@ -1,126 +1,122 @@
 /**
  * Parity spec for the client Concierge predicates — transcribed 1:1 from v4's
- * `__tests__/unit/lib/services/dangerous-content/chat-override.test.ts`
- * (v4 `60e3c4a0a`), including its TABLE row for row.
+ * `__tests__/unit/lib/services/dangerous-content/chat-override.test.ts` at
+ * `ce2f1dabf` (three states since `4d370a90f`, #75), including its TABLE row
+ * for row. (`deriveConciergeModeFromLegacy` / `withConciergeModeFromLegacy`
+ * are server-only — the Rust chain lane's; their cases are not client ones.)
  *
- * The Rust core's `chat_override` module is the differential-proven authority;
- * this file pins that the client twin cannot drift from it.
+ * The recorded-oracle half — v4's REAL module over the whole corpus — is
+ * `concierge-state.oracle.spec.ts`.
  */
 import {
+  CONCIERGE_STATES,
+  conciergeStateMayFailOver,
   conciergeStateUsesUncensoredRoute,
+  getConciergeProvenance,
+  getConciergeReason,
   getConciergeState,
   isClassifierOnDuty,
+  mayFailOver,
   shouldShowDangerStyling,
   shouldUseUncensoredRoute,
-  type ConciergeChatView,
+  type ConciergeProvenance,
   type ConciergeState,
 } from './concierge-state';
 
-interface Row {
-  chat: ConciergeChatView;
-  state: ConciergeState;
+type SetBy = Exclude<ConciergeProvenance, null> | null;
+
+const TABLE: Array<{
+  mode: ConciergeState;
+  setBy: SetBy;
+  provenance: ConciergeProvenance;
   uncensoredRoute: boolean;
   dangerStyling: boolean;
   classifierOnDuty: boolean;
-}
-
-// v4's TABLE, verbatim: the full stored-field truth table across both fields,
-// with the preserved isDangerousChat label in each operator position (the label
-// must not leak into any predicate).
-const TABLE: Row[] = [
-  { chat: { conciergeOverride: null, isDangerousChat: false }, state: 'monitored', uncensoredRoute: false, dangerStyling: false, classifierOnDuty: true },
-  { chat: { conciergeOverride: null, isDangerousChat: null }, state: 'monitored', uncensoredRoute: false, dangerStyling: false, classifierOnDuty: true },
-  { chat: { conciergeOverride: null, isDangerousChat: true }, state: 'flagged', uncensoredRoute: true, dangerStyling: true, classifierOnDuty: true },
-  { chat: { conciergeOverride: 'OFF', isDangerousChat: false }, state: 'vouched', uncensoredRoute: false, dangerStyling: false, classifierOnDuty: false },
-  { chat: { conciergeOverride: 'OFF', isDangerousChat: true }, state: 'vouched', uncensoredRoute: false, dangerStyling: false, classifierOnDuty: false },
-  { chat: { conciergeOverride: 'UNCENSORED', isDangerousChat: false }, state: 'uncensored', uncensoredRoute: true, dangerStyling: false, classifierOnDuty: false },
-  { chat: { conciergeOverride: 'UNCENSORED', isDangerousChat: true }, state: 'uncensored', uncensoredRoute: true, dangerStyling: false, classifierOnDuty: false },
+  failOver: boolean;
+}> = [
+  { mode: 'moderated', setBy: null, provenance: null, uncensoredRoute: false, dangerStyling: false, classifierOnDuty: true, failOver: true },
+  // A stray provenance on a Moderated row is never reported.
+  { mode: 'moderated', setBy: 'operator', provenance: null, uncensoredRoute: false, dangerStyling: false, classifierOnDuty: true, failOver: true },
+  { mode: 'unmoderated', setBy: 'operator', provenance: 'operator', uncensoredRoute: true, dangerStyling: true, classifierOnDuty: false, failOver: true },
+  { mode: 'unmoderated', setBy: 'concierge', provenance: 'concierge', uncensoredRoute: true, dangerStyling: true, classifierOnDuty: false, failOver: true },
+  { mode: 'locked', setBy: 'operator', provenance: 'operator', uncensoredRoute: false, dangerStyling: false, classifierOnDuty: false, failOver: false },
+  // A locked row with no provenance still reads as the operator's.
+  { mode: 'locked', setBy: null, provenance: 'operator', uncensoredRoute: false, dangerStyling: false, classifierOnDuty: false, failOver: false },
 ];
 
-const label = (r: Row) =>
-  `${r.state} (override=${String(r.chat.conciergeOverride)}, dangerous=${String(r.chat.isDangerousChat)})`;
+describe('CONCIERGE_STATES', () => {
+  it('lists the three states in control order', () => {
+    expect(CONCIERGE_STATES).toEqual(['moderated', 'unmoderated', 'locked']);
+  });
+});
 
 describe('getConciergeState', () => {
-  it("returns 'monitored' for a null/undefined chat", () => {
-    expect(getConciergeState(null)).toBe('monitored');
-    expect(getConciergeState(undefined)).toBe('monitored');
+  it("returns 'moderated' for a null/undefined chat or a NULL column", () => {
+    expect(getConciergeState(null)).toBe('moderated');
+    expect(getConciergeState(undefined)).toBe('moderated');
+    expect(getConciergeState({})).toBe('moderated');
+    expect(getConciergeState({ conciergeMode: null })).toBe('moderated');
   });
 
-  it("returns 'monitored' when both fields are absent", () => {
-    expect(getConciergeState({})).toBe('monitored');
+  it('ignores the legacy pair entirely', () => {
+    const legacy = { conciergeOverride: 'UNCENSORED', isDangerousChat: true } as never;
+    expect(getConciergeState(legacy)).toBe('moderated');
+    expect(shouldUseUncensoredRoute(legacy)).toBe(false);
+    expect(shouldShowDangerStyling(legacy)).toBe(false);
   });
 
-  for (const row of TABLE) {
-    it(`derives ${label(row)}`, () => {
-      expect(getConciergeState(row.chat)).toBe(row.state);
-    });
-  }
-});
-
-describe('shouldUseUncensoredRoute', () => {
-  it('returns false for a null/undefined chat', () => {
-    expect(shouldUseUncensoredRoute(null)).toBe(false);
-    expect(shouldUseUncensoredRoute(undefined)).toBe(false);
+  it('reads a server-derived payload (conciergeState) when the column is absent', () => {
+    expect(getConciergeState({ conciergeState: 'locked' })).toBe('locked');
+    expect(getConciergeProvenance({ conciergeState: 'unmoderated', conciergeSetBy: 'concierge' })).toBe('concierge');
+    expect(getConciergeReason({ conciergeState: 'unmoderated', conciergeReason: 'refusals' })).toBe('refusals');
   });
 
-  for (const row of TABLE) {
-    it(`returns ${row.uncensoredRoute} for ${label(row)}`, () => {
-      expect(shouldUseUncensoredRoute(row.chat)).toBe(row.uncensoredRoute);
-    });
-  }
-});
-
-describe('conciergeStateUsesUncensoredRoute', () => {
-  it('is the bottom row of the 2×2 and nothing else', () => {
-    expect(conciergeStateUsesUncensoredRoute('monitored')).toBe(false);
-    expect(conciergeStateUsesUncensoredRoute('vouched')).toBe(false);
-    expect(conciergeStateUsesUncensoredRoute('flagged')).toBe(true);
-    expect(conciergeStateUsesUncensoredRoute('uncensored')).toBe(true);
-  });
-
-  for (const row of TABLE) {
-    it(`agrees with shouldUseUncensoredRoute for ${label(row)}`, () => {
-      expect(conciergeStateUsesUncensoredRoute(row.state)).toBe(row.uncensoredRoute);
-      expect(conciergeStateUsesUncensoredRoute(getConciergeState(row.chat))).toBe(
-        shouldUseUncensoredRoute(row.chat),
-      );
-    });
-  }
-});
-
-describe('shouldShowDangerStyling', () => {
-  it('returns false for a null/undefined chat', () => {
-    expect(shouldShowDangerStyling(null)).toBe(false);
-    expect(shouldShowDangerStyling(undefined)).toBe(false);
-  });
-
-  for (const row of TABLE) {
-    it(`returns ${row.dangerStyling} for ${label(row)}`, () => {
-      expect(shouldShowDangerStyling(row.chat)).toBe(row.dangerStyling);
-    });
-  }
-
-  it('paints danger styling only when the Concierge himself flagged the chat', () => {
-    // The two predicates diverge exactly on 'uncensored': routed uncensored,
-    // never painted as a hazard.
-    const uncensored = TABLE.filter((r) => r.state === 'uncensored');
-    expect(uncensored.length).toBeGreaterThan(0);
-    for (const row of uncensored) {
-      expect(shouldUseUncensoredRoute(row.chat)).toBe(true);
-      expect(shouldShowDangerStyling(row.chat)).toBe(false);
-    }
+  it('prefers the column over a derived payload value', () => {
+    expect(getConciergeState({ conciergeMode: 'moderated', conciergeState: 'locked' })).toBe('moderated');
   });
 });
 
-describe('isClassifierOnDuty', () => {
-  it('returns true for a null/undefined chat (nothing has taken the classifier off the case)', () => {
-    expect(isClassifierOnDuty(null)).toBe(true);
-    expect(isClassifierOnDuty(undefined)).toBe(true);
-  });
+describe.each(TABLE)('mode=$mode setBy=$setBy', (row) => {
+  const chat = {
+    conciergeMode: row.mode,
+    conciergeModeSetBy: row.setBy,
+    conciergeModeReason: row.setBy ? ('manual' as const) : null,
+  };
 
-  for (const row of TABLE) {
-    it(`returns ${row.classifierOnDuty} for ${label(row)}`, () => {
-      expect(isClassifierOnDuty(row.chat)).toBe(row.classifierOnDuty);
-    });
-  }
+  it('derives the state', () => {
+    expect(getConciergeState(chat)).toBe(row.mode);
+  });
+  it('derives the provenance', () => {
+    expect(getConciergeProvenance(chat)).toBe(row.provenance);
+  });
+  it('answers shouldUseUncensoredRoute and its state-only twin', () => {
+    expect(shouldUseUncensoredRoute(chat)).toBe(row.uncensoredRoute);
+    expect(conciergeStateUsesUncensoredRoute(row.mode)).toBe(row.uncensoredRoute);
+  });
+  it('answers shouldShowDangerStyling (provenance never changes the colour)', () => {
+    expect(shouldShowDangerStyling(chat)).toBe(row.dangerStyling);
+  });
+  it('answers isClassifierOnDuty', () => {
+    expect(isClassifierOnDuty(chat)).toBe(row.classifierOnDuty);
+  });
+  it('answers mayFailOver and its state-only twin', () => {
+    expect(mayFailOver(chat)).toBe(row.failOver);
+    expect(conciergeStateMayFailOver(row.mode)).toBe(row.failOver);
+  });
+});
+
+describe('getConciergeReason', () => {
+  it('is null for Moderated, whatever is stored', () => {
+    expect(getConciergeReason({ conciergeMode: 'moderated', conciergeModeReason: 'refusals' })).toBeNull();
+  });
+  it('returns the stored reason otherwise', () => {
+    expect(getConciergeReason({ conciergeMode: 'unmoderated', conciergeModeReason: 'classifier' })).toBe('classifier');
+  });
+});
+
+describe('mayFailOver', () => {
+  it('reads a chatless call as Moderated', () => {
+    expect(mayFailOver(null)).toBe(true);
+    expect(mayFailOver(undefined)).toBe(true);
+  });
 });

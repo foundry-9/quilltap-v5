@@ -8,7 +8,7 @@
  */
 
 import { buildAutonomousCreatePatch } from '../../autonomous/autonomous.logic';
-import type { CharacterListItem, ChatCreateRequest } from '../../core/core-contract';
+import type { CharacterListItem, ChatCreateRequest, ConciergeState } from '../../core/core-contract';
 import { resolveDefaultSystemPrompt } from '../../shared/default-system-prompt';
 import {
   scenarioValueToSelection,
@@ -188,7 +188,9 @@ export function buildCreateRequest(
   form: NewChatFormState,
   selectedProjectId: string | null,
   progressId: string | undefined,
-  opts: { templateDefaultsLoaded: boolean } = { templateDefaultsLoaded: false },
+  opts: { templateDefaultsLoaded: boolean; conciergeServerDefault?: ConciergeState } = {
+    templateDefaultsLoaded: false,
+  },
 ): ChatCreateRequest {
   const participants = selectedCharacters.map((sc) => ({
     type: 'CHARACTER' as const,
@@ -212,10 +214,13 @@ export function buildCreateRequest(
 
   if (form.imageProfileId) body.imageProfileId = form.imageProfileId;
 
-  // Omitted when Monitored so a plain create stays byte-identical to what it has
-  // always been; the server treats absence and 'monitored' the same way (no
-  // write, no Concierge bubble) — v4 `303288fb4`.
-  if (form.conciergeState !== 'monitored') {
+  // v4 `useNewChat.ts:820-829` at `3b463d6b1`: omitted ONLY when the pick is
+  // Moderated AND the server's own default (`newChatsStartAs` on duty) is
+  // Moderated — absence then means exactly what the form shows. Under an
+  // Unmoderated default an explicit 'moderated' MUST be sent, or the server
+  // would open the chat Unmoderated behind the operator's back.
+  const serverDefault = opts.conciergeServerDefault ?? 'moderated';
+  if (form.conciergeState !== 'moderated' || serverDefault !== 'moderated') {
     body.conciergeState = form.conciergeState;
   }
 

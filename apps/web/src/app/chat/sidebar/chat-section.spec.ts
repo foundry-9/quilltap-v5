@@ -5,6 +5,8 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
+import type { ConciergeState } from '../concierge-state';
+import type { ConciergeProvenanceNote } from '../concierge-state-presentation';
 import { ChatSection, type ChatSectionState } from './chat-section';
 import { ToastService } from '../../ui/toast.service';
 
@@ -23,6 +25,8 @@ const sent: Req[] = [];
 /** `dispatchData` calls, kept apart so the chat-bag assertions stay exact. */
 const sentData: Req[] = [];
 let failNext = false;
+/** The shared `chatSettingsKeys.all` read — the Concierge's on-duty source (§S.2). */
+let chatSettingsAnswer: Record<string, unknown> = {};
 let toggleAnswer: Record<string, unknown> | Error = { avatarGenerationEnabled: true };
 let agentAnswer: Record<string, unknown> | Error = {
   agentModeEnabled: true,
@@ -53,10 +57,13 @@ function stubClient(): Partial<CoreClient> {
       }
       return {};
     }) as unknown as CoreClient['dispatchData'],
-    dispatchExpect: (async () => ({
-      type: 'apiKeys',
-      data: { apiKeys: [], count: 0 },
-    })) as unknown as CoreClient['dispatchExpect'],
+    dispatchExpect: (async (req: Req) =>
+      req['type'] === 'chatSettings'
+        ? { type: 'chatSettings', data: chatSettingsAnswer }
+        : {
+            type: 'apiKeys',
+            data: { apiKeys: [], count: 0 },
+          }) as unknown as CoreClient['dispatchExpect'],
   };
 }
 
@@ -82,8 +89,8 @@ function state(over: Partial<ChatSectionState> = {}): ChatSectionState {
       [chatId]="'chat-1'"
       [state]="chatState()"
       [sectionOpen]="true"
-      [isDangerousChat]="isDangerousChat()"
-      [conciergeOverride]="conciergeOverride()"
+      [conciergeState]="conciergeState()"
+      [conciergeProvenance]="conciergeProvenance()"
       (chatUpdated)="refetched = refetched + 1"
       (openProject)="projectOpened = projectOpened + 1"
       (openToolSettings)="toolSettingsOpened = toolSettingsOpened + 1"
@@ -92,8 +99,8 @@ function state(over: Partial<ChatSectionState> = {}): ChatSectionState {
 })
 class Host {
   readonly chatState = signal<ChatSectionState>(state());
-  readonly isDangerousChat = signal<boolean | null>(null);
-  readonly conciergeOverride = signal<'OFF' | 'UNCENSORED' | null>(null);
+  readonly conciergeState = signal<ConciergeState | undefined>(undefined);
+  readonly conciergeProvenance = signal<ConciergeProvenanceNote>({});
   refetched = 0;
   projectOpened = 0;
   toolSettingsOpened = 0;
@@ -468,77 +475,74 @@ function conciergeHelp(fixture: ComponentFixture<Host>): string {
     .trim();
 }
 
-describe('ChatSection — the Concierge four-state (P4.D141, v4 60e3c4a0a)', () => {
+describe('ChatSection — the Concierge three-state (v4 ChatSidebar.tsx @ ce2f1dabf)', () => {
   beforeEach(() => {
     sent.length = 0;
     failNext = false;
+    chatSettingsAnswer = {};
   });
 
-  it('offers v4’s two optgroups and four options, in v4’s order', async () => {
+  async function show(
+    fixture: ComponentFixture<Host>,
+    state: ConciergeState | undefined,
+    provenance: ConciergeProvenanceNote = {},
+  ): Promise<void> {
+    fixture.componentInstance.conciergeState.set(state);
+    fixture.componentInstance.conciergeProvenance.set(provenance);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  it('offers the three states as a FLAT list of bare labels, in control order', async () => {
     const fixture = await render();
     const select = conciergeSelect(fixture);
-    const groups = Array.from(select.querySelectorAll('optgroup')) as HTMLOptGroupElement[];
-    expect(groups.map((g) => g.label)).toEqual(['The Concierge decides', 'You decide']);
+    expect(select.querySelectorAll('optgroup')).toHaveLength(0);
     expect(Array.from(select.options).map((o) => [o.value, o.textContent?.trim()])).toEqual([
-      ['monitored', 'Monitored'],
-      ['flagged', 'Flagged'],
-      ['vouched', 'Vouched Safe'],
-      ['uncensored', 'Uncensored'],
+      ['moderated', 'Moderated'],
+      ['unmoderated', 'Unmoderated'],
+      ['locked', 'Locked'],
     ]);
   });
 
-  it('derives the shown state from BOTH stored fields, operator override winning', async () => {
+  it('shows the server-derived state, reading an absent one as Moderated', async () => {
     const fixture = await render();
-    const set = async (dangerous: boolean | null, over: 'OFF' | 'UNCENSORED' | null) => {
-      fixture.componentInstance.isDangerousChat.set(dangerous);
-      fixture.componentInstance.conciergeOverride.set(over);
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
-      return conciergeSelect(fixture).value;
-    };
-    expect(await set(null, null)).toBe('monitored');
-    expect(await set(false, null)).toBe('monitored');
-    expect(await set(true, null)).toBe('flagged');
-    // Both operator states PRESERVE the label underneath and win over it.
-    expect(await set(true, 'OFF')).toBe('vouched');
-    expect(await set(false, 'OFF')).toBe('vouched');
-    expect(await set(true, 'UNCENSORED')).toBe('uncensored');
-    expect(await set(false, 'UNCENSORED')).toBe('uncensored');
+    await show(fixture, undefined);
+    expect(conciergeSelect(fixture).value).toBe('moderated');
+    await show(fixture, 'unmoderated', { setBy: 'operator' });
+    expect(conciergeSelect(fixture).value).toBe('unmoderated');
+    await show(fixture, 'locked', { setBy: 'operator' });
+    expect(conciergeSelect(fixture).value).toBe('locked');
   });
 
-  it('carries v4’s four helper sentences, byte for byte', async () => {
+  it('carries the table’s helper sentence, picked by provenance, with the refusal count', async () => {
     const fixture = await render();
-    const help = async (dangerous: boolean | null, over: 'OFF' | 'UNCENSORED' | null) => {
-      fixture.componentInstance.isDangerousChat.set(dangerous);
-      fixture.componentInstance.conciergeOverride.set(over);
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
-      return conciergeHelp(fixture);
-    };
-    expect(await help(false, null)).toBe(
-      'The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.',
+    await show(fixture, 'moderated');
+    expect(conciergeHelp(fixture)).toBe(
+      'The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.',
     );
-    expect(await help(true, null)).toBe(
-      'The Concierge has this chat down as dangerous, and routes it through the uncensored providers.',
+    await show(fixture, 'unmoderated', { setBy: 'operator', reason: 'manual' });
+    expect(conciergeHelp(fixture)).toBe(
+      'You have opened the uncensored door yourself. Nothing here goes near a moderated provider.',
     );
-    expect(await help(true, 'OFF')).toBe(
-      'You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.',
+    await show(fixture, 'unmoderated', { setBy: 'concierge', reason: 'refusals', refusalCount: 2 });
+    expect(conciergeHelp(fixture)).toBe(
+      'The Concierge moved this chat to the uncensored desk after two refusals. Set it back to Moderated if you disagree.',
     );
-    expect(await help(true, 'UNCENSORED')).toBe(
-      'You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.',
+    await show(fixture, 'unmoderated', { setBy: 'concierge', reason: 'classifier' });
+    expect(conciergeHelp(fixture)).toBe(
+      'The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.',
+    );
+    await show(fixture, 'locked', { setBy: 'operator' });
+    expect(conciergeHelp(fixture)).toBe(
+      'Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.',
     );
   });
 
-  it('gives each state its own icon — the third, colorblind-safe channel', async () => {
+  it('gives each state its own icon — the second, colourblind-safe channel', async () => {
     const fixture = await render();
-    const icon = async (dangerous: boolean | null, over: 'OFF' | 'UNCENSORED' | null) => {
-      fixture.componentInstance.isDangerousChat.set(dangerous);
-      fixture.componentInstance.conciergeOverride.set(over);
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+    const icon = async (state: ConciergeState) => {
+      await show(fixture, state);
       const labels = Array.from(fixture.nativeElement.querySelectorAll('label')) as HTMLElement[];
       const label = labels.find((l) => l.textContent?.includes('The Concierge'))!;
       // `qt-icon` aliases `class` to an INPUT that lands on the inner span (the
@@ -546,21 +550,19 @@ describe('ChatSection — the Concierge four-state (P4.D141, v4 60e3c4a0a)', () 
       const span = label.querySelector('qt-icon span[data-icon]') as HTMLElement;
       return { name: span.getAttribute('data-icon'), tint: span.className };
     };
-    expect(await icon(false, null)).toMatchObject({ name: 'eye' });
-    expect((await icon(false, null)).tint).toContain('qt-text-success');
-    expect(await icon(true, null)).toMatchObject({ name: 'alert-triangle' });
-    expect((await icon(true, null)).tint).toContain('qt-text-danger');
-    expect(await icon(true, 'OFF')).toMatchObject({ name: 'check-circle' });
-    expect((await icon(true, 'OFF')).tint).toContain('qt-text-muted');
-    expect(await icon(true, 'UNCENSORED')).toMatchObject({ name: 'eye-off' });
-    expect((await icon(true, 'UNCENSORED')).tint).toContain('qt-text-info');
+    expect(await icon('moderated')).toMatchObject({ name: 'eye' });
+    expect((await icon('moderated')).tint).toContain('qt-text-success');
+    expect(await icon('unmoderated')).toMatchObject({ name: 'eye-off' });
+    expect((await icon('unmoderated')).tint).toContain('qt-text-danger');
+    expect(await icon('locked')).toMatchObject({ name: 'shield' });
+    expect((await icon('locked')).tint).toContain('qt-text-muted');
   });
 
   it('PUTs conciergeState as a SIBLING of the chat bag, not a bag key', async () => {
     const fixture = await render();
-    await choose(fixture, conciergeSelect(fixture), 'uncensored');
+    await choose(fixture, conciergeSelect(fixture), 'unmoderated');
     const put = sent.find((r) => r['type'] === 'chatUpdate')!;
-    expect(put['conciergeState']).toBe('uncensored');
+    expect(put['conciergeState']).toBe('unmoderated');
     // v4's `chatUpdateRequestSchema` declares it at the TOP level; a bag key
     // would be stripped by `updateChatSchema` and silently do nothing.
     expect(put['chat']).toEqual({});
@@ -569,17 +571,13 @@ describe('ChatSection — the Concierge four-state (P4.D141, v4 60e3c4a0a)', () 
 
   it('raises v4’s own success sentence for each state', async () => {
     for (const [value, message] of [
-      ['flagged', 'Marked as flagged'],
-      ['vouched', 'You have vouched for this chat'],
-      ['uncensored', 'The uncensored door stands open'],
-      ['monitored', 'The Concierge is on watch'],
+      ['unmoderated', 'The uncensored door stands open'],
+      ['locked', 'Locked to the usual desks'],
+      ['moderated', 'The Concierge is on watch'],
     ] as const) {
       const fixture = await render();
       // Start somewhere else so every pick is a real change.
-      fixture.componentInstance.conciergeOverride.set(value === 'vouched' ? 'UNCENSORED' : 'OFF');
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+      await show(fixture, value === 'locked' ? 'unmoderated' : 'locked', { setBy: 'operator' });
       await choose(fixture, conciergeSelect(fixture), value);
       expect(toasts().at(-1)).toEqual({ type: 'success', message });
     }
@@ -587,50 +585,84 @@ describe('ChatSection — the Concierge four-state (P4.D141, v4 60e3c4a0a)', () 
 
   it('reverts the select AND the model when the write fails', async () => {
     const fixture = await render();
-    fixture.componentInstance.isDangerousChat.set(true);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expect(conciergeSelect(fixture).value).toBe('flagged');
+    await show(fixture, 'locked', { setBy: 'operator' });
+    expect(conciergeSelect(fixture).value).toBe('locked');
 
     failNext = true;
-    await choose(fixture, conciergeSelect(fixture), 'uncensored');
+    await choose(fixture, conciergeSelect(fixture), 'unmoderated');
     expect(toasts().at(-1)).toEqual({ type: 'error', message: 'the clock is stuck' });
     // The rejected choice must not be left on screen (the standing
     // controlled-select idiom: reverting the signal alone is not enough).
-    expect(conciergeSelect(fixture).value).toBe('flagged');
+    expect(conciergeSelect(fixture).value).toBe('locked');
     expect(fixture.componentInstance.refetched).toBe(0);
   });
 
-  it('fires the PUT even when the pick matches the stored state (v4 `:1068-1095` has no short-circuit)', async () => {
+  it('fires the PUT even when the pick matches the stored state (v4 `:1097-1123` has no short-circuit)', async () => {
     const fixture = await render();
-    await choose(fixture, conciergeSelect(fixture), 'monitored');
+    await choose(fixture, conciergeSelect(fixture), 'moderated');
     expect(sent.filter((r) => r['type'] === 'chatUpdate')).toHaveLength(1);
   });
 
   it('holds no latch: after a successful pick the control shows the STORED state, then follows the refetch (v4 derives from props)', async () => {
-    // v4 computes the select's value from props on every render; a local
-    // "last pick" that outlived the write would ignore a refetch, a classifier
-    // auto-flip and another tab for the rest of the session, and let the
-    // control disagree with the header badge (the unification review's catch).
     const fixture = await render();
-    await choose(fixture, conciergeSelect(fixture), 'uncensored');
+    await choose(fixture, conciergeSelect(fixture), 'unmoderated');
     expect(sent.filter((r) => r['type'] === 'chatUpdate')).toHaveLength(1);
     expect(fixture.componentInstance.refetched).toBe(1);
-    // The stored fields have not moved yet, so the element reads the stored state.
-    expect(conciergeSelect(fixture).value).toBe('monitored');
-    // The parent's refetch lands the operator state → the control follows it.
-    fixture.componentInstance.conciergeOverride.set('UNCENSORED');
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expect(conciergeSelect(fixture).value).toBe('uncensored');
-    // … and a later change from elsewhere (an auto-flip, another tab) wins too.
-    fixture.componentInstance.conciergeOverride.set(null);
-    fixture.componentInstance.isDangerousChat.set(true);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expect(conciergeSelect(fixture).value).toBe('flagged');
+    // The stored state has not moved yet, so the element reads the stored state.
+    expect(conciergeSelect(fixture).value).toBe('moderated');
+    // The parent's refetch lands the new state → the control follows it.
+    await show(fixture, 'unmoderated', { setBy: 'operator' });
+    expect(conciergeSelect(fixture).value).toBe('unmoderated');
+    // … and a later change from elsewhere (an auto-switch, another tab) wins too.
+    await show(fixture, 'locked', { setBy: 'operator' });
+    expect(conciergeSelect(fixture).value).toBe('locked');
+  });
+
+  // --- The on-duty gate (v4 `3b463d6b1` #76) -----------------------------------
+
+  /** Let the shared chat-settings query resolve and the view catch up. */
+  async function settle(fixture: ComponentFixture<Host>): Promise<void> {
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  it('is enabled on duty — the default while the settings row has no conciergeSettings', async () => {
+    const fixture = await render();
+    expect(conciergeSelect(fixture).disabled).toBe(false);
+    expect(fixture.nativeElement.querySelector('qt-concierge-off-duty-hint')).toBeNull();
+  });
+
+  it('is DISABLED off duty, the helper replaced by the hint that points at the switch', async () => {
+    chatSettingsAnswer = { conciergeSettings: { enabled: false } };
+    const fixture = await render();
+    await show(fixture, 'unmoderated', { setBy: 'operator' });
+    await settle(fixture);
+    expect(conciergeSelect(fixture).disabled).toBe(true);
+    const labels = Array.from(fixture.nativeElement.querySelectorAll('label')) as HTMLElement[];
+    const label = labels.find((l) => l.textContent?.includes('The Concierge'))!;
+    expect(label.textContent!.replace(/\s+/g, ' ')).toContain(
+      'The Concierge is off duty — turn him on in Settings → The Concierge.',
+    );
+    expect(label.textContent).not.toContain('opened the uncensored door yourself');
+    const link = label.querySelector('qt-concierge-off-duty-hint a') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/settings?tab=concierge&section=on-duty');
+    // The select still SHOWS the chat's state — disabled, not hidden.
+    expect(conciergeSelect(fixture).value).toBe('unmoderated');
+  });
+
+  it('flips live when a Concierge-tab save lands on the shared settings key', async () => {
+    chatSettingsAnswer = { conciergeSettings: { enabled: false } };
+    const fixture = await render();
+    await settle(fixture);
+    expect(conciergeSelect(fixture).disabled).toBe(true);
+    // The Settings tab `setQueryData`s the SAME key (chatSettingsKeys.all).
+    TestBed.inject(QueryClient).setQueryData(['chatSettings'], {
+      conciergeSettings: { enabled: true },
+    });
+    await settle(fixture);
+    expect(conciergeSelect(fixture).disabled).toBe(false);
+    expect(fixture.nativeElement.querySelector('qt-concierge-off-duty-hint')).toBeNull();
   });
 });

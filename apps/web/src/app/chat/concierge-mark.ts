@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
-import type { ConciergeState } from './concierge-state';
+import type { ConciergeProvenance, ConciergeReason, ConciergeState } from './concierge-state';
 import {
   CONCIERGE_STATE_PRESENTATION,
   type ConciergeStateDescription,
@@ -67,12 +67,18 @@ export function conciergeMarkClasses(state: ConciergeState, className = ''): str
  * character's Conversations, a Prospero project's chats (v4
  * `components/chat/ConciergeMark.tsx`, new at `c43d3b1b4`).
  *
- * It reads the derived four-state, never the raw danger label, so the three
- * states other than Monitored each get their own tone: red for the Concierge's
- * own verdict, grey for a chat you vouched safe, blue for a door you opened
- * yourself. Monitored is the default and wears nothing — the mark means
- * "something other than the default is in force," exactly as the Salon
- * header's pill does.
+ * It reads the derived state, never a stored column, so the two states other
+ * than Moderated each get their own tone: red for the uncensored desk, grey
+ * for a chat locked to the ordinary desks. Who set Unmoderated — you or the
+ * Concierge — is in the bubble, never the colour (v4 `4d370a90f` #75).
+ * Moderated is the default and wears nothing — the mark means "something
+ * other than the default is in force," exactly as the Salon header's pill
+ * does.
+ *
+ * The bubble never names a refusal COUNT: list payloads do not carry one
+ * (§S.1), so a Concierge-after-refusals chat reads "…after the usual
+ * providers refused it." Only the header pill and the sidebar helper pass
+ * `refusalCount` — v4 identical; do not "fix" it here.
  *
  * The words come from the presentation table, so the mark, the pill and the
  * sidebar all say the same thing. The bubble is Quilltap's own {@link Tooltip}
@@ -91,7 +97,7 @@ export function conciergeMarkClasses(state: ConciergeState, className = ''): str
   imports: [Tooltip, ConciergeTooltipBody],
   host: { style: 'display: contents' },
   template: `
-    @if (conciergeState() !== 'monitored') {
+    @if (conciergeState() !== 'moderated') {
       <qt-tooltip [contentTemplate]="tip" placement="top">
         <!--
           Deliberately not focusable and not pinnable: the mark sits inside a
@@ -109,15 +115,23 @@ export function conciergeMarkClasses(state: ConciergeState, className = ''): str
   `,
 })
 export class ConciergeMark {
-  /** The derived four-state. Monitored renders nothing at all. */
+  /** The derived state. Moderated renders nothing at all. */
   readonly conciergeState = input.required<ConciergeState>();
-  /** The classifier's categories; surfaced on the bubble for Flagged only. */
+  /** Who set the state; picks the bubble's sentence for Unmoderated. */
+  readonly conciergeSetBy = input<ConciergeProvenance | undefined>(undefined);
+  /** Why the state was set; the Concierge's sentence names it. */
+  readonly conciergeReason = input<ConciergeReason | null | undefined>(undefined);
+  /** The classifier's categories; surfaced on the bubble when the classifier moved the chat. */
   readonly dangerCategories = input<string[] | undefined>(undefined);
   /** Extra classes for the mark itself (sizing, flex behaviour). */
   readonly className = input('');
 
   protected readonly description = computed<ConciergeStateDescription>(() =>
-    describeConciergeState(this.conciergeState(), this.dangerCategories()),
+    describeConciergeState(
+      this.conciergeState(),
+      { setBy: this.conciergeSetBy(), reason: this.conciergeReason() },
+      this.dangerCategories(),
+    ),
   );
 
   protected readonly spoken = computed(

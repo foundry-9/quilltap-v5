@@ -29,7 +29,10 @@ function chatDetail(overrides: Partial<ChatDetail> = {}): ChatDetail {
     agentModeSource: 'global',
     isDangerousChat: false,
     dangerCategories: [],
-    conciergeOverride: null,
+    conciergeState: 'moderated',
+    conciergeSetBy: null,
+    conciergeReason: null,
+    conciergeRefusalCount: 0,
     offSceneCharacters: [],
     lastTurnParticipantId: null,
     ...overrides,
@@ -219,7 +222,7 @@ describe('ConversationHeader — the sidebar reclaimed its entries (P4.9H1)', ()
   });
 });
 
-describe('ConversationHeader — the Concierge badge (v4 SalonView.tsx:1088-1112 @ c43d3b1b4)', () => {
+describe('ConversationHeader — the Concierge badge (v4 SalonView.tsx:1190-1222 @ ce2f1dabf)', () => {
   afterEach(() => TestBed.resetTestingModule());
 
   function badges(fixture: ComponentFixture<ConversationHeader>): HTMLElement[] {
@@ -245,64 +248,50 @@ describe('ConversationHeader — the Concierge badge (v4 SalonView.tsx:1088-1112
 
   const bubble = (): HTMLElement | null => document.body.querySelector('.qt-tooltip');
 
-  it('renders NO badge for Monitored — the pill means "something other than the default"', () => {
+  it('renders NO badge for Moderated — the pill means "something other than the default"', () => {
     expect(badges(render(chatDetail()))).toHaveLength(0);
     // `render` configures a fresh TestBed, so the second case needs its own.
     TestBed.resetTestingModule();
-    expect(badges(render(chatDetail({ isDangerousChat: null })))).toHaveLength(0);
+    // The legacy telemetry is read by no display: a dangerous label on a
+    // Moderated chat still draws nothing.
+    expect(badges(render(chatDetail({ isDangerousChat: true })))).toHaveLength(0);
+    TestBed.resetTestingModule();
+    expect(badges(render(chatDetail({ conciergeState: undefined })))).toHaveLength(0);
   });
 
-  it('retires the four native titles in favour of the drawn bubble (v4 c43d3b1b4)', () => {
-    // The Flagged title used to be the only place the categories were named;
-    // the bubble's Categories section is where they live now.
+  it('carries no native title — the drawn bubble is the only one', () => {
     const [pill] = badges(
-      render(chatDetail({ isDangerousChat: true, dangerCategories: ['nsfw', 'violence'] })),
+      render(chatDetail({ conciergeState: 'unmoderated', conciergeSetBy: 'operator' })),
     );
     expect(pill.hasAttribute('title')).toBe(false);
   });
 
-  it('renders the red Flagged pill, labelled and iconed off the presentation table', () => {
-    const fixture = render(
-      chatDetail({ isDangerousChat: true, dangerCategories: ['nsfw', 'violence'] }),
-    );
-    const [pill, ...rest] = badges(fixture);
-    expect(rest).toHaveLength(0);
-    expect(pill.textContent?.trim()).toBe('Flagged');
-    expect(pill.getAttribute('role')).toBe('img');
-    expect(pill.getAttribute('aria-label')).toBe('Concierge: Flagged');
-    expect(pill.className).not.toContain('qt-danger-badge-muted');
-    expect(pill.className).not.toContain('qt-danger-badge-info');
-    expect(pill.querySelector('qt-icon span[data-icon]')?.getAttribute('data-icon')).toBe(
-      'alert-triangle',
-    );
+  it('renders the red Unmoderated pill, labelled and iconed off the presentation table', () => {
+    for (const setBy of ['operator', 'concierge'] as const) {
+      TestBed.resetTestingModule();
+      const fixture = render(chatDetail({ conciergeState: 'unmoderated', conciergeSetBy: setBy }));
+      const [pill, ...rest] = badges(fixture);
+      expect(rest).toHaveLength(0);
+      expect(pill.textContent?.trim()).toBe('Unmoderated');
+      expect(pill.getAttribute('role')).toBe('img');
+      expect(pill.getAttribute('aria-label')).toBe('Concierge: Unmoderated');
+      // ONE tone whoever set it — provenance is never a colour.
+      expect(pill.className).not.toContain('qt-danger-badge-muted');
+      expect(pill.querySelector('qt-icon span[data-icon]')?.getAttribute('data-icon')).toBe(
+        'eye-off',
+      );
+    }
   });
 
-  it('renders ONE muted Vouched Safe pill even when the label underneath is true', () => {
-    // The pre-existing v5 divergence P4.D141 fixed: two INDEPENDENT `@if` pills
-    // rendered BOTH an off-duty and a flagged badge for this exact chat, where
-    // v4 renders one.
-    const fixture = render(chatDetail({ isDangerousChat: true, conciergeOverride: 'OFF' }));
+  it('renders ONE muted Locked pill', () => {
+    const fixture = render(chatDetail({ conciergeState: 'locked', conciergeSetBy: 'operator' }));
     const pills = badges(fixture);
     expect(pills).toHaveLength(1);
-    expect(pills[0].textContent?.trim()).toBe('Vouched Safe');
+    expect(pills[0].textContent?.trim()).toBe('Locked');
     expect(pills[0].className).toContain('qt-danger-badge-muted');
-    expect(pills[0].getAttribute('aria-label')).toBe('Concierge: Vouched Safe');
+    expect(pills[0].getAttribute('aria-label')).toBe('Concierge: Locked');
     expect(pills[0].querySelector('qt-icon span[data-icon]')?.getAttribute('data-icon')).toBe(
-      'check-circle',
-    );
-  });
-
-  it('renders ONE info Uncensored pill, never the danger one', () => {
-    const fixture = render(
-      chatDetail({ isDangerousChat: true, conciergeOverride: 'UNCENSORED' }),
-    );
-    const pills = badges(fixture);
-    expect(pills).toHaveLength(1);
-    expect(pills[0].textContent?.trim()).toBe('Uncensored');
-    expect(pills[0].className).toContain('qt-danger-badge-info');
-    expect(pills[0].getAttribute('aria-label')).toBe('Concierge: Uncensored');
-    expect(pills[0].querySelector('qt-icon span[data-icon]')?.getAttribute('data-icon')).toBe(
-      'eye-off',
+      'shield',
     );
   });
 
@@ -324,17 +313,22 @@ describe('ConversationHeader — the Concierge badge (v4 SalonView.tsx:1088-1112
       TestBed.resetTestingModule();
     });
 
-    it("speaks the presentation table's words, and names the categories on Flagged", async () => {
+    it("names the classifier's categories when the classifier moved the chat", async () => {
       const fixture = render(
-        chatDetail({ isDangerousChat: true, dangerCategories: ['nsfw', 'violence'] }),
+        chatDetail({
+          conciergeState: 'unmoderated',
+          conciergeSetBy: 'concierge',
+          conciergeReason: 'classifier',
+          dangerCategories: ['nsfw', 'violence'],
+        }),
       );
 
       await hover(fixture);
 
       const text = bubble()!.textContent ?? '';
-      expect(text).toContain('Flagged');
+      expect(text).toContain('Unmoderated');
       expect(text).toContain(
-        'The Concierge has this chat down as dangerous, and routes it through the uncensored providers.',
+        'The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.',
       );
       expect(text).toContain('Categories');
       expect(text).toContain('nsfw, violence');
@@ -345,11 +339,13 @@ describe('ConversationHeader — the Concierge badge (v4 SalonView.tsx:1088-1112
       expect(bubble()!.getAttribute('data-placement')).toBe('bottom');
     });
 
-    it('never surfaces a preserved category list on an operator state', async () => {
+    it('is the ONE place that names the refusal count (v4 SalonView :1197-1201)', async () => {
       const fixture = render(
         chatDetail({
-          isDangerousChat: true,
-          conciergeOverride: 'OFF',
+          conciergeState: 'unmoderated',
+          conciergeSetBy: 'concierge',
+          conciergeReason: 'refusals',
+          conciergeRefusalCount: 2,
           dangerCategories: ['nsfw'],
         }),
       );
@@ -358,7 +354,27 @@ describe('ConversationHeader — the Concierge badge (v4 SalonView.tsx:1088-1112
 
       const text = bubble()!.textContent ?? '';
       expect(text).toContain(
-        'You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.',
+        'The Concierge moved this chat to the uncensored desk after two refusals. Set it back to Moderated if you disagree.',
+      );
+      // A refusals move never lists the categories.
+      expect(text).not.toContain('Categories');
+    });
+
+    it("never surfaces a preserved category list on the operator's state", async () => {
+      const fixture = render(
+        chatDetail({
+          conciergeState: 'unmoderated',
+          conciergeSetBy: 'operator',
+          conciergeReason: 'manual',
+          dangerCategories: ['nsfw'],
+        }),
+      );
+
+      await hover(fixture);
+
+      const text = bubble()!.textContent ?? '';
+      expect(text).toContain(
+        'You have opened the uncensored door yourself. Nothing here goes near a moderated provider.',
       );
       expect(text).not.toContain('Categories');
     });

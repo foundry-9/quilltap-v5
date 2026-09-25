@@ -19,7 +19,7 @@ function chat(over: Partial<EnrichedChatSummary>): EnrichedChatSummary {
     tags: [],
     project: null,
     storyBackground: null,
-    conciergeState: 'monitored',
+    conciergeState: 'moderated',
     dangerCategories: [],
     chatType: 'salon',
     scriptoriumStatus: 'none',
@@ -70,19 +70,19 @@ describe('SalonList', () => {
     const fixture = await render(
       stubClient([
         chat({ id: 'a', title: 'Tea with Bertie', _count: { messages: 5, memories: 2 } }),
-        chat({ id: 'b', title: 'A Dangerous Salon', conciergeState: 'flagged' }),
+        chat({ id: 'b', title: 'A Dangerous Salon', conciergeState: 'unmoderated' }),
       ]),
     );
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Tea with Bertie');
     expect(text).toContain('5');
-    // The Concierge asterisk — one, on the flagged chat, in the danger tone
+    // The Concierge asterisk — one, on the Unmoderated chat, in the danger tone
     // (the base rule, no modifier) and with no native title.
     const marks = Array.from(
       fixture.nativeElement.querySelectorAll('.qt-concierge-mark'),
     ) as HTMLElement[];
     expect(marks).toHaveLength(1);
-    expect(marks[0].getAttribute('aria-label')).toBe('Concierge: Flagged');
+    expect(marks[0].getAttribute('aria-label')).toBe('Concierge: Unmoderated');
     // Angular's `[class]` binding applies tokens through `classList`, so the
     // attribute's ORDER is not v4's; the ordered string is pinned at its
     // source by `conciergeMarkClasses` (concierge-mark.spec.ts). What matters

@@ -38,7 +38,13 @@ import {
   type LlmLogDto,
 } from '../../chat/llm-logs.api';
 import { MessageList } from '../../chat/message-list';
-import { shouldShowDangerStyling } from '../../chat/concierge-state';
+import {
+  getConciergeProvenance,
+  getConciergeReason,
+  getConciergeState,
+  shouldShowDangerStyling,
+} from '../../chat/concierge-state';
+import type { ConciergeProvenanceNote } from '../../chat/concierge-state-presentation';
 import { rebuildChatSummary } from '../../chat/chat-admin.api';
 import { ChatSidebar } from '../../chat/sidebar/chat-sidebar';
 import type { ChatSectionState } from '../../chat/sidebar/chat-section';
@@ -350,8 +356,8 @@ interface CascadePrompt {
           [respondingParticipantId]="stream()?.respondingParticipantId ?? null"
           [impersonatingParticipantIds]="impersonatingIds()"
           [activeTypingParticipantId]="activeSpeakerId()"
-          [isDangerousChat]="c.isDangerousChat === true"
-          [conciergeOverride]="c.conciergeOverride ?? null"
+          [conciergeState]="conciergeState()"
+          [conciergeProvenance]="conciergeProvenance()"
           [chatId]="c.id"
           [chatSectionState]="chatSectionState()"
           [storyBackgroundsEnabled]="storyBackgroundsEnabled()"
@@ -2056,15 +2062,32 @@ export class SalonConversation {
 
   /**
    * What the message rows paint. v4 computes the verdict in the Salon and passes
-   * it down (`SalonView.tsx:1489` — `isDangerousChat={shouldShowDangerStyling(chat)}`
-   * → `VirtualizedMessageList`), so a Flagged chat rings its assistant avatars
-   * while an operator-Uncensored one takes the same routes unpainted. NOT the
-   * raw `chat.isDangerousChat`: `SalonView.tsx:1876` passes THAT to the sidebar,
-   * a different consumer.
+   * it down (`isDangerousChat={shouldShowDangerStyling(chat)}` →
+   * `VirtualizedMessageList`) — since v4 `4d370a90f` that is Unmoderated,
+   * WHOEVER set it, so an operator-set Unmoderated chat now rings its assistant
+   * avatars too (it used to be left unpainted). NOT the raw
+   * `chat.isDangerousChat` — the classifier's telemetry, read by no display.
    */
   protected readonly isDangerousChat = computed(() =>
     shouldShowDangerStyling(this.chat()),
   );
+
+  /**
+   * The sidebar's Concierge props (v4 `SalonView.tsx` at `4d370a90f`:
+   * `conciergeState={getConciergeState(chat)}` +
+   * `conciergeProvenance={{ setBy, reason, refusalCount: chat?.conciergeRefusalCount }}`).
+   * v4 removed the sidebar's `isDangerousChat` and `conciergeOverride` props in
+   * the same commit.
+   */
+  protected readonly conciergeState = computed(() => getConciergeState(this.chat()));
+  protected readonly conciergeProvenance = computed<ConciergeProvenanceNote>(() => {
+    const chat = this.chat();
+    return {
+      setBy: getConciergeProvenance(chat),
+      reason: getConciergeReason(chat),
+      refusalCount: chat?.conciergeRefusalCount,
+    };
+  });
 
   /**
    * The rendered flow: the reconciled transcript (with the swipe override

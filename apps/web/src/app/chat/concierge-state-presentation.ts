@@ -1,17 +1,22 @@
 import type { IconName } from '../ui/icon';
-import type { ConciergeState } from './concierge-state';
+import type { ConciergeProvenance, ConciergeReason, ConciergeState } from './concierge-state';
 
 /**
- * How the Concierge's four states are *shown* — the single source for every
+ * How the Concierge's three states are *shown* — the single source for every
  * word, icon and tone a UI puts on screen (v4
  * `lib/services/dangerous-content/concierge-state-presentation.ts`, new at
- * `c43d3b1b4`).
+ * `c43d3b1b4`, three states since `4d370a90f` #75, the `info` tone retired at
+ * `3b463d6b1` #76).
  *
  * Its sibling, `concierge-state.ts`, is the single source for *deriving* a
- * state from a chat's two stored fields. This module never derives anything;
- * hand it a {@link ConciergeState} and it hands back the presentation.
+ * state (and its provenance) from a chat. This module never derives anything;
+ * hand it a {@link ConciergeState} — and, for Unmoderated, who put the chat
+ * there — and it hands back the presentation.
  *
- * It exists because the same four states were being described in three places
+ * Provenance is a note, never a colour: Unmoderated is one tone whoever set
+ * it, and only the helper sentence changes.
+ *
+ * It exists because the same states were being described in three places
  * with three different sets of words — the Salon header pill's `title`
  * strings, the sidebar's helper sentences, and the list asterisk's terse
  * "Flagged as dangerous" — and a fourth consumer by copy-paste is how the copy
@@ -31,12 +36,13 @@ import type { ConciergeState } from './concierge-state';
  */
 
 /**
- * The colour families the four states speak in. `danger` is the red of the
- * Concierge's own verdict, `muted` the grey of a state he is not party to,
- * `info` the blue of a door the operator opened, `success` the green of a
- * watch being kept.
+ * The colour families the states speak in. `danger` is the red of the
+ * uncensored desk, `muted` the grey of a chat locked to the ordinary desks,
+ * `success` the green of a watch being kept. (`info`, the blue of the retired
+ * operator-asserted Uncensored state, was removed in v4's phase 4 with its
+ * CSS — and here with its two `_chat.css` rules.)
  */
-export type ConciergeTone = 'danger' | 'muted' | 'info' | 'success';
+export type ConciergeTone = 'danger' | 'muted' | 'success';
 
 export interface ConciergeStatePresentation {
   /** Short label — badge text, aria-label, tooltip title. */
@@ -55,54 +61,68 @@ export interface ConciergeStatePresentation {
 const CHANGE_HINT = "Change it from the Salon sidebar's Chat section.";
 
 /**
- * THE table. Four states, four presentations; every badge, mark, icon and
+ * THE table. Three states, three presentations; every badge, mark, icon and
  * helper sentence in the application reads from here, so a copy edit lands
- * everywhere at once.
+ * everywhere at once. Unmoderated's `detail` is the operator's variant;
+ * {@link describeConciergeState} swaps in the Concierge's when he set it.
  */
 export const CONCIERGE_STATE_PRESENTATION: Record<ConciergeState, ConciergeStatePresentation> = {
-  monitored: {
-    label: 'Monitored',
+  moderated: {
+    label: 'Moderated',
     icon: 'eye',
     tone: 'success',
     detail:
-      'The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.',
+      'The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.',
     hint: CHANGE_HINT,
   },
-  flagged: {
-    label: 'Flagged',
-    icon: 'alert-triangle',
+  unmoderated: {
+    label: 'Unmoderated',
+    icon: 'eye-off',
     tone: 'danger',
     detail:
-      'The Concierge has this chat down as dangerous, and routes it through the uncensored providers.',
+      'You have opened the uncensored door yourself. Nothing here goes near a moderated provider.',
     hint: CHANGE_HINT,
   },
-  vouched: {
-    label: 'Vouched Safe',
-    icon: 'check-circle',
+  locked: {
+    label: 'Locked',
+    icon: 'shield',
     tone: 'muted',
     detail:
-      'You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.',
-    hint: CHANGE_HINT,
-  },
-  uncensored: {
-    label: 'Uncensored',
-    icon: 'eye-off',
-    tone: 'info',
-    detail:
-      'You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.',
+      'Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.',
     hint: CHANGE_HINT,
   },
 };
 
+const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+
+/**
+ * The Concierge's own variant of Unmoderated's helper sentence, by why he
+ * moved the chat. A migrated chat the classifier had flagged reads as the
+ * classifier's.
+ */
+function conciergeMovedDetail(
+  reason: ConciergeReason | null | undefined,
+  refusalCount?: number | null,
+): string {
+  if (reason === 'refusals') {
+    const n = refusalCount ?? 0;
+    const counted =
+      n > 0
+        ? ` after ${n < NUMBER_WORDS.length ? NUMBER_WORDS[n] : n} ${n === 1 ? 'refusal' : 'refusals'}`
+        : ' after the usual providers refused it';
+    return `The Concierge moved this chat to the uncensored desk${counted}. Set it back to Moderated if you disagree.`;
+  }
+  return 'The Concierge moved this chat to the uncensored desk on reading the conversation. Set it back to Moderated if you disagree.';
+}
+
 /**
  * Tone → the class suffix shared by the `qt-danger-badge` and
  * `qt-concierge-mark` families. `danger` is the base rule, so it suffixes with
- * nothing; `success` has no modifier in either family (Monitored draws no badge
+ * nothing; `success` has no modifier in either family (Moderated draws no badge
  * and no mark) and likewise falls through to the base.
  */
-export function conciergeToneSuffix(tone: ConciergeTone): '' | '-muted' | '-info' {
+export function conciergeToneSuffix(tone: ConciergeTone): '' | '-muted' {
   if (tone === 'muted') return '-muted';
-  if (tone === 'info') return '-info';
   return '';
 }
 
@@ -117,8 +137,6 @@ export function conciergeToneTextClass(tone: ConciergeTone): string {
   switch (tone) {
     case 'muted':
       return 'qt-text-muted';
-    case 'info':
-      return 'qt-text-info';
     case 'success':
       return 'qt-text-success';
     default:
@@ -130,34 +148,59 @@ export function conciergeToneTextClass(tone: ConciergeTone): string {
 export interface ConciergeStateDescription {
   /** The state's short label — the tooltip's title line. */
   title: string;
-  /** The full sentence. */
+  /** The full sentence, in the variant the provenance calls for. */
   detail: string;
-  /** The classifier's categories — Flagged only, and only when it has any. */
+  /** The classifier's categories — Unmoderated by the classifier only, and only when it has any. */
   categories: string[] | null;
   /** Where to change the state. */
   hint: string;
 }
 
 /**
- * Describe a state for a tooltip or an accessible summary.
+ * The provenance note a tooltip or helper text needs (v4
+ * `ConciergeProvenanceNote`). A NAMED object type on purpose: v4 moved the
+ * categories from the 2nd argument to the 3rd, and a stale two-argument call
+ * passing a `string[]` second must not compile (an array has no `setBy`, but
+ * a weak all-optional type would still accept it — see the guard below).
+ */
+export interface ConciergeProvenanceNote {
+  setBy?: ConciergeProvenance;
+  reason?: ConciergeReason | null;
+  /** Refusals on the ledger — for "after N refusals". Only the header pill and the sidebar pass it. */
+  refusalCount?: number | null;
+  /** Never set: makes an array (a stale categories argument) unassignable. */
+  length?: never;
+}
+
+/**
+ * Describe a state for a tooltip, helper text or an accessible summary.
  *
- * `dangerCategories` is surfaced only for `'flagged'`: they are the
- * classifier's own reasons, and on the two operator states they are a
- * preserved artefact of an earlier scan rather than a live verdict.
+ * Unmoderated picks its sentence by provenance: the operator's own, or the
+ * Concierge's with his reason. `dangerCategories` is surfaced only when the
+ * classifier's verdict is what moved the chat — they are its reasons; on any
+ * other state they are a preserved artefact of an earlier scan.
  */
 export function describeConciergeState(
   state: ConciergeState,
+  provenance: ConciergeProvenanceNote = {},
   dangerCategories?: string[],
 ): ConciergeStateDescription {
   const presentation = CONCIERGE_STATE_PRESENTATION[state];
+  const byConcierge = state === 'unmoderated' && provenance.setBy === 'concierge';
+  const detail = byConcierge
+    ? conciergeMovedDetail(provenance.reason, provenance.refusalCount)
+    : presentation.detail;
   const categories =
-    state === 'flagged' && dangerCategories && dangerCategories.length > 0
+    byConcierge &&
+    provenance.reason !== 'refusals' &&
+    dangerCategories &&
+    dangerCategories.length > 0
       ? dangerCategories
       : null;
 
   return {
     title: presentation.label,
-    detail: presentation.detail,
+    detail,
     categories,
     hint: presentation.hint,
   };
