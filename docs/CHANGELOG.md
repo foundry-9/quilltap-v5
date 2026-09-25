@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — fix(spa/settings): keep the retired Concierge keys out of the cheap-LLM and Image Description saves (v4 #76's 400; P4.D230)
+
+_Versions: SPA 0.5.775._
+
+v4 #76 makes the settings PUT answer 400 when `cheapLLMSettings` contains
+`imagePromptProfileId` (even as `null`) or when the body carries
+`uncensoredImageDescriptionProfileId`. The cheap-LLM card spread the whole
+GET bag back into its PUT, so any row still carrying the key would have
+failed every save; it now sends only the six keys it declares. The Image
+Description card drops its uncensored fallback picker and its save of the
+retired key, and links to The Concierge → The Uncensored Desk instead,
+with #76's subtitle. Both fixes landed red-first against specs that assert
+the PUT body's exact key set.
+
 #### 2026-09-25 — feat(spa/settings): the Concierge's own Settings tab (v4 #76) — five cards over `conciergeSettings`, the Dangerous Content card retired (P4.D230)
 
 _Versions: SPA 0.5.774._

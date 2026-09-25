@@ -1,5 +1,6 @@
 import type { ComponentFixture } from '@angular/core/testing';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -84,7 +85,11 @@ async function mount<T>(component: new (...args: never[]) => T, s: Stub): Promis
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [component as never],
-    providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: s.client }],
+    providers: [
+      provideRouter([]),
+      provideTanStackQuery(new QueryClient()),
+      { provide: CoreClient, useValue: s.client },
+    ],
   });
   const fixture = TestBed.createComponent(component as never) as ComponentFixture<T>;
   fixture.detectChanges();
@@ -163,11 +168,41 @@ describe('ImageDescriptionSettings', () => {
     expect(s.updates).toEqual([{ imageDescriptionProfileId: null }]);
   });
 
-  it('PUTs the fallback id under its own key', async () => {
+  /**
+   * v4 #76 (`3b463d6b1`): the uncensored fallback left this card for the
+   * Concierge's vision profile, and the server now answers 400 to ANY PUT
+   * carrying `uncensoredImageDescriptionProfileId`. The card offers a link in
+   * the picker's place and never sends the key.
+   */
+  it('has no uncensored fallback picker — a link to the Concierge\'s desk instead (v4 #76)', async () => {
+    const s = stub(settingsRow({ uncensoredImageDescriptionProfileId: 'p-vision' }), [VISION]);
+    const fixture = await mount(ImageDescriptionSettings, s);
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('#image-desc-fallback')).toBeNull();
+    expect(root.querySelectorAll('select')).toHaveLength(1);
+    const note = Array.from(root.querySelectorAll('p.qt-text-xs')).find((p) =>
+      (p.textContent ?? '').includes('uncensored fallback'),
+    );
+    expect((note?.textContent ?? '').replace(/\s+/g, ' ').trim()).toBe(
+      'The uncensored fallback, for when this profile refuses to describe an image, now keeps company with the Concierge: see its vision profile under The Concierge → The Uncensored Desk.',
+    );
+    const link = note?.querySelector('a.qt-link');
+    expect(link?.getAttribute('href')).toBe('/settings?tab=concierge&section=uncensored-desk');
+  });
+
+  it('carries #76\'s subtitle', async () => {
     const s = stub(settingsRow(), [VISION]);
     const fixture = await mount(ImageDescriptionSettings, s);
-    await choose(fixture, select(fixture, 'image-desc-fallback'), 'p-vision');
-    expect(s.updates).toEqual([{ uncensoredImageDescriptionProfileId: 'p-vision' }]);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      "When you attach an image to a chat with a provider that doesn't support images (like Ollama, OpenRouter, etc.), this profile describes it in text.",
+    );
+  });
+
+  it('PUTs the primary alone — the body never carries the retired uncensored key (P4.D230)', async () => {
+    const s = stub(settingsRow({ uncensoredImageDescriptionProfileId: 'p-vision' }), [VISION]);
+    const fixture = await mount(ImageDescriptionSettings, s);
+    await choose(fixture, select(fixture, 'image-desc-primary'), 'p-vision');
+    expect(s.updates.map((u) => Object.keys(u))).toEqual([['imageDescriptionProfileId']]);
   });
 });
 

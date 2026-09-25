@@ -24,6 +24,24 @@ interface CheapLLMSettings {
   embeddingProvider: EmbeddingProvider;
 }
 
+/**
+ * The keys this card owns, and the ONLY keys its PUT may carry (P4.D230). v4
+ * #76 (`3b463d6b1`) moved `imagePromptProfileId` out of this bag into
+ * `conciergeSettings`, and the settings PUT now answers 400 when the bag merely
+ * CONTAINS it (an explicit `null` counts). v4's own writer spreads the GET bag
+ * back into the PUT and survives only because v4's Zod strips the key on read;
+ * this card never trusts that — it sends what it declares, nothing it merely
+ * received.
+ */
+const CHEAP_KEYS: readonly (keyof CheapLLMSettings)[] = [
+  'strategy',
+  'userDefinedProfileId',
+  'defaultCheapProfileId',
+  'fallbackToLocal',
+  'allowCheapFallback',
+  'embeddingProvider',
+];
+
 const DEFAULT_CHEAP: CheapLLMSettings = {
   strategy: 'PROVIDER_CHEAPEST',
   fallbackToLocal: true,
@@ -242,9 +260,12 @@ export class CheapLlmCard {
   protected readonly profiles = computed(() => this.profilesQuery.data() ?? []);
 
   protected readonly cheap = computed<CheapLLMSettings>(() => {
-    const raw = this.settingsQuery.data()?.['cheapLLMSettings'] as
-      Partial<CheapLLMSettings> | undefined;
-    return { ...DEFAULT_CHEAP, ...(raw ?? {}) };
+    const raw = (this.settingsQuery.data()?.['cheapLLMSettings'] ?? {}) as Record<string, unknown>;
+    const declared: Partial<CheapLLMSettings> = {};
+    for (const key of CHEAP_KEYS) {
+      if (key in raw) (declared as Record<string, unknown>)[key] = raw[key];
+    }
+    return { ...DEFAULT_CHEAP, ...declared };
   });
 
   protected profileLabel(p: ConnectionProfileDto): string {

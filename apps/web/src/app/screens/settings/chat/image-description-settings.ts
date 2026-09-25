@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import type { ConnectionProfileDto } from '../../../core/core-contract';
@@ -12,13 +13,14 @@ import { SettingsCard } from './settings-card';
  * attached image when the chat's own provider can't see it (Ollama, some
  * OpenRouter models, …).
  *
- * Two profiles, each a nullable-string scalar of its own (v4 sends them alone,
- * NOT inside a bag):
- *  - **Primary** (`imageDescriptionProfileId`) — tried for every attached image.
- *  - **Uncensored fallback** (`uncensoredImageDescriptionProfileId`) — used only
- *    when the primary refuses or returns an unusable response. Optional.
+ * One profile, a nullable-string scalar sent alone (NOT inside a bag):
+ * `imageDescriptionProfileId`, tried for every attached image. The select
+ * filters the connection profiles to `supportsImageUpload === true`.
  *
- * Both selects filter the connection profiles to `supportsImageUpload === true`.
+ * The uncensored fallback (used when this profile refuses) left this card with
+ * v4 #76 (`3b463d6b1`): it is the Concierge's vision profile now, and the card
+ * links there instead. The retired `uncensoredImageDescriptionProfileId` must
+ * never be sent — the server answers 400 to any PUT carrying it (P4.D230).
  * The engine side is already ported; this is the picker.
  *
  * The `[selected]`-per-option binding is BINDING here (the dogfood-#6 audit
@@ -28,14 +30,14 @@ import { SettingsCard } from './settings-card';
 @Component({
   selector: 'qt-image-description-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ErrorAlert, SettingsCard],
+  imports: [ErrorAlert, RouterLink, SettingsCard],
   template: `
     @if (loading()) {
       <p class="qt-text-small qt-text-muted">Loading image-description settings…</p>
     } @else {
       <qt-settings-card
         title="Image Description Profiles"
-        subtitle="When you attach an image to a chat with a provider that doesn't support images (like Ollama, OpenRouter, etc.), the primary profile describes it in text. If the primary refuses or returns an unusable response, the uncensored fallback profile tries instead."
+        subtitle="When you attach an image to a chat with a provider that doesn't support images (like Ollama, OpenRouter, etc.), this profile describes it in text."
       >
         @if (saveError(); as msg) {
           <qt-error-alert [message]="msg" class="mb-3" />
@@ -74,31 +76,16 @@ import { SettingsCard } from './settings-card';
             }
           </div>
 
-          <div>
-            <label for="image-desc-fallback" class="block qt-text-label mb-2">
-              Uncensored fallback profile
-            </label>
-            <p class="qt-text-xs mb-2">
-              Optional. Used only when the primary profile refuses to describe an image. A more
-              permissive vision model (a local Ollama llava variant, an uncensored router model,
-              etc.) is the usual choice. Leave blank to skip the fallback.
-            </p>
-            <select
-              id="image-desc-fallback"
-              class="qt-select"
-              [disabled]="saving() || loadingProfiles()"
-              (change)="onUncensoredProfileChange($any($event.target).value)"
-            >
-              <option value="" [selected]="!fallbackId()">
-                No fallback (recommended for benign content)
-              </option>
-              @for (profile of visionProfiles(); track profile.id) {
-                <option [value]="profile.id" [selected]="fallbackId() === profile.id">
-                  {{ optionLabel(profile) }}
-                </option>
-              }
-            </select>
-          </div>
+          <p class="qt-text-xs">
+            The uncensored fallback, for when this profile refuses to describe an image, now keeps
+            company with the Concierge: see its vision profile under
+            <a
+              routerLink="/settings"
+              [queryParams]="{ tab: 'concierge', section: 'uncensored-desk' }"
+              class="qt-link"
+              >The Concierge → The Uncensored Desk</a
+            >.
+          </p>
         </div>
       </qt-settings-card>
     }
@@ -127,10 +114,6 @@ export class ImageDescriptionSettings extends ChatSettingsCard {
   protected readonly primaryId = computed(
     () => (this.settings()?.['imageDescriptionProfileId'] as string | null | undefined) ?? '',
   );
-  protected readonly fallbackId = computed(
-    () =>
-      (this.settings()?.['uncensoredImageDescriptionProfileId'] as string | null | undefined) ?? '',
-  );
 
   /** v4 `{profile.name} ({profile.provider} • {profile.modelName}){' ⚠️ No API Key'}`. */
   protected optionLabel(profile: ConnectionProfileDto): string {
@@ -143,13 +126,6 @@ export class ImageDescriptionSettings extends ChatSettingsCard {
     await this.save(
       { imageDescriptionProfileId: raw || null },
       'Failed to update image description profile',
-    );
-  }
-
-  protected async onUncensoredProfileChange(raw: string): Promise<void> {
-    await this.save(
-      { uncensoredImageDescriptionProfileId: raw || null },
-      'Failed to update uncensored image description profile',
     );
   }
 }

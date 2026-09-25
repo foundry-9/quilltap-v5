@@ -149939,6 +149939,30 @@ Order: `work-orders/p4.d230-concierge-spa-settings-side.md`. Branch
 - Gate at this commit: `npm run lint` clean (958 classes); `npm test`
   **455 files / 7,944** (base 452 / 7,919); `npm run build` clean.
 
+### Unit 2 — the retired-key 400 kept out of the two other writers (red-first)
+
+- **`providers/cheap-llm-card.ts`**: `cheap()` spread the WHOLE GET bag
+  (`{ ...DEFAULT_CHEAP, ...raw }`) and `update()` PUT it back — so any row
+  still carrying `imagePromptProfileId` (an unstripped bag, a pre-P4.D227
+  server) turned EVERY cheap-LLM save into v4 #76's 400. Now `CHEAP_KEYS`
+  (the six keys the card declares) is the only thing read from the row and
+  the only thing sent. v4's own `handleCheapLLMUpdate` still spreads — it
+  survives only because v4's Zod strips the key on read; v5 does not rely on
+  the server having stripped it.
+- **`chat/image-description-settings.ts`**: the uncensored fallback picker,
+  `fallbackId`, and `onUncensoredProfileChange` (which sent
+  `uncensoredImageDescriptionProfileId`) removed; #76's subtitle; the
+  `qt-text-xs` paragraph with the `qt-link` (`routerLink="/settings"` +
+  `queryParams` → `href="/settings?tab=concierge&section=uncensored-desk"`).
+- **Red-first:** 3 of the 4 new cases RED on the pre-fix tree (the cheap-LLM
+  key set; the no-fallback/link case; the subtitle); the fourth ("PUTs the
+  primary alone") is a guard that was already green — v5's primary save was
+  always a bare scalar; the retired key only ever left through the removed
+  picker. The old "PUTs the fallback id under its own key" case retired.
+- **Not a writer of a retired key (checked):** `wizard/wizard-api.ts:94-97`
+  sends `cheapLLMSettings: { strategy, profileId? }` — no retired key.
+- Gate at this commit: lint clean; `npm test` **455 files / 7,947**; build clean.
+
 ## P4.D229 — the Concierge overhaul's CLIENT, Salon side (lane record, 2026-09-25)
 
 Lane branch `claude/p4-d229-concierge-spa-salon-47eff0`, cut from `main`

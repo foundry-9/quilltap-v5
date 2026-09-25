@@ -75,6 +75,51 @@ describe('CheapLlmCard', () => {
   });
 
   /**
+   * v4 #76 (`3b463d6b1`): `PUT /api/v1/settings/chat` answers 400 when
+   * `cheapLLMSettings` merely CONTAINS `imagePromptProfileId` (`typeof !==
+   * 'undefined'` — an explicit `null` counts). The key moved into
+   * `conciergeSettings`. This card used to spread the WHOLE GET bag into its
+   * PUT, so a row still carrying the key (a pre-strip server, an unmigrated
+   * bag) made EVERY cheap-LLM save a 400. It now sends only the keys it
+   * declares — and only those the row actually has.
+   */
+  it('PUTs only its declared keys — never the retired imagePromptProfileId (P4.D230)', async () => {
+    const updates: CoreRequest[] = [];
+    const client: Partial<CoreClient> = {
+      dispatchExpect: makeDispatchExpect(
+        {
+          cheapLLMSettings: {
+            strategy: 'PROVIDER_CHEAPEST',
+            userDefinedProfileId: null,
+            fallbackToLocal: false,
+            embeddingProvider: 'OPENAI',
+            imagePromptProfileId: null,
+            someFutureKey: 'x',
+          },
+        },
+        (req) => updates.push(req),
+      ),
+    };
+    const fixture = await render(client);
+    const radios = Array.from(
+      fixture.nativeElement.querySelectorAll('input[name="cheapLLMStrategy"]'),
+    ) as HTMLInputElement[];
+    radios[0].dispatchEvent(new Event('change'));
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    expect(updates).toHaveLength(1);
+    const body = (updates[0] as unknown as { settings: Record<string, unknown> }).settings;
+    expect(Object.keys(body)).toEqual(['cheapLLMSettings']);
+    const bag = body['cheapLLMSettings'] as Record<string, unknown>;
+    expect(Object.keys(bag).sort()).toEqual(
+      ['embeddingProvider', 'fallbackToLocal', 'strategy', 'userDefinedProfileId'].sort(),
+    );
+    expect(bag['strategy']).toBe('USER_DEFINED');
+    expect(bag['userDefinedProfileId']).toBeNull();
+  });
+
+  /**
    * v4 `bbcb318c6` (release-checklist item 7): the "Allow a Similar-Tier
    * Stand-In" input had copied its "Fallback to Local" sibling's raw
    * `className="rounded"`, and both moved onto the shared `qt-checkbox`. v5's
