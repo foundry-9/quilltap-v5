@@ -858,8 +858,9 @@ pub async fn system_unlock_post(
         )
             .into_response(),
         // v4 `runUnlockAction`'s catch (`ad1c4c37f`, `route.ts:90-109`): a
-        // THROW inside the action — v5's `Internal` kind, the `.dbkey` rewrite
-        // failing rather than a refusal the handler returns — is logged at
+        // THROW inside the action — v5's `Internal` kind, which core answers
+        // ONLY for the `.dbkey` REWRITE failing (`DbKeyError::Write`); every
+        // read-side failure is a returned 401, as v4's — is logged at
         // ERROR and answered `serverError(error.message)`. Until `ad1c4c37f`
         // v4's `return dispatchUnlockAction(…)` was not awaited inside the
         // `try`, so an async throw escaped the catch and the line never fired;

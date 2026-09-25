@@ -188,6 +188,16 @@ fn every_action_read_goes_through_the_one_helper() {
         }
         let src = std::fs::read_to_string(path).unwrap();
         let body = strip_test_modules(&src);
+        // The second door: a typed extractor (`Query<T>` over a `Deserialize`
+        // struct with a field named `action`, or a `#[serde(rename = "action")]`
+        // field) reads the key with NO string literal — the pre-P4.D220
+        // `terminal_routes.rs` did exactly that. Counted to ZERO; nothing may
+        // read the action key past the one helper by any spelling.
+        let typed = typed_action_fields(&body) + src.matches("rename = \"action\"").count();
+        assert_eq!(
+            typed, 0,
+            "{name}: {typed} typed `action` extractor field(s) — read it through query::dispatch_action"
+        );
         let n = body.matches("\"action\"").count();
         if n > 0 {
             found.push((name, n));
@@ -208,6 +218,86 @@ fn every_action_read_goes_through_the_one_helper() {
 /// The strip itself: a `"action"` inside a comment or a test module is not a
 /// read; one in live code is — and a brace inside a literal does not end the
 /// test module early.
+/// Struct fields named `action` in the stripped body — the shape a `Query<T>`
+/// / `Json<T>` extractor declares. Only `struct … { … }` BODIES are scanned
+/// (found by brace balance on the literal-blanked copy), so a function
+/// parameter named `action`, a struct-literal `action: value` in an
+/// expression, and an `action::` path never count. Inside a body, a field is
+/// the whole-word identifier `action` followed by `:` (not `::`).
+fn typed_action_fields(body: &str) -> usize {
+    let chars: Vec<char> = body.chars().collect();
+    let blank: Vec<char> = blank_literals(body).chars().collect();
+    let is_ident = |c: char| c.is_alphanumeric() || c == '_';
+    let word_at = |i: usize, w: &str| -> bool {
+        let n: Vec<char> = w.chars().collect();
+        blank[i..].starts_with(&n)
+            && (i == 0 || !is_ident(blank[i - 1]))
+            && !blank.get(i + n.len()).copied().is_some_and(is_ident)
+    };
+    let mut count = 0;
+    let mut i = 0;
+    while i < blank.len() {
+        if word_at(i, "struct") {
+            // the body opens at the next `{`; a `;` or `(` first means a unit
+            // or tuple struct (no named fields)
+            let mut j = i + 6;
+            while j < blank.len() && !matches!(blank[j], '{' | ';' | '(') {
+                j += 1;
+            }
+            if j < blank.len() && blank[j] == '{' {
+                let open = j;
+                let mut depth = 0i32;
+                while j < blank.len() {
+                    match blank[j] {
+                        '{' => depth += 1,
+                        '}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    j += 1;
+                }
+                let close = j.min(blank.len());
+                let mut k = open + 1;
+                while k + 6 <= close {
+                    if word_at(k, "action") {
+                        let mut m = k + 6;
+                        while m < close && chars[m].is_whitespace() {
+                            m += 1;
+                        }
+                        if chars.get(m) == Some(&':') && chars.get(m + 1) != Some(&':') {
+                            count += 1;
+                        }
+                    }
+                    k += 1;
+                }
+                i = close + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    count
+}
+
+#[test]
+fn the_typed_extractor_door_is_seen() {
+    let src = r#"
+#[derive(Deserialize)]
+pub struct ActionQuery {
+    action: Option<String>,
+}
+struct Other { pub action: String, other: u8 }
+fn live(action: &str) { let r = Refused { action: a.to_string() }; let _ = action::x; }
+struct Unit;
+struct Tuple(String);
+"#;
+    assert_eq!(typed_action_fields(&strip_test_modules(src)), 2, "{src}");
+}
+
 #[test]
 fn the_strip_keeps_live_code_and_drops_tests_and_comments() {
     let src = r#"

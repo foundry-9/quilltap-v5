@@ -887,6 +887,16 @@ pub async fn characters_get(
         Ok(v) => v,
         Err(resp) => return *resp,
     };
+    // Ownership (single-user): the overlaid character must exist — v4 runs
+    // `findById` → `notFound('Character')` BEFORE `dispatchAction`
+    // (`get.ts:35-39`), so a bare or unknown action on a missing character is
+    // the 404, not the envelope.
+    let character = match resolve_character(&db, &id) {
+        Ok(Some(c)) => c,
+        Ok(None) => return not_found("Character"),
+        Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
+    };
+
     // v4 `dispatchAction(req, { …seven… }, payload)` (`ad1c4c37f`): a bare or
     // unknown action is v4's envelope, byte for byte. v5 serves only the
     // byte-out `export` leg; the ABSENT action (v4's full character payload)
@@ -907,13 +917,6 @@ pub async fn characters_get(
         }
         Err(r) => return *r,
     }
-
-    // Ownership (single-user): the overlaid character must exist.
-    let character = match resolve_character(&db, &id) {
-        Ok(Some(c)) => c,
-        Ok(None) => return not_found("Character"),
-        Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
-    };
 
     // A tombstone export would be a pruned shell, and the full bundle already
     // sits in the library as an ARCHIVE file (spec §4.1, v4 `d553f72a`). v4

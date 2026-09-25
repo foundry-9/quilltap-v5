@@ -17,7 +17,8 @@
 //! Banks: the slim-row read marshaling in isolation (findByIdRaw — managed fields at
 //! their Zod defaults; nullable cells omitted, JSON-object/array columns parsed,
 //! booleans coerced), the overlaid single read (findById), findAll, the userId /
-//! controlledBy filters (findByUserId / findUserControlled / findLLMControlled), the
+//! controlledBy filters (findByUserId / findUserControlled — `findLLMControlled` was
+//! deleted by v4 `ad1c4c37f` and its v5 twin retired, P4.D221), the
 //! id-set query (findByIds), and the JSON-array `json_each` filters
 //! (findByDefaultImageId / findByAvatarOverrideImageId / findByTag).
 //!

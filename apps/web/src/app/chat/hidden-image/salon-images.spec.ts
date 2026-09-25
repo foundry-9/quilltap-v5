@@ -221,6 +221,31 @@ describe('inline markdown images under the switch (v4 MessageContent.tsx:520-521
     expect(root.textContent).toContain('Look:');
   });
 
+  // Fixed at the b0b6656b5 unification (§3 review): hast escapes only `"`
+  // and `&` inside a double-quoted attribute, so a raw `>` in the alt
+  // survives into `alt="…"`; a matcher that stopped at the first `>` cut the
+  // tag short and its CLOSED replacement span ended the attribute context,
+  // turning the rest of the alt into live markup under `[innerHTML]`. v4 never
+  // string-splices (its `img` renderer returns an element), so this is v5's
+  // own hazard — pinned here through the REAL renderer, not the helper.
+  it('never lets a `>` inside the alt escape the tag (a closed stand-in must not end the attribute)', () => {
+    const root = parse(
+      renderMarkdownToHtml('![<b>x <svg onload=alert(1)>](/img/y.webp)', { imagesHidden: true }),
+    );
+    expect(root.querySelector('img')).toBeNull();
+    expect(root.querySelector('svg, b')).toBeNull();
+    const stand = root.querySelector('span[role="img"]');
+    expect(stand?.getAttribute('aria-label')).toBe('Image hidden: <b>x <svg onload=alert(1)>');
+    expect(root.textContent).toBe('Image hidden: <b>x <svg onload=alert(1)>');
+  });
+
+  it('speaks an alt that contains `>` whole, with no stray text after the stand-in', () => {
+    const root = parse(renderMarkdownToHtml('![a > b](/img/y.webp) tail', { imagesHidden: true }));
+    const stand = root.querySelector('span[role="img"]');
+    expect(stand?.getAttribute('aria-label')).toBe('Image hidden: a > b');
+    expect(root.textContent).toBe('Image hidden: a > b tail');
+  });
+
   it('runs after the blob rewrite, and decodes the emitted alt back to the author’s words', () => {
     const html = renderMarkdownToHtml('![Tom & "Jerry"](images/x.webp)', {
       blobMountPointId: 'mp-1',

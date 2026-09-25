@@ -28,7 +28,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import remarkSmartypants from 'remark-smartypants';
 
-import { hideInlineImages } from '../hidden-image/hidden-inline-image';
+import { hideInlineImages, IMG_TAG_RE } from '../hidden-image/hidden-inline-image';
 import { REMARK_MATH_OPTIONS, normalizeMathDelimiters } from './math';
 import { SMARTYPANTS_OPTIONS, shouldCurlQuotes } from './typography';
 import {
@@ -132,7 +132,9 @@ export function applyRoleplayPatterns(html: string, compiledRules: CompiledRule[
  * `/`-rooted paths pass through, exactly as v4's predicate.
  */
 export function applyBlobImageRewrite(html: string, blobMountPointId: string): string {
-  return html.replace(/<img\b[^>]*>/gi, (tag) =>
+  // The same quote-aware tag matcher as the hidden-image swap: a `>` inside a
+  // quoted alt must not end the tag early (see `IMG_TAG_RE`).
+  return html.replace(IMG_TAG_RE, (tag) =>
     tag.replace(/(\ssrc=")([^"]*)(")/i, (_m, pre, src, post) => `${pre}${rewriteBlobSrc(src, blobMountPointId)}${post}`),
   );
 }

@@ -1,34 +1,42 @@
-//! P4.d6 differential — `ensureHelpDocsSynced` (v4 `6c59b1ca` bug 1 +
-//! `551f090b`'s divergence trigger / prune / embedding enqueue) vs
-//! `quilltap_core::services::help_doc_sync::ensure_help_docs_synced`.
+//! P4.d6 → P4.D222 differential — v4 `ensureHelpDocsSynced` (since `492771aff`
+//! the once-per-process `reconcileHelpDocs`: a full content-hash sync, the
+//! section backfill for docs with no chunk rows, the incomplete rule, ONE
+//! enqueue of the incomplete docs) vs `quilltap_core::services::help_doc_sync::
+//! HelpDocReconcileGate::ensure`.
 //!
 //! Both sides copy the SAME per-scenario fixture DB (v4-built, byte-identical
 //! seeds), walk the SAME committed help tree (`harness/oracle/fixtures/
 //! help-ensure/help/`, the Rust side through the production host walker), run
-//! the real `ensureHelpDocsSynced`, and diff the resulting `help_docs` rows and
-//! `background_jobs`.
+//! the real reconcile, and diff the resulting `help_docs` rows,
+//! `help_doc_chunks` counts, `background_jobs`, and the reconcile's two log
+//! lines (`reconciled` / `reconcileFailed` counts).
 //!
-//! Five scenarios share ONE tree and vary only the seed, so each isolates a
-//! single trigger path:
-//!   - `empty-table`  — the lazy gate that always worked (the control);
-//!   - `in-sync`      — disk and DB agree → NO sync and no prune. ⚠ Since v4
-//!     `24633026` it is NOT a total no-op: the chunk table is empty, so the
-//!     BACKFILL slices both docs and enqueues a HELP_DOC job for each — even
-//!     though both docs already carry their own embedding, because the job is
-//!     what fills the CHUNK vectors;
-//!   - `added-doc`    — ⚠ **v4 BUG 1**: the table is POPULATED and the existing
-//!     doc is unchanged, but a shipped doc has no row. The old gate
-//!     (`existing.length > 0 → return`) left it invisible forever;
-//!   - `deleted-doc`  — ⚠ the **deleted direction is load-bearing**: every file
-//!     on disk already has a matching row, so the unsynced direction CANNOT
-//!     fire. Only the row whose file is gone can trigger this sync — without it
-//!     the prune would be dead code;
-//!   - `no-profile`   — the sync completes with no embedding profile; only the
-//!     enqueue backs off;
-//!   - `in-sync-chunked` (P4.D77) — as `in-sync`, but `help_doc_chunks` already
-//!     has rows, so the chunk backfill must short-circuit on its one `count()`
-//!     query: the seeded chunk keeps its id, timestamp AND vector, and nothing
-//!     is enqueued.
+//! Twelve scenarios share ONE tree and vary only the seed (the first six are
+//! P4.d6/P4.D77's, re-recorded at `b0b6656b5` — four of them MOVED under
+//! `492771aff`; the last six are P4.D222's planted mirrors of v4's
+//! `help-doc-sync.reconcile.test.ts` vectors):
+//!   - `empty-table`      — the control: every file created, sliced, enqueued;
+//!   - `in-sync`          — disk and DB agree, NO chunk rows → the backfill
+//!     slices both docs and enqueues both (each is incomplete: zero embedded
+//!     sections);
+//!   - `in-sync-chunked`  — as `in-sync` with one chunk row seeded: the seeded
+//!     doc is NOT re-sliced (its count is > 0) but IS enqueued (its one section
+//!     has no vector), the other doc is sliced and enqueued;
+//!   - `added-doc`        — a shipped doc with no row is created (v4 bug 1's
+//!     shape, now unconditional);
+//!   - `deleted-doc`      — the row whose file is gone is pruned; the rest
+//!     backfilled and enqueued;
+//!   - `no-profile`       — the sync + backfill complete; the enqueue backs off
+//!     (no embedding profile);
+//!   - `edited-page`      — a changed hash updates the row, clears its vector
+//!     and status, re-slices, enqueues;
+//!   - `complete`         — every doc and section vector present → nothing
+//!     enqueued;
+//!   - `null-doc-vector`  — sections embedded, the doc vector NULL → enqueued;
+//!   - `partial-sections` — `{total 4, embedded 3}` → enqueued, NOT re-sliced;
+//!   - `concurrent-then-later` — two racing callers + one later: ONE reconcile;
+//!   - `fail-once-then-retry` — a planted `RAISE(ABORT)` trigger fails the
+//!     first reconcile (WARN, no throw), the next caller retries and succeeds.
 //!
 //! Minted ids never enter the comparison: doc rows compare by `path` (a
 //! non-seeded id collapses to `<minted>`), and jobs resolve their payload
@@ -40,7 +48,9 @@
 //! paths):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this tree>
 //!   cd ~/source/quilltap-server
-//!   for s in empty-table in-sync in-sync-chunked added-doc deleted-doc no-profile; do
+//!   for s in empty-table in-sync in-sync-chunked added-doc deleted-doc no-profile \
+//!            edited-page complete null-doc-vector partial-sections \
+//!            concurrent-then-later fail-once-then-retry; do
 //!     QT_FIXTURE_ENSURE_DIR=/tmp/qt-ensure QT_ENSURE_SCENARIO=$s \
 //!       $N/node --import tsx $V5/harness/oracle/fixtures/build-help-ensure-fixture.ts
 //!   done

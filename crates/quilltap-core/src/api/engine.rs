@@ -6883,13 +6883,32 @@ impl CoreEngine {
                             });
                         Response::Ack(AckDto::default())
                     }
-                    Err(DbKeyError::DecryptFailed) => {
+                    // v4 `changePassphrase` (`lib/startup/dbkey.ts:502-557`) RETURNS
+                    // `{success: false, error}` for every read-side failure, and
+                    // `handleChangePassphrase` answers each with `unauthorized(error)`
+                    // (`unlock/route.ts:382-385`) — 401, no catch line:
+                    //   - a missing, unreadable OR unparseable file: `readDbKeyFile`
+                    //     catches and returns null → `No .dbkey file found`;
+                    //   - a wrong passphrase, or a file whose crypto parameters
+                    //     `decryptPepperWithParams` cannot run: null →
+                    //     `Current passphrase is incorrect`.
+                    // The ONE throw is `writeDbKeyFile` — `runUnlockAction`'s catch,
+                    // ERROR `Error in database key action` + 500 (the web edge renders
+                    // that on `Internal`). Fixed at the `b0b6656b5` unification: v5 had
+                    // answered 400 for a missing file and 500 for a corrupt one.
+                    Err(DbKeyError::DecryptFailed)
+                    | Err(DbKeyError::PassphraseRequired)
+                    | Err(DbKeyError::Unsupported(_)) => {
                         Response::error(ErrorKind::Unauthorized, "Current passphrase is incorrect")
                     }
-                    Err(DbKeyError::NotFound(_)) => {
-                        Response::error(ErrorKind::BadRequest, "No .dbkey file found")
+                    Err(DbKeyError::NotFound(_))
+                    | Err(DbKeyError::Io(_))
+                    | Err(DbKeyError::Parse(_)) => {
+                        Response::error(ErrorKind::Unauthorized, "No .dbkey file found")
                     }
-                    Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
+                    Err(e @ DbKeyError::Write(_)) => {
+                        Response::error(ErrorKind::Internal, e.to_string())
+                    }
                 }
             }
             EngineState::Ready(_) => Response::error(

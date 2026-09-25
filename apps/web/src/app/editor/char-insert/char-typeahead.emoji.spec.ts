@@ -96,7 +96,10 @@ describe('charTypeaheadPlugin — emoji profile', () => {
       expect(h.text()).toBe(`first line\n${SMILE}`);
     });
 
-    it('still refuses a trigger glued to any OTHER leaf (an inline image)', async () => {
+    // No v4 counterpart: v4's composer registers no inline decorator node, and
+    // its `$isGluedToPreviousRun` answers "not glued" for an empty-text
+    // sibling — this is v5's own rule for its own inline leaves, pinned as such.
+    it('still refuses a trigger glued to any OTHER leaf (an inline image) — v5-only', async () => {
       const h = mount();
       await warmIndex(h);
 

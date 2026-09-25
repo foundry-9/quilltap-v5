@@ -1,18 +1,20 @@
-//! P4.9I2A — the boot-time help-docs sync + the embedded-table reindex, wired
-//! into the host assembly.
+//! P4.9I2A → P4.D222 — the boot-time help reconcile + the embedded-table
+//! reindex, wired into the host assembly.
 //!
 //! Three pins over a REAL fresh-provisioned instance:
 //!
-//!   1. **The boot ensure runs.** `Host::start` alone leaves `help_docs` at the
-//!      shipped tree's 124 rows with their section chunks — the
-//!      `ensure_help_docs_synced` call in `assemble` (v4's LAZY
-//!      `HelpSearch.loadFromDatabase()` path, run EAGERLY here). Removing that
-//!      call reads 0 (the lane record's mutation).
-//!   2. **A second boot writes nothing.** The `contentHash` short-circuit: every
-//!      row keeps its `updatedAt`, and the count stays 124.
+//!   1. **The boot reconcile runs.** `Host::start` alone leaves `help_docs` at
+//!      the shipped tree's 129 rows with their section chunks — the
+//!      `reconcile_help_docs_at_boot` call in `assemble` (v4's Phase 3.66
+//!      `ensureHelpDocsSynced`, EAGER at startup since `492771aff`; until then
+//!      v4 only reconciled lazily from `HelpSearch.loadFromDatabase()` and this
+//!      boot call was a recorded divergence — CONVERGED). Removing that call
+//!      reads 0 (the lane record's mutation).
+//!   2. **A second boot writes nothing.** The `contentHash` sync: every row
+//!      keeps its `updatedAt`, and the count stays 129.
 //!   3. **`EMBEDDING_REINDEX_ALL` re-syncs from the EMBEDDED table.** With the
 //!      table emptied by hand, one reindex-all job pumped through the host's
-//!      registry restores all 124 rows. Tests run with cwd = the crate dir,
+//!      registry restores all 129 rows. Tests run with cwd = the crate dir,
 //!      which has NO `help/` — so restoring the retired `current_dir()` walk in
 //!      the registration reads an empty tree and leaves 0 rows (the lane
 //!      record's second mutation).

@@ -125,6 +125,14 @@ fn write_partition_matches_oracle() {
         }
     }
 
+    // Floors: the two group-store keys P4.D221 added are the 14th/15th classify
+    // rows and the 3rd partition row — a regen that lost them must not pass.
+    assert!(
+        counts[0] >= 15 && counts[1] >= 3,
+        "the corpus lost rows (classify {}, partition {}; floors 15/3)",
+        counts[0],
+        counts[1]
+    );
     assert!(
         counts.iter().all(|&c| c > 0),
         "oracle file looks empty/partial: {counts:?}"

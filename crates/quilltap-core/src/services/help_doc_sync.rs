@@ -239,14 +239,55 @@ fn clear_embedding(main: &Connection, id: &str) -> Result<(), DbError> {
 /// list (see the module docs for the host-walk decision). Conn-level: the
 /// writes run on the caller's (writer-held) main connection. Per-file failures
 /// are swallowed into `failed` (v4's catch); the ONE read outside that catch —
-/// `findAll` — propagates as `Err`, as v4's throw does (the reconcile's gate
-/// then logs and lets the next caller retry; the reindex's phase-1 catch logs
-/// `Failed to process help docs`).
+/// `findAll` — is v4's FALLBACK `safeQuery` ([`find_all_or_empty`]): a failing
+/// read logs ONE ERROR and the sync carries on over an EMPTY table (every file
+/// is "new", nothing is pruned — the prune guard sees zero rows). It never
+/// fails the sync. (P4.D222 first landed it as a propagating `Err`, "as v4's
+/// throw does" — v4 never throws there; fixed at the `b0b6656b5` unification.)
 ///
 /// **Enqueues nothing, deliberately** — v4's rationale, carried forward: the two
 /// callers want different things. `EMBEDDING_REINDEX_ALL` re-embeds every doc
 /// regardless of what changed, while [`reconcile_help_docs`] queues only the
 /// docs left incomplete.
+/// v4 `repos.helpDocs.findAll()` — `AbstractBaseRepository._findAll`
+/// (`base.repository.ts:263-278`), a FALLBACK `safeQuery`: a DB failure logs
+/// ONE ERROR `Error finding all entities` with the base class's enriched
+/// context (`collection: 'help_docs'`) plus the error, and answers `[]`. Both
+/// help-sync reads of the table go through it (the sync's index and the
+/// reconcile's re-read), so neither ever fails on the read.
+fn find_all_or_empty(repo: &HelpDocsRepository<'_>) -> Vec<crate::db::help_docs::HelpDocRow> {
+    match repo.find_all() {
+        Ok(rows) => rows,
+        Err(e) => {
+            log_find_all_fallback(&e);
+            Vec::new()
+        }
+    }
+}
+
+/// The reconcile's projection of the same fallback read (see
+/// [`find_all_or_empty`]).
+fn find_all_for_reconcile_or_empty(
+    repo: &HelpDocsRepository<'_>,
+) -> Vec<crate::db::help_docs::HelpDocReconcileRow> {
+    match repo.find_all_for_reconcile() {
+        Ok(rows) => rows,
+        Err(e) => {
+            log_find_all_fallback(&e);
+            Vec::new()
+        }
+    }
+}
+
+fn log_find_all_fallback(e: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "help_docs",
+        error = %e,
+        "Error finding all entities",
+    );
+}
+
 pub fn sync_help_docs(
     main: &Connection,
     files: &[HelpSourceFile],
@@ -269,8 +310,9 @@ pub fn sync_help_docs(
     // One read of the table, indexed by path (v4 `551f090b`). The prune below
     // needs every row anyway, and it doubles as the per-file lookup — the
     // alternative is a findByPath per file, which is ~115 queries on every sync.
-    // Outside the per-file catch in v4, so a failure here propagates.
-    let existing_docs = repo.find_all()?;
+    // Outside the per-file catch in v4, but a FALLBACK read: a failure logs and
+    // answers `[]` (see `find_all_or_empty`).
+    let existing_docs = find_all_or_empty(&repo);
     let existing_by_path: std::collections::HashMap<&str, &crate::db::help_docs::HelpDocRow> =
         existing_docs
             .iter()
@@ -512,8 +554,11 @@ pub async fn reconcile_help_docs(
         .write(move |ws| sync_help_docs(ws.main().connection(), &files_owned))
         .await?;
 
-    // Re-read AFTER the sync (v4 reads `findAll()` again here).
-    let docs = db.read_main(|c| HelpDocsRepository::new(c).find_all_for_reconcile())?;
+    // Re-read AFTER the sync (v4 reads `findAll()` again here — the same
+    // FALLBACK read: a failure logs and the reconcile carries on over `[]`,
+    // finding nothing incomplete).
+    let docs =
+        db.read_main(|c| Ok(find_all_for_reconcile_or_empty(&HelpDocsRepository::new(c))))?;
     let section_counts = db.read_main(|c| Ok(HelpDocChunksRepository::new(c).count_by_doc()))?;
 
     let mut sections_backfilled = 0usize;
@@ -851,8 +896,10 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        // The create runs, then the section insert aborts inside the SAME
-        // writer transaction — so the whole sync rolls back and fails.
+        // The sync's own slice insert is swallowed by its per-file catch
+        // (`failed = 1`, the doc row stays); what FAILS the reconcile is the
+        // section BACKFILL's `replace_for_doc`, which hits the same trigger
+        // outside any catch.
         db.write_blocking(|ws| Ok(ws.main().connection().execute_batch(FAIL_TRIGGER)?))
             .unwrap();
         let gate = HelpDocReconcileGate::new();
@@ -1115,10 +1162,32 @@ mod tests {
     /// propagates (the reconcile's gate then logs and lets the next caller
     /// retry) instead of answering an empty result.
     #[test]
-    fn a_failing_find_all_propagates() {
+    fn a_failing_find_all_is_v4s_fallback_read_and_the_sync_carries_on() {
         let c = mem_conn();
         c.execute_batch("DROP TABLE help_docs").unwrap();
-        assert!(sync_help_docs(&c, &[file("help/a.md", "# A")]).is_err());
+        let (result, lines) =
+            crate::test_support::captured_with(|| sync_help_docs(&c, &[file("help/a.md", "# A")]));
+        // v4's `findAll` never throws: the sync sees an empty table and goes on
+        // (the per-file create then fails on the missing table, into `failed`).
+        let result = result.expect("the fallback read never fails the sync");
+        assert_eq!(result.failed, 1);
+        let fallback: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Error finding all entities"))
+            .collect();
+        assert_eq!(fallback.len(), 1, "{lines:?}");
+        assert!(
+            fallback[0].starts_with(
+                "ERROR quilltap::db Error finding all entities collection=help_docs error="
+            ),
+            "{}",
+            fallback[0]
+        );
+        assert!(
+            fallback[0].contains("no such table: help_docs"),
+            "{}",
+            fallback[0]
+        );
     }
 
     /// The enqueue's two lines: INFO `Enqueued help doc embeddings` with the

@@ -108,6 +108,30 @@ async fn a_bare_or_unknown_action_never_reaches_a_writing_default() {
         "the absent action is the restore leg: {status} {body}"
     );
 
+    // --- 1b. the character GET: the lookup precedes the gate (v4
+    //         `characters/[id]/handlers/get.ts:35-39` runs `findById` →
+    //         `notFound('Character')` BEFORE `dispatchAction`), so a bare or
+    //         unknown action on a MISSING character is the 404, not the
+    //         envelope. (Fixed at the `b0b6656b5` unification — v5 gated first.)
+    for query in ["?action=zzz", "?action="] {
+        let (status, body) = answer(
+            client
+                .get(url(&format!("/api/v1/characters/{MISSING}{query}")))
+                .send()
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(
+            status, 404,
+            "characters GET {query} on a MISSING character: {body}"
+        );
+        assert!(
+            body.get("availableActions").is_none(),
+            "the 404 precedes the gate: {body}"
+        );
+    }
+
     // --- 2. the file GET: dispatched BEFORE the lookup ---
     for (query, action) in [("?action=zzz", "zzz"), ("?action=", "")] {
         let (status, body) = answer(
@@ -389,7 +413,7 @@ async fn change_passphrase_throw_is_logged_and_answered_500() {
     let data = base.path().join("data");
     quilltap_core::dbkey::save_dbkey(&data, common::TEST_PEPPER, "").expect("write .dbkey");
 
-    let ((wrong_old, thrown), lines) = global_capture::capture_async(async {
+    let ((wrong_old, corrupt, thrown), lines) = global_capture::capture_async(async {
         let (addr, _state) = common::serve_instance(base.path(), |mut c| {
             c.terminal = false;
             c
@@ -411,21 +435,53 @@ async fn change_passphrase_throw_is_logged_and_answered_500() {
                 .unwrap(),
         )
         .await;
-        // Now make the action THROW: the `.dbkey` no longer parses.
-        std::fs::write(data.join("quilltap.dbkey"), "{not json").unwrap();
+        // A corrupt `.dbkey` is ALSO a returned refusal in v4: `readDbKeyFile`
+        // catches the parse error and returns null, `changePassphrase` answers
+        // `{success: false, error: 'No .dbkey file found'}`, the route 401s —
+        // no throw, no catch line. (The unification review caught this test
+        // posing the corrupt file as "the throw": v5 had answered 500 + the
+        // line, a shape v4 never produces.)
+        let dbkey = data.join("quilltap.dbkey");
+        let good = std::fs::read(&dbkey).unwrap();
+        std::fs::write(&dbkey, "{not json").unwrap();
+        let corrupt = answer(
+            change(json!({ "oldPassphrase": "", "newPassphrase": "x" }))
+                .await
+                .unwrap(),
+        )
+        .await;
+        std::fs::write(&dbkey, &good).unwrap();
+        // Now make the action THROW where v4 throws: the REWRITE fails. A
+        // read-only file reads and decrypts fine; `writeFileSync` (v5:
+        // `write_dbkey_file`) then refuses.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&dbkey, std::fs::Permissions::from_mode(0o444)).unwrap();
+        }
         let thrown = answer(
             change(json!({ "oldPassphrase": "", "newPassphrase": "x" }))
                 .await
                 .unwrap(),
         )
         .await;
-        (wrong_old, thrown)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&dbkey, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        (wrong_old, corrupt, thrown)
     })
     .await;
 
     assert_eq!(
         wrong_old.0, 401,
         "a wrong old passphrase is the handler's own refusal: {wrong_old:?}"
+    );
+    assert_eq!(
+        corrupt,
+        (401, json!({ "error": "No .dbkey file found" })),
+        "a corrupt .dbkey is a RETURNED refusal in v4, never the catch"
     );
     let (status, body) = thrown;
     assert_eq!(
@@ -445,7 +501,7 @@ async fn change_passphrase_throw_is_logged_and_answered_500() {
     assert_eq!(
         errors.len(),
         1,
-        "exactly the throw logs, the refusal does not: {lines:#?}"
+        "exactly the throw logs; neither refusal (wrong passphrase, corrupt file) does: {lines:#?}"
     );
     let line = errors[0];
     assert!(line.starts_with("ERROR "), "v4 logs at error: {line}");

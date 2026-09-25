@@ -479,3 +479,59 @@ impl<'c> HelpDocsRepository<'c> {
         Ok(found.is_some())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn conn() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(crate::db::help_doc_chunks_repair::HELP_DOCS_TABLE_DDL)
+            .unwrap();
+        c
+    }
+
+    fn plant(c: &Connection, id: &str, embedding: Option<Vec<u8>>) {
+        c.execute(
+            "INSERT INTO help_docs (id, title, path, url, content, contentHash, embedding, \
+             createdAt, updatedAt) VALUES (?1, 'T', ?2, '/t', 'body', 'h', ?3, 'x', 'x')",
+            rusqlite::params![id, format!("help/{id}.md"), embedding],
+        )
+        .unwrap();
+    }
+
+    /// v4 `reconcileHelpDocs`' incomplete rule reads `doc.embedding == null ||
+    /// doc.embedding.length === 0` (`help-doc-sync.ts`, `492771aff`): a NULL
+    /// cell and a ZERO-LENGTH blob are both "missing"; a stored vector in either
+    /// encoding (the int8 codec, a legacy raw f32 blob) is not.
+    #[test]
+    fn find_all_for_reconcile_reads_a_zero_length_vector_as_missing() {
+        let c = conn();
+        plant(&c, "null", None);
+        plant(&c, "empty", Some(Vec::new()));
+        plant(&c, "encoded", Some(float32_to_blob(&[0.6, 0.8])));
+        plant(
+            &c,
+            "legacy-raw",
+            Some(crate::embedding_blob::float32_to_blob_raw(&[1.0, 0.0])),
+        );
+        let rows = HelpDocsRepository::new(&c)
+            .find_all_for_reconcile()
+            .unwrap();
+        let missing: std::collections::BTreeMap<&str, bool> = rows
+            .iter()
+            .map(|r| (r.id.as_str(), r.doc_vector_missing))
+            .collect();
+        assert_eq!(
+            missing,
+            [
+                ("empty", true),
+                ("encoded", false),
+                ("legacy-raw", false),
+                ("null", true),
+            ]
+            .into_iter()
+            .collect()
+        );
+    }
+}

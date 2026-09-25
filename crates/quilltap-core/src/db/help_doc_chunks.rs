@@ -360,7 +360,8 @@ impl<'c> HelpDocChunksRepository<'c> {
     ///
     /// **Never answers `Err`:** v4 runs it through a FALLBACK `safeQuery`, so a
     /// failing read logs one ERROR `Error counting help doc chunks by doc`
-    /// `{error}` (v4 passes an empty context) and answers an EMPTY map — which
+    /// `{collection, error}` (v4 passes `{}`; the base class enriches every
+    /// context with `collection`) and answers an EMPTY map — which
     /// the reconcile then reads as "every doc is section-less" and re-slices.
     pub fn count_by_doc(&self) -> HashMap<String, SectionCounts> {
         match self.count_by_doc_strict() {
@@ -368,6 +369,7 @@ impl<'c> HelpDocChunksRepository<'c> {
             Err(err) => {
                 tracing::error!(
                     target: "quilltap::db",
+                    collection = "help_doc_chunks",
                     error = %err,
                     "Error counting help doc chunks by doc",
                 );
@@ -577,8 +579,9 @@ mod tests {
     }
 
     /// P4.D222: v4's `countByDoc` is a FALLBACK `safeQuery` — a failing read
-    /// logs ONE ERROR `Error counting help doc chunks by doc` `{error}` (no
-    /// context: v4 passes `{}`) and answers an EMPTY map.
+    /// logs ONE ERROR `Error counting help doc chunks by doc` `{collection,
+    /// error}` (v4 passes `{}`; `AbstractBaseRepository.safeQuery` enriches it
+    /// with `collection`) and answers an EMPTY map.
     #[test]
     fn count_by_doc_falls_back_to_an_empty_map_with_one_error() {
         let conn = open();
@@ -595,7 +598,9 @@ mod tests {
             "level/target: {line}"
         );
         assert!(
-            line.contains(" Error counting help doc chunks by doc "),
+            line.contains(
+                " Error counting help doc chunks by doc collection=help_doc_chunks error="
+            ),
             "{line}"
         );
         assert!(line.contains("no such table: help_doc_chunks"), "{line}");

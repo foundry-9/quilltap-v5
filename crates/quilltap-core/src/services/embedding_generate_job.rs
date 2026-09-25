@@ -706,8 +706,11 @@ async fn embed_help_doc_sections<E: EmbeddingProvider>(
     }) {
         Ok(rows) => rows,
         Err(e) => {
+            // v4's context `{docId}`, enriched by the base class with
+            // `collection` first (`base.repository.ts` `safeQuery`).
             tracing::error!(
                 target: "quilltap::db",
+                collection = "help_doc_chunks",
                 docId = doc.id.as_str(),
                 error = %e,
                 "Error finding help doc chunks by doc",
@@ -1233,6 +1236,55 @@ mod tests {
     /// Nothing to average → v4's WARN `Skipping empty entity` and a FAILED
     /// status, no retry — and HELP_DOC no longer takes the oversize guard (a
     /// page past `EMBEDDING_MAX_CHARS` embeds by section).
+    /// v4's `findByDocId` is a FALLBACK `safeQuery`: with the chunk table gone
+    /// the read logs ONE ERROR (`collection` first, v4's enrichment) and the
+    /// job takes the in-memory slice — the doc still embeds.
+    #[test]
+    fn a_failing_chunk_read_logs_v4s_fallback_line_and_slices_in_memory() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = fresh_db(dir.path());
+        plant(&db, "# T\n\nbody", &[]);
+        db.write_blocking(|ws| {
+            Ok(ws.main().connection().execute_batch(
+                r#"ALTER TABLE "help_doc_chunks" RENAME TO "help_doc_chunks_gone""#,
+            )?)
+        })
+        .unwrap();
+        // The in-memory slices are the PRODUCTION chunker's, so their composed
+        // texts are registered from it rather than transcribed.
+        let mut provider = CannedEmbeddingProvider::new();
+        for slice in crate::services::help_doc_chunking::build_help_doc_chunks("# T\n\nbody") {
+            provider = provider.with_vector(
+                crate::services::help_doc_chunking::help_chunk_embedding_text(
+                    "T",
+                    slice.heading.as_deref(),
+                    &slice.content,
+                ),
+                vec![1.0, 0.0],
+            );
+        }
+        let (outcome, lines) = run(&db, &provider);
+        outcome.unwrap();
+        let fallback: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Error finding help doc chunks by doc"))
+            .collect();
+        assert_eq!(fallback.len(), 1, "{lines:?}");
+        assert!(
+            fallback[0].starts_with(&format!(
+                "ERROR quilltap::db Error finding help doc chunks by doc collection=help_doc_chunks docId={DOC} error="
+            )),
+            "{}",
+            fallback[0]
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("[EmbeddingGenerate] Help doc embedding generated")),
+            "the slice path still embeds the doc: {lines:?}"
+        );
+    }
+
     #[test]
     fn empty_is_skipped_and_oversize_is_not_guarded() {
         let dir = tempfile::tempdir().unwrap();

@@ -28,6 +28,19 @@ export function hiddenInlineImageHtml(alt?: string): string {
 }
 
 /**
+ * A whole `<img …>` tag as hast emits it. Quote-aware on purpose: `hast-util-
+ * to-html` escapes only `"` and `&` inside a double-quoted attribute value, so
+ * a raw `>` in an image's alt (`![a > b](x)`) survives into `alt="a > b"`. A
+ * matcher that stopped at the first `>` (`[^>]*`) cut such a tag short, and a
+ * CLOSED stand-in in its place ended the attribute context — the rest of the
+ * alt became live markup under `[innerHTML]` (an XSS through a message a model
+ * or a user wrote, found at the `b0b6656b5` unification review). v4 never
+ * string-splices (its `img` renderer returns an element), so the hazard is
+ * v5's own; this matcher consumes quoted values whole.
+ */
+export const IMG_TAG_RE = /<img\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+
+/**
  * Replace every `<img>` in rendered message HTML with the inline stand-in —
  * the string-level form of v4's `img` renderer returning
  * `<HiddenInlineImage alt={alt || undefined} />` (`MessageContent.tsx:520-
@@ -36,7 +49,7 @@ export function hiddenInlineImageHtml(alt?: string): string {
  * empty alt is v4's `alt || undefined` → "Image hidden".
  */
 export function hideInlineImages(html: string): string {
-  return html.replace(/<img\b[^>]*>/gi, (tag) => {
+  return html.replace(IMG_TAG_RE, (tag) => {
     const match = /\salt="([^"]*)"/i.exec(tag);
     const alt = match ? decodeHtmlEntities(match[1]) : '';
     return hiddenInlineImageHtml(alt || undefined);

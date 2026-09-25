@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — fix(spa): a quote-aware `<img>` matcher for the hidden-image swap — a `>` inside an alt can no longer escape the tag (P4.D223, unification review)
+
+_Versions: SPA 0.5.772._
+
+The `<img>` matcher in `hideInlineImages` (and the older `applyBlobImageRewrite`)
+was `<img\b[^>]*>`, which stops at the first `>`. `hast-util-to-html` escapes
+only `"` and `&` inside a double-quoted attribute value, so a raw `>` in an
+image's alt survives into `alt="…"`; the matcher cut such a tag short, and the
+CLOSED stand-in span in its place ended the attribute context, turning the rest
+of the alt into live markup under `[innerHTML]` — an XSS through any message a
+model or a user writes, reachable whenever the Salon Images switch is on
+(v5-only: v4's `img` renderer returns a React element). Found by the §3 review
+at the `b0b6656b5` unification. The matcher is now quote-aware (`IMG_TAG_RE`,
+consuming quoted values whole) and shared by both rewrites. Two new cases in
+`salon-images.spec.ts` drive the REAL renderer: an alt carrying `<svg
+onload=…>` yields no element and speaks the whole alt as text; an alt with a
+bare `>` is spoken whole with no stray text. Both red before the fix.
+
 #### 2026-09-24 — test(e2e): the @ mention typeahead in the live Salon composer (P4.D224 unit 6)
 
 _Versions: SPA 0.5.767._

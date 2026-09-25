@@ -423,8 +423,8 @@ async fn phase_help_docs(
 ) -> Result<(Vec<BjCreate>, Counts), DbError> {
     // v4 syncs from disk FIRST, then reads the table, then (full scope) clears.
     let files = help_files.to_vec();
-    // `sync_help_docs`' one propagating failure (its `findAll`) lands in this
-    // phase's catch, as v4's throw does (P4.D222 — it used to be swallowed).
+    // `sync_help_docs` never fails on its reads (v4's `findAll` is a fallback
+    // `safeQuery`); a WRITER failure here lands in this phase's catch.
     db.write(move |ws| sync_help_docs(ws.main().connection(), &files))
         .await?;
 

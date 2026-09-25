@@ -105,12 +105,25 @@ enum Op {
         source_message_id: String,
     },
     /// v4 `ad1c4c37f` deletes `deleteBySourceMessageIds` as dead code (v5
-    /// never had a production caller either — retired, not ported). Catches
-    /// that tag (and any other future-unknown one) as a no-op so the
-    /// committed fixture's final op still deserializes unchanged
-    /// (§R.7/no-fixture-edit).
-    #[serde(other)]
-    Retired,
+    /// never had a production caller either — retired, not ported). The tag
+    /// is kept BY NAME as a no-op so the committed fixture's final op still
+    /// deserializes unchanged (§R.7/no-fixture-edit) — never as a
+    /// `#[serde(other)]` catch-all, which would let a future op the oracle
+    /// runs and the Rust side does not know pass as a silent no-op (the
+    /// `b0b6656b5` unification review).
+    #[serde(rename = "deleteBySourceMessageIds")]
+    Retired {
+        #[allow(dead_code)]
+        ids: Vec<String>,
+    },
+}
+
+#[test]
+fn an_unknown_op_kind_still_refuses_to_deserialize() {
+    assert!(serde_json::from_str::<Op>(r#"{"kind":"bogus","ids":[]}"#).is_err());
+    assert!(
+        serde_json::from_str::<Op>(r#"{"kind":"deleteBySourceMessageIds","ids":["m1"]}"#).is_ok()
+    );
 }
 
 #[derive(Deserialize)]
@@ -334,7 +347,7 @@ fn memories_tier2_matches_oracle() {
                     repo.delete_by_source_message_id(source_message_id)
                         .expect("deleteBySourceMessageId");
                 }
-                Op::Retired => {}
+                Op::Retired { .. } => {}
             }
         }
     }

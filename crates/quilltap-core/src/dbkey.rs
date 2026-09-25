@@ -63,7 +63,14 @@ struct DbKeyFile {
 #[derive(Debug)]
 pub enum DbKeyError {
     NotFound(PathBuf),
+    /// A READ-side I/O failure (the file exists but cannot be read).
     Io(std::io::Error),
+    /// The `.dbkey` REWRITE failed (`write_dbkey_file`). Kept apart from
+    /// [`DbKeyError::Io`] because v4 treats the two sides differently on
+    /// change-passphrase: every read-side failure is a returned `success:
+    /// false` (the route's 401), while a failing `writeDbKeyFile` is the ONE
+    /// genuine throw inside `runUnlockAction`'s catch (500 + its ERROR line).
+    Write(std::io::Error),
     Parse(String),
     /// Internal passphrase failed and no (correct) user passphrase was given.
     PassphraseRequired,
@@ -78,6 +85,7 @@ impl std::fmt::Display for DbKeyError {
         match self {
             DbKeyError::NotFound(p) => write!(f, "no quilltap.dbkey at {}", p.display()),
             DbKeyError::Io(e) => write!(f, "io error reading .dbkey: {e}"),
+            DbKeyError::Write(e) => write!(f, "io error writing .dbkey: {e}"),
             DbKeyError::Parse(e) => write!(f, "malformed .dbkey: {e}"),
             DbKeyError::PassphraseRequired => {
                 write!(
@@ -383,14 +391,14 @@ fn encrypt_dbkey_json(pepper: &str, actual_passphrase: &str) -> Result<String, D
 /// parent directory if needed.
 fn write_dbkey_file(path: &Path, content: &str) -> Result<(), DbKeyError> {
     if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(DbKeyError::Io)?;
+        std::fs::create_dir_all(dir).map_err(DbKeyError::Write)?;
     }
-    std::fs::write(path, content).map_err(DbKeyError::Io)?;
+    std::fs::write(path, content).map_err(DbKeyError::Write)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-            .map_err(DbKeyError::Io)?;
+            .map_err(DbKeyError::Write)?;
     }
     Ok(())
 }
