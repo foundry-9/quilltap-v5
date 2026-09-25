@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — test(web): plant the character rows the lookup-first character GET now needs in the query-param venue (unification gate)
+
+_Versions: web 0.0.196._
+
+The unification moved `GET /api/v1/characters/{id}`'s character lookup before
+its action gate (v4's order). `query_param_semantics_equivalence`'s venue (the
+`system-data-*` pair) carries no character under the ids its `character_item_
+get` rows and the unserved `stats` pin address — v4's oracle mocks `findById`
+into existence — so the four refusal rows and the pin answered 404 on the
+final tree (the unification sweep's one red). Both ids are now planted on the
+per-run copy by cloning the venue's first character, the same way the lane
+planted the chat-files POST's chat; the committed pair is untouched. 3/3
+green against the pinned oracle.
+
 #### 2026-09-25 — test(harness): the memories tier-2 retired op kept by name, not by a catch-all; a write-partition row floor (P4.D221, unification review)
 
 _Versions: harness 0.0.977._

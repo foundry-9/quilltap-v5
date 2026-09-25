@@ -491,7 +491,7 @@ const UNSERVED_KNOWN_ACTIONS: &[(&str, &str, &str, u16, &str)] = &[
     // review of the follow-ups round 2.
     (
         "GET",
-        "/api/v1/characters/a1000000-0000-4000-8000-0000000000a1",
+        "/api/v1/characters/a1000000-0000-4000-8000-0000000000a1", // `UNSERVED_CHARACTER`, planted
         "stats",
         400,
         "This route serves ?action=export only; JSON reads are on /api/dispatch",
@@ -575,10 +575,16 @@ const UNSERVED_KNOWN_ACTIONS: &[(&str, &str, &str, u16, &str)] = &[
     ),
 ];
 
+/// The `UNSERVED_KNOWN_ACTIONS` character id — planted like `ITEM` below.
+const UNSERVED_CHARACTER: &str = "a1000000-0000-4000-8000-0000000000a1";
+
 /// The venue: the committed `system-data-*` family — the richest of the
 /// committed instances, and the one the system-data routes are diffed over
 /// everywhere else. Every endpoint here either refuses in its dispatcher or
-/// looks up an id that resolves to nothing, so no arm depends on a seeded row.
+/// looks up an id that resolves to nothing — EXCEPT the two v4 routes that
+/// resolve their entity BEFORE the action gate (the chat-files POST and the
+/// character GET), whose rows need the entity to exist because the oracle
+/// mocks it into existence; those are PLANTED on the per-run copy below.
 fn materialize_instance() -> tempfile::TempDir {
     let base = tempfile::tempdir().expect("tempdir");
     let data = base.path().join("data");
@@ -618,6 +624,29 @@ fn materialize_instance() -> tempfile::TempDir {
                  DROP TABLE \"qps_chat\";"
             ))
             .unwrap();
+        // The `b0b6656b5` unification moved `GET /characters/{id}`'s lookup
+        // BEFORE its gate (v4 `get.ts:35-39` — `findById` → 404 first), so
+        // `character_item_get`'s refusal rows and the unserved `stats` pin need
+        // the character to exist too. Cloned from the venue's first character
+        // under both ids the rows address.
+        let n: i64 = w
+            .connection()
+            .query_row("SELECT COUNT(*) FROM \"characters\"", [], |r| r.get(0))
+            .unwrap();
+        assert!(
+            n > 0,
+            "the venue must carry a character to clone for the planted rows"
+        );
+        for id in [ITEM, UNSERVED_CHARACTER] {
+            w.connection()
+                .execute_batch(&format!(
+                    "CREATE TEMP TABLE \"qps_char\" AS SELECT * FROM \"characters\" ORDER BY rowid LIMIT 1;
+                     UPDATE \"qps_char\" SET \"id\" = '{id}';
+                     INSERT INTO \"characters\" SELECT * FROM \"qps_char\";
+                     DROP TABLE \"qps_char\";"
+                ))
+                .unwrap();
+        }
     }
     base
 }
