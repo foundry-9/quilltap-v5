@@ -200,6 +200,16 @@ impl ApplyHost for Recorder {
         _mount_point_keys: &[String],
     ) {
     }
+
+    fn run_refusal_ledger_check(
+        &mut self,
+        chat_id: &str,
+        _last_refusal: Option<
+            &quilltap_core::services::dangerous_content::refusal_ledger::LastRefusal,
+        >,
+    ) -> Result<(), ApplyError> {
+        panic!("the P4.D221 corpus carries no refusal increment (chat {chat_id})")
+    }
 }
 
 /// v4 `ad1c4c37f`: `MOUNT_INDEX_REPO_KEYS` gained `groupDocMountLinks` +

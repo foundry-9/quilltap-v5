@@ -150414,3 +150414,44 @@ Regen outputs staged under `/tmp/p4d225/`.
   `scenario_builder_{mount_pool,tier3,routes}_equivalence` — the P4.53
   `W=${V5W:-…}` alias spelling). Pre-existing; handed to the unifier. The new
   header uses the sanctioned `V5W=${V5W:-$HOME/source/quilltap-v5}` form.
+
+### Unit 7e — the write applier's post-commit refusal-ledger hook (§J.E.4: PORT)
+
+- `write_apply.rs`: `REFUSAL_LEDGER_INCREMENT`, pure `chats_with_recorded_refusals`
+  (first-increment order; `who ?? previous ?? null` — **v4's comment says
+  "later increments overwrite earlier ones", but a later provider-less
+  increment keeps the earlier provider; only a later NAMED one replaces it**;
+  non-string/empty chat ids skipped; a `refusedBy` counts only as an object
+  with a string `provider`), and `run_refusal_ledger_checks` after
+  `dispatch_invalidations`, i.e. after every partition committed — a partition
+  throw returns before it. The DEBUG `Child batch recorded moderation refusals;
+  running the auto-switch check` (`job_id`, `chatIdsJson` — v4's array through
+  the file layer's `…Json` convention) and the ERROR `Refusal-ledger
+  auto-switch check failed after a committed batch` (target
+  `quilltap::jobs_dispatcher`). **E.4 shape decided: `ApplyHost` grows a
+  REQUIRED sync `run_refusal_ledger_check(chat_id, Option<&LastRefusal>) ->
+  Result<(), ApplyError>`**; an `Err` is v4's throw out of the loop (logged
+  once, no further chat checked, the job still resolves). Required, not
+  defaulted, so no implementor can silently drop it; the P4.D221
+  `write_partition_equivalence` recorder panics if ever reached (its corpus has
+  no increment — green through the driver). Production has no `ApplyHost`
+  composition yet (`apply_fs.rs`'s header: no handler batches), so the hook is
+  dormant, wired 1:1 — the same standing as P4.D124's realtime hook.
+- `write_apply_equivalence` RE-RECORDED: the oracle mocks v4's ledger (as
+  v4's own `job-dispatcher-apply.test.ts` does) and records its calls + the
+  two dispatcher lines; six scenarios (v4's four-write case + the `??
+  previous` pair + an empty id + a non-string provider; an idempotent job with
+  all three partitions; no refusal; main COMMIT fails; a secondary fails on an
+  idempotent job; a check that rejects). **Through the driver: 18/18 at the
+  target; RED at the baseline on the first ledger scenario** (v4 there has no
+  hook). Oracle trap: the ledger mock must be registered ONLY where the module
+  exists — jest's `@/` mapper refuses a mock of an absent mapped path even as
+  `virtual`, and a `virtual` mock registers under the UNMAPPED name, so at the
+  target it silently let v4's REAL ledger run (the dispatched trace grew
+  `chats.findById` / `chatSettings.findByUserId` calls). Fixed with a
+  block-scoped `jest.mock` behind an `existsSync`.
+- **M8** (a provider-less later increment erases the earlier provider) →
+  `trace diverged for ledger-hook-once-per-chat-last-named-provider`;
+  restored (cmp). Unit tests in `write_apply.rs` pin the scan, the
+  after-commit order, silence on a plain batch, no check on a failed
+  partition, and the stop-at-throw ERROR line.

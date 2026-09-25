@@ -28,6 +28,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use quilltap_core::services::dangerous_content::refusal_ledger::LastRefusal;
+use quilltap_core::test_support::captured_with;
 use quilltap_core::write_apply::{apply_writes, ApplyError, ApplyHost};
 use quilltap_core::write_partition::{ChildWritePayload, WriteDbTarget};
 use serde::Deserialize;
@@ -52,6 +54,10 @@ struct Scenario {
     unavailable: Vec<String>,
     #[serde(default, rename = "failCommit")]
     fail_commit: Vec<CommitFailSpec>,
+    /// P4.D225: the auto-switch check rejects with this message (v4's
+    /// `mockRejectedValueOnce`).
+    #[serde(default, rename = "ledgerCheckFails")]
+    ledger_check_fails: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -92,6 +98,9 @@ struct RecHost {
     mkdirs: Vec<String>, // ensureDir(dirname(finalPath))
     rms: Vec<String>,    // cleanupStagingDirs -> rmSync(root)
     notifications: Vec<Value>, // {kind, key} from dispatchInvalidations
+    // P4.D225: the post-commit refusal-ledger checks ({chatId, lastRefusal}).
+    ledger_checks: Vec<Value>,
+    ledger_check_fails: Option<String>,
 }
 
 impl RecHost {
@@ -122,6 +131,8 @@ impl RecHost {
             mkdirs: Vec::new(),
             rms: Vec::new(),
             notifications: Vec::new(),
+            ledger_checks: Vec::new(),
+            ledger_check_fails: sc.ledger_check_fails.clone(),
         }
     }
 
@@ -218,6 +229,47 @@ impl ApplyHost for RecHost {
                 .push(json!({ "kind": "mountPoint", "key": k }));
         }
     }
+
+    fn run_refusal_ledger_check(
+        &mut self,
+        chat_id: &str,
+        last_refusal: Option<&LastRefusal>,
+    ) -> Result<(), ApplyError> {
+        let last = last_refusal.map(|l| {
+            let mut o = serde_json::Map::new();
+            o.insert("provider".into(), json!(l.provider));
+            if let Some(m) = &l.model_name {
+                o.insert("modelName".into(), json!(m));
+            }
+            Value::Object(o)
+        });
+        self.ledger_checks
+            .push(json!({ "chatId": chat_id, "lastRefusal": last }));
+        match self.ledger_check_fails.take() {
+            Some(message) => Err(ApplyError::msg(message)),
+            None => Ok(()),
+        }
+    }
+}
+
+/// v4's recorded dispatcher line (the two P4.D225 ledger lines only) in the
+/// capture rig's rendering. `chatIds` is v4's array — v5 logs it as
+/// `chatIdsJson` (the file layer's `…Json` convention).
+fn render_v4_ledger_log(log: &Value) -> String {
+    let level = log["level"].as_str().unwrap().to_uppercase();
+    let mut line = format!(
+        "{level} quilltap::jobs_dispatcher {}",
+        log["message"].as_str().unwrap()
+    );
+    for (k, v) in log["bag"].as_object().unwrap() {
+        match (k.as_str(), v) {
+            ("jobId", Value::String(s)) => line.push_str(&format!(" job_id={s}")),
+            ("chatIds", arr) => line.push_str(&format!(" chatIdsJson={arr}")),
+            ("error", Value::String(s)) => line.push_str(&format!(" error={s}")),
+            (other, _) => panic!("unexpected ledger-log key {other}"),
+        }
+    }
+    line
 }
 
 fn corpus_path() -> PathBuf {
@@ -257,10 +309,16 @@ fn write_apply_matches_oracle() {
 
     for sc in &corpus.scenarios {
         let mut host = RecHost::new(sc);
-        let outcome = match apply_writes(&mut host, &sc.name, &sc.writes, sc.job_type.as_deref()) {
+        let (result, lines) =
+            captured_with(|| apply_writes(&mut host, &sc.name, &sc.writes, sc.job_type.as_deref()));
+        let outcome = match result {
             Ok(()) => Value::String("resolved".into()),
             Err(e) => json!({ "threw": e.message }),
         };
+        let ledger_logs: Vec<String> = lines
+            .into_iter()
+            .filter(|l| l.split(' ').nth(1) == Some("quilltap::jobs_dispatcher"))
+            .collect();
 
         let got = json!({
             "case": "write-apply",
@@ -276,12 +334,27 @@ fn write_apply_matches_oracle() {
             "mkdirs": host.mkdirs,
             "rms": host.rms,
             "notifications": host.notifications,
+            "ledgerChecks": host.ledger_checks,
             "outcome": outcome,
         });
 
-        let want = oracle
+        let mut want = oracle
             .get(&sc.name)
-            .unwrap_or_else(|| panic!("oracle missing scenario {}", sc.name));
+            .unwrap_or_else(|| panic!("oracle missing scenario {}", sc.name))
+            .clone();
+        // The ledger lines compare as rendered strings, not in the trace.
+        let want_logs: Vec<String> = want
+            .as_object_mut()
+            .unwrap()
+            .remove("ledgerLogs")
+            .expect("oracle ledgerLogs (regenerate at a P4.D225 pin)")
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(render_v4_ledger_log)
+            .collect();
+        assert_eq!(ledger_logs, want_logs, "ledger log lines for `{}`", sc.name);
+        let want = &want;
 
         assert_eq!(
             &got, want,

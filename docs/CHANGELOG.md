@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the write applier's post-commit refusal-ledger hook (P4.D225 unit 7e)
+
+_Versions: core 0.0.1069, harness 0.0.988._
+
+`write_apply::apply_writes` now runs the Concierge's auto-switch check once
+per chat whose refusal ledger a committed batch incremented, after every
+partition committed and never on a failed one (v4 `49059fb14`,
+`runRefusalLedgerChecks`). `chats_with_recorded_refusals` keeps v4's actual
+rule — a later increment without a provider keeps the earlier provider — and
+a failing check is logged and never fails the job. `ApplyHost` grows
+`run_refusal_ledger_check`. Dormant in production until a handler batches,
+like the realtime hook. `write_apply_equivalence` re-recorded with six new
+scenarios and v4's two dispatcher log lines: 18 matched at the target, red at
+the baseline.
+
 #### 2026-09-25 — feat(concierge): the refusal ledger and the Concierge's auto-switch (P4.D225 unit 7d)
 
 _Versions: core 0.0.1068, harness 0.0.987._

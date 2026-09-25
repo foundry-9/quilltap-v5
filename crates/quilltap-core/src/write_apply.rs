@@ -36,11 +36,17 @@
 //! - `dispatchInvalidations` — post-commit, fire the *deduped, ordered* vector-store
 //!   / mount-cache invalidation targets (the pure [`collect_invalidations`]). The
 //!   host owns the child IPC + local cache eviction (best-effort effects).
+//! - `runRefusalLedgerChecks` (P4.D225, v4 `49059fb14`) — post-commit, the
+//!   Concierge's auto-switch check once per chat whose refusal ledger the
+//!   batch incremented ([`chats_with_recorded_refusals`]); the host runs the
+//!   check (production: `refusal_ledger::maybe_auto_switch_after_refusal`).
+//!   Like the realtime hook, dormant until a handler batches.
 
 use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 
+use crate::services::dangerous_content::refusal_ledger::LastRefusal;
 use crate::write_partition::{
     is_main_primary_job_type, is_unique_constraint_error, partition_writes, rewrite_folder_refs,
     ChildWritePayload, WriteDbTarget, DOC_MOUNT_FOLDER_CREATE, FINALIZE_FILE,
@@ -135,6 +141,18 @@ pub trait ApplyHost {
     /// Post-commit: fire the deduped, ordered cache invalidations (v4's
     /// `notifyChild` + local eviction). Both key lists are first-seen order.
     fn dispatch_invalidations(&mut self, vector_store_keys: &[String], mount_point_keys: &[String]);
+
+    /// Post-commit: the Concierge's auto-switch check for ONE chat whose
+    /// refusal ledger the batch incremented (v4 `maybeAutoSwitchAfterRefusal(
+    /// chatId, lastRefusal)` — production wires
+    /// [`crate::services::dangerous_content::refusal_ledger::maybe_auto_switch_after_refusal`]).
+    /// An `Err` is v4's throw out of the loop: the engine logs it and checks
+    /// no further chat, and the committed batch still resolves.
+    fn run_refusal_ledger_check(
+        &mut self,
+        chat_id: &str,
+        last_refusal: Option<&LastRefusal>,
+    ) -> Result<(), ApplyError>;
 }
 
 /// Apply a job's buffered writes, partitioned by target database. Mirrors v4's
@@ -167,7 +185,103 @@ pub fn apply_writes(
 
     cleanup_staging_dirs(host, writes, job_id);
     dispatch_invalidations(host, writes);
+
+    // The Concierge's refusal ledger (v4 `49059fb14`): a child can buffer an
+    // increment but can neither read the resulting count nor act on it, so the
+    // auto-switch check runs here, where the count is authoritative — after
+    // every partition committed (a partition throw returned above), and still
+    // inside the apply chain, so the flip's own writes cannot land in another
+    // job's open transaction.
+    run_refusal_ledger_checks(host, writes, job_id);
     Ok(())
+}
+
+/// v4 `REFUSAL_LEDGER_INCREMENT` — the buffered write that records a
+/// moderation refusal on a chat.
+pub const REFUSAL_LEDGER_INCREMENT: &str = "chats.incrementModerationRefusalCount";
+
+/// v4 `chatsWithRecordedRefusals` — every chat whose refusal ledger this batch
+/// incremented, once each in first-increment order (a JS `Map`'s `set` on an
+/// existing key keeps its place), with the last refusing provider the batch
+/// named for it (the increment's optional third argument).
+///
+/// The rule is `who ?? previous ?? null`: v4's comment says "later increments
+/// overwrite earlier ones", but a later increment WITHOUT a provider does not
+/// erase an earlier one's — only a later NAMED provider replaces it. A
+/// `chatId` that is not a non-empty string is skipped; a `refusedBy` counts
+/// only when it is an object with a string `provider`.
+pub fn chats_with_recorded_refusals(
+    writes: &[ChildWritePayload],
+) -> Vec<(String, Option<LastRefusal>)> {
+    let mut out: Vec<(String, Option<LastRefusal>)> = Vec::new();
+    for w in writes {
+        if w.method != REFUSAL_LEDGER_INCREMENT {
+            continue;
+        }
+        let Some(chat_id) = w
+            .args
+            .first()
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        let who = w.args.get(2).and_then(|r| {
+            let obj = r.as_object()?;
+            let provider = obj.get("provider")?.as_str()?;
+            Some(LastRefusal {
+                provider: provider.to_string(),
+                model_name: obj
+                    .get("modelName")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            })
+        });
+        match out.iter_mut().find(|(id, _)| id == chat_id) {
+            Some((_, previous)) => {
+                if who.is_some() {
+                    *previous = who;
+                }
+            }
+            None => out.push((chat_id.to_string(), who)),
+        }
+    }
+    out
+}
+
+/// v4 `runRefusalLedgerChecks` — the auto-switch check once per chat whose
+/// ledger a committed batch changed. Best-effort: the writes are committed, so
+/// a failure is logged and never fails the job.
+fn run_refusal_ledger_checks(host: &mut dyn ApplyHost, writes: &[ChildWritePayload], job_id: &str) {
+    let chats = chats_with_recorded_refusals(writes);
+    if chats.is_empty() {
+        return;
+    }
+    // v4 logs the id ARRAY; the file layer's `…Json` convention re-parses it.
+    let chat_ids = Value::Array(
+        chats
+            .iter()
+            .map(|(id, _)| Value::String(id.clone()))
+            .collect(),
+    )
+    .to_string();
+    tracing::debug!(
+        target: "quilltap::jobs_dispatcher",
+        job_id,
+        chatIdsJson = chat_ids.as_str(),
+        "Child batch recorded moderation refusals; running the auto-switch check"
+    );
+    for (chat_id, last_refusal) in &chats {
+        if let Err(e) = host.run_refusal_ledger_check(chat_id, last_refusal.as_ref()) {
+            tracing::error!(
+                target: "quilltap::jobs_dispatcher",
+                job_id,
+                error = %e,
+                "Refusal-ledger auto-switch check failed after a committed batch"
+            );
+            return;
+        }
+    }
 }
 
 /// Apply one partition's writes inside a single hand-driven transaction. Throws
@@ -533,6 +647,8 @@ mod tests {
         mkdirs: Vec<String>,
         cleaned: Vec<String>,
         invalidations: Vec<(String, String)>, // (kind, key)
+        ledger_checks: Vec<(String, Option<LastRefusal>)>,
+        ledger_check_fails: bool,
     }
     impl ApplyHost for OkHost {
         fn conn_available(&self, _p: WriteDbTarget) -> bool {
@@ -579,6 +695,18 @@ mod tests {
                 self.invalidations
                     .push(("mountPoint".to_string(), k.clone()));
             }
+        }
+        fn run_refusal_ledger_check(
+            &mut self,
+            chat_id: &str,
+            last_refusal: Option<&LastRefusal>,
+        ) -> Result<(), ApplyError> {
+            self.ledger_checks
+                .push((chat_id.to_string(), last_refusal.cloned()));
+            if self.ledger_check_fails {
+                return Err(ApplyError::msg("flip failed"));
+            }
+            Ok(())
         }
     }
 
@@ -835,5 +963,160 @@ mod tests {
                 ("mountPoint".to_string(), "MP".to_string()),
             ]
         );
+    }
+
+    // ── P4.D225: the refusal-ledger post-commit hook ─────────────────────
+    //
+    // Dormant in production for the same reason as the realtime hook above
+    // (no handler batches today); wired 1:1 with v4 and driven synthetically.
+
+    fn increment(chat: Value, refused_by: Option<Value>) -> ChildWritePayload {
+        let mut args = vec![chat, json!("2026-09-25T00:00:00Z")];
+        if let Some(r) = refused_by {
+            args.push(r);
+        }
+        ChildWritePayload {
+            method: REFUSAL_LEDGER_INCREMENT.into(),
+            args,
+        }
+    }
+
+    fn last(provider: &str, model: Option<&str>) -> Option<LastRefusal> {
+        Some(LastRefusal {
+            provider: provider.into(),
+            model_name: model.map(str::to_string),
+        })
+    }
+
+    /// v4's own dispatcher-apply case, plus the `?? previous` half its comment
+    /// misdescribes (M8): a later provider-less increment keeps the earlier
+    /// provider; a later NAMED one replaces it; order is first-increment.
+    #[test]
+    fn chats_with_recorded_refusals_keeps_the_last_named_provider() {
+        let writes = vec![
+            increment(
+                json!("c1"),
+                Some(json!({ "provider": "GOOGLE", "modelName": "a" })),
+            ),
+            ChildWritePayload {
+                method: "chats.update".into(),
+                args: vec![json!("c1"), json!({ "title": "x" })],
+            },
+            increment(
+                json!("c1"),
+                Some(json!({ "provider": "OPENAI", "modelName": "b" })),
+            ),
+            increment(json!("c2"), None),
+            increment(json!("c3"), Some(json!({ "provider": "XAI" }))),
+            increment(json!("c3"), None),
+            increment(json!(""), Some(json!({ "provider": "X" }))),
+            increment(json!(7), Some(json!({ "provider": "X" }))),
+            increment(json!("c4"), Some(json!({ "provider": 3 }))),
+            increment(json!("c4"), Some(json!(["GOOGLE"]))),
+        ];
+        assert_eq!(
+            chats_with_recorded_refusals(&writes),
+            vec![
+                ("c1".to_string(), last("OPENAI", Some("b"))),
+                ("c2".to_string(), None),
+                ("c3".to_string(), last("XAI", None)),
+                ("c4".to_string(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_check_runs_once_per_chat_after_every_partition_committed() {
+        let mut host = OkHost::default();
+        let writes = vec![
+            increment(json!("c1"), Some(json!({ "provider": "GOOGLE" }))),
+            increment(json!("c1"), None),
+            increment(json!("c2"), None),
+        ];
+        let ((), lines) = crate::test_support::captured_with(|| {
+            apply_writes(
+                &mut host,
+                "job-ledger",
+                &writes,
+                Some("STORY_BACKGROUND_GENERATION"),
+            )
+            .unwrap()
+        });
+        assert_eq!(
+            host.ledger_checks,
+            vec![
+                ("c1".to_string(), last("GOOGLE", None)),
+                ("c2".to_string(), None),
+            ]
+        );
+        assert_eq!(
+            host.exec.last().map(|(_, sql)| sql.as_str()),
+            Some("COMMIT"),
+            "the checks ran after the commit"
+        );
+        let ours: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("quilltap::jobs_dispatcher"))
+            .collect();
+        assert_eq!(
+            ours,
+            vec![
+                "DEBUG quilltap::jobs_dispatcher Child batch recorded moderation refusals; running the auto-switch check job_id=job-ledger chatIdsJson=[\"c1\",\"c2\"]"
+            ]
+        );
+    }
+
+    #[test]
+    fn no_refusal_in_the_batch_runs_no_check_and_logs_nothing() {
+        let mut host = OkHost::default();
+        let ((), lines) = crate::test_support::captured_with(|| {
+            apply_writes(
+                &mut host,
+                "j",
+                &[write("chats.update")],
+                Some("TITLE_UPDATE"),
+            )
+            .unwrap()
+        });
+        assert!(host.ledger_checks.is_empty());
+        assert!(!lines
+            .iter()
+            .any(|l| l.contains("quilltap::jobs_dispatcher")));
+    }
+
+    #[test]
+    fn a_failed_partition_runs_no_check() {
+        let mut host = OkHost {
+            fail_on: Some(REFUSAL_LEDGER_INCREMENT.into()),
+            ..OkHost::default()
+        };
+        let writes = vec![increment(json!("c1"), None)];
+        assert!(
+            apply_writes(&mut host, "j", &writes, Some("STORY_BACKGROUND_GENERATION")).is_err()
+        );
+        assert!(host.ledger_checks.is_empty());
+    }
+
+    /// v4: a throw inside the loop is caught once — logged, no further chat
+    /// checked, the committed job still resolves.
+    #[test]
+    fn a_failing_check_never_fails_the_committed_job() {
+        let mut host = OkHost {
+            ledger_check_fails: true,
+            ..OkHost::default()
+        };
+        let writes = vec![increment(json!("c1"), None), increment(json!("c2"), None)];
+        let (result, lines) = crate::test_support::captured_with(|| {
+            apply_writes(
+                &mut host,
+                "job-flip-fails",
+                &writes,
+                Some("STORY_BACKGROUND_GENERATION"),
+            )
+        });
+        assert!(result.is_ok());
+        assert_eq!(host.ledger_checks.len(), 1, "the loop stops at the throw");
+        assert!(lines.iter().any(|l| l
+            == "ERROR quilltap::jobs_dispatcher Refusal-ledger auto-switch check failed after a committed batch job_id=job-flip-fails error=flip failed"));
     }
 }

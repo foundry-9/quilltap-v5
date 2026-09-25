@@ -139,6 +139,62 @@
         { "method": "docMountChunks.upsert", "args": [{ "mountPointId": "MP" }] },
         { "method": "chats.update", "args": [{ "characterId": "charZ" }] }
       ]
+    },
+    {
+      "name": "ledger-hook-once-per-chat-last-named-provider",
+      "jobType": "STORY_BACKGROUND_GENERATION",
+      "writes": [
+        { "method": "chats.incrementModerationRefusalCount", "args": ["c1", "2026-09-25T00:00:00Z", { "provider": "GOOGLE", "modelName": "a" }] },
+        { "method": "chats.update", "args": ["c1", { "title": "x" }] },
+        { "method": "chats.incrementModerationRefusalCount", "args": ["c1", "2026-09-25T00:00:01Z", { "provider": "OPENAI", "modelName": "b" }] },
+        { "method": "chats.incrementModerationRefusalCount", "args": ["c2", "2026-09-25T00:00:02Z"] },
+        { "method": "chats.incrementModerationRefusalCount", "args": ["c3", "2026-09-25T00:00:03Z", { "provider": "XAI" }] },
+        { "method": "chats.incrementModerationRefusalCount", "args": ["c3", "2026-09-25T00:00:04Z"] },
+        { "method": "chats.incrementModerationRefusalCount", "args": ["", "2026-09-25T00:00:05Z", { "provider": "X" }] },
+        { "method": "chats.incrementModerationRefusalCount", "args": ["c4", "2026-09-25T00:00:06Z", { "provider": 3 }] }
+      ]
+    },
+    {
+      "name": "ledger-hook-idempotent-job-after-every-partition",
+      "jobType": "EMBEDDING_GENERATE",
+      "writes": [
+        { "method": "chats.incrementModerationRefusalCount", "args": ["c1", "2026-09-25T00:00:00Z", { "provider": "GOOGLE" }] },
+        { "method": "docMountChunks.updateEmbedding", "args": [{ "id": "ch1" }] },
+        { "method": "llmLogs.create", "args": [{ "id": "l1" }] }
+      ]
+    },
+    {
+      "name": "ledger-hook-no-refusal-no-check",
+      "jobType": "TITLE_UPDATE",
+      "writes": [
+        { "method": "chats.update", "args": ["c1", {}] }
+      ]
+    },
+    {
+      "name": "ledger-hook-main-commit-fails",
+      "jobType": "STORY_BACKGROUND_GENERATION",
+      "writes": [
+        { "method": "chats.incrementModerationRefusalCount", "args": ["c1", "2026-09-25T00:00:00Z"] }
+      ],
+      "failCommit": [{ "partition": "main", "message": "main boom" }]
+    },
+    {
+      "name": "ledger-hook-secondary-fails-idempotent",
+      "jobType": "EMBEDDING_GENERATE",
+      "writes": [
+        { "method": "chats.incrementModerationRefusalCount", "args": ["c1", "2026-09-25T00:00:00Z"] },
+        { "method": "docMountChunks.updateEmbedding", "args": [{ "id": "ch1" }] }
+      ],
+      "fail": [{ "method": "docMountChunks.updateEmbedding", "message": "mount boom" }]
+    },
+    {
+      "name": "ledger-hook-a-failing-check-never-fails-the-job",
+      "jobType": "STORY_BACKGROUND_GENERATION",
+      "writes": [
+        { "method": "chats.incrementModerationRefusalCount", "args": ["c1", "2026-09-25T00:00:00Z"] },
+        { "method": "chats.incrementModerationRefusalCount", "args": ["c2", "2026-09-25T00:00:01Z"] }
+      ],
+      "ledgerCheckFails": "flip failed"
     }
   ]
 }
