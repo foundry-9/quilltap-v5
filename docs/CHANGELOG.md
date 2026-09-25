@@ -12,6 +12,46 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — fix(help): v4's fallback `findAll` (not a throw), the `collection` field on the three fallback lines, the zero-length doc-vector rule tested, the twelve-scenario recipe header (P4.D222, unification review)
+
+_Versions: core 0.0.1058, harness 0.0.976, host 0.0.158._
+
+Findings of the §3 review at the `b0b6656b5` unification, plus the regen trap
+the unification's own sweep tripped.
+
+**`findAll` was a NEW divergence presented as closing one.** P4.D222 made the
+help sync's `findAll` failure propagate "as v4's throw does". v4's
+`repos.helpDocs.findAll()` is `AbstractBaseRepository._findAll`, a FALLBACK
+`safeQuery`: a DB failure logs ONE ERROR `Error finding all entities` with the
+base class's enriched context (`collection: 'help_docs'`) plus the error and
+answers `[]` — the sync carries on as though the table were empty, and the
+reconcile's re-read likewise finds nothing incomplete. Main's old swallow was
+also wrong (silent), but the lane swapped one non-v4 shape for another and
+pinned it. Both reads now take v4's fallback; the unit test is retargeted
+(the sync returns Ok with the per-file failure counted, the one ERROR line
+pinned); the reindex comment corrected.
+
+**The three fallback ERROR lines carry v4's `collection` field.** v4's
+`safeQuery` enriches every context with `collection: this.collectionName`, so
+`Error counting help doc chunks by doc` and `Error finding help doc chunks by
+doc` carry `help_doc_chunks` and the new line carries `help_docs`; the
+capture pins assert the field, and the job's line gains its first pin (a
+renamed chunk table logs it once and the in-memory slice still embeds).
+
+**The zero-length doc-vector rule is tested.** `find_all_for_reconcile` decodes
+`X''` as missing (v4's `length === 0`) — a repository test now holds NULL,
+`X''`, an int8-encoded vector and a legacy raw f32 blob to the rule.
+
+**The stale recipe header.** `help_doc_ensure_equivalence`'s committed regen
+loop still built the six original scenarios while the case records twelve; the
+unification sweep's regen failed on `missing fixture … edited-page` (the
+lane ran its own lane-private script). The header now lists all twelve and
+describes what each scenario isolates after `492771aff`. `host_help_docs_boot`'s
+header likewise rewritten (129 rows; the boot reconcile CONVERGED with v4's
+Phase 3.66). The gate test's comment claiming the section insert "rolls back
+the whole sync" corrected — the per-file catch swallows it; the BACKFILL's
+insert is what fails the reconcile.
+
 #### 2026-09-25 — fix(web): the unlock throw proof poses the real write throw and core answers v4's change-passphrase 401s; the character GET looks up before its gate; the action census sees typed extractors (P4.D220, unification review)
 
 _Versions: core 0.0.1057, web 0.0.195._
