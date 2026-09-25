@@ -488,6 +488,28 @@ async function main(): Promise<void> {
       )) as Array<{ content: string; opaqueContent: string }>;
       record.lanternContent = lanternRows.length > 0 ? lanternRows[0].content : null;
       record.lanternOpaque = lanternRows.length > 0 ? lanternRows[0].opaqueContent : null;
+
+      // P4.D225 (`8bd080267` + `49059fb14`): the Concierge's footprint on a
+      // refused-then-rerouted portrait — the chat's refusal tally (absent
+      // column → null, a pin before the ledger), the Lantern row's persisted
+      // `routeTrail` as its raw stored TEXT (v4's writer key order, compared as
+      // bytes), and the refusal bubbles.
+      {
+        const chatAll = (await rawQuery(`SELECT * FROM chats WHERE id = ?`, [chat.id])) as Array<Record<string, unknown>>;
+        const trailRows = (await rawQuery(
+          `SELECT qt_text(routeTrail) AS routeTrail FROM chat_messages WHERE chatId = ? AND systemSender = 'aurora' AND systemKind = 'avatar' ORDER BY createdAt`,
+          [chat.id],
+        )) as Array<Record<string, unknown>>;
+        const refusals = (await rawQuery(
+          `SELECT qt_text(content) AS content, qt_text(opaqueContent) AS opaqueContent FROM chat_messages WHERE chatId = ? AND systemKind = 'refusal' ORDER BY createdAt`,
+          [chat.id],
+        )) as Array<{ content: string; opaqueContent: string }>;
+        record.concierge = {
+          refusalCount: chatAll[0]?.moderationRefusalCount ?? null,
+          lanternRouteTrail: trailRows[0]?.routeTrail ?? null,
+          refusalBubbles: refusals,
+        };
+      }
       // P4.D184: a cache HIT produces nothing, so it posts no notification —
       // and on a `runTwice` case run 1's own notification is still there. The
       // COUNT is what tells the two apart; the content of the first row cannot.

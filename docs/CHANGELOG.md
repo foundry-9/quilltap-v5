@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the avatar and story jobs on the image-failover chokepoint (P4.D225 unit 8b)
+
+_Versions: core 0.0.1072, harness 0.0.991._
+
+Both image jobs now generate through `generate_image_with_concierge_failover`
+via one `image_job_common::generate_job_image` helper (params and the
+`IMAGE_GENERATION` log row per attempt). The per-handler reroute
+(`generate_with_reroute`, `reroute_or_fail`, `RerouteHandler`) is deleted,
+and with it the story job's bug-133 gate: a refused backdrop is retried under
+Auto-Route in any chat state. The story prompt goes candid only under
+Auto-Route. Both handlers log v4's new failure bags (with `conciergeTrail`)
+and rerouted lines (the story's, previously unported, now ported), and pass
+the trail to the Lantern bubble. The Lantern writer gains v4's three log lines
+(`routeTrailLength` on the success line). Fix: persisted route-trail rows
+now use v4's stored key order (`profileKind` after `evidence`), measured on
+the widened avatar/story families, which now compare the refusal tally, the
+stored trail bytes and the refusal bubbles.
+
 #### 2026-09-25 — feat(concierge): the image-failover chokepoint (P4.D225 unit 8a)
 
 _Versions: core 0.0.1071, harness 0.0.990._

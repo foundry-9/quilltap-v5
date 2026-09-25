@@ -313,6 +313,19 @@ async function main(): Promise<void> {
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
+  // P4.D225 (v4 `49059fb14`): the refusal ledger's two `chats` columns through
+  // v4's OWN migration module, so the post-hoc refusal arms' ledger increments
+  // land (without them both sides' increments fail softly and the ledger goes
+  // unmeasured). Skipped at a pin before the migration existed.
+  const { runV4Migrations, ADD_CHAT_REFUSAL_LEDGER } = await import('../lib/v4-migrations');
+  const migrated = await runV4Migrations({
+    dbPath: mainOut,
+    pepperBase64: spec.testPepperBase64,
+    migrations: [ADD_CHAT_REFUSAL_LEDGER],
+    allowMissing: true,
+  });
+  process.stderr.write(`fixture migrations: ${migrated.join('; ')}\n`);
+
   writeFileSync(mainOut + '.meta.json', JSON.stringify({ charVaults }));
   process.stderr.write(`built avatar-job fixtures: main=${mainOut} mount=${mountOut}\n`);
   process.exit(0);

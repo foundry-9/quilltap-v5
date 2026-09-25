@@ -13,8 +13,8 @@
 //!
 //! Compared per case: the attempt calls (profile, key) in order; the outcome
 //! (the answer, the answering profile + key, `rerouted`, the trail — or the
-//! error message + `getConciergeTrail`), the trail rows as JSON in v4's writer
-//! key order; and every `ConciergeImageFailover` / `ConciergeRefusal` /
+//! error message + `getConciergeTrail`), the trail rows as JSON VALUES (their
+//! persisted key order is pinned by the job families); and every `ConciergeImageFailover` / `ConciergeRefusal` /
 //! `ConciergeRefusalLedger` / `[ConciergeNotification]` line in order (minted
 //! message ids placeholdered). Then the `chats` + `chat_messages` dumps.
 //!
@@ -359,8 +359,9 @@ fn image_failover_matches_v4() {
                 .collect(),
         );
         let calls: Mutex<Vec<Value>> = Mutex::new(Vec::new());
-        let attempt =
-            async |profile: &FailoverProfile, key: &str| -> Result<String, ImageGenError> {
+        let (calls, script) = (&calls, &script);
+        let attempt = |profile: FailoverProfile, key: String| async move {
+            {
                 calls
                     .lock()
                     .unwrap()
@@ -372,10 +373,11 @@ fn image_failover_matches_v4() {
                     steps.remove(0)
                 };
                 match step.get("throws") {
-                    Some(t) => Err(make_error(t)),
+                    Some(t) => Err::<String, ImageGenError>(make_error(t)),
                     None => Ok(step["answers"].as_str().unwrap().to_string()),
                 }
-            };
+            }
+        };
         let (outcome, lines) = captured_with(|| {
             rt.block_on(generate_image_with_concierge_failover(
                 (FailoverProfile::from_row(&primary_row), primary_key),
@@ -402,7 +404,7 @@ fn image_failover_matches_v4() {
             script.lock().unwrap().values().all(Vec::is_empty),
             "{name}: unused scripted steps"
         );
-        let got_calls = Value::Array(calls.into_inner().unwrap());
+        let got_calls = Value::Array(std::mem::take(&mut *calls.lock().unwrap()));
         let got_lines: Vec<String> = lines
             .iter()
             .filter(|l| {
@@ -431,18 +433,12 @@ fn image_failover_matches_v4() {
                 want["calls"]
             ));
         }
-        // The trail's KEY ORDER is v4's writer's (`row()` spreads
-        // `profileKind` before `trigger`/`evidence`/`detail`): compared as
-        // bytes, since `Value` equality ignores order (`preserve_order` keeps
-        // both sides' insertion order for the serialization).
-        let trail_bytes = |v: &Value| serde_json::to_string(&v["trail"]).unwrap();
-        if trail_bytes(&got_outcome) != trail_bytes(&want["outcome"]) {
-            diffs.push(format!(
-                "trail bytes\n      rust   {}\n      oracle {}",
-                trail_bytes(&got_outcome),
-                trail_bytes(&want["outcome"])
-            ));
-        }
+        // The trail is compared as VALUES here, not bytes: this is the
+        // chokepoint's IN-MEMORY trail, whose key order (`row()` spreads
+        // `profileKind` first) v4 never persists — `addMessage` re-parses
+        // through `MessageEventSchema`, which emits the schema's order. The
+        // persisted bytes are pinned where they land: the avatar / story job
+        // families' `concierge` footprint (P4.D225 unit 8b).
         if got_outcome != want["outcome"] {
             diffs.push(format!(
                 "outcome\n      rust   {got_outcome}\n      oracle {}",

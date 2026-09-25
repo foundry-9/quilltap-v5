@@ -437,6 +437,9 @@ impl LanternNotificationSink for RealLanternNotification<'_> {
                 },
                 // The character-image body ignores the prompt (v4 `buildContent`).
                 prompt: None,
+                // The tool's trail arrives with its move onto the chokepoint
+                // (P4.D225 unit 8c); until then it has none to give.
+                route_trail: Vec::new(),
             },
         )
         .await;

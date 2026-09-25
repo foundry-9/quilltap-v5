@@ -272,6 +272,10 @@ struct ResultRow {
     /// P4.104: the D19 comparand of an `imageSeed` case's written vault row.
     #[serde(default, rename = "imageFacts")]
     image_facts: Option<Value>,
+    /// P4.D225: the refusal tally, the Lantern row's raw `routeTrail`, the
+    /// refusal bubbles (see [`concierge_footprint`]).
+    #[serde(default)]
+    concierge: Option<Value>,
 }
 
 // ===========================================================================
@@ -1079,6 +1083,18 @@ fn avatar_job_matches_oracle() {
             label
         );
 
+        // P4.D225: the Concierge's footprint — the chokepoint's ledger write,
+        // its refusal bubble, the trail on the Aurora row (raw TEXT, bytes).
+        let got_concierge = concierge_footprint(&db, &case.id, "aurora", "avatar");
+        assert_eq!(
+            Some(&got_concierge),
+            want.concierge.as_ref(),
+            "{}: the Concierge footprint diverged\n  rust:   {}\n  oracle: {:?}",
+            label,
+            got_concierge,
+            want.concierge
+        );
+
         // characterAvatars + avatarOverrides JSON updates.
         let cid = case.id.clone();
         let got_avatars: Option<String> = db
@@ -1228,4 +1244,46 @@ fn avatar_job_runner_registration_e2e() {
     drop(db);
     cleanup(&main_work, &mount_work);
     eprintln!("OK: avatar-job runner-registration E2E completed.");
+}
+
+/// The chat's refusal tally, the Lantern row's raw stored `routeTrail`, and
+/// the Concierge's refusal bubbles — the oracle's `record.concierge` twin.
+fn concierge_footprint(db: &Db, chat_id: &str, sender: &str, kind: &str) -> Value {
+    let (cid, sender, kind) = (chat_id.to_string(), sender.to_string(), kind.to_string());
+    db.read_main(move |c| {
+        let count: Option<i64> = c
+            .query_row("SELECT * FROM chats WHERE id = ?1", [&cid], |r| {
+                Ok(r.as_ref()
+                    .column_index("moderationRefusalCount")
+                    .ok()
+                    .and_then(|i| r.get::<_, Option<i64>>(i).ok().flatten()))
+            })
+            .ok()
+            .flatten();
+        let trail: Option<String> = c
+            .query_row(
+                "SELECT qt_text(routeTrail) FROM chat_messages WHERE chatId = ?1 AND systemSender = ?2 AND systemKind = ?3 ORDER BY createdAt LIMIT 1",
+                rusqlite::params![cid, sender, kind],
+                |r| r.get(0),
+            )
+            .ok()
+            .flatten();
+        let mut stmt = c.prepare(
+            "SELECT qt_text(content), qt_text(opaqueContent) FROM chat_messages WHERE chatId = ?1 AND systemKind = 'refusal' ORDER BY createdAt",
+        )?;
+        let bubbles: Vec<Value> = stmt
+            .query_map([&cid], |r| {
+                Ok(serde_json::json!({
+                    "content": r.get::<_, String>(0)?,
+                    "opaqueContent": r.get::<_, String>(1)?,
+                }))
+            })?
+            .collect::<Result<_, _>>()?;
+        Ok(serde_json::json!({
+            "refusalCount": count,
+            "lanternRouteTrail": trail,
+            "refusalBubbles": bubbles,
+        }))
+    })
+    .expect("read the Concierge footprint")
 }

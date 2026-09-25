@@ -122,19 +122,19 @@ pub trait UnderstudySource {
     fn resolve(
         &self,
         exclude: &[String],
-    ) -> impl std::future::Future<Output = Option<(FailoverProfile, String)>> + Send;
+    ) -> impl std::future::Future<Output = Option<(FailoverProfile, String)>>;
 }
 
 /// v4's default understudy: `resolveUncensoredImageUnderstudy({ userId,
 /// settings, exclude })` over the user's IMAGE profiles.
-pub struct ImageUnderstudySource<'a, A: ApiKeyResolver + Sync> {
+pub struct ImageUnderstudySource<'a, A: ApiKeyResolver> {
     pub db: &'a Db,
     pub api_keys: &'a A,
     pub user_id: &'a str,
     pub uncensored_image_profile_id: Option<&'a str>,
 }
 
-impl<A: ApiKeyResolver + Sync> UnderstudySource for ImageUnderstudySource<'_, A> {
+impl<A: ApiKeyResolver> UnderstudySource for ImageUnderstudySource<'_, A> {
     async fn resolve(&self, exclude: &[String]) -> Option<(FailoverProfile, String)> {
         let found = self
             .db
@@ -309,20 +309,26 @@ async fn ledger<U: UnderstudySource>(
 /// v4 `generateImageWithConciergeFailover` — run an image call, failing over
 /// once to an uncensored understudy when the provider refuses on content
 /// grounds. `attempt` builds the call for whichever profile it is handed.
-pub async fn generate_image_with_concierge_failover<T, U, F>(
+///
+/// `attempt` takes its profile and key BY VALUE: an `async` closure over
+/// borrowed arguments cannot be proven `Send` for every lifetime (the
+/// higher-ranked limitation), and the image jobs run on the job runner, whose
+/// futures must be `Send`.
+pub async fn generate_image_with_concierge_failover<T, U, F, Fut>(
     primary: (FailoverProfile, String),
     mut attempt: F,
     ctx: &ImageFailoverContext<'_, U>,
 ) -> Result<ImageFailoverOutcome<T>, ImageFailoverError>
 where
     U: UnderstudySource,
-    F: AsyncFnMut(&FailoverProfile, &str) -> Result<T, ImageGenError>,
+    F: FnMut(FailoverProfile, String) -> Fut,
+    Fut: std::future::Future<Output = Result<T, ImageGenError>>,
 {
     let (primary_profile, primary_key) = primary;
     let p = &primary_profile;
 
     // 1. The primary.
-    let primary_error = match attempt(p, &primary_key).await {
+    let primary_error = match attempt(p.clone(), primary_key.clone()).await {
         Ok(result) => {
             failover_line!(debug, ctx, p, "Image call answered first time");
             return Ok(ImageFailoverOutcome {
@@ -418,7 +424,7 @@ where
         understudy_provider = understudy.provider.as_str(),
         understudy_model = understudy.model_name.as_str()
     );
-    match attempt(&understudy, &understudy_key).await {
+    match attempt(understudy.clone(), understudy_key.clone()).await {
         Ok(result) => {
             trail.push(row(
                 &understudy,

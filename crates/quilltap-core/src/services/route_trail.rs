@@ -171,20 +171,6 @@ pub struct RouteAttempt {
     pub via: RouteAttemptVia,
     #[serde(serialize_with = "ser_outcome")]
     pub outcome: RouteAttemptOutcome,
-    /// `image` on an image-profile row; absent everywhere else.
-    ///
-    /// **Declared HERE, between `outcome` and `trigger`, on purpose:** the key
-    /// order of a persisted row is v4's WRITER's, not its Zod declaration's
-    /// (`trigger, evidence, profileKind, detail`). v4 has two writers — the
-    /// image chokepoint's `row()` spreads `profileKind` BEFORE
-    /// `trigger`/`evidence`/`detail`, and `recordRouteFailure` never writes it
-    /// — so one field order serves both: text rows omit the key and keep their
-    /// order, image rows carry it where `row()` puts it.
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "ser_profile_kind"
-    )]
-    pub profile_kind: Option<RouteProfileKind>,
     /// The engine's trigger class for a failure or refusal; absent when answered.
     ///
     /// v4 duplicates `FallbackTrigger` BY VALUE in a client-safe module and
@@ -201,6 +187,23 @@ pub struct RouteAttempt {
         serialize_with = "ser_evidence"
     )]
     pub evidence: Option<RouteAttemptEvidence>,
+    /// `image` on an image-profile row; absent everywhere else.
+    ///
+    /// **Declared HERE, in `RouteAttemptSchema`'s position (after `evidence`,
+    /// before `detail`), on purpose — MEASURED, P4.D225 unit 8b:** v4's image
+    /// chokepoint builds its rows with `profileKind` spread BEFORE
+    /// `trigger`/`evidence`/`detail`, but that in-memory order never reaches
+    /// disk: `chats.addMessage` re-parses the message through
+    /// `MessageEventSchema`, whose Zod object emits the SCHEMA's key order. The
+    /// persisted Lantern/Aurora/TOOL rows therefore read `…outcome, trigger,
+    /// evidence, profileKind, detail` (the avatar/story families compare the
+    /// stored TEXT as bytes). Text rows never carry the key, so their order is
+    /// unaffected either way.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_profile_kind"
+    )]
+    pub profile_kind: Option<RouteProfileKind>,
     /// Short human-readable reason, ≤ 200 UTF-16 units (the error message
     /// truncated, or the finish reason). Never the full error body.
     #[serde(skip_serializing_if = "Option::is_none")]

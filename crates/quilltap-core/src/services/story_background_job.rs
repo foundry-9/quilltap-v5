@@ -40,6 +40,7 @@ use crate::services::appearance_resolution::{
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::gatekeeper::ModerationProvider;
+use crate::services::dangerous_content::image_failover::{FailoverProfile, ImagePurpose};
 use crate::services::dangerous_content::provider_routing::ApiKeyResolver;
 use crate::services::image_job_common as common;
 use crate::services::image_job_storage::write_lantern_background_to_mount_store;
@@ -50,6 +51,7 @@ use crate::services::image_scene_tasks::{
 use crate::services::lantern_notifications::{
     post_lantern_image_notification, LanternNotificationKind, LanternPostParams,
 };
+use crate::services::route_trail::RouteAttemptVia;
 
 /// The decoded `STORY_BACKGROUND_GENERATION` payload.
 #[derive(Clone, Debug)]
@@ -232,10 +234,6 @@ where
     let image_model = common::str_field(&image_profile, "modelName")
         .unwrap_or("")
         .to_string();
-    let image_params = image_profile
-        .get("parameters")
-        .cloned()
-        .unwrap_or(Value::Null);
     let Some(api_key_id) = common::owned_field(&image_profile, "apiKeyId") else {
         return Ok(());
     };
@@ -301,7 +299,13 @@ where
     // appearance sanitization steps aside for exactly this case (see
     // `sanitize_appearances_if_needed` rule 2), so the prompt crafter should too
     // rather than draping a sheet over a scene nobody asked to have covered.
-    let uncensored_image_target = is_dangerous_chat && has_uncensored_image_provider;
+    //
+    // Only under Auto-Route (v4 `8bd080267`): a candid prompt is never crafted
+    // for a route that cannot reroute, or a Flagged chat under Detect Only
+    // would send its franker prompt straight to the moderated provider. A
+    // PROMPT-CRAFTING change, not only a reroute one.
+    let uncensored_image_target =
+        is_dangerous_chat && has_uncensored_image_provider && danger_settings.mode == "AUTO_ROUTE";
 
     // Dangerous chats: upgrade the cheap selection for all cheap tasks.
     if is_dangerous_chat {
@@ -681,39 +685,96 @@ where
         .collect();
     final_prompt = append_missing_character_enumerations(&final_prompt, &non_participant);
 
-    // 10. Generate the image (landscape, with post-hoc reroute).
-    let outcome = common::generate_with_reroute(
+    // 10. Generate the image — through the Concierge's failover chokepoint (v4
+    // `8bd080267`).
+    //
+    // A refusal is retried once on an uncensored understudy under Auto-Route,
+    // in any chat state. The old gate (bug 133, `cc65d6bfc`) barred that for a
+    // chat still Monitored, on the ground that a refusal should not "promote"
+    // the chat. That concern belongs to the chat *switch*, not to a retry that
+    // resends the same prompt to a provider that will take it: the prompt is
+    // never re-crafted here, so a moderated chat's concealed prompt stays
+    // concealed. (The gate — `RerouteHandler::StoryBackground {
+    // is_dangerous_chat }` — is DELETED with the per-handler reroute.)
+    //
+    // Backgrounds default to landscape; every profile rebuilds its own params
+    // (`…concierge-reroute` for any profile but the requested one).
+    let image_profile_id = common::str_field(&image_profile, "id")
+        .unwrap_or("")
+        .to_string();
+    let failover = match common::generate_job_image(
         db,
         deps.image_provider,
         deps.api_keys,
-        common::str_field(&image_profile, "id").unwrap_or(""),
-        &image_provider_name,
-        &image_model,
-        &image_params,
-        &api_key,
+        FailoverProfile {
+            id: image_profile_id.clone(),
+            name: common::str_field(&image_profile, "name")
+                .unwrap_or("")
+                .to_string(),
+            provider: image_provider_name.clone(),
+            model_name: image_model.clone(),
+            row: Value::Null,
+        },
+        api_key.clone(),
+        &image_profile_id,
         None,
+        &image_profile_id,
         &final_prompt,
         Orientation::Landscape,
         deps.declarations_for,
-        &danger_settings.mode,
-        danger_settings.uncensored_image_profile_id.as_deref(),
+        "background-jobs.story-background",
+        "background-jobs.story-background.concierge-reroute",
+        &danger_settings,
         user_id,
         Some(&payload.chat_id),
         None,
-        "Image generation failed",
-        "background-jobs.story-background",
-        "background-jobs.story-background.concierge-reroute",
         Some(job_id),
-        // [cc65d6bfc] The post-hoc reroute's door is barred for a chat the
-        // operator left moderated (bug 133): a refusal is testimony that the
-        // scene was too frank, which is poor grounds for going and finding a
-        // franker provider.
-        common::RerouteHandler::StoryBackground {
-            is_dangerous_chat,
-            has_uncensored_image_provider,
-        },
+        ImagePurpose::Lantern,
+        RouteAttemptVia::Primary,
     )
-    .await?;
+    .await
+    {
+        Ok(failover) => failover,
+        Err(error) => {
+            tracing::error!(
+                target: "quilltap::story_background",
+                context = "background-jobs.story-background",
+                job_id = job_id,
+                error = %error.error.message,
+                is_dangerous_chat = is_dangerous_chat,
+                has_uncensored_image_provider = has_uncensored_image_provider,
+                danger_mode = %danger_settings.mode,
+                conciergeTrailJson = common::concierge_trail_log_json(&error).as_deref(),
+                "[StoryBackground] Image generation failed"
+            );
+            return Err(common::job_failure_message(
+                "Image generation failed",
+                &error,
+            ));
+        }
+    };
+    // The profile that actually produced the image — the understudy after a
+    // reroute. Drives the file's `generationModel`. The success line was a
+    // recorded NO-PORT (`STORY_REROUTE_SUCCEEDED_UNPORTED`) until v4 gave it a
+    // new bag at `8bd080267` — RE-RULED: ported.
+    if failover.rerouted {
+        tracing::info!(
+            target: "quilltap::story_background",
+            context = "background-jobs.story-background",
+            job_id = job_id,
+            original_profile_id = %image_profile_id,
+            fallback_profile_id = %failover.profile.id,
+            fallback_provider = %failover.profile.provider,
+            fallback_model = %failover.profile.model_name,
+            "[StoryBackground] Concierge uncensored reroute succeeded"
+        );
+    }
+    let route_trail = failover.trail;
+    let outcome = common::GenOutcome {
+        images: failover.result.images,
+        active_provider: failover.profile.provider,
+        active_model: failover.profile.model_name,
+    };
 
     // v4: `rawData = imageData.data || imageData.b64Json; if (!rawData)` — a JS
     // falsy check, so a missing AND an empty-string payload both no-op (W4.7f
@@ -838,6 +899,7 @@ where
             file_id,
             kind: LanternNotificationKind::Background,
             prompt: Some(final_prompt),
+            route_trail,
         },
     )
     .await;

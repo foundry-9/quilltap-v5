@@ -160,6 +160,11 @@ pub struct LanternPostParams {
     /// Generation prompt to quote; callers pass it because the file row may be a
     /// still-buffered write not yet readable from the DB.
     pub prompt: Option<String>,
+    /// The Concierge's call sheet when the picture was refused on the way and
+    /// rerouted ([`crate::services::dangerous_content::image_failover`], v4
+    /// `8bd080267`). Rendered under the bubble's avatar. Empty when the first
+    /// profile answered — and then OMITTED from the message, as v4 omits it.
+    pub route_trail: Vec<crate::services::route_trail::RouteAttempt>,
 }
 
 /// Post an image-pipeline notification (v4 `postLanternImageNotification`). Reads
@@ -223,21 +228,46 @@ pub async fn post_lantern_image_notification(db: &Db, params: LanternPostParams)
         "systemSender": params.kind.sender(),
         "systemKind": params.kind.system_kind(),
     });
+    let mut message = message;
+    if !params.route_trail.is_empty() {
+        message.as_object_mut().unwrap().insert(
+            "routeTrail".into(),
+            serde_json::to_value(&params.route_trail).unwrap_or(Value::Null),
+        );
+    }
 
-    let event: ChatEventInput = serde_json::from_value(message.clone()).ok()?;
+    let failed = |error: String| {
+        // v4's outer catch (the add is the one step here that can throw).
+        tracing::error!(
+            target: "quilltap::lantern_notification",
+            context = "lantern-notifications",
+            chat_id = %params.chat_id,
+            file_id = %params.file_id,
+            kind = params.kind.system_kind(),
+            error = %error,
+            "[LanternNotification] Failed to post announcement"
+        );
+    };
+    let event: ChatEventInput = match serde_json::from_value(message.clone()) {
+        Ok(event) => event,
+        Err(e) => {
+            failed(e.to_string());
+            return None;
+        }
+    };
     let cid = params.chat_id.clone();
-    if db
+    if let Err(e) = db
         .write(move |writers| writers.main().chat_messages().add_message(&cid, &event))
         .await
-        .is_err()
     {
+        failed(e.to_string());
         return None;
     }
 
     // Best-effort file→message link (v4 warns, never throws, on a link failure).
     let file_id = params.file_id.clone();
     let msg_id = message_id.clone();
-    let _ = db
+    if let Err(e) = db
         .write(move |writers| {
             writers
                 .main()
@@ -245,8 +275,32 @@ pub async fn post_lantern_image_notification(db: &Db, params: LanternPostParams)
                 .add_link(&file_id, &msg_id)
                 .map(|_| ())
         })
-        .await;
+        .await
+    {
+        tracing::warn!(
+            target: "quilltap::lantern_notification",
+            context = "lantern-notifications",
+            chat_id = %params.chat_id,
+            file_id = %params.file_id,
+            message_id = %message_id,
+            error = %e,
+            "[LanternNotification] Could not link file to message"
+        );
+    }
 
+    // v4's success line; `routeTrailLength` is P4.D225's (`8bd080267`). The
+    // three lines predate #73 in v4 and were never ported here — the trail
+    // is what brought them in.
+    tracing::info!(
+        target: "quilltap::lantern_notification",
+        context = "lantern-notifications",
+        chat_id = %params.chat_id,
+        file_id = %params.file_id,
+        message_id = %message_id,
+        kind = params.kind.system_kind(),
+        route_trail_length = params.route_trail.len(),
+        "[LanternNotification] Announcement posted"
+    );
     Some(message)
 }
 

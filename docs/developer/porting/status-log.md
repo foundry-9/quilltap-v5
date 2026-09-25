@@ -150566,3 +150566,71 @@ Regen outputs staged under `/tmp/p4d225/`.
   on the rerouted exit) → the four rerouted-with-a-chat arms' logs; **M5**
   (the understudy's verdict on the ledger) → the three understudy-failure
   arms. Restored (cmp).
+
+### Unit 8b — the two image jobs on the chokepoint; the persisted trail order corrected
+
+- `image_job_common.rs`: `generate_with_reroute`, `reroute_or_fail`,
+  `RerouteHandler` and `STORY_REROUTE_SUCCEEDED_UNPORTED` DELETED (retired by
+  v4 `8bd080267`); NEW `generate_job_image` (the `attempt` closure: PREBUILT
+  params only for the REQUESTED profile, every other profile rebuilds under
+  the handler's other context; the `(Concierge reroute)` suffix keys on `≠`
+  the unsuffixed id — the avatar's EFFECTIVE primary, the story's requested
+  profile — v4's two comparisons, one closure), `concierge_trail_log_json`
+  (the `conciergeTrail` pairs, `…Json` convention, absent without a trail),
+  `job_failure_message` (the `after Concierge reroute` prefix only for a trail
+  longer than one). The old bug-133 unit tests (a retired gate, three retired
+  lines) replaced by duration pins over the new helper + a rerouted-run pin +
+  the failure-message/trail-json pin.
+- ⚠ **Measured-wrong premise:** the order says the avatar's rebuilt params use
+  `.concierge-reroute`; v4 at the pin says `background-jobs.character-avatar
+  .concierge-route` (v5 already used it for the pre-flight rebuild). The
+  story's is `.concierge-reroute`. Ported as v4 has them.
+- Avatar: `primaryVia: concierge` when the pre-flight classifier swapped the
+  profile; v4's new `[CharacterAvatar] Image generation failed` bag (`error`,
+  `conciergeTrail`; `moderationRejection` gone) and the rerouted line
+  (`fallbackProfileId/Provider/Model`; `rerouteDurationMs` gone); the three
+  retired lines (`rejected for content moderation, rerouting…`, `Image
+  generation failed (Concierge reroute also failed)`) gone with the old flow.
+  Story: the bug-133 gate DELETED; `uncensored_image_target` gains the
+  `AUTO_ROUTE` conjunct (a prompt-crafting change); the failure bag
+  (`isDangerousChat, hasUncensoredImageProvider, dangerMode,
+  conciergeTrail`); the success line RE-RULED NO-PORT → PORT with v4's new bag
+  (`originalProfileId` + the fallback trio).
+- Lantern writer (`lantern_notifications.rs`): `LanternPostParams.route_trail`
+  (omitted from the message when empty, as v4 omits it); v4's three lines —
+  `[LanternNotification] Announcement posted` (with `routeTrailLength`),
+  `Could not link file to message`, `Failed to post announcement` — none of
+  which v5 had ever ported. The tool passes an empty trail until unit 8c.
+- The `attempt` seam changed to OWNED arguments (`FnMut(FailoverProfile,
+  String) -> Fut`): an `async` closure over borrowed arguments fails the job
+  runner's `Send` requirement (the higher-ranked "`Send` is not general
+  enough" limitation); `UnderstudySource`'s future dropped its `Send` bound so
+  handlers need not be `A: Sync`.
+- **`avatar_job_tier3` + `story_background_job_tier3` WIDENED:** both builders
+  run v4's own `add-chat-refusal-ledger-v1` (so the refusal arms' increments
+  land instead of failing softly on both sides); both cases gain a
+  `concierge` comparand — the chat's `moderationRefusalCount`, the Aurora /
+  Lantern row's stored `routeTrail` as raw `qt_text` TEXT (BYTES), the
+  refusal bubbles — with Rust twins. Before widening, both families were green
+  at the target on the existing refusal arms (`posthoc_reroute`,
+  `cache_reroute_keyed_on_requested_profile`, the four `moderation_*` /
+  `flagged_no_profile_moderation` story cases).
+- ⚠ **The widened comparand caught a REAL defect (and a wrong order premise,
+  E.5):** v4's persisted image rows read `…outcome, trigger, evidence,
+  profileKind, detail` — `chats.addMessage` re-parses through
+  `MessageEventSchema`, so the chokepoint's in-memory `row()` order
+  (`profileKind` first) never reaches disk. Unit 2 had put `profile_kind`
+  before `trigger` on that premise. **RED first:** `cache_reroute_keyed_on_
+  requested_profile` (avatar) and `flagged_no_profile_moderation` (story) —
+  `the Concierge footprint diverged`, the stored trail bytes differing only by
+  that key's position. Fixed in `route_trail.rs` (text rows never carry the
+  key; `route_trail_compose` green). `image_failover_tier3`'s trail check
+  moved to VALUES (it sees only the in-memory trail) — so M3 in the order's
+  direction is now proven by the job families, and in the recorded direction.
+- Through the driver at the target: `avatar_job_tier3` OK,
+  `story_background_job_tier3` OK, `route_trail_compose` OK,
+  `image_failover_tier3` 17/17.
+- Gate: fmt + clippy (workspace) clean; `quilltap-core --lib` 2627 passed /
+  1 failed — `activity_registry::records_a_blip_once_a_span_outlives_the_
+  threshold`, a timing-threshold test this lane never touched, failing under
+  the parallel run's load and green 3/3 alone. Recorded as a load flake.

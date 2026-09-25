@@ -45,6 +45,7 @@ use crate::model::image::{ImageProvider, ImageTranscoder, TranscodeInput};
 use crate::services::aesthetics::{resolve_aesthetic, AestheticKind};
 use crate::services::avatar_prompt::{build_character_avatar_prompt, AvatarPromptOptions};
 use crate::services::dangerous_content::gatekeeper::{classify_content, ModerationProvider};
+use crate::services::dangerous_content::image_failover::{FailoverProfile, ImagePurpose};
 use crate::services::dangerous_content::provider_routing::{
     resolve_image_provider_for_dangerous_content, ApiKeyResolver, RouteProfile,
 };
@@ -53,6 +54,7 @@ use crate::services::image_job_storage::write_character_avatar_to_vault;
 use crate::services::lantern_notifications::{
     post_lantern_image_notification, LanternNotificationKind, LanternPostParams,
 };
+use crate::services::route_trail::RouteAttemptVia;
 use crate::wardrobe::Slots;
 
 /// v4's `context` for this handler (`character-avatar.ts` passes it in every one
@@ -429,10 +431,9 @@ where
     let mut eff_model = common::str_field(&image_profile, "modelName")
         .unwrap_or("")
         .to_string();
-    let mut eff_params = image_profile
-        .get("parameters")
-        .cloned()
-        .unwrap_or(Value::Null);
+    let mut eff_name = common::str_field(&image_profile, "name")
+        .unwrap_or("")
+        .to_string();
     let mut eff_api_key = api_key.clone();
 
     if danger_settings.mode != "OFF" && danger_settings.scan_image_prompts {
@@ -560,7 +561,7 @@ where
                         eff_id = route.image_profile.id.clone();
                         eff_provider = route.image_profile.provider.clone();
                         eff_model = route.image_profile.model_name.clone();
-                        eff_params = common::load_profile_parameters(db, &eff_id).await;
+                        eff_name = route.image_profile.name.clone();
                         eff_api_key = route.api_key.clone();
                     } else {
                         // v4 `:282` — the resolver looked and found nothing, so
@@ -579,56 +580,93 @@ where
         }
     }
 
-    // 9. Generate the portrait (with the post-hoc moderation reroute).
+    // 9. Generate the portrait — through the Concierge's failover chokepoint,
+    // which retries a content refusal once on an uncensored understudy (v4
+    // `8bd080267`).
     //
-    // Reuse the params the cache key was derived from. A pre-generation
-    // Concierge reroute swaps the profile, and the fallback provider's shape
-    // mechanism, LoRA support and stored options are its own — so that case, and
-    // only that case, rebuilds (v4's `effectiveImageProfile.id ===
-    // imageProfile.id ? avatarParams : buildImageGenParams(...)`). Building once
-    // is also what keeps the `[Image LoRA]` lines firing once per attempt.
+    // The params the cache key was derived from are reused for the REQUESTED
+    // profile; any other profile (a pre-generation Concierge reroute, or the
+    // post-hoc understudy) has a shape mechanism, LoRA support and stored
+    // options of its own, so that case rebuilds under `…concierge-route`
+    // (v4's literal at the pin — the order's `.concierge-reroute` is the
+    // STORY handler's). The LLM-log `(Concierge reroute)` suffix keys on
+    // `≠` the EFFECTIVE primary instead — two comparisons, one closure, as v4
+    // has them. v4's `rerouteDurationMs` is gone with the old reroute.
     let prebuilt_params = if eff_id == original_profile_id {
         Some(avatar_params)
     } else {
         None
     };
-    // The INITIAL build's log context. v4 builds once, up front, under
-    // `background-jobs.character-avatar` (the params the cache key was derived
-    // from, reused verbatim); a PRE-generation Concierge profile swap is the one
-    // case that rebuilds, and v4 tags that rebuild `…concierge-route`
-    // (`character-avatar.ts:317-326`). `prebuilt_params` is `None` exactly then.
-    let initial_build_log_context = if prebuilt_params.is_some() {
-        "background-jobs.character-avatar"
+    let primary_via = if eff_id != original_profile_id {
+        RouteAttemptVia::Concierge
     } else {
-        "background-jobs.character-avatar.concierge-route"
+        RouteAttemptVia::Primary
     };
-    let outcome = common::generate_with_reroute(
+    let failover = match common::generate_job_image(
         db,
         deps.image_provider,
         deps.api_keys,
-        &eff_id,
-        &eff_provider,
-        &eff_model,
-        &eff_params,
-        &eff_api_key,
+        FailoverProfile {
+            id: eff_id.clone(),
+            name: eff_name,
+            provider: eff_provider,
+            model_name: eff_model,
+            row: Value::Null,
+        },
+        eff_api_key,
+        &original_profile_id,
         prebuilt_params,
+        &eff_id,
         &prompt,
         Orientation::Portrait,
         deps.declarations_for,
-        &danger_settings.mode,
-        danger_settings.uncensored_image_profile_id.as_deref(),
+        "background-jobs.character-avatar",
+        "background-jobs.character-avatar.concierge-route",
+        &danger_settings,
         user_id,
         Some(&payload.chat_id),
         Some(&payload.character_id),
-        "Avatar image generation failed",
-        initial_build_log_context,
-        "background-jobs.character-avatar.concierge-reroute",
         Some(job_id),
-        // [cc65d6bfc] v4's avatar handler is UNTOUCHED by bug 133: its reroute
-        // is gated on the moderation error alone, with no chat-state conjunct.
-        common::RerouteHandler::CharacterAvatar,
+        ImagePurpose::Avatar,
+        primary_via,
     )
-    .await?;
+    .await
+    {
+        Ok(failover) => failover,
+        Err(error) => {
+            tracing::error!(
+                target: LOG_TARGET,
+                context = CONTEXT,
+                job_id = job_id,
+                error = %error.error.message,
+                conciergeTrailJson = common::concierge_trail_log_json(&error).as_deref(),
+                "[CharacterAvatar] Image generation failed"
+            );
+            return Err(common::job_failure_message(
+                "Avatar image generation failed",
+                &error,
+            ));
+        }
+    };
+    // Downstream file metadata records the provider that actually produced the
+    // image.
+    if failover.rerouted {
+        tracing::info!(
+            target: LOG_TARGET,
+            context = CONTEXT,
+            job_id = job_id,
+            fallback_profile_id = %failover.profile.id,
+            fallback_provider = %failover.profile.provider,
+            fallback_model = %failover.profile.model_name,
+            "[CharacterAvatar] Concierge uncensored reroute succeeded"
+        );
+    }
+    let route_trail = failover.trail;
+    let outcome = common::GenOutcome {
+        images: failover.result.images,
+        active_provider: failover.profile.provider,
+        active_model: failover.profile.model_name,
+    };
 
     // No images / no data — WARN+RETURN. v4: `rawData = imageData.data ||
     // imageData.b64Json; if (!rawData)` — a JS falsy check, so a missing AND an
@@ -762,6 +800,7 @@ where
                 character_name: character_name.clone(),
             },
             prompt: Some(prompt),
+            route_trail,
         },
     )
     .await;
