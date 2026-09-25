@@ -87,6 +87,20 @@ async function main(): Promise<void> {
 
   await closeDatabase();
 
+  // P4.D225 (v4 `49059fb14`): the refusal ledger's two columns arrive through
+  // v4's OWN migration module — `generateDDL` walks the Zod schema and never
+  // emits them (they are outside `ChatMetadataSchema` by design), so a fresh
+  // `initializeDatabase` table lacks them exactly as a fresh v4 instance does
+  // before its migration runner. Skipped at a pin that predates the migration.
+  const { runV4Migrations, ADD_CHAT_REFUSAL_LEDGER } = await import('../lib/v4-migrations');
+  const migrated = await runV4Migrations({
+    dbPath: out,
+    pepperBase64: spec.testPepperBase64,
+    migrations: [ADD_CHAT_REFUSAL_LEDGER],
+    allowMissing: true,
+  });
+  process.stderr.write(`chats fixture migrations: ${migrated.join('; ')}\n`);
+
   process.stderr.write(`built empty chats fixture: ${out}\n`);
   process.exit(0);
 }

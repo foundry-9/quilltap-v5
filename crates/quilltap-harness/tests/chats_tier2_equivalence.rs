@@ -30,7 +30,7 @@
 use quilltap_core::db::chats::{ChatCreate, ChatUpdate, CreateOptions};
 use quilltap_core::db::Writer;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 #[derive(Deserialize)]
 struct Spec {
@@ -61,6 +61,25 @@ enum Op {
     },
     #[serde(rename = "delete")]
     Delete { id: String },
+    /// P4.D225 (v4 `49059fb14`): the refusal ledger's three repository ops.
+    #[serde(rename = "incrementRefusal")]
+    IncrementRefusal {
+        id: String,
+        at: String,
+        #[serde(default, rename = "refusedBy")]
+        refused_by: Option<RefusedBy>,
+    },
+    #[serde(rename = "getRefusalLedger")]
+    GetRefusalLedger { id: String },
+    #[serde(rename = "resetRefusalLedger")]
+    ResetRefusalLedger { id: String },
+}
+
+#[derive(Deserialize)]
+struct RefusedBy {
+    provider: String,
+    #[serde(default, rename = "modelName")]
+    model_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -212,6 +231,10 @@ fn chats_tier2_matches_oracle() {
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+    // v5's boot ensure (a no-op on a fixture built at a pin whose builder ran
+    // v4's `add-chat-refusal-ledger-v1`).
+    quilltap_core::test_support::ensure_p4d225_columns(writer.connection());
+    let mut ledger: Vec<Value> = Vec::new();
     {
         let repo = writer.chats();
         for op in &spec.ops {
@@ -254,6 +277,24 @@ fn chats_tier2_matches_oracle() {
                 Op::Delete { id } => {
                     repo.delete(id).expect("delete");
                 }
+                Op::IncrementRefusal { id, at, refused_by } => {
+                    let count = repo.increment_moderation_refusal_count(
+                        id,
+                        at,
+                        refused_by
+                            .as_ref()
+                            .map(|r| (r.provider.as_str(), r.model_name.as_deref())),
+                    );
+                    ledger.push(json!({ "op": "incrementRefusal", "id": id, "count": count }));
+                }
+                Op::GetRefusalLedger { id } => {
+                    let l = repo.get_moderation_refusal_ledger(id);
+                    ledger.push(json!({
+                        "op": "getRefusalLedger", "id": id,
+                        "count": l.count, "lastAt": l.last_at,
+                    }));
+                }
+                Op::ResetRefusalLedger { id } => repo.reset_moderation_refusal_ledger(id),
             }
         }
     }
@@ -290,6 +331,14 @@ fn chats_tier2_matches_oracle() {
         ann_rows, 1,
         "expected exactly the surviving chat's annotation after the sweep, got {ann_rows}"
     );
+
+    // P4.D225: the ledger ops' answers, in order.
+    assert_eq!(
+        Value::Array(ledger.clone()),
+        oracle["ledger"],
+        "refusal ledger answers"
+    );
+    assert!(ledger.len() >= 8, "the ledger ops must have run");
 
     let n = got["rows"].as_array().map(|a| a.len()).unwrap_or(0);
     assert!(n > 0, "dump looks empty");

@@ -1462,6 +1462,148 @@ impl<'c> ChatsRepository<'c> {
         }
     }
 
+    // ========================================================================
+    // CONCIERGE REFUSAL LEDGER (v4 `49059fb14`, #74)
+    // ========================================================================
+    //
+    // `moderationRefusalCount` / `lastModerationRefusalAt` are deliberately NOT
+    // declared in v4's `ChatMetadataSchema`, for the reason `transcriptVersion`
+    // is not: every `update` rewrites the whole validated row from a snapshot
+    // read a moment earlier, so a counter inside the schema could be rewound by
+    // any concurrent chat-row write. They are not in `chats_read::ALL_COLUMNS`
+    // nor in `ChatUpdate` here either, so these three methods are the only
+    // things that touch them (the columns arrive by the boot ensure in
+    // `chats_moderation_refusal_ledger_repair`). The ledger's one writer above
+    // them is `services::dangerous_content::refusal_ledger`.
+
+    /// v4 `incrementModerationRefusalCount(chatId, at, refusedBy?)` — record one
+    /// stated moderation refusal: an atomic `moderationRefusalCount + 1` and a
+    /// fresh `lastModerationRefusalAt`, then a SEPARATE read of the new count
+    /// (v4's read-after-write, not a `RETURNING`). **0** when no row matched —
+    /// and, through v4's fallback `safeQuery`, when the UPDATE itself failed —
+    /// with the "chat not found" WARN either way.
+    ///
+    /// The SQL is the one v4's query translator renders for `{ $inc: {…},
+    /// $set: {…} }`: the `$set` clause BEFORE the `$inc` (`query-translator.ts`
+    /// emits sets first). `refused_by` is for the log line only — NOT stored.
+    pub fn increment_moderation_refusal_count(
+        &self,
+        chat_id: &str,
+        at: &str,
+        refused_by: Option<(&str, Option<&str>)>,
+    ) -> i64 {
+        let updated = match self.conn.execute(
+            "UPDATE chats SET \"lastModerationRefusalAt\" = ?1, \
+             \"moderationRefusalCount\" = \"moderationRefusalCount\" + ?2 WHERE id = ?3",
+            params![at, 1i64, chat_id],
+        ) {
+            Ok(n) => n > 0,
+            Err(e) => {
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "chats",
+                    chat_id,
+                    error = %e,
+                    "Failed to record a moderation refusal"
+                );
+                false
+            }
+        };
+        if !updated {
+            tracing::warn!(
+                target: "quilltap::db",
+                chat_id,
+                "Moderation refusal not recorded: chat not found"
+            );
+            return 0;
+        }
+        let count = self.get_moderation_refusal_ledger(chat_id).count;
+        tracing::debug!(
+            target: "quilltap::db",
+            chat_id,
+            count,
+            at,
+            provider = refused_by.map(|(p, _)| p),
+            model_name = refused_by.and_then(|(_, m)| m),
+            "Moderation refusal recorded on the chat ledger"
+        );
+        count
+    }
+
+    /// v4 `getModerationRefusalLedger(chatId)` — the ledger read straight off
+    /// the row (outside the entity projection, like
+    /// [`Self::get_transcript_version`]). `typeof … === 'number'` / `'string'`
+    /// guards: a missing chat, a NULL cell or a non-number reads as empty; a
+    /// failed read is v4's fallback `safeQuery` — the ERROR and `{0, null}`.
+    pub fn get_moderation_refusal_ledger(&self, chat_id: &str) -> ModerationRefusalLedger {
+        // v4's `findOne` is a `SELECT *`, and the two keys are read off the row
+        // object: a table WITHOUT the columns simply yields a row without the
+        // keys — `{0, null}`, no error. Naming the columns in the SELECT would
+        // not do: SQLite reads a double-quoted identifier that names no column
+        // as a STRING LITERAL (so `lastAt` would come back as the column's own
+        // name), and a bare one errors where v4 does not.
+        let read = (|| -> Result<ModerationRefusalLedger, rusqlite::Error> {
+            let mut stmt = self.conn.prepare("SELECT * FROM chats WHERE id = ?1")?;
+            let names: Vec<String> = stmt.column_names().iter().map(|n| n.to_string()).collect();
+            let count_at = names.iter().position(|n| n == "moderationRefusalCount");
+            let last_at_at = names.iter().position(|n| n == "lastModerationRefusalAt");
+            let mut rows = stmt.query(params![chat_id])?;
+            let Some(row) = rows.next()? else {
+                return Ok(ModerationRefusalLedger::default());
+            };
+            // `typeof … === 'number'` / `'string'`.
+            let count = match count_at.map(|i| row.get_ref(i)).transpose()? {
+                Some(rusqlite::types::ValueRef::Integer(i)) => i,
+                Some(rusqlite::types::ValueRef::Real(f)) => f as i64,
+                _ => 0,
+            };
+            let last_at = match last_at_at.map(|i| row.get_ref(i)).transpose()? {
+                Some(rusqlite::types::ValueRef::Text(t)) => {
+                    Some(String::from_utf8_lossy(t).into_owned())
+                }
+                _ => None,
+            };
+            Ok(ModerationRefusalLedger { count, last_at })
+        })();
+        match read {
+            Ok(ledger) => ledger,
+            Err(e) => {
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "chats",
+                    chat_id,
+                    error = %e,
+                    "Failed to read the moderation refusal ledger"
+                );
+                ModerationRefusalLedger::default()
+            }
+        }
+    }
+
+    /// v4 `resetModerationRefusalLedger(chatId)` — empty the chat's ledger (the
+    /// operator's return to Monitored: a fresh start, so stale refusals cannot
+    /// immediately undo the decision). A failure is v4's fallback `safeQuery`
+    /// ERROR; the DEBUG line fires either way.
+    pub fn reset_moderation_refusal_ledger(&self, chat_id: &str) {
+        if let Err(e) = self.conn.execute(
+            "UPDATE chats SET \"moderationRefusalCount\" = 0, \"lastModerationRefusalAt\" = NULL WHERE id = ?1",
+            params![chat_id],
+        ) {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "chats",
+                chat_id,
+                error = %e,
+                "Failed to reset the moderation refusal ledger"
+            );
+        }
+        tracing::debug!(
+            target: "quilltap::db",
+            chat_id,
+            "Moderation refusal ledger reset"
+        );
+    }
+
     fn row_exists(&self, id: &str) -> Result<bool, DbError> {
         let found: Option<i64> = self
             .conn
@@ -1488,6 +1630,13 @@ fn opt_json_text(v: &Option<Value>) -> Result<Option<String>, DbError> {
         Some(val) => Ok(Some(json_text(val)?)),
         None => Ok(None),
     }
+}
+
+/// v4 `getModerationRefusalLedger`'s answer: the tally and when it last moved.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ModerationRefusalLedger {
+    pub count: i64,
+    pub last_at: Option<String>,
 }
 
 #[cfg(test)]
@@ -1551,6 +1700,126 @@ mod subprompt_carry_tests {
             written.matches("selectedSubpromptIds").count(),
             1,
             "the pre-feature seat must stay KEYLESS: {written}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod refusal_ledger_tests {
+    //! P4.D225 (v4 `49059fb14`): the three ledger ops' log lines — the
+    //! differential (`chats_tier2_equivalence`) proves the row state and the
+    //! answers; these pin what each arm SAYS.
+    use super::*;
+
+    fn table(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TABLE chats (id TEXT PRIMARY KEY, title TEXT, \
+               moderationRefusalCount INTEGER NOT NULL DEFAULT 0, \
+               lastModerationRefusalAt TEXT DEFAULT NULL);\
+             INSERT INTO chats (id, title) VALUES ('c1', 't');",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_recorded_refusal_debugs_its_new_count_and_stores_no_provider() {
+        let conn = Connection::open_in_memory().unwrap();
+        table(&conn);
+        let repo = ChatsRepository::new(&conn);
+        let (count, lines) = crate::test_support::captured_with(|| {
+            repo.increment_moderation_refusal_count(
+                "c1",
+                "2026-09-25T00:00:00.000Z",
+                Some(("OPENAI", Some("gpt-5"))),
+            )
+        });
+        assert_eq!(count, 1);
+        assert_eq!(
+            lines,
+            ["DEBUG quilltap::db Moderation refusal recorded on the chat ledger chat_id=c1 count=1 at=2026-09-25T00:00:00.000Z provider=OPENAI model_name=gpt-5"]
+        );
+        // A provider-less record: both fields ABSENT (v4's `undefined`).
+        let (_, lines) = crate::test_support::captured_with(|| {
+            repo.increment_moderation_refusal_count("c1", "2026-09-25T00:01:00.000Z", None)
+        });
+        assert_eq!(
+            lines,
+            ["DEBUG quilltap::db Moderation refusal recorded on the chat ledger chat_id=c1 count=2 at=2026-09-25T00:01:00.000Z"]
+        );
+        assert_eq!(
+            repo.get_moderation_refusal_ledger("c1"),
+            ModerationRefusalLedger {
+                count: 2,
+                last_at: Some("2026-09-25T00:01:00.000Z".into())
+            }
+        );
+    }
+
+    #[test]
+    fn a_missing_chat_warns_and_answers_zero() {
+        let conn = Connection::open_in_memory().unwrap();
+        table(&conn);
+        let repo = ChatsRepository::new(&conn);
+        let (count, lines) = crate::test_support::captured_with(|| {
+            repo.increment_moderation_refusal_count("nope", "t", None)
+        });
+        assert_eq!(count, 0);
+        assert_eq!(
+            lines,
+            ["WARN quilltap::db Moderation refusal not recorded: chat not found chat_id=nope"]
+        );
+        assert_eq!(
+            repo.get_moderation_refusal_ledger("nope"),
+            ModerationRefusalLedger::default()
+        );
+    }
+
+    /// v4's fallback `safeQuery`: a table without the columns makes the UPDATE
+    /// throw — the ERROR, then the same "not found" WARN, then 0; the read is a
+    /// silent `{0, null}` (v4's `findOne` row lacks the keys) and only a
+    /// genuinely failing read ERRORs; the reset throws — its ERROR, and the
+    /// DEBUG anyway.
+    #[test]
+    fn a_table_without_the_columns_takes_every_fallback_arm() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chats (id TEXT PRIMARY KEY); INSERT INTO chats VALUES ('c1');",
+        )
+        .unwrap();
+        let repo = ChatsRepository::new(&conn);
+        let (count, lines) = crate::test_support::captured_with(|| {
+            repo.increment_moderation_refusal_count("c1", "t", None)
+        });
+        assert_eq!(count, 0);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(lines[0].starts_with("ERROR quilltap::db Failed to record a moderation refusal collection=chats chat_id=c1 error="));
+        assert_eq!(
+            lines[1],
+            "WARN quilltap::db Moderation refusal not recorded: chat not found chat_id=c1"
+        );
+
+        // The READ is v4's `findOne` — a row without the keys, silently empty.
+        let (ledger, lines) =
+            crate::test_support::captured_with(|| repo.get_moderation_refusal_ledger("c1"));
+        assert_eq!(ledger, ModerationRefusalLedger::default());
+        assert!(lines.is_empty(), "{lines:?}");
+        // A read that genuinely throws (no table at all) is the ERROR arm.
+        let bare = Connection::open_in_memory().unwrap();
+        let (ledger, lines) = crate::test_support::captured_with(|| {
+            ChatsRepository::new(&bare).get_moderation_refusal_ledger("c1")
+        });
+        assert_eq!(ledger, ModerationRefusalLedger::default());
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].starts_with("ERROR quilltap::db Failed to read the moderation refusal ledger collection=chats chat_id=c1 error="));
+
+        let ((), lines) =
+            crate::test_support::captured_with(|| repo.reset_moderation_refusal_ledger("c1"));
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(lines[0]
+            .starts_with("ERROR quilltap::db Failed to reset the moderation refusal ledger"));
+        assert_eq!(
+            lines[1],
+            "DEBUG quilltap::db Moderation refusal ledger reset chat_id=c1"
         );
     }
 }

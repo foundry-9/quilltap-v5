@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the refusal ledger's columns and repository ops (P4.D225 unit 7a)
+
+_Versions: core 0.0.1065, harness 0.0.984, host 0.0.159._
+
+The two `chats` columns of v4's refusal ledger (`49059fb14`) arrive by a new
+boot ensure (`db/chats_moderation_refusal_ledger_repair.rs`, run from
+`seed_built_ins`): `moderationRefusalCount INTEGER NOT NULL DEFAULT 0` and
+`lastModerationRefusalAt TEXT DEFAULT NULL`, no backfill, kept out of the read
+projection, `ChatUpdate` and the export — the `transcriptVersion` precedent
+(`generateDDL` was probed at the pin: neither column is in the `chats`
+CREATE, so `fresh_schema.json` does not move). `ChatsRepository` gains v4's
+three ledger ops (increment with `$set` before `$inc` and a separate read,
+the read off `SELECT *`, reset). New `moderation_refusal_ledger_isolation_guard`
+and `host_boot_p4d225_columns` (one arm per entrance). The chats-tier2 family
+grows 11 ledger ops; its fixture builder now runs v4's real migration module
+through a new shared helper (`harness/oracle/lib/v4-migrations.ts`).
+
 #### 2026-09-25 — feat(concierge): the refusal announcements + the auto-switch bubble (P4.D225 unit 6)
 
 _Versions: core 0.0.1064, harness 0.0.983._

@@ -1284,6 +1284,20 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             quilltap_core::db::chats_transcript_version_repair::
                 ensure_chats_transcript_version_column(main)?;
             // === end P4.D182 ===
+            // === P4.D225 (v4 `49059fb14`, migration
+            // `add-chat-refusal-ledger-v1`) ===
+            // The Concierge refusal ledger's two `chats` columns. Like
+            // `transcriptVersion` just above, this pass is their ONLY source on
+            // EVERY instance, fresh included: v4 keeps both out of
+            // `ChatMetadataSchema` on purpose (a whole-row rewrite must not be
+            // able to rewind the tally), and `generateDDL` walks the schema —
+            // measured live at the pin, the `chats` CREATE carries neither, so
+            // `fresh_schema.json` does not move. Load-bearing: the ledger's
+            // `SET … "moderationRefusalCount" + ?` and its reads would fail on
+            // every chat without them.
+            quilltap_core::db::chats_moderation_refusal_ledger_repair::
+                ensure_chats_moderation_refusal_ledger_columns(main)?;
+            // === end P4.D225 ===
             // === P4.D97 (v4 `97d2fcb5`, migration
             // `retire-prefill-on-thinking-profiles-v1`) ===
             // The data pass that turns the multi-character [Name] prefill off

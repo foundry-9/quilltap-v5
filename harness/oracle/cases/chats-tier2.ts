@@ -34,8 +34,11 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'create' | 'update' | 'delete';
+  kind: 'create' | 'update' | 'delete' | 'incrementRefusal' | 'getRefusalLedger' | 'resetRefusalLedger';
   id?: string;
+  /** P4.D225: the ledger ops' inputs (`at` stamps the refusal; `refusedBy` is logged, never stored). */
+  at?: string;
+  refusedBy?: { provider: string; modelName?: string | null } | null;
   data?: Record<string, unknown>;
   options?: { id: string; createdAt: string; updatedAt: string };
   /** P4.9E3B: the op must THROW (a bad timestampConfig fails the repo-write
@@ -73,6 +76,7 @@ async function main(): Promise<void> {
 
   await initializeDatabase();
   const repo = new ChatsRepository();
+  const ledger: Array<Record<string, unknown>> = [];
 
   for (const op of spec.ops) {
     if (op.expectError) {
@@ -90,6 +94,18 @@ async function main(): Promise<void> {
       await repo.create(op.data as never, op.options);
     } else if (op.kind === 'update') {
       await repo.update(op.id as string, op.data as never);
+    } else if (op.kind === 'incrementRefusal') {
+      // P4.D225 (v4 `49059fb14`): the refusal ledger's three repository ops.
+      const count = await repo.incrementModerationRefusalCount(
+        op.id as string,
+        op.at as string,
+        (op.refusedBy ?? undefined) as never,
+      );
+      ledger.push({ op: 'incrementRefusal', id: op.id, count });
+    } else if (op.kind === 'getRefusalLedger') {
+      ledger.push({ op: 'getRefusalLedger', id: op.id, ...(await repo.getModerationRefusalLedger(op.id as string)) });
+    } else if (op.kind === 'resetRefusalLedger') {
+      await repo.resetModerationRefusalLedger(op.id as string);
     } else {
       // syncVaults defaults to true; the fixture has no provisioned vaults, so
       // the summary sweep is a no-op (and is deferred in the Rust port).
@@ -120,7 +136,7 @@ async function main(): Promise<void> {
     rawRows: annRawRows,
     orderBy: 'id',
   });
-  process.stdout.write(JSON.stringify({ case: 'chats-tier2', ...dump, annotations }) + '\n');
+  process.stdout.write(JSON.stringify({ case: 'chats-tier2', ...dump, annotations, ledger }) + '\n');
   process.exit(0);
 }
 

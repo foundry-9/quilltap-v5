@@ -150194,3 +150194,72 @@ Regen outputs staged under `/tmp/p4d225/`.
   lane's own NEW families that drive v4's real writer through its real callers
   (`image_failover_tier3` — the refusal bubbles; `refusal_ledger_tier3` — the
   auto-flag bubble), plus the unit pins above. Recorded for the unifier.
+
+### Unit 7a — the ledger's columns + the three repository ops
+
+- NEW `db/chats_moderation_refusal_ledger_repair.rs` (the P4.D182
+  `chats_transcript_version_repair` model): v4's two `addColumnIfMissing`
+  statements verbatim, appended, idempotent, no backfill; called from
+  `quilltap-host::host::seed_built_ins` right after the transcript ensure;
+  `test_support::ensure_p4d225_columns` for fixtures. **`generateDDL` measured
+  myself at the target pin** (a throwaway tsx probe, pin tree left clean):
+  `generateDDL('chats', ChatMetadataBaseSchema | ChatMetadataSchema)` → 104
+  lines, `moderationRefusalCount` ABSENT, `lastModerationRefusalAt` ABSENT
+  (`transcriptVersion` absent too; `dangerClassifiedAtMessageCount` present as
+  the anchor) — `fresh_schema.json` UNMOVED, the ensure is the columns' only
+  source everywhere.
+- `db/chats.rs` `ChatsRepository`: `increment_moderation_refusal_count(chat_id,
+  at, refused_by)` (the translator's SQL — `$set` clause BEFORE `$inc`, `+ ?`
+  bound to 1 — then the SEPARATE read; a failed UPDATE is v4's fallback
+  `safeQuery` ERROR and then the SAME "chat not found" WARN and `0`;
+  `refused_by` only on the DEBUG, never stored), `get_moderation_refusal_ledger`
+  (→ `ModerationRefusalLedger { count, last_at }`), `reset_moderation_refusal_
+  ledger` (ERROR on failure, DEBUG always). **A trap the pins caught:** the
+  first read named the two columns in double quotes — SQLite reads a quoted
+  identifier that names NO column as a STRING LITERAL, so on a table without
+  the columns `lastAt` came back as `"lastModerationRefusalAt"`. v4's read is
+  `findOne` (a `SELECT *`): a row without the keys, silently `{0, null}`. The
+  read is now `SELECT *` + lookup by column name; only a genuinely failing
+  query ERRORs. (**Finding for the unifier, not this lane's:**
+  `ChatsRepository::get_transcript_version` has the same quoted-identifier
+  shape — on a pre-4.10 table it reads the literal, fails the `i64`
+  conversion and logs an ERROR where v4's `findOne` answers `0` silently.)
+- NEW `moderation_refusal_ledger_isolation_guard` (4 tests, the
+  `transcript_version_isolation_guard` template): the D23 dump names neither
+  column; a planted tally (3) never reaches `chats_read`'s marshalled row or
+  `find_all`; `ChatUpdate` + `update` name neither; backup/`.qtap`/read
+  projection/export schema/key order name neither. NEW
+  `crates/quilltap-host/tests/host_boot_p4d225_columns.rs` — boot, unlock,
+  setup (the discriminating arm: appended after the dump's columns, count then
+  `lastAt`). All green; the P4.D182 host file re-run green beside it.
+- **Family `chats_tier2_equivalence`:** the spec gains 11 ledger ops
+  (appended textually): two increments on chat a (with and without a
+  provider), a whole-row `update` of a (the tally must survive it), a read, an
+  increment + read on a MISSING chat (0 / empty), increment → reset → read on
+  d, a reset of a missing chat, an increment on b. The oracle case drives v4's
+  real three methods and emits a `ledger` answer array; the Rust side the same.
+  **The fixture:** this family's "pair" is NOT committed — `build-chats-
+  fixture.ts` mints it per run through v4's `initializeDatabase` (which, per
+  the probe, creates `chats` WITHOUT the columns), so the widen happens in the
+  builder: it now runs v4's REAL `addChatRefusalLedgerMigration` module after
+  building (the new shared helper below; `allowMissing` keeps it runnable at
+  the baseline, where it reports the module absent and the fixture keeps v4's
+  baseline shape). Regenerated at the target: the columns in the dump, the
+  answers `[1, 2, {2, "…10:05"}, 0, {0, null}, 1, {0, null}, 1]`, the
+  updated row keeping `2`. **Green.** (Red-first: HEAD's Rust cannot
+  deserialize the three new op kinds — the family would not run.)
+- NEW `harness/oracle/lib/v4-migrations.ts` — `runV4Migrations({ dbPath,
+  pepperBase64, migrations, reportOnly?, allowMissing? })` imports and RUNS v4's
+  real migration modules (`shouldRun()` / `run()`) against a file, with cwd =
+  the v4 pin: it points `SQLITE_PATH` / the pepper / `QUILLTAP_DATA_DIR` (a
+  scratch dir — v4 takes an instance lock there) at the file, resets v4's
+  singleton connection (`closeSQLite`, imported by the same URL the modules
+  use), and — because v4's migration connection sets `journal_mode = WAL`,
+  which is PERSISTED in the header — reads the file's journal mode first and
+  restores it after, sweeping `-wal`/`-shm` and an empty `-journal`. Measured:
+  the target-built chats fixture comes back `delete` with both columns; the
+  baseline-built one `delete` with neither. `ADD_CHAT_REFUSAL_LEDGER` is the
+  shared ref. This is the round's "module-running arm" (§R.6/§R.10(g)) in the
+  shape the per-run builders need; the committed-pair migrator
+  (`migrate-memories-fixture-columns.ts`) gains its `--module` flag over the
+  same helper in the next slice.

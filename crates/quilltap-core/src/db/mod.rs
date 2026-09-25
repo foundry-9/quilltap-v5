@@ -52,6 +52,7 @@ pub mod chats;
 pub mod chats_cycle_order_repair;
 // === end P4.D171 ===
 // === P4.D182 ===
+pub mod chats_moderation_refusal_ledger_repair;
 pub mod chats_transcript_version_repair;
 // === end P4.D182 ===
 pub mod chats_impersonation;

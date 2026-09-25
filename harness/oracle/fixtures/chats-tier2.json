@@ -389,6 +389,17 @@
       "data": {
         "timestampConfig": null
       }
-    }
+    },
+    {"kind": "incrementRefusal", "id": "aaaaaaaa-0000-4000-8000-00000000000a", "at": "2026-09-25T10:00:00.000Z", "refusedBy": {"provider": "OPENAI", "modelName": "gpt-5"}},
+    {"kind": "incrementRefusal", "id": "aaaaaaaa-0000-4000-8000-00000000000a", "at": "2026-09-25T10:05:00.000Z", "refusedBy": null},
+    {"kind": "update", "id": "aaaaaaaa-0000-4000-8000-00000000000a", "data": {"title": "The ledger survives a whole-row rewrite"}},
+    {"kind": "getRefusalLedger", "id": "aaaaaaaa-0000-4000-8000-00000000000a"},
+    {"kind": "incrementRefusal", "id": "ffffffff-0000-4000-8000-00000000ffff", "at": "2026-09-25T10:10:00.000Z", "refusedBy": {"provider": "GOOGLE"}},
+    {"kind": "getRefusalLedger", "id": "ffffffff-0000-4000-8000-00000000ffff"},
+    {"kind": "incrementRefusal", "id": "dddddddd-0000-4000-8000-00000000000d", "at": "2026-09-25T10:15:00.000Z"},
+    {"kind": "resetRefusalLedger", "id": "dddddddd-0000-4000-8000-00000000000d"},
+    {"kind": "getRefusalLedger", "id": "dddddddd-0000-4000-8000-00000000000d"},
+    {"kind": "resetRefusalLedger", "id": "ffffffff-0000-4000-8000-00000000ffff"},
+    {"kind": "incrementRefusal", "id": "bbbbbbbb-0000-4000-8000-00000000000b", "at": "2026-09-25T10:20:00.000Z", "refusedBy": {"provider": "Z_AI", "modelName": "glm-5v-turbo"}}
   ]
 }
