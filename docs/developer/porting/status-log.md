@@ -150003,6 +150003,63 @@ Order: `work-orders/p4.d230-concierge-spa-settings-side.md`. Branch
   the new counts (34 / 37).
 - Gate at this commit: lint clean; `npm test` **455 files / 7,953**; build clean.
 
+### Unit 4 — e2e
+
+- `settings-chat-cards-flow.spec.ts`: `Dangerous Content` out of the card
+  list (Taboo in its place), a `#dangerous-content` absence check, the
+  Dangerous Content BAG round-trip beat removed, the header re-worded.
+- NEW `settings-concierge-flow.spec.ts` (4 beats): the five cards + the
+  collapsed pre-screen + the Chat tab without the old card; `?section=
+  uncensored-desk` and `?section=pre-screening` force-open + in viewport
+  (routed mode) — both RUN TODAY (they read nothing stored); the desk
+  round-trip (the crafter — it lists every profile, so the seed always has
+  one — asserting the PUT is the WHOLE nine-key object, then reload) and the
+  off-duty banner across a reload — GATED `P4D227_SERVER_LANDED = false`
+  (`GATE_REASON` names P4.D227). **The unifier flips it.**
+- Server for the walk: no release bins exist on `main`, so the lane built
+  DEBUG `quilltap-web` + `quilltap` in its own `target/` (the lane changes no
+  Rust; the binaries are `main`'s code). SPA built by `npm run build`.
+- **Playwright by file, one invocation at a time, port 4319 checked free:**
+  `settings-concierge-flow.spec.ts` **2 passed / 2 skipped** (the gated
+  beats); `settings-chat-cards-flow.spec.ts` **5 passed**.
+
+### Mutation proofs (each reverted by file backup; `git diff --quiet` after each)
+
+| # | mutation | red (only these) |
+|---|---|---|
+| M1 | send `updates` as a PARTIAL `conciergeSettings` | the four merge cases (deep-merge by v4's name, sequential, predates-a-field, race) |
+| M2 | merge over a render-time snapshot `this.concierge()` taken at call time | v4's deep-merge case + the race arm |
+| M2b | drop the per-client save chain (cache still read at send time) | the race arm only |
+| M3 | crafter lists `compatibleText()` | crafter-lists-every-profile, the PUT-keys case, v4's "…says nothing about ticking one" |
+| M4 | `withSelected` never appends | `withSelected` unit + the stale-pick case |
+| M5 | cheap-LLM bag spreads the raw GET bag again | "PUTs only its declared keys" |
+| M6 | offer `locked` under New chats start as | "Moderated and Unmoderated only — never Locked" |
+| M7 | summary toggle disabled on `scansDisabled` | "only the three scan toggles wait on the pre-screen" |
+| M8 | keep `dangerous-content` in `content-routing` | `HELP_CATEGORIES` byte identity |
+
+No proof survived.
+
+### Lane close
+
+- **Contract audit:** `git diff main -- apps/web/src/app/core/core-contract.ts`
+  = the ONE fenced hunk (+43 / −5), `// P4.D230 OUT-OF-MANDATE — P4.D229
+  preserves` … `— end of hunk`.
+- **Deferred (Tier 3, loud):** the message danger-flag UI (Display card
+  write-only — the card's doc comment says so); `/foundry/concierge`, the
+  Foundry description registry, the theme-storybook mirror (NO-COUNTERPART);
+  #74's `DangerousContentSettings` number input (dead in v4, never ported).
+- **For the unifier:** flip `P4D227_SERVER_LANDED`; the §R.9 mirror pre-list
+  for this lane is EMPTY (no `docs/v4/` path moves with a client-only row).
+  P4.D229 reads `conciergeSettings?.enabled` / `newChatsStartAs` off
+  `ChatSettingsDto.conciergeSettings` (typed `ConciergeSettingsDto`) through
+  `chatSettingsKeys.all` — no key changed. Outside this lane, noted only:
+  `screens/settings/wizard/wizard-api.ts:94` PUTs `cheapLLMSettings:
+  { strategy, profileId? }` — no retired key, but `profileId` is not a v4
+  `CheapLLMSettings` field.
+- **Final SPA gate** (the committed tree): lint clean; `npm test` **455 files
+  / 7,953** (base 452 / 7,919); `npm run build` clean.
+- Versions: SPA 0.5.773 → **0.5.777** (+4); no crate touched.
+
 ## P4.D229 — the Concierge overhaul's CLIENT, Salon side (lane record, 2026-09-25)
 
 Lane branch `claude/p4-d229-concierge-spa-salon-47eff0`, cut from `main`

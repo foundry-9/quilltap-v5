@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — test(e2e): the Concierge Settings tab walked live; the Chat tab's Dangerous Content beat retired (P4.D230)
+
+_Versions: SPA 0.5.777._
+
+New `settings-concierge-flow.spec.ts`: the five cards under their ids with
+the pre-screen collapsed and the `?section=` deep links force-opening their
+cards run now; the desk round-trip (the whole `conciergeSettings` object
+through a reload) and the off-duty banner beat are gated on
+`P4D227_SERVER_LANDED` until the server lane lands.
+`settings-chat-cards-flow.spec.ts` drops Dangerous Content from its card list
+and removes that card's round-trip beat.
+
 #### 2026-09-25 — feat(spa/help): the Concierge help slug and URL (v4 #76) — `the-concierge` replaces `dangerous-content`, `/settings?tab=concierge` maps to Content Routing (P4.D230)
 
 _Versions: SPA 0.5.776._

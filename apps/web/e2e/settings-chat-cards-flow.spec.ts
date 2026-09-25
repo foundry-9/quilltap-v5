@@ -9,16 +9,15 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * "settings-chat-cards-flow" sorts after "foundation" ('se' > 'fo').
  *
  * P4.6an — a LIVE browser walk of the newly fitted-out Settings → Chat tab: the
- * full v4 card order renders; a scalar toggle (Auto-Scroll) and a nested-bag
- * select (Dangerous Content's mode) each round-trip through the real
- * `chatSettingsUpdate` dispatch and survive a reload; and the cron next-run
- * preview computes client-side as you type.
+ * full v4 card order renders; a scalar toggle (Auto-Scroll) round-trips through
+ * the real `chatSettingsUpdate` dispatch and survives a reload; and the cron
+ * next-run preview computes client-side as you type.
  *
  * Every write here goes through the real server against the shared instance's
- * `chat_settings` row — no route mocks. The two persistence beats deliberately
- * pick one scalar and one BAG: the bag path is the one where a partial nested
- * patch would silently drop sibling keys, and only a real round-trip proves it
- * doesn't.
+ * `chat_settings` row — no route mocks. The BAG round-trip this file used to
+ * walk (Dangerous Content's mode) left with that card for the Concierge's own
+ * tab (v4 #76, P4.D230): `settings-concierge-flow.spec.ts` walks the
+ * whole-object `conciergeSettings` save instead.
  */
 
 /**
@@ -105,7 +104,7 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
       'Agent Mode',
       'Thinking / Reasoning',
       'Answer Confirmation',
-      'Dangerous Content',
+      'Taboo',
       'Data Retention',
       'Autonomous Rooms',
       'Scheduled Autonomous Rooms',
@@ -115,6 +114,8 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
 
     // The retired loud deferral is gone for good.
     await expect(page.getByText('not yet fitted out')).toHaveCount(0);
+    // Dangerous Content moved to the Concierge's own tab (v4 #76, P4.D230).
+    await expect(page.locator('#dangerous-content')).toHaveCount(0);
   });
 
   test('Auto-Scroll: toggle → reload → persisted (a scalar round-trip)', async ({ page }) => {
@@ -138,47 +139,6 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
     // Put it back, so the beat is re-runnable against the shared instance.
     const restored = waitForSave(page, 'autoScrollOnResponseComplete');
     await after.uncheck();
-    await restored;
-  });
-
-  test('Dangerous Content: change the mode → reload → persisted (a BAG round-trip)', async ({
-    page,
-  }) => {
-    await page.goto('/salon');
-    await maybeUnlock(page);
-    await page.goto('/settings?tab=chat&section=dangerous-content');
-
-    const mode = page.locator('#danger-mode');
-    await expect(mode).toBeVisible({ timeout: 15_000 });
-
-    // Normalize to OFF first — the committed salon fixture ships
-    // `dangerousContentSettings.mode = 'DETECT_ONLY'`, and a run that died
-    // mid-walk could leave it elsewhere again. Asserting the instance ARRIVES
-    // at OFF would just be encoding today's fixture into this beat.
-    if ((await mode.inputValue()) !== 'OFF') {
-      const reset = waitForSave(page, 'dangerousContentSettings');
-      await mode.selectOption('OFF');
-      await reset;
-    }
-    await expect(mode).toHaveValue('OFF');
-    // While OFF, the rest of the card stays hidden (v4's gate).
-    await expect(page.locator('#danger-display-mode')).toHaveCount(0);
-
-    const saved = waitForSave(page, 'dangerousContentSettings');
-    await mode.selectOption('DETECT_ONLY');
-    await saved;
-
-    // The gate opens on the live response, not an optimistic guess.
-    await expect(page.locator('#danger-display-mode')).toBeVisible();
-
-    await page.goto('/settings?tab=chat&section=dangerous-content');
-    await expect(page.locator('#danger-mode')).toHaveValue('DETECT_ONLY', { timeout: 15_000 });
-    // The whole bag survived the round-trip — the sibling keys are still there,
-    // which is what a partial nested patch would have destroyed.
-    await expect(page.locator('#danger-threshold')).toHaveValue('0.7');
-
-    const restored = waitForSave(page, 'dangerousContentSettings');
-    await page.locator('#danger-mode').selectOption('OFF');
     await restored;
   });
 
