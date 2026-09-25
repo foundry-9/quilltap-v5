@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — test(spa): label the emoji typeahead's inline-image case as v5's own rule (P4.D224, unification review)
+
+_Versions: SPA 0.5.773._
+
+The `char-typeahead.emoji.spec.ts` case "still refuses a trigger glued to any
+OTHER leaf (an inline image)" read as a v4-derived vector. v4's composer
+registers no inline decorator node, and its `$isGluedToPreviousRun` answers
+"not glued" for an empty-text sibling, so the behaviour is unreachable there —
+the case pins v5's own rule for its own inline leaves and now says so (the
+P4.D224 review at the `b0b6656b5` unification).
+
 #### 2026-09-25 — fix(spa): a quote-aware `<img>` matcher for the hidden-image swap — a `>` inside an alt can no longer escape the tag (P4.D223, unification review)
 
 _Versions: SPA 0.5.772._
