@@ -6,7 +6,8 @@
  * records its body, emits the queued frames on `events$` scoped by the
  * request's `runId` (exactly as the server would — the run state subscribed
  * BEFORE dispatching), then resolves with the terminal frame's object (§S.1's
- * reply shape). The profile list, the capabilities probe, the group list and
+ * reply shape). The profile list, the capabilities probe, the group lists (a
+ * cast's, and — P4.D231 — every group), the project and character lists, and
  * the four save verbs answer from configurable fields.
  *
  * @module scenario-builder/scenario-builder-dialog.testing
@@ -37,6 +38,10 @@ export interface FakeCore {
   profiles: Record<string, unknown>[];
   capabilities: { webSearchConfigured: boolean; curlConfigured: boolean };
   groups: Array<{ id: string; name: string }>;
+  /** P4.D231: the everywhere-mode lists — `groupList` with no ids, `projectList`, `characterList`. */
+  allGroups: Array<{ id: string; name: string }>;
+  projects: Array<{ id: string; name: string }>;
+  characters: Array<{ id: string; name: string }>;
   /** One frame list per build, consumed in order. */
   buildFrames: Array<Array<Record<string, unknown>>>;
   /** When set, the next build is held open until `releaseBuild()` is called. */
@@ -64,6 +69,9 @@ export function fakeCore(): FakeCore {
     profiles: [],
     capabilities: { webSearchConfigured: true, curlConfigured: false },
     groups: [],
+    allGroups: [],
+    projects: [],
+    characters: [],
     buildFrames: [],
     holdBuild: false,
     releaseBuild: () => undefined,
@@ -110,7 +118,11 @@ export function fakeCore(): FakeCore {
   const dispatchData = vi.fn(async (req: Record<string, unknown>) => {
     fake.requests.push(req);
     if (req['type'] === 'scenarioBuilderCapabilities') return { ...fake.capabilities };
-    if (req['type'] === 'groupList') return { groups: fake.groups };
+    if (req['type'] === 'groupList') {
+      return { groups: req['characterIds'] === undefined ? fake.allGroups : fake.groups };
+    }
+    if (req['type'] === 'projectList') return { projects: fake.projects };
+    if (req['type'] === 'characterList') return { characters: fake.characters };
     throw new Error(`unrouted ${String(req['type'])}`);
   });
 

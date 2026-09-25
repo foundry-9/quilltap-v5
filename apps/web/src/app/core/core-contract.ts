@@ -1676,17 +1676,29 @@ export interface GroupScenarioUpdateRequest {
   groupId: string;
   scenarioPath: string;
   scenario: ScenarioUpdateBag;
+  // P4.D231 OUT-OF-MANDATE — P4.D229 (owner) preserves: the fresh list in the
+  // response honours the flag, as the project twins' (the Rust verb has always
+  // taken `include_archived`).
+  includeArchived?: boolean;
 }
 export interface GroupScenarioRenameRequest {
   type: 'groupScenarioRename';
   groupId: string;
   scenarioPath: string;
   newFilename: string;
+  // P4.D231 OUT-OF-MANDATE — P4.D229 (owner) preserves: the fresh list in the
+  // response honours the flag, as the project twins' (the Rust verb has always
+  // taken `include_archived`).
+  includeArchived?: boolean;
 }
 export interface GroupScenarioDeleteRequest {
   type: 'groupScenarioDelete';
   groupId: string;
   scenarioPath: string;
+  // P4.D231 OUT-OF-MANDATE — P4.D229 (owner) preserves: the fresh list in the
+  // response honours the flag, as the project twins' (the Rust verb has always
+  // taken `include_archived`).
+  includeArchived?: boolean;
 }
 
 /** The New-Chat participant-union scenarios (v4 GET `/groups/scenarios?characterIds=`). */
@@ -8163,6 +8175,9 @@ export interface ScenarioBuildRequestInput {
   connectionProfileId: string;
   projectId?: string | null;
   characterIds?: string[];
+  // P4.D231 OUT-OF-MANDATE — P4.D229 (owner) preserves: groups named outright
+  // (v4 `08c49319d`, the group shelf); the dialog always sends it.
+  groupIds?: string[];
   chatId?: string | null;
   priorDraft?: string | null;
   revision?: string | null;

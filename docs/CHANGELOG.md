@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(spa): the Scenario Builder's shelf mode and every-home save (v4 `08c49319d`, P4.D231 units 5–7)
+
+_Versions: SPA 0.5.774._
+
+- The builder dialog takes `groupIds`, `saveTargets` and `defaultSaveTarget`;
+  always sends `groupIds` (`[]` on New Chat and in-chat) between
+  `characterIds` and `chatId`; opens in-world with a cast, a project or a
+  group; and with `saveTargets="everywhere"` (the shelf switch — an Angular
+  output cannot be absent the way v4's `onUse` prop can) the review footer is
+  an empty left slot, Close, and a primary Save as scenario…. The builder
+  stays open after a save.
+- The save dialog keys a project as `project:<id>` in every mode, groups its
+  options under Projects / Groups / Characters (each only when non-empty),
+  name-sorts groups in both modes and keeps a cast's order, and in everywhere
+  mode lists every project, group and non-archived character through the
+  existing fetchers that own those query keys. The shelf's home is
+  preselected once the list offering it arrives, unless the user already chose.
+- `core-contract.ts`: `groupIds?` on `ScenarioBuildRequestInput` and
+  `includeArchived?` on the three `GroupScenario*Request` twins (the one
+  pre-declared out-of-mandate hunk, marked).
+
+Specs: v4's four shelf cases by name plus the reddened body/save pins; 11 of
+59 dialog-spec tests red pre-port. Mutations M5 and M6 redden their targets.
+
 #### 2026-09-25 — feat(scenario-builder): named groups in the route, the pool and the run (v4 `08c49319d`, P4.D231 units 2–4)
 
 _Versions: core 0.0.1060, harness 0.0.979, web 0.0.197._

@@ -24,6 +24,7 @@ import { HOST_AVATAR } from './host-avatar';
 import {
   SaveScenarioDialog,
   type SavedScenarioTarget,
+  type SaveScenarioTargetKey,
   type ScenarioBuilderCastMember,
 } from './save-scenario-dialog';
 import {
@@ -35,19 +36,33 @@ import {
 } from './scenario-builder.api';
 import { ScenarioBuilderRun } from './scenario-builder-run.state';
 
-export type { SavedScenarioTarget, ScenarioBuilderCastMember } from './save-scenario-dialog';
+export type {
+  SavedScenarioTarget,
+  SaveScenarioTargetKey,
+  ScenarioBuilderCastMember,
+} from './save-scenario-dialog';
 
 type Mode = 'real' | 'in-world';
 
 /**
  * The Scenario Builder dialog — "Ask the Host to set the scene." (v4
- * `components/scenario-builder/ScenarioBuilderDialog.tsx` at `d1c06cd9d`.)
+ * `components/scenario-builder/ScenarioBuilderDialog.tsx` at `d1c06cd9d`; the
+ * shelves at `08c49319d`.)
  *
  * Three panes switched by state: Inputs (mode, location, time, details, model),
  * Running (the Host's enquiries, live), and Review (an editable draft with a
  * Revise box, Save as scenario…, and Use this scene). Surface-agnostic: the New
  * Chat form and the Salon sidebar each decide what "use" and "saved" mean for
- * their own picker via `use` / `saved`.
+ * their own picker via `use` / `saved`. A scenarios shelf (General, a
+ * project's, a group's — v4 `08c49319d`) has no box to use a scene in: it
+ * passes `saveTargets="everywhere"`, and the review pane then offers only Save,
+ * to any home, its own preselected (`defaultSaveTarget`).
+ *
+ * **The shelf switch is `saveTargets`, not a missing `use` (a recorded design
+ * call).** v4 keys shelf mode on an omitted `onUse` prop; an Angular `output()`
+ * always exists and cannot be "absent", so the footer reads the one input v4
+ * sets exactly when it omits `onUse` — every v4 caller that omits `onUse`
+ * passes `saveTargets="everywhere"`, and every caller that passes it omits it.
  *
  * A failed run never traps a draft: Revise failures leave the draft editable,
  * and Use / Save stay enabled whatever the provider did (v4's header note).
@@ -317,26 +332,41 @@ type Mode = 'real' | 'in-world';
           }
           @case ('review') {
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <button
-                type="button"
-                class="qt-button-secondary"
-                [disabled]="!draftHasText()"
-                (click)="saveOpen.set(true)"
-              >
-                Save as scenario…
-              </button>
-              <div class="flex gap-2">
-                <button type="button" class="qt-button-secondary" (click)="handleClose()">
-                  Cancel
-                </button>
+              @if (onShelf()) {
+                <span></span>
+              } @else {
                 <button
                   type="button"
-                  class="qt-button-primary"
+                  class="qt-button-secondary"
                   [disabled]="!draftHasText()"
-                  (click)="handleUse()"
+                  (click)="saveOpen.set(true)"
                 >
-                  Use this scene
+                  Save as scenario…
                 </button>
+              }
+              <div class="flex gap-2">
+                <button type="button" class="qt-button-secondary" (click)="handleClose()">
+                  {{ onShelf() ? 'Close' : 'Cancel' }}
+                </button>
+                @if (onShelf()) {
+                  <button
+                    type="button"
+                    class="qt-button-primary"
+                    [disabled]="!draftHasText()"
+                    (click)="saveOpen.set(true)"
+                  >
+                    Save as scenario…
+                  </button>
+                } @else {
+                  <button
+                    type="button"
+                    class="qt-button-primary"
+                    [disabled]="!draftHasText()"
+                    (click)="handleUse()"
+                  >
+                    Use this scene
+                  </button>
+                }
               </div>
             </div>
           }
@@ -351,6 +381,8 @@ type Mode = 'real' | 'in-world';
         [projectId]="projectId()"
         [projectName]="projectName()"
         [cast]="cast()"
+        [targets]="saveTargets()"
+        [defaultTarget]="defaultSaveTarget()"
         (closed)="saveOpen.set(false)"
         (saved)="saved.emit($event)"
       />
@@ -387,8 +419,17 @@ export class ScenarioBuilderDialog implements OnInit {
   readonly cast = input<readonly ScenarioBuilderCastMember[]>([]);
   readonly projectId = input<string | null>(null);
   readonly projectName = input<string | null>(null);
+  /** Groups named outright (a group's Scenarios card): their stores join the pool. */
+  readonly groupIds = input<readonly string[]>([]);
   /** Set when launched from inside a chat: the Host also sees its current scene. */
   readonly chatId = input<string | null>(null);
+  /**
+   * Which homes Save offers — see {@link SaveScenarioDialog}. `everywhere` is
+   * also the shelf switch (no "Use this scene"; see the class doc).
+   */
+  readonly saveTargets = input<'cast' | 'everywhere'>('cast');
+  /** The home Save preselects. */
+  readonly defaultSaveTarget = input<SaveScenarioTargetKey | undefined>(undefined);
 
   /** v4 `onClose`. */
   readonly closed = output<void>();
@@ -473,14 +514,23 @@ export class ScenarioBuilderDialog implements OnInit {
   });
 
   protected readonly draftHasText = computed(() => !!this.draft()?.trim());
+  /** v4's `!onUse` — a shelf, with no box to use the scene in. */
+  protected readonly onShelf = computed(() => this.saveTargets() === 'everywhere');
 
   protected readonly defaultSaveName = computed(() =>
     [this.location().trim(), this.time().trim()].filter(Boolean).join(' — ').slice(0, 100),
   );
 
   ngOnInit(): void {
-    // v4's `useState(cast.length > 0 ? 'in-world' : 'real')` — read once, at mount.
-    this.mode.set(this.cast().length > 0 ? 'in-world' : 'real');
+    // v4 `08c49319d`: anything that brings stores of its own — a cast, a
+    // project, a group — suggests an invented world. Read once, at mount. (The
+    // commit message is silent on it: New Chat with a project and no cast now
+    // opens in-world too.)
+    this.mode.set(
+      this.cast().length > 0 || !!this.projectId() || this.groupIds().length > 0
+        ? 'in-world'
+        : 'real',
+    );
   }
 
   protected describe = describeHostActivity;
@@ -511,6 +561,8 @@ export class ScenarioBuilderDialog implements OnInit {
         connectionProfileId: profileId,
         projectId: this.projectId() ?? null,
         characterIds: this.cast().map((c) => c.id),
+        // v4 `08c49319d` sends `groupIds: groupIds ?? []` on EVERY surface.
+        groupIds: [...this.groupIds()],
         chatId: this.chatId() ?? null,
         ...(revise ?? {}),
       },
@@ -538,10 +590,10 @@ export class ScenarioBuilderDialog implements OnInit {
     this.closed.emit();
   }
 
-  /** v4 `handleUse`. */
+  /** v4 `handleUse` — nothing on a shelf (v4's `!onUse` early return). */
   protected handleUse(): void {
     const draft = this.draft();
-    if (draft === null) return;
+    if (draft === null || this.onShelf()) return;
     this.use.emit(draft);
     this.closed.emit();
   }

@@ -62,6 +62,10 @@ async function render(
     projectId?: string | null;
     projectName?: string | null;
     chatId?: string | null;
+    /** P4.D231 — the shelf inputs. */
+    groupIds?: string[];
+    saveTargets?: 'cast' | 'everywhere';
+    defaultSaveTarget?: string;
     configure?: (fake: FakeCore) => void;
     /** Pre-seed the query cache (with the app's 5 s `staleTime`, `app.config.ts`). */
     seed?: (queryClient: QueryClient) => void;
@@ -90,6 +94,13 @@ async function render(
     fixture.componentRef.setInput('projectName', opts.projectName);
   }
   if (opts.chatId !== undefined) fixture.componentRef.setInput('chatId', opts.chatId);
+  if (opts.groupIds !== undefined) fixture.componentRef.setInput('groupIds', opts.groupIds);
+  if (opts.saveTargets !== undefined) {
+    fixture.componentRef.setInput('saveTargets', opts.saveTargets);
+  }
+  if (opts.defaultSaveTarget !== undefined) {
+    fixture.componentRef.setInput('defaultSaveTarget', opts.defaultSaveTarget);
+  }
   const used: string[] = [];
   const saved: SavedScenarioTarget[] = [];
   const closed = { count: 0 };
@@ -374,6 +385,207 @@ describe('ScenarioBuilderDialog — saving (v4)', () => {
   });
 });
 
+describe('ScenarioBuilderDialog — launched from a scenarios shelf', () => {
+  // v4 `08c49319d`'s four cases, by name. v4 layers the every-home list
+  // endpoints over its fetch router; v5's fake core answers the same lists
+  // from `allGroups` / `projects` / `characters`.
+  function everywhereLists(fake: FakeCore): void {
+    fake.projects = [{ id: 'proj-1', name: 'The Estate' }];
+    fake.allGroups = [{ id: 'grp-1', name: 'Aeronauts Club' }];
+    fake.characters = [{ id: 'char-9', name: 'Riya' }];
+  }
+
+  function renderShelf(opts: Parameters<typeof render>[0] = {}): Promise<Rendered> {
+    return render({
+      cast: [],
+      groupIds: ['grp-1'],
+      saveTargets: 'everywhere',
+      defaultSaveTarget: 'group:grp-1',
+      ...opts,
+      configure: (fake) => {
+        everywhereLists(fake);
+        opts.configure?.(fake);
+      },
+    });
+  }
+
+  function optionLabels(r: Rendered): string[] {
+    return Array.from(
+      byId<HTMLSelectElement>(r, 'save-scenario-target').querySelectorAll('option'),
+    ).map((o) => (o.textContent ?? '').trim());
+  }
+
+  it('sends the named group ids and defaults to in-world', async () => {
+    const r = await renderShelf();
+    r.fake.buildFrames.push([{ done: true, scenario: 'Rain on the cobbles.' }]);
+    await fillInputs(r);
+    await setTheScene(r);
+    expect(r.fake.buildBodies).toHaveLength(1);
+    expect(r.fake.buildBodies[0]).toMatchObject({
+      mode: 'in-world',
+      characterIds: [],
+      groupIds: ['grp-1'],
+    });
+  });
+
+  it('offers no "Use this scene"; Save is the primary action', async () => {
+    const r = await renderShelf();
+    await runToReview(r);
+    expect(queryButton(r, 'Use this scene')).toBeUndefined();
+    const saves = Array.from(r.el.querySelectorAll('button')).filter(
+      (b) => (b.textContent ?? '').trim() === 'Save as scenario…',
+    );
+    expect(saves).toHaveLength(1);
+    expect(saves[0].classList.contains('qt-button-primary')).toBe(true);
+    expect(button(r, 'Close')).toBeDefined();
+    expect(queryButton(r, 'Cancel')).toBeUndefined();
+  });
+
+  it('Save lists every home, preselects the shelf, and files it there', async () => {
+    const r = await renderShelf({
+      configure: (fake) => {
+        fake.saveResponse = {
+          type: 'scenarioBuilder',
+          data: { path: 'Scenarios/rain.md' },
+        } as unknown as CoreResponse;
+      },
+    });
+    await runToReview(r);
+    button(r, 'Save as scenario…').click();
+    await settle(r.fixture);
+    const labels = optionLabels(r);
+    expect(labels).toContain('Group: Aeronauts Club');
+    expect(labels).toContain('Project: The Estate');
+    expect(labels.some((l) => /Riya.s scenarios/.test(l))).toBe(true);
+    expect(byId<HTMLSelectElement>(r, 'save-scenario-target').value).toBe('group:grp-1');
+    // The every-home lists came through the SHARED fetchers (no envelope under
+    // a shared key): all groups (no ids), every project, every character.
+    expect(r.fake.requests.some((q) => q['type'] === 'groupList' && !('characterIds' in q))).toBe(
+      true,
+    );
+    expect(r.fake.requests.some((q) => q['type'] === 'projectList')).toBe(true);
+    expect(r.fake.requests.some((q) => q['type'] === 'characterList')).toBe(true);
+
+    type(byId<HTMLInputElement>(r, 'save-scenario-name'), 'Rain');
+    await settle(r.fixture);
+    button(r, 'Save').click();
+    await settle(r.fixture);
+    expect(r.saved).toEqual([{ kind: 'group', groupId: 'grp-1', path: 'Scenarios/rain.md' }]);
+    // The builder stays open after a save (v4's spec prose).
+    expect(r.closed.count).toBe(0);
+    expect(r.el.querySelector('[aria-label="The scene"]')).not.toBeNull();
+  });
+
+  it('saving to another project posts to that project', async () => {
+    const r = await renderShelf({ groupIds: [], defaultSaveTarget: 'general' });
+    await runToReview(r);
+    button(r, 'Save as scenario…').click();
+    await settle(r.fixture);
+    expect(optionLabels(r)).toContain('Project: The Estate');
+    expect(byId<HTMLSelectElement>(r, 'save-scenario-target').value).toBe('general');
+    type(byId<HTMLSelectElement>(r, 'save-scenario-target'), 'project:proj-1');
+    await settle(r.fixture);
+    button(r, 'Save').click();
+    await settle(r.fixture);
+    expect(r.fake.requests.find((q) => q['type'] === 'projectScenarioCreate')).toMatchObject({
+      type: 'projectScenarioCreate',
+      projectId: 'proj-1',
+    });
+    expect(r.saved).toEqual([
+      { kind: 'project', projectId: 'proj-1', path: 'Scenarios/a-scene.md' },
+    ]);
+  });
+
+  // --- beyond v4's four ---------------------------------------------------
+
+  it('every-home lists are name-sorted; groups, projects and characters alike', async () => {
+    const r = await renderShelf({
+      configure: (fake) => {
+        fake.projects = [
+          { id: 'p-z', name: 'Zenith' },
+          { id: 'p-a', name: 'Atlas' },
+        ];
+        fake.allGroups = [
+          { id: 'g-z', name: 'Zeppelin Society' },
+          { id: 'grp-1', name: 'Aeronauts Club' },
+        ];
+        fake.characters = [
+          { id: 'c-z', name: 'Zelda' },
+          { id: 'c-a', name: 'Abel' },
+        ];
+      },
+    });
+    await runToReview(r);
+    button(r, 'Save as scenario…').click();
+    await settle(r.fixture);
+    expect(optionLabels(r)).toEqual([
+      'Quilltap General',
+      'Project: Atlas',
+      'Project: Zenith',
+      'Group: Aeronauts Club',
+      'Group: Zeppelin Society',
+      'Abel’s scenarios',
+      'Zelda’s scenarios',
+    ]);
+  });
+
+  it('holds General until the list offering the shelf arrives, then flips — unless the user chose', async () => {
+    let releaseGroups: () => void = () => undefined;
+    const r = await renderShelf();
+    const original = r.fake.core.dispatchData as unknown as (
+      req: Record<string, unknown>,
+    ) => Promise<unknown>;
+    (r.fake.core as unknown as { dispatchData: unknown }).dispatchData = vi.fn(
+      async (req: Record<string, unknown>) => {
+        if (req['type'] === 'groupList' && !('characterIds' in req)) {
+          await new Promise<void>((resolve) => (releaseGroups = resolve));
+        }
+        return original(req);
+      },
+    );
+    await runToReview(r);
+    button(r, 'Save as scenario…').click();
+    await settle(r.fixture);
+    // The group list is still out: General stands in.
+    expect(byId<HTMLSelectElement>(r, 'save-scenario-target').value).toBe('general');
+    releaseGroups();
+    await settle(r.fixture);
+    expect(byId<HTMLSelectElement>(r, 'save-scenario-target').value).toBe('group:grp-1');
+
+    // A pick made BEFORE the list lands stands.
+    TestBed.resetTestingModule();
+    const chosen = await renderShelf();
+    const orig2 = chosen.fake.core.dispatchData as unknown as (
+      req: Record<string, unknown>,
+    ) => Promise<unknown>;
+    (chosen.fake.core as unknown as { dispatchData: unknown }).dispatchData = vi.fn(
+      async (req: Record<string, unknown>) => {
+        if (req['type'] === 'groupList' && !('characterIds' in req)) {
+          await new Promise<void>((resolve) => (releaseGroups = resolve));
+        }
+        return orig2(req);
+      },
+    );
+    await runToReview(chosen);
+    button(chosen, 'Save as scenario…').click();
+    await settle(chosen.fixture);
+    type(byId<HTMLSelectElement>(chosen, 'save-scenario-target'), 'project:proj-1');
+    await settle(chosen.fixture);
+    releaseGroups();
+    await settle(chosen.fixture);
+    expect(byId<HTMLSelectElement>(chosen, 'save-scenario-target').value).toBe('project:proj-1');
+  });
+
+  it('with the cast, the review footer is unchanged: Save secondary, Cancel, Use this scene', async () => {
+    const r = await render();
+    await runToReview(r);
+    expect(button(r, 'Save as scenario…').classList.contains('qt-button-secondary')).toBe(true);
+    expect(button(r, 'Cancel')).toBeDefined();
+    expect(button(r, 'Use this scene')).toBeDefined();
+    expect(queryButton(r, 'Close')).toBeUndefined();
+  });
+});
+
 // --- Beyond v4's suite -------------------------------------------------------
 
 describe('ScenarioBuilderDialog — inputs pane', () => {
@@ -383,6 +595,11 @@ describe('ScenarioBuilderDialog — inputs pane', () => {
     expect(r.el.textContent).toContain(
       'I shall consult the wider world, and your document stores besides.',
     );
+  });
+
+  it('opens in in-world mode with a project and no cast (v4 `08c49319d` — the message is silent on it)', async () => {
+    const r = await render({ cast: [], projectId: 'proj-1' });
+    expect((r.el.querySelector('input[value="in-world"]') as HTMLInputElement).checked).toBe(true);
   });
 
   it('opens in in-world mode with a cast, with the stores-only helper', async () => {
@@ -491,8 +708,21 @@ describe('ScenarioBuilderDialog — inputs pane', () => {
       connectionProfileId: 'profile-default',
       projectId: 'proj-1',
       characterIds: ['char-1'],
+      groupIds: [],
       chatId: 'chat-1',
     });
+    // v4 `08c49319d`: `groupIds` ALWAYS rides, between `characterIds` and `chatId`.
+    expect(Object.keys(r.fake.buildBodies[0])).toEqual([
+      'mode',
+      'location',
+      'time',
+      'details',
+      'connectionProfileId',
+      'projectId',
+      'characterIds',
+      'groupIds',
+      'chatId',
+    ]);
     TestBed.resetTestingModule();
     const bare = await render({ cast: [] });
     bare.fake.buildFrames.push([{ done: true, scenario: 'x' }]);
@@ -503,6 +733,7 @@ describe('ScenarioBuilderDialog — inputs pane', () => {
       projectId: null,
       chatId: null,
       characterIds: [],
+      groupIds: [],
     });
   });
 
@@ -785,20 +1016,32 @@ describe('SaveScenarioDialog — within the builder', () => {
       projectId: 'proj-1',
       projectName: 'The Siege',
       configure: (fake) => {
-        fake.groups = [{ id: 'g-1', name: 'Aeronauts Club' }];
+        fake.groups = [
+          { id: 'g-2', name: 'Zeppelin Society' },
+          { id: 'g-1', name: 'Aeronauts Club' },
+        ];
       },
     });
     await openSave(r);
     const options = Array.from(
       byId<HTMLSelectElement>(r, 'save-scenario-target').querySelectorAll('option'),
     ).map((o) => [o.value, (o.textContent ?? '').trim()]);
+    // v4 `08c49319d`: the project key is `project:<id>` in EVERY mode; groups
+    // are name-sorted in cast mode too; the cast keeps its own order.
     expect(options).toEqual([
       ['general', 'Quilltap General'],
-      ['project', 'Project: The Siege'],
+      ['project:proj-1', 'Project: The Siege'],
       ['group:g-1', 'Group: Aeronauts Club'],
+      ['group:g-2', 'Group: Zeppelin Society'],
       ['character:char-2', 'Bob’s scenarios'],
       ['character:char-1', 'Alice’s scenarios'],
     ]);
+    // …under three labelled optgroups, cast mode included.
+    expect(
+      Array.from(
+        byId<HTMLSelectElement>(r, 'save-scenario-target').querySelectorAll('optgroup'),
+      ).map((g) => g.label),
+    ).toEqual(['Projects', 'Groups', 'Characters']);
     // The group list asked for the SORTED cast (v4's castKey).
     expect(r.fake.requests.find((q) => q['type'] === 'groupList')).toEqual({
       type: 'groupList',
@@ -814,6 +1057,12 @@ describe('SaveScenarioDialog — within the builder', () => {
     ).map((o) => (o.textContent ?? '').trim());
     expect(labels).toEqual(['Quilltap General', 'Project: this project']);
     expect(r.fake.requests.some((q) => q['type'] === 'groupList')).toBe(false);
+    // An empty list gets no optgroup at all.
+    expect(
+      Array.from(
+        byId<HTMLSelectElement>(r, 'save-scenario-target').querySelectorAll('optgroup'),
+      ).map((g) => g.label),
+    ).toEqual(['Projects']);
   });
 
   it('files to the project and to a group with the file bag, description included', async () => {
@@ -829,7 +1078,7 @@ describe('SaveScenarioDialog — within the builder', () => {
       },
     });
     await openSave(r);
-    type(byId<HTMLSelectElement>(r, 'save-scenario-target'), 'project');
+    type(byId<HTMLSelectElement>(r, 'save-scenario-target'), 'project:proj-1');
     type(byId<HTMLInputElement>(r, 'save-scenario-description'), '  A wet night.  ');
     await settle(r.fixture);
     button(r, 'Save').click();

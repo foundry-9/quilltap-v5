@@ -149886,6 +149886,14 @@ failures), mount pool 22 arms, tier 3 23 cases, tiered matrix neutral + 7
 helper arms, one out-of-lane link-row divergence pinned both ways. Details in
 the P4.D231 lane record. core 0.0.1060, harness 0.0.979, web 0.0.197.
 
+### P4.D231 units 5–7 — the builder's shelf mode and every-home save (2026-09-25)
+
+The contract hunk (marked out-of-mandate), the builder dialog's `groupIds` /
+`saveTargets` / `defaultSaveTarget` (shelf footer keyed on `saveTargets ===
+'everywhere'` — the recorded design call), the save dialog's `project:<id>`
+keys, optgroups, sorted groups and every-home lists over the existing
+fetchers. Dialog spec 11 of 59 red pre-port, 59/59 after; M5, M6 red. SPA 0.5.774.
+
 ---
 
 ## P4.D225 — the refusal substrate + the ledger (v4 `8bd080267` #73 + `49059fb14` #74, server) — lane record

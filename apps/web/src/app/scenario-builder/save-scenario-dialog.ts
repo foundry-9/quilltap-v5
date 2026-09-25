@@ -16,6 +16,9 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 import { CoreClient } from '../core/core-client';
 import type { CoreRequest, ScenarioCreateBag } from '../core/core-contract';
 import { scenarioKeys } from '../scenario/scenario.api';
+import { characterKeys, fetchCharacterList } from '../screens/characters/characters.api';
+import { fetchGroups, groupKeys } from '../screens/groups/groups.api';
+import { fetchProjects, projectKeys } from '../screens/prospero/projects.api';
 import { Modal } from '../ui/modal';
 import { ToastService } from '../ui/toast.service';
 import { fetchGroupsByCharacters, groupsByCharactersKey } from './scenario-builder.api';
@@ -33,16 +36,51 @@ export type SavedScenarioTarget =
   | { kind: 'group'; groupId: string; path: string }
   | { kind: 'character'; characterId: string; scenarioId: string; title: string; content: string };
 
+/**
+ * A save target as the Location select spells it (v4 `08c49319d`
+ * `SaveScenarioTargetKey`): `general`, `project:<id>`, `group:<id>` or
+ * `character:<id>`.
+ */
+export type SaveScenarioTargetKey =
+  'general' | `project:${string}` | `group:${string}` | `character:${string}`;
+
+interface NamedRow {
+  id: string;
+  name: string;
+}
+
+/** v4's `byName` — `a.name.localeCompare(b.name)`, the SPA's own list idiom. */
+const byName = (a: NamedRow, b: NamedRow): number => a.name.localeCompare(b.name);
+
 /** v4's refusal when nothing is named (`SaveScenarioDialog.tsx`). */
 export const SAVE_NEEDS_A_NAME = 'A scenario wants a name before it can be filed.';
 
 /**
  * "Save as scenario…" — files the Host's scene in one of the four scenario
  * homes (v4 `components/scenario-builder/SaveScenarioDialog.tsx` at
- * `d1c06cd9d`): Quilltap General, the project, a cast member's group, or one
- * cast character's own scenarios. Each goes through that tier's EXISTING
- * create verb — no new storage — and a collision comes back as a refusal that
- * keeps the dialog open so the user can rename.
+ * `08c49319d`): Quilltap General, a project, a group, or one character's own
+ * scenarios. Each goes through that tier's EXISTING create verb — no new
+ * storage — and a collision comes back as a refusal that keeps the dialog open
+ * so the user can rename.
+ *
+ * Which homes are offered depends on where the builder was opened. Beside a
+ * chat's scenario box (`targets: 'cast'`, the default) they are the ones that
+ * chat could use: General, its project, its cast's groups, its cast. From a
+ * scenarios shelf (`targets: 'everywhere'`) every home is offered — every
+ * project, every group, every live character — with the shelf's own home
+ * (`defaultTarget`) preselected once the list that offers it has arrived, and
+ * General until then (or when it is never on offer). A pick the user made
+ * stands. The select's keys are `project:<id>` in EVERY mode, it groups its
+ * options under `Projects` / `Groups` / `Characters` (each only when
+ * non-empty, cast mode too), and groups are name-sorted in both modes while a
+ * cast keeps its own order — all three are `08c49319d` changes its commit
+ * message does not mention.
+ *
+ * The everywhere lists come through the EXISTING fetchers that own those query
+ * keys (`groupKeys.list()` / `projectKeys.list()` / `characterKeys.list()`),
+ * never v4's `{ groups }` envelopes stored under a shared key. The character
+ * list leaves archived characters out already (a tombstone takes no new
+ * scenarios).
  *
  * The group list is `groupList { characterIds }` (the round's §S.2 — v5 has no
  * REST groups edge), keyed as v4 keys it and asked only for a non-empty cast
@@ -105,23 +143,38 @@ export const SAVE_NEEDS_A_NAME = 'A scenario wants a name before it can be filed
             id="save-scenario-target"
             class="qt-select"
             [disabled]="saving()"
-            (change)="target.set($any($event.target).value)"
+            (change)="chosenTarget.set($any($event.target).value)"
           >
             <option value="general" [selected]="target() === 'general'">Quilltap General</option>
-            @if (projectId()) {
-              <option value="project" [selected]="target() === 'project'">
-                Project: {{ projectName() || 'this project' }}
-              </option>
+            @if (projects().length > 0) {
+              <optgroup label="Projects">
+                @for (p of projects(); track p.id) {
+                  <option [value]="'project:' + p.id" [selected]="target() === 'project:' + p.id">
+                    Project: {{ p.name }}
+                  </option>
+                }
+              </optgroup>
             }
-            @for (g of groups(); track g.id) {
-              <option [value]="'group:' + g.id" [selected]="target() === 'group:' + g.id">
-                Group: {{ g.name }}
-              </option>
+            @if (groups().length > 0) {
+              <optgroup label="Groups">
+                @for (g of groups(); track g.id) {
+                  <option [value]="'group:' + g.id" [selected]="target() === 'group:' + g.id">
+                    Group: {{ g.name }}
+                  </option>
+                }
+              </optgroup>
             }
-            @for (c of cast(); track c.id) {
-              <option [value]="'character:' + c.id" [selected]="target() === 'character:' + c.id">
-                {{ c.name }}&rsquo;s scenarios
-              </option>
+            @if (characters().length > 0) {
+              <optgroup label="Characters">
+                @for (c of characters(); track c.id) {
+                  <option
+                    [value]="'character:' + c.id"
+                    [selected]="target() === 'character:' + c.id"
+                  >
+                    {{ c.name }}&rsquo;s scenarios
+                  </option>
+                }
+              </optgroup>
             }
           </select>
         </div>
@@ -177,14 +230,18 @@ export class SaveScenarioDialog implements OnInit {
   readonly projectName = input<string | null>(null);
   /** The cast — their groups and their own scenario lists are offered. */
   readonly cast = input<readonly ScenarioBuilderCastMember[]>([]);
+  /** `cast` (default): the homes this chat could use. `everywhere`: every home there is. */
+  readonly targets = input<'cast' | 'everywhere'>('cast');
+  /** Preselected home; falls back to General when it is not on offer. */
+  readonly defaultTarget = input<SaveScenarioTargetKey | undefined>(undefined);
 
   readonly closed = output<void>();
   readonly saved = output<SavedScenarioTarget>();
 
   protected readonly name = signal('');
   protected readonly description = signal('');
-  /** `general` | `project` | `group:<id>` | `character:<id>` (v4's option values). */
-  protected readonly target = signal('general');
+  /** Null until the user picks; until then the preselected home stands in. */
+  protected readonly chosenTarget = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
 
@@ -196,13 +253,64 @@ export class SaveScenarioDialog implements OnInit {
       .join(','),
   );
 
-  private readonly groupsQuery = injectQuery(() => ({
+  private readonly everywhere = computed(() => this.targets() === 'everywhere');
+
+  private readonly castGroupsQuery = injectQuery(() => ({
     queryKey: groupsByCharactersKey(this.castKey()),
     queryFn: () => fetchGroupsByCharacters(this.core, this.castKey().split(',')),
-    enabled: this.castKey().length > 0,
+    enabled: !this.everywhere() && this.castKey().length > 0,
+  }));
+  private readonly allGroupsQuery = injectQuery(() => ({
+    queryKey: groupKeys.list(),
+    queryFn: () => fetchGroups(this.core),
+    enabled: this.everywhere(),
+  }));
+  private readonly projectsQuery = injectQuery(() => ({
+    queryKey: projectKeys.list(),
+    queryFn: () => fetchProjects(this.core),
+    enabled: this.everywhere(),
+  }));
+  private readonly charactersQuery = injectQuery(() => ({
+    queryKey: characterKeys.list(),
+    queryFn: () => fetchCharacterList(this.core),
+    enabled: this.everywhere(),
   }));
 
-  protected readonly groups = computed(() => this.groupsQuery.data() ?? []);
+  protected readonly projects = computed<NamedRow[]>(() => {
+    if (this.everywhere()) {
+      return (this.projectsQuery.data() ?? []).map(named).sort(byName);
+    }
+    const projectId = this.projectId();
+    return projectId ? [{ id: projectId, name: this.projectName() || 'this project' }] : [];
+  });
+  protected readonly groups = computed<NamedRow[]>(() =>
+    (this.everywhere() ? (this.allGroupsQuery.data() ?? []) : (this.castGroupsQuery.data() ?? []))
+      .map(named)
+      .sort(byName),
+  );
+  protected readonly characters = computed<NamedRow[]>(() =>
+    this.everywhere()
+      ? (this.charactersQuery.data() ?? []).map(named).sort(byName)
+      : this.cast().map(named),
+  );
+
+  private readonly offered = computed(
+    () =>
+      new Set<string>([
+        'general',
+        ...this.projects().map((p) => `project:${p.id}`),
+        ...this.groups().map((g) => `group:${g.id}`),
+        ...this.characters().map((c) => `character:${c.id}`),
+      ]),
+  );
+
+  /** v4 `chosenTarget ?? (defaultTarget && offered.has(defaultTarget) ? defaultTarget : 'general')`. */
+  protected readonly target = computed(() => {
+    const chosen = this.chosenTarget();
+    if (chosen !== null) return chosen;
+    const preferred = this.defaultTarget();
+    return preferred && this.offered().has(preferred) ? preferred : 'general';
+  });
   protected readonly isCharacterTarget = computed(() => this.target().startsWith('character:'));
 
   ngOnInit(): void {
@@ -234,14 +342,17 @@ export class SaveScenarioDialog implements OnInit {
       body: this.body(),
     };
     const target = this.target();
-    const projectId = this.projectId();
 
     try {
       let request: CoreRequest;
       if (target === 'general') {
         request = { type: 'scenarioCreate', scenario: fileBody };
-      } else if (target === 'project' && projectId) {
-        request = { type: 'projectScenarioCreate', projectId, scenario: fileBody };
+      } else if (target.startsWith('project:')) {
+        request = {
+          type: 'projectScenarioCreate',
+          projectId: target.slice('project:'.length),
+          scenario: fileBody,
+        };
       } else if (target.startsWith('group:')) {
         request = {
           type: 'groupScenarioCreate',
@@ -270,8 +381,8 @@ export class SaveScenarioDialog implements OnInit {
       let saved: SavedScenarioTarget | null = null;
       if (target === 'general' && data.path) {
         saved = { kind: 'general', path: data.path };
-      } else if (target === 'project' && projectId && data.path) {
-        saved = { kind: 'project', projectId, path: data.path };
+      } else if (target.startsWith('project:') && data.path) {
+        saved = { kind: 'project', projectId: target.slice('project:'.length), path: data.path };
       } else if (target.startsWith('group:') && data.path) {
         saved = { kind: 'group', groupId: target.slice('group:'.length), path: data.path };
       } else if (target.startsWith('character:') && data.scenario?.id) {
@@ -296,4 +407,9 @@ export class SaveScenarioDialog implements OnInit {
       this.saving.set(false);
     }
   }
+}
+
+/** A list row as the select needs it — `id` + `name`, whatever else it carries. */
+function named(row: { id: string; name: string }): NamedRow {
+  return { id: row.id, name: row.name };
 }
