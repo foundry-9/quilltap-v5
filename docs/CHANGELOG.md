@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): close the P4.D223 lane (Salon Images quick-hide + bug-169 convergence)
+
+_Docs-only change._
+
+Closes the P4.D223 lane record: `94e946728` (this port's bug-169 filing,
+docs only) ratified as no-port on its file list, the order's status header
+updated with what landed and what the order got wrong, and the closing
+drift probe's failure on v4 `83d0c969b` recorded along with the human's
+waiver.
+
 #### 2026-09-24 — feat(salon): the Salon Images switch hides every image the Salon paints (P4.D223)
 
 _Versions: SPA 0.5.764._

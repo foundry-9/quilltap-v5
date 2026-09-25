@@ -148608,6 +148608,34 @@ grew no oracle recorder, so nothing executed v4 code).
 - **Gate:** `npm run lint` clean; `npm test` **450 files / 7,724** (base
   448 / 7,670); `npm run build` clean.
 
+### Lane close
+
+- **`94e946728` NO-PORT-RATIFIED on its file list** (Tier 1 item 8):
+  `git show --stat 94e946728` = `docs/developer/bugs.md` (+1) +
+  `docs/developer/bugs/bug-169-narrow-sidebar-closes-portaled-dialog.md`
+  (NEW, 78 lines) — docs only, this port's own filing; no code, no `help/`.
+  The mirror (`fixed/bug-169-…` 5,048 bytes, `bugs.md` 309,151 → 311,817 at
+  `b0b6656b5`, measured) is the unifier's (§R.9).
+- **The closing §R.2 probe FAILED:** v4 `main` gained `83d0c969b` ("Fix bug
+  170: Salon speaker switch sends POST, not PUT") past `b0b6656b5` (branch
+  `main`, tree clean, `bugfix` log empty). Unclassified by this lane (the
+  ledger is `/driftcheck`'s); its subject names a Salon SPA surface that may
+  intersect this lane's files. **The human WAIVED it for the lane close
+  (2026-09-24)** — no regen, oracle run or v4 execution happened after it.
+- **For the unifier:** the `phase-4.md:6649` wording in Unit 1; the §R.9
+  mirror sizes above; a shared-fixture chat that does not open
+  (`applyDocumentStoreOverlayOne: vault unavailable for character
+  a1000000-0000-4000-8000-000000000006`, pre-existing, seen from
+  `quick-hide-flow.spec.ts`'s discovery); P4.D224's §S.2 hunk was not on
+  `main` when this lane closed — this lane's `salon-conversation.ts` hunks are
+  the `providers` entry, the layout's `--story-background-url` binding, the
+  backdrop-report read, and a new `visibleBackgroundVar` beside
+  `backgroundVar` (23+/2−).
+- **Fixtures:** none changed; no oracle invalidated; no recorder authored.
+- **Versions:** SPA 0.5.761 → 0.5.764 (three bumps); no crate touched.
+- Build output reclaimed (`target/` 2.9 GB, `dist`, `test-results`,
+  `e2e/.artifacts`).
+
 ## P4.D220 — the action-dispatch consolidation (web edges + core gates + the `has-dangerous` server half) — LANE RECORD (2026-09-24)
 
 Branch `claude/p4-d220-action-dispatch-web-edges-3ac7c5`, cut from `main`
