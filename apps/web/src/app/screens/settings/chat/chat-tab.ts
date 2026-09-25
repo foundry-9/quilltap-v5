@@ -24,7 +24,6 @@ import { ImpersonationVoiceSettings } from './impersonation-voice-settings';
 import { CompositionModeSettings } from './composition-mode-settings';
 import { ContextCompressionSettings } from './context-compression-settings';
 import { CustomToolsSettings } from './custom-tools-settings';
-import { DangerousContentSettings } from './dangerous-content-settings';
 import { DataRetentionSettings } from './data-retention-settings';
 import { TabooSettings } from './taboo-settings';
 import { GeneralStateSettings } from './general-state-settings';
@@ -37,7 +36,7 @@ import { TokenDisplaySettings } from './token-display-settings';
 
 /**
  * The Settings → Chat tab (v4 `components/settings/tabs/ChatTabContent.tsx`,
- * subsystem `salon`) — now FULLY fitted out: all twenty-one v4 cards, in v4's
+ * subsystem `salon`) — now FULLY fitted out: all twenty v4 cards, in v4's
  * exact order, with v4's titles/descriptions + `sectionId`s (the `?section=`
  * deep link) ported verbatim.
  *
@@ -54,7 +53,9 @@ import { TokenDisplaySettings } from './token-display-settings';
  * Retention (P4.d3), the two autonomous cards (P4.6ad), the eleven landed by
  * P4.6an, Custom Tools (P4.6ba — the Workbench button v4 pairs with it is
  * deferred to P4.6bb), and Brahma Console (P4.D59, v4 `6452e2c3` — the
- * agent-turn budget, between Data Retention and Autonomous Rooms).
+ * agent-turn budget, between Data Retention and Autonomous Rooms). The
+ * Dangerous Content card left for the Concierge's own tab with v4 #76
+ * (`3b463d6b1`, P4.D230) — Taboo now follows Answer Confirmation directly.
  */
 @Component({
   selector: 'qt-settings-chat',
@@ -75,7 +76,6 @@ import { TokenDisplaySettings } from './token-display-settings';
     CompositionModeSettings,
     ContextCompressionSettings,
     CustomToolsSettings,
-    DangerousContentSettings,
     DataRetentionSettings,
     GeneralStateSettings,
     ImageDescriptionSettings,
@@ -236,15 +236,6 @@ import { TokenDisplaySettings } from './token-display-settings';
           [forceOpen]="section() === 'answer-confirmation'"
         >
           <qt-answer-confirmation-settings />
-        </qt-collapsible-card>
-
-        <qt-collapsible-card
-          title="Dangerous Content"
-          description="Configure content detection, routing, and display behavior"
-          sectionId="dangerous-content"
-          [forceOpen]="section() === 'dangerous-content'"
-        >
-          <qt-dangerous-content-settings />
         </qt-collapsible-card>
 
         <qt-collapsible-card

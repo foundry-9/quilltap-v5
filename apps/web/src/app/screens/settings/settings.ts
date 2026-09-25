@@ -6,6 +6,7 @@ import { BrandName } from '../../ui/brand-name';
 import { EntityTabs, type Tab } from '../../ui/entity-tabs';
 import { AppearanceTab } from './appearance/appearance-tab';
 import { ChatTab } from './chat/chat-tab';
+import { ConciergeTab } from './concierge/concierge-tab';
 import { ImagesTab } from './images/images-tab';
 import { MemoryTab } from './memory/memory-tab';
 import { ProvidersTab } from './providers/providers-tab';
@@ -13,7 +14,7 @@ import { SystemTab } from './system/system-tab';
 import { TemplatesTab } from './templates/templates-tab';
 
 /**
- * The Settings screen shell (v4 `app/settings/SettingsView.tsx`): the seven-tab
+ * The Settings screen shell (v4 `app/settings/SettingsView.tsx`): the eight-tab
  * hall over `EntityTabs` (`?tab=` deep links), a per-tab subsystem background
  * (v4 `--story-background-url`; here a `data-subsystem` attribute the theme CSS
  * can hook), and one populated slice — AI Providers + Appearance. The remaining
@@ -36,6 +37,7 @@ import { TemplatesTab } from './templates/templates-tab';
     ProvidersTab,
     AppearanceTab,
     ChatTab,
+    ConciergeTab,
     TemplatesTab,
     ImagesTab,
     MemoryTab,
@@ -65,6 +67,9 @@ import { TemplatesTab } from './templates/templates-tab';
             }
             @case ('chat') {
               <qt-settings-chat />
+            }
+            @case ('concierge') {
+              <qt-settings-concierge />
             }
             @case ('memory') {
               <qt-settings-memory />
@@ -105,6 +110,8 @@ export class Settings {
   protected readonly tabs: Tab[] = [
     { id: 'providers', label: 'AI Providers', icon: 'wrench' },
     { id: 'chat', label: 'Chat', icon: 'chat' },
+    // v4 #76 (`3b463d6b1`): the Concierge's own tab, third.
+    { id: 'concierge', label: 'The Concierge', icon: 'shield' },
     { id: 'appearance', label: 'Appearance', icon: 'themes' },
     { id: 'memory', label: 'Commonplace Book', icon: 'book' },
     { id: 'images', label: 'Images', icon: 'image' },
@@ -116,6 +123,7 @@ export class Settings {
   private readonly subsystemMap: Record<string, string> = {
     providers: 'forge',
     chat: 'salon',
+    concierge: 'concierge',
     appearance: 'calliope',
     memory: 'commonplace-book',
     images: 'lantern',

@@ -53,4 +53,24 @@ describe('Settings (workspace-tab mode)', () => {
     const activeTab = fixture.nativeElement.querySelector('.qt-tab-active') as HTMLElement;
     expect(activeTab.textContent).toContain('Data & System');
   });
+  it('lists v4\'s eight tabs with The Concierge third (v4 #76, `3b463d6b1`)', async () => {
+    const fixture = await render('concierge');
+    const labels = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('nav.qt-tab-group > button'),
+    ).map((t) => (t.textContent ?? '').replace(/\s+/g, ' ').trim());
+    expect(labels).toEqual([
+      'AI Providers',
+      'Chat',
+      'The Concierge',
+      'Appearance',
+      'Commonplace Book',
+      'Images',
+      'Templates & Prompts',
+      'Data & System',
+    ]);
+    const container = fixture.nativeElement.querySelector('.qt-page-container') as HTMLElement;
+    // v4 `TAB_SUBSYSTEM_MAP.concierge = 'concierge'`.
+    expect(container.getAttribute('data-subsystem')).toBe('concierge');
+    expect(fixture.nativeElement.querySelector('qt-settings-concierge')).not.toBeNull();
+  });
 });

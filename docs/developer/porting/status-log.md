@@ -149866,6 +149866,79 @@ Salon Images switch on a real transcript (a crafted-alt image included); the
 `@` menu over a real cast; the `:` typeahead after Shift+Enter; the
 corrupt-`.dbkey` 401 and the read-only-`.dbkey` 500 + line.
 
+## P4.D230 — the Concierge SPA, Settings side (lane record, 2026-09-25)
+
+Order: `work-orders/p4.d230-concierge-spa-settings-side.md`. Branch
+`claude/p4-concierge-spa-settings-889d01`, cut from `main` at `446671a7d`.
+§R.2 probe PASSED at lane start and before the regen batch (v4 `main` at
+`acadcc7cd`, clean, both logs empty). SPA-only — no cargo.
+
+### Unit 1 — the tab, the five cards, the save path, the Chat tab's card retired
+
+- **Contract (§S.2, the ONE marked hunk):** `ConciergeSettingsDto` +
+  `ConciergeDisplaySettingsDto` + `ConciergePreScreenSettingsDto` above
+  `ChatSettingsDto`; `ChatSettingsDto.conciergeSettings?` in,
+  `dangerousContentSettings` out, fenced `// P4.D230 OUT-OF-MANDATE — P4.D229
+  preserves` … `— end of hunk`. (`uncensoredImageDescriptionProfileId` and
+  `cheapLLMSettings` were never declared on the DTO — the index signature
+  carried them — so there is nothing more to remove there.)
+- **Types:** `chat-settings.types.ts` loses `DangerousContentSettings`,
+  `DANGEROUS_MODE_OPTIONS`, `DANGEROUS_DISPLAY_MODE_OPTIONS`,
+  `DEFAULT_DANGEROUS_CONTENT_SETTINGS` and the whole `CheapLLMSettings`
+  interface (its ONLY reader was the deleted card; `cheap-llm-card.ts` keeps
+  its own local declaration, which never carried `imagePromptProfileId`);
+  gains `ConciergeSettings` (= the DTO, single-sourced as v4 single-sources it
+  from the Zod schema), `ConciergeSettingsUpdate`, `DEFAULT_CONCIERGE_SETTINGS`
+  (transcribed from v4 `resolver.service.ts:32-53` at `acadcc7cd`, pinned
+  field by field).
+- **The save path** (`screens/settings/concierge/concierge-settings.api.ts`):
+  `effectiveConcierge` (v4 `ConciergeTabContent`'s object),
+  `mergeConciergeUpdate` (v4 `handleConciergeUpdate`'s merge), and the
+  `ConciergeSettingsCard` base whose `update()` reads
+  `queryClient.getQueryData(['chatSettings'])` AT SEND TIME and PUTs
+  `{ conciergeSettings: <whole object> }` through `ChatSettingsCard.save`
+  (seed from the response; the `qt-error-alert` with v4's failure message
+  `Failed to update the Concierge's settings` — v4's console-only log label
+  `Failed to update Concierge settings` has no v5 home, as for every card).
+  **v5 addition:** saves are serialized per `QueryClient` (a `WeakMap` of
+  promise chains). v4's ONE provider-wide `saving` flag makes concurrent saves
+  impossible there; v5's per-card `saving` makes them possible, and with a
+  whole-object PUT the second would clobber the first. The chain is what the
+  race arm pins.
+- **The tab** (`concierge-tab.ts`) + **five cards** (`on-duty-card.ts`,
+  `uncensored-desk-card.ts`, `refusals-card.ts`, `display-card.ts`,
+  `pre-screening-card.ts`) — every id, label, help text, option, filter and
+  PUT key per the order's §Mandate, read off v4's files at `acadcc7cd`
+  (byte-identical to `3b463d6b1` for all nine files, measured with
+  `git diff --stat`). `settings.ts`: the tab third (`shield`), the `@switch`
+  arm, `subsystemMap.concierge = 'concierge'`.
+- **The removals:** `chat/dangerous-content-settings.ts` DELETED (444 lines);
+  its card gone from `chat-tab.ts` (Taboo follows Answer Confirmation; the
+  count pin 21 → 20); the two Dangerous Content blocks of
+  `async-select-cards.spec.ts` removed; `connection-profiles-shared-entry.
+  spec.ts` (P4.116's raw-entry pin) repointed from the old card's
+  `#danger-text-profile` at the desk's `#concierge-uncensored-text-profile` —
+  the desk is now the reader of `isDangerousCompatible`.
+- **Specs:** `concierge-settings.api.spec.ts` (8 — the defaults, the merge,
+  v4's "handleConciergeUpdate deep-merges display and preScreen, keeping every
+  other field" BY NAME with v4's exact two argument objects, the whole-object
+  key set, sequential and CONCURRENT two-card arms, the failure alert);
+  `concierge-tab.spec.ts` (11 — v4's six `ConciergeTabContent` cases by name +
+  the intro, the banner, absent `conciergeSettings`, the read-failure line,
+  hosted mode); `concierge-cards.spec.ts` (20 — every string table);
+  `settings.spec.ts` (+1 — the eight tabs in order, the subsystem).
+- **Measured divergences:** (a) v5's `qt-collapsible-card` scrolls its HOST
+  element, which wraps `#uncensored-desk`; v4 scrolls the div itself — the
+  same box on screen; the "scrolls ONCE" pin asserts the host. (b) The
+  threshold range saves on `change` (release) where v4's React `onChange`
+  saves per drag step — same final value, fewer PUTs, no mid-drag disable
+  (commented in the card). (c) The Display card is write-only (ruling E.1,
+  recorded ONCE here and in the card's doc comment). (d) The intro is
+  hard-coded (E.6). (e) `section` is not threaded when hosted (E.9 — a spec
+  arm).
+- Gate at this commit: `npm run lint` clean (958 classes); `npm test`
+  **455 files / 7,944** (base 452 / 7,919); `npm run build` clean.
+
 ## P4.D229 — the Concierge overhaul's CLIENT, Salon side (lane record, 2026-09-25)
 
 Lane branch `claude/p4-d229-concierge-spa-salon-47eff0`, cut from `main`

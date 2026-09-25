@@ -7,10 +7,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BrahmaConsoleService } from '../../../brahma/brahma-console.service';
 import { BrahmaConsoleApi } from '../../../brahma/brahma-wire';
 import { CoreClient } from '../../../core/core-client';
-import type { ChatSettingsDto } from '../../../core/core-contract';
 import { CharactersList } from '../../characters/list/characters-list';
 import { settingsRow, settle } from './chat-settings.spec-harness';
-import { DangerousContentSettings } from './dangerous-content-settings';
+import { UncensoredDeskCard } from '../concierge/uncensored-desk-card';
 
 /**
  * ONE raw shape per connection-profiles cache entry (P4.116).
@@ -67,24 +66,10 @@ const SAFE: Row = {
 };
 const ROWS = [DANGER, SAFE];
 
-function autoRouteRow(): ChatSettingsDto {
-  return settingsRow({
-    dangerousContentSettings: {
-      mode: 'AUTO_ROUTE',
-      threshold: 0.7,
-      scanTextChat: true,
-      scanImagePrompts: true,
-      scanImageGeneration: false,
-      displayMode: 'SHOW',
-      showWarningBadges: true,
-    },
-  });
-}
-
 /** One client answering every shape the readers ask for (both dispatch forms). */
 function client(): { core: Partial<CoreClient>; profileFetches: () => number } {
   let fetches = 0;
-  const row = autoRouteRow();
+  const row = settingsRow();
   const dispatchExpect = vi.fn(async (req: { type: string }) => {
     if (req.type === 'connectionProfileList') {
       fetches++;
@@ -129,8 +114,9 @@ async function tick(): Promise<void> {
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
 }
 
-async function mountDangerCard(): Promise<ComponentFixture<DangerousContentSettings>> {
-  const fixture = TestBed.createComponent(DangerousContentSettings);
+/** The Concierge's desk — the card that reads `isDangerousCompatible` (v4 #76 moved it off the Chat tab). */
+async function mountDeskCard(): Promise<ComponentFixture<UncensoredDeskCard>> {
+  const fixture = TestBed.createComponent(UncensoredDeskCard);
   fixture.detectChanges();
   await settle(fixture);
   return fixture;
@@ -138,7 +124,7 @@ async function mountDangerCard(): Promise<ComponentFixture<DangerousContentSetti
 
 function uncensoredOptions(fixture: ComponentFixture<unknown>): string[] {
   const select = (fixture.nativeElement as HTMLElement).querySelector(
-    '#danger-text-profile',
+    '#concierge-uncensored-text-profile',
   ) as HTMLSelectElement | null;
   return select ? Array.from(select.options).map((o) => o.value) : [];
 }
@@ -159,7 +145,7 @@ describe('the connection-profiles cache entry holds the RAW rows (P4.116)', () =
     );
 
     // Inside the 5 s window the card reads the entry Brahma filled, unfetched.
-    const card = await mountDangerCard();
+    const card = await mountDeskCard();
     expect(c.profileFetches()).toBe(1);
     expect(uncensoredOptions(card)).toEqual(['', 'p-danger']);
   });
@@ -168,7 +154,7 @@ describe('the connection-profiles cache entry holds the RAW rows (P4.116)', () =
     const qc = appQueryClient();
     const c = client();
     configure(qc, c.core);
-    const card = await mountDangerCard();
+    const card = await mountDeskCard();
     const brahma = TestBed.inject(BrahmaConsoleService);
     await tick();
     await qc.invalidateQueries({ queryKey: ['connection-profiles'] });
@@ -191,7 +177,7 @@ describe('the connection-profiles cache entry holds the RAW rows (P4.116)', () =
     expect(qc.getQueryData(['connection-profiles'])).toEqual(ROWS);
 
     // One spelling (v4's): the Settings card mounted next reads the SAME entry.
-    const card = await mountDangerCard();
+    const card = await mountDeskCard();
     expect(c.profileFetches()).toBe(1);
     expect(uncensoredOptions(card)).toEqual(['', 'p-danger']);
   });

@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(spa/settings): the Concierge's own Settings tab (v4 #76) — five cards over `conciergeSettings`, the Dangerous Content card retired (P4.D230)
+
+_Versions: SPA 0.5.774._
+
+Ports v4 #76's client, Settings side. Settings gains "The Concierge" as the
+third tab (`shield`, subsystem `concierge`, a hard-coded intro) with five
+collapsible cards: On Duty, The Uncensored Desk (three compatibility-filtered
+pickers that keep a stale pick with a suffix, plus the image prompt crafter
+over every profile), When a Provider Refuses (the refusal count, clamped and
+saved per keystroke; New chats start as Moderated or Unmoderated), Display
+(write-only in v5 until the danger-flag UI exists) and Pre-Screening
+(collapsed). An off-duty banner shows when the Concierge is off.
+
+Every card saves through one path: deep-merge the update over the latest
+cached row at send time, then send the whole `conciergeSettings` object
+(the server replaces it). Saves are chained per query client so two cards
+saving at once cannot overwrite each other. `ChatSettingsDto` gains
+`conciergeSettings` and drops `dangerousContentSettings` (the one marked
+`core-contract.ts` hunk). The Chat tab loses the Dangerous Content card and
+its 444-line component; its types and option tables are gone. Specs port
+v4's six tab tests and its deep-merge test by name, plus a race arm and a
+string table per card.
+
 #### 2026-09-25 — test(e2e): the Concierge's three states and "Try uncensored" in the browser — six specs rewritten, one retired, one new (P4.D229 unit 11)
 
 _Versions: SPA 0.5.778._

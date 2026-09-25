@@ -11,6 +11,12 @@
  * @module screens/settings/chat/chat-settings.types
  */
 
+import type {
+  ConciergeDisplaySettingsDto,
+  ConciergePreScreenSettingsDto,
+  ConciergeSettingsDto,
+} from '../../../core/core-contract';
+
 // ---------------------------------------------------------------------------
 // Token display (v4 types.ts L20-27, L360-367, L391-414)
 // ---------------------------------------------------------------------------
@@ -198,89 +204,57 @@ export const DEFAULT_ANSWER_CONFIRMATION_SETTINGS: AnswerConfirmationSettings = 
 };
 
 // ---------------------------------------------------------------------------
-// Dangerous content (v4 lib/schemas/settings.types.ts L302-325 +
-// DangerousContentSettings.tsx L18-58)
+// The Concierge (v4 `3b463d6b1` types.ts L529-548 + `lib/services/
+// dangerous-content/resolver.service.ts` `DEFAULT_CONCIERGE_SETTINGS`). Replaces
+// the retired Dangerous Content bag, the Image Description card's uncensored
+// fallback scalar and the cheap-LLM bag's image-prompt override — all three
+// now live inside `conciergeSettings`, and the server refuses a PUT that still
+// carries any of them.
 // ---------------------------------------------------------------------------
 
-export type DangerousContentMode = 'OFF' | 'DETECT_ONLY' | 'AUTO_ROUTE';
-export type DangerousContentDisplayMode = 'SHOW' | 'BLUR' | 'COLLAPSE';
-
-export interface DangerousContentSettings {
-  mode: DangerousContentMode;
-  threshold: number;
-  scanTextChat: boolean;
-  scanImagePrompts: boolean;
-  scanImageGeneration: boolean;
-  uncensoredTextProfileId?: string | null;
-  uncensoredImageProfileId?: string | null;
-  displayMode: DangerousContentDisplayMode;
-  showWarningBadges: boolean;
-  customClassificationPrompt?: string | null;
-}
-
-export const DANGEROUS_MODE_OPTIONS: readonly {
-  value: DangerousContentMode;
-  label: string;
-  description: string;
-}[] = [
-  { value: 'OFF', label: 'Off', description: 'No content scanning or routing' },
-  {
-    value: 'DETECT_ONLY',
-    label: 'Detect Only',
-    description: 'Scan and flag content, but do not reroute to uncensored providers',
-  },
-  {
-    value: 'AUTO_ROUTE',
-    label: 'Auto-Route',
-    description:
-      'Scan content and automatically route flagged messages to uncensored-compatible providers',
-  },
-];
-
-export const DANGEROUS_DISPLAY_MODE_OPTIONS: readonly {
-  value: DangerousContentDisplayMode;
-  label: string;
-  description: string;
-}[] = [
-  { value: 'SHOW', label: 'Show', description: 'Display flagged content normally with a warning badge' },
-  { value: 'BLUR', label: 'Blur', description: 'Blur flagged content until clicked to reveal' },
-  {
-    value: 'COLLAPSE',
-    label: 'Collapse',
-    description: 'Collapse flagged content behind a placeholder',
-  },
-];
+/** v4 `ConciergeSettings` — single-sourced from the wire shape, as v4 single-sources it from the Zod schema. */
+export type ConciergeSettings = ConciergeSettingsDto;
+export type ConciergeDisplaySettings = ConciergeDisplaySettingsDto;
+export type ConciergePreScreenSettings = ConciergePreScreenSettingsDto;
 
 /**
- * v4 keeps a card-local `DEFAULT_SETTINGS` in `DangerousContentSettings.tsx`
- * (L52-60) that is byte-identical to `types.ts`'s
- * `DEFAULT_DANGEROUS_CONTENT_SETTINGS` (L495-503) — the duplication is v4's, and
- * collapsing it here is safe because the two agree.
+ * v4 `ConciergeSettingsUpdate`: a partial Concierge update — top-level fields
+ * replace, `display` and `preScreen` deep-merge (see `mergeConciergeUpdate`).
  */
-export const DEFAULT_DANGEROUS_CONTENT_SETTINGS: DangerousContentSettings = {
-  mode: 'OFF',
-  threshold: 0.7,
-  scanTextChat: true,
-  scanImagePrompts: true,
-  scanImageGeneration: false,
-  displayMode: 'SHOW',
-  showWarningBadges: true,
+export type ConciergeSettingsUpdate = Partial<Omit<ConciergeSettings, 'display' | 'preScreen'>> & {
+  display?: Partial<ConciergeDisplaySettings>;
+  preScreen?: Partial<ConciergePreScreenSettings>;
 };
 
-// ---------------------------------------------------------------------------
-// Cheap LLM (v4 types.ts L29-37) — the Dangerous Content card hosts the
-// image-prompt-expansion picker, which writes into this bag.
-// ---------------------------------------------------------------------------
-
-export interface CheapLLMSettings {
-  strategy: 'USER_DEFINED' | 'PROVIDER_CHEAPEST' | 'LOCAL_FIRST';
-  userDefinedProfileId?: string | null;
-  defaultCheapProfileId?: string | null;
-  fallbackToLocal: boolean;
-  embeddingProvider: 'SAME_PROVIDER' | 'OPENAI' | 'LOCAL';
-  /** Optional override for image prompt expansion LLM — when set, uses this instead of global cheap LLM */
-  imagePromptProfileId?: string | null;
-}
+/**
+ * v4 `DEFAULT_CONCIERGE_SETTINGS` — the server's defaults (every profile id and
+ * the custom prompt `null`, the schema defaults otherwise). v4 imports the
+ * server's object into its client; v5's client and server are separate
+ * programs, so this is a transcription, pinned field by field in
+ * `concierge-settings.api.spec.ts`.
+ */
+export const DEFAULT_CONCIERGE_SETTINGS: ConciergeSettings = {
+  enabled: true,
+  uncensoredTextProfileId: null,
+  uncensoredImageProfileId: null,
+  uncensoredVisionProfileId: null,
+  imagePromptProfileId: null,
+  autoSwitchAfterRefusals: 2,
+  newChatsStartAs: 'moderated',
+  display: {
+    mode: 'SHOW',
+    showWarningBadges: true,
+  },
+  preScreen: {
+    enabled: false,
+    threshold: 0.7,
+    scanTextChat: true,
+    scanImagePrompts: true,
+    scanImageGeneration: false,
+    customClassificationPrompt: null,
+    summaryClassification: false,
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Smart typography (v4 types.ts L150-169, `2d31810f`) — Layer 1.6's one bag:

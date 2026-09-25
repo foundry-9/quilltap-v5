@@ -21,7 +21,9 @@ import { ChatTab } from './chat-tab';
 /** v4 `ChatTabContent.tsx` L70-210, top to bottom (Taboo added at `7df7de8e`,
  *  Brahma Console at `6452e2c3` — between Data Retention and Autonomous Rooms;
  *  Smart Typography at `2d31810f` — between Text Replacement and Token
- *  Display, where the feature reads as the Text Replacement card's sibling). */
+ *  Display, where the feature reads as the Text Replacement card's sibling).
+ *  Dangerous Content LEFT at `3b463d6b1` (#76) for the Concierge's own tab —
+ *  Taboo follows Answer Confirmation directly. */
 const V4_CARD_ORDER = [
   ['Composition Mode', 'composition-mode'],
   ['Composer', 'composer-spellcheck'],
@@ -38,7 +40,6 @@ const V4_CARD_ORDER = [
   ['Agent Mode', 'agent-mode'],
   ['Thinking / Reasoning', 'thinking-display'],
   ['Answer Confirmation', 'answer-confirmation'],
-  ['Dangerous Content', 'dangerous-content'],
   ['Taboo', 'taboo'],
   ['Data Retention', 'data-retention'],
   ['Brahma Console', 'brahma-console'],
@@ -90,7 +91,7 @@ function mount(section: string | null = null) {
 }
 
 describe('ChatTab', () => {
-  it('mounts all twenty-one v4 cards in v4\'s exact order', () => {
+  it('mounts all twenty v4 cards in v4\'s exact order', () => {
     const fixture = mount();
     const titles = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('qt-collapsible-card'),
@@ -98,7 +99,7 @@ describe('ChatTab', () => {
     expect(titles).toEqual(V4_CARD_ORDER.map(([title]) => title));
     // The count itself is a pin: a card silently dropped from the template
     // would otherwise only shift the array and read as an order change.
-    expect(titles.length).toBe(21);
+    expect(titles.length).toBe(20);
   });
 
   it('carries v4\'s sectionId on every card (the ?section= deep link)', () => {

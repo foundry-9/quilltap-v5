@@ -3769,6 +3769,40 @@ export interface CharacterConnectionProfile {
 // Chat settings (v4 GET `/api/v1/settings/chat`)
 // ---------------------------------------------------------------------------
 
+// P4.D230 OUT-OF-MANDATE — P4.D229 preserves (§S.2: the Concierge's settings
+// shape; v4 `lib/schemas/settings.types.ts` `ConciergeSettingsSchema` at
+// `3b463d6b1`, as the server answers it — defaults filled, the four profile ids
+// and the custom prompt nullable and possibly absent).
+export interface ConciergeDisplaySettingsDto {
+  mode: 'SHOW' | 'BLUR' | 'COLLAPSE';
+  showWarningBadges: boolean;
+}
+
+export interface ConciergePreScreenSettingsDto {
+  enabled: boolean;
+  threshold: number;
+  scanTextChat: boolean;
+  scanImagePrompts: boolean;
+  scanImageGeneration: boolean;
+  customClassificationPrompt?: string | null;
+  summaryClassification: boolean;
+}
+
+export interface ConciergeSettingsDto {
+  /** The on-duty switch. Off: nothing is rerouted, announced, switched or screened. */
+  enabled: boolean;
+  uncensoredTextProfileId?: string | null;
+  uncensoredImageProfileId?: string | null;
+  uncensoredVisionProfileId?: string | null;
+  imagePromptProfileId?: string | null;
+  /** 0–10; 0 = never. */
+  autoSwitchAfterRefusals: number;
+  /** Locked is never a starting state (v4 `ConciergeNewChatStateEnum`). */
+  newChatsStartAs: 'moderated' | 'unmoderated';
+  display: ConciergeDisplaySettingsDto;
+  preScreen: ConciergePreScreenSettingsDto;
+}
+
 export interface ChatSettingsDto {
   avatarDisplayMode: 'ALWAYS' | 'GROUP_ONLY' | 'NEVER';
   avatarDisplayStyle: 'CIRCULAR' | 'RECTANGULAR';
@@ -3779,11 +3813,15 @@ export interface ChatSettingsDto {
     showSystemEvents: boolean;
   };
   thinkingDisplay?: { defaultVisible: boolean; defaultCollapsed: boolean };
-  dangerousContentSettings?: {
-    mode: 'OFF' | 'DETECT_ONLY' | 'AUTO_ROUTE';
-    displayMode: 'SHOW' | 'BLUR' | 'COLLAPSE';
-    showWarningBadges: boolean;
-  };
+  /**
+   * The Concierge (v4 #76). Replaces `dangerousContentSettings`,
+   * `uncensoredImageDescriptionProfileId` and `cheapLLMSettings.
+   * imagePromptProfileId` — the server strips all three on read, and a PUT
+   * carrying ANY of them (an explicit `null` included) answers 400. The PUT
+   * replaces this object WHOLE; send the deep-merged object, never a partial.
+   */
+  conciergeSettings?: ConciergeSettingsDto;
+  // P4.D230 OUT-OF-MANDATE — end of hunk.
   autoScrollOnResponseComplete?: boolean;
   /**
    * Whether a line typed while impersonating a character is first restated by
