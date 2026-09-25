@@ -149902,6 +149902,204 @@ NEW group Scenarios card over NEW `groupScenarioMutator`, NEW e2e
 `scenarios-shelf-builder-flow.spec.ts` (three beats, live). SPA suite 453 files
 / 7,939. SPA 0.5.775.
 
+## P4.D231 — the Scenario Builder on the scenario shelves (v4 `08c49319d`) — lane record (2026-09-25)
+
+Branch `claude/scenario-builder-shelves-port-e15fe3`, cut from `main`
+`446671a7d`. Server + SPA. Pins: target
+`/tmp/qt-v4-pin-p4d231-08c49319d`, baseline `/tmp/qt-v4-pin-p4d231-b0b6656b5`
+(§R.3; both verified by `rev-parse` + `ls -ld`). §R.2 probe PASSED at lane start
+and before every regen batch (main, clean, HEAD `acadcc7cd`, both logs empty).
+
+### Units
+
+1. **The Zod twin** (`request_schema.rs`) — `group_ids` between
+   `character_ids` and `chat_id`; `uuid_array_field` shared by both arrays;
+   `to_value` emits `groupIds` after `characterIds`. Corpus +12 `groupIds` rows
+   (103). Red-first at the target pin: **43 of 103** (all 35 accepting rows +
+   8 refusal rows); baseline pin green pre-port; green after. Pin marker:
+   `grep -c '"groupIds":\[\]'` = **30** at `08c49319d`, **1** (a request
+   body) at `b0b6656b5`.
+2. **The route's group block** (`api/scenario_builder.rs`) — dedup THEN
+   existence; existence = `groups::find_name_and_official_mount_point_id_raw`,
+   which DECODES `name` (the one-column pointer read would admit the
+   BLOB-named row v4's validating `findByIdRaw` drops); `Err` → the repository
+   fallback ERROR `Error finding entity by ID {collection: groups, id, error}`;
+   absent → silent. `groupCount` on the accepted DEBUG. The routes family grows
+   a `groups` table plant (the chat-send pair has NONE — v4 creates it lazily)
+   and four cases; the run projection carries `groupIds` on both sides; the
+   groups repository ERROR is compared on its own `repoLines` channel. Pre-port
+   (main's route body + an empty `group_ids`): **18 failures** — 14 accepted
+   cases' `lines` (`groupCount`), 3 `runs` (`groupIds`), 1 `repoLines`.
+   Post: 30/30.
+3. **The service + pool** — `namedGroupCount` on both DEBUGs (the service's
+   = `input.group_ids.len()`, not re-deduped; the pool's post-dedup), named
+   groups FIRST in the group tier. Field POSITIONS pinned by two v5 unit tests
+   over the rendered lines (`mount_pool.rs`, `mod.rs`), since the tier-2/3
+   captures are field SETs. `scenario_builder_mount_pool`: 22 arms (7 new; a
+   SECOND planted group "Loners" and a BLOB-named group). Pre-port (the named
+   loop and both `namedGroupCount`s removed): RED; post green.
+   `scenario_builder_tier3`: 23 cases (+ `group_shelf_grep`,
+   `project_shelf_grep`; the group shelf's grep reaches Severed's official AND
+   linked stores); `namedGroupCount` in 23/23 target rows, 0 baseline; pre-port
+   RED; post green.
+4. **`resolve_mount_point_ids_for_group`** (`db/tiered_mount_pool.rs`) and the
+   per-membership rewire. **MEASURED — the order's predicted granularity is
+   REFUTED:** both of v4's reads are fallback-mode `safeQuery`s
+   (`findByIdRaw` → `_findById`; `findByGroupId` → `findByFilter`, whose own
+   inner `safeQuery` answers `[]` and whose `validateSafe` drops a bad row
+   alone), so the helper's catch (`Group store lookup failed`) is DEAD, as is
+   `findByGroupId`'s own `Error finding links by group ID`. v4's real answers:
+   an unreadable group row → `[its links]` (official dropped, links kept); an
+   unreadable LINK row → `[official, the good link]`. Never `[]` for the whole
+   group. v5 logs the two repository lines on `Err` (`Error finding entity by
+   ID` / `Error finding entities by filter`) and keeps the other read's ids.
+   Mutation M4 was therefore run INVERTED (M4′: return `[]` on a links `Err`)
+   — it reddens `a_failed_links_read_keeps_the_official_store` and the
+   tiered family.
+   `tiered_mount_pool_equivalence` gains 7 helper arms over pre-init plants on
+   both work copies; the 9-row matrix is **NEUTRAL** across both pins
+   (byte-identical after mapping the minted vault ids).
+
+### ⚠ Finding for the unifier (outside this lane's ownership)
+
+`db/group_doc_mount_links.rs` `find_by_group_id` reads `mountPointId` as
+`String` and fails the WHOLE read on one undecodable row; v4's
+`findByFilter` drops just that row. So `helper_unreadable_link_row` answers
+`[c7]` on v5 vs v4's `[c7, c8]` — pinned BOTH WAYS as a recorded divergence
+(`LINK_ROW_DIVERGENCE`; the family fails "VANISHED" if they agree). A
+row-level skip in that repository would close it (every group-tier reader
+benefits). Likewise, v5's route cast scoping still logs nothing for an
+undecodable character where v4's `characters.findById` logs its repository
+ERROR (pre-existing, P4.D217; not compared by the routes family).
+
+### SPA (units 5–10)
+
+- Contract: `groupIds?` on `ScenarioBuildRequestInput` + `includeArchived?` on
+  `GroupScenario{Update,Rename,Delete}Request` — the ONE pre-declared hunk,
+  each line marked `P4.D231 OUT-OF-MANDATE — P4.D229 (owner) preserves`.
+- Builder dialog: `groupIds` / `saveTargets` / `defaultSaveTarget`; the shelf
+  footer is driven by `saveTargets === 'everywhere'` (**the recorded design
+  call**: an Angular `output()` always exists, so v4's `!onUse` cannot be
+  read; every v4 caller that omits `onUse` passes `saveTargets="everywhere"`).
+- Save dialog: `chosenTarget` null until picked; `target = chosen ?? (offered
+  .has(default) ? default : 'general')`; `project:<id>` keys everywhere;
+  three optgroups; groups sorted (the SPA's plain `localeCompare` idiom — every
+  list in the SPA already sorts that way); cast characters unsorted; the
+  everywhere lists over `fetchGroups` / `fetchProjects` / `fetchCharacterList`
+  under their OWN keys (no envelope under a shared key).
+- Shelves: `ScenarioShelf` + `shelfSaveTarget`, the Host button, the
+  `@defer`'d builder; the General page, the project card (`projectName` from
+  `project-detail.ts`), NEW `group-scenarios-card.ts` over NEW
+  `groupScenarioMutator`. `@defer` makes `ScenariosManager`'s metadata async:
+  its specs now `await TestBed.compileComponents()` (the new-chat precedent).
+- Red-first: dialog spec **11 of 59** red pre-port (every SPA source file
+  swapped back to `main`); the new manager / card / mutator spec rows are red
+  by construction (their symbols do not exist pre-port). M5 reddens exactly
+  the body pin; M6 reddens the two save-dialog key rows.
+
+### Mutation table
+
+| # | Mutation | Reddens |
+|---|---|---|
+| M1 | cast union before named groups in the pool | `scenario_builder_mount_pool` |
+| M2 | no dedup before the route's existence check | `scenario_builder_routes` |
+| M3 | `groupIds` before `characterIds` in `to_value` | `scenario_build_request_schema` (35 rows) |
+| M4′ | helper returns `[]` on a links `Err` (the order's predicted granularity, inverted per the measurement) | `tiered_mount_pool` + the core unit test |
+| M5 | `groupIds` sent only when non-empty | the dialog spec's body pin (1) |
+| M6 | bare `project` key in cast mode | the save-dialog key rows (2) |
+
+All reverted by file backup, restored files `cmp`-verified.
+
+### Regen recipes (as run; lane-private outputs under `/tmp/p4d231/`)
+
+All under `PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH`, cwd = the pin.
+
+- schema: `npx tsx $W/harness/oracle/cases/scenario-build-request-schema.ts > /tmp/p4d231/sbrs-<sha>.ndjson`
+  → `QT_ORACLE_SCENARIO_BUILD_REQUEST_SCHEMA=… cargo test -p quilltap-harness --test scenario_build_request_schema_equivalence`
+- routes: stage case + spec to `/tmp/p4d231/stage-sbr/harness/oracle/{cases,fixtures}`;
+  `QT_FIXTURE_SBR_MAIN=$W/crates/quilltap-web/tests/fixtures/chat-send-main.db QT_FIXTURE_SBR_MOUNT=…-mount.db QT_ORACLE_OUT=/tmp/p4d231/sbr-<sha>.ndjson npx jest --silent --watchman=false --testTimeout=240000 --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "scenario-builder-routes\.test\.ts$"`
+  → `QT_ORACLE_SB_ROUTES=… cargo test -p quilltap-web --test scenario_builder_routes_equivalence`
+- mount pool (MINTED): `QT_FIXTURE_DOPA_MAIN=/tmp/p4d231/pool-main-<sha>.db QT_FIXTURE_DOPA_MOUNT=/tmp/p4d231/pool-mount-<sha>.db node --import tsx $W/harness/oracle/fixtures/build-doc-opacity-fixture.ts`,
+  then the staged jest case with `QT_FIXTURE_SBPOOL_{MAIN,MOUNT}` + `QT_ORACLE_OUT=/tmp/p4d231/pool-<sha>.ndjson`
+  → `QT_ORACLE_SBPOOL` + `QT_FIXTURE_SBPOOL_{MAIN,MOUNT}` against the SAME build.
+- tier 3 (MINTED): the same with `t3-*` paths and `QT_FIXTURE_SBT3_{MAIN,MOUNT}` / `QT_ORACLE_SBT3`.
+- tiered: `QT_FIXTURE_TMP_{MAIN,MOUNT}=/tmp/p4d231/tmp-{main,mount}-<sha>.db node --import tsx $W/harness/oracle/fixtures/build-tiered-mount-pool-fixture.ts`,
+  then `node --import tsx $W/harness/oracle/cases/tiered-mount-pool.ts > /tmp/p4d231/tmp-<sha>.ndjson`
+  → `QT_ORACLE_TMP` + `QT_FIXTURE_TMP_{MAIN,MOUNT}`.
+
+The committed recipe headers stay canonical (no `/tmp` pin named); the sweep
+driver's `--v4 "$PIN"` reproduces each.
+
+### Fixtures
+
+No committed pair changed. Spec plants only: `scenario-builder-routes.json`
+(a `groups` table + two rows), `scenario-builder-mount-pool.json` (two
+cloned groups), `tiered-mount-pool.json` (`helperPlants` / `helperArms`),
+`scenario-builder-tier3.json` (two cases, no plant). Dependent oracles: the
+five families above — all regenerated here; no other family reads these specs.
+
+### Tier 3 — deferred, loud
+
+- The four `help/` pages are P4.D228's (the whole-tree re-vendor). At the
+  `08c49319d` pin: `general-scenarios.md` `dbb318ec7dc74e5c24959f748be57baa`
+  (10,412 B), `groups.md` `bbfe2a8240ca651a46fdcacdcc2d6925` (9,721 B),
+  `project-scenarios.md` `ad0ccc9cdb8deb087d5dd12dc256026a` (10,172 B),
+  `scenario-builder.md` `b87367ea8203ceaad1444cd55480c776` (9,131 B). v5's
+  copies are the baseline's (all four differ) until P4.D228 lands.
+- No per-group-shelf `scenarioKeys` entry — the shelves are signal-owned
+  (`makeScenarioMutator`), refreshed by `refresh({ silent: true })`.
+
+### Mirror pre-list (§R.9)
+
+`docs/v4/developer/features/scenario-builder.md` — 42,403 B at both
+`08c49319d` and `acadcc7cd` (v5 mirror 41,021 B); P4.D232 already pre-lists it.
+
+### What the order got wrong (measured)
+
+- §Tier 1 item 4 / Survey A: "a failed links read drops the official store
+  too" — unreachable through v4's real code; the measured answers are above.
+- Survey A: `findByGroupId`'s `Error finding links by group ID` is ALSO dead
+  (the inner `findByFilter` `safeQuery` catches first; its line is `Error
+  finding entities by filter`).
+- Survey D.6: the chat-send pair has no `groups` TABLE at all (not merely no
+  row) — the plant creates it with v4's DDL.
+- Web crate bumped: its route family's test moved (`scenario_builder_routes_
+  equivalence.rs`); host unchanged (`spine.rs` forwards the struct).
+
+### Gate (tree `92d8bb329`, `CARGO_INCREMENTAL=0 TZ=UTC`)
+
+- §R.2 probe PASS at start and before every regen batch.
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+  warnings` clean in BOTH feature sets (one doc-list lint in the new helper's
+  comment fixed before the first commit); `cargo build --workspace --release` clean.
+- The five families by name at the `08c49319d` pin, zero SKIP: schema 103 rows,
+  routes 30 cases, mount pool 22 arms, tier 3 23 cases, tiered 9 matrix + 7 helper.
+- `cargo test --workspace --no-fail-fast` with the lane's 13-var block:
+  **634 binaries / 3,741 passed / 2 failed / 3 ignored**; 511 `SKIP:` lines
+  (families outside the block). The two reds are §R.5's standing, v4-checkout-
+  driven guards, not this lane's: `provider_sdk_version_guard` (the SDK-bump
+  event — P4.D232/P4.D225) and `qtap_schema_embed_guard` (v4 HEAD's export
+  schema, 96,967 B vs vendored 95,266 B — the chain's re-vendor). Neutrality by
+  name, all green: `dispatch_wrong_type_census` (449 UNMOVED),
+  `web_edge_body_parse_guard`, `web_edge_action_sites_census`,
+  `scenario_builder_{dispatch_wire,disconnect,midstream_failure}`,
+  `help_tree_embed_guard`, `spelling_guard`, `zod_version_guard`,
+  `blob_write_sites_census`, `compressed_column_write_sites_census`.
+- SPA recorder re-run at the pin: **byte-identical** to the committed
+  `scenario-builder-oracle.json` (not even the `source` string differs).
+- SPA: `npm run lint` clean; `npm test` **453 files / 7,939** (base 452 /
+  7,919); `npm run build` clean, no `@defer` warnings.
+- Playwright by file, one at a time on 4319: NEW
+  `scenarios-shelf-builder-flow` **3/3 LIVE on the first run**; re-runs
+  `scenario-builder-flow` 5/5, `scenarios-flow` 2/2, `groups-flow` 4/4,
+  `projects-flow` 5/5, `new-chat-flow` 5/5. No gated beats.
+
+### Versions
+
+core 0.0.1058 → **0.0.1060** (+2), harness 0.0.977 → **0.0.979** (+2), web
+0.0.196 → **0.0.197** (+1, the route family's test moved), SPA 0.5.773 →
+**0.5.775** (+2); host / cli / tauri / fixture-sanitizer unchanged.
+
 ---
 
 ## P4.D225 — the refusal substrate + the ledger (v4 `8bd080267` #73 + `49059fb14` #74, server) — lane record

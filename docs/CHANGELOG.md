@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — docs(porting): P4.D231 lane record — LANE COMPLETE
+
+_Docs-only change._
+
+Closes the Scenario Builder shelves lane: the full lane record (units,
+red-first counts, mutation table, regen recipes as run, fixtures, deferrals,
+the mirror pre-list, the gate) appended to the status log, and the order's
+status header set to LANE COMPLETE. Records what the order got wrong: v4's
+group-store helper cannot empty a group (both reads are fallback lookups), and
+one out-of-lane divergence in the group-link repository is pinned both ways
+for the unifier.
+
 #### 2026-09-25 — feat(spa): the Host on the General, project and group scenario shelves (v4 `08c49319d`, P4.D231 units 8–10)
 
 _Versions: SPA 0.5.775._
