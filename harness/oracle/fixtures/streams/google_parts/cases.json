@@ -27,5 +27,32 @@
     "tools": [
       { "name": "get_weather", "description": "w", "parameters": { "type": "object", "properties": { "city": { "type": "string" } } } }
     ]
+  },
+  {
+    "decoder": "google_parts",
+    "provider": "google",
+    "case": "google-blocked",
+    "wire": "google-blocked.wire",
+    "model": "gemini-2.5-flash",
+    "isThinkingModel": false,
+    "temperature": 0.7
+  },
+  {
+    "decoder": "google_parts",
+    "provider": "google",
+    "case": "google-blocked-early",
+    "wire": "google-blocked-early.wire",
+    "model": "gemini-2.5-flash",
+    "isThinkingModel": false,
+    "temperature": 0.7
+  },
+  {
+    "decoder": "google_parts",
+    "provider": "google",
+    "case": "google-feedback-no-block",
+    "wire": "google-feedback-no-block.wire",
+    "model": "gemini-2.5-flash",
+    "isThinkingModel": false,
+    "temperature": 0.7
   }
 ]

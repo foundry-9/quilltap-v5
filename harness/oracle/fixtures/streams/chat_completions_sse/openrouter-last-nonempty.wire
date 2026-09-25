@@ -1,0 +1,10 @@
+data: {"id":"orl","choices":[{"index":0,"delta":{"role":"assistant","content":"Long"}}]}
+
+data: {"id":"orl","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}
+
+data: {"id":"orl","choices":[{"index":0,"delta":{},"finish_reason":""}]}
+
+data: {"id":"orl","choices":[],"usage":{"prompt_tokens":7,"completion_tokens":1,"total_tokens":8}}
+
+data: [DONE]
+

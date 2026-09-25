@@ -318,6 +318,10 @@ fn run_decoder_case(decoder: &str, spec: &Value, oracle: &OracleCase) {
                 };
                 drive(ChatCompletionsSseDecoder::new(flavor), &pieces)
             }
+            // P4.D225: Grok's raw `content` is its own `extractTextFromResponse`.
+            "responses_api_sse" if spec["provider"].as_str() == Some("grok") => {
+                drive(ResponsesApiSseDecoder::grok(), &pieces)
+            }
             "responses_api_sse" => drive(ResponsesApiSseDecoder::new(), &pieces),
             "anthropic_sse" => drive(AnthropicSseDecoder::new(), &pieces),
             "google_parts" => {

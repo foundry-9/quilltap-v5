@@ -44,6 +44,10 @@ pub struct GooglePartsDecoder {
     reasoning: String,
     saw_reasoning: bool,
     last_response: Option<Value>,
+    /// The `promptFeedback` of the last chunk that carried a (truthy)
+    /// `blockReason` — v4 `8bd080267`: "a blocked prompt's reason arrives in
+    /// `promptFeedback`, which is not guaranteed to ride on the last chunk".
+    prompt_feedback: Option<Value>,
     done_emitted: bool,
 }
 
@@ -59,12 +63,66 @@ impl GooglePartsDecoder {
             reasoning: String::new(),
             saw_reasoning: false,
             last_response: None,
+            prompt_feedback: None,
             done_emitted: false,
         }
     }
 
+    /// v4 `withBlockReason` (`8bd080267`): fold a blocked prompt's
+    /// `promptFeedback` into the streamed raw response, and surface its
+    /// `blockReason` as the first candidate's `finishReason` when the provider
+    /// made no candidate at all. An ordinary response is untouched.
+    ///
+    /// Key order is the JS spread's: `{ ...raw, promptFeedback, candidates }` —
+    /// an existing key keeps its place, a new one is appended.
+    fn with_block_reason(raw: Value, prompt_feedback: Option<&Value>) -> Value {
+        let feedback = match raw.get("promptFeedback") {
+            Some(f) if !f.is_null() => Some(f.clone()),
+            _ => prompt_feedback.cloned(),
+        };
+        let block_reason = feedback
+            .as_ref()
+            .and_then(|f| f.get("blockReason"))
+            .cloned();
+        if !crate::api::system_qtap::js_truthy(block_reason.as_ref()) {
+            return raw;
+        }
+        let block_reason = block_reason.expect("truthy");
+        let logged = crate::pascal::js_value::to_js_string(&block_reason);
+        tracing::warn!(
+            context = "GoogleProvider.streamMessage",
+            block_reason = %logged,
+            "Google blocked the prompt (streaming)"
+        );
+        let Value::Object(mut obj) = raw else {
+            return raw;
+        };
+        let has_candidates = obj
+            .get("candidates")
+            .and_then(Value::as_array)
+            .is_some_and(|c| !c.is_empty());
+        let candidates = if has_candidates {
+            obj.get("candidates").cloned().expect("present")
+        } else {
+            serde_json::json!([{ "finishReason": block_reason }])
+        };
+        obj.insert(
+            "promptFeedback".into(),
+            feedback.expect("truthy block reason"),
+        );
+        obj.insert("candidates".into(), candidates);
+        Value::Object(obj)
+    }
+
     fn handle_chunk(&mut self, chunk: &Value, out: &mut Vec<StreamChunk>) {
         self.last_response = Some(chunk.clone());
+        if crate::api::system_qtap::js_truthy(
+            chunk
+                .get("promptFeedback")
+                .and_then(|f| f.get("blockReason")),
+        ) {
+            self.prompt_feedback = chunk.get("promptFeedback").cloned();
+        }
         let empty = Vec::new();
         let parts = chunk
             .get("candidates")
@@ -196,7 +254,10 @@ impl GooglePartsDecoder {
             }),
             cache_usage,
             attachment_results: Some(Default::default()),
-            raw_response: self.last_response.clone(),
+            raw_response: self
+                .last_response
+                .clone()
+                .map(|raw| Self::with_block_reason(raw, self.prompt_feedback.as_ref())),
             raw_provider_usage: Some(usage.cloned().unwrap_or(Value::Null)),
             thought_signature: self
                 .last_response
@@ -270,6 +331,32 @@ mod tests {
         }
         out.extend(d.finish()?);
         Ok(out)
+    }
+
+    /// P4.D225 (v4 `8bd080267` `withBlockReason`): a blocked prompt's
+    /// `promptFeedback` — kept from whichever chunk carried it — is folded into
+    /// the raw response, its block reason standing in as the candidate's
+    /// finish reason when there was none; ONE WARN. An ordinary stream is
+    /// untouched and silent.
+    #[test]
+    fn a_blocked_prompt_folds_into_the_raw_response_and_warns_once() {
+        let wire = b"data: {\"promptFeedback\":{\"blockReason\":\"SAFETY\"},\"usageMetadata\":{\"promptTokenCount\":9,\"totalTokenCount\":9}}\n\n";
+        let (out, lines) = crate::test_support::captured_with(|| drive(false, wire, 0).unwrap());
+        let raw = out.last().unwrap().raw_response.clone().unwrap();
+        assert_eq!(
+            serde_json::to_string(&raw).unwrap(),
+            r#"{"promptFeedback":{"blockReason":"SAFETY"},"usageMetadata":{"promptTokenCount":9,"totalTokenCount":9},"candidates":[{"finishReason":"SAFETY"}]}"#
+        );
+        assert_eq!(
+            lines,
+            vec!["WARN quilltap_core::model::decoders::google_parts Google blocked the prompt (streaming) context=GoogleProvider.streamMessage block_reason=SAFETY".to_string()]
+        );
+
+        let plain = b"data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hi\"}]},\"finishReason\":\"STOP\"}]}\n\n";
+        let (out, lines) = crate::test_support::captured_with(|| drive(false, plain, 0).unwrap());
+        let raw = out.last().unwrap().raw_response.clone().unwrap();
+        assert!(raw.get("promptFeedback").is_none());
+        assert!(lines.is_empty(), "{lines:?}");
     }
 
     #[test]

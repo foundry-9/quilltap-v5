@@ -1,0 +1,8 @@
+data: {"id":"orc","choices":[{"index":0,"delta":{"role":"assistant","content":"Part"}}]}
+
+data: {"id":"orc","choices":[{"index":0,"delta":{},"finish_reason":"content_filter"}]}
+
+data: {"id":"orc","choices":[{"index":0,"delta":{},"finish_reason":null}],"usage":{"prompt_tokens":7,"completion_tokens":1,"total_tokens":8}}
+
+data: [DONE]
+

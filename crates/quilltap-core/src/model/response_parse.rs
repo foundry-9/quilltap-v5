@@ -766,14 +766,40 @@ pub fn parse_responses_api(response: &Value) -> NonStreamingResponse {
     }
 }
 
-/// v4 `getFinishReason` — a `function_call` output item → `tool_calls`, else the
-/// `status` mapping.
-fn responses_finish_reason(response: &Value, output: &[Value]) -> String {
+/// v4 `hasRefusal` (OpenAI/Grok `provider.ts`, `8bd080267`): a `refusal`
+/// output item, or a `refusal` content part inside a `message` item — the
+/// Responses API's two shapes for it.
+fn responses_has_refusal(output: &[Value]) -> bool {
+    output.iter().any(|item| {
+        let ty = item.get("type").and_then(Value::as_str);
+        ty == Some("refusal")
+            || (ty == Some("message")
+                && item
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .is_some_and(|parts| {
+                        parts
+                            .iter()
+                            .any(|p| p.get("type").and_then(Value::as_str) == Some("refusal"))
+                    }))
+    })
+}
+
+/// v4 `getFinishReason` — a `function_call` output item → `tool_calls`; then
+/// (since `8bd080267`) a refusal → `refusal`, BEFORE the `status` mapping.
+///
+/// Shared by the non-streaming parse, its raw response and the streaming
+/// decoder's raw response: v4's `buildRawResponse` now reads the same
+/// `getFinishReason` for both paths ("the real reason, not a guess").
+pub(crate) fn responses_finish_reason(response: &Value, output: &[Value]) -> String {
     if output
         .iter()
         .any(|i| i.get("type").and_then(Value::as_str) == Some("function_call"))
     {
         return "tool_calls".to_string();
+    }
+    if responses_has_refusal(output) {
+        return "refusal".to_string();
     }
     match response.get("status").and_then(Value::as_str) {
         Some("completed") => "stop".to_string(),
@@ -823,7 +849,9 @@ fn build_responses_raw(response: &Value, output: &[Value]) -> Value {
         "choices": [{
             "index": 0,
             "message": Value::Object(message),
-            "finish_reason": if tool_calls.is_empty() { "stop" } else { "tool_calls" },
+            // v4 `8bd080267`: the real reason (`this.getFinishReason`), not
+            // `toolCalls.length > 0 ? 'tool_calls' : 'stop'`.
+            "finish_reason": responses_finish_reason(response, output),
         }],
         "usage": {
             "prompt_tokens": i64_at(&usage, "input_tokens"),
@@ -967,12 +995,21 @@ pub fn parse_google(response: &Value) -> NonStreamingResponse {
     });
     let read = cached.unwrap_or(0);
 
-    let finish_reason = first
-        .get("finishReason")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .unwrap_or("STOP")
-        .to_string();
+    // v4 `8bd080267`: `blockReason ?? candidates[0]?.finishReason ?? 'STOP'` —
+    // a prompt blocked before any candidate was made reports why only in
+    // `promptFeedback.blockReason`, and that IS the finish reason as far as the
+    // host is concerned (a moderation stop, not a STOP). The provider's WARN
+    // lives at the transport (`google_block_reason` below, logged by
+    // `completion_provider`, which knows the model v4's bag names).
+    let finish_reason = match google_block_reason_value(response) {
+        Some(block) => block,
+        None => first
+            .get("finishReason")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("STOP")
+            .to_string(),
+    };
 
     NonStreamingResponse {
         content,
@@ -989,6 +1026,22 @@ pub fn parse_google(response: &Value) -> NonStreamingResponse {
         // v4 `raw = { ...JSON.parse(JSON.stringify(response)), functionCalls }`.
         raw: build_google_raw(response),
     }
+}
+
+/// The `?? ` half of v4's Google `blockReason ?? …`: a STRING block reason, even
+/// an empty one (`??` passes `''` through; only its WARN tests truthiness).
+fn google_block_reason_value(response: &Value) -> Option<String> {
+    response
+        .get("promptFeedback")
+        .and_then(|f| f.get("blockReason"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+/// v4 Google `sendMessage`'s WARN gate (`if (blockReason)`): the block reason
+/// when it is a NON-EMPTY string.
+pub fn google_block_reason(response: &Value) -> Option<String> {
+    google_block_reason_value(response).filter(|b| !b.is_empty())
 }
 
 fn build_google_raw(response: &Value) -> Value {

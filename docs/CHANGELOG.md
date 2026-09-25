@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(providers): typed moderation refusals at every native image site + the real text finish reasons (P4.D225 unit 4)
+
+_Versions: core 0.0.1062, harness 0.0.981._
+
+The image dialects now fill the structured refusal where v4's plugins throw
+`ModerationRejectionError` (`8bd080267`): the OpenAI/Grok/Z.AI SDK errors
+carry the API error's `code` and status and are mapped per plugin (with each
+plugin's INFO line), Google's HTTP safety refusals and Gemini's withheld image
+(new message and WARN) are typed, Imagen's filtered response and OpenRouter's
+refusal-body HTTP error and declined answer are typed; NanoGPT stays untyped.
+Text side: OpenAI/Grok report `refusal` and treat `response.incomplete` as
+terminal, the non-streaming raw response carries the real finish reason,
+OpenRouter's streamed raw keeps the last non-empty `finish_reason` under both
+keys, and Google reads `promptFeedback.blockReason` (non-streaming finish
+reason + WARN; streaming folds it into the raw response + WARN). Two
+pre-existing Responses-stream gaps the new wires exposed are fixed (an absent
+`output_text` is omitted, not `null`; Grok's raw content uses its own text
+extraction). `image-dialects`, `response-bodies` and the four #73-moved stream
+files are re-recorded at v4 `49059fb14`. `provider_sdk_version_guard` is red on
+this branch by design until P4.D232's constants land.
+
 #### 2026-09-25 — feat(concierge): refusal-first fallback trigger + the two new finish-reason arms (P4.D225 unit 3)
 
 _Versions: core 0.0.1061, harness 0.0.980._

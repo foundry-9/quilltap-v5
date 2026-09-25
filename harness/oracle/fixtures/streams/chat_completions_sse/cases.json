@@ -265,5 +265,71 @@
     "wire": "nanogpt-cache-no-usage.wire",
     "model": "anthropic/claude-sonnet-5",
     "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-content-filter",
+    "wire": "openrouter-content-filter.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-last-nonempty",
+    "wire": "openrouter-last-nonempty.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-tools-beat-filter",
+    "wire": "openrouter-tools-beat-filter.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
   }
 ]

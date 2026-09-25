@@ -21,8 +21,9 @@
  * Line shape (kind:'dialect'):
  *   { provider, case, model, style, input, request:{method,url,body},
  *     mode:'wire'|'sdkThrow', wire:{status,body}, outcome:'ok'|'thrown',
- *     images:[{data,url,mimeType,revisedPrompt}]|null, thrown:string|null,
- *     isModeration:bool }
+ *     images:[{data,url,mimeType,revisedPrompt}]|null,
+ *     thrown:{message, code?, errorCode?, providerReason?, status?}|null }
+ *   (P4.D225 widened `thrown` from a string and retired `isModeration`.)
  *
  * Line shape (kind:'models' — the `ca22ec45` keyed model discovery): drives the
  * plugin's REAL `getAvailableModels(apiKey?)` over a SEQUENCE of canned wire
@@ -50,20 +51,23 @@ function parseArgs() {
   return out;
 }
 
-// A verbatim copy of v4 `isImageModerationError`
-// (lib/services/dangerous-content/provider-routing.service.ts). Applied to the
-// REAL thrown strings so the recorded verdict exercises the keyword matrix incl.
-// the documented gaps; the Rust port must classify identically.
-function isImageModerationError(message) {
-  const m = (message || '').toLowerCase();
-  return (
-    m.includes('content moderation') ||
-    m.includes('content_policy') ||
-    m.includes('content policy') ||
-    m.includes('safety system') ||
-    m.includes('rejected by content') ||
-    m.includes('moderation_blocked')
-  );
+// P4.D225 (v4 `8bd080267`): a thrown generate error is recorded as the fields
+// v4's refusal classifier reads off it — `message`, the raw `code` and
+// `error.code` (the OpenAI SDK's `APIError` carries both), `providerReason`
+// (a string only; the classifier ignores anything else), and the HTTP status
+// (`ModerationRejectionError.statusCode`, or the SDK error's `status`). The
+// keyword verdict this recorder used to carry (a verbatim copy of the retired
+// `isImageModerationError`) is gone with the helper it copied.
+function thrownFields(e) {
+  if (!(e instanceof Error)) return { message: String(e) };
+  const out = { message: e.message };
+  if (e.code !== undefined && e.code !== null) out.code = e.code;
+  const nested = e.error && typeof e.error === 'object' ? e.error.code : undefined;
+  if (nested !== undefined && nested !== null) out.errorCode = nested;
+  if (typeof e.providerReason === 'string') out.providerReason = e.providerReason;
+  const status = typeof e.statusCode === 'number' ? e.statusCode : typeof e.status === 'number' ? e.status : undefined;
+  if (status !== undefined) out.status = status;
+  return out;
 }
 
 const PROVIDERS = {
@@ -127,6 +131,18 @@ function casesFor(provider) {
       ok(200, { created: 1, data: [{ b64_json: 'A' }, { b64_json: 'B' }] }));
     add('moderation', { prompt: 'bad', model: 'dall-e-3', n: 1 },
       ok(400, { error: { message: 'Your request was rejected as a result of our safety system.', type: 'image_generation_user_error', code: 'moderation_blocked' } }));
+    // P4.D225 (v4 `8bd080267`): the plugin's `toOpenAIImageModerationError` —
+    // a moderation CODE alone, the "safety system" WORDING alone, a code the
+    // plugin does NOT map (the host's provider-code evidence reads it off the
+    // SDK error), and an ordinary 400 whose code is null.
+    add('moderation_code_only', { prompt: 'bad', model: 'gpt-image-1', n: 1 },
+      ok(400, { error: { message: 'Request refused.', type: 'image_generation_user_error', code: 'content_policy_violation' } }));
+    add('moderation_wording_only', { prompt: 'bad', model: 'dall-e-3', n: 1 },
+      ok(400, { error: { message: 'Blocked by our Safety System.', type: 'invalid_request_error', code: null } }));
+    add('content_filter_code_unmapped', { prompt: 'bad', model: 'dall-e-3', n: 1 },
+      ok(400, { error: { message: 'Filtered.', type: 'invalid_request_error', code: 'content_filter' } }));
+    add('ordinary_400', { prompt: 'x', model: 'dall-e-3', n: 1 },
+      ok(400, { error: { message: 'Invalid size.', type: 'invalid_request_error', code: null, param: 'size' } }));
     add('invalid_response', { prompt: 'a cat', model: 'dall-e-3', n: 1 },
       ok(200, { created: 1, foo: 1 }));
     // === d8d2890ee (PR #62): GPT Image 2.5 and the full OpenAI parameter set ===
@@ -253,6 +269,12 @@ function casesFor(provider) {
       ok(200, { data: [{ url: 'https://grok/x.jpg' }] }));
     add('moderation', { prompt: 'bad', model: 'grok-imagine-image', n: 1 },
       ok(400, { error: { message: 'Generated image rejected by content moderation.' } }));
+    // P4.D225: `toGrokImageModerationError` — the code alone (its own reason),
+    // and a 400 that is neither.
+    add('moderation_code_only', { prompt: 'bad', model: 'grok-imagine-image', n: 1 },
+      ok(400, { error: { message: 'Refused.', code: 'moderation_blocked' } }));
+    add('ordinary_400', { prompt: 'x', model: 'grok-imagine-image', n: 1 },
+      ok(400, { error: { message: 'Bad aspect ratio', code: 'invalid_argument' } }));
   } else if (provider === 'z-ai') {
     add('happy_b64', { prompt: 'a cat', model: 'cogview-4-250304', n: 1 },
       ok(200, { data: [{ b64_json: 'QUJD' }] }));
@@ -279,7 +301,28 @@ function casesFor(provider) {
     // z-ai has NO moderation handling: a generic 400 just surfaces the SDK message.
     add('generic_error', { prompt: 'x', model: 'glm-image', n: 1 },
       ok(400, { error: { message: 'Bad request' } }));
+    // P4.D225 (v4 `8bd080267`): `toZaiImageModerationError` — business code
+    // 1301 as a NUMBER and as a string, the two wordings, and a non-1301 code.
+    add('sensitive_code_numeric', { prompt: 'bad', model: 'glm-image', n: 1 },
+      ok(400, { error: { code: 1301, message: 'Contains sensitive content.' } }));
+    add('sensitive_code_string', { prompt: 'bad', model: 'cogview-4-250304', n: 1 },
+      ok(400, { error: { code: '1301', message: 'Request refused.' } }));
+    add('sensitive_wording', { prompt: 'bad', model: 'glm-image', n: 1 },
+      ok(400, { error: { message: 'The prompt contains unsafe or sensitive material.' } }));
+    add('other_code', { prompt: 'x', model: 'glm-image', n: 1 },
+      ok(400, { error: { code: 1210, message: 'Invalid parameter.' } }));
   } else if (provider === 'nanogpt') {
+    // P4.D225: the SAME four bodies on NanoGPT — its plugin has no moderation
+    // mapping (its filtered-prompt 400 is generic by v4's design), so every one
+    // stays the untyped SDK error.
+    add('untyped_sensitive_code_numeric', { prompt: 'bad', model: 'hidream', n: 1 },
+      ok(400, { error: { code: 1301, message: 'Contains sensitive content.' } }));
+    add('untyped_sensitive_code_string', { prompt: 'bad', model: 'hidream', n: 1 },
+      ok(400, { error: { code: '1301', message: 'Request refused.' } }));
+    add('untyped_sensitive_wording', { prompt: 'bad', model: 'hidream', n: 1 },
+      ok(400, { error: { message: 'The prompt contains unsafe or sensitive material.' } }));
+    add('untyped_other_code', { prompt: 'x', model: 'hidream', n: 1 },
+      ok(400, { error: { code: 1210, message: 'Invalid parameter.' } }));
     // The b64 PIN: `response_format: 'b64_json'` rides EVERY request, including
     // the gpt-image-1.5 id that the OpenAI plugin deliberately exempts.
     add('happy_b64', { prompt: 'a cat', model: 'hidream', n: 1 },
@@ -406,6 +449,26 @@ function casesFor(provider) {
       ok(200, { candidates: [{ content: { parts: [] } }] }));
     add('gemini_http_error', { prompt: 'x', model: 'gemini-2.5-flash-image', n: 1 },
       ok(400, { error: { message: 'bad request to gemini' } }));
+    // P4.D225 (v4 `8bd080267`): the typed Google throws — `isGoogleSafetyMessage`
+    // on both HTTP paths (and a `safety_settings` 400 that must NOT match), the
+    // Gemini no-image safety stop (finish reason, block reason, both, and a
+    // non-safety finish reason that keeps the old sentence).
+    add('gemini_http_safety', { prompt: 'bad', model: 'gemini-2.5-flash-image', n: 1 },
+      ok(400, { error: { message: 'The prompt was blocked by Responsible AI practices.', status: 'INVALID_ARGUMENT' } }));
+    add('gemini_http_safety_settings_is_not_a_refusal', { prompt: 'x', model: 'gemini-2.5-flash-image', n: 1 },
+      ok(400, { error: { message: 'Invalid value at safety_settings[0].threshold', status: 'INVALID_ARGUMENT' } }));
+    add('imagen_http_safety_filter', { prompt: 'bad', model: 'imagen-4', n: 1 },
+      ok(400, { error: { message: 'Image generation failed due to the safety filter.', status: 'INVALID_ARGUMENT' } }));
+    add('imagen_http_blocked_safety', { prompt: 'bad', model: 'imagen-4', n: 1 },
+      ok(400, { error: { message: 'Prompt blocked for Safety reasons' } }));
+    add('gemini_image_safety_finish', { prompt: 'bad', model: 'gemini-2.5-flash-image', n: 1 },
+      ok(200, { candidates: [{ finishReason: 'IMAGE_SAFETY', content: { parts: [{ text: 'I cannot help with that.' }] } }] }));
+    add('gemini_block_reason', { prompt: 'bad', model: 'gemini-2.5-flash-image', n: 1 },
+      ok(200, { promptFeedback: { blockReason: 'PROHIBITED_CONTENT' } }));
+    add('gemini_block_and_finish', { prompt: 'bad', model: 'gemini-3-pro-image-preview', n: 1 },
+      ok(200, { promptFeedback: { blockReason: 'OTHER' }, candidates: [{ finishReason: 'SAFETY' }] }));
+    add('gemini_non_safety_finish', { prompt: 'x', model: 'gemini-2.5-flash-image', n: 1 },
+      ok(200, { candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: 'ran out' }] } }] }));
     // The `ca22ec45` routing widening: a live-fetched `gemini*` id that is NOT in
     // GEMINI_IMAGE_MODELS. The pre-widening predicate routed it to the Imagen
     // `predict` endpoint (which serves only imagen-*); it must now build a
@@ -427,6 +490,10 @@ function casesFor(provider) {
       ok(200, { choices: [{ message: {} }] }));
     add('http_error', { prompt: 'x', model: 'google/gemini-2.5-flash-preview-native-image', n: 1 },
       { status: 500, body: 'upstream is down' });
+    // P4.D225 (v4 `8bd080267`): an HTTP error body that states a refusal is
+    // typed (`'content refusal'`); the declined rows above are typed too.
+    add('http_refusal_body', { prompt: 'bad', model: 'google/gemini-2.5-flash-preview-native-image', n: 1 },
+      ok(403, { error: { message: 'Input was rejected by content moderation', code: 403 } }));
   }
   return c;
 }
@@ -698,7 +765,7 @@ async function main() {
       images = projectImages(res.images);
     } catch (e) {
       outcome = 'thrown';
-      thrown = e instanceof Error ? e.message : String(e);
+      thrown = thrownFields(e);
     } finally {
       globalThis.fetch = origFetch;
     }
@@ -724,7 +791,6 @@ async function main() {
         outcome,
         images,
         thrown,
-        isModeration: outcome === 'thrown' ? isImageModerationError(thrown) : false,
       })
     );
   }

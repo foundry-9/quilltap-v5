@@ -5,10 +5,9 @@
 //!
 //! Each provider gets [`build_image_request`] (the method / url / body the plugin
 //! or its SDK sends) + [`parse_image_response`] (the success body → [`ImageGenResponse`]
-//! plus every rejection path normalized to the **exact error string** v4 surfaces
-//! — the strings the already-ported
-//! [`is_image_moderation_error`](crate::services::dangerous_content::provider_routing::is_image_moderation_error)
-//! keyword shim matches). The build/parse are verified independently of transport
+//! plus every rejection path normalized to the **exact error string** v4 surfaces,
+//! and — since v4 `8bd080267` — the structured refusal v4's plugins throw typed).
+//! The build/parse are verified independently of transport
 //! (`image_dialects_equivalence`); the real [`ImageProvider`] impl
 //! ([`RealImageProvider`]) composes them over the injected
 //! [`WireTransport`](crate::model::wire::WireTransport) seam.
@@ -29,10 +28,19 @@
 //!   - Google Gemini's `imageConfig.imageSize` extended param is not in
 //!     [`ImageGenParams`] (v4 reads it off an extension the v5 handler never sets),
 //!     so `imageConfig` here carries only `aspectRatio`.
-//!   - The refusal-keyword GAPs are v4 behavior carried verbatim: Gemini's
-//!     `textResponse || 'No images returned…'`, OpenRouter's `Model declined…`, and
-//!     z-ai's total lack of moderation handling never match
-//!     `is_image_moderation_error`. Never widen the keyword set to "fix" a gap.
+//!   - **The refusal doctrine moved with v4 (`8bd080267`, #73).** Until then
+//!     this doc said "the refusal-keyword GAPs are v4 behavior carried verbatim
+//!     … never widen the keyword set to fix a gap" — Gemini's `textResponse ||
+//!     'No images…'`, OpenRouter's `Model declined…` and z-ai's total lack of
+//!     moderation handling matched no keyword. v4 closed those gaps ITSELF:
+//!     its plugins now throw a typed `ModerationRejectionError`
+//!     (`code: 'MODERATION_REJECTED'`, a `providerReason`, the HTTP status) at
+//!     every refusal site, and the host's ONE classifier
+//!     ([`crate::services::dangerous_content::refusal::classify_refusal`])
+//!     ranks that above any wording. So every rejection path here now fills the
+//!     error's structured `refusal` side exactly where the plugin throws typed
+//!     — and nowhere else (NanoGPT, whose filtered-prompt 400 is generic, stays
+//!     untyped by v4's own design). The old doctrine is retired, not violated.
 
 use serde_json::{Map, Value};
 
@@ -886,9 +894,23 @@ fn parse_google(model: &str, resp: &WireResponse) -> Result<ImageGenResponse, Im
         } else {
             format!("Google Imagen API error: {}", resp.status)
         };
-        return Err(ImageGenError::new(
-            message.map(str::to_string).unwrap_or(fallback),
-        ));
+        let message = message.map(str::to_string).unwrap_or(fallback);
+        // P4.D225 (v4 `8bd080267`): a safety refusal is typed, carrying the
+        // status and `error.error?.status` (e.g. `INVALID_ARGUMENT`) as its
+        // reason; every other failure stays a plain `Error`.
+        if is_google_safety_message(&message) {
+            let reason = err_json
+                .get("error")
+                .and_then(|e| e.get("status"))
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            return Err(ImageGenError::moderation(
+                message,
+                Some(resp.status),
+                reason,
+            ));
+        }
+        return Err(ImageGenError::new(message));
     }
     let data: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
     if is_gemini {
@@ -898,13 +920,43 @@ fn parse_google(model: &str, resp: &WireResponse) -> Result<ImageGenResponse, Im
     }
 }
 
+/// v4 `isGoogleSafetyMessage` (`8bd080267`): whether a non-2xx body from
+/// Google's image endpoints is a safety refusal (Responsible AI / safety
+/// filter) rather than any other failure — deliberately never a bare "safety":
+/// a malformed `safety_settings` value is a 400 about OUR request.
+///
+/// The two JS regexes run on the lower-cased message with no flags: JS `\b` is
+/// ASCII (`(?-u:\b)`), and JS `.` stops at every line terminator (`\n`, `\r`,
+/// U+2028, U+2029), where Rust's stops only at `\n` — spelled out below.
+pub fn is_google_safety_message(message: &str) -> bool {
+    use std::sync::LazyLock;
+    static SAFETY_WORD: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"safety (filter|system|reasons?|policy)").unwrap());
+    static BLOCKED_SAFETY: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r"blocked(?-u:\b)[^\n\r\x{2028}\x{2029}]*(?-u:\b)safety|(?-u:\b)safety(?-u:\b)[^\n\r\x{2028}\x{2029}]*(?-u:\b)blocked",
+        )
+        .unwrap()
+    });
+    let lowered = message.to_lowercase();
+    lowered.contains("responsible ai")
+        || SAFETY_WORD.is_match(&lowered)
+        || BLOCKED_SAFETY.is_match(&lowered)
+}
+
+/// Gemini finish reasons that mean the image was withheld on safety grounds
+/// (v4 `GEMINI_IMAGE_SAFETY_FINISH_REASONS`, `8bd080267`).
+const GEMINI_IMAGE_SAFETY_FINISH_REASONS: [&str; 3] =
+    ["IMAGE_SAFETY", "SAFETY", "PROHIBITED_CONTENT"];
+
 fn parse_gemini(data: &Value) -> Result<ImageGenResponse, ImageGenError> {
     let mut images = Vec::new();
     let mut text_response = String::new();
-    if let Some(parts) = data
+    let candidate = data
         .get("candidates")
         .and_then(Value::as_array)
-        .and_then(|c| c.first())
+        .and_then(|c| c.first());
+    if let Some(parts) = candidate
         .and_then(|c| c.get("content"))
         .and_then(|c| c.get("parts"))
         .and_then(Value::as_array)
@@ -925,7 +977,46 @@ fn parse_gemini(data: &Value) -> Result<ImageGenResponse, ImageGenError> {
         }
     }
     if images.is_empty() {
-        // The documented keyword GAP: `textResponse || 'No images…'` matches no keyword.
+        // P4.D225 (v4 `8bd080267`): a safety stop — the candidate was withheld
+        // (`finishReason`), or the prompt itself was blocked before any
+        // candidate was made (`promptFeedback.blockReason`) — is a typed
+        // moderation refusal with a NEW message, not the old `textResponse ||
+        // 'No images…'` (which was the keyword GAP this file used to document).
+        let finish_reason = candidate.and_then(|c| c.get("finishReason"));
+        let block_reason = data
+            .get("promptFeedback")
+            .and_then(|f| f.get("blockReason"));
+        let safety_finish = finish_reason
+            .and_then(Value::as_str)
+            .is_some_and(|r| GEMINI_IMAGE_SAFETY_FINISH_REASONS.contains(&r));
+        let blocked = crate::api::system_qtap::js_truthy(block_reason);
+        if safety_finish || blocked {
+            // `blockReason || finishReason!`
+            let reason_value = if blocked { block_reason } else { finish_reason };
+            let reason = reason_value
+                .map(crate::pascal::js_value::to_js_string)
+                .unwrap_or_default();
+            // Hoisted: inside `tracing::warn!` the macro's own `Value` trait
+            // shadows `serde_json::Value`.
+            let logged_finish = finish_reason.and_then(serde_json::Value::as_str);
+            let logged_block = block_reason.and_then(serde_json::Value::as_str);
+            tracing::warn!(
+                context = "GoogleImagenProvider.generateWithGemini",
+                finish_reason = logged_finish,
+                block_reason = logged_block,
+                "Gemini withheld the image on safety grounds"
+            );
+            let suffix = if text_response.is_empty() {
+                String::new()
+            } else {
+                format!(": {text_response}")
+            };
+            return Err(ImageGenError::moderation(
+                format!("Gemini declined to generate this image ({reason}){suffix}"),
+                None,
+                Some(reason),
+            ));
+        }
         return Err(ImageGenError::new(if text_response.is_empty() {
             "No images returned from Gemini API".to_string()
         } else {
@@ -946,20 +1037,23 @@ fn parse_imagen(data: &Value) -> Result<ImageGenResponse, ImageGenError> {
         .filter(|p| truthy_str(p.get("bytesBase64Encoded")).is_some())
         .collect();
     if usable.is_empty() {
-        // The ONLY manufactured moderation error — keyword-matching `content policy`.
+        // v4 surfaces the empty/filtered 200 as a moderation rejection — typed
+        // since `8bd080267`, `providerReason = filterReason ?? undefined`.
         let reason = predictions
             .iter()
             .find_map(|p| p.get("raiFilteredReason").and_then(Value::as_str))
             .map(str::to_string)
             .or_else(|| str_of(data, "raiFilteredReason"))
             .or_else(|| str_of(data, "filteredReason"));
-        let suffix = match reason {
+        let suffix = match reason.as_deref() {
             Some(r) if !r.is_empty() => format!(": {r}"),
             _ => String::new(),
         };
-        return Err(ImageGenError::new(format!(
-            "Google Imagen rejected prompt by content policy{suffix}"
-        )));
+        return Err(ImageGenError::moderation(
+            format!("Google Imagen rejected prompt by content policy{suffix}"),
+            None,
+            reason,
+        ));
     }
     let images = usable
         .iter()
@@ -997,12 +1091,26 @@ fn extract_openrouter_image(url: &str, images: &mut Vec<GeneratedImageData>) {
     }
 }
 
+/// v4 OpenRouter `isOpenRouterRefusalBody` (`8bd080267`): an HTTP error body
+/// states a content refusal — the host's eleven refusal patterns, verbatim.
+pub fn is_openrouter_refusal_body(body: &str) -> bool {
+    let lowered = body.to_lowercase();
+    crate::services::dangerous_content::refusal::REFUSAL_MESSAGE_PATTERNS
+        .iter()
+        .any(|p| lowered.contains(p))
+}
+
 fn parse_openrouter(resp: &WireResponse) -> Result<ImageGenResponse, ImageGenError> {
     if !resp.ok() {
-        return Err(ImageGenError::new(format!(
-            "OpenRouter API error: {} - {}",
-            resp.status, resp.body
-        )));
+        let message = format!("OpenRouter API error: {} - {}", resp.status, resp.body);
+        if is_openrouter_refusal_body(&resp.body) {
+            return Err(ImageGenError::moderation(
+                message,
+                Some(resp.status),
+                Some("content refusal".to_string()),
+            ));
+        }
+        return Err(ImageGenError::new(message));
     }
     let data: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
     let mut images: Vec<GeneratedImageData> = Vec::new();
@@ -1066,16 +1174,20 @@ fn parse_openrouter(resp: &WireResponse) -> Result<ImageGenResponse, ImageGenErr
         }
     }
     if images.is_empty() {
-        // Documented keyword GAP: `Model declined…` matches no keyword.
+        // An image model that answers in words instead of a picture — an
+        // explicit `refusal`, or prose with no image — has declined the
+        // commission: typed since v4 `8bd080267`, the summary as its reason.
         if !text_content.is_empty() {
             let summary = if jsstr::utf16_len(&text_content) > 200 {
                 format!("{}...", jsstr::utf16_truncate(&text_content, 200))
             } else {
                 text_content
             };
-            return Err(ImageGenError::new(format!(
-                "Model declined to generate an image: {summary}"
-            )));
+            return Err(ImageGenError::moderation(
+                format!("Model declined to generate an image: {summary}"),
+                None,
+                Some(summary),
+            ));
         }
         return Err(ImageGenError::new("No images returned from OpenRouter API"));
     }
@@ -1301,7 +1413,141 @@ fn openai_sdk_error(resp: &WireResponse) -> ImageGenError {
         },
         None => resp.body.clone(),
     };
-    ImageGenError::new(format!("{} {message}", resp.status))
+    let message = format!("{} {message}", resp.status);
+    // P4.D225: the rest of the SDK's `APIError`, as v4's refusal classifier
+    // reads it — `this.error = body.error`, `this.code = body.error?.code`,
+    // `this.status`. v5 has no SDK, so the fields come off the body here.
+    let body_error = parsed.get("error").and_then(Value::as_object);
+    let raw_code = body_error.and_then(|e| e.get("code"));
+    let refusal = crate::services::dangerous_content::refusal::RefusalError {
+        message: message.clone(),
+        code: raw_code.and_then(crate::services::dangerous_content::refusal::code_string),
+        nested_code: raw_code.and_then(crate::services::dangerous_content::refusal::code_string),
+        name: None,
+        provider_reason: None,
+        status: Some(resp.status),
+    };
+    ImageGenError {
+        message,
+        refusal: Some(Box::new(refusal)),
+    }
+}
+
+/// The raw `body.error.code` an SDK `APIError` carries as its own `code`.
+fn sdk_error_raw_code(resp: &WireResponse) -> Option<Value> {
+    let parsed: Value = serde_json::from_str(&resp.body).ok()?;
+    parsed.get("error")?.as_object()?.get("code").cloned()
+}
+
+/// OpenAI / xAI Images codes that mean the request was refused on content
+/// grounds (v4 `MODERATION_CODES` in both plugins).
+const OPENAI_IMAGE_MODERATION_CODES: [&str; 2] = ["moderation_blocked", "content_policy_violation"];
+
+/// v4's three SDK plugins' `to*ImageModerationError` (`8bd080267`): turn the
+/// SDK's `APIError` into a `ModerationRejectionError` when it is a content
+/// refusal, and leave every other error exactly as thrown. NanoGPT has no such
+/// mapping in v4 (its filtered-prompt 400 is generic) and passes through.
+///
+/// `model` is the logged model id (OpenAI logs `modelName`, the others
+/// `model`; both are the requested `params.model ?? default`).
+fn map_sdk_image_moderation(
+    provider: &str,
+    model: &str,
+    error: ImageGenError,
+    resp: &WireResponse,
+) -> ImageGenError {
+    let raw_code = sdk_error_raw_code(resp);
+    let status = Some(resp.status);
+    let message = error.message.clone();
+    let lowered = message.to_lowercase();
+    match provider {
+        "OPENAI" | "GROK" => {
+            // `typeof err.code === 'string' ? err.code : typeof err.error?.code
+            // === 'string' ? … : undefined` — both slots are `body.error.code`.
+            let code = raw_code
+                .as_ref()
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            let coded = code
+                .as_deref()
+                .is_some_and(|c| !c.is_empty() && OPENAI_IMAGE_MODERATION_CODES.contains(&c));
+            let (worded, default_message) = if provider == "OPENAI" {
+                (
+                    lowered.contains("safety system"),
+                    "OpenAI refused this image request on content grounds",
+                )
+            } else {
+                (
+                    lowered.contains("content moderation"),
+                    "xAI refused this image request on content grounds",
+                )
+            };
+            if !(coded || worded) {
+                return error;
+            }
+            let provider_reason = if provider == "OPENAI" {
+                code
+            } else {
+                // Grok: `code ?? 'content_moderation'`.
+                Some(code.unwrap_or_else(|| "content_moderation".to_string()))
+            };
+            let text = if message.is_empty() {
+                default_message.to_string()
+            } else {
+                message
+            };
+            let mapped = ImageGenError::moderation(text, status, provider_reason.clone());
+            if provider == "OPENAI" {
+                tracing::info!(
+                    context = "OpenAIImageProvider.generateImage",
+                    model = %model,
+                    provider_reason = provider_reason.as_deref(),
+                    "OpenAI Images API refused the request on content grounds"
+                );
+            } else {
+                tracing::info!(
+                    context = "GrokImageProvider.generateImage",
+                    model = %model,
+                    "Grok Images API refused the request on content grounds"
+                );
+            }
+            mapped
+        }
+        "Z_AI" => {
+            // `rawCode = err.code ?? err.error?.code`; a number or string →
+            // `String(rawCode)`.
+            let code = match raw_code {
+                Some(Value::String(s)) => Some(s),
+                Some(Value::Number(n)) => {
+                    Some(crate::pascal::js_value::to_js_string(&Value::Number(n)))
+                }
+                _ => None,
+            };
+            let sensitive = code.as_deref() == Some("1301")
+                || lowered.contains("sensitive content")
+                || lowered.contains("unsafe or sensitive");
+            if !sensitive {
+                return error;
+            }
+            let text = if message.is_empty() {
+                "Z.AI refused this image request as sensitive content".to_string()
+            } else {
+                message
+            };
+            let mapped = ImageGenError::moderation(
+                text,
+                status,
+                Some(code.unwrap_or_else(|| "1301".to_string())),
+            );
+            tracing::info!(
+                context = "ZAIImageProvider.generateImage",
+                model = %model,
+                "Z.AI Images API refused the request as sensitive content"
+            );
+            mapped
+        }
+        _ => error,
+    }
 }
 
 /// Parse ONE page of `provider`'s model list into the ids that passed its image
@@ -1858,7 +2104,21 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
             Ok(resp)
                 if !resp.ok() && matches!(provider, "OPENAI" | "GROK" | "Z_AI" | "NANOGPT") =>
             {
-                Err(openai_sdk_error(&resp))
+                // P4.D225 (v4 `8bd080267`): each SDK plugin wraps
+                // `client.images.generate` and maps a content refusal to the
+                // typed error before rethrowing; everything else unchanged.
+                let default_model = match provider {
+                    "OPENAI" => "dall-e-3",
+                    "GROK" => "grok-imagine-image",
+                    "Z_AI" => "glm-image",
+                    _ => "hidream",
+                };
+                Err(map_sdk_image_moderation(
+                    provider,
+                    model_or_default(params, default_model),
+                    openai_sdk_error(&resp),
+                    &resp,
+                ))
             }
             Ok(resp) => Ok(resp),
             // The SDK/transport throw (network) surfaces verbatim.
@@ -2151,38 +2411,170 @@ mod tests {
     }
 
     /// **The consequence pin.** The reconstructed message is not just display
-    /// text: the Concierge's post-hoc reroute decides whether to retry on the
-    /// uncensored image profile by KEYWORD-MATCHING it
-    /// (`is_image_moderation_error`). While a Grok 400 collapsed into
-    /// `Invalid response from Grok Images API`, nothing matched, the reroute
-    /// never fired, and AUTO_ROUTE image generation was dead for all four
-    /// SDK-backed providers — measured live on 2026-08-25, where the same job
-    /// went FAILED before this fix and COMPLETED after it, with a second
-    /// `IMAGE_GENERATION` row on NANOGPT/chroma reading
-    /// `Generated 1 image(s) (Concierge reroute)`.
+    /// text: while a Grok 400 collapsed into `Invalid response from Grok Images
+    /// API`, nothing recognised it as a refusal, the reroute never fired, and
+    /// AUTO_ROUTE image generation was dead for all four SDK-backed providers —
+    /// measured live on 2026-08-25, where the same job went FAILED before this
+    /// fix and COMPLETED after it, with a second `IMAGE_GENERATION` row on
+    /// NANOGPT/chroma reading `Generated 1 image(s) (Concierge reroute)`.
     ///
-    /// So: any future change to `openai_sdk_error`'s wording has to keep the
-    /// provider's own words in the message, or it silently switches the reroute
-    /// off again. This test is what makes that loud.
+    /// Since v4 `8bd080267` (P4.D225) the recognition is the refusal
+    /// classifier's, not a keyword shim's — but it still reads the provider's
+    /// own words when nothing structured says more, so any future change to
+    /// `openai_sdk_error`'s wording has to keep them in the message. This test
+    /// is what makes that loud.
     #[test]
     fn a_moderation_400_still_reads_as_a_moderation_error_downstream() {
-        use crate::services::dangerous_content::provider_routing::is_image_moderation_error;
+        use crate::services::dangerous_content::refusal::{is_moderation_refusal, RefusalError};
 
         let grok_400 = openai_sdk_error(&WireResponse::new(
             400,
             r#"{"error":"Generated image rejected by content moderation."}"#,
         ));
         assert!(
-            is_image_moderation_error(&grok_400.message),
+            is_moderation_refusal(&grok_400.refusal_error()),
             "the reroute must still recognise this: {}",
             grok_400.message
         );
 
         // The pre-fix message is the counter-example that explains the bug.
         assert!(
-            !is_image_moderation_error("Invalid response from Grok Images API"),
+            !is_moderation_refusal(&RefusalError::message_only(
+                "Invalid response from Grok Images API"
+            )),
             "the generic sentence never matched — which is why the reroute died"
         );
+    }
+
+    /// P4.D225 (v4 `8bd080267`): each SDK plugin's `to*ImageModerationError`
+    /// logs ONE INFO line when it maps an error, and nothing when it does not.
+    #[test]
+    fn the_sdk_moderation_mappings_log_once_and_only_when_they_map() {
+        let cases: &[(&str, &str, &str, &str)] = &[
+            (
+                "OPENAI",
+                r#"{"error":{"message":"Rejected by our safety system.","code":"moderation_blocked"}}"#,
+                "INFO quilltap_core::model::image_dialects OpenAI Images API refused the request on content grounds context=OpenAIImageProvider.generateImage model=dall-e-3 provider_reason=moderation_blocked",
+                r#"{"error":{"message":"Invalid size.","code":null}}"#,
+            ),
+            (
+                "GROK",
+                r#"{"error":{"message":"Generated image rejected by content moderation."}}"#,
+                "INFO quilltap_core::model::image_dialects Grok Images API refused the request on content grounds context=GrokImageProvider.generateImage model=dall-e-3",
+                r#"{"error":{"message":"Bad aspect ratio","code":"invalid_argument"}}"#,
+            ),
+            (
+                "Z_AI",
+                r#"{"error":{"code":1301,"message":"Contains sensitive content."}}"#,
+                "INFO quilltap_core::model::image_dialects Z.AI Images API refused the request as sensitive content context=ZAIImageProvider.generateImage model=dall-e-3",
+                r#"{"error":{"code":1210,"message":"Invalid parameter."}}"#,
+            ),
+        ];
+        for (provider, refused, line, ordinary) in cases {
+            let resp = WireResponse::new(400, *refused);
+            let (err, lines) = crate::test_support::captured_with(|| {
+                map_sdk_image_moderation(provider, "dall-e-3", openai_sdk_error(&resp), &resp)
+            });
+            assert!(
+                err.refusal.as_deref().is_some_and(|r| r.is_typed_refusal()),
+                "{provider}: mapped to the typed refusal"
+            );
+            assert_eq!(
+                lines,
+                vec![line.to_string()],
+                "{provider}: the one INFO line"
+            );
+
+            let resp = WireResponse::new(400, *ordinary);
+            let (err, lines) = crate::test_support::captured_with(|| {
+                map_sdk_image_moderation(provider, "dall-e-3", openai_sdk_error(&resp), &resp)
+            });
+            assert!(
+                !err.refusal.as_deref().is_some_and(|r| r.is_typed_refusal()),
+                "{provider}: an ordinary 400 is left exactly as thrown"
+            );
+            assert!(
+                lines.is_empty(),
+                "{provider}: silence on an ordinary 400: {lines:?}"
+            );
+        }
+        // NanoGPT has no mapping in v4 — never typed, never logged.
+        let resp = WireResponse::new(
+            400,
+            r#"{"error":{"code":1301,"message":"Contains sensitive content."}}"#,
+        );
+        let (err, lines) = crate::test_support::captured_with(|| {
+            map_sdk_image_moderation("NANOGPT", "hidream", openai_sdk_error(&resp), &resp)
+        });
+        assert!(!err.refusal.as_deref().is_some_and(|r| r.is_typed_refusal()));
+        assert!(lines.is_empty());
+    }
+
+    /// P4.D225 (v4 `8bd080267`): Gemini's no-image safety stop WARNs once with
+    /// both reasons and throws the typed refusal with the NEW message; a
+    /// non-safety stop keeps the old sentence and logs nothing.
+    #[test]
+    fn gemini_withheld_image_warns_and_types_the_refusal() {
+        let p = params("gemini-2.5-flash-image");
+        let resp = WireResponse::new(
+            200,
+            r#"{"candidates":[{"finishReason":"IMAGE_SAFETY","content":{"parts":[{"text":"no"}]}}],"promptFeedback":{"blockReason":"SAFETY"}}"#,
+        );
+        let (err, lines) = crate::test_support::captured_with(|| {
+            parse_image_response("GOOGLE", &p, &resp).unwrap_err()
+        });
+        assert_eq!(
+            err.message,
+            "Gemini declined to generate this image (SAFETY): no"
+        );
+        let r = err.refusal.as_deref().expect("typed");
+        assert!(r.is_typed_refusal());
+        assert_eq!(r.provider_reason.as_deref(), Some("SAFETY"));
+        assert_eq!(r.status, None);
+        assert_eq!(
+            lines,
+            vec![
+                "WARN quilltap_core::model::image_dialects Gemini withheld the image on safety grounds context=GoogleImagenProvider.generateWithGemini finish_reason=IMAGE_SAFETY block_reason=SAFETY"
+                    .to_string()
+            ]
+        );
+
+        let plain = WireResponse::new(
+            200,
+            r#"{"candidates":[{"finishReason":"MAX_TOKENS","content":{"parts":[{"text":"ran out"}]}}]}"#,
+        );
+        let (err, lines) = crate::test_support::captured_with(|| {
+            parse_image_response("GOOGLE", &p, &plain).unwrap_err()
+        });
+        assert_eq!(err.message, "ran out");
+        assert!(err.refusal.is_none());
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// v4 `isGoogleSafetyMessage`: never a bare "safety"; the two regexes on
+    /// the lower-cased message, JS-`\b` ASCII and JS-`.` stopping at every line
+    /// terminator.
+    #[test]
+    fn google_safety_message_is_narrow() {
+        for yes in [
+            "Blocked by Responsible AI practices",
+            "failed the SAFETY FILTER",
+            "safety reasons",
+            "safety policy violated",
+            "blocked for safety",
+            "Safety: prompt blocked",
+        ] {
+            assert!(is_google_safety_message(yes), "{yes}");
+        }
+        for no in [
+            "Invalid value at safety_settings[0].threshold",
+            "safety",
+            "blocked\nsafety",
+            "blocked\u{2028}for safety",
+            "unblocked_safety",
+        ] {
+            assert!(!is_google_safety_message(no), "{no:?}");
+        }
     }
 
     /// The SDK/raw-fetch SPLIT, pinned in BOTH directions. Widening the gate
@@ -2750,22 +3142,21 @@ mod tests {
             url,
             "https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict"
         );
-        // empty predictions with a raiFilteredReason → manufactured moderation error.
+        // empty predictions with a raiFilteredReason → the typed moderation
+        // rejection (v4 `8bd080267`), the reason as `providerReason`.
         let resp = WireResponse::new(200, r#"{"predictions":[{"raiFilteredReason":"policy X"}]}"#);
         let err = parse_image_response("GOOGLE", &params("imagen-4"), &resp).unwrap_err();
         assert_eq!(
             err.message,
             "Google Imagen rejected prompt by content policy: policy X"
         );
-        assert!(
-            crate::services::dangerous_content::provider_routing::is_image_moderation_error(
-                &err.message
-            )
-        );
+        let r = err.refusal.as_deref().expect("typed");
+        assert!(r.is_typed_refusal());
+        assert_eq!(r.provider_reason.as_deref(), Some("policy X"));
     }
 
     #[test]
-    fn openrouter_data_uri_and_declined_gap() {
+    fn openrouter_data_uri_and_declined_is_typed() {
         let resp = WireResponse::new(
             200,
             r#"{"choices":[{"message":{"images":[{"image_url":{"url":"data:image/png;base64,QUJD"}}]}}]}"#,
@@ -2785,12 +3176,11 @@ mod tests {
             err.message,
             "Model declined to generate an image: nope, policy"
         );
-        // The GAP: this must NOT be classified as a moderation error.
-        assert!(
-            !crate::services::dangerous_content::provider_routing::is_image_moderation_error(
-                &err.message
-            )
-        );
+        // Formerly the documented keyword GAP; since v4 `8bd080267` the
+        // plugin throws the typed refusal, the summary as its reason.
+        let r = err.refusal.as_deref().expect("typed");
+        assert!(r.is_typed_refusal());
+        assert_eq!(r.provider_reason.as_deref(), Some("nope, policy"));
     }
 
     /// The `ca22ec45` routing widening: ANY `gemini*` id reaches generateContent,

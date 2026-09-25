@@ -8,7 +8,8 @@
 //! - `response.reasoning_summary_text.delta` → **cumulative** reasoning: append
 //!   `event.delta` to an accumulator and emit `{content:"",
 //!   reasoning_content:<so far>}`.
-//! - `response.completed` → captures `event.response` (the full Response), which
+//! - `response.completed` (and, since v4 `8bd080267`, `response.incomplete`) →
+//!   captures `event.response` (the full Response), which
 //!   the terminal `done` chunk turns into a Chat-Completions-shaped
 //!   `raw_response` (via v4 `buildRawResponse`), cache-adjusted usage,
 //!   `raw_provider_usage` (the raw `response.usage`), `cache_usage`, and the
@@ -31,6 +32,13 @@ pub struct ResponsesApiSseDecoder {
     /// The `event.response` of the terminal `response.completed` event.
     final_response: Option<Value>,
     done_emitted: bool,
+    /// Grok's `buildRawResponse` reads `this.extractTextFromResponse(response)`
+    /// for the raw's `content` (the SDK's `output_text` when truthy, else the
+    /// `output_text` parts of every `message` item concatenated — `''` when
+    /// there are none), where OpenAI's reads `response.output_text` raw. The
+    /// two only part on a final response WITHOUT a truthy `output_text`, which
+    /// no corpus wire carried until P4.D225's refusal wires.
+    grok: bool,
 }
 
 impl Default for ResponsesApiSseDecoder {
@@ -47,7 +55,51 @@ impl ResponsesApiSseDecoder {
             saw_reasoning: false,
             final_response: None,
             done_emitted: false,
+            grok: false,
         }
+    }
+
+    /// The Grok flavor (see [`Self::grok`]'s field doc).
+    pub fn grok() -> Self {
+        Self {
+            grok: true,
+            ..Self::new()
+        }
+    }
+
+    /// v4 Grok `extractTextFromResponse`.
+    fn grok_text(resp: &Value) -> String {
+        if let Some(text) = resp
+            .get("output_text")
+            .and_then(|t| t.as_str())
+            .filter(|t| !t.is_empty())
+        {
+            return text.to_string();
+        }
+        let mut text = String::new();
+        for item in resp
+            .get("output")
+            .and_then(|o| o.as_array())
+            .into_iter()
+            .flatten()
+        {
+            if item.get("type").and_then(|t| t.as_str()) != Some("message") {
+                continue;
+            }
+            for part in item
+                .get("content")
+                .and_then(|c| c.as_array())
+                .into_iter()
+                .flatten()
+            {
+                if part.get("type").and_then(|t| t.as_str()) == Some("output_text") {
+                    // `text += content.text` — a missing text would concat
+                    // "undefined" in JS; the Responses API always carries it.
+                    text.push_str(part.get("text").and_then(|t| t.as_str()).unwrap_or(""));
+                }
+            }
+        }
+        text
     }
 
     fn handle_event(&mut self, ev: &Value, out: &mut Vec<StreamChunk>) {
@@ -69,7 +121,10 @@ impl ResponsesApiSseDecoder {
                     });
                 }
             }
-            "response.completed" => {
+            // v4 `8bd080267`: an incomplete response
+            // (`incomplete_details.reason: 'content_filter'`) ends the stream
+            // too, and its reason is the one the host needs.
+            "response.completed" | "response.incomplete" => {
                 if let Some(resp) = ev.get("response") {
                     self.final_response = Some(resp.clone());
                 }
@@ -81,7 +136,7 @@ impl ResponsesApiSseDecoder {
     /// v4 `buildRawResponse`: fold the Responses output into a Chat-Completions
     /// -shaped object (id/object/created/model/choices[0].message + tool_calls
     /// from function_call items + usage).
-    fn build_raw_response(resp: &Value) -> Value {
+    fn build_raw_response(resp: &Value, grok: bool) -> Value {
         let empty = Vec::new();
         let output = resp
             .get("output")
@@ -100,11 +155,9 @@ impl ResponsesApiSseDecoder {
                 }));
             }
         }
-        let finish_reason = if tool_calls.is_empty() {
-            "stop"
-        } else {
-            "tool_calls"
-        };
+        // v4 `8bd080267`: `this.getFinishReason(response)` — the real reason
+        // (a refusal, an incomplete's `content_filter`), not a guess.
+        let finish_reason = crate::model::response_parse::responses_finish_reason(resp, output);
         let mut message = serde_json::Map::new();
         message.insert("role".into(), json!("assistant"));
         // DELIBERATELY the phantom key — do NOT aggregate from `output[]` here.
@@ -116,10 +169,17 @@ impl ResponsesApiSseDecoder {
         // v5 matches. Fixing it would diverge from the oracle — see dogfood
         // finding #24, whose non-streaming half IS fixed
         // (`response_parse::responses_output_text`).
-        message.insert(
-            "content".into(),
-            resp.get("output_text").cloned().unwrap_or(Value::Null),
-        );
+        //
+        // P4.D225: when the key is ABSENT (every real stream, per the note
+        // above) v4's `content: undefined` is DROPPED by `JSON.stringify`, so
+        // the raw carries no `content` key at all — v5 had written `null`. The
+        // pre-existing corpus wires all carried an `output_text`, so the gap was
+        // unmeasured until the `8bd080267` refusal wires (which do not) arrived.
+        if grok {
+            message.insert("content".into(), Value::String(Self::grok_text(resp)));
+        } else if let Some(text) = resp.get("output_text") {
+            message.insert("content".into(), text.clone());
+        }
         if !tool_calls.is_empty() {
             message.insert("tool_calls".into(), Value::Array(tool_calls));
         }
@@ -186,7 +246,7 @@ impl ResponsesApiSseDecoder {
                     }),
                     cache_usage,
                     attachment_results: Some(Default::default()),
-                    raw_response: Some(Self::build_raw_response(resp)),
+                    raw_response: Some(Self::build_raw_response(resp, self.grok)),
                     // rawProviderUsage: the raw response.usage (null when absent).
                     raw_provider_usage: Some(usage.cloned().unwrap_or(Value::Null)),
                     reasoning_content: if self.saw_reasoning {

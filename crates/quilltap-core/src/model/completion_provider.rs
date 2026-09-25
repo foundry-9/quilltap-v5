@@ -250,6 +250,19 @@ pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
         let openrouter_vision =
             provider == "OPENROUTER" && openrouter_non_streaming_is_vision(&input.messages);
         let parsed = parse_for_provider_ex(provider, &json, openrouter_vision);
+        // v4 Google `sendMessage` (`8bd080267`): a blocked prompt WARNs with the
+        // model it was sent to; the parse already reads the block reason as the
+        // finish reason.
+        if provider == "GOOGLE" {
+            if let Some(block_reason) = crate::model::response_parse::google_block_reason(&json) {
+                tracing::warn!(
+                    context = "GoogleProvider.sendMessage",
+                    model = %params.model,
+                    block_reason = %block_reason,
+                    "Google blocked the prompt"
+                );
+            }
+        }
         Ok(CompletionResponse {
             content: parsed.content,
             usage: Some(CompletionUsage {
@@ -757,6 +770,57 @@ mod tests {
             seen.url
         );
         assert!(seen.url.ends_with(":generateContent"));
+    }
+
+    /// P4.D225 (v4 `8bd080267`): a blocked Google prompt reads its
+    /// `promptFeedback.blockReason` as the finish reason and WARNs ONCE with
+    /// the model it was sent to; an unblocked one is silent.
+    #[test]
+    fn a_blocked_google_prompt_warns_and_reports_its_block_reason() {
+        let run = |body: &[u8]| {
+            let transport = FakeTransport {
+                body: body.to_vec(),
+                seen: std::sync::Mutex::new(None),
+            };
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            crate::test_support::captured_with(|| {
+                rt.block_on(execute_completion(
+                    &transport,
+                    "GOOGLE",
+                    None,
+                    "synthetic-key",
+                    &params("gemini-2.5-flash"),
+                    &TransportPolicy::default(),
+                    "Quilltap/test",
+                    None,
+                    None,
+                ))
+                .expect("completion")
+            })
+        };
+        let (resp, lines) = run(
+            br#"{"promptFeedback":{"blockReason":"SAFETY"},"usageMetadata":{"promptTokenCount":5,"totalTokenCount":5}}"#,
+        );
+        assert_eq!(resp.finish_reason.as_deref(), Some("SAFETY"));
+        let warns: Vec<&String> = lines.iter().filter(|l| l.starts_with("WARN ")).collect();
+        assert_eq!(
+            warns,
+            vec![&"WARN quilltap_core::model::completion_provider Google blocked the prompt context=GoogleProvider.sendMessage model=gemini-2.5-flash block_reason=SAFETY".to_string()]
+        );
+
+        let (resp, lines) = run(
+            br#"{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":1,"totalTokenCount":6}}"#,
+        );
+        assert_eq!(resp.finish_reason.as_deref(), Some("STOP"));
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Google blocked the prompt")),
+            "{lines:?}"
+        );
     }
 
     // ------------------------------------------------------------------

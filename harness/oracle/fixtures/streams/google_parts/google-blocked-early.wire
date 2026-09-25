@@ -1,0 +1,4 @@
+data: {"promptFeedback":{"blockReason":"PROHIBITED_CONTENT"},"candidates":[{"content":{"parts":[{"text":"Hmm"}],"role":"model"},"index":0}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":"."}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":9,"candidatesTokenCount":2,"totalTokenCount":11}}
+

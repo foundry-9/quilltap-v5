@@ -130,6 +130,11 @@ pub struct ChatCompletionsSseDecoder {
     /// Provider-shape usage sub-object captured from the last frame that had one.
     usage_raw: Option<Value>,
     finish_reason: Option<Value>,
+    /// The LAST non-empty string `choices[0].finish_reason` seen on the wire —
+    /// what OpenRouter's raw path reports since v4 `8bd080267` (#73), where it
+    /// had hard-coded `'stop'`; a moderation stop (`content_filter`) now reaches
+    /// the host's finish-reason reader.
+    stream_finish_reason: Option<String>,
     done_emitted: bool,
 }
 
@@ -145,6 +150,7 @@ impl ChatCompletionsSseDecoder {
             pending_reasoning: String::new(),
             usage_raw: None,
             finish_reason: None,
+            stream_finish_reason: None,
             done_emitted: false,
         }
     }
@@ -261,6 +267,11 @@ impl ChatCompletionsSseDecoder {
             if let Some(fr) = choice.get("finish_reason") {
                 if !fr.is_null() {
                     self.finish_reason = Some(fr.clone());
+                }
+                // v4 OpenRouter: `typeof choice?.finish_reason === 'string' &&
+                // choice.finish_reason` — a non-empty string, last one wins.
+                if let Some(s) = fr.as_str().filter(|s| !s.is_empty()) {
+                    self.stream_finish_reason = Some(s.to_string());
                 }
             }
         }
@@ -420,10 +431,16 @@ impl ChatCompletionsSseDecoder {
                 })
             })
             .collect();
+        // v4 `8bd080267`: `toolCalls.length > 0 ? 'tool_calls' :
+        // (streamFinishReason ?? 'stop')`, written under BOTH keys — snake_case
+        // is what the host's finish-reason reader looks for, camelCase is kept
+        // for anything that already read it. `tool_calls` still overrides.
         let finish = if tool_calls.is_empty() {
-            "stop"
+            self.stream_finish_reason
+                .clone()
+                .unwrap_or_else(|| "stop".to_string())
         } else {
-            "tool_calls"
+            "tool_calls".to_string()
         };
         let mut delta = serde_json::Map::new();
         if !tool_calls.is_empty() {
@@ -434,6 +451,7 @@ impl ChatCompletionsSseDecoder {
         // normalised {promptTokens,...}) — see build_done.
         json!({
             "choices": [{
+                "finish_reason": finish,
                 "finishReason": finish,
                 "delta": Value::Object(delta),
             }],

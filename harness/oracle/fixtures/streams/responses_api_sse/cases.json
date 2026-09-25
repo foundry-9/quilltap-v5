@@ -40,5 +40,109 @@
     "wire": "grok-basic.wire",
     "model": "grok-4",
     "temperature": 0.7
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "openai",
+    "case": "openai-refusal-part",
+    "wire": "openai-refusal-part.wire",
+    "model": "gpt-5",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "openai",
+    "case": "openai-refusal-item",
+    "wire": "openai-refusal-item.wire",
+    "model": "gpt-5",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "openai",
+    "case": "openai-incomplete-content-filter",
+    "wire": "openai-incomplete-content-filter.wire",
+    "model": "gpt-5",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "openai",
+    "case": "openai-incomplete-no-reason",
+    "wire": "openai-incomplete-no-reason.wire",
+    "model": "gpt-5",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "openai",
+    "case": "openai-tools-beat-refusal",
+    "wire": "openai-tools-beat-refusal.wire",
+    "model": "gpt-5",
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "w",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "grok",
+    "case": "grok-refusal-part",
+    "wire": "grok-refusal-part.wire",
+    "model": "grok-4",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "grok",
+    "case": "grok-refusal-item",
+    "wire": "grok-refusal-item.wire",
+    "model": "grok-4",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "grok",
+    "case": "grok-incomplete-content-filter",
+    "wire": "grok-incomplete-content-filter.wire",
+    "model": "grok-4",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "grok",
+    "case": "grok-incomplete-no-reason",
+    "wire": "grok-incomplete-no-reason.wire",
+    "model": "grok-4",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "grok",
+    "case": "grok-tools-beat-refusal",
+    "wire": "grok-tools-beat-refusal.wire",
+    "model": "grok-4",
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "w",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
   }
 ]

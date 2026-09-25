@@ -150001,3 +150001,93 @@ Regen outputs staged under `/tmp/p4d225/`.
   `openrouter-camel-only`); green after the port.
 - **Neutral:** `moderation_finish_reason_equivalence` byte-identical at both
   pins (47 rows), green. Core lib 2,609 / 0.
+
+### Unit 4 — the structured refusal at every native site + the text finish reasons (corpora re-recorded)
+
+- **Image dialects** (`model/image_dialects.rs`): `openai_sdk_error` now
+  carries the SDK `APIError`'s other fields (`code` = `body.error.code` in
+  BOTH classifier slots, `status`); NEW `map_sdk_image_moderation` = v4's
+  three `to*ImageModerationError` (OpenAI: codes `moderation_blocked` /
+  `content_policy_violation` or "safety system", reason = `code`; Grok: same
+  codes or "content moderation", reason `code ?? 'content_moderation'`; Z.AI:
+  `String(err.code ?? err.error.code) === '1301'` or the two wordings, reason
+  `code ?? '1301'`; the three default messages), each with its INFO line;
+  NanoGPT passes through untyped. Google: `is_google_safety_message` (the two
+  JS regexes with `(?-u:\b)` and JS-`.` spelled `[^\n\r\x{2028}\x{2029}]`) types
+  both HTTP paths (status + `error.status` as the reason); Gemini's no-image
+  path types a `finishReason ∈ {IMAGE_SAFETY,SAFETY,PROHIBITED_CONTENT}` or a
+  truthy `promptFeedback.blockReason` with the NEW message `Gemini declined to
+  generate this image (<reason>)[: <text>]` + the WARN; Imagen's filtered 200
+  typed (reason = the filter reason); OpenRouter's refusal-body HTTP error
+  typed (`'content refusal'`) and its declined answer typed (reason = the
+  summary). The `:32-35` "never widen the keyword set" doctrine is REWRITTEN in
+  the module doc naming `8bd080267` (retired by v4, not violated).
+- **Comparand widened** (`image_dialects_equivalence`): the recorder's `thrown`
+  is now `{message, code?, errorCode?, providerReason?, status?}`
+  (`thrownFields`); the Rust side compares v5's `ImageGenError` + refusal side
+  in that shape, both code slots through `code_string`. **The keyword-verdict
+  arms are RETIRED by name** (`isModeration` gone from the recorder with its
+  verbatim copy of `isImageModerationError`; the three `is_image_moderation_
+  error` assertions deleted). **`sdkThrow` rows are now driven through the
+  composed `RealImageProvider`** (they had been skipped as "the Rust side only
+  replays it") — v5's own `APIError` reconstruction + the mapping are diffed.
+  Floors: ≥ 15 sdkThrow rows, ≥ 10 typed wire rows.
+- **Corpus re-recorded** at `/tmp/qt-v4-pin-p4d225-49059fb14`
+  (`V4=<pin> regenerate-image-fixtures.sh`, Node 24.13.1): 150 → 173 rows (+23:
+  OpenAI 4, Grok 2, Z.AI 4, Google 8, OpenRouter 1, and 4 NanoGPT twins of the
+  Z.AI bodies proving NanoGPT stays untyped); `grep -c v24.13.1` 8 → 8;
+  `grep -c MODERATION_REJECTED` 21; the eight `x-stainless-package-version`
+  stamps 7.20.0 → **7.23.0** (the checkout's SDK). Red-first: the harness over
+  the new corpus with HEAD's `image_dialects.rs` swapped in reds on
+  `OPENAI/moderation thrown` (no refusal side).
+- **Text finish reasons:** `response_parse::responses_finish_reason` (now
+  `pub(crate)`) gains v4's `hasRefusal` arm between `tool_calls` and the status
+  map, and `build_responses_raw` + the Responses SSE decoder's raw both read it
+  (v4's `buildRawResponse` now calls `getFinishReason`); the decoder treats
+  `response.incomplete` as terminal. OpenRouterRaw tracks the LAST non-empty
+  string `finish_reason` and writes `finish_reason` + `finishReason` (`tool_calls`
+  still overrides). Google: `parse_google`'s finish reason is `blockReason ??
+  candidates[0].finishReason ?? 'STOP'`, the `Google blocked the prompt` WARN
+  at `completion_provider` (which knows the model v4's bag names); the
+  streaming decoder keeps the last chunk's `promptFeedback` with a truthy block
+  reason and `with_block_reason` folds it into the raw (`{...raw,
+  promptFeedback, candidates}` key order; candidates synthesized only when
+  none) + the `(streaming)` WARN. The OpenRouter **OpenResponses** path is not
+  ported in v5 (a standing deliberate divergence, `streaming_provider.rs:49`),
+  so its `'incomplete'`-not-`'length'` rule has no v5 home — recorded.
+- **Two pre-existing gaps the new wires surfaced, fixed:** the Responses SSE
+  raw wrote `content: null` where v4's `response.output_text` is undefined and
+  DROPPED (every real stream — the old wires all carried `output_text`); and
+  Grok's raw content is its own `extractTextFromResponse` (`output_text` when
+  truthy, else the message items' `output_text` parts, `''` when none) — NEW
+  `ResponsesApiSseDecoder::grok()` + `DecoderSelection::ResponsesApi { grok }`.
+- **Stream corpora** (the four #73-moved files ONLY — `responses_api_sse/
+  {openai,grok}`, `chat_completions_sse/openrouter`, `google_parts/google`;
+  the other six untouched): 16 new wires + cases appended to the three
+  `cases.json` textually (existing lines untouched). Recorded per provider
+  from the pin's plugin dirs (the regen script records all ten, so the four
+  were run by hand). openai 4 → 9 rows, grok 1 → 6, openrouter 2 → 5, google
+  3 → 6; `v24.13.1` 0 → 0 in each. Old rows byte-identical EXCEPT openrouter's
+  two (the raw's `finish_reason` + `finishReason`). Red-first by reverting the
+  three ported behaviours (file backups): `openai-refusal-part`,
+  `openrouter-content-filter`, `google-blocked` red; restored → 5/5 green.
+- **`response-bodies`** (whole file, all ten providers): 52 → 60 rows (+4
+  OpenAI, +2 Grok, +2 Google); every untouched provider's rows byte-identical;
+  `openai/incomplete-max-tokens` MOVED (its raw `finish_reason` is now
+  `max_output_tokens`). Red-first (the ported arms reverted): **8 of 60 red**;
+  green after.
+- **Capture pins:** the three SDK INFO lines + NanoGPT silence
+  (`the_sdk_moderation_mappings_log_once_and_only_when_they_map`), the Gemini
+  WARN + the non-safety silence leg, `google_safety_message_is_narrow`, the two
+  Google text WARNs with silence legs. The three dialect unit tests that
+  asserted the old GAPs are rewritten to assert the typed refusal.
+- **`provider_sdk_version_guard`: RED on this branch BY DESIGN** (§S.4), both
+  halves, recorded by name: `every_installed_provider_sdk_matches_the_recorded_
+  version` (openai 7.20.0 → installed 7.23.0 ×7 paths; `@openrouter/sdk`
+  1.3.11 → 1.3.28 ×2 — as on `main`) and `the_recorded_corpora_carry_exactly_
+  the_recorded_sdk_versions` (`image-dialects`: 8 `openai` stamps at 7.23.0 vs
+  the recorded 7.20.0). P4.D232 moves the constants; the union is green.
+- **Handoff note for P4.D232 (re-run-only files):** `chat_completions_sse/
+  cases.json` gains three `openrouter-*` entries (appended); the recorder
+  filters by provider, so the deepseek / z-ai / openai-compatible / nanogpt
+  recordings are unaffected — re-running them stays byte-identical.

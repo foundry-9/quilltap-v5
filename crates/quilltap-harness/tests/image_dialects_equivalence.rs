@@ -5,12 +5,21 @@
 //! recorded `input`, runs the Rust `build_image_request` (diffing method / url /
 //! body bytes against what the plugin/SDK actually sent), and — for `mode:'wire'`
 //! rows — runs `parse_image_response` over the recorded wire `{status, body}`,
-//! diffing the parsed `ImageGenResponse` OR the exact thrown string. For
-//! `mode:'sdkThrow'` rows (an SDK converting a non-2xx to a throw) the message is
-//! the recorded SDK error; the Rust side only replays it. Every rejection row's
-//! `is_image_moderation_error` verdict is checked against the recorded one
-//! (proving the keyword matrix incl. the three documented GAPs — gemini refusal,
-//! openrouter "declined", z-ai generic).
+//! diffing the parsed `ImageGenResponse` OR the thrown error. For
+//! `mode:'sdkThrow'` rows (an SDK converting a non-2xx to a throw) the whole
+//! composed [`RealImageProvider`] runs over the recorded wire, so v5's own
+//! reconstruction of the SDK's `APIError` — and, since v4 `8bd080267` (#73,
+//! P4.D225), each plugin's `to*ImageModerationError` mapping — is diffed too.
+//!
+//! **The thrown comparand is the refusal classifier's view of the error**
+//! (widened from a bare string at P4.D225): `{ message, code?, errorCode?,
+//! providerReason?, status? }` — the typed `MODERATION_REJECTED`, the SDK's own
+//! `code` / `error.code` (read through `code_string`, exactly as the
+//! classifier's `collectCodes` reads them), the provider's reason, the HTTP
+//! status. The keyword-verdict arms (`is_image_moderation_error` over every
+//! rejection row) are RETIRED with the helper, by name: v4 deleted
+//! `isImageModerationError` at `8bd080267`, and the classifier's own
+//! equivalence lives in `refusal_classify_equivalence`.
 //!
 //! The fixture is committed (no env var); regenerate with
 //! `harness/oracle/providers/regenerate-image-fixtures.sh`.
@@ -22,6 +31,7 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::image_gen::{OrientationMapping, OrientationStrategy, OrientationSupport};
 use quilltap_core::image_gen_data::orientation_data_for;
+use quilltap_core::model::image::ImageGenError;
 use quilltap_core::model::image::{
     ImageGenParams, ImageGenResponse, ImageModelDiscovery, ImageProvider,
 };
@@ -31,7 +41,7 @@ use quilltap_core::model::image_dialects::{
     parse_models_page, supported_image_models, RealImageProvider,
 };
 use quilltap_core::model::wire::{CannedWireTransport, WireResponse};
-use quilltap_core::services::dangerous_content::provider_routing::is_image_moderation_error;
+use quilltap_core::services::dangerous_content::refusal::code_string;
 use serde_json::{Map, Value};
 
 fn corpus_path() -> PathBuf {
@@ -159,6 +169,8 @@ fn image_dialects_match_v4() {
     let mut models_cases: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut providers = std::collections::HashSet::new();
     let mut openai_cases: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut sdk_throw_rows = 0usize;
+    let mut typed_rows = 0usize;
 
     for line in text.lines() {
         if line.trim().is_empty() {
@@ -244,17 +256,13 @@ fn image_dialects_match_v4() {
         );
 
         let mode = row["mode"].as_str().unwrap();
-        let is_moderation = row["isModeration"].as_bool().unwrap();
 
         if mode == "sdk_throw" || mode == "sdkThrow" {
-            // The SDK message is recorded; the Rust side only replays it. Verify
-            // the moderation-keyword verdict over the REAL thrown string.
-            let thrown = row["thrown"].as_str().unwrap();
-            assert_eq!(
-                is_image_moderation_error(thrown),
-                is_moderation,
-                "{label} moderation verdict for {thrown:?}"
-            );
+            // P4.D225: drive the composed provider over the recorded non-2xx —
+            // v5's `APIError` reconstruction AND the plugin's moderation
+            // mapping, against v4's real SDK + plugin.
+            check_sdk_throw_row(&row, &provider, &params, &built, &label);
+            sdk_throw_rows += 1;
             continue;
         }
 
@@ -280,22 +288,26 @@ fn image_dialects_match_v4() {
             }
             "thrown" => {
                 let err = parsed.expect_err(&format!("{label}: expected thrown"));
-                assert_eq!(
-                    err.message,
-                    row["thrown"].as_str().unwrap(),
-                    "{label} thrown"
-                );
-                assert_eq!(
-                    is_image_moderation_error(&err.message),
-                    is_moderation,
-                    "{label} moderation verdict"
-                );
+                assert_eq!(thrown_of(&err), expected_thrown(&row), "{label} thrown");
+                if err.refusal.as_deref().is_some_and(|r| r.is_typed_refusal()) {
+                    typed_rows += 1;
+                }
             }
             other => panic!("{label}: unknown outcome {other}"),
         }
     }
 
     assert!(rows >= 25, "expected a substantial corpus, got {rows}");
+    // P4.D225 floors: the composed SDK-throw path and the typed wire rows must
+    // actually be exercised (a corpus that lost them would pass vacuously).
+    assert!(
+        sdk_throw_rows >= 15,
+        "expected the sdkThrow rows, got {sdk_throw_rows}"
+    );
+    assert!(
+        typed_rows >= 10,
+        "expected the typed wire refusals, got {typed_rows}"
+    );
     for p in ["OPENAI", "GOOGLE", "GROK", "OPENROUTER", "Z_AI"] {
         assert!(providers.contains(p), "corpus missing provider {p}");
     }
@@ -471,19 +483,90 @@ fn check_download_row(
         }
         "thrown" => {
             let err = got.expect_err(&format!("{label}: expected thrown"));
-            assert_eq!(
-                err.message,
-                row["thrown"].as_str().unwrap(),
-                "{label} thrown"
-            );
+            assert_eq!(thrown_of(&err), expected_thrown(row), "{label} thrown");
         }
         other => panic!("{label}: unknown outcome {other}"),
     }
-    assert_eq!(
-        is_image_moderation_error(row["thrown"].as_str().unwrap_or("")),
-        row["isModeration"].as_bool().unwrap(),
-        "{label} moderation verdict"
+}
+
+/// v4's recorded thrown fields, with both code slots read through
+/// `code_string` — the classifier's `collectCodes` view (a numeric `1210`
+/// and the string `"1210"` are the same code to it).
+fn expected_thrown(row: &Value) -> Value {
+    let t = &row["thrown"];
+    let mut o = Map::new();
+    o.insert("message".into(), t["message"].clone());
+    for (key, out) in [("code", "code"), ("errorCode", "errorCode")] {
+        if let Some(c) = t.get(key).and_then(code_string) {
+            o.insert(out.into(), Value::String(c));
+        }
+    }
+    if let Some(r) = t.get("providerReason") {
+        o.insert("providerReason".into(), r.clone());
+    }
+    if let Some(st) = t.get("status") {
+        o.insert("status".into(), st.clone());
+    }
+    Value::Object(o)
+}
+
+/// v5's error in the same shape: the message, and the structured refusal side
+/// when the dialect filled one.
+fn thrown_of(err: &ImageGenError) -> Value {
+    let mut o = Map::new();
+    o.insert("message".into(), Value::String(err.message.clone()));
+    if let Some(r) = err.refusal.as_deref() {
+        if let Some(c) = &r.code {
+            o.insert("code".into(), Value::String(c.clone()));
+        }
+        if let Some(c) = &r.nested_code {
+            o.insert("errorCode".into(), Value::String(c.clone()));
+        }
+        if let Some(p) = &r.provider_reason {
+            o.insert("providerReason".into(), Value::String(p.clone()));
+        }
+        if let Some(st) = r.status {
+            o.insert("status".into(), Value::from(st));
+        }
+    }
+    Value::Object(o)
+}
+
+/// An SDK provider's non-2xx, through the whole composed [`RealImageProvider`]
+/// (P4.D225): v5 fetches the wire itself, so the SDK's `APIError` and the
+/// plugin's `to*ImageModerationError` both live in v5 code that only a
+/// composed run reaches.
+fn check_sdk_throw_row(
+    row: &Value,
+    provider: &str,
+    params: &ImageGenParams,
+    built: &quilltap_core::model::request_builder::BuiltRequest,
+    label: &str,
+) {
+    let wire = &row["wire"];
+    let resp = WireResponse::new(
+        wire["status"].as_u64().unwrap() as u16,
+        wire["body"].as_str().unwrap().to_string(),
     );
+    let transport = CannedWireTransport::new().with_response(
+        &built.method,
+        &built.url,
+        &built.body_string(),
+        resp,
+    );
+    let p = RealImageProvider::with_bytes_fetch(transport, CannedImageBytes::new());
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let got = rt.block_on(p.generate_image(provider, "test-api-key", params));
+    assert_eq!(
+        row["outcome"].as_str(),
+        Some("thrown"),
+        "{label}: an sdkThrow row throws"
+    );
+    let err = got.expect_err(&format!("{label}: expected thrown"));
+    assert_eq!(thrown_of(&err), expected_thrown(row), "{label} thrown");
 }
 
 /// Standard base64 → bytes (the recorder writes the download payload as base64

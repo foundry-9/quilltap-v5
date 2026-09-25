@@ -98,7 +98,11 @@ impl ProviderKeySource for SingleKey {
 #[derive(Clone, Debug, PartialEq)]
 pub enum DecoderSelection {
     ChatCompletions(ChatCompletionsFlavor),
-    ResponsesApi,
+    /// `grok` selects Grok's raw-response `content` rendering (P4.D225 — see
+    /// `ResponsesApiSseDecoder::grok`).
+    ResponsesApi {
+        grok: bool,
+    },
     Anthropic,
     /// `thinking` = v4 `isThinkingModel(params.model)`.
     Google {
@@ -129,7 +133,12 @@ pub fn decoder_selection(provider: &str, model: &str) -> Option<DecoderSelection
             };
             DecoderSelection::ChatCompletions(flavor)
         }
-        ManifestDecoder::ResponsesApiSse => DecoderSelection::ResponsesApi,
+        ManifestDecoder::ResponsesApiSse => DecoderSelection::ResponsesApi {
+            grok: matches!(
+                crate::model::provider_io::ProviderKind::of(provider),
+                Some(crate::model::provider_io::ProviderKind::Grok)
+            ),
+        },
         ManifestDecoder::AnthropicSse => DecoderSelection::Anthropic,
         ManifestDecoder::GoogleParts => DecoderSelection::Google {
             thinking: google::is_thinking_model(model),
@@ -146,7 +155,8 @@ fn build_decoder(selection: DecoderSelection) -> Box<dyn StreamDecoder + Send> {
         DecoderSelection::ChatCompletions(flavor) => {
             Box::new(ChatCompletionsSseDecoder::new(flavor))
         }
-        DecoderSelection::ResponsesApi => Box::new(ResponsesApiSseDecoder::new()),
+        DecoderSelection::ResponsesApi { grok: false } => Box::new(ResponsesApiSseDecoder::new()),
+        DecoderSelection::ResponsesApi { grok: true } => Box::new(ResponsesApiSseDecoder::grok()),
         DecoderSelection::Anthropic => Box::new(AnthropicSseDecoder::new()),
         DecoderSelection::Google { thinking } => Box::new(GooglePartsDecoder::new(thinking)),
         DecoderSelection::Ollama { model } => Box::new(OllamaNdjsonDecoder::new(model)),
@@ -720,11 +730,11 @@ mod tests {
         );
         assert_eq!(
             decoder_selection("OPENAI", "gpt-5.2"),
-            Some(DecoderSelection::ResponsesApi)
+            Some(DecoderSelection::ResponsesApi { grok: false })
         );
         assert_eq!(
             decoder_selection("GROK", "grok-4"),
-            Some(DecoderSelection::ResponsesApi)
+            Some(DecoderSelection::ResponsesApi { grok: true })
         );
         assert_eq!(
             decoder_selection("ANTHROPIC", "claude-sonnet-4-5"),

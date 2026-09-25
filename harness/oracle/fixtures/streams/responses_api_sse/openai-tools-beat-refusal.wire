@@ -1,0 +1,3 @@
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_t","object":"response","created_at":1730000000,"model":"gpt-5","status":"completed","output":[{"type":"function_call","call_id":"call_1","name":"get_weather","arguments":"{}"},{"type":"refusal","refusal":"No."}],"usage":{"input_tokens":12,"output_tokens":0,"total_tokens":12}}}
+

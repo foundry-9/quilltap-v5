@@ -1,0 +1,6 @@
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"Once upon"}
+
+event: response.incomplete
+data: {"type":"response.incomplete","response":{"id":"resp_i","object":"response","created_at":1730000000,"model":"grok-4","status":"incomplete","incomplete_details":{"reason":"content_filter"},"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Once upon"}]}],"usage":{"input_tokens":12,"output_tokens":2,"total_tokens":14}}}
+
