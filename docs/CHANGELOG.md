@@ -12,6 +12,43 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — fix(web): the unlock throw proof poses the real write throw and core answers v4's change-passphrase 401s; the character GET looks up before its gate; the action census sees typed extractors (P4.D220, unification review)
+
+_Versions: core 0.0.1057, web 0.0.195._
+
+Three findings of the §3 review at the `b0b6656b5` unification.
+
+**The unlock "throw" proof pinned a shape v4 never produces.** P4.D220's
+`change_passphrase_throw_is_logged_and_answered_500` posed the throw by
+corrupting `quilltap.dbkey`. In v4 a corrupt file never reaches
+`runUnlockAction`'s catch: `readDbKeyFile` catches the parse error and returns
+null, `changePassphrase` returns `{success: false, error: 'No .dbkey file
+found'}`, and the route answers 401 with no log line. The only genuine throw is
+`writeDbKeyFile`. The test now poses the REAL throw (a read-only `.dbkey`: the
+read and decrypt succeed, the rewrite refuses) and pins the corrupt read as
+v4's 401 `No .dbkey file found` with the ERROR line silent. Core's
+change-passphrase outcome map is made v4's: a missing, unreadable or
+unparseable file → 401 `No .dbkey file found` (v5 had answered 400 for missing
+and 500 for corrupt); an undecryptable one → 401 `Current passphrase is
+incorrect`; only the rewrite → 500 + `Error in database key action`. A new
+`DbKeyError::Write` variant keeps the write-side I/O apart from the read side
+so the edge can tell them apart.
+
+**The character GET gated before the lookup.** v4 `characters/[id]/handlers/
+get.ts` runs `findById` → `notFound('Character')` BEFORE `dispatchAction`, so
+a bare or unknown action on a missing character is the 404; v5 answered the
+envelope. The lookup now precedes the gate; a wire arm in
+`action_dispatch_edges` pins both shapes on a missing id.
+
+**The action-sites census had the terminal route's own blind spot.** It counted
+only the `"action"` string literal, so a `Query<T>` extractor over a
+`Deserialize` struct with a field named `action` (the pre-lane
+`terminal_routes.rs` shape) passed it. The census now also scans every
+`struct … { … }` body (brace-balanced on the literal-blanked copy) for a field
+named `action` and every raw `rename = "action"`, both counted to zero; the
+old shape reddens it (mutation-proven), a function parameter or struct
+literal named `action` does not (self-test vectors).
+
 #### 2026-09-25 — test(spa): label the emoji typeahead's inline-image case as v5's own rule (P4.D224, unification review)
 
 _Versions: SPA 0.5.773._
