@@ -42,6 +42,7 @@ use crate::model::completion::{
     CompletionUsage,
 };
 use crate::services::activity_kinds::ActivityKind;
+use crate::services::dangerous_content::refusal::{classify_refusal, RefusalInput};
 use crate::services::llm_logging::{
     log_llm_call, map_task_type_to_log_type, LogContext, LogLlmCallParams, LogRequest,
     LogRequestMessage, LogResponse, LogUsage,
@@ -134,6 +135,8 @@ fn should_attempt_uncensored_fallback(
 struct ProviderResponse {
     content: String,
     usage: Option<CompletionUsage>,
+    /// The provider's stated stop reason, when it gave one (v4 `49059fb14`).
+    finish_reason: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -774,6 +777,7 @@ impl CheapLlmTaskExecutor {
             return Ok(ProviderResponse {
                 content: response.content,
                 usage: response.usage,
+                finish_reason: response.finish_reason,
             });
         }
 
@@ -802,6 +806,7 @@ impl CheapLlmTaskExecutor {
                 Ok(ProviderResponse {
                     content: response.content,
                     usage: response.usage,
+                    finish_reason: response.finish_reason,
                 })
             }
             Err(error) => {
@@ -852,6 +857,7 @@ impl CheapLlmTaskExecutor {
                     Ok(ProviderResponse {
                         content: response.content,
                         usage: response.usage,
+                        finish_reason: response.finish_reason,
                     })
                 } else {
                     // The ruled error row (see `log_failed_call`) — the
@@ -1085,6 +1091,26 @@ impl CheapLlmTaskExecutor {
                 }
             };
 
+            // An empty body the provider *said* was a moderation stop goes on
+            // the chat's refusal ledger (v4 `49059fb14`). Only a stated finish
+            // reason qualifies — an empty cheap-LLM body with no reason given is
+            // not evidence of a refusal. Recorded at v4's four placements below.
+            let empty_verdict = js_trim(&response.content).is_empty().then(|| {
+                classify_refusal(RefusalInput {
+                    finish_reason: response.finish_reason.as_deref(),
+                    empty_body: Some(true),
+                    ..Default::default()
+                })
+            });
+            let record = |rerouted: bool| {
+                self.record_cheap_refusal(
+                    selection,
+                    uncensored_fallback,
+                    empty_verdict.as_ref(),
+                    rerouted,
+                )
+            };
+
             if let Some(uncensored_selection) = should_attempt_uncensored_fallback(
                 &response.content,
                 selection,
@@ -1093,7 +1119,7 @@ impl CheapLlmTaskExecutor {
                 // v4 calls `attempt(uncensoredSelection)` here, which is the
                 // deadlined send WITHOUT the timeout retry — the retry wraps only
                 // the first call.
-                let retry = self
+                let retry = match self
                     .send_with_deadline(
                         completion,
                         &uncensored_selection,
@@ -1103,8 +1129,16 @@ impl CheapLlmTaskExecutor {
                         task_type,
                         latency,
                     )
-                    .await?;
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(retry_error) => {
+                        record(false).await;
+                        return Err(retry_error);
+                    }
+                };
                 if js_trim(&retry.content).is_empty() {
+                    record(false).await;
                     return Err(CompletionError::new(format!(
                         "Empty response from both safe provider ({}/{}) and uncensored provider ({}/{})",
                         selection.provider,
@@ -1113,7 +1147,10 @@ impl CheapLlmTaskExecutor {
                         uncensored_selection.model_name,
                     )));
                 }
+                record(true).await;
                 response = retry;
+            } else {
+                record(false).await;
             }
 
             Ok(response)
@@ -1196,6 +1233,69 @@ impl CheapLlmTaskExecutor {
                 }
             }
         }
+    }
+
+    /// v4 `recordCheapRefusal` (core-execution.ts, `49059fb14`): put a STATED
+    /// empty-body refusal on the chat's ledger. A no-op without a chat (v5's
+    /// chat id rides the log config, like the task-failed warn's) or when the
+    /// verdict did not refuse.
+    ///
+    /// The refused profile's NAME: v4 reads `uncensoredFallback?.
+    /// availableProfiles.find(p => p.id === selection.connectionProfileId)
+    /// ?.name`, falling back to `` `${provider} ${modelName}` ``. v5's
+    /// [`crate::cheap_llm::CheapLlmProfile`] carries no name (widening it
+    /// touches ~20 construction sites outside P4.D225's ownership), so the
+    /// same condition — the profile IS in the available list — gates a read of
+    /// that row's `name` from `connection_profiles`, which is where production
+    /// builds the list from. ⚠ Narrow divergence, recorded: a listed profile
+    /// with no row (only a synthetic test list can do that) falls back to the
+    /// provider/model name where v4 would use the in-memory name.
+    async fn record_cheap_refusal(
+        &self,
+        selection: &CheapLlmSelection,
+        uncensored_fallback: Option<&UncensoredFallbackOptions<'_>>,
+        verdict: Option<&crate::services::dangerous_content::refusal::RefusalVerdict>,
+        rerouted: bool,
+    ) {
+        let Some(log) = self.log.as_ref() else {
+            return;
+        };
+        let Some(chat_id) = log.chat_id.as_deref().filter(|c| !c.is_empty()) else {
+            return;
+        };
+        let Some(verdict) = verdict.filter(|v| v.refused) else {
+            return;
+        };
+        let listed = selection.connection_profile_id.as_deref().filter(|id| {
+            uncensored_fallback.is_some_and(|u| u.available_profiles.iter().any(|p| p.id == *id))
+        });
+        let listed_name = listed.and_then(|id| {
+            log.db
+                .read_main(|c| crate::db::connection_profiles::find_by_id(c, id))
+                .ok()
+                .flatten()
+                .and_then(|row| {
+                    row.get("name")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string)
+                })
+        });
+        let rec = crate::services::dangerous_content::refusal_ledger::RefusalRecord {
+            chat_id: chat_id.to_string(),
+            kind: crate::services::dangerous_content::refusal_ledger::RefusalKind::Text,
+            purpose: crate::services::dangerous_content::refusal_ledger::RefusalPurpose::Cheap,
+            refused_profile_id: selection.connection_profile_id.clone().unwrap_or_default(),
+            refused_profile_name: listed_name
+                .unwrap_or_else(|| format!("{} {}", selection.provider, selection.model_name)),
+            provider: selection.provider.clone(),
+            model_name: Some(selection.model_name.clone()),
+            evidence: verdict.evidence,
+            rerouted,
+        };
+        crate::services::dangerous_content::refusal_ledger::record_moderation_refusal(
+            &log.db, &rec,
+        )
+        .await;
     }
 
     /// v4 `attemptCheapFallbackChain` (core-execution.ts, `65f5021c8`).

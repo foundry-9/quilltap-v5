@@ -40,19 +40,60 @@
 //!   QT_ORACLE_OUT=/tmp/oracle-cheap-llm-fallback.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
 //!       --roots "$PWD" --roots "$TMPO/cases" -- "cheap-llm-fallback\.test\.ts$"
+//!   cp "$V5W/harness/oracle/cases/cheap-llm-refusal.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/cheap-llm-refusal.json"   "$TMPO/fixtures/"
+//!   QT_REFUSAL_LEDGER_SPEC=cheap-llm-refusal.json QT_FIXTURE_OUT=/tmp/qt-cheap-refusal.db \
+//!     $N/npx tsx $V5W/harness/oracle/fixtures/build-refusal-ledger-fixture.ts
+//!   QT_FIXTURE_CHEAP_REFUSAL=/tmp/qt-cheap-refusal.db \
+//!   QT_ORACLE_OUT=/tmp/oracle-cheap-llm-refusal.ndjson \
+//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+//!       --roots "$PWD" --roots "$TMPO/cases" -- "cases/cheap-llm-refusal\.test\.ts$"
 //! Run:
 //!   QT_ORACLE_CHEAP_FALLBACK=/tmp/oracle-cheap-llm-fallback.ndjson \
 //!   QT_FIXTURE_CHEAP_FALLBACK=/tmp/qt-cheapfallback-fixture.db \
+//!   QT_ORACLE_CHEAP_REFUSAL=/tmp/oracle-cheap-llm-refusal.ndjson \
+//!   QT_FIXTURE_CHEAP_REFUSAL=/tmp/qt-cheap-refusal.db \
 //!     cargo test -p quilltap-harness --test cheap_llm_fallback_equivalence -- --nocapture
+//!
+//! ## P4.D225 — the cheap-LLM refusal record (`cheap_llm_refusal_matches_oracle`)
+//!
+//! v4 `49059fb14` puts a STATED empty-body refusal from a cheap task on the
+//! chat's refusal ledger at four placements (the uncensored retry throws /
+//! answers empty / answers; no retry at all). The second test drives v4's REAL
+//! `executeCheapLLMTask` (`cheap-llm-refusal.test.ts`, only the provider and the
+//! API-key step canned) against v5's `CheapLlmTaskExecutor::execute` with the
+//! same script, on the refusal-ledger fixture shape built from
+//! `cheap-llm-refusal.json`: per case the task result and every
+//! `ConciergeRefusal` / `ConciergeRefusalLedger` line, then the `chats` +
+//! `chat_messages` dumps (one arm earns the auto-switch). Arms: the four
+//! placements, an UNSTATED empty body (classified, never recorded), a non-empty
+//! body with a safety reason (never classified), no chat, no profile id, and a
+//! profile id absent from the available list (the `${provider} ${modelName}`
+//! name fallback).
 
 use std::path::PathBuf;
+use std::sync::Mutex;
+
+mod common;
 
 use quilltap_core::cheap_llm::CheapLlmSelection;
+use quilltap_core::cheap_llm::{
+    CheapLlmProfile, DangerousContentSettings as CheapDangerSettings, UncensoredFallbackOptions,
+};
+use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::Writer;
+use quilltap_core::model::completion::{
+    CompletionError, CompletionMessage, CompletionParams, CompletionProvider, CompletionResponse,
+};
+use quilltap_core::services::cheap_llm_exec::{
+    CheapLlmLogConfig, CheapLlmTaskExecutor, CheapLlmTaskOptions,
+};
 use quilltap_core::services::cheap_llm_fallback::{
     build_cheap_fallback_selections, CheapFallbackRequest,
 };
+use quilltap_core::services::llm_logging::LogContext;
+use quilltap_core::test_support::captured_with;
 use serde_json::{json, Value};
 
 /// The settings family's pepper — this case reuses its fixture, and that family
@@ -278,4 +319,317 @@ fn set_allow_cheap_fallback(main: &std::path::Path, user_id: &str, value: bool) 
         rusqlite::params![serde_json::to_string(&bag).unwrap(), id],
     )
     .expect("write the switch");
+}
+
+// ---------------------------------------------------------------------------
+// P4.D225 — the cheap-LLM refusal record
+// ---------------------------------------------------------------------------
+
+const REFUSAL_SEED_TS: &str = "2020-01-01T00:00:00.000Z";
+
+/// The case's script, one step per provider call — v4's canned
+/// `createLLMProvider` twin.
+struct ScriptedProvider {
+    steps: Mutex<Vec<Value>>,
+}
+
+impl CompletionProvider for ScriptedProvider {
+    async fn send_message(
+        &self,
+        _provider: &str,
+        _base_url: Option<&str>,
+        _params: &CompletionParams,
+    ) -> Result<CompletionResponse, CompletionError> {
+        let mut steps = self.steps.lock().unwrap();
+        assert!(!steps.is_empty(), "the case script ran out");
+        let step = steps.remove(0);
+        if let Some(msg) = step.get("throws").and_then(Value::as_str) {
+            return Err(CompletionError::new(msg));
+        }
+        Ok(CompletionResponse {
+            content: step["content"].as_str().unwrap().to_string(),
+            finish_reason: step
+                .get("finishReason")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            usage: None,
+            attachment_results: None,
+            cache_usage: None,
+        })
+    }
+}
+
+fn snake(k: &str) -> String {
+    let mut out = String::new();
+    for c in k.chars() {
+        if c.is_ascii_uppercase() {
+            out.push('_');
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn render_v4_refusal_log(log: &Value) -> String {
+    let target = match log["service"].as_str().unwrap() {
+        "ConciergeRefusal" => "quilltap::concierge_refusal",
+        "ConciergeRefusalLedger" => "quilltap::concierge_refusal_ledger",
+        other => panic!("unexpected service {other}"),
+    };
+    let level = log["level"].as_str().unwrap().to_uppercase();
+    let mut line = format!("{level} {target} {}", log["message"].as_str().unwrap());
+    for (k, v) in log["bag"].as_object().unwrap() {
+        let rendered = match v {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        line.push_str(&format!(" {}={rendered}", snake(k)));
+    }
+    line
+}
+
+fn refusal_rows(dump: &Value) -> Vec<Value> {
+    let mut rows = dump["rows"].as_array().expect("dump rows").clone();
+    for row in rows.iter_mut() {
+        let obj = row.as_object_mut().unwrap();
+        for col in [
+            "updatedAt",
+            "lastMessageAt",
+            "dangerClassifiedAt",
+            "lastModerationRefusalAt",
+            "createdAt",
+        ] {
+            if obj
+                .get(col)
+                .and_then(Value::as_str)
+                .is_some_and(|s| s != REFUSAL_SEED_TS)
+            {
+                obj.insert(col.into(), json!("<ts>"));
+            }
+        }
+        if obj.contains_key("chatId") {
+            obj.insert("id".into(), json!("<id>"));
+        }
+        for v in obj.values_mut() {
+            if let Some(f) = v.as_f64() {
+                if v.is_f64() && f.fract() == 0.0 {
+                    *v = json!(f as i64);
+                }
+            }
+        }
+    }
+    rows
+}
+
+#[test]
+fn cheap_llm_refusal_matches_oracle() {
+    let (Ok(oracle_path), Ok(fixture)) = (
+        std::env::var("QT_ORACLE_CHEAP_REFUSAL"),
+        std::env::var("QT_FIXTURE_CHEAP_REFUSAL"),
+    ) else {
+        eprintln!("SKIP: set QT_ORACLE_CHEAP_REFUSAL + QT_FIXTURE_CHEAP_REFUSAL (see the header).");
+        return;
+    };
+    let spec: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../harness/oracle/fixtures/cheap-llm-refusal.json"),
+        )
+        .expect("read spec"),
+    )
+    .expect("parse spec");
+    let oracle: Vec<Value> = std::fs::read_to_string(&oracle_path)
+        .expect("read oracle")
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("oracle line is JSON"))
+        .collect();
+    let cases = spec["cases"].as_array().unwrap();
+    assert_eq!(
+        oracle.len(),
+        cases.len() + 3,
+        "settings + one row per case + two dumps"
+    );
+
+    // v4's Zod-parsed danger settings, as the case recorded them (the two
+    // fields the cheap path reads).
+    let recorded = &oracle[0]["dangerSettings"];
+    let danger = CheapDangerSettings {
+        mode: recorded["mode"].as_str().unwrap().into(),
+        uncensored_text_profile_id: recorded["uncensoredTextProfileId"]
+            .as_str()
+            .map(str::to_string),
+    };
+    let profiles: Vec<CheapLlmProfile> = spec["connectionProfiles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| CheapLlmProfile {
+            id: p["id"].as_str().unwrap().into(),
+            provider: p["provider"].as_str().unwrap().into(),
+            model_name: p["modelName"].as_str().unwrap().into(),
+            is_dangerous_compatible: p["isDangerousCompatible"].as_bool() == Some(true),
+            ..Default::default()
+        })
+        .collect();
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.db");
+    let ll = dir.path().join("llm-logs.db");
+    std::fs::copy(&fixture, &main).expect("copy fixture");
+    let pepper = spec["testPepperBase64"].as_str().unwrap().to_string();
+    common::materialize_llm_logs(&ll, &pepper);
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let db = rt.block_on(async {
+        Db::open(
+            DbPaths {
+                main: main.clone(),
+                mount_index: None,
+                llm_logs: Some(ll.clone()),
+            },
+            &pepper,
+        )
+        .expect("open fixture copy")
+    });
+    let plants: Vec<(String, i64, String)> = spec["ledgerPlants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            (
+                p["chatId"].as_str().unwrap().into(),
+                p["count"].as_i64().unwrap(),
+                p["lastAt"].as_str().unwrap().into(),
+            )
+        })
+        .collect();
+    rt.block_on(db.write(move |w| {
+        quilltap_core::test_support::ensure_p4d225_columns(w.main().connection());
+        for (id, count, at) in &plants {
+            w.main().connection().execute(
+                "UPDATE chats SET \"moderationRefusalCount\" = ?1, \"lastModerationRefusalAt\" = ?2 WHERE id = ?3",
+                rusqlite::params![count, at, id],
+            )?;
+        }
+        Ok(())
+    }))
+    .expect("plant the ledgers");
+
+    let user_id = spec["userId"].as_str().unwrap().to_string();
+    let mut failed: Vec<String> = Vec::new();
+    for (case, want) in cases.iter().zip(&oracle[1..]) {
+        let name = case["name"].as_str().unwrap();
+        assert_eq!(want["name"], case["name"], "oracle rows in spec order");
+        let sel = &case["selection"];
+        let selection = CheapLlmSelection {
+            provider: sel["provider"].as_str().unwrap().into(),
+            model_name: sel["modelName"].as_str().unwrap().into(),
+            connection_profile_id: sel
+                .get("connectionProfileId")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            base_url: None,
+            is_local: false,
+            profile_parameters: None,
+        };
+        let provider = ScriptedProvider {
+            steps: Mutex::new(case["script"].as_array().unwrap().clone()),
+        };
+        let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db: db.clone(),
+            user_id: user_id.clone(),
+            chat_id: case["chatId"].as_str().map(str::to_string),
+            message_id: None,
+            ctx: LogContext::none(),
+        });
+        let uncensored = UncensoredFallbackOptions {
+            danger_settings: &danger,
+            available_profiles: &profiles,
+            is_dangerous_chat: Some(false),
+        };
+        let (result, lines) = captured_with(|| {
+            rt.block_on(executor.execute(
+                &provider,
+                &selection,
+                vec![CompletionMessage::user("Summarize the scene.")],
+                |content: &str| content.to_string(),
+                (case["uncensored"].as_bool() == Some(true)).then_some(&uncensored),
+                None,
+                None,
+                Some("oracle-cheap-refusal"),
+                CheapLlmTaskOptions::default(),
+            ))
+        });
+        assert!(
+            provider.steps.lock().unwrap().is_empty(),
+            "{name}: scripted step(s) unused"
+        );
+        let got_result = json!({
+            "success": result.success,
+            "result": result.result,
+            "error": result.error,
+        });
+        let got_lines: Vec<String> = lines
+            .into_iter()
+            .filter(|l| {
+                matches!(
+                    l.split(' ').nth(1),
+                    Some("quilltap::concierge_refusal" | "quilltap::concierge_refusal_ledger")
+                )
+            })
+            .collect();
+        let want_lines: Vec<String> = want["logs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(render_v4_refusal_log)
+            .collect();
+        if got_result != want["result"] || got_lines != want_lines {
+            failed.push(format!(
+                "{name}:\n    rust   {got_result} {got_lines:#?}\n    oracle {} {want_lines:#?}",
+                want["result"]
+            ));
+        }
+    }
+
+    let got_chats = db
+        .read_main(|c| dump_table_json_conn(c, "chats", "id"))
+        .expect("dump chats");
+    let got_msgs = db
+        .read_main(|c| dump_table_json_conn(c, "chat_messages", "chatId"))
+        .expect("dump chat_messages");
+    drop(db);
+    drop(rt);
+
+    assert!(
+        failed.is_empty(),
+        "{} of {} case(s) failed:\n{}",
+        failed.len(),
+        cases.len(),
+        failed.join("\n")
+    );
+    let tables = &oracle[cases.len() + 1..];
+    assert_eq!(
+        refusal_rows(&got_chats),
+        refusal_rows(&tables[0]),
+        "chats rows diverge"
+    );
+    let want_msgs = refusal_rows(&tables[1]);
+    assert_eq!(
+        want_msgs.len(),
+        1,
+        "the switch arm posts exactly one bubble"
+    );
+    assert_eq!(
+        refusal_rows(&got_msgs),
+        want_msgs,
+        "chat_messages rows diverge"
+    );
+    eprintln!("OK cheap-llm refusal: {} cases", cases.len());
 }

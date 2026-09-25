@@ -13,6 +13,11 @@
  * migration module: `initializeDatabase` builds `chats` from the Zod schema,
  * which omits the ledger's columns.
  *
+ * `QT_REFUSAL_LEDGER_SPEC` names another spec in this directory with the same
+ * shape (default `refusal-ledger.json`) — the cheap-LLM refusal case
+ * (`cheap-llm-refusal.json`) reuses the builder and adds `connectionProfiles`,
+ * created through v4's REAL connections repository.
+ *
  * Run (Node 24, from the v4 checkout — or a pinned worktree):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   QT_FIXTURE_OUT=/tmp/qt-refusal-ledger.db \
@@ -30,11 +35,13 @@ interface Spec {
   characterId: string;
   chatSettings: Array<{ id: string; userId: string; dangerousContentSettings: Record<string, unknown> }>;
   chats: Array<Record<string, unknown> & { id: string; userId: string }>;
+  connectionProfiles?: Array<Record<string, unknown> & { id: string; userId: string }>;
 }
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
-  const spec = JSON.parse(readFileSync(join(here, 'refusal-ledger.json'), 'utf8')) as Spec;
+  const specName = process.env.QT_REFUSAL_LEDGER_SPEC ?? 'refusal-ledger.json';
+  const spec = JSON.parse(readFileSync(join(here, specName), 'utf8')) as Spec;
 
   const out = process.env.QT_FIXTURE_OUT;
   if (!out) throw new Error('QT_FIXTURE_OUT must point at the fixture .db to write');
@@ -70,6 +77,11 @@ async function main(): Promise<void> {
     );
   }
 
+  for (const p of spec.connectionProfiles ?? []) {
+    const { id, ...data } = p;
+    await repos.connections.create(data as never, { id, createdAt: ts, updatedAt: ts });
+  }
+
   let n = 0;
   for (const c of spec.chats) {
     const { id, ...rest } = c;
@@ -97,9 +109,13 @@ async function main(): Promise<void> {
     dbPath: out,
     pepperBase64: spec.testPepperBase64,
     migrations: [ADD_CHAT_REFUSAL_LEDGER],
+    // Skipped (and reported) at a pin before `49059fb14` — where v4 has no
+    // ledger either — so a family sharing this builder still regenerates its
+    // other halves at the baseline.
+    allowMissing: true,
   });
   process.stderr.write(`refusal-ledger fixture migrations: ${migrated.join('; ')}\n`);
-  process.stderr.write(`built refusal-ledger fixture: ${out} (${spec.chats.length} chats)\n`);
+  process.stderr.write(`built ${specName} fixture: ${out} (${spec.chats.length} chats)\n`);
   process.exit(0);
 }
 

@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): cheap-LLM refusals go on the chat's ledger (P4.D225 unit 7f)
+
+_Versions: core 0.0.1070, harness 0.0.989._
+
+The cheap-LLM executor now carries the provider's `finish_reason` out of
+`send_to_provider`, classifies an empty body with it, and records a STATED
+refusal on the chat's refusal ledger at v4's four placements (`49059fb14`):
+the uncensored retry throws, answers empty, or answers (`rerouted: true`), or
+no retry happens. An empty body with no stated reason is never recorded. The
+refused profile's name follows v4 — the listed profile's name, else
+`provider model` — read from `connection_profiles` because `CheapLlmProfile`
+carries no name. `cheap_llm_fallback_equivalence` gains a second test over
+v4's real `executeCheapLLMTask`: 10 cases, logs and the chats +
+chat_messages dumps matched; 9 of 10 red before the port.
+
 #### 2026-09-25 — feat(concierge): the write applier's post-commit refusal-ledger hook (P4.D225 unit 7e)
 
 _Versions: core 0.0.1069, harness 0.0.988._

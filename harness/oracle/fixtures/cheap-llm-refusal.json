@@ -1,0 +1,307 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "characterId": "bbbb2222-2222-4222-8222-222222222222",
+  "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+  "chatSettings": [
+    {
+      "id": "5e0000e1-0000-4000-8000-0000000000f0",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE"
+      }
+    }
+  ],
+  "connectionProfiles": [
+    {
+      "id": "c90000e1-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "name": "Safe Gemini",
+      "provider": "GOOGLE",
+      "modelName": "gemini-2.5-flash"
+    },
+    {
+      "id": "c90000e2-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "name": "Night Owl",
+      "provider": "OPENROUTER",
+      "modelName": "venice/uncensored",
+      "isDangerousCompatible": true
+    }
+  ],
+  "dangerSettings": {
+    "mode": "AUTO_ROUTE",
+    "uncensoredTextProfileId": "c90000e2-0000-4000-8000-000000000001"
+  },
+  "chats": [
+    {
+      "id": "c0000e01-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "title": "stated-empty-no-uncensored-fallback",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 11
+    },
+    {
+      "id": "c0000e02-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "title": "stated-empty-retry-answers",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 12
+    },
+    {
+      "id": "c0000e03-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "title": "stated-empty-retry-also-empty",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 13
+    },
+    {
+      "id": "c0000e04-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "title": "stated-empty-retry-throws",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 14
+    },
+    {
+      "id": "c0000e05-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "title": "unstated-empty-retry-answers",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 15
+    },
+    {
+      "id": "c0000e06-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "title": "non-empty-with-a-safety-reason",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 16
+    },
+    {
+      "id": "c0000e08-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "title": "stated-empty-no-profile-id",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 18
+    },
+    {
+      "id": "c0000e09-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "title": "stated-empty-earns-the-switch",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 19
+    },
+    {
+      "id": "c0000e10-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "title": "stated-empty-profile-not-listed",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 20
+    }
+  ],
+  "ledgerPlants": [
+    {
+      "chatId": "c0000e09-0000-4000-8000-000000000001",
+      "count": 1,
+      "lastAt": "2020-01-01T00:00:00.000Z"
+    }
+  ],
+  "cases": [
+    {
+      "name": "stated-empty-no-uncensored-fallback",
+      "chatId": "c0000e01-0000-4000-8000-000000000001",
+      "selection": {
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-flash",
+        "connectionProfileId": "c90000e1-0000-4000-8000-000000000001"
+      },
+      "uncensored": false,
+      "script": [
+        {
+          "content": "",
+          "finishReason": "content_filter"
+        }
+      ]
+    },
+    {
+      "name": "stated-empty-retry-answers",
+      "chatId": "c0000e02-0000-4000-8000-000000000001",
+      "selection": {
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-flash",
+        "connectionProfileId": "c90000e1-0000-4000-8000-000000000001"
+      },
+      "uncensored": true,
+      "script": [
+        {
+          "content": "",
+          "finishReason": "content_filter"
+        },
+        {
+          "content": "the understudy's answer"
+        }
+      ]
+    },
+    {
+      "name": "stated-empty-retry-also-empty",
+      "chatId": "c0000e03-0000-4000-8000-000000000001",
+      "selection": {
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-flash",
+        "connectionProfileId": "c90000e1-0000-4000-8000-000000000001"
+      },
+      "uncensored": true,
+      "script": [
+        {
+          "content": "",
+          "finishReason": "content_filter"
+        },
+        {
+          "content": "  "
+        }
+      ]
+    },
+    {
+      "name": "stated-empty-retry-throws",
+      "chatId": "c0000e04-0000-4000-8000-000000000001",
+      "selection": {
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-flash",
+        "connectionProfileId": "c90000e1-0000-4000-8000-000000000001"
+      },
+      "uncensored": true,
+      "script": [
+        {
+          "content": "",
+          "finishReason": "content_filter"
+        },
+        {
+          "throws": "understudy exploded"
+        }
+      ]
+    },
+    {
+      "name": "unstated-empty-retry-answers",
+      "chatId": "c0000e05-0000-4000-8000-000000000001",
+      "selection": {
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-flash",
+        "connectionProfileId": "c90000e1-0000-4000-8000-000000000001"
+      },
+      "uncensored": true,
+      "script": [
+        {
+          "content": ""
+        },
+        {
+          "content": "answered"
+        }
+      ]
+    },
+    {
+      "name": "non-empty-with-a-safety-reason",
+      "chatId": "c0000e06-0000-4000-8000-000000000001",
+      "selection": {
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-flash",
+        "connectionProfileId": "c90000e1-0000-4000-8000-000000000001"
+      },
+      "uncensored": true,
+      "script": [
+        {
+          "content": "fine",
+          "finishReason": "SAFETY"
+        }
+      ]
+    },
+    {
+      "name": "stated-empty-no-chat",
+      "chatId": null,
+      "selection": {
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-flash",
+        "connectionProfileId": "c90000e1-0000-4000-8000-000000000001"
+      },
+      "uncensored": true,
+      "script": [
+        {
+          "content": "",
+          "finishReason": "content_filter"
+        },
+        {
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "name": "stated-empty-no-profile-id",
+      "chatId": "c0000e08-0000-4000-8000-000000000001",
+      "selection": {
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-flash"
+      },
+      "uncensored": false,
+      "script": [
+        {
+          "content": "",
+          "finishReason": "SAFETY"
+        }
+      ]
+    },
+    {
+      "name": "stated-empty-earns-the-switch",
+      "chatId": "c0000e09-0000-4000-8000-000000000001",
+      "selection": {
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-flash",
+        "connectionProfileId": "c90000e1-0000-4000-8000-000000000001"
+      },
+      "uncensored": true,
+      "script": [
+        {
+          "content": "",
+          "finishReason": "content_filter"
+        },
+        {
+          "content": "understudy"
+        }
+      ]
+    },
+    {
+      "name": "stated-empty-profile-not-listed",
+      "chatId": "c0000e10-0000-4000-8000-000000000001",
+      "selection": {
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-flash",
+        "connectionProfileId": "c90000ef-0000-4000-8000-000000000001"
+      },
+      "uncensored": true,
+      "script": [
+        {
+          "content": "",
+          "finishReason": "content_filter"
+        },
+        {
+          "content": "ok"
+        }
+      ]
+    }
+  ]
+}

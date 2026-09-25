@@ -150455,3 +150455,52 @@ Regen outputs staged under `/tmp/p4d225/`.
   restored (cmp). Unit tests in `write_apply.rs` pin the scan, the
   after-commit order, silence on a plain batch, no check on a failed
   partition, and the stop-at-throw ERROR line.
+
+### Unit 7f — cheap-LLM `finish_reason` + `record_cheap_refusal` at the four placements
+
+- `services/cheap_llm_exec.rs`: `ProviderResponse.finish_reason` threaded
+  from all three `send_to_provider` returns; in `run`, after the first
+  response, `empty_verdict = js_trim(content).is_empty() ⇒
+  classify_refusal({finish_reason, empty_body: true})` (so the classifier's
+  DEBUG line fires on every empty body, as v4's does); NEW
+  `record_cheap_refusal(selection, uncensored_fallback, verdict, rerouted)`
+  at v4's four placements — the uncensored retry THROWS (`false`, then
+  rethrow), answers EMPTY (`false`, then the `Empty response from both…`
+  error), ANSWERS (`true`), and the no-retry `else` (`false`). No-op without
+  a chat (v5's chat id rides `CheapLlmLogConfig`, the same source the
+  task-failed warn reads) or when the verdict did not refuse; `purpose:
+  cheap`, `kind: text`, `refusedProfileId: connectionProfileId ?? ''`,
+  `modelName` always present.
+- ⚠ **Measured-wrong premise / recorded divergence: `CheapLlmProfile` carries
+  no `name`.** v4 reads `uncensoredFallback?.availableProfiles.find(p => p.id
+  === selection.connectionProfileId)?.name ?? `${provider} ${modelName}``.
+  Widening the struct touches ~20 literals in files outside P4.D225's
+  ownership (`cheap_llm.rs`, `orchestrator.rs`, `compression.rs`,
+  `answer_confirmation.rs`, `title_update_job.rs`, five other families'
+  tests), so the SAME condition (the id is in the available list) gates a read
+  of that row's `name` from `connection_profiles` — where production builds
+  the list from. Narrow divergence: a listed profile with no row (only a
+  synthetic test list) falls back to the provider/model name. Candidate for
+  the unifier or a smalls lane: add `name` to `CheapLlmProfile` and drop the
+  read.
+- **`cheap_llm_fallback_equivalence` grows `cheap_llm_refusal_matches_oracle`**
+  over v4's REAL `executeCheapLLMTask` (NEW case `cheap-llm-refusal.test.ts`;
+  only `createLLMProvider` (a per-case script) and the API-key step canned;
+  the uncensored retry, `classifyRefusal`, the ledger and the auto-switch
+  real). Fixture: the 7d builder, now spec-selectable
+  (`QT_REFUSAL_LEDGER_SPEC=cheap-llm-refusal.json`) and able to seed
+  `connectionProfiles`; `allowMissing: true` on its ledger migration. Ten
+  arms: the four placements, an UNSTATED empty body (classified `refused:
+  false`, never recorded), a non-empty body with a `SAFETY` reason (never
+  classified), no chat, no profile id (`''` + the name fallback), a profile
+  id absent from the list (the name fallback), and a planted ledger that
+  earns the auto-switch (one bubble). Also matched without asking: v4's
+  failed-task path classifies the thrown error once more (`refused: false,
+  hasError: true`) — v5's chain walk does the same. **Target: both tests
+  green through the driver (7 + 10 cases).** Pre-port (the HEAD executor):
+  **9 of 10 red** — the tenth, the non-empty body, correctly unchanged.
+  Mutations: the throw placement dropped → exactly `stated-empty-retry-
+  throws`; the listed-name read dropped → exactly the four listed-profile
+  arms. At the baseline pin the NEW half cannot regen (v4 there has no ledger
+  columns to plant) — the pre-port proof above was taken by reverting the
+  code instead; the chain-builder half is untouched.
