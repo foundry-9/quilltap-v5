@@ -150067,6 +150067,24 @@ is out of this lane's scope (the note's rule).
 Gate for the commit: `npm test` **456 files / 8,660 passed**; `npm run build`
 clean.
 
+### Unit 10: the announcement labels + the About bullet
+
+**Ported:** `system-message-labels.ts` (#73 + #77 hunks at `ce2f1dabf`):
+`KIND_DISPLAY_OVERRIDES` += `refusal: 'provider refusal'`,
+`'background-refused': 'backdrop refused'`; `inferKindFromContent`'s
+`on grounds of propriety` → `refusal` (before `danger`; it also matches the
+`set-moderated` / `auto-unmoderated` wording — harmless, those rows persist
+`systemKind: 'danger'`; transcribed verbatim) and `would not take the scene` →
+`background-refused` (after `background`, before `character-image`);
+`IMPORTANCE_TABLE` `concierge.refusal: high`, `lantern['background-refused']:
+high`. `system-message-labels` stays a hand transcription (no recorder —
+the order's ruling), with v4's `rates the Lantern's refused backdrop high,
+including legacy rows by their wording` by name plus the persisted-kind arms.
+`about-page.ts` — `AboutView.tsx`'s bullet at `4d370a90f`.
+
+**Red-first (pre-edit module, new spec):** 3 failed / 27 — exactly the three
+touched cases. Green after: 27/27 (+ the About spec).
+
 ### P4.D231 unit 1 — the build request's `groupIds` (2026-09-25)
 
 The Zod twin gains `groupIds` between `characterIds` and `chatId` (output and

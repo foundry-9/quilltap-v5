@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(spa): the refusal and refused-backdrop announcement kinds, and the About page's three-state sentence (P4.D229 unit 10)
+
+_Versions: SPA 0.5.777._
+
+The collapsed announcement bar names the Concierge's refusal bubbles
+"provider refusal" (v4 #73) and the Lantern's refused backdrop "backdrop
+refused" (v4 #77), both rated high; legacy rows without a stored kind are
+recognised by their wording, as in v4. The About page's Concierge bullet
+describes the three-state control and the Concierge's own switch after
+repeated refusals (v4 `4d370a90f`).
+
 #### 2026-09-25 — feat(spa): "Try uncensored" — the line, the picture and the Lantern's refused backdrop, over the two §S.3 verbs (P4.D229 unit 9)
 
 _Versions: SPA 0.5.776._

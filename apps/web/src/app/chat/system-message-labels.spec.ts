@@ -207,6 +207,13 @@ describe('resolveRawKind — the legacy content inference (P4.26)', () => {
       'character image',
     );
     expect(label('lantern', 'The Lantern did something.')).toBe('image');
+    // v4 #77: the refused backdrop, after `background`, before `character-image`.
+    expect(
+      label(
+        'lantern',
+        "The Lantern's usual painter (GOOGLE imagen) would not take the scene — called it improper and downed brushes.",
+      ),
+    ).toBe('backdrop refused');
 
     expect(label('aurora', 'Aurora refreshed the portrait.')).toBe('avatar');
     expect(label('aurora', 'Aurora marks an alteration.')).toBe('outfit change');
@@ -214,6 +221,13 @@ describe('resolveRawKind — the legacy content inference (P4.26)', () => {
     expect(label('aurora', 'Aurora did something.')).toBe('wardrobe');
 
     expect(label('concierge', 'anything')).toBe('danger');
+    // v4 #73: a refusal bubble known only by its wording.
+    expect(
+      label(
+        'concierge',
+        "The Concierge regrets to report that the house's usual painter (GOOGLE imagen) declined the commission for a picture on grounds of propriety.",
+      ),
+    ).toBe('provider refusal');
 
     expect(label('prospero', 'Prospero notes that the connection changed.')).toBe(
       'connection change',
@@ -336,5 +350,40 @@ describe('the inform kind (v4 e7d77bb60 — the Inform record)', () => {
 
   it('is NOT reachable by content inference — the column carries it', () => {
     expect(getSystemKindDisplayLabel(inform({ systemKind: null }))).toBe('announcement');
+  });
+});
+
+/** v4 `system-message-labels.test.ts` at `ce2f1dabf` (#73 + #77), by name. */
+describe('the Concierge-overhaul kinds (v4 8bd080267 + ce2f1dabf)', () => {
+  const ann = (
+    systemSender: NonNullable<MessageDto['systemSender']>,
+    systemKind: string | null,
+    content = 'x',
+  ): StaffFields => ({ systemSender, systemKind, content });
+
+  it("rates the Lantern's refused backdrop high, including legacy rows by their wording", () => {
+    expect(getAnnouncementImportance(ann('lantern', 'background-refused'))).toBe('high');
+    expect(
+      getAnnouncementImportance(
+        ann(
+          'lantern',
+          null,
+          "The Lantern's usual painter (GOOGLE imagen) would not take the scene — called it improper and downed brushes.",
+        ),
+      ),
+    ).toBe('high');
+  });
+
+  it("labels the persisted kinds: the Concierge's refusal and the Lantern's refused backdrop", () => {
+    expect(getSystemKindDisplayLabel(ann('concierge', 'refusal'))).toBe('provider refusal');
+    expect(getAnnouncementImportance(ann('concierge', 'refusal'))).toBe('high');
+    expect(getSystemKindDisplayLabel(ann('lantern', 'background-refused'))).toBe('backdrop refused');
+    // The persisted kind wins: a manual transition is a `danger` row, whatever
+    // its wording says.
+    expect(
+      getSystemKindDisplayLabel(
+        ann('concierge', 'danger', 'declined this conversation on grounds of propriety'),
+      ),
+    ).toBe('danger');
   });
 });

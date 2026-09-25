@@ -65,6 +65,11 @@ const KIND_DISPLAY_OVERRIDES: Record<string, string> = {
   'turn-pass': 'nothing to add',
   nudge: 'invited to speak',
   timestamp: 'time',
+  // v4 #73 (`8bd080267`): the Concierge's refusal bubbles (refusal-rerouted /
+  // -no-understudy / -not-permitted all persist `systemKind: 'refusal'`).
+  refusal: 'provider refusal',
+  // v4 #77 (`ce2f1dabf`): the Lantern's painter refused the backdrop.
+  'background-refused': 'backdrop refused',
 };
 
 export function getSystemSenderDisplayName(sender: SystemSender): string {
@@ -109,6 +114,7 @@ function inferKindFromContent(sender: NonNullable<SystemSender>, content: string
       return 'announcement';
     case 'lantern':
       if (c.includes('projected a new backdrop')) return 'background';
+      if (c.includes('would not take the scene')) return 'background-refused';
       if (c.includes('acting upon the instructions of')) return 'character-image';
       return 'image';
     case 'aurora':
@@ -117,6 +123,10 @@ function inferKindFromContent(sender: NonNullable<SystemSender>, content: string
       if (c.includes('pronounces upon their attire')) return 'opening-outfit';
       return 'wardrobe';
     case 'concierge':
+      // v4 #73. Also matches the `set-moderated` / `auto-unmoderated` wording —
+      // harmless: those rows persist `systemKind: 'danger'`, and inference
+      // runs only when the kind is absent. Transcribed verbatim.
+      if (c.includes('on grounds of propriety')) return 'refusal';
       return 'danger';
     case 'prospero':
       if (c.startsWith('Prospero notes that')) return 'connection-profile-change';
@@ -290,8 +300,14 @@ const IMPORTANCE_TABLE: Record<NonNullable<SystemSender>, Record<string, Announc
     nudge: 'medium',
     '*': 'medium',
   },
-  concierge: { danger: 'high', '*': 'high' },
-  lantern: { background: 'medium', 'character-image': 'medium', image: 'medium', '*': 'medium' },
+  concierge: { danger: 'high', refusal: 'high', '*': 'high' },
+  lantern: {
+    background: 'medium',
+    'background-refused': 'high',
+    'character-image': 'medium',
+    image: 'medium',
+    '*': 'medium',
+  },
   aurora: {
     avatar: 'medium',
     'outfit-change': 'medium',

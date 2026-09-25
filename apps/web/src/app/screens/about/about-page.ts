@@ -343,7 +343,7 @@ export class AboutPage {
     },
     {
       title: 'The Concierge – Alternative Content Provision and Routing',
-      body: 'content classification with detection, auto-routing to uncensored providers, quick-hide integration, and a four-state per-chat control (Monitored, Flagged, Vouched Safe, Uncensored) settable at creation as well as mid-conversation',
+      body: 'content classification with detection, auto-routing to uncensored providers, quick-hide integration, and a three-state per-chat control (Moderated, Unmoderated, Locked) settable at creation as well as mid-conversation, with the Concierge switching a chat himself after repeated refusals',
     },
     {
       title: 'Pascal the Croupier – Gaming',

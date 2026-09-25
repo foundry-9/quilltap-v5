@@ -99,7 +99,7 @@ describe('AboutPage (v4 app/about/AboutView.tsx)', () => {
    * v4 `e9a9c538e` (the second documentation-freshness sweep) is the ONE code
    * hunk in an otherwise-docs commit: three `<span>` bodies in `AboutView.tsx`
    * gain a clause apiece — the Lantern's LoRA adapters and per-model options,
-   * the Concierge's four-state per-chat control, and an understudy on every
+   * the Concierge's per-chat control (three states since `4d370a90f`), and an understudy on every
    * connection profile. v4 spells the Lantern's apostrophe `&apos;`, which the
    * DOM renders as U+0027 (a straight quote), not the typographic U+2019 the
    * rest of the page's prose uses — the RENDERED character is what is pinned.
@@ -112,7 +112,8 @@ describe('AboutPage (v4 app/about/AboutView.tsx)', () => {
       'AI-generated atmospheric background images derived from chat context, with LoRA adapters and per-model options taken from the provider\u0027s own advertised capabilities',
     );
     expect(text).toContain(
-      'content classification with detection, auto-routing to uncensored providers, quick-hide integration, and a four-state per-chat control (Monitored, Flagged, Vouched Safe, Uncensored) settable at creation as well as mid-conversation',
+      // v4 `4d370a90f` (#75) rewrote the Concierge sentence for the three states.
+      'content classification with detection, auto-routing to uncensored providers, quick-hide integration, and a three-state per-chat control (Moderated, Unmoderated, Locked) settable at creation as well as mid-conversation, with the Concierge switching a chat himself after repeated refusals',
     );
     expect(text).toContain(
       'Anthropic, OpenAI, Google Gemini, Grok, DeepSeek, Z.AI, NanoGPT, Ollama, OpenRouter, and OpenAI-compatible APIs, each profile able to name an understudy to take the call when its provider falls over',
