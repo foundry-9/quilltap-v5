@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): driftcheck — v4 eleven commits past the d1c06cd9d baseline
+
+_Docs-only change._
+
+Fourth drift check of the day. v4 `main` is at `83d0c969b`
+(`4.10.0-dev.79`), v4's fix for bug 170: the Salon speaker switch sent
+`set-active-speaker` as PUT instead of POST. Recorded as NO-PORT: v5 never
+had the bug, since its SPA sends the switch through the dispatch verb and
+its REST chat route has no PUT leg. The commit landed after the P4.D220–
+P4.D224 round was ordered, so the lanes' freshness probe will stop until
+the human records a waiver or the orders are re-issued. Regen rule stays
+PIN REQUIRED at `d1c06cd9d`.
+
 #### 2026-09-24 — docs(porting): order the `b0b6656b5` ten-commit drift catch-up round (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224)
 
 _Docs-only change._
