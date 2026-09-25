@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(spa): "Try uncensored" — the line, the picture and the Lantern's refused backdrop, over the two §S.3 verbs (P4.D229 unit 9)
+
+_Versions: SPA 0.5.776._
+
+Ports v4 #77's (`ce2f1dabf`) client. Three buttons, all hidden only on a
+Locked chat (not gated on the Concierge being on duty or a desk being
+configured — the server's `no-understudy` refusal covers that):
+
+- the action bar, after Regenerate and before Re-attribute, on character
+  lines only — re-rolls the line through the regeneration controller with a
+  new `request` option (`messageRetryUncensored`, the same `swipeProgress`
+  narration and swipe selection as a regenerate);
+- the `generate_image` TOOL row (every v5 mount site) — redraws the picture
+  through `chatRetryImageUncensored { toolMessageId }`;
+- the Lantern's `background-refused` bubble (v5 renders it in the expanded
+  announcement chip) — re-queues the backdrop through
+  `chatRetryImageUncensored { kind: 'background' }` and starts the backdrop
+  poll.
+
+A refusal whose message is `locked` or `no-understudy` is worded as v4 words
+it. The Salon hands the transcript one handler object for its whole life, so
+OnPush rows never re-render on an unrelated refetch. New pure module
+`chat/concierge-retry.ts` (proven by a new recorder over v4's real module at
+`acadcc7cd`) and controller `chat/concierge-retry.state.ts`; the two verbs are
+declared on the contract.
+
 #### 2026-09-25 — feat(spa): image route trails — `profileKind` / `label`, "by its wording", and the TOOL row's "Tried:" line (P4.D229 unit 8)
 
 _Versions: SPA 0.5.775._

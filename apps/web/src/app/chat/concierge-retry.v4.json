@@ -1,0 +1,164 @@
+{
+  "_source": {
+    "checkout": "quilltap-server",
+    "pin": "acadcc7cd",
+    "file": "app/salon/[id]/concierge-retry.ts"
+  },
+  "url": {
+    "chatId": "c1",
+    "messageId": "m1",
+    "out": "/api/v1/chats/c1/messages/m1?action=retry-uncensored&stream=1"
+  },
+  "refusal": [
+    {
+      "absent": true,
+      "out": null
+    },
+    {
+      "error": null,
+      "out": null
+    },
+    {
+      "error": "no-understudy",
+      "out": "There is no uncensored desk to send this to — appoint one under Settings → The Concierge."
+    },
+    {
+      "error": "locked",
+      "out": "This conversation is Locked to the usual desks; set it to Moderated should you wish the Concierge to take things elsewhere."
+    },
+    {
+      "error": "Locked",
+      "out": null
+    },
+    {
+      "error": "no-understudy ",
+      "out": null
+    },
+    {
+      "error": "LOCKED",
+      "out": null
+    },
+    {
+      "error": "",
+      "out": null
+    },
+    {
+      "error": "Chat not found",
+      "out": null
+    },
+    {
+      "error": "Only assistant messages can be retried",
+      "out": null
+    },
+    {
+      "error": "Staff and system messages cannot be regenerated",
+      "out": null
+    },
+    {
+      "error": 409,
+      "out": null
+    }
+  ],
+  "lantern": [
+    {
+      "systemSender": null,
+      "systemKind": null,
+      "out": false
+    },
+    {
+      "systemSender": null,
+      "systemKind": "background-refused",
+      "out": false
+    },
+    {
+      "systemSender": null,
+      "systemKind": "background",
+      "out": false
+    },
+    {
+      "systemSender": null,
+      "systemKind": "refusal",
+      "out": false
+    },
+    {
+      "systemSender": "lantern",
+      "systemKind": null,
+      "out": false
+    },
+    {
+      "systemSender": "lantern",
+      "systemKind": "background-refused",
+      "out": true
+    },
+    {
+      "systemSender": "lantern",
+      "systemKind": "background",
+      "out": false
+    },
+    {
+      "systemSender": "lantern",
+      "systemKind": "refusal",
+      "out": false
+    },
+    {
+      "systemSender": "concierge",
+      "systemKind": null,
+      "out": false
+    },
+    {
+      "systemSender": "concierge",
+      "systemKind": "background-refused",
+      "out": false
+    },
+    {
+      "systemSender": "concierge",
+      "systemKind": "background",
+      "out": false
+    },
+    {
+      "systemSender": "concierge",
+      "systemKind": "refusal",
+      "out": false
+    },
+    {
+      "systemSender": "aurora",
+      "systemKind": null,
+      "out": false
+    },
+    {
+      "systemSender": "aurora",
+      "systemKind": "background-refused",
+      "out": false
+    },
+    {
+      "systemSender": "aurora",
+      "systemKind": "background",
+      "out": false
+    },
+    {
+      "systemSender": "aurora",
+      "systemKind": "refusal",
+      "out": false
+    },
+    {
+      "systemSender": "host",
+      "systemKind": null,
+      "out": false
+    },
+    {
+      "systemSender": "host",
+      "systemKind": "background-refused",
+      "out": false
+    },
+    {
+      "systemSender": "host",
+      "systemKind": "background",
+      "out": false
+    },
+    {
+      "systemSender": "host",
+      "systemKind": "refusal",
+      "out": false
+    }
+  ]
+}

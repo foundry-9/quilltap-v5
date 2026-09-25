@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatDetail, MessageDto, PascalMeta } from '../core/core-contract';
 import { AnnouncementGroup } from './announcement-group';
@@ -308,5 +308,80 @@ describe('AnnouncementGroup — whisper tag', () => {
     ).nativeElement.querySelector('.qt-chat-announcement-chip');
     const srOnly = button.querySelector('.qt-chat-system-bar-whisper .sr-only');
     expect(srOnly.textContent).toBe('whispered ');
+  });
+});
+
+/**
+ * v4 `MessageRow.concierge.test.tsx` "is offered on the Lantern's refused
+ * backdrop and re-queues it" (at `ce2f1dabf`, #77). v5 renders an expanded
+ * Staff announcement HERE (not through `MessageRow`), so the button — v4's
+ * `isLanternBackgroundRefusal` gate, `systemKind` only — rides this body.
+ */
+describe('AnnouncementGroup — "Try uncensored" on the Lantern\'s refused backdrop', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function retryHandlers() {
+    return { onRetryTurn: vi.fn(), onRetryPicture: vi.fn(), onRetryBackground: vi.fn() };
+  }
+
+  function lanternChip(over: Partial<MessageDto> = {}): AnnouncementChip {
+    return chip({
+      sender: 'The Lantern',
+      kind: 'backdrop refused',
+      message: message({
+        role: 'ASSISTANT',
+        systemSender: 'lantern',
+        systemKind: 'background-refused',
+        content: "The Lantern's usual painter would not take the scene.",
+        ...over,
+      }),
+    });
+  }
+
+  function expanded(chips: AnnouncementChip[], handlers?: ReturnType<typeof retryHandlers>) {
+    TestBed.configureTestingModule({ imports: [AnnouncementGroup] });
+    const fixture = TestBed.createComponent(AnnouncementGroup);
+    fixture.componentRef.setInput('chips', chips);
+    fixture.componentRef.setInput('chatId', 'chat-1');
+    fixture.componentRef.setInput('chat', {} as ChatDetail);
+    if (handlers) fixture.componentRef.setInput('conciergeRetry', handlers);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.qt-chat-announcement-chip') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const tryButtons = (f: ComponentFixture<AnnouncementGroup>) =>
+    Array.from((f.nativeElement as HTMLElement).querySelectorAll('button')).filter(
+      (b) => b.textContent?.trim() === 'Try uncensored',
+    ) as HTMLButtonElement[];
+
+  it("is offered on the Lantern's refused backdrop and re-queues it", () => {
+    const handlers = retryHandlers();
+    const f = expanded([lanternChip()], handlers);
+    const buttons = tryButtons(f);
+    // The Staff bubble has no line to re-roll, only the backdrop to redo.
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].className).toBe('qt-button qt-button-secondary qt-button-sm');
+    buttons[0].click();
+    expect(handlers.onRetryBackground).toHaveBeenCalled();
+    expect(handlers.onRetryTurn).not.toHaveBeenCalled();
+  });
+
+  it('is absent on a Locked chat (no handlers)', () => {
+    expect(tryButtons(expanded([lanternChip()]))).toHaveLength(0);
+  });
+
+  it('reads systemKind ONLY — a legacy row known only by its wording gets no button', () => {
+    const f = expanded([lanternChip({ systemKind: null })], retryHandlers());
+    expect(tryButtons(f)).toHaveLength(0);
+  });
+
+  it("is not offered on the Lantern's ordinary backdrop announcement", () => {
+    const f = expanded(
+      [lanternChip({ systemKind: 'background', content: 'The Lantern projected a new backdrop.' })],
+      retryHandlers(),
+    );
+    expect(tryButtons(f)).toHaveLength(0);
   });
 });

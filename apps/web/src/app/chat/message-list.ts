@@ -31,6 +31,7 @@ import { ResponseStatusStrip } from './response-status-strip';
 import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 import { StreamingMessage } from './streaming-message';
 import { ToolMessage } from './tool-message';
+import type { ConciergeRetryHandlers } from './concierge-retry';
 import { isOverheardWhisper } from './whisper-visibility';
 import { Icon } from '../ui/icon';
 import { VirtualRow } from './virtual-row';
@@ -96,6 +97,7 @@ import { VirtualRow } from './virtual-row';
                     [hasLlmLogs]="messagesWithLogs().has(item.message.id)"
                     [isOverheardWhisper]="overheard(item.message)"
                     [isDangerousChat]="isDangerousChat()"
+                    [conciergeRetry]="conciergeRetry()"
                     [regeneration]="regenerationFor(item.message)"
                     [renderingPatterns]="renderingPatterns()"
                     [dialogueDetection]="dialogueDetection()"
@@ -114,12 +116,17 @@ import { VirtualRow } from './virtual-row';
                     (courierSettled)="courierSettled.emit($event)"
                   />
                 } @else if (item.type === 'tool') {
-                  <qt-tool-message [message]="item.message" [chat]="chat()" />
+                  <qt-tool-message
+                    [message]="item.message"
+                    [chat]="chat()"
+                    [onTryUncensored]="conciergeRetry()?.onRetryPicture"
+                  />
                 } @else {
                   <qt-announcement-group
                     [chips]="item.chips"
                     [chatId]="chat().id"
                     [chat]="chat()"
+                    [conciergeRetry]="conciergeRetry()"
                     [renderingPatterns]="renderingPatterns()"
                     [dialogueDetection]="dialogueDetection()"
                   />
@@ -146,6 +153,7 @@ import { VirtualRow } from './virtual-row';
               [settings]="settings()"
               [showAvatar]="showAvatars()"
               [isDangerousChat]="isDangerousChat()"
+              [conciergeRetry]="conciergeRetry()"
               [renderingPatterns]="renderingPatterns()"
               [dialogueDetection]="dialogueDetection()"
               (copyMessage)="copyMessage.emit($event)"
@@ -154,12 +162,17 @@ import { VirtualRow } from './virtual-row';
               (courierSettled)="courierSettled.emit($event)"
             />
           } @else if (item.type === 'tool') {
-            <qt-tool-message [message]="item.message" [chat]="chat()" />
+            <qt-tool-message
+                    [message]="item.message"
+                    [chat]="chat()"
+                    [onTryUncensored]="conciergeRetry()?.onRetryPicture"
+                  />
           } @else {
             <qt-announcement-group
               [chips]="item.chips"
               [chatId]="chat().id"
               [chat]="chat()"
+              [conciergeRetry]="conciergeRetry()"
               [renderingPatterns]="renderingPatterns()"
               [dialogueDetection]="dialogueDetection()"
             />
@@ -240,6 +253,12 @@ export class MessageList {
    * site, exactly as v4 applies it in `SalonView.tsx:1489`.
    */
   readonly isDangerousChat = input(false);
+  /**
+   * "Try uncensored" (v4 `VirtualizedMessageList.conciergeRetry`, #77) — handed
+   * to every row, every standalone TOOL row and every announcement group.
+   * Absent on a Locked chat.
+   */
+  readonly conciergeRetry = input<ConciergeRetryHandlers | undefined>(undefined);
   /**
    * The in-flight regeneration, if any (v4 `VirtualizedMessageList`'s
    * `regeneration` prop, `f564b0de3`). It reaches EXACTLY the row whose id it

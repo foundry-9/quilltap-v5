@@ -5802,6 +5802,10 @@ export type MemoryRequest =
   // P4.6ao/P4.6ap (folded at unification; the block at the end of this file).
   | ChatGetCostRequest
   | ChatRegenerateBackgroundRequest
+  // P4.D229 — the Concierge's "Try uncensored" (round shared contract §S.3;
+  // P4.D228 serves both).
+  | ChatRetryImageUncensoredRequest
+  | MessageRetryUncensoredRequest
   | ChatSetScenarioRequest
   // P4.6ar/P4.6as/P4.6at (folded at unification; the block at the end of this
   // file).
@@ -6543,6 +6547,38 @@ export interface ChatGetCostRequest {
 export interface ChatRegenerateBackgroundRequest {
   type: 'chatRegenerateBackground';
   chatId: string;
+}
+
+/**
+ * "Try uncensored" on a picture or the backdrop (v4 `POST
+ * /api/v1/chats/:id?action=retry-image-uncensored`, `ce2f1dabf` #77; round
+ * shared contract §S.3 — P4.D228 serves it). `body` is v4's JSON body
+ * verbatim, decoded first-branch-wins with unknown keys stripped: a picture
+ * answers 200 `{ toolMessageId, images, routeTrail }` (the new TOOL row lands
+ * at `original.createdAt + 1 ms`, so the client refetches the chat); the
+ * backdrop answers `regenerate-background`'s own `{ message, queued, jobId }`.
+ * A refusal is a dispatch error whose MESSAGE is the bare token `locked` or
+ * `no-understudy` (v4's 409).
+ */
+export interface ChatRetryImageUncensoredRequest {
+  type: 'chatRetryImageUncensored';
+  chatId: string;
+  body: { toolMessageId: string } | { kind: 'background' };
+}
+
+/**
+ * "Try uncensored" on an assistant line (v4 `POST
+ * /api/v1/chats/:id/messages/:messageId?action=retry-uncensored&stream=1`,
+ * `ce2f1dabf` #77; §S.3, RPC-only). With `stream: true` the engine emits the
+ * SAME `swipeProgress` frame family as `messageSwipe`, keyed by the target
+ * `messageId`, and the dispatch answers the new swipe (`201 { message }`).
+ * Every refusal (404 / 400 / the 409 `locked` / `no-understudy`) is a dispatch
+ * error BEFORE any frame. It never writes the chat's Concierge state.
+ */
+export interface MessageRetryUncensoredRequest {
+  type: 'messageRetryUncensored';
+  messageId: string;
+  stream?: boolean;
 }
 
 /**

@@ -35,6 +35,7 @@ import {
 import { ThinkingBlock } from './thinking-block';
 import { TokenBadge } from './token-badge';
 import { ToolMessage } from './tool-message';
+import type { ConciergeRetryHandlers } from './concierge-retry';
 
 /** The bubble variant for a message (drives the qt-chat-message-* class). */
 type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
@@ -322,7 +323,12 @@ export interface ImageClickEvent {
                  prose. -->
             <div class="qt-chat-message-tools">
               @for (tm of attachedToolMessages(); track tm.id) {
-                <qt-tool-message [embedded]="true" [message]="tm" [chat]="chat()" />
+                <qt-tool-message
+                  [embedded]="true"
+                  [message]="tm"
+                  [chat]="chat()"
+                  [onTryUncensored]="conciergeRetry()?.onRetryPicture"
+                />
               }
             </div>
           }
@@ -389,6 +395,25 @@ export interface ImageClickEvent {
                     (click)="regenerate.emit(message())"
                   >
                     <qt-icon name="refresh" class="w-4 h-4" />
+                  </button>
+                </qt-tooltip>
+              }
+              <!-- Try uncensored (v4 MessageActionBar.tsx, #77 ce2f1dabf) —
+                   immediately after Regenerate, before Re-attribute, as v4
+                   orders it. Character lines only (never the operator's, never
+                   a Staff row), and ABSENT on a Locked chat, where the Salon
+                   hands down no handlers. -->
+              @if (
+                message().role === 'ASSISTANT' && !message().systemSender && conciergeRetry()
+              ) {
+                <qt-tooltip content="Try uncensored — regenerate on the Concierge's uncensored desk">
+                  <button
+                    type="button"
+                    class="qt-chat-message-action-icon"
+                    aria-label="Try uncensored"
+                    (click)="conciergeRetry()!.onRetryTurn(message().id)"
+                  >
+                    <qt-icon name="shield" class="w-4 h-4" />
                   </button>
                 </qt-tooltip>
               }
@@ -537,6 +562,12 @@ export class MessageRow {
    * badge, so v5's user site stays unpainted too.
    */
   readonly isDangerousChat = input(false);
+  /**
+   * "Try uncensored" (v4 `conciergeRetry`, #77): "Absent on a Locked chat,
+   * which hides every such button." Compared by IDENTITY (OnPush), so the Salon
+   * hands down one stable object — see `SalonConversation.conciergeRetry`.
+   */
+  readonly conciergeRetry = input<ConciergeRetryHandlers | undefined>(undefined);
   /**
    * Set only on the one message currently being re-rolled (v4 MessageRow's
    * `regeneration` prop, `f564b0de3`). While it is here the row shows the

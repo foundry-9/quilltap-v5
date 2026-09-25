@@ -13,6 +13,7 @@ import {
   type PascalOutcomeState,
 } from './system-message-labels';
 import { ToolMessage } from './tool-message';
+import { isLanternBackgroundRefusal, type ConciergeRetryHandlers } from './concierge-retry';
 
 /**
  * A packed row of collapsed Staff announcement chips (v4 `qt-chat-announcement-group`).
@@ -83,7 +84,11 @@ import { ToolMessage } from './tool-message';
         <!-- A user-initiated Prospero tool run: the expanded chip shows the full
              tool card (v4 renders the standalone MessageRow → ToolMessage for an
              expanded TOOL announcement). -->
-        <qt-tool-message [message]="chip.message" [chat]="chat()" />
+        <qt-tool-message
+          [message]="chip.message"
+          [chat]="chat()"
+          [onTryUncensored]="conciergeRetry()?.onRetryPicture"
+        />
       } @else {
         <div class="qt-chat-message-row qt-chat-message-row-assistant">
           <div class="qt-chat-message-body">
@@ -108,6 +113,23 @@ import { ToolMessage } from './tool-message';
                   <qt-terminal-embed [sessionId]="sid" [chatId]="chatId()" />
                 </div>
               }
+              <!-- The Lantern's painter refused the backdrop: offer the
+                   uncensored desk, hidden on a Locked chat (v4 MessageRow.tsx
+                   :478-489, #77 ce2f1dabf — right after the terminal embed).
+                   v5 renders an expanded Staff announcement HERE rather than
+                   through a MessageRow, so the button rides this body; it is
+                   the only button on the staff bubble, as in v4. -->
+              @if (conciergeRetry() && isLanternRefusal(chip)) {
+                <div class="mt-2">
+                  <button
+                    type="button"
+                    class="qt-button qt-button-secondary qt-button-sm"
+                    (click)="conciergeRetry()!.onRetryBackground()"
+                  >
+                    Try uncensored
+                  </button>
+                </div>
+              }
             </div>
           </div>
         </div>
@@ -130,6 +152,13 @@ export class AnnouncementGroup {
    */
   readonly renderingPatterns = input<RenderingPattern[] | undefined>(undefined);
   readonly dialogueDetection = input<DialogueDetection | null | undefined>(undefined);
+  /** "Try uncensored" (#77) — absent on a Locked chat. */
+  readonly conciergeRetry = input<ConciergeRetryHandlers | undefined>(undefined);
+
+  /** v4 `isLanternBackgroundRefusal` — `systemKind` only, no content sniff. */
+  protected isLanternRefusal(chip: AnnouncementChip): boolean {
+    return isLanternBackgroundRefusal(chip.message);
+  }
 
   /**
    * The chat's blob mount point, threaded to the expanded body's markdown img

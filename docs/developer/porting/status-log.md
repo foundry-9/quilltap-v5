@@ -149992,6 +149992,81 @@ Green after: 51/51.
 `image trails (Concierge overhaul)` cases transcribed by name; three v5 arms
 for the TOOL row (name-labelled, not gated, absent on null/empty).
 
+### Unit 9: "Try uncensored" ×3 + the controller over §S.3
+
+**Regen (as run):** probe PASSED; NEW `harness/oracle/cases/concierge-retry.mjs`
+(`QT_V4_PIN=acadcc7cd`, `git show acadcc7cd:app/salon/[id]/concierge-retry.ts`
+→ type stripping) → `apps/web/src/app/chat/concierge-retry.v4.json`: 12
+`describeRetryRefusal` rows (only `no-understudy` / `locked` word — the case
+and whitespace variants, `''`, `null`, absent, a number and the three
+retry-verb 404/400 messages all `null`), 20 `isLanternBackgroundRefusal` rows
+(exactly ONE true: lantern × background-refused), v4's URL
+`/api/v1/chats/c1/messages/m1?action=retry-uncensored&stream=1` recorded for
+the id mapping.
+
+**Ported (v4 at `ce2f1dabf`):** `concierge-retry.ts` (v4's
+`retryUncensoredTurnUrl` → `retryUncensoredTurnRequest` — v5 has no URL, §S.3's
+`messageRetryUncensored { messageId, stream: true }`; the chat id rides the
+message — a recorded transport divergence); `useConciergeRetry.ts` →
+`chat/concierge-retry.state.ts` (a plain class the Salon constructs once;
+in-flight Set per tool id; the info toast BEFORE the dispatch; refetch then the
+success toast; the backdrop's `notifyQueueChange()` + the story-background
+poll; failures `describeRetryRefusal(message) || message || fallback`);
+`useRegeneration.ts`'s `RegenerateOptions` → `RegenerationController.regenerate
+(…, options?: { request })` + the 409 mapping by the dispatch error's MESSAGE
+(v4 reads `info.error` on a 409; v5 has no status on a rejected dispatch, and
+an ordinary swipe's errors never carry either token); `MessageActionBar.tsx`'s
+button (shield, `aria-label="Try uncensored"`, v4's tooltip copy, after
+Regenerate / before Re-attribute — measured by a spec over the rendered bar);
+`ToolMessage.tsx`'s button (handler present AND `toolName === 'generate_image'`)
+on EVERY v5 ToolMessage mount site (the one folded site in `message-row.ts`, the
+two standalone sites in `message-list.ts`, the expanded TOOL announcement —
+v4 has two folded sites + one standalone; recorded); `MessageRow.tsx`'s Lantern
+button → `announcement-group.ts`'s expanded body, after the terminal embed
+(v5 renders an expanded Staff announcement there, not through a MessageRow —
+recorded; still the only button on the staff bubble); `SalonView.tsx:776-808`'s
+memoised handlers → ONE constant `ConciergeRetryHandlers` object behind a
+boolean `computed` (present iff a chat exists and it is not Locked), so the
+object identity survives every refetch.
+
+**Contract:** `ChatRetryImageUncensoredRequest { chatId, body: {toolMessageId}
+| {kind:'background'} }` and `MessageRetryUncensoredRequest { messageId,
+stream? }` on the Request union (§S.3's shapes verbatim; P4.D228 serves). No
+Rust guard cross-checks the TS union (measured: the four `*_wire_contract.rs`
+files name `core-contract.ts` in comments only).
+
+**v4 test names transcribed:** `concierge-retry.test.ts` (3, "builds the
+narrated retry URL" → "…request"); `MessageRow.concierge.test.tsx`'s five
+"Try uncensored" cases (the Lantern one on `announcement-group.spec.ts`); the
+"Not Dangerous" blur half has NO counterpart (E.1). v5 arms: the Staff-row
+absence, the bar order, the tooltip copy, the frames/selection/refusal words on
+the retry request, the controller's arms (v4 ships no hook test), the Salon's
+identity pin, Locked withdraws and restores the SAME object, offered off duty.
+
+**Mutation proofs:** M3 (gate the handlers on on-duty) → exactly `is offered
+whether or not the Concierge is on duty` (1/146); M7 (sniff the content for the
+Lantern button) → exactly `reads systemKind ONLY — a legacy row known only by
+its wording gets no button` (1/19) — first run reddened a SECOND case whose
+fixture reused the refusal wording on a `background` row; the fixture was
+corrected and the proof re-run (1/19); the identity pin (build a fresh object
+per recompute) → exactly the two identity cases (2/146). M6 (print `modelName`
+on an image row) → the four image-label rows (`labels an image profile…`,
+collapse `image-trail`, collapse `image-collapse`, the TOOL row's "Tried:"
+name case; 4/75). **M8 SURVIVES in both forms, measured:** keeping a
+`.qt-danger-badge-info` rule (`npm run lint`: 957 classes, green) and planting
+`qt-danger-badge-info qt-concierge-mark-info` references into a returned class
+string (956, green) — `check-qt-classes` deliberately does not police bare
+component classes (memory `check-qt-classes-ignores-a-bare-component-class`),
+so the order's "keep one `-info` rule → `check-qt-classes` reds" premise is
+wrong. The real pins for the `-info` retirement are the compile-time
+`conciergeToneSuffix(): '' | '-muted'`, the presentation oracle's
+"records no tone beyond the three", and the gated `concierge-marks-flow` beat
+(no `-info` modifier in the DOM). Recorded for the unifier; widening the guard
+is out of this lane's scope (the note's rule).
+
+Gate for the commit: `npm test` **456 files / 8,660 passed**; `npm run build`
+clean.
+
 ### P4.D231 unit 1 — the build request's `groupIds` (2026-09-25)
 
 The Zod twin gains `groupIds` between `characterIds` and `chatId` (output and

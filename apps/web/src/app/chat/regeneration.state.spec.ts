@@ -318,3 +318,97 @@ describe('RegenerationController (v4 useRegeneration @ f45a517a9)', () => {
     await tick();
   });
 });
+
+/**
+ * v4 `useRegeneration.ts` at `ce2f1dabf` (#77): `RegenerateOptions` — "Try
+ * uncensored" streams from a different endpoint with the same narration and
+ * the same swipe; a 409 names the Concierge's refusal (`describeRetryRefusal`)
+ * and falls through to the raw error. v5 swaps the REQUEST (§S.3's
+ * `messageRetryUncensored`), and the refusal token is the dispatch error's
+ * message.
+ */
+describe('RegenerationController — "Try uncensored" (v4 useRegeneration @ ce2f1dabf)', () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(((cb: FrameRequestCallback) =>
+      setTimeout(() => cb(0), 0) as unknown as number) as typeof requestAnimationFrame);
+    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(((id: number) =>
+      clearTimeout(id)) as typeof cancelAnimationFrame);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
+  });
+
+  const RETRY = { type: 'messageRetryUncensored', messageId: 'm-1', stream: true } as const;
+
+  it('dispatches the retry request in place of messageSwipe, with the same plate', async () => {
+    const h = harness();
+    void h.controller.regenerate('m-1', async () => {}, undefined, { request: RETRY });
+    await tick();
+    expect(h.calls).toEqual([RETRY]);
+    expect(h.controller.regenerationStatus()).toEqual({
+      stage: 'regenerating',
+      message: 'Regenerating...',
+    });
+    h.settle();
+    await tick();
+  });
+
+  it('narrates the SAME swipeProgress frames, keyed by the message id, and selects the new swipe', async () => {
+    const h = harness();
+    const selected: string[] = [];
+    let refetched = 0;
+    const run = h.controller.regenerate(
+      'm-1',
+      async () => {
+        refetched += 1;
+      },
+      (id) => selected.push(id),
+      { request: RETRY },
+    );
+    await tick();
+    h.stream.frames.next(frame('m-1', { status: { stage: 'rerouting', message: 'Rerouting…' } }));
+    await tick();
+    expect(h.controller.regenerationStatus()).toEqual({ stage: 'rerouting', message: 'Rerouting…' });
+    h.stream.frames.next(frame('m-1', { content: 'On the uncensored desk' }));
+    await tick();
+    expect(h.controller.regeneration()!.content).toBe('On the uncensored desk');
+    h.stream.frames.next(frame('m-1', { done: true, message: { id: 'swipe-new', content: 'On the uncensored desk.' } }));
+    h.settle();
+    await run;
+    expect(refetched).toBe(1);
+    expect(selected).toEqual(['swipe-new']);
+  });
+
+  for (const [token, sentence] of [
+    [
+      'no-understudy',
+      'There is no uncensored desk to send this to — appoint one under Settings → The Concierge.',
+    ],
+    [
+      'locked',
+      'This conversation is Locked to the usual desks; set it to Moderated should you wish the Concierge to take things elsewhere.',
+    ],
+  ] as const) {
+    it(`words the ${token} refusal (the dispatch error's message) before any frame`, async () => {
+      const h = harness();
+      const run = h.controller.regenerate('m-1', async () => {}, undefined, { request: RETRY });
+      await tick();
+      h.settle(new Error(token));
+      await run;
+      expect(TestBed.inject(ToastService).toasts().map((t) => t.message)).toEqual([sentence]);
+      expect(h.controller.regeneration()).toBeNull();
+    });
+  }
+
+  it('falls through to the raw message for any other refusal', async () => {
+    const h = harness();
+    const run = h.controller.regenerate('m-1', async () => {}, undefined, { request: RETRY });
+    await tick();
+    h.settle(new Error('Staff and system messages cannot be regenerated'));
+    await run;
+    expect(TestBed.inject(ToastService).toasts().map((t) => t.message)).toEqual([
+      'Staff and system messages cannot be regenerated',
+    ]);
+  });
+});

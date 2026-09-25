@@ -69,7 +69,12 @@ import {
 } from '../../chat/impersonation-voice/impersonation-voice.state';
 import { ComposeMailDialog, type ComposeMailParticipant } from '../../chat/post-office/compose-mail-dialog';
 import { InformDialog, type InformAudienceCandidate } from '../../chat/inform-dialog';
-import { RegenerationController } from '../../chat/regeneration.state';
+import { ConciergeRetryController } from '../../chat/concierge-retry.state';
+import {
+  retryUncensoredTurnRequest,
+  type ConciergeRetryHandlers,
+} from '../../chat/concierge-retry';
+import { RegenerationController, type RegenerateOptions } from '../../chat/regeneration.state';
 import { InsertAnnouncementDialog } from '../../chat/post-office/insert-announcement-dialog';
 import type { AudienceCandidate } from '../../chat/post-office/post-office.api';
 import { WhisperDialog } from '../../chat/post-office/whisper-dialog';
@@ -429,6 +434,7 @@ interface CascadePrompt {
           [messagesWithLogs]="messagesWithLogs()"
           [userParticipantIds]="userParticipantIdSet()"
           [isDangerousChat]="isDangerousChat()"
+          [conciergeRetry]="conciergeRetry()"
           [regeneration]="regeneration.regeneration()"
           [regenerationStatus]="regeneration.regenerationStatus()"
           (viewLlmLogs)="onViewLlmLogs($event)"
@@ -1322,6 +1328,53 @@ export class SalonConversation {
     }
   });
 
+  /** v4 `startBackgroundPolling` — the watch `onRegenerateBackground` starts after a queue. */
+  private startBackgroundPolling(): void {
+    this.poller.start(this.backgroundVar(), async () =>
+      (await this.backgroundQuery.refetch()).data ?? null,
+    );
+  }
+
+  // --- "Try uncensored" (v4 SalonView.tsx:776-808 + useConciergeRetry, #77 ce2f1dabf) ---
+
+  /** The picture + backdrop retries (v4 `useConciergeRetry(id, fetchChat, startBackgroundPolling)`). */
+  private readonly conciergeRetryController = new ConciergeRetryController({
+    core: this.core,
+    toasts: this.toasts,
+    chatId: () => this.chatId() || null,
+    refetchChat: async () => {
+      await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
+    },
+    startBackgroundPolling: () => this.startBackgroundPolling(),
+  });
+
+  /**
+   * ONE handler object for the life of the Salon: every transcript row is
+   * OnPush and compares it by identity, so it must not be rebuilt on a chat
+   * refetch (v4 memoises on `[hasChat, chatIsLocked, …]` for the same reason).
+   * The handlers read the chat id at call time.
+   */
+  private readonly conciergeRetryHandlers: ConciergeRetryHandlers = {
+    onRetryTurn: (messageId) =>
+      this.regenerateLine(messageId, { request: retryUncensoredTurnRequest(messageId) }),
+    onRetryPicture: (toolMessageId) => void this.conciergeRetryController.retryPicture(toolMessageId),
+    onRetryBackground: () => void this.conciergeRetryController.retryBackground(),
+  };
+
+  /**
+   * v4's gate is the chat's state ALONE — present unless there is no chat or
+   * it is Locked; NOT on duty, NOT "a desk is configured" (the server's 409
+   * `no-understudy` is how a missing desk surfaces). A boolean computed first,
+   * so a refetch that leaves the answer unchanged propagates nothing.
+   */
+  private readonly conciergeRetryOffered = computed(() => {
+    const chat = this.chat();
+    return !!chat && getConciergeState(chat) !== 'locked';
+  });
+  protected readonly conciergeRetry = computed<ConciergeRetryHandlers | undefined>(() =>
+    this.conciergeRetryOffered() ? this.conciergeRetryHandlers : undefined,
+  );
+
   protected async onRegenerateBackground(): Promise<void> {
     const chatId = this.chatId();
     if (!chatId) return;
@@ -1334,9 +1387,7 @@ export class SalonConversation {
       // v4 `useChatControls` (:410) wakes the queue badges — the regeneration
       // rides the STORY_BACKGROUND_GENERATION queue.
       notifyQueueChange();
-      this.poller.start(this.backgroundVar(), async () =>
-        (await this.backgroundQuery.refetch()).data ?? null,
-      );
+      this.startBackgroundPolling();
     } catch (error) {
       // v4 surfaces the server's own message (`errorData.error`) — that is how
       // the §2 badRequest strings ("Story backgrounds are not enabled. …") reach
@@ -4272,8 +4323,17 @@ export class SalonConversation {
    * this one, so the regeneration names the variant it just made.
    */
   protected onRegenerate(message: MessageDto): void {
+    this.regenerateLine(message.id);
+  }
+
+  /**
+   * The regeneration's two Salon callbacks, shared by the ordinary re-roll and
+   * "Try uncensored" (v4 passes the SAME `fetchChat` / `selectSwipeVariant` to
+   * both — the retry is "same narration, same swipe, a different desk").
+   */
+  private regenerateLine(messageId: string, options?: RegenerateOptions): void {
     void this.regeneration.regenerate(
-      message.id,
+      messageId,
       async () => {
         await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
         // v4's `fetchChat` writes `setSwipeStates` before it resolves, so its
@@ -4292,6 +4352,7 @@ export class SalonConversation {
         const next = selectSwipeVariant(this.transcriptSwipeStates(), newSwipeId);
         if (next) this.transcriptSwipeStates.set(next);
       },
+      options,
     );
   }
 

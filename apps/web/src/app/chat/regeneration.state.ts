@@ -1,9 +1,14 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
-import { isSwipeProgressEvent, type ResponseStatus } from '../core/core-contract';
+import {
+  isSwipeProgressEvent,
+  type MessageRetryUncensoredRequest,
+  type ResponseStatus,
+} from '../core/core-contract';
 import { notifyQueueChange } from '../layout/queue-status.logic';
 import { ToastService } from '../ui/toast.service';
+import { describeRetryRefusal } from './concierge-retry';
 
 /** What the message row needs to render a line that is being re-rolled. */
 export interface RegenerationState {
@@ -23,6 +28,17 @@ export interface RegenerationState {
 
 /** v4's default failure sentence, used for every arm that has nothing better. */
 const FAILED = 'Failed to generate alternative response';
+
+/**
+ * v4 `RegenerateOptions` (`useRegeneration.ts` at `ce2f1dabf`, #77): "Stream
+ * from this endpoint instead of the ordinary swipe. The Concierge's "Try
+ * uncensored" uses it: same narration, same swipe, a different desk." v4
+ * swaps a URL; v5 swaps the dispatch REQUEST — §S.3's `messageRetryUncensored`
+ * emits the same `swipeProgress` frames keyed by the same message id.
+ */
+export interface RegenerateOptions {
+  request?: MessageRetryUncensoredRequest;
+}
 
 /**
  * Regeneration — the live re-roll of a line that has already been spoken (v4
@@ -124,11 +140,14 @@ export class RegenerationController {
    *   refetch lands. Without it the operator would watch a line arrive and then
    *   be shown a different one, because reconciliation carries their previous
    *   swipe selection (v4 bug (b)).
+   * @param options `request` replaces the ordinary `messageSwipe` dispatch —
+   *   "Try uncensored" (see {@link RegenerateOptions}).
    */
   async regenerate(
     messageId: string,
     refetch: () => Promise<void>,
     selectSwipeVariant?: (newSwipeId: string) => void,
+    options?: RegenerateOptions,
   ): Promise<void> {
     if (this.inFlight) return;
     this.inFlight = true;
@@ -176,7 +195,7 @@ export class RegenerationController {
 
     try {
       const answered = await this.core
-        .dispatchData({ type: 'messageSwipe', messageId, stream: true })
+        .dispatchData(options?.request ?? { type: 'messageSwipe', messageId, stream: true })
         .finally(() => sub.unsubscribe());
 
       if (streamError) throw new Error(streamError);
@@ -199,7 +218,14 @@ export class RegenerationController {
       if (newSwipeId) selectSwipeVariant?.(newSwipeId);
       notifyQueueChange();
     } catch (err) {
-      this.toasts.showError((err instanceof Error && err.message) || FAILED);
+      // v4 (`useRegeneration.ts:136` at `ce2f1dabf`): a 409 names the Concierge's refusal in
+      // words — `describeRetryRefusal(info.error)` — falling through to the raw
+      // error, then the default. Over v5's dispatch the refusal arrives as the
+      // error's MESSAGE (the bare `locked` / `no-understudy` token, §S.3), so it
+      // is mapped by message; an ordinary swipe's errors never carry either
+      // token, so the swipe path is unchanged.
+      const message = err instanceof Error ? err.message : '';
+      this.toasts.showError(describeRetryRefusal(message) || message || FAILED);
     } finally {
       this.cancelPendingFlush();
       this.contentBuffer = '';

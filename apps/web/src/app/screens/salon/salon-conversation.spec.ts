@@ -4351,3 +4351,100 @@ describe('SalonConversation — the Salon Images switch (v4 e3937d7aa)', () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * P4.D229 — "Try uncensored"'s handlers (v4 `SalonView.tsx:776-808` at
+ * `ce2f1dabf`, #77). v4's gate is the chat's state ALONE: absent only with no
+ * chat or on Locked — NOT on duty, NOT "a desk is configured". And the object
+ * is identity-stable: every transcript row compares it by reference.
+ */
+describe('SalonConversation — the "Try uncensored" handlers', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function mutableClient(
+    events$: Subject<ScopedEvent>,
+    settings: Record<string, unknown> = {},
+  ): { client: Partial<CoreClient>; current: { chat: ChatDetail } } {
+    const current = { chat: { ...chatDetail(), title: 'First' } as ChatDetail };
+    const client = stubClient(current.chat, events$);
+    const inner = client.dispatch!;
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      if (req.type === 'chatGet') return { type: 'chat', data: { chat: current.chat } };
+      if (req.type === 'chatSettings') {
+        return { type: 'chatSettings', data: { avatarDisplayMode: 'ALWAYS', ...settings } } as CoreResponse;
+      }
+      return inner(req);
+    });
+    client.dispatch = dispatch as unknown as CoreClient['dispatch'];
+    client.dispatchExpect = (async (req: CoreRequest, expect: string) => {
+      const resp = await dispatch(req);
+      if (resp.type !== expect) throw new Error(`unexpected ${resp.type}`);
+      return resp;
+    }) as CoreClient['dispatchExpect'];
+    return { client, current };
+  }
+
+  async function refetch(fixture: ComponentFixture<SalonConversation>): Promise<void> {
+    await TestBed.inject(QueryClient).invalidateQueries({ queryKey: chatKeys.detail('chat-1') });
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  type Inst = { conciergeRetry(): unknown; chat(): ChatDetail | null };
+
+  it('hands the list ONE object that survives an unrelated chat refetch', async () => {
+    const { client, current } = mutableClient(new Subject<ScopedEvent>());
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as Inst;
+    const first = inst.conciergeRetry();
+    expect(first).toBeDefined();
+    const list = fixture.debugElement.query(By.css('qt-message-list')).componentInstance as {
+      conciergeRetry(): unknown;
+    };
+    expect(list.conciergeRetry()).toBe(first);
+
+    current.chat = { ...current.chat, title: 'Second' };
+    await refetch(fixture);
+    expect(inst.chat()!.title).toBe('Second');
+    expect(inst.conciergeRetry()).toBe(first);
+  });
+
+  it('withdraws every handler on a Locked chat, and restores the same object after', async () => {
+    const { client, current } = mutableClient(new Subject<ScopedEvent>());
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as Inst;
+    const first = inst.conciergeRetry();
+
+    current.chat = { ...current.chat, conciergeState: 'locked', conciergeSetBy: 'operator', conciergeReason: 'manual' };
+    await refetch(fixture);
+    expect(inst.conciergeRetry()).toBeUndefined();
+
+    current.chat = { ...current.chat, conciergeState: 'unmoderated' };
+    await refetch(fixture);
+    expect(inst.conciergeRetry()).toBe(first);
+  });
+
+  it('is offered whether or not the Concierge is on duty — the state alone gates it', async () => {
+    const { client } = mutableClient(new Subject<ScopedEvent>(), { conciergeSettings: { enabled: false } });
+    const fixture = await render(client);
+    expect((fixture.componentInstance as unknown as Inst).conciergeRetry()).toBeDefined();
+  });
+
+  it('the line retry streams §S.3’s messageRetryUncensored through the regeneration controller', async () => {
+    const { client } = mutableClient(new Subject<ScopedEvent>());
+    const fixture = await render(client);
+    const handlers = (fixture.componentInstance as unknown as Inst).conciergeRetry() as {
+      onRetryTurn(id: string): void;
+    };
+    handlers.onRetryTurn('m-1');
+    await new Promise((r) => setTimeout(r, 0));
+    const dispatchData = client.dispatchData as unknown as { mock: { calls: unknown[][] } };
+    expect(dispatchData.mock.calls.map((c) => c[0])).toContainEqual({
+      type: 'messageRetryUncensored',
+      messageId: 'm-1',
+      stream: true,
+    });
+  });
+});

@@ -1165,3 +1165,120 @@ describe('MessageRow — the Salon Images switch (v4 e3937d7aa)', () => {
     expect(event).toEqual({ src: '/api/v1/files/file-9', filename: 'sketch.png', fileId: 'file-9' });
   });
 });
+
+/**
+ * v4 `MessageRow.concierge.test.tsx` `MessageRow — "Try uncensored"` (at
+ * `ce2f1dabf`, #77), by name. The Lantern case lives in
+ * `announcement-group.spec.ts`: v5 renders an expanded Staff announcement
+ * there, not through this row. v4's `"Not Dangerous" clears the blur` half has
+ * NO counterpart — v5 has no message danger-flag UI (ruled out of scope, E.1).
+ */
+describe('MessageRow — "Try uncensored"', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function retryHandlers() {
+    return { onRetryTurn: vi.fn(), onRetryPicture: vi.fn(), onRetryBackground: vi.fn() };
+  }
+
+  const tryButtons = (f: ComponentFixture<MessageRow>) =>
+    Array.from(
+      (f.nativeElement as HTMLElement).querySelectorAll('button'),
+    ).filter(
+      (b) => b.getAttribute('aria-label') === 'Try uncensored' || b.textContent?.trim() === 'Try uncensored',
+    ) as HTMLButtonElement[];
+
+  it('is offered on a character line and re-rolls it', () => {
+    const handlers = retryHandlers();
+    const f = render(message({ id: 'msg-1' }), { conciergeRetry: handlers });
+    const [button] = tryButtons(f);
+    expect(button.getAttribute('aria-label')).toBe('Try uncensored');
+    expect(button.querySelector('qt-icon span[data-icon]')?.getAttribute('data-icon')).toBe('shield');
+    button.click();
+    expect(handlers.onRetryTurn).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('is absent on a Locked chat (no handlers)', () => {
+    const f = render(message({ id: 'msg-1' }));
+    expect(tryButtons(f)).toHaveLength(0);
+  });
+
+  it("is absent on the operator's own lines", () => {
+    const f = render(message({ id: 'msg-1', role: 'USER' }), { conciergeRetry: retryHandlers() });
+    expect(tryButtons(f)).toHaveLength(0);
+  });
+
+  it('is absent on a Staff row, which has no line to re-roll', () => {
+    const f = render(
+      message({ id: 'msg-1', systemSender: 'carina', systemKind: 'answer', participantId: null }),
+      { conciergeRetry: retryHandlers() },
+    );
+    expect(tryButtons(f)).toHaveLength(0);
+  });
+
+  it('sits immediately after Regenerate and before Re-attribute, as v4 orders it', () => {
+    const chat = chatDetail();
+    chat.participants = [participant({ id: 'p1' }), participant({ id: 'p2', character: { id: 'char2', name: 'Mara', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } })];
+    TestBed.configureTestingModule({
+      imports: [MessageRow],
+      providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn() } }],
+    });
+    const f = TestBed.createComponent(MessageRow);
+    f.componentRef.setInput('message', message({ id: 'msg-1' }));
+    f.componentRef.setInput('chat', chat);
+    f.componentRef.setInput('conciergeRetry', retryHandlers());
+    f.detectChanges();
+    const labels = Array.from(
+      (f.nativeElement as HTMLElement).querySelectorAll('.qt-chat-message-action-bar button'),
+    ).map((b) => b.getAttribute('aria-label'));
+    const at = labels.indexOf('Try uncensored');
+    expect(labels[at - 1]).toBe('Regenerate response');
+    expect(labels[at + 1]).toBe('Re-attribute to a different participant');
+  });
+
+  it("carries v4's tooltip copy, not a native title", async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] });
+    try {
+      const f = render(message({ id: 'msg-1' }), { conciergeRetry: retryHandlers() });
+      const [button] = tryButtons(f);
+      expect(button.hasAttribute('title')).toBe(false);
+      button.closest('qt-tooltip')!.dispatchEvent(new Event('pointerenter'));
+      await vi.advanceTimersByTimeAsync(250);
+      f.detectChanges();
+      await vi.advanceTimersByTimeAsync(0);
+      f.detectChanges();
+      expect(document.body.querySelector('.qt-tooltip')!.textContent).toContain(
+        "Try uncensored — regenerate on the Concierge's uncensored desk",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('offers the picture retry on a folded generate_image block', () => {
+    const handlers = retryHandlers();
+    const tool = message({
+      id: 'tool-1',
+      role: 'TOOL',
+      participantId: null,
+      createdAt: '2026-09-25T00:00:00.000Z',
+      content: JSON.stringify({ toolName: 'generate_image', success: false, arguments: { prompt: 'x' } }),
+      routeTrail: [
+        {
+          profileId: 'p',
+          profileName: 'Gemini',
+          provider: 'GOOGLE',
+          modelName: 'imagen',
+          via: 'primary',
+          outcome: 'refused',
+          profileKind: 'image',
+        },
+      ],
+    });
+    const f = render(message({ id: 'msg-1', attachedToolMessages: [tool] }), { conciergeRetry: handlers });
+    const buttons = tryButtons(f);
+    // One on the line, one on the picture.
+    expect(buttons).toHaveLength(2);
+    buttons.find((b) => b.textContent?.trim() === 'Try uncensored')!.click();
+    expect(handlers.onRetryPicture).toHaveBeenCalledWith('tool-1');
+  });
+});

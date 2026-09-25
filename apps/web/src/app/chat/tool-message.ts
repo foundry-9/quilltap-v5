@@ -304,6 +304,23 @@ function formatResultContent(toolData: ToolResult): string {
               </div>
             }
 
+            <!-- "Try uncensored" on a picture (v4 ToolMessage.tsx:497-507, #77
+                 ce2f1dabf): the handler's PRESENCE is the gate (absent on a
+                 Locked chat), and the tool must be generate_image — offered on
+                 refused, failed and delivered pictures alike (a sanitized
+                 picture is a refusal no detector can see). -->
+            @if (onTryUncensored() && toolData().toolName === 'generate_image') {
+              <div class="mt-2">
+                <button
+                  type="button"
+                  class="qt-button qt-button-secondary qt-button-sm"
+                  (click)="onTryUncensored()!(message().id)"
+                >
+                  Try uncensored
+                </button>
+              </div>
+            }
+
             <!-- Tool Request collapsible — the arguments/prompt sent to the tool. -->
             @if (hasRequest()) {
               <div class="mt-2">
@@ -391,6 +408,12 @@ export class ToolMessage {
   readonly message = input.required<MessageDto>();
   readonly chat = input.required<ChatDetail>();
   readonly embedded = input(false);
+  /**
+   * The picture retry (v4 `onTryUncensored`, #77): "Absent on a Locked chat
+   * (and for every other tool)". A function INPUT rather than an output
+   * because the button's presence keys off whether the host offers one.
+   */
+  readonly onTryUncensored = input<((toolMessageId: string) => void) | undefined>(undefined);
 
   protected readonly showRequest = signal(false);
   protected readonly showResponse = signal(false);
