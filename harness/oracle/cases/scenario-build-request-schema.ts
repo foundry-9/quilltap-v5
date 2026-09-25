@@ -1,6 +1,7 @@
 /**
  * Oracle case: `scenarioBuildRequestSchema` — the body of `POST
- * /api/v1/scenario-builder?action=build` (v4 `d1c06cd9d`,
+ * /api/v1/scenario-builder?action=build` (v4 `d1c06cd9d`; `groupIds` since
+ * `08c49319d`,
  * `lib/scenario-builder/request-schema.ts`).
  *
  * Drives v4's REAL schema with `safeParse` over a corpus of raw JSON bodies and
@@ -16,9 +17,9 @@
  * `serde_json::Value`, so `undefined` never reaches the v5 twin as anything but
  * an ABSENT key, and the corpus asks exactly that.
  *
- * ⚠ PIN REQUIRED at the TARGET `d1c06cd9d`: the module does not exist at the
- * `00c290c9a` baseline, so a baseline-pinned run fails to IMPORT — that failure
- * is the pin verification.
+ * ⚠ PIN REQUIRED at `08c49319d` (P4.D231) while the oracle baseline is older:
+ * a `b0b6656b5` pin strips every `groupIds` key as unknown (the pin marker:
+ * `"groupIds":[]` on every accepting row at the target, on none before).
  *
  *   V5W=${V5W:-$HOME/source/quilltap-v5}
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -35,6 +36,8 @@ const PROJ = '22222222-2222-4222-8222-222222222222';
 const C1 = '33333333-3333-4333-8333-333333333333';
 const C2 = '44444444-4444-4444-8444-444444444444';
 const CHAT = '55555555-5555-4555-8555-555555555555';
+const G1 = '66666666-6666-4666-8666-666666666666';
+const G2 = '77777777-7777-4777-8777-777777777777';
 
 /** The smallest body that parses. */
 const base = (): Record<string, unknown> => ({
@@ -63,6 +66,7 @@ add('full', {
   connectionProfileId: P,
   projectId: PROJ,
   characterIds: [C1, C2],
+  groupIds: [G1],
   chatId: CHAT,
   priorDraft: '  The rain.  ',
   revision: '  Shorter.  ',
@@ -141,6 +145,23 @@ add('cast-32', withKey('characterIds', Array.from({ length: 32 }, () => C1)));
 add('cast-33', withKey('characterIds', Array.from({ length: 33 }, () => C1)));
 add('cast-33-with-bad', withKey('characterIds', [...Array.from({ length: 32 }, () => C1), 'bad']));
 
+// --- groupIds: z.array(UUIDSchema).max(32).default([]) (v4 `08c49319d`) --------
+// Between `characterIds` and `chatId` in both the output and the issue order;
+// the same semantics as `characterIds` (elements before size; a non-array is a
+// non-continuable `invalid_type` that skips the refine).
+add('groups-null', withKey('groupIds', null));
+add('groups-string', withKey('groupIds', 'x'));
+add('groups-empty', withKey('groupIds', []));
+add('groups-valid', withKey('groupIds', [G1, G2]));
+add('groups-bad-entry', withKey('groupIds', [G1, 'nope', 5]));
+add('groups-duplicates-kept', withKey('groupIds', [G1, G1]));
+add('groups-32', withKey('groupIds', Array.from({ length: 32 }, () => G1)));
+add('groups-33', withKey('groupIds', Array.from({ length: 33 }, () => G1)));
+add('groups-33-with-bad', withKey('groupIds', [...Array.from({ length: 32 }, () => G1), 'bad']));
+add('groups-with-cast', { ...base(), characterIds: [C1], groupIds: [G1] });
+add('refine-fails-plus-groups-type', { ...base(), groupIds: 'x', priorDraft: 'Draft.' });
+add('refine-fails-plus-groups-element', { ...base(), groupIds: ['g'], priorDraft: 'Draft.' });
+
 // --- chatId: UUIDSchema.nullish() ---------------------------------------------
 add('chat-null', withKey('chatId', null));
 add('chat-uuid', withKey('chatId', CHAT));
@@ -195,6 +216,7 @@ add('multi-fault', {
   connectionProfileId: 'p',
   projectId: 'q',
   characterIds: ['r'],
+  groupIds: ['g'],
   chatId: 's',
   priorDraft: 1,
   revision: 2,

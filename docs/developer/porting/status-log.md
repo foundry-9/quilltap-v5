@@ -149866,6 +149866,14 @@ Salon Images switch on a real transcript (a crafted-alt image included); the
 `@` menu over a real cast; the `:` typeahead after Shift+Enter; the
 corrupt-`.dbkey` 401 and the read-only-`.dbkey` 500 + line.
 
+### P4.D231 unit 1 — the build request's `groupIds` (2026-09-25)
+
+The Zod twin gains `groupIds` between `characterIds` and `chatId` (output and
+issue order), via one `uuid_array_field` shared with `characterIds`. Corpus +12
+rows (103). At the `08c49319d` pin: 43 of 103 red pre-port, 0 after; the
+`b0b6656b5` pin green pre-port. M3 reddens 35 rows. Full lane record below
+(P4.D231 lane record). core 0.0.1059, harness 0.0.978.
+
 ---
 
 ## P4.D225 — the refusal substrate + the ledger (v4 `8bd080267` #73 + `49059fb14` #74, server) — lane record

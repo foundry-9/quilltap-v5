@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(scenario-builder): port the build request's `groupIds` (v4 `08c49319d`, P4.D231 unit 1)
+
+_Versions: core 0.0.1059, harness 0.0.978._
+
+The Zod twin gains `groupIds` (an array of uuids, max 32, default `[]`)
+between `characterIds` and `chatId` in both the parsed output and the issue
+order; a non-array is a non-continuable `invalid_type` that skips the refine.
+The `characterIds` parse is factored into one `uuid_array_field` for both.
+
+`scenario_build_request_schema_equivalence` re-recorded at the `08c49319d`
+pin with 12 new `groupIds` rows (103 rows): red-first 43 of 103 pre-port (all
+35 accepting rows + 8 refusal rows); green after; the baseline pin stays green
+pre-port. Mutation M3 (`groupIds` before `characterIds` in `to_value`) reddens
+35 rows.
+
 #### 2026-09-28 — docs(porting): drift check at v4 `04d6c9d52` — six commits past the round target, waiver extended
 
 _Docs-only change._

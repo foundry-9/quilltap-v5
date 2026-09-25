@@ -1,5 +1,5 @@
 //! The Scenario Builder request body — v4 `lib/scenario-builder/
-//! request-schema.ts` (`d1c06cd9d`), `scenarioBuildRequestSchema`, as a
+//! request-schema.ts` (`08c49319d`), `scenarioBuildRequestSchema`, as a
 //! hand-written Zod twin over the ONE issue home ([`crate::api::zod_issues`]).
 //!
 //! ```text
@@ -10,6 +10,7 @@
 //! connectionProfileId: UUIDSchema                         (z.uuid())
 //! projectId:           UUIDSchema.nullish()
 //! characterIds:        z.array(UUIDSchema).max(32).default([])
+//! groupIds:            z.array(UUIDSchema).max(32).default([])   (08c49319d)
 //! chatId:              UUIDSchema.nullish()
 //! priorDraft:          z.string().max(20_000).nullish()   (NOT trimmed)
 //! revision:            z.string().trim().max(2000).nullish()
@@ -26,7 +27,7 @@
 //! ## What the oracle measured that the schema text does not say
 //!
 //! `scenario_build_request_schema_equivalence` diffs this twin against v4's
-//! REAL schema (zod 4.6.5 at the `d1c06cd9d` pin), and three behaviours are
+//! REAL schema (zod 4.6.5 at the `08c49319d` pin), and three behaviours are
 //! Zod's, not the schema's:
 //!
 //! - **The refine runs on a dirty object — unless an issue ABORTED.** Zod 4
@@ -39,7 +40,10 @@
 //!   issue AND the refine).
 //! - **Array elements are checked before the array's size**
 //!   (`characterIds` of 33 with a bad 33rd entry → the element's
-//!   `invalid_format` at `["characterIds", 32]`, then `too_big`).
+//!   `invalid_format` at `["characterIds", 32]`, then `too_big`). `groupIds`
+//!   (v4 `08c49319d` — the builder launched from a group's Scenarios card) is
+//!   the same shape and sits between `characterIds` and `chatId` in both the
+//!   output and the issue order.
 //! - **Lengths are Zod ≥ 4.5's**: UTF-16 units, re-counted in code points only
 //!   when the unit count is in doubt ([`crate::jsstr::zod_len_max_ok`]); trims
 //!   are JS `String.prototype.trim` ([`crate::jsstr::js_trim`] — strips
@@ -97,6 +101,9 @@ pub struct ScenarioBuildRequest {
     pub connection_profile_id: String,
     pub project_id: Nullish<String>,
     pub character_ids: Vec<String>,
+    /// Groups named outright (v4 `08c49319d`). Duplicates are KEPT here —
+    /// the route dedups before its existence check.
+    pub group_ids: Vec<String>,
     pub chat_id: Nullish<String>,
     pub prior_draft: Nullish<String>,
     pub revision: Nullish<String>,
@@ -145,16 +152,9 @@ impl ScenarioBuildRequest {
             Value::from(self.connection_profile_id.clone()),
         );
         put(&mut m, "projectId", &self.project_id);
-        m.insert(
-            "characterIds".into(),
-            Value::Array(
-                self.character_ids
-                    .iter()
-                    .cloned()
-                    .map(Value::from)
-                    .collect(),
-            ),
-        );
+        let ids = |xs: &[String]| Value::Array(xs.iter().cloned().map(Value::from).collect());
+        m.insert("characterIds".into(), ids(&self.character_ids));
+        m.insert("groupIds".into(), ids(&self.group_ids));
         put(&mut m, "chatId", &self.chat_id);
         put(&mut m, "priorDraft", &self.prior_draft);
         put(&mut m, "revision", &self.revision);
@@ -221,6 +221,41 @@ fn uuid_at(issues: &mut Issues, path: Vec<Value>, v: &Value) -> Option<String> {
         }
         other => {
             issues.push(ZodIssue::invalid_type("string", path, Some(other)));
+            None
+        }
+    }
+}
+
+/// `z.array(UUIDSchema).max(32).default([])` — `characterIds` and
+/// `groupIds`. Elements first, then the array's own size check; a non-array is
+/// the non-continuable `invalid_type` (the refine is then skipped).
+fn uuid_array_field(
+    issues: &mut Issues,
+    obj: &Map<String, Value>,
+    name: &str,
+) -> Option<Vec<String>> {
+    match obj.get(name) {
+        None => Some(Vec::new()),
+        Some(Value::Array(items)) => {
+            let mut out = Vec::with_capacity(items.len());
+            let mut ok = true;
+            for (i, item) in items.iter().enumerate() {
+                match uuid_at(issues, vec![key(name), Value::from(i)], item) {
+                    Some(id) => out.push(id),
+                    None => ok = false,
+                }
+            }
+            if items.len() > 32 {
+                issues.push(ZodIssue::too_big_array(Value::from(32), vec![key(name)]));
+            }
+            ok.then_some(out)
+        }
+        Some(other) => {
+            issues.push(ZodIssue::invalid_type(
+                "array",
+                vec![key(name)],
+                Some(other),
+            ));
             None
         }
     }
@@ -301,35 +336,8 @@ pub fn parse_scenario_build_request(raw: &Value) -> Result<ScenarioBuildRequest,
         uuid_at(&mut issues, vec![key("projectId")], v)
     });
 
-    // characterIds — elements first, then the array's own size check.
-    let character_ids = match obj.get("characterIds") {
-        None => Some(Vec::new()),
-        Some(Value::Array(items)) => {
-            let mut out = Vec::with_capacity(items.len());
-            let mut ok = true;
-            for (i, item) in items.iter().enumerate() {
-                match uuid_at(&mut issues, vec![key("characterIds"), Value::from(i)], item) {
-                    Some(id) => out.push(id),
-                    None => ok = false,
-                }
-            }
-            if items.len() > 32 {
-                issues.push(ZodIssue::too_big_array(
-                    Value::from(32),
-                    vec![key("characterIds")],
-                ));
-            }
-            ok.then_some(out)
-        }
-        Some(other) => {
-            issues.push(ZodIssue::invalid_type(
-                "array",
-                vec![key("characterIds")],
-                Some(other),
-            ));
-            None
-        }
-    };
+    let character_ids = uuid_array_field(&mut issues, obj, "characterIds");
+    let group_ids = uuid_array_field(&mut issues, obj, "groupIds");
 
     let chat_id = nullish(obj, "chatId", |v| {
         uuid_at(&mut issues, vec![key("chatId")], v)
@@ -363,6 +371,7 @@ pub fn parse_scenario_build_request(raw: &Value) -> Result<ScenarioBuildRequest,
         connection_profile_id: connection_profile_id.expect("issue-free"),
         project_id,
         character_ids: character_ids.expect("issue-free"),
+        group_ids: group_ids.expect("issue-free"),
         chat_id,
         prior_draft,
         revision,
@@ -388,7 +397,7 @@ mod tests {
         let r = parse_scenario_build_request(&base()).unwrap();
         assert_eq!(
             r.to_value().to_string(),
-            r#"{"mode":"in-world","location":"The Lantern","time":"dusk","details":"","connectionProfileId":"11111111-1111-4111-8111-111111111111","characterIds":[]}"#
+            r#"{"mode":"in-world","location":"The Lantern","time":"dusk","details":"","connectionProfileId":"11111111-1111-4111-8111-111111111111","characterIds":[],"groupIds":[]}"#
         );
     }
 

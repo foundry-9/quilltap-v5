@@ -11,10 +11,13 @@
 //! which field issues ABORT it, JS-`trim()` vs Rust-`trim()` characters, Zod
 //! ≥ 4.5's code-point length rule, non-object bodies and stripped unknown keys.
 //!
-//! ⚠ PIN REQUIRED at the TARGET `d1c06cd9d`: the schema module does not exist
-//! at the `00c290c9a` baseline, so a baseline-pinned run fails to IMPORT — that
-//! failure is the pin verification. Regen from the checkout once the baseline
-//! has moved past `d1c06cd9d`; until then point the driver at a pin
+//! ⚠ PIN REQUIRED at `08c49319d` (P4.D231) until the oracle baseline moves
+//! past it: v4 `08c49319d` added `groupIds` (between `characterIds` and
+//! `chatId`), so a `b0b6656b5`-pinned run records every accepting row WITHOUT
+//! it and the `groups-*` rows as stripped unknown keys — measured, the port's
+//! red-first: 43 of 103 rows differ at `08c49319d` pre-port, 0 at the
+//! baseline. Pin marker: `grep -c '"groupIds":\[\]'` is 30 on the target's
+//! NDJSON and 1 (a request BODY) on the baseline's. Point the driver at a pin
 //! (`--v4 "$PIN"`).
 //!
 //! Regenerate + run (self-contained; a pure tsx oracle, no fixture):
@@ -54,11 +57,16 @@ fn scenario_build_request_schema_matches_oracle() {
     let mut saw_aborted_refine = false;
     let mut saw_array_too_big = false;
     let mut saw_root_type = false;
+    // P4.D231: the `groupIds` rows (v4 `08c49319d`) must still be asked.
+    let mut saw_group_rows = 0usize;
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).expect("oracle row is JSON");
         let id = row["id"].as_str().expect("id").to_string();
         let body = &row["body"];
+        if body.get("groupIds").is_some() {
+            saw_group_rows += 1;
+        }
         let got = parse_scenario_build_request(body);
         match (row.get("data"), row.get("issues")) {
             (Some(want), None) => {
@@ -135,6 +143,10 @@ fn scenario_build_request_schema_matches_oracle() {
     );
     assert!(saw_array_too_big, "no row pins the array's own size issue");
     assert!(saw_root_type, "no row pins a non-object body");
+    assert!(
+        saw_group_rows >= 12,
+        "the corpus lost its `groupIds` rows ({saw_group_rows} < 12)"
+    );
     assert!(
         failures.is_empty(),
         "{} row(s) differ:\n{}",
