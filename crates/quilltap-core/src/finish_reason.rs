@@ -12,8 +12,13 @@
 //!   * each candidate field must be a JSON **string** to be returned (JS
 //!     `typeof … === 'string'`), otherwise the search continues;
 //!   * provider probes run in v4's exact order — OpenAI-style `choices[0]
-//!     .finish_reason`, Anthropic `stop_reason`, Google `candidates[0]
-//!     .finishReason`, then the Responses-API `status`.
+//!     .finish_reason` (then its camelCase `finishReason`), Anthropic
+//!     `stop_reason`, Google `promptFeedback.blockReason` (a NON-EMPTY string),
+//!     Google `candidates[0].finishReason`, then the Responses-API `status`.
+//!     The two new arms are v4 `8bd080267` (#73): Anthropic's `stop_reason`
+//!     still outranks the block reason, which outranks `candidates` — a Google
+//!     response with both a `STOP` candidate and a block reason reads the
+//!     block reason.
 
 use serde_json::Value;
 
@@ -34,12 +39,30 @@ pub fn extract_finish_reason(raw: &Value) -> Option<String> {
             if let Some(fr) = first.get("finish_reason").and_then(Value::as_str) {
                 return Some(fr.to_string());
             }
+            // OpenRouter's streamed raw response used the camelCase key before
+            // its plugin learned to write both; still read it for older builds.
+            if let Some(camel) = first.get("finishReason").and_then(Value::as_str) {
+                return Some(camel.to_string());
+            }
         }
     }
 
     // Anthropic: stop_reason (a string).
     if let Some(sr) = obj.get("stop_reason").and_then(Value::as_str) {
         return Some(sr.to_string());
+    }
+
+    // Google: a prompt blocked before any candidate was made states why only in
+    // `promptFeedback.blockReason` — the refusal outranks whatever else is here.
+    // `typeof … === 'string' && feedback.blockReason`: an EMPTY string falls
+    // through.
+    if let Some(block) = obj
+        .get("promptFeedback")
+        .and_then(|f| f.get("blockReason"))
+        .and_then(Value::as_str)
+        .filter(|b| !b.is_empty())
+    {
+        return Some(block.to_string());
     }
 
     // Google: candidates[0].finishReason (a string).

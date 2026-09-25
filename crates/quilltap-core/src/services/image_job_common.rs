@@ -951,6 +951,7 @@ mod tests {
                 if fail {
                     Err(ImageGenError {
                         message: "provider exploded".to_string(),
+                        refusal: None,
                     })
                 } else {
                     Ok(ImageGenResponse {
@@ -1069,11 +1070,13 @@ mod tests {
                 if n == 0 {
                     return Err(ImageGenError {
                         message: first_error.to_string(),
+                        refusal: None,
                     });
                 }
                 if fail_reroute {
                     return Err(ImageGenError {
                         message: "the second door slammed too".to_string(),
+                        refusal: None,
                     });
                 }
                 Ok(ImageGenResponse {

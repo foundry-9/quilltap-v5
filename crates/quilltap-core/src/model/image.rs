@@ -171,19 +171,57 @@ pub struct ImageGenResponse {
     pub images: Vec<GeneratedImageData>,
 }
 
-/// Error from an image-generation call. The message text matters: the handler
-/// inspects it via [`is_image_moderation_error`](crate::services::dangerous_content::provider_routing::is_image_moderation_error)
-/// to decide the post-hoc Concierge reroute.
+/// Error from an image-generation call. The message is carried verbatim (v4's
+/// thrown `Error.message`); `refusal` is the structured moderation rejection a
+/// native dialect read where v4's plugin now throws `ModerationRejectionError`
+/// (P4.D225, v4 `8bd080267`) — the image failover chokepoint classifies it
+/// through [`crate::services::dangerous_content::refusal::classify_refusal`].
 #[derive(Clone, Debug)]
 pub struct ImageGenError {
     pub message: String,
+    /// Boxed: `ImageGenError` is the `Err` of every dialect `Result`, and the
+    /// struct is large next to a bare message (clippy `result_large_err`).
+    pub refusal: Option<Box<crate::services::dangerous_content::refusal::RefusalError>>,
 }
 
 impl ImageGenError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            refusal: None,
         }
+    }
+
+    /// v4 `new ModerationRejectionError(message, statusCode, providerReason,
+    /// pluginName)` — the typed refusal (`code: MODERATION_REJECTED`).
+    pub fn moderation(
+        message: impl Into<String>,
+        status: Option<u16>,
+        provider_reason: Option<String>,
+    ) -> Self {
+        let message = message.into();
+        Self {
+            refusal: Some(Box::new(
+                crate::services::dangerous_content::refusal::RefusalError::typed(
+                    message.clone(),
+                    status,
+                    provider_reason,
+                ),
+            )),
+            message,
+        }
+    }
+
+    /// The error as the refusal classifier reads it: the structured side when a
+    /// dialect filled it, else the message alone (v4's plain `Error`).
+    pub fn refusal_error(&self) -> crate::services::dangerous_content::refusal::RefusalError {
+        self.refusal.as_deref().cloned().unwrap_or_else(|| {
+            crate::services::dangerous_content::refusal::RefusalError {
+                message: self.message.clone(),
+                name: Some("Error".to_string()),
+                ..Default::default()
+            }
+        })
     }
 }
 

@@ -64,6 +64,27 @@ const cases: Array<[string, unknown]> = [
   ['precedence-candidates-over-status', { candidates: [{ finishReason: 'STOP' }], status: 'completed' }],
   ['precedence-choices-empty-fallthrough', { choices: [], stop_reason: 'end_turn' }],
   ['precedence-choices-nonstring-fallthrough', { choices: [{ finish_reason: 9 }], status: 'completed' }],
+  // P4.D225 (v4 `8bd080267`): OpenRouter's streamed camelCase key, read AFTER
+  // the snake one and only inside a non-empty choices array.
+  ['openrouter-camel-only', { choices: [{ finishReason: 'stop' }] }],
+  ['openrouter-camel-refusal', { choices: [{ finishReason: 'refusal' }] }],
+  ['openrouter-snake-beats-camel', { choices: [{ finish_reason: 'tool_calls', finishReason: 'stop' }] }],
+  ['openrouter-camel-non-string', { choices: [{ finishReason: 4 }], stop_reason: 'end_turn' }],
+  ['openrouter-camel-null-snake', { choices: [{ finish_reason: null, finishReason: 'length' }] }],
+  ['camel-empty-choices', { choices: [], finishReason: 'stop' }],
+  ['camel-first-not-object', { choices: ['stop'], status: 'completed' }],
+  // P4.D225: Google's `promptFeedback.blockReason` — after `stop_reason`,
+  // before `candidates`, and only a NON-EMPTY string.
+  ['google-block-reason-only', { promptFeedback: { blockReason: 'SAFETY' } }],
+  ['google-block-reason-beats-candidates', { promptFeedback: { blockReason: 'PROHIBITED_CONTENT' }, candidates: [{ finishReason: 'STOP' }] }],
+  ['google-block-reason-synth-candidate', { promptFeedback: { blockReason: 'OTHER' }, candidates: [{ finishReason: 'OTHER' }] }],
+  ['google-block-reason-empty', { promptFeedback: { blockReason: '' }, candidates: [{ finishReason: 'STOP' }] }],
+  ['google-block-reason-non-string', { promptFeedback: { blockReason: 2 }, status: 'completed' }],
+  ['google-feedback-no-block', { promptFeedback: { safetyRatings: [] }, candidates: [{ finishReason: 'SAFETY' }] }],
+  ['google-feedback-null', { promptFeedback: null, candidates: [{ finishReason: 'STOP' }] }],
+  ['stop-reason-beats-block-reason', { stop_reason: 'end_turn', promptFeedback: { blockReason: 'SAFETY' } }],
+  ['choices-beats-block-reason', { choices: [{ finish_reason: 'stop' }], promptFeedback: { blockReason: 'SAFETY' } }],
+  ['block-reason-beats-status', { promptFeedback: { blockReason: 'BLOCKLIST' }, status: 'completed' }],
 ];
 
 for (const [id, raw] of cases) {

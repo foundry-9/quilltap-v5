@@ -2905,6 +2905,7 @@ mod duration_tests {
             tokio::time::sleep(std::time::Duration::from_millis(30)).await;
             Err(ImageGenError {
                 message: "provider exploded".to_string(),
+                refusal: None,
             })
         }
     }

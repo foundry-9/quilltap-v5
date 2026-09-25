@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): refusal-first fallback trigger + the two new finish-reason arms (P4.D225 unit 3)
+
+_Versions: core 0.0.1061, harness 0.0.980._
+
+`classify_fallback_trigger` now answers `moderation-refusal` before every
+other check when the refusal classifier recognises the error (v4
+`8bd080267`). `FallbackError`, `StreamError` and `ImageGenError` gain an
+optional structured refusal side (`RefusalError`, boxed on the two owned
+error types) that later units fill at the native provider sites;
+`FallbackError::from_stream_error` carries it through. `extract_finish_reason`
+reads OpenRouter's camelCase `finishReason` after the snake key and Google's
+`promptFeedback.blockReason` between `stop_reason` and `candidates`.
+`fallback_engine_equivalence` gains 27 rows (24 refusals red before the port,
+green after); `finish_reason_equivalence` gains 18 rows (6 differ between the
+two pins); `moderation_finish_reason_equivalence` is byte-identical at both
+pins.
+
 #### 2026-09-25 — feat(concierge): widen the route trail to five evidences + profileKind; re-vendor the export schema (P4.D225 unit 2)
 
 _Versions: core 0.0.1060, harness 0.0.979._

@@ -119,7 +119,40 @@ static UNATTRIBUTED_4XX_RE: std::sync::LazyLock<regex::Regex> =
 /// non-triggers arrive *as* `LLMProviderError` subclasses, which is why they are
 /// checked before the typed ladder.
 pub fn classify_fallback_trigger(error: FallbackError<'_>) -> Option<FallbackTrigger> {
-    // Non-triggers first.
+    // A content-moderation refusal first of all (v4 `8bd080267`, #73). A thrown
+    // "400 … safety system" used to fall through every pattern below to the
+    // generic 4xx check and come back `None` — "our malformed request" — so a
+    // refusal that arrived as a throw never reached the Concierge's uncensored
+    // retry at all.
+    //
+    // v4 hands the classifier the whole thrown value; v5 hands it the
+    // structured side when the provider layer filled one, else the message and
+    // `name` a plain `Error` would carry.
+    let synthesized;
+    let refusal = match error.refusal {
+        Some(r) => r,
+        None => {
+            synthesized = crate::services::dangerous_content::refusal::RefusalError {
+                message: error.message.to_string(),
+                name: error.name.map(str::to_string),
+                ..Default::default()
+            };
+            &synthesized
+        }
+    };
+    if crate::services::dangerous_content::refusal::classify_refusal(
+        crate::services::dangerous_content::refusal::RefusalInput {
+            error: Some(refusal),
+            ..Default::default()
+        },
+    )
+    .refused
+    {
+        return Some(FallbackTrigger::ModerationRefusal);
+    }
+
+    // Non-triggers next: these are checked before the typed-error ladder
+    // because several of them arrive *as* LLMProviderError subclasses.
     if matches!(
         error.kind,
         Some(LlmErrorKind::TokenLimit) | Some(LlmErrorKind::ContentLimit)

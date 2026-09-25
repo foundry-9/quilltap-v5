@@ -149964,3 +149964,40 @@ Regen outputs staged under `/tmp/p4d225/`.
   its enum as corrupted; v5's read has never validated the trail's items.
 - Harness builders taught the five evidences (`from_wire`) and `profile_kind`
   (`route_trail_compose_equivalence`, `message_finalizer_tier3_equivalence`).
+
+### Unit 3 — the refusal-first fallback trigger + the finish-reason arms
+
+- **The structured side (E.2), landed on the three error types:**
+  `StreamError.refusal` / `ImageGenError.refusal` (`Option<Box<RefusalError>>`
+  — boxed because clippy's `result_large_err` fired on every dialect `Result`
+  once the struct grew; `new()` keeps `None`, so every pre-existing
+  construction site compiles, and the six struct literals in tests gained
+  `refusal: None`), `ImageGenError::moderation(message, status, reason)` (v4's
+  `new ModerationRejectionError(…)`), `ImageGenError::refusal_error()`, and
+  `FallbackError.refusal: Option<&RefusalError>` (+ `with_refusal`;
+  `from_stream_error` threads the stream's side through).
+- **`classify_fallback_trigger`:** v4's FIRST line — `classifyRefusal({ error
+  }).refused → 'moderation-refusal'` — before the token/content non-triggers,
+  the tool-unsupported and Zod checks, the typed ladder and every message
+  probe. Without a structured side, v5 hands the classifier the message and
+  `name` a plain `Error` carries (v4's own view of a plain throw).
+  `fallback_engine_equivalence`: the classify corpus gains 27 rows (the typed
+  code/name, own/nested/numeric/mixed-case provider codes, each of the eleven
+  patterns, six ORDER rows where the refusal beats a non-trigger / Zod / the
+  typed network arm / the unattributed 4xx / the stall name, a thrown string,
+  and three NOT-refusals); each row now records an `errRecord` (`code`,
+  `error`, `providerReason`) when the error carries one, so the Rust side
+  builds the same `RefusalError` through `from_record`. Regenerated at BOTH
+  pins (202 rows each): the 24 refusal rows differ (baseline
+  `provider-error`/`null`, target `moderation-refusal`), every non-classify row
+  byte-identical. **Red-first measured by removing the ported arm (file
+  backup): 24 `trigger: rust …` diffs; with the arm: green.** Classifier
+  lines in this family: scoped out (it does not capture logs).
+- **`extract_finish_reason`:** the camelCase `choices[0].finishReason` arm
+  (after the snake key, inside the non-empty-array guard) and
+  `promptFeedback.blockReason` (non-empty string; after `stop_reason`, before
+  `candidates`). `finish_reason_equivalence` +18 rows; regenerated at both
+  pins → exactly 6 rows differ (the red-first — the unported Rust red on
+  `openrouter-camel-only`); green after the port.
+- **Neutral:** `moderation_finish_reason_equivalence` byte-identical at both
+  pins (47 rows), green. Core lib 2,609 / 0.

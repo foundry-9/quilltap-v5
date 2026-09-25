@@ -209,6 +209,20 @@ for (const provider of PROVIDERS_USED) {
 
 // ── 2. classifyFallbackTrigger ──────────────────────────────────────────────
 
+function withProps(e: Error, props: Record<string, unknown>): Error {
+  Object.assign(e, props);
+  return e;
+}
+
+/** The fields v4's refusal classifier reads off a thrown value. */
+function refusalRecord(error: unknown): Record<string, unknown> | null {
+  if (error === null || typeof error !== 'object') return null;
+  const r = error as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const k of ['code', 'providerReason', 'error']) if (k in r) out[k] = r[k];
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 function named(name: string, message: string): Error {
   const e = new Error(message);
   e.name = name;
@@ -281,6 +295,41 @@ const CLASSIFY: Array<[string, unknown]> = [
   ['rate-words', new Error('You have hit the rate limit for this model')],
   ['model-missing-words', new Error('The model gpt-9 does not exist')],
   ['model-missing-unknown', new Error('model unknown')],
+  // P4.D225 (v4 `8bd080267`): a content-moderation refusal classifies FIRST —
+  // before the non-triggers, the typed ladder and the message probes. Built
+  // with the fields v4's refusal classifier reads (`code`, `error.code`,
+  // `name`, `providerReason`), recorded below as `errRecord` so the Rust side
+  // hands the same structured refusal over.
+  ['refusal-typed-code', withProps(new Error('OpenAI refused this image request on content grounds'), { code: 'MODERATION_REJECTED', providerReason: 'moderation_blocked' })],
+  ['refusal-typed-name', named('ModerationRejectionError', 'The house painter declined')],
+  ['refusal-provider-code-own', withProps(new Error('400 Bad Request'), { code: 'content_policy_violation' })],
+  ['refusal-provider-code-nested', withProps(new Error('400 Your request was rejected'), { error: { code: 'moderation_blocked' } })],
+  ['refusal-provider-code-numeric', withProps(new Error('Contains sensitive content'), { code: 1301 })],
+  ['refusal-provider-code-mixed-case', withProps(new Error('nope'), { code: 'Content_Filter' })],
+  ['refusal-pattern-safety-system', new Error('400 Your request was rejected as a result of our safety system.')],
+  ['refusal-pattern-content-moderation', new Error('400 Your request was rejected by content moderation.')],
+  ['refusal-pattern-content-policy', new Error('This request violates our content policy')],
+  ['refusal-pattern-content-policy-snake', new Error('error code: content_policy')],
+  ['refusal-pattern-rejected-by-content', new Error('prompt rejected by content filters')],
+  ['refusal-pattern-moderation-blocked', new Error('moderation_blocked')],
+  ['refusal-pattern-responsible-ai', new Error('Blocked by Responsible AI practices')],
+  ['refusal-pattern-declined', new Error('Model declined to generate an image: nope')],
+  ['refusal-pattern-blocked-by-safety', new Error('Response blocked by safety filters')],
+  ['refusal-pattern-prompt-blocked', new Error('PROMPT_BLOCKED')],
+  ['refusal-pattern-image-safety', new Error('IMAGE_SAFETY')],
+  // ORDER: the refusal arm runs before EVERY other check, so each of these
+  // would have been a non-trigger or another class before #73.
+  ['refusal-beats-token-limit', new Error('prompt is too long — and the content policy forbids it')],
+  ['refusal-beats-tool-unsupported', new Error('Function calling is not supported: content moderation')],
+  ['refusal-beats-zod', named('ZodError', 'content policy')],
+  ['refusal-beats-typed-network', (() => { const e = new NetworkError('OPENAI'); e.message = 'fetch failed: safety system'; return e; })()],
+  ['refusal-beats-4xx', new Error('400 Bad Request: content_policy')],
+  ['refusal-beats-stall-name', (() => { const e = new LLMStreamStalledError(240000, 0); e.message = 'blocked by safety'; return e; })()],
+  ['refusal-string-throw', 'Your request was rejected by content moderation'],
+  // Not refusals: a code outside the set, and a finish reason in a message.
+  ['not-refusal-other-code', withProps(new Error('Upstream said no'), { code: 'invalid_request_error' })],
+  ['not-refusal-bare-safety', new Error('safety')],
+  ['not-refusal-finish-reason-text', new Error('finish_reason: content_filter')],
   // The tail.
   ['bare-vendor-message', new Error('Upstream said no')],
   ['empty-message', new Error('')],
@@ -302,6 +351,9 @@ for (const [id, error] of CLASSIFY) {
     errMessage: error instanceof Error ? error.message : String(error ?? ''),
     isError: error instanceof Error,
     isNullish: error === null || error === undefined,
+    // P4.D225: the refusal classifier's extra inputs, when the error carries
+    // any (absent otherwise, so pre-existing rows are byte-unchanged).
+    ...(refusalRecord(error) ? { errRecord: refusalRecord(error) } : {}),
     trigger,
   });
 }

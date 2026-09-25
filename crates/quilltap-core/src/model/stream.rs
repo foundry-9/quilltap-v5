@@ -346,6 +346,13 @@ pub struct StreamError {
     /// 141). Defaults to [`StreamErrorKind::Provider`] via [`StreamError::new`],
     /// which is every pre-existing construction site.
     pub kind: StreamErrorKind,
+    /// The structured refusal a native decoder read off the provider's error
+    /// (P4.D225, v4 `8bd080267` — where v4's plugins throw
+    /// `ModerationRejectionError` or the SDK's `APIError` carries `code`). `None`
+    /// at every site that has nothing but text; the classifier then reads the
+    /// message alone, exactly as v4 does for a plain `Error`.
+    /// Boxed for the same `result_large_err` reason as `ImageGenError`'s.
+    pub refusal: Option<Box<crate::services::dangerous_content::refusal::RefusalError>>,
 }
 
 impl StreamError {
@@ -353,7 +360,17 @@ impl StreamError {
         Self {
             message: message.into(),
             kind: StreamErrorKind::Provider,
+            refusal: None,
         }
+    }
+
+    /// Attach the structured refusal a decoder read (see [`Self::refusal`]).
+    pub fn with_refusal(
+        mut self,
+        refusal: crate::services::dangerous_content::refusal::RefusalError,
+    ) -> Self {
+        self.refusal = Some(Box::new(refusal));
+        self
     }
 
     /// v4 `new LLMStreamStalledError(budgetMs, chunksReceived, provider,
@@ -380,6 +397,7 @@ impl StreamError {
                 provider: provider.map(str::to_string),
                 model_name: model_name.map(str::to_string),
             },
+            refusal: None,
         }
     }
 

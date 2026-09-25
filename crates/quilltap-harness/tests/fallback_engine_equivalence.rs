@@ -78,6 +78,7 @@ use quilltap_core::llm_fallback::{
 use quilltap_core::services::api_key_service::{
     provider_accepts_api_key, provider_requires_api_key,
 };
+use quilltap_core::services::dangerous_content::refusal::RefusalError;
 use quilltap_core::services::llm_errors::LlmErrorKind;
 use serde_json::Value;
 
@@ -353,10 +354,20 @@ fn fallback_engine_matches_oracle() {
             }
             "classify" => {
                 let (k, name, message) = error_from(case);
+                // P4.D225: the structured refusal v5's provider layer would
+                // hand over, built from the same fields v4's classifier reads.
+                let refusal = case.get("errRecord").and_then(Value::as_object).map(|rec| {
+                    let mut record = rec.clone();
+                    if let Some(n) = &name {
+                        record.insert("name".into(), Value::String(n.clone()));
+                    }
+                    RefusalError::from_record(message.clone(), &record)
+                });
                 let got = classify_fallback_trigger(FallbackError {
                     kind: k,
                     name: name.as_deref(),
                     message: &message,
+                    refusal: refusal.as_ref(),
                 });
                 if trigger_name(got) != case["trigger"] {
                     diffs.push(format!(

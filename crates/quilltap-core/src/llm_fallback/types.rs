@@ -253,6 +253,12 @@ pub struct FallbackError<'a> {
     pub name: Option<&'a str>,
     /// v4's `error.message` (or `String(error ?? '')` for a non-Error throw).
     pub message: &'a str,
+    /// The structured refusal the provider layer read off the error (P4.D225,
+    /// v4 `8bd080267`): the typed `MODERATION_REJECTED`, the provider's own
+    /// moderation `code` / `error.code`. `None` where a caller holds text only
+    /// — the classifier then reads `message` (and `name`) alone, which is
+    /// exactly what v4's `classifyRefusal` sees on a plain `Error`.
+    pub refusal: Option<&'a crate::services::dangerous_content::refusal::RefusalError>,
 }
 
 impl<'a> FallbackError<'a> {
@@ -262,6 +268,7 @@ impl<'a> FallbackError<'a> {
             kind: None,
             name: None,
             message,
+            refusal: None,
         }
     }
 
@@ -271,6 +278,7 @@ impl<'a> FallbackError<'a> {
             kind: Some(kind),
             name: None,
             message,
+            refusal: None,
         }
     }
 
@@ -280,6 +288,7 @@ impl<'a> FallbackError<'a> {
             kind: None,
             name: Some(name),
             message,
+            refusal: None,
         }
     }
 
@@ -294,10 +303,25 @@ impl<'a> FallbackError<'a> {
     /// understudy. Every site that builds a [`FallbackError`] from a
     /// [`StreamError`] goes through here.
     pub fn from_stream_error(e: &'a StreamError) -> FallbackError<'a> {
-        if e.is_stalled() {
+        let base = if e.is_stalled() {
             FallbackError::named(e.v4_name(), &e.message)
         } else {
             FallbackError::message(&e.message)
+        };
+        FallbackError {
+            refusal: e.refusal.as_deref(),
+            ..base
+        }
+    }
+
+    /// Attach the structured refusal (see [`Self::refusal`]).
+    pub fn with_refusal(
+        self,
+        refusal: &'a crate::services::dangerous_content::refusal::RefusalError,
+    ) -> FallbackError<'a> {
+        FallbackError {
+            refusal: Some(refusal),
+            ..self
         }
     }
 }
