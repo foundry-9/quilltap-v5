@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the image-failover chokepoint (P4.D225 unit 8a)
+
+_Versions: core 0.0.1071, harness 0.0.990._
+
+New `services/dangerous_content/image_failover.rs`, ported from v4's
+`image-failover.ts` (`8bd080267` + `49059fb14`):
+`generate_image_with_concierge_failover` runs a caller-built image call and,
+on a classified content refusal, fails over once to an uncensored understudy.
+v4's six exits in order — answered first time, a non-refusal returned
+untouched, not permitted outside Auto-Route, no understudy, the understudy
+answers, the understudy fails — with the trail on every failure, the refusal
+announcement, and the primary's verdict on the ledger after the announcement.
+The understudy comes from the image resolver by default or a caller's own
+(the legacy dialog's connection profiles). Also ports the manual
+announcement's two missing log lines. New tier-3 family
+`image_failover_tier3_equivalence` over v4's real module: 17 cases, 13 typed
+throws, calls, outcomes, trail bytes, every log line and the chats +
+chat_messages dumps matched; M3/M4/M5 each redden their arms. Call sites move
+onto it in the next units.
+
 #### 2026-09-25 — feat(concierge): cheap-LLM refusals go on the chat's ledger (P4.D225 unit 7f)
 
 _Versions: core 0.0.1070, harness 0.0.989._

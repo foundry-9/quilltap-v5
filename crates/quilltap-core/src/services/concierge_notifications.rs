@@ -689,7 +689,36 @@ pub async fn post_concierge_manual_announcement_with_details(
 ) -> Option<Value> {
     let content = build_manual_content_with_details(kind, details);
     let opaque_content = build_manual_opaque_content_with_details(kind, details);
-    post_concierge_message(db, chat_id, content, opaque_content).await
+    // v4's two lines here (`Manual transition announced` / `Failed to post
+    // manual announcement`) predate `49059fb14` and were never ported; the
+    // image-failover family's auto-switch arm surfaced the absence. A missing
+    // chat stays silent, as v4's early `return null` is.
+    match post_concierge_message_kind(db, chat_id, content, opaque_content, "danger").await {
+        Ok(None) => None,
+        Ok(Some(message)) => {
+            let message_id = message.get("id").and_then(Value::as_str).unwrap_or("");
+            tracing::info!(
+                target: "quilltap::concierge_notification",
+                context = "concierge-notifications",
+                chat_id = %chat_id,
+                message_id = %message_id,
+                kind = kind.as_wire(),
+                "[ConciergeNotification] Manual transition announced"
+            );
+            Some(message)
+        }
+        Err(error) => {
+            tracing::error!(
+                target: "quilltap::concierge_notification",
+                context = "concierge-notifications",
+                chat_id = %chat_id,
+                kind = kind.as_wire(),
+                error = %error,
+                "[ConciergeNotification] Failed to post manual announcement"
+            );
+            None
+        }
+    }
 }
 
 /// Post a Concierge refusal announcement (v4
@@ -954,6 +983,65 @@ mod tests {
             "ERROR quilltap::concierge_notification [ConciergeNotification] Failed to post refusal announcement context=concierge-notifications"
         ));
         assert!(lines[0].contains(" kind=refusal-no-understudy error="));
+    }
+
+    /// The manual announcement's three exits (v4's two lines, ported late —
+    /// the image-failover family surfaced their absence): a missing chat is
+    /// SILENT (v4's early `return null`), a post is ONE INFO with the minted id,
+    /// a failed write is ONE ERROR.
+    #[test]
+    fn a_manual_announcement_logs_v4s_two_lines() {
+        let (_dir, db) = provisioned();
+        let (none, lines) = run(post_concierge_manual_announcement(
+            &db,
+            CHAT,
+            ConciergeManualKind::ManualVouched,
+        ));
+        assert!(none.is_none());
+        assert!(lines.is_empty(), "a missing chat is silent: {lines:?}");
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(seed_chat(&db));
+        drop(rt);
+        let (posted, lines) = run(post_concierge_manual_announcement(
+            &db,
+            CHAT,
+            ConciergeManualKind::ManualVouched,
+        ));
+        let id = posted.expect("posted")["id"].as_str().unwrap().to_string();
+        assert_eq!(
+            lines,
+            vec![format!(
+                "INFO quilltap::concierge_notification [ConciergeNotification] Manual transition announced context=concierge-notifications chat_id={CHAT} message_id={id} kind=manual-vouched"
+            )]
+        );
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(db.write(|w| {
+            w.main()
+                .connection()
+                .execute_batch("DROP TABLE chat_messages")?;
+            Ok(())
+        }))
+        .unwrap();
+        drop(rt);
+        let (none, lines) = run(post_concierge_manual_announcement(
+            &db,
+            CHAT,
+            ConciergeManualKind::ManualResumed,
+        ));
+        assert!(none.is_none());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].starts_with(
+            "ERROR quilltap::concierge_notification [ConciergeNotification] Failed to post manual announcement context=concierge-notifications"
+        ));
+        assert!(lines[0].contains(" kind=manual-resumed error="));
     }
 
     /// The auto-switch bubble is a MANUAL kind (`systemKind: 'danger'`), and its

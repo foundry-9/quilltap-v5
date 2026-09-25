@@ -150504,3 +150504,65 @@ Regen outputs staged under `/tmp/p4d225/`.
   arms. At the baseline pin the NEW half cannot regen (v4 there has no ledger
   columns to plant) — the pre-port proof above was taken by reverting the
   code instead; the chain-builder half is untouched.
+
+### Unit 8a — the image-failover chokepoint (`image_failover.rs`) + its NEW family
+
+- NEW `services/dangerous_content/image_failover.rs` (target
+  `quilltap::concierge_image_failover`): `FailoverProfile { id, name,
+  provider, model_name, row }` (the whole stored row rides along so an
+  `attempt` can build params for whichever profile it is handed — v4 passes
+  the whole profile); `ImagePurpose` (tool/lantern/avatar/dialog → the
+  announcement's and the ledger's spellings); the `UnderstudySource` seam
+  (v4's optional `resolveUnderstudy`) with `ImageUnderstudySource` as v4's
+  default (`resolve_uncensored_image_understudy` over the read pool);
+  `ImageFailoverContext { db, chat_id, purpose, settings, understudy,
+  profile_kind, primary_via }`; `ImageFailoverOutcome`; `ImageFailoverError
+  { error, trail }` + `concierge_trail()` (v4 `getConciergeTrail`: an EMPTY
+  trail reads as none). `generate_image_with_concierge_failover(primary,
+  attempt: AsyncFnMut, &ctx)` with v4's six exits in order and all nine
+  lines; `row()` puts `profileKind` only on IMAGE rows and truncates the
+  detail; `announce` → `post_concierge_refusal_announcement` (DEBUG `No chat
+  to announce the refusal in` when chatless); `ledger` AFTER the
+  announcement, the PRIMARY's verdict, nothing when chatless; the
+  understudy's failed row takes `classify_fallback_trigger ??
+  provider-error`. v4's `attachTrail` wrap arm (a frozen / non-object throw)
+  has no v5 analogue — the error value always carries its trail.
+- **NEW family `image_failover_tier3_equivalence`** over v4's REAL
+  `generateImageWithConciergeFailover` (`image-failover.test.ts`): the
+  `attempt` scripted per profile; `ModerationRejectionError` loaded INSIDE the
+  case after `resetModules`, BY PATH (`packages/plugin-types/src/common/
+  errors`) — a bare `@quilltap/plugin-types` does not resolve from an
+  out-of-tree case (the standing memory note, re-met); the case throws if the
+  corpus threw no typed error (13 did). Real: the classifier, the default
+  image resolver (canned keys), the writer, the ledger, the auto-switch.
+  Fixture: the 7d builder with `QT_REFUSAL_LEDGER_SPEC=image-failover.json`,
+  now also seeding `imageProfiles`. 17 arms (the six exits; understudy
+  refuses by provider CODE vs the primary's typed error — so M5 shows; fails
+  on network; fails unclassified; two chatless; connection-kind rows via a
+  caller resolver, with and without an understudy; a pre-flight-rerouted
+  primary `via: concierge` whose configured profile is excluded and the
+  resolver falls to the next; provider-code and message-pattern evidence; a
+  detail truncated at 200; a planted ledger the reroute tips into the
+  auto-switch). Compared: the attempt calls, the outcome, the trail as BYTES
+  (v4's writer key order — `Value` equality ignores order), every
+  failover/classifier/ledger/`[ConciergeNotification]` line in order (minted
+  message ids placeholdered), the chats + chat_messages dumps (9 bubbles).
+  **Through the driver at the target: 17/17.** New family — at the baseline
+  the module does not exist.
+- **The family found two ABSENT v4 lines** (pre-existing, not #74's): the
+  manual announcement's `[ConciergeNotification] Manual transition
+  announced` INFO and `Failed to post manual announcement` ERROR. Ported in
+  `post_concierge_manual_announcement_with_details` (a missing chat stays
+  silent, as v4's early `return null`); a unit test pins the three exits.
+  `post_office_concierge_lantern_suparna`, `danger_resolver` and
+  `post_office_writers_tier3` (P4.D233's — re-run only) stay green through
+  the driver. ⚠ Still absent, NOT ported (not surfaced by this lane's
+  families, and outside #73/#74): `postConciergeDangerAnnouncement`'s
+  `Danger announcement posted` line and its error twin — handed to the
+  unifier as a named gap.
+- Mutations, each reddening exactly its arms: **M3** (`profileKind` in the
+  Zod position, after `evidence`) → the 13 IMAGE-kind cases' `trail bytes`,
+  none of the connection-kind ones; **M4** (ledger before the announcement,
+  on the rerouted exit) → the four rerouted-with-a-chat arms' logs; **M5**
+  (the understudy's verdict on the ledger) → the three understudy-failure
+  arms. Restored (cmp).

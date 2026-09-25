@@ -13,6 +13,8 @@
 //!   - [`refusal`] — the ONE refusal classifier (`classify_refusal`, five
 //!     ranked evidences over a structured provider error; P4.D225, v4
 //!     `8bd080267`).
+//!   - [`image_failover`] — the ONE post-hoc image failover chokepoint every
+//!     image call site runs through (P4.D225, v4 `8bd080267`).
 //!   - [`refusal_ledger`] — the per-chat count of STATED refusals and the
 //!     Concierge's auto-switch to Flagged (P4.D225, v4 `49059fb14`).
 //!   - [`manual_flip`] — the operator's manual tri-state Concierge flip.
@@ -35,6 +37,7 @@
 pub mod chat_override;
 pub mod gatekeeper;
 pub mod gatekeeper_job;
+pub mod image_failover;
 pub mod manual_flip;
 pub mod moderation_wire;
 mod prompt_text;

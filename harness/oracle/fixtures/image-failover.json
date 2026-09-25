@@ -1,0 +1,648 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "characterId": "bbbb2222-2222-4222-8222-222222222222",
+  "chatSettings": [
+    {
+      "id": "5e0000f1-0000-4000-8000-0000000000f0",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE"
+      }
+    },
+    {
+      "id": "5e0000f2-0000-4000-8000-0000000000f0",
+      "userId": "aa0000f2-0000-4000-8000-0000000000aa",
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE"
+      }
+    }
+  ],
+  "apiKeys": {
+    "a10000f1-0000-4000-8000-000000000001": "KEY_1",
+    "a10000f2-0000-4000-8000-000000000001": "KEY_2",
+    "a10000f3-0000-4000-8000-000000000001": "KEY_3",
+    "a10000f4-0000-4000-8000-000000000001": "KEY_4",
+    "a10000f5-0000-4000-8000-000000000001": "KEY_5",
+    "a10000f6-0000-4000-8000-000000000001": "KEY_6",
+    "a10000f7-0000-4000-8000-000000000001": "KEY_7"
+  },
+  "imageProfiles": [
+    {
+      "id": "e10000f1-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "name": "House Painter",
+      "provider": "GOOGLE",
+      "modelName": "gemini-2.5-flash-image",
+      "apiKeyId": "a10000f1-0000-4000-8000-000000000001",
+      "isDangerousCompatible": false
+    },
+    {
+      "id": "e10000f2-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "name": "Studio Two",
+      "provider": "OPENAI",
+      "modelName": "gpt-image-1",
+      "apiKeyId": "a10000f2-0000-4000-8000-000000000001",
+      "isDangerousCompatible": false
+    },
+    {
+      "id": "e10000f3-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "name": "Kestrel Studio",
+      "provider": "GROK",
+      "modelName": "grok-2-image",
+      "apiKeyId": "a10000f3-0000-4000-8000-000000000001",
+      "isDangerousCompatible": true
+    },
+    {
+      "id": "e10000f4-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "name": "Night Market",
+      "provider": "OPENROUTER",
+      "modelName": "flux-uncensored",
+      "apiKeyId": "a10000f4-0000-4000-8000-000000000001",
+      "isDangerousCompatible": true
+    },
+    {
+      "id": "e10000f5-0000-4000-8000-000000000001",
+      "userId": "aa0000f2-0000-4000-8000-0000000000aa",
+      "name": "Lone Brush",
+      "provider": "OPENAI",
+      "modelName": "gpt-image-1",
+      "apiKeyId": "a10000f5-0000-4000-8000-000000000001",
+      "isDangerousCompatible": false
+    }
+  ],
+  "connectionProfiles": [
+    {
+      "id": "c10000f1-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "name": "Dialog Painter",
+      "provider": "OPENAI",
+      "modelName": "gpt-image-1",
+      "apiKeyId": "a10000f6-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "c10000f2-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "name": "Dialog Understudy",
+      "provider": "GROK",
+      "modelName": "grok-2-image",
+      "apiKeyId": "a10000f7-0000-4000-8000-000000000001",
+      "isDangerousCompatible": true
+    }
+  ],
+  "chats": [
+    {
+      "id": "c0000f01-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 1",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 11
+    },
+    {
+      "id": "c0000f02-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 2",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 12
+    },
+    {
+      "id": "c0000f03-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 3",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 13
+    },
+    {
+      "id": "c0000f04-0000-4000-8000-000000000001",
+      "userId": "aa0000f2-0000-4000-8000-0000000000aa",
+      "title": "image failover 4",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 14
+    },
+    {
+      "id": "c0000f05-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 5",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 15
+    },
+    {
+      "id": "c0000f06-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 6",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 16
+    },
+    {
+      "id": "c0000f07-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 7",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 17
+    },
+    {
+      "id": "c0000f08-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 8",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 18
+    },
+    {
+      "id": "c0000f09-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 9",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 19
+    },
+    {
+      "id": "c0000f10-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 10",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 20
+    },
+    {
+      "id": "c0000f11-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 11",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 21
+    },
+    {
+      "id": "c0000f12-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 12",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 22
+    },
+    {
+      "id": "c0000f13-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 13",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 23
+    }
+  ],
+  "ledgerPlants": [
+    {
+      "chatId": "c0000f13-0000-4000-8000-000000000001",
+      "count": 1,
+      "lastAt": "2020-01-01T00:00:00.000Z"
+    }
+  ],
+  "cases": [
+    {
+      "name": "answered-first-time",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f01-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "settings": {
+        "mode": "AUTO_ROUTE"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "answers": "image-from-primary"
+          }
+        ]
+      }
+    },
+    {
+      "name": "not-a-refusal-rethrown-untouched",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f02-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "settings": {
+        "mode": "AUTO_ROUTE"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "message": "429 Too Many Requests: rate limit exceeded"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "refused-detect-only",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f03-0000-4000-8000-000000000001",
+      "purpose": "lantern",
+      "settings": {
+        "mode": "DETECT_ONLY"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "refused-no-understudy",
+      "userId": "aa0000f2-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f04-0000-4000-8000-000000000001",
+      "purpose": "avatar",
+      "settings": {
+        "mode": "AUTO_ROUTE"
+      },
+      "primary": "e10000f5-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f5-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Your request was rejected",
+              "status": 400,
+              "providerReason": "moderation_blocked"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "refused-rerouted-to-the-configured",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f05-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "settings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ],
+        "e10000f3-0000-4000-8000-000000000001": [
+          {
+            "answers": "image-from-understudy"
+          }
+        ]
+      }
+    },
+    {
+      "name": "understudy-also-refuses",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f06-0000-4000-8000-000000000001",
+      "purpose": "lantern",
+      "settings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ],
+        "e10000f3-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "message": "Grok declined",
+              "code": "moderation_blocked"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "understudy-fails-network",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f07-0000-4000-8000-000000000001",
+      "purpose": "avatar",
+      "settings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ],
+        "e10000f3-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "message": "fetch failed: ECONNRESET"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "understudy-fails-unclassified",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f08-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "settings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ],
+        "e10000f3-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "message": "the brush snapped"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "no-chat-rerouted",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": null,
+      "purpose": "dialog",
+      "settings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ],
+        "e10000f3-0000-4000-8000-000000000001": [
+          {
+            "answers": "image-no-chat"
+          }
+        ]
+      }
+    },
+    {
+      "name": "no-chat-not-permitted",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": null,
+      "purpose": "dialog",
+      "settings": {
+        "mode": "OFF"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "dialog-connection-kind",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": null,
+      "purpose": "dialog",
+      "settings": {
+        "mode": "AUTO_ROUTE"
+      },
+      "primary": "c10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "c10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "message": "400 Your request was rejected as a result of our safety system."
+            }
+          }
+        ],
+        "c10000f2-0000-4000-8000-000000000001": [
+          {
+            "answers": "image-from-connection-understudy"
+          }
+        ]
+      },
+      "profileKind": "connection",
+      "customUnderstudy": "c10000f2-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "dialog-connection-no-understudy",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": null,
+      "purpose": "dialog",
+      "settings": {
+        "mode": "AUTO_ROUTE"
+      },
+      "primary": "c10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "c10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ]
+      },
+      "profileKind": "connection",
+      "customUnderstudy": null,
+      "customUnderstudyNone": true
+    },
+    {
+      "name": "preflight-rerouted-primary-refuses",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f09-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "settings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "primary": "e10000f3-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f3-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Grok declined",
+              "status": null,
+              "providerReason": "content_policy"
+            }
+          }
+        ],
+        "e10000f4-0000-4000-8000-000000000001": [
+          {
+            "answers": "image-from-second"
+          }
+        ]
+      },
+      "primaryVia": "concierge"
+    },
+    {
+      "name": "provider-code-refusal",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f10-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "settings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "primary": "e10000f2-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f2-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "message": "Request blocked",
+              "code": "moderation_blocked"
+            }
+          }
+        ],
+        "e10000f3-0000-4000-8000-000000000001": [
+          {
+            "answers": "x"
+          }
+        ]
+      }
+    },
+    {
+      "name": "message-pattern-refusal",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f11-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "settings": {
+        "mode": "DETECT_ONLY"
+      },
+      "primary": "e10000f2-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f2-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "message": "Your request was rejected as a result of our safety system."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "long-detail-truncated",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f12-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "settings": {
+        "mode": "DETECT_ONLY"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Blocked: the painter would rather not paint this particular scene, you understand, the painter would rather not paint this particular scene, you understand, the painter would rather not paint this particular scene, you understand, the painter would rather not paint this particular scene, you understand, ",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "rerouted-earns-the-switch",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f13-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "settings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ],
+        "e10000f3-0000-4000-8000-000000000001": [
+          {
+            "answers": "image-switch"
+          }
+        ]
+      }
+    }
+  ]
+}

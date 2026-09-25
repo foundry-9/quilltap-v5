@@ -16,7 +16,8 @@
  * `QT_REFUSAL_LEDGER_SPEC` names another spec in this directory with the same
  * shape (default `refusal-ledger.json`) — the cheap-LLM refusal case
  * (`cheap-llm-refusal.json`) reuses the builder and adds `connectionProfiles`,
- * created through v4's REAL connections repository.
+ * created through v4's REAL connections repository; the image-failover case
+ * (`image-failover.json`) adds `imageProfiles` through the image-profiles one.
  *
  * Run (Node 24, from the v4 checkout — or a pinned worktree):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
@@ -36,6 +37,7 @@ interface Spec {
   chatSettings: Array<{ id: string; userId: string; dangerousContentSettings: Record<string, unknown> }>;
   chats: Array<Record<string, unknown> & { id: string; userId: string }>;
   connectionProfiles?: Array<Record<string, unknown> & { id: string; userId: string }>;
+  imageProfiles?: Array<Record<string, unknown> & { id: string; userId: string }>;
 }
 
 async function main(): Promise<void> {
@@ -80,6 +82,11 @@ async function main(): Promise<void> {
   for (const p of spec.connectionProfiles ?? []) {
     const { id, ...data } = p;
     await repos.connections.create(data as never, { id, createdAt: ts, updatedAt: ts });
+  }
+
+  for (const p of spec.imageProfiles ?? []) {
+    const { id, ...data } = p;
+    await repos.imageProfiles.create(data as never, { id, createdAt: ts, updatedAt: ts });
   }
 
   let n = 0;
