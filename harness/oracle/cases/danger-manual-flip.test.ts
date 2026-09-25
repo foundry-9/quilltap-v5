@@ -39,8 +39,18 @@ function canonValue(v: unknown): unknown {
   return v;
 }
 
-interface Op { id: string; chatId: string; requested: 'monitored' | 'flagged' | 'vouched' | 'uncensored' }
-interface Spec { testPepperBase64: string; ops: Op[] }
+interface Op {
+  id: string;
+  chatId: string;
+  requested: 'monitored' | 'flagged' | 'vouched' | 'uncensored';
+  /** P4.D225 (v4 `49059fb14`): `applyConciergeFlip`'s fourth argument. */
+  options?: Record<string, unknown>;
+}
+interface Spec {
+  testPepperBase64: string;
+  ops: Op[];
+  ledgerPlants?: Array<{ chatId: string; count: number; lastAt: string }>;
+}
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -92,11 +102,19 @@ async function main(): Promise<void> {
   await initializeDatabase();
   const repos = getRepositories();
 
+  // P4.D225: plant the refusal ledgers (both sides do the same raw UPDATE).
+  for (const plant of spec.ledgerPlants ?? []) {
+    await rawQuery(
+      'UPDATE chats SET "moderationRefusalCount" = ?, "lastModerationRefusalAt" = ? WHERE id = ?',
+      [plant.count, plant.lastAt, plant.chatId],
+    );
+  }
+
   const lines: string[] = [];
   for (const op of spec.ops) {
     const chat = await repos.chats.findById(op.chatId);
     if (!chat) throw new Error(`op ${op.id}: chat ${op.chatId} not found`);
-    const result = await applyConciergeFlip(op.chatId, op.requested, chat);
+    const result = await applyConciergeFlip(op.chatId, op.requested, chat, (op.options ?? {}) as never);
     lines.push(
       JSON.stringify({ kind: 'op', id: op.id, newState: result.newState, changed: result.changed })
     );

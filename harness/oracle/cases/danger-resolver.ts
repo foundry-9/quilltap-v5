@@ -38,21 +38,22 @@ import {
   shouldShowDangerStyling,
   isClassifierOnDuty,
 } from '@/lib/services/dangerous-content/chat-override'
-import type { DangerousContentSettings } from '@/lib/schemas/settings.types'
+import {
+  DangerousContentSettingsSchema,
+  type DangerousContentSettings,
+} from '@/lib/schemas/settings.types'
 
-// A fully-materialized (Zod-shaped) settings object. Optional profile ids are
-// kept ABSENT (never explicit null) so the 'global' passthrough round-trips
-// byte-for-byte through the Rust typed struct (the null-vs-absent optional is a
-// documented corpus constraint).
+// A fully-materialized (Zod-shaped) settings object — what the repository hands
+// the resolver in production. Built from v4's REAL schema defaults
+// (`parse({})`) so it is the right shape at ANY pin: since `49059fb14` (#74,
+// P4.D225) that shape carries `autoSwitchAfterRefusals: 2`, which a hand-written
+// literal silently lacked. Optional profile ids are kept ABSENT (never explicit
+// null) so the 'global' passthrough round-trips byte-for-byte through the Rust
+// typed struct (the null-vs-absent optional is a documented corpus constraint).
 function settings(mode: string, extra: Partial<DangerousContentSettings> = {}): DangerousContentSettings {
   return {
+    ...DangerousContentSettingsSchema.parse({}),
     mode: mode as DangerousContentSettings['mode'],
-    threshold: 0.7,
-    scanTextChat: true,
-    scanImagePrompts: true,
-    scanImageGeneration: false,
-    displayMode: 'SHOW',
-    showWarningBadges: true,
     ...extra,
   }
 }

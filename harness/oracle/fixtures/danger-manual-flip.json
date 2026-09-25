@@ -207,7 +207,11 @@
       "messageCount": 26,
       "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
       "dangerClassifiedAtMessageCount": 26
-    }
+    },
+    {"id": "c0000010-0000-4000-8000-000000000017", "title": "monitored -> flagged by the Concierge (refusals)", "chatType": "salon", "isDangerousChat": false, "conciergeOverride": null, "messageCount": 17},
+    {"id": "c0000010-0000-4000-8000-000000000018", "title": "monitored -> flagged by the Concierge (classifier)", "chatType": "salon", "isDangerousChat": false, "conciergeOverride": null, "messageCount": 18},
+    {"id": "c0000010-0000-4000-8000-000000000019", "title": "flagged -> monitored resets the ledger", "chatType": "salon", "isDangerousChat": true, "conciergeOverride": null, "dangerScore": 0.8, "dangerCategories": ["moderation-refusals"], "messageCount": 19, "dangerClassifiedAt": "2020-01-01T00:00:00.000Z", "dangerClassifiedAtMessageCount": 19},
+    {"id": "c0000010-0000-4000-8000-000000000020", "title": "vouched -> monitored resets the ledger", "chatType": "salon", "isDangerousChat": false, "conciergeOverride": "OFF", "messageCount": 20}
   ],
   "ops": [
     {
@@ -289,6 +293,16 @@
       "id": "uncensored-to-uncensored-noop",
       "chatId": "c0000010-0000-4000-8000-000000000016",
       "requested": "uncensored"
-    }
+    },
+    {"id": "concierge-refusals-to-flagged", "chatId": "c0000010-0000-4000-8000-000000000017", "requested": "flagged", "options": {"by": "concierge", "reason": "refusals", "refusals": {"count": 2, "lastProvider": "GOOGLE", "lastModel": "gemini-3-pro"}}},
+    {"id": "concierge-classifier-to-flagged", "chatId": "c0000010-0000-4000-8000-000000000018", "requested": "flagged", "options": {"by": "concierge", "reason": "classifier"}},
+    {"id": "flagged-to-monitored-resets-ledger", "chatId": "c0000010-0000-4000-8000-000000000019", "requested": "monitored"},
+    {"id": "vouched-to-monitored-resets-ledger", "chatId": "c0000010-0000-4000-8000-000000000020", "requested": "monitored"}
+  ],
+  "$ledgerComment": "P4.D225 (v4 49059fb14): refusal-ledger values planted (both sides) before the ops run. 19/20 must come back empty (the monitored arm resets); 01 (an operator flip to Flagged) must keep its tally.",
+  "ledgerPlants": [
+    { "chatId": "c0000010-0000-4000-8000-000000000001", "count": 1, "lastAt": "2026-09-24T00:00:00.000Z" },
+    { "chatId": "c0000010-0000-4000-8000-000000000019", "count": 3, "lastAt": "2026-09-24T01:00:00.000Z" },
+    { "chatId": "c0000010-0000-4000-8000-000000000020", "count": 2, "lastAt": "2026-09-24T02:00:00.000Z" }
   ]
 }

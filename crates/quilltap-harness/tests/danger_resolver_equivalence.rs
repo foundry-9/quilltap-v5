@@ -52,7 +52,7 @@ use quilltap_core::services::dangerous_content::chat_override::{
     should_show_danger_styling, should_use_uncensored_route, ConciergeState,
 };
 use quilltap_core::services::dangerous_content::manual_flip::{
-    apply_concierge_flip, RealConciergeAnnouncer,
+    apply_concierge_flip_with, RealConciergeAnnouncer,
 };
 use quilltap_core::services::dangerous_content::resolver::resolve_dangerous_content_settings;
 use serde::Deserialize;
@@ -231,6 +231,18 @@ struct FlipSpec {
     test_pepper_base64: String,
     chats: Vec<FlipSeedChat>,
     ops: Vec<FlipOp>,
+    /// P4.D225: refusal-ledger values planted before the ops (both sides).
+    #[serde(rename = "ledgerPlants", default)]
+    ledger_plants: Vec<LedgerPlant>,
+}
+
+#[derive(Deserialize)]
+struct LedgerPlant {
+    #[serde(rename = "chatId")]
+    chat_id: String,
+    count: i64,
+    #[serde(rename = "lastAt")]
+    last_at: String,
 }
 
 /// Only the two fields the preservation assert needs; the builder owns the rest.
@@ -247,6 +259,42 @@ struct FlipOp {
     #[serde(rename = "chatId")]
     chat_id: String,
     requested: String,
+    /// P4.D225 (v4 `49059fb14`): `applyConciergeFlip`'s fourth argument.
+    #[serde(default)]
+    options: Option<Value>,
+}
+
+/// v4 `ApplyConciergeFlipOptions` off the spec's JSON.
+fn flip_options(
+    v: Option<&Value>,
+) -> quilltap_core::services::dangerous_content::manual_flip::ApplyConciergeFlipOptions {
+    use quilltap_core::services::dangerous_content::manual_flip::{
+        ApplyConciergeFlipOptions, FlipBy, FlipReason,
+    };
+    let Some(v) = v else {
+        return ApplyConciergeFlipOptions::default();
+    };
+    ApplyConciergeFlipOptions {
+        by: match v.get("by").and_then(Value::as_str) {
+            Some("concierge") => FlipBy::Concierge,
+            _ => FlipBy::Operator,
+        },
+        reason: match v.get("reason").and_then(Value::as_str) {
+            Some("refusals") => Some(FlipReason::Refusals),
+            Some("classifier") => Some(FlipReason::Classifier),
+            _ => None,
+        },
+        refusals: v.get("refusals").map(|r| {
+            quilltap_core::services::concierge_notifications::ConciergeAutoFlagDetails {
+                count: r["count"].as_i64().unwrap_or(0),
+                last_provider: r["lastProvider"].as_str().unwrap_or("").to_string(),
+                last_model: r
+                    .get("lastModel")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            }
+        }),
+    }
 }
 
 #[derive(Deserialize)]
@@ -365,17 +413,38 @@ async fn danger_manual_flip_matches_oracle() {
     let db = Db::open_main(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
 
+    // P4.D225: v5's boot ensure (a no-op on a fixture whose builder ran v4's
+    // `add-chat-refusal-ledger-v1`), then the planted ledgers.
+    let plants: Vec<(String, i64, String)> = spec
+        .ledger_plants
+        .iter()
+        .map(|p| (p.chat_id.clone(), p.count, p.last_at.clone()))
+        .collect();
+    db.write(move |w| {
+        quilltap_core::test_support::ensure_p4d225_columns(w.main().connection());
+        for (id, count, at) in &plants {
+            w.main().connection().execute(
+                "UPDATE chats SET \"moderationRefusalCount\" = ?1, \"lastModerationRefusalAt\" = ?2 WHERE id = ?3",
+                rusqlite::params![count, at, id],
+            )?;
+        }
+        Ok(())
+    })
+    .await
+    .expect("plant the ledgers");
+
     for op in &spec.ops {
         let chat = db
             .read_main(|c| chats_read::find_by_id(c, &op.chat_id))
             .unwrap_or_else(|e| panic!("read chat {}: {e:?}", op.chat_id))
             .unwrap_or_else(|| panic!("op {}: chat {} missing", op.id, op.chat_id));
-        let result = apply_concierge_flip(
+        let result = apply_concierge_flip_with(
             &db,
             &RealConciergeAnnouncer { db: &db },
             &op.chat_id,
             state_from_str(&op.requested),
             &chat,
+            &flip_options(op.options.as_ref()),
         )
         .await
         .unwrap_or_else(|e| panic!("flip {}: {e:?}", op.id));

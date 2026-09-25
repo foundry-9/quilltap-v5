@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the Concierge's own flip — options, category stamp, ledger reset (P4.D225 unit 7c)
+
+_Versions: core 0.0.1067, harness 0.0.986._
+
+`apply_concierge_flip_with` takes v4's `ApplyConciergeFlipOptions`
+(`49059fb14`): a `by: concierge` flip to Flagged stamps `dangerCategories`
+`["moderation-refusals"]`, and only `reason: refusals` posts the
+`auto-flagged-refusals` bubble with its tally; the Monitored arm resets the
+refusal ledger; the closing INFO line names who flipped (`by`, `reason`). The
+existing `apply_concierge_flip` keeps the operator default. The manual-flip
+oracle grows four chats, planted ledgers and the fourth argument (20 ops
+matched); the resolver oracle builds its settings from v4's real schema
+defaults so it carries the new key at the pin.
+
 #### 2026-09-25 — feat(concierge): the autoSwitchAfterRefusals setting (P4.D225 unit 7b)
 
 _Versions: core 0.0.1066, harness 0.0.985._

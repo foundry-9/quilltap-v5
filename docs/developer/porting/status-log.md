@@ -150317,3 +150317,36 @@ Regen outputs staged under `/tmp/p4d225/`.
   committed file on every other line, `"conciergeOverride" TEXT` included — the
   survey's "absent from `extractSchemaMetadata`" anomaly does not reproduce
   through the dumper.
+
+### Unit 7c — `apply_concierge_flip`'s options, the category stamp, the Monitored reset, the log line
+
+- `manual_flip.rs`: `FlipBy { Operator (default), Concierge }`, `FlipReason
+  { Refusals, Classifier }`, `ApplyConciergeFlipOptions { by, reason, refusals
+  }`, `MODERATION_REFUSALS_CATEGORY`; NEW `apply_concierge_flip_with(…,
+  &options)` — the existing `apply_concierge_flip` delegates with the default
+  (operator), so `api/salon.rs` / `chat_create.rs` are untouched. Flagged: the
+  raw UPDATE now binds `dangerCategories` — `["moderation-refusals"]` on ANY
+  `by: concierge` flip (**E.6 confirmed byte-exact against the oracle at the
+  pin: the stored text is `["moderation-refusals"]`, no spaces**), `[]`
+  otherwise; the bubble is `auto-flagged-refusals` (+ tally) ONLY for `reason:
+  refusals` — `by: concierge, reason: classifier` stamps the category and posts
+  `manual-flagged` (both arms in the corpus, though no caller does the second
+  today). Monitored: a second statement resets the ledger through
+  `ChatsRepository::reset_moderation_refusal_ledger`. The closing INFO
+  (`quilltap::concierge_manual_flip`) — `Concierge state flipped by the
+  Concierge` / `…manually`, `{chat_id, from, to, by, reason?}` — pinned by a
+  provisioned-DB unit test (both arms + the no-op silence).
+- **`danger_resolver_equivalence`:** the manual-flip spec gains chats 17–20 +
+  four ops (`concierge-refusals-to-flagged` with a `{count:2, GOOGLE,
+  gemini-3-pro}` tally, `concierge-classifier-to-flagged`, flagged → monitored
+  and vouched → monitored over PLANTED ledgers) and `ledgerPlants` (both sides
+  plant with the same raw UPDATE; chat 01 — an OPERATOR flip to Flagged —
+  keeps its planted tally). The builder runs v4's real ledger migration (the
+  7a helper). **20 ops, chats + chat_messages dumps matched.** Red-first by
+  mutation (the Monitored reset replaced by a read): `chats rows diverge after
+  manual flips`. The pure resolver half: the case's `settings()` helper —
+  documented as "a fully-materialized (Zod-shaped) settings object" — was a
+  hand-written literal that could not carry #74's new default; it now spreads
+  v4's REAL `DangerousContentSettingsSchema.parse({})` (right at any pin:
+  17 rows carry the key at the target, 0 at the baseline). 34 rows matched.
+  Through the driver at the target: OK.

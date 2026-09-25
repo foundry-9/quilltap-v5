@@ -84,6 +84,18 @@ async function main(): Promise<void> {
   await repo.getMessages(spec.chats[0].id);
 
   await closeDatabase();
+
+  // P4.D225 (v4 `49059fb14`): the refusal ledger's columns through v4's OWN
+  // migration module — `initializeDatabase` creates `chats` from the Zod
+  // schema, which deliberately omits them (skipped at a pin that predates it).
+  const { runV4Migrations, ADD_CHAT_REFUSAL_LEDGER } = await import('../lib/v4-migrations');
+  const migrated = await runV4Migrations({
+    dbPath: out,
+    pepperBase64: spec.testPepperBase64,
+    migrations: [ADD_CHAT_REFUSAL_LEDGER],
+    allowMissing: true,
+  });
+  process.stderr.write(`danger-manual-flip fixture migrations: ${migrated.join('; ')}\n`);
   process.stderr.write(`built danger-manual-flip fixture: ${out} (${spec.chats.length} chats)\n`);
   process.exit(0);
 }
