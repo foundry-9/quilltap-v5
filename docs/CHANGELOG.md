@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — docs(porting): drift check at v4 `acadcc7cd` — bugs 171/172 committed past the ordered round's target
+
+_Docs-only change._
+
+Third drift check of the day, run after the `08c49319d` round was ordered.
+v4 main is at `acadcc7cd` (`4.10.0-dev.93`), ten commits past the baseline.
+The checkout is clean again: the uncommitted work the `/setupphase` probe
+recorded was bugs 171/172, and it is now committed. That adds one PORT row.
+Continue Elsewhere now names the characters left behind, and the off-scene
+persona exclusion is gated on non-autonomous rooms. v5 has both bugs as
+written (`off_scene.rs`, `chat_continuation.rs`). The ordered lanes' probes
+will fail on the moved HEAD until the human waives the commit for the round
+or re-orders to include it.
+
 #### 2026-09-25 — docs(porting): order the `08c49319d` Concierge-overhaul drift catch-up round (P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232)
 
 _Docs-only change._
