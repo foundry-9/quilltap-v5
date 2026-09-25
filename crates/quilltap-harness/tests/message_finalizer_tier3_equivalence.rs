@@ -175,6 +175,8 @@ impl CallW {
                         "refused" => RouteAttemptOutcome::Refused,
                         other => panic!("unknown outcome {other:?}"),
                     },
+                    // Text rows never carry `profileKind` (v4 `recordRouteFailure`).
+                    profile_kind: None,
                     trigger: v.get("trigger").and_then(Value::as_str).map(|t| match t {
                         "auth" => FallbackTrigger::Auth,
                         "rate-limit" => FallbackTrigger::RateLimit,
@@ -185,10 +187,9 @@ impl CallW {
                         "moderation-refusal" => FallbackTrigger::ModerationRefusal,
                         other => panic!("unknown trigger {other:?}"),
                     }),
-                    evidence: v.get("evidence").and_then(Value::as_str).map(|e| match e {
-                        "finish-reason" => RouteAttemptEvidence::FinishReason,
-                        "inferred" => RouteAttemptEvidence::Inferred,
-                        other => panic!("unknown evidence {other:?}"),
+                    evidence: v.get("evidence").and_then(Value::as_str).map(|e| {
+                        RouteAttemptEvidence::from_wire(e)
+                            .unwrap_or_else(|| panic!("unknown evidence {e:?}"))
                     }),
                     detail: v.get("detail").and_then(Value::as_str).map(str::to_string),
                 }

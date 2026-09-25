@@ -686,6 +686,55 @@ mod tests {
         assert_eq!(msgs[0]["isSilentMessage"], Value::Bool(true));
     }
 
+    /// P4.D225 (v4 `8bd080267` widened `RouteAttemptSchema.evidence` from two
+    /// values to five and added `profileKind`): a stored trail carrying every
+    /// NEW value — and an unknown one — reads back byte-for-byte, key order
+    /// included. The `deleting-a-ts-union-member-is-not-deleting-a-serde-variant`
+    /// rule: this read is a JSON passthrough, not a typed enum, so no value v4
+    /// (or an import) ever persisted can be lost in the round trip. (v4's
+    /// `ChatEventSchema` would SKIP a row whose evidence is outside its enum;
+    /// v5's read has never validated the trail's items — a pre-existing
+    /// narrowing, recorded in the P4.D225 lane record, unchanged here.)
+    #[test]
+    fn a_route_trail_with_every_evidence_value_round_trips() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(MIGRATED_DDL).unwrap();
+        crate::test_support::ensure_p4d171_columns(&conn);
+        let row = |evidence: &str| {
+            format!(
+                r#"{{"profileId":"p","profileName":"Painter","provider":"OPENAI","modelName":"gpt-image-2","via":"primary","outcome":"refused","profileKind":"image","trigger":"moderation-refusal","evidence":"{evidence}","detail":"d"}}"#
+            )
+        };
+        let trail = format!(
+            "[{}]",
+            [
+                "typed-error",
+                "provider-code",
+                "finish-reason",
+                "message-pattern",
+                "inferred",
+                "some-future-evidence",
+            ]
+            .iter()
+            .map(|e| row(e))
+            .collect::<Vec<_>>()
+            .join(",")
+        );
+        conn.execute(
+            "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, routeTrail) \
+             VALUES (?1, 'c1', 'message', 'TOOL', 'x', '2026-09-25T00:00:01.000Z', ?2)",
+            rusqlite::params![M1, trail],
+        )
+        .unwrap();
+        let msgs = get_messages(&conn, "c1").unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(
+            serde_json::to_string(&msgs[0]["routeTrail"]).unwrap(),
+            trail,
+            "the trail must survive byte-for-byte"
+        );
+    }
+
     /// A three-row chat on the migrated DDL: `M1`, `M2`, `M3` in order.
     fn three_rows() -> Connection {
         let conn = Connection::open_in_memory().unwrap();

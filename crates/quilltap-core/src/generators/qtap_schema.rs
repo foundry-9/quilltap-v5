@@ -170,7 +170,9 @@ mod tests {
         // what caught the miss in this lane's own gate).
         // P4.D205: 95,266 at v4 `e7d77bb60` (the `$defs.ChatInform` definition
         // plus `chats.chatInforms` and `counts.chatInforms`).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 95_266);
+        // P4.D225: 96,049 at v4 `49059fb14` (`8bd080267` #73's route-trail
+        // widening — the five-valued `evidence`, `profileKind`).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 96_049);
     }
 
     #[test]

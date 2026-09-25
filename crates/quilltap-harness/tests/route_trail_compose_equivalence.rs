@@ -27,9 +27,16 @@
 //! lone surrogate AND that v5's answer is v4's with exactly that escape replaced
 //! by U+FFFD — so a v4 fix (or a v5 drift) trips this immediately.
 //!
+//! **`LOG_LEVEL=error` is load-bearing since `8bd080267` (P4.D225):**
+//! `classifyEmptyBody` now delegates to v4's refusal classifier, whose INFO line
+//! ("Provider refused on content-moderation grounds") v4's default logger writes
+//! to STDOUT — the same stream the rows go to. Without it every refused
+//! `classify` row prepends a log object the parser cannot read. Harmless at the
+//! baseline pin (nothing logged there at INFO).
+//!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
-//!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/route-trail-compose.ts \
+//!   LOG_LEVEL=error npx tsx ~/source/quilltap-v5/harness/oracle/cases/route-trail-compose.ts \
 //!     > /tmp/oracle-route-trail-compose.ndjson
 //! Run:
 //!   QT_ORACLE_ROUTE_TRAIL=/tmp/oracle-route-trail-compose.ndjson \
@@ -39,7 +46,8 @@ use quilltap_core::llm_fallback::{FallbackCandidateKind, FallbackTrigger};
 use quilltap_core::services::primary_stream::{EffectiveProfile, StreamingState};
 use quilltap_core::services::route_trail::{
     build_route_trail, classify_empty_body, record_route_failure, set_route_via, via_of,
-    RouteAttempt, RouteAttemptEvidence, RouteAttemptOutcome, RouteAttemptVia, RouteTrailLogContext,
+    RouteAttempt, RouteAttemptEvidence, RouteAttemptOutcome, RouteAttemptVia, RouteProfileKind,
+    RouteTrailLogContext,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -160,11 +168,8 @@ fn trigger(s: &str) -> FallbackTrigger {
 }
 
 fn evidence(s: &str) -> RouteAttemptEvidence {
-    match s {
-        "finish-reason" => RouteAttemptEvidence::FinishReason,
-        "inferred" => RouteAttemptEvidence::Inferred,
-        other => panic!("unknown evidence {other:?}"),
-    }
+    // P4.D225: the enum is the classifier's five (v4 `8bd080267`).
+    RouteAttemptEvidence::from_wire(s).unwrap_or_else(|| panic!("unknown evidence {s:?}"))
 }
 
 fn candidate_kind(s: &str) -> FallbackCandidateKind {
@@ -191,6 +196,14 @@ fn attempt_from_value(v: &Value) -> RouteAttempt {
         model_name: s("modelName"),
         via: via(v.get("via").and_then(Value::as_str).unwrap()),
         outcome: outcome(v.get("outcome").and_then(Value::as_str).unwrap()),
+        profile_kind: v
+            .get("profileKind")
+            .and_then(Value::as_str)
+            .map(|k| match k {
+                "connection" => RouteProfileKind::Connection,
+                "image" => RouteProfileKind::Image,
+                other => panic!("unknown profileKind {other:?}"),
+            }),
         trigger: v.get("trigger").and_then(Value::as_str).map(trigger),
         evidence: v.get("evidence").and_then(Value::as_str).map(evidence),
         detail: v.get("detail").and_then(Value::as_str).map(str::to_string),

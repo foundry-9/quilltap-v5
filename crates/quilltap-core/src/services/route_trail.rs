@@ -97,19 +97,27 @@ impl RouteAttemptOutcome {
     }
 }
 
-/// How a refusal was established: the provider said so, or it was inferred from
-/// an empty body on a Concierge-flagged turn.
+/// How a refusal was established — the classifier's five evidences, strongest
+/// first (v4 `RouteAttemptSchema.evidence`, widened from two to five at
+/// `8bd080267` #73). ONE enum with the classifier, so the trail and the
+/// verdict cannot drift apart.
+pub use crate::services::dangerous_content::refusal::RefusalEvidence as RouteAttemptEvidence;
+
+/// What kind of profile a trail row names (v4 `RouteAttemptSchema.profileKind`,
+/// NEW at `8bd080267`). Absent means `connection` — every trail written before
+/// image calls had trails — and only the image failover chokepoint ever writes
+/// it, and only as `image` (v4 `row()`'s `profileKind === 'image' ? {…} : {}`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RouteAttemptEvidence {
-    FinishReason,
-    Inferred,
+pub enum RouteProfileKind {
+    Connection,
+    Image,
 }
 
-impl RouteAttemptEvidence {
+impl RouteProfileKind {
     pub fn as_str(self) -> &'static str {
         match self {
-            RouteAttemptEvidence::FinishReason => "finish-reason",
-            RouteAttemptEvidence::Inferred => "inferred",
+            RouteProfileKind::Connection => "connection",
+            RouteProfileKind::Image => "image",
         }
     }
 }
@@ -119,6 +127,12 @@ fn ser_via<S: Serializer>(v: &RouteAttemptVia, s: S) -> Result<S::Ok, S::Error> 
 }
 fn ser_outcome<S: Serializer>(v: &RouteAttemptOutcome, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(v.as_str())
+}
+fn ser_profile_kind<S: Serializer>(v: &Option<RouteProfileKind>, s: S) -> Result<S::Ok, S::Error> {
+    match v {
+        Some(k) => s.serialize_str(k.as_str()),
+        None => s.serialize_none(),
+    }
 }
 fn ser_trigger<S: Serializer>(v: &Option<FallbackTrigger>, s: S) -> Result<S::Ok, S::Error> {
     // Only reached when the key is present (`skip_serializing_if`) — but a
@@ -157,6 +171,20 @@ pub struct RouteAttempt {
     pub via: RouteAttemptVia,
     #[serde(serialize_with = "ser_outcome")]
     pub outcome: RouteAttemptOutcome,
+    /// `image` on an image-profile row; absent everywhere else.
+    ///
+    /// **Declared HERE, between `outcome` and `trigger`, on purpose:** the key
+    /// order of a persisted row is v4's WRITER's, not its Zod declaration's
+    /// (`trigger, evidence, profileKind, detail`). v4 has two writers — the
+    /// image chokepoint's `row()` spreads `profileKind` BEFORE
+    /// `trigger`/`evidence`/`detail`, and `recordRouteFailure` never writes it
+    /// — so one field order serves both: text rows omit the key and keep their
+    /// order, image rows carry it where `row()` puts it.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_profile_kind"
+    )]
+    pub profile_kind: Option<RouteProfileKind>,
     /// The engine's trigger class for a failure or refusal; absent when answered.
     ///
     /// v4 duplicates `FallbackTrigger` BY VALUE in a client-safe module and
@@ -274,6 +302,7 @@ pub fn record_route_failure<'a>(
         model_name: seat.model_name.to_string(),
         via,
         outcome,
+        profile_kind: None,
         trigger: Some(trigger),
         evidence,
         detail: truncate_detail(detail),
@@ -345,24 +374,25 @@ pub fn classify_empty_body(
         .unwrap_or(serde_json::Value::Null);
     let finish_reason = crate::finish_reason::extract_finish_reason(&raw);
 
-    if crate::moderation_finish_reason::is_moderation_finish_reason(finish_reason.as_deref()) {
+    // The two refusal readings — a stated moderation stop, and an empty body on
+    // flagged content — belong to the one classifier every call site shares
+    // (v4 `8bd080267`). Byte-identical to the pre-#73 inline pair on both
+    // readings; the classifier's DEBUG/INFO lines now fire on every call.
+    let refusal = crate::services::dangerous_content::refusal::classify_refusal(
+        crate::services::dangerous_content::refusal::RefusalInput {
+            error: None,
+            finish_reason: finish_reason.as_deref(),
+            empty_body: Some(true),
+            content_was_flagged: Some(content_was_flagged_dangerous),
+        },
+    );
+    if refusal.refused {
         return EmptyBodyVerdict {
             outcome: RouteAttemptOutcome::Refused,
             trigger: FallbackTrigger::ModerationRefusal,
-            evidence: Some(RouteAttemptEvidence::FinishReason),
-            detail: Some(format!(
-                "finish_reason: {}",
-                finish_reason.unwrap_or_default()
-            )),
-        };
-    }
-
-    if content_was_flagged_dangerous {
-        return EmptyBodyVerdict {
-            outcome: RouteAttemptOutcome::Refused,
-            trigger: FallbackTrigger::ModerationRefusal,
-            evidence: Some(RouteAttemptEvidence::Inferred),
-            detail: Some("empty response on content the Concierge had flagged".to_string()),
+            evidence: refusal.evidence,
+            // `...(refusal.detail ? { detail } : {})` — JS truthiness.
+            detail: refusal.detail.filter(|d| !d.is_empty()),
         };
     }
 
@@ -411,6 +441,7 @@ pub fn compose_route_trail<'a>(
         model_name: seat.model_name.to_string(),
         via,
         outcome: RouteAttemptOutcome::Answered,
+        profile_kind: None,
         trigger: None,
         evidence: None,
         detail: None,

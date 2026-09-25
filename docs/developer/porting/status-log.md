@@ -149922,3 +149922,45 @@ Regen outputs staged under `/tmp/p4d225/`.
 - **Mutations (by file backup, `cmp`-verified revert):** **M1** (evidence 3 and
   4 swapped) → reds `fr_beats_pattern` only; **M2** (codes compared
   case-SENSITIVELY) → reds `pc_mixed_case` only.
+
+### Unit 2 — the trail widening + the export schema re-vendor
+
+- `services/route_trail.rs`: `RouteAttemptEvidence` is now a re-export of
+  `refusal::RefusalEvidence` (ONE enum — the trail and the verdict cannot
+  drift); NEW `RouteProfileKind { Connection, Image }` and
+  `RouteAttempt.profile_kind`, declared between `outcome` and `trigger` with
+  `skip_serializing_if` — **one field order serves v4's TWO writer orders**:
+  text rows (`recordRouteFailure`) never carry the key and keep `…, outcome,
+  trigger, [evidence], [detail]`; image rows (the chokepoint's `row()`, unit
+  8) carry it where `row()` spreads it (`…, outcome, profileKind, trigger,
+  evidence, detail`). The Zod declaration order (`trigger, evidence,
+  profileKind, detail`) is neither and is NOT what persists.
+  `classify_empty_body` delegates to `classify_refusal({ finishReason,
+  emptyBody: true, contentWasFlagged })`, the detail filtered on JS
+  truthiness.
+- **`route_trail_compose_equivalence` NEUTRAL, proven:** regenerated at BOTH
+  pins → 64 rows, **byte-identical** (`cmp`); green at the target. The recipe
+  (both headers) gains `LOG_LEVEL=error`: at the target pin v4's classifier
+  INFO line is written by v4's default logger to STDOUT between the rows (the
+  first regen came back 78 lines, 14 of them log objects — the parser died on
+  row 1). Harmless at the baseline. **Classifier lines in this family:
+  scoped out** (the family does not capture logs; the tier-1 family pins them).
+- **Export schema:** `generators/qtap-export.schema.json` re-copied from
+  `/tmp/qt-v4-pin-p4d225-49059fb14/public/schemas/` (95,266 → 96,049 bytes;
+  `qtap_schema_embed_guard::VENDORED_BYTES` and `qtap_schema.rs`'s second copy
+  both moved). The vendored file was `cmp`-identical to the BASELINE pin's
+  before the copy (the red-first: the guard at `QT_V4_ROOT=<target pin>` diffs
+  on the three descriptions + the enum + `profileKind`). `schema-key-order.json`
+  re-dumped (`dump-export-key-order.ts`) at BOTH pins → `cmp`-identical to the
+  committed file: UNMOVED (the trail's item keys are not templated; #73 added
+  no message field). Guards green at the target pin: `qtap_schema_embed_guard`
+  3/3, `generation_key_travels_as_is_guard` 2/2; `qtap_schema_validate_
+  equivalence` regenerated through the sweep driver at the target → OK.
+- **Round-trip pin** (`db/chats_messages_read.rs`
+  `a_route_trail_with_every_evidence_value_round_trips`): a stored trail with
+  all five evidences + `some-future-evidence` + `profileKind: "image"` reads
+  back byte-for-byte. Recorded narrowing (pre-existing, unchanged): v4's
+  `ChatEventSchema` would SKIP a message whose trail names an evidence outside
+  its enum as corrupted; v5's read has never validated the trail's items.
+- Harness builders taught the five evidences (`from_wire`) and `profile_kind`
+  (`route_trail_compose_equivalence`, `message_finalizer_tier3_equivalence`).

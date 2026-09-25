@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): widen the route trail to five evidences + profileKind; re-vendor the export schema (P4.D225 unit 2)
+
+_Versions: core 0.0.1060, harness 0.0.979._
+
+`RouteAttemptEvidence` is now the classifier's five-valued `RefusalEvidence`,
+and `RouteAttempt` gains `profile_kind` (serialized only as `image`, placed
+between `outcome` and `trigger` so image rows keep v4's writer key order while
+text rows are unchanged). `classify_empty_body` delegates to
+`classify_refusal`. The vendored `qtap-export.schema.json` is re-copied from
+v4 `49059fb14` (96,049 bytes; both size constants moved);
+`schema-key-order.json` re-dumped at both pins and unmoved.
+`route_trail_compose_equivalence` is byte-identical at both pins (its recipe
+now runs with `LOG_LEVEL=error`, since v4's classifier logs to stdout). New
+unit pin: a stored trail carrying all five evidences plus an unknown value
+round-trips byte-for-byte.
+
 #### 2026-09-25 — feat(concierge): port the refusal classifier (P4.D225 unit 1)
 
 _Versions: core 0.0.1059, harness 0.0.978._

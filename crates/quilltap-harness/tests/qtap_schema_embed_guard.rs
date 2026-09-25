@@ -28,7 +28,11 @@ use serde_json::{json, Value};
 /// SECOND copy of this number. A re-vendor moves both.
 /// P4.D205: 95,266 at v4 `e7d77bb60` — the Inform re-vendor (`$defs.ChatInform`,
 /// `chats.chatInforms`, `counts.chatInforms`). 93,384 at `31436bae4`.
-const VENDORED_BYTES: usize = 95_266;
+/// P4.D225: 96,049 at v4 `49059fb14` — `8bd080267` (#73) widened the route
+/// trail (`evidence` five-valued, `profileKind` between `evidence` and
+/// `detail`, the three descriptions); `49059fb14` left the file alone (the
+/// refusal ledger is NOT exported).
+const VENDORED_BYTES: usize = 96_049;
 
 fn v4_root() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("QT_V4_ROOT") {

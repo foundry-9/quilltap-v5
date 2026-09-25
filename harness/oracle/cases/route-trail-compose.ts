@@ -13,9 +13,11 @@
  * `...(evidence ? {evidence} : {})`, so an absent optional is genuinely absent,
  * never `null`, and a `Value`-level compare would not see the difference.
  *
- * Run from inside the server checkout:
+ * Run from inside the server checkout (`LOG_LEVEL=error`: since `8bd080267`
+ * the refusal classifier's INFO line would otherwise land on stdout between
+ * the rows):
  *   cd ~/source/quilltap-server
- *   npx tsx ~/source/quilltap-v5/harness/oracle/cases/route-trail-compose.ts \
+ *   LOG_LEVEL=error npx tsx ~/source/quilltap-v5/harness/oracle/cases/route-trail-compose.ts \
  *     > /tmp/oracle-route-trail-compose.ndjson
  */
 
