@@ -10,6 +10,9 @@
 //!   - [`provider_routing`] — the uncensored-reroute resolution (the REAL
 //!     implementor of the [`crate::services::provider_failover::DangerousContentRouter`]
 //!     seam) + the image-provider variants.
+//!   - [`refusal`] — the ONE refusal classifier (`classify_refusal`, five
+//!     ranked evidences over a structured provider error; P4.D225, v4
+//!     `8bd080267`).
 //!   - [`manual_flip`] — the operator's manual tri-state Concierge flip.
 //!   - [`gatekeeper_job`] — the `CHAT_DANGER_CLASSIFICATION` job runner
 //!     (classify → persist the chat-level danger fields + system event).
@@ -34,4 +37,5 @@ pub mod manual_flip;
 pub mod moderation_wire;
 mod prompt_text;
 pub mod provider_routing;
+pub mod refusal;
 pub mod resolver;

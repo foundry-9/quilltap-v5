@@ -149865,3 +149865,60 @@ help reconcile's boot INFO with the five #120 pages embedded BY SECTION; the
 Salon Images switch on a real transcript (a crafted-alt image included); the
 `@` menu over a real cast; the `:` typeahead after Shift+Enter; the
 corrupt-`.dbkey` 401 and the read-only-`.dbkey` 500 + line.
+
+---
+
+## P4.D225 — the refusal substrate + the ledger (v4 `8bd080267` #73 + `49059fb14` #74, server) — lane record
+
+Lane branch `claude/p4-d225-refusal-substrate-5a5d06`, cut from `main`
+`446671a7d`. Pins: target `/tmp/qt-v4-pin-p4d225-49059fb14`, baseline
+`/tmp/qt-v4-pin-p4d225-b0b6656b5` (ledger §5.1, the three symlink classes;
+marker: `git show HEAD:lib/services/dangerous-content/refusal.ts` 220 lines at
+the target, absent at the baseline). §R.2 probe at lane start: PASS (`main`,
+`acadcc7cd`, clean, both logs empty). Node 24.13.1; the v4 checkout's
+`better-sqlite3` loads under ABI 137 again (`sqlite_version 3.53.2`, `PRAGMA
+cipher → chacha20`) — the P4.D182 standing breakage is no longer present.
+Regen outputs staged under `/tmp/p4d225/`.
+
+### Unit 1 — `refusal.rs` + `refusal_classify_equivalence` (tier 1, NEW)
+
+- `crates/quilltap-core/src/services/dangerous_content/refusal.rs` — v4
+  `refusal.ts` whole: `classify_refusal(RefusalInput)`, `is_moderation_refusal`,
+  `RefusalEvidence` (five, kebab wire spellings + `from_wire`),
+  `RefusalVerdict`, `PROVIDER_MODERATION_CODES` / `REFUSAL_MESSAGE_PATTERNS`
+  verbatim, `code_string` / `code_string_number` (`number_to_string`, the ECMA
+  `Number::toString` twin), `truncate` (199 UTF-16 units + `…`, empty KEPT —
+  unlike the route trail's `truncate_detail`).
+- **The structured input (E.2):** `RefusalError { message, code, nested_code,
+  name, provider_reason, status }` + `RefusalError::from_record` (v4's
+  `asRecord`/`codeString`/`collectCodes` over a JSON record) + `typed(…)`
+  (`ModerationRejectionError`'s shape). One field beyond the order's sketch:
+  `nested_code` — v4's `collectCodes` reads TWO slots (`record.code` THEN
+  `record.error.code`), and the corpus exercises both, so one `code` could not
+  carry them.
+- **Log lines (E.13(a)):** target `quilltap::concierge_refusal`; the DEBUG bag
+  `refused, evidence, has_error, finish_reason, empty_body,
+  content_was_flagged` (absent keys absent — `Option` fields), the INFO bag
+  `evidence, detail`. Pinned HERE, against every row; in the families that
+  call the classifier transitively (route_trail_compose, fallback_engine,
+  cheap_llm, the tier-3s) they are scoped out by message/target where those
+  families filter captures, and named as such in each unit below.
+- **Family:** `harness/oracle/cases/refusal-classify.test.ts` (jest; v4's
+  REAL `classifyRefusal`/`isModerationRefusal`; `@/lib/logger` doMocked to a
+  recorder whose `child({service})` tags lines so only `ConciergeRefusal`
+  lines are kept, and ANY other line fails the regen) +
+  `crates/quilltap-harness/tests/refusal_classify_equivalence.rs`. 74 rows:
+  typed-error 13, provider-code 13, finish-reason 6, message-pattern 17,
+  inferred 3, none 22. Verdict (key presence incl.), the shorthand, and every
+  log line compared. GREEN on first run at the target pin.
+  - Regen AS RUN: `cd /tmp/qt-v4-pin-p4d225-49059fb14; TMPO=/tmp/p4d225/run-refusal-classify;
+    cp …/refusal-classify.test.ts $TMPO/cases/; QT_ORACLE_OUT=/tmp/p4d225/oracle-refusal-classify.ndjson
+    $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$TMPO/cases"
+    -- "cases/refusal-classify\.test\.ts$"` → 74 cases; then
+    `recipe_sweep.py --run refusal_classify_equivalence --v4 /tmp/qt-v4-pin-p4d225-49059fb14` → OK.
+  - Red-first: not applicable (a NEW family over a NEW module — the baseline
+    pin has no `refusal.ts`; the case fails to import there, which is the
+    baseline's measurement).
+- **Mutations (by file backup, `cmp`-verified revert):** **M1** (evidence 3 and
+  4 swapped) → reds `fr_beats_pattern` only; **M2** (codes compared
+  case-SENSITIVELY) → reds `pc_mixed_case` only.
