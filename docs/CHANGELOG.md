@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — test(harness): the memories tier-2 retired op kept by name, not by a catch-all; a write-partition row floor (P4.D221, unification review)
+
+_Versions: harness 0.0.977._
+
+`memories_tier2_equivalence`'s `Op` enum caught the retired
+`deleteBySourceMessageIds` tag with `#[serde(other)]` — which would also have
+let any FUTURE op the oracle runs and the Rust side does not know pass as a
+silent no-op. The retired tag is now kept BY NAME as the no-op arm and an
+unknown kind refuses to deserialize again (a unit pin). The write-partition
+corpus gains a 15/3 row floor so a regen that lost the two group-store rows
+cannot pass. `characters_read_equivalence`'s header no longer lists the retired
+`findLLMControlled`. Findings of the §3 review at the `b0b6656b5` unification.
+
 #### 2026-09-25 — fix(help): v4's fallback `findAll` (not a throw), the `collection` field on the three fallback lines, the zero-length doc-vector rule tested, the twelve-scenario recipe header (P4.D222, unification review)
 
 _Versions: core 0.0.1058, harness 0.0.976, host 0.0.158._
