@@ -823,6 +823,105 @@ describe('settings-routes oracle', () => {
       body: { dangerousContentSettings: { customClassificationPrompt: 5 } },
     },
     {
+      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
+      // z.number().int().min(0).max(10).default(2)` — a valid tally is stored as given.
+      name: 's_put_danger_auto_switch_ok',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { autoSwitchAfterRefusals: 5 } },
+    },
+    {
+      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
+      // z.number().int().min(0).max(10).default(2)` — 0 = never switch — the floor is inclusive.
+      name: 's_put_danger_auto_switch_zero',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { autoSwitchAfterRefusals: 0 } },
+    },
+    {
+      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
+      // z.number().int().min(0).max(10).default(2)` — non-whole: ONLY the int issue (the int check aborts).
+      name: 's_put_danger_auto_switch_fraction',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { autoSwitchAfterRefusals: 1.5 } },
+    },
+    {
+      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
+      // z.number().int().min(0).max(10).default(2)` — non-whole AND below the floor: still ONLY the int issue.
+      name: 's_put_danger_auto_switch_negative_fraction',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { autoSwitchAfterRefusals: -1.5 } },
+    },
+    {
+      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
+      // z.number().int().min(0).max(10).default(2)` — the >=0 bound.
+      name: 's_put_danger_auto_switch_negative',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { autoSwitchAfterRefusals: -1 } },
+    },
+    {
+      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
+      // z.number().int().min(0).max(10).default(2)` — the <=10 bound.
+      name: 's_put_danger_auto_switch_too_big',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { autoSwitchAfterRefusals: 11 } },
+    },
+    {
+      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
+      // z.number().int().min(0).max(10).default(2)` — not a number at all.
+      name: 's_put_danger_auto_switch_string',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { autoSwitchAfterRefusals: '2' } },
+    },
+    {
+      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
+      // z.number().int().min(0).max(10).default(2)` — a present null is a type miss (no nullable).
+      name: 's_put_danger_auto_switch_null',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { autoSwitchAfterRefusals: null } },
+    },
+    {
+      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
+      // z.number().int().min(0).max(10).default(2)` — past 2^53: the safe-int issue does NOT abort — the bound follows.
+      name: 's_put_danger_auto_switch_huge',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { autoSwitchAfterRefusals: 1e20 } },
+    },
+    {
       // FOUR issues at once — Zod collects every key's failure and emits them
       // in schema DECLARATION order (not the order the bag lists them), which
       // is the half a single-issue case cannot pin.

@@ -95,6 +95,14 @@ static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted
 /// id/userId/timestamps). Regenerate alongside the schema (`QT_SEED_OUT=…`).
+///
+/// Seed-only re-dump register (append): `49059fb14` (P4.D225 — the seed's
+/// `dangerousContentSettings` gains `"autoSwitchAfterRefusals":2`, v4 #74's
+/// schema default; the SAME dump's `fresh_schema.json` differs from the
+/// committed one on exactly one line — that column's DDL `DEFAULT` carrying
+/// the same key — and was deliberately NOT taken: the D23 schema re-dump is
+/// P4.D226's this round, at its own pin. `provisioning_equivalence` is red at
+/// `49059fb14` on that one line until it lands.)
 static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 
 #[derive(Deserialize)]

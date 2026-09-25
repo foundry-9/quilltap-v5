@@ -337,6 +337,9 @@ impl quilltap_core::services::orchestrator::OrchestratorSeams for HarnessOrchest
                 display_mode: "SHOW".to_string(),
                 show_warning_badges: true,
                 custom_classification_prompt: None,
+                // P4.D225 OUT-OF-MANDATE (a required field on a shared struct):
+                // v4 `49059fb14`'s schema default.
+                auto_switch_after_refusals: 2,
             }),
             cheap_llm_strategy: "PROVIDER_CHEAPEST".to_string(),
             cheap_llm_user_defined_profile_id: None,

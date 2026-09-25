@@ -2580,6 +2580,9 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
                 display_mode: "SHOW".to_string(),
                 show_warning_badges: true,
                 custom_classification_prompt: None,
+                // P4.D225: v4 `49059fb14`'s schema default (the fixture's stored
+                // settings object predates the key; Zod fills 2 on read).
+                auto_switch_after_refusals: 2,
             }),
             // Round-3 Group 8: the fixture's `cheapLLMSettings =
             // { strategy: PROVIDER_CHEAPEST, fallbackToLocal: false,

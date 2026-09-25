@@ -150263,3 +150263,57 @@ Regen outputs staged under `/tmp/p4d225/`.
   shape the per-run builders need; the committed-pair migrator
   (`migrate-memories-fixture-columns.ts`) gains its `--module` flag over the
   same helper in the next slice.
+
+### Unit 7b — `autoSwitchAfterRefusals` (the settings twin, the PUT parse, the seed)
+
+- `db/chat_settings.rs` `DangerousContentSettings.auto_switch_after_refusals:
+  i64` declared LAST (`serde(default = 2)` — Zod materializes the default on
+  every parse, so a stored object that predates the key reads 2 and every
+  write carries it) + `DEFAULT_AUTO_SWITCH_AFTER_REFUSALS = 2`;
+  `resolver.rs` defaults 2 / vouched-safe **0** (the Uncensored arm spreads the
+  global object, so it inherits). Five struct literals gained the field (two
+  core test literals; three harness literals — `enclave_step_tier3`,
+  `appearance_sanitize_gate_tier3` marked `P4.D225 OUT-OF-MANDATE (a required
+  field on a shared struct)`, and `orchestrator_tier3`, a chain family).
+- `api/settings.rs` `zod_dangerous_content_settings`: the field LAST. **The
+  issue texts MEASURED at the pin against the real zod 4.6.5** (a probe over
+  `z.object({ autoSwitchAfterRefusals: z.number().int().min(0).max(10)
+  .default(2) })`): a non-number → `Invalid input: expected number, received
+  <type>` (incl. `null` — no nullable); a non-whole number → `Invalid input:
+  expected int, received number` ALONE (`-1.5` reports NO bound: the int check
+  aborts); a whole number past ±2^53 → the safe-int issue (`origin: int`, the
+  `note`) which does NOT abort, then the bound; `-1` → `Too small: expected
+  number to be >=0`; `11` → `Too big: expected number to be <=10`; absent → 2.
+  Reuses the ONE Zod-issue home's constructors (`invalid_int_type`,
+  `too_small_int`/`too_big_int`, `too_small_number`/`too_big_number`).
+- **`settings_routes_equivalence` +9 cases** (5, 0, 1.5, -1.5, -1, 11, "2",
+  null, 1e20) — **181 matched**, incl. v4's own status split (the `invalid_type`
+  arms 400, the bound arms 500 — v5 already agreed). Floor 27 → 36.
+  Red-first by mutation (the parse's insertion removed): reds
+  `s_put_danger_nulls` (the stored object loses the key). A first mutation
+  aimed at the struct's serde (`skip_serializing`) stayed GREEN — the route
+  surface runs the hand-rolled Zod twin, not the struct's serializer;
+  recorded so the next lane aims at the right seam.
+- `chat_settings_tier2`, `chat_settings_column_sites_guard` (9 adopted columns,
+  unmoved), `chat_settings_composer_web_routes` — green through the driver at
+  the target; the key flows (`grep -c` 1 / 20 in the fresh oracles).
+- **`chat_settings_seed.json` RE-DUMPED at the pin** (`dump-fresh-schema.ts`
+  with `QT_SEED_OUT`): exactly one value moves — the seed's
+  `dangerousContentSettings` gains `"autoSwitchAfterRefusals":2`; byte format
+  (no trailing newline) preserved; a seed-only register line appended in
+  `provisioning/mod.rs`.
+- **MEASURED — the order is wrong here:** it predicts `fresh_schema.json`
+  unmoved and `provisioning_equivalence` GREEN at the pin. The SAME dump's
+  `fresh_schema.json` differs from the committed one on exactly ONE line: the
+  `chat_settings."dangerousContentSettings"` column's DDL `DEFAULT` (v4's
+  `ChatSettingsSchema` default object gained `autoSwitchAfterRefusals: 2`, and
+  `generateDDL` emits Zod defaults into the CREATE). So
+  **`provisioning_equivalence` is RED at `49059fb14` on that one line** (the
+  D23 tripwire — v4 drift, not a v5 bug). The order fences `fresh_schema.json`
+  to P4.D226 (its D23 re-dump at `4d370a90f`, which carries the same default),
+  so it was NOT taken here — handed to P4.D226 by name. The ledger columns
+  themselves: absent from the dump, as measured in 7a. **Also measured for
+  P4.D226's E.1 note:** `dump-fresh-schema.ts` at the pin reproduces the
+  committed file on every other line, `"conciergeOverride" TEXT` included — the
+  survey's "absent from `extractSchemaMetadata`" anomaly does not reproduce
+  through the dumper.

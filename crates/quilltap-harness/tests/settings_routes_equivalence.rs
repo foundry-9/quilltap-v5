@@ -592,9 +592,11 @@ fn settings_routes_match_v4() {
     // `dangerousContentSettings`). Same stale-oracle guard as the families
     // above — before this lane NOTHING exercised a present-but-invalid value on
     // any of them, which is exactly how the collapse survived.
+    // P4.D225: +9 `autoSwitchAfterRefusals` arms (v4 `49059fb14`) — the
+    // three measured zod 4.6.5 issue texts and the two in-range values.
     assert!(
-        settings_zod_cases >= 27,
-        "expected >= 27 settings_zod cases, got {settings_zod_cases} — regenerate the oracle"
+        settings_zod_cases >= 36,
+        "expected >= 36 settings_zod cases, got {settings_zod_cases} — regenerate the oracle"
     );
     // P4.D79: the eight multi-character-prefill arms on top of the family's
     // original seven. Same stale-oracle guard as the families above — the three

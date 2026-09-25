@@ -69,7 +69,7 @@
     "answerConfirmationSettings": "{\"enabled\":false}",
     "smartTypographySettings": "{\"displayQuotes\":false,\"dashes\":true,\"ellipsis\":true}",
     "storyBackgroundsSettings": "{\"enabled\":false,\"defaultImageProfileId\":null}",
-    "dangerousContentSettings": "{\"mode\":\"OFF\",\"threshold\":0.7,\"scanTextChat\":true,\"scanImagePrompts\":true,\"scanImageGeneration\":false,\"displayMode\":\"SHOW\",\"showWarningBadges\":true}",
+    "dangerousContentSettings": "{\"mode\":\"OFF\",\"threshold\":0.7,\"scanTextChat\":true,\"scanImagePrompts\":true,\"scanImageGeneration\":false,\"displayMode\":\"SHOW\",\"showWarningBadges\":true,\"autoSwitchAfterRefusals\":2}",
     "autoLockSettings": "{\"enabled\":false,\"idleMinutes\":15}",
     "timezone": null
   }

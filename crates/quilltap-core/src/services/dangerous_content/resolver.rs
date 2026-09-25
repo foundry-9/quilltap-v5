@@ -62,6 +62,7 @@ pub fn default_dangerous_content_settings() -> DangerousContentSettings {
         display_mode: "SHOW".to_string(),
         show_warning_badges: true,
         custom_classification_prompt: None,
+        auto_switch_after_refusals: crate::db::chat_settings::DEFAULT_AUTO_SWITCH_AFTER_REFUSALS,
     }
 }
 
@@ -82,6 +83,8 @@ pub fn vouched_safe_dangerous_content_settings() -> DangerousContentSettings {
         display_mode: "SHOW".to_string(),
         show_warning_badges: false,
         custom_classification_prompt: None,
+        // v4 `49059fb14`: a vouched-safe chat never auto-switches.
+        auto_switch_after_refusals: 0,
     }
 }
 

@@ -234,6 +234,9 @@ fn danger_settings(case: &CaseSpec, threshold: f64) -> DangerousContentSettings 
         display_mode: "SHOW".to_string(),
         show_warning_badges: true,
         custom_classification_prompt: case.custom_classification_prompt.clone(),
+        // P4.D225 OUT-OF-MANDATE (a required field on a shared struct): v4
+        // `49059fb14`'s schema default.
+        auto_switch_after_refusals: 2,
     }
 }
 

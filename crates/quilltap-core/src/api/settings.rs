@@ -664,7 +664,8 @@ fn zod_smart_typography_settings(v: &Value) -> Result<chat_settings::SettingsCol
 /// the input bag stands alone and the Zod defaults materialize over whatever is
 /// absent): `mode` defaults `'OFF'`, `threshold` `0.7`, `scanTextChat` `true`,
 /// `scanImagePrompts` `true`, `scanImageGeneration` `false`, `displayMode`
-/// `'SHOW'`, `showWarningBadges` `true`; the three `.nullable().optional()`
+/// `'SHOW'`, `showWarningBadges` `true`, `autoSwitchAfterRefusals` `2` (LAST,
+/// v4 `49059fb14`); the three `.nullable().optional()`
 /// fields — `uncensoredTextProfileId`, `uncensoredImageProfileId`,
 /// `customClassificationPrompt` — KEEP a present `null` and are OMITTED when
 /// absent; unknown keys are stripped; output in schema field order.
@@ -754,6 +755,44 @@ fn zod_dangerous_content_settings(v: &Value) -> Result<chat_settings::SettingsCo
             other,
         )),
     }
+    // v4 `49059fb14` (#74): `autoSwitchAfterRefusals:
+    // z.number().int().min(0).max(10).default(2)`, declared LAST — which fixes
+    // the stored key order. The three issue texts were MEASURED against the
+    // real zod 4.6.5 at the pin (the ONE-Zod-issue-home rule): a non-number →
+    // `Invalid input: expected number, received <type>`; a non-whole number →
+    // `Invalid input: expected int, received number` ALONE (the int check
+    // aborts: `-1.5` reports no bound); a whole number → the safe-integer
+    // issue past ±2^53 (which does NOT abort), then `Too small: expected number
+    // to be >=0` / `Too big: expected number to be <=10`.
+    let auto_path = || vec!["autoSwitchAfterRefusals".into()];
+    let auto = match o.get("autoSwitchAfterRefusals") {
+        None => json!(chat_settings::DEFAULT_AUTO_SWITCH_AFTER_REFUSALS),
+        Some(v) => match v.as_f64() {
+            None => {
+                issues.push(ZodIssue::invalid_type("number", auto_path(), Some(v)));
+                Value::Null
+            }
+            Some(n) if !n.is_finite() || n.fract() != 0.0 => {
+                issues.push(ZodIssue::invalid_int_type(auto_path(), Some(v)));
+                Value::Null
+            }
+            Some(n) => {
+                if n > crate::api::zod_issues::MAX_SAFE_INTEGER {
+                    issues.push(ZodIssue::too_big_int(auto_path()));
+                } else if n < -crate::api::zod_issues::MAX_SAFE_INTEGER {
+                    issues.push(ZodIssue::too_small_int(auto_path()));
+                }
+                if n < 0.0 {
+                    issues.push(ZodIssue::too_small_number(json!(0), auto_path()));
+                } else if n > 10.0 {
+                    issues.push(ZodIssue::too_big_number(json!(10), auto_path()));
+                }
+                // A whole JS number stringifies without a fraction.
+                json!(n as i64)
+            }
+        },
+    };
+    out.insert("autoSwitchAfterRefusals".into(), auto);
 
     if !issues.is_empty() {
         return Err(zod_error_message(&issues));

@@ -373,6 +373,23 @@ pub struct DangerousContentSettings {
     pub show_warning_badges: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_classification_prompt: Option<String>,
+    /// v4 `autoSwitchAfterRefusals: z.number().int().min(0).max(10).default(2)`
+    /// (`49059fb14`, #74) — declared LAST, after `customClassificationPrompt`,
+    /// which fixes the stored key order. After this many stated moderation
+    /// refusals on a Monitored chat, the Concierge flips it to Flagged; `0` =
+    /// never. The Zod default materializes on every parse, so an OLD stored
+    /// object without the key reads as 2 (`serde(default)`), and every write
+    /// carries it.
+    #[serde(default = "default_auto_switch_after_refusals")]
+    pub auto_switch_after_refusals: i64,
+}
+
+/// v4 `DEFAULT_AUTO_SWITCH_AFTER_REFUSALS` (`resolver.service.ts`) — "mirrors
+/// the schema default".
+pub const DEFAULT_AUTO_SWITCH_AFTER_REFUSALS: i64 = 2;
+
+fn default_auto_switch_after_refusals() -> i64 {
+    DEFAULT_AUTO_SWITCH_AFTER_REFUSALS
 }
 
 /// `AutoLockSettingsSchema` (settings.types.ts L305). `idleMinutes` is a nested

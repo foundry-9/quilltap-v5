@@ -2836,6 +2836,7 @@ mod bug_133_tests {
                 display_mode: "SHOW".to_string(),
                 show_warning_badges: true,
                 custom_classification_prompt: None,
+                auto_switch_after_refusals: 2,
             }
         }
 
@@ -2984,6 +2985,7 @@ mod duration_tests {
             display_mode: "BLUR".to_string(),
             show_warning_badges: false,
             custom_classification_prompt: None,
+            auto_switch_after_refusals: 2,
         };
         let db_ctx = DbContext {
             chat: None,

@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the autoSwitchAfterRefusals setting (P4.D225 unit 7b)
+
+_Versions: core 0.0.1066, harness 0.0.985._
+
+`DangerousContentSettings` gains v4's `autoSwitchAfterRefusals` (`49059fb14`:
+int 0..10, default 2, declared last; the resolver's defaults 2 / vouched 0),
+and the settings PUT parses it with the three issue texts measured against the
+real zod 4.6.5 (a non-whole number reports only the int issue; past ±2^53 the
+safe-int issue is followed by the bound). `chat_settings_seed.json` is
+re-dumped at the pin (one value moves). `settings_routes_equivalence` gains
+nine cases (181 matched). Measured against the order: `provisioning_equivalence`
+is red at the pin on one line — the `chat_settings.dangerousContentSettings`
+column DEFAULT now carries the key — and the schema re-dump belongs to P4.D226.
+
 #### 2026-09-25 — feat(concierge): the refusal ledger's columns and repository ops (P4.D225 unit 7a)
 
 _Versions: core 0.0.1065, harness 0.0.984, host 0.0.159._
