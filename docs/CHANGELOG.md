@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — docs(porting): order the `08c49319d` Concierge-overhaul drift catch-up round (P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232)
+
+_Docs-only change._
+
+Eight work orders for the nine pending v4 commits, written from fresh
+surveys of the shipped hunks. The five Concierge-overhaul commits rewrite
+the same functions in sequence, so their server side runs as a stacked
+chain of four lanes, each pinned at its own commit: the refusal substrate
+and ledger (#73/#74), the three states (#75), the Concierge settings with
+the `conciergeOverride` drop and the consumer sweep (#76), and the Salon
+polish plus the whole `help/` tree (#77). In parallel from `main`: the two
+SPA lanes (Salon side, Settings side), the Scenario Builder shelves, and
+the SDK-bump regen with the two NO-PORT ratifications.
+
+Measured at planning and written into the orders: v4's `generateDDL`
+cannot emit the refusal-ledger columns (a boot ensure, not a re-dump); all
+42 chats-bearing and 23 settings-bearing fixture pairs must be widened
+through v4's real migration modules; the wire keys the ledger had guessed
+were wrong; the shelves commit does not move the dispatch census; v5 has
+no message danger-flag UI for #76's display settings to drive. The drift
+ledger's nine §3 rows are marked `ORDERED(…)`; phase-4.md carries the
+round plan; the shared contract block is byte-identical across the eight
+orders.
+
 #### 2026-09-25 — docs(porting): drift check at v4 `08c49319d` — nine commits pending, an SDK-bump regen event
 
 _Docs-only change._

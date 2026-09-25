@@ -6694,6 +6694,151 @@ corpus; four stale headers/comments. Gate + versions: the round record in
    `cl100k` tokenizer (the section bound is proved through the oracle), the
    `docs/v4/CHANGELOG.md` lag.
 
+## The `08c49319d` Concierge-overhaul drift catch-up round (P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232) — ORDERED 2026-09-25
+
+**Baseline `b0b6656b5`; v4 `main` HEAD `08c49319d` (NINE non-merge commits
+past: bug 170, the six overhaul specs, the FIVE Concierge-overhaul PRs
+#73–#77, a dependency sweep that bumps `openai` 7.20.0 → 7.23.0 and
+`@openrouter/sdk` 1.3.11 → 1.3.28, and the Scenario Builder on the
+scenario shelves); `bugfix` `1a2b2164c` and `release` `8fbf2afe0` unmoved;
+the checkout on `main`, CLEAN at the planning probe. PIN REQUIRED — and
+PER-LANE inside the chain: P4.D225 pins `49059fb14`, P4.D226 `4d370a90f`,
+P4.D227 `3b463d6b1`, everyone else the round target `08c49319d`. All nine
+§3 rows marked `ORDERED(…)`.**
+
+The overhaul REPLACES three ported verticals (the four-state Concierge,
+P4.D141/D143/D144/D148/D149; the `dangerousContentSettings` policy,
+P4.6a/6b/6an/71/D37/D38/D48/D201; the image-moderation reroute, W4.2/
+P4.D178/P4.88) and widens the route trail (P4.D171/D173/D177). The five
+commits rewrite the SAME functions in sequence, so the server side is ONE
+vertical that cannot be split by file: it runs as a **stacked chain of
+four lanes, each pinned at its own commit**, with the SPA, the shelves and
+the riders in parallel from `main`. Measured at planning and written into
+the orders: v4's `generateDDL` walks the Zod schema and CANNOT emit the
+#74 ledger columns (a boot ensure on the P4.D182 model, not a re-dump);
+all 42 committed chats-bearing fixture pairs and all 23 settings-bearing
+pairs carry the legacy columns and v5's chat read is a strict column
+list, so the chain WIDENS them through v4's REAL migration modules (a new
+arm of the fixture migrator — the ADD-COLUMN twin cannot express #75's
+and #76's JavaScript backfills or #76's DROP); v5 never backfills or
+drops at boot; the wire keys are `conciergeSetBy`/`conciergeReason`/
+`conciergeRefusalCount` (the ledger's working names were wrong); v5 has NO
+message danger-flag UI, so #76's `conciergeDisplay` and #77's blur lift
+have no consumer (ruled out of scope, named); the `08c49319d` build body
+is a raw `Value`, so the dispatch census does NOT move for the shelves
+(the ledger's prediction was false); the shelves' new WARNs are
+unreachable through v4's own fallback repositories.
+
+- **P4.D225 — #73 + #74 server: the refusal substrate + the ledger (Rust,
+  from `main`, the most capable tier — the KEYSTONE)**: ONE classifier
+  (`classify_refusal`, five ranked evidences over a STRUCTURED refusal the
+  native dialects/decoders now carry — v5 has no plugins and no typed
+  errors today), ONE understudy resolver pair with v4's exclusion/courier
+  rules, ONE image-failover chokepoint replacing v5's three reroute sites
+  with the Lantern's bug-133 gate deleted, the text failover's
+  `moderation-refusal` branch + `attempt_uncensored_retry` factored, the
+  trail widened (`evidence` ×5, `profileKind`, trails on TOOL + Lantern
+  rows, v4's two per-writer key orders), the finish reasons v5's decoders
+  lack, the `systemKind: 'refusal'` writer, the ledger (two schema-ABSENT
+  columns by BOOT ENSURE, the three repo ops, the per-chat auto-switch with
+  its re-read, the post-commit batch hook PORTED, `auto-flagged-refusals`),
+  `image-dialects` / `response-bodies` / four stream files RE-RECORDED.
+  `docs/developer/porting/work-orders/p4.d225-refusal-substrate-ledger.md`.
+- **P4.D226 — #75 server: the three states (Rust, STACKED on P4.D225,
+  the most capable tier)**: `chats.conciergeMode`/`SetBy`/`Reason` with the
+  D23 re-dump at its pin, `patch_only_fields`, `set_concierge_mode`
+  (compare-and-set), `set_danger_classification`, `chat_override`'s
+  three-state getters + `may_fail_over`, `manual_flip` writing only the
+  new columns with the four transition kinds, `classifier_switch` +
+  `current_state`, the resolver's `chat-locked`/`chat-unmoderated` sources
+  with `LOCKED` replacing `VOUCHED_SAFE`, the three-row presentation, the
+  chat GET/PUT/POST/list/create shapes (§S.1), restore + `.qtap` import
+  through `with_concierge_mode_from_legacy`, the widening of ALL 42 pairs
+  (migrations 1 + 2) + the full sweep. `docs/developer/porting/work-orders/
+  p4.d226-three-states.md`.
+- **P4.D227 — #76 server: the Concierge settings + the DROP + the consumer
+  sweep (Rust, STACKED on P4.D226, the most capable tier — sub-agents for
+  the mechanical rows)**: `chat_settings.conciergeSettings` + the second
+  re-dump (+ the `conciergeOverride` DROP + the seed), `resolve_concierge_
+  settings`/`read_concierge_settings` replacing mode checks in ~40
+  consumers, the settings PUT's retired-key 400 + the legacy keys STRIPPED
+  on read (§S.2), `uuid_remap`'s four desk ids, the `help_settings`
+  `concierge` category + the `help_navigate` URL bytes, `conciergeOverride`
+  OUT of the strict read, the widening of the 42 + 23 pairs (migrations 3
+  + 4) + the vintage trio rebuilt + the full sweep. `docs/developer/
+  porting/work-orders/p4.d227-concierge-settings-drop-consumer-sweep.md`.
+- **P4.D228 — #77 server: the Salon polish + the WHOLE `help/` tree
+  (Rust, STACKED on P4.D227)**: the chat action `retry-image-uncensored`
+  (a dispatch verb; the union body; the picture arm filing a TOOL row at
+  +1 ms with a `via:'concierge'` trail; the background arm's 409-before-
+  400 + `forceUncensored`), the RPC-only `messageRetryUncensored` over
+  `regenerate_swipe`'s new `profile_override` (the host resolving the
+  override's limit + key) narrated on `swipeProgress` (§S.3),
+  `retry_uncensored.rs`, the orchestrator's `routedDirect`, the Lantern's
+  `background-refused` writer + the story job completing with a refusal
+  bubble; `help/**` re-vendored at `08c49319d` (129 stays 129).
+  `docs/developer/porting/work-orders/p4.d228-salon-polish-try-uncensored-
+  help-tree.md`.
+- **P4.D229 — the Concierge SPA, Salon side (SPA, from `main`)**: the
+  three-state twin in both homes, the presentation with the `info` tone
+  retired, the marks with provenance, the flat sidebar select disabled off
+  duty behind the off-duty hint, the header pill with the refusal count,
+  New Chat's `(default)` + once-only seed, quick-hide = Unmoderated only,
+  `route-trail-display`'s `profileKind`/`label`, "Tried:", "Try uncensored"
+  ×3 + the retry controller over §S.3, the labels, six e2e rewrites + one
+  new (gated). `docs/developer/porting/work-orders/p4.d229-concierge-spa-
+  salon-side.md`.
+- **P4.D230 — the Concierge SPA, Settings side (SPA, from `main`)**: "The
+  Concierge" tab third with the five cards (every string, id, filter and
+  PUT key), the whole-object deep-merged PUT, `DangerousContentSettings`
+  deleted, the two other writers stopped from tripping the retired-key
+  400, the help categories' slug swap + URL + the two fixtures re-captured.
+  `docs/developer/porting/work-orders/p4.d230-concierge-spa-settings-side.
+  md`.
+- **P4.D231 — the Scenario Builder shelves (Rust + SPA, from `main`)**:
+  `groupIds` on the Zod twin, the route's dedup-then-exists filter with
+  `groupCount`, named groups FIRST in the group tier, `resolve_mount_point_
+  ids_for_group` with v4's new fail-soft granularity (the dead WARNs pinned
+  ABSENT), the shelf mode (the Host button on three shelves incl. a NEW
+  group Scenarios card over a NEW group mutator, the builder's shelf footer,
+  `project:<id>` keys + optgroups everywhere). `docs/developer/porting/
+  work-orders/p4.d231-scenario-builder-shelves.md`.
+- **P4.D232 — the SDK-bump regen event + the riders (Rust harness only,
+  from `main`, a cheaper tier)**: the guard's constants moved,
+  `request-envelopes` re-recorded and PROVEN stamp-only, the OpenRouter
+  pricing oracle at 1.3.28, the manifests + four stream files + `google-
+  wire` as neutrality, `83d0c969b` (bug 170 — v5 NOT AFFECTED, measured)
+  and `a8292547a` (docs) NO-PORT ratified with the mirror pre-lists, Tier R
+  at HEAD. `docs/developer/porting/work-orders/p4.d232-sdk-bump-regen-
+  riders-bug-170-specs-ratified.md`.
+
+**Shared contract (§S, byte-identical in all eight — md5-checked at
+commit):** §S.1 the chat's Concierge shape (P4.D226 → P4.D229); §S.2
+`conciergeSettings` verbatim (P4.D227 → P4.D230, read by P4.D229); §S.3 the
+two retry verbs + the frames + the 409 tokens (P4.D228 → P4.D229); §S.4 the
+provider corpora split + the guard's designed reds (P4.D225 ↔ P4.D232);
+§S.5 the trail row + the system-message kinds (P4.D225 → P4.D229); §S.6 the
+help slug/URL across three lanes; §S.7 STOP on anything else. **Fences:**
+`api/types.rs`/`engine.rs` + every Concierge core file — the chain's,
+sequentially; `core/core-contract.ts` — P4.D229 owns, P4.D230 and P4.D231
+each land ONE marked hunk; `help/**` — P4.D228 alone; the corpora split
+per §S.4. **Execution:** wave 1 = P4.D225 (most capable) ∥ P4.D229 ∥
+P4.D230 ∥ P4.D231 ∥ P4.D232 (cheaper) — at most TWO Rust full gates at
+once (114 GB free); wave 2 = P4.D226 when P4.D225 writes LANE COMPLETE;
+wave 3 = P4.D227; wave 4 = P4.D228. Cherry-pick order P4.D232 → P4.D231 →
+P4.D225 → P4.D226 → P4.D227 → P4.D228 → P4.D230 → P4.D229; the unifier
+flips every `P4D2xx_SERVER_LANDED` gate and runs the live beats. **Left
+out:** the message danger-flag UI (badges/blur/"Not Dangerous"/`override-
+danger-flag` — a whole vertical v5 never had; the Display card ships
+write-only); the follow-up smalls lane (the `text-replacement.ts`
+soft-break divergence and the five smalls headers' OPEN items — after
+the drift); the owed Host dogfood pass (AFTER this round, on a Friday copy
+taken after v4's `4.10.0-dev.88` — a copy taken before it cannot open
+once P4.D226 lands); the KaTeX pin bump (an install); the `quilltap sync`
+writer-hold ruling; `ui/modal.ts` portaling; the `docs/v4/CHANGELOG.md`
+lag.
+
+
 ## The `b0b6656b5` ten-commit drift catch-up round (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224) — ORDERED 2026-09-24
 
 **Baseline `d1c06cd9d`; v4 `main` HEAD `b0b6656b5` (TEN non-merge commits
