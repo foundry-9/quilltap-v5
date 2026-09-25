@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — docs(porting): drift check at v4 `ce2f1dabf` — seven commits pending, the Concierge overhaul landed
+
+_Docs-only change._
+
+Records a drift check in `drift-ledger.md`. v4 main is at `ce2f1dabf`
+(`4.10.0-dev.90`), seven commits past the `b0b6656b5` baseline, and the
+checkout is clean on `main`. The `bugfix` and `release` branches have not
+moved. Two rows are NO-PORT candidates: bug 170 (v5 is not affected) and the
+overhaul spec docs. The other five are the Concierge overhaul, phases 1–5
+(#73–#77). They form a strict chain of PORT rows. Together they replace v5's
+four-state Concierge and its `dangerousContentSettings` policy, add a refusal
+classifier, understudy, and image-failover chokepoint, and add four
+migrations. One of those migrations drops `chats.conciergeOverride`. The
+ledger warns that Friday copies taken after v4 upgrades will lack a column v5
+still binds. It also notes that v4's `node_modules` still has plugin-types
+2.7.x against the new `^2.8.0` requirement. The regen rule stays pinned at
+`b0b6656b5`.
+
 #### 2026-09-25 — docs(porting): unify the `b0b6656b5` ten-commit drift catch-up round (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224) — baseline → `b0b6656b5`
 
 _Versions: core 0.0.1058, harness 0.0.977, host 0.0.158, web 0.0.196, SPA 0.5.773 (final); cli, tauri, fixture-sanitizer unchanged._

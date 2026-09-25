@@ -19,87 +19,127 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `b0b6656b5`** — "Fix bug 169: narrow-pane chat sidebar
+- **Oracle baseline: `b0b6656b5`**: "Fix bug 169: narrow-pane chat sidebar
   no longer closes dialogs it opens (#71)" (v4 main, 2026-09-24,
-  `4.10.0-dev.78`), adopted at the `b0b6656b5` ten-commit drift catch-up
-  round unification (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224,
+  `4.10.0-dev.78`), adopted when the `b0b6656b5` ten-commit drift catch-up
+  round was unified (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224,
   2026-09-25). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-25 (`/unify`, main-checkout session, after `git fetch`
-  of the v4 checkout — remote-tracking refs only; the human's local branches
-  were not touched). The probe was run at the unification's start and again
-  at the fast-forward.
-- **v4 `main` HEAD at check:** local `main` at **`83d0c969b`**
-  (`4.10.0-dev.79`, bug 170's fix — v4-only, the Salon speaker switch's HTTP
-  method); **`origin/main` ONE further at `a8292547a`** ("Add Concierge
-  overhaul feature specs (overview + five phases) (#72)", 2026-09-24 — landed
-  during the unification's gate; the fetch touched remote-tracking refs only,
-  so the human's local `main` still sits at `83d0c969b`). **TWO non-merge
-  commits past the baseline** (§3).
+- **Checked:** 2026-09-25 (`/driftcheck`, main-checkout session, after
+  `git fetch` of the v4 checkout; the fetch left local `main` equal to
+  `origin/main`).
+- **v4 `main` HEAD at check: `ce2f1dabf`** ("Concierge overhaul phase 5:
+  Salon polish — "Try uncensored" (#77)", 2026-09-25, `4.10.0-dev.90`).
+  Local `main` and `origin/main` agree. **SEVEN non-merge commits past the
+  baseline** (§3): `83d0c969b` (bug 170), `a8292547a` (the overhaul specs),
+  and **the whole Concierge overhaul landed as code in five squashed PRs
+  (#73–#77)**, which is exactly the "watch" note on `a8292547a`'s row.
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch") — UNMOVED (local and `origin/bugfix`).
-- **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
-  Still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**, local `main` AT
-  `origin/main` (`83d0c969b`). §2's probe runs against `83d0c969b`.
-- **Verdict: DRIFT PENDING — 2 commits** (§3): `83d0c969b`, NO-PORT?
-  (UNPROCESSED — v5 never had bug 170: its speaker pick rides the dispatch
-  verb, and its REST chat edge has no PUT leg; measured in its row), and
-  `a8292547a`, NO-PORT? (UNPROCESSED — nine files, 1,008 insertions, ALL
-  docs: six `docs/developer/features/concierge-overhaul*.md` specs, a
-  `ROADMAP.md` line, `.claude/commands/update-documentation.md`, CHANGELOG;
-  no `lib/`, `app/`, `help/`, `packages/` or `plugins/` path — a v4 ROADMAP
-  for future Concierge work, not a behaviour change; the `docs/v4/` mirror
-  takes the six specs at its ratification). The ten
-  commits of the P4.D220–P4.D224 round are ABSORBED / NO-PORT-RATIFIED and
-  retired to §6. The round's waiver for `83d0c969b` expired with the round;
-  the commit needs its ratification (a one-row catch-up, foldable into the
-  next round's ratification list).
-- **Regen rule: PIN REQUIRED at `b0b6656b5`** — HEAD is past the baseline
-  (one commit locally, two on `origin/main`). Every regen runs from a detached `b0b6656b5` worktree per §5.1
-  (`83d0c969b` touches no `lib/`, `app/api/`, `help/`, `packages/` or
-  `plugins/` path, so no regen can SEE it — but the rule is mechanical: pin).
-  The unification's own regens ran from `/tmp/qt-v4-pin-unify-b0b6656b5`
-  (removed at cleanup).
-- **The workspace gate at the baseline** (the unification's final tree — the
-  round record in `status-log.md` carries the counts): `qtap_schema_embed_
-  guard`, `zod_version_guard` (4.6.5), `provider_sdk_version_guard`,
-  `public_schemas_vendor_guard` GREEN; `help_tree_embed_guard` GREEN at
-  **129** (127 + 2, P4.D222's re-vendor; `host_help_docs_boot` agrees);
-  `dispatch_wrong_type_census` at **449** (UNMOVED by the `ChatsHasDangerous`
-  removal — a unit variant; P4.115 item 5's `ChatUpdate.remove_participant_
-  id` strip-rule switch to 450 left OPEN, pinned both ways); NEW
-  `web_edge_action_sites_census` (zero raw `"action"` reads outside
-  `query.rs`; one allowed body-field site; the typed-extractor door counted
-  to zero since the unification); `blob_write_sites_census` 12 / 12 + one
-  EXEMPT; `compressed_column_write_sites_census` 14; `get_messages_caller_
-  census` (76, 7); `web_edge_body_parse_guard`'s collapse census without a
-  `scenario_builder_routes.rs` row. `help_tree_equivalence` at the
-  `b0b6656b5` pin is the proof the tree is v4's (129 files, `diff -r` empty
-  against the pin). Tier R 266/0 at the pin. The tool catalog is 59.
-- **Schema state:** unchanged — the D23 re-dump from `e7d77bb60` stands; the
-  FTS objects come from P4.D204's boot reconciler. None of the round's ten
-  commits moved DDL (`492771aff`'s and `ad1c4c37f`'s `DDL.md` hunks are
-  prose only; `8aafd595d`'s `onTableEnsured` blocks are the old init DDL
-  moved verbatim). `83d0c969b` touches no DDL.
-- **`help/**` vs v4 HEAD `83d0c969b`:** IDENTICAL — **129 files**
-  (`83d0c969b` touches no `help/` file). The 129 literals live at
-  `crates/quilltap-host/tests/host_help_docs_boot.rs` and
-  `crates/quilltap-harness/tests/help_tree_embed_guard.rs` (plus the SPA's
-  `help-categories.ts` capture, which carries the two `chat-settings-*`
-  slugs).
+  branch"), UNMOVED on both local and `origin/bugfix`; `1a2b2164c..bugfix` is
+  empty.
+- **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2"), UNMOVED.
+  There is still no `release: 4.10.0` squash.
+- **Checkout at check:** branch **`main`**, tree **CLEAN**. §2's probe runs
+  against `ce2f1dabf`.
+- **⚠ v4's `node_modules` lags its own manifest:** `8bd080267` bumps
+  `@quilltap/plugin-types` `^2.7.0` → `^2.8.0` (the new
+  `ModerationRejectionError`) and the lockfile with it. The checkout's
+  `node_modules/@quilltap/plugin-types` is **2.7.1**, and every
+  `plugins/dist/*/node_modules` copy is **2.7.0**. Before any oracle regen
+  **at a target pin past `8bd080267`**, the human must run `npm install`,
+  or the typed-error arms import a class that does not exist. Baseline-pinned
+  regens are unaffected.
+- **Verdict: DRIFT PENDING — 7 commits** (§3):
+  - 2 NO-PORT? rows: `83d0c969b` and `a8292547a`, both UNPROCESSED and to be
+    ratified on their file lists.
+  - The **five Concierge-overhaul rows**, each a large PORT that must go in
+    order. They build on each other strictly (#73 → #74 → #75 → #76 → #77),
+    so they cannot be parallel lanes of one round the way the last catch-up's
+    lanes were.
+  - **The overhaul REPLACES v5's ported four-state Concierge** (P4.D141 /
+    P4.D143–D144 / P4.D148–D149) and its `dangerousContentSettings` policy
+    (P4.6a/6b, P4.6an, P4.71, P4.D37/38/48/201). Nothing here extends them.
+  - It also rewrites the image-moderation reroute (W4.2, P4.D178 / P4.88)
+    around a new refusal classifier + understudy + image-failover chokepoint,
+    and widens the `routeTrail` JSON (P4.D171/D173/D177).
+  - There are no CONVERGENCE rows: v4's `bugs.md` gained only bug 170, which
+    was not filed by the port.
+- **Regen rule: PIN REQUIRED at `b0b6656b5`** because HEAD is seven commits
+  past the baseline. Every regen runs from a detached `b0b6656b5` worktree
+  per §5.1. A catch-up round's target-pin regens also need the
+  `npm install` above.
+- **The workspace gate at the baseline** is unchanged since the unification:
+  the round record in `status-log.md` has the counts.
+  - GREEN: `qtap_schema_embed_guard`, `zod_version_guard` (4.6.5),
+    `provider_sdk_version_guard` and `public_schemas_vendor_guard`.
+  - `help_tree_embed_guard` is GREEN at **129** (`host_help_docs_boot`
+    agrees).
+  - `dispatch_wrong_type_census` is at **449**.
+  - The `web_edge_action_sites_census`, `blob_write_sites_census` (12 / 12 +
+    one EXEMPT), `compressed_column_write_sites_census` (14),
+    `get_messages_caller_census` (76, 7) and `web_edge_body_parse_guard`
+    readings are as recorded at unification.
+  - Tier R is 266/0 at the pin. The tool catalog is 59.
+  - **What the drift will move** (to measure in the catch-up, not predicted
+    here):
+    - the `helpSettings` / `helpNavigate` tool-definition bytes (#76; the
+      count stays 59);
+    - both action lists and every action census (#77's
+      `retry-image-uncensored` chat action + `retry-uncensored` message
+      action);
+    - `dispatch_wrong_type_census` (#75's three-value `conciergeState` enum;
+      #76's retired-key 400 on the settings PUT);
+    - the help tree's FILE SET, while the count stays 129.
+- **Schema state: v4 MOVED DDL.** The D23 re-dump from `e7d77bb60` still
+  stands at the baseline. Past it, four new migrations are appended in this
+  order in `migrations/scripts/index.ts`:
+  1. `add-chat-refusal-ledger-v1` (#74) adds `chats.moderationRefusalCount
+     INTEGER NOT NULL DEFAULT 0` and `lastModerationRefusalAt`. Both are
+     deliberately absent from `ChatMetadataSchema`, like `transcriptVersion`.
+  2. `add-chat-concierge-mode-v1` (#75) adds `conciergeMode` (default
+     `'moderated'`), `conciergeModeSetBy` and `conciergeModeReason`,
+     backfilled from the legacy `conciergeOverride` / `isDangerousChat` pair.
+  3. `add-concierge-settings-v1` (#76) adds `chat_settings.conciergeSettings`
+     JSON, backfilled from `dangerousContentSettings` +
+     `uncensoredImageDescriptionProfileId` +
+     `cheapLLMSettings.imagePromptProfileId`. Those source columns STAY in
+     the DDL as deprecated and unread.
+  4. **`drop-chat-concierge-override-v1` (#76) runs `ALTER TABLE chats DROP
+     COLUMN conciergeOverride`.**
+
+  Two open questions for the catch-up:
+  - One classifier believes `generateDDL` walks the Zod schemas, so a D23
+    re-dump would NOT carry #74's two schema-absent columns. If so, they need
+    a boot ensure like `chats_transcript_version_repair.rs` (P4.D182). **This
+    is unmeasured; the catch-up measures it with v4's real `generateDDL`
+    before deciding.**
+  - ⚠ **Live-instance consequence:** once the human's v4 runs `4.10.0-dev.88`
+    or later against Friday, the drop migration removes a column v5 still
+    binds (`conciergeOverride` has 107 references across core / web / host /
+    harness / SPA, including `fresh_schema.json` and the export schema).
+    **A fresh Friday copy taken after that point can be expected to break
+    v5's chat reads/writes until #75/#76 are ported.** Dogfood on a copy
+    taken before v4's upgrade, or measure the copy's `chats` columns first.
+- **`help/**` vs v4 HEAD `ce2f1dabf`:** the count is still **129**, but the
+  tree DIFFERS in 15 files:
+  - `dangerous-content.md` DELETED (#76);
+  - `the-concierge.md` ADDED (#76, grown in #77);
+  - 13 pages modified across #73–#77.
+
+  The 129 literals therefore do not move. `help_tree_equivalence`, the
+  embedded tree and the SPA's `help-categories.ts` capture (a slug swap + a
+  `/settings?tab=concierge` URL entry, #76) all do.
 - **The three text-compression migrations and the image re-encode migration
   stay DEFERRED as reclamation** (named in `db/text_compression.rs`, the
   P4.D209 record, and P4.104's module doc). The animated-input ruling is
   LANDED (P4.108); the corrupt-second-frame ruling (2026-09-23) keeps v5's
   first-frame still.
-- **`docs/v4/developer/bugs/`** is identical to v4's at `b0b6656b5` (the
-  unification refreshed `bugs.md`, `fixed/bug-167-*`, `fixed/bug-168-*`,
-  `fixed/bug-169-*`, plus `DDL.md`, `DATABASE_ABSTRACTION.md`,
-  `features/composer-typeahead.md`, `features/complete/concierge-list-
-  marks.md` — `diff -rq` against the pin is empty bar `CHANGELOG.md`). v4
-  has since added `fixed/bug-170-*` + its `bugs.md` row (`83d0c969b`); that
-  refresh rides the next ratification. `docs/v4/CHANGELOG.md`'s older lag
-  stays a named housekeeping item.
+- **`docs/v4/developer/bugs/`** is identical to v4's at `b0b6656b5`. v4 has
+  since added `fixed/bug-170-*` + its `bugs.md` row (`83d0c969b`; "v5 status:
+  Unchecked", and the answer is **not affected**, see its row). The
+  `docs/v4/developer/features/` mirror owes the six overhaul specs from
+  `a8292547a`, as later edited by #73–#77. Both refreshes ride the catch-up's
+  unification. `docs/v4/CHANGELOG.md`'s older lag stays a named housekeeping
+  item.
 
 ## §2 The freshness probe
 
@@ -139,7 +179,12 @@ when absorbed/ratified.
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
 | `83d0c969b` | 2026-09-24 | Fix bug 170: Salon speaker switch sends POST, not PUT | NO-PORT? (v5 never had it) | **Hunks:** ONE line in `app/salon/[id]/hooks/useImpersonation.ts:153` (`handleSetActiveSpeaker`'s `method: 'PUT'` → `'POST'`), a NEW jest test (`__tests__/unit/app/salon/hooks/useImpersonation.set-active-speaker.test.tsx`), `bugs.md` + NEW `bugs/fixed/bug-170-*.md`, the `4.10.0-dev.79` stamp (three `package*.json` + README), CHANGELOG. No `lib/`, `app/api/`, `help/`, DDL or oracle-import hunk. **v5 is NOT affected — measured, not assumed:** the SPA's speaker pick (`apps/web/src/app/screens/salon/salon-conversation.ts:2546` `onSelectSpeaker`) sends `chatSetActiveSpeaker` over the dispatch client — no HTTP method exists to get wrong — and the verb runs the real write (`api/salon.rs:1954`, `Request::ChatSetActiveSpeaker`; covered by `salon_mutations_equivalence` + `salon-conversation.spec.ts` / `salon-turn-controls.spec.ts`). v5's REST `/api/v1/chats/{id}` registers no PUT leg and its POST leg serves only `equip`/`regenerate-avatar` (`quilltap-web/src/lib.rs:436`), so neither v4's pre-`ad1c4c37f` silent no-op nor its post-dispatcher 400 toast is reachable on v5. v4's bug file asks "v5 status: Unchecked" — the answer is **not affected** (a candidate one-line upstream note). The bug-file mirror rides the catch-up round's unification with bugs 167–169. Ratify NO-PORT on this file list; it can fold into P4.D221's ratification list. **Newer fact (2026-09-24): the human WAIVED this commit for the P4.D220–P4.D224 lanes' §R.2 probe (§1); the row stays unordered and the round's target stays `b0b6656b5`.** | UNPROCESSED (the round's waiver expired at unification — ratify on the file list) |
-| `a8292547a` | 2026-09-24 | Add Concierge overhaul feature specs (overview + five phases) (#72) | NO-PORT? | `origin/main` ONLY at the unification's closing probe (local `main` at `83d0c969b`). Nine files, +1,008, all docs: `docs/developer/features/concierge-overhaul.md` + five `concierge-overhaul-phase-{1..5}-*.md` (refusal failover, a refusal ledger, three states, a Concierge tab, Salon polish — a ROADMAP for future v4 work, nothing shipped), `docs/developer/features/ROADMAP.md` (+1), `.claude/commands/update-documentation.md` (+6), CHANGELOG. No `lib/`, `app/`, `help/`, `packages/`, `plugins/` path. Ratify NO-PORT on the file list; the `docs/v4/developer/features/` mirror takes the six specs + the ROADMAP line then. **Watch:** when the phases LAND as code they will be PORT rows of their own — the Concierge's four states, list marks and choice-at-creation are ported surfaces (the `dcd9440a`–`31436bae4` arc). | UNPROCESSED |
+| `a8292547a` | 2026-09-24 | Add Concierge overhaul feature specs (overview + five phases) (#72) | NO-PORT? | `origin/main` ONLY at the unification's closing probe (local `main` at `83d0c969b`). Nine files, +1,008, all docs: `docs/developer/features/concierge-overhaul.md` + five `concierge-overhaul-phase-{1..5}-*.md` (refusal failover, a refusal ledger, three states, a Concierge tab, Salon polish — a ROADMAP for future v4 work, nothing shipped), `docs/developer/features/ROADMAP.md` (+1), `.claude/commands/update-documentation.md` (+6), CHANGELOG. No `lib/`, `app/`, `help/`, `packages/`, `plugins/` path. Ratify NO-PORT on the file list; the `docs/v4/developer/features/` mirror takes the six specs + the ROADMAP line then. **Watch:** when the phases LAND as code they will be PORT rows of their own — the Concierge's four states, list marks and choice-at-creation are ported surfaces (the `dcd9440a`–`31436bae4` arc). **Newer fact (2026-09-25): the watch FIRED — all five phases landed as code the next day (#73–#77, rows below), and the six specs were edited in those PRs; the mirror takes their final text.** | UNPROCESSED |
+| `8bd080267` | 2026-09-24 | Concierge overhaul phase 1: refusal-driven failover everywhere (#73) | PORT + PORT-NEW (the overhaul's substrate; ports FIRST) | **Hunks** (87 files, `4.10.0-dev.81`). **New modules:** `dangerous-content/refusal.ts` (`classifyRefusal`, `isModerationRefusal`, `MODERATION_REJECTION_CODE`, evidence ranked typed-error > provider-code > finish-reason > message-pattern > inferred), `understudy.ts` (`resolveUncensoredText/ImageUnderstudy`), `image-failover.ts` (`generateImageWithConciergeFailover`, `getConciergeTrail`). **Removed:** `provider-routing.service.ts` loses `isImageModerationError`, `resolveUncensoredImageProfileForReroute` and its key-decrypt helpers. **Changed:** `provider-failover.service.ts` gains `attemptUncensoredRetry` (a thrown refusal is retried on the understudy before the chain). `fallback/engine.ts` → `moderation-refusal` via `classifyRefusal`. `extract-finish-reason.ts` also reads camelCase `finishReason` + Google `promptFeedback.blockReason`. The Concierge writer gains `postConciergeRefusalAnnouncement` (rerouted / no-understudy / not-permitted). The avatar, story-background and image-tool handlers are rewritten round the chokepoint, and **the Lantern's bug-133 gate is REMOVED**. `app/api/v1/images/route.ts` generate goes through the chokepoint with a CONNECTION-profile understudy. **Wire:** the `routeTrail` JSON widens (`evidence` 2 → 5 values, `profileKind?`) in `chat.types`, the `chats-messages.ops` zod and `qtap-export.schema.json`, with no DDL column. TOOL rows and Lantern rows now carry trails. **SPA:** a `ToolMessage` "Tried:" badge and the `refusal` system label. **Plugins:** `@quilltap/plugin-types` 2.8.0 `ModerationRejectionError`. Five plugins' image providers throw it (OpenAI `moderation_blocked`, Z.AI 1301, Google `IMAGE_SAFETY`), and their text providers report the REAL finish reason (it had been hard-coded `'stop'`); every `index.js` bundle is regenerated. **v5 surfaces hit:** `services/route_trail.rs` (P4.D171/D173/D177: two-value evidence, no `profile_kind`), `llm_fallback/`, `services/provider_failover.rs` (P4.D135, P4.87/P4.90), `services/dangerous_content/provider_routing.rs` + its callers `tools/generate_image.rs`, `services/image_job_common.rs`, `model/image.rs`, `model/image_dialects.rs` (W4.2; bug 133 = P4.D178/P4.88), `character_avatar_job.rs`, `story_background_job.rs`, `concierge_notifications.rs`, the Lantern writer, `finish_reason.rs`, `quilltap-web/src/images_routes.rs` + `quilltap-host/src/images_generate.rs`, and the SPA's `tool-message.ts` / `route-trail-badge.ts` / `system-message-labels.ts`. **Traps:** v5's dialect layer is built on the keyword verdict v4 just deleted (`image_dialects.rs:35`, "never widen the keyword set"), so for v5 the typed error is a REDESIGN of the signal, not a rename. The plugin bundle regen moves the recorded stream corpora (the finish reasons). The export-schema enum widens, so import/restore validators must accept it. Needs v4's `npm install` (§1) before any target-pin regen. Two review fixes v4 deferred to phase 2's spec. | UNPROCESSED |
+| `49059fb14` | 2026-09-25 | Implement Concierge refusal ledger and auto-switch (phase 2) (#74) | PORT (after #73) | **Hunks** (38 files, `-dev.83`). **Migration** `add-chat-refusal-ledger-v1`, appended last: `chats.moderationRefusalCount INTEGER NOT NULL DEFAULT 0` + `lastModerationRefusalAt`, no backfill, deliberately absent from `ChatMetadataSchema` and from `.qtap` exports. **`ChatsRepository`:** `incrementModerationRefusalCount` (atomic `$inc`, read-back count), `getModerationRefusalLedger`, `resetModerationRefusalLedger`. **New `refusal-ledger.ts`:** `recordModerationRefusal` counts STATED evidence only, never `inferred`; it never throws and only buffers in the job child. `maybeAutoSwitchAfterRefusal` is parent-only, chained per chat, re-reads before flipping, and has threshold 0 = off. **Other changes:** `manual-flip` gains options + `dangerCategories: ['moderation-refusals']` on a Concierge flip, and the ledger reset in the `monitored` arm. `job-dispatcher`'s post-commit `runRefusalLedgerChecks`. The writer's `auto-flagged-refusals` kind (count wording), and the refusal-rerouted text dropping "The result is attached above." Cheap-LLM `core-execution` carries `finishReason`. Text failover records once per turn, image failover on all four exits. **Settings:** `autoSwitchAfterRefusals` int 0–10, default 2. The SPA number input and `help/dangerous-content.md`. **v5 surfaces hit:** `db/chats.rs` (raw SQL, kept OUT of `chats_read.rs` `ALL_COLUMNS` and `ChatUpdate`), `db/chat_settings.rs`, `provisioning/chat_settings_seed.json` (re-dump), `services/dangerous_content/{resolver,manual_flip}.rs` (P4.d5/W4.2, P4.D141), `concierge_notifications.rs`, `write_apply.rs` (the post-commit hook; no production consumer yet), `cheap_llm_exec.rs`, `provider_failover.rs`, and the SPA's `dangerous-content-settings.ts`. **Nothing in v5 matches the ledger.** **To MEASURE, not assume:** whether v4's `generateDDL` emits the two schema-absent columns. If it does not, they need a boot ensure on the P4.D182 `chats_transcript_version_repair.rs` model and must NOT be hand-added to `fresh_schema.json`. **Largely SUPERSEDED in shape by #75/#76** (`flagged` → `unmoderated`, the settings move into `conciergeSettings`). Port its mechanism, not its intermediate vocabulary, unless the round deliberately lands per-phase. | UNPROCESSED |
+| `4d370a90f` | 2026-09-25 | Concierge overhaul phase 3: three states (Moderated, Unmoderated, Locked) (#75) | PORT (after #74; REPLACES v5's four-state Concierge) | **Hunks** (108 files, `-dev.86`). **Migration** `add-chat-concierge-mode-v1` (depends on the ledger): `chats.conciergeMode` (default `'moderated'`), `conciergeModeSetBy`, `conciergeModeReason`. The backfill maps `UNCENSORED` → unmoderated/operator/migration, `OFF` → locked/operator/migration, NULL+`isDangerousChat` → unmoderated/concierge/classifier, else moderated. `conciergeOverride` is kept but no longer written. **Schema:** `chat.types` gains the three enums on `ChatMetadataSchema`. **Repository:** `base.repository.patchOnlyFields()` (a whole-row `_update` omits them), `chats.setConciergeMode` (compare-and-set vs `expected`, NULL = moderated) and `setDangerClassification` (never moves state). **Services:** `chat-override` (`getConciergeState/Provenance/Reason`, `mayFailOver`, `withConciergeModeFromLegacy`), and `manual-flip` writing only the new columns (announcements `set-moderated/-unmoderated/-locked`, `auto-unmoderated`; the Concierge may only move Moderated → Unmoderated, never from the child). New `classifier-switch.ts` + `current-state.ts`. Resolver sources `chat-locked`/`chat-unmoderated`, `LOCKED` replacing `VOUCHED_SAFE`. The three-row presentation table. A refusal on Locked → `refusal-not-permitted`. The job-dispatcher's post-commit classifier switch. **Wire:** PUT/POST `conciergeState` takes `moderated\|unmoderated\|locked` (old values → 400). The chat GET drops `conciergeOverride` and adds `conciergeState/SetBy/Reason/RefusalCount`. The create response carries the post-flip columns. List payloads (enrichment, `chat-utils`, home-data) gain setBy/reason. The greeting's content-filter fallback is skipped on Locked. Restore + `.qtap` import run `withConciergeModeFromLegacy`, and the export schema marks `conciergeOverride` deprecated. **SPA:** three-option selects (sidebar, New Chat), `ConciergeMark`, `ChatCard`, quick-hide. Help rewritten. **v5 surfaces hit (all REPLACED):** P4.D141 four states, P4.D143/D144 list marks, P4.D148/D149 choice-at-creation. `services/dangerous_content/{chat_override,manual_flip,resolver,gatekeeper_job}.rs`, `services/{chat_create,chat_enrichment,concierge_notifications,danger_scan}.rs`, `db/chats.rs` + `chats_read.rs`, `api/{salon,types}.rs`, `services/backup/restore/orchestrator.rs`, `services/quilltap_import/entities.rs`, `generators/qtap-export.schema.json`, `qtap_export/schema-key-order.json`, and the SPA's `chat/concierge-state*.ts` / `concierge-mark.ts` / `chat-sidebar.ts` / `conversation-header.ts` / `new-chat.types.ts` / `recent-chat-item.ts` / `salon-list.ts` / `project-chats-section.ts` + `e2e/salon-concierge-four-state-flow.spec.ts`. **Fixtures/families to widen:** `danger_resolver`, `danger_trigger`, `chat_create_capstone`, `salon_mutations`/`salon_reads`, `projects_routes`, `characters_reads`, `system_restore_state`. The old enum → 400 moves `dispatch_wrong_type_census` and the P4.D141 refusal arms. Pre-phase-3 transcripts carry retired announcement kinds that must still render. | UNPROCESSED |
+| `3b463d6b1` | 2026-09-25 | Concierge overhaul phase 4: the Concierge's own Settings tab (#76) | PORT (large; after #75) | **Hunks** (183 files, `-dev.88`). **Migrations:** `add-concierge-settings-v1` adds `chat_settings.conciergeSettings` JSON `{enabled, uncensoredText/Image/VisionProfileId, imagePromptProfileId, autoSwitchAfterRefusals, newChatsStartAs, display{}, preScreen{}}`. Its backfill (`mapLegacyConciergeSettings`): enabled = mode≠OFF OR the user has an Unmoderated chat; preScreen + summaryClassification = mode≠OFF. It drops NO old column; `dangerousContentSettings` / `uncensoredImageDescriptionProfileId` stay in the DDL, deprecated and unread. **`drop-chat-concierge-override-v1`: `ALTER TABLE chats DROP COLUMN conciergeOverride`** (§1's live-instance warning). **Schema:** `settings.types` removes `DangerousContentSettingsSchema` / `DangerousContentModeEnum` and adds `ConciergeSettingsSchema`. `ChatSettingsSchema` loses both legacy keys, `CheapLLMSettings` loses `imagePromptProfileId`, and `chat.types` loses `conciergeOverride`. **Services:** `resolveConciergeSettings`/`readConciergeSettings` (a named-question policy) replace mode checks in ~40 consumers: the background jobs, cheap-llm, memory, Pascal `llm-consult`, photos auto-describe, appearance resolution, `file-attachment-fallback`, the Almanack, image-gen, failover. New `legacy-concierge-settings.ts`. **Routes:** the settings/chat PUT answers **400 on any retired key**. Restore + `uuid-remap` translate the old settings and remap the four desk ids. **Tools:** `help_settings` gains a `concierge` category, so BOTH tool-definition snapshots move (the `helpSettings` enum + description, the `helpNavigate` example URL; the count stays 59). **Help:** `dangerous-content.md` DELETED, `the-concierge.md` ADDED (129 stays 129). `lib/help-guide/categories.ts` swaps the slug and adds `/settings?tab=concierge`. **SPA:** `ConciergeTabContent` + five cards, `DangerousContentSettings` deleted, the `qt-components` CSS drops the `-info` tone, `theme-storybook` 1.0.73. **v5 surfaces hit:** `services/dangerous_content/resolver.rs` (P4.6a/6b, P4.71, P4.D37/38/48/201), `db/chat_settings.rs` (P4.D73, P4.76, P4.82), `api/settings.rs` (`zod_dangerous_content_settings`; P4.57, P4.6an), `tools/help.rs` + `tools/definitions/data.rs`, `services/backup/uuid_remap.rs` (P4.9, P4.D49), `almanack/phase{2,3}_*.rs`, `danger_scan.rs`, `file_fallback.rs`, `generate_image.rs`, `story_background_job.rs`, `fresh_schema.json` + `chat_settings_seed.json`, the SPA's `settings/chat/dangerous-content-settings.ts` + `chat-tab.ts` (no Concierge tab exists), `help/help-categories.ts` (P4.9I2B) + its `help-guide-tables.json` / `label-from-url-vectors.json` fixtures. **Fixtures carrying `dangerousContentSettings`:** `chat_settings_tier2`, `settings_routes`, `danger_resolver`, `orchestrator_tier3`, `images_generate_route`, `image_generation_tier3`, `story_background_job_tier3`, `host_cadence`, `host_llm_log_cleanup`, and the SPA's `async-select-cards` / `connection-profiles-shared-entry` / `core-contract.ts`. | UNPROCESSED |
+| `ce2f1dabf` | 2026-09-25 | Concierge overhaul phase 5: Salon polish — "Try uncensored" (#77) | PORT-NEW (after #76) | **Hunks** (53 files, `-dev.90`). **New chat action `retry-image-uncensored`** (in `post.ts`'s map right after `regenerate-background`). Its body is `{toolMessageId}` or `{kind:'background'}` (else 400). It re-runs a `generate_image` TOOL message on the image understudy, filed +1 ms with a `via:'concierge'` trail, with `refusal-rerouted` (`purpose:'tool'`) when the original was refused → 200 `{toolMessageId, images, routeTrail}`. The error arms are 404 / 400 / 502, and 409 bare `{error:'locked'\|'no-understudy'}`. The background arm calls `handleRegenerateBackground(…,{forceUncensored:true})`. **New message action `retry-uncensored`** (5th in `chats/[id]/messages/[messageId]`'s `withActionDispatch`): a swipe regenerated on the text understudy → 201 `{message}` or SSE on `&stream=1`, plus 404/400/409. **Refactors and service changes:** `messages/[id]`'s SSE body is extracted to `regenerate-swipe-stream.ts` (a refactor, no wire change). `regenerate-swipe.service` gains `profileOverride` + `routeTrail`. New `retry-uncensored.ts`: Locked blocks, off-duty does not, it excludes trail profiles and same provider+model, and uses `resolveConfiguredConciergeDesk` + `composeRetryRouteTrail`. **danger-orchestrator:** Unmoderated chats no longer get synthesized `dangerFlags` (new `routedDirect`). **Smaller changes:** `saveToolMessages` `options.createdAt`, the queue payload's `forceUncensored`, `image-failover`'s `announceUnresolvedRefusal`. The Lantern writer's `postLanternRefusalNotification` (`systemKind:'background-refused'`). The story-background job now COMPLETES with a refusal bubble instead of failing. **SPA:** "Try uncensored" in MessageActionBar / ToolMessage / the refusal bubble (hidden on Locked), `useConciergeRetry` + `concierge-retry.ts`, MessageRow's "Not Dangerous" lifting blur/collapse, the `background-refused` label. Three help pages, API.md. **v5 surfaces hit:** `CHAT_POST_ACTIONS` (`quilltap-web/src/wardrobe_routes.rs`) and the P4.D220 action censuses. The message edge is RPC-only on v5 (`api/types.rs` `Message*` variants, P4.6ab), with no REST `chats/{id}/messages/{messageId}` leg in `quilltap-web/src/lib.rs`. `messages_swipe_routes.rs` + `services/regenerate_swipe.rs` (P4.D205/D207) and the SPA's `regeneration.state.ts` (P4.D206). `lantern_notifications.rs`, `story_background_job.rs` (P4.D92/D94/D178), `tool_execution.rs`, `queue_service.rs`, `services/orchestrator.rs` (the synthesized flags), the SPA's `message-row.ts` / `tool-message.ts` / `system-message-labels.ts`. **Traps:** the v4 order of the message edge's action list starts with `override-danger-flag`, which v5 never ported, so the list's order can't be matched without it. The "Not Dangerous" blur has no v5 counterpart. The orchestrator's `dangerFlags` change is the one independently portable hunk. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
