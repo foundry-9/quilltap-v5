@@ -4,7 +4,7 @@
  *
  * Three proofs:
  *
- *  1. **`labelFromUrl` against a 35-vector capture** of v4's REAL function
+ *  1. **`labelFromUrl` against a 37-vector capture** of v4's REAL function
  *     (`__fixtures__/label-from-url-vectors.json`), which reaches the quirks
  *     v4's own suite never asks about — `+` decoding to a space, a leading
  *     hyphen surviving in `tab` but yielding a DOUBLE space in `section`, an
@@ -76,6 +76,13 @@ describe('labelFromUrl', () => {
   });
   it('adds tab to appearance', () => {
     expect(labelFromUrl('/settings?tab=appearance')).toBe('Settings → Appearance');
+  });
+  it('labels the Concierge tab', () => {
+    // v4 `labelFromUrl.test.ts:50-53` at `3b463d6b1` (#76) — `labelFromUrl` itself is unchanged.
+    expect(labelFromUrl('/settings?tab=concierge')).toBe('Settings → Concierge');
+    expect(labelFromUrl('/settings?tab=concierge&section=uncensored-desk')).toBe(
+      'Settings → Concierge → Uncensored Desk',
+    );
   });
   it('capitalizes tab name', () => {
     expect(labelFromUrl('/settings?tab=system')).toBe('Settings → System');

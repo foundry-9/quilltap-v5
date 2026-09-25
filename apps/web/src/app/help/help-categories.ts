@@ -1,7 +1,9 @@
 /**
  * Help Guide categories — a 1:1 transcription of v4 `lib/help-guide/categories.ts`
  * (baseline `d883a5ee1`; the `chats` category re-captured at `b0b6656b5` —
- * P4.D222, bug 168's `chat-settings-composer` + `chat-settings-ai-services`).
+ * P4.D222, bug 168's `chat-settings-composer` + `chat-settings-ai-services`;
+ * `content-routing`'s first slug `dangerous-content` → `the-concierge` and the
+ * `/settings?tab=concierge` row re-captured at `acadcc7cd` — P4.D230, v4 #76).
  *
  * Static configuration for the browseable Guide tab in the Help dialog. Maps
  * help documents to navigable categories and provides URL-based context
@@ -145,13 +147,14 @@ export const HELP_CATEGORIES: readonly HelpCategory[] = [
   {
     id: 'content-routing',
     label: 'Content Routing (The Concierge)',
-    documents: ['dangerous-content', 'story-backgrounds', 'scene-state-tracker'],
+    documents: ['the-concierge', 'story-backgrounds', 'scene-state-tracker'],
   },
 ];
 
 export const URL_CATEGORY_MAP: readonly { pattern: string; categoryId: string }[] = [
   { pattern: '/settings?tab=system', categoryId: 'settings-system' },
   { pattern: '/settings?tab=templates', categoryId: 'settings-system' },
+  { pattern: '/settings?tab=concierge', categoryId: 'content-routing' },
   { pattern: '/settings?tab=images', categoryId: 'content-routing' },
   { pattern: '/settings?tab=memory', categoryId: 'memory-search' },
   { pattern: '/settings?tab=appearance', categoryId: 'appearance' },

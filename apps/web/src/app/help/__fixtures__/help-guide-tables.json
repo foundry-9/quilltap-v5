@@ -139,7 +139,7 @@
       "id": "content-routing",
       "label": "Content Routing (The Concierge)",
       "documents": [
-        "dangerous-content",
+        "the-concierge",
         "story-backgrounds",
         "scene-state-tracker"
       ]
@@ -153,6 +153,10 @@
     {
       "pattern": "/settings?tab=templates",
       "categoryId": "settings-system"
+    },
+    {
+      "pattern": "/settings?tab=concierge",
+      "categoryId": "content-routing"
     },
     {
       "pattern": "/settings?tab=images",

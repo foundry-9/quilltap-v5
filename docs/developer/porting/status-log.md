@@ -149963,6 +149963,46 @@ Order: `work-orders/p4.d230-concierge-spa-settings-side.md`. Branch
   sends `cheapLLMSettings: { strategy, profileId? }` — no retired key.
 - Gate at this commit: lint clean; `npm test` **455 files / 7,947**; build clean.
 
+### Unit 3 — the help categories' slug swap + the Concierge URL, re-captured at the pin
+
+- **§R.2 probe** re-run before the regen batch: PASS (branch `main`, HEAD
+  `acadcc7cd`, both logs empty, tree clean).
+- **Pin:** `git -C ~/source/quilltap-server worktree add --detach
+  /tmp/qt-v4-pin-p4d230-acadcc7cd acadcc7cd` + the three symlink classes
+  (root `node_modules`, `packages/quilltap/node_modules`, every
+  `plugins/dist/*/node_modules`); verified by `rev-parse HEAD` =
+  `acadcc7cd0174a0f4fa24b822490f74c3c753989` and `ls -ld` of the path.
+- **Recorder** (`apps/web/oracle/help-guide-capture.test.tsx`): the two
+  concierge URLs added to section B (`CATEGORY_URLS`, 32 → 34 — v4's own new
+  categories case asks both) and section C (`LABEL_URLS`, 35 → 37); the header
+  recipe re-pointed at this lane's pin.
+- **Regen, as run:**
+  `cp apps/web/oracle/help-guide-capture.test.tsx
+  /tmp/qt-v4-pin-p4d230-acadcc7cd/__tests__/unit/zz-p4d230-capture.test.tsx`;
+  `PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH` (node v24.13.1);
+  `(cd /tmp/qt-v4-pin-p4d230-acadcc7cd && P49I2B_OUT=<lane scratch>/capture
+  npx jest --watchman=false __tests__/unit/zz-p4d230-capture.test.tsx)` →
+  1 passed; the copied test removed from the pin afterwards.
+- **What moved (diffed against the committed fixtures before copying):**
+  `help-guide-tables.json` — `content-routing`'s `dangerous-content` →
+  `the-concierge` and the `/settings?tab=concierge` row between `templates`
+  and `images`; `help-guide-vectors.json` +2 rows; `label-from-url-vectors.
+  json` +2 rows (`Settings → Concierge`, `Settings → Concierge → Uncensored
+  Desk`). `param-routes-vectors.json` and `welcome-card.json` re-recorded
+  **byte-identical** (neutral). Pin marker: the tables name `the-concierge`
+  (1) and `dangerous-content` (0).
+- **Red-first:** fixtures installed BEFORE the port → 5 RED
+  (`HELP_CATEGORIES` byte identity, `URL_CATEGORY_MAP` content+order, the two
+  new vector rows, v4's "should return content-routing for
+  /settings?tab=concierge"); `labelFromUrl`'s new vectors and v4's "labels the
+  Concierge tab" were GREEN pre-port (the function is unchanged — only its
+  doc-comment example moved, mirrored). Then `help-categories.ts`: the slug
+  swap + the URL row after `templates`, before `images` → green. "should have
+  11 categories" unmoved.
+- The fixtures README, the spec headers and `help-stream.ts`' comment carry
+  the new counts (34 / 37).
+- Gate at this commit: lint clean; `npm test` **455 files / 7,953**; build clean.
+
 ## P4.D229 — the Concierge overhaul's CLIENT, Salon side (lane record, 2026-09-25)
 
 Lane branch `claude/p4-d229-concierge-spa-salon-47eff0`, cut from `main`

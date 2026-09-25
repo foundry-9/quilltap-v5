@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(spa/help): the Concierge help slug and URL (v4 #76) — `the-concierge` replaces `dangerous-content`, `/settings?tab=concierge` maps to Content Routing (P4.D230)
+
+_Versions: SPA 0.5.776._
+
+The Help Guide's Content Routing category now lists `the-concierge` in
+place of the deleted `dangerous-content` page, and `/settings?tab=concierge`
+opens that category. The help-guide recorder gained the two Concierge URLs
+in its category and label sections; the tables and both vector files were
+re-captured from v4's real modules at `acadcc7cd` (the other two fixtures
+re-recorded byte-identical). The spec ports v4's two new test cases;
+`labelFromUrl` is unchanged apart from its doc-comment example.
+
 #### 2026-09-25 — fix(spa/settings): keep the retired Concierge keys out of the cheap-LLM and Image Description saves (v4 #76's 400; P4.D230)
 
 _Versions: SPA 0.5.775._

@@ -79,10 +79,10 @@ export function initialHelpStreamState(): HelpStreamState {
 
 /**
  * Generate a human-readable label from a Quilltap internal URL.
- * e.g., "/settings?tab=chat&section=dangerous-content" → "Settings → Chat → Dangerous Content"
+ * e.g., "/settings?tab=concierge&section=uncensored-desk" → "Settings → Concierge → Uncensored Desk"
  *
  * Transcribed verbatim from v4 (`useHelpChatStreaming.ts:36-62`) and pinned by a
- * 35-vector capture of v4's real function. Its edges are load-bearing and none
+ * 37-vector capture of v4's real function. Its edges are load-bearing and none
  * of them is obvious: `URLSearchParams` decodes `+` to a space, a FALSY (empty)
  * `tab` is skipped entirely, and a `section` with a leading hyphen splits to an
  * empty first word — so `?section=-lead-ing` renders a DOUBLE space after the

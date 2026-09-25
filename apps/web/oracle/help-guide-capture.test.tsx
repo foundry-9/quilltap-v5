@@ -11,11 +11,11 @@
  *
  *  A. `HELP_CATEGORIES` / `URL_CATEGORY_MAP` / `EXCLUDED_DOCUMENTS`, serialised
  *     straight off `lib/help-guide/categories.ts`.
- *  B. 32 urls through v4's REAL `getCategoryForUrl` — the eight bare paths, all
- *     seven `?tab=` arms, the unknown-tab fallback, and the edges the v4 suite
+ *  B. 34 urls through v4's REAL `getCategoryForUrl` — the eight bare paths, all
+ *     eight `?tab=` arms (the Concierge's added at `3b463d6b1`, P4.D230), the unknown-tab fallback, and the edges the v4 suite
  *     never asks about (`/settingsish` prefix-matching `/settings`,
  *     `/?tab=system` losing to the exact-root rule, an empty `?tab=`).
- *  C. 35 urls through v4's REAL `labelFromUrl`
+ *  C. 37 urls through v4's REAL `labelFromUrl`
  *     (`components/help-chat/hooks/useHelpChatStreaming.ts`) — the seven
  *     `pathNames`, both Capitalisation rules, and the quirks: `+` decoding to a
  *     space, a leading hyphen surviving in `tab` but producing a DOUBLE arrow
@@ -32,12 +32,13 @@
  * ## Regenerating
  *
  * jest ignores paths outside the checkout, so this file is COPIED into a v4
- * worktree pinned at the baseline (drift-ledger §5.1):
+ * worktree pinned at the lane's target (drift-ledger §5.1; last run by P4.D230
+ * at `acadcc7cd` — substitute the round's pin):
  *
  * ```bash
  * V5=~/source/quilltap-v5
- * PIN=/tmp/qt-v4-pin-p49i2b-d883a5ee1
- * git -C ~/source/quilltap-server worktree add --detach "$PIN" d883a5ee1
+ * PIN=/tmp/qt-v4-pin-p4d230-acadcc7cd
+ * git -C ~/source/quilltap-server worktree add --detach "$PIN" acadcc7cd
  * ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
  * cp $V5/apps/web/oracle/help-guide-capture.test.tsx \
  *    "$PIN/__tests__/unit/zz-p49i2b-capture.test.tsx"
@@ -91,6 +92,8 @@ const CATEGORY_URLS = [
   '/settings?tab=appearance',
   '/settings?tab=chat',
   '/settings?tab=providers',
+  '/settings?tab=concierge',
+  '/settings?tab=concierge&section=uncensored-desk',
   '/settings?tab=unknown',
   '/settings?tab=system&foo=bar',
   '/settings?foo=bar',
@@ -139,6 +142,8 @@ const LABEL_URLS = [
   '/aurora/123?tab=edit',
   '/setupwizard',
   '/settings?tab=chat&section=',
+  '/settings?tab=concierge',
+  '/settings?tab=concierge&section=uncensored-desk',
 ]
 
 /** Section D — url templates covering all three PARAM_ROUTES + the negatives. */

@@ -93,6 +93,14 @@
       "categoryId": "ai-providers"
     },
     {
+      "url": "/settings?tab=concierge",
+      "categoryId": "content-routing"
+    },
+    {
+      "url": "/settings?tab=concierge&section=uncensored-desk",
+      "categoryId": "content-routing"
+    },
+    {
       "url": "/settings?tab=unknown",
       "categoryId": "settings-system"
     },

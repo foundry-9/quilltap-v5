@@ -139,6 +139,14 @@
     {
       "url": "/settings?tab=chat&section=",
       "label": "Settings → Chat"
+    },
+    {
+      "url": "/settings?tab=concierge",
+      "label": "Settings → Concierge"
+    },
+    {
+      "url": "/settings?tab=concierge&section=uncensored-desk",
+      "label": "Settings → Concierge → Uncensored Desk"
     }
   ]
 }

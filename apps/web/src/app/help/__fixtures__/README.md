@@ -8,8 +8,8 @@ and `help-entity-picker.ts` byte-for-byte (memory note
 | File | Recorded from |
 | --- | --- |
 | `help-guide-tables.json` | `lib/help-guide/categories.ts` — `HELP_CATEGORIES`, `URL_CATEGORY_MAP`, `EXCLUDED_DOCUMENTS` |
-| `help-guide-vectors.json` | 32 `getCategoryForUrl(...)` results from v4's real function |
-| `label-from-url-vectors.json` | 35 `labelFromUrl(...)` results from `hooks/useHelpChatStreaming.ts` |
+| `help-guide-vectors.json` | 34 `getCategoryForUrl(...)` results from v4's real function |
+| `label-from-url-vectors.json` | 37 `labelFromUrl(...)` results from `hooks/useHelpChatStreaming.ts` |
 | `param-routes-vectors.json` | `HelpEntityPicker.tsx`'s private `PARAM_ROUTES`, probed through the exported `hasParamSegments` / `findParamRoute` |
 | `welcome-card.json` | `HelpWelcomeCard` rendered to static markup — the four `WELCOME_LINKS` and the Wodehouse copy |
 
@@ -18,4 +18,9 @@ carries the regen recipe (a pinned v4 worktree — jest ignores paths outside th
 checkout, so the file is copied in). Recorded at v4 `d883a5ee1`, this lane's
 oracle baseline; RE-CAPTURED at `b0b6656b5` by P4.D222 (the only moved bytes:
 two slugs after `chat-settings` in `help-guide-tables.json`; the other four
-files re-recorded byte-identical). Fix the PORT, never these files.
+files re-recorded byte-identical); RE-CAPTURED at `acadcc7cd` by P4.D230 (v4
+#76: `content-routing`'s `dangerous-content` → `the-concierge` and the new
+`/settings?tab=concierge` row in the tables; the two concierge URLs added to
+sections B and C of the recorder, so both vector files grew by two rows;
+`param-routes-vectors.json` + `welcome-card.json` byte-identical). Fix the
+PORT, never these files.

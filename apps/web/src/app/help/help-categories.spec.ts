@@ -6,7 +6,7 @@
  *  1. **Byte identity of the transcribed tables** against a capture of v4's REAL
  *     module (`__fixtures__/help-guide-tables.json`). A hand-transcribed 68-slug
  *     table is exactly the kind of thing inspection misses a row of.
- *  2. **A recorded-vector corpus** — 32 URLs run through v4's real
+ *  2. **A recorded-vector corpus** — 34 URLs run through v4's real
  *     `getCategoryForUrl` — plus v4's own 187-line jest suite
  *     (`__tests__/unit/lib/help-guide/categories.test.ts`) ported case-for-case.
  *     The suite states the intent; the corpus pins the edges the suite never
@@ -167,6 +167,14 @@ describe('Help Guide Categories', () => {
 
     it('should return content-routing for /settings?tab=images', () => {
       expect(getCategoryForUrl('/settings?tab=images')).toBe('content-routing');
+    });
+
+    it('should return content-routing for /settings?tab=concierge', () => {
+      // v4 `categories.test.ts:119-121` at `3b463d6b1` (#76).
+      expect(getCategoryForUrl('/settings?tab=concierge')).toBe('content-routing');
+      expect(getCategoryForUrl('/settings?tab=concierge&section=uncensored-desk')).toBe(
+        'content-routing',
+      );
     });
 
     it('should return memory-search for /settings?tab=memory', () => {
