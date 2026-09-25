@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-24 — docs(porting): close the P4.D222 lane — neutrality legs, the full gate, the mirror pre-list
+
+_Docs-only change._
+
+Records the P4.D222 lane's close. The mid-lane v4 commit `83d0c969b`
+(bug 170, SPA-only) stopped the lane; the human waived it. The four
+neutrality families were re-run at the target pin. `help_docs_routes` is
+red there only on P4.D220's `?action=` rows and green at the baseline. The
+full workspace gate passed: 632 binaries, 3,724 passed, 0 failed. The
+order's status header is updated.
+
 #### 2026-09-24 — test(help): every help section's embedding text is v4's and within 1,000 `cl100k` tokens, proved without a Rust tokenizer (P4.D222 Tier 2 item 8)
 
 _Versions: core 0.0.1049, harness 0.0.970._

@@ -148732,6 +148732,57 @@ here as the order's two units.
   /tmp/p4d222/section-size.ndjson cargo test -p quilltap-harness --test
   help_section_size_equivalence`.
 
+### Lane close — the STOP, the waiver, the neutrality legs, the gate
+
+- **§R.2 STOP mid-lane:** the pre-batch probe found v4 `main` at `83d0c969b`
+  ("Fix bug 170: Salon speaker switch sends POST, not PUT", 2026-09-24 16:42),
+  one commit past `b0b6656b5`, bugfix/tree unchanged and clean. The lane stopped
+  and reported. Read-only `--stat`: one SPA hook
+  (`app/salon/[id]/hooks/useImpersonation.ts`) + its test, bug docs and version
+  stamps. It touches nothing under `lib/`, `help/` or `instrumentation.ts`.
+  **The human WAIVED it in chat ("Go ahead and finish this one",
+  2026-09-24)**. This is recorded here because a lane never writes the ledger:
+  the unifier must write this commit's ledger row. Every regen before and
+  after the stop ran from the detached `b0b6656b5` pin, so the new commit
+  reached none of them.
+- **Neutrality legs (target pin, lane-private paths under
+  `/tmp/p4d222/neutral`):** `help_doc_chunking` green; `help_docs_tier2`
+  green; `help_chat_orchestrator_tier3` 5/5 green. **`help_docs_routes` RED at
+  the target on exactly four rows** — `list_unknown_action_falls_through`
+  and `list_empty_action_falls_through`, each with its status row. These are the
+  `?action=bogus` / `?action=` probes `ad1c4c37f`'s `dispatchAction` moves,
+  i.e. P4.D220's designed red (§R.5; P4.D220 owns this family's `?action=` pins).
+  The same Rust diff is GREEN against a baseline-pinned regen, so this lane moves
+  nothing there. ⚠ Recipe trap: the case reads `<main>.meta.json` BESIDE its
+  fixture DB — a copy of the `.db` alone fails in `brahmaDocId`, so copy
+  `help-chat-*` whole.
+- **Gate (`CARGO_INCREMENTAL=0 TZ=UTC`, one logged chain):** `cargo fmt
+  --all --check` clean; clippy `--workspace --all-targets -D warnings` clean in
+  BOTH feature sets; `cargo build --workspace --release` clean; `cargo test
+  --workspace --no-fail-fast` with the lane's env block (average-embeddings,
+  help-sync, sync-guards, ensure, help-tree, EG, section-size,
+  embedding-remainder, refit, help-doc-chunking, help-docs-tier2,
+  help-orchestrator; `help_docs_routes` WITHHELD, measured by name above):
+  **632 test binaries / 3,724 passed / 0 failed / 3 ignored**. Every lane family
+  RAN (non-zero test counts; none among the `SKIP:` lines). The censuses:
+  `blob_write_sites_census`, `compressed_column_write_sites_census`,
+  `spelling_guard`, `help_tree_embed_guard` (129), `host_help_docs_boot`
+  (129) and the new `host_help_boot_order`. SPA gate (unit 1): lint clean,
+  448 files / 7,670, build clean; no SPA file moved after it.
+- **§R.9 mirror pre-list (the unifier's), byte counts at `b0b6656b5`:**
+  `docs/v4/developer/bugs/fixed/bug-167-help-reindex-fk-rollback.md` NEW
+  3,817; `…/fixed/bug-168-help-doc-embed-overflow.md` NEW 2,989;
+  `docs/v4/developer/bugs.md` 309,151 → 311,817; `docs/v4/developer/DDL.md`
+  125,326 → 125,835 (prose only). `492771aff`'s other docs hunk is v4's own
+  CHANGELOG (the standing lag). The dogfood #120 CONVERGENCE note is the
+  unifier's: v4 fixed it by section-averaging.
+- **For the unifier:** (1) ledger row for `83d0c969b`; (2) `help_docs_routes`
+  red rows belong to P4.D220's regen; (3) versions this lane bumped: core +5
+  (0.0.1045–0.0.1049), harness +6 (0.0.965–0.0.970), host +3
+  (0.0.155–0.0.157), SPA +1 (0.5.762), web/cli/tauri none; (4)
+  `harness/tools/sweep-results/*.json` still name the retired
+  `help_docs_upsert_tier2_equivalence` (historical, untouched).
+
 ## P4.D221 — the `ad1c4c37f`/`8aafd595d` `lib/` riders + two NO-PORT ratifications (2026-09-24, branch `claude/dispatch-lib-riders-partition-f93bb0`)
 
 The `lib/` half of the `b0b6656b5` ten-commit drift catch-up round (the web
