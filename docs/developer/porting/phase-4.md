@@ -6694,17 +6694,19 @@ corpus; four stale headers/comments. Gate + versions: the round record in
    `cl100k` tokenizer (the section bound is proved through the oracle), the
    `docs/v4/CHANGELOG.md` lag.
 
-## The `08c49319d` Concierge-overhaul drift catch-up round (P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232) — ORDERED 2026-09-25
+## The `acadcc7cd` Concierge-overhaul drift catch-up round (P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233) — ORDERED 2026-09-25 (re-ordered the same day to fold `acadcc7cd` in)
 
-**Baseline `b0b6656b5`; v4 `main` HEAD `08c49319d` (NINE non-merge commits
+**Baseline `b0b6656b5`; v4 `main` HEAD `acadcc7cd` (TEN non-merge commits
 past: bug 170, the six overhaul specs, the FIVE Concierge-overhaul PRs
 #73–#77, a dependency sweep that bumps `openai` 7.20.0 → 7.23.0 and
-`@openrouter/sdk` 1.3.11 → 1.3.28, and the Scenario Builder on the
-scenario shelves); `bugfix` `1a2b2164c` and `release` `8fbf2afe0` unmoved;
+`@openrouter/sdk` 1.3.11 → 1.3.28, the Scenario Builder on the scenario
+shelves, and bugs 171/172 — the change the first commit probe found in
+flight, committed forty minutes later and folded in by a re-order the same
+day); `bugfix` `1a2b2164c` and `release` `8fbf2afe0` unmoved;
 the checkout on `main`, CLEAN at the planning probe. PIN REQUIRED — and
 PER-LANE inside the chain: P4.D225 pins `49059fb14`, P4.D226 `4d370a90f`,
-P4.D227 `3b463d6b1`, everyone else the round target `08c49319d`. All nine
-§3 rows marked `ORDERED(…)`.**
+P4.D227 `3b463d6b1`, P4.D231 its own `08c49319d`, everyone else the round
+target `acadcc7cd`. All ten §3 rows marked `ORDERED(…)`.**
 
 The overhaul REPLACES three ported verticals (the four-state Concierge,
 P4.D141/D143/D144/D148/D149; the `dangerousContentSettings` policy,
@@ -6776,7 +6778,7 @@ unreachable through v4's own fallback repositories.
   override's limit + key) narrated on `swipeProgress` (§S.3),
   `retry_uncensored.rs`, the orchestrator's `routedDirect`, the Lantern's
   `background-refused` writer + the story job completing with a refusal
-  bubble; `help/**` re-vendored at `08c49319d` (129 stays 129).
+  bubble; `help/**` re-vendored at `acadcc7cd` (129 stays 129; 20 files).
   `docs/developer/porting/work-orders/p4.d228-salon-polish-try-uncensored-
   help-tree.md`.
 - **P4.D229 — the Concierge SPA, Salon side (SPA, from `main`)**: the
@@ -6803,6 +6805,15 @@ unreachable through v4's own fallback repositories.
   group Scenarios card over a NEW group mutator, the builder's shelf footer,
   `project:<id>` keys + optgroups everywhere). `docs/developer/porting/
   work-orders/p4.d231-scenario-builder-shelves.md`.
+- **P4.D233 — bugs 171 + 172 (Rust core, from `main`, a cheaper tier)**:
+  the pure `operator_speaks_without_seat` predicate, `is_user_persona_in_
+  room` on the identity resolver, the off-scene scan's by-NAME persona
+  exclusion gated on it (v5 has bug 172 verbatim), the continuation's
+  step 2b naming the characters seated in the source chat who did not come
+  along through the Host writer's NEW `left-behind` intro sentences (v5 has
+  bug 171 by omission), the `leftBehindCharacterIds` result key; four
+  families grown. `docs/developer/porting/work-orders/p4.d233-bugs-171-172-
+  left-behind-persona-off-scene.md`.
 - **P4.D232 — the SDK-bump regen event + the riders (Rust harness only,
   from `main`, a cheaper tier)**: the guard's constants moved,
   `request-envelopes` re-recorded and PROVEN stamp-only, the OpenRouter
@@ -6821,12 +6832,15 @@ provider corpora split + the guard's designed reds (P4.D225 ↔ P4.D232);
 help slug/URL across three lanes; §S.7 STOP on anything else. **Fences:**
 `api/types.rs`/`engine.rs` + every Concierge core file — the chain's,
 sequentially; `core/core-contract.ts` — P4.D229 owns, P4.D230 and P4.D231
-each land ONE marked hunk; `help/**` — P4.D228 alone; the corpora split
+each land ONE marked hunk; `build_context.rs` — P4.D227's sweep at `:644`,
+P4.D233's ONE marked hunk at the off-scene call site; `post-office-writers-
+tier3` — P4.D233's spec, P4.D228 re-runs it; `help/**` — P4.D228 alone at
+`acadcc7cd`; the corpora split
 per §S.4. **Execution:** wave 1 = P4.D225 (most capable) ∥ P4.D229 ∥
-P4.D230 ∥ P4.D231 ∥ P4.D232 (cheaper) — at most TWO Rust full gates at
+P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233 (the last two cheaper) — at most TWO Rust full gates at
 once (114 GB free); wave 2 = P4.D226 when P4.D225 writes LANE COMPLETE;
 wave 3 = P4.D227; wave 4 = P4.D228. Cherry-pick order P4.D232 → P4.D231 →
-P4.D225 → P4.D226 → P4.D227 → P4.D228 → P4.D230 → P4.D229; the unifier
+P4.D233 → P4.D225 → P4.D226 → P4.D227 → P4.D228 → P4.D230 → P4.D229; the unifier
 flips every `P4D2xx_SERVER_LANDED` gate and runs the live beats. **Left
 out:** the message danger-flag UI (badges/blur/"Not Dangerous"/`override-
 danger-flag` — a whole vertical v5 never had; the Display card ships

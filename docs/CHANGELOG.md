@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — docs(porting): re-order the Concierge-overhaul round to fold `acadcc7cd` in — target → `acadcc7cd`, P4.D233 added (bugs 171/172)
+
+_Docs-only change._
+
+v4 committed bugs 171 and 172 (`acadcc7cd`, the change the round's commit
+probe had found in flight) one commit past the ordered round's target.
+Rather than waive it, the round is re-ordered: the target moves to
+`acadcc7cd`, a ninth lane (P4.D233: the left-behind notice on Continue
+Elsewhere and the unseated persona off-scene in an autonomous room — v5
+has both bugs) runs from `main` with one pre-declared hunk into
+`build_context.rs`, P4.D228's help tree re-vendors at `acadcc7cd` (20
+files), P4.D231 pins its own commit, and the `post-office-writers-tier3`
+spec gets one owner. The shared block is byte-identical across all nine
+orders; the ledger's tenth row is `ORDERED(P4.D233)` and its §1 records the
+re-order in place of the waiver.
+
 #### 2026-09-25 — docs(porting): drift check at v4 `acadcc7cd` — bugs 171/172 committed past the ordered round's target
 
 _Docs-only change._
