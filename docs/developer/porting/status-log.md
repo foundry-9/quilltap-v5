@@ -150350,3 +150350,67 @@ Regen outputs staged under `/tmp/p4d225/`.
   v4's REAL `DangerousContentSettingsSchema.parse({})` (right at any pin:
   17 rows carry the key at the target, 0 at the baseline). 34 rows matched.
   Through the driver at the target: OK.
+
+### Unit 7d — the refusal ledger: `record_moderation_refusal` + the auto-switch
+
+- NEW `services/dangerous_content/refusal_ledger.rs` (target
+  `quilltap::concierge_refusal_ledger`), v4 `refusal-ledger.ts` at `49059fb14`
+  line for line: `RefusalRecord` / `RecordRefusalResult` / `LastRefusal`,
+  `is_recordable_refusal_evidence` (the four stated evidences; `inferred` and
+  absent never), `record_moderation_refusal` (the two DEBUG not-recorded
+  lines, the INFO `Moderation refusal recorded` with `count`, the ERROR on a
+  failed write — never fails), `maybe_auto_switch_after_refusal` (per-chat
+  async lock = v4's `switchChecks` chain; the entry is forgotten once no one
+  waits), `run_auto_switch_check` in v4's order: chat → Monitored → settings
+  → threshold → ledger; **threshold gate BEFORE mode gate**; the re-read only
+  after `count >= threshold`; `apply_concierge_flip_with(… Flagged, fresh, {
+  by: Concierge, reason: Refusals, refusals: {count, lastProvider ?? '',
+  lastModel} })`; `switched = result.changed`; v4's outer catch as `Auto-switch
+  check failed`. The abandon line renders v4's `state: null` for a vanished
+  chat as `state=null`.
+- **`is_job_child()` is constantly `false`** (v5's job runner is in-process;
+  there is no buffered child). Kept as a function so the two child-only arms
+  stay visible and M10 can flip it. Those two lines (`…(buffered; the parent
+  decides…)` INFO and `Auto-switch check refused in the job child` WARN) are
+  therefore unreachable in v5 — recorded, not pinned.
+- `AutoSwitchProbe` (default no-op `NoAutoSwitchProbe`): the seam between the
+  first read and the re-read, so the real-DB differential can plant v4's
+  "operator vouches mid-check" race. v4's case plants inside the settings
+  read (where v4's own test does); v5's probe sits after the ledger read —
+  nothing between the two looks at the chat, so they are one point.
+- **NEW family `refusal_ledger_tier3_equivalence`** over v4's REAL module
+  (real chats + chat-settings repos, real `applyConciergeFlip`, real
+  Concierge writer): `harness/oracle/cases/refusal-ledger.test.ts`, spec
+  `fixtures/refusal-ledger.json` (13 chats, 4 settings users + one with NO
+  row, 4 planted ledgers, 26 ops), builder `build-refusal-ledger-fixture.ts`
+  (settings through v4's real `DangerousContentSettingsSchema`, the ledger
+  columns through v4's own migration via the 7a helper). Arms: below / at /
+  over / threshold 3; threshold 0 under DETECT_ONLY; DETECT_ONLY at threshold;
+  vouched + already-flagged (recorded, not switched); a record after the
+  switch; the re-read race (abandoned, `state: vouched`); `inferred` + absent
+  evidence; empty chat id; a missing chat (count 0 then `chat not found`); a
+  direct check with no last refusal (bubble without a provider); two
+  concurrent checks (one switch, one bubble); no settings row (mode OFF,
+  source default). Compared: every op's result, every ledger log line in
+  order (v4's `ConciergeRefusalLedger` recorder vs the capture rig), chats +
+  chat_messages dumps (5 bubbles). **Through the driver at the target: OK
+  (26 ops, 5 switches).** At the baseline pin the regen FAILS by design (the
+  module and its migration do not exist before `49059fb14`) — a new family,
+  no pre-port count.
+- Mutations, each reddening exactly its arm: **M6** (mode gate first) →
+  `op zero-detect-1: the ledger's log lines`; **M7** (skip the re-read) →
+  `op race-1: result`; **M10** (`is_job_child` true) → `op below-1: result`;
+  plus the per-chat lock removed → `op concurrent: the ledger's log lines`.
+  All restored (cmp-verified).
+- Unit tests: the evidence predicate; a check on a DB without `chats` logs
+  exactly `ERROR … Auto-switch check failed chat_id=c1 error=…`, answers
+  false, and forgets its chain entry.
+- ⚠ Jest-filter trap (re-met): a bare `-- refusal-ledger` also runs v4's own
+  `refusal-ledger.test.ts` (5 suites); the recipe header anchors
+  `cases/refusal-ledger\.test\.ts$`.
+- ⚠ `recipe_sweep.py --self-test` FAILS on this tree on five families this
+  lane does not own (`doc_opacity_equivalence`,
+  `instance_settings_json_warns_equivalence`,
+  `scenario_builder_{mount_pool,tier3,routes}_equivalence` — the P4.53
+  `W=${V5W:-…}` alias spelling). Pre-existing; handed to the unifier. The new
+  header uses the sanctioned `V5W=${V5W:-$HOME/source/quilltap-v5}` form.

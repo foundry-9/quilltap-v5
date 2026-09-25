@@ -1,0 +1,555 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "characterId": "bbbb2222-2222-4222-8222-222222222222",
+  "chatSettings": [
+    {
+      "id": "5e0000d1-0000-4000-8000-0000000000f0",
+      "userId": "aa000001-0000-4000-8000-0000000000aa",
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE"
+      }
+    },
+    {
+      "id": "5e0000d2-0000-4000-8000-0000000000f0",
+      "userId": "aa000002-0000-4000-8000-0000000000aa",
+      "dangerousContentSettings": {
+        "mode": "DETECT_ONLY",
+        "autoSwitchAfterRefusals": 0
+      }
+    },
+    {
+      "id": "5e0000d3-0000-4000-8000-0000000000f0",
+      "userId": "aa000003-0000-4000-8000-0000000000aa",
+      "dangerousContentSettings": {
+        "mode": "DETECT_ONLY",
+        "autoSwitchAfterRefusals": 2
+      }
+    },
+    {
+      "id": "5e0000d4-0000-4000-8000-0000000000f0",
+      "userId": "aa000004-0000-4000-8000-0000000000aa",
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE",
+        "autoSwitchAfterRefusals": 3
+      }
+    }
+  ],
+  "chats": [
+    {
+      "id": "c0000d01-0000-4000-8000-000000000001",
+      "userId": "aa000001-0000-4000-8000-0000000000aa",
+      "title": "below the threshold",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 11
+    },
+    {
+      "id": "c0000d02-0000-4000-8000-000000000001",
+      "userId": "aa000001-0000-4000-8000-0000000000aa",
+      "title": "at the threshold",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 12
+    },
+    {
+      "id": "c0000d03-0000-4000-8000-000000000001",
+      "userId": "aa000001-0000-4000-8000-0000000000aa",
+      "title": "over the threshold",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 13
+    },
+    {
+      "id": "c0000d04-0000-4000-8000-000000000001",
+      "userId": "aa000002-0000-4000-8000-0000000000aa",
+      "title": "threshold 0 under DETECT_ONLY",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 14
+    },
+    {
+      "id": "c0000d05-0000-4000-8000-000000000001",
+      "userId": "aa000003-0000-4000-8000-0000000000aa",
+      "title": "DETECT_ONLY",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 15
+    },
+    {
+      "id": "c0000d06-0000-4000-8000-000000000001",
+      "userId": "aa000004-0000-4000-8000-0000000000aa",
+      "title": "threshold 3",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 16
+    },
+    {
+      "id": "c0000d07-0000-4000-8000-000000000001",
+      "userId": "aa000001-0000-4000-8000-0000000000aa",
+      "title": "vouched",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": "OFF",
+      "messageCount": 17
+    },
+    {
+      "id": "c0000d08-0000-4000-8000-000000000001",
+      "userId": "aa000001-0000-4000-8000-0000000000aa",
+      "title": "the re-read race",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 18
+    },
+    {
+      "id": "c0000d09-0000-4000-8000-000000000001",
+      "userId": "aa000001-0000-4000-8000-0000000000aa",
+      "title": "inferred",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 19
+    },
+    {
+      "id": "c0000d10-0000-4000-8000-000000000001",
+      "userId": "aa000001-0000-4000-8000-0000000000aa",
+      "title": "a direct check with no last refusal",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 20
+    },
+    {
+      "id": "c0000d11-0000-4000-8000-000000000001",
+      "userId": "aa000001-0000-4000-8000-0000000000aa",
+      "title": "two checks landing together",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 21
+    },
+    {
+      "id": "c0000d12-0000-4000-8000-000000000001",
+      "userId": "aa000005-0000-4000-8000-0000000000aa",
+      "title": "no chat settings",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 22
+    },
+    {
+      "id": "c0000d13-0000-4000-8000-000000000001",
+      "userId": "aa000001-0000-4000-8000-0000000000aa",
+      "title": "already flagged",
+      "chatType": "salon",
+      "isDangerousChat": true,
+      "conciergeOverride": null,
+      "messageCount": 23,
+      "dangerScore": 0.9,
+      "dangerCategories": [
+        "nsfw"
+      ],
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 23
+    }
+  ],
+  "ledgerPlants": [
+    {
+      "chatId": "c0000d03-0000-4000-8000-000000000001",
+      "count": 4,
+      "lastAt": "2020-01-01T00:00:00.000Z"
+    },
+    {
+      "chatId": "c0000d08-0000-4000-8000-000000000001",
+      "count": 1,
+      "lastAt": "2020-01-01T00:00:00.000Z"
+    },
+    {
+      "chatId": "c0000d10-0000-4000-8000-000000000001",
+      "count": 2,
+      "lastAt": "2020-01-01T00:00:00.000Z"
+    },
+    {
+      "chatId": "c0000d11-0000-4000-8000-000000000001",
+      "count": 2,
+      "lastAt": "2020-01-01T00:00:00.000Z"
+    }
+  ],
+  "raceOverride": "OFF",
+  "ops": [
+    {
+      "id": "below-1",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d01-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "at-1",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d02-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "provider-code",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "at-2",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d02-0000-4000-8000-000000000001",
+        "kind": "image",
+        "purpose": "tool",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "OPENAI",
+        "modelName": "gpt-image-2",
+        "evidence": "finish-reason",
+        "rerouted": true
+      }
+    },
+    {
+      "id": "at-3-after-switch",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d02-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "message-pattern",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "over-1",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d03-0000-4000-8000-000000000001",
+        "kind": "image",
+        "purpose": "lantern",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "zero-detect-1",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d04-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "zero-detect-2",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d04-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "zero-detect-3",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d04-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "detect-1",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d05-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "cheap",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "detect-2",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d05-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "cheap",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "three-1",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d06-0000-4000-8000-000000000001",
+        "kind": "image",
+        "purpose": "avatar",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "three-2",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d06-0000-4000-8000-000000000001",
+        "kind": "image",
+        "purpose": "avatar",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "three-3",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d06-0000-4000-8000-000000000001",
+        "kind": "image",
+        "purpose": "avatar",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "vouched-1",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d07-0000-4000-8000-000000000001",
+        "kind": "image",
+        "purpose": "dialog",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "vouched-2",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d07-0000-4000-8000-000000000001",
+        "kind": "image",
+        "purpose": "dialog",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "race-1",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d08-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      },
+      "racePlant": true
+    },
+    {
+      "id": "inferred",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d09-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "inferred",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "no-evidence",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d09-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "no-chat",
+      "kind": "record",
+      "record": {
+        "chatId": "",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "missing-chat",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000dff-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "check-no-last",
+      "kind": "check",
+      "chatId": "c0000d10-0000-4000-8000-000000000001",
+      "lastRefusal": null
+    },
+    {
+      "id": "check-missing",
+      "kind": "check",
+      "chatId": "c0000dff-0000-4000-8000-000000000001",
+      "lastRefusal": {
+        "provider": "GOOGLE"
+      }
+    },
+    {
+      "id": "concurrent",
+      "kind": "concurrentChecks",
+      "chatId": "c0000d11-0000-4000-8000-000000000001",
+      "lastRefusal": {
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "no-settings-1",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d12-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "no-settings-2",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d12-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "flagged-1",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d13-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    }
+  ]
+}

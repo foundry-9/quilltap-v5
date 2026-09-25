@@ -13,6 +13,8 @@
 //!   - [`refusal`] — the ONE refusal classifier (`classify_refusal`, five
 //!     ranked evidences over a structured provider error; P4.D225, v4
 //!     `8bd080267`).
+//!   - [`refusal_ledger`] — the per-chat count of STATED refusals and the
+//!     Concierge's auto-switch to Flagged (P4.D225, v4 `49059fb14`).
 //!   - [`manual_flip`] — the operator's manual tri-state Concierge flip.
 //!   - [`gatekeeper_job`] — the `CHAT_DANGER_CLASSIFICATION` job runner
 //!     (classify → persist the chat-level danger fields + system event).
@@ -38,5 +40,6 @@ pub mod moderation_wire;
 mod prompt_text;
 pub mod provider_routing;
 pub mod refusal;
+pub mod refusal_ledger;
 pub mod resolver;
 pub mod understudy;

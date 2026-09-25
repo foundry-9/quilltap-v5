@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the refusal ledger and the Concierge's auto-switch (P4.D225 unit 7d)
+
+_Versions: core 0.0.1068, harness 0.0.987._
+
+New `services/dangerous_content/refusal_ledger.rs`, ported from v4's
+`refusal-ledger.ts` (`49059fb14`): `record_moderation_refusal` counts a
+stated refusal (never `inferred`) on its chat and asks
+`maybe_auto_switch_after_refusal`, which flips a Monitored chat under
+Auto-Route to Flagged once the ledger reaches `autoSwitchAfterRefusals` —
+threshold gate before mode gate, a re-read before the flip so a mid-check
+operator choice wins, checks chained per chat so two landing together
+announce once. v4's job-child split has no v5 analogue (`is_job_child` is
+constantly false). New tier-3 family `refusal_ledger_tier3_equivalence`
+drives v4's real module on a migrated fixture: 26 ops, results, every ledger
+log line, and the chats + chat_messages dumps matched.
+
 #### 2026-09-25 — feat(concierge): the Concierge's own flip — options, category stamp, ledger reset (P4.D225 unit 7c)
 
 _Versions: core 0.0.1067, harness 0.0.986._
