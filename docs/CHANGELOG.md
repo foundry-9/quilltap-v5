@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the uncensored understudies + the thin pre-flight wrappers (P4.D225 unit 5)
+
+_Versions: core 0.0.1063, harness 0.0.982._
+
+New `services/dangerous_content/understudy.rs`, a port of v4's `understudy.ts`
+(`8bd080267`): `resolve_uncensored_text_understudy` and
+`resolve_uncensored_image_understudy` — the configured profile first, then any
+uncensored-compatible one — excluding the caller's ids, skipping Courier
+profiles, applying a caller filter to the explicit pick too, never reading the
+mode, swallowing lookup failures, with v4's eleven log lines. The two
+pre-flight wrappers in `provider_routing.rs` are now thin (the Auto-Route gate,
+the original excluded, one merged INFO with `configured`, the warn when nothing
+is available). `ApiKeyResolver` gains `try_resolve` so a failing key lookup
+warns as v4's does. The `danger_routing_equivalence` oracle case is rewritten
+over the understudies and the wrappers (the old case cannot run at v4
+`49059fb14`: it calls two functions v4 deleted), with every log line compared
+(47 rows, green on first run).
+
 #### 2026-09-25 — feat(providers): typed moderation refusals at every native image site + the real text finish reasons (P4.D225 unit 4)
 
 _Versions: core 0.0.1062, harness 0.0.981._

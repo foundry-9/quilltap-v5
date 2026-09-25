@@ -13,9 +13,9 @@
 
 use serde_json::Value;
 
+use crate::db::image_profiles;
 use crate::db::runtime::Db;
 use crate::db::DbError;
-use crate::db::{connection_profiles, image_profiles};
 use crate::services::primary_stream::EffectiveProfile;
 use crate::services::provider_failover::{DangerSettings, DangerousContentRouter, RouteResult};
 
@@ -70,6 +70,15 @@ pub struct PostHocImageReroute {
 /// Key management + decryption is host-side (Phase-4 transport).
 pub trait ApiKeyResolver {
     fn resolve(&self, api_key_id: &str, user_id: &str) -> Option<String>;
+
+    /// The lookup with its failure kept (P4.D225): v4's understudy
+    /// `decryptKey` catches a throwing lookup and WARNs `Could not decrypt an
+    /// understudy candidate's API key` before answering null — a `resolve`
+    /// that folds the error into `None` cannot say so. The default is a
+    /// resolver with no failure mode.
+    fn try_resolve(&self, api_key_id: &str, user_id: &str) -> Result<Option<String>, String> {
+        Ok(self.resolve(api_key_id, user_id))
+    }
 }
 
 /// An [`ApiKeyResolver`] that never resolves a key — the faithful wiring when
@@ -100,10 +109,13 @@ impl<'c> ConnApiKeys<'c> {
 
 impl ApiKeyResolver for ConnApiKeys<'_> {
     fn resolve(&self, api_key_id: &str, user_id: &str) -> Option<String> {
+        self.try_resolve(api_key_id, user_id).ok().flatten()
+    }
+
+    fn try_resolve(&self, api_key_id: &str, user_id: &str) -> Result<Option<String>, String> {
         crate::db::api_keys::find_by_id_and_user_id(self.conn, api_key_id, user_id)
-            .ok()
-            .flatten()
-            .map(|k| k.key_value)
+            .map(|k| k.map(|k| k.key_value))
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -117,19 +129,22 @@ impl ApiKeyResolver for ConnApiKeys<'_> {
 pub struct DbApiKeys(pub Db);
 impl ApiKeyResolver for DbApiKeys {
     fn resolve(&self, api_key_id: &str, user_id: &str) -> Option<String> {
+        self.try_resolve(api_key_id, user_id).ok().flatten()
+    }
+
+    fn try_resolve(&self, api_key_id: &str, user_id: &str) -> Result<Option<String>, String> {
         let api_key_id = api_key_id.to_string();
         let user_id = user_id.to_string();
         self.0
             .read_main(move |conn| {
                 crate::db::api_keys::find_by_id_and_user_id(conn, &api_key_id, &user_id)
             })
-            .ok()
-            .flatten()
-            .map(|k| k.key_value)
+            .map(|k| k.map(|k| k.key_value))
+            .map_err(|e| e.to_string())
     }
 }
 
-fn route_profile_from_value(v: &Value) -> RouteProfile {
+pub(crate) fn route_profile_from_value(v: &Value) -> RouteProfile {
     RouteProfile {
         id: str_field(v, "id"),
         name: str_field(v, "name"),
@@ -150,10 +165,6 @@ fn user_id_of(v: &Value) -> Option<&str> {
     v.get("userId").and_then(Value::as_str)
 }
 
-fn is_dangerous_compatible(v: &Value) -> bool {
-    v.get("isDangerousCompatible").and_then(Value::as_bool) == Some(true)
-}
-
 /// v4 `decryptProfileApiKey` / `decryptImageProfileApiKey`: `None` when the
 /// profile carries no `apiKeyId`, else the seam's decrypted key.
 fn decrypt_profile_api_key<A: ApiKeyResolver>(
@@ -168,38 +179,22 @@ fn decrypt_profile_api_key<A: ApiKeyResolver>(
     api_keys.resolve(api_key_id, user_id)
 }
 
-/// Whether a profile can take every attachment this turn is carrying.
+/// v4 `resolveProviderForDangerousContent` — the pre-flight TEXT wrapper, thin
+/// since `8bd080267` (#73): the `AUTO_ROUTE` gate lives here ("the policy lives
+/// here, in the wrapper; the resolver never reads the mode"), and the choice is
+/// [`resolve_uncensored_text_understudy`] with the ORIGINAL profile excluded.
+/// One merged INFO line (`configured` says which of v4's two old lines it would
+/// have been); the unchanged WARN when nothing is available.
 ///
-/// v4 `profileCanCarryTurn` (`a1d88aa3a`, bug 106). A reroute swaps the model
-/// but inherits the message array the *original* profile's call was built
-/// against, bytes and all. A substitute that cannot receive those bytes is not
-/// a slightly worse choice, it is a guaranteed 400 from the gateway. An empty
-/// list means the turn carries nothing and every profile qualifies (JS
-/// `[].every(…)` is `true`, and so is Rust's `all`).
-fn profile_can_carry_turn(profile: &Value, mime_types: &[String]) -> bool {
-    let view = crate::files::image_transport::AttachmentProfileView::from_json(profile);
-    mime_types
-        .iter()
-        .all(|m| crate::files::image_transport::profile_can_receive_attachment(view, m))
-}
-
-/// v4 `resolveProviderForDangerousContent`. Reads connection profiles from
-/// `conn` and resolves an uncensored text provider (or returns the original with
-/// `rerouted: false`). Never throws (v4 catches → the "Routing failed" result).
+/// v4's `catch` (`Provider routing failed, using original` + `Routing failed:
+/// …`) is unreachable through v4's real code — the understudy swallows its own
+/// lookup failures — and the understudy's `Option` makes it unrepresentable
+/// here; recorded, not ported.
 ///
-/// `mode` / `uncensored_text_profile_id` are the two settings fields the text
-/// resolution consumes.
-///
-/// `turn_attachment_mime_types` are the MIME types riding in this turn's
-/// message array, if any (v4 `a1d88aa3a`, bug 106). The scan *prefers* a
-/// substitute that can receive them; without it the scan answers a question the
-/// payload has already settled. Note this is a **preference, not a filter**: an
-/// explicitly configured uncensored profile is still honoured whatever it can
-/// read, and a text-only stand-in is still better than no reroute at all —
-/// the caller re-runs the attachment decision against whichever profile comes
-/// back (`adapt_messages_for_profile`), so an image becomes a description
-/// rather than a 400.
-// v4's parameter list, one for one — it grew to eight at `a1d88aa3a`.
+/// `turn_attachment_mime_types` (bug 106) is a PREFERENCE the understudy
+/// applies to the scan; the caller re-runs the attachment decision against
+/// whichever profile comes back.
+// v4's parameter list, one for one.
 #[allow(clippy::too_many_arguments)]
 pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
     conn: &rusqlite::Connection,
@@ -211,7 +206,6 @@ pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
     user_id: &str,
     turn_attachment_mime_types: &[String],
 ) -> DangerousProviderRouteResult {
-    // If mode is not AUTO_ROUTE, don't reroute.
     if mode != "AUTO_ROUTE" {
         return DangerousProviderRouteResult {
             rerouted: false,
@@ -222,98 +216,69 @@ pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
         };
     }
 
-    let attempt = || -> Result<DangerousProviderRouteResult, DbError> {
-        // Try explicit uncensored profile first.
-        if let Some(uncensored_id) = uncensored_text_profile_id.filter(|s| !s.is_empty()) {
-            if let Some(profile) = connection_profiles::find_by_id(conn, uncensored_id)? {
-                if user_id_of(&profile) == Some(user_id) {
-                    if let Some(api_key) = decrypt_profile_api_key(api_keys, &profile, user_id) {
-                        let rp = route_profile_from_value(&profile);
-                        return Ok(DangerousProviderRouteResult {
-                            rerouted: true,
-                            reason: format!(
-                                "Rerouted to configured uncensored profile: {}",
-                                rp.name
-                            ),
-                            connection_profile: rp,
-                            api_key,
-                            profile_row: Some(profile.clone()),
-                        });
-                    }
-                    // Configured profile has no valid API key — fall through.
-                }
-                // else: not owned by user — fall through.
-            }
-        }
+    let exclude = [original_profile.id.clone()];
+    let understudy = super::understudy::resolve_uncensored_text_understudy(
+        conn,
+        api_keys,
+        super::understudy::TextUnderstudyLookup {
+            user_id,
+            uncensored_text_profile_id,
+            exclude: &exclude,
+            turn_attachment_mime_types,
+            filter: None,
+        },
+    );
 
-        // Scan for any isDangerousCompatible profile.
-        //
-        // Ordered, not filtered (v4 `a1d88aa3a`, bug 106): profiles that can
-        // carry this turn's attachments come first, and the rest follow behind
-        // them. Filtering outright would trade a degraded-but-delivered turn
-        // for no reroute at all when the only uncensored route on the instance
-        // happens to be text-only.
-        let eligible: Vec<Value> = connection_profiles::find_all(conn)?
-            .into_iter()
-            .filter(|p| user_id_of(p) == Some(user_id) && is_dangerous_compatible(p))
-            .collect();
-        let (can_carry, cannot_carry): (Vec<Value>, Vec<Value>) = eligible
-            .into_iter()
-            .partition(|p| profile_can_carry_turn(p, turn_attachment_mime_types));
+    if let Some(u) = understudy {
+        let configured = Some(u.profile.id.as_str()) == uncensored_text_profile_id;
+        tracing::info!(
+            target: "quilltap::dangerous_content_routing",
+            profile_id = %u.profile.id,
+            profile_name = %u.profile.name,
+            provider = %u.profile.provider,
+            model = %u.profile.model_name,
+            configured,
+            "[DangerousContent] Rerouting to uncensored text profile"
+        );
+        let reason = if configured {
+            format!(
+                "Rerouted to configured uncensored profile: {}",
+                u.profile.name
+            )
+        } else {
+            format!(
+                "Rerouted to uncensored-compatible profile: {}",
+                u.profile.name
+            )
+        };
+        return DangerousProviderRouteResult {
+            rerouted: true,
+            connection_profile: u.profile,
+            api_key: u.api_key,
+            reason,
+            profile_row: Some(u.row),
+        };
+    }
 
-        if !turn_attachment_mime_types.is_empty() && !cannot_carry.is_empty() {
-            let names = |v: &[Value]| -> Vec<String> {
-                v.iter()
-                    .map(|p| {
-                        p.get("name")
-                            .and_then(Value::as_str)
-                            .unwrap_or("")
-                            .to_string()
-                    })
-                    .collect()
-            };
-            tracing::info!(
-                turn_attachment_mime_types = ?turn_attachment_mime_types,
-                can_carry = ?names(&can_carry),
-                cannot_carry = ?names(&cannot_carry),
-                "[DangerousContent] Deprioritising uncensored candidates that cannot carry this turn"
-            );
-        }
-
-        for profile in can_carry.into_iter().chain(cannot_carry) {
-            if let Some(api_key) = decrypt_profile_api_key(api_keys, &profile, user_id) {
-                let rp = route_profile_from_value(&profile);
-                return Ok(DangerousProviderRouteResult {
-                    rerouted: true,
-                    reason: format!("Rerouted to uncensored-compatible profile: {}", rp.name),
-                    connection_profile: rp,
-                    api_key,
-                    profile_row: Some(profile.clone()),
-                });
-            }
-        }
-
-        // No uncensored provider available — send to original anyway.
-        Ok(DangerousProviderRouteResult {
-            rerouted: false,
-            connection_profile: original_profile.clone(),
-            api_key: original_api_key.to_string(),
-            reason: "No uncensored provider available - sending to regular provider".to_string(),
-            profile_row: None,
-        })
-    };
-
-    attempt().unwrap_or_else(|e| DangerousProviderRouteResult {
+    tracing::warn!(
+        target: "quilltap::dangerous_content_routing",
+        original_profile = %original_profile.name,
+        original_provider = %original_profile.provider,
+        "[DangerousContent] No uncensored provider available, sending to original profile"
+    );
+    DangerousProviderRouteResult {
         rerouted: false,
         connection_profile: original_profile.clone(),
         api_key: original_api_key.to_string(),
-        reason: format!("Routing failed: {e}"),
+        reason: "No uncensored provider available - sending to regular provider".to_string(),
         profile_row: None,
-    })
+    }
 }
 
-/// v4 `resolveImageProviderForDangerousContent`. Image analogue of
-/// [`resolve_provider_for_dangerous_content`].
+/// v4 `resolveImageProviderForDangerousContent` — the pre-flight IMAGE wrapper
+/// (`8bd080267`): the `AUTO_ROUTE` gate, then
+/// [`resolve_uncensored_image_understudy`] with the original excluded — "same
+/// order as the post-hoc failover, because both ask" it.
 pub fn resolve_image_provider_for_dangerous_content<A: ApiKeyResolver>(
     conn: &rusqlite::Connection,
     api_keys: &A,
@@ -332,60 +297,66 @@ pub fn resolve_image_provider_for_dangerous_content<A: ApiKeyResolver>(
         };
     }
 
-    let attempt = || -> Result<DangerousImageProviderRouteResult, DbError> {
-        if let Some(uncensored_id) = uncensored_image_profile_id.filter(|s| !s.is_empty()) {
-            if let Some(profile) = image_profiles::find_by_id(conn, uncensored_id)? {
-                if user_id_of(&profile) == Some(user_id) {
-                    if let Some(api_key) = decrypt_profile_api_key(api_keys, &profile, user_id) {
-                        let rp = route_profile_from_value(&profile);
-                        return Ok(DangerousImageProviderRouteResult {
-                            rerouted: true,
-                            reason: format!(
-                                "Rerouted to configured uncensored image profile: {}",
-                                rp.name
-                            ),
-                            image_profile: rp,
-                            api_key,
-                        });
-                    }
-                }
-            }
-        }
+    let exclude = [original_profile.id.clone()];
+    let understudy = super::understudy::resolve_uncensored_image_understudy(
+        conn,
+        api_keys,
+        super::understudy::ImageUnderstudyLookup {
+            user_id,
+            uncensored_image_profile_id,
+            exclude: &exclude,
+        },
+    );
 
-        for profile in image_profiles::find_all(conn)? {
-            if user_id_of(&profile) == Some(user_id) && is_dangerous_compatible(&profile) {
-                if let Some(api_key) = decrypt_profile_api_key(api_keys, &profile, user_id) {
-                    let rp = route_profile_from_value(&profile);
-                    return Ok(DangerousImageProviderRouteResult {
-                        rerouted: true,
-                        reason: format!(
-                            "Rerouted to uncensored-compatible image profile: {}",
-                            rp.name
-                        ),
-                        image_profile: rp,
-                        api_key,
-                    });
-                }
-            }
-        }
+    if let Some(u) = understudy {
+        let configured = Some(u.profile.id.as_str()) == uncensored_image_profile_id;
+        tracing::info!(
+            target: "quilltap::dangerous_content_routing",
+            profile_id = %u.profile.id,
+            profile_name = %u.profile.name,
+            provider = %u.profile.provider,
+            configured,
+            "[DangerousContent] Rerouting to uncensored image profile"
+        );
+        let reason = if configured {
+            format!(
+                "Rerouted to configured uncensored image profile: {}",
+                u.profile.name
+            )
+        } else {
+            format!(
+                "Rerouted to uncensored-compatible image profile: {}",
+                u.profile.name
+            )
+        };
+        return DangerousImageProviderRouteResult {
+            rerouted: true,
+            image_profile: u.profile,
+            api_key: u.api_key,
+            reason,
+        };
+    }
 
-        Ok(DangerousImageProviderRouteResult {
-            rerouted: false,
-            image_profile: original_profile.clone(),
-            api_key: original_api_key.to_string(),
-            reason: "No uncensored image provider available - sending to regular provider"
-                .to_string(),
-        })
-    };
-
-    attempt().unwrap_or_else(|e| DangerousImageProviderRouteResult {
+    tracing::warn!(
+        target: "quilltap::dangerous_content_routing",
+        original_profile = %original_profile.name,
+        "[DangerousContent] No uncensored image provider available, sending to original"
+    );
+    DangerousImageProviderRouteResult {
         rerouted: false,
         image_profile: original_profile.clone(),
         api_key: original_api_key.to_string(),
-        reason: format!("Routing failed: {e}"),
-    })
+        reason: "No uncensored image provider available - sending to regular provider".to_string(),
+    }
 }
 
+/// **RETIRED by v4 at `8bd080267`** (with `isImageModerationError` below): the
+/// image failover chokepoint replaces both, asking
+/// [`super::understudy::resolve_uncensored_image_understudy`] instead. They
+/// survive in v5 until their two callers (`tools/generate_image.rs`,
+/// `services/image_job_common.rs`) move onto the chokepoint in P4.D225's
+/// chokepoint unit, which deletes them with their last references.
+///
 /// v4 `resolveUncensoredImageProfileForReroute`: the post-hoc image reroute after
 /// a provider rejects an already-issued request for moderation reasons. Unlike
 /// [`resolve_image_provider_for_dangerous_content`], this does NOT scan for any

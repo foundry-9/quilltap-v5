@@ -12,7 +12,10 @@
     "a0000000-0000-4000-8000-0000000000b1": "KEY_ORIG_B",
     "a0000000-0000-4000-8000-0000000000c1": "IMGKEY_ORIG_A",
     "a0000000-0000-4000-8000-0000000000c2": "IMGKEY_UNC_A",
-    "a0000000-0000-4000-8000-0000000000c3": "IMGKEY_COMPAT_A"
+    "a0000000-0000-4000-8000-0000000000c3": "IMGKEY_COMPAT_A",
+    "a0000000-0000-4000-8000-0000000000a8": "KEY_COURIER_A",
+    "a0000000-0000-4000-8000-0000000000a9": "KEY_NEVER_RETURNED",
+    "a0000000-0000-4000-8000-0000000000c5": "IMGKEY_COMPAT2_A"
   },
   "connectionProfiles": [
     { "id": "c0000000-0000-4000-8000-0000000000a1", "user": "A", "name": "Original A", "provider": "OPENAI", "modelName": "gpt-4o", "apiKeyId": "a0000000-0000-4000-8000-0000000000a1", "isDangerousCompatible": false },
@@ -23,13 +26,17 @@
     { "id": "c0000000-0000-4000-8000-0000000000a6", "user": "A", "name": "Compatible Vision A", "provider": "OPENAI", "modelName": "gpt-4o-mini-vision", "apiKeyId": "a0000000-0000-4000-8000-0000000000a6", "isDangerousCompatible": true, "supportsImageUpload": true },
     { "id": "c0000000-0000-4000-8000-0000000000a7", "user": "A", "name": "Compatible Docs A", "provider": "ANTHROPIC", "modelName": "claude-uncensored", "apiKeyId": "a0000000-0000-4000-8000-0000000000a7", "isDangerousCompatible": true, "supportsImageUpload": false },
     { "id": "c0000000-0000-4000-8000-0000000000b1", "user": "B", "name": "Original B", "provider": "OPENAI", "modelName": "gpt-4o", "apiKeyId": "a0000000-0000-4000-8000-0000000000b1", "isDangerousCompatible": false },
-    { "id": "c0000000-0000-4000-8000-0000000000b2", "user": "B", "name": "Compat NoKey B", "provider": "OLLAMA", "modelName": "wizard", "apiKeyId": "a0000000-0000-4000-8000-00000000beef", "isDangerousCompatible": true }
+    { "id": "c0000000-0000-4000-8000-0000000000b2", "user": "B", "name": "Compat NoKey B", "provider": "OLLAMA", "modelName": "wizard", "apiKeyId": "a0000000-0000-4000-8000-00000000beef", "isDangerousCompatible": true },
+    {"id": "c0000000-0000-4000-8000-0000000000a8", "user": "A", "name": "Courier Uncensored A", "provider": "OPENAI", "modelName": "gpt-courier", "apiKeyId": "a0000000-0000-4000-8000-0000000000a8", "isDangerousCompatible": true, "transport": "courier"},
+    {"id": "c0000000-0000-4000-8000-0000000000a9", "user": "A", "name": "Compatible Throwing Key A", "provider": "OPENAI", "modelName": "gpt-throw", "apiKeyId": "a0000000-0000-4000-8000-0000000000a9", "isDangerousCompatible": true}
   ],
   "imageProfiles": [
     { "id": "e0000000-0000-4000-8000-0000000000a1", "user": "A", "name": "Img Original A", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a0000000-0000-4000-8000-0000000000c1", "isDangerousCompatible": false },
     { "id": "e0000000-0000-4000-8000-0000000000a2", "user": "A", "name": "Img Configured Uncensored", "provider": "GROK", "modelName": "grok-image", "apiKeyId": "a0000000-0000-4000-8000-0000000000c2", "isDangerousCompatible": false },
     { "id": "e0000000-0000-4000-8000-0000000000a3", "user": "A", "name": "Img Compatible A", "provider": "OLLAMA", "modelName": "sd-uncensored", "apiKeyId": "a0000000-0000-4000-8000-0000000000c3", "isDangerousCompatible": true },
-    { "id": "e0000000-0000-4000-8000-0000000000b1", "user": "B", "name": "Img Original B", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a0000000-0000-4000-8000-00000000b111", "isDangerousCompatible": false }
+    { "id": "e0000000-0000-4000-8000-0000000000b1", "user": "B", "name": "Img Original B", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a0000000-0000-4000-8000-00000000b111", "isDangerousCompatible": false },
+    {"id": "e0000000-0000-4000-8000-0000000000a4", "user": "A", "name": "Img NoKey Configured", "provider": "OPENAI", "modelName": "gpt-image-1", "apiKeyId": "a0000000-0000-4000-8000-00000000dea4", "isDangerousCompatible": false},
+    {"id": "e0000000-0000-4000-8000-0000000000a5", "user": "A", "name": "Img Compatible Second A", "provider": "GOOGLE", "modelName": "imagen-4", "apiKeyId": "a0000000-0000-4000-8000-0000000000c5", "isDangerousCompatible": true}
   ],
   "textCases": [
     { "id": "off-mode", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "OFF", "uncensoredTextProfileId": null },
@@ -48,13 +55,21 @@
     { "id": "mime-empty-list-is-the-old-order", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": null, "turnAttachmentMimeTypes": [] },
     { "id": "mime-configured-honoured-anyway", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a2", "turnAttachmentMimeTypes": ["image/png"] },
     { "id": "mime-image-subtype-uses-the-flag", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": null, "turnAttachmentMimeTypes": ["image/heic"] },
-    { "id": "mime-off-mode-ignores-the-payload", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "OFF", "uncensoredTextProfileId": null, "turnAttachmentMimeTypes": ["image/png"] }
+    { "id": "mime-off-mode-ignores-the-payload", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "OFF", "uncensoredTextProfileId": null, "turnAttachmentMimeTypes": ["image/png"] },
+    {"id": "configured-is-the-original-excluded", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a2", "originalApiKey": "KEY_UNC_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a2"},
+    {"id": "configured-courier-not-eligible", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a8"},
+    {"id": "scan-excludes-a-compatible-original", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a3", "originalApiKey": "KEY_COMPAT_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": null},
+    {"id": "configured-empty-string-is-no-pick", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": ""}
   ],
   "imageCases": [
     { "id": "img-off", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a1", "originalApiKey": "IMGKEY_ORIG_A", "mode": "OFF", "uncensoredImageProfileId": null },
     { "id": "img-configured", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a1", "originalApiKey": "IMGKEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2" },
     { "id": "img-scan-compatible", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a1", "originalApiKey": "IMGKEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": null },
-    { "id": "img-no-uncensored", "user": "B", "originalProfileId": "e0000000-0000-4000-8000-0000000000b1", "originalApiKey": "IMGKEY_ORIG_B", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": null }
+    { "id": "img-no-uncensored", "user": "B", "originalProfileId": "e0000000-0000-4000-8000-0000000000b1", "originalApiKey": "IMGKEY_ORIG_B", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": null },
+    {"id": "img-configured-is-the-original-excluded", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a2", "originalApiKey": "IMGKEY_UNC_A", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2"},
+    {"id": "img-configured-keyless-now-warns", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a1", "originalApiKey": "IMGKEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a4"},
+    {"id": "img-configured-not-owned-now-warns", "user": "B", "originalProfileId": "e0000000-0000-4000-8000-0000000000b1", "originalApiKey": "IMGKEY_ORIG_B", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2"},
+    {"id": "img-detect-only", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a1", "originalApiKey": "IMGKEY_ORIG_A", "mode": "DETECT_ONLY", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2"}
   ],
   "rerouteCases": [
     { "id": "reroute-off", "user": "A", "currentProfileId": "e0000000-0000-4000-8000-0000000000a1", "mode": "OFF", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2" },
@@ -70,5 +85,29 @@
     "moderation_blocked by upstream",
     "network timeout",
     ""
+  ],
+  "throwingApiKeys": ["a0000000-0000-4000-8000-0000000000a9"],
+  "textUnderstudyCases": [
+    {"id": "tu-configured", "user": "A", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a2", "exclude": []},
+    {"id": "tu-configured-excluded", "user": "A", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a2", "exclude": ["c0000000-0000-4000-8000-0000000000a2"]},
+    {"id": "tu-configured-courier", "user": "A", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a8", "exclude": []},
+    {"id": "tu-configured-keyless", "user": "A", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a4", "exclude": []},
+    {"id": "tu-configured-missing", "user": "A", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000ffff", "exclude": []},
+    {"id": "tu-configured-not-owned", "user": "B", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a2", "exclude": []},
+    {"id": "tu-configured-filtered-out", "user": "A", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a2", "exclude": [], "filterProviders": ["OPENAI"]},
+    {"id": "tu-scan-filter-applies", "user": "A", "uncensoredTextProfileId": null, "exclude": [], "filterProviders": ["ANTHROPIC"]},
+    {"id": "tu-scan-skips-courier-and-throwing-key", "user": "A", "uncensoredTextProfileId": null, "exclude": ["c0000000-0000-4000-8000-0000000000a3", "c0000000-0000-4000-8000-0000000000a5", "c0000000-0000-4000-8000-0000000000a6", "c0000000-0000-4000-8000-0000000000a7"]},
+    {"id": "tu-scan-deprioritises", "user": "A", "uncensoredTextProfileId": null, "exclude": [], "turnAttachmentMimeTypes": ["image/png"]},
+    {"id": "tu-nothing-for-b", "user": "B", "uncensoredTextProfileId": null, "exclude": []},
+    {"id": "tu-lookup-fails", "user": "A", "uncensoredTextProfileId": null, "exclude": [], "failLookup": true}
+  ],
+  "imageUnderstudyCases": [
+    {"id": "iu-configured", "user": "A", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2", "exclude": []},
+    {"id": "iu-configured-excluded", "user": "A", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2", "exclude": ["e0000000-0000-4000-8000-0000000000a2"]},
+    {"id": "iu-configured-keyless", "user": "A", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a4", "exclude": []},
+    {"id": "iu-configured-missing", "user": "A", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000ffff", "exclude": []},
+    {"id": "iu-scan-excludes", "user": "A", "uncensoredImageProfileId": null, "exclude": ["e0000000-0000-4000-8000-0000000000a3"]},
+    {"id": "iu-nothing-left", "user": "A", "uncensoredImageProfileId": null, "exclude": ["e0000000-0000-4000-8000-0000000000a3", "e0000000-0000-4000-8000-0000000000a5"]},
+    {"id": "iu-lookup-fails", "user": "A", "uncensoredImageProfileId": null, "exclude": [], "failLookup": true}
   ]
 }

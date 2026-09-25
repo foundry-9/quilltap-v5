@@ -32,6 +32,8 @@ interface ProfileSpec {
   isDangerousCompatible: boolean;
   /** P4.D136 (v4 `a1d88aa3a`, bug 106): the attachment-carry half of the scan. */
   supportsImageUpload?: boolean;
+  /** P4.D225 (v4 `8bd080267`): the understudy skips Courier profiles. */
+  transport?: 'api' | 'courier';
 }
 interface Spec {
   testPepperBase64: string;
@@ -81,6 +83,7 @@ async function main(): Promise<void> {
         apiKeyId: cp.apiKeyId,
         isDangerousCompatible: cp.isDangerousCompatible,
         supportsImageUpload: cp.supportsImageUpload ?? false,
+        ...(cp.transport ? { transport: cp.transport } : {}),
       } as never,
       { id: cp.id, createdAt: ts, updatedAt: ts }
     );

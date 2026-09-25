@@ -1,10 +1,22 @@
 /**
  * @jest-environment node
  *
- * ORACLE for the W4.2 dangerous-content provider-routing matrix (v4
- * `lib/services/dangerous-content/provider-routing.service.ts`):
- * `resolveProviderForDangerousContent`, `resolveImageProviderForDangerousContent`,
- * `resolveUncensoredImageProfileForReroute`, `isImageModerationError`.
+ * ORACLE for the dangerous-content provider-routing matrix — since v4
+ * `8bd080267` (#73, P4.D225) the two thin pre-flight wrappers in
+ * `lib/services/dangerous-content/provider-routing.service.ts`
+ * (`resolveProviderForDangerousContent`, `resolveImageProviderForDangerousContent`)
+ * AND the understudies they delegate to
+ * (`lib/services/dangerous-content/understudy.ts`:
+ * `resolveUncensoredTextUnderstudy`, `resolveUncensoredImageUnderstudy`), with
+ * EVERY line the `ConciergeUnderstudy` and `DangerousContentProviderRouting`
+ * loggers write recorded per case.
+ *
+ * RETIRED rows (P4.D225): v4 DELETED `resolveUncensoredImageProfileForReroute`
+ * and `isImageModerationError` at `8bd080267`; importing them at the pin fails
+ * (the red-first: this case as it stood could not run there). Their spec rows
+ * (`rerouteCases`, `imgErrors`) stay in the committed JSON and are filtered out
+ * on BOTH sides — the `retiring-a-v4-deleted-methods-oracle-row-keeps-the-
+ * fixture` rule.
  *
  * Drives the REAL functions over a baked `connection_profiles` / `image_profiles`
  * fixture. API-key decryption is a canned seam on BOTH sides: this oracle
@@ -32,16 +44,21 @@ import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 interface Case { id: string; user: 'A' | 'B'; originalProfileId?: string; currentProfileId?: string; originalApiKey?: string; mode: string; uncensoredTextProfileId?: string | null; uncensoredImageProfileId?: string | null; turnAttachmentMimeTypes?: string[] }
+interface UnderstudyCase { id: string; user: 'A' | 'B'; uncensoredTextProfileId?: string | null; uncensoredImageProfileId?: string | null; exclude: string[]; turnAttachmentMimeTypes?: string[]; filterProviders?: string[]; failLookup?: boolean }
 interface Spec {
   testPepperBase64: string;
   userA: string;
   userB: string;
   apiKeys: Record<string, string>;
+  throwingApiKeys: string[];
   textCases: Case[];
   imageCases: Case[];
-  rerouteCases: Case[];
-  imgErrors: string[];
+  textUnderstudyCases: UnderstudyCase[];
+  imageUnderstudyCases: UnderstudyCase[];
 }
+
+interface RecordedLog { service: string | null; level: string; message: string; bag: Record<string, unknown> }
+const LOGGED_SERVICES = new Set(['ConciergeUnderstudy', 'DangerousContentProviderRouting']);
 
 function profileSubset(p: any): unknown {
   return { id: p.id, name: p.name, provider: p.provider, modelName: p.modelName, baseUrl: p.baseUrl ?? null };
@@ -78,6 +95,30 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
   jest.doMock('@/lib/database/repositories', () => jest.requireActual('@/lib/database/repositories'));
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // P4.D225: every line the two routing loggers write, per case. Other
+  // services (the DB stack's) are recorded too and filtered out below.
+  const logs: RecordedLog[] = [];
+  jest.doMock('@/lib/logger', () => {
+    const recorder = (service: string | null): Record<string, unknown> => {
+      const record = (level: string) => (message: string, bag?: Record<string, unknown>) => {
+        if (service && LOGGED_SERVICES.has(service)) {
+          logs.push({ service, level, message, bag: JSON.parse(JSON.stringify(bag ?? {})) });
+        }
+      };
+      const self: Record<string, unknown> = {
+        debug: record('debug'), info: record('info'), warn: record('warn'),
+        error: record('error'), trace: record('trace'),
+      };
+      self.child = (ctx: Record<string, unknown>) =>
+        recorder(typeof ctx?.service === 'string' ? ctx.service : service);
+      return self;
+    };
+    return {
+      __esModule: true,
+      LogLevel: { ERROR: 'error', WARN: 'warn', INFO: 'info', DEBUG: 'debug', TRACE: 'trace' },
+      logger: recorder(null),
+    };
+  });
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
@@ -104,6 +145,7 @@ async function main(): Promise<void> {
   );
 
   const routing = await import('@/lib/services/dangerous-content/provider-routing.service');
+  const understudy = await import('@/lib/services/dangerous-content/understudy');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -111,12 +153,16 @@ async function main(): Promise<void> {
 
   // Canned key seam: patch the singleton connections repo's key lookup.
   (repos.connections as any).findApiKeyByIdAndUserId = async (id: string, _userId: string) => {
+    // P4.D225: a key lookup that THROWS — the understudy's `decryptKey` WARNs
+    // and answers null.
+    if ((spec.throwingApiKeys ?? []).includes(id)) throw new Error('canned key lookup failure');
     const kv = spec.apiKeys[id];
     if (!kv) return null;
     return { id, userId: _userId, label: 'canned', provider: 'OPENAI', key_value: kv, isActive: true, createdAt: '2020-01-01T00:00:00.000Z', updatedAt: '2020-01-01T00:00:00.000Z' };
   };
 
   const lines: string[] = [];
+  const takeLogs = () => logs.splice(0).map(({ service, level, message, bag }) => ({ service, level, message, bag }));
 
   for (const c of spec.textCases) {
     const original = await repos.connections.findById(c.originalProfileId!);
@@ -128,25 +174,46 @@ async function main(): Promise<void> {
     const r = await routing.resolveProviderForDangerousContent(
       original as any, c.originalApiKey!, settings, uid(c.user), c.turnAttachmentMimeTypes ?? []
     );
-    lines.push(JSON.stringify({ kind: 'text', id: c.id, rerouted: r.rerouted, profile: profileSubset(r.connectionProfile), apiKey: r.apiKey, reason: r.reason }));
+    lines.push(JSON.stringify({ kind: 'text', id: c.id, rerouted: r.rerouted, profile: profileSubset(r.connectionProfile), apiKey: r.apiKey, reason: r.reason, logs: takeLogs() }));
   }
 
+  takeLogs();
   for (const c of spec.imageCases) {
     const original = await repos.imageProfiles.findById(c.originalProfileId!);
     if (!original) throw new Error(`image case ${c.id}: original ${c.originalProfileId} not found`);
     const settings = { mode: c.mode, uncensoredImageProfileId: c.uncensoredImageProfileId ?? undefined } as any;
     const r = await routing.resolveImageProviderForDangerousContent(original as any, c.originalApiKey!, settings, uid(c.user));
-    lines.push(JSON.stringify({ kind: 'image', id: c.id, rerouted: r.rerouted, profile: profileSubset(r.imageProfile), apiKey: r.apiKey, reason: r.reason }));
+    lines.push(JSON.stringify({ kind: 'image', id: c.id, rerouted: r.rerouted, profile: profileSubset(r.imageProfile), apiKey: r.apiKey, reason: r.reason, logs: takeLogs() }));
   }
 
-  for (const c of spec.rerouteCases) {
-    const settings = { mode: c.mode, uncensoredImageProfileId: c.uncensoredImageProfileId ?? undefined } as any;
-    const r = await routing.resolveUncensoredImageProfileForReroute(c.currentProfileId!, settings, uid(c.user));
-    lines.push(JSON.stringify({ kind: 'reroute', id: c.id, result: r ? { profile: profileSubset(r.profile), apiKey: r.apiKey } : null }));
-  }
+  // `rerouteCases` / `imgErrors`: RETIRED (see the header) — not driven.
 
-  for (const msg of spec.imgErrors) {
-    lines.push(JSON.stringify({ kind: 'imgerr', message: msg, out: routing.isImageModerationError(msg) }));
+  // P4.D225: the understudies, driven directly (exclusion, the courier skip,
+  // the caller's filter on the explicit pick and the scan, the throwing key,
+  // the swallowed lookup failure).
+  const withFailingLookup = async <T>(fail: boolean | undefined, which: 'connections' | 'imageProfiles', f: () => Promise<T>): Promise<T> => {
+    if (!fail) return f();
+    const repo = (repos as any)[which];
+    const findAll = repo.findAll;
+    repo.findAll = async () => { throw new Error('canned lookup failure'); };
+    try { return await f(); } finally { repo.findAll = findAll; }
+  };
+  takeLogs();
+  for (const c of spec.textUnderstudyCases) {
+    const settings = { mode: 'AUTO_ROUTE', uncensoredTextProfileId: c.uncensoredTextProfileId ?? undefined } as any;
+    const filter = c.filterProviders ? (p: any) => c.filterProviders!.includes(p.provider) : undefined;
+    const r = await withFailingLookup(c.failLookup, 'connections', () =>
+      understudy.resolveUncensoredTextUnderstudy({
+        userId: uid(c.user), settings, exclude: c.exclude,
+        turnAttachmentMimeTypes: c.turnAttachmentMimeTypes ?? [], filter,
+      }));
+    lines.push(JSON.stringify({ kind: 'textUnderstudy', id: c.id, result: r ? { profile: profileSubset(r.profile), apiKey: r.apiKey } : null, logs: takeLogs() }));
+  }
+  for (const c of spec.imageUnderstudyCases) {
+    const settings = { mode: 'AUTO_ROUTE', uncensoredImageProfileId: c.uncensoredImageProfileId ?? undefined } as any;
+    const r = await withFailingLookup(c.failLookup, 'imageProfiles', () =>
+      understudy.resolveUncensoredImageUnderstudy({ userId: uid(c.user), settings, exclude: c.exclude }));
+    lines.push(JSON.stringify({ kind: 'imageUnderstudy', id: c.id, result: r ? { profile: profileSubset(r.profile), apiKey: r.apiKey } : null, logs: takeLogs() }));
   }
 
   await closeDatabase();

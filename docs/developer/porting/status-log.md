@@ -150091,3 +150091,60 @@ Regen outputs staged under `/tmp/p4d225/`.
   cases.json` gains three `openrouter-*` entries (appended); the recorder
   filters by provider, so the deepseek / z-ai / openai-compatible / nanogpt
   recordings are unaffected — re-running them stays byte-identical.
+
+### Unit 5 — the understudies + the thin wrappers (`danger_routing_equivalence` rewritten)
+
+- NEW `services/dangerous_content/understudy.rs` — v4 `understudy.ts` whole:
+  `resolve_uncensored_text_understudy(conn, keys, TextUnderstudyLookup {
+  user_id, uncensored_text_profile_id, exclude, turn_attachment_mime_types,
+  filter })` / `resolve_uncensored_image_understudy(conn, keys,
+  ImageUnderstudyLookup { user_id, uncensored_image_profile_id, exclude })` →
+  `Option<Understudy { profile, row, api_key }>`; v4's decision order, the
+  EXCLUSION, the courier skip, `eligible()` (and the caller's `filter`) applied
+  to the EXPLICIT text pick too, the partition by `profileCanCarryTurn` (moved
+  here from the wrapper), the swallowing catch; target
+  `quilltap::concierge_understudy`, the eleven lines (the deprioritising INFO
+  WITHOUT the `[DangerousContent]` prefix). `ApiKeyResolver::try_resolve`
+  (default `Ok(resolve())`; `ConnApiKeys`/`DbApiKeys` keep the DB error) so
+  `decryptKey`'s WARN on a throwing lookup is reachable.
+- `provider_routing.rs`: the two wrappers are v4's thin post-#73 shape (mode
+  gate → understudy with `exclude: [original.id]` → the ONE merged INFO
+  `[DangerousContent] Rerouting to uncensored text|image profile` with
+  `configured` → reason strings; the WARN when none, target
+  `quilltap::dangerous_content_routing`). v4's wrapper `catch` (`Routing failed:
+  …`) is unreachable through v4's real code (the understudy swallows) and
+  unrepresentable over the understudy's `Option` — recorded, not ported.
+  `resolve_uncensored_image_profile_for_reroute` + `is_image_moderation_error`
+  SURVIVE this unit with a retirement doc (their two callers move onto the
+  chokepoint in unit 8, which deletes them with their last references — 22
+  lines across 5 files, measured; the survey's "64" counted every
+  `resolve_uncensored*` name).
+- **`danger_routing_equivalence` REWRITTEN** over the wrappers + the
+  understudies. **Red-first: the unchanged HEAD case at the target pin dies
+  `TypeError: routing.resolveUncensoredImageProfileForReroute is not a
+  function`** (1 failed). The retired `rerouteCases`/`imgErrors` stay in the
+  committed JSON and are filtered on BOTH sides. Spec grown (appended
+  textually): profiles a8 (Courier, compatible, keyed) and a9 (compatible, key
+  lookup THROWS — `throwingApiKeys`), image profiles e…a4 (keyless explicit)
+  and e…a5 (second compatible); 4 new text-wrapper cases (configured = the
+  original → excluded; a courier explicit pick; a compatible original excluded
+  from the scan; `""` = no pick), 4 image-wrapper cases, 12 direct TEXT
+  understudy cases (incl. a `filter` rejecting the explicit pick, a filtered
+  scan, the courier + throwing-key skip, the deprioritising partition, a failing
+  `findAll` → the swallowed ERROR) and 7 direct IMAGE understudy cases. The
+  builder learns `transport`. Every row records every line the two loggers
+  wrote (a recorder `@/lib/logger` doMock, filtered by service); the Rust side
+  compares level + message + every field in order (camelCase → snake; string
+  arrays as `Debug`; the lookup-failure `error` value normalised both sides).
+  47 rows, **green on first run**; through the sweep driver at the target → OK.
+  The case is a plain `#[test]` now (it awaited nothing).
+- **Neutrality of the reachers** (the sweep driver at the target pin):
+  `enclave_step_tier3` OK, `chat_create_capstone` OK (12 cases),
+  `post_office_routes` OK. **`orchestrator_tier3`: RED at the target pin on
+  `empty_retry`** (v4 now retries the empty body on a SCANNED understudy with
+  no `uncensoredTextProfileId` — the `rerouting` status frame + the
+  "uncensored provider also returned empty" reason) — the text-failover unit's
+  designed red (#73's empty-body gate change), NOT this unit's: the same tree
+  is GREEN at the baseline pin.
+- E.9 measured: `DangerSettings.uncensored_text_profile_id` stays READ (the
+  understudy's explicit pick reads it) — not removable.
