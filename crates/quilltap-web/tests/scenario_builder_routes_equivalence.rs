@@ -18,6 +18,19 @@
 //! profiles, Salon / autonomous / help / foreign chats, a readable, a foreign
 //! and an unreadable (BLOB-named) character.
 //!
+//! **P4.D231 (v4 `08c49319d`) — named groups.** The run projection carries
+//! `groupIds` (between `characterIds` and `chat`, v4's pass-through order) and
+//! the accepted DEBUG `groupCount` (between `castCount` and `hasProject`).
+//! Four cases: existing + unknown (v4's `route.test.ts` case), the default
+//! `[]`, duplicates deduped BEFORE the existence check, and an unreadable
+//! (BLOB-named) group row — v4's `findByIdRaw` is a fallback-mode `safeQuery`
+//! that VALIDATES the row, so it answers `null` after the repository's own
+//! `Error finding entity by ID` ERROR and the route's `Scenario Builder dropped
+//! an unreadable group id` WARN never fires. That ERROR is compared on its own
+//! channel (`repoLines`); the WARN's absence is every case's `lines` equality.
+//! The chat-send pair has no `groups` table at all, so the plants create it
+//! with v4's DDL.
+//!
 //! **P4.115 — two cases where the canned run THROWS** (`runThrows: "before"`
 //! / `"after"` its first frame; v5's driver resolves `Err` with the same
 //! message). v4 answers both inside its already-committed stream: 200, v4's
@@ -106,6 +119,15 @@ const LOG_TARGETS: &[&str] = &[
 /// field besides its message) — the oracle's own row shape.
 static LOGGED: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 
+/// P4.D231: the `groups` repository fallback ERROR (`Error finding entity by
+/// ID` with `collection: "groups"`) — v4 logs it inside `findByIdRaw`'s
+/// fallback-mode `safeQuery`, on no `ScenarioBuilder` logger, so it is kept
+/// OUT of [`LOGGED`] and compared as `{ level, message, collection, id,
+/// hasError }` (the error TEXT is each side's own driver's — v4's Zod
+/// validation message, v5's rusqlite decode error).
+static REPO_LOGGED: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+const REPO_FALLBACK: &str = "Error finding entity by ID";
+
 struct StructuredCapture;
 
 struct JsonFields {
@@ -148,6 +170,25 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for StructuredCapture 
             fields: Vec::new(),
         };
         event.record(&mut v);
+        if v.message.as_deref() == Some(REPO_FALLBACK) {
+            let field = |k: &str| {
+                v.fields
+                    .iter()
+                    .find(|f| f[0] == k)
+                    .map(|f| f[1].clone())
+                    .unwrap_or(Value::Null)
+            };
+            if field("collection") == json!("groups") {
+                REPO_LOGGED.lock().unwrap().push(json!({
+                    "level": meta.level().as_str().to_ascii_lowercase(),
+                    "message": REPO_FALLBACK,
+                    "collection": "groups",
+                    "id": field("id"),
+                    "hasError": field("error").as_str().is_some_and(|e| !e.is_empty()),
+                }));
+                return;
+            }
+        }
         LOGGED.lock().unwrap().push(json!({
             "level": meta.level().as_str().to_ascii_lowercase(),
             "message": v.message,
@@ -248,6 +289,7 @@ impl ScenarioBuilderDriver for CannedDriver {
                 r.runs.push(json!({
                     "mode": req.input.mode.as_str(),
                     "characterIds": req.input.character_ids,
+                    "groupIds": req.input.group_ids,
                     "chat": chat_value,
                     "priorDraft": req.input.prior_draft,
                     "revision": req.input.revision,
@@ -375,6 +417,7 @@ async fn scenario_builder_routes_match_oracle() {
             r.run_throws = case.run_throws.clone();
         }
         LOGGED.lock().unwrap().clear();
+        REPO_LOGGED.lock().unwrap().clear();
         let url = if case.query.is_empty() {
             format!("http://{addr}/api/v1/scenario-builder")
         } else {
@@ -451,6 +494,7 @@ async fn scenario_builder_routes_match_oracle() {
         }
         got["runs"] = json!(recorder.lock().unwrap().runs.clone());
         got["lines"] = json!(LOGGED.lock().unwrap().clone());
+        got["repoLines"] = json!(REPO_LOGGED.lock().unwrap().clone());
 
         if V4_MOCK_ONLY.contains(&case.name.as_str()) {
             divergences_exercised += 1;
@@ -498,6 +542,7 @@ async fn scenario_builder_routes_match_oracle() {
             "sse",
             "runs",
             "lines",
+            "repoLines",
         ] {
             let (g, w) = (got.get(key), want.get(key));
             let (g, w) = (g.filter(|v| !v.is_null()), w.filter(|v| !v.is_null()));
@@ -519,6 +564,16 @@ async fn scenario_builder_routes_match_oracle() {
     assert!(
         lines_seen > 0,
         "the oracle recorded no ScenarioBuilder log line"
+    );
+    // P4.D231: the unreadable-group case must record the repository line
+    // (v4) — the pin that the route's WARN is absent and this one present.
+    let repo_seen: usize = oracle
+        .values()
+        .map(|r| r["repoLines"].as_array().map_or(0, Vec::len))
+        .sum();
+    assert!(
+        repo_seen > 0,
+        "the oracle recorded no groups repository ERROR"
     );
     assert_eq!(divergences_exercised, V4_MOCK_ONLY.len());
     assert!(

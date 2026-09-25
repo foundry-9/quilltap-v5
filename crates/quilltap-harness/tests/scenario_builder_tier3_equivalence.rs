@@ -130,6 +130,9 @@ struct CaseW {
     details: String,
     project_id: Option<String>,
     character_ids: Vec<String>,
+    /// P4.D231 (v4 `08c49319d`): groups named outright — the group shelf.
+    #[serde(default)]
+    group_ids: Vec<String>,
     #[serde(default)]
     chat: Option<ChatW>,
     #[serde(default)]
@@ -507,6 +510,7 @@ async fn scenario_builder_tier3_matches_oracle() {
             details: case.details.clone(),
             project_id: case.project_id.clone(),
             character_ids: case.character_ids.clone(),
+            group_ids: case.group_ids.clone(),
             chat: case.chat.as_ref().map(|c| ScenarioBuilderChat {
                 id: c.id.clone(),
                 scenario_text: c.scenario_text.clone(),

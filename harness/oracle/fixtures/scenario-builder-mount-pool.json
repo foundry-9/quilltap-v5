@@ -1,5 +1,5 @@
 {
-  "$comment": "P4.D217 \u2014 resolveScenarioBuilderMountPool (v4 d1c06cd9d) over the doc-opacity fixture (built by its own UNCHANGED builder \u2014 P4.D216's) plus the plants below, applied IN ORDER on a per-run COPY on both sides through each side's own SQL connection. The eight mount-pool.test.ts shapes are the arms' names (that suite mocks the repositories; this family does not). Plants clone Leilani's raw row, so every other column is the real creator's.",
+  "$comment": "P4.D217 — resolveScenarioBuilderMountPool (v4 d1c06cd9d) over the doc-opacity fixture (built by its own UNCHANGED builder — P4.D216's) plus the plants below, applied IN ORDER on a per-run COPY on both sides through each side's own SQL connection. The eight mount-pool.test.ts shapes are the arms' names (that suite mocks the repositories; this family does not). Plants clone Leilani's raw row, so every other column is the real creator's. P4.D231 (v4 08c49319d): arms may carry `groupIds` (groups named outright — the group shelf); an arm without it passes none (v4's `groupIds?`).",
   "testPepperBase64": "3q2+796tvu3erb7t3q2+796tvu3erb7t3q2+796tvu0=",
   "leilaniId": "c2000000-0000-4000-8000-0000000000a1",
   "abigailId": "c2000000-0000-4000-8000-0000000000a2",
@@ -145,7 +145,7 @@
         "c2000000-0000-4000-8000-0000000000a1",
         "c2000000-0000-4000-8000-0000000000a2"
       ],
-      "note": "mount-pool.test.ts: 'returns the union of every cast member's group stores' \u2014 both members of Severed; the union dedups to the group's two stores; both vaults in the participant tier; the project's stores; General"
+      "note": "mount-pool.test.ts: 'returns the union of every cast member's group stores' — both members of Severed; the union dedups to the group's two stores; both vaults in the participant tier; the project's stores; General"
     },
     {
       "kind": "arm",
@@ -156,7 +156,7 @@
         "c2000000-0000-4000-8000-0000000000a1",
         "c2170000-0000-4000-8000-0000000000b1"
       ],
-      "note": "'an archived cast member contributes nothing' \u2014 the DEBUG line; the stranger store it points at never appears"
+      "note": "'an archived cast member contributes nothing' — the DEBUG line; the stranger store it points at never appears"
     },
     {
       "kind": "arm",
@@ -177,7 +177,7 @@
         "c2170000-0000-4000-8000-0000000000b2",
         "c2000000-0000-4000-8000-0000000000a2"
       ],
-      "note": "'a character owned by another user contributes nothing' \u2014 silently (no line)"
+      "note": "'a character owned by another user contributes nothing' — silently (no line)"
     },
     {
       "kind": "arm",
@@ -198,7 +198,7 @@
         "c2000000-0000-4000-8000-0000000000a1",
         "c2170000-0000-4000-8000-0000000000b3"
       ],
-      "note": "'a vault that is also a scoped-tier mount appears ONCE, in the scoped tier' \u2014 Colette's vault IS the group's official store"
+      "note": "'a vault that is also a scoped-tier mount appears ONCE, in the scoped tier' — Colette's vault IS the group's official store"
     },
     {
       "kind": "arm",
@@ -211,7 +211,7 @@
         "",
         "c2000000-0000-4000-8000-0000000000a2"
       ],
-      "note": "`[...new Set(characterIds.filter(Boolean))]` \u2014 castCount 1"
+      "note": "`[...new Set(characterIds.filter(Boolean))]` — castCount 1"
     },
     {
       "kind": "arm",
@@ -231,7 +231,7 @@
       "characterIds": [
         "c2170000-0000-4000-8000-0000000000b4"
       ],
-      "note": "a live member with no vault pointer: counted live, no participant (Noel is NOT a group member \u2014 no groups either)"
+      "note": "a live member with no vault pointer: counted live, no participant (Noel is NOT a group member — no groups either)"
     },
     {
       "kind": "arm",
@@ -272,6 +272,141 @@
         "c2000000-0000-4000-8000-0000000000a2"
       ],
       "note": "a project with no links: []"
+    },
+    {
+      "kind": "plant",
+      "name": "named-groups",
+      "statements": [
+        {
+          "sql": "CREATE TEMP TABLE \"sb_gclone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+          "params": [
+            "d2000000-0000-4000-8000-000000000001"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_gclone\" SET \"id\" = ?, \"name\" = 'Loners', \"officialMountPointId\" = ?",
+          "params": [
+            "d2310000-0000-4000-8000-0000000000c1",
+            "e2000000-0000-4000-8000-0000000000f3"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"groups\" SELECT * FROM \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "CREATE TEMP TABLE \"sb_gclone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+          "params": [
+            "d2000000-0000-4000-8000-000000000001"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_gclone\" SET \"id\" = ?, \"name\" = X'00', \"officialMountPointId\" = ?",
+          "params": [
+            "d2310000-0000-4000-8000-0000000000c2",
+            "e2000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"groups\" SELECT * FROM \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_gclone\"",
+          "params": []
+        }
+      ],
+      "note": "P4.D231: a SECOND group (Loners — official = the stranger store, no links, no members) so a named group NOT in the cast can be asked, and an unreadable (BLOB-named) group whose official pointer v4's validating findByIdRaw never reaches"
+    },
+    {
+      "kind": "arm",
+      "name": "named-group-no-cast",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "groupIds": [
+        "d2000000-0000-4000-8000-000000000001"
+      ],
+      "note": "mount-pool.test.ts (08c49319d): 'a group named outright joins the group tier — official and linked stores — with no cast'"
+    },
+    {
+      "kind": "arm",
+      "name": "named-group-also-the-casts",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1"
+      ],
+      "groupIds": [
+        "d2000000-0000-4000-8000-000000000001"
+      ],
+      "note": "'a named group the cast also belongs to is not counted twice' — named first, the cast union deduped by dedupeTierTriple"
+    },
+    {
+      "kind": "arm",
+      "name": "unknown-named-group",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "groupIds": [
+        "d2310000-0000-4000-8000-0000000000ff"
+      ],
+      "note": "'an unknown named group contributes nothing and does not throw'"
+    },
+    {
+      "kind": "arm",
+      "name": "named-group-not-in-the-cast",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a1"
+      ],
+      "groupIds": [
+        "d2310000-0000-4000-8000-0000000000c1"
+      ],
+      "note": "the SECOND group: its store first, then Leilani's Severed pair"
+    },
+    {
+      "kind": "arm",
+      "name": "named-groups-first-in-order",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [
+        "c2000000-0000-4000-8000-0000000000a2"
+      ],
+      "groupIds": [
+        "d2310000-0000-4000-8000-0000000000c1",
+        "d2000000-0000-4000-8000-000000000001"
+      ],
+      "note": "named groups in request order, then the cast union; first occurrence wins"
+    },
+    {
+      "kind": "arm",
+      "name": "duplicate-and-empty-named-ids",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "groupIds": [
+        "d2000000-0000-4000-8000-000000000001",
+        "",
+        "d2000000-0000-4000-8000-000000000001"
+      ],
+      "note": "`[...new Set(groupIds.filter(Boolean))]` — namedGroupCount 1"
+    },
+    {
+      "kind": "arm",
+      "name": "unreadable-named-group",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "groupIds": [
+        "d2310000-0000-4000-8000-0000000000c2"
+      ],
+      "note": "a BLOB-named group row: v4's findByIdRaw answers null after its repository ERROR (not on the pool's logger), its links read finds none — []"
     },
     {
       "kind": "plant",

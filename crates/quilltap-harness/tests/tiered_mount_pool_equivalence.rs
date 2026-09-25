@@ -13,6 +13,17 @@
 //! character>group>global dedup dropping colliding project links, and the
 //! character-less pool.
 //!
+//! **P4.D231 (v4 `08c49319d`)** — the NEW `resolveMountPointIdsForGroup` is
+//! driven directly by the spec's `helperArms` over `helperPlants` (applied on
+//! both work copies before anything reads them). The matrix is the success-
+//! path NEUTRALITY leg (`08c49319d` reorders no id). Measured, against the
+//! order's prediction: neither read's failure empties the group — both of
+//! v4's reads are fallback-mode `safeQuery`s, so the helper's catch never
+//! fires; an unreadable group row loses only its official store, and an
+//! unreadable LINK row is dropped alone (a v5 divergence, recorded above).
+//! ⚠ PIN REQUIRED at `08c49319d` for the helper rows (a baseline pin records
+//! none — the helper does not exist there).
+//!
 //! Build the fixtures + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
 //!   cd ~/source/quilltap-server
@@ -29,7 +40,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::tiered_mount_pool::{
-    resolve_tiered_mount_pool, TierContext, TierResolveOptions,
+    resolve_mount_point_ids_for_group, resolve_tiered_mount_pool, TierContext, TierResolveOptions,
 };
 use quilltap_core::db::Writer;
 use serde::Deserialize;
@@ -51,13 +62,51 @@ struct Spec {
     project_id: String,
     #[serde(rename = "fakeMountPointId")]
     fake_mount_point_id: String,
+    #[serde(rename = "helperPlants")]
+    helper_plants: Vec<HelperPlant>,
+    #[serde(rename = "helperArms")]
+    helper_arms: Vec<HelperArm>,
 }
 
 #[derive(Deserialize)]
+struct HelperPlant {
+    db: String,
+    sql: String,
+    params: Vec<Option<String>>,
+}
+
+#[derive(Deserialize)]
+struct HelperArm {
+    id: String,
+    #[serde(rename = "groupId")]
+    group_id: String,
+}
+
+/// A matrix row carries `pool`; a P4.D231 helper row carries `ids`.
+#[derive(Deserialize)]
 struct Row {
     id: String,
-    pool: Value,
+    #[serde(default)]
+    pool: Option<Value>,
+    #[serde(default)]
+    ids: Option<Value>,
 }
+
+/// P4.D231 — the ONE helper arm whose v4 and v5 answers differ, both recorded.
+/// v4's `groupDocMountLinks.findByGroupId` → `findByFilter` `validateSafe()`s
+/// row by row and DROPS the one undecodable link, keeping the rest; v5's
+/// `GroupDocMountLinksRepository::find_by_group_id` (`db/group_doc_mount_links.rs`,
+/// OUTSIDE P4.D231's ownership) fails the WHOLE read on it, so the helper keeps
+/// only the official store. Recorded for the unifier; the family fails
+/// "VANISHED" if the two ever agree.
+const LINK_ROW_DIVERGENCE: (&str, &[&str], &[&str]) = (
+    "helper_unreadable_link_row",
+    &[
+        "e8231000-0000-4000-8000-0000000000c7",
+        "e8231000-0000-4000-8000-0000000000c8",
+    ],
+    &["e8231000-0000-4000-8000-0000000000c7"],
+);
 
 fn spec_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -90,13 +139,22 @@ fn tiered_mount_pool_matches_oracle() {
     .expect("parse spec");
 
     let mut oracle: HashMap<String, Value> = HashMap::new();
+    let mut helper_oracle: HashMap<String, Value> = HashMap::new();
     for line in std::fs::read_to_string(&oracle_path)
         .unwrap_or_else(|e| panic!("read oracle: {e}"))
         .lines()
         .filter(|l| !l.trim().is_empty())
     {
         let row: Row = serde_json::from_str(line).expect("oracle line parses");
-        oracle.insert(row.id, row.pool);
+        match (row.pool, row.ids) {
+            (Some(pool), None) => {
+                oracle.insert(row.id, pool);
+            }
+            (None, Some(ids)) => {
+                helper_oracle.insert(row.id, ids);
+            }
+            _ => panic!("oracle row '{}' carries exactly one of pool / ids", row.id),
+        }
     }
 
     // Fresh copies so the shared seed fixtures stay pristine.
@@ -114,6 +172,14 @@ fn tiered_mount_pool_matches_oracle() {
         .unwrap_or_else(|e| panic!("open mount: {e}"));
     let main = main_w.connection();
     let mount = mount_w.connection();
+    // P4.D231: the helper arms' plants, on the work copies before any read (the
+    // oracle applies them pre-init) — new groups with no members, so the matrix
+    // below is untouched.
+    for p in &spec.helper_plants {
+        let conn = if p.db == "main" { main } else { mount };
+        conn.execute(&p.sql, rusqlite::params_from_iter(p.params.iter()))
+            .unwrap_or_else(|e| panic!("plant `{}`: {e}", p.sql));
+    }
 
     let a = spec.char_a_id.clone();
     let b = spec.char_b_id.clone();
@@ -229,6 +295,45 @@ fn tiered_mount_pool_matches_oracle() {
         assert_eq!(&got, want, "tiered pool mismatch for case '{id}'");
     }
     assert_eq!(cases.len(), oracle.len(), "case count mismatch");
+
+    // P4.D231 — `resolve_mount_point_ids_for_group` (v4 `08c49319d`
+    // `resolveMountPointIdsForGroup`), driven directly.
+    assert_eq!(
+        helper_oracle.len(),
+        spec.helper_arms.len(),
+        "helper arm count — a pre-`08c49319d` pin records none (regenerate at the pin)"
+    );
+    let mut helper_failures: Vec<String> = Vec::new();
+    for arm in &spec.helper_arms {
+        let got = serde_json::to_value(resolve_mount_point_ids_for_group(
+            main,
+            mount,
+            &arm.group_id,
+        ))
+        .unwrap();
+        let want = &helper_oracle[&arm.id];
+        if arm.id == LINK_ROW_DIVERGENCE.0 {
+            let (v4, v5) = (
+                serde_json::json!(LINK_ROW_DIVERGENCE.1),
+                serde_json::json!(LINK_ROW_DIVERGENCE.2),
+            );
+            if want != &v4 || got != v5 || want == &got {
+                helper_failures.push(format!(
+                    "{}: the recorded divergence moved or VANISHED\n  v4: {want} (recorded {v4})\n  v5: {got} (recorded {v5})",
+                    arm.id
+                ));
+            }
+            continue;
+        }
+        if &got != want {
+            helper_failures.push(format!("{}\n  v4: {want}\n  v5: {got}", arm.id));
+        }
+    }
+    assert!(
+        helper_failures.is_empty(),
+        "resolve_mount_point_ids_for_group differs:\n{}",
+        helper_failures.join("\n")
+    );
     eprintln!(
         "tiered_mount_pool: {} cases matched the oracle.",
         cases.len()

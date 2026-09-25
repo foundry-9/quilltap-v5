@@ -30,8 +30,19 @@
 //! `quilltap_core::db::instance_settings`; and v4's backend `Raw query failed`
 //! ERROR on that same arm, a recorded v4-only line pinned both ways.
 //!
-//! ⚠ PIN REQUIRED at the TARGET `d1c06cd9d` (the module does not exist at the
-//! `00c290c9a` baseline — the jest import fails there, the pin proof). The
+//! **P4.D231 (v4 `08c49319d`) — groups named outright.** Arms may carry
+//! `groupIds` (the group shelf): a SECOND group (Loners, official = the
+//! stranger store) and a BLOB-named group are planted; the arms mirror v4's
+//! three new `mount-pool.test.ts` cases (named with no cast; named AND the
+//! cast's; unknown) plus named-not-in-the-cast, named-first order, duplicate/
+//! empty ids and the unreadable row. The pool DEBUG's `namedGroupCount` is in
+//! the field SET compared here; its POSITION (after `liveCastCount`) is pinned
+//! by `mount_pool.rs`'s own unit test (the structural capture cannot see
+//! order).
+//!
+//! ⚠ PIN REQUIRED at `08c49319d` (P4.D231) while the oracle baseline is older:
+//! a `b0b6656b5`-pinned regen carries no `namedGroupCount` (0 of 22 arms) and
+//! ignores every `groupIds`. The
 //! fixture pair is MINTED — rebuild, regenerate, THEN `cargo test` against that
 //! SAME build, in that order. Stage the case OUTSIDE `.claude/` (v4's jest
 //! ignores those paths).
@@ -168,6 +179,9 @@ enum Step {
         user_id: String,
         project_id: Option<String>,
         character_ids: Vec<String>,
+        /// P4.D231 (v4 `08c49319d`): groups named outright; absent = none.
+        #[serde(default)]
+        group_ids: Vec<String>,
     },
 }
 
@@ -280,6 +294,7 @@ fn scenario_builder_mount_pool_matches_oracle() {
     let mut failures: Vec<String> = Vec::new();
     let mut idx = 0usize;
     let mut saw_archived_line = false;
+    let mut named_group_arms = 0usize;
     for step in &spec.steps {
         match step {
             Step::Plant { statements, .. } => {
@@ -294,6 +309,7 @@ fn scenario_builder_mount_pool_matches_oracle() {
                 user_id,
                 project_id,
                 character_ids,
+                group_ids,
             } => {
                 let want = &oracle[idx];
                 idx += 1;
@@ -306,6 +322,7 @@ fn scenario_builder_mount_pool_matches_oracle() {
                     user_id,
                     project_id.as_deref(),
                     character_ids,
+                    group_ids,
                 );
                 // v4's `safeQuery` fallback line (`Error finding entity by ID`)
                 // lives on the REPOSITORY's logger, which the oracle does not
@@ -369,6 +386,9 @@ fn scenario_builder_mount_pool_matches_oracle() {
                         "{name}: v5 logged `{RAW_QUERY_FAILED}` — WRONG SHAPE (v5 has no rawQuery layer)"
                     ));
                 }
+                if !group_ids.is_empty() {
+                    named_group_arms += 1;
+                }
                 if wl
                     .iter()
                     .any(|l| l.1 == "Archived cast member contributes nothing to the pool")
@@ -383,6 +403,10 @@ fn scenario_builder_mount_pool_matches_oracle() {
     let _ = std::fs::remove_dir_all(&scratch);
     eprintln!("scenario_builder_mount_pool: {arms} arms");
     assert!(saw_archived_line, "no arm pins the archived-member DEBUG");
+    assert!(
+        named_group_arms >= 7,
+        "P4.D231: the named-group arms must all be armed ({named_group_arms} < 7)"
+    );
     assert_eq!(
         (settings_warns_seen, raw_query_failed_seen),
         (1, RAW_QUERY_FAILED_ARMS.len()),

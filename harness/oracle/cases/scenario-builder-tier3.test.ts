@@ -88,6 +88,8 @@ interface CaseSpec {
   details: string;
   projectId: string | null;
   characterIds: string[];
+  /** P4.D231 (v4 `08c49319d`): groups named outright (the group shelf). */
+  groupIds?: string[];
   chat?: { id: string; scenarioText?: string | null; contextSummary?: string | null };
   priorDraft?: string;
   revision?: string;
@@ -330,6 +332,7 @@ async function main(): Promise<void> {
             details: c.details,
             projectId: c.projectId,
             characterIds: c.characterIds,
+            groupIds: c.groupIds,
             chat: c.chat ?? null,
             priorDraft: c.priorDraft ?? null,
             revision: c.revision ?? null,

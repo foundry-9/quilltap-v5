@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(scenario-builder): named groups in the route, the pool and the run (v4 `08c49319d`, P4.D231 units 2–4)
+
+_Versions: core 0.0.1060, harness 0.0.979, web 0.0.197._
+
+Server half of the Scenario Builder shelves.
+
+- `scenario_builder_prepare` gains the group block after the cast scoping:
+  dedup, then an existence read that decodes the row (an undecodable row is
+  dropped after the repository's `Error finding entity by ID`, as v4's
+  validating `findByIdRaw` does); an absent id is dropped silently. The
+  accepted DEBUG gains `groupCount` between `castCount` and `hasProject`.
+  v4's `dropped an unreadable group id` WARN is unreachable and not emitted.
+- `ScenarioBuilderInput.group_ids`; the run-starting DEBUG gains
+  `namedGroupCount` (not re-deduped) after `castCount`.
+- The mount pool takes `group_ids`: named groups (deduped, empties dropped)
+  join the group tier FIRST, ahead of the cast union; the pool DEBUG gains
+  `namedGroupCount` after `liveCastCount`. Field order pinned by unit tests.
+- NEW `resolve_mount_point_ids_for_group` (official store, then linked
+  stores), called per membership by `resolve_group_mount_point_ids_for_character`.
+  Measured against v4's real code: neither read's failure empties the group
+  (both of v4's reads are fallback `safeQuery`s; the helper's catch is
+  dead), so a failed group read loses only the official store and a failed
+  links read keeps it. The repository ERROR lines are logged, not the WARN.
+  One residual divergence outside this lane: v5's `find_by_group_id` fails
+  the whole read on one undecodable link row where v4 drops just that row —
+  pinned both ways in `tiered_mount_pool_equivalence`.
+
+Families at the `08c49319d` pin: `scenario_builder_routes` (30 cases, 4 new;
+pre-port 18 failures), `scenario_builder_mount_pool` (22 arms, 7 new + 2
+planted groups), `scenario_builder_tier3` (23 cases, group- and project-shelf
+added), `tiered_mount_pool` (matrix neutral across both pins + 7 helper arms).
+Mutations M1, M2, M4' each redden their target.
+
 #### 2026-09-25 — feat(scenario-builder): port the build request's `groupIds` (v4 `08c49319d`, P4.D231 unit 1)
 
 _Versions: core 0.0.1059, harness 0.0.978._

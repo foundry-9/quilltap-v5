@@ -1,7 +1,8 @@
 /**
  * @jest-environment node
  *
- * ORACLE for the Scenario Builder mount pool (P4.D217 — v4 `d1c06cd9d`,
+ * ORACLE for the Scenario Builder mount pool (P4.D217 — v4 `d1c06cd9d`; the
+ * named groups P4.D231 — `08c49319d`,
  * `lib/scenario-builder/mount-pool.ts`), ported to
  * quilltap_core::services::scenario_builder::mount_pool.
  *
@@ -60,6 +61,8 @@ type Step =
       userId: string;
       projectId: string | null;
       characterIds: string[];
+      /** P4.D231 (v4 `08c49319d`): groups named outright; absent = none. */
+      groupIds?: string[];
     };
 interface Spec {
   testPepperBase64: string;
@@ -186,6 +189,7 @@ async function main(): Promise<void> {
         userId: step.userId,
         projectId: step.projectId,
         characterIds: step.characterIds,
+        groupIds: step.groupIds,
       });
       outLines.push(
         JSON.stringify({

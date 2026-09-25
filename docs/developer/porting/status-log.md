@@ -149874,6 +149874,18 @@ rows (103). At the `08c49319d` pin: 43 of 103 red pre-port, 0 after; the
 `b0b6656b5` pin green pre-port. M3 reddens 35 rows. Full lane record below
 (P4.D231 lane record). core 0.0.1059, harness 0.0.978.
 
+### P4.D231 units 2–4 — named groups in the route, the pool and the run (2026-09-25)
+
+The route's group block (dedup then a row-decoding existence read; the
+repository ERROR on `Err`; `groupCount`), `ScenarioBuilderInput.group_ids`,
+the run's and the pool's `namedGroupCount`, named groups first in the group
+tier, and NEW `resolve_mount_point_ids_for_group`. Measured: neither of v4's
+two reads can empty a group (both fallback `safeQuery`s) — the order's
+predicted granularity is refuted; M4 run inverted. Routes 30/30 (pre-port 18
+failures), mount pool 22 arms, tier 3 23 cases, tiered matrix neutral + 7
+helper arms, one out-of-lane link-row divergence pinned both ways. Details in
+the P4.D231 lane record. core 0.0.1060, harness 0.0.979, web 0.0.197.
+
 ---
 
 ## P4.D225 — the refusal substrate + the ledger (v4 `8bd080267` #73 + `49059fb14` #74, server) — lane record

@@ -130,6 +130,10 @@ pub struct ScenarioBuilderInput {
     pub project_id: Option<String>,
     /// Cast ids already vetted by the caller (readable by this user).
     pub character_ids: Vec<String>,
+    /// Groups named outright, already vetted by the caller (v4 `08c49319d` —
+    /// the builder launched from a group's Scenarios card). v4's field is
+    /// optional (`?? []` at its two reads); `[]` here.
+    pub group_ids: Vec<String>,
     pub chat: Option<ScenarioBuilderChat>,
     pub prior_draft: Option<String>,
     pub revision: Option<String>,
@@ -278,6 +282,7 @@ where
         let pool_user = user_id.to_string();
         let pool_project = input.project_id.clone();
         let pool_cast = input.character_ids.clone();
+        let pool_groups = input.group_ids.clone();
         let mount_pool = deps.db.read_main(|main| {
             deps.db.read_mount_index(|mount| {
                 Ok::<_, DbError>(mount_pool::resolve_scenario_builder_mount_pool(
@@ -286,6 +291,7 @@ where
                     &pool_user,
                     pool_project.as_deref(),
                     &pool_cast,
+                    &pool_groups,
                 ))
             })
         });
@@ -300,6 +306,9 @@ where
         tracing::debug!(
             mode = input.mode.as_str(),
             castCount = input.character_ids.len(),
+            // `input.groupIds?.length ?? 0` — NOT re-deduped: it trusts the
+            // route, which deduped before its existence check (v4 `08c49319d`).
+            namedGroupCount = input.group_ids.len(),
             inChat = input.chat.is_some(),
             revising = input.revision.is_some(),
             profileId = s(connection_profile, "id").unwrap_or_default(),
@@ -670,6 +679,8 @@ mod tests {
             details: String::new(),
             project_id: None,
             character_ids: Vec::new(),
+            // P4.D231: a repeated id the service must NOT re-dedup.
+            group_ids: vec!["g-named".to_string(), "g-named".to_string()],
             chat: None,
             prior_draft: None,
             revision: None,
@@ -680,6 +691,16 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((token.load(Ordering::SeqCst), v));
+        };
+        // P4.D231: the run-starting DEBUG, captured on this thread (the
+        // current-thread runtime polls the run here).
+        let logs = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let _log_guard = {
+            use tracing_subscriber::layer::SubscriberExt;
+            tracing::subscriber::set_default(
+                tracing_subscriber::registry()
+                    .with(crate::test_support::CaptureLayer(Arc::clone(&logs))),
+            )
         };
         let outcome = run_scenario_builder(
             &deps,
@@ -699,6 +720,25 @@ mod tests {
             matches!(outcome, ScenarioRunOutcome::Aborted),
             "the run ends aborted between turns: {outcome:?}"
         );
+        // P4.D231 (v4 `08c49319d`): `namedGroupCount` right after `castCount`
+        // — `input.groupIds?.length ?? 0`, the route's list as handed over, so
+        // a repeated id counts twice here (the pool's own count dedups).
+        let logs = logs.lock().unwrap().clone();
+        let starting = logs
+            .iter()
+            .find(|l| l.contains("Scenario Builder run starting"))
+            .unwrap_or_else(|| panic!("{logs:#?}"));
+        assert!(
+            starting.contains(
+                " mode=in-world castCount=0 namedGroupCount=2 inChat=false revising=false "
+            ),
+            "{starting}"
+        );
+        let pool_line = logs
+            .iter()
+            .find(|l| l.contains("Resolved Scenario Builder mount pool"))
+            .unwrap_or_else(|| panic!("{logs:#?}"));
+        assert!(pool_line.contains(" namedGroupCount=1 "), "{pool_line}");
         let emitted = emitted.into_inner().unwrap();
         assert!(
             emitted.iter().any(|(after, _)| !after),

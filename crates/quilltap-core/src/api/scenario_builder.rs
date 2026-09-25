@@ -15,7 +15,8 @@
 //! Everything DB-only and every refusal lives HERE, in v4's order
 //! ([`scenario_builder_prepare`]): the Zod twin, the profile (owner-checked),
 //! `allowToolUse`, the api-key resolution, the cast scoping (not a refusal),
-//! the chat (owner- and type-checked), then the `accepted` DEBUG. The run
+//! the named groups (v4 `08c49319d`; not a refusal), the chat (owner- and
+//! type-checked), then the `accepted` DEBUG. The run
 //! itself — which needs the streaming provider, the tool runner and the
 //! detector only the composing host can build — rides the
 //! [`ScenarioBuilderDriver`] seam (the `BrahmaConsoleSendDriver` precedent).
@@ -49,7 +50,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
-use crate::db::{characters_read, chats_read, connection_profiles, DbError};
+use crate::db::{characters_read, chats_read, connection_profiles, groups, DbError};
 use crate::services::api_key_service::{
     resolve_connection_profile_api_key, ProfileApiKeyResolution,
 };
@@ -387,6 +388,46 @@ pub fn scenario_builder_prepare(
         );
     }
 
+    // Named groups (the builder launched from a group's page): keep only ones
+    // that exist (v4 `08c49319d`, `route.ts:88-100`). `[...new Set(body.
+    // groupIds)]` — the dedup PRECEDES the existence check, so a repeated id
+    // is read once and counted once. An absent id is dropped SILENTLY: unlike
+    // the cast, v4 logs no "dropped" DEBUG here.
+    //
+    // "Exists" is v4's `groups.findByIdRaw`, i.e. `_findById`: a fallback-mode
+    // `safeQuery(…, 'Error finding entity by ID', { id }, null)` that also
+    // VALIDATES the row, so a present-but-undecodable row answers `null` after
+    // the repository's own ERROR. v4's route wraps the read in a try/catch
+    // whose WARN `Scenario Builder dropped an unreadable group id` is
+    // therefore UNREACHABLE through its real code — the cast WARN's class
+    // above; `08c49319d`'s commit message claims the WARN. v5 reads with
+    // `find_name_and_official_mount_point_id_raw`, which DECODES `name` as
+    // text (the one-column pointer read would admit a BLOB-named row v4
+    // drops), and reproduces the repository fallback ERROR on its `Err` (the
+    // `mount_pool.rs` precedent). Measured by the route family's unreadable-
+    // group case: v4 drops the BLOB-named row with that ERROR and no route line.
+    let mut group_ids: Vec<String> = Vec::new();
+    let mut seen_groups: Vec<&str> = Vec::new();
+    for id in &parsed.group_ids {
+        if seen_groups.contains(&id.as_str()) {
+            continue;
+        }
+        seen_groups.push(id);
+        let gid = id.clone();
+        match db.read_main(move |c| groups::find_name_and_official_mount_point_id_raw(c, &gid)) {
+            Ok(Some(_)) => group_ids.push(id.clone()),
+            Ok(None) => {}
+            Err(e) => {
+                tracing::error!(
+                    collection = "groups",
+                    id = %id,
+                    error = %e,
+                    "Error finding entity by ID"
+                );
+            }
+        }
+    }
+
     // In-chat: the chat must be the user's, and a Salon or autonomous room.
     let mut chat: Option<ScenarioBuilderChat> = None;
     if let Some(chat_id) = parsed.chat_id() {
@@ -412,6 +453,7 @@ pub fn scenario_builder_prepare(
     tracing::debug!(
         mode = parsed.mode.as_str(),
         castCount = character_ids.len(),
+        groupCount = group_ids.len(),
         hasProject = parsed.project_id().is_some(),
         inChat = chat.is_some(),
         revising = parsed.revision().is_some(),
@@ -426,6 +468,7 @@ pub fn scenario_builder_prepare(
         details: parsed.details.clone(),
         project_id: parsed.project_id().map(str::to_string),
         character_ids,
+        group_ids,
         chat,
         prior_draft: parsed.prior_draft().map(str::to_string),
         revision: parsed.revision().map(str::to_string),

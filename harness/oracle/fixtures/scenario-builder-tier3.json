@@ -694,6 +694,94 @@
       "location": "The quarry at Severed",
       "time": "a moonlit night",
       "details": "",
+      "projectId": null,
+      "characterIds": [],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 100,
+              "completionTokens": 10,
+              "totalTokens": 110
+            },
+            "rawResponse": {
+              "marker": "grep1"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Moonlight on wet stone. The pumps are quiet."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 180,
+              "completionTokens": 30,
+              "totalTokens": 210
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "group_shelf_grep",
+      "groupIds": [
+        "d2000000-0000-4000-8000-000000000001"
+      ],
+      "note": "P4.D231 (v4 08c49319d): the builder launched from Severed's Scenarios card — no cast, no project, the group named outright; the grep must reach the group's official AND linked stores"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "webSearchConfigured": false,
+      "profile": {},
+      "streams": [
+        [
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 100,
+              "completionTokens": 10,
+              "totalTokens": 110
+            },
+            "rawResponse": {
+              "marker": "grep1"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Moonlight on wet stone. The pumps are quiet."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 180,
+              "completionTokens": 30,
+              "totalTokens": 210
+            },
+            "rawResponse": {}
+          }
+        ]
+      ],
+      "name": "project_shelf_grep",
+      "groupIds": [],
+      "note": "P4.D231: the builder launched from a project's Scenarios card — no cast, the project's stores + General; groupIds [] (the SPA always sends it)"
+    },
+    {
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "mode": "in-world",
+      "location": "The quarry at Severed",
+      "time": "a moonlit night",
+      "details": "",
       "projectId": "d2000000-0000-4000-8000-000000000002",
       "characterIds": [
         "c2000000-0000-4000-8000-0000000000a1",

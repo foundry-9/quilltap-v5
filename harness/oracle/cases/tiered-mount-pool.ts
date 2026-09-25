@@ -12,6 +12,13 @@
  *   participant_excludes_self / no_character / group_per_character_B /
  *   participants_flag_off.
  *
+ * P4.D231 (v4 `08c49319d`): the NEW `resolveMountPointIdsForGroup` is driven
+ * directly by `helperArms`, over `helperPlants` applied to BOTH work copies
+ * through the cipher driver BEFORE the database initializes (new groups with no
+ * members, so the matrix above is untouched — the neutrality leg). Each helper
+ * row is `{ id, helper: true, ids }`. At a pin older than `08c49319d` the
+ * export does not exist and the helper rows are simply absent.
+ *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
  *   cd ~/source/quilltap-server
@@ -38,6 +45,8 @@ interface Spec {
   projectStoreA: string;
   projectStoreB: string;
   fakeMountPointId: string;
+  helperPlants: Array<{ db: 'main' | 'mount'; sql: string; params: Array<string | null> }>;
+  helperArms: Array<{ id: string; groupId: string }>;
 }
 
 async function main(): Promise<void> {
@@ -59,6 +68,22 @@ async function main(): Promise<void> {
   copyFileSync(mainFixture, mainWork);
   copyFileSync(mountFixture, mountWork);
 
+  // P4.D231: plant the helper arms' rows on both work copies, pre-init.
+  {
+    const { createRequire } = await import('node:module');
+    const nodeRequire = createRequire(join(process.cwd(), 'noop.js'));
+    const Database = nodeRequire(
+      join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
+    );
+    const hex = Buffer.from(spec.testPepperBase64, 'base64').toString('hex');
+    for (const [db, path] of [['main', mainWork], ['mount', mountWork]] as const) {
+      const conn = new Database(path);
+      conn.pragma(`key = "x'${hex}'"`);
+      for (const p of spec.helperPlants.filter((x) => x.db === db)) conn.prepare(p.sql).run(...p.params);
+      conn.close();
+    }
+  }
+
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
@@ -67,7 +92,13 @@ async function main(): Promise<void> {
   process.env.LOG_LEVEL = 'error';
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
-  const { resolveTieredMountPool } = await import('@/lib/mount-index/tiered-mount-pool');
+  const tieredModule = (await import('@/lib/mount-index/tiered-mount-pool')) as Record<string, unknown>;
+  const { resolveTieredMountPool } = tieredModule as unknown as {
+    resolveTieredMountPool: (ctx: never, opts: never) => Promise<unknown>;
+  };
+  const resolveMountPointIdsForGroup = tieredModule.resolveMountPointIdsForGroup as
+    | ((groupId: string) => Promise<string[]>)
+    | undefined;
 
   await initializeDatabase();
 
@@ -95,6 +126,11 @@ async function main(): Promise<void> {
   for (const c of matrix) {
     const pool = await resolveTieredMountPool(c.ctx as never, c.opts as never);
     rows.push({ id: c.id, pool });
+  }
+  if (resolveMountPointIdsForGroup) {
+    for (const h of spec.helperArms) {
+      rows.push({ id: h.id, helper: true, ids: await resolveMountPointIdsForGroup(h.groupId) });
+    }
   }
 
   await closeDatabase();

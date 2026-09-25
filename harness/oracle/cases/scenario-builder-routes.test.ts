@@ -148,6 +148,8 @@ async function main(): Promise<void> {
           const run: Record<string, unknown> = {
             mode: opts.input.mode,
             characterIds: opts.input.characterIds,
+            // P4.D231 (v4 `08c49319d`): the named groups the route kept.
+            groupIds: opts.input.groupIds,
             chat: opts.input.chat ?? null,
             priorDraft: opts.input.priorDraft ?? null,
             revision: opts.input.revision ?? null,
@@ -206,6 +208,11 @@ async function main(): Promise<void> {
     // The ScenarioBuilder log lines, recorded on THIS registry's Logger class
     // (the route's and the service's module-level loggers are built from it).
     const logLines: Array<{ level: string; message: string; context: unknown }> = [];
+    // P4.D231: the `groups` repository's fallback ERROR (`findByIdRaw` →
+    // `_findById` → a fallback-mode `safeQuery`) — the line an unreadable
+    // group row leaves in place of the route's unreachable WARN. Recorded off
+    // the same prototype, filtered to the groups collection.
+    const repoLines: Array<Record<string, unknown>> = [];
     const { Logger } = (await import('@/lib/logger')) as unknown as {
       Logger: { prototype: Record<string, (...a: unknown[]) => void> };
     };
@@ -215,6 +222,18 @@ async function main(): Promise<void> {
         .spyOn(Logger.prototype, level)
         .mockImplementation(function (this: { context?: Record<string, unknown> }, ...args: unknown[]) {
           const ctx = this.context ?? {};
+          {
+            const [message, context] = args as [string, Record<string, unknown> | undefined];
+            if (message === 'Error finding entity by ID' && context?.collection === 'groups') {
+              repoLines.push({
+                level,
+                message,
+                collection: context.collection,
+                id: context.id ?? null,
+                hasError: typeof context.error === 'string' && context.error.length > 0,
+              });
+            }
+          }
           if (ctx.context === 'ScenarioBuilder' || ctx.service === 'ScenarioBuilder') {
             const [message, context] = args as [string, Record<string, unknown> | undefined];
             logLines.push({
@@ -302,6 +321,7 @@ async function main(): Promise<void> {
       }
       out.runs = runs;
       out.lines = logLines;
+      out.repoLines = repoLines;
       lines.push(JSON.stringify(out));
     } finally {
       for (const spy of logSpies) spy.mockRestore();

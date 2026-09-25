@@ -5,7 +5,11 @@
 //! v4's own header, carried: the Scenario Builder runs a character-less tool
 //! loop that must read exactly the stores a chat with this cast (and project)
 //! would reach — every cast member's vault, the union of every cast member's
-//! group stores, the project's stores, and Quilltap General.
+//! group stores, the project's stores, and Quilltap General. Launched from a
+//! group's page, the run also names that group outright (`groupIds`, v4
+//! `08c49319d`), whose stores join the group tier whether or not any cast
+//! member belongs to it — FIRST, ahead of the cast union, so the first-
+//! occurrence dedup keeps a named group's stores in the named group's place.
 //! [`resolve_tiered_mount_pool`](crate::db::tiered_mount_pool::resolve_tiered_mount_pool)
 //! cannot express that (its group tier is keyed on a single responding
 //! character), so the pool is assembled here by hand from the same per-tier
@@ -39,7 +43,8 @@
 //!
 //! DEBUG `Archived cast member contributes nothing to the pool` `{ characterId }`
 //! and DEBUG `Resolved Scenario Builder mount pool` `{ castCount,
-//! liveCastCount, participants, groups, projects, hasGlobal }` are ported and
+//! liveCastCount, namedGroupCount, participants, groups, projects, hasGlobal }`
+//! (`namedGroupCount` since `08c49319d`, counted post-dedup) are ported and
 //! pinned. v4's two WARNs are UNREACHABLE through v4's real code, measured:
 //! `Cast vault lookup failed; tier dropped for this character` sits behind
 //! `findByIdRaw`, a fallback-mode `safeQuery` that never throws (see the read
@@ -57,7 +62,8 @@ use crate::db::characters_read;
 use crate::db::instance_settings::get_general_mount_point_id;
 use crate::db::project_doc_mount_links::ProjectDocMountLinksRepository;
 use crate::db::tiered_mount_pool::{
-    dedupe_tier_triple, resolve_group_mount_point_ids_for_character, TierTriple, TieredMountPool,
+    dedupe_tier_triple, resolve_group_mount_point_ids_for_character,
+    resolve_mount_point_ids_for_group, TierTriple, TieredMountPool,
 };
 
 /// Push `id` onto `list` unless already present — JS `[...new Set(xs)]`
@@ -84,14 +90,22 @@ fn project_mount_point_ids(mount: &Connection, project_id: Option<&str>) -> Vec<
     }
 }
 
-/// v4 `resolveScenarioBuilderMountPool({ userId, projectId, characterIds })`.
+/// v4 `resolveScenarioBuilderMountPool({ userId, projectId, characterIds,
+/// groupIds })`.
 pub fn resolve_scenario_builder_mount_pool(
     main: &Connection,
     mount: &Connection,
     user_id: &str,
     project_id: Option<&str>,
     character_ids: &[String],
+    group_ids: &[String],
 ) -> TieredMountPool {
+    // `[...new Set((opts.groupIds ?? []).filter(Boolean))]` — BEFORE the cast
+    // ids, as v4 computes it.
+    let mut named_group_ids: Vec<String> = Vec::new();
+    for id in group_ids.iter().filter(|id| !id.is_empty()) {
+        push_unique(&mut named_group_ids, id);
+    }
     // `[...new Set(characterIds.filter(Boolean))]`
     let mut cast_ids: Vec<String> = Vec::new();
     for id in character_ids.iter().filter(|id| !id.is_empty()) {
@@ -149,10 +163,15 @@ pub fn resolve_scenario_builder_mount_pool(
         }
     }
 
-    // 2. Group stores — the union over the whole cast (the helper fails soft).
-    let mut group_ids: Vec<String> = Vec::new();
+    // 2. Group stores — the named groups, then the union over the whole cast
+    //    (both helpers fail soft). One plain list; `dedupe_tier_triple` keeps
+    //    each id's FIRST occurrence.
+    let mut group_tier_ids: Vec<String> = Vec::new();
+    for group_id in &named_group_ids {
+        group_tier_ids.extend(resolve_mount_point_ids_for_group(main, mount, group_id));
+    }
     for character_id in &live_cast_ids {
-        group_ids.extend(resolve_group_mount_point_ids_for_character(
+        group_tier_ids.extend(resolve_group_mount_point_ids_for_character(
             main,
             mount,
             character_id,
@@ -175,7 +194,7 @@ pub fn resolve_scenario_builder_mount_pool(
     //    so each mount classifies into exactly one bucket.
     let deduped = dedupe_tier_triple(TierTriple {
         character_mount_point_id: None,
-        group_mount_point_ids: group_ids,
+        group_mount_point_ids: group_tier_ids,
         project_mount_point_ids: project_ids,
         global_mount_point_id,
     });
@@ -200,6 +219,7 @@ pub fn resolve_scenario_builder_mount_pool(
     tracing::debug!(
         castCount = cast_ids.len(),
         liveCastCount = live_cast_ids.len(),
+        namedGroupCount = named_group_ids.len(),
         participants = pool.participant_mount_point_ids.len(),
         groups = pool.group_mount_point_ids.len(),
         projects = pool.project_mount_point_ids.len(),
@@ -207,4 +227,33 @@ pub fn resolve_scenario_builder_mount_pool(
         "Resolved Scenario Builder mount pool"
     );
     pool
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// P4.D231: the pool DEBUG's field ORDER — `namedGroupCount` right after
+    /// `liveCastCount`, v4's key order. The tier-2 family compares the fields
+    /// as a SET (its structural capture cannot see order), so the position is
+    /// pinned here, over the rendered line.
+    #[test]
+    fn the_pool_line_carries_named_group_count_after_live_cast_count() {
+        let main = Connection::open_in_memory().unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let named = vec!["g-1".to_string(), String::new(), "g-1".to_string()];
+        let (_, lines) = crate::test_support::captured_with(|| {
+            resolve_scenario_builder_mount_pool(&main, &mount, "u", None, &[], &named)
+        });
+        let line = lines
+            .iter()
+            .find(|l| l.contains("Resolved Scenario Builder mount pool"))
+            .unwrap_or_else(|| panic!("{lines:?}"));
+        assert!(
+            line.contains(
+                " castCount=0 liveCastCount=0 namedGroupCount=1 participants=0 groups=0 projects=0 hasGlobal=false"
+            ),
+            "{line}"
+        );
+    }
 }

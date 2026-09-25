@@ -36,7 +36,9 @@
 //! yields an empty/null tier rather than throwing. v4 wraps each lookup in
 //! try/catch + logs; the port swallows the error to `None`/`vec![]` (no logger in
 //! the core — the corpus never exercises the log side effect, only the tier
-//! result). The one exception faithfully preserved: the ownership-gate /
+//! result). Since P4.D231 the group reads ([`resolve_mount_point_ids_for_group`])
+//! log v4's two REPOSITORY fallback lines on `Err` — the lines v4 actually
+//! emits there — rather than its unreachable per-group WARN. The one exception faithfully preserved: the ownership-gate /
 //! participant / non-fast-path character read goes through the OVERLAID
 //! `characters_read::find_by_id` (v4 `findById`), and any error there (e.g. a
 //! broken vault) is swallowed to a dropped tier — matching v4's try/catch.
@@ -204,12 +206,83 @@ fn character_mount_of(v: &serde_json::Value) -> Option<String> {
         .map(String::from)
 }
 
+/// One group's stores — its official store, then every store linked to it
+/// (v4 `resolveMountPointIdsForGroup`, NEW in `08c49319d`). For a caller that
+/// holds a group rather than a member (the Scenario Builder launched from a
+/// group's page), and the per-membership step of
+/// [`resolve_group_mount_point_ids_for_character`]. `[]` for an empty id.
+///
+/// **Neither read's failure empties the group — measured, not v4's comment.**
+/// v4 wraps both reads in ONE try/catch (WARN `Group store lookup failed
+/// { groupId, error }` → `[]`), which reads as "a failed links read drops the
+/// official store too". But both reads are fallback-mode `safeQuery`s, so
+/// neither ever throws and that catch is UNREACHABLE through v4's real code:
+/// - `groups.findByIdRaw` (`_findById`) VALIDATES the row and answers `null`
+///   after the repository's own ERROR `Error finding entity by ID
+///   { collection, id, error }` — the links read still runs, so an unreadable
+///   group row loses only its official store;
+/// - `groupDocMountLinks.findByGroupId` delegates to `findByFilter`, whose own
+///   inner `safeQuery` answers `[]` after `Error finding entities by filter
+///   { collection, error }` (so `findByGroupId`'s own `Error finding links by
+///   group ID` is unreachable too), and which `validateSafe()`s row by row,
+///   DROPPING an undecodable link and keeping the rest.
+///
+/// v5 reproduces the two repository lines on each read's `Err`, not the dead
+/// WARN. The name-decoding read stands in for v4's validation (the one-column
+/// pointer read would keep a BLOB-named group's official store v4 drops).
+/// One residual divergence, outside this file: v5's `find_by_group_id` fails
+/// its WHOLE read on one undecodable link row where v4 drops just that row —
+/// recorded (both ways) by `tiered_mount_pool_equivalence`'s
+/// `helper_unreadable_link_row` arm (P4.D231).
+pub fn resolve_mount_point_ids_for_group(
+    main: &Connection,
+    mount: &Connection,
+    group_id: &str,
+) -> Vec<String> {
+    if group_id.is_empty() {
+        return Vec::new();
+    }
+    let mut ids: Vec<String> = Vec::new();
+    // findByIdRaw avoids a store read on this hot path — we only need the
+    // group's officialMountPointId pointer, not its hydrated content.
+    match groups::find_name_and_official_mount_point_id_raw(main, group_id) {
+        Ok(Some((_, Some(off)))) if !off.is_empty() => push_unique(&mut ids, off),
+        Ok(_) => {}
+        Err(e) => tracing::error!(
+            collection = "groups",
+            id = %group_id,
+            error = %e,
+            "Error finding entity by ID"
+        ),
+    }
+    match GroupDocMountLinksRepository::new(mount).find_by_group_id(group_id) {
+        Ok(links) => {
+            for link in links {
+                push_unique(&mut ids, link);
+            }
+        }
+        Err(e) => tracing::error!(
+            collection = "group_doc_mount_links",
+            error = %e,
+            "Error finding entities by filter"
+        ),
+    }
+    ids
+}
+
 /// Resolve the group tier — the union of the official store and every linked
 /// store across all groups the given character is a member of (v4
 /// `resolveGroupMountPointIdsForCharacter`). Keyed on the RESPONDING character
 /// (never the chat). Returns `[]` for a missing character id or on any lookup
 /// failure (fails soft). Insertion order: per membership, the group's official
-/// mount first, then its linked stores.
+/// mount first, then its linked stores — [`resolve_mount_point_ids_for_group`]
+/// per membership since `08c49319d`.
+///
+/// v4's outer catch (WARN `Group mount lookup failed { characterId, error }`)
+/// is unreachable for the same reason as the helper's: the memberships read
+/// (`findByCharacterId`) is a fallback-mode `safeQuery` too. v5's memberships
+/// read still answers `[]` on `Err`, silently (the repository line is the
+/// memberships repository's, and v5's is a raw read).
 pub fn resolve_group_mount_point_ids_for_character(
     main: &Connection,
     mount: &Connection,
@@ -229,23 +302,9 @@ pub fn resolve_group_mount_point_ids_for_character(
     }
     let mut ids: Vec<String> = Vec::new();
     for group_id in memberships {
-        // Per-membership try/catch (v4) — a failed lookup for one group is logged
-        // and skipped, never aborting the whole resolution.
-        let mut per_membership = || -> Result<(), super::DbError> {
-            // findByIdRaw avoids a store read on this hot path — we only need the
-            // group's officialMountPointId pointer, not its hydrated content.
-            if let Some(Some(off)) = groups::find_official_mount_point_id_raw(main, &group_id)? {
-                if !off.is_empty() {
-                    push_unique(&mut ids, off);
-                }
-            }
-            let links = GroupDocMountLinksRepository::new(mount).find_by_group_id(&group_id)?;
-            for link in links {
-                push_unique(&mut ids, link);
-            }
-            Ok(())
-        };
-        let _ = per_membership();
+        for id in resolve_mount_point_ids_for_group(main, mount, &group_id) {
+            push_unique(&mut ids, id);
+        }
     }
     ids
 }
@@ -482,6 +541,79 @@ pub fn classify_mount_tier(mount_point_id: &str, pool: &TieredMountPool) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P4.D231: the two partitions' tables the helper reads, in memory.
+    fn helper_dbs() -> (Connection, Connection) {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            r#"CREATE TABLE "groups" ("id" TEXT PRIMARY KEY NOT NULL, "name" TEXT NOT NULL,
+                 "officialMountPointId" TEXT, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);
+               INSERT INTO "groups" VALUES ('g-ok', 'Aeronauts', 'mp-off', 't', 't');
+               INSERT INTO "groups" VALUES ('g-blob', X'00', 'mp-blob-off', 't', 't');"#,
+        )
+        .unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        mount
+            .execute_batch(
+                r#"CREATE TABLE "group_doc_mount_links" ("id" TEXT PRIMARY KEY NOT NULL,
+                 "groupId" TEXT NOT NULL, "mountPointId" TEXT NOT NULL,
+                 "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);
+               INSERT INTO "group_doc_mount_links" VALUES ('l1', 'g-ok', 'mp-l1', 't', 't');
+               INSERT INTO "group_doc_mount_links" VALUES ('l2', 'g-ok', 'mp-off', 't', 't');
+               INSERT INTO "group_doc_mount_links" VALUES ('l3', 'g-blob', 'mp-l3', 't', 't');"#,
+            )
+            .unwrap();
+        (main, mount)
+    }
+
+    #[test]
+    fn group_helper_official_then_links_deduped_and_silent() {
+        let (main, mount) = helper_dbs();
+        let (ids, lines) = crate::test_support::captured_with(|| {
+            resolve_mount_point_ids_for_group(&main, &mount, "g-ok")
+        });
+        assert_eq!(ids, s(&["mp-off", "mp-l1"]));
+        assert!(lines.is_empty(), "the success path is silent: {lines:?}");
+        assert!(resolve_mount_point_ids_for_group(&main, &mount, "").is_empty());
+        assert!(resolve_mount_point_ids_for_group(&main, &mount, "g-none").is_empty());
+    }
+
+    #[test]
+    fn an_unreadable_group_row_loses_its_official_store_with_the_repository_line() {
+        let (main, mount) = helper_dbs();
+        let (ids, lines) = crate::test_support::captured_with(|| {
+            resolve_mount_point_ids_for_group(&main, &mount, "g-blob")
+        });
+        // v4: findByIdRaw → null after its ERROR; the links read still runs.
+        assert_eq!(ids, s(&["mp-l3"]));
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].starts_with("ERROR "), "{lines:?}");
+        assert!(lines[0].contains("Error finding entity by ID"), "{lines:?}");
+        assert!(lines[0].contains("collection=groups") && lines[0].contains("id=g-blob"));
+        // The dead WARN (both wordings, 08c49319d and before) never fires.
+        assert!(!lines
+            .iter()
+            .any(|l| l.contains("Group store lookup failed")));
+    }
+
+    #[test]
+    fn a_failed_links_read_keeps_the_official_store() {
+        let (main, _) = helper_dbs();
+        let no_links = Connection::open_in_memory().unwrap();
+        let (ids, lines) = crate::test_support::captured_with(|| {
+            resolve_mount_point_ids_for_group(&main, &no_links, "g-ok")
+        });
+        // v4's findByFilter answers [] after its own ERROR; the catch that
+        // would empty the group is unreachable.
+        assert_eq!(ids, s(&["mp-off"]));
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with("ERROR ") && lines[0].contains("Error finding entities by filter")
+        );
+        assert!(!lines
+            .iter()
+            .any(|l| l.contains("Group store lookup failed")));
+    }
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()

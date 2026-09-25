@@ -1,5 +1,5 @@
 {
-  "$comment": "Fixture spec for the tiered-mount-pool read-differential (W4.1d batch 3a). Two characters (A responding, B participant) baked via the REAL repos.characters.create (each mints a linked vault mount, read back by the builder + oracle); a group G1 with an official store + a linked store + charA membership (NOT charB — proves the per-RESPONDING-character group tier); a project P1 with two linked stores PLUS colliding links to charA-vault / G1-official / the General store (proves the character>group>global dedup drops them from project); and the Quilltap General singleton whose id lives in the MAIN db instance_settings. All store/group/project/user ids are pinned so the resolved pools compare with ZERO normalization (the char-vault mounts are minted but pinned by read-back on both sides).",
+  "$comment": "Fixture spec for the tiered-mount-pool read-differential (W4.1d batch 3a). Two characters (A responding, B participant) baked via the REAL repos.characters.create (each mints a linked vault mount, read back by the builder + oracle); a group G1 with an official store + a linked store + charA membership (NOT charB — proves the per-RESPONDING-character group tier); a project P1 with two linked stores PLUS colliding links to charA-vault / G1-official / the General store (proves the character>group>global dedup drops them from project); and the Quilltap General singleton whose id lives in the MAIN db instance_settings. All store/group/project/user ids are pinned so the resolved pools compare with ZERO normalization (the char-vault mounts are minted but pinned by read-back on both sides). P4.D231 (v4 08c49319d): `helperPlants` (applied to BOTH work copies before anything reads them — new groups with no members, so the matrix is untouched) and `helperArms` drive the NEW `resolveMountPointIdsForGroup` directly.",
   "testPepperBase64": "3q2+796tvu3erb7t3q2+796tvu3erb7t3q2+796tvu0=",
   "userId": "a0000000-0000-4000-8000-000000000001",
   "wrongUserId": "a0000000-0000-4000-8000-0000000000ff",
@@ -26,7 +26,11 @@
     "title": "",
     "firstMessage": "",
     "talkativeness": 0.5,
-    "pronouns": { "subject": "they", "object": "them", "possessive": "theirs" },
+    "pronouns": {
+      "subject": "they",
+      "object": "them",
+      "possessive": "theirs"
+    },
     "aliases": [],
     "physicalDescription": null,
     "systemPrompts": [],
@@ -67,7 +71,11 @@
     "title": "",
     "firstMessage": "",
     "talkativeness": 0.5,
-    "pronouns": { "subject": "he", "object": "him", "possessive": "his" },
+    "pronouns": {
+      "subject": "he",
+      "object": "him",
+      "possessive": "his"
+    },
     "aliases": [],
     "physicalDescription": null,
     "systemPrompts": [],
@@ -95,5 +103,198 @@
     "partnerLinks": [],
     "tags": [],
     "avatarOverrides": []
-  }
+  },
+  "helperPlants": [
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d231_clone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+      "params": [
+        "d8000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d231_clone\" SET \"id\" = ?, \"name\" = 'Two Links', \"officialMountPointId\" = ?",
+      "params": [
+        "d8231000-0000-4000-8000-0000000000b2",
+        "e8231000-0000-4000-8000-0000000000c1"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"groups\" SELECT * FROM \"p4d231_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d231_clone\"",
+      "params": []
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_doc_mount_links\" (\"id\", \"groupId\", \"mountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8231000-0000-4000-8000-000000000001",
+        "d8231000-0000-4000-8000-0000000000b2",
+        "e8231000-0000-4000-8000-0000000000c2",
+        "2026-09-25T00:00:00.000Z",
+        "2026-09-25T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_doc_mount_links\" (\"id\", \"groupId\", \"mountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8231000-0000-4000-8000-000000000002",
+        "d8231000-0000-4000-8000-0000000000b2",
+        "e8231000-0000-4000-8000-0000000000c3",
+        "2026-09-25T00:00:00.000Z",
+        "2026-09-25T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d231_clone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+      "params": [
+        "d8000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d231_clone\" SET \"id\" = ?, \"name\" = 'Official Only', \"officialMountPointId\" = ?",
+      "params": [
+        "d8231000-0000-4000-8000-0000000000b3",
+        "e8231000-0000-4000-8000-0000000000c4"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"groups\" SELECT * FROM \"p4d231_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d231_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d231_clone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+      "params": [
+        "d8000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d231_clone\" SET \"id\" = ?, \"name\" = X'00', \"officialMountPointId\" = ?",
+      "params": [
+        "d8231000-0000-4000-8000-0000000000b4",
+        "e8231000-0000-4000-8000-0000000000c5"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"groups\" SELECT * FROM \"p4d231_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d231_clone\"",
+      "params": []
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_doc_mount_links\" (\"id\", \"groupId\", \"mountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8231000-0000-4000-8000-000000000003",
+        "d8231000-0000-4000-8000-0000000000b4",
+        "e8231000-0000-4000-8000-0000000000c6",
+        "2026-09-25T00:00:00.000Z",
+        "2026-09-25T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d231_clone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+      "params": [
+        "d8000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d231_clone\" SET \"id\" = ?, \"name\" = 'Bad Link Row', \"officialMountPointId\" = ?",
+      "params": [
+        "d8231000-0000-4000-8000-0000000000b5",
+        "e8231000-0000-4000-8000-0000000000c7"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"groups\" SELECT * FROM \"p4d231_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d231_clone\"",
+      "params": []
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_doc_mount_links\" (\"id\", \"groupId\", \"mountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8231000-0000-4000-8000-000000000004",
+        "d8231000-0000-4000-8000-0000000000b5",
+        "e8231000-0000-4000-8000-0000000000c8",
+        "2026-09-25T00:00:00.000Z",
+        "2026-09-25T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_doc_mount_links\" (\"id\", \"groupId\", \"mountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, X'00', ?, ?)",
+      "params": [
+        "f8231000-0000-4000-8000-000000000005",
+        "d8231000-0000-4000-8000-0000000000b5",
+        "2026-09-25T00:00:00.000Z",
+        "2026-09-25T00:00:00.000Z"
+      ]
+    }
+  ],
+  "helperArms": [
+    {
+      "id": "helper_fixture_group",
+      "groupId": "d8000000-0000-4000-8000-000000000001",
+      "note": "the fixture's group: official then its one linked store"
+    },
+    {
+      "id": "helper_official_and_two_linked",
+      "groupId": "d8231000-0000-4000-8000-0000000000b2",
+      "note": "official first, then both links in row order"
+    },
+    {
+      "id": "helper_official_only",
+      "groupId": "d8231000-0000-4000-8000-0000000000b3",
+      "note": "no links: [official]"
+    },
+    {
+      "id": "helper_unknown_id",
+      "groupId": "d8231000-0000-4000-8000-0000000000ff",
+      "note": "no row, no links: []"
+    },
+    {
+      "id": "helper_empty_id",
+      "groupId": "",
+      "note": "`if (!groupId) return []`"
+    },
+    {
+      "id": "helper_unreadable_group_row",
+      "groupId": "d8231000-0000-4000-8000-0000000000b4",
+      "note": "a BLOB name: v4's findByIdRaw is a fallback safeQuery that VALIDATES — null after `Error finding entity by ID`; the links read STILL runs (both reads are fallback-mode, so the helper's catch never fires) — [the link]"
+    },
+    {
+      "id": "helper_unreadable_link_row",
+      "groupId": "d8231000-0000-4000-8000-0000000000b5",
+      "note": "one good link + one BLOB-mountPointId link: v4's findByFilter validateSafe()s row by row and DROPS the bad one — [official, good link]. v5's find_by_group_id fails the WHOLE read (db/group_doc_mount_links.rs, outside P4.D231) — a recorded divergence, pinned both ways"
+    }
+  ]
 }

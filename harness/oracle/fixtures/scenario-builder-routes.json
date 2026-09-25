@@ -1,5 +1,5 @@
 {
-  "$comment": "P4.D217 \u2014 the Scenario Builder REST edge's route family. v4's REAL route (real middleware, real repositories over a per-case copy of the committed chat-send fixture pair with these plants applied) with ONLY runScenarioBuilder canned to `frames` (the one place a mock is right: the route's contract is what it does AROUND the run) and, for one case, resolveScenarioBuilderCapabilities throwing. v5: the real axum edge over the same planted instance, with a canned DRIVER publishing the same frames. The first 18 names are v4's route.test.ts cases (split where one v4 case asks two things); the last five are the middleware's.",
+  "$comment": "P4.D217 — the Scenario Builder REST edge's route family. v4's REAL route (real middleware, real repositories over a per-case copy of the committed chat-send fixture pair with these plants applied) with ONLY runScenarioBuilder canned to `frames` (the one place a mock is right: the route's contract is what it does AROUND the run) and, for one case, resolveScenarioBuilderCapabilities throwing. v5: the real axum edge over the same planted instance, with a canned DRIVER publishing the same frames. The first 18 names are v4's route.test.ts cases (split where one v4 case asks two things); the last five are the middleware's. P4.D231 (v4 08c49319d): the chat-send pair carries NO `groups` table, so the plants create it (v4's own DDL, IF NOT EXISTS) with a readable group (Aeronauts Club) and an unreadable, BLOB-named one; the fourth id is never planted.",
   "otherUser": "5b170000-0000-4000-8000-0000000000ee",
   "plants": [
     {
@@ -199,6 +199,26 @@
     {
       "sql": "DROP TABLE \"p4d217_clone\"",
       "params": []
+    },
+    {
+      "sql": "CREATE TABLE IF NOT EXISTS \"groups\" (\n  \"id\" TEXT PRIMARY KEY NOT NULL,\n  \"name\" TEXT NOT NULL,\n  \"officialMountPointId\" TEXT,\n  \"createdAt\" TEXT NOT NULL,\n  \"updatedAt\" TEXT NOT NULL,\n  \"description\" TEXT,\n  \"instructions\" TEXT,\n  \"state\" TEXT DEFAULT '{}',\n  \"color\" TEXT,\n  \"icon\" TEXT\n)",
+      "params": []
+    },
+    {
+      "sql": "INSERT INTO \"groups\" (\"id\", \"name\", \"officialMountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, 'Aeronauts Club', NULL, ?, ?)",
+      "params": [
+        "5b231000-0000-4000-8000-0000000000e1",
+        "2026-09-25T00:00:00.000Z",
+        "2026-09-25T00:00:00.000Z"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"groups\" (\"id\", \"name\", \"officialMountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, X'00', NULL, ?, ?)",
+      "params": [
+        "5b231000-0000-4000-8000-0000000000e3",
+        "2026-09-25T00:00:00.000Z",
+        "2026-09-25T00:00:00.000Z"
+      ]
     }
   ],
   "frames": [
@@ -351,6 +371,68 @@
           "5b170000-0000-4000-8000-0000000000b1"
         ]
       }
+    },
+    {
+      "name": "passes existing group ids through and drops unknown ones",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "groupIds": [
+          "5b231000-0000-4000-8000-0000000000e1",
+          "5b231000-0000-4000-8000-0000000000e2"
+        ]
+      },
+      "note": "route.test.ts (08c49319d) — the unknown id dropped SILENTLY (no DEBUG, no WARN); groupCount 1"
+    },
+    {
+      "name": "defaults to no named groups",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1"
+      },
+      "note": "route.test.ts (08c49319d) — groupIds absent: [] to the run, groupCount 0"
+    },
+    {
+      "name": "P4.D231: named group ids are deduped before the existence check",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "groupIds": [
+          "5b231000-0000-4000-8000-0000000000e1",
+          "5b231000-0000-4000-8000-0000000000e1",
+          "5b231000-0000-4000-8000-0000000000e2",
+          "5b231000-0000-4000-8000-0000000000e1"
+        ]
+      },
+      "note": "`[...new Set(body.groupIds)]` precedes `findByIdRaw` — groupCount 1, one read per distinct id"
+    },
+    {
+      "name": "P4.D231: an unreadable group row is dropped with the repository ERROR, never the route WARN",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a1",
+        "groupIds": [
+          "5b231000-0000-4000-8000-0000000000e3",
+          "5b231000-0000-4000-8000-0000000000e1"
+        ]
+      },
+      "note": "findByIdRaw is a fallback-mode safeQuery that VALIDATES the row: a BLOB name answers null after `Error finding entity by ID {collection: groups}`; the route's `dropped an unreadable group id` WARN is unreachable"
     },
     {
       "name": "400s for a help chat",
