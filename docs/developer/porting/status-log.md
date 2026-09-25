@@ -150148,3 +150148,49 @@ Regen outputs staged under `/tmp/p4d225/`.
   is GREEN at the baseline pin.
 - E.9 measured: `DangerSettings.uncensored_text_profile_id` stays READ (the
   understudy's explicit pick reads it) — not removable.
+
+### Unit 6 — the refusal announcements + the auto-switch bubble (the writer)
+
+- `services/concierge_notifications.rs`: `ConciergeRefusalKind` (three) +
+  `ConciergeRefusalPurpose` (five, v4's `refusalCommission` voiced/plain pairs
+  — `dialog` = `tool`'s) + `ConciergeRefusalDetails`; `build_refusal_content`
+  (the `49059fb14` rerouted sentence WITHOUT "The result is attached above." —
+  the #73 review fix carried into phase 2) / `build_refusal_opaque_content`;
+  `post_concierge_refusal_announcement` — the literal in v4's order with
+  `systemKind: 'refusal'`, NO dedupe, target
+  `quilltap::concierge_notification`, the three lines (DEBUG `…skipped: chat
+  not found`, INFO `…Refusal announced` with v4's bag — an absent answerer an
+  absent field, ERROR `…Failed to post refusal announcement`). The shared post
+  primitive takes `system_kind` and now distinguishes a missing chat from a
+  failure. `ConciergeManualKind::AutoFlaggedRefusals` + `ConciergeAutoFlagDetails`
+  + `build_auto_flag_content` / `…_opaque_content` (v4's `TIMES_WORDS` for
+  2..=10, "More than once now" otherwise INCLUDING 0; `COUNT_WORDS` for 1..=10
+  else the number, so 0 reads `0`; the noun singular only at 1; `refusalWho`
+  null on an empty provider, the model only when truthy) +
+  `…_with_details` twins of the manual builders/post.
+- **E.7 (the announcer seam):** ONE method, widened —
+  `ConciergeAnnouncer::post_manual(chat_id, kind, details: Option<&…>)`; the
+  four existing call sites pass `None`. **The existing
+  `post_concierge_manual_announcement(db, chat_id, kind)` signature is KEPT**
+  (delegating with `None`): `post_office_writers_tier3_equivalence.rs` calls it,
+  and that file is P4.D233's this round (§R.10(g)).
+- **Family:** `post_office_concierge_lantern_suparna` +118 tier-1 rows over v4's
+  REAL exported `buildRefusalContent` / `buildRefusalOpaqueContent` (3 kinds × 5
+  purposes × ±answerer × 2 = 60) and `buildAutoFlagContent` /
+  `buildAutoFlagOpaqueContent` (no details + 4 who-shapes × counts {0, 1, 2, 3,
+  10, 11, 25} × 2 = 58); each new row carries its own `input`. Regenerated at
+  BOTH pins (`TZ=UTC`): target 158 rows, baseline 40 (the new builders absent —
+  the case imports the writer as a namespace so it still loads there); the 40
+  pre-existing rows byte-identical across the pins; `grep -c "attached above"`
+  = 0 at the target. **158/158 green on first run.** A floor asserts exactly 60
+  + 58, so a pre-#73 oracle can no longer pass this family vacuously.
+- **Unit pins (DB-backed, provisioned instance):** the posted literal's key
+  order + `systemKind`, the read-back, the INFO line whole, no dedupe (two
+  bubbles); the missing-chat DEBUG and the failed-write ERROR (the table
+  dropped); the auto-flag bubble is a `danger` row carrying its tally.
+- **Order item 8's `post_office_writers_tier3` growth: NOT done here — FENCED.**
+  §R.10(g) and the Ownership table give that family's spec, case and test to
+  P4.D233 this round. The writer's tier-3 behaviour is instead measured by this
+  lane's own NEW families that drive v4's real writer through its real callers
+  (`image_failover_tier3` — the refusal bubbles; `refusal_ledger_tier3` — the
+  auto-flag bubble), plus the unit pins above. Recorded for the unifier.

@@ -36,6 +36,10 @@ import {
   buildDangerOpaqueContent,
   type ConciergeDangerDetails,
 } from '@/lib/services/concierge-notifications/writer';
+// P4.D225 (v4 `8bd080267` + `49059fb14`): the refusal announcements and the
+// auto-switch bubble. Imported as a namespace so the case still loads at a pin
+// that predates them (the rows are simply absent there).
+import * as conciergeWriter from '@/lib/services/concierge-notifications/writer';
 import { isLanternImageAlertEnabled } from '@/lib/services/lantern-notifications/resolver';
 import { buildSuparnaMailWhisper } from '@/lib/services/suparna-notifications/writer';
 import type { DeliveredLetterSummary } from '@/lib/post-office/mailbox';
@@ -176,10 +180,52 @@ const suparnaCases: Array<{ id: string; letters: DeliveredLetterSummary[] }> = [
   },
 ];
 
+// ---- P4.D225: refusal announcements (every kind × purpose, ±answerer) ----
+const REFUSAL_KINDS = ['refusal-rerouted', 'refusal-no-understudy', 'refusal-not-permitted'];
+const REFUSAL_PURPOSES = ['tool', 'lantern', 'avatar', 'dialog', 'text'];
+// ---- P4.D225: the auto-switch bubble (counts 0, 1, 2, 10, 11 × who shapes) ----
+const AUTOFLAG_WHO: Array<{ id: string; who?: { lastProvider: string; lastModel?: string | null } }> = [
+  { id: 'provider-and-model', who: { lastProvider: 'GOOGLE', lastModel: 'gemini-3-pro' } },
+  { id: 'provider-only', who: { lastProvider: 'OPENAI', lastModel: null } },
+  { id: 'empty-model', who: { lastProvider: 'Z_AI', lastModel: '' } },
+  { id: 'empty-provider', who: { lastProvider: '', lastModel: 'orphan-model' } },
+];
+const AUTOFLAG_COUNTS = [0, 1, 2, 3, 10, 11, 25];
+
 function main(): void {
   const out: string[] = [];
-  const emit = (kind: string, id: string, value: unknown) =>
-    out.push(JSON.stringify({ kind, id, value }));
+  const emit = (kind: string, id: string, value: unknown, input?: unknown) =>
+    out.push(JSON.stringify(input === undefined ? { kind, id, value } : { kind, id, value, input }));
+
+  const w = conciergeWriter as Record<string, unknown>;
+  if (typeof w.buildRefusalContent === 'function') {
+    const content = w.buildRefusalContent as (k: string, d: unknown) => string;
+    const opaque = w.buildRefusalOpaqueContent as (k: string, d: unknown) => string;
+    for (const kind of REFUSAL_KINDS) {
+      for (const purpose of REFUSAL_PURPOSES) {
+        for (const answering of [undefined, 'Frank Desk']) {
+          const details = { refusingProvider: 'OPENAI', refusingModel: 'gpt-image-2', purpose, ...(answering ? { answeringProfileName: answering } : {}) };
+          const id = `${kind}/${purpose}/${answering ? 'named' : 'unnamed'}`;
+          emit('refusal_content', id, content(kind, details), { kind, details });
+          emit('refusal_opaque', id, opaque(kind, details), { kind, details });
+        }
+      }
+    }
+  }
+  if (typeof w.buildAutoFlagContent === 'function') {
+    const content = w.buildAutoFlagContent as (d: unknown) => string;
+    const opaque = w.buildAutoFlagOpaqueContent as (d: unknown) => string;
+    emit('autoflag_content', 'no-details', content(undefined), { details: null });
+    emit('autoflag_opaque', 'no-details', opaque(undefined), { details: null });
+    for (const who of AUTOFLAG_WHO) {
+      for (const count of AUTOFLAG_COUNTS) {
+        const details = { count, ...who.who };
+        const id = `${who.id}/${count}`;
+        emit('autoflag_content', id, content(details), { details });
+        emit('autoflag_opaque', id, opaque(details), { details });
+      }
+    }
+  }
 
   for (const c of dangerCases) {
     emit('danger_content', c.id, buildDangerContent(c.details));

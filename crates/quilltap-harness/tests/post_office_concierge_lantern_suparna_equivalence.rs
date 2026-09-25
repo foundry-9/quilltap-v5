@@ -30,7 +30,10 @@ use serde_json::{json, Value};
 
 use quilltap_core::post_office::mailbox::DeliveredLetterSummary;
 use quilltap_core::services::concierge_notifications::{
-    build_danger_content, build_danger_opaque_content, ConciergeCategory, ConciergeDangerDetails,
+    build_auto_flag_content, build_auto_flag_opaque_content, build_danger_content,
+    build_danger_opaque_content, build_refusal_content, build_refusal_opaque_content,
+    ConciergeAutoFlagDetails, ConciergeCategory, ConciergeDangerDetails, ConciergeRefusalDetails,
+    ConciergeRefusalKind, ConciergeRefusalPurpose,
 };
 use quilltap_core::services::lantern_notifications::is_lantern_image_alert_enabled;
 use quilltap_core::services::suparna_notifications::build_suparna_mail_whisper;
@@ -193,8 +196,55 @@ fn suparna_case(id: &str) -> Vec<DeliveredLetterSummary> {
     }
 }
 
-fn rust_value(kind: &str, id: &str) -> Value {
+/// P4.D225: the refusal/auto-flag rows carry their own input.
+fn refusal_input(input: &Value) -> (ConciergeRefusalKind, ConciergeRefusalDetails) {
+    let d = &input["details"];
+    (
+        ConciergeRefusalKind::from_wire(input["kind"].as_str().unwrap()).unwrap(),
+        ConciergeRefusalDetails {
+            refusing_provider: d["refusingProvider"].as_str().unwrap().into(),
+            refusing_model: d["refusingModel"].as_str().unwrap().into(),
+            answering_profile_name: d
+                .get("answeringProfileName")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            purpose: ConciergeRefusalPurpose::from_wire(d["purpose"].as_str().unwrap()).unwrap(),
+        },
+    )
+}
+
+fn autoflag_input(input: &Value) -> Option<ConciergeAutoFlagDetails> {
+    let d = input.get("details").filter(|d| !d.is_null())?;
+    Some(ConciergeAutoFlagDetails {
+        count: d["count"].as_i64().unwrap(),
+        last_provider: d
+            .get("lastProvider")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        last_model: d
+            .get("lastModel")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
+}
+
+fn rust_value(kind: &str, id: &str, input: &Value) -> Value {
     match kind {
+        "refusal_content" => {
+            let (k, d) = refusal_input(input);
+            Value::String(build_refusal_content(k, &d))
+        }
+        "refusal_opaque" => {
+            let (k, d) = refusal_input(input);
+            Value::String(build_refusal_opaque_content(k, &d))
+        }
+        "autoflag_content" => {
+            Value::String(build_auto_flag_content(autoflag_input(input).as_ref()))
+        }
+        "autoflag_opaque" => Value::String(build_auto_flag_opaque_content(
+            autoflag_input(input).as_ref(),
+        )),
         "danger_content" => {
             let details = danger_case(id);
             Value::String(build_danger_content(details.as_ref()))
@@ -231,10 +281,19 @@ fn post_office_concierge_lantern_suparna_matches_oracle() {
         let kind = row["kind"].as_str().unwrap();
         let id = row["id"].as_str().unwrap();
         let want = &row["value"];
-        let got = rust_value(kind, id);
+        let got = rust_value(kind, id, &row["input"]);
         assert_eq!(&got, want, "post-office writer leaf {kind}/{id} diverges");
         count += 1;
     }
     assert!(count > 0, "oracle had no rows");
+    // P4.D225 floor: 3 kinds × 5 purposes × 2 × 2 refusal rows + 2 + 4 × 7 × 2
+    // auto-flag rows — present only at a pin carrying `8bd080267`/`49059fb14`.
+    let refusal_rows = text.matches("\"kind\":\"refusal_").count();
+    let autoflag_rows = text.matches("\"kind\":\"autoflag_").count();
+    eprintln!("  refusal rows {refusal_rows}, auto-flag rows {autoflag_rows}");
+    assert!(
+        refusal_rows == 60 && autoflag_rows == 58,
+        "the refusal/auto-flag corpus is incomplete: {refusal_rows} / {autoflag_rows}"
+    );
     eprintln!("post-office-concierge-lantern-suparna: {count} rows matched");
 }

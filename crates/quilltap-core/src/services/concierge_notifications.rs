@@ -10,6 +10,9 @@
 //!
 //! Both posts are tagged `systemSender: 'concierge'` / `systemKind: 'danger'`
 //! (the manual variant reuses the same `systemKind` — see v4's object literals).
+//! The three REFUSAL announcements (v4 `8bd080267`) carry `systemKind:
+//! 'refusal'`; the auto-switch's `auto-flagged-refusals` bubble (v4 `49059fb14`)
+//! is a manual kind and stays `danger`.
 //!
 //! Errors never propagate — the danger-classification job (and the manual flip)
 //! must never fail because an announcement couldn't be written. A failure is
@@ -276,6 +279,11 @@ pub enum ConciergeManualKind {
     ManualResumed,
     /// anything → Uncensored (operator opens the uncensored door themselves).
     ManualUncensored,
+    /// Monitored → Flagged by the Concierge, after N stated moderation refusals
+    /// (v4 `49059fb14`, #74 — the refusal ledger's auto-switch). Not the
+    /// operator's, but it goes through the same transition chokepoint
+    /// (`apply_concierge_flip` with `by: concierge`), so it shares this writer.
+    AutoFlaggedRefusals,
 }
 
 impl ConciergeManualKind {
@@ -290,6 +298,7 @@ impl ConciergeManualKind {
             "manual-vouched" => Some(Self::ManualVouched),
             "manual-resumed" => Some(Self::ManualResumed),
             "manual-uncensored" => Some(Self::ManualUncensored),
+            "auto-flagged-refusals" => Some(Self::AutoFlaggedRefusals),
             _ => None,
         }
     }
@@ -302,12 +311,115 @@ impl ConciergeManualKind {
             Self::ManualVouched => "manual-vouched",
             Self::ManualResumed => "manual-resumed",
             Self::ManualUncensored => "manual-uncensored",
+            Self::AutoFlaggedRefusals => "auto-flagged-refusals",
         }
     }
 }
 
-/// Persona-voiced manual-transition body (v4 `buildManualContent`).
+/// What the Concierge says about the refusals that earned an auto-switch (v4
+/// `ConciergeAutoFlagDetails`, `49059fb14`). `auto-flagged-refusals` only.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ConciergeAutoFlagDetails {
+    /// Refusals on the ledger when the switch fired.
+    pub count: i64,
+    /// Provider of the most recent refusal (e.g. `GOOGLE`); `""` when unknown.
+    pub last_provider: String,
+    pub last_model: Option<String>,
+}
+
+const TIMES_WORDS: [&str; 11] = [
+    "Never",
+    "Once",
+    "Twice",
+    "Three times",
+    "Four times",
+    "Five times",
+    "Six times",
+    "Seven times",
+    "Eight times",
+    "Nine times",
+    "Ten times",
+];
+const COUNT_WORDS: [&str; 11] = [
+    "No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+];
+
+/// v4 `refusalWho`: `None` when there is no (truthy) provider; else the
+/// provider, and its model when that is truthy.
+fn refusal_who(details: Option<&ConciergeAutoFlagDetails>) -> Option<String> {
+    let d = details?;
+    if d.last_provider.is_empty() {
+        return None;
+    }
+    Some(match d.last_model.as_deref().filter(|m| !m.is_empty()) {
+        Some(model) => format!("{} {model}", d.last_provider),
+        None => d.last_provider.clone(),
+    })
+}
+
+/// v4 `buildAutoFlagContent` (`49059fb14`). A threshold of one is stated
+/// plainly; `TIMES_WORDS` only for 2..=10; everything else — INCLUDING a count
+/// of 0 (`details?.count ?? 0`) — is "More than once now".
+pub fn build_auto_flag_content(details: Option<&ConciergeAutoFlagDetails>) -> String {
+    let count = details.map_or(0, |d| d.count);
+    let who = refusal_who(details);
+    let declined = if count == 1 {
+        format!(
+            "The house's regular staff have declined this conversation on grounds of propriety{}.",
+            who.as_ref()
+                .map(|w| format!(" — {w}, to be precise"))
+                .unwrap_or_default()
+        )
+    } else {
+        let tally = if (2..11).contains(&count) {
+            format!("{} now", TIMES_WORDS[count as usize])
+        } else {
+            "More than once now".to_string()
+        };
+        format!(
+            "{tally} the house's regular staff have declined this conversation on grounds of propriety{}.",
+            who.as_ref().map(|w| format!(" — most recently {w}")).unwrap_or_default()
+        )
+    };
+    format!(
+        "{declined} The Concierge has taken the liberty of moving the whole affair to the uncensored desk; you may move it back from the sidebar whenever you wish."
+    )
+}
+
+/// v4 `buildAutoFlagOpaqueContent` (`49059fb14`): `COUNT_WORDS` for 1..=10,
+/// else the number (so 0 reads `0`, not `No`); the noun singular only at 1.
+pub fn build_auto_flag_opaque_content(details: Option<&ConciergeAutoFlagDetails>) -> String {
+    let count = details.map_or(0, |d| d.count);
+    let counted = if (1..11).contains(&count) {
+        COUNT_WORDS[count as usize].to_string()
+    } else {
+        count.to_string()
+    };
+    let noun = if count == 1 {
+        "moderation refusal"
+    } else {
+        "moderation refusals"
+    };
+    let last = refusal_who(details)
+        .map(|w| format!(" (last: {w})"))
+        .unwrap_or_default();
+    format!(
+        "{counted} {noun}{last}. The Concierge switched this chat to Flagged; change it in the sidebar."
+    )
+}
+
+/// Persona-voiced manual-transition body (v4 `buildManualContent`) — the
+/// no-details form; `auto-flagged-refusals` without details reads v4's
+/// `details === undefined` sentence.
 pub fn build_manual_content(kind: ConciergeManualKind) -> String {
+    build_manual_content_with_details(kind, None)
+}
+
+/// v4 `buildManualContent(kind, details?)` (`49059fb14`).
+pub fn build_manual_content_with_details(
+    kind: ConciergeManualKind,
+    details: Option<&ConciergeAutoFlagDetails>,
+) -> String {
     match kind {
         ConciergeManualKind::ManualFlagged =>
             "By the operator's own hand, the Concierge has thrown the switch: the conversation is to be entrusted henceforth to a desk better appointed to subjects of its particular character. Pray continue at your leisure.",
@@ -319,12 +431,22 @@ pub fn build_manual_content(kind: ConciergeManualKind) -> String {
             "The Concierge returns to his post. Customary watch is resumed; the present arrangements are once again subject to his discreet attentions.",
         ConciergeManualKind::ManualUncensored =>
             "By the operator's own hand, the Concierge has been sent away and the uncensored door stands open. Nothing is to be examined, nothing softened; the conversation and its errands go henceforth to the frank desk, entirely on the operator's own recognizance.",
+        ConciergeManualKind::AutoFlaggedRefusals => return build_auto_flag_content(details),
     }
     .to_string()
 }
 
-/// Opaque-audience manual-transition advisory (v4 `buildManualOpaqueContent`).
+/// Opaque-audience manual-transition advisory (v4 `buildManualOpaqueContent`)
+/// — the no-details form.
 pub fn build_manual_opaque_content(kind: ConciergeManualKind) -> String {
+    build_manual_opaque_content_with_details(kind, None)
+}
+
+/// v4 `buildManualOpaqueContent(kind, details?)` (`49059fb14`).
+pub fn build_manual_opaque_content_with_details(
+    kind: ConciergeManualKind,
+    details: Option<&ConciergeAutoFlagDetails>,
+) -> String {
     match kind {
         ConciergeManualKind::ManualFlagged =>
             "Operator advisory: this conversation has been manually marked for handling by an uncensored provider. Subsequent traffic may be routed accordingly.",
@@ -336,8 +458,149 @@ pub fn build_manual_opaque_content(kind: ConciergeManualKind) -> String {
             "Operator advisory: standard moderation is restored for this conversation.",
         ConciergeManualKind::ManualUncensored =>
             "Operator advisory: this conversation has been manually routed to the uncensored providers. No classification or scanning will run; prompts go out unaltered.",
+        ConciergeManualKind::AutoFlaggedRefusals => {
+            return build_auto_flag_opaque_content(details)
+        }
     }
     .to_string()
+}
+
+/// The three refusal announcements (v4 `ConciergeRefusalKind`, `8bd080267`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConciergeRefusalKind {
+    RefusalRerouted,
+    RefusalNoUnderstudy,
+    RefusalNotPermitted,
+}
+
+impl ConciergeRefusalKind {
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            Self::RefusalRerouted => "refusal-rerouted",
+            Self::RefusalNoUnderstudy => "refusal-no-understudy",
+            Self::RefusalNotPermitted => "refusal-not-permitted",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match s {
+            "refusal-rerouted" => Some(Self::RefusalRerouted),
+            "refusal-no-understudy" => Some(Self::RefusalNoUnderstudy),
+            "refusal-not-permitted" => Some(Self::RefusalNotPermitted),
+            _ => None,
+        }
+    }
+}
+
+/// What was being made when the refusal happened (v4
+/// `ConciergeRefusalPurpose`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConciergeRefusalPurpose {
+    Tool,
+    Lantern,
+    Avatar,
+    Dialog,
+    Text,
+}
+
+impl ConciergeRefusalPurpose {
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            Self::Tool => "tool",
+            Self::Lantern => "lantern",
+            Self::Avatar => "avatar",
+            Self::Dialog => "dialog",
+            Self::Text => "text",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match s {
+            "tool" => Some(Self::Tool),
+            "lantern" => Some(Self::Lantern),
+            "avatar" => Some(Self::Avatar),
+            "dialog" => Some(Self::Dialog),
+            "text" => Some(Self::Text),
+            _ => None,
+        }
+    }
+
+    /// v4 `refusalCommission(purpose)` → `(voiced, plain)`.
+    fn commission(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Tool | Self::Dialog => ("the commission for a picture", "an image request"),
+            Self::Lantern => ("the commission for a new backdrop", "a story background"),
+            Self::Avatar => ("the commission for a new portrait", "a character portrait"),
+            Self::Text => ("the request for a reply", "this turn"),
+        }
+    }
+}
+
+/// v4 `ConciergeRefusalDetails`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConciergeRefusalDetails {
+    /// Provider of the profile that refused (e.g. `OPENAI`).
+    pub refusing_provider: String,
+    /// Model of the profile that refused.
+    pub refusing_model: String,
+    /// Name the user gave the answering profile — `refusal-rerouted` only.
+    pub answering_profile_name: Option<String>,
+    pub purpose: ConciergeRefusalPurpose,
+}
+
+/// v4 `buildRefusalContent` (`8bd080267`; the rerouted sentence LOST its last
+/// sentence "The result is attached above." at `49059fb14` — the PR #73 review
+/// fix carried into phase 2).
+pub fn build_refusal_content(
+    kind: ConciergeRefusalKind,
+    details: &ConciergeRefusalDetails,
+) -> String {
+    let painter = format!("{} {}", details.refusing_provider, details.refusing_model);
+    let (voiced, _) = details.purpose.commission();
+    let house = if details.purpose == ConciergeRefusalPurpose::Text {
+        "the house's usual correspondent"
+    } else {
+        "the house's usual painter"
+    };
+    match kind {
+        ConciergeRefusalKind::RefusalRerouted => format!(
+            "The Concierge regrets to report that {house} ({painter}) declined {voiced} on grounds of propriety; he has taken it across the street to {}, who were happy to oblige.",
+            details
+                .answering_profile_name
+                .as_deref()
+                .unwrap_or("a more obliging studio")
+        ),
+        ConciergeRefusalKind::RefusalNoUnderstudy => format!(
+            "The Concierge regrets to report that {house} ({painter}) declined {voiced} on grounds of propriety, and he knows of no more obliging establishment to take it to. Should you care to name one, tick \"Uncensored-compatible\" on a suitable profile, or choose one in the Concierge's settings."
+        ),
+        ConciergeRefusalKind::RefusalNotPermitted => format!(
+            "The Concierge observes that {house} ({painter}) declined {voiced} on grounds of propriety. His present instructions forbid him from taking it elsewhere; were he set to Auto-Route, he would have done so."
+        ),
+    }
+}
+
+/// v4 `buildRefusalOpaqueContent` (`8bd080267`).
+pub fn build_refusal_opaque_content(
+    kind: ConciergeRefusalKind,
+    details: &ConciergeRefusalDetails,
+) -> String {
+    let who = format!("{} {}", details.refusing_provider, details.refusing_model);
+    let (_, plain) = details.purpose.commission();
+    match kind {
+        ConciergeRefusalKind::RefusalRerouted => format!(
+            "Provider {who} refused {plain} on content grounds. The Concierge rerouted it to {}.",
+            details
+                .answering_profile_name
+                .as_deref()
+                .unwrap_or("an uncensored profile")
+        ),
+        ConciergeRefusalKind::RefusalNoUnderstudy => format!(
+            "Provider {who} refused {plain} on content grounds. No uncensored profile is available to retry it; mark a profile \"Uncensored-compatible\" or choose one in the Concierge settings."
+        ),
+        ConciergeRefusalKind::RefusalNotPermitted => format!(
+            "Provider {who} refused {plain} on content grounds. The Concierge mode does not permit rerouting; Auto-Route would have retried it on an uncensored profile."
+        ),
+    }
 }
 
 /// Shared post primitive: read the chat (missing → `None`), mint `id` +
@@ -352,14 +615,31 @@ async fn post_concierge_message(
     content: String,
     opaque_content: String,
 ) -> Option<Value> {
+    post_concierge_message_kind(db, chat_id, content, opaque_content, "danger")
+        .await
+        .ok()
+        .flatten()
+}
+
+/// The shared post primitive with the `systemKind` named — `danger` for the
+/// classifier verdict and the transitions, `refusal` for the three refusal
+/// announcements (v4 `8bd080267`). `Ok(None)` = the chat is missing; `Err` =
+/// the read or the write failed (the message, for the caller's ERROR line).
+async fn post_concierge_message_kind(
+    db: &Db,
+    chat_id: &str,
+    content: String,
+    opaque_content: String,
+    system_kind: &str,
+) -> Result<Option<Value>, String> {
     // v4: `if (!chat) return null;`
     let cid = chat_id.to_string();
     let exists = db
         .read_main(move |conn| crate::db::chats_read::find_by_id(conn, &cid))
-        .ok()?
+        .map_err(|e| e.to_string())?
         .is_some();
     if !exists {
-        return None;
+        return Ok(None);
     }
 
     let message_id = uuid::Uuid::new_v4().to_string();
@@ -375,18 +655,16 @@ async fn post_concierge_message(
         "createdAt": now,
         "participantId": Value::Null,
         "systemSender": "concierge",
-        "systemKind": "danger",
+        "systemKind": system_kind,
     });
 
-    let event: ChatEventInput = serde_json::from_value(message.clone()).ok()?;
+    let event: ChatEventInput =
+        serde_json::from_value(message.clone()).map_err(|e| e.to_string())?;
     let cid = chat_id.to_string();
-    match db
-        .write(move |writers| writers.main().chat_messages().add_message(&cid, &event))
+    db.write(move |writers| writers.main().chat_messages().add_message(&cid, &event))
         .await
-    {
-        Ok(()) => Some(message),
-        Err(_) => None,
-    }
+        .map_err(|e| e.to_string())?;
+    Ok(Some(message))
 }
 
 /// Post a Concierge manual-transition announcement (v4
@@ -397,9 +675,79 @@ pub async fn post_concierge_manual_announcement(
     chat_id: &str,
     kind: ConciergeManualKind,
 ) -> Option<Value> {
-    let content = build_manual_content(kind);
-    let opaque_content = build_manual_opaque_content(kind);
+    post_concierge_manual_announcement_with_details(db, chat_id, kind, None).await
+}
+
+/// v4 `postConciergeManualAnnouncement({ chatId, kind, details })`
+/// (`49059fb14`) — `details` threads the auto-switch's tally into the
+/// `auto-flagged-refusals` bubble; every other kind ignores it.
+pub async fn post_concierge_manual_announcement_with_details(
+    db: &Db,
+    chat_id: &str,
+    kind: ConciergeManualKind,
+    details: Option<&ConciergeAutoFlagDetails>,
+) -> Option<Value> {
+    let content = build_manual_content_with_details(kind, details);
+    let opaque_content = build_manual_opaque_content_with_details(kind, details);
     post_concierge_message(db, chat_id, content, opaque_content).await
+}
+
+/// Post a Concierge refusal announcement (v4
+/// `postConciergeRefusalAnnouncement`, `8bd080267`): `systemKind: 'refusal'`,
+/// the three log lines, NO dedupe (every refusal is its own bubble). Never
+/// fails the caller: a missing chat is a DEBUG and `None`, a failed write an
+/// ERROR and `None`.
+pub async fn post_concierge_refusal_announcement(
+    db: &Db,
+    chat_id: &str,
+    kind: ConciergeRefusalKind,
+    details: &ConciergeRefusalDetails,
+) -> Option<Value> {
+    let content = build_refusal_content(kind, details);
+    let opaque_content = build_refusal_opaque_content(kind, details);
+    match post_concierge_message_kind(db, chat_id, content, opaque_content, "refusal").await {
+        Ok(None) => {
+            tracing::debug!(
+                target: "quilltap::concierge_notification",
+                context = "concierge-notifications",
+                chat_id = %chat_id,
+                kind = kind.as_wire(),
+                "[ConciergeNotification] Refusal announcement skipped: chat not found"
+            );
+            None
+        }
+        Ok(Some(message)) => {
+            let message_id = message
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            tracing::info!(
+                target: "quilltap::concierge_notification",
+                context = "concierge-notifications",
+                chat_id = %chat_id,
+                message_id = %message_id,
+                kind = kind.as_wire(),
+                purpose = details.purpose.as_wire(),
+                refusing_provider = %details.refusing_provider,
+                refusing_model = %details.refusing_model,
+                answering_profile_name = details.answering_profile_name.as_deref(),
+                "[ConciergeNotification] Refusal announced"
+            );
+            Some(message)
+        }
+        Err(error) => {
+            tracing::error!(
+                target: "quilltap::concierge_notification",
+                context = "concierge-notifications",
+                chat_id = %chat_id,
+                kind = kind.as_wire(),
+                error = %error,
+                "[ConciergeNotification] Failed to post refusal announcement"
+            );
+            None
+        }
+    }
 }
 
 /// Post a Concierge danger announcement (v4 `postConciergeDangerAnnouncement`).
@@ -412,4 +760,230 @@ pub async fn post_concierge_danger_announcement(
     let content = build_danger_content(details);
     let opaque_content = build_danger_opaque_content(details);
     post_concierge_message(db, chat_id, content, opaque_content).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAT: &str = "c1000000-0000-4000-8000-0000000000e7";
+    const NOW: &str = "2026-09-25T00:00:00.000Z";
+
+    fn provisioned() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("rs");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    async fn seed_chat(db: &Db) {
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "The Refusal Room",
+            "participants": [],
+        }))
+        .expect("a ChatCreate");
+        let opts = crate::db::chats::CreateOptions {
+            id: CHAT.to_string(),
+            created_at: NOW.to_string(),
+            updated_at: NOW.to_string(),
+        };
+        db.write(move |w| w.main().chats().create(&create, &opts).map(|_| ()))
+            .await
+            .unwrap();
+    }
+
+    fn details() -> ConciergeRefusalDetails {
+        ConciergeRefusalDetails {
+            refusing_provider: "OPENAI".into(),
+            refusing_model: "gpt-image-2".into(),
+            answering_profile_name: Some("Frank Desk".into()),
+            purpose: ConciergeRefusalPurpose::Tool,
+        }
+    }
+
+    fn run<T>(f: impl std::future::Future<Output = T>) -> (T, Vec<String>) {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        crate::test_support::captured_with(|| rt.block_on(f))
+    }
+
+    /// v4 `postConciergeRefusalAnnouncement` (`8bd080267`): the message literal
+    /// IN v4's ORDER with `systemKind: 'refusal'`, persisted and read back, and
+    /// the ONE INFO line with v4's bag (an absent answerer is an absent field).
+    #[test]
+    fn a_refusal_announcement_posts_the_refusal_literal_and_logs_once() {
+        let (_dir, db) = provisioned();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(seed_chat(&db));
+        drop(rt);
+
+        let (message, lines) = run(post_concierge_refusal_announcement(
+            &db,
+            CHAT,
+            ConciergeRefusalKind::RefusalRerouted,
+            &details(),
+        ));
+        let message = message.expect("posted");
+        let keys: Vec<&str> = message
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "type",
+                "id",
+                "role",
+                "content",
+                "opaqueContent",
+                "attachments",
+                "createdAt",
+                "participantId",
+                "systemSender",
+                "systemKind"
+            ]
+        );
+        assert_eq!(message["systemKind"], "refusal");
+        assert_eq!(message["systemSender"], "concierge");
+        assert_eq!(
+            message["content"],
+            build_refusal_content(ConciergeRefusalKind::RefusalRerouted, &details())
+        );
+        let id = message["id"].as_str().unwrap().to_string();
+        assert_eq!(
+            lines,
+            vec![format!(
+                "INFO quilltap::concierge_notification [ConciergeNotification] Refusal announced context=concierge-notifications chat_id={CHAT} message_id={id} kind=refusal-rerouted purpose=tool refusing_provider=OPENAI refusing_model=gpt-image-2 answering_profile_name=Frank Desk"
+            )]
+        );
+
+        let stored = db
+            .read_main(|conn| crate::db::chats_messages_read::get_messages(conn, CHAT))
+            .unwrap();
+        let row = stored
+            .iter()
+            .find(|m| m["id"] == id.as_str())
+            .expect("persisted");
+        assert_eq!(row["systemKind"], "refusal");
+        assert_eq!(row["opaqueContent"], message["opaqueContent"]);
+
+        // NO dedupe: the same refusal twice is two bubbles.
+        let (again, _) = run(post_concierge_refusal_announcement(
+            &db,
+            CHAT,
+            ConciergeRefusalKind::RefusalRerouted,
+            &details(),
+        ));
+        assert!(again.is_some());
+        let n = db
+            .read_main(|conn| crate::db::chats_messages_read::get_messages(conn, CHAT))
+            .unwrap()
+            .iter()
+            .filter(|m| m["systemKind"] == "refusal")
+            .count();
+        assert_eq!(n, 2);
+    }
+
+    /// The two other exits: a missing chat is ONE DEBUG and `None`; a failed
+    /// write is ONE ERROR and `None` (the table broken — the
+    /// `force-a-swallowed-catch-by-breaking-the-table` idiom). Neither says
+    /// "Refusal announced".
+    #[test]
+    fn a_missing_chat_debugs_and_a_failed_write_errors() {
+        let (_dir, db) = provisioned();
+        let d = ConciergeRefusalDetails {
+            answering_profile_name: None,
+            ..details()
+        };
+        let (none, lines) = run(post_concierge_refusal_announcement(
+            &db,
+            CHAT,
+            ConciergeRefusalKind::RefusalNotPermitted,
+            &d,
+        ));
+        assert!(none.is_none());
+        assert_eq!(
+            lines,
+            vec![format!(
+                "DEBUG quilltap::concierge_notification [ConciergeNotification] Refusal announcement skipped: chat not found context=concierge-notifications chat_id={CHAT} kind=refusal-not-permitted"
+            )]
+        );
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(seed_chat(&db));
+        rt.block_on(db.write(|w| {
+            w.main()
+                .connection()
+                .execute_batch("DROP TABLE chat_messages")?;
+            Ok(())
+        }))
+        .unwrap();
+        drop(rt);
+        let (none, lines) = run(post_concierge_refusal_announcement(
+            &db,
+            CHAT,
+            ConciergeRefusalKind::RefusalNoUnderstudy,
+            &d,
+        ));
+        assert!(none.is_none());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].starts_with(
+            "ERROR quilltap::concierge_notification [ConciergeNotification] Failed to post refusal announcement context=concierge-notifications"
+        ));
+        assert!(lines[0].contains(" kind=refusal-no-understudy error="));
+    }
+
+    /// The auto-switch bubble is a MANUAL kind (`systemKind: 'danger'`), and its
+    /// details reach the post (E.7).
+    #[test]
+    fn the_auto_flag_bubble_is_a_danger_row_carrying_its_tally() {
+        let (_dir, db) = provisioned();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(seed_chat(&db));
+        let tally = ConciergeAutoFlagDetails {
+            count: 2,
+            last_provider: "GOOGLE".into(),
+            last_model: Some("gemini-3-pro".into()),
+        };
+        let posted = rt
+            .block_on(post_concierge_manual_announcement_with_details(
+                &db,
+                CHAT,
+                ConciergeManualKind::AutoFlaggedRefusals,
+                Some(&tally),
+            ))
+            .expect("posted");
+        assert_eq!(posted["systemKind"], "danger");
+        assert_eq!(posted["content"], build_auto_flag_content(Some(&tally)));
+        assert!(posted["content"]
+            .as_str()
+            .unwrap()
+            .starts_with("Twice now the house's regular staff"));
+    }
 }

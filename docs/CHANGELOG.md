@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the refusal announcements + the auto-switch bubble (P4.D225 unit 6)
+
+_Versions: core 0.0.1064, harness 0.0.983._
+
+The Concierge writer gains v4's three refusal announcements (`8bd080267`):
+`post_concierge_refusal_announcement` posts a `systemKind: 'refusal'` bubble
+(three kinds, five purposes, voiced and plain wording, the phase-2 rerouted
+sentence without "The result is attached above.") with v4's three log lines
+and no dedupe. `ConciergeManualKind` gains `auto-flagged-refusals` (v4
+`49059fb14`) with a tally (`ConciergeAutoFlagDetails`) and v4's count-word
+arithmetic; the manual-announcer seam carries it. The
+`post_office_concierge_lantern_suparna` family gains 118 tier-1 rows over v4's
+four exported builders; DB-backed unit tests pin the posted row, its key
+order, and the three log lines.
+
 #### 2026-09-25 — feat(concierge): the uncensored understudies + the thin pre-flight wrappers (P4.D225 unit 5)
 
 _Versions: core 0.0.1063, harness 0.0.982._
