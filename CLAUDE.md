@@ -1013,10 +1013,56 @@ records THERE. Update this summary only when a phase or round completes.
   0.0.964, host 0.0.154, web 0.0.191, SPA 0.5.760. **Next: the drift catch-up
   (re-run `/driftcheck` first — v4 moved again), the owed Host dogfood pass** —
   `phase-4.md`. Round record: `status-log.md`.
-- **Oracle baseline: `d1c06cd9d` (2026-09-23, v4 main — "feat(scenarios):
-  Scenario Builder — the Host researches and drafts a starting scene",
-  `4.10.0-dev.67`), adopted at the `d1c06cd9d` Scenario Builder drift
-  catch-up + maintenance round unification (2026-09-23).**
+- **The `b0b6656b5` ten-commit drift catch-up round (P4.D220 ∥ P4.D221 ∥
+  P4.D222 ∥ P4.D223 ∥ P4.D224): UNIFIED on main (2026-09-25) — ALL FIVE
+  LANDED WHOLE; the oracle baseline MOVES to `b0b6656b5`; the ledger's §3
+  keeps ONE row (`83d0c969b`, bug 170, NO-PORT? — v5 never had it; its round
+  waiver expired at unification, ratify on the file list), so the regen rule
+  is PIN REQUIRED at `b0b6656b5`.** v4's PRs #64–#71 + bugs 167/168/169
+  absorbed: **the ONE `dispatchAction` rule on every REST edge** (a bare
+  `?action=` had DELETED a chat, RUN a restore, UPLOADED a file, CREATED a
+  rule — all four red-first; the fold at the root deleted; every list in
+  v4's order; `query_param_semantics` re-recorded with `fold` false
+  everywhere; `Request::ChatsHasDangerous` retired end to end) ∥ the `lib/`
+  riders (the two mount-index partition keys red-first, the Brahma `qt_text()`
+  sentence, six dead twins retired, two NO-PORT ratifications) ∥ **bugs
+  167/168 — help docs by SECTION**: `embed_help_doc_sections` +
+  `average_embeddings` (a NEW tier-1 family, f32 bit-exact), `count_by_doc`,
+  the sync shape by id, `reconcile_help_docs` behind a once-per-boot gate,
+  the boot order 3.66 before 3.7, `help/` 127 → 129 whole — **dogfood #120
+  CLOSED by CONVERGENCE** ∥ the Salon Images quick-hide (a Salon-scoped
+  token, v4's two stand-ins at every image site, the section ALWAYS offered)
+  + the bug-169 CONVERGENCE (v5's predicate now v4's exact twin) ∥ the `@`
+  mention typeahead (the pure module recorded against v4's real one, the
+  ProseMirror plugin, the composer wiring; **the char typeahead's soft-break
+  defect found and fixed with it**). **The §3 review (five parallel
+  readers): TWO BLOCKING defects, both fixed red-first** — **an XSS in the
+  inline hidden-image swap** (the `<img>` matcher stopped at the first `>`;
+  hast leaves a raw `>` unescaped inside `alt="…"`, so the CLOSED stand-in
+  ended the attribute context and the rest of the alt went live under
+  `[innerHTML]`; v5-only) and **a false unlock-throw proof** (a corrupt
+  `.dbkey` is a v4 401 with NO line — only the rewrite throws; core's
+  change-passphrase map made v4's, a `DbKeyError::Write` splitting the I/O
+  sides). Seven should-fixes with it (the character GET's lookup BEFORE its
+  gate; the census's typed-extractor door; v4's FALLBACK `findAll` in place
+  of a propagating `Err` the lane had pinned; `collection` on the fallback
+  lines; the zero-length doc-vector test; the twelve-scenario recipe header
+  the first sweep pass tripped on; the retired op by name instead of
+  `serde(other)`). Gate: fmt/clippy both feature sets/release clean; the
+  pinned sweep 51/51; Tier R 266/0; 634 binaries / 3,737 / 2 (an env-block
+  artifact, green by name) / 3 ignored; SPA 452 / 7,919; Playwright 340 / 1
+  (the P4.66 bubble intermittent, 2/2 alone) / 6. Versions: core 0.0.1058,
+  harness 0.0.977, host 0.0.158, web 0.0.196, SPA 0.5.773. 💸 the dogfood
+  queue gains a bare `?action=` refusing on the Friday copy, the help
+  reconcile's boot INFO with the five #120 pages embedded by section, the
+  Salon Images switch, the `@` menu, the corrupt-`.dbkey` 401. **Next: the
+  `83d0c969b` ratification, the owed Host dogfood pass, a smalls lane
+  (incl. the `text-replacement.ts` soft-break divergence P4.D224 found)** —
+  `phase-4.md`. Round record: `status-log.md`.
+- **Oracle baseline: `b0b6656b5` (2026-09-24, v4 main — "Fix bug 169:
+  narrow-pane chat sidebar no longer closes dialogs it opens (#71)",
+  `4.10.0-dev.78`), adopted at the `b0b6656b5` ten-commit drift catch-up
+  round unification (2026-09-25).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

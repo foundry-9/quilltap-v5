@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — docs(porting): unify the `b0b6656b5` ten-commit drift catch-up round (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224) — baseline → `b0b6656b5`
+
+_Versions: core 0.0.1058, harness 0.0.977, host 0.0.158, web 0.0.196, SPA 0.5.773 (final); cli, tauri, fixture-sanitizer unchanged._
+
+Unifies the `b0b6656b5` ten-commit drift catch-up round — P4.D220 (the
+action-dispatch consolidation on every REST edge + the `chatsHasDangerous`
+server half), P4.D221 (the `lib/` riders: partition keys, the Brahma prompt
+sentence, six retired methods, two NO-PORT ratifications), P4.D222 (bugs
+167/168: help docs by section + the startup reconcile + `help/` at 129 —
+dogfood #120 closed by convergence), P4.D223 (the Salon Images quick-hide +
+the bug-169 convergence + the client half), P4.D224 (the `@` mention
+typeahead) — onto main. The oracle baseline moves `d1c06cd9d` →
+`b0b6656b5`; the ledger's §3 keeps `83d0c969b` (bug 170) alone.
+
+The §3 review found two blocking defects, both fixed on the branch: an XSS
+in the inline hidden-image swap (a `>` inside an alt escaped the tag) and a
+false unlock-throw proof (v4 answers a corrupt `.dbkey` 401 with no line;
+only the rewrite throws — core's outcome map made v4's). Seven should-fixes
+landed with it (the character GET's lookup before its gate, the census's
+typed-extractor door, v4's fallback `findAll`, the `collection` field on the
+fallback lines, the zero-length doc-vector test, the twelve-scenario recipe
+header, the named retired op). Wires: §S.1 the verb gone on both sides;
+§S.2 the composer's cast ids preserved through both lanes' edits; the
+`docs/v4/` mirror refreshed; the drift ledger, phase plan, dogfood note and
+five order headers rewritten.
+
+Gate on the final tree: fmt + clippy (both feature sets) + release clean;
+the pinned sweep 51/51 ok; Tier R 266/0; `cargo test --workspace` 634
+binaries / 3,737 passed / 2 failed (an env-block artifact, green by name) / 3
+ignored; SPA lint clean, 452 files / 7,919 tests, build clean; Playwright
+340 passed / 1 failed (the P4.66 intermittent, 2/2 alone) / 6 skipped.
+
 #### 2026-09-25 — test(web): plant the character rows the lookup-first character GET now needs in the query-param venue (unification gate)
 
 _Versions: web 0.0.196._

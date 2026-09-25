@@ -149501,14 +149501,11 @@ worktrees built and symlinked per §5.1: `/tmp/qt-v4-pin-p4d221-b0b6656b5`
    Updated `fts_query.rs`'s doc comments (the "v4 keeps two copies" claim
    is now stale — v4 collapsed to one). Repointed `harness/oracle/cases/
    fts-query.ts`'s import so it keeps driving v4's real module rather than
-   crashing on the deleted symbol at the target pin (confirmed: the
-   deleted method reads `undefined` on `CharactersRepository.prototype` —
-   wait, that check was for `findLLMControlled`; for `escapeLikePattern`
-   the crash mode is an unresolved named import, which Node/tsx raises as
-   a `SyntaxError`/binding error at module load — not independently
-   re-verified here since the fix and the check landed together, but the
-   import line the old case used no longer exists in `fts-query.ts` at the
-   target, confirmed by `grep`). Regenerated `fts-query` at BOTH pins:
+   crashing on the deleted symbol at the target pin (the old import line
+   no longer exists in `fts-query.ts` at the target, confirmed by `grep`;
+   an unresolved named import is a module-load error under tsx — the
+   `findLLMControlled` retirement below was the one measured as
+   `undefined` on the prototype). Regenerated `fts-query` at BOTH pins:
    byte-identical (48 rows each, `cmp` clean) — the predicted neutrality,
    since the fold was already v4-faithful.
 
@@ -149695,3 +149692,176 @@ into another lane's ownership was needed.
 
 Versions: core 0.0.1049, harness 0.0.966; host/web/cli/tauri/fixture-
 sanitizer/SPA unchanged.
+
+## Round record — the `b0b6656b5` ten-commit drift catch-up round unification (2026-09-25, P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224)
+
+Branch `unify/b0b6656b5` from `main` `14c7d1c4`; the five lanes cherry-picked
+in the ordered sequence P4.D221 → P4.D222 → P4.D220 → P4.D223 → P4.D224
+(27 lane commits; lane shas map to main's cherry-picks — `git log
+14c7d1c4..HEAD` carries the subjects verbatim). The ledger's §2 probe PASSED
+at start under the human's recorded `83d0c969b` waiver (v4 `main` at
+`83d0c969b`, exactly one commit past `b0b6656b5`, tree clean, `bugfix`
+unmoved) and again at the fast-forward — v4 did NOT move during the
+unification. Every regen ran from the unifier's own detached pin
+`/tmp/qt-v4-pin-unify-b0b6656b5` (`rev-parse` + `ls -ld` checked, the three
+symlink classes). **The oracle baseline MOVES `d1c06cd9d` → `b0b6656b5`**; the
+ledger's §3 keeps ONE row (`83d0c969b`, bug 170 — NO-PORT? UNPROCESSED; the
+round's waiver expired with the round), so the regen rule is PIN REQUIRED at
+`b0b6656b5`.
+
+### Reconciliation
+
+Conflicts were the expected kinds only — crate versions (accumulated as
+HEAD+1 per conflicting commit, then RECOUNTED), `Cargo.lock` (re-synced with
+`cargo update -w --offline`), CHANGELOG and status-log (union, newest first;
+every lane record verified byte-identical to its lane's copy). **The
+identical-bump auto-merge fired:** P4.D222 and P4.D223 each bumped the SPA
+0.5.761 → 0.5.762 and the hunk merged as ONE, so the union sat at 0.5.770
+where the recount (base + 1 + 3 + 6) is 0.5.771 — fixed in `d34b0344` with
+both lock files. No source conflict — P4.D223's and P4.D224's hunks in
+`salon-conversation.ts` were far apart, and §S.2's `mentionCastCharacterIds`
++ `[mentionPriorityCharacterIds]` binding sit beside `provideImagesHidden()`
+and `visibleBackgroundVar` on the union. §R.8 audit: every `Cargo.toml` /
+`package.json` delta version-only. §S.1 grep: no `ChatsHasDangerous` /
+`chatsHasDangerous` reference survives on either side beyond retirement
+comments and the two "never dispatches" negative pins.
+
+### The §3 review — five parallel readers (one per lane) + the unifier's own reads
+
+**TWO BLOCKING defects, both fixed on the unify branch red-first:**
+
+- **P4.D223 — an XSS in the inline hidden-image swap** (`28ddf9a8`).
+  `hideInlineImages` matched `<img\b[^>]*>`; `hast-util-to-html` escapes only
+  `"` and `&` inside a double-quoted attribute, so a raw `>` in an image alt
+  survives into `alt="…"`, the matcher cut the tag short, and the CLOSED
+  stand-in span ended the attribute context — the rest of the alt became live
+  markup under `[innerHTML]` (`![<b>x <svg onload=alert(1)>](y)` rendered a
+  live `<svg>`; the benign `![a > b](x)` lost its label and leaked ` b">`).
+  v5-only: v4's `img` renderer returns an element. A quote-aware `IMG_TAG_RE`
+  (consuming quoted values whole) shared with `applyBlobImageRewrite`, and two
+  cases through the REAL renderer in `salon-images.spec.ts` — RED before the
+  fix (an `SVGSVGElement` reached the DOM), green after. The reviewer found it
+  by running the real remark→rehype pipeline against the lane's regex.
+- **P4.D220 — the unlock "throw" proof pinned a v5-invented shape**
+  (`f8bb9c77`). `change_passphrase_throw_is_logged_and_answered_500` posed
+  the throw as a corrupt `.dbkey`; v4's `readDbKeyFile` catches the parse
+  error and returns null, `changePassphrase` returns `{success: false,
+  error: 'No .dbkey file found'}`, and the route answers 401 with NO catch
+  line — only `writeDbKeyFile` throws. The test now poses the REAL throw (a
+  read-only file: the read and decrypt succeed, the rewrite refuses) and pins
+  the corrupt read as v4's 401 with the ERROR line silent; core's
+  change-passphrase outcome map is v4's (missing / unreadable / unparseable →
+  401 `No .dbkey file found`, where v5 had answered 400 and 500;
+  undecryptable → 401 `Current passphrase is incorrect`; ONLY the rewrite →
+  500 + `Error in database key action`), with a new `DbKeyError::Write`
+  variant keeping the two I/O sides apart. Both arms green.
+
+**Should-fixes landed on the unify branch:**
+
+- **P4.D220 — the character GET gated before its lookup** (`f8bb9c77`). v4
+  `characters/[id]/handlers/get.ts:35-39` runs `findById` →
+  `notFound('Character')` BEFORE `dispatchAction`; v5 dispatched first, so a
+  bare/unknown action on a MISSING character was 400 where v4 is 404
+  (invisible to `query_param_semantics`, whose oracle mocks the character).
+  Lookup moved above the gate; a wire arm in `action_dispatch_edges` (404, no
+  `availableActions`, both `?action=zzz` and `?action=`).
+- **P4.D220 — the action-sites census had the terminal route's own blind
+  spot** (`f8bb9c77`). It counted only the `"action"` literal; a `Query<T>`
+  extractor over a `Deserialize` struct with a field named `action` (the
+  pre-lane `terminal_routes.rs` shape) passed it. The census now scans every
+  `struct … { … }` body (brace-balanced on the literal-blanked copy) for a
+  field named `action` and every raw `rename = "action"`, both to ZERO;
+  mutation-proven (the old shape appended to `terminal_routes.rs` reddens
+  exactly the census; reverted by file backup); self-test vectors for a
+  one-line struct, a fn parameter, a struct literal and an `action::` path.
+- **P4.D222 — the `findAll` "propagation" was a NEW divergence presented as
+  closing one** (`ab028542`). v4's `repos.helpDocs.findAll()` is
+  `AbstractBaseRepository._findAll` — a FALLBACK `safeQuery` that logs ERROR
+  `Error finding all entities` `{collection: 'help_docs', error}` and answers
+  `[]`; it never throws. The lane made it propagate "as v4's throw does" and
+  pinned it. Both help-sync reads (the sync's index, the reconcile's re-read)
+  now take v4's fallback; the unit test retargeted (Ok with `failed = 1` and
+  the ONE ERROR line); the reindex comment corrected.
+- **P4.D222 — v4's base-class `collection` on the fallback lines**
+  (`ab028542`). `safeQuery` enriches every context with `collection`, so
+  `Error counting help doc chunks by doc` and `Error finding help doc chunks
+  by doc` carry `help_doc_chunks` (the lane record's "v4 passes `{}`"
+  overlooked the enrichment); pins updated, and the job's line gains its FIRST
+  capture pin (a renamed chunk table logs it once; the in-memory slice still
+  embeds).
+- **P4.D222 — the zero-length doc-vector rule had no test** (`ab028542`): a
+  repository test over NULL, `X''`, an int8-encoded vector and a legacy raw
+  f32 blob.
+- **P4.D222 — the stale recipe header** (`ab028542`).
+  `help_doc_ensure_equivalence`'s committed regen loop still built the six
+  original scenarios; the case records twelve. **The unification's first
+  sweep failed the family's regen** (`missing fixture … edited-page`) — the
+  lane's gate had used its lane-private script. Header grown to twelve with
+  each scenario's post-`492771aff` meaning; `host_help_docs_boot`'s header
+  rewritten (129, the boot reconcile CONVERGED); the gate test's false "rolls
+  back the whole sync" comment corrected.
+- **P4.D221 — `#[serde(other)]` as a silent door** (`6b08d87b`).
+  `memories_tier2_equivalence`'s catch-all would have let any future op the
+  oracle runs and Rust does not know pass as a no-op. The retired tag kept BY
+  NAME; an unknown-kind-refuses pin; a 15/3 row floor on the write-partition
+  corpus; the `characters_read` header no longer lists `findLLMControlled`.
+- **P4.D224 — the emoji spec's inline-image case relabelled** (`c12a9080`)
+  as v5's own rule (v4 registers no inline decorator node).
+
+**Recorded, not changed (named follow-ups):** the `text-replacement.ts`
+soft-break DIVERGENCE P4.D224 surfaced (its word read still collapses a
+`hard_break` to U+FFFC, so a rule after Shift+Enter never fires on v5 where
+v4's anchor-node read does; smart typography measured NEUTRAL) — a named
+order; the WARN `path` VALUE (pattern vs pathname) and the `availableActions`
+Debug render — value-only log divergences; `action_envelope_mismatch`
+duplicated in two harness families + `envelope()` in the edges test;
+`hasAnyHidden` has no production reader (kept for a future footer button);
+v4's seven bug-169 vectors live in `sidebar-overlay-dismiss.spec.ts` (v4's own
+file split). Verified by the readers and the unifier: every Tier 1 + Tier 2
+item of the five orders landed as ordered; every Tier 3 deferral is the one
+the order named, loud in code or record.
+
+### Wires (§4)
+
+§S.1 — the `chatsHasDangerous` verb is gone on both sides (grep); a stray
+`{"type":"chatsHasDangerous"}` answers the dispatcher's generic unknown-variant
+400 (P4.D220's record). §S.2 — `<qt-chat-composer [mentionPriorityCharacterIds]>`
+bound from `mentionCastCharacterIds` (v4's predicate) survives P4.D223's edits
+to the same file; the mention e2e beat ran in the full suite below. The
+`docs/v4/` mirror refreshed from the pin (eight files; `diff -rq` empty bar
+`CHANGELOG.md`); dogfood #120 CLOSED as a CONVERGENCE; the `phase-4.md`
+bug-169 ruling wording moved to "CONVERGED at `b0b6656b5`".
+
+### Gate (final tree, `CARGO_INCREMENTAL=0 TZ=UTC`)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -D warnings` clean in BOTH feature sets; `cargo build --workspace --release`
+  clean.
+- **The pinned sweep** (`recipe_sweep.py --run-all`, 51 families, `--v4
+  /tmp/qt-v4-pin-unify-b0b6656b5`): **51 / 51 ok on the final tree** (the run whose one red — `query_param_semantics_equivalence`, 404s from the lookup-first character GET on a venue with no such character — was fixed by planting the rows, `714743f4`, then green by name 3/3). The first pass on the
+  pre-fix union: 50 ok, `help_doc_ensure_equivalence` regen_failed on the
+  stale header (fixed above).
+- **Tier R** (`cli_differential` at the pin): **266 cases, 0 failures** (431 s).
+- **`cargo test --workspace --no-fail-fast`** with the 53-variable env block
+  (every family the sweep regenerated, assembled from the committed headers'
+  run stages): **634 test binaries / 3,737 passed / 2 failed / 3 ignored**, 480 `SKIP:` lines (families outside the block — none of this round's; every round family confirmed RUN by name in the sweep). The two reds are ONE env-block artifact: `embedding_refit_tier3_equivalence`'s header sets `QT_FIXTURE_REFIT_MAIN` and `QT_FIXTURE_REFIT_MOUNT` on one line and the block's extraction took only the first (`expect("QT_FIXTURE_REFIT_MOUNT")` at `:142`); green by name with both vars, 2/2 — and green in both sweep passes. The four `panicked at` lines in core are panic-asserting tests that passed.
+- **SPA:** `npm run lint` clean; `npm test` **452 files / 7,919** (base 448 /
+  7,670); `npm run build` clean.
+- **Playwright (full suite, one invocation, port 4319):** **340 passed / 1 failed / 6 skipped (11.0 m)** — the six skips the standing parks; the one red `salon-optimistic-bubble-reconcile.spec.ts` (the P4.66 bubble beat, the recorded intermittent since the `f45a517a9` round), re-run by file alone **2/2 (1.4 m)**. Every new beat of the round ran in the suite: the Salon Images beat, the bug-169 beat (e), the `@` mention flow (4), the char-insert flow (7).
+
+### Versions
+
+core 0.0.1058, harness 0.0.977, host 0.0.158, web 0.0.195, SPA 0.5.773;
+cli 0.0.27, tauri 0.0.7, fixture-sanitizer 0.0.4 unchanged. (Recount: base
+core 1044 + 5 + 5 + 2 = 1056 → +2 unification fixes; harness 964 + 2 + 6 + 3
+= 975 → +2; host 154 + 3 = 157 → +1; web 191 + 3 = 194 → +1; SPA 761 + 1 + 3
++ 6 = 771 → +2.)
+
+### 💸 The dogfood queue gains
+
+A bare `?action=` on the chat DELETE / the restore POST / the chat-files
+upload refusing on the Friday copy; the fourteen-key chat GET envelope; the
+help reconcile's boot INFO with the five #120 pages embedded BY SECTION; the
+Salon Images switch on a real transcript (a crafted-alt image included); the
+`@` menu over a real cast; the `:` typeahead after Shift+Enter; the
+corrupt-`.dbkey` 401 and the read-only-`.dbkey` 500 + line.

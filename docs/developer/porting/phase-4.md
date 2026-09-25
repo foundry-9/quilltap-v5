@@ -6628,6 +6628,72 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `b0b6656b5` ten-commit drift catch-up round (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224) — UNIFIED 2026-09-25
+
+**ALL FIVE LANDED on main; the oracle baseline MOVES `d1c06cd9d` →
+`b0b6656b5`; the ledger's §3 keeps ONE row (`83d0c969b`, bug 170, NO-PORT?
+— its round waiver expired at unification; ratify on the file list), so the
+regen rule is PIN REQUIRED at `b0b6656b5`.** Every Tier 1 + Tier 2 item of
+the five orders landed; every Tier 3 deferral is the one the order named. The
+§3 review ran five parallel readers plus the unifier's own reads and found
+**TWO BLOCKING defects, both fixed on the unify branch red-first:** (1)
+**an XSS in P4.D223's inline hidden-image swap** — the `<img>` matcher
+stopped at the first `>`, but hast leaves a raw `>` unescaped inside a
+double-quoted `alt`, so `![<b>x <svg onload=alert(1)>](y)` under the switch
+truncated the tag and the CLOSED stand-in ended the attribute context,
+turning the rest of the alt into live markup under `[innerHTML]` (v5-only —
+v4's `img` renderer returns an element; a quote-aware matcher now shared with
+the blob rewrite, two renderer-level specs); (2) **P4.D220's unlock "throw"
+proof pinned a v5-invented shape** — it posed a corrupt `.dbkey` READ, which
+v4 answers 401 `No .dbkey file found` with NO catch line (`readDbKeyFile`
+catches and returns null; only `writeDbKeyFile` throws) — the test now poses
+the real WRITE throw (a read-only file) and pins the corrupt read as v4's
+401, and core's change-passphrase outcome map was made v4's (a missing,
+unreadable or unparseable file → 401 `No .dbkey file found`; an
+undecryptable one → 401 `Current passphrase is incorrect`; ONLY the rewrite →
+500 + the ERROR line, a new `DbKeyError::Write` variant keeping the two I/O
+sides apart — v5 had answered 400 and 500). **Should-fixes landed:** the
+character GET's lookup moved BEFORE the action gate (v4 404s a missing
+character before `dispatchAction`; a wire arm); the action-sites census gains
+the typed-extractor door (a `Deserialize` struct field named `action`);
+P4.D222's `findAll` "propagation" replaced by v4's FALLBACK read (ERROR
+`Error finding all entities` + `[]` — the lane had swapped one non-v4 shape
+for another and pinned it); the three fallback ERROR lines carry v4's
+base-class `collection` field; the reconcile's zero-length doc-vector rule
+tested; `help_doc_ensure`'s committed recipe header grown to the twelve
+scenarios it now records (the stale-header trap — the first sweep pass failed
+the regen on it); P4.D221's `#[serde(other)]` catch-all replaced by the named
+retired tag (an unknown op refuses again); a floor on the write-partition
+corpus; four stale headers/comments. Gate + versions: the round record in
+`status-log.md`.
+
+**Next (in order):**
+
+1. **The `83d0c969b` ratification** (bug 170 — v5 never had it, measured in
+   the ledger row; docs/version-stamp file list) — a one-row catch-up that
+   folds into the next round's ratification list; `docs/v4/developer/bugs/`
+   gains `fixed/bug-170-*` + its `bugs.md` row with it.
+2. **The owed dogfood pass** — the Host end to end (real spend), now with
+   this round's surfaces: a bare `?action=` that no longer deletes (the
+   chat DELETE, the restore POST, the chat-files upload), the fourteen-key
+   chat GET envelope, the help reconcile's boot INFO on the Friday copy
+   (129 pages, the five #120 pages embedded by section), the Salon Images
+   switch on a real transcript, the `@` menu with a real cast, the
+   soft-break `:` typeahead, the corrupt-`.dbkey` 401.
+3. **A follow-up smalls lane** over the named OPEN items: the `text-
+   replacement.ts` soft-break divergence (P4.D224 found it — a rule after
+   Shift+Enter never fires on v5; v4's plugin reads the anchor node alone);
+   the five smalls headers' OPEN items (the sibling `Character not found`
+   WARNs; P4.115 item 5's strip-rule switch 449 → 450; the normalizer's
+   log-half proof; the two `fetchConnectionProfiles`); the two WARN `path`
+   values (pattern vs pathname) and the `availableActions` Debug render as
+   value-only divergences; the duplicated `action_envelope_mismatch` helper.
+4. Still left out as before: the `quilltap sync` writer-hold ruling
+   (P4.D210), `ui/modal.ts` portaling for every dialog, the heals over
+   un-widened pairs, `db/prompt_templates.rs`'s datetime checks, a Rust
+   `cl100k` tokenizer (the section bound is proved through the oracle), the
+   `docs/v4/CHANGELOG.md` lag.
+
 ## The `b0b6656b5` ten-commit drift catch-up round (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224) — ORDERED 2026-09-24
 
 **Baseline `d1c06cd9d`; v4 `main` HEAD `b0b6656b5` (TEN non-merge commits
@@ -6757,7 +6823,7 @@ items. Gate + versions: the round record in `status-log.md`.
 
 **Next (in order):**
 
-1. ~~**RULING (human): the narrow-pane Scenario Builder close**~~ — **RULED (the human, 2026-09-24) and FIXED:** the sidebar now ignores a click inside a `.qt-dialog-overlay` — a deliberate divergence from v4, filed upstream as **v4 bug 169** (v4 `94e946728`); pinned by a unit spec (mutation-proven) and a live e2e beat (e) at a 600 px viewport, RED without the fix. What it was: P4.116's
+1. ~~**RULING (human): the narrow-pane Scenario Builder close**~~ — **RULED (the human, 2026-09-24) and FIXED:** the sidebar now ignores a click inside a `.qt-dialog-overlay` — RULED 2026-09-24 as a divergence and filed upstream as **v4 bug 169** (v4 `94e946728`); **CONVERGED at v4 `b0b6656b5`** (`components/chat/sidebar-overlay-dismiss.ts`) — v5's predicate is now v4's twin (P4.D223, unified 2026-09-25), including the text-node `parentElement` fallback and the non-`Node` exit; pinned by a unit spec transcribing v4's seven vectors (mutation-proven) and a live e2e beat (e) at a 600 px viewport, RED without the fix. What it was: P4.116's
    portal makes every click inside the builder/save dialog an OUTSIDE click
    for the Salon's overlay sidebar (< 640 px), which collapses, destroys the
    dialog and aborts the run. v4 is identical (`ChatSidebar.tsx:417-429`), so

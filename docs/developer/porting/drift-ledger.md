@@ -19,116 +19,87 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `d1c06cd9d`** — "feat(scenarios): Scenario Builder —
-  the Host researches and drafts a starting scene" (v4 main, 2026-09-23
-  09:02 −0500, `4.10.0-dev.67`), adopted at the `d1c06cd9d` Scenario Builder
-  drift catch-up + maintenance round unification (2026-09-23) and UNMOVED by
-  the `d1c06cd9d` review-follow-ups smalls round (P4.113–P4.117, unified
-  2026-09-24). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-24, evening (`/driftcheck`, main-checkout session,
-  after `git fetch` of the v4 checkout — remote-tracking refs only; the
-  human's local branches were not touched). Fourth check of the day (the
-  earlier three recorded HEAD `ad1c4c37f`, `f51a44548`, then `b0b6656b5` —
-  the last is the tip the P4.D220–P4.D224 round was ordered against at
-  `72bc1faf`).
-- **v4 `main` HEAD at check:** **`83d0c969b`** (`4.10.0-dev.79`, bug 170's
-  fix — v4-only, the Salon speaker switch's HTTP method) — local `main` =
-  `origin/main`. **ELEVEN non-merge commits past the baseline** (§3; the
-  eleventh landed AFTER the round was ordered)
-  plus one merge: `f51a44548` merges the local `94e946728` (the bug-169
-  filing) with the PR line `ad1c4c37f` → `68da64d9b` → `8aafd595d`; the merge
-  resolves cleanly and carries ONLY the two bug-169 doc files over its PR-side
-  parent (measured: `git diff 8aafd595d f51a44548` = those two files), so it
-  gets no row.
+- **Oracle baseline: `b0b6656b5`** — "Fix bug 169: narrow-pane chat sidebar
+  no longer closes dialogs it opens (#71)" (v4 main, 2026-09-24,
+  `4.10.0-dev.78`), adopted at the `b0b6656b5` ten-commit drift catch-up
+  round unification (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224,
+  2026-09-25). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-09-25 (`/unify`, main-checkout session, after `git fetch`
+  of the v4 checkout — remote-tracking refs only; the human's local branches
+  were not touched). The probe was run at the unification's start and again
+  at the fast-forward.
+- **v4 `main` HEAD at check:** local `main` at **`83d0c969b`**
+  (`4.10.0-dev.79`, bug 170's fix — v4-only, the Salon speaker switch's HTTP
+  method); **`origin/main` ONE further at `a8292547a`** ("Add Concierge
+  overhaul feature specs (overview + five phases) (#72)", 2026-09-24 — landed
+  during the unification's gate; the fetch touched remote-tracking refs only,
+  so the human's local `main` still sits at `83d0c969b`). **TWO non-merge
+  commits past the baseline** (§3).
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
   branch") — UNMOVED (local and `origin/bugfix`).
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**, local `main` AT
   `origin/main` (`83d0c969b`). §2's probe runs against `83d0c969b`.
-- **Verdict: DRIFT PENDING — 11 commits** (+ one clean merge) (§3); ten
-  ORDERED into the P4.D220–P4.D224 round, ONE `UNPROCESSED` (`83d0c969b`,
-  NO-PORT? — v5 never had bug 170: its speaker pick rides the dispatch verb,
-  and its REST chat edge has no PUT leg; WAIVED for the round's probe,
-  below). The ten:
-  CONVERGENCE ×1 (`b0b6656b5`, v4's fix for this port's bug 169 — v4's
-  predicate measured equivalent to v5's `af6ed7e7`; the divergence notes
-  retire, one `help/` page re-vendors), PORT ×4
-  (`68da64d9b` the chat GET's fourteen actions through `dispatchAction` — an
-  unknown or bare `?action=` stops being served the whole chat;
-  `944127d9a` the chats
-  GET action removal — its message now SUPERSEDED by `ad1c4c37f`;
-  `e3937d7aa` the Salon image quick-hide; `ad1c4c37f` the one `?action=`
-  dispatcher — ~21 v5 REST edges + the chat DELETE, two `lib/` units, four
-  oracle cases broken at the new pin), PORT + CONVERGENCE (`492771aff`, bugs
-  167/168 — **bug 168 IS dogfood #120**, fixed upstream by a different
-  mechanism), PORT-NEW (`3376b3dfa` the `@` mention typeahead), NO-PORT? ×2
-  (`7ebb74143` a release script; `94e946728` this port's own bug-169 filing,
-  docs-only — v5 already carries the fix as a divergence), NO-PORT? (mostly)
-  ×1 (`8aafd595d` the dedicated-db repository base — a refactor whose four
-  observable deltas are log lines / degraded-mode messages v5 never matched;
-  it changes NO write-partition key).
-- **Regen rule: PIN REQUIRED at `d1c06cd9d`** — HEAD is past the baseline.
-  Every regen runs from a detached `d1c06cd9d` worktree per §5.1. **Do not
-  reason about which families "could" be affected — pin.** (Unchanged from
-  the morning check; the checkout is now clean, but that alone does not lift
-  the rule.) The round's orders regen at their own target pin
-  `/tmp/qt-v4-pin-<lane>-b0b6656b5`, which excludes `83d0c969b` — correct,
-  since that commit is ordered nowhere.
-- **WAIVER (the human, 2026-09-24): `83d0c969b` does NOT stop the
-  P4.D220–P4.D224 lanes.** The orders' §R.2 probe pins "HEAD `b0b6656b5`,
-  `log b0b6656b5..main` EMPTY"; HEAD is now `83d0c969b`, which touches no
-  `lib/`, `app/api/`, `help/`, `packages/` or `plugins/` path (one
-  client-hook line + a jest test + docs + the version stamp), so no pinned
-  regen can see it. **Scope, exactly:** for those five lanes only, the probe
-  PASSES when the branch is `main`, the tree is CLEAN, HEAD is `83d0c969b`,
-  `git log --oneline b0b6656b5..main` lists **exactly that one commit**, and
-  `log 1a2b2164c..bugfix` is empty. Anything else — a further commit, ANY
-  dirty path, the checkout off `main`, a moved `bugfix` — is still a STOP.
-  The round's target pin STAYS `b0b6656b5` (every regen from the lanes'
-  `/tmp/qt-v4-pin-<lane>-b0b6656b5` worktrees, never the checkout); at
-  unification the baseline moves to `b0b6656b5`, not `83d0c969b`, and
-  `83d0c969b` keeps its §3 row (NO-PORT?, UNPROCESSED) for the next
-  catch-up's ratification. The waiver does not order or ratify the row.
-- **The workspace gate at the baseline** (the smalls round's final tree
-  `1e2221fb`): `qtap_schema_embed_guard`, `zod_version_guard` (4.6.5),
-  `provider_sdk_version_guard`, `public_schemas_vendor_guard` GREEN;
-  `help_tree_embed_guard` GREEN at **127**; `dispatch_wrong_type_census` at
-  **449** (P4.115 item 5's `ChatUpdate.remove_participant_id` strip-rule
-  switch to 450 left OPEN, pinned both ways); `blob_write_sites_census` 12 /
-  12 + one EXEMPT; `compressed_column_write_sites_census` 14;
-  `get_messages_caller_census` (76, 7); `web_edge_body_parse_guard`'s
-  collapse census without a `scenario_builder_routes.rs` row.
-  `help_tree_equivalence` at the `d1c06cd9d` pin is the proof the tree is
-  v4's (127 files, md5-identical). Tier R 266/0 at the pin. The tool catalog
-  is 59.
+- **Verdict: DRIFT PENDING — 2 commits** (§3): `83d0c969b`, NO-PORT?
+  (UNPROCESSED — v5 never had bug 170: its speaker pick rides the dispatch
+  verb, and its REST chat edge has no PUT leg; measured in its row), and
+  `a8292547a`, NO-PORT? (UNPROCESSED — nine files, 1,008 insertions, ALL
+  docs: six `docs/developer/features/concierge-overhaul*.md` specs, a
+  `ROADMAP.md` line, `.claude/commands/update-documentation.md`, CHANGELOG;
+  no `lib/`, `app/`, `help/`, `packages/` or `plugins/` path — a v4 ROADMAP
+  for future Concierge work, not a behaviour change; the `docs/v4/` mirror
+  takes the six specs at its ratification). The ten
+  commits of the P4.D220–P4.D224 round are ABSORBED / NO-PORT-RATIFIED and
+  retired to §6. The round's waiver for `83d0c969b` expired with the round;
+  the commit needs its ratification (a one-row catch-up, foldable into the
+  next round's ratification list).
+- **Regen rule: PIN REQUIRED at `b0b6656b5`** — HEAD is past the baseline
+  (one commit locally, two on `origin/main`). Every regen runs from a detached `b0b6656b5` worktree per §5.1
+  (`83d0c969b` touches no `lib/`, `app/api/`, `help/`, `packages/` or
+  `plugins/` path, so no regen can SEE it — but the rule is mechanical: pin).
+  The unification's own regens ran from `/tmp/qt-v4-pin-unify-b0b6656b5`
+  (removed at cleanup).
+- **The workspace gate at the baseline** (the unification's final tree — the
+  round record in `status-log.md` carries the counts): `qtap_schema_embed_
+  guard`, `zod_version_guard` (4.6.5), `provider_sdk_version_guard`,
+  `public_schemas_vendor_guard` GREEN; `help_tree_embed_guard` GREEN at
+  **129** (127 + 2, P4.D222's re-vendor; `host_help_docs_boot` agrees);
+  `dispatch_wrong_type_census` at **449** (UNMOVED by the `ChatsHasDangerous`
+  removal — a unit variant; P4.115 item 5's `ChatUpdate.remove_participant_
+  id` strip-rule switch to 450 left OPEN, pinned both ways); NEW
+  `web_edge_action_sites_census` (zero raw `"action"` reads outside
+  `query.rs`; one allowed body-field site; the typed-extractor door counted
+  to zero since the unification); `blob_write_sites_census` 12 / 12 + one
+  EXEMPT; `compressed_column_write_sites_census` 14; `get_messages_caller_
+  census` (76, 7); `web_edge_body_parse_guard`'s collapse census without a
+  `scenario_builder_routes.rs` row. `help_tree_equivalence` at the
+  `b0b6656b5` pin is the proof the tree is v4's (129 files, `diff -r` empty
+  against the pin). Tier R 266/0 at the pin. The tool catalog is 59.
 - **Schema state:** unchanged — the D23 re-dump from `e7d77bb60` stands; the
-  FTS objects come from P4.D204's boot reconciler. None of the ten commits
-  moves DDL (`492771aff`'s and `ad1c4c37f`'s `DDL.md` hunks are prose only;
-  no migration or `lib/` DDL touched; `8aafd595d`'s `onTableEnsured` blocks are the old init DDL moved verbatim).
-- **`help/**` vs v4 HEAD `83d0c969b`:** DIFFERS (`83d0c969b` touches no
-  `help/` file, so this is unchanged since `b0b6656b5`) — **129 files** (v5
-  127): `492771aff` splits `chat-settings.md` into it +
-  `chat-settings-composer.md` + `chat-settings-ai-services.md` and edits nine
-  more pages; `e3937d7aa` edits `quick-hide.md` + `dangerous-content.md`;
-  `3376b3dfa` edits `carina.md` + `chats.md`; `b0b6656b5` edits
-  `chat-participants.md` (count unchanged). The 127 literals live at
-  `crates/quilltap-host/tests/host_help_docs_boot.rs:98` and
-  `crates/quilltap-harness/tests/help_tree_embed_guard.rs:69` (plus the
-  SPA's `help-categories.ts` capture, which gains the two new slugs).
+  FTS objects come from P4.D204's boot reconciler. None of the round's ten
+  commits moved DDL (`492771aff`'s and `ad1c4c37f`'s `DDL.md` hunks are
+  prose only; `8aafd595d`'s `onTableEnsured` blocks are the old init DDL
+  moved verbatim). `83d0c969b` touches no DDL.
+- **`help/**` vs v4 HEAD `83d0c969b`:** IDENTICAL — **129 files**
+  (`83d0c969b` touches no `help/` file). The 129 literals live at
+  `crates/quilltap-host/tests/host_help_docs_boot.rs` and
+  `crates/quilltap-harness/tests/help_tree_embed_guard.rs` (plus the SPA's
+  `help-categories.ts` capture, which carries the two `chat-settings-*`
+  slugs).
 - **The three text-compression migrations and the image re-encode migration
   stay DEFERRED as reclamation** (named in `db/text_compression.rs`, the
   P4.D209 record, and P4.104's module doc). The animated-input ruling is
   LANDED (P4.108); the corrupt-second-frame ruling (2026-09-23) keeps v5's
   first-frame still.
-- **`docs/v4/developer/bugs/`** is identical to v4's at `d1c06cd9d`; v4 has
-  since added `fixed/bug-167-*`, `fixed/bug-168-*`, `bug-169-*` and the
-  matching `bugs.md` rows; since `83d0c969b` **bugs 1–170 are all fixed
-  in v4** (bug 169's file moved to `fixed/`; bug 170's filed straight into
-  `fixed/`, its v5 status "Unchecked" upstream — measured here as not
-  affected). The mirror refresh rides the catch-up round's
-  unification. `docs/v4/CHANGELOG.md`'s older lag stays a named housekeeping
-  item.
+- **`docs/v4/developer/bugs/`** is identical to v4's at `b0b6656b5` (the
+  unification refreshed `bugs.md`, `fixed/bug-167-*`, `fixed/bug-168-*`,
+  `fixed/bug-169-*`, plus `DDL.md`, `DATABASE_ABSTRACTION.md`,
+  `features/composer-typeahead.md`, `features/complete/concierge-list-
+  marks.md` — `diff -rq` against the pin is empty bar `CHANGELOG.md`). v4
+  has since added `fixed/bug-170-*` + its `bugs.md` row (`83d0c969b`); that
+  refresh rides the next ratification. `docs/v4/CHANGELOG.md`'s older lag
+  stays a named housekeeping item.
 
 ## §2 The freshness probe
 
@@ -167,17 +138,8 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `e3937d7aa` | 2026-09-24 | Add quick-hide toggle for Salon images (#64) | PORT (SPA + help) | The quick-hide SPA vertical (P4.9d; P4.D144's uncensored-row half): a NEW images-hidden context (`components/quick-hide/images-hidden-context.tsx`) threaded through `SalonView` / `MessageRow` / `SpeakingAsAvatar` / `MessageContent` / `LazyMessageContent` / `ToolMessage` / `ui/Avatar` / four chat dialogs + a user-menu toggle; the sidebar-footer quick-hide button made always-visible and **`useHasDangerousChats` DELETED** (the only reader of `?action=has-dangerous` — see `944127d9a`). `help/quick-hide.md` + `help/dangerous-content.md` re-vendor (`p4.9i2`'s tree, 127 → 127). No `lib/`/`app/api/` hunk. | ORDERED(P4.D223) |
-| `7ebb74143` | 2026-09-24 | fix(scripts): update_version uses dev channel for non-release/bugfix branches (#67) | NO-PORT? | `scripts/update_version.sh` + CHANGELOG only — v4's release tooling; v5 has no counterpart. Needs ratification on the file list. | ORDERED(P4.D221 — NO-PORT ratification on the file list) |
-| `3376b3dfa` | 2026-09-24 | Add `@` character mention typeahead to composer (#65) | PORT-NEW (SPA + help); server NO-PORT? | The composer typeahead family (P4.D75's ProseMirror typeahead adapter, the Salon composer): a NEW `@` trigger (`MentionTypeaheadPlugin.tsx`, pure logic in NEW `lib/mentions/mention-typeahead.ts` — a CLIENT module despite its `lib/` home; the shared cursor helpers moved to `typeahead/trigger-context.ts`), the Brahma entry at line start, loading/error labels, undo re-arm. **`lib/chat/carina-parser.ts` is behaviour-NEUTRAL** — `LINE_RE` rebuilt from a `NAME_SOURCE` string to the SAME pattern plus a NEW exported `isCarinaInvocableName` (the SPA's consumer); v5's Carina parser port needs no change, but the export's grammar must be the SPA twin's. `help/carina.md` + `help/chats.md` re-vendor. | ORDERED(P4.D224 the SPA; P4.D222 the `help/` half; P4.D221 the Rust Carina neutrality re-run) |
-| `944127d9a` | 2026-09-24 | Remove unused `GET /api/v1/chats?action=has-dangerous` endpoint (#66) | PORT | **v5 ported the endpoint** (P4.D143 unit 5 — `Request::ChatsHasDangerous` / `api::salon::chats_has_dangerous` / `chats_routes.rs`, the `Unknown action: X. Available actions: has-dangerous` 400): v4 DELETES `handleHasDangerous`, and GET now answers **`Unknown action: ${action}. GET /api/v1/chats takes no actions`** for ANY non-null action — **including a bare `?action` or `?action=`** (the hunk's `!== null` check; before, an empty action fell through to the list). The verb, its response variant, the SPA's reader (if any remains after `e3937d7aa`'s port) and the `dispatch_wrong_type_census` / route census rows move with it. **Newer fact (2026-09-24 afternoon check): the error STRING is SUPERSEDED by `ad1c4c37f`** — the GET is now `dispatchAction(req, {}, handleList)`, answering the shared envelope `{error: "Unknown action: X", availableActions: []}` + WARN `Unknown action requested`; the `…takes no actions` sentence never needs porting. The bare-`?action=` → 400 half stands. Port this row and `ad1c4c37f` together. | ORDERED(P4.D220 the server half; P4.D223 the client half — §S.1) |
-| `492771aff` | 2026-09-24 | fix(help): index help docs by section and reconcile them at startup (bugs 167, 168) | PORT + CONVERGENCE (#120) | **Bug 168 IS dogfood #120** (the five largest help docs never embedded; v5 reproduces it verbatim) — but v4 fixed it by a mechanism #120 never proposed: the page is **never embedded whole**; the HELP_DOC job (`embedHelpDocSections`) reuses stored section vectors, embeds only missing ones (width taken from the first fresh vector, mismatched reused vectors re-embedded, a failing section WARNs `Help doc section embedding failed — skipping section` and is skipped; throws only when NONE remain), and the doc vector is `averageEmbeddings` — a **`Float32Array` accumulator** (f32 rounding per add) then `normalizeVector`; `skipIfOversize` dropped for HELP_DOC; an empty result → WARN `Skipping empty entity` + `markAsFailed('Empty input — nothing to embed')`; the info log's fields change to `dimensions, sectionsAveraged, sectionsEmbedded, sectionsReused, sectionsFailed`. v5 surface: `services/embedding_generate_job.rs` `help_doc_try` (:568-600, whole-page embed behind `guard_skip`) + `embed_help_doc_chunks` (:623/:654) — the HELP_DOC branch (the embedding-repair round) + P4.D77 unit 3. **Bug 167** (synthetic id in the forked job child) **v5 cannot reproduce** (in-process reindex on the writer connection, `embedding_reindex_job.rs:425`; `upsert_by_path` returns the real id), but the sync SHAPE moves: `upsertByPath` removed → update-existing-id / `create(fields, {id: randomUUID()})`, a NEW `embeddingStatus.deleteByEntity('HELP_DOC', id)` on update (clears a stale FAILED), a NEW debug line `[HelpDocSync] Synced help doc`; v5 `services/help_doc_sync.rs:295` (P4.d6), `db/help_docs.rs:423`; `help_docs_upsert_tier2_equivalence` loses its oracle surface. **Startup `reconcileHelpDocs`** replaces `ensureHelpDocsSynced`'s divergence gate + `count()>0` backfill + `enqueueMissingHelpDocEmbeddings`: sync by SHA-256 `contentHash`, NEW `helpDocChunks.countByDoc()` (one `GROUP BY docId`, `COUNT(*)` + `SUM(embedding IS NOT NULL)`), slice section-less docs, incomplete = null/empty doc vector OR fewer embedded sections than sections, INFO `[HelpDocSync] Help docs reconciled {created, updated, deleted, unchanged, sectionsBackfilled, incomplete}`, enqueue only those; once-per-process shared promise, failure WARN `Help doc reconcile failed; serving help from the existing index`; `instrumentation.ts` Phase 3.66 (before the dimension reconcile). v5: `ensure_help_docs_synced` (`help_doc_sync.rs:423`, gate :390, backfill :480, enqueue :543) wired at boot `quilltap-host/src/host.rs:521/:1047` (P4.9I2A) — the module header's "Not wired at startup" (:41-54) is already stale; `db/help_doc_chunks.rs` needs `count_by_doc`. `help-doc-chunking.ts` NEUTRAL (a test-only 1,000-token constant); `help-search.ts` comment-only; `categories.ts` gains `chat-settings-composer` + `chat-settings-ai-services` after `chat-settings` (SPA `help/help-categories.ts:58`, p4.9i2's captured transcription — re-capture). `help/` 127 → **129** (the split + nine one-line edits); the two `127` literals move. `js-tiktoken` is a devDependency (test-only). No schema change. | ORDERED(P4.D222) |
-| `94e946728` | 2026-09-24 | docs(bugs): file bug 169 — a narrow Salon pane's sidebar overlay closes the portaled Scenario Builder on its first click | NO-PORT? | This port's OWN filing (v5 `af6ed7e7` fixed it as a divergence — the sidebar ignores clicks inside `.qt-dialog-overlay`). Docs-only: `docs/developer/bugs.md` + `bugs/bug-169-*.md`; the mirror copy rides the next unification. **Watch for the CONVERGENCE**: when v4 lands its own fix in `ChatSidebar.tsx`, the v5 divergence becomes faithful — §5.4, measure v4's actual predicate before retiring the note. **Newer fact (third check): the convergence LANDED as `b0b6656b5`** (row below); this filing's doc then moves to `fixed/`. | ORDERED(P4.D223 — NO-PORT ratification on the file list; the mirror is the unifier's) |
-| `ad1c4c37f` | 2026-09-24 | Consolidate API action dispatch into single primitive (#68) | PORT (web edges + two `lib/` units); tests/docs NO-PORT? | **On `origin/main` only at the first check — pulled into local `main` by the second (`f51a44548`).** ONE `dispatchAction(req, thunks, fallback?)`: absent `action` → fallback (none → 400 `{error: "Action parameter required", availableActions}` + WARN `No action param and no default handler`); known (`hasOwnProperty`) → handler; **unknown OR bare `?action=`** → 400 `{error: "Unknown action: X", availableActions}` (top level, the thunk map's key order) + WARN `Unknown action requested`. `withActionDispatch` rebuilt on it (its `if (action)` truthiness is gone — a bare `?action=` stops reaching the default on EVERY consumer). **v5's fold is the root site:** `quilltap-web/src/query.rs:120` `query::action()` folds a bare `?action=` onto "no action". Wire-moving v5 REST edges (v5 reproduces v4's PRE-commit bytes today): `chats_routes.rs:44-69` (see `944127d9a`), core `api/chat_delete.rs:88-104/:230-243` (P4.80; a bare `?action=` DELETED the chat), `backup_routes.rs:122` (a bare/unknown `POST /system/restore` RAN a restore), `files_routes.rs:239` (GET `[thumbnail]` now dispatched BEFORE the file lookup — v5 404s first) + `:1113/:1136`, `text_replacements_routes.rs:126`, `images_routes.rs:141` (module doc :1-17 now false), `embedding_profiles_routes.rs:88`, `help_routes.rs:83/:117-126/:170-190`, `brahma_routes.rs:103/:131-134`, `system_data_routes.rs:97-117` (`tools_unknown_action`), `:580/:593` (conversation-summaries, was `Unknown or missing action.`), `:628` → core `system_data.rs:465` (jobs, was `Invalid action. Available actions: pause, resume`), `:777-800` (unlock — also `return await run(body)` so a throwing handler is now ERROR `Error in database key action` + 500), `profile_routes.rs:85/:103/:133-143`, `messages_swipe_routes.rs:66/:97-110`; plus every `withActionDispatch` consumer's bare-`?action=` arm (avatar-rolls, wardrobe ×2, custom-tools ×2, `embedding-profiles/[id]`, messages GET, `mount-points/[id]`, scenario-builder, `system/data-dir`, chat-files/[id], autonomous-room, documents, search-replace, terminals). v5 has `query.rs`'s `unknown_action_response` / `action_required_response` (~10 sites) and NINE hand-rolled sentence sites. Dispatch-only v4 routes (api-keys, characters, chats/[id] PATCH/PUT/POST, connection/image profiles, memories, mount-points, groups/projects DELETE — unknown DELETED the entity — images/[id], folders, plugins, themes, scenarios) move no v5 REST wire. Prior owners: P4.67 (query-param semantics), P4.72 units 1–5, P4.80, P4.D85/P4.D86 (Bug 74), P4.62, P4.D143 §H. **`lib/`:** `write-partition.ts` `MOUNT_INDEX_REPO_KEYS` gains `groupDocMountLinks` + `groupCharacterMembers` — **behaviour-changing**, v5 `write_partition.rs:47` lacks both and the oracle corpus never probes them (needs red-first rows); `brahma-sql-prompt.ts` gains a `qt_text()` sentence — regenerate v5's byte-exact `services/brahma_console/prompt_text.rs:62`; `escapeLikePattern` merged into `escapeLikeLiteral` (output identical; v5 already folded, `db/fts_query.rs:118`); blob-registration caching + `requireMountIndexDb` guard NEUTRAL for v5; 33 deleted repo methods are dead in v4 (v5 ports six — `find_by_keywords`, `find_by_about_character_id`, `delete_by_source_message_ids`, `find_llm_controlled`, `find_recent_for_chat`, `prompt_templates::find_built_in` — harness/unit-only callers, informational). **Oracle cases that BREAK at the new pin:** `harness/oracle/cases/fts-query.ts:46` (imports `escapeLikePattern`), `characters-read.ts:113` (`findLLMControlled`), `memories-read.ts:136/:180`, `memories-tier2.ts:123`; the tripwire family `query_param_semantics_equivalence` (33 endpoints × 6 shapes) will red on its `fold` claim and on `chats_collection_get`'s `has-dangerous` probe **by design**. | ORDERED(P4.D220 the web edges + core dispatch + the chat GET; P4.D221 the `lib/` riders + the four oracle-case repairs) |
-| `68da64d9b` | 2026-09-24 | refactor(api): dispatch GET /api/v1/chats/[id] actions through dispatchAction (#69) | PORT (web edge) | **Prose trap (§5.3):** the message says it ADDS `dispatchAction` — the diff never touches `lib/api/middleware/actions.ts` (PR #69 branched before #68 and rebased onto `ad1c4c37f`, which added it). What ships: `handleGet`'s `if (action === …)` ladder becomes `dispatchAction(req, {export, export-markdown, get-avatars, get-state, outfit, outfit-summary, photo-albums, informs, group-stores, mailbox, accessible-stores, get-background, gallery, cost}, handleGetChat)` — **that key order is the `availableActions` order**, the ladder's own order. Before: an unknown OR bare `?action=` fell through to the whole chat body; after: 400 `{error: "Unknown action: X", availableActions: [those 14]}` + WARN `Unknown action requested`. Every action body moved verbatim (the `get-background` body into `actions/story-background.ts` `handleGetStoryBackground` — measured identical modulo indentation; export/gallery/cost into named handlers with the same log lines and 500 texts); an unused `forbidden` import dropped. v5 surface: the REST fan-out `quilltap-web/src/wardrobe_routes.rs` (…`:353` `export-markdown`, then `_ => chat_get_background`) → `text_replacements_routes.rs:~284-315` `chat_get_background`, whose `_` arm answers v5's own loud pointer `Only the get-background and cost actions are served on this route; the chat GET rides POST /api/dispatch` (the default chat GET + the other actions ride dispatch). The unknown-action arm should now take v4's envelope with the full 14-key list; the bare-`?action=` arm hinges on `query::action()`'s fold (`ad1c4c37f`'s root site); the absent-action arm (v4's whole chat) stays the loud pointer unless the chat GET gains a REST edge. `query_param_semantics_equivalence`'s chat-GET rows move with `ad1c4c37f`'s. Prior owners: P4.d28 (export-markdown), P4.67/P4.72 (the query-param sweep). | ORDERED(P4.D220) |
-| `8aafd595d` | 2026-09-24 | Extract dedicated-database repository base class (#70) | NO-PORT? (mostly refactor) | `AbstractDedicatedDbRepository` under the nine mount-index repos + `llm-logs`; `withRawDb`/`ensureRawDb`/`requireLLMLogsDb`; `dbTarget` on every repo + a unit test holding the partitioner to it. **`write-partition.ts` changes NO key** (the two mount-index keys arrived in `ad1c4c37f` — that row owns v5's `write_partition.rs:47` gap; the message's "found them missing" narrates the PR's history, not this diff). `blobColumns: ['embedding']` on chunks is net-neutral (in the parent; the regression lived only between the PR's sub-commits). DDL: none — `onTableEnsured` bodies are the old init blocks moved verbatim. **Four observable deltas, none v5 matched:** (1) the joined file-link read now catches its own SQL error — ERROR `Error querying joined file links` `{whereClause, error}` replaces the outer caller's `Error finding file link(s) by …` lines (v5 carries the pre-commit strings at `photos/chat_gallery.rs:242/:257/:265`, unpinned — an OPTIONAL move on a SQL-failure path); (2) a NEW ERROR `Error checking the one-link constraint for a filesystem-source file` before the rethrow in file-link `create` (v5 has no port of that constraint at all — a pre-existing gap, not this commit's); (3) three writers' degraded-mode text `Mount index database not initialized` → `…is in degraded mode` (v5 has no degraded path — `DbError::PartitionUnavailable`, P4.D122); (4) a NEW DEBUG `Dedicated database unavailable; answering with the fallback` (fallback values unchanged at every site). Lazy table-ensure now fires at raw-SQL sites (timing only; v5 provisions schema up front). No oracle import breaks. Ratify NO-PORT on this evidence or fold item (1) into the dispatch lane as a small. | ORDERED(P4.D221 — NO-PORT ratification with item (1) taken as a Tier-2 small) |
-| `83d0c969b` | 2026-09-24 | Fix bug 170: Salon speaker switch sends POST, not PUT | NO-PORT? (v5 never had it) | **Hunks:** ONE line in `app/salon/[id]/hooks/useImpersonation.ts:153` (`handleSetActiveSpeaker`'s `method: 'PUT'` → `'POST'`), a NEW jest test (`__tests__/unit/app/salon/hooks/useImpersonation.set-active-speaker.test.tsx`), `bugs.md` + NEW `bugs/fixed/bug-170-*.md`, the `4.10.0-dev.79` stamp (three `package*.json` + README), CHANGELOG. No `lib/`, `app/api/`, `help/`, DDL or oracle-import hunk. **v5 is NOT affected — measured, not assumed:** the SPA's speaker pick (`apps/web/src/app/screens/salon/salon-conversation.ts:2546` `onSelectSpeaker`) sends `chatSetActiveSpeaker` over the dispatch client — no HTTP method exists to get wrong — and the verb runs the real write (`api/salon.rs:1954`, `Request::ChatSetActiveSpeaker`; covered by `salon_mutations_equivalence` + `salon-conversation.spec.ts` / `salon-turn-controls.spec.ts`). v5's REST `/api/v1/chats/{id}` registers no PUT leg and its POST leg serves only `equip`/`regenerate-avatar` (`quilltap-web/src/lib.rs:436`), so neither v4's pre-`ad1c4c37f` silent no-op nor its post-dispatcher 400 toast is reachable on v5. v4's bug file asks "v5 status: Unchecked" — the answer is **not affected** (a candidate one-line upstream note). The bug-file mirror rides the catch-up round's unification with bugs 167–169. Ratify NO-PORT on this file list; it can fold into P4.D221's ratification list. **Newer fact (2026-09-24): the human WAIVED this commit for the P4.D220–P4.D224 lanes' §R.2 probe (§1); the row stays unordered and the round's target stays `b0b6656b5`.** | UNPROCESSED |
-| `b0b6656b5` | 2026-09-24 | Fix bug 169: narrow-pane chat sidebar no longer closes dialogs it opens (#71) | CONVERGENCE (SPA + help) | v4 adopts this port's own filing (v5 `af6ed7e7`). **Measured (§5.4), not assumed:** v4's new `components/chat/sidebar-overlay-dismiss.ts` `shouldDismissSidebarOverlay(panel, target)` = no dismiss when the panel is null or the target is not a `Node`; no dismiss inside the panel; otherwise dismiss unless `(target instanceof Element ? target : target.parentElement)?.closest('.qt-dialog-overlay')`. v5's `apps/web/src/app/chat/sidebar/chat-sidebar.ts:~517` = the same two exits in the same order, but its `closest` runs only when the target IS an `Element` — **the one residual difference: a non-Element `Node` target (a text node) inside a dialog overlay dismisses on v5 and not on v4.** Pointer events target elements in practice, so it is unreachable from a real click; take v4's `parentElement` fallback anyway so the twin is exact. What moves on v5: the "deliberate divergence from v4" wording at `chat-sidebar.ts:517`, `chat-sidebar.spec.ts:453/:459`, `e2e/scenario-builder-flow.spec.ts:201`, `phase-4.md:6649`'s ruling note and the CHANGELOG/status-log record become "faithful since `b0b6656b5`" (no behaviour pin trips — v5 never pinned v4's OLD behaviour, only its own); `help/chat-participants.md` re-vendors (one bullet; 129 stays 129); the `docs/v4/developer/bugs/` mirror takes the move to `fixed/`. v4's unit test (`__tests__/unit/components/chat/sidebar-overlay-dismiss.test.ts`) is the vector set for a twin spec if wanted. | ORDERED(P4.D223) |
+| `83d0c969b` | 2026-09-24 | Fix bug 170: Salon speaker switch sends POST, not PUT | NO-PORT? (v5 never had it) | **Hunks:** ONE line in `app/salon/[id]/hooks/useImpersonation.ts:153` (`handleSetActiveSpeaker`'s `method: 'PUT'` → `'POST'`), a NEW jest test (`__tests__/unit/app/salon/hooks/useImpersonation.set-active-speaker.test.tsx`), `bugs.md` + NEW `bugs/fixed/bug-170-*.md`, the `4.10.0-dev.79` stamp (three `package*.json` + README), CHANGELOG. No `lib/`, `app/api/`, `help/`, DDL or oracle-import hunk. **v5 is NOT affected — measured, not assumed:** the SPA's speaker pick (`apps/web/src/app/screens/salon/salon-conversation.ts:2546` `onSelectSpeaker`) sends `chatSetActiveSpeaker` over the dispatch client — no HTTP method exists to get wrong — and the verb runs the real write (`api/salon.rs:1954`, `Request::ChatSetActiveSpeaker`; covered by `salon_mutations_equivalence` + `salon-conversation.spec.ts` / `salon-turn-controls.spec.ts`). v5's REST `/api/v1/chats/{id}` registers no PUT leg and its POST leg serves only `equip`/`regenerate-avatar` (`quilltap-web/src/lib.rs:436`), so neither v4's pre-`ad1c4c37f` silent no-op nor its post-dispatcher 400 toast is reachable on v5. v4's bug file asks "v5 status: Unchecked" — the answer is **not affected** (a candidate one-line upstream note). The bug-file mirror rides the catch-up round's unification with bugs 167–169. Ratify NO-PORT on this file list; it can fold into P4.D221's ratification list. **Newer fact (2026-09-24): the human WAIVED this commit for the P4.D220–P4.D224 lanes' §R.2 probe (§1); the row stays unordered and the round's target stays `b0b6656b5`.** | UNPROCESSED (the round's waiver expired at unification — ratify on the file list) |
+| `a8292547a` | 2026-09-24 | Add Concierge overhaul feature specs (overview + five phases) (#72) | NO-PORT? | `origin/main` ONLY at the unification's closing probe (local `main` at `83d0c969b`). Nine files, +1,008, all docs: `docs/developer/features/concierge-overhaul.md` + five `concierge-overhaul-phase-{1..5}-*.md` (refusal failover, a refusal ledger, three states, a Concierge tab, Salon polish — a ROADMAP for future v4 work, nothing shipped), `docs/developer/features/ROADMAP.md` (+1), `.claude/commands/update-documentation.md` (+6), CHANGELOG. No `lib/`, `app/`, `help/`, `packages/`, `plugins/` path. Ratify NO-PORT on the file list; the `docs/v4/developer/features/` mirror takes the six specs + the ROADMAP line then. **Watch:** when the phases LAND as code they will be PORT rows of their own — the Concierge's four states, list marks and choice-at-creation are ported surfaces (the `dcd9440a`–`31436bae4` arc). | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -331,6 +293,44 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `b0b6656b5` ten-commit drift catch-up round (2026-09-25, baseline
+  `d1c06cd9d` → `b0b6656b5`; P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥
+  P4.D224):** `ad1c4c37f` (the ONE `dispatchAction` primitive) ABSORBED(P4.D220
+  the web edges + core dispatch — `query::dispatch_action` /
+  `dispatch_required_action`, the folding `query::action()` DELETED, every
+  consumer's FULL v4 list in v4's order, the four data-affecting arms
+  red-first [a bare `?action=` had DELETED a chat, RUN a restore, UPLOADED a
+  file, CREATED a rule], the unlock edge's awaited catch, the two WARNs at
+  v4's field names, `query_param_semantics` re-recorded with `fold` false
+  everywhere; P4.D221 the `lib/` riders — the two mount-index partition keys
+  red-first, the Brahma `qt_text()` sentence regenerated, `escapeLikeLiteral`
+  NEUTRAL, six dead v5 twins retired with their oracle rows). `68da64d9b` (the
+  chat GET's fourteen keys) ABSORBED(P4.D220 — gated BEFORE any chat read;
+  the absent arm's pointer pinned both ways). `944127d9a` (the
+  `?action=has-dangerous` removal) ABSORBED(P4.D220 the server half —
+  `Request::ChatsHasDangerous` retired end to end; P4.D223 the client half —
+  the probe, the three-way gate and the contract member deleted, the section
+  ALWAYS offered). `492771aff` (bugs 167/168) ABSORBED(P4.D222 — the HELP_DOC
+  job by SECTION with `average_embeddings` [a NEW tier-1 family, f32
+  bit-exact], `count_by_doc`, the sync shape by id, `reconcile_help_docs` +
+  the once-per-boot `HelpDocReconcileGate`, the boot order 3.66 before 3.7,
+  `help/` 127 → 129 whole; **bug 168 IS dogfood #120 — CONVERGED by v4's
+  mechanism**). `e3937d7aa` (the Salon Images quick-hide) ABSORBED(P4.D223 —
+  `hideSalonImages` + the Salon-scoped `IMAGES_HIDDEN` token + v4's two
+  stand-ins at every Salon image site; a v5-only XSS in the inline stand-in's
+  string swap found and fixed at unification). `3376b3dfa` (the `@` mention
+  typeahead) ABSORBED(P4.D224 — the pure module recorded against v4's real
+  one [116 rows], the ProseMirror plugin, the composer wiring + §S.2; the char
+  typeahead's soft-break defect found and fixed with it; P4.D222 the `help/`
+  half; P4.D221 the Rust Carina neutrality re-run, 67/67 byte-identical).
+  `b0b6656b5` (bug 169) CONVERGENCE-RETIRED(P4.D223 — v5's predicate made
+  v4's exact twin, every "deliberate divergence" wording retired).
+  `7ebb74143` (the release script) and `8aafd595d` (the dedicated-db
+  repository base — its item (1) taken as P4.D221's Tier-2 small, the joined
+  read's inner ERROR) NO-PORT-RATIFIED(P4.D221, on the file lists).
+  `94e946728` (this port's bug-169 filing) NO-PORT-RATIFIED(P4.D223, docs
+  only). Round record: `status-log.md` → "Round record — the `b0b6656b5`
+  ten-commit drift catch-up round unification".
 - **The `d1c06cd9d` Scenario Builder drift catch-up + maintenance round
   (2026-09-23, baseline `00c290c9a` → `d1c06cd9d`):** `d1c06cd9d` (the
   Scenario Builder) ABSORBED(P4.D216 the substrate — the shared
