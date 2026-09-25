@@ -325,3 +325,50 @@ export function generalScenarioMutator(core: CoreClient): ScenarioMutator {
       })) as MutateBody,
   });
 }
+
+/**
+ * The group-scoped mutator (v4 `useScenarioMutator('/api/v1/groups/<id>/
+ * scenarios')`, `08c49319d`'s `GroupScenariosCard`), base `groupScenario*` —
+ * the six verbs the server has always carried. `includeArchived` threads onto
+ * the three mutates as the project twin's does, so a mutate with "Show
+ * archived" ticked answers the archived-inclusive list.
+ */
+export function groupScenarioMutator(core: CoreClient, groupId: string): ScenarioMutator {
+  return makeScenarioMutator({
+    list: async (includeArchived) =>
+      (await core.dispatchData({
+        type: 'groupScenarioList',
+        groupId,
+        includeArchived,
+      })) as unknown as ScenarioListDto,
+    create: async (scenario) =>
+      (await core.dispatchData({
+        type: 'groupScenarioCreate',
+        groupId,
+        scenario,
+      })) as MutateBody,
+    update: async (scenarioPath, scenario, includeArchived) =>
+      (await core.dispatchData({
+        type: 'groupScenarioUpdate',
+        groupId,
+        scenarioPath,
+        scenario,
+        includeArchived,
+      })) as MutateBody,
+    rename: async (scenarioPath, newFilename, includeArchived) =>
+      (await core.dispatchData({
+        type: 'groupScenarioRename',
+        groupId,
+        scenarioPath,
+        newFilename,
+        includeArchived,
+      })) as MutateBody,
+    remove: async (scenarioPath, includeArchived) =>
+      (await core.dispatchData({
+        type: 'groupScenarioDelete',
+        groupId,
+        scenarioPath,
+        includeArchived,
+      })) as MutateBody,
+  });
+}

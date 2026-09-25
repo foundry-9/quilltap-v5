@@ -4,6 +4,7 @@ import type { CoreClient } from '../../core/core-client';
 import type { ScenarioDto } from '../../core/core-contract';
 import {
   generalScenarioMutator,
+  groupScenarioMutator,
   projectScenarioMutator,
   type ScenarioMutator,
 } from './scenarios.api';
@@ -196,5 +197,52 @@ describe('makeScenarioMutator — the archive half (v4 d25dacc1)', () => {
     const create = h.sent.find((r) => r.type === 'scenarioCreate');
     expect(create).toBeDefined();
     expect(create).not.toHaveProperty('includeArchived');
+  });
+});
+
+describe('groupScenarioMutator — the group shelf (P4.D231, v4 08c49319d)', () => {
+  it('lists through groupScenarioList with the group id and the flag', async () => {
+    const h = harness((core) => groupScenarioMutator(core, 'g1'));
+    await h.mutator.refresh();
+    expect(h.sent.at(-1)).toEqual({
+      type: 'groupScenarioList',
+      groupId: 'g1',
+      includeArchived: false,
+    });
+  });
+
+  it('creates through groupScenarioCreate without the flag (v4 reads the BODY there)', async () => {
+    const h = harness((core) => groupScenarioMutator(core, 'g1'));
+    await h.mutator.createScenario({ name: 'N', body: 'b', filename: 'n' });
+    const create = h.sent.find((r) => r.type === 'groupScenarioCreate');
+    expect(create).toMatchObject({ groupId: 'g1', scenario: { name: 'N', filename: 'n' } });
+    expect(create).not.toHaveProperty('includeArchived');
+  });
+
+  it('with "Show archived" ticked, update / rename / delete CARRY includeArchived and the archived-inclusive answer is applied — the project card’s behaviour', async () => {
+    const h = harness((core) => groupScenarioMutator(core, 'g1'), {
+      mutateList: [dto({ name: 'Tavern', archived: true })],
+    });
+    h.mutator.setShowArchived(true);
+    await settle();
+    expect(h.sent.at(-1)).toEqual({
+      type: 'groupScenarioList',
+      groupId: 'g1',
+      includeArchived: true,
+    });
+    const lists = h.sent.filter((r) => r.type === 'groupScenarioList').length;
+
+    await h.mutator.updateScenario('Scenarios/tavern.md', { body: 'x' });
+    await h.mutator.renameScenario('Scenarios/tavern.md', 'inn');
+    await h.mutator.deleteScenario('Scenarios/tavern.md');
+    for (const type of ['groupScenarioUpdate', 'groupScenarioRename', 'groupScenarioDelete']) {
+      expect(h.sent.find((r) => r.type === type)).toMatchObject({
+        groupId: 'g1',
+        includeArchived: true,
+      });
+    }
+    // No relist — the mutate response IS the list, and it asked for archived.
+    expect(h.sent.filter((r) => r.type === 'groupScenarioList').length).toBe(lists);
+    expect(h.mutator.scenarios()[0].archived).toBe(true);
   });
 });

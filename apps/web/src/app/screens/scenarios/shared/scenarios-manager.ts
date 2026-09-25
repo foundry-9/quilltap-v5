@@ -1,9 +1,33 @@
 import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
 
+import { injectImagesHidden } from '../../../chat/hidden-image/images-hidden';
 import type { ScenarioDto } from '../../../core/core-contract';
+import { HOST_AVATAR } from '../../../scenario-builder/host-avatar';
+import {
+  ScenarioBuilderDialog,
+  type SaveScenarioTargetKey,
+} from '../../../scenario-builder/scenario-builder-dialog';
 import type { ScenarioMutator, ScenarioResult } from '../scenarios.api';
 import { ScenarioEditorModal, type ScenarioSaveInput } from './scenario-editor-modal';
 import { ScenarioRow } from './scenario-row';
+
+/** Which scenarios shelf a manager is showing — General, one project's, or one group's (v4 `08c49319d`). */
+export type ScenarioShelf =
+  | { kind: 'general' }
+  | { kind: 'project'; projectId: string; projectName?: string | null }
+  | { kind: 'group'; groupId: string };
+
+/** v4 `shelfSaveTarget` — the shelf's own home, as the save select keys it. */
+export function shelfSaveTarget(shelf: ScenarioShelf): SaveScenarioTargetKey {
+  switch (shelf.kind) {
+    case 'general':
+      return 'general';
+    case 'project':
+      return `project:${shelf.projectId}`;
+    case 'group':
+      return `group:${shelf.groupId}`;
+  }
+}
 
 /**
  * ScenariosManager (v4 `components/scenarios/ScenariosManager.tsx`) — the
@@ -21,11 +45,19 @@ import { ScenarioRow } from './scenario-row';
  * server decides what is hidden, so the list can never disagree with the API
  * (v4 `d25dacc1`). Archive/restore is single-click — deliberately no confirm,
  * because nothing is destroyed.
+ *
+ * `shelf` (v4 `08c49319d`) — which shelf this is, for the Host's Scenario
+ * Builder button: the builder reads that shelf's stores (a project's, a
+ * group's, or just General), launches with no cast and no "Use this scene",
+ * and its Save offers every home with this one preselected. After a save
+ * (wherever it was filed) this shelf refreshes silently — the shelves are not
+ * TanStack-cached, so the `scenarioKeys.all` invalidation the save dialog runs
+ * cannot reach them.
  */
 @Component({
   selector: 'qt-scenarios-manager',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ScenarioRow, ScenarioEditorModal],
+  imports: [ScenarioRow, ScenarioEditorModal, ScenarioBuilderDialog],
   template: `
     <div class="space-y-3 @container">
       @if (mutator().warnings().length > 0) {
@@ -54,9 +86,27 @@ import { ScenarioRow } from './scenario-row';
           />
           Show archived
         </label>
-        <button type="button" class="qt-button qt-button-primary qt-button-sm" (click)="openCreate()">
-          + New scenario
-        </button>
+        <div class="flex items-center gap-2 flex-wrap">
+          @if (shelf()) {
+            <button
+              type="button"
+              class="qt-button qt-button-secondary qt-button-sm inline-flex items-center gap-1.5"
+              (click)="builderOpen.set(true)"
+            >
+              @if (!imagesHidden()) {
+                <img [src]="hostAvatar" alt="" class="h-4 w-4 rounded-full" />
+              }
+              Ask the Host to set the scene
+            </button>
+          }
+          <button
+            type="button"
+            class="qt-button qt-button-primary qt-button-sm"
+            (click)="openCreate()"
+          >
+            + New scenario
+          </button>
+        </div>
       </div>
 
       @if (mutator().loading()) {
@@ -80,6 +130,29 @@ import { ScenarioRow } from './scenario-row';
       }
     </div>
 
+    <!--
+      The Host's Scenario Builder on a shelf (v4 08c49319d). Deferred — v4
+      loads the dialog with next/dynamic so the builder stays out of this
+      surface's bundle until the Host is asked; the @defer block is that lazy
+      load. No (use): a shelf has no box to use a scene in.
+    -->
+    @if (builderOpen()) {
+      @if (shelf(); as s) {
+        @defer {
+          <qt-scenario-builder-dialog
+            [cast]="[]"
+            [projectId]="s.kind === 'project' ? s.projectId : null"
+            [projectName]="s.kind === 'project' ? (s.projectName ?? null) : null"
+            [groupIds]="s.kind === 'group' ? [s.groupId] : []"
+            saveTargets="everywhere"
+            [defaultSaveTarget]="saveTargetOf(s)"
+            (closed)="builderOpen.set(false)"
+            (saved)="onBuiltSceneSaved()"
+          />
+        }
+      }
+    }
+
     @if (editorOpen()) {
       <qt-scenario-editor-modal
         [scenario]="editingScenario()"
@@ -97,6 +170,18 @@ export class ScenariosManager {
   readonly emptyMessage = input<string>(
     "No scenarios yet. Create one and it'll be offered when starting new chats.",
   );
+  /** The shelf being managed; offers the Host's Scenario Builder when set. */
+  readonly shelf = input<ScenarioShelf | null>(null);
+
+  protected readonly imagesHidden = injectImagesHidden();
+  protected readonly hostAvatar = HOST_AVATAR;
+  protected readonly builderOpen = signal(false);
+  protected readonly saveTargetOf = shelfSaveTarget;
+
+  /** v4 `onSaved={() => void refresh({ silent: true })}` — this shelf may have gained a row. */
+  protected onBuiltSceneSaved(): void {
+    void this.mutator().refresh({ silent: true });
+  }
 
   protected readonly editorOpen = signal(false);
   protected readonly editingScenario = signal<ScenarioDto | null>(null);

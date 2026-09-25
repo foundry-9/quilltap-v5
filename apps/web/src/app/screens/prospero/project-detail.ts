@@ -138,7 +138,11 @@ import {
             (unlink)="onUnlinkStore($event)"
           />
 
-          <qt-project-scenarios-card [projectId]="id()" [defaultOpen]="firstVisit()" />
+          <qt-project-scenarios-card
+            [projectId]="id()"
+            [projectName]="project()!.name"
+            [defaultOpen]="firstVisit()"
+          />
           <qt-project-wardrobe-card [projectId]="id()" [defaultOpen]="firstVisit()" />
 
           <qt-project-characters-card [project]="project()!" [defaultOpen]="firstVisit()" />

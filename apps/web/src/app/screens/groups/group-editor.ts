@@ -25,6 +25,7 @@ import { PromptFieldLabel } from '../../ui/prompt-field-label';
 import { ToastService } from '../../ui/toast.service';
 import { fetchCharacterList } from '../characters/characters.api';
 import { GroupMembersCard } from './group-members-card';
+import { GroupScenariosCard } from './group-scenarios-card';
 import { GroupStoresCard } from './group-stores-card';
 import {
   addGroupMember,
@@ -59,6 +60,7 @@ import {
     LoadingState,
     GroupMembersCard,
     GroupStoresCard,
+    GroupScenariosCard,
     StateEditorModal,
     MarkdownField,
     PromptFieldLabel,
@@ -205,6 +207,8 @@ import {
             [unlinking]="storeUnlinking()"
             (unlink)="onUnlinkStore($event)"
           />
+          <!-- v4 08c49319d: the group's scenarios, last in the cards column, collapsed. -->
+          <qt-group-scenarios-card [groupId]="id()" />
         </div>
 
         @if (showStateModal()) {

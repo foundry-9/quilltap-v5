@@ -1,15 +1,25 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+  computed,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
 
 import { CoreClient } from '../../../core/core-client';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
-import { ScenariosManager } from '../../scenarios/shared/scenarios-manager';
+import { ScenariosManager, type ScenarioShelf } from '../../scenarios/shared/scenarios-manager';
 import { projectScenarioMutator, type ScenarioMutator } from '../../scenarios/scenarios.api';
 
 /**
  * The project Scenarios card (v4 `app/prospero/[id]/components/ScenariosCard.tsx`):
  * the collapsible header lives here; the CRUD body is the shared
  * {@link ScenariosManager}, fed by the project-scoped mutator. Items created
- * here are offered when starting new chats in this project.
+ * here are offered when starting new chats in this project. The shelf offers
+ * the Host's Scenario Builder over the project's stores (v4 `08c49319d`),
+ * with "Project: <name>" as Save's default home.
  */
 @Component({
   selector: 'qt-project-scenarios-card',
@@ -26,6 +36,7 @@ import { projectScenarioMutator, type ScenarioMutator } from '../../scenarios/sc
         <qt-scenarios-manager
           [mutator]="m"
           scopeLabel="project"
+          [shelf]="shelf()"
           emptyMessage="No scenarios yet. Create one and it'll be offered when starting new chats in this project."
         />
       </qt-collapsible-card>
@@ -34,7 +45,15 @@ import { projectScenarioMutator, type ScenarioMutator } from '../../scenarios/sc
 })
 export class ProjectScenariosCard implements OnInit {
   readonly projectId = input.required<string>();
+  /** Offered as the Host's default save home ("Project: <name>"). */
+  readonly projectName = input<string | null>(null);
   readonly defaultOpen = input(false);
+
+  protected readonly shelf = computed<ScenarioShelf>(() => ({
+    kind: 'project',
+    projectId: this.projectId(),
+    projectName: this.projectName(),
+  }));
 
   private readonly core = inject(CoreClient);
   protected readonly mutator = signal<ScenarioMutator | null>(null);

@@ -6,7 +6,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ScenarioDto } from '../../../core/core-contract';
 import { RichEditor } from '../../../editor/rich-editor';
 import type { ScenarioMutator, ScenarioResult } from '../scenarios.api';
-import { ScenariosManager } from './scenarios-manager';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
+
+import { IMAGES_HIDDEN } from '../../../chat/hidden-image/images-hidden';
+import { CoreClient } from '../../../core/core-client';
+import { ScenarioBuilderDialog } from '../../../scenario-builder/scenario-builder-dialog';
+import { fakeCore } from '../../../scenario-builder/scenario-builder-dialog.testing';
+import { ToastService } from '../../../ui/toast.service';
+import { ScenariosManager, shelfSaveTarget, type ScenarioShelf } from './scenarios-manager';
 
 function scenario(over: Partial<ScenarioDto> = {}): ScenarioDto {
   return {
@@ -122,6 +129,9 @@ async function render(
   opts: { scopeLabel?: string; emptyMessage?: string } = {},
 ): Promise<ComponentFixture<ScenariosManager>> {
   TestBed.configureTestingModule({ imports: [ScenariosManager] });
+  // The Host's builder sits behind `@defer` (P4.D231), so the manager's
+  // metadata resolves asynchronously.
+  await TestBed.compileComponents();
   const fixture = TestBed.createComponent(ScenariosManager);
   fixture.componentRef.setInput('mutator', handle.mutator);
   if (opts.scopeLabel) fixture.componentRef.setInput('scopeLabel', opts.scopeLabel);
@@ -136,9 +146,9 @@ function text(fixture: ComponentFixture<unknown>): string {
 }
 
 function byText(fixture: ComponentFixture<unknown>, label: string): HTMLButtonElement {
-  const btn = Array.from(
-    (fixture.nativeElement as HTMLElement).querySelectorAll('button'),
-  ).find((b) => (b.textContent ?? '').trim() === label);
+  const btn = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).find(
+    (b) => (b.textContent ?? '').trim() === label,
+  );
   if (!btn) throw new Error(`button "${label}" not found`);
   return btn as HTMLButtonElement;
 }
@@ -177,7 +187,10 @@ describe('ScenariosManager', () => {
 
   it('renders a row per scenario with the .md filename and Default badge', async () => {
     const handle = mockMutator({
-      scenarios: [scenario({ isDefault: true }), scenario({ path: 'Scenarios/duel.md', filename: 'duel', name: 'A Duel at Dawn' })],
+      scenarios: [
+        scenario({ isDefault: true }),
+        scenario({ path: 'Scenarios/duel.md', filename: 'duel', name: 'A Duel at Dawn' }),
+      ],
     });
     const fixture = await render(handle);
     const rows = (fixture.nativeElement as HTMLElement).querySelectorAll('qt-scenario-row');
@@ -345,7 +358,10 @@ describe('ScenariosManager', () => {
 
   it('sets default via re-send; no-ops on an already-default row', async () => {
     const handle = mockMutator({
-      scenarios: [scenario({ isDefault: true }), scenario({ path: 'Scenarios/duel.md', filename: 'duel' })],
+      scenarios: [
+        scenario({ isDefault: true }),
+        scenario({ path: 'Scenarios/duel.md', filename: 'duel' }),
+      ],
     });
     const fixture = await render(handle);
     const radios = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLInputElement>(
@@ -418,5 +434,121 @@ describe('ScenariosManager', () => {
     await settle(fixture);
     expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
     expect(text(fixture)).toContain('A scenario named "welcome" already exists');
+  });
+});
+
+describe('ScenariosManager — the Host on a shelf (P4.D231, v4 08c49319d)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  async function renderShelf(
+    handle: MockHandle,
+    shelf: ScenarioShelf | null,
+    opts: { imagesHidden?: boolean } = {},
+  ): Promise<ComponentFixture<ScenariosManager>> {
+    const fake = fakeCore();
+    TestBed.configureTestingModule({
+      imports: [ScenariosManager],
+      providers: [
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+        { provide: CoreClient, useValue: fake.core },
+        { provide: ToastService, useValue: { showSuccess: vi.fn(), showError: vi.fn() } },
+        ...(opts.imagesHidden ? [{ provide: IMAGES_HIDDEN, useValue: signal(true) }] : []),
+      ],
+    });
+    await TestBed.compileComponents();
+    const fixture = TestBed.createComponent(ScenariosManager);
+    fixture.componentRef.setInput('mutator', handle.mutator);
+    fixture.componentRef.setInput('shelf', shelf);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  async function openBuilder(
+    fixture: ComponentFixture<ScenariosManager>,
+  ): Promise<ScenarioBuilderDialog> {
+    byText(fixture, 'Ask the Host to set the scene').click();
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    const found = fixture.debugElement.query(By.directive(ScenarioBuilderDialog));
+    if (!found) throw new Error('the builder did not mount');
+    return found.componentInstance as ScenarioBuilderDialog;
+  }
+
+  it('shelfSaveTarget keys each shelf’s own home as the save select does', () => {
+    expect(shelfSaveTarget({ kind: 'general' })).toBe('general');
+    expect(shelfSaveTarget({ kind: 'project', projectId: 'p1', projectName: 'X' })).toBe(
+      'project:p1',
+    );
+    expect(shelfSaveTarget({ kind: 'group', groupId: 'g1' })).toBe('group:g1');
+  });
+
+  it('no shelf, no Host: the toolbar is v4’s pre-shelf one', async () => {
+    const fixture = await renderShelf(mockMutator(), null);
+    expect(text(fixture)).not.toContain('Ask the Host to set the scene');
+  });
+
+  it('with a shelf: the Host button, with the Host’s avatar, BEFORE + New scenario in one wrapping row', async () => {
+    const fixture = await renderShelf(mockMutator(), { kind: 'general' });
+    const host = byText(fixture, 'Ask the Host to set the scene');
+    expect(host.className).toBe(
+      'qt-button qt-button-secondary qt-button-sm inline-flex items-center gap-1.5',
+    );
+    const img = host.querySelector('img') as HTMLImageElement;
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('alt')).toBe('');
+    expect(img.className).toBe('h-4 w-4 rounded-full');
+    const row = host.parentElement as HTMLElement;
+    expect(row.className).toBe('flex items-center gap-2 flex-wrap');
+    const buttons = Array.from(row.querySelectorAll('button')).map((b) =>
+      (b.textContent ?? '').trim(),
+    );
+    expect(buttons).toEqual(['Ask the Host to set the scene', '+ New scenario']);
+  });
+
+  it('images hidden: the avatar goes, the text stays', async () => {
+    const fixture = await renderShelf(mockMutator(), { kind: 'general' }, { imagesHidden: true });
+    expect(byText(fixture, 'Ask the Host to set the scene').querySelector('img')).toBeNull();
+  });
+
+  it('General shelf: no cast, no project, no groups, every home offered, General preselected', async () => {
+    const fixture = await renderShelf(mockMutator(), { kind: 'general' });
+    const dialog = await openBuilder(fixture);
+    expect(dialog.cast()).toEqual([]);
+    expect(dialog.projectId()).toBeNull();
+    expect(dialog.groupIds()).toEqual([]);
+    expect(dialog.saveTargets()).toBe('everywhere');
+    expect(dialog.defaultSaveTarget()).toBe('general');
+  });
+
+  it('project shelf: the project and its name, "project:<id>" preselected', async () => {
+    const fixture = await renderShelf(mockMutator(), {
+      kind: 'project',
+      projectId: 'p1',
+      projectName: 'The Estate',
+    });
+    const dialog = await openBuilder(fixture);
+    expect(dialog.projectId()).toBe('p1');
+    expect(dialog.projectName()).toBe('The Estate');
+    expect(dialog.groupIds()).toEqual([]);
+    expect(dialog.defaultSaveTarget()).toBe('project:p1');
+  });
+
+  it('group shelf: the group named outright, "group:<id>" preselected; a save refreshes the shelf silently', async () => {
+    const handle = mockMutator();
+    const refresh = vi.spyOn(handle.mutator, 'refresh');
+    const fixture = await renderShelf(handle, { kind: 'group', groupId: 'g1' });
+    const dialog = await openBuilder(fixture);
+    expect(dialog.projectId()).toBeNull();
+    expect(dialog.groupIds()).toEqual(['g1']);
+    expect(dialog.defaultSaveTarget()).toBe('group:g1');
+    dialog.saved.emit({ kind: 'general', path: 'Scenarios/x.md' });
+    expect(refresh).toHaveBeenCalledWith({ silent: true });
+    // Closing unmounts it.
+    dialog.closed.emit();
+    fixture.detectChanges();
+    expect(fixture.debugElement.query(By.directive(ScenarioBuilderDialog))).toBeNull();
   });
 });

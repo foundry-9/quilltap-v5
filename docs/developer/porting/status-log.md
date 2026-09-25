@@ -149894,6 +149894,14 @@ The contract hunk (marked out-of-mandate), the builder dialog's `groupIds` /
 keys, optgroups, sorted groups and every-home lists over the existing
 fetchers. Dialog spec 11 of 59 red pre-port, 59/59 after; M5, M6 red. SPA 0.5.774.
 
+### P4.D231 units 8–10 — the Host on the shelves (2026-09-25)
+
+`ScenariosManager`'s `shelf` + the Host button + the `@defer`'d builder (its
+specs now `compileComponents()`), the General page and project card shelves,
+NEW group Scenarios card over NEW `groupScenarioMutator`, NEW e2e
+`scenarios-shelf-builder-flow.spec.ts` (three beats, live). SPA suite 453 files
+/ 7,939. SPA 0.5.775.
+
 ---
 
 ## P4.D225 — the refusal substrate + the ledger (v4 `8bd080267` #73 + `49059fb14` #74, server) — lane record

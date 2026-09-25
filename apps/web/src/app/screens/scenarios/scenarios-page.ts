@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@ang
 import { CoreClient } from '../../core/core-client';
 import { onTabActivated } from '../../workspace/workspace-contract';
 import { Icon } from '../../ui/icon';
-import { ScenariosManager } from './shared/scenarios-manager';
+import { ScenariosManager, type ScenarioShelf } from './shared/scenarios-manager';
 import { generalScenarioMutator, type ScenarioMutator } from './scenarios.api';
 
 /**
@@ -43,6 +43,7 @@ import { generalScenarioMutator, type ScenarioMutator } from './scenarios.api';
             <qt-scenarios-manager
               [mutator]="m"
               scopeLabel="general"
+              [shelf]="generalShelf"
               emptyMessage="No general scenarios yet. Compose one and it'll appear in every New Chat dialog from now on."
             />
           }
@@ -54,6 +55,8 @@ import { generalScenarioMutator, type ScenarioMutator } from './scenarios.api';
 export class ScenariosPage implements OnInit {
   private readonly core = inject(CoreClient);
   protected readonly mutator = signal<ScenarioMutator | null>(null);
+  /** v4 `08c49319d` — the General shelf offers the Host's Scenario Builder. */
+  protected readonly generalShelf: ScenarioShelf = { kind: 'general' };
 
   constructor() {
     // Navigating back to this tab refreshes the list in place (silent — the

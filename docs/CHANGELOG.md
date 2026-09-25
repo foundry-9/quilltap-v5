@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(spa): the Host on the General, project and group scenario shelves (v4 `08c49319d`, P4.D231 units 8–10)
+
+_Versions: SPA 0.5.775._
+
+- `ScenariosManager` takes a `shelf` and shows "Ask the Host to set the
+  scene" (with the Host's avatar unless images are hidden) before
+  + New scenario; the builder mounts under `@defer` with no cast, the shelf's
+  project or group, every home offered and the shelf's own preselected; a
+  save refreshes the shelf silently.
+- The General page and the project Scenarios card (now given the project's
+  name) pass their shelves.
+- NEW group Scenarios card on the group page, after the linked stores,
+  collapsed, over a NEW `groupScenarioMutator` (the six `groupScenario*`
+  verbs; `includeArchived` threaded on the mutates like the project twin).
+- NEW e2e `scenarios-shelf-builder-flow.spec.ts`: the General page, a
+  project card and a group card, run live against the mock LLM.
+
 #### 2026-09-25 — feat(spa): the Scenario Builder's shelf mode and every-home save (v4 `08c49319d`, P4.D231 units 5–7)
 
 _Versions: SPA 0.5.774._
