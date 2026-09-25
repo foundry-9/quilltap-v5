@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — test(e2e): the Concierge's three states and "Try uncensored" in the browser — six specs rewritten, one retired, one new (P4.D229 unit 11)
+
+_Versions: SPA 0.5.778._
+
+`salon-concierge-four-state-flow` is retired for a new
+`salon-concierge-three-state-flow` (v4's seven-transition script over the
+stored three columns, a retired value refused, the Locked retry refused).
+`concierge-marks-flow`, `salon-danger-avatar-flow` (inverted: an
+operator-set Unmoderated chat is ringed), `salon-streaming-avatar-flow`,
+`new-chat-flow` and `salon-route-trail-flow` (a TOOL-row "Tried:" beat) move
+to the three states; the new `salon-try-uncensored-flow` covers the three
+buttons, a Locked chat and the round trip. Every beat that needs the server
+chain is gated behind `P4D228_SERVER_LANDED = false` for the unifier; the
+presence beats plant their rows by rewriting the chat response in the browser
+and run today.
+
 #### 2026-09-25 — feat(spa): the refusal and refused-backdrop announcement kinds, and the About page's three-state sentence (P4.D229 unit 10)
 
 _Versions: SPA 0.5.777._

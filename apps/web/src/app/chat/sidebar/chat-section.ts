@@ -104,8 +104,9 @@ export interface ChatSectionState {
  * so the client uses the bag form for everything else, which is the shape the
  * round-2 differential pins.
  *
- * **The Concierge four-state is LIVE** (v4 :1123-1170, P4.D141) — the control
- * this section led with as a named deferral for six rounds. `conciergeState` is
+ * **The Concierge's per-chat state is LIVE** (P4.D141; three states since
+ * P4.D229, v4 `4d370a90f`) — the control this section led with as a named
+ * deferral for six rounds. `conciergeState` is
  * a SIBLING of the `chat` bag, not a bag key: v4's `chatUpdateRequestSchema`
  * declares it at the top level and `processChatUpdates` routes it through
  * `applyConciergeFlip`. Sent as a bag key it would be stripped by

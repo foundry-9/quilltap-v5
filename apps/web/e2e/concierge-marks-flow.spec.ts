@@ -8,73 +8,59 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * file order) — "concierge-marks-flow" ('c') sorts after "aa-foundation".
  *
  * P4.D144 — a LIVE walk of the Concierge marks and the quick-hide rule they
- * now drive (v4 `c43d3b1b4`). Three beats:
+ * drive (v4 `c43d3b1b4`), REWRITTEN by P4.D229 for v4's three states
+ * (`4d370a90f` #75; the `info` tone retired at `3b463d6b1` #76). Three beats:
  *
- *   1. The mark itself: one chat per state, the asterisk's tone class per
- *      state, no native `title` anywhere, Monitored wearing nothing, and the
- *      drawn bubble speaking the presentation table's words after the dwell.
- *   2. "Dangerous Chats": the toggle hides the uncensored ROW — Flagged and
- *      Uncensored — and leaves Vouched Safe alone, on the Salon list and on
- *      the homepage's Recent Chats. Toggling it off brings them back. This is
- *      the coverage gap this lane closes: `quick-hide-flow.spec.ts` drives the
- *      TAG arm only, and no beat anywhere asserted list danger filtering.
+ *   1. The mark itself: one chat per non-default state, the asterisk's tone
+ *      per state — Unmoderated the red base rule, Locked the grey `-muted`
+ *      modifier, and NO `-info` modifier anywhere — no native `title`,
+ *      Moderated wearing nothing, and the drawn bubble speaking the
+ *      presentation table's words after the dwell (the operator's sentence:
+ *      these chats were set by the operator, through the same verb the
+ *      sidebar uses).
+ *   2. "Dangerous Chats": the toggle hides Unmoderated ONLY — whoever set it —
+ *      and leaves Locked alone, on the Salon list and on the homepage's Recent
+ *      Chats. Toggling it off brings them back.
  *   3. The header pill's bubble, which v4 places BELOW the toolbar.
  *
- * ## ACTIVATE-AT-UNIFY
+ * ## ACTIVATE-AT-UNIFY (P4.D229)
  *
- * The mark reads `conciergeState` off the LIST payload, which P4.D143 derives
- * server-side (shared contract §A). Until that lane is on the branch every
- * list row arrives stateless, no mark renders at all (by design — that is what
- * keeps this port green in the meantime), and nothing here could pass for a
- * reason that says anything about the feature. The unifier flips
- * {@link P4D143_LIST_PAYLOAD_LANDED} to `true` and RUNS these beats at first
- * activation (the gated-beat first-run rot class).
+ * Everything here waits on the Concierge server chain (P4.D225 → P4.D228):
+ * `main`'s server 400s the three new values the seeding dispatches, and its
+ * list payloads carry the retired four-state `conciergeState`. The whole file
+ * is gated by ONE constant, so it activates in one flip and gets its first live
+ * run under the unifier's eye (the gated-beat first-run rot class).
  *
- * Beat 3 does not itself depend on the payload — the header pill reads the
- * single-chat GET, which keeps the raw trio — but it is held behind the same
- * constant as its siblings so the whole file activates in ONE flip and gets its
- * first live run under the unifier's eye.
+ * ## Recorded coverage gap — the bubble's `Categories` line and the
+ * Concierge's own sentence
  *
- * The quick-hide section beat 2 drives is ALWAYS offered since v4
- * `e3937d7aa` ("The Salon Images switch is always meaningful"; P4.D223), so
- * the toggle is reachable on any fixture — the `chatsHasDangerous` probe that
- * once had to open the gate (shared contract §H) is retired on both sides.
- * The seeded Flagged and Uncensored chats are still needed: they are what the
- * toggle hides, not what reveals it.
- *
- * ## Recorded coverage gap — the bubble's `Categories` line
- *
- * v4's corpus asserts the `Categories` section on a Flagged chat, and so do
- * three v5 unit specs (`concierge-mark.spec.ts`, `conversation-header.spec.ts`,
- * `concierge-state-presentation.spec.ts`). It is NOT asserted here, because
- * nothing this walk can reach writes `chats.dangerCategories`: the column is
- * written by the classifier job and cleared by the manual flip, and `ChatPatch`
- * is an internal Rust struct rather than a request bag — no dispatch verb
- * carries the field. Asserting it would author a beat guaranteed to fail on
- * first activation for a reason that is not the feature. Seeding it needs the
- * own-server + CLI-SQL pattern of `salon-concierge-four-state-flow.spec.ts`;
- * that is the shape a follow-up would take.
+ * Both need a chat the CONCIERGE moved (setBy `concierge`), and nothing this
+ * walk can reach writes one: the flip verb stamps `operator`, and the
+ * classifier / refusal-ledger switches need a real classification or refusal.
+ * The unit specs pin both (`concierge-mark.spec.ts`, `conversation-header.spec
+ * .ts`, `recent-chat-item.spec.ts`, the presentation oracle).
  */
-const P4D143_LIST_PAYLOAD_LANDED = true;
+const P4D228_SERVER_LANDED = false;
+const GATE_REASON =
+  'awaits the Concierge server chain (P4.D225→P4.D228: the three states on the flip verb and the list payloads); flipped at unification';
 
-/** The three states this walk drives, and what each should wear. */
+test.skip(!P4D228_SERVER_LANDED, GATE_REASON);
+
+/** The states this walk drives, and what each should wear. */
 const STATES = [
-  { state: 'monitored', label: null, modifier: null },
-  { state: 'flagged', label: 'Concierge: Flagged', modifier: null },
-  { state: 'vouched', label: 'Concierge: Vouched Safe', modifier: 'qt-concierge-mark-muted' },
-  { state: 'uncensored', label: 'Concierge: Uncensored', modifier: 'qt-concierge-mark-info' },
+  { state: 'moderated', label: null, modifier: null },
+  { state: 'unmoderated', label: 'Concierge: Unmoderated', modifier: null },
+  { state: 'locked', label: 'Concierge: Locked', modifier: 'qt-concierge-mark-muted' },
 ] as const;
 
-/** The presentation table's four detail sentences, byte for byte (§B). */
+/** The presentation table's detail sentences, byte for byte (§B). */
 const DETAIL: Record<string, string> = {
-  monitored:
-    'The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.',
-  flagged:
-    'The Concierge has this chat down as dangerous, and routes it through the uncensored providers.',
-  vouched:
-    'You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.',
-  uncensored:
-    'You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.',
+  moderated:
+    'The Concierge sends everything to the usual providers first, and to the uncensored desk only when one of them refuses. After enough refusals he moves the whole chat himself.',
+  unmoderated:
+    'You have opened the uncensored door yourself. Nothing here goes near a moderated provider.',
+  locked:
+    'Only the usual providers, ever. If one refuses, the refusal stands. For the chat that must never reach an uncensored model.',
 };
 
 const HINT = "Change it from the Salon sidebar's Chat section.";
@@ -109,7 +95,7 @@ async function ensureUnlocked(): Promise<void> {
 
 test.beforeAll(async () => {
   await ensureUnlocked();
-  // Take the three most recently active chats and put one in each non-default
+  // Take the two most recently active chats and put one in each non-default
   // state through the SAME manual-flip verb the sidebar control uses. Never
   // assert an absolute chat count — sibling specs seed their own.
   // `listChats` answers `Response::Chats(Vec<…>)` — the ARRAY is `data` itself,
@@ -119,10 +105,10 @@ test.beforeAll(async () => {
     id: string;
     title: string;
   }>;
-  if (!Array.isArray(chats) || chats.length < 3) {
-    throw new Error(`fixture carries ${chats?.length ?? 0} chats; this walk needs 3`);
+  if (!Array.isArray(chats) || chats.length < 2) {
+    throw new Error(`fixture carries ${chats?.length ?? 0} chats; this walk needs 2`);
   }
-  const wanted = ['flagged', 'vouched', 'uncensored'];
+  const wanted = ['unmoderated', 'locked'];
   for (let i = 0; i < wanted.length; i++) {
     const chat = chats[i];
     // `chat` is a REQUIRED sibling bag beside `conciergeState` (the P4.D141 shape);
@@ -134,7 +120,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   for (const id of seeded.keys()) {
-    await dispatch({ type: 'chatUpdate', chatId: id, chat: {}, conciergeState: 'monitored' }).catch(
+    await dispatch({ type: 'chatUpdate', chatId: id, chat: {}, conciergeState: 'moderated' }).catch(
       () => undefined,
     );
   }
@@ -180,10 +166,6 @@ test.describe('P4.D144 — the Concierge marks on the chat lists', () => {
   test('every non-default state wears its own tone, and none wears a native title', async ({
     page,
   }) => {
-    test.skip(
-      !P4D143_LIST_PAYLOAD_LANDED,
-      "awaits P4.D143's conciergeState on the chat-list payload (§A)",
-    );
     await page.goto(`${BASE_URL}/salon`);
     await maybeUnlock(page);
 
@@ -202,22 +184,19 @@ test.describe('P4.D144 — the Concierge marks on the chat lists', () => {
       if (modifier) {
         await expect(mark).toHaveClass(new RegExp(modifier));
       } else {
-        // Danger is the base rule: neither modifier is emitted for Flagged.
+        // Danger is the base rule: no modifier is emitted for Unmoderated.
         await expect(card.locator('.qt-concierge-mark-muted')).toHaveCount(0);
-        await expect(card.locator('.qt-concierge-mark-info')).toHaveCount(0);
       }
+      // The retired blue `-info` modifier is gone for good (v4 `3b463d6b1`).
+      await expect(card.locator('.qt-concierge-mark-info')).toHaveCount(0);
     }
   });
 
   test('the mark explains itself in the presentation table’s words', async ({ page }) => {
-    test.skip(
-      !P4D143_LIST_PAYLOAD_LANDED,
-      "awaits P4.D143's conciergeState on the chat-list payload (§A)",
-    );
     await page.goto(`${BASE_URL}/salon`);
     await maybeUnlock(page);
 
-    const mark = salonCard(page, titleOf('uncensored')).locator('.qt-concierge-mark');
+    const mark = salonCard(page, titleOf('unmoderated')).locator('.qt-concierge-mark');
     await expect(mark).toHaveCount(1, { timeout: 15_000 });
     await mark.hover();
 
@@ -225,8 +204,9 @@ test.describe('P4.D144 — the Concierge marks on the chat lists', () => {
     // body-portalled, so it is looked up on the page, not in the card.
     const bubble = page.locator('.qt-tooltip');
     await expect(bubble).toBeVisible({ timeout: 5_000 });
-    await expect(bubble).toContainText('Uncensored');
-    await expect(bubble).toContainText(DETAIL['uncensored']);
+    await expect(bubble).toContainText('Unmoderated');
+    // The operator set it (the flip verb stamps `operator`), so the operator's sentence.
+    await expect(bubble).toContainText(DETAIL['unmoderated']);
     await expect(bubble).toContainText(HINT);
 
     await page.mouse.move(10, 10);
@@ -234,43 +214,30 @@ test.describe('P4.D144 — the Concierge marks on the chat lists', () => {
   });
 });
 
-test.describe('P4.D144 — "Dangerous Chats" follows the uncensored row', () => {
-  test('the toggle hides Flagged and Uncensored and spares Vouched Safe', async ({ page }) => {
-    test.skip(
-      !P4D143_LIST_PAYLOAD_LANDED,
-      "awaits P4.D143's conciergeState on the chat-list payload (§A)",
-    );
+test.describe('P4.D144 — "Dangerous Chats" hides Unmoderated only', () => {
+  test('the toggle hides Unmoderated and spares Locked', async ({ page }) => {
     await page.goto(`${BASE_URL}/salon`);
     await maybeUnlock(page);
 
-    const flagged = salonCard(page, titleOf('flagged'));
-    const vouched = salonCard(page, titleOf('vouched'));
-    const uncensored = salonCard(page, titleOf('uncensored'));
+    const unmoderated = salonCard(page, titleOf('unmoderated'));
+    const locked = salonCard(page, titleOf('locked'));
 
-    // All three are on the list to begin with.
-    await expect(flagged).toHaveCount(1, { timeout: 15_000 });
-    await expect(vouched).toHaveCount(1);
-    await expect(uncensored).toHaveCount(1);
+    // Both are on the list to begin with.
+    await expect(unmoderated).toHaveCount(1, { timeout: 15_000 });
+    await expect(locked).toHaveCount(1);
 
     await toggleDangerousChats(page, true);
 
-    // The uncensored row goes; the vouched chat stays, dangerous label
-    // preserved underneath and all — the behaviour v4 c43d3b1b4 changed in
-    // both directions.
-    await expect(flagged).toHaveCount(0, { timeout: 15_000 });
-    await expect(uncensored).toHaveCount(0);
-    await expect(vouched).toHaveCount(1);
+    // Unmoderated goes (whoever set it — here the operator); Locked takes the
+    // ordinary desks and stays (v4 `4d370a90f`).
+    await expect(unmoderated).toHaveCount(0, { timeout: 15_000 });
+    await expect(locked).toHaveCount(1);
 
     await toggleDangerousChats(page, false);
-    await expect(flagged).toHaveCount(1, { timeout: 15_000 });
-    await expect(uncensored).toHaveCount(1);
+    await expect(unmoderated).toHaveCount(1, { timeout: 15_000 });
   });
 
   test('the homepage’s Recent Chats obeys the same rule', async ({ page }) => {
-    test.skip(
-      !P4D143_LIST_PAYLOAD_LANDED,
-      "awaits P4.D143's conciergeState on the chat-list payload (§A)",
-    );
     await page.goto(BASE_URL);
     await maybeUnlock(page);
 
@@ -279,40 +246,45 @@ test.describe('P4.D144 — "Dangerous Chats" follows the uncensored row', () => 
 
     // Recent Chats is the twelve most recently active chats, and in a FULL
     // run sibling specs seed newer chats after beforeAll ran, so the chat it
-    // flagged may have scrolled off (this beat's first full-suite run — green
-    // in isolation — caught exactly that). So flag whichever chat IS on the
-    // list, through the same verb, and put it back afterwards; the delta is
-    // what the beat asserts, never membership.
+    // opened may have scrolled off (this beat's first full-suite run — green
+    // in isolation — caught exactly that). So open the door on whichever chat
+    // IS on the list, through the same verb, and put it back afterwards; the
+    // delta is what the beat asserts, never membership.
     const onList = await section.locator('qt-recent-chat-item').allTextContents();
     const chats = (await dispatch({ type: 'listChats' })) as unknown as Array<{
       id: string;
       title: string;
     }>;
-    const skip = new Set([titleOf('vouched'), titleOf('uncensored')]);
+    const skip = new Set([titleOf('locked'), titleOf('unmoderated')]);
     const target = chats.find(
       (c) => !skip.has(c.title) && onList.some((text) => text.includes(c.title)),
     );
-    expect(target, 'some non-operator chat must be on Recent Chats to flag').toBeTruthy();
-    const restoreTo = seeded.get(target!.id)?.state ?? 'monitored';
-    if (restoreTo !== 'flagged') {
-      await dispatch({ type: 'chatUpdate', chatId: target!.id, chat: {}, conciergeState: 'flagged' });
+    expect(target, 'some Moderated chat must be on Recent Chats to open').toBeTruthy();
+    const restoreTo = seeded.get(target!.id)?.state ?? 'moderated';
+    if (restoreTo !== 'unmoderated') {
+      await dispatch({
+        type: 'chatUpdate',
+        chatId: target!.id,
+        chat: {},
+        conciergeState: 'unmoderated',
+      });
       await page.reload();
       await maybeUnlock(page);
     }
-    const flaggedRow = section.locator('qt-recent-chat-item', { hasText: target!.title });
-    const vouchedRow = section.locator('qt-recent-chat-item', { hasText: titleOf('vouched') });
-    await expect(flaggedRow).toHaveCount(1, { timeout: 15_000 });
-    const vouchedBefore = await vouchedRow.count();
+    const openedRow = section.locator('qt-recent-chat-item', { hasText: target!.title });
+    const lockedRow = section.locator('qt-recent-chat-item', { hasText: titleOf('locked') });
+    await expect(openedRow).toHaveCount(1, { timeout: 15_000 });
+    const lockedBefore = await lockedRow.count();
 
     try {
       await toggleDangerousChats(page, true);
-      await expect(flaggedRow).toHaveCount(0, { timeout: 15_000 });
-      await expect(vouchedRow).toHaveCount(vouchedBefore);
+      await expect(openedRow).toHaveCount(0, { timeout: 15_000 });
+      await expect(lockedRow).toHaveCount(lockedBefore);
 
       await toggleDangerousChats(page, false);
-      await expect(flaggedRow).toHaveCount(1, { timeout: 15_000 });
+      await expect(openedRow).toHaveCount(1, { timeout: 15_000 });
     } finally {
-      if (restoreTo !== 'flagged') {
+      if (restoreTo !== 'unmoderated') {
         await dispatch({
           type: 'chatUpdate',
           chatId: target!.id,
@@ -326,24 +298,23 @@ test.describe('P4.D144 — "Dangerous Chats" follows the uncensored row', () => 
 
 test.describe('P4.D144 — the header pill explains itself below the toolbar', () => {
   test('the pill grows the drawn bubble, and carries no native title', async ({ page }) => {
-    // Held with its siblings — see the file header. The pill itself is live.
-    test.skip(!P4D143_LIST_PAYLOAD_LANDED, 'held until this file activates as a whole');
     await page.goto(`${BASE_URL}/salon`);
     await maybeUnlock(page);
-    await page.getByRole('link', { name: titleOf('vouched') }).first().click();
+    await page.getByRole('link', { name: titleOf('locked') }).first().click();
 
     const pill = page.locator('qt-conversation-header .qt-danger-badge');
     await expect(pill).toHaveCount(1, { timeout: 15_000 });
-    await expect(pill).toHaveText('Vouched Safe');
-    await expect(pill).toHaveAttribute('aria-label', 'Concierge: Vouched Safe');
-    // The four native titles are retired as v4 retires them.
+    await expect(pill).toHaveText('Locked');
+    await expect(pill).toHaveAttribute('aria-label', 'Concierge: Locked');
+    await expect(pill).toHaveClass(/qt-danger-badge-muted/);
+    // The native titles are retired as v4 retires them.
     await expect(page.locator('qt-conversation-header .qt-danger-badge[title]')).toHaveCount(0);
 
     await pill.hover();
     const bubble = page.locator('.qt-tooltip');
     await expect(bubble).toBeVisible({ timeout: 5_000 });
-    await expect(bubble).toContainText('Vouched Safe');
-    await expect(bubble).toContainText(DETAIL['vouched']);
+    await expect(bubble).toContainText('Locked');
+    await expect(bubble).toContainText(DETAIL['locked']);
     await expect(bubble).toContainText(HINT);
     // v4 asks for the bubble BELOW the toolbar; the primitive may still flip it
     // away from a viewport edge, so the attribute is read rather than assumed.

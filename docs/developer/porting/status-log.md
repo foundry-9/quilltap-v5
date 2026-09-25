@@ -150085,6 +150085,84 @@ including legacy rows by their wording` by name plus the persisted-kind arms.
 **Red-first (pre-edit module, new spec):** 3 failed / 27 — exactly the three
 touched cases. Green after: 27/27 (+ the About spec).
 
+### Unit 11: e2e — six rewrites, one retired, one new
+
+`salon-concierge-four-state-flow.spec.ts` RETIRED (`git rm`) → NEW
+`salon-concierge-three-state-flow.spec.ts` (v4's `concierge-three-state-test.sh`
+walk: the seven transitions through the sidebar control, the stored triplet read
+through the CLI after each, the three phrases `uncensored door stands open` /
+`Moderated once more` / `locked the present company`, the pill; then a retired
+`flagged` refused with nothing written, and the Locked refusal — the UI offers
+no button and `messageRetryUncensored` answers `locked`). Rewritten:
+`concierge-marks-flow` (two seeded states, the operator's sentence, no `-info`,
+"Dangerous Chats" hides Unmoderated and spares Locked, the Locked pill);
+`salon-danger-avatar-flow` (INVERTED — the operator's Unmoderated IS ringed,
+Locked is not, the stored triplet read each time); `salon-streaming-avatar-flow`
+(the retired `monitored`/`flagged` dispatches → `moderated`/`unmoderated`);
+`new-chat-flow` (the flat picker with `Moderated (default)`, the body omitting
+the key — UNGATED; the Unmoderated pick landing an Unmoderated chat with its
+bubble — gated); `salon-route-trail-flow` (+ a TOOL-row "Tried:" beat). NEW
+`salon-try-uncensored-flow` (presence of all three buttons, absence on Locked,
+the "Tried:" sheet beside the redraw; gated: the `no-understudy` words and a live
+re-roll on a mock-LLM uncensored desk configured through `connectionProfileCreate`
++ `chatSettingsUpdate`).
+
+**Gates:** one constant per file, `P4D228_SERVER_LANDED = false` — the server
+chain P4.D225 → P4.D228 (the three-value verbs, the stored trio, the retry
+verbs, `conciergeSettings`). Gated as whole files: `concierge-marks-flow`,
+`salon-concierge-three-state-flow`, `salon-danger-avatar-flow` (the stored
+columns do not exist on `main`'s fixtures). **Runnable on `main` (measured):**
+the New Chat default beat, the four presence beats of
+`salon-try-uncensored-flow`, the route-trail "Tried:" beat, the streaming
+no-ring beat. The presence beats PLANT their rows / state by rewriting the real
+server's `chatGet` answer in the browser (`page.route` → `route.fetch()` →
+edit → `fulfill`), since nothing on `main` can hold a Locked chat, an image
+trail or a `background-refused` bubble.
+
+**Playwright (by file, port 4319, debug `quilltap-web` + `quilltap` built in
+this worktree from `main`'s crates — no crate touched):** one invocation over
+the seven touched files: **9 passed / 2 failed / 11 skipped** (the skips = the
+gated beats by design). The two reds, each re-run ALONE: (1) try-uncensored's
+bar-order check — MY locator bug (a `has:` locator rooted at
+`.qt-chat-message-action-bar` can never match inside a bar), fixed; the file
+alone **4 passed / 2 skipped**; (2) `salon-streaming-avatar-flow`'s no-ring
+beat — ORDER-DEPENDENT, not this lane's: in the combined run `new-chat-flow` and
+`salon-route-trail-flow` had just created chats, pushing "Group Expedition" off
+the Salon list's first page before the spec's card lookup; the file alone
+**1 passed / 1 skipped**. Recorded for the unifier (the full suite orders files
+alphabetically and has passed with this shape; a card lookup that survives
+pagination would retire the hazard). The full suite and the gate flips are the
+unifier's.
+
+**Final SPA gate (final tree):** `npm run lint` clean (956 classes);
+`npm test` **456 files / 8,662 passed**; `npm run build` clean.
+
+### Lane close — what the order got wrong, measured
+
+- **M8** ("keep one `-info` rule → `check-qt-classes` reds"): SURVIVES in both
+  forms — the guard does not police bare component classes (see unit 9).
+- The order counts `chat-section.spec.ts` / `chat-sidebar.spec.ts` as the
+  sidebar specs; `chat-sidebar.spec.ts`'s stub CoreClient lacked
+  `dispatchExpect`, which the section's new shared-settings query calls — added.
+- The survey's "v4 has TWO folded ToolMessage sites" — v5 has one folded site
+  plus two standalone list sites plus the expanded TOOL announcement; the
+  picture button is on all four.
+- The Lantern bubble is an announcement CHIP in v5, so its button rides
+  `announcement-group.ts`, not `message-row.ts`.
+
+### Pre-list for the unifier
+
+- `docs/v4/` mirror: none (this lane moves no mirror path).
+- Cross-lane: `core/core-contract.ts` carries NO P4.D230/P4.D231 hunk on this
+  branch (both cut from `main`); their marked hunks merge beside mine — mine
+  touch `ConciergeState` (:109), `ChatUpdateRequest`, `ChatCreateRequest`,
+  `EnrichedChatSummary`, `RouteAttempt`, `ChatDetail`, `CharacterChatSummary`,
+  the Request union (+2 verbs) and the two new request interfaces; NOT
+  `ChatSettingsDto`. `chat/concierge-off-duty-hint.ts`'s
+  `isConciergeOnDuty(settings: object)` may be tightened to `ChatSettingsDto`
+  once P4.D230's hunk is in.
+- Gate flips: `P4D228_SERVER_LANDED` in seven e2e files.
+
 ### P4.D231 unit 1 — the build request's `groupIds` (2026-09-25)
 
 The Zod twin gains `groupIds` between `characterIds` and `chatId` (output and

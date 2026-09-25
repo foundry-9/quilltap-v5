@@ -1,6 +1,6 @@
-import { expect, test, type Page } from './support/fixtures';
+import { expect, request as pwRequest, test, type Page, type Route } from './support/fixtures';
 
-import { E2E_PASSPHRASE } from './support/env';
+import { BASE_URL, E2E_PASSPHRASE } from './support/env';
 import { openSidebarSection } from './support/sidebar';
 import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
 
@@ -182,3 +182,107 @@ test.describe('P4.D177 — the route trail, live', () => {
     }
   });
 });
+
+/**
+ * P4.D229 — the Concierge's call sheet on a TOOL row (v4 #73 `8bd080267`,
+ * `ToolMessage.tsx:488-495`): a refused picture's TOOL row carries its OWN
+ * `routeTrail` of `profileKind: 'image'` rows, and the row shows "Tried:" and
+ * the badge, the image profile labelled by its NAME.
+ *
+ * Nothing on `main` writes an image trail (the image failover chokepoint is
+ * P4.D225's), so the row is PLANTED into the real server's `chatGet` answer in
+ * the browser (`page.route` → `route.fetch()` → edit → `fulfill`): the real
+ * server answers, the real SPA renders, only the planted row is synthetic.
+ * Runnable today; a live image refusal is the dogfood's (it needs a provider
+ * that genuinely refuses).
+ */
+test.describe('P4.D229 — "Tried:" on a refused picture’s TOOL row', () => {
+  test('lists the image profiles tried, by name, with the refusal glyph', async ({ page }) => {
+    const ctx = await pwRequest.newContext();
+    await ctx
+      .post(`${BASE_URL}/api/dispatch`, { data: { type: 'unlock', passphrase: E2E_PASSPHRASE } })
+      .catch(() => undefined);
+    const listed = (await (
+      await ctx.post(`${BASE_URL}/api/dispatch`, { data: { type: 'listChats' } })
+    ).json()) as { data?: Array<{ id: string; title: string }> };
+    await ctx.dispose();
+    const chatId = (listed.data ?? []).find((c) => c.title === 'Solo Voyage')?.id;
+    expect(chatId, 'the fixture must carry "Solo Voyage"').toBeTruthy();
+
+    await page.route('**/api/dispatch', async (route: Route) => {
+      const req = route.request().postDataJSON() as Record<string, unknown> | null;
+      if (!req || req['type'] !== 'chatGet') {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const body = (await response.json()) as { data?: { chat?: { messages?: Record<string, unknown>[] } } };
+      const messages = body.data?.chat?.messages;
+      if (messages && messages.length > 0) {
+        const last = messages[messages.length - 1];
+        messages.push({
+          ...last,
+          id: 'p4d229-planted-trail-tool',
+          role: 'TOOL',
+          participantId: null,
+          systemSender: null,
+          systemKind: null,
+          swipeGroupId: null,
+          swipeIndex: null,
+          attachments: [],
+          createdAt: new Date(Date.parse(String(last['createdAt'])) + 60_000).toISOString(),
+          content: JSON.stringify({ toolName: 'generate_image', success: true, prompt: 'a lighthouse' }),
+          routeTrail: [
+            {
+              profileId: 'img-house',
+              profileName: 'House Painter',
+              provider: 'OPENAI',
+              modelName: 'gpt-image-1',
+              via: 'primary',
+              outcome: 'refused',
+              trigger: 'moderation-refusal',
+              evidence: 'message-pattern',
+              detail: 'content policy',
+              profileKind: 'image',
+            },
+            {
+              profileId: 'img-kestrel',
+              profileName: 'Kestrel Studio',
+              provider: 'GROK',
+              modelName: 'grok-2-image',
+              via: 'concierge',
+              outcome: 'answered',
+              profileKind: 'image',
+            },
+          ],
+        });
+      }
+      await route.fulfill({ response, json: body });
+    });
+
+    await page.goto(`/salon/${chatId}`);
+    await maybeUnlockSalon(page);
+
+    const sheet = page.locator('[aria-label="Image profiles tried"]');
+    await expect(sheet).toHaveCount(1, { timeout: 15_000 });
+    await expect(sheet).toContainText('Tried:');
+    // The badge prints each row's LABEL — an image profile's name.
+    await expect(sheet).toContainText('House Painter');
+    await expect(sheet).toContainText('Kestrel Studio');
+    await expect(sheet.locator('li')).toHaveCount(2);
+    await expect(sheet.locator('[role="img"]', { hasText: '🚫' })).toHaveCount(1);
+    // The hover names the model and says the refusal was read from the wording.
+    await expect(sheet.locator('[title*="by its wording (content policy)"]')).toHaveCount(1);
+  });
+});
+
+async function maybeUnlockSalon(page: Page): Promise<void> {
+  const passphrase = page.locator('#qt-passphrase');
+  const messages = page.locator('.qt-chat-messages-list');
+  await expect(passphrase.or(messages).first()).toBeVisible({ timeout: 15_000 });
+  if (await passphrase.count()) {
+    await passphrase.fill(E2E_PASSPHRASE);
+    await page.getByRole('button', { name: 'Unlock' }).click();
+  }
+  await expect(messages).toBeVisible({ timeout: 15_000 });
+}

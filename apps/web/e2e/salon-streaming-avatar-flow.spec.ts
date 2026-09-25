@@ -42,6 +42,19 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
  * `salon-token-cost-flow` beat pins to an exact baseline).
  */
 
+/**
+ * P4.D229 — the Concierge's three states (v4 `4d370a90f`). The retired
+ * four-state values (`monitored` / `flagged`) are a 400 on the chain's server,
+ * and the three new ones (`moderated` / `unmoderated`) are a 400 on `main`'s —
+ * so every Concierge dispatch here waits on the server chain (P4.D225 →
+ * P4.D228), flipped by the unifier after the pick. The no-ring beat still runs
+ * on `main`: the fixture's chat is Moderated by default and `main`'s chat GET
+ * carries no `conciergeState`, which the SPA reads as Moderated.
+ */
+const P4D228_SERVER_LANDED = false;
+const GATE_REASON =
+  'awaits the Concierge server chain (P4.D225→P4.D228: the three-value conciergeState); flipped at unification';
+
 interface WireFrame {
   chatId?: string;
   participantId?: string;
@@ -140,12 +153,12 @@ test.describe('P4.75 — the streaming bubble names the responding character', (
   test.afterAll(async () => {
     await mock?.close();
     // Leave the shared fixture as we found it (the concierge beats' idiom).
-    if (chatId) {
+    if (chatId && P4D228_SERVER_LANDED) {
       await dispatch({
         type: 'chatUpdate',
         chatId,
         chat: {},
-        conciergeState: 'monitored',
+        conciergeState: 'moderated',
       }).catch(() => undefined);
     }
   });
@@ -183,12 +196,16 @@ test.describe('P4.75 — the streaming bubble names the responding character', (
     page,
   }) => {
     // Establish the precondition rather than assuming the fixture's shipped
-    // state: this chat is SHARED, and `salon-concierge-four-state-flow` walks it
-    // through all ten Concierge transitions earlier in the run. The no-ring arm
-    // below asserts what a MONITORED chat does, so say so. (Caught by the full
-    // suite on this beat's first whole-suite run — it passed in isolation, which
-    // is exactly the shape P4.75 had just root-caused in a neighbouring spec.)
-    await dispatch({ type: 'chatUpdate', chatId, chat: {}, conciergeState: 'monitored' });
+    // state: this chat is SHARED, and other Concierge beats move it earlier in
+    // the run. The no-ring arm below asserts what a MODERATED chat does, so say
+    // so. (Caught by the full suite on this beat's first whole-suite run — it
+    // passed in isolation, which is exactly the shape P4.75 had just
+    // root-caused in a neighbouring spec.) Until the chain lands no beat can
+    // move it, and `main`'s server would 400 the new value — so the fixture's
+    // own Moderated default IS the precondition there.
+    if (P4D228_SERVER_LANDED) {
+      await dispatch({ type: 'chatUpdate', chatId, chat: {}, conciergeState: 'moderated' });
+    }
     // The cast does not change during the turn, so read it BEFORE the live
     // window: the streamed reply is ~2.5 s long, and a network round-trip inside
     // that window was a flake-in-waiting (the §3 unification review of the
@@ -242,20 +259,22 @@ test.describe('P4.75 — the streaming bubble names the responding character', (
       expect(rendered).toBe(expected![0]!.toUpperCase());
     }
 
-    // A Monitored chat wears no ring (v4 :85's ternary, false arm).
+    // A Moderated chat wears no ring (v4 :85's ternary, false arm).
     await expect(
       page.locator('qt-streaming-message .qt-chat-avatar-dangerous'),
-      'no ring on a Monitored chat',
+      'no ring on a Moderated chat',
     ).toHaveCount(0);
   });
 
-  test('a Flagged chat rings the live column too (v4 StreamingMessage:85 ternary)', async ({
+  test('an Unmoderated chat rings the live column too (v4 StreamingMessage:85 ternary)', async ({
     page,
   }) => {
-    // The Salon paints from `shouldShowDangerStyling(chat)`, whose Flagged arm
-    // is what the settled rows already ring (P4.69). Seeded through the same
-    // chat-update the Concierge surfaces use, then restored in afterAll.
-    await dispatch({ type: 'chatUpdate', chatId, chat: {}, conciergeState: 'flagged' });
+    test.skip(!P4D228_SERVER_LANDED, GATE_REASON);
+    // The Salon paints from `shouldShowDangerStyling(chat)` — Unmoderated,
+    // whoever set it, since v4 `4d370a90f` (the operator's own pick here) —
+    // which is what the settled rows already ring (P4.69). Seeded through the
+    // same chat-update the Concierge surfaces use, then restored in afterAll.
+    await dispatch({ type: 'chatUpdate', chatId, chat: {}, conciergeState: 'unmoderated' });
     await openChat(page);
     await send(page, 'P4.75 streaming avatar — the ring, mid-turn.');
 

@@ -18,38 +18,39 @@ import {
 } from './support/env';
 
 /**
- * P4.D141 — the Concierge four-state per-chat control (v4 `60e3c4a0a`),
- * modelled on v4's own acceptance script `concierge-four-state-test.sh`.
+ * P4.D229 — the Concierge's THREE-state per-chat control (v4 `4d370a90f` #75),
+ * modelled on v4's own acceptance script `scripts/concierge-three-state-test.sh`
+ * (the renamed `concierge-four-state-test.sh`). Replaces the P4.D141
+ * four-state walk, whose states are retired (a 400 on the chain's server).
  *
  * The walk drives every transition through the SIDEBAR CONTROL (not the API),
  * and after each one asserts three things:
  *
- *   1. the stored pair `(conciergeOverride, isDangerousChat)` — read straight
- *      out of the DB through the CLI, because the pair is the whole point: both
- *      operator states PRESERVE the label underneath;
- *   2. the Concierge's announcement phrase in the transcript — the five kinds
- *      have five distinct sentences, so the phrase identifies the transition
- *      the server actually took;
- *   3. the header badge, which renders NOTHING for Monitored and one pill
+ *   1. the stored TRIPLET (`conciergeMode`, `conciergeModeSetBy`,
+ *      `conciergeModeReason`) — read straight out of the DB through the CLI,
+ *      exactly as v4's script reads it: Moderated always clears the
+ *      provenance, the other two always stamp (`operator`, `manual`);
+ *   2. the Concierge's announcement phrase in the transcript — the three
+ *      transitions have three distinct sentences (v4's script greps the same
+ *      phrases);
+ *   3. the header badge, which renders NOTHING for Moderated and one pill
  *      otherwise.
  *
- * The ten transitions cover both operator states in and out, both provenances,
- * and the two CT-2 preserve pairs (`OFF,1` and `UNCENSORED,1`) — the ones that
- * prove an operator state does not clear the classifier's verdict.
+ * Then the two refusals v4's script checks: a RETIRED value (`flagged`) is a
+ * 400 with nothing written, and — the Locked refusal — a Locked chat refuses
+ * the Concierge's line retry (§S.3's `messageRetryUncensored` answers the bare
+ * token `locked`), which is why the UI offers no "Try uncensored" there.
  *
  * ## ACTIVATE-AT-UNIFY
  *
- * The control derives its state from BOTH stored fields, and
- * `conciergeOverride` reaches `<qt-chat-sidebar>` from
- * `screens/salon/salon-conversation.ts` — a file **P4.66 owns**, so this lane
- * cannot add the binding. Until the unifier adds
- * `[conciergeOverride]="c.conciergeOverride ?? null"` to that element, the
- * control can only ever DISPLAY Monitored/Flagged, and every step of this walk
- * that reads back an operator state would fail for a reason that says nothing
- * about the feature. The unifier flips {@link P4D141_SALON_WIRE_LANDED} to
- * `true` with that binding.
+ * Everything here is the server chain's (P4.D225 → P4.D228): `main`'s server
+ * takes the four retired values, and its chats carry no `conciergeMode` trio
+ * (P4.D226 widens the fixture). The unifier flips
+ * {@link P4D228_SERVER_LANDED} after the pick and runs the walk live.
  */
-const P4D141_SALON_WIRE_LANDED = true;
+const P4D228_SERVER_LANDED = false;
+const GATE_REASON =
+  'awaits the Concierge server chain (P4.D225→P4.D228: the three states, the stored trio, the retry verbs); flipped at unification';
 
 const CONCIERGE_PORT = 4331;
 const BASE = `http://127.0.0.1:${CONCIERGE_PORT}`;
@@ -62,45 +63,40 @@ const MOUNT_FIXTURE = resolve(FIXTURES_DIR, 'salon-mount.db');
 const USER_TABLES = ['characters', 'chats', 'tags', 'groups', 'projects', 'files'];
 
 /**
- * v4's five manual sentences (`concierge-notifications/writer.ts`), each cut to
- * the phrase that identifies its kind — the same phrases v4's own acceptance
- * script greps for.
+ * v4's three operator sentences (`concierge-notifications/writer.ts` at
+ * `4d370a90f`), each cut to the phrase v4's own acceptance script greps for.
  */
 const PHRASE = {
-  flagged: 'thrown the switch',
-  safe: 'stands down for the moment',
-  vouched: 'takes the afternoon off',
-  resumed: 'returns to his post',
-  uncensored: 'uncensored door stands open',
+  unmoderated: 'uncensored door stands open',
+  moderated: 'Moderated once more',
+  locked: 'locked the present company',
 } as const;
 
-/**
- * The ten transitions, in order. `stored` is the `(conciergeOverride,
- * isDangerousChat)` pair the DB must hold afterwards — `null` for a cleared
- * override, and the two CT-2 preserve pairs are the rows where the label stays
- * `1` under an operator state.
- */
-const WALK: {
-  pick: 'monitored' | 'flagged' | 'vouched' | 'uncensored';
-  label: string;
-  phrase: string;
-  stored: { override: string | null; dangerous: number };
-  badge: string | null;
-}[] = [
-  { pick: 'flagged', label: 'Flagged', phrase: PHRASE.flagged, stored: { override: null, dangerous: 1 }, badge: 'Flagged' },
-  { pick: 'monitored', label: 'Monitored', phrase: PHRASE.safe, stored: { override: null, dangerous: 0 }, badge: null },
-  { pick: 'vouched', label: 'Vouched Safe', phrase: PHRASE.vouched, stored: { override: 'OFF', dangerous: 0 }, badge: 'Vouched Safe' },
-  { pick: 'monitored', label: 'Monitored', phrase: PHRASE.resumed, stored: { override: null, dangerous: 0 }, badge: null },
-  { pick: 'uncensored', label: 'Uncensored', phrase: PHRASE.uncensored, stored: { override: 'UNCENSORED', dangerous: 0 }, badge: 'Uncensored' },
-  { pick: 'monitored', label: 'Monitored', phrase: PHRASE.resumed, stored: { override: null, dangerous: 0 }, badge: null },
-  // CT-2, part one: Flagged first, then Vouched — the label must SURVIVE.
-  { pick: 'flagged', label: 'Flagged', phrase: PHRASE.flagged, stored: { override: null, dangerous: 1 }, badge: 'Flagged' },
-  { pick: 'vouched', label: 'Vouched Safe', phrase: PHRASE.vouched, stored: { override: 'OFF', dangerous: 1 }, badge: 'Vouched Safe' },
-  // CT-2, part two: straight across to Uncensored — the label still survives.
-  { pick: 'uncensored', label: 'Uncensored', phrase: PHRASE.uncensored, stored: { override: 'UNCENSORED', dangerous: 1 }, badge: 'Uncensored' },
-  // …and back, which CLEARS the label (the Monitored arm resets the metadata).
-  { pick: 'monitored', label: 'Monitored', phrase: PHRASE.resumed, stored: { override: null, dangerous: 0 }, badge: null },
+type State = keyof typeof PHRASE;
+
+const LABEL: Record<State, string | null> = {
+  moderated: null,
+  unmoderated: 'Unmoderated',
+  locked: 'Locked',
+};
+
+/** v4's script's seven transitions, in its order. */
+const WALK: State[] = [
+  'unmoderated', // Moderated → Unmoderated
+  'moderated', // Unmoderated → Moderated
+  'locked', // Moderated → Locked
+  'moderated', // Locked → Moderated
+  'unmoderated', // Moderated → Unmoderated (again)
+  'locked', // Unmoderated → Locked
+  'unmoderated', // Locked → Unmoderated
 ];
+
+/** Moderated always clears the provenance; the other two always stamp the operator's. */
+function expectedTriplet(state: State): { mode: State; setBy: string | null; reason: string | null } {
+  return state === 'moderated'
+    ? { mode: 'moderated', setBy: null, reason: null }
+    : { mode: state, setBy: 'operator', reason: 'manual' };
+}
 
 let server: ChildProcess | undefined;
 
@@ -117,11 +113,8 @@ async function dispatch(
   );
 }
 
-test.describe('P4.D141 — the Concierge four-state per-chat control', () => {
-  test.skip(
-    !P4D141_SALON_WIRE_LANDED,
-    'awaits the salon-conversation [conciergeOverride] binding (P4.66’s file; wired at unification)',
-  );
+test.describe('P4.D229 — the Concierge three-state per-chat control', () => {
+  test.skip(!P4D228_SERVER_LANDED, GATE_REASON);
 
   test.beforeAll(async () => {
     test.setTimeout(120_000);
@@ -177,7 +170,7 @@ test.describe('P4.D141 — the Concierge four-state per-chat control', () => {
     rmSync(INSTANCE_DIR, { recursive: true, force: true });
   });
 
-  test('walks all ten transitions, preserving the label under both operator states', async ({
+  test('walks v4’s seven transitions, then refuses a retired value and a Locked retry', async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -197,61 +190,83 @@ test.describe('P4.D141 — the Concierge four-state per-chat control', () => {
 
     const select = conciergeSelect(page);
     await expect(select).toBeVisible({ timeout: 15_000 });
-    // A fresh fixture chat is Monitored: no override, no verdict.
-    await expect(select).toHaveValue('monitored');
+    // A fresh fixture chat is Moderated: no badge, no provenance.
+    await expect(select).toHaveValue('moderated');
     await expect(conciergeBadge(page)).toHaveCount(0);
+    expect(readStoredTriplet(chatId)).toEqual(expectedTriplet('moderated'));
 
-    // The provenance is structural, not just copy: two optgroups, two each.
-    await expect(select.locator('optgroup')).toHaveCount(2);
-    expect(await select.locator('optgroup').first().getAttribute('label')).toBe(
-      'The Concierge decides',
-    );
-    expect(await select.locator('optgroup').last().getAttribute('label')).toBe('You decide');
+    // A FLAT list of bare labels — who set Unmoderated is a note, never an option.
+    await expect(select.locator('optgroup')).toHaveCount(0);
+    await expect(select.locator('option')).toHaveText(['Moderated', 'Unmoderated', 'Locked']);
 
-    for (const [i, step] of WALK.entries()) {
+    for (const [i, pick] of WALK.entries()) {
       const before = await conciergeChips(page).count();
-      await select.selectOption(step.pick);
+      await select.selectOption(pick);
 
       // 1. The control settles on the picked state.
-      await expect(select, `step ${i + 1} (${step.pick}) — the select`).toHaveValue(step.pick, {
+      await expect(select, `step ${i + 1} (${pick}) — the select`).toHaveValue(pick, {
         timeout: 15_000,
       });
 
       // 2. The Concierge said the right thing. Exactly ONE new chip, and
-      //    expanding it shows the phrase that identifies THIS transition —
-      //    `manual-resumed` and `manual-safe` both return to Monitored and are
-      //    told apart only by their sentences.
+      //    expanding it shows the phrase that identifies THIS transition.
+      //    Expanded chips stay expanded and phrases repeat across the walk, so
+      //    the discriminating form is the COUNT of phrase bubbles so far.
       await expect(conciergeChips(page), `step ${i + 1} — one new chip`).toHaveCount(before + 1, {
         timeout: 15_000,
       });
       await conciergeChips(page).last().click();
-      // Expanded chips stay expanded, and `manual-resumed` fires TWICE in this
-      // walk (Vouched → Monitored and Uncensored → Monitored), so by step 10 the
-      // phrase sits in two bubbles — a bare `toBeVisible` is a strict-mode
-      // violation (the beat's first live run) and a `.last()` would be
-      // satisfied by the EARLIER bubble alone. The discriminating form is the
-      // COUNT: exactly as many phrase bubbles as walk steps so far that carry
-      // this phrase — one short means this step's announcement never landed.
-      const phraseBubbles = WALK.slice(0, i + 1).filter((s) => s.phrase === step.phrase).length;
+      const phraseBubbles = WALK.slice(0, i + 1).filter((s) => s === pick).length;
       await expect(
-        page.locator('.qt-chat-messages-list').getByText(step.phrase),
-        `step ${i + 1} — the phrase "${step.phrase}" (${phraseBubbles} bubble(s) so far)`,
+        page.locator('.qt-chat-messages-list').getByText(PHRASE[pick]),
+        `step ${i + 1} — the phrase "${PHRASE[pick]}" (${phraseBubbles} bubble(s) so far)`,
       ).toHaveCount(phraseBubbles, { timeout: 15_000 });
 
-      // 3. The stored PAIR, read from the DB. This is where CT-2 lives: after
-      //    Flagged → Vouched the label is still 1, and after Vouched →
-      //    Uncensored it is still 1.
-      const row = readStoredPair(chatId);
-      expect(row, `step ${i + 1} (${step.pick}) — the stored pair`).toEqual(step.stored);
+      // 3. The stored triplet, read from the DB.
+      expect(readStoredTriplet(chatId), `step ${i + 1} (${pick}) — the stored triplet`).toEqual(
+        expectedTriplet(pick),
+      );
 
-      // 4. The header badge: nothing at all for Monitored, one pill otherwise.
-      if (step.badge === null) {
+      // 4. The header badge: nothing at all for Moderated, one pill otherwise.
+      const label = LABEL[pick];
+      if (label === null) {
         await expect(conciergeBadge(page), `step ${i + 1} — no badge`).toHaveCount(0);
       } else {
         await expect(conciergeBadge(page), `step ${i + 1} — one badge`).toHaveCount(1);
-        await expect(conciergeBadge(page)).toHaveText(step.badge);
+        await expect(conciergeBadge(page)).toHaveText(label);
       }
     }
+
+    // The walk ends Unmoderated. A RETIRED value is refused with nothing written.
+    const retired = await dispatch(ctx, {
+      type: 'chatUpdate',
+      chatId,
+      chat: {},
+      conciergeState: 'flagged',
+    });
+    expect(retired.type, 'a retired four-state value is refused (v4 400)').toBe('error');
+    expect(readStoredTriplet(chatId)).toEqual(expectedTriplet('unmoderated'));
+
+    // The Locked refusal: lock it through the control, then ask the Concierge
+    // to re-roll a line anyway — the verb refuses with the bare token, and the
+    // UI offers no button to ask with.
+    await select.selectOption('locked');
+    await expect(conciergeBadge(page)).toHaveText('Locked', { timeout: 15_000 });
+    await expect(
+      page.locator('.qt-chat-message-action-bar button[aria-label="Try uncensored"]'),
+    ).toHaveCount(0);
+    const detail = await dispatch(ctx, { type: 'chatGet', chatId });
+    const messages = ((detail.data?.['chat'] as { messages?: { id: string; role: string; systemSender?: string | null }[] })
+      ?.messages ?? []);
+    const line = messages.filter((m) => m.role === 'ASSISTANT' && !m.systemSender).at(-1);
+    expect(line, 'the fixture chat has a character line to retry').toBeTruthy();
+    const refused = await dispatch(ctx, {
+      type: 'messageRetryUncensored',
+      messageId: line!.id,
+      stream: false,
+    });
+    expect(refused.type).toBe('error');
+    expect((refused.data as { message?: string } | undefined)?.message).toBe('locked');
   });
 });
 
@@ -278,10 +293,10 @@ function conciergeChips(page: Page) {
 }
 
 /**
- * The stored pair, straight out of the DB — the assertion the UI cannot make,
- * since both operator states render the same whatever the label underneath is.
+ * The stored triplet, straight out of the DB — v4's acceptance script reads the
+ * same three columns. A NULL `conciergeMode` reads as Moderated.
  */
-function readStoredPair(chatId: string): { override: string | null; dangerous: number } {
+function readStoredTriplet(chatId: string): { mode: string; setBy: string | null; reason: string | null } {
   const res = spawnSync(
     cliBinary(),
     [
@@ -289,7 +304,7 @@ function readStoredPair(chatId: string): { override: string | null; dangerous: n
       '--data-dir',
       INSTANCE_DIR,
       '--json',
-      `SELECT "conciergeOverride" AS o, "isDangerousChat" AS d FROM chats WHERE id = '${chatId}';`,
+      `SELECT "conciergeMode" AS m, "conciergeModeSetBy" AS s, "conciergeModeReason" AS r FROM chats WHERE id = '${chatId}';`,
     ],
     {
       env: {
@@ -301,8 +316,8 @@ function readStoredPair(chatId: string): { override: string | null; dangerous: n
     },
   );
   if (res.status !== 0) throw new Error(`CLI read failed:\n${res.stdout}\n${res.stderr}`);
-  const rows = JSON.parse(res.stdout) as { o: string | null; d: number | null }[];
-  return { override: rows[0]?.o ?? null, dangerous: Number(rows[0]?.d ?? 0) };
+  const rows = JSON.parse(res.stdout) as { m: string | null; s: string | null; r: string | null }[];
+  return { mode: rows[0]?.m ?? 'moderated', setBy: rows[0]?.s ?? null, reason: rows[0]?.r ?? null };
 }
 
 async function openChatDrawer(page: Page): Promise<void> {

@@ -29,16 +29,20 @@ import {
  * (`_chat.css:2960`, byte-identical to v4's `:2819`) but nothing ever added
  * the class, so the rule was dead.
  *
- * ## Why the Uncensored leg is the whole point
+ * ## The three states (P4.D229, v4 `4d370a90f` #75) — the leg INVERTED
  *
- * The predicate is `getConciergeState(chat) === 'flagged'` — NOT the raw
- * `chat.isDangerousChat`. The two come apart on exactly the pair v4's own
- * acceptance walk calls CT-2: flip Flagged → Uncensored and the stored label
- * SURVIVES as `1` under the operator's override. So this walk drives that
- * transition and asserts the rings vanish while the DB still says `1`. Had the
- * Salon bound the raw flag (the shape `SalonView.tsx:1876` passes to the
- * SIDEBAR, a different consumer), the rings would still be on screen and only
- * this leg would catch it.
+ * The predicate is `getConciergeState(chat) === 'unmoderated'` — Unmoderated
+ * WHOEVER set it: "the provenance goes in the tooltip and helper text, never
+ * in colour." Under the four-state rule an operator-set Uncensored chat was
+ * deliberately left UNPAINTED and this walk asserted exactly that; v4 #75
+ * inverted it. So the walk now drives the operator's own Unmoderated pick and
+ * asserts the rings APPEAR, then Locked and asserts they go — reading the
+ * stored triplet (`conciergeMode`, `conciergeModeSetBy`, `conciergeModeReason`)
+ * through the CLI each time, which is what proves the ring followed the STATE
+ * and not the classifier's `isDangerousChat` telemetry (untouched throughout).
+ *
+ * GATED on the server chain: `main`'s server 400s the three new values and
+ * its chats carry no `conciergeMode` column (P4.D226 widens the fixture).
  *
  * 'Solo Voyage' is the fixture's 2×USER + 2×ASSISTANT chat, so the counts are
  * exact: four avatars, two of which may ring.
@@ -53,9 +57,15 @@ const MAIN_FIXTURE = resolve(FIXTURES_DIR, 'salon-main.db');
 const MOUNT_FIXTURE = resolve(FIXTURES_DIR, 'salon-mount.db');
 const USER_TABLES = ['characters', 'chats', 'tags', 'groups', 'projects', 'files'];
 
+const P4D228_SERVER_LANDED = false;
+const GATE_REASON =
+  'awaits the Concierge server chain (P4.D225→P4.D228: the three states + the stored conciergeMode trio); flipped at unification';
+
 let server: ChildProcess | undefined;
 
 test.describe('P4.69 — the dangerous-chat avatar ring', () => {
+  test.skip(!P4D228_SERVER_LANDED, GATE_REASON);
+
   test.beforeAll(async () => {
     test.setTimeout(120_000);
     const web = webBinary();
@@ -110,7 +120,7 @@ test.describe('P4.69 — the dangerous-chat avatar ring', () => {
     rmSync(INSTANCE_DIR, { recursive: true, force: true });
   });
 
-  test('rings the assistant avatars when Flagged, and drops them for Uncensored with the label still stored', async ({
+  test('rings the assistant avatars on an operator-set Unmoderated chat, and drops them for Locked', async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -126,23 +136,24 @@ test.describe('P4.69 — the dangerous-chat avatar ring', () => {
     await page.goto(`${BASE}/salon/${chatId}`);
     await unlockIfLocked(page);
 
-    // --- baseline: a Monitored chat paints nothing -------------------------
+    // --- baseline: a Moderated chat paints nothing -------------------------
     // Four avatars are on screen (2 USER + 2 ASSISTANT rows). Pin the total so
     // a later zero-ring assertion cannot pass because the rows never rendered.
     await expect(avatars(page), 'four avatars on the settled rows').toHaveCount(4, {
       timeout: 15_000,
     });
-    await expect(rings(page), 'Monitored paints no ring').toHaveCount(0);
-    expect(readStoredPair(chatId)).toEqual({ override: null, dangerous: 0 });
+    await expect(rings(page), 'Moderated paints no ring').toHaveCount(0);
+    expect(readStoredTriplet(chatId)).toEqual({ mode: 'moderated', setBy: null, reason: null });
 
-    // --- Flagged: the two ASSISTANT avatars ring ---------------------------
-    await dispatch(ctx, { type: 'chatUpdate', chatId, chat: {}, conciergeState: 'flagged' });
+    // --- the OPERATOR opens the door: the two ASSISTANT avatars ring --------
+    await dispatch(ctx, { type: 'chatUpdate', chatId, chat: {}, conciergeState: 'unmoderated' });
     await page.reload();
     await unlockIfLocked(page);
     await expect(avatars(page)).toHaveCount(4, { timeout: 15_000 });
-    await expect(rings(page), 'Flagged rings both assistant avatars').toHaveCount(2, {
-      timeout: 15_000,
-    });
+    await expect(
+      rings(page),
+      'an operator-set Unmoderated chat IS painted — provenance is never a colour (v4 4d370a90f)',
+    ).toHaveCount(2, { timeout: 15_000 });
     // ...and they are the ASSISTANT ones. v4's user-side avatar (`:487`) never
     // takes `dangerous`, so every ring must sit inside an assistant row and the
     // user rows must hold none.
@@ -154,24 +165,17 @@ test.describe('P4.69 — the dangerous-chat avatar ring', () => {
       page.locator('.qt-chat-message-row-user .qt-chat-avatar-dangerous'),
       'no ring on a user row (v4 MessageRow:487 passes no `dangerous`)',
     ).toHaveCount(0);
-    expect(readStoredPair(chatId)).toEqual({ override: null, dangerous: 1 });
+    // The discriminator: the operator set it, so the four-state rule would
+    // have left these rows unpainted.
+    expect(readStoredTriplet(chatId)).toEqual({ mode: 'unmoderated', setBy: 'operator', reason: 'manual' });
 
-    // --- Uncensored: rings gone, label PRESERVED (v4's CT-2 pair) ----------
-    await dispatch(ctx, { type: 'chatUpdate', chatId, chat: {}, conciergeState: 'uncensored' });
+    // --- Locked: the ordinary desks only, no rings --------------------------
+    await dispatch(ctx, { type: 'chatUpdate', chatId, chat: {}, conciergeState: 'locked' });
     await page.reload();
     await unlockIfLocked(page);
     await expect(avatars(page), 'the rows are still on screen').toHaveCount(4, { timeout: 15_000 });
-    await expect(
-      rings(page),
-      'an operator-Uncensored chat is deliberately NOT painted (v4 chat-override.ts:110)',
-    ).toHaveCount(0, { timeout: 15_000 });
-    // The discriminator: the raw flag underneath is still 1. Binding
-    // `chat.isDangerousChat` instead of `shouldShowDangerStyling(chat)` would
-    // have left both rings on screen right here.
-    expect(
-      readStoredPair(chatId),
-      'the stored label survives the override — this is what makes the leg above discriminating',
-    ).toEqual({ override: 'UNCENSORED', dangerous: 1 });
+    await expect(rings(page), 'a Locked chat is not painted').toHaveCount(0, { timeout: 15_000 });
+    expect(readStoredTriplet(chatId)).toEqual({ mode: 'locked', setBy: 'operator', reason: 'manual' });
   });
 });
 
@@ -196,8 +200,15 @@ async function dispatch(
   );
 }
 
-/** The stored pair, straight out of the DB — the UI cannot show the label under an override. */
-function readStoredPair(chatId: string): { override: string | null; dangerous: number } {
+/**
+ * The stored triplet, straight out of the DB (v4's own acceptance script reads
+ * the same three columns). A NULL `conciergeMode` reads as Moderated.
+ */
+function readStoredTriplet(chatId: string): {
+  mode: string;
+  setBy: string | null;
+  reason: string | null;
+} {
   const res = spawnSync(
     cliBinary(),
     [
@@ -205,7 +216,7 @@ function readStoredPair(chatId: string): { override: string | null; dangerous: n
       '--data-dir',
       INSTANCE_DIR,
       '--json',
-      `SELECT "conciergeOverride" AS o, "isDangerousChat" AS d FROM chats WHERE id = '${chatId}';`,
+      `SELECT "conciergeMode" AS m, "conciergeModeSetBy" AS s, "conciergeModeReason" AS r FROM chats WHERE id = '${chatId}';`,
     ],
     {
       env: {
@@ -217,8 +228,8 @@ function readStoredPair(chatId: string): { override: string | null; dangerous: n
     },
   );
   if (res.status !== 0) throw new Error(`CLI read failed:\n${res.stdout}\n${res.stderr}`);
-  const rows = JSON.parse(res.stdout) as { o: string | null; d: number | null }[];
-  return { override: rows[0]?.o ?? null, dangerous: Number(rows[0]?.d ?? 0) };
+  const rows = JSON.parse(res.stdout) as { m: string | null; s: string | null; r: string | null }[];
+  return { mode: rows[0]?.m ?? 'moderated', setBy: rows[0]?.s ?? null, reason: rows[0]?.r ?? null };
 }
 
 async function unlockIfLocked(page: Page): Promise<void> {
