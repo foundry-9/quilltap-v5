@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — docs(porting): drift check at v4 `08c49319d` — nine commits pending, an SDK-bump regen event
+
+_Docs-only change._
+
+Second drift check of the day. v4 main is at `08c49319d` (`4.10.0-dev.92`),
+nine commits past the `b0b6656b5` baseline, and the checkout is clean. It
+adds two rows to the ledger:
+
+- `6d0f88d65`, a dependency sweep with no source change. It moves `openai`
+  7.20.0 → 7.23.0 and `@openrouter/sdk` 1.3.11 → 1.3.28, and those versions
+  are installed in the checkout. `provider_sdk_version_guard` is therefore
+  red by design, and the provider corpora need a re-record.
+- `08c49319d`, the Scenario Builder on the scenario shelves: the build
+  request's `groupIds`, `resolveMountPointIdsForGroup`, and a group
+  Scenarios card. It is a small PORT on the P4.D216/D217 surface.
+
+The morning's plugin-types install warning is resolved. §1 now warns that a
+baseline-pinned regen runs the target SDKs, because the pin symlinks the
+live `node_modules`.
+
 #### 2026-09-25 — docs(porting): drift check at v4 `ce2f1dabf` — seven commits pending, the Concierge overhaul landed
 
 _Docs-only change._
