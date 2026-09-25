@@ -172,3 +172,44 @@ describe('glyphs and labels', () => {
     expect(routeOutcomeLabel('answered')).toBe('answered');
   });
 });
+
+/** v4 `route-trail-display.test.ts` `image trails (Concierge overhaul)` (#73, `8bd080267`), by name. */
+describe('image trails (Concierge overhaul)', () => {
+  it('labels an image profile by its name and a connection profile by its model', () => {
+    const rows = collapseRouteTrail([
+      attempt({
+        profileKind: 'image',
+        profileName: 'House Painter',
+        modelName: 'gpt-image-1',
+        outcome: 'refused',
+        trigger: 'moderation-refusal',
+        evidence: 'typed-error',
+      }),
+      attempt({
+        profileId: ANTHROPIC,
+        profileKind: 'image',
+        profileName: 'Kestrel Studio',
+        modelName: 'grok-2-image',
+        via: 'concierge',
+        outcome: 'answered',
+        trigger: undefined,
+        detail: undefined,
+      }),
+      attempt({ profileId: DEEPSEEK, modelName: 'deepseek-chat', outcome: 'answered', trigger: undefined, detail: undefined }),
+    ]);
+    expect(rows.map((r) => [r.profileKind, r.label])).toEqual([
+      ['image', 'House Painter'],
+      ['image', 'Kestrel Studio'],
+      ['connection', 'deepseek-chat'],
+    ]);
+  });
+
+  it('says when a refusal was read from the wording alone', () => {
+    const [row] = collapseRouteTrail([
+      attempt({ outcome: 'refused', trigger: 'moderation-refusal', evidence: 'message-pattern', detail: 'content policy' }),
+    ]);
+    expect(describeRouteAttempt(row)).toContain(
+      'refused on content grounds — by its wording (content policy)',
+    );
+  });
+});

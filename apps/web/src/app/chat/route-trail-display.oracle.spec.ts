@@ -1,8 +1,12 @@
 /**
  * The corpus differential for `route-trail-display.ts` against v4's REAL
- * `lib/chat/route-trail-display.ts`, recorded at the `78b381a96` pin by
- * `apps/web/oracle/route-trail-display.ts` (P4.D177 §C.1 — the feature was
- * shipped whole in `5841a8c62`, so there is no prior baseline to diff from).
+ * `lib/chat/route-trail-display.ts`, recorded by
+ * `apps/web/oracle/route-trail-display.ts` — first at the `78b381a96` pin
+ * (P4.D177), RE-RECORDED by P4.D229 at the round target `acadcc7cd`: v4 #73
+ * (`8bd080267`) added the row's `profileKind` + `label` (an image profile is
+ * labelled by its NAME), widened `evidence` to five values, and gave the
+ * refused arm ` — by its wording`. 25 → 34 lines: two image collapse cases,
+ * five evidence/hover describe cases, the `evidence` and `profileKind` enums.
  *
  * Also carries the ground truth for the hand-rolled `RouteAttemptVia` /
  * `RouteAttemptOutcome` / `RouteAttemptTrigger` unions in `core-contract.ts`
@@ -47,7 +51,7 @@ interface LabelRow {
 }
 interface EnumRow {
   kind: 'enum';
-  id: 'via' | 'outcome' | 'trigger';
+  id: 'via' | 'outcome' | 'trigger' | 'evidence' | 'profileKind';
   out: string;
 }
 
@@ -63,12 +67,12 @@ const of = <T extends Row['kind']>(kind: T) => ROWS.filter((r): r is Extract<Row
 describe('route-trail-display agrees with v4 row for row', () => {
   it('carries the whole recorded corpus', () => {
     // A truncated fixture would make every it.each below vacuously green.
-    expect(ROWS).toHaveLength(25);
-    expect(of('collapse')).toHaveLength(4);
-    expect(of('describe')).toHaveLength(12);
+    expect(ROWS).toHaveLength(34);
+    expect(of('collapse')).toHaveLength(6);
+    expect(of('describe')).toHaveLength(17);
     expect(of('glyph')).toHaveLength(3);
     expect(of('label')).toHaveLength(3);
-    expect(of('enum')).toHaveLength(3);
+    expect(of('enum')).toHaveLength(5);
   });
 
   it.each(of('collapse'))('collapse — $id', (row) => {
@@ -140,5 +144,28 @@ describe("the trigger/via/outcome unions agree with v4's zod enums", () => {
   it('trigger — seven literals, both directions', () => {
     const recorded = JSON.parse(of('enum').find((r) => r.id === 'trigger')!.out) as string[];
     expect(TRIGGER.slice().sort()).toEqual(recorded.slice().sort());
+  });
+
+  // v4 #73 (`8bd080267`): the two new enums on the row.
+  const EVIDENCE_ALL: Record<NonNullable<RouteAttempt['evidence']>, true> = {
+    'typed-error': true,
+    'provider-code': true,
+    'finish-reason': true,
+    'message-pattern': true,
+    inferred: true,
+  };
+  const PROFILE_KIND_ALL: Record<NonNullable<RouteAttempt['profileKind']>, true> = {
+    connection: true,
+    image: true,
+  };
+
+  it('evidence — five literals, both directions', () => {
+    const recorded = JSON.parse(of('enum').find((r) => r.id === 'evidence')!.out) as string[];
+    expect(Object.keys(EVIDENCE_ALL).sort()).toEqual(recorded.slice().sort());
+  });
+
+  it('profileKind — two literals, both directions', () => {
+    const recorded = JSON.parse(of('enum').find((r) => r.id === 'profileKind')!.out) as string[];
+    expect(Object.keys(PROFILE_KIND_ALL).sort()).toEqual(recorded.slice().sort());
   });
 });

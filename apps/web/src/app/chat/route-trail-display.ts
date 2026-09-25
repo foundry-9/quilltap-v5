@@ -42,6 +42,15 @@ export interface RouteTrailRow {
   detail?: string;
   /** How many adjacent attempts against this profile collapsed into this row (≥ 1). */
   attempts: number;
+  /** Connection profile (the default) or image profile (v4 `8bd080267` #73). */
+  profileKind: 'connection' | 'image';
+  /**
+   * What the badge prints beside the provider icon. A connection profile is
+   * known by its model; an image profile by the name the user gave it — two
+   * image profiles on one model (different LoRAs, different styles) are
+   * otherwise indistinguishable.
+   */
+  label: string;
 }
 
 /**
@@ -78,6 +87,8 @@ export function collapseRouteTrail(trail: RouteAttempt[]): RouteTrailRow[] {
       evidence: attempt.evidence,
       detail: attempt.detail,
       attempts: 1,
+      profileKind: attempt.profileKind ?? 'connection',
+      label: attempt.profileKind === 'image' ? attempt.profileName : attempt.modelName,
     });
   }
 
@@ -115,7 +126,12 @@ function describeOutcome(row: RouteTrailRow): string {
   }
 
   if (row.outcome === 'refused') {
-    const evidence = row.evidence === 'inferred' ? ' — inferred' : '';
+    const evidence =
+      row.evidence === 'inferred'
+        ? ' — inferred'
+        : row.evidence === 'message-pattern'
+          ? ' — by its wording'
+          : '';
     return `refused on content grounds${evidence}${row.detail ? ` (${row.detail})` : ''}`;
   }
 

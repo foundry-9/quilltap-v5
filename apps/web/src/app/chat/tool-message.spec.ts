@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { ChatDetail, MessageDto } from '../core/core-contract';
+import type { ChatDetail, MessageDto, RouteAttempt } from '../core/core-contract';
 import { IMAGES_HIDDEN } from './hidden-image/images-hidden';
 import { ToolMessage } from './tool-message';
 import { ToastService } from '../ui/toast.service';
@@ -397,5 +397,67 @@ describe('ToolMessage — the Salon Images switch (v4 e3937d7aa)', () => {
     expect(el(fixture).querySelector('img')).toBeNull();
     expect(el(fixture).querySelector('qt-avatar')).toBeNull();
     expect(el(fixture).querySelector('div.w-10.h-10.rounded-full.qt-bg-muted')).not.toBeNull();
+  });
+});
+
+/**
+ * P4.D229 — the Concierge's call sheet on a TOOL row (v4 `ToolMessage.tsx
+ * :488-495`, #73 `8bd080267`): the row's OWN `routeTrail`, written by the
+ * image failover chokepoint with `profileKind: 'image'` rows. Shown on ANY
+ * tool row with a non-empty trail — not gated on the tool's name.
+ */
+describe('ToolMessage — the "Tried:" call sheet', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const IMAGE_TRAIL: RouteAttempt[] = [
+    {
+      profileId: 'img-1',
+      profileName: 'House Painter',
+      provider: 'openai',
+      modelName: 'gpt-image-1',
+      via: 'primary',
+      outcome: 'refused',
+      trigger: 'moderation-refusal',
+      evidence: 'typed-error',
+      profileKind: 'image',
+    },
+    {
+      profileId: 'img-2',
+      profileName: 'Kestrel Studio',
+      provider: 'grok',
+      modelName: 'grok-2-image',
+      via: 'concierge',
+      outcome: 'answered',
+      profileKind: 'image',
+    },
+  ];
+
+  it('lists the image profiles tried, labelled by NAME, beside a "Tried:" label', () => {
+    const fixture = render({
+      message: msg({ content: toolContent({ toolName: 'generate_image' }), routeTrail: IMAGE_TRAIL }),
+    });
+    const sheet = el(fixture).querySelector('[aria-label="Image profiles tried"]') as HTMLElement;
+    expect(sheet).not.toBeNull();
+    expect(sheet.classList.contains('qt-text-label-xs')).toBe(true);
+    expect(sheet.querySelector('span')!.textContent).toBe('Tried:');
+    const badges = Array.from(sheet.querySelectorAll('qt-provider-model-badge')) as HTMLElement[];
+    expect(badges).toHaveLength(2);
+    // The badge prints the row's `label` — an image profile's NAME, not its model.
+    expect(sheet.textContent).toContain('House Painter');
+    expect(sheet.textContent).toContain('Kestrel Studio');
+    expect(sheet.textContent).not.toContain('gpt-image-1');
+  });
+
+  it('is not gated on the tool name', () => {
+    const fixture = render({ message: msg({ content: toolContent(), routeTrail: IMAGE_TRAIL }) });
+    expect(el(fixture).querySelector('[aria-label="Image profiles tried"]')).not.toBeNull();
+  });
+
+  it('draws nothing when the row carries no trail, or an empty one', () => {
+    for (const routeTrail of [null, []]) {
+      TestBed.resetTestingModule();
+      const fixture = render({ message: msg({ content: toolContent(), routeTrail }) });
+      expect(el(fixture).querySelector('[aria-label="Image profiles tried"]')).toBeNull();
+    }
   });
 });

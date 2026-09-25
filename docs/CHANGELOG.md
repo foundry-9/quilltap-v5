@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(spa): image route trails — `profileKind` / `label`, "by its wording", and the TOOL row's "Tried:" line (P4.D229 unit 8)
+
+_Versions: SPA 0.5.775._
+
+Ports v4 #73's (`8bd080267`) client half of the image trails. A collapsed
+trail row now carries `profileKind` and `label` — an image profile is
+labelled by its name, a connection profile by its model — and the badge
+prints `label` (the hover still names the model). A refusal read from the
+provider's wording says so (` — by its wording`). A TOOL row with a
+non-empty `routeTrail` shows "Tried:" and the badge at `xs`, whatever the
+tool. The route-trail oracle is re-recorded against v4's real module at
+`acadcc7cd` (25 → 34 rows: two image collapse cases, the five evidences, the
+`evidence` and `profileKind` enums).
+
 #### 2026-09-25 — feat(spa): the Concierge's three states on the Salon side — twin, presentation, marks, sidebar, header pill, New Chat, quick-hide (P4.D229 units 1–7)
 
 _Versions: SPA 0.5.774._

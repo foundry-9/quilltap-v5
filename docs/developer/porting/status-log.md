@@ -149960,6 +149960,38 @@ Gate for the commit: `npm run lint` clean (956 qt-* classes, every guarded
 reference resolves — the two `-info` rules deleted with every reference);
 `npm test` **454 files / 8,578 passed**; `npm run build` clean.
 
+### Unit 8: trails — `profileKind` / `label` / ` — by its wording`, the badge prints `label`, "Tried:" on the TOOL row
+
+**Regen (as run):** probe PASSED; `cp apps/web/oracle/route-trail-display.ts
+/tmp/qt-v4-pin-p4d229-acadcc7cd/ && cd /tmp/qt-v4-pin-p4d229-acadcc7cd &&
+PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx route-trail-display.ts >
+<scratch>/rtd.ndjson` (then the recorder removed from the pin and the NDJSON
+copied to `apps/web/src/testing/fixtures/route-trail-display.oracle.ndjson`):
+**34 lines** (was 25); `grep -c "by its wording"` = 1; the `image-trail`
+collapse row decodes to `[('image','House Painter'),('image','Kestrel
+Studio'),('connection','deepseek-chat')]` — v4's own test expectation. New
+recorder rows: `image-trail`, `image-collapse` (an image run collapses, the
+first row's kind/label kept; an explicit `profileKind: 'connection'`), the
+`typed-error` / `provider-code` / `message-pattern` / no-evidence refused
+describes, an image row's hover (still the MODEL), and the `evidence` /
+`profileKind` enum rows (hand-rolled unions checked both ways by exhaustive
+`Record` maps).
+
+**Red-first (pre-fix = `main`'s logic with only the two new row fields
+stubbed `connection`/`modelName` and no wording arm, since `main`'s module
+does not compile against the new spec — TS2339/TS2551 on `label`/
+`profileKind`):** 5 failed / 46 — exactly `labels an image profile by its
+name…`, `says when a refusal was read from the wording alone`, collapse
+`image-trail`, collapse `image-collapse`, describe `refused-message-pattern`.
+Green after: 51/51.
+
+**Ported:** `lib/chat/route-trail-display.ts:45,53,89-90,128-133`;
+`RouteTrailBadge.tsx:43` (`row.label`, both badge sites);
+`ToolMessage.tsx:488-495` ("Tried:" — `aria-label="Image profiles tried"`,
+`qt-text-label-xs`, the badge at `xs`; any tool, not gated on the name). v4's
+`image trails (Concierge overhaul)` cases transcribed by name; three v5 arms
+for the TOOL row (name-labelled, not gated, absent on null/empty).
+
 ### P4.D231 unit 1 — the build request's `groupIds` (2026-09-25)
 
 The Zod twin gains `groupIds` between `characterIds` and `chatId` (output and

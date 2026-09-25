@@ -8,16 +8,20 @@
  * `RouteAttemptTrigger` unions (v5 has no zod; `spa-has-no-zod-schema-twins-
  * are-hand-rolled`).
  *
- * Run it from a pinned v4 worktree:
+ * Run it from a pinned v4 worktree (re-recorded by P4.D229 at the round
+ * target `acadcc7cd` — #73 `8bd080267` added `profileKind` / `label` to the
+ * collapsed row, widened `evidence` to five values and gave the refused arm
+ * its ` — by its wording` phrase):
  *
  * ```bash
- * PIN=/tmp/qt-v4-pin-p4d177-78b381a96
+ * PIN=/tmp/qt-v4-pin-p4d229-acadcc7cd
  * cp <V5>/apps/web/oracle/route-trail-display.ts "$PIN/"
- * cd "$PIN" && npx tsx route-trail-display.ts \
+ * cd "$PIN" && PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx route-trail-display.ts \
  *   > <V5>/apps/web/src/testing/fixtures/route-trail-display.oracle.ndjson
+ * rm "$PIN/route-trail-display.ts"
  * ```
  *
- * Expect 25 lines.
+ * Expect 34 lines.
  */
 
 import {
@@ -102,6 +106,51 @@ const COLLAPSE_CASES: Array<[string, RouteAttempt[]]> = [
     ],
   ],
   ['empty', []],
+  // v4 #73 (`8bd080267`): the image failover chokepoint files `profileKind:
+  // 'image'` rows; an image profile is labelled by its NAME, a connection
+  // profile by its model — v4's own "image trails" test trail, row for row.
+  [
+    'image-trail',
+    [
+      attempt({
+        profileKind: 'image',
+        profileName: 'House Painter',
+        modelName: 'gpt-image-1',
+        outcome: 'refused',
+        trigger: 'moderation-refusal',
+        evidence: 'typed-error',
+      }),
+      attempt({
+        profileId: ANTHROPIC,
+        profileKind: 'image',
+        profileName: 'Kestrel Studio',
+        modelName: 'grok-2-image',
+        via: 'concierge',
+        outcome: 'answered',
+        trigger: undefined,
+        detail: undefined,
+      }),
+      attempt({ profileId: DEEPSEEK, modelName: 'deepseek-chat', outcome: 'answered', trigger: undefined, detail: undefined }),
+    ],
+  ],
+  // An explicit `profileKind: 'connection'` and an image run that collapses
+  // (the collapsed row keeps the FIRST attempt's kind and label).
+  [
+    'image-collapse',
+    [
+      attempt({ profileKind: 'image', profileName: 'House Painter', modelName: 'gpt-image-1', outcome: 'failed' }),
+      attempt({
+        profileKind: 'image',
+        profileName: 'House Painter',
+        modelName: 'gpt-image-1',
+        via: 'retry',
+        outcome: 'answered',
+        trigger: undefined,
+        detail: undefined,
+      }),
+      attempt({ profileId: DEEPSEEK, profileKind: 'connection', modelName: 'deepseek-chat', outcome: 'answered', trigger: undefined, detail: undefined }),
+    ],
+  ],
 ];
 for (const [id, trail] of COLLAPSE_CASES) {
   const rows = collapseRouteTrail(trail);
@@ -131,6 +180,26 @@ const DESCRIBE_CASES: Array<[string, Partial<RouteAttempt>]> = [
     },
   ],
   ['answered-plain', { outcome: 'answered', trigger: undefined, detail: undefined }],
+  // The five refusal evidences (v4 #73): only `inferred` and `message-pattern`
+  // add a phrase.
+  [
+    'refused-typed-error',
+    { outcome: 'refused', trigger: 'moderation-refusal', evidence: 'typed-error', detail: 'ModerationRejectionError' },
+  ],
+  [
+    'refused-provider-code',
+    { outcome: 'refused', trigger: 'moderation-refusal', evidence: 'provider-code', detail: 'content_policy_violation' },
+  ],
+  [
+    'refused-message-pattern',
+    { outcome: 'refused', trigger: 'moderation-refusal', evidence: 'message-pattern', detail: 'content policy' },
+  ],
+  ['refused-no-evidence', { outcome: 'refused', trigger: 'moderation-refusal', evidence: undefined, detail: undefined }],
+  // An image row's hover still prints the MODEL (only the badge prints the label).
+  [
+    'image-row-hover',
+    { profileKind: 'image', profileName: 'House Painter', modelName: 'gpt-image-1', outcome: 'refused', trigger: 'moderation-refusal', evidence: 'typed-error' },
+  ],
 ];
 for (const [id, overrides] of DESCRIBE_CASES) {
   const row = collapseRouteTrail([attempt(overrides)])[0];
@@ -176,3 +245,8 @@ const triggerEnum = (RouteAttemptSchema.shape.trigger as unknown as { unwrap: ()
 console.log(JSON.stringify({ kind: 'enum', id: 'via', out: JSON.stringify(RouteAttemptViaEnum.options) }));
 console.log(JSON.stringify({ kind: 'enum', id: 'outcome', out: JSON.stringify(RouteAttemptOutcomeEnum.options) }));
 console.log(JSON.stringify({ kind: 'enum', id: 'trigger', out: JSON.stringify(triggerEnum.options) }));
+// #73's two new enums on the row, ground truth for the contract's hand-rolled unions.
+const evidenceEnum = (RouteAttemptSchema.shape.evidence as unknown as { unwrap: () => { options: string[] } }).unwrap();
+const profileKindEnum = (RouteAttemptSchema.shape.profileKind as unknown as { unwrap: () => { options: string[] } }).unwrap();
+console.log(JSON.stringify({ kind: 'enum', id: 'evidence', out: JSON.stringify(evidenceEnum.options) }));
+console.log(JSON.stringify({ kind: 'enum', id: 'profileKind', out: JSON.stringify(profileKindEnum.options) }));

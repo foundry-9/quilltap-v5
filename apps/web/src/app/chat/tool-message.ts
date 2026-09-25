@@ -9,6 +9,7 @@ import {
 
 import type { ChatDetail, MessageDto } from '../core/core-contract';
 import { resolveMessageAuthor } from './chat-view-model';
+import { RouteTrailBadge } from './route-trail-badge';
 import { injectImagesHidden } from './hidden-image/images-hidden';
 import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
@@ -213,7 +214,7 @@ function formatResultContent(toolData: ToolResult): string {
 @Component({
   selector: 'qt-tool-message',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon],
+  imports: [Avatar, Icon, RouteTrailBadge],
   template: `
     @if (!toolData().delegatedDisplay) {
       <!-- Standalone uses a full-width row + author avatar; embedded drops the
@@ -290,6 +291,18 @@ function formatResultContent(toolData: ToolResult): string {
                 {{ toolData().success ? 'Success' : 'Failed' }}
               </span>
             </div>
+
+            <!-- The Concierge's call sheet (v4 ToolMessage.tsx:488-495, #73
+                 8bd080267) — the image profiles tried when a provider refused
+                 the picture on content grounds. The row's OWN routeTrail
+                 column; shown on ANY tool row with a non-empty trail, not
+                 gated on the tool's name. -->
+            @if (message().routeTrail?.length) {
+              <div class="mt-1 flex items-center gap-2 qt-text-label-xs" aria-label="Image profiles tried">
+                <span>Tried:</span>
+                <qt-route-trail-badge [routeTrail]="message().routeTrail!" size="xs" />
+              </div>
+            }
 
             <!-- Tool Request collapsible — the arguments/prompt sent to the tool. -->
             @if (hasRequest()) {

@@ -42,7 +42,7 @@ import {
             <s class="inline-flex items-center">
               <qt-provider-model-badge
                 [provider]="row.provider"
-                [modelName]="row.modelName"
+                [modelName]="row.label"
                 [size]="size()"
                 [titleOverride]="hoverText(row)"
               />
@@ -50,7 +50,7 @@ import {
           } @else {
             <qt-provider-model-badge
               [provider]="row.provider"
-              [modelName]="row.modelName"
+              [modelName]="row.label"
               [size]="size()"
               [titleOverride]="hoverText(row)"
             />
