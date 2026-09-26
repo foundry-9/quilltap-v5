@@ -643,7 +643,9 @@ mod tests {
         .unwrap();
         flip(&db, ConciergeState::Locked, Default::default(), None);
         rt.block_on(db.write(|w| {
-            w.main().connection().execute_batch("DELETE FROM flip_seq;")?;
+            w.main()
+                .connection()
+                .execute_batch("DELETE FROM flip_seq;")?;
             Ok(())
         }))
         .unwrap();

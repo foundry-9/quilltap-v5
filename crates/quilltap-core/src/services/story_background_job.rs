@@ -727,6 +727,7 @@ where
         &danger_settings,
         user_id,
         Some(&payload.chat_id),
+        Some(&chat),
         None,
         Some(job_id),
         ImagePurpose::Lantern,

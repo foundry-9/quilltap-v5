@@ -118,7 +118,9 @@ use crate::services::chat_events::{
     TurnStartPayload,
 };
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
-use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
+use crate::services::dangerous_content::chat_override::{
+    get_concierge_state, should_use_uncensored_route,
+};
 use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
 use crate::services::llm_logging::LogContext;
 use crate::services::message_context;
@@ -2898,6 +2900,9 @@ where
         // `dangerSettings`, so a thrown refusal reaches the understudy.
         provider_failover::ConciergeFailoverSeam {
             router: deps.danger_router,
+            // v4 `4d370a90f` (`primary-stream.service.ts:400`): the turn's
+            // snapshot, re-read by the failover at refusal time.
+            concierge_state: Some(get_concierge_state(Some(&chat))),
             danger_settings: Some(&failover_danger_settings),
             adapter: Some(&adapter_deps),
         },
@@ -3299,6 +3304,8 @@ where
             tool_messages_length: tool_messages_len,
             content_was_flagged_dangerous,
             danger_settings: failover_danger_settings.clone(),
+            // v4 `4d370a90f` (`orchestrator.service.ts:1629`).
+            concierge_state: Some(get_concierge_state(Some(&chat))),
             connection_profile: effective_profile.clone(),
             params: params.clone(),
             user_id: user_id.clone(),
@@ -4843,6 +4850,16 @@ mod tests {
     // short-circuit before any provider / seam is touched.
     struct NoRouter;
     impl DangerousContentRouter for NoRouter {
+        fn read_current_concierge_state(
+            &self,
+            _chat_id: &str,
+            snapshot: Option<crate::services::dangerous_content::chat_override::ConciergeState>,
+        ) -> crate::services::dangerous_content::chat_override::ConciergeState {
+            // A test double with no database: the snapshot (v4's fallback).
+            snapshot.unwrap_or(
+                crate::services::dangerous_content::chat_override::ConciergeState::Moderated,
+            )
+        }
         fn resolve(
             &self,
             p: &EffectiveProfile,

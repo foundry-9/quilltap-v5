@@ -1007,6 +1007,9 @@
   },
   {
    "id": "da000001-0000-4000-8000-000000000001",
+   "conciergeMode": "locked",
+   "conciergeModeSetBy": "operator",
+   "conciergeModeReason": "migration",
    "chatType": "salon",
    "contextSummary": "A prior summary exists for this chat.",
    "conciergeOverride": "OFF",
@@ -1028,6 +1031,9 @@
   },
   {
    "id": "db000002-0000-4000-8000-000000000002",
+   "conciergeMode": "unmoderated",
+   "conciergeModeSetBy": "concierge",
+   "conciergeModeReason": "classifier",
    "chatType": "salon",
    "contextSummary": null,
    "isDangerousChat": true,
@@ -1049,6 +1055,9 @@
   },
   {
    "id": "dc000003-0000-4000-8000-000000000003",
+   "conciergeMode": "unmoderated",
+   "conciergeModeSetBy": "operator",
+   "conciergeModeReason": "migration",
    "chatType": "salon",
    "contextSummary": "A prior summary exists for this chat.",
    "conciergeOverride": "UNCENSORED",
@@ -1547,6 +1556,9 @@
   },
   {
    "id": "c0110006-0000-4000-8000-000000000c16",
+   "conciergeMode": "unmoderated",
+   "conciergeModeSetBy": "concierge",
+   "conciergeModeReason": "classifier",
    "chatType": "salon",
    "contextSummary": null,
    "isDangerousChat": true,

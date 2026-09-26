@@ -151117,3 +151117,59 @@ Result file: `/tmp/p4d226/first-act-4d370a90f.json` (kept in the lane's scratch)
   post-#75 oracle and are P4.D233's to retire or re-key (the four live kinds).
 - Gate for this unit: fmt; clippy clean on both feature sets; `quilltap-core
   --lib` 2653/0; the three host DDL-mirror binaries green.
+
+### Unit 3 — the Locked arms on both chokepoints (Tier 1 item 6)
+
+- **Image chokepoint** (`image_failover.rs`): `ImageFailoverContext.chat`
+  (v4's snapshot; `None` = the dialog, read as Moderated); step 4 gains, BEFORE
+  the mode gate, `read_current_concierge_state(db, chat_id,
+  Some(get_concierge_state(chat)))` → a Locked chat: INFO `Refusal not
+  rerouted: the chat is Locked` {…logContext, concierge_state}, `refusal-not-
+  permitted` with `reason: locked`, the ledger (`rerouted: false`), the trail.
+  `announce` takes the optional `reason` (spread only when given). Callers pass
+  the chat: the tool (`db_ctx.chat`, v4 `chatForOverride`), both jobs
+  (`generate_job_image` gains `chat`), the dialog (`ConciergeSettings.chat`, v4
+  `chatForConcierge`). The tool's chat read now WARNs `[Image Generation] Could
+  not load chat for its Concierge state` {chat_id, error_message} on a failed
+  read (v5 had swallowed it silently — a pre-existing absence; the #75 text).
+- **Text failover** (`provider_failover.rs`): `DangerousContentRouter` grows a
+  REQUIRED `read_current_concierge_state(chat_id, snapshot)` (the real router
+  re-reads through `current_state`; every test double returns the snapshot;
+  the harness's `CannedRouter` re-reads the fixture copy, as v4's real
+  `readCurrentConciergeState` runs in the oracle). `AttemptEmptyResponse
+  RecoveryOptions.concierge_state` + `ConciergeFailoverSeam.concierge_state`
+  (the orchestrator passes `get_concierge_state(chat)` on both — v4
+  `orchestrator.service.ts:1629` / `primary-stream.service.ts:400`). Empty
+  body: `locked_out = empty && !may_fail_over(re-read)` (the read only for an
+  empty body, v4's `&&`); a stated turn refusal → INFO `[EmptyResponse] Refusal
+  not rerouted: the chat is Locked` {chat_id, provider, model} + the Locked
+  announcement; the uncensored retry now requires `!locked_out`. Hard error:
+  before the Auto-Route gate, INFO `[Failover] Refusal not rerouted to an
+  uncensored profile: the chat is Locked` {chat_id} + the announcement +
+  `record_text_refusal(false)` + the chain.
+- **Families** (grown at the target pin): `image_failover_tier3` +3 arms (v4
+  `image-failover.test.ts`'s three #75 cases: Locked by its column; locked
+  WHILE the provider was thinking — a `lockDuringAttempt` plant, both sides;
+  an Unmoderated chat still asking another understudy) + the
+  `ConciergeCurrentState` service in the compared lines; `primary_stream_tier3`
+  +4 arms on two chats created Locked (v4's `provider-failover.service.test.ts`
+  / `provider-failover-refusal.test.ts` #75 cases: the empty body locked
+  mid-turn with a stated refusal; a plain empty body on a Locked chat posting
+  nothing; a thrown refusal on a Locked chat; a thrown refusal locked
+  mid-turn) — the case passes `conciergeState` / the chat's `conciergeMode`
+  exactly as v4's callers do. `orchestrator_tier3` and `story_background_job_
+  tier3` (red in the first act — their chats MEANT a state through the legacy
+  pair) re-keyed by v4's derive table (`da…01` OFF → locked, `db…02`/`c011…16`
+  dangerous → unmoderated/concierge/classifier, `dc…03` UNCENSORED →
+  unmoderated/operator/migration; five story chats likewise), the legacy
+  values kept as a migrated row keeps them; the two builders pass the trio.
+- Through the driver at the target: **9/9 OK** (`image_failover_tier3`,
+  `primary_stream_tier3`, `orchestrator_tier3`, `story_background_job_tier3`,
+  `avatar_job_tier3`, `image_generation_tier3`, `images_generate_route`,
+  `tool_execution_tier2`, `enclave_step_tier3`).
+- Mutation proofs (each reverted): the image chokepoint's Locked arm reading
+  the SNAPSHOT instead of `read_current_concierge_state` → `image_failover_
+  tier3` RED on the locked-mid-call case (the refusal reroutes to a desk the
+  script never posed); both text-failover arms reading the snapshot → `primary_
+  stream_tier3` RED at `empty_locked_mid_turn_not_rerouted` ("result object
+  diverges").

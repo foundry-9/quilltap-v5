@@ -145,6 +145,8 @@ fn render_v4(log: &Value) -> String {
         Some("ConciergeImageFailover") => "quilltap::concierge_image_failover",
         Some("ConciergeRefusal") => "quilltap::concierge_refusal",
         Some("ConciergeRefusalLedger") => "quilltap::concierge_refusal_ledger",
+        // P4.D226 (v4 `4d370a90f`): the state re-read at refusal time.
+        Some("ConciergeCurrentState") => "quilltap::concierge_current_state",
         None => "quilltap::concierge_notification",
         Some(other) => panic!("unexpected service {other}"),
     };
@@ -327,9 +329,12 @@ fn image_failover_matches_v4() {
                 uncensored_image_profile_id: settings.uncensored_image_profile_id.as_deref(),
             })
         };
+        // P4.D226 (v4 `4d370a90f`): the chat's state when the call began.
+        let chat_snapshot = case.get("chat").cloned();
         let ctx = ImageFailoverContext {
             db: &db,
             chat_id: case["chatId"].as_str(),
+            chat: chat_snapshot.as_ref().filter(|c| !c.is_null()),
             purpose: match case["purpose"].as_str().unwrap() {
                 "tool" => ImagePurpose::Tool,
                 "lantern" => ImagePurpose::Lantern,
@@ -359,13 +364,31 @@ fn image_failover_matches_v4() {
                 .collect(),
         );
         let calls: Mutex<Vec<Value>> = Mutex::new(Vec::new());
-        let (calls, script) = (&calls, &script);
+        // P4.D226: the operator locks the chat while the primary is thinking.
+        let lock_pending: Mutex<Option<String>> = Mutex::new(
+            (case["lockDuringAttempt"].as_bool() == Some(true))
+                .then(|| case["chatId"].as_str().unwrap().to_string()),
+        );
+        let (calls, script, lock_pending, db_ref) = (&calls, &script, &lock_pending, &db);
         let attempt = |profile: FailoverProfile, key: String| async move {
             {
                 calls
                     .lock()
                     .unwrap()
                     .push(json!({ "profileId": profile.id, "apiKey": key }));
+                let lock = lock_pending.lock().unwrap().take();
+                if let Some(chat_id) = lock {
+                    db_ref
+                        .write(move |w| {
+                            w.main().connection().execute(
+                                "UPDATE chats SET \"conciergeMode\" = 'locked' WHERE id = ?1",
+                                rusqlite::params![chat_id],
+                            )?;
+                            Ok(())
+                        })
+                        .await
+                        .expect("lock the chat mid-call");
+                }
                 let step = {
                     let mut s = script.lock().unwrap();
                     let steps = s.get_mut(&profile.id).expect("scripted profile");
@@ -414,6 +437,7 @@ fn image_failover_matches_v4() {
                         "quilltap::concierge_image_failover"
                             | "quilltap::concierge_refusal"
                             | "quilltap::concierge_refusal_ledger"
+                            | "quilltap::concierge_current_state"
                             | "quilltap::concierge_notification"
                     )
                 )

@@ -16,7 +16,9 @@
 //!   3. a refusal → record it on the trail, and on the chat's refusal ledger
 //!      ([`record_moderation_refusal`]) once the outcome is known — whether or
 //!      not the reroute later succeeds;
-//!   4. mode is not `AUTO_ROUTE` → announce `refusal-not-permitted`, fail;
+//!   4. the chat may not fail over (it is Locked — re-read NOW, v4
+//!      `4d370a90f`) → announce `refusal-not-permitted` with `reason: locked`,
+//!      fail; mode is not `AUTO_ROUTE` → announce `refusal-not-permitted`, fail;
 //!   5. ask the understudy resolver (excluding the primary). Nobody → announce
 //!      `refusal-no-understudy`, fail;
 //!   6. ask the understudy once. It answers → announce `refusal-rerouted` and
@@ -40,13 +42,15 @@ use crate::db::runtime::Db;
 use crate::llm_fallback::{classify_fallback_trigger, FallbackError, FallbackTrigger};
 use crate::model::image::ImageGenError;
 use crate::services::concierge_notifications::{
-    post_concierge_refusal_announcement, ConciergeRefusalDetails, ConciergeRefusalKind,
-    ConciergeRefusalPurpose,
+    post_concierge_refusal_announcement, ConciergeRefusalBar, ConciergeRefusalDetails,
+    ConciergeRefusalKind, ConciergeRefusalPurpose,
 };
 use crate::services::route_trail::{
     truncate_detail, RouteAttempt, RouteAttemptOutcome, RouteAttemptVia, RouteProfileKind,
 };
 
+use super::chat_override::{concierge_state_may_fail_over, get_concierge_state};
+use super::current_state::read_current_concierge_state;
 use super::provider_routing::ApiKeyResolver;
 use super::refusal::{classify_refusal, RefusalInput, RefusalVerdict};
 use super::refusal_ledger::{
@@ -163,6 +167,12 @@ pub struct ImageFailoverContext<'a, U: UnderstudySource> {
     pub purpose: ImagePurpose,
     /// Already resolved WITH the chat where there is one.
     pub settings: &'a DangerousContentSettings,
+    /// The chat's Concierge state when the call began, where there is a chat
+    /// (v4 `4d370a90f`, #75). A Locked chat never fails over, whatever the
+    /// mode says. At refusal time the chokepoint re-reads the chat (by
+    /// `chat_id`) and uses this only if that read fails. `None` (the dialog)
+    /// reads as Moderated.
+    pub chat: Option<&'a Value>,
     pub understudy: &'a U,
     /// How the trail labels the profiles (v4's default `'image'`; the legacy
     /// dialog, which draws from connection profiles, says `Connection`).
@@ -248,12 +258,14 @@ macro_rules! failover_line {
     };
 }
 
-/// v4 `announce(ctx, kind, refusing, answeringProfileName?)`.
+/// v4 `announce(ctx, kind, refusing, answeringProfileName?, reason?)` — the
+/// `reason` spread into the details only when given (`4d370a90f`).
 async fn announce<U: UnderstudySource>(
     ctx: &ImageFailoverContext<'_, U>,
     kind: ConciergeRefusalKind,
     refusing: &FailoverProfile,
     answering_profile_name: Option<&str>,
+    reason: Option<ConciergeRefusalBar>,
 ) {
     let Some(chat_id) = ctx.chat_id else {
         tracing::debug!(
@@ -273,7 +285,7 @@ async fn announce<U: UnderstudySource>(
             refusing_model: refusing.model_name.clone(),
             answering_profile_name: answering_profile_name.map(str::to_string),
             purpose: ctx.purpose.announcement(),
-            reason: None,
+            reason,
         },
     )
     .await;
@@ -379,8 +391,34 @@ where
         mode = ctx.settings.mode.as_str()
     );
 
-    // 4. The caller's policy, stated here where a reader can see it: failover
-    //    obeys Auto-Route in this phase.
+    // 4. The caller's policy, stated here where a reader can see it: a Locked
+    //    chat never fails over, and otherwise failover obeys Auto-Route. The
+    //    state is read now, not when the call began: the operator may have
+    //    locked the chat while the provider was thinking (v4 `4d370a90f`).
+    let concierge_state =
+        read_current_concierge_state(ctx.db, ctx.chat_id, Some(get_concierge_state(ctx.chat)));
+    if !concierge_state_may_fail_over(concierge_state) {
+        failover_line!(
+            info,
+            ctx,
+            p,
+            "Refusal not rerouted: the chat is Locked",
+            concierge_state = concierge_state.as_str()
+        );
+        announce(
+            ctx,
+            ConciergeRefusalKind::RefusalNotPermitted,
+            p,
+            None,
+            Some(ConciergeRefusalBar::Locked),
+        )
+        .await;
+        ledger(ctx, p, &verdict, false).await;
+        return Err(ImageFailoverError {
+            error: primary_error,
+            trail,
+        });
+    }
     if ctx.settings.mode != "AUTO_ROUTE" {
         failover_line!(
             info,
@@ -389,7 +427,14 @@ where
             "Refusal not rerouted: the Concierge mode does not permit it",
             mode = ctx.settings.mode.as_str()
         );
-        announce(ctx, ConciergeRefusalKind::RefusalNotPermitted, p, None).await;
+        announce(
+            ctx,
+            ConciergeRefusalKind::RefusalNotPermitted,
+            p,
+            None,
+            None,
+        )
+        .await;
         ledger(ctx, p, &verdict, false).await;
         return Err(ImageFailoverError {
             error: primary_error,
@@ -406,7 +451,14 @@ where
             p,
             "Refusal not rerouted: no uncensored understudy is available"
         );
-        announce(ctx, ConciergeRefusalKind::RefusalNoUnderstudy, p, None).await;
+        announce(
+            ctx,
+            ConciergeRefusalKind::RefusalNoUnderstudy,
+            p,
+            None,
+            None,
+        )
+        .await;
         ledger(ctx, p, &verdict, false).await;
         return Err(ImageFailoverError {
             error: primary_error,
@@ -449,6 +501,7 @@ where
                 ConciergeRefusalKind::RefusalRerouted,
                 p,
                 Some(&understudy.name),
+                None,
             )
             .await;
             ledger(ctx, p, &verdict, true).await;

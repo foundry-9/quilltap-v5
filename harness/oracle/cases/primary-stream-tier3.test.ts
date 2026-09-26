@@ -168,6 +168,8 @@ interface CallSpec {
    * scan is the answer, so the reroute still runs.
    */
   omitUncensoredId?: boolean;
+  /** P4.D226: the turn's Concierge snapshot (`conciergeState` / the chat's `conciergeMode`). */
+  conciergeSnapshot?: string;
   /**
    * P4.74 — the per-call primary. Absent (every pre-existing case) resolves to
    * `spec.profile`, so nothing about those cases moves; the credential-gate
@@ -622,7 +624,12 @@ async function main(): Promise<void> {
           repos,
           chatId: call.chatId as string,
           userId: spec.userId,
-          chat: { isPaused: false } as never,
+          // P4.D226 (v4 `4d370a90f`): `runPrimaryStream` derives the failover's
+          // snapshot as `getConciergeState(chat)` — this object's.
+          chat: {
+            isPaused: false,
+            ...(call.conciergeSnapshot ? { conciergeMode: call.conciergeSnapshot } : {}),
+          } as never,
           character: character as never,
           characterParticipant,
           userParticipantId: null,
@@ -705,6 +712,9 @@ async function main(): Promise<void> {
         // step produced content.
         repos,
         fallbackContext: { dangerous: false, needsVision: false, needsTools: false },
+        // P4.D226 (v4 `4d370a90f`): the turn's Concierge snapshot, re-read at
+        // refusal time. Absent (the pre-#75 corpus) reads as Moderated.
+        ...(call.conciergeSnapshot ? { conciergeState: call.conciergeSnapshot } : {}),
       });
       result = {
         uncensoredRetryAttempted: flags.uncensoredRetryAttempted,
@@ -759,7 +769,12 @@ async function main(): Promise<void> {
           repos,
           chatId: call.chatId as string,
           userId: spec.userId,
-          chat: { isPaused: false } as never,
+          // P4.D226 (v4 `4d370a90f`): `runPrimaryStream` derives the failover's
+          // snapshot as `getConciergeState(chat)` — this object's.
+          chat: {
+            isPaused: false,
+            ...(call.conciergeSnapshot ? { conciergeMode: call.conciergeSnapshot } : {}),
+          } as never,
           character: character as never,
           characterParticipant,
           userParticipantId: null,

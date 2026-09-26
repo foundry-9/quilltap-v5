@@ -347,6 +347,14 @@ impl<A: ApiKeyResolver> DangerContentRouter<A> {
 }
 
 impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRouter<A> {
+    fn read_current_concierge_state(
+        &self,
+        chat_id: &str,
+        snapshot: Option<super::chat_override::ConciergeState>,
+    ) -> super::chat_override::ConciergeState {
+        super::current_state::read_current_concierge_state(&self.db, Some(chat_id), snapshot)
+    }
+
     async fn resolve(
         &self,
         original_profile: &EffectiveProfile,

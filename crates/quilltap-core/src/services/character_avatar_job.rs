@@ -625,6 +625,7 @@ where
         &danger_settings,
         user_id,
         Some(&payload.chat_id),
+        Some(&chat),
         Some(&payload.character_id),
         Some(job_id),
         ImagePurpose::Avatar,

@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): a Locked chat's refusal stands on both failover chokepoints (P4.D226 unit 3)
+
+_Versions: core 0.0.1079, harness 0.0.998._
+
+When a provider refuses on a Locked chat, the image chokepoint and both text
+failover paths (the empty body and the thrown error) now leave the refusal
+standing: they re-read the chat's Concierge state at refusal time (so a chat
+locked while the provider was thinking counts), log why, post
+`refusal-not-permitted` with the new Locked wording, record the refusal on
+the ledger as not rerouted, and never ask the uncensored understudy. A plain
+empty body with no stated refusal posts nothing. The orchestrator and the
+primary stream pass the turn's snapshot; the image tool, both image jobs and
+the image dialog pass their chat. The image tool now logs v4's WARN when it
+cannot load the chat for its Concierge state.
+
 #### 2026-09-25 — feat(concierge): the three Concierge states — Moderated, Unmoderated, Locked (P4.D226 unit 2)
 
 _Versions: core 0.0.1078, harness 0.0.997, host 0.0.160._

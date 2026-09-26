@@ -133,6 +133,10 @@ interface ChatSpec {
   conciergeOverride?: string | null;
   /** W4.2u: the classification label (dangerous chat → the first-branch reroute). */
   isDangerousChat?: boolean;
+  /** P4.D226: the three-state Concierge columns (v4 `4d370a90f`). */
+  conciergeMode?: string;
+  conciergeModeSetBy?: string;
+  conciergeModeReason?: string;
   /** P4.d2: the "nothing to add" per-chat toggle (b90cd1f5). NULL/absent = on. */
   turnSkippingEnabled?: boolean;
   /** P4.D60 (Bug 50/51): the impersonation overlay seed — participant ids the
@@ -490,6 +494,11 @@ async function main(): Promise<void> {
         ...(chat.agentTurnCount !== undefined ? { agentTurnCount: chat.agentTurnCount } : {}),
         ...(chat.conciergeOverride !== undefined ? { conciergeOverride: chat.conciergeOverride } : {}),
         ...(chat.isDangerousChat !== undefined ? { isDangerousChat: chat.isDangerousChat } : {}),
+        // P4.D226 (v4 `4d370a90f`): the state the legacy pair used to MEAN,
+        // derived by v4's own table (`deriveConciergeModeFromLegacy`).
+        ...(chat.conciergeMode !== undefined ? { conciergeMode: chat.conciergeMode } : {}),
+        ...(chat.conciergeModeSetBy !== undefined ? { conciergeModeSetBy: chat.conciergeModeSetBy } : {}),
+        ...(chat.conciergeModeReason !== undefined ? { conciergeModeReason: chat.conciergeModeReason } : {}),
         ...(chat.turnSkippingEnabled !== undefined
           ? { turnSkippingEnabled: chat.turnSkippingEnabled }
           : {}),

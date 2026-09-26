@@ -1715,6 +1715,16 @@ mod tests {
     /// A never-reroute router (the E2E turn fails before any danger resolution).
     struct NoRouter;
     impl DangerousContentRouter for NoRouter {
+        fn read_current_concierge_state(
+            &self,
+            _chat_id: &str,
+            snapshot: Option<crate::services::dangerous_content::chat_override::ConciergeState>,
+        ) -> crate::services::dangerous_content::chat_override::ConciergeState {
+            // A test double with no database: the snapshot (v4's fallback).
+            snapshot.unwrap_or(
+                crate::services::dangerous_content::chat_override::ConciergeState::Moderated,
+            )
+        }
         fn resolve(
             &self,
             p: &EffectiveProfile,

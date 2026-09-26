@@ -133,6 +133,7 @@ use quilltap_core::model::transport::{
     TransportResponse,
 };
 use quilltap_core::services::chat_events::RecordingSink;
+use quilltap_core::services::dangerous_content::chat_override::ConciergeState;
 use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::primary_stream::{
     self, find_previous_response_id, EffectiveProfile, PreservePartialOnError,
@@ -284,6 +285,11 @@ struct CallW {
     /// Auto-Route (the dropped gate conjunct).
     #[serde(default)]
     omit_uncensored_id: bool,
+    /// P4.D226 (v4 `4d370a90f`): the turn's Concierge snapshot — the
+    /// recovery's `conciergeState`, or the primary stream's chat's
+    /// `conciergeMode` (absent = Moderated, v4's `getConciergeState(chat)`).
+    #[serde(default, rename = "conciergeSnapshot")]
+    concierge_snapshot: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -638,6 +644,20 @@ impl DangerousContentRouter for CannedRouter {
             &self.db, chat_id, kind, &details,
         )
         .await;
+    }
+
+    /// v4's `readCurrentConciergeState` runs REAL in the oracle (only the
+    /// understudy resolver is mocked), so this re-reads the fixture copy too.
+    fn read_current_concierge_state(
+        &self,
+        chat_id: &str,
+        snapshot: Option<ConciergeState>,
+    ) -> ConciergeState {
+        quilltap_core::services::dangerous_content::current_state::read_current_concierge_state(
+            &self.db,
+            Some(chat_id),
+            snapshot,
+        )
     }
 }
 
@@ -1070,6 +1090,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     // v4's `primary` cases pass no `dangerSettings`.
                     ConciergeFailoverSeam::<_, CannedCompletionProvider> {
                         router: &router,
+                        concierge_state: Some(turn_snapshot(call)),
                         danger_settings: None,
                         adapter: None,
                     },
@@ -1140,6 +1161,11 @@ async fn primary_stream_tier3_matches_oracle() {
                         mode: danger_mode,
                         uncensored_text_profile_id: uncensored_id,
                     },
+                    // v4 passes `conciergeState` only when the case names one.
+                    concierge_state: call
+                        .concierge_snapshot
+                        .as_deref()
+                        .map(|s| ConciergeState::from_wire(s).expect("a snapshot state")),
                     connection_profile: primary_of(&spec, call).to_effective(),
                     params: base_params_with_attachments(
                         user_messages(&marker),
@@ -1301,6 +1327,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     Some(&fallback_repos),
                     ConciergeFailoverSeam::<_, CannedCompletionProvider> {
                         router: &router,
+                        concierge_state: Some(turn_snapshot(call)),
                         danger_settings: hard_settings.as_ref(),
                         // As in the empty-body arm: no array here carries an
                         // attachment, so the adapter would answer "unchanged".
@@ -1837,4 +1864,14 @@ async fn openai_chaining_fallback_tier3_matches_oracle() {
         oracle["secondChained"].as_bool().unwrap(),
         "the retry's chaining differs from v4 (it must drop the id)"
     );
+}
+
+/// v4 `runPrimaryStream`'s `getConciergeState(chat)` over the case's chat
+/// object (`{ isPaused: false, conciergeMode? }`) — Moderated unless the case
+/// names a snapshot (P4.D226).
+fn turn_snapshot(call: &CallW) -> ConciergeState {
+    call.concierge_snapshot
+        .as_deref()
+        .and_then(ConciergeState::from_wire)
+        .unwrap_or(ConciergeState::Moderated)
 }

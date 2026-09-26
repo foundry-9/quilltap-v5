@@ -60,6 +60,12 @@ use crate::llm_fallback::{
     FallbackCandidateKind, FallbackContext, FallbackError, FallbackProfile, FallbackPurpose,
     FallbackTrigger,
 };
+use crate::services::concierge_notifications::{
+    ConciergeRefusalBar, ConciergeRefusalDetails, ConciergeRefusalKind, ConciergeRefusalPurpose,
+};
+use crate::services::dangerous_content::chat_override::{
+    concierge_state_may_fail_over, ConciergeState,
+};
 use crate::services::dangerous_content::refusal::RefusalEvidence;
 use crate::services::dangerous_content::refusal_ledger::{
     RefusalKind, RefusalPurpose, RefusalRecord,
@@ -139,6 +145,18 @@ pub trait DangerousContentRouter {
         kind: crate::services::concierge_notifications::ConciergeRefusalKind,
         details: crate::services::concierge_notifications::ConciergeRefusalDetails,
     ) -> impl std::future::Future<Output = ()> + Send;
+
+    /// v4 `readCurrentConciergeState(chatId, snapshot)` (`4d370a90f`, #75) —
+    /// the chat's Concierge state as it stands NOW, at refusal time; the
+    /// snapshot (Moderated when absent) when there is no chat to read or the
+    /// read fails. Required, so every router states how it answers: the real
+    /// one re-reads the database; a test double with no database returns the
+    /// snapshot.
+    fn read_current_concierge_state(
+        &self,
+        chat_id: &str,
+        snapshot: Option<ConciergeState>,
+    ) -> ConciergeState;
 }
 
 /// A resolved text understudy (v4 `Understudy` for a connection profile): who
@@ -162,6 +180,11 @@ pub struct AttemptEmptyResponseRecoveryOptions<'a> {
     pub tool_messages_length: usize,
     pub content_was_flagged_dangerous: bool,
     pub danger_settings: DangerSettings,
+    /// The chat's Concierge state when the turn began (v4 `4d370a90f`). A
+    /// Locked chat never reroutes a refusal to the uncensored desk, whatever
+    /// the mode says. The chat is re-read at refusal time; this is used only
+    /// if that read fails. `None` reads as Moderated.
+    pub concierge_state: Option<ConciergeState>,
     /// The original (pre-failover) profile, for the "both empty" log (v4
     /// `connectionProfile`).
     pub connection_profile: EffectiveProfile,
@@ -266,6 +289,7 @@ where
         tool_messages_length,
         content_was_flagged_dangerous,
         danger_settings,
+        concierge_state,
         connection_profile,
         params,
         user_id,
@@ -472,9 +496,42 @@ where
     // understudy resolver falls back to any `isDangerousCompatible` profile, so
     // Auto-Route alone opens the door, and "nobody to ask" is now the
     // resolver's answer rather than the gate's.
-    if crate::jsstr::js_trim(&state.full_response).is_empty()
-        && danger_settings.mode == "AUTO_ROUTE"
-    {
+    //
+    // v4 `4d370a90f` (#75): read at refusal time, not when the turn began — the
+    // operator may have locked the chat while the provider was thinking. A
+    // Locked chat's refusal stands: say so, once, and let the ordinary chain
+    // below have its turn. (v4 evaluates the read only for an empty body.)
+    let empty = crate::jsstr::js_trim(&state.full_response).is_empty();
+    let locked_out = empty
+        && !concierge_state_may_fail_over(
+            router.read_current_concierge_state(&chat_id, concierge_state),
+        );
+    if locked_out {
+        if let Some((refusing, _)) = turn_refusal.as_ref() {
+            tracing::info!(
+                target: "quilltap::failover",
+                chat_id = %chat_id,
+                provider = %refusing.provider,
+                model = %refusing.model_name,
+                "[EmptyResponse] Refusal not rerouted: the chat is Locked"
+            );
+            router
+                .announce_refusal(
+                    &chat_id,
+                    ConciergeRefusalKind::RefusalNotPermitted,
+                    ConciergeRefusalDetails {
+                        refusing_provider: refusing.provider.clone(),
+                        refusing_model: refusing.model_name.clone(),
+                        answering_profile_name: None,
+                        purpose: ConciergeRefusalPurpose::Text,
+                        reason: Some(ConciergeRefusalBar::Locked),
+                    },
+                )
+                .await;
+        }
+    }
+
+    if empty && !locked_out && danger_settings.mode == "AUTO_ROUTE" {
         let seat = state
             .effective_profile
             .clone()
@@ -1568,8 +1625,43 @@ where
         };
 
         let mut already_tried = opts.context.already_tried.clone();
-        // The caller's gate, stated here: the Concierge reroutes under
-        // Auto-Route only.
+        // The caller's gate, stated here: a Locked chat's refusal stands, and
+        // otherwise the Concierge reroutes under Auto-Route only. Read at
+        // refusal time, not when the turn began (v4 `4d370a90f`).
+        if !concierge_state_may_fail_over(
+            concierge
+                .router
+                .read_current_concierge_state(&opts.chat_id, concierge.concierge_state),
+        ) {
+            tracing::info!(
+                target: "quilltap::failover",
+                chat_id = %opts.chat_id,
+                "[Failover] Refusal not rerouted to an uncensored profile: the chat is Locked"
+            );
+            concierge
+                .router
+                .announce_refusal(
+                    &opts.chat_id,
+                    ConciergeRefusalKind::RefusalNotPermitted,
+                    ConciergeRefusalDetails {
+                        refusing_provider: refusing.provider.clone(),
+                        refusing_model: refusing.model_name.clone(),
+                        answering_profile_name: None,
+                        purpose: ConciergeRefusalPurpose::Text,
+                        reason: Some(ConciergeRefusalBar::Locked),
+                    },
+                )
+                .await;
+            record_text_refusal(
+                concierge.router,
+                &opts.chat_id,
+                &refusing,
+                refusal.evidence,
+                false,
+            )
+            .await;
+            return walk_fallback_chain(provider, sink, opts, opening, log).await;
+        }
         if let Some(danger_settings) = concierge.danger_settings.filter(|d| d.mode == "AUTO_ROUTE")
         {
             let stream_log =
@@ -1687,6 +1779,10 @@ where
 /// announcement), the chat's settings, and the attachment re-decide.
 pub struct ConciergeFailoverSeam<'a, RT, CMP: crate::model::completion::CompletionProvider> {
     pub router: &'a RT,
+    /// The chat's Concierge state when the turn began (v4 `4d370a90f`); re-read
+    /// at refusal time, used only if that read fails. `None` reads as
+    /// Moderated.
+    pub concierge_state: Option<ConciergeState>,
     /// v4 `dangerSettings?` — `None` means no uncensored retry (the refusal is
     /// still recorded and the chain still walks).
     pub danger_settings: Option<&'a DangerSettings>,
@@ -1894,6 +1990,16 @@ mod tests {
 
     struct NoRouter;
     impl DangerousContentRouter for NoRouter {
+        fn read_current_concierge_state(
+            &self,
+            _chat_id: &str,
+            snapshot: Option<crate::services::dangerous_content::chat_override::ConciergeState>,
+        ) -> crate::services::dangerous_content::chat_override::ConciergeState {
+            // A test double with no database: the snapshot (v4's fallback).
+            snapshot.unwrap_or(
+                crate::services::dangerous_content::chat_override::ConciergeState::Moderated,
+            )
+        }
         async fn resolve(
             &self,
             original_profile: &EffectiveProfile,
@@ -1937,6 +2043,16 @@ mod tests {
         key: String,
     }
     impl DangerousContentRouter for UncensoredRouter {
+        fn read_current_concierge_state(
+            &self,
+            _chat_id: &str,
+            snapshot: Option<crate::services::dangerous_content::chat_override::ConciergeState>,
+        ) -> crate::services::dangerous_content::chat_override::ConciergeState {
+            // A test double with no database: the snapshot (v4's fallback).
+            snapshot.unwrap_or(
+                crate::services::dangerous_content::chat_override::ConciergeState::Moderated,
+            )
+        }
         async fn resolve(
             &self,
             _original_profile: &EffectiveProfile,
@@ -2089,6 +2205,7 @@ mod tests {
                     mode: "OFF".into(),
                     uncensored_text_profile_id: None,
                 },
+                concierge_state: None,
                 connection_profile: profile("p1", "OPENAI"),
                 params,
                 user_id: "u".into(),
@@ -2153,6 +2270,7 @@ mod tests {
                     mode: "OFF".into(),
                     uncensored_text_profile_id: None,
                 },
+                concierge_state: None,
                 connection_profile: profile("p1", "OPENAI"),
                 params,
                 user_id: "u".into(),
@@ -2213,6 +2331,7 @@ mod tests {
                     mode: "AUTO_ROUTE".into(),
                     uncensored_text_profile_id: Some("p2".into()),
                 },
+                concierge_state: None,
                 connection_profile: profile("p1", "OPENAI"),
                 params,
                 user_id: "u".into(),
@@ -2265,6 +2384,7 @@ mod tests {
                     mode: "OFF".into(),
                     uncensored_text_profile_id: None,
                 },
+                concierge_state: None,
                 connection_profile: profile("p1", "OPENAI"),
                 params,
                 user_id: "u".into(),
@@ -2317,6 +2437,7 @@ mod tests {
                     mode: "OFF".into(),
                     uncensored_text_profile_id: None,
                 },
+                concierge_state: None,
                 connection_profile: profile("p1", "OPENAI"),
                 params,
                 user_id: "u".into(),
@@ -2534,6 +2655,7 @@ mod tests {
                     mode: "AUTO_ROUTE".into(),
                     uncensored_text_profile_id: Some("p2".into()),
                 },
+                concierge_state: None,
                 connection_profile: profile("p1", "ANTHROPIC"),
                 params,
                 user_id: "u".into(),
@@ -2683,6 +2805,7 @@ mod tests {
                     mode: "OFF".into(),
                     uncensored_text_profile_id: None,
                 },
+                concierge_state: None,
                 connection_profile: profile("p1", "ANTHROPIC"),
                 params,
                 user_id: String::new(),
@@ -2750,6 +2873,7 @@ mod tests {
                     mode: "OFF".into(),
                     uncensored_text_profile_id: None,
                 },
+                concierge_state: None,
                 connection_profile: profile("p1", "ANTHROPIC"),
                 params,
                 user_id: String::new(),
@@ -3146,6 +3270,7 @@ mod tests {
                     mode: "AUTO_ROUTE".into(),
                     uncensored_text_profile_id: Some("p2".into()),
                 },
+                concierge_state: None,
                 connection_profile: profile("p1", "OPENAI"),
                 params,
                 user_id: "u".into(),
@@ -3225,6 +3350,16 @@ mod tests {
     }
 
     impl DangerousContentRouter for RecordingConcierge {
+        fn read_current_concierge_state(
+            &self,
+            _chat_id: &str,
+            snapshot: Option<crate::services::dangerous_content::chat_override::ConciergeState>,
+        ) -> crate::services::dangerous_content::chat_override::ConciergeState {
+            // A test double with no database: the snapshot (v4's fallback).
+            snapshot.unwrap_or(
+                crate::services::dangerous_content::chat_override::ConciergeState::Moderated,
+            )
+        }
         async fn resolve(
             &self,
             _p: &EffectiveProfile,
@@ -3307,6 +3442,7 @@ mod tests {
                 &sink,
                 ConciergeFailoverSeam::<_, crate::model::completion::CannedCompletionProvider> {
                     router,
+                    concierge_state: None,
                     danger_settings: settings.as_ref(),
                     adapter: None,
                 },
@@ -3551,6 +3687,7 @@ mod tests {
                         mode: "AUTO_ROUTE".into(),
                         uncensored_text_profile_id: None,
                     },
+                    concierge_state: None,
                     connection_profile: profile("p1", "ANTHROPIC"),
                     params,
                     user_id: "u".into(),

@@ -33,6 +33,9 @@ interface ChatSpec {
   userId: string;
   title: string;
   participants: ParticipantSpec[];
+  conciergeMode?: string;
+  conciergeModeSetBy?: string;
+  conciergeModeReason?: string;
 }
 interface ProfileSpec {
   id: string;
@@ -121,6 +124,11 @@ async function main(): Promise<void> {
         userId: c.userId,
         title: c.title,
         participants,
+        // P4.D226 (v4 `4d370a90f`): a chat created in a Concierge state (the
+        // Locked arms); absent everywhere else.
+        ...(c.conciergeMode ? { conciergeMode: c.conciergeMode } : {}),
+        ...(c.conciergeModeSetBy ? { conciergeModeSetBy: c.conciergeModeSetBy } : {}),
+        ...(c.conciergeModeReason ? { conciergeModeReason: c.conciergeModeReason } : {}),
       } as never,
       { id: c.id, createdAt: spec.sentinel, updatedAt: spec.sentinel }
     );

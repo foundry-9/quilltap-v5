@@ -1601,10 +1601,24 @@ fn gather_db_context(
     ctx: &ImageToolExecutionContext,
     tool_input: &ImageGenerationToolInput,
 ) -> DbContext {
-    let chat = ctx
-        .chat_id
-        .as_deref()
-        .and_then(|id| crate::db::chats_read::find_by_id(main, id).ok().flatten());
+    // v4 `chatForOverride`: fetched once so its Concierge state is honoured
+    // everywhere downstream; a failed read is v4's catch — the WARN (renamed
+    // at `4d370a90f`), and no chat.
+    let chat =
+        ctx.chat_id
+            .as_deref()
+            .and_then(|id| match crate::db::chats_read::find_by_id(main, id) {
+                Ok(found) => found,
+                Err(error) => {
+                    tracing::warn!(
+                        target: "quilltap::image_generation",
+                        chat_id = %id,
+                        error_message = %error,
+                        "[Image Generation] Could not load chat for its Concierge state"
+                    );
+                    None
+                }
+            });
 
     let is_dangerous_chat = should_use_uncensored_route(chat.as_ref());
 
@@ -2646,6 +2660,9 @@ where
         &ImageFailoverContext {
             db,
             chat_id: ctx.chat_id.as_deref(),
+            // v4 `chatForOverride` (`4d370a90f`): the snapshot the chokepoint
+            // falls back on if its refusal-time re-read fails.
+            chat: db_ctx.chat.as_ref(),
             purpose: ImagePurpose::Tool,
             settings: danger_settings,
             understudy: &understudy,

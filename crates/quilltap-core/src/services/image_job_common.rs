@@ -342,6 +342,8 @@ pub(crate) async fn generate_job_image<I: ImageProvider, A: ApiKeyResolver>(
     danger_settings: &DangerousContentSettings,
     user_id: &str,
     chat_id: Option<&str>,
+    // v4 `4d370a90f`: the chat, for the chokepoint's Concierge-state snapshot.
+    chat: Option<&Value>,
     character_id: Option<&str>,
     job_id: Option<&str>,
     purpose: ImagePurpose,
@@ -412,6 +414,7 @@ pub(crate) async fn generate_job_image<I: ImageProvider, A: ApiKeyResolver>(
         &ImageFailoverContext {
             db,
             chat_id,
+            chat,
             purpose,
             settings: danger_settings,
             understudy: &understudy,
@@ -735,6 +738,7 @@ mod tests {
             "test.image-job.concierge-reroute",
             &settings,
             "user-1",
+            None,
             None,
             None,
             None,

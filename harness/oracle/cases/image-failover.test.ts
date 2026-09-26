@@ -56,6 +56,10 @@ interface Case {
   primaryVia?: string;
   customUnderstudy?: string | null;
   customUnderstudyNone?: boolean;
+  /** P4.D226 (v4 `4d370a90f`): the chat's state when the call began (`ctx.chat`). */
+  chat?: Record<string, unknown> | null;
+  /** P4.D226: the operator locks the chat while the primary is thinking. */
+  lockDuringAttempt?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -64,7 +68,13 @@ interface Spec {
   cases: Case[];
 }
 
-const SERVICES = new Set(['ConciergeImageFailover', 'ConciergeRefusal', 'ConciergeRefusalLedger']);
+const SERVICES = new Set([
+  'ConciergeImageFailover',
+  'ConciergeRefusal',
+  'ConciergeRefusalLedger',
+  // P4.D226 (v4 `4d370a90f`): the state re-read at refusal time.
+  'ConciergeCurrentState',
+]);
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -172,8 +182,13 @@ async function main(): Promise<void> {
     if (!primary) throw new Error(`${c.name}: primary ${c.primary} not seeded`);
     const script: Record<string, Step[]> = JSON.parse(JSON.stringify(c.script));
     const calls: Array<{ profileId: string; apiKey: string }> = [];
+    let lockPending = c.lockDuringAttempt === true;
     const attempt = async (profile: { id: string }, apiKey: string) => {
       calls.push({ profileId: profile.id, apiKey });
+      if (lockPending) {
+        lockPending = false;
+        await rawQuery('UPDATE chats SET "conciergeMode" = ? WHERE id = ?', ['locked', c.chatId]);
+      }
       const step = script[profile.id]?.shift();
       if (!step) throw new Error(`${c.name}: no scripted step for ${profile.id}`);
       if ('throws' in step) {
@@ -190,6 +205,7 @@ async function main(): Promise<void> {
       settings,
       ...(c.profileKind ? { profileKind: c.profileKind } : {}),
       ...(c.primaryVia ? { primaryVia: c.primaryVia } : {}),
+      ...('chat' in c ? { chat: c.chat } : {}),
     };
     if ('customUnderstudy' in c) {
       ctx.resolveUnderstudy = async (_exclude: string[]) => {

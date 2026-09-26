@@ -1650,6 +1650,16 @@ mod tests {
     /// no ledger, no bubble.
     pub(super) struct NoConcierge;
     impl crate::services::provider_failover::DangerousContentRouter for NoConcierge {
+        fn read_current_concierge_state(
+            &self,
+            _chat_id: &str,
+            snapshot: Option<crate::services::dangerous_content::chat_override::ConciergeState>,
+        ) -> crate::services::dangerous_content::chat_override::ConciergeState {
+            // A test double with no database: the snapshot (v4's fallback).
+            snapshot.unwrap_or(
+                crate::services::dangerous_content::chat_override::ConciergeState::Moderated,
+            )
+        }
         async fn resolve(
             &self,
             p: &EffectiveProfile,
@@ -1695,6 +1705,7 @@ mod tests {
     > {
         crate::services::provider_failover::ConciergeFailoverSeam {
             router: &NoConcierge,
+            concierge_state: None,
             danger_settings: None,
             adapter: None,
         }

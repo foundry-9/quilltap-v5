@@ -240,6 +240,36 @@
           "characterId": "cc000001-0000-4000-8000-000000000001"
         }
       ]
+    },
+    {
+      "id": "dd000053-0000-4000-8000-000000000053",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "Locked: the operator locked it mid-turn",
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual",
+      "participants": [
+        {
+          "id": "ee000053-0000-4000-8000-000000000053",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+{
+      "id": "dd000054-0000-4000-8000-000000000054",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "Locked all along",
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual",
+      "participants": [
+        {
+          "id": "ee000054-0000-4000-8000-000000000054",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
     }
   ],
   "character": {
@@ -876,6 +906,81 @@
           "done": true
         }
       ]
+    ],
+    "locked_mid_turn_retry_states": [
+      [
+        {
+          "done": true,
+          "rawResponse": {
+            "choices": [
+              {
+                "finish_reason": "content_filter"
+              }
+            ]
+          }
+        }
+      ],
+      [
+        {
+          "content": "The chain takes the Locked chat's turn."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "locked_plain_empty_then_chain": [
+      [
+        {
+          "done": true
+        }
+      ],
+      [
+        {
+          "content": "The chain answers a plain empty body."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "hard_refusal_locked_then_chain": [
+      [
+        {
+          "typedRefusal": {
+            "message": "Anthropic declined the request on content grounds",
+            "statusCode": 400,
+            "providerReason": "refusal"
+          }
+        }
+      ],
+      [
+        {
+          "content": "The chain answers; the refusal stood."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "hard_refusal_locked_mid_turn_then_chain": [
+      [
+        {
+          "typedRefusal": {
+            "message": "Anthropic declined the request on content grounds",
+            "statusCode": 400,
+            "providerReason": "refusal"
+          }
+        }
+      ],
+      [
+        {
+          "content": "The chain answers the chat locked mid-turn."
+        },
+        {
+          "done": true
+        }
+      ]
     ]
   },
   "calls": [
@@ -1418,6 +1523,62 @@
       "attachedFiles": [],
       "originalMessage": "a refusal with no Concierge settings handed in",
       "comment": "P4.D225: `dangerSettings` absent (v4's optional): the not-permitted INFO with mode undefined, the ledger, the chain."
+    },
+    {
+      "name": "empty_locked_mid_turn_not_rerouted",
+      "kind": "failover",
+      "chatId": "dd000053-0000-4000-8000-000000000053",
+      "participantId": "ee000053-0000-4000-8000-000000000053",
+      "preGeneratedMessageId": "ff000061-0000-4000-8000-000000000061",
+      "hasTools": false,
+      "streamLabel": "locked_mid_turn_retry_states",
+      "attachedFiles": [],
+      "originalMessage": "the operator locks it while the provider thinks",
+      "dangerMode": "AUTO_ROUTE",
+      "contentWasFlaggedDangerous": false,
+      "comment": "P4.D226 (v4 `4d370a90f`, `reads the state at refusal time: a chat locked while the provider was thinking is not rerouted`): the turn began Moderated (no snapshot), the row is Locked; the same-provider retry STATES content_filter, the refusal-time re-read says Locked \u2014 the INFO line, `refusal-not-permitted` (reason locked), NO uncensored retry, the ledger records rerouted=false, and the chain walks."
+    },
+{
+      "name": "empty_plain_empty_on_a_locked_chat",
+      "kind": "failover",
+      "chatId": "dd000054-0000-4000-8000-000000000054",
+      "participantId": "ee000054-0000-4000-8000-000000000054",
+      "preGeneratedMessageId": "ff000062-0000-4000-8000-000000000062",
+      "hasTools": false,
+      "streamLabel": "locked_plain_empty_then_chain",
+      "attachedFiles": [],
+      "originalMessage": "a plain empty body on a Locked chat",
+      "dangerMode": "AUTO_ROUTE",
+      "contentWasFlaggedDangerous": false,
+      "conciergeSnapshot": "locked",
+      "comment": "P4.D226 (v4 `posts nothing for a plain empty body on a Locked chat`): no stated refusal anywhere, so no announcement; Locked still bars the uncensored retry; the chain walks."
+    },
+{
+      "name": "hard_refusal_on_a_locked_chat",
+      "kind": "hardFailover",
+      "chatId": "dd000054-0000-4000-8000-000000000054",
+      "participantId": "ee000054-0000-4000-8000-000000000054",
+      "preGeneratedMessageId": "ff000063-0000-4000-8000-000000000063",
+      "hasTools": false,
+      "streamLabel": "hard_refusal_locked_then_chain",
+      "attachedFiles": [],
+      "originalMessage": "a thrown refusal on a Locked chat",
+      "dangerMode": "AUTO_ROUTE",
+      "conciergeSnapshot": "locked",
+      "comment": "P4.D226 (v4 `never asks the uncensored understudy, and says the refusal stands`): Auto-Route, a thrown TYPED refusal, the chat Locked \u2014 the INFO line, `refusal-not-permitted` (reason locked), the ledger rerouted=false, no understudy lookup, and the chain walks with the context's own dangerous flag."
+    },
+{
+      "name": "hard_refusal_locked_mid_turn",
+      "kind": "hardFailover",
+      "chatId": "dd000053-0000-4000-8000-000000000053",
+      "participantId": "ee000053-0000-4000-8000-000000000053",
+      "preGeneratedMessageId": "ff000064-0000-4000-8000-000000000064",
+      "hasTools": false,
+      "streamLabel": "hard_refusal_locked_mid_turn_then_chain",
+      "attachedFiles": [],
+      "originalMessage": "a thrown refusal on a chat locked mid-turn",
+      "dangerMode": "AUTO_ROUTE",
+      "comment": "P4.D226 (v4 `reads the state at refusal time: a chat locked mid-turn is not rerouted`): the turn's chat reads Moderated, the row is Locked \u2014 the re-read's INFO (state changed), then the Locked arm."
     }
   ],
   "authPrimaryProfile": {

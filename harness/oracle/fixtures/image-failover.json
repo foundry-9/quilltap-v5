@@ -210,6 +210,40 @@
       "isDangerousChat": false,
       "conciergeOverride": null,
       "messageCount": 23
+    },
+    {
+      "id": "c0000f14-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 14",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 24,
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual"
+    },
+    {
+      "id": "c0000f15-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 15",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 25,
+      "conciergeMode": "moderated"
+    },
+    {
+      "id": "c0000f16-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 16",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 26,
+      "conciergeMode": "unmoderated",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual"
     }
   ],
   "ledgerPlants": [
@@ -640,6 +674,90 @@
         "e10000f3-0000-4000-8000-000000000001": [
           {
             "answers": "image-switch"
+          }
+        ]
+      }
+    },
+    {
+      "name": "refused-on-a-locked-chat",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f14-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "settings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "chat": {
+        "conciergeMode": "locked"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "locked-while-the-provider-was-thinking",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f15-0000-4000-8000-000000000001",
+      "purpose": "lantern",
+      "settings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
+      "lockDuringAttempt": true,
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "unmoderated-still-asks-another-understudy",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f16-0000-4000-8000-000000000001",
+      "purpose": "avatar",
+      "settings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "chat": {
+        "conciergeMode": "unmoderated"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ],
+        "e10000f3-0000-4000-8000-000000000001": [
+          {
+            "answers": "image-from-the-frank-desk"
           }
         ]
       }

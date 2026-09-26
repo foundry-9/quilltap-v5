@@ -62,6 +62,10 @@ interface ChatSpec {
    * chat spicy, the global mode is OFF, and the prompt must still go out candid.
    */
   conciergeOverride?: 'OFF' | 'UNCENSORED';
+  /** P4.D226: the three-state Concierge columns (v4 `4d370a90f`). */
+  conciergeMode?: 'moderated' | 'unmoderated' | 'locked';
+  conciergeModeSetBy?: 'operator' | 'concierge';
+  conciergeModeReason?: 'manual' | 'refusals' | 'classifier' | 'migration';
   /**
    * [P4.D146 / v4 `70505745a`] An EXPLICIT participant roster, `characterId` +
    * `status`, replacing the default "every payload characterId, all `active`".
@@ -326,6 +330,10 @@ async function main(): Promise<void> {
     if (chat.projectId) extra.projectId = chat.projectId;
     if (chat.isDangerousChat) extra.isDangerousChat = true;
     if (chat.conciergeOverride) extra.conciergeOverride = chat.conciergeOverride;
+    // P4.D226 (v4 `4d370a90f`): the state the legacy pair used to MEAN.
+    if (chat.conciergeMode) extra.conciergeMode = chat.conciergeMode;
+    if (chat.conciergeModeSetBy) extra.conciergeModeSetBy = chat.conciergeModeSetBy;
+    if (chat.conciergeModeReason) extra.conciergeModeReason = chat.conciergeModeReason;
     if (chat.sceneState) extra.sceneState = chat.sceneState;
     // Equip Fern's Green Cloak so the appearance-resolution wardrobe path is
     // exercised (all four slots present — v4 requires the full slot map).

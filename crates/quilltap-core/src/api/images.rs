@@ -1506,11 +1506,13 @@ fn zod_int(v: &Value) -> Option<i64> {
 /// normally`, not a 500.
 /// The Concierge's inputs, read in v4's two separate `try`s (P4.D225, v4
 /// `8bd080267`): the settings — resolved WITH the chat when one asked, so a
-/// chat's own Concierge state (Vouched Safe, Uncensored) governs its pictures
-/// too — and, inside the classification block, the profiles.
+/// chat's own Concierge state (Locked, Unmoderated — v4 `4d370a90f`) governs
+/// its pictures too — and, inside the classification block, the profiles.
 struct ConciergeSettings {
     settings: DangerousContentSettings,
     cheap_settings: Option<Value>,
+    /// v4 `chatForConcierge` — the chokepoint's state snapshot (`4d370a90f`).
+    chat: Option<Value>,
 }
 
 /// v4's settings `try`: `chatSettings = findByUserId(user.id)`, then (with a
@@ -1555,6 +1557,7 @@ fn read_concierge_settings(db: &Db, user_id: &str, chat_id: Option<&str>) -> Con
             .as_ref()
             .and_then(|cs| cs.get("cheapLLMSettings"))
             .cloned(),
+        chat,
     }
 }
 
@@ -1870,6 +1873,8 @@ async fn run_images_generate(
         &crate::services::dangerous_content::image_failover::ImageFailoverContext {
             db,
             chat_id: body.chat_id.as_deref(),
+            // v4 `chat: chatForConcierge` (`4d370a90f`).
+            chat: concierge.chat.as_ref(),
             purpose: crate::services::dangerous_content::image_failover::ImagePurpose::Dialog,
             settings: &concierge.settings,
             understudy: &understudy,
