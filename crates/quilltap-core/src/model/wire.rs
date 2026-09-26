@@ -14,8 +14,10 @@
 //!     inspect the status themselves, so a non-2xx is still `Ok` here.
 //!   - `Err(message)` — a transport-level throw. This is how an **SDK** provider
 //!     (openai / grok / z-ai image gen) surfaces an upstream error: the SDK
-//!     converts a non-2xx response into a thrown `Error` whose message is the
-//!     signal `is_image_moderation_error` matches. The dialect never reconstructs
+//!     converts a non-2xx response into a thrown `Error` whose message (and,
+//!     since P4.D225 / v4 `8bd080267`, its `code` + status) the refusal
+//!     classifier reads — the retired `is_image_moderation_error` keyword list
+//!     matched the message alone. The dialect never reconstructs
 //!     that message from the raw response — it is the recorded SDK throw.
 //!
 //! The trait is async and generic-consumed (the model-boundary precedent), so the

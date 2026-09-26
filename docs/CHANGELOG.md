@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the generate_image tool on the image-failover chokepoint (P4.D225 unit 8c)
+
+_Versions: core 0.0.1073, harness 0.0.992._
+
+`generate_image` now calls its provider through the image-failover
+chokepoint: a refused image is retried once on the uncensored understudy
+under Auto-Route. The success message and `provider`/`model` name the model
+that actually answered; the Concierge's route trail rides on the tool output,
+the TOOL message row (with v4's debug line) and the Lantern bubble. The
+tool's inline post-hoc reroute and the retired `is_image_moderation_error` /
+`resolve_uncensored_image_profile_for_reroute` helpers are deleted. Ports
+v4's `Image generation failed:` and rerouted-success lines.
+`image_generation_tier3` gains its first refusal arms (rerouted, and not
+permitted keeping its trail); `tool_execution_tier2` gains a trail-bearing
+TOOL row.
+
 #### 2026-09-25 — feat(concierge): the avatar and story jobs on the image-failover chokepoint (P4.D225 unit 8b)
 
 _Versions: core 0.0.1072, harness 0.0.991._

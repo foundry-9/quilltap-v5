@@ -126,6 +126,11 @@ pub struct ToolMetadata {
     pub model: Option<String>,
     /// For image generation, the expanded prompt with `{{me}}` etc. resolved.
     pub expanded_prompt: Option<String>,
+    /// For image generation, the Concierge's call sheet when a provider refused
+    /// on the way (v4 `8bd080267`, `generateImageWithConciergeFailover`); empty
+    /// when the first profile answered. Written onto the TOOL row, never into
+    /// its `content`.
+    pub route_trail: Vec<crate::services::route_trail::RouteAttempt>,
 }
 
 /// Generated-image metadata (v4 `GeneratedImage`). `size` is a JS number (bytes);
@@ -742,6 +747,29 @@ pub fn save_tool_messages(
         msg.insert("content".into(), json!(content));
         msg.insert("createdAt".into(), json!(crate::clock::now_iso()));
         msg.insert("attachments".into(), json!(tool_attachments));
+        // An image refused on the way carries the Concierge's call sheet — the
+        // image profiles tried, in order (v4 `8bd080267`). `add_message` stores
+        // it through the schema, so its keys land in the schema's order.
+        let route_trail = tool_msg
+            .metadata
+            .as_ref()
+            .map(|m| m.route_trail.as_slice())
+            .unwrap_or_default();
+        if !route_trail.is_empty() {
+            msg.insert(
+                "routeTrail".into(),
+                serde_json::to_value(route_trail)
+                    .map_err(|e| DbError::Internal(format!("routeTrail serialize: {e}")))?,
+            );
+            tracing::debug!(
+                target: "quilltap::tool_execution",
+                chat_id = %chat_id,
+                tool_message_id = %tool_message_id,
+                tool_name = %tool_msg.tool_name,
+                trail_length = route_trail.len(),
+                "Writing a Concierge route trail on a TOOL message"
+            );
+        }
 
         let event: crate::db::chats_messages::ChatEventInput =
             serde_json::from_value(Value::Object(msg))
@@ -958,6 +986,7 @@ mod tests {
                 provider: Some("ANTHROPIC".into()),
                 model: Some("claude".into()),
                 expanded_prompt: Some("prompt".into()),
+                route_trail: Vec::new(),
             }),
         };
         assert_eq!(

@@ -13,9 +13,7 @@
 
 use serde_json::Value;
 
-use crate::db::image_profiles;
 use crate::db::runtime::Db;
-use crate::db::DbError;
 use crate::services::primary_stream::EffectiveProfile;
 use crate::services::provider_failover::{DangerSettings, DangerousContentRouter, RouteResult};
 
@@ -55,13 +53,6 @@ pub struct DangerousImageProviderRouteResult {
     pub image_profile: RouteProfile,
     pub api_key: String,
     pub reason: String,
-}
-
-/// v4 `PostHocImageReroute` — the resolution payload for a post-hoc image reroute.
-#[derive(Clone, Debug, PartialEq)]
-pub struct PostHocImageReroute {
-    pub profile: RouteProfile,
-    pub api_key: String,
 }
 
 /// The API-key resolution seam (v4 `repos.connections.findApiKeyByIdAndUserId` /
@@ -159,24 +150,6 @@ fn str_field(v: &Value, key: &str) -> String {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string()
-}
-
-fn user_id_of(v: &Value) -> Option<&str> {
-    v.get("userId").and_then(Value::as_str)
-}
-
-/// v4 `decryptProfileApiKey` / `decryptImageProfileApiKey`: `None` when the
-/// profile carries no `apiKeyId`, else the seam's decrypted key.
-fn decrypt_profile_api_key<A: ApiKeyResolver>(
-    api_keys: &A,
-    profile: &Value,
-    user_id: &str,
-) -> Option<String> {
-    let api_key_id = profile.get("apiKeyId").and_then(Value::as_str)?;
-    if api_key_id.is_empty() {
-        return None;
-    }
-    api_keys.resolve(api_key_id, user_id)
 }
 
 /// v4 `resolveProviderForDangerousContent` — the pre-flight TEXT wrapper, thin
@@ -350,63 +323,12 @@ pub fn resolve_image_provider_for_dangerous_content<A: ApiKeyResolver>(
     }
 }
 
-/// **RETIRED by v4 at `8bd080267`** (with `isImageModerationError` below): the
-/// image failover chokepoint replaces both, asking
-/// [`super::understudy::resolve_uncensored_image_understudy`] instead. They
-/// survive in v5 until their two callers (`tools/generate_image.rs`,
-/// `services/image_job_common.rs`) move onto the chokepoint in P4.D225's
-/// chokepoint unit, which deletes them with their last references.
-///
-/// v4 `resolveUncensoredImageProfileForReroute`: the post-hoc image reroute after
-/// a provider rejects an already-issued request for moderation reasons. Unlike
-/// [`resolve_image_provider_for_dangerous_content`], this does NOT scan for any
-/// `isDangerousCompatible` profile — it is keyed on the user's explicit
-/// uncensored choice only. Returns `None` when no reroute is possible.
-pub fn resolve_uncensored_image_profile_for_reroute<A: ApiKeyResolver>(
-    conn: &rusqlite::Connection,
-    api_keys: &A,
-    current_profile_id: &str,
-    mode: &str,
-    uncensored_image_profile_id: Option<&str>,
-    user_id: &str,
-) -> Result<Option<PostHocImageReroute>, DbError> {
-    if mode != "AUTO_ROUTE" {
-        return Ok(None);
-    }
-    let Some(uncensored_id) = uncensored_image_profile_id.filter(|s| !s.is_empty()) else {
-        return Ok(None);
-    };
-    if uncensored_id == current_profile_id {
-        return Ok(None);
-    }
-
-    let Some(profile) = image_profiles::find_by_id(conn, uncensored_id)? else {
-        return Ok(None);
-    };
-    if user_id_of(&profile) != Some(user_id) {
-        return Ok(None);
-    }
-    let Some(api_key) = decrypt_profile_api_key(api_keys, &profile, user_id) else {
-        return Ok(None);
-    };
-
-    Ok(Some(PostHocImageReroute {
-        profile: route_profile_from_value(&profile),
-        api_key,
-    }))
-}
-
-/// v4 `isImageModerationError`: detect a post-hoc content-moderation rejection
-/// from an image provider by keyword-matching the (lowercased) error message.
-pub fn is_image_moderation_error(message: &str) -> bool {
-    let message = message.to_lowercase();
-    message.contains("content moderation")
-        || message.contains("content_policy")
-        || message.contains("content policy")
-        || message.contains("safety system")
-        || message.contains("rejected by content")
-        || message.contains("moderation_blocked")
-}
+// v4 `resolveUncensoredImageProfileForReroute` + `isImageModerationError` —
+// RETIRED by v4 at `8bd080267` (#73) and DELETED here with their last callers
+// (P4.D225 unit 8c): the image failover chokepoint
+// (`super::image_failover`) asks `resolve_uncensored_image_understudy` and
+// detects a refusal with the ONE classifier (`super::refusal::classify_refusal`)
+// instead of this keyword list.
 
 /// The real [`DangerousContentRouter`] implementor. Holds the [`Db`] handle
 /// (to read connection profiles off the read pool) and the [`ApiKeyResolver`]
@@ -475,22 +397,5 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
             api_key: result.api_key,
             profile_row: result.profile_row,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn image_moderation_error_matches_common_shapes() {
-        assert!(is_image_moderation_error(
-            "Your request was rejected as a result of our safety system."
-        ));
-        assert!(is_image_moderation_error(
-            "Generated image rejected by content moderation."
-        ));
-        assert!(is_image_moderation_error("content_policy violation"));
-        assert!(!is_image_moderation_error("network timeout"));
     }
 }

@@ -150634,3 +150634,55 @@ Regen outputs staged under `/tmp/p4d225/`.
   1 failed — `activity_registry::records_a_blip_once_a_span_outlives_the_
   threshold`, a timing-threshold test this lane never touched, failing under
   the parallel run's load and green 3/3 alone. Recorded as a load flake.
+
+### Unit 8c — the `generate_image` tool on the chokepoint; the retired helpers deleted
+
+- `tools/generate_image.rs`: `generate_images_with_provider` builds v4's
+  `attempt` (params rebuilt per profile, `tools.generate_image.concierge-
+  reroute` + the `(Concierge reroute)` suffix for any profile but the one
+  addressed) and runs `generate_image_with_concierge_failover` with the
+  default image understudy and `primary_via: concierge` when the pre-flight
+  classifier already swapped the profile. Returns v4's
+  `ProviderGenerationResult` (images + the ANSWERING profile + the trail);
+  `GenError` carries the trail. Success output: the message/provider/model name
+  the ANSWERING model (v4 `8bd080267`), `route_trail` on the output. Error
+  output: the trail kept. v4's root-logger `Image generation failed:`
+  (`errorMessage`, `conciergeTrail`) — never ported before — and `[Image
+  Generation] Concierge uncensored reroute succeeded` (`originalProfileId` +
+  the fallback trio), target `quilltap::image_generation`.
+- `LanternNotificationSink::post_character_image` gains the trail (v4 passes
+  `routeTrail: metadata.routeTrail`); `ToolMetadata.route_trail` threaded by
+  the executor; `save_tool_messages` writes `routeTrail` on the TOOL row
+  (never in its `content`) when non-empty, with v4's DEBUG `Writing a
+  Concierge route trail on a TOOL message` (`chat_id, tool_message_id,
+  tool_name, trail_length`).
+- DELETED with their last references: `resolve_uncensored_image_profile_for_
+  reroute`, `is_image_moderation_error`, `PostHocImageReroute` and two private
+  helpers left unused; `model/image.rs`'s test now asserts the failure reads
+  as a refusal to `classify_refusal`; `wire.rs` / `generate_image.rs` docs name
+  `8bd080267` for the retired pair (Tier 2 item 13 for this path).
+- ⚠ **Measured-wrong premise:** "`routeTrail` LAST on the output AND on the
+  error response" — on v4's ERROR response it is set BEFORE
+  `provider`/`model`. Neither order persists (the dispatcher reads fields
+  individually; the TOOL row re-parses into schema order), so
+  `image_generation_tier3`'s byte comparand renders v4's in-memory layout in
+  the HARNESS only (`in_memory_row`, the error-arm key move), with the
+  reasoning in place.
+- **`image_generation_tier3` gains its FIRST refusal arms** (its header had
+  recorded the post-hoc reroute as never exercised): a per-case
+  `refuseModels` makes v4's fake provider throw the OpenAI safety-system
+  sentence (recorded as `cannedImageThrow`), and the Rust side registers the
+  same transport throw on its canned wire for the request the REAL dialect
+  builds — a transport throw surfaces verbatim on both. `refused_rerouted_to_
+  the_understudy` (Auto-Route; the WebP profile answers; the family's WebP seed
+  so the fake's PNG meets the dialect's `image/webp`) and `refused_not_
+  permitted_keeps_its_trail` (Detect Only; the one-row trail on the error).
+  The builder runs v4's ledger migration. **36/36 through the driver.**
+  `tool_execution_tier2` gains `generate_image_route_trail` (rows spelled in
+  the in-memory writer order, stored in schema order; an empty trail omitted):
+  9 rows matched. `tool_execution_process_tier3`, `image_generate_route`,
+  `images_generate_route` green.
+- Mutations: the success message naming the REQUESTED model → exactly
+  `refused_rerouted_to_the_understudy`; no trail on the TOOL row →
+  `chat_messages diverged` in `tool_execution_tier2`. Restored (cmp).
+- Gate: fmt + clippy (workspace) clean; `quilltap-core --lib` 2627/0.

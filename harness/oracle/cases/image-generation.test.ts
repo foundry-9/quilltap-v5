@@ -128,6 +128,12 @@ interface ChatSpec {
    * switch that makes this case's transcode + blob normalization REAL.
    */
   imageSeed?: string;
+  /**
+   * P4.D225: models whose generate call THROWS the OpenAI safety-system
+   * sentence (a plain `Error`, as a transport-level SDK throw surfaces) — the
+   * image-failover chokepoint's refusal arms. Recorded as `cannedImageThrow`.
+   */
+  refuseModels?: string[];
 }
 interface Spec {
   testPepperBase64: string;
@@ -187,6 +193,8 @@ async function main(): Promise<void> {
   const lines: string[] = [];
   const RealDate = Date;
   const recordedCompletions = new Map<string, { provider: string; model: string; temperature: number | null; messages: Array<{ role: string; content: string }>; response: string; usage: unknown }>();
+  const REFUSAL_MESSAGE = '400 Your request was rejected as a result of our safety system.';
+  const recordedThrows = new Map<string, { key: string; message: string }>();
   const recordedImages = new Map<string, { provider: string; model: string; key: string; images: Array<{ data: string; mimeType?: string; revisedPrompt?: string }> }>();
 
   const craftUsage = { promptTokens: 120, completionTokens: 40, totalTokens: 160 };
@@ -237,6 +245,11 @@ async function main(): Promise<void> {
         createImageProvider: (provider: string) => ({
           generateImage: async (params: Record<string, unknown>, _key: string) => {
             const key = `${provider}|${params.model}|${JSON.stringify(params)}`;
+            const refuse = (globalThis as { __qtRefuseModels?: Set<string> }).__qtRefuseModels;
+            if (refuse?.has(String(params.model))) {
+              recordedThrows.set(key, { key, message: REFUSAL_MESSAGE });
+              throw new Error(REFUSAL_MESSAGE);
+            }
             const prompt = String(params.prompt ?? '');
             // P4.104: an `imageSeed` case answers the seed's bytes, with the
             // mime the real OPENAI dialect reports for a webp `output_format`.
@@ -455,6 +468,9 @@ async function main(): Promise<void> {
         const seedBytes = chat.imageSeed
           ? fs.readFileSync(join(here, '..', 'fixtures', chat.imageSeed))
           : undefined;
+        (globalThis as { __qtRefuseModels?: Set<string> }).__qtRefuseModels = new Set(
+          chat.refuseModels ?? [],
+        );
         if (seedBytes) {
           (globalThis as { __qtImageSeed?: Buffer }).__qtImageSeed = seedBytes;
           (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode = true;
@@ -567,6 +583,7 @@ async function main(): Promise<void> {
       lines.push(JSON.stringify(record));
     } finally {
       (globalThis as { __qtImageSeed?: Buffer }).__qtImageSeed = undefined;
+      (globalThis as { __qtRefuseModels?: Set<string> }).__qtRefuseModels = undefined;
       (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode = false;
       global.Date = RealDate;
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -578,6 +595,7 @@ async function main(): Promise<void> {
 
   for (const entry of recordedCompletions.values()) lines.push(JSON.stringify({ kind: 'canned', ...entry }));
   for (const entry of recordedImages.values()) lines.push(JSON.stringify({ kind: 'cannedImage', ...entry }));
+  for (const entry of recordedThrows.values()) lines.push(JSON.stringify({ kind: 'cannedImageThrow', ...entry }));
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`image-generation oracle wrote ${outPath} (${lines.length} lines)\n`);

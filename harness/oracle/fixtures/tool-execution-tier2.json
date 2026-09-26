@@ -142,6 +142,22 @@
       "toolMessages": [
         { "toolName": "generate_image", "success": true, "content": "Generated 1 image(s)", "arguments": { "prompt": "a cat" }, "callId": "call-img-1" }
       ]
+    },
+    {
+      "$comment": "P4.D225 (v4 8bd080267): a refused-then-rerouted generate_image carries the Concierge's call sheet in metadata.routeTrail, written onto the TOOL row (never into content). The rows are spelled in the chokepoint's IN-MEMORY writer order (profileKind before trigger) so the stored bytes prove addMessage's schema re-parse; an EMPTY trail on the second message is omitted.",
+      "name": "generate_image_route_trail",
+      "chatId": "cccccccc-0000-4000-8000-00000000c1a1",
+      "characterId": "bbbb2222-2222-4222-8222-222222222222",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "whisperContext": { "userParticipantId": "fa000000-0000-4000-8000-0000000000fa", "allowCrossCharacterVaultReads": false },
+      "generatedImagePaths": [],
+      "toolMessages": [
+        { "toolName": "generate_image", "success": true, "content": "Generated 1 image(s)", "arguments": { "prompt": "a lighthouse" }, "callId": "call-img-rt", "metadata": { "provider": "GROK", "model": "grok-2-image", "expandedPrompt": "a lighthouse", "routeTrail": [
+          { "profileId": "e10000f1-0000-4000-8000-000000000001", "profileName": "House Painter", "provider": "GOOGLE", "modelName": "gemini-2.5-flash-image", "via": "primary", "outcome": "refused", "profileKind": "image", "trigger": "moderation-refusal", "evidence": "typed-error", "detail": "Gemini image blocked (IMAGE_SAFETY)" },
+          { "profileId": "e10000f3-0000-4000-8000-000000000001", "profileName": "Kestrel Studio", "provider": "GROK", "modelName": "grok-2-image", "via": "concierge", "outcome": "answered", "profileKind": "image" }
+        ] } },
+        { "toolName": "generate_image", "success": true, "content": "Generated 1 image(s)", "arguments": { "prompt": "a harbour" }, "callId": "call-img-rt2", "metadata": { "provider": "GOOGLE", "model": "gemini-2.5-flash-image", "expandedPrompt": "a harbour", "routeTrail": [] } }
+      ]
     }
   ]
 }

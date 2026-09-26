@@ -1697,6 +1697,8 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             provider: out.provider.clone(),
             model: out.model.clone(),
             expanded_prompt: out.expanded_prompt.clone(),
+            // v4 `8bd080267`: `routeTrail: result.routeTrail`.
+            route_trail: out.route_trail.clone(),
         };
         if out.success {
             // v4: `result: result.images` (the array threads generated-image descriptors).

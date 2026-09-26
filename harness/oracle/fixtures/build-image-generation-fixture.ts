@@ -260,6 +260,18 @@ async function main(): Promise<void> {
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
+  // P4.D225 (v4 `49059fb14`): the refusal ledger's two `chats` columns through
+  // v4's OWN migration, so the chokepoint's refusal arms' ledger increments
+  // land (skipped at a pin that predates it).
+  const { runV4Migrations, ADD_CHAT_REFUSAL_LEDGER } = await import('../lib/v4-migrations');
+  const migrated = await runV4Migrations({
+    dbPath: mainOut,
+    pepperBase64: spec.testPepperBase64,
+    migrations: [ADD_CHAT_REFUSAL_LEDGER],
+    allowMissing: true,
+  });
+  process.stderr.write(`fixture migrations: ${migrated.join('; ')}\n`);
+
   const meta = { charAVault };
   writeFileSync(mainOut + '.meta.json', JSON.stringify(meta));
   process.stderr.write(

@@ -114,6 +114,7 @@ impl WireCanned {
                     provider: m.provider.clone(),
                     model: m.model.clone(),
                     expanded_prompt: m.expanded_prompt.clone(),
+                    route_trail: Vec::new(),
                 }
             }),
         }

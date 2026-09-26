@@ -563,10 +563,17 @@ mod tests {
         let err = ImageProvider::generate_image(&provider, "GROK", "k", &p)
             .await
             .unwrap_err();
+        // The failure reads as a refusal to the ONE classifier (the retired
+        // `is_image_moderation_error` keyword list, v4 `8bd080267`).
+        let refusal = err.refusal_error();
         assert!(
-            crate::services::dangerous_content::provider_routing::is_image_moderation_error(
-                &err.message
+            crate::services::dangerous_content::refusal::classify_refusal(
+                crate::services::dangerous_content::refusal::RefusalInput {
+                    error: Some(&refusal),
+                    ..Default::default()
+                }
             )
+            .refused
         );
 
         // Unregistered ⇒ surfaced error.

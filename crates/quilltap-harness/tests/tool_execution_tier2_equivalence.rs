@@ -40,6 +40,7 @@
 use std::collections::HashMap;
 
 use quilltap_core::db::Writer;
+use quilltap_core::services::route_trail::RouteAttempt;
 use quilltap_core::services::tool_execution::{
     save_tool_messages, GeneratedImage, ToolMessage, ToolMetadata, ToolWhisperContext,
 };
@@ -126,6 +127,56 @@ struct WireMetadata {
     model: Option<String>,
     #[serde(rename = "expandedPrompt", default)]
     expanded_prompt: Option<String>,
+    /// P4.D225: the Concierge's call sheet (see [`route_attempt_of`]).
+    #[serde(rename = "routeTrail", default)]
+    route_trail: Vec<Value>,
+}
+
+/// A corpus trail row → [`RouteAttempt`], for the values the corpus spells
+/// (anything else is a corpus the converter must learn first).
+fn route_attempt_of(v: &Value) -> RouteAttempt {
+    use quilltap_core::llm_fallback::FallbackTrigger;
+    use quilltap_core::services::dangerous_content::refusal::RefusalEvidence;
+    use quilltap_core::services::route_trail::{
+        RouteAttemptOutcome, RouteAttemptVia, RouteProfileKind,
+    };
+    let s = |k: &str| {
+        v[k].as_str()
+            .unwrap_or_else(|| panic!("routeTrail.{k}"))
+            .to_string()
+    };
+    RouteAttempt {
+        profile_id: s("profileId"),
+        profile_name: s("profileName"),
+        provider: s("provider"),
+        model_name: s("modelName"),
+        via: match v["via"].as_str() {
+            Some("primary") => RouteAttemptVia::Primary,
+            Some("concierge") => RouteAttemptVia::Concierge,
+            other => panic!("via {other:?}"),
+        },
+        outcome: match v["outcome"].as_str() {
+            Some("answered") => RouteAttemptOutcome::Answered,
+            Some("refused") => RouteAttemptOutcome::Refused,
+            Some("failed") => RouteAttemptOutcome::Failed,
+            other => panic!("outcome {other:?}"),
+        },
+        profile_kind: match v.get("profileKind").and_then(Value::as_str) {
+            Some("image") => Some(RouteProfileKind::Image),
+            None => None,
+            other => panic!("profileKind {other:?}"),
+        },
+        trigger: match v.get("trigger").and_then(Value::as_str) {
+            Some("moderation-refusal") => Some(FallbackTrigger::ModerationRefusal),
+            None => None,
+            other => panic!("trigger {other:?}"),
+        },
+        evidence: v
+            .get("evidence")
+            .and_then(Value::as_str)
+            .map(|e| RefusalEvidence::from_wire(e).unwrap_or_else(|| panic!("evidence {e}"))),
+        detail: v.get("detail").and_then(Value::as_str).map(str::to_string),
+    }
 }
 
 impl WireToolMessage {
@@ -142,6 +193,7 @@ impl WireToolMessage {
                 provider: m.provider.clone(),
                 model: m.model.clone(),
                 expanded_prompt: m.expanded_prompt.clone(),
+                route_trail: m.route_trail.iter().map(route_attempt_of).collect(),
             }),
         }
     }

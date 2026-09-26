@@ -349,6 +349,43 @@
         "showWarningBadges": true,
         "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a1"
       }
+    },
+    "refused_rerouted_to_the_understudy": {
+      "$comment": "P4.D225 (v4 8bd080267): the tool on the image-failover chokepoint. The primary profile's model (dall-e-3) THROWS the OpenAI safety-system sentence (a transport-surfaced SDK throw, identical bytes on both sides) -> a message-pattern refusal; under Auto-Route with the WebP profile configured as the uncensored image profile, the understudy answers. The output names the ANSWERING model and carries the two-row routeTrail; the llm_logs carry the refused row and the understudy's (Concierge reroute) row. scanImagePrompts is off so no classify runs. Its own prompt keeps its canned throw key unique. The understudy is the WebP profile, so the case answers the family's WebP seed (the imageSeed arrangement: the fake provider's PNG would otherwise meet the real dialect's image/webp).",
+      "id": "aaaa0041-0000-4000-8000-000000000041",
+      "op": "generate",
+      "prompt": "a lighthouse keeper's cottage in a gale",
+      "orientation": "square",
+      "refuseModels": ["dall-e-3"],
+      "imageSeed": "photo-lossless.webp",
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": false,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true,
+        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2"
+      }
+    },
+    "refused_not_permitted_keeps_its_trail": {
+      "$comment": "P4.D225: the same refusal under Detect Only - not rerouted; the error response still carries the one-row routeTrail (v4's getConciergeTrail on the error), and the message has no 'after Concierge reroute' prefix.",
+      "id": "aaaa0042-0000-4000-8000-000000000042",
+      "op": "generate",
+      "prompt": "a lighthouse keeper's cottage in a squall",
+      "orientation": "square",
+      "refuseModels": ["dall-e-3"],
+      "dangerousContentSettings": {
+        "mode": "DETECT_ONLY",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": false,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true,
+        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2"
+      }
     }
   }
 }

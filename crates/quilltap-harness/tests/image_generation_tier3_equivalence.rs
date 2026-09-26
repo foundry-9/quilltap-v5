@@ -885,6 +885,22 @@ fn image_generation_matches_oracle() {
                 let row: CannedImageRow = serde_json::from_value(v).expect("parse cannedImage row");
                 image_transport = register_image_wire(image_transport, &row);
             }
+            // P4.D225: a scripted refusal — the SDK throw a transport surfaces
+            // verbatim, keyed by the request the dialect builds.
+            Some("cannedImageThrow") => {
+                let key = v["key"].as_str().expect("throw key");
+                let message = v["message"].as_str().expect("throw message");
+                let mut parts = key.splitn(3, '|');
+                let provider = parts.next().expect("provider in key");
+                let _model = parts.next();
+                let params_json: Value =
+                    serde_json::from_str(parts.next().expect("params json in key"))
+                        .expect("params json parses");
+                let req = build_image_request(provider, &params_from_key_json(&params_json))
+                    .expect("build image request");
+                image_transport = image_transport
+                    .with_raw_throw(wire_key(&req.method, &req.url, &req.body_string()), message);
+            }
             Some("result") => {
                 let row: ResultRow = serde_json::from_value(v).expect("parse result row");
                 results.insert(row.label.clone(), row);
@@ -1227,6 +1243,36 @@ fn result_output_to_value(
     if let Some(ep) = &out.expanded_prompt {
         m.insert("expandedPrompt".into(), Value::String(ep.clone()));
     }
+    // P4.D225: the Concierge's call sheet, present only when non-empty.
+    // v4's output is an IN-MEMORY object this family compares as bytes: on
+    // SUCCESS `routeTrail` is its last key; on the ERROR response it is set
+    // BEFORE `provider`/`model` (`errorResponse.routeTrail = failedTrail`, then
+    // `if (imageProfile) { provider, model }`); and its rows are in the
+    // chokepoint's `row()` order (`profileKind` before `trigger`). None of that
+    // is persisted — the dispatcher reads the fields individually and the TOOL
+    // row re-parses the trail into schema order (pinned by
+    // `tool_execution_tier2`), which is v5's core order. So the harness renders
+    // v4's in-memory layout here, and only here.
+    if !out.route_trail.is_empty() {
+        let trail = Value::Array(out.route_trail.iter().map(in_memory_row).collect());
+        if out.success {
+            m.insert("routeTrail".into(), trail);
+        } else {
+            let provider = m.shift_remove("provider");
+            let model = m.shift_remove("model");
+            let expanded = m.shift_remove("expandedPrompt");
+            m.insert("routeTrail".into(), trail);
+            for (k, v) in [
+                ("provider", provider),
+                ("model", model),
+                ("expandedPrompt", expanded),
+            ] {
+                if let Some(v) = v {
+                    m.insert(k.into(), v);
+                }
+            }
+        }
+    }
     Value::Object(m)
 }
 
@@ -1244,3 +1290,33 @@ fn num(f: f64) -> Value {
 // Round-3 Group 4: the byte-exact Lantern character-image notification content is
 // now proven end-to-end via the persisted `lanternContent` diff (above) against the
 // REAL writer — the old truncated-placeholder assertion is retired.
+
+/// One trail row in v4's IN-MEMORY `row()` order (`…outcome, profileKind,
+/// trigger, evidence, detail`) — see `output_to_json`'s `routeTrail` note.
+fn in_memory_row(a: &quilltap_core::services::route_trail::RouteAttempt) -> Value {
+    let persisted = serde_json::to_value(a).expect("route attempt JSON");
+    let obj = persisted.as_object().expect("route attempt object");
+    let mut out = serde_json::Map::new();
+    for k in [
+        "profileId",
+        "profileName",
+        "provider",
+        "modelName",
+        "via",
+        "outcome",
+        "profileKind",
+        "trigger",
+        "evidence",
+        "detail",
+    ] {
+        if let Some(v) = obj.get(k) {
+            out.insert(k.into(), v.clone());
+        }
+    }
+    assert_eq!(
+        out.len(),
+        obj.len(),
+        "a route-attempt key the reorder does not know"
+    );
+    Value::Object(out)
+}

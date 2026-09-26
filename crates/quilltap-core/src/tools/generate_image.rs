@@ -13,7 +13,9 @@
 //!      tier-concatenation fallback) + classify the expanded prompt
 //!      (scanImageGeneration),
 //!   6. generate images via the [`ImageProvider`] seam (`resolveOrientation`
-//!      mutating the merged params, the post-hoc moderation reroute), and
+//!      mutating the merged params) through the Concierge's image-failover
+//!      chokepoint (the post-hoc refusal reroute, P4.D225 / v4 `8bd080267`),
+//!      and
 //!   7. [`save_generated_image`] each: WebP transcode (the [`ImageTranscoder`]
 //!      seam) → SHA-256 → the Lantern Backgrounds store write under `tool/` →
 //!      the `files` row → tag inheritance → the Lantern notification (the
@@ -21,9 +23,10 @@
 //!
 //! The whole handler composes the ported W4.2 dangerous-content subsystem
 //! (`resolve_dangerous_content_settings` / `classify_content` /
-//! `resolve_image_provider_for_dangerous_content` /
-//! `resolve_uncensored_image_profile_for_reroute` /
-//! `is_image_moderation_error`), the cheap-LLM resolution (`get_cheap_llm_provider`
+//! `resolve_image_provider_for_dangerous_content`; the tool's inline post-hoc
+//! reroute over the retired `resolve_uncensored_image_profile_for_reroute` /
+//! `is_image_moderation_error` pair went with v4 `8bd080267`), the cheap-LLM
+//! resolution (`get_cheap_llm_provider`
 //! / `resolve_uncensored_cheap_llm_selection`), the appearance resolution
 //! ([`crate::services::appearance_resolution`]), the image-gen pure leaves
 //! (`resolve_orientation` / `parse_placeholders`), and the document-store
@@ -75,9 +78,12 @@ use crate::services::appearance_resolution::{
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::gatekeeper::{classify_content, ModerationProvider};
+use crate::services::dangerous_content::image_failover::{
+    generate_image_with_concierge_failover, FailoverProfile, ImageFailoverContext, ImagePurpose,
+    ImageUnderstudySource,
+};
 use crate::services::dangerous_content::provider_routing::{
-    is_image_moderation_error, resolve_image_provider_for_dangerous_content,
-    resolve_uncensored_image_profile_for_reroute, ApiKeyResolver, RouteProfile,
+    resolve_image_provider_for_dangerous_content, ApiKeyResolver, RouteProfile,
 };
 use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
 use crate::services::image_scene_tasks::ChatMessage;
@@ -89,6 +95,7 @@ use crate::services::llm_logging::{
     log_llm_call, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage,
     LogResponse,
 };
+use crate::services::route_trail::{RouteAttempt, RouteAttemptVia, RouteProfileKind};
 // P4.D209 OUT-OF-MANDATE — the one-home fold. v4 has a SINGLE
 // `normaliseBlobRelativePath` (`lib/mount-index/blob-transcode.ts`); v5 had
 // five copies, and `186eb09cb` makes this function part of the write-side
@@ -107,6 +114,10 @@ pub struct ImageGenerationToolOutput {
     pub provider: Option<String>,
     pub model: Option<String>,
     pub expanded_prompt: Option<String>,
+    /// v4 `8bd080267`: the Concierge's call sheet when a provider refused on
+    /// the way — every image profile tried, in order. Empty (v4: absent) when
+    /// the first profile answered. Written onto the TOOL message.
+    pub route_trail: Vec<RouteAttempt>,
 }
 
 /// One saved image (v4 `GeneratedImageResult`). The dispatcher maps `images` into
@@ -407,6 +418,8 @@ pub trait LanternNotificationSink {
         chat_id: &str,
         file_id: &str,
         requester_name: &str,
+        // v4 `8bd080267`: the Concierge's call sheet (empty → omitted).
+        route_trail: &[RouteAttempt],
     ) -> impl std::future::Future<Output = ()> + Send;
 }
 
@@ -414,7 +427,14 @@ pub trait LanternNotificationSink {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NoLanternNotification;
 impl LanternNotificationSink for NoLanternNotification {
-    async fn post_character_image(&self, _chat_id: &str, _file_id: &str, _requester_name: &str) {}
+    async fn post_character_image(
+        &self,
+        _chat_id: &str,
+        _file_id: &str,
+        _requester_name: &str,
+        _route_trail: &[RouteAttempt],
+    ) {
+    }
 }
 
 /// The production Lantern sink (Round-3 unification): posts the byte-exact
@@ -426,7 +446,13 @@ pub struct RealLanternNotification<'a> {
     pub db: &'a Db,
 }
 impl LanternNotificationSink for RealLanternNotification<'_> {
-    async fn post_character_image(&self, chat_id: &str, file_id: &str, requester_name: &str) {
+    async fn post_character_image(
+        &self,
+        chat_id: &str,
+        file_id: &str,
+        requester_name: &str,
+        route_trail: &[RouteAttempt],
+    ) {
         let _ = crate::services::lantern_notifications::post_lantern_image_notification(
             self.db,
             crate::services::lantern_notifications::LanternPostParams {
@@ -437,9 +463,7 @@ impl LanternNotificationSink for RealLanternNotification<'_> {
                 },
                 // The character-image body ignores the prompt (v4 `buildContent`).
                 prompt: None,
-                // The tool's trail arrives with its move onto the chokepoint
-                // (P4.D225 unit 8c); until then it has none to give.
-                route_trail: Vec::new(),
+                route_trail: route_trail.to_vec(),
             },
         )
         .await;
@@ -545,6 +569,7 @@ impl ImageGenerationRunner for NotConfiguredImageGeneration {
                 provider: None,
                 model: None,
                 expanded_prompt: None,
+                route_trail: Vec::new(),
             }
         })
     }
@@ -731,6 +756,7 @@ fn load_and_validate_profile<A: ApiKeyResolver>(
                 provider: None,
                 model: None,
                 expanded_prompt: None,
+                route_trail: Vec::new(),
             }));
         }
     };
@@ -755,6 +781,7 @@ fn load_and_validate_profile<A: ApiKeyResolver>(
             provider: None,
             model: None,
             expanded_prompt: None,
+            route_trail: Vec::new(),
         }));
     };
 
@@ -1755,6 +1782,7 @@ fn output_error(error: &str, message: &str) -> ImageGenerationToolOutput {
         provider: None,
         model: None,
         expanded_prompt: None,
+        route_trail: Vec::new(),
     }
 }
 
@@ -1991,7 +2019,7 @@ where
         prompt: expanded_prompt.clone(),
         ..input.clone()
     };
-    let saved = match generate_images_with_provider(
+    let generated = match generate_images_with_provider(
         db,
         deps,
         &final_input,
@@ -2000,31 +2028,45 @@ where
         &danger_settings,
         &db_ctx,
         ctx,
+        if final_profile.id != image_profile.id {
+            RouteAttemptVia::Concierge
+        } else {
+            RouteAttemptVia::Primary
+        },
     )
     .await
     {
-        Ok(images) => images,
+        Ok(generated) => generated,
         Err(e) => {
             let mut out = output_error(&e.code, &e.message);
             out.provider = Some(image_profile.provider.clone());
             out.model = Some(image_profile.model_name.clone());
+            // A refusal the Concierge could not get past still leaves its call
+            // sheet. (v4 sets `routeTrail` on the error response BEFORE
+            // `provider`/`model` — measured; v5's output is a struct, so the
+            // order is the dispatcher's concern, and the dispatcher reads only
+            // the trail into the TOOL row.)
+            out.route_trail = e.trail;
             return out;
         }
     };
 
-    // 8. Return success.
-    let count = saved.len();
+    // 8. Return success. Names the profile that actually answered — after a
+    // post-hoc Concierge reroute that is the understudy, not the profile the
+    // model's call was addressed to (v4 `8bd080267`).
+    let count = generated.images.len();
     ImageGenerationToolOutput {
         success: true,
-        images: saved,
+        images: generated.images,
         message: Some(format!(
             "Successfully generated {count} image(s) using {}",
-            final_profile.model_name
+            generated.answering_model
         )),
-        provider: Some(final_profile.provider.clone()),
-        model: Some(final_profile.model_name.clone()),
+        provider: Some(generated.answering_provider),
+        model: Some(generated.answering_model),
         expanded_prompt: Some(expanded_prompt),
         error: None,
+        route_trail: generated.route_trail,
     }
 }
 
@@ -2406,6 +2448,19 @@ async fn resolve_placeholders_via_db(
 struct GenError {
     code: String,
     message: String,
+    /// v4 `getConciergeTrail(error.details)` — a refusal the Concierge could
+    /// not get past still leaves its call sheet (empty otherwise).
+    trail: Vec<RouteAttempt>,
+}
+
+/// v4 `ProviderGenerationResult`: what a provider call produced, and who
+/// produced it.
+struct ProviderGenerationResult {
+    images: Vec<GeneratedImageResult>,
+    /// The profile that actually answered — the understudy after a reroute.
+    answering_provider: String,
+    answering_model: String,
+    route_trail: Vec<RouteAttempt>,
 }
 
 /// v4 `logLLMCall` (image-generation-handler.ts) — one `IMAGE_GENERATION` row per
@@ -2491,7 +2546,10 @@ async fn generate_images_with_provider<I, C, M, A, T, L>(
     danger_settings: &DangerousContentSettings,
     db_ctx: &DbContext,
     ctx: &ImageToolExecutionContext,
-) -> Result<Vec<GeneratedImageResult>, GenError>
+    // v4 `8bd080267`: `'concierge'` when a pre-flight classifier reroute
+    // already swapped the profile — the trail says the Concierge sent it.
+    primary_via: RouteAttemptVia,
+) -> Result<ProviderGenerationResult, GenError>
 where
     I: ImageProvider,
     C: CompletionProvider,
@@ -2500,176 +2558,151 @@ where
     T: ImageTranscoder,
     L: LanternNotificationSink,
 {
-    // One builder for every image call site: merges the profile's defaults
-    // under the tool's input, resolves the orientation onto this
-    // provider/model's own mechanism (orientation outranks any raw size the LLM
-    // passed), and attaches the profile's capped LoRA list plus its residual
-    // parameter bag. `tool_input.prompt` is already the expanded prompt, so
-    // whatever the builder appends lands in the intended final form.
-    let merged = build_image_gen_params(
-        ImageProfileLike {
-            provider: &image_profile.provider,
-            model_name: Some(&image_profile.model_name),
-            parameters: Some(&image_profile.parameters),
-        },
-        &tool_input.prompt,
-        &tool_input_overrides(tool_input),
-        requested_orientation(original_input),
-        DEFAULT_IMAGE_MODEL,
-        &(deps.declarations_for)(&image_profile.provider),
-        &ImageParamsLogContext {
-            context: "tools.generate_image",
-            chat_id: ctx.chat_id.clone(),
-            profile_id: Some(image_profile.id.clone()),
-            ..Default::default()
+    // One call against one profile (v4 `8bd080267`'s `attempt`). Owns
+    // everything profile-specific: the shared builder merges that profile's
+    // defaults under the tool's input, resolves the orientation onto its own
+    // mechanism and appends its LoRA trigger phrases; the LLM-log row names
+    // it. `tool_input.prompt` is already the expanded prompt, so whatever the
+    // builder appends lands in final form. Every profile but the one the call
+    // was addressed to builds under `…concierge-reroute` and logs the
+    // `(Concierge reroute)` suffix.
+    let attempt = |profile: FailoverProfile, key: String| async move {
+        let rerouted = profile.id != image_profile.id;
+        let parameters = if rerouted {
+            load_profile_parameters(db, &profile.id)
+        } else {
+            image_profile.parameters.clone()
+        };
+        let params = build_image_gen_params(
+            ImageProfileLike {
+                provider: &profile.provider,
+                model_name: Some(&profile.model_name),
+                parameters: Some(&parameters),
+            },
+            &tool_input.prompt,
+            &tool_input_overrides(tool_input),
+            requested_orientation(original_input),
+            DEFAULT_IMAGE_MODEL,
+            &(deps.declarations_for)(&profile.provider),
+            &ImageParamsLogContext {
+                context: if rerouted {
+                    "tools.generate_image.concierge-reroute"
+                } else {
+                    "tools.generate_image"
+                },
+                chat_id: ctx.chat_id.clone(),
+                profile_id: Some(profile.id.clone()),
+                ..Default::default()
+            },
+        )
+        .params;
+        // v4 stamps `Date.now()` around the call for `durationMs` — a real
+        // wall-clock read, NOT the pinned `deps.now_ms`.
+        let start = crate::clock::now_unix_ms();
+        let result = deps
+            .image_provider
+            .generate_image(&profile.provider, &key, &params)
+            .await;
+        let (content, error) = match &result {
+            Ok(r) => (
+                image_gen_success_content(r, if rerouted { " (Concierge reroute)" } else { "" }),
+                None,
+            ),
+            Err(e) => (String::new(), Some(e.message.clone())),
+        };
+        log_image_generation(
+            db,
+            ctx,
+            &profile.provider,
+            &profile.model_name,
+            &profile.id,
+            &tool_input.prompt,
+            content,
+            error,
+            (crate::clock::now_unix_ms() - start) as f64,
+        )
+        .await;
+        result
+    };
+
+    let understudy = ImageUnderstudySource {
+        db,
+        api_keys: deps.api_keys,
+        user_id: &ctx.user_id,
+        uncensored_image_profile_id: danger_settings.uncensored_image_profile_id.as_deref(),
+    };
+    let outcome = match generate_image_with_concierge_failover(
+        (
+            FailoverProfile {
+                id: image_profile.id.clone(),
+                name: image_profile.name.clone(),
+                provider: image_profile.provider.clone(),
+                model_name: image_profile.model_name.clone(),
+                row: Value::Null,
+            },
+            image_profile.api_key.clone(),
+        ),
+        attempt,
+        &ImageFailoverContext {
+            db,
+            chat_id: ctx.chat_id.as_deref(),
+            purpose: ImagePurpose::Tool,
+            settings: danger_settings,
+            understudy: &understudy,
+            profile_kind: RouteProfileKind::Image,
+            primary_via,
         },
     )
-    .params;
-
-    let mut active_provider = image_profile.provider.clone();
-    let mut active_model = image_profile.model_name.clone();
-
-    // Call the provider. v4 stamps `Date.now()` around the call for `durationMs`
-    // — a real wall-clock read, NOT the pinned `deps.now_ms` (same-field
-    // subtraction made every duration structurally 0).
-    let gen_start = crate::clock::now_unix_ms();
-    let response = match deps
-        .image_provider
-        .generate_image(&image_profile.provider, &image_profile.api_key, &merged)
-        .await
+    .await
     {
-        Ok(r) => {
-            log_image_generation(
-                db,
-                ctx,
-                &image_profile.provider,
-                &image_profile.model_name,
-                &image_profile.id,
-                &tool_input.prompt,
-                image_gen_success_content(&r, ""),
-                None,
-                (crate::clock::now_unix_ms() - gen_start) as f64,
-            )
-            .await;
-            r
-        }
-        Err(error) => {
-            log_image_generation(
-                db,
-                ctx,
-                &image_profile.provider,
-                &image_profile.model_name,
-                &image_profile.id,
-                &tool_input.prompt,
-                String::new(),
-                Some(error.message.clone()),
-                (crate::clock::now_unix_ms() - gen_start) as f64,
-            )
-            .await;
-            // Post-hoc Concierge reroute on a moderation rejection.
-            let reroute = if is_image_moderation_error(&error.message) {
-                let uid = ctx.user_id.clone();
-                let mode = danger_settings.mode.clone();
-                let uncensored = danger_settings.uncensored_image_profile_id.clone();
-                let current_id = image_profile.id.clone();
-                let api_keys = deps.api_keys;
-                db.read_main(move |conn| {
-                    resolve_uncensored_image_profile_for_reroute(
-                        conn,
-                        api_keys,
-                        &current_id,
-                        &mode,
-                        uncensored.as_deref(),
-                        &uid,
-                    )
-                })
-                .ok()
-                .flatten()
-            } else {
-                None
+        Ok(outcome) => outcome,
+        Err(failure) => {
+            let trail = failure.concierge_trail();
+            let trail_json = trail.map(|t| {
+                Value::Array(
+                    t.iter()
+                        .map(|a| serde_json::json!({ "profileName": a.profile_name, "outcome": a.outcome.as_str() }))
+                        .collect(),
+                )
+                .to_string()
+            });
+            // v4's root-logger `Image generation failed:` (its bag gained
+            // `conciergeTrail` and lost `moderationRejection` at `8bd080267`;
+            // the line itself had never been ported).
+            tracing::error!(
+                target: "quilltap::image_generation",
+                errorMessage = %failure.error.message,
+                conciergeTrailJson = trail_json.as_deref(),
+                "Image generation failed:"
+            );
+            let message = match trail {
+                Some(t) if t.len() > 1 => format!(
+                    "Image generation failed after Concierge reroute: {}",
+                    failure.error.message
+                ),
+                _ => format!("Image generation failed: {}", failure.error.message),
             };
-
-            let Some(reroute) = reroute else {
-                return Err(GenError {
-                    code: "PROVIDER_ERROR".to_string(),
-                    message: format!("Image generation failed: {}", error.message),
-                });
-            };
-
-            // Re-issue on the uncensored profile. The reroute profile's
-            // `parameters` are not carried on the `RouteProfile`; v4 reads
-            // `reroute.profile.parameters`, so load them from the DB.
-            let reroute_params = load_profile_parameters(db, &reroute.profile.id);
-            // Rebuild from scratch for the reroute target: its shape mechanism,
-            // its LoRA support, and its stored parameters are all its own. The
-            // prompt was crafted against the original profile, so any trigger
-            // phrases the fallback's adapters want get appended here.
-            let reroute_merged = build_image_gen_params(
-                ImageProfileLike {
-                    provider: &reroute.profile.provider,
-                    model_name: Some(&reroute.profile.model_name),
-                    parameters: Some(&reroute_params),
-                },
-                &tool_input.prompt,
-                &tool_input_overrides(tool_input),
-                requested_orientation(original_input),
-                DEFAULT_IMAGE_MODEL,
-                &(deps.declarations_for)(&reroute.profile.provider),
-                &ImageParamsLogContext {
-                    context: "tools.generate_image.concierge-reroute",
-                    chat_id: ctx.chat_id.clone(),
-                    profile_id: Some(reroute.profile.id.clone()),
-                    ..Default::default()
-                },
-            )
-            .params;
-            let reroute_start = crate::clock::now_unix_ms();
-            match deps
-                .image_provider
-                .generate_image(&reroute.profile.provider, &reroute.api_key, &reroute_merged)
-                .await
-            {
-                Ok(r) => {
-                    log_image_generation(
-                        db,
-                        ctx,
-                        &reroute.profile.provider,
-                        &reroute.profile.model_name,
-                        &reroute.profile.id,
-                        &tool_input.prompt,
-                        image_gen_success_content(&r, " (Concierge reroute)"),
-                        None,
-                        (crate::clock::now_unix_ms() - reroute_start) as f64,
-                    )
-                    .await;
-                    active_provider = reroute.profile.provider.clone();
-                    active_model = reroute.profile.model_name.clone();
-                    r
-                }
-                Err(reroute_error) => {
-                    log_image_generation(
-                        db,
-                        ctx,
-                        &reroute.profile.provider,
-                        &reroute.profile.model_name,
-                        &reroute.profile.id,
-                        &tool_input.prompt,
-                        String::new(),
-                        Some(reroute_error.message.clone()),
-                        (crate::clock::now_unix_ms() - reroute_start) as f64,
-                    )
-                    .await;
-                    return Err(GenError {
-                        code: "PROVIDER_ERROR".to_string(),
-                        message: format!(
-                            "Image generation failed after Concierge reroute: {}",
-                            reroute_error.message
-                        ),
-                    });
-                }
-            }
+            return Err(GenError {
+                code: "PROVIDER_ERROR".to_string(),
+                message,
+                trail: failure.trail,
+            });
         }
     };
+    if outcome.rerouted {
+        tracing::info!(
+            target: "quilltap::image_generation",
+            originalProfileId = %image_profile.id,
+            fallbackProfileId = %outcome.profile.id,
+            fallbackProvider = %outcome.profile.provider,
+            fallbackModel = %outcome.profile.model_name,
+            "[Image Generation] Concierge uncensored reroute succeeded"
+        );
+    }
+    let active_provider = outcome.profile.provider.clone();
+    let active_model = outcome.profile.model_name.clone();
+    let route_trail = outcome.trail;
+    let response = outcome.result;
 
     // Save each image.
     let requester_name =
@@ -2759,13 +2792,14 @@ where
             .map_err(|_e| GenError {
                 code: "STORAGE_ERROR".to_string(),
                 message: "Failed to save generated image".to_string(),
+                trail: Vec::new(),
             })?;
         match result {
             Ok(r) => {
                 // Post the Lantern notification (off the writer thread).
                 if let Some(chat_id) = ctx.chat_id.as_deref() {
                     deps.lantern
-                        .post_character_image(chat_id, &r.id, &requester_name)
+                        .post_character_image(chat_id, &r.id, &requester_name, &route_trail)
                         .await;
                 }
                 saved.push(r);
@@ -2774,12 +2808,18 @@ where
                 return Err(GenError {
                     code: "STORAGE_ERROR".to_string(),
                     message: "Failed to save generated image".to_string(),
+                    trail: Vec::new(),
                 })
             }
         }
     }
 
-    Ok(saved)
+    Ok(ProviderGenerationResult {
+        images: saved,
+        answering_provider: active_provider,
+        answering_model: active_model,
+        route_trail,
+    })
 }
 
 /// Load a profile's `parameters` JSON (for the post-hoc reroute merge).
@@ -3014,6 +3054,7 @@ mod duration_tests {
             &danger_settings,
             &db_ctx,
             &ctx,
+            RouteAttemptVia::Primary,
         )
         .await;
         assert!(
