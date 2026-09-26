@@ -18,7 +18,8 @@
 //!     (`resolveProfileLoras`, BEFORE the params build — the one this lane
 //!     restored; without it a stored-list problem raised during the crafter's
 //!     pre-pass is indistinguishable from one raised at generation time)
-//!   * `character-avatar.ts:239` / `:320` — `background-jobs.character-avatar`(`.concierge-reroute`)
+//!   * `character-avatar.ts:239` / `:320` — `background-jobs.character-avatar`(`.concierge-route` —
+//!     v4 `8bd080267` renamed this one site's suffix; the other two keep `-reroute`)
 //!   * `story-background.ts:648` / `:787` — `background-jobs.story-background`(`.concierge-reroute`)
 //!   * `app/api/v1/images/route.ts:282` — `api.v1.images.generate`
 //!   * `app/api/v1/wardrobe/preview-avatar/route.ts:111` — `api.v1.wardrobe.preview-avatar`
@@ -66,7 +67,9 @@ fn every_v4_image_params_anchor_still_has_a_v5_call_site() {
         "tools.generate_image.concierge-reroute",
         "tools.generate_image.style-options",
         "background-jobs.character-avatar",
-        "background-jobs.character-avatar.concierge-reroute",
+        // v4 `8bd080267`: the avatar job's rebuild context is `.concierge-route`
+        // (`character-avatar.ts:321` at `49059fb14`), not `-reroute`.
+        "background-jobs.character-avatar.concierge-route",
         "background-jobs.story-background",
         "background-jobs.story-background.concierge-reroute",
         "api.v1.wardrobe.preview-avatar",

@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — test(harness): P4.D225's census rows and the avatar reroute anchor (P4.D225 unit 12)
+
+_Versions: harness 0.0.996._
+
+The `get_messages` caller census counts this lane's three new unit-test
+reads, and the image-params anchor guard names v4's
+`background-jobs.character-avatar.concierge-route`.
+
 #### 2026-09-25 — fix(settings): the chat settings read fills autoSwitchAfterRefusals (P4.D225 unit 11)
 
 _Versions: core 0.0.1077._

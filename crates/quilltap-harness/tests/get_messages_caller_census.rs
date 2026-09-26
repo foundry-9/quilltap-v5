@@ -102,6 +102,12 @@ const CENSUS: &[(&str, &str, Variant)] = &[
         "is_silent_still_reads_fresh_ddl_text_cells",
         F,
     ),
+    // P4.D225: the five-evidence trail round-trip pin (a unit test).
+    (
+        "db/chats_messages_read.rs",
+        "a_route_trail_with_every_evidence_value_round_trips",
+        F,
+    ),
     (
         "db/chats_messages_read.rs",
         "a_read_that_throws_answers_empty_and_logs_once",
@@ -194,6 +200,17 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     (
         "services/commonplace_notifications.rs",
         "sweep_prior_relevant_conversation_whispers",
+        F,
+    ),
+    // P4.D225: the refusal announcement's unit test reads the chat back twice.
+    (
+        "services/concierge_notifications.rs",
+        "a_refusal_announcement_posts_the_refusal_literal_and_logs_once",
+        F,
+    ),
+    (
+        "services/concierge_notifications.rs",
+        "a_refusal_announcement_posts_the_refusal_literal_and_logs_once",
         F,
     ),
     ("services/context_summary.rs", "generate_inner", F),
@@ -452,9 +469,11 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // over the same 50 files, so the totals do not move. P4.113 retired
     // `update_message`'s strict `find_event_value` site (v4's raw `findOne`
     // is not a `getMessages` read): strict 8 − 1 = 7; the file keeps its two
-    // fallback sites, so still 50 files.
-    assert_eq!((swallowing, strict), (76, 7), "census totals");
-    assert_eq!(file_count, 50, "census files");
+    // fallback sites, so still 50 files. P4.D225 added three unit-test
+    // fallback calls (the trail round-trip; the refusal announcement twice)
+    // and one file (`concierge_notifications.rs`): 79 and 51.
+    assert_eq!((swallowing, strict), (79, 7), "census totals");
+    assert_eq!(file_count, 51, "census files");
 }
 
 /// The scanner itself: comments skipped, definitions are declarations not

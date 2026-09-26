@@ -150853,3 +150853,28 @@ Regen outputs staged under `/tmp/p4d225/`.
   re-dump, so `provisioning_equivalence` is RED on this branch by design until
   the unifier composes P4.D226's re-dump (which must be taken at or after
   `49059fb14` to carry the key).
+
+### Unit 12 — gate fixes + the lane's final gate
+
+- `get_messages_caller_census`: three P4.D225 unit-test fallback calls
+  (`a_route_trail_with_every_evidence_value_round_trips`; the refusal
+  announcement test's two reads) and one file — totals 76 → 79 swallowing,
+  7 strict, 50 → 51 files.
+- `lora_log_anchor_guard`: the avatar job's rebuild anchor is v4's
+  `background-jobs.character-avatar.concierge-route` at `49059fb14`
+  (`character-avatar.ts:321`, unit 8b's measured premise) — the guard still
+  named `-reroute`.
+- **Final gate** (drift §2 probe PASS: v4 main `acadcc7cd`, bugfix
+  `1a2b2164c`, clean, both logs empty): the sweep driver over 53 families
+  at `49059fb14` — 51 ok + `salon_reads` (fixed, unit 11) + `provisioning`
+  (fenced, below); fmt clean; clippy clean on both feature sets; release
+  build clean; `cargo test --workspace --no-fail-fast` with the 98-var env
+  block: **639 binaries / 3,776 passed / 6 failed / 3 ignored, zero `SKIP:`
+  lines** — the six: the two census/guard tests fixed above (green by name
+  afterwards); `provider_sdk_version_guard`'s two halves (RED BY DESIGN per
+  the order — P4.D232 moves the constants); `provisioning_matches_v4_fresh_
+  instance` (the fenced `fresh_schema.json` handoff, unit 11);
+  `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts`
+  (the vendored schema is byte-identical to `49059fb14`'s; the guard reads
+  the LIVE checkout at `acadcc7cd`, which later lanes re-vendor). Tier R:
+  **266 cases / 0 failures** at the pin.
