@@ -216,6 +216,30 @@
           "characterId": "cc000001-0000-4000-8000-000000000001"
         }
       ]
+    },
+    {
+      "id": "dd000051-0000-4000-8000-000000000051",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "refusal ledger: empty-body refusals",
+      "participants": [
+        {
+          "id": "ee000051-0000-4000-8000-000000000051",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000052-0000-4000-8000-000000000052",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "refusal ledger: thrown refusals",
+      "participants": [
+        {
+          "id": "ee000052-0000-4000-8000-000000000052",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
     }
   ],
   "character": {
@@ -700,6 +724,159 @@
         }
       ]
     ]
+,
+    "empty_scan_understudy_ok": [
+      [
+        {
+          "done": true
+        }
+      ],
+      [
+        {
+          "content": "The scanned understudy obliges."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "flagged_nobody_then_chain": [
+      [
+        {
+          "content": "The chain's understudy takes the line."
+        },
+        {
+          "done": true
+        }
+      ],
+      [
+        {
+          "content": "A second hand, unused."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "retry_states_refusal_rerouted": [
+      [
+        {
+          "done": true,
+          "rawResponse": {
+            "choices": [
+              {
+                "finish_reason": "content_filter"
+              }
+            ]
+          }
+        }
+      ],
+      [
+        {
+          "content": "The uncensored desk answers the refused turn."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "hard_refusal_rerouted": [
+      [
+        {
+          "typedRefusal": {
+            "message": "Anthropic declined the request on content grounds",
+            "statusCode": 400,
+            "providerReason": "refusal"
+          }
+        }
+      ],
+      [
+        {
+          "content": "The uncensored desk takes the thrown refusal."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "hard_refusal_twice_then_chain": [
+      [
+        {
+          "error": "400 Your request was rejected as a result of our safety system."
+        }
+      ],
+      [
+        {
+          "error": "400 content_policy violation: the uncensored desk declines too"
+        }
+      ],
+      [
+        {
+          "error": "503 Service Unavailable: the named understudy is out"
+        }
+      ],
+      [
+        {
+          "content": "The chain answers after both refusals."
+        },
+        {
+          "done": true
+        }
+      ],
+      [
+        {
+          "content": "A spare, unused."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "hard_refusal_off_then_chain": [
+      [
+        {
+          "error": "400 Your request was rejected as a result of our safety system."
+        }
+      ],
+      [
+        {
+          "content": "The chain answers a refusal the mode will not reroute."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "hard_refusal_nobody_then_chain": [
+      [
+        {
+          "error": "400 Your request was rejected as a result of our safety system."
+        }
+      ],
+      [
+        {
+          "content": "The chain answers when no uncensored desk exists."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "hard_refusal_unset_then_chain": [
+      [
+        {
+          "error": "400 Your request was rejected as a result of our safety system."
+        }
+      ],
+      [
+        {
+          "content": "The chain answers with no settings in hand."
+        },
+        {
+          "done": true
+        }
+      ]
+    ]
   },
   "calls": [
     {
@@ -1132,6 +1309,115 @@
       "expectThrow": true,
       "informRowIds": [],
       "comment": "P4.106 item 2 \u2014 v4 `primary-stream.service.test.ts:249`: a turn that carried no inform touches nothing, even though the seat HAS a pending row (planted) \u2014 the preserve consumes only what the turn's context carried."
+    },
+    {
+      "name": "empty_auto_route_scan_without_configured_id",
+      "kind": "failover",
+      "chatId": "dd000051-0000-4000-8000-000000000051",
+      "participantId": "ee000051-0000-4000-8000-000000000051",
+      "preGeneratedMessageId": "ff000051-0000-4000-8000-000000000051",
+      "hasTools": false,
+      "streamLabel": "empty_scan_understudy_ok",
+      "attachedFiles": [],
+      "originalMessage": "no configured desk, but the scan finds one",
+      "dangerMode": "AUTO_ROUTE",
+      "contentWasFlaggedDangerous": false,
+      "omitUncensoredId": true,
+      "comment": "P4.D225 (v4 8bd080267, #73): the empty-body reroute's gate dropped its `uncensoredTextProfileId` conjunct. Auto-Route with NO configured id still asks the understudy resolver (whose scan is the answer); pre-#73 this case skipped the reroute and walked the chain."
+    },
+    {
+      "name": "empty_flagged_nobody_to_ask",
+      "kind": "failover",
+      "chatId": "dd000051-0000-4000-8000-000000000051",
+      "participantId": "ee000051-0000-4000-8000-000000000051",
+      "preGeneratedMessageId": "ff000052-0000-4000-8000-000000000052",
+      "hasTools": false,
+      "streamLabel": "flagged_nobody_then_chain",
+      "attachedFiles": [],
+      "originalMessage": "flagged, and nobody uncensored to ask",
+      "dangerMode": "AUTO_ROUTE",
+      "contentWasFlaggedDangerous": true,
+      "noUnderstudy": true,
+      "comment": "P4.D225: flagged content opens with the INFERRED refusal (refusalWasStated counts it), the resolver answers nobody, so the Concierge posts `refusal-no-understudy` (purpose text) and the chain walks. An inferred refusal is NOT recordable: the ledger stays at zero."
+    },
+    {
+      "name": "empty_retry_states_refusal_rerouted",
+      "kind": "failover",
+      "chatId": "dd000051-0000-4000-8000-000000000051",
+      "participantId": "ee000051-0000-4000-8000-000000000051",
+      "preGeneratedMessageId": "ff000053-0000-4000-8000-000000000053",
+      "hasTools": false,
+      "streamLabel": "retry_states_refusal_rerouted",
+      "attachedFiles": [],
+      "originalMessage": "the retry names content_filter and the desk answers",
+      "dangerMode": "AUTO_ROUTE",
+      "contentWasFlaggedDangerous": false,
+      "comment": "P4.D225: the opening is a plain empty body; the same-provider retry comes back empty with a STATED finish reason (content_filter), which becomes the turn's refusal. The understudy answers, so the ledger records it with rerouted=true (one per turn, on the way out)."
+    },
+    {
+      "name": "hard_refusal_understudy_answers",
+      "kind": "hardFailover",
+      "chatId": "dd000052-0000-4000-8000-000000000052",
+      "participantId": "ee000052-0000-4000-8000-000000000052",
+      "preGeneratedMessageId": "ff000054-0000-4000-8000-000000000054",
+      "hasTools": false,
+      "streamLabel": "hard_refusal_rerouted",
+      "attachedFiles": [],
+      "originalMessage": "a thrown refusal the desk answers",
+      "dangerMode": "AUTO_ROUTE",
+      "comment": "P4.D225: a thrown TYPED refusal (the plugin contract's real ModerationRejectionError) classifies as moderation-refusal with evidence typed-error. Under Auto-Route the understudy is tried FIRST (substitute: true) and answers: recovered, trail refused -> answered via concierge, ledger +1 rerouted=true, no chain walk."
+    },
+    {
+      "name": "hard_refusal_understudy_refuses_then_chain",
+      "kind": "hardFailover",
+      "chatId": "dd000052-0000-4000-8000-000000000052",
+      "participantId": "ee000052-0000-4000-8000-000000000052",
+      "preGeneratedMessageId": "ff000055-0000-4000-8000-000000000055",
+      "hasTools": false,
+      "streamLabel": "hard_refusal_twice_then_chain",
+      "attachedFiles": [],
+      "originalMessage": "the desk refuses as well",
+      "dangerMode": "AUTO_ROUTE",
+      "comment": "P4.D225: the understudy's own call throws a refusal too, recorded refused/moderation-refusal against the understudy (not failed). Ledger +1 rerouted=false, then the refusing profile's chain walks with dangerous: true and the understudy in alreadyTried. The named understudy then falls over (503), so whether the TIER PICK is offered is what shows the `dangerous: true` override: a pick must be cleared for the content."
+    },
+    {
+      "name": "hard_refusal_mode_not_permitted",
+      "kind": "hardFailover",
+      "chatId": "dd000052-0000-4000-8000-000000000052",
+      "participantId": "ee000052-0000-4000-8000-000000000052",
+      "preGeneratedMessageId": "ff000056-0000-4000-8000-000000000056",
+      "hasTools": false,
+      "streamLabel": "hard_refusal_off_then_chain",
+      "attachedFiles": [],
+      "originalMessage": "the mode forbids the reroute",
+      "dangerMode": "DETECT_ONLY",
+      "comment": "P4.D225: a thrown refusal outside Auto-Route: the INFO line, the ledger (rerouted=false), and the chain with the context's own dangerous flag. No understudy lookup at all."
+    },
+    {
+      "name": "hard_refusal_no_understudy",
+      "kind": "hardFailover",
+      "chatId": "dd000052-0000-4000-8000-000000000052",
+      "participantId": "ee000052-0000-4000-8000-000000000052",
+      "preGeneratedMessageId": "ff000057-0000-4000-8000-000000000057",
+      "hasTools": false,
+      "streamLabel": "hard_refusal_nobody_then_chain",
+      "attachedFiles": [],
+      "originalMessage": "auto-route but no uncensored desk anywhere",
+      "dangerMode": "AUTO_ROUTE",
+      "noUnderstudy": true,
+      "comment": "P4.D225: Auto-Route, but the resolver answers nobody: WARN, the `refusal-no-understudy` bubble (a thrown refusal is always stated), the ledger, then the chain cleared for the content."
+    },
+    {
+      "name": "hard_refusal_without_settings",
+      "kind": "hardFailover",
+      "chatId": "dd000052-0000-4000-8000-000000000052",
+      "participantId": "ee000052-0000-4000-8000-000000000052",
+      "preGeneratedMessageId": "ff000058-0000-4000-8000-000000000058",
+      "hasTools": false,
+      "streamLabel": "hard_refusal_unset_then_chain",
+      "attachedFiles": [],
+      "originalMessage": "a refusal with no Concierge settings handed in",
+      "comment": "P4.D225: `dangerSettings` absent (v4's optional): the not-permitted INFO with mode undefined, the ledger, the chain."
     }
   ],
   "authPrimaryProfile": {

@@ -2289,6 +2289,10 @@ impl Normalizer {
                         "totalPromptTokens",
                         "totalCompletionTokens",
                         "estimatedCostUSD",
+                        // P4.D225: the refusal ledger's stamp (the frozen v4
+                        // clock vs the real Rust one, like `updatedAt`); the
+                        // COUNT beside it stays a literal comparand.
+                        "lastModerationRefusalAt",
                     ] {
                         if let Some(v) = obj.get(c) {
                             if !v.is_null() {

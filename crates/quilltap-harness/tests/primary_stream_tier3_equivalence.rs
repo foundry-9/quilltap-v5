@@ -121,6 +121,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::model::completion::CannedCompletionProvider;
 use quilltap_core::model::completion::{CompletionMessage, CompletionRole};
 use quilltap_core::model::stream::{
     canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamMessage, StreamParams,
@@ -138,8 +139,8 @@ use quilltap_core::services::primary_stream::{
     RunPrimaryStreamOptions, StreamingState,
 };
 use quilltap_core::services::provider_failover::{
-    self, AttemptEmptyResponseRecoveryOptions, DangerSettings, DangerousContentRouter,
-    FailoverLogCtx, RouteResult,
+    self, AttemptEmptyResponseRecoveryOptions, ConciergeFailoverSeam, DangerSettings,
+    DangerousContentRouter, FailoverLogCtx, RouteResult, TextUnderstudy,
 };
 use quilltap_core::services::recovery::{self, RecoveryContext};
 use serde::Deserialize;
@@ -275,6 +276,14 @@ struct CallW {
     /// mock does (a call with no label is skipped there, so it is skipped here).
     #[serde(default)]
     stream_label: Option<String>,
+    /// P4.D225 (v4 `8bd080267`, #73) — the understudy resolver answers `None`
+    /// for this call (the `refusal-no-understudy` arm).
+    #[serde(default)]
+    no_understudy: bool,
+    /// P4.D225 — hand the failover no `uncensoredTextProfileId` under
+    /// Auto-Route (the dropped gate conjunct).
+    #[serde(default)]
+    omit_uncensored_id: bool,
 }
 
 #[derive(Deserialize)]
@@ -308,6 +317,7 @@ struct CannedMsgW {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ChunkW {
     #[serde(default)]
     content: Option<String>,
@@ -326,6 +336,23 @@ struct ChunkW {
     /// everything downstream of the failure.
     #[serde(default)]
     stall: Option<StallW>,
+    /// P4.D225 — the `done` chunk's `rawResponse` (where the empty-body
+    /// classifier reads a STATED finish reason). Absent on every older case.
+    #[serde(default)]
+    raw_response: Option<Value>,
+    /// P4.D225 — the typed refusal v4's plugins throw (`ModerationRejectionError`).
+    #[serde(default)]
+    typed_refusal: Option<TypedRefusalW>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct TypedRefusalW {
+    message: String,
+    #[serde(default)]
+    status_code: Option<u16>,
+    #[serde(default)]
+    provider_reason: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Copy)]
@@ -461,6 +488,15 @@ fn chunk_to_result(c: &ChunkW, provider: &str, model: &str) -> StreamChunkResult
             Some(model),
         ));
     }
+    if let Some(t) = &c.typed_refusal {
+        return Err(StreamError::new(t.message.clone()).with_refusal(
+            quilltap_core::services::dangerous_content::refusal::RefusalError::typed(
+                t.message.clone(),
+                t.status_code,
+                t.provider_reason.clone(),
+            ),
+        ));
+    }
     if let Some(err) = &c.error {
         return Err(StreamError::new(err.clone()));
     }
@@ -476,7 +512,9 @@ fn chunk_to_result(c: &ChunkW, provider: &str, model: &str) -> StreamChunkResult
             completion_tokens: u.completion_tokens,
             total_tokens: u.total_tokens,
         });
-        return Ok(StreamChunk::done(usage));
+        let mut done = StreamChunk::done(usage);
+        done.raw_response = c.raw_response.clone();
+        return Ok(done);
     }
     Ok(StreamChunk::content(c.content.clone().unwrap_or_default()))
 }
@@ -532,11 +570,17 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
     }
 }
 
-// The canned dangerous-content router (mirrors the oracle's mock: reroute to the
-// uncensored profile with a canned key).
+// The canned dangerous-content router, mirroring the oracle's understudy mock:
+// the uncensored profile with a canned key unless the call says nobody is
+// there or it is excluded. Each lookup is recorded (the exclude list the
+// failover builds is a comparand). The ledger and the Concierge's bubble run
+// REAL against the fixture copy, as v4's do.
 struct CannedRouter {
     profile: EffectiveProfile,
     key: String,
+    db: Db,
+    no_understudy: std::sync::atomic::AtomicBool,
+    lookups: Mutex<Vec<Value>>,
 }
 impl DangerousContentRouter for CannedRouter {
     async fn resolve(
@@ -547,12 +591,65 @@ impl DangerousContentRouter for CannedRouter {
         _user_id: &str,
         _turn_attachment_mime_types: &[String],
     ) -> RouteResult {
-        RouteResult {
-            rerouted: true,
+        panic!("P4.D225: no text failover resolves through the pre-flight router any more")
+    }
+
+    async fn resolve_understudy(
+        &self,
+        _user_id: &str,
+        settings: &DangerSettings,
+        exclude: &[String],
+        turn_attachment_mime_types: &[String],
+    ) -> Option<TextUnderstudy> {
+        self.lookups.lock().unwrap().push(json!({
+            "exclude": exclude,
+            "uncensoredTextProfileId": settings.uncensored_text_profile_id,
+            "turnAttachmentMimeTypes": turn_attachment_mime_types,
+        }));
+        if self.no_understudy.load(std::sync::atomic::Ordering::SeqCst)
+            || exclude.contains(&self.profile.id)
+        {
+            return None;
+        }
+        Some(TextUnderstudy {
             connection_profile: self.profile.clone(),
             api_key: self.key.clone(),
             profile_row: None,
-        }
+        })
+    }
+
+    async fn record_refusal(
+        &self,
+        rec: quilltap_core::services::dangerous_content::refusal_ledger::RefusalRecord,
+    ) {
+        quilltap_core::services::dangerous_content::refusal_ledger::record_moderation_refusal(
+            &self.db, &rec,
+        )
+        .await;
+    }
+
+    async fn announce_refusal(
+        &self,
+        chat_id: &str,
+        kind: quilltap_core::services::concierge_notifications::ConciergeRefusalKind,
+        details: quilltap_core::services::concierge_notifications::ConciergeRefusalDetails,
+    ) {
+        quilltap_core::services::concierge_notifications::post_concierge_refusal_announcement(
+            &self.db, chat_id, kind, &details,
+        )
+        .await;
+    }
+}
+
+impl CannedRouter {
+    /// Arm the router for one call and hand back its (cleared) lookups.
+    fn begin_call(&self, call: &CallW) {
+        self.no_understudy
+            .store(call.no_understudy, std::sync::atomic::Ordering::SeqCst);
+        self.lookups.lock().unwrap().clear();
+    }
+    fn lookups(&self) -> Value {
+        Value::Array(self.lookups.lock().unwrap().clone())
     }
 }
 
@@ -589,7 +686,9 @@ fn normalize_chat_messages(dump: &mut Value, id_map: &mut HashMap<String, String
     }
 }
 
-const CHATS_TS: &[&str] = &["lastMessageAt", "updatedAt"];
+// P4.D225: the refusal ledger stamps `lastModerationRefusalAt` on a counted
+// refusal (the column exists once the fixture carries v4's ledger migration).
+const CHATS_TS: &[&str] = &["lastMessageAt", "updatedAt", "lastModerationRefusalAt"];
 
 /// Collapse minted chat timestamps to `<ts>` only when they differ from the seed
 /// sentinel (a chat that received nothing keeps its sentinel — proving no stray
@@ -710,10 +809,6 @@ async fn primary_stream_tier3_matches_oracle() {
             .filter_map(|c| Some((c.original_message.clone()?, c.stream_label.clone()?)))
             .collect(),
     );
-    let router = CannedRouter {
-        profile: spec.uncensored_profile.to_effective(),
-        key: "uncensored-key".into(),
-    };
 
     // W4.11b: attach a fresh llm-logs partition so the primary + failover
     // CHAT_MESSAGE `logLLMCall` rows land somewhere we can dump.
@@ -732,6 +827,13 @@ async fn primary_stream_tier3_matches_oracle() {
         &spec.test_pepper_base64,
     )
     .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+    let router = CannedRouter {
+        profile: spec.uncensored_profile.to_effective(),
+        key: "uncensored-key".into(),
+        db: db.clone(),
+        no_understudy: std::sync::atomic::AtomicBool::new(false),
+        lookups: Mutex::new(Vec::new()),
+    };
 
     // P4.D135: the chain's read seam, over the same fixture copy v4's `repos`
     // read. `fallback_primary` is the failing profile as a full row — v4 walks
@@ -886,6 +988,7 @@ async fn primary_stream_tier3_matches_oracle() {
         assert_eq!(call.name, oracle_name, "call order mismatch");
         let name = call.name.clone();
         let sink = RecordingSink::new();
+        router.begin_call(call);
 
         let got_result: Value = match call.kind.as_str() {
             "findPrevResponseId" => {
@@ -964,6 +1067,12 @@ async fn primary_stream_tier3_matches_oracle() {
                     &sink,
                     &mut preserve,
                     Some(&fallback_repos),
+                    // v4's `primary` cases pass no `dangerSettings`.
+                    ConciergeFailoverSeam::<_, CannedCompletionProvider> {
+                        router: &router,
+                        danger_settings: None,
+                        adapter: None,
+                    },
                     opts,
                 )
                 .await
@@ -1018,7 +1127,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     ..Default::default()
                 };
                 let danger_mode = call.danger_mode.clone().unwrap_or_else(|| "OFF".into());
-                let uncensored_id = if danger_mode == "AUTO_ROUTE" {
+                let uncensored_id = if danger_mode == "AUTO_ROUTE" && !call.omit_uncensored_id {
                     Some(spec.uncensored_profile.id.clone())
                 } else {
                     None
@@ -1115,6 +1224,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     // rather than writing null.
                     "routeFailures": state.route_failures,
                     "routeVia": state.route_via.as_str(),
+                    "understudyLookups": router.lookups(),
                 })
             }
             "hardFailover" => {
@@ -1176,12 +1286,26 @@ async fn primary_stream_tier3_matches_oracle() {
                     fallback_profile: fallback_primary.clone(),
                     state: &mut state,
                 };
+                // P4.D225 (v4 `8bd080267`): the chat's Concierge settings, when
+                // the call names a mode.
+                let hard_settings = call.danger_mode.clone().map(|mode| DangerSettings {
+                    mode,
+                    uncensored_text_profile_id: (!call.omit_uncensored_id)
+                        .then(|| spec.uncensored_profile.id.clone()),
+                });
                 match primary_stream::run_primary_stream(
                     &db,
                     &provider,
                     &sink,
                     &mut preserve,
                     Some(&fallback_repos),
+                    ConciergeFailoverSeam::<_, CannedCompletionProvider> {
+                        router: &router,
+                        danger_settings: hard_settings.as_ref(),
+                        // As in the empty-body arm: no array here carries an
+                        // attachment, so the adapter would answer "unchanged".
+                        adapter: None,
+                    },
                     opts,
                 )
                 .await
@@ -1203,6 +1327,7 @@ async fn primary_stream_tier3_matches_oracle() {
                         // behind before it died.
                         "reasoningContent": state.reasoning_content,
                         "reasoningSegmentCount": state.reasoning_segments.len(),
+                        "understudyLookups": router.lookups(),
                     }),
                     Err(e) => json!({
                         "threw": e.message,
@@ -1212,6 +1337,7 @@ async fn primary_stream_tier3_matches_oracle() {
                         "routeVia": state.route_via.as_str(),
                         "reasoningContent": state.reasoning_content,
                         "reasoningSegmentCount": state.reasoning_segments.len(),
+                        "understudyLookups": router.lookups(),
                     }),
                 }
             }
@@ -1519,9 +1645,14 @@ fn assert_events_eq(name: &str, got: &Value, want: &Value) {
 fn sort_rows_by(dump: &mut Value, col: &str) {
     if let Some(rows) = dump.get_mut("rows").and_then(Value::as_array_mut) {
         rows.sort_by(|a, b| {
-            let av = a.get(col).and_then(Value::as_str).unwrap_or("");
-            let bv = b.get(col).and_then(Value::as_str).unwrap_or("");
-            av.cmp(bv)
+            let key =
+                |r: &Value, c: &str| r.get(c).and_then(Value::as_str).unwrap_or("").to_string();
+            // `chatId` breaks a content tie: P4.D225's Concierge bubbles are the
+            // same sentence on two chats, and a tie left in whatever order each
+            // side's dump happened to produce.
+            key(a, col)
+                .cmp(&key(b, col))
+                .then_with(|| key(a, "chatId").cmp(&key(b, "chatId")))
         });
     }
 }

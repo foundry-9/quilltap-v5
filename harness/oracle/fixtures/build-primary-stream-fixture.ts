@@ -215,6 +215,20 @@ async function main(): Promise<void> {
   }
 
   await closeDatabase();
+
+  // P4.D225 (v4 `49059fb14`): the refusal ledger's two `chats` columns through
+  // v4's OWN migration module, so a refused turn's ledger increment lands on
+  // both sides (without them the increment fails softly and the ledger goes
+  // unmeasured). Skipped at a pin before the migration existed.
+  const { runV4Migrations, ADD_CHAT_REFUSAL_LEDGER } = await import('../lib/v4-migrations');
+  const migrated = await runV4Migrations({
+    dbPath: out,
+    pepperBase64: spec.testPepperBase64,
+    migrations: [ADD_CHAT_REFUSAL_LEDGER],
+    allowMissing: true,
+  });
+  process.stderr.write(`fixture migrations: ${migrated.join('; ')}\n`);
+
   process.stderr.write(
     `built primary-stream seed fixture: ${out} (${spec.chats.length} chats, ` +
       `${seededProfiles.length} connection profiles, ${spec.apiKeys.length} api keys)\n`,

@@ -3099,6 +3099,19 @@
       "totalTokens": 15
      }
     }
+   ],
+   [
+    {
+     "content": ""
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 15,
+      "completionTokens": 0,
+      "totalTokens": 15
+     }
+    }
    ]
   ],
   "mid_stream_error": [
@@ -3150,6 +3163,32 @@
       "promptTokens": 42,
       "completionTokens": 0,
       "totalTokens": 42
+     }
+    }
+   ],
+   [
+    {
+     "content": ""
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 15,
+      "completionTokens": 0,
+      "totalTokens": 15
+     }
+    }
+   ],
+   [
+    {
+     "content": ""
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 15,
+      "completionTokens": 0,
+      "totalTokens": 15
      }
     }
    ]
@@ -3920,6 +3959,19 @@
       ]
      }
     }
+   ],
+   [
+    {
+     "content": ""
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 21,
+      "completionTokens": 0,
+      "totalTokens": 21
+     }
+    }
    ]
   ],
   "danger_uncensored": [
@@ -4018,6 +4070,19 @@
    ]
   ],
   "understudy_answers": [
+   [
+    {
+     "content": ""
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 15,
+      "completionTokens": 0,
+      "totalTokens": 15
+     }
+    }
+   ],
    [
     {
      "content": ""

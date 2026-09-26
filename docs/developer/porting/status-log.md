@@ -150725,3 +150725,91 @@ Regen outputs staged under `/tmp/p4d225/`.
   `tu-configured-filtered-out`; the dialog's WIRING of
   `supports_image_generation` as that filter is proven by review only.
 - Gate: fmt + clippy (workspace) clean; `quilltap-core --lib` 2627/0.
+
+### Unit 9 — the text failover's refusal branch
+
+- `provider_failover.rs`: v4 `attemptUncensoredRetry` factored as
+  `attempt_uncensored_retry` (crate-private, `UncensoredRetryOptions` →
+  `UncensoredRetryResult{attempted, recovered, understudy_id}`) with v4's
+  eight steps: the understudy asked through the router with `exclude =
+  already_tried + the seat`; nobody → WARN `[DangerousContent] No uncensored
+  understudy to retry this turn with` {`chat_id, provider, model,
+  refusal_was_stated`} and, when the opening was stated OR inferred, the
+  `refusal-no-understudy` bubble (purpose text); WARN `Attempting uncensored
+  retry` with v4's eight-field bag; the `rerouting` frame; the attachment
+  re-decide; `substitute` resets; success / both-empty (the bag now names the
+  SEAT, not the turn's original profile — v4's change) / a refused understudy
+  recorded `refused` + `moderation-refusal` (else `failed`). Records nothing
+  on the ledger itself.
+- `attempt_empty_response_recovery`: the gate is `empty && AUTO_ROUTE` — the
+  `uncensoredTextProfileId` conjunct DROPPED (`8bd080267`); the same-id no-op
+  branch RETIRED (comment names the sha); `turn_refusal` from the opening
+  verdict or, on a plain-empty opening, the same-provider retry's stated
+  verdict; `record_text_refusal` once on the way out with `rerouted =
+  uncensored_recovered`.
+- `attempt_hard_error_failover`: the `moderation-refusal` branch — the opening
+  row `refused` with the classifier's detail/evidence; AUTO_ROUTE → the
+  understudy (`substitute: true`, the primary's `stop`) → recovered records
+  `rerouted: true` and returns `[opening]`; else the understudy joins
+  `already_tried`, record `false`, DEBUG `[Failover] Uncensored retry did not
+  recover a refusal; walking the chain cleared for the content`
+  {`chat_id, profile_id, understudy_id?, already_tried_json`} (the `…Json`
+  convention for v4's array), and the chain walks with `dangerous: true`;
+  otherwise INFO `… the Concierge mode does not permit it` {`chat_id, mode?`},
+  record `false`, the chain with the context's own flag.
+- The seam: `DangerousContentRouter` gains `resolve_understudy` →
+  `TextUnderstudy`, `record_refusal`, `announce_refusal`
+  (`DangerContentRouter` over `resolve_uncensored_text_understudy`, the
+  ledger and the notification writer). `ConciergeFailoverSeam{router,
+  danger_settings, adapter}` threads v4's `dangerSettings` from the
+  orchestrator into `run_primary_stream` ONLY (the adapter deps moved above
+  the primary stream, shared with the empty-response recovery).
+  `classify_fallback_refusal` factored out of `classify_fallback_trigger`.
+- **`primary_stream_tier3` RE-RECORDED with eight new arms** (two new chats):
+  the scan-without-configured-id gate; a flagged (inferred) opening with
+  nobody to ask → the bubble, NO ledger cell; a plain-empty opening whose
+  retry states `content_filter` → the ledger `finish-reason`, rerouted; a
+  thrown TYPED refusal (the plugin contract's real `ModerationRejectionError`,
+  `grep -c typed-error` = 1) recovered by the understudy; the understudy
+  refusing too → the chain with `dangerous: true` (the named understudy then
+  503s so the tier pick's clearance shows: `no tier replacement qualified`);
+  DETECT_ONLY; nobody to ask (bubble + ledger); no settings. The oracle mocks
+  `resolveUncensoredTextUnderstudy` (honouring `exclude`, recording each
+  lookup as a comparand) — with a baseline arm mocking the pre-#73 seam so
+  the corpus runs red-first; the ledger and the bubble run REAL; the builder
+  runs v4's ledger migration; `lastModerationRefusalAt` placeholdered. Ledger
+  cells 1 and 5. **Red at `b0b6656b5`, green at `49059fb14`: 40 calls.**
+  Harness fix: the `chat_messages` content sort gained a `chatId` tiebreak
+  (the two bubbles are the same sentence on two chats — green-then-red by
+  luck before it).
+- **`orchestrator_tier3` — the order's designed red, fixed:** v4 now
+  reroutes `empty_retry`, `multi_chain`, `moderation_refusal` and
+  `understudy_answers` (the settings are AUTO_ROUTE with no configured id);
+  the reroute call hit an exhausted attempt cursor, so v4 never recorded its
+  wire tool slate. Each gained an EMPTY reroute attempt (`understudy_answers`
+  one inserted BEFORE the chain's answer so the chain arm survives). The
+  builder runs the ledger migration; `moderation_refusal`'s stated
+  `sensitive` finish reason is now a ledger cell (1).
+  `lastModerationRefusalAt` placeholdered. ⚠ `moderation_refusal`'s reroute
+  leg stays EMPTY on purpose: with an answer, v5's frozen-clock user message
+  ties v4's advancing one on this shared chat and the memory-extraction turn
+  opener differs (`Say something.` vs `Describe…`) — a harness clock
+  artifact, not measured further. Red at the baseline (`empty_retry` event
+  trace), green at the target.
+- `enclave_step_tier3` green (neutral). `openai_chaining_fallback` (same
+  binary) green — NEUTRAL: its surface (OpenAI's in-provider chaining
+  fallback) has no refusal hunk, so no new arm.
+- Mutations (each restored, cmp): the old gate conjunct → `empty_auto_route_
+  scan…`; no ledger on the empty path → `chats`; no retry-stated turn
+  refusal → `chats`; no bubble → `chat_messages`; the seat not excluded
+  (**M9**'s class — the retired same-id outcome reachable again) →
+  `empty_uncensored_failover`'s lookups; the understudy's refusal recorded
+  `failed` → red; the hard branch skipped → red; `dangerous` not forced →
+  red (after the 503 edit — it SURVIVED first); `substitute: false` → red.
+  `rerouted: true` on the recovered arm is log-only in the ledger — SURVIVED
+  the family, pinned by the unit test below.
+- Capture pins (`provider_failover::tests::hard_refusal_*`, four): every new
+  line's level, message and exact key list, the no-understudy bubble's
+  details, the DEBUG's absent `understudy_id`, the ledger records'
+  `rerouted`/evidence, the understudy's `refused` row.
+- Gate: fmt + clippy (workspace) clean; `quilltap-core --lib` 2631/0; `orchestrator_tier3`, `enclave_step_tier3`, `primary_stream_tier3` green through the driver at `49059fb14`.

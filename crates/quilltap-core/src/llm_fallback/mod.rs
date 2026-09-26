@@ -20,8 +20,8 @@ mod tier_picker;
 mod types;
 
 pub use engine::{
-    build_fallback_chain, classify_fallback_trigger, record_attempt, summarize_fallback_attempts,
-    FallbackRepos,
+    build_fallback_chain, classify_fallback_refusal, classify_fallback_trigger, record_attempt,
+    summarize_fallback_attempts, FallbackRepos,
 };
 pub use tier_picker::{pick_tier_candidate, tier_matches};
 pub use types::{

@@ -15,7 +15,9 @@ use serde_json::Value;
 
 use crate::db::runtime::Db;
 use crate::services::primary_stream::EffectiveProfile;
-use crate::services::provider_failover::{DangerSettings, DangerousContentRouter, RouteResult};
+use crate::services::provider_failover::{
+    DangerSettings, DangerousContentRouter, RouteResult, TextUnderstudy,
+};
 
 /// The profile-identity subset the routing decision, reason strings, and the
 /// downstream failover all consume (a byte-diffable projection of v4's returned
@@ -397,5 +399,60 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
             api_key: result.api_key,
             profile_row: result.profile_row,
         }
+    }
+
+    async fn resolve_understudy(
+        &self,
+        user_id: &str,
+        settings: &DangerSettings,
+        exclude: &[String],
+        turn_attachment_mime_types: &[String],
+    ) -> Option<TextUnderstudy> {
+        // The resolver swallows its own lookup failures (v4's catch); a read
+        // pool that cannot even hand out a connection is the same "nobody".
+        let found = self
+            .db
+            .read_main(|conn| {
+                Ok(super::understudy::resolve_uncensored_text_understudy(
+                    conn,
+                    &self.api_keys,
+                    super::understudy::TextUnderstudyLookup {
+                        user_id,
+                        uncensored_text_profile_id: settings.uncensored_text_profile_id.as_deref(),
+                        exclude,
+                        turn_attachment_mime_types,
+                        filter: None,
+                    },
+                ))
+            })
+            .ok()
+            .flatten()?;
+        Some(TextUnderstudy {
+            connection_profile: EffectiveProfile {
+                id: found.profile.id,
+                name: found.profile.name,
+                provider: found.profile.provider,
+                model_name: found.profile.model_name,
+                base_url: found.profile.base_url,
+            },
+            api_key: found.api_key,
+            profile_row: Some(found.row),
+        })
+    }
+
+    async fn record_refusal(&self, rec: super::refusal_ledger::RefusalRecord) {
+        super::refusal_ledger::record_moderation_refusal(&self.db, &rec).await;
+    }
+
+    async fn announce_refusal(
+        &self,
+        chat_id: &str,
+        kind: crate::services::concierge_notifications::ConciergeRefusalKind,
+        details: crate::services::concierge_notifications::ConciergeRefusalDetails,
+    ) {
+        crate::services::concierge_notifications::post_concierge_refusal_announcement(
+            &self.db, chat_id, kind, &details,
+        )
+        .await;
     }
 }

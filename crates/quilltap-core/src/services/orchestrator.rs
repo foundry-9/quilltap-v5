@@ -2872,12 +2872,35 @@ where
     // swapped the profile out for an uncensored one. Either way an auto-picked
     // stand-in must be cleared for it.
     let is_dangerous_routed = content_was_flagged_dangerous || did_reroute;
+    // The describer-bearing deps an uncensored reroute's attachment re-decide
+    // needs (v4 `a1d88aa3a`, bug 106 — v4 hands `adaptMessagesForProfile` the
+    // repos it already has in scope; v5's file subsystem takes the same four
+    // seams the turn's own attachment pass took). Shared by the hard-error
+    // failover and the empty-response recovery below.
+    let adapter_deps = crate::services::file_fallback::FallbackDeps {
+        db,
+        completion: deps.completion,
+        transcoder: deps.image_transcoder,
+        user_id: &user_id,
+        now_ms: input.clock.now_ms,
+    };
+    let failover_danger_settings = DangerSettings {
+        mode: danger_settings.mode.clone(),
+        uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
+    };
     let primary = primary_stream::run_primary_stream(
         db,
         deps.streaming,
         sink,
         &mut preserve,
         Some(&fallback_repos),
+        // v4 `8bd080267` (#73): the orchestrator hands `runPrimaryStream` its
+        // `dangerSettings`, so a thrown refusal reaches the understudy.
+        provider_failover::ConciergeFailoverSeam {
+            router: deps.danger_router,
+            danger_settings: Some(&failover_danger_settings),
+            adapter: Some(&adapter_deps),
+        },
         RunPrimaryStreamOptions {
             chat_id: chat_id.clone(),
             user_id: user_id.clone(),
@@ -3264,17 +3287,7 @@ where
 
     // --- Empty-response recovery (orchestrator.service.ts:1380–1397) ---
     // W4.2u: the danger flags + settings are now the real resolution (above).
-    // The describer-bearing deps the reroute's attachment re-decide needs (v4
-    // `a1d88aa3a`, bug 106 — v4 hands `adaptMessagesForProfile` the repos it
-    // already has in scope; v5's file subsystem takes the same four seams the
-    // turn's own attachment pass took).
-    let adapter_deps = crate::services::file_fallback::FallbackDeps {
-        db,
-        completion: deps.completion,
-        transcoder: deps.image_transcoder,
-        user_id: &user_id,
-        now_ms: input.clock.now_ms,
-    };
+    // `adapter_deps` is built above the primary stream (both failovers use it).
     let recovery_flags = provider_failover::attempt_empty_response_recovery(
         deps.streaming,
         sink,
@@ -3285,10 +3298,7 @@ where
             state: &mut streaming_state,
             tool_messages_length: tool_messages_len,
             content_was_flagged_dangerous,
-            danger_settings: DangerSettings {
-                mode: danger_settings.mode.clone(),
-                uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
-            },
+            danger_settings: failover_danger_settings.clone(),
             connection_profile: effective_profile.clone(),
             params: params.clone(),
             user_id: user_id.clone(),
@@ -4852,6 +4862,27 @@ mod tests {
                     profile_row: None,
                 }
             }
+        }
+        async fn resolve_understudy(
+            &self,
+            _user_id: &str,
+            _settings: &crate::services::provider_failover::DangerSettings,
+            _exclude: &[String],
+            _mimes: &[String],
+        ) -> Option<crate::services::provider_failover::TextUnderstudy> {
+            None
+        }
+        async fn record_refusal(
+            &self,
+            _rec: crate::services::dangerous_content::refusal_ledger::RefusalRecord,
+        ) {
+        }
+        async fn announce_refusal(
+            &self,
+            _chat_id: &str,
+            _kind: crate::services::concierge_notifications::ConciergeRefusalKind,
+            _details: crate::services::concierge_notifications::ConciergeRefusalDetails,
+        ) {
         }
     }
 

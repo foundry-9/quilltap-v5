@@ -1248,18 +1248,25 @@ pub(crate) fn attachment_results_to_value(
 /// tool-unsupported retry-without-tools and the request-limit recovery branches.
 /// The two model boundaries (`P` streaming, and recovery's own `P` stream) are
 /// generic; the writer is the `Db`.
-pub async fn run_primary_stream<P, S, FR>(
+#[allow(clippy::too_many_arguments)]
+pub async fn run_primary_stream<P, S, FR, RT, CMP>(
     db: &Db,
     provider: &P,
     sink: &S,
     preserve: &mut PreservePartialOnError,
     repos: Option<&FR>,
+    // v4 `dangerSettings` (`8bd080267`, #73): a thrown content refusal is
+    // retried on the uncensored understudy under Auto-Route before the
+    // fallback chain runs — and recorded on the chat's ledger either way.
+    concierge: super::provider_failover::ConciergeFailoverSeam<'_, RT, CMP>,
     opts: RunPrimaryStreamOptions<'_>,
 ) -> Result<PrimaryStreamResult, StreamError>
 where
     P: StreamingCompletionProvider,
     S: EventSink,
     FR: super::fallback_repos::FallbackChainRepos,
+    RT: super::provider_failover::DangerousContentRouter,
+    CMP: crate::model::completion::CompletionProvider,
 {
     let RunPrimaryStreamOptions {
         chat_id,
@@ -1545,6 +1552,7 @@ where
             super::provider_failover::attempt_hard_error_failover(
                 provider,
                 sink,
+                concierge,
                 super::provider_failover::WalkFallbackChainOptions {
                     state,
                     repos,
@@ -1638,6 +1646,60 @@ mod tests {
     use crate::model::stream::StreamChunkResult;
     use crate::services::chat_events::RecordingSink;
 
+    /// The Concierge seam for tests that never reach a refusal: no understudy,
+    /// no ledger, no bubble.
+    pub(super) struct NoConcierge;
+    impl crate::services::provider_failover::DangerousContentRouter for NoConcierge {
+        async fn resolve(
+            &self,
+            p: &EffectiveProfile,
+            k: &str,
+            _s: &crate::services::provider_failover::DangerSettings,
+            _u: &str,
+            _mimes: &[String],
+        ) -> crate::services::provider_failover::RouteResult {
+            crate::services::provider_failover::RouteResult {
+                rerouted: false,
+                connection_profile: p.clone(),
+                api_key: k.to_string(),
+                profile_row: None,
+            }
+        }
+        async fn resolve_understudy(
+            &self,
+            _user_id: &str,
+            _settings: &crate::services::provider_failover::DangerSettings,
+            _exclude: &[String],
+            _mimes: &[String],
+        ) -> Option<crate::services::provider_failover::TextUnderstudy> {
+            None
+        }
+        async fn record_refusal(
+            &self,
+            _rec: crate::services::dangerous_content::refusal_ledger::RefusalRecord,
+        ) {
+        }
+        async fn announce_refusal(
+            &self,
+            _chat_id: &str,
+            _kind: crate::services::concierge_notifications::ConciergeRefusalKind,
+            _details: crate::services::concierge_notifications::ConciergeRefusalDetails,
+        ) {
+        }
+    }
+
+    pub(super) fn no_concierge<'a>() -> crate::services::provider_failover::ConciergeFailoverSeam<
+        'a,
+        NoConcierge,
+        crate::model::completion::CannedCompletionProvider,
+    > {
+        crate::services::provider_failover::ConciergeFailoverSeam {
+            router: &NoConcierge,
+            danger_settings: None,
+            adapter: None,
+        }
+    }
+
     /// A provider that answers (the receiver exists) and then never speaks —
     /// the shape a socket with headers and no body has from here. The `Sender`
     /// is HELD, because a dropped one closes the channel, which is the one
@@ -1716,12 +1778,19 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
         let err = {
             let _guard = tracing::subscriber::set_default(subscriber);
-            run_primary_stream::<_, _, crate::services::fallback_repos::DbFallbackRepos>(
+            run_primary_stream::<
+                _,
+                _,
+                crate::services::fallback_repos::DbFallbackRepos,
+                NoConcierge,
+                crate::model::completion::CannedCompletionProvider,
+            >(
                 &db,
                 &provider,
                 &sink,
                 &mut preserve,
                 None,
+                no_concierge(),
                 RunPrimaryStreamOptions {
                     chat_id: "c1".into(),
                     user_id: "u1".into(),
@@ -2046,12 +2115,19 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
         let ok = {
             let _guard = tracing::subscriber::set_default(subscriber);
-            run_primary_stream::<_, _, crate::services::fallback_repos::DbFallbackRepos>(
+            run_primary_stream::<
+                _,
+                _,
+                crate::services::fallback_repos::DbFallbackRepos,
+                NoConcierge,
+                crate::model::completion::CannedCompletionProvider,
+            >(
                 &db,
                 &provider,
                 &sink,
                 &mut preserve,
                 None,
+                no_concierge(),
                 RunPrimaryStreamOptions {
                     log_context: crate::services::llm_logging::LogContext::none(),
                     chat_id: "chat-1".into(),
@@ -2330,12 +2406,19 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
         let ok = {
             let _guard = tracing::subscriber::set_default(subscriber);
-            run_primary_stream::<_, _, crate::services::fallback_repos::DbFallbackRepos>(
+            run_primary_stream::<
+                _,
+                _,
+                crate::services::fallback_repos::DbFallbackRepos,
+                NoConcierge,
+                crate::model::completion::CannedCompletionProvider,
+            >(
                 &db,
                 &provider,
                 &sink,
                 &mut preserve,
                 None,
+                no_concierge(),
                 RunPrimaryStreamOptions {
                     log_context: crate::services::llm_logging::LogContext::none(),
                     chat_id: "chat-1".into(),

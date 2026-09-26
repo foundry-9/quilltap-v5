@@ -11,8 +11,11 @@
  * Drives v4's REAL services over the committed corpus
  * (harness/oracle/fixtures/primary-stream-tier3.json) against a REAL main-DB
  * fixture, with ONLY the `streamMessage` seam mocked (the wave-2.3 contract) —
- * plus the `resolveProviderForDangerousContent` seam (a repo-reading +
- * key-decryption host concern the Rust side injects as `DangerousContentRouter`).
+ * plus the `resolveUncensoredTextUnderstudy` seam (a repo-reading +
+ * key-decryption host concern the Rust side injects as `DangerousContentRouter`;
+ * its own family proves the resolver over a real DB). The refusal ledger and
+ * the Concierge's refusal bubble run REAL (P4.D225), so their writes land in
+ * the `chats` / `chat_messages` dumps.
  *
  * The `streamMessage` mock:
  *   - finds the call's `originalMessage` MARKER inside any user message (the
@@ -94,6 +97,17 @@ interface ChunkSpec {
    * — the error's own bytes name it, and both sides build it the same way.
    */
   stall?: { budgetMs: number; chunksReceived: number };
+  /**
+   * P4.D225 — the `done` chunk's `rawResponse`, where the empty-body
+   * classifier reads a STATED finish reason (`extractFinishReason`). Absent on
+   * every pre-existing case (v4's mock yielded `undefined`).
+   */
+  rawResponse?: unknown;
+  /**
+   * P4.D225 — throw the plugin contract's REAL `ModerationRejectionError`
+   * (the typed refusal, evidence `typed-error`) instead of a plain `Error`.
+   */
+  typedRefusal?: { message: string; statusCode?: number; providerReason?: string };
 }
 interface ApiKeySpec {
   id: string;
@@ -142,6 +156,18 @@ interface CallSpec {
   existingMessages?: Array<Record<string, unknown>>;
   expectThrow?: boolean;
   isDangerousRouted?: boolean;
+  /**
+   * P4.D225 (v4 `8bd080267`, #73) — the understudy resolver answers `null` for
+   * this call (no uncensored profile anywhere), which is the arm that posts
+   * the Concierge's `refusal-no-understudy` bubble.
+   */
+  noUnderstudy?: boolean;
+  /**
+   * P4.D225 — hand the failover NO `uncensoredTextProfileId` under Auto-Route.
+   * v4 used to gate the empty-body reroute on the id; since #73 the resolver's
+   * scan is the answer, so the reroute still runs.
+   */
+  omitUncensoredId?: boolean;
   /**
    * P4.74 — the per-call primary. Absent (every pre-existing case) resolves to
    * `spec.profile`, so nothing about those cases moves; the credential-gate
@@ -294,6 +320,11 @@ async function main(): Promise<void> {
   // Per-label attempt cursor.
   const attemptCursor = new Map<string, number>();
 
+  // P4.D225: the call being driven (the understudy mock reads its knobs) and
+  // that call's understudy lookups, in order.
+  let currentCall: CallSpec | null = null;
+  let understudyLookups: unknown[] = [];
+
   // Restore the real DB stack past jest.setup's global mocks.
   jest.resetModules();
   const cipherDriverPath = require('node:path').join(
@@ -408,6 +439,21 @@ async function main(): Promise<void> {
                 params.model
               );
             }
+            if (chunk.typedRefusal) {
+              // By path, at call time: a bare `@quilltap/plugin-types` resolves
+              // against THIS file's directory, outside the v4 tree. The
+              // classifier duck-types `code`/`name`, so no `instanceof` is at
+              // stake across `resetModules`.
+              const { ModerationRejectionError } = require(
+                join(process.cwd(), 'packages/plugin-types/src/common/errors'),
+              );
+              throw new ModerationRejectionError(
+                chunk.typedRefusal.message,
+                chunk.typedRefusal.statusCode,
+                chunk.typedRefusal.providerReason,
+                providerName,
+              );
+            }
             if (chunk.error) throw new Error(chunk.error);
             if (chunk.reasoning) {
               yield { reasoningContent: chunk.reasoning };
@@ -418,7 +464,7 @@ async function main(): Promise<void> {
                 cacheUsage: undefined,
                 rawProviderUsage: undefined,
                 attachmentResults: undefined,
-                rawResponse: undefined,
+                rawResponse: chunk.rawResponse ?? undefined,
               };
             } else {
               yield { content: chunk.content };
@@ -436,20 +482,56 @@ async function main(): Promise<void> {
     jest.requireActual('@/lib/services/llm-logging.service')
   );
 
-  // Mock the dangerous-content routing seam (the Rust side injects it).
-  jest.doMock('@/lib/services/dangerous-content/provider-routing.service', () => {
-    const actual = jest.requireActual(
-      '@/lib/services/dangerous-content/provider-routing.service'
-    );
+  // Mock the uncensored-understudy seam (the Rust side injects it). P4.D225:
+  // v4 `8bd080267` (#73) moved every text failover off
+  // `resolveProviderForDangerousContent` onto this resolver. The canned answer
+  // honours `exclude` exactly as the real one does (a refused or already-tried
+  // profile is never offered), and records each lookup so the exclude list the
+  // failover builds is itself a comparand.
+  //
+  // At a pin before #73 the module does not exist (and the jest mapper refuses
+  // to mock an absent mapped path), so the pre-#73 seam is mocked instead with
+  // the same canned profile — which is what lets this corpus run red-first at
+  // the baseline.
+  const hasUnderstudy = existsSync(
+    join(process.cwd(), 'lib/services/dangerous-content/understudy.ts')
+  );
+  if (!hasUnderstudy) {
+    jest.doMock('@/lib/services/dangerous-content/provider-routing.service', () => {
+      const actual = jest.requireActual(
+        '@/lib/services/dangerous-content/provider-routing.service'
+      );
+      return {
+        __esModule: true,
+        ...actual,
+        resolveProviderForDangerousContent: async () => ({
+          rerouted: true,
+          connectionProfile: toConnectionProfile(spec.uncensoredProfile),
+          apiKey: 'uncensored-key',
+          reason: 'canned uncensored reroute',
+        }),
+      };
+    });
+  }
+  if (hasUnderstudy) jest.doMock('@/lib/services/dangerous-content/understudy', () => {
+    const actual = jest.requireActual('@/lib/services/dangerous-content/understudy');
     return {
       __esModule: true,
       ...actual,
-      resolveProviderForDangerousContent: async () => ({
-        rerouted: true,
-        connectionProfile: toConnectionProfile(spec.uncensoredProfile),
-        apiKey: 'uncensored-key',
-        reason: 'canned uncensored reroute',
-      }),
+      resolveUncensoredTextUnderstudy: async (lookup: {
+        settings: { uncensoredTextProfileId?: string };
+        exclude?: string[];
+        turnAttachmentMimeTypes?: string[];
+      }) => {
+        const exclude = lookup.exclude ?? [];
+        understudyLookups.push({
+          exclude,
+          uncensoredTextProfileId: lookup.settings?.uncensoredTextProfileId ?? null,
+          turnAttachmentMimeTypes: lookup.turnAttachmentMimeTypes ?? [],
+        });
+        if (currentCall?.noUnderstudy || exclude.includes(spec.uncensoredProfile.id)) return null;
+        return { profile: toConnectionProfile(spec.uncensoredProfile), apiKey: 'uncensored-key' };
+      },
     };
   });
 
@@ -511,6 +593,8 @@ async function main(): Promise<void> {
   ];
 
   for (const call of spec.calls) {
+    currentCall = call;
+    understudyLookups = [];
     const events: unknown[] = [];
     const { controller, encoder } = makeRecordingController(events);
     let result: unknown = null;
@@ -598,7 +682,9 @@ async function main(): Promise<void> {
         dangerSettings: {
           mode: call.dangerMode,
           uncensoredTextProfileId:
-            call.dangerMode === 'AUTO_ROUTE' ? spec.uncensoredProfile.id : undefined,
+            call.dangerMode === 'AUTO_ROUTE' && !call.omitUncensoredId
+              ? spec.uncensoredProfile.id
+              : undefined,
         } as never,
         connectionProfile: toConnectionProfile(primaryOf(spec, call)) as never,
         formattedMessages: userMessages(call.originalMessage as string, call.messageAttachments as unknown[] | undefined) as never,
@@ -640,6 +726,7 @@ async function main(): Promise<void> {
         // column and the `done` frame are the finalizer's, one layer up.
         routeFailures: streaming.routeFailures,
         routeVia: streaming.routeVia,
+        understudyLookups,
       };
     } else if (call.kind === 'hardFailover') {
       // P4.D135: `runPrimaryStream`'s catch-all, which since `65f5021c8` walks
@@ -690,6 +777,17 @@ async function main(): Promise<void> {
           originalMessage: call.originalMessage,
           connectionProfile: toConnectionProfile(primaryOf(spec, call)) as never,
           isDangerousRouted: !!call.isDangerousRouted,
+          // P4.D225 (v4 `8bd080267`): the chat's Concierge settings, which
+          // send a thrown refusal to the understudy under Auto-Route. Absent
+          // on every pre-existing case (no `dangerMode`).
+          dangerSettings: call.dangerMode
+            ? ({
+                mode: call.dangerMode,
+                uncensoredTextProfileId: call.omitUncensoredId
+                  ? undefined
+                  : spec.uncensoredProfile.id,
+              } as never)
+            : undefined,
           streaming: streaming as never,
           controller: controller as never,
           encoder,
@@ -705,6 +803,7 @@ async function main(): Promise<void> {
           // a failed attempt that left reasoning behind before it died.
           reasoningContent: streaming.reasoningContent ?? null,
           reasoningSegmentCount: (streaming.reasoningSegments ?? []).length,
+          understudyLookups,
         };
       } catch (e) {
         threw = e instanceof Error ? e.message : String(e);
@@ -716,6 +815,7 @@ async function main(): Promise<void> {
           routeVia: streaming.routeVia,
           reasoningContent: streaming.reasoningContent ?? null,
           reasoningSegmentCount: (streaming.reasoningSegments ?? []).length,
+          understudyLookups,
         };
       }
     }

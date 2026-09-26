@@ -9,11 +9,18 @@
 //!
 //!   1. **Same-provider retry** — if the content was NOT flagged dangerous, an
 //!      empty response is likely transient; re-stream the same request once.
-//!   2. **Uncensored failover** — if still empty AND Concierge Auto-Route is on
-//!      with an uncensored text profile, resolve an uncensored provider and
-//!      re-stream. On a non-empty result the state's `effective_profile` /
-//!      `effective_api_key` switch to the uncensored provider (so the finalizer
-//!      records the reroute).
+//!   2. **Uncensored failover** — if still empty AND Concierge Auto-Route is on,
+//!      ask the uncensored understudy ([`attempt_uncensored_retry`], v4
+//!      `8bd080267`, #73) and re-stream. On a non-empty result the state's
+//!      `effective_profile` / `effective_api_key` switch to the uncensored
+//!      provider (so the finalizer records the reroute).
+//!
+//! A turn that a provider REFUSED — stated in its finish reason, or thrown as
+//! a moderation error — goes on the chat's refusal ledger once its recovery
+//! has run its course, and a refusal with nobody to reroute to earns the
+//! Concierge's `refusal-no-understudy` bubble. The hard-error failover
+//! ([`attempt_hard_error_failover`]) reroutes a thrown refusal the same way
+//! before it walks the chain.
 //!
 //! `get_empty_response_reason` returns the exact user-facing strings that
 //! describe the outcome: the named moderation-refusal sentence first (bug 93,
@@ -21,12 +28,11 @@
 //!
 //! ## The dangerous-content routing seam
 //!
-//! v4's `resolveProviderForDangerousContent` reads the `connections` repo and
-//! decrypts an API key — host-side concerns (key decryption lands with the
-//! Phase-4 transport layer). Rather than pull those unported subsystems into the
-//! core, the uncensored resolution is injected as a [`DangerousContentRouter`]
-//! seam: given the current profile + settings + user, it returns the route
-//! decision. The differential drives a canned router that mirrors v4's real
+//! v4's `resolveUncensoredTextUnderstudy` reads the `connections` repo and
+//! decrypts an API key, and its ledger + notification writers touch the DB.
+//! Those are injected as a [`DangerousContentRouter`] seam (the understudy,
+//! the ledger record, the refusal bubble — and the pre-flight
+//! `resolveProviderForDangerousContent` the orchestrator uses). The differential drives a canned router that mirrors v4's real
 //! resolution over the same corpus, so the failover *logic* (retry gating,
 //! reroute-vs-same-profile guard, the state switch, the reason strings) is what
 //! is verified here; the DB-reading resolution is verified where it is ported.
@@ -53,6 +59,10 @@ use crate::llm_fallback::{
     build_fallback_chain, classify_fallback_trigger, record_attempt, FallbackAttempt,
     FallbackCandidateKind, FallbackContext, FallbackError, FallbackProfile, FallbackPurpose,
     FallbackTrigger,
+};
+use crate::services::dangerous_content::refusal::RefusalEvidence;
+use crate::services::dangerous_content::refusal_ledger::{
+    RefusalKind, RefusalPurpose, RefusalRecord,
 };
 
 /// v4 `DangerousContentSettings` subset the failover reads.
@@ -101,6 +111,44 @@ pub trait DangerousContentRouter {
         user_id: &str,
         turn_attachment_mime_types: &[String],
     ) -> impl std::future::Future<Output = RouteResult> + Send;
+
+    /// v4 `resolveUncensoredTextUnderstudy` (`8bd080267`, #73) — the uncensored
+    /// profile that could take this turn instead, never one of `exclude`. The
+    /// resolver reads no mode: the Auto-Route gate is the CALLER's. `None` when
+    /// nobody qualifies.
+    fn resolve_understudy(
+        &self,
+        user_id: &str,
+        settings: &DangerSettings,
+        exclude: &[String],
+        turn_attachment_mime_types: &[String],
+    ) -> impl std::future::Future<Output = Option<TextUnderstudy>> + Send;
+
+    /// v4 `recordModerationRefusal` — put a refused text turn on the chat's
+    /// refusal ledger (which decides on the auto-switch). Never fails.
+    fn record_refusal(
+        &self,
+        rec: crate::services::dangerous_content::refusal_ledger::RefusalRecord,
+    ) -> impl std::future::Future<Output = ()> + Send;
+
+    /// v4 `postConciergeRefusalAnnouncement` — the Concierge's refusal bubble.
+    /// Never fails.
+    fn announce_refusal(
+        &self,
+        chat_id: &str,
+        kind: crate::services::concierge_notifications::ConciergeRefusalKind,
+        details: crate::services::concierge_notifications::ConciergeRefusalDetails,
+    ) -> impl std::future::Future<Output = ()> + Send;
+}
+
+/// A resolved text understudy (v4 `Understudy` for a connection profile): who
+/// it is, its raw row (the attachment re-decide reads it — `None` for a test
+/// double with none), and its decrypted key.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextUnderstudy {
+    pub connection_profile: EffectiveProfile,
+    pub api_key: String,
+    pub profile_row: Option<serde_json::Value>,
 }
 
 /// Options for `attempt_empty_response_recovery` (v4
@@ -281,6 +329,14 @@ where
         opening_verdict.detail.as_deref(),
         opening_verdict.evidence,
     );
+    let mut uncensored_recovered = false;
+    // The turn's refusal, for the chat's ledger: the opening verdict, or — when
+    // the opening was a plain empty body — a refusal the same-provider retry
+    // then stated. One per turn either way. Recorded on the way out so the log
+    // can say whether the Concierge's reroute answered.
+    let mut turn_refusal: Option<(EffectiveProfile, Option<RefusalEvidence>)> =
+        (opening_verdict.outcome == RouteAttemptOutcome::Refused)
+            .then(|| (opening_seat.clone(), opening_verdict.evidence));
 
     // --- Same-provider retry (only when not flagged dangerous) ---
     // Profiles this recovery has already spent. The chain walk at the bottom
@@ -363,6 +419,11 @@ where
                         retry_verdict.detail.as_deref(),
                         retry_verdict.evidence,
                     );
+                    if turn_refusal.is_none()
+                        && retry_verdict.outcome == RouteAttemptOutcome::Refused
+                    {
+                        turn_refusal = Some((same_profile.clone(), retry_verdict.evidence));
+                    }
                     tracing::warn!(
                         target: "quilltap::failover",
                         chat_id = %chat_id,
@@ -402,179 +463,50 @@ where
     }
 
     // --- Uncensored failover ---
+    //
+    // RETIRED at v4 `8bd080267` (#73): the "rerouted to the SAME profile id"
+    // no-op branch. The understudy resolver EXCLUDES the effective profile, so
+    // that outcome can no longer arise.
+    //
+    // v4 `8bd080267` (#73) dropped the `uncensoredTextProfileId` conjunct: the
+    // understudy resolver falls back to any `isDangerousCompatible` profile, so
+    // Auto-Route alone opens the door, and "nobody to ask" is now the
+    // resolver's answer rather than the gate's.
     if crate::jsstr::js_trim(&state.full_response).is_empty()
         && danger_settings.mode == "AUTO_ROUTE"
-        && danger_settings.uncensored_text_profile_id.is_some()
     {
-        flags.uncensored_retry_attempted = true;
-
-        // v4 announces the attempt before resolving the route; the port had
-        // never carried this line (same class as the three retry arms above).
-        {
-            let seat = state.effective_profile.as_ref();
-            tracing::warn!(
-                target: "quilltap::failover",
-                chat_id = %chat_id,
-                original_provider = seat.map(|p| p.provider.as_str()).unwrap_or(""),
-                original_model = seat.map(|p| p.model_name.as_str()).unwrap_or(""),
-                content_was_flagged_dangerous,
-                same_provider_retry_attempted = flags.same_provider_retry_attempted,
-                "[DangerousContent] Empty response detected, attempting uncensored retry"
-            );
-        }
-
-        let original_profile = state
+        let seat = state
             .effective_profile
             .clone()
             .unwrap_or_else(|| connection_profile.clone());
-        let route = router
-            .resolve(
-                &original_profile,
-                &state.effective_api_key,
-                &danger_settings,
-                &user_id,
-                // What the array is actually carrying, so the scan does not
-                // offer a substitute the payload rules out (v4 `a1d88aa3a`,
-                // bug 106).
-                &crate::services::message_attachment_adapter::collect_attachment_mime_types(
-                    &params.messages,
-                ),
-            )
-            .await;
-
-        // v4: if rerouted to the SAME profile id, do nothing (the empty `if`
-        // block); else if rerouted, restream on the uncensored provider.
-        if route.rerouted && route.connection_profile.id == original_profile.id {
-            // No-op (v4's empty branch — nothing to gain re-hitting the same one).
-        } else if route.rerouted {
-            tried_profile_ids.push(route.connection_profile.id.clone());
-
-            sink.emit(ChatEvent::status(StatusPayload {
-                stage: "rerouting".into(),
-                message: "Retrying with uncensored provider...".into(),
-                tool_name: None,
-                character_name: Some(character_name.clone()),
-                character_id: Some(character_id.clone()),
-            }));
-
-            // v4's `streamMessage` takes its model from `connectionProfile.modelName`
-            // (not `modelParams`), so a reroute switches the model too; v4 logs the
-            // retry against the rerouted `connectionProfile`.
-            let mut re_params = params.clone();
-            re_params.model = route.connection_profile.model_name.clone();
-
-            // The array was built for the profile that just refused. An
-            // explicitly configured uncensored profile is honoured ahead of the
-            // scan, so it may still be one that cannot read this turn's images —
-            // re-decide before spending the attempt, or the gateway 400s and the
-            // last line of defence never runs (v4 `a1d88aa3a`, bug 106).
-            //
-            // `None` back from the adapter is v4's same-array-reference contract:
-            // nothing needed changing, so `re_params` keeps what it had and no
-            // describer was spent.
-            if let (Some(adapter), Some(row)) = (adapter, route.profile_row.as_ref()) {
-                if let Some(adapted) =
-                    crate::services::message_attachment_adapter::adapt_messages_for_profile(
-                        &re_params.messages,
-                        row,
-                        adapter,
-                        &chat_id,
-                    )
-                    .await
-                {
-                    re_params.messages = adapted;
-                }
-            }
-            // v4 wraps the whole reroute in one try/catch and holds
-            // `rerouteProfile` outside it so a throw can still be attributed to
-            // the profile the call was made against. v5 needs no hoist: the only
-            // thing that can fail here is this restream, and it is INSIDE the
-            // branch where v4's `rerouteProfile` is non-null — the attribution is
-            // structural rather than a variable. (v4's router call can throw and
-            // reach the catch with `rerouteProfile` still null, logging the line
-            // and recording nothing; v5's `router.resolve` answers a
-            // `RouteResult` instead of throwing, so that arm has no counterpart.
-            // A SHAPE divergence, not a behaviour one.)
-            match restream_into(
-                provider,
+        let uncensored = attempt_uncensored_retry(
+            provider,
+            sink,
+            router,
+            adapter,
+            UncensoredRetryOptions {
                 state,
-                sink,
-                &route.connection_profile,
-                &re_params,
-                None,
-                &character_name,
-                &character_id,
-                stream_log.as_ref(),
-            )
-            .await
-            {
-                Ok(()) => {
-                    if !crate::jsstr::js_trim(&state.full_response).is_empty() {
-                        // The uncensored retry produced content — switch the
-                        // effective profile/key so the finalizer records the
-                        // reroute.
-                        state.effective_profile = Some(route.connection_profile.clone());
-                        state.effective_api_key = route.api_key.clone();
-                        set_route_via(state, RouteAttemptVia::Concierge);
-                        tracing::info!(
-                            target: "quilltap::failover",
-                            chat_id = %chat_id,
-                            uncensored_provider = %route.connection_profile.provider,
-                            uncensored_model = %route.connection_profile.model_name,
-                            response_length = state.full_response.len(),
-                            "[DangerousContent] Uncensored retry succeeded"
-                        );
-                    } else {
-                        // Record it from `route.connection_profile`, NOT from
-                        // `state`: the swap above only happens on success, so an
-                        // uncensored profile that comes back empty is otherwise
-                        // absent from every record — and this row is precisely the
-                        // one the user asked for. Classified here, before the chain
-                        // walk below resets the buffers.
-                        let uncensored_verdict =
-                            classify_empty_body(state, content_was_flagged_dangerous);
-                        record_route_failure(
-                            state,
-                            &route.connection_profile,
-                            RouteAttemptVia::Concierge,
-                            uncensored_verdict.outcome,
-                            uncensored_verdict.trigger,
-                            uncensored_verdict.detail.as_deref(),
-                            uncensored_verdict.evidence,
-                        );
-                        tracing::error!(
-                            target: "quilltap::failover",
-                            chat_id = %chat_id,
-                            safe_provider = %connection_profile.provider,
-                            safe_model = %connection_profile.model_name,
-                            uncensored_provider = %route.connection_profile.provider,
-                            uncensored_model = %route.connection_profile.model_name,
-                            "[DangerousContent] Both safe and uncensored providers returned empty"
-                        );
-                    }
-                }
-                Err(reroute_error) => {
-                    let reroute_trigger =
-                        classify_fallback_trigger(FallbackError::from_stream_error(&reroute_error))
-                            .unwrap_or(FallbackTrigger::ProviderError);
-                    let reroute_message = reroute_error.message;
-                    record_route_failure(
-                        state,
-                        &route.connection_profile,
-                        RouteAttemptVia::Concierge,
-                        RouteAttemptOutcome::Failed,
-                        reroute_trigger,
-                        Some(&reroute_message),
-                        None,
-                    );
-                    tracing::error!(
-                        target: "quilltap::failover",
-                        chat_id = %chat_id,
-                        error = %reroute_message,
-                        "[DangerousContent] Uncensored retry failed"
-                    );
-                }
-            }
+                danger_settings: &danger_settings,
+                seat: &seat,
+                params: &params,
+                // v4's empty-response callers pass no `stop`.
+                stop: None,
+                user_id: &user_id,
+                chat_id: &chat_id,
+                character_id: &character_id,
+                character_name: &character_name,
+                already_tried: &tried_profile_ids,
+                content_was_flagged_dangerous,
+                refusal_was_stated: opening_verdict.outcome == RouteAttemptOutcome::Refused,
+                substitute: false,
+            },
+            stream_log.as_ref(),
+        )
+        .await;
+        flags.uncensored_retry_attempted = uncensored.attempted;
+        uncensored_recovered = uncensored.recovered;
+        if let Some(id) = uncensored.understudy_id {
+            tried_profile_ids.push(id);
         }
     }
 
@@ -645,7 +577,330 @@ where
         }
     }
 
+    // v4 records on both of its exits (after the chain walk, and at the plain
+    // return) — one exit here.
+    if let Some((profile, evidence)) = turn_refusal {
+        record_text_refusal(router, &chat_id, &profile, evidence, uncensored_recovered).await;
+    }
     flags
+}
+
+/// v4 `recordTextRefusal` — put a refused text turn on the chat's refusal
+/// ledger once its recovery has run its course. The ledger drops anything but
+/// a stated refusal (an `inferred` one never counts) and decides on the
+/// auto-switch. Never fails.
+async fn record_text_refusal<R: DangerousContentRouter>(
+    router: &R,
+    chat_id: &str,
+    refusing: &EffectiveProfile,
+    evidence: Option<RefusalEvidence>,
+    rerouted: bool,
+) {
+    router
+        .record_refusal(RefusalRecord {
+            chat_id: chat_id.to_string(),
+            kind: RefusalKind::Text,
+            purpose: RefusalPurpose::Chat,
+            refused_profile_id: refusing.id.clone(),
+            refused_profile_name: refusing.name.clone(),
+            provider: refusing.provider.clone(),
+            model_name: Some(refusing.model_name.clone()),
+            evidence,
+            rerouted,
+        })
+        .await;
+}
+
+/// v4 `AttemptUncensoredRetryOptions` (`8bd080267`, #73), minus the
+/// controller/encoder (→ the [`EventSink`]) and the repos (→ the router + the
+/// attachment adapter the caller passes alongside).
+pub struct UncensoredRetryOptions<'a> {
+    pub state: &'a mut StreamingState,
+    pub danger_settings: &'a DangerSettings,
+    /// The seat that just refused or came back empty — v4's
+    /// `state.effectiveProfile`, supplied because v5's state carries it as an
+    /// `Option`.
+    pub seat: &'a EffectiveProfile,
+    pub params: &'a StreamParams,
+    /// v4 `stop` — the empty-body path passes none, the hard-error path the
+    /// primary's.
+    pub stop: Option<&'a [String]>,
+    pub user_id: &'a str,
+    pub chat_id: &'a str,
+    pub character_id: &'a str,
+    pub character_name: &'a str,
+    /// Profile ids already spent on this call; the understudy is never one of
+    /// them.
+    pub already_tried: &'a [String],
+    /// Passed to the empty-body classifier when the understudy comes back empty.
+    pub content_was_flagged_dangerous: bool,
+    /// Whether the failure that opened this retry was a stated or inferred
+    /// content refusal. Only then does "nobody to ask" earn the Concierge's
+    /// `refusal-no-understudy` bubble — the one text case the user can act on.
+    pub refusal_was_stated: bool,
+    /// Clear the streaming buffers before the understudy streams. The
+    /// hard-error path needs it (the primary may have left reasoning behind);
+    /// the empty-body path keeps its historical append.
+    pub substitute: bool,
+}
+
+/// v4 `UncensoredRetryResult`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct UncensoredRetryResult {
+    /// An understudy was found and asked.
+    pub attempted: bool,
+    /// It answered; `state` now holds its response and it is the effective
+    /// profile.
+    pub recovered: bool,
+    /// The understudy that was asked, for the caller's loop guard.
+    pub understudy_id: Option<String>,
+}
+
+/// v4 `attemptUncensoredRetry` — ask the Concierge's uncensored understudy to
+/// take a turn the effective profile refused or left empty.
+///
+/// The *policy* — Auto-Route only — is the caller's, stated at its call site.
+/// This function asks the router's understudy resolver (the configured
+/// uncensored profile, else any `isDangerousCompatible` one), excluding every
+/// profile already tried, streams one attempt, and records the outcome on the
+/// route trail. Used by the empty-body recovery and by the hard-error failover
+/// when the error was a content refusal.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn attempt_uncensored_retry<P, S, R, CMP>(
+    provider: &P,
+    sink: &S,
+    router: &R,
+    adapter: Option<&crate::services::file_fallback::FallbackDeps<'_, CMP>>,
+    opts: UncensoredRetryOptions<'_>,
+    stream_log: Option<&StreamLogCtx<'_>>,
+) -> UncensoredRetryResult
+where
+    P: StreamingCompletionProvider,
+    S: EventSink,
+    R: DangerousContentRouter,
+    CMP: crate::model::completion::CompletionProvider,
+{
+    let UncensoredRetryOptions {
+        state,
+        danger_settings,
+        seat,
+        params,
+        stop,
+        user_id,
+        chat_id,
+        character_id,
+        character_name,
+        already_tried,
+        content_was_flagged_dangerous,
+        refusal_was_stated,
+        substitute,
+    } = opts;
+
+    let mut exclude = already_tried.to_vec();
+    exclude.push(seat.id.clone());
+    let understudy = router
+        .resolve_understudy(
+            user_id,
+            danger_settings,
+            &exclude,
+            // What the array is actually carrying, so the scan does not offer a
+            // substitute the payload rules out (v4 `a1d88aa3a`, bug 106).
+            &crate::services::message_attachment_adapter::collect_attachment_mime_types(
+                &params.messages,
+            ),
+        )
+        .await;
+
+    let Some(understudy) = understudy else {
+        tracing::warn!(
+            target: "quilltap::failover",
+            chat_id = %chat_id,
+            provider = %seat.provider,
+            model = %seat.model_name,
+            refusal_was_stated,
+            "[DangerousContent] No uncensored understudy to retry this turn with"
+        );
+        if refusal_was_stated {
+            router
+                .announce_refusal(
+                    chat_id,
+                    crate::services::concierge_notifications::ConciergeRefusalKind::RefusalNoUnderstudy,
+                    crate::services::concierge_notifications::ConciergeRefusalDetails {
+                        refusing_provider: seat.provider.clone(),
+                        refusing_model: seat.model_name.clone(),
+                        answering_profile_name: None,
+                        purpose: crate::services::concierge_notifications::ConciergeRefusalPurpose::Text,
+                    },
+                )
+                .await;
+        }
+        return UncensoredRetryResult::default();
+    };
+
+    let reroute = understudy.connection_profile.clone();
+    tracing::warn!(
+        target: "quilltap::failover",
+        chat_id = %chat_id,
+        original_provider = %seat.provider,
+        original_model = %seat.model_name,
+        uncensored_profile_id = %reroute.id,
+        uncensored_provider = %reroute.provider,
+        uncensored_model = %reroute.model_name,
+        content_was_flagged_dangerous,
+        refusal_was_stated,
+        "[DangerousContent] Attempting uncensored retry"
+    );
+
+    sink.emit(ChatEvent::status(StatusPayload {
+        stage: "rerouting".into(),
+        message: "Retrying with uncensored provider...".into(),
+        tool_name: None,
+        character_name: Some(character_name.to_string()),
+        character_id: Some(character_id.to_string()),
+    }));
+
+    // v4's `streamMessage` takes its model from `connectionProfile.modelName`
+    // (not `modelParams`), so a reroute switches the model too.
+    let mut re_params = params.clone();
+    re_params.model = reroute.model_name.clone();
+
+    // The array was built for the profile that just refused. An explicitly
+    // configured uncensored profile is honoured ahead of the scan, so it may
+    // still be one that cannot read this turn's images — re-decide before
+    // spending the attempt, or the gateway 400s (v4 `a1d88aa3a`, bug 106).
+    //
+    // `None` back from the adapter is v4's same-array-reference contract:
+    // nothing needed changing, so `re_params` keeps what it had.
+    if let (Some(adapter), Some(row)) = (adapter, understudy.profile_row.as_ref()) {
+        if let Some(adapted) =
+            crate::services::message_attachment_adapter::adapt_messages_for_profile(
+                &re_params.messages,
+                row,
+                adapter,
+                chat_id,
+            )
+            .await
+        {
+            re_params.messages = adapted;
+        }
+    }
+
+    if substitute {
+        reset_streaming_buffers_for_swap(state);
+    }
+
+    // v4 wraps the adapt + restream in one try/catch. v5's adapter answers an
+    // `Option` rather than throwing, so the restream is the only thing that can
+    // reach the catch.
+    match restream_into(
+        provider,
+        state,
+        sink,
+        &reroute,
+        &re_params,
+        stop,
+        character_name,
+        character_id,
+        stream_log,
+    )
+    .await
+    {
+        Ok(()) => {
+            if !crate::jsstr::js_trim(&state.full_response).is_empty() {
+                state.effective_profile = Some(reroute.clone());
+                state.effective_api_key = understudy.api_key.clone();
+                set_route_via(state, RouteAttemptVia::Concierge);
+                tracing::info!(
+                    target: "quilltap::failover",
+                    chat_id = %chat_id,
+                    uncensored_provider = %reroute.provider,
+                    uncensored_model = %reroute.model_name,
+                    response_length = state.full_response.len(),
+                    "[DangerousContent] Uncensored retry succeeded"
+                );
+                return UncensoredRetryResult {
+                    attempted: true,
+                    recovered: true,
+                    understudy_id: Some(reroute.id),
+                };
+            }
+
+            // Recorded from `reroute`, NOT from `state`: the swap above only
+            // happens on success, so an uncensored profile that comes back
+            // empty is otherwise absent from every record — and this row is
+            // precisely the one the user asked for. Classified here, before
+            // anything resets the buffers.
+            let verdict = classify_empty_body(state, content_was_flagged_dangerous);
+            record_route_failure(
+                state,
+                &reroute,
+                RouteAttemptVia::Concierge,
+                verdict.outcome,
+                verdict.trigger,
+                verdict.detail.as_deref(),
+                verdict.evidence,
+            );
+            // v4 now names `state.effectiveProfile` as the safe seat (it used to
+            // name the turn's original `connectionProfile`) — the swap only
+            // happens on success, so that is the seat that refused.
+            tracing::error!(
+                target: "quilltap::failover",
+                chat_id = %chat_id,
+                safe_provider = %seat.provider,
+                safe_model = %seat.model_name,
+                uncensored_provider = %reroute.provider,
+                uncensored_model = %reroute.model_name,
+                "[DangerousContent] Both safe and uncensored providers returned empty"
+            );
+        }
+        Err(retry_error) => {
+            let retry_message = retry_error.message.clone();
+            let refusal = crate::llm_fallback::classify_fallback_refusal(
+                FallbackError::from_stream_error(&retry_error),
+            );
+            if refusal.refused {
+                record_route_failure(
+                    state,
+                    &reroute,
+                    RouteAttemptVia::Concierge,
+                    RouteAttemptOutcome::Refused,
+                    FallbackTrigger::ModerationRefusal,
+                    Some(refusal.detail.as_deref().unwrap_or(&retry_message)),
+                    refusal.evidence,
+                );
+            } else {
+                // P4.D189: through `from_stream_error`, so a stalled retry
+                // classifies by v4's NAME rather than by its message.
+                let retry_trigger =
+                    classify_fallback_trigger(FallbackError::from_stream_error(&retry_error))
+                        .unwrap_or(FallbackTrigger::ProviderError);
+                record_route_failure(
+                    state,
+                    &reroute,
+                    RouteAttemptVia::Concierge,
+                    RouteAttemptOutcome::Failed,
+                    retry_trigger,
+                    Some(&retry_message),
+                    None,
+                );
+            }
+            tracing::error!(
+                target: "quilltap::failover",
+                chat_id = %chat_id,
+                error = %retry_message,
+                "[DangerousContent] Uncensored retry failed"
+            );
+        }
+    }
+
+    if substitute {
+        reset_streaming_buffers_for_swap(state);
+    }
+    UncensoredRetryResult {
+        attempted: true,
+        recovered: false,
+        understudy_id: Some(reroute.id),
+    }
 }
 
 /// v4 `getEmptyResponseReason` — the five exact user-facing strings, plus (v4
@@ -1223,9 +1478,10 @@ where
 /// arrives before a single token does. (`restream_into` APPENDS and the SSE
 /// protocol has no reset, so substituting mid-stream would show the user a
 /// truncated fragment with the understudy's answer glued on.)
-pub async fn attempt_hard_error_failover<P, S, R>(
+pub async fn attempt_hard_error_failover<P, S, R, RT, CMP>(
     provider: &P,
     sink: &S,
+    concierge: ConciergeFailoverSeam<'_, RT, CMP>,
     opts: WalkFallbackChainOptions<'_, R>,
     error: &FallbackError<'_>,
     log: Option<FailoverLogCtx<'_>>,
@@ -1234,7 +1490,10 @@ where
     P: StreamingCompletionProvider,
     S: EventSink,
     R: FallbackChainRepos,
+    RT: DangerousContentRouter,
+    CMP: crate::model::completion::CompletionProvider,
 {
+    let mut opts = opts;
     let Some(trigger) = classify_fallback_trigger(*error) else {
         tracing::debug!(
             target: "quilltap::failover",
@@ -1270,14 +1529,144 @@ where
         "[Failover] Primary call failed; walking the fallback chain"
     );
 
-    // The failure that opens the chain is the trail's first row. `route_via` is
-    // whatever the effective profile already was — `Primary` normally,
-    // `Concierge` when the Concierge's pre-call reroute had already swapped it.
+    let opening = record_attempt(&opts.failed, trigger, Some(error.message));
+    // `route_via` is whatever the effective profile already was — `Primary`
+    // normally, `Concierge` when the Concierge's pre-call reroute had already
+    // swapped it.
     //
     // v4 records `state.effectiveProfile`; v5's whole function already stands
     // `opts.failed` (the full row the caller holds) in for it — same seat, and
     // the only one carrying a `name`.
     let opening_via = opts.state.route_via;
+
+    if trigger == FallbackTrigger::ModerationRefusal {
+        // A thrown refusal reroutes like an empty one: the uncensored
+        // understudy first, and only if that also fails, the profile's own
+        // chain — cleared for the content, since a mainstream stand-in would
+        // hand it straight back to the moderation that refused it. Same-provider
+        // retry stays skipped: resending refused content to the provider that
+        // refused it is futile.
+        //
+        // The failure that opens the trail is recorded as a refusal.
+        let refusal = crate::llm_fallback::classify_fallback_refusal(*error);
+        record_route_failure(
+            opts.state,
+            &opts.failed,
+            opening_via,
+            RouteAttemptOutcome::Refused,
+            trigger,
+            Some(refusal.detail.as_deref().unwrap_or(error.message)),
+            refusal.evidence,
+        );
+        let refusing = EffectiveProfile {
+            id: opts.failed.id.clone(),
+            name: opts.failed.name.clone(),
+            provider: opts.failed.provider.clone(),
+            model_name: opts.failed.model_name.clone(),
+            base_url: opts.failed.base_url.clone(),
+        };
+
+        let mut already_tried = opts.context.already_tried.clone();
+        // The caller's gate, stated here: the Concierge reroutes under
+        // Auto-Route only.
+        if let Some(danger_settings) = concierge.danger_settings.filter(|d| d.mode == "AUTO_ROUTE")
+        {
+            let stream_log =
+                log.filter(|_| !opts.context.user_id.is_empty())
+                    .map(|l| StreamLogCtx {
+                        db: l.db,
+                        user_id: &opts.context.user_id,
+                        chat_id: &opts.chat_id,
+                        message_id: l.message_id,
+                        character_id: Some(&opts.character_id),
+                        log_context: l.log_context,
+                        started_at_ms: crate::clock::now_unix_ms(),
+                    });
+            let uncensored = attempt_uncensored_retry(
+                provider,
+                sink,
+                concierge.router,
+                concierge.adapter,
+                UncensoredRetryOptions {
+                    state: &mut *opts.state,
+                    danger_settings,
+                    seat: &refusing,
+                    params: &opts.params,
+                    stop: Some(&opts.params.stop),
+                    user_id: &opts.context.user_id,
+                    chat_id: &opts.chat_id,
+                    character_id: &opts.character_id,
+                    character_name: &opts.character_name,
+                    already_tried: &already_tried,
+                    content_was_flagged_dangerous: opts.context.dangerous,
+                    refusal_was_stated: true,
+                    substitute: true,
+                },
+                stream_log.as_ref(),
+            )
+            .await;
+            if uncensored.recovered {
+                record_text_refusal(
+                    concierge.router,
+                    &opts.chat_id,
+                    &refusing,
+                    refusal.evidence,
+                    true,
+                )
+                .await;
+                return FallbackChainResult {
+                    recovered: true,
+                    attempts: vec![opening],
+                    tier_pick_was_offered: false,
+                };
+            }
+            if let Some(id) = uncensored.understudy_id.clone() {
+                already_tried.push(id);
+            }
+            record_text_refusal(
+                concierge.router,
+                &opts.chat_id,
+                &refusing,
+                refusal.evidence,
+                false,
+            )
+            .await;
+
+            // `state.effective_profile` is still the profile that refused (the
+            // swap only happens on success), so this is the refusing profile's
+            // own chain; the understudy is in `already_tried` and never
+            // re-offered.
+            tracing::debug!(
+                target: "quilltap::failover",
+                chat_id = %opts.chat_id,
+                profile_id = %opts.failed.id,
+                understudy_id = uncensored.understudy_id.as_deref(),
+                already_tried_json = %serde_json::to_string(&already_tried).unwrap_or_default(),
+                "[Failover] Uncensored retry did not recover a refusal; walking the chain cleared for the content"
+            );
+            opts.context.dangerous = true;
+            opts.context.already_tried = already_tried;
+            return walk_fallback_chain(provider, sink, opts, opening, log).await;
+        }
+
+        tracing::info!(
+            target: "quilltap::failover",
+            chat_id = %opts.chat_id,
+            mode = concierge.danger_settings.map(|d| d.mode.as_str()),
+            "[Failover] Refusal not rerouted to an uncensored profile: the Concierge mode does not permit it"
+        );
+        record_text_refusal(
+            concierge.router,
+            &opts.chat_id,
+            &refusing,
+            refusal.evidence,
+            false,
+        )
+        .await;
+        return walk_fallback_chain(provider, sink, opts, opening, log).await;
+    }
+
+    // The failure that opens the chain is the trail's first row.
     record_route_failure(
         opts.state,
         &opts.failed,
@@ -1288,8 +1677,21 @@ where
         None,
     );
 
-    let opening = record_attempt(&opts.failed, trigger, Some(error.message));
     walk_fallback_chain(provider, sink, opts, opening, log).await
+}
+
+/// The Concierge's half of a hard-error failover (v4's `dangerSettings` on
+/// `AttemptHardErrorFailoverOptions`, `8bd080267`, plus the seams v5 injects
+/// where v4 reads repositories): the router (understudy + ledger +
+/// announcement), the chat's settings, and the attachment re-decide.
+pub struct ConciergeFailoverSeam<'a, RT, CMP: crate::model::completion::CompletionProvider> {
+    pub router: &'a RT,
+    /// v4 `dangerSettings?` — `None` means no uncensored retry (the refusal is
+    /// still recorded and the chain still walks).
+    pub danger_settings: Option<&'a DangerSettings>,
+    /// v4 `repos ? adaptMessagesForProfile(…) : formattedMessages` — `None`
+    /// reroutes the array unchanged.
+    pub adapter: Option<&'a crate::services::file_fallback::FallbackDeps<'a, CMP>>,
 }
 
 /// Walk the effective profile's fallback chain after an *empty* response.
@@ -1506,6 +1908,27 @@ mod tests {
                 profile_row: None,
             }
         }
+        async fn resolve_understudy(
+            &self,
+            _user_id: &str,
+            _settings: &crate::services::provider_failover::DangerSettings,
+            _exclude: &[String],
+            _mimes: &[String],
+        ) -> Option<crate::services::provider_failover::TextUnderstudy> {
+            None
+        }
+        async fn record_refusal(
+            &self,
+            _rec: crate::services::dangerous_content::refusal_ledger::RefusalRecord,
+        ) {
+        }
+        async fn announce_refusal(
+            &self,
+            _chat_id: &str,
+            _kind: crate::services::concierge_notifications::ConciergeRefusalKind,
+            _details: crate::services::concierge_notifications::ConciergeRefusalDetails,
+        ) {
+        }
     }
 
     struct UncensoredRouter {
@@ -1527,6 +1950,34 @@ mod tests {
                 api_key: self.key.clone(),
                 profile_row: None,
             }
+        }
+        async fn resolve_understudy(
+            &self,
+            _user_id: &str,
+            _settings: &DangerSettings,
+            exclude: &[String],
+            _mimes: &[String],
+        ) -> Option<crate::services::provider_failover::TextUnderstudy> {
+            // v4's resolver never offers an excluded id.
+            (!exclude.contains(&self.profile.id)).then(|| {
+                crate::services::provider_failover::TextUnderstudy {
+                    connection_profile: self.profile.clone(),
+                    api_key: self.key.clone(),
+                    profile_row: None,
+                }
+            })
+        }
+        async fn record_refusal(
+            &self,
+            _rec: crate::services::dangerous_content::refusal_ledger::RefusalRecord,
+        ) {
+        }
+        async fn announce_refusal(
+            &self,
+            _chat_id: &str,
+            _kind: crate::services::concierge_notifications::ConciergeRefusalKind,
+            _details: crate::services::concierge_notifications::ConciergeRefusalDetails,
+        ) {
         }
     }
 
@@ -2737,5 +3188,320 @@ mod tests {
             und.detail.as_deref(),
             Some("empty response on content the Concierge had flagged")
         );
+    }
+
+    // ========================================================================
+    // P4.D225 — the text failover's refusal arms (v4 `8bd080267`, #73)
+    //
+    // `primary_stream_tier3` diffs what these arms WRITE (the trail, the
+    // ledger cell, the Concierge's bubble) against v4; the lines they LOG are
+    // pinned here, bag by bag, because no differential sees a log line.
+    // ========================================================================
+
+    /// A router that records what the failover asks of it.
+    struct RecordingConcierge {
+        understudy: Option<EffectiveProfile>,
+        lookups: std::sync::Mutex<Vec<Vec<String>>>,
+        records: std::sync::Mutex<Vec<RefusalRecord>>,
+        bubbles: std::sync::Mutex<
+            Vec<(
+                String,
+                crate::services::concierge_notifications::ConciergeRefusalKind,
+                crate::services::concierge_notifications::ConciergeRefusalDetails,
+            )>,
+        >,
+    }
+
+    impl RecordingConcierge {
+        fn new(understudy: Option<EffectiveProfile>) -> Self {
+            Self {
+                understudy,
+                lookups: Default::default(),
+                records: Default::default(),
+                bubbles: Default::default(),
+            }
+        }
+    }
+
+    impl DangerousContentRouter for RecordingConcierge {
+        async fn resolve(
+            &self,
+            _p: &EffectiveProfile,
+            _k: &str,
+            _s: &DangerSettings,
+            _u: &str,
+            _m: &[String],
+        ) -> RouteResult {
+            panic!("no text failover resolves through the pre-flight router")
+        }
+        async fn resolve_understudy(
+            &self,
+            _user_id: &str,
+            _settings: &DangerSettings,
+            exclude: &[String],
+            _mimes: &[String],
+        ) -> Option<TextUnderstudy> {
+            self.lookups.lock().unwrap().push(exclude.to_vec());
+            self.understudy
+                .clone()
+                .filter(|u| !exclude.contains(&u.id))
+                .map(|u| TextUnderstudy {
+                    connection_profile: u,
+                    api_key: "uk".into(),
+                    profile_row: None,
+                })
+        }
+        async fn record_refusal(&self, rec: RefusalRecord) {
+            self.records.lock().unwrap().push(rec);
+        }
+        async fn announce_refusal(
+            &self,
+            chat_id: &str,
+            kind: crate::services::concierge_notifications::ConciergeRefusalKind,
+            details: crate::services::concierge_notifications::ConciergeRefusalDetails,
+        ) {
+            self.bubbles
+                .lock()
+                .unwrap()
+                .push((chat_id.to_string(), kind, details));
+        }
+    }
+
+    const THROWN_REFUSAL: &str = "400 Your request was rejected as a result of our safety system.";
+
+    fn dolphin() -> EffectiveProfile {
+        EffectiveProfile {
+            id: "u1".into(),
+            name: "Uncensored".into(),
+            provider: "OPENROUTER".into(),
+            model_name: "dolphin".into(),
+            base_url: None,
+        }
+    }
+
+    /// Drive a hard error that is a thrown refusal on a primary with no chain.
+    async fn hard_refusal(
+        router: &RecordingConcierge,
+        provider: CannedStreamingProvider,
+        mode: Option<&str>,
+    ) -> (Vec<String>, FallbackChainResult, StreamingState) {
+        let failed = chain_profile("p1", "Primary", "ANTHROPIC", "m");
+        let repos = ChainRepos {
+            profiles: vec![failed.clone()],
+            keys: Default::default(),
+        };
+        let settings = mode.map(|m| DangerSettings {
+            mode: m.into(),
+            uncensored_text_profile_id: None,
+        });
+        let sink = RecordingSink::new();
+        let mut state = StreamingState {
+            effective_profile: Some(profile("p1", "ANTHROPIC")),
+            ..Default::default()
+        };
+        let mut result = FallbackChainResult::default();
+        let lines = captured_async(async {
+            result = attempt_hard_error_failover(
+                &provider,
+                &sink,
+                ConciergeFailoverSeam::<_, crate::model::completion::CannedCompletionProvider> {
+                    router,
+                    danger_settings: settings.as_ref(),
+                    adapter: None,
+                },
+                WalkFallbackChainOptions {
+                    state: &mut state,
+                    repos: &repos,
+                    failed,
+                    context: chain_context(),
+                    params: base_params(),
+                    chat_id: "chat-9".into(),
+                    character_id: "ch".into(),
+                    character_name: "Friday".into(),
+                },
+                &FallbackError::message(THROWN_REFUSAL),
+                None,
+            )
+            .await;
+        })
+        .await;
+        (lines, result, state)
+    }
+
+    /// v4 `attemptUncensoredRetry`'s announcement + success lines, and the
+    /// recovered arm's ledger record (`rerouted: true`).
+    #[tokio::test]
+    async fn hard_refusal_recovered_by_the_understudy_logs_and_records() {
+        let router = RecordingConcierge::new(Some(dolphin()));
+        let provider = CannedStreamingProvider::new().with_content_stream(
+            "OPENROUTER",
+            "dolphin",
+            Some(0.7),
+            &base_params().messages,
+            &["The desk obliges."],
+            None,
+        );
+        let (lines, result, state) = hard_refusal(&router, provider, Some("AUTO_ROUTE")).await;
+
+        assert!(result.recovered);
+        assert_eq!(result.attempts.len(), 1, "only the opening attempt");
+        assert_eq!(state.full_response, "The desk obliges.");
+        assert_eq!(state.route_via, RouteAttemptVia::Concierge);
+        // v4 excludes `[...alreadyTried, state.effectiveProfile.id]`.
+        assert_eq!(
+            *router.lookups.lock().unwrap(),
+            vec![vec!["p1".to_string()]]
+        );
+
+        let l = line(&lines, "[DangerousContent] Attempting uncensored retry");
+        assert!(l.starts_with("WARN quilltap::failover"), "{l}");
+        assert_eq!(
+            field_keys(l),
+            [
+                "chat_id",
+                "original_provider",
+                "original_model",
+                "uncensored_profile_id",
+                "uncensored_provider",
+                "uncensored_model",
+                "content_was_flagged_dangerous",
+                "refusal_was_stated",
+            ],
+            "{l}"
+        );
+        assert!(l.contains("uncensored_profile_id=u1"), "{l}");
+        assert!(l.contains("refusal_was_stated=true"), "{l}");
+        let l = line(&lines, "[DangerousContent] Uncensored retry succeeded");
+        assert!(l.starts_with("INFO quilltap::failover"), "{l}");
+
+        let records = router.records.lock().unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].refused_profile_id, "p1");
+        assert!(records[0].rerouted, "the reroute answered");
+        assert_eq!(records[0].evidence, Some(RefusalEvidence::MessagePattern));
+        assert!(router.bubbles.lock().unwrap().is_empty());
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("walking the chain cleared")),
+            "a recovered refusal walks no chain: {lines:#?}"
+        );
+    }
+
+    /// v4's not-permitted INFO (mode in the bag; absent settings omit it), the
+    /// ledger record (`rerouted: false`), and no understudy lookup at all.
+    #[tokio::test]
+    async fn hard_refusal_outside_auto_route_logs_the_mode_and_records() {
+        for (mode, keys) in [
+            (Some("DETECT_ONLY"), vec!["chat_id", "mode"]),
+            (None, vec!["chat_id"]),
+        ] {
+            let router = RecordingConcierge::new(Some(dolphin()));
+            let (lines, result, _) =
+                hard_refusal(&router, CannedStreamingProvider::new(), mode).await;
+            assert!(!result.recovered);
+            let l = line(
+                &lines,
+                "[Failover] Refusal not rerouted to an uncensored profile: the Concierge mode does not permit it",
+            );
+            assert!(l.starts_with("INFO quilltap::failover"), "{l}");
+            assert_eq!(field_keys(l), keys, "{l}");
+            if let Some(m) = mode {
+                assert!(l.contains(&format!("mode={m}")), "{l}");
+            }
+            assert!(router.lookups.lock().unwrap().is_empty());
+            let records = router.records.lock().unwrap();
+            assert_eq!(records.len(), 1);
+            assert!(!records[0].rerouted);
+        }
+    }
+
+    /// Auto-Route with nobody to ask: the WARN, the `refusal-no-understudy`
+    /// bubble (a thrown refusal is always stated), the ledger, and the DEBUG
+    /// before the chain — whose bag omits the absent `understudyId`.
+    #[tokio::test]
+    async fn hard_refusal_with_no_understudy_bubbles_records_and_walks() {
+        let router = RecordingConcierge::new(None);
+        let (lines, result, _) =
+            hard_refusal(&router, CannedStreamingProvider::new(), Some("AUTO_ROUTE")).await;
+        assert!(!result.recovered);
+
+        let l = line(
+            &lines,
+            "[DangerousContent] No uncensored understudy to retry this turn with",
+        );
+        assert!(l.starts_with("WARN quilltap::failover"), "{l}");
+        assert_eq!(
+            field_keys(l),
+            ["chat_id", "provider", "model", "refusal_was_stated"],
+            "{l}"
+        );
+        let bubbles = router.bubbles.lock().unwrap();
+        assert_eq!(bubbles.len(), 1);
+        assert_eq!(bubbles[0].0, "chat-9");
+        assert_eq!(
+            bubbles[0].1,
+            crate::services::concierge_notifications::ConciergeRefusalKind::RefusalNoUnderstudy
+        );
+        assert_eq!(bubbles[0].2.refusing_provider, "ANTHROPIC");
+        assert_eq!(
+            bubbles[0].2.purpose,
+            crate::services::concierge_notifications::ConciergeRefusalPurpose::Text
+        );
+        assert_eq!(router.records.lock().unwrap().len(), 1);
+
+        let l = line(
+            &lines,
+            "[Failover] Uncensored retry did not recover a refusal; walking the chain cleared for the content",
+        );
+        assert!(l.starts_with("DEBUG quilltap::failover"), "{l}");
+        assert_eq!(
+            field_keys(l),
+            ["chat_id", "profile_id", "already_tried_json"],
+            "{l}"
+        );
+        assert!(l.contains("already_tried_json=[]"), "{l}");
+    }
+
+    /// The understudy refuses too: the DEBUG names it and carries it in
+    /// `alreadyTried`, and the uncensored retry's failure line fires.
+    #[tokio::test]
+    async fn hard_refusal_the_understudy_also_refuses() {
+        let router = RecordingConcierge::new(Some(dolphin()));
+        let provider = CannedStreamingProvider::new().with_stream(
+            "OPENROUTER",
+            "dolphin",
+            Some(0.7),
+            &base_params().messages,
+            vec![Err(crate::model::stream::StreamError::new(
+                "400 content_policy violation",
+            ))],
+        );
+        let (lines, result, state) = hard_refusal(&router, provider, Some("AUTO_ROUTE")).await;
+        assert!(!result.recovered);
+        let l = line(&lines, "[DangerousContent] Uncensored retry failed");
+        assert!(l.starts_with("ERROR quilltap::failover"), "{l}");
+        assert_eq!(field_keys(l), ["chat_id", "error"], "{l}");
+        let l = line(&lines, "walking the chain cleared for the content");
+        assert_eq!(
+            field_keys(l),
+            [
+                "chat_id",
+                "profile_id",
+                "understudy_id",
+                "already_tried_json"
+            ],
+            "{l}"
+        );
+        assert!(l.contains("understudy_id=u1"), "{l}");
+        assert!(l.contains(r#"already_tried_json=["u1"]"#), "{l}");
+        // The understudy's refusal is a REFUSED row, not a failed one.
+        let row = state
+            .route_failures
+            .iter()
+            .find(|r| r.profile_id == "u1")
+            .expect("the understudy's row");
+        assert_eq!(row.outcome, RouteAttemptOutcome::Refused);
+        assert!(!router.records.lock().unwrap()[0].rerouted);
     }
 }

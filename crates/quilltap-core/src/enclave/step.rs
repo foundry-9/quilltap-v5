@@ -1731,6 +1731,27 @@ mod tests {
                 }
             }
         }
+        async fn resolve_understudy(
+            &self,
+            _user_id: &str,
+            _settings: &crate::services::provider_failover::DangerSettings,
+            _exclude: &[String],
+            _mimes: &[String],
+        ) -> Option<crate::services::provider_failover::TextUnderstudy> {
+            None
+        }
+        async fn record_refusal(
+            &self,
+            _rec: crate::services::dangerous_content::refusal_ledger::RefusalRecord,
+        ) {
+        }
+        async fn announce_refusal(
+            &self,
+            _chat_id: &str,
+            _kind: crate::services::concierge_notifications::ConciergeRefusalKind,
+            _details: crate::services::concierge_notifications::ConciergeRefusalDetails,
+        ) {
+        }
     }
 
     struct NoCarina;

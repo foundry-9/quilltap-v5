@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): refused chat turns reroute to the uncensored understudy and go on the ledger (P4.D225 unit 9)
+
+_Versions: core 0.0.1075, harness 0.0.994._
+
+A chat turn that a provider refuses now reaches the Concierge's uncensored
+understudy the same way whether the refusal came back as an empty body or
+as a thrown moderation error. Under Auto-Route the understudy is tried
+first; if it can't answer, the profile's fallback chain runs cleared for
+the content. Auto-Route alone opens the empty-body reroute: a configured
+uncensored profile is no longer required, since the understudy resolver
+falls back to any uncensored-compatible profile. Every stated refusal is
+recorded once per turn on the chat's refusal ledger. A refusal with no
+understudy to ask posts the Concierge's "no understudy" notice. Ports v4's
+five new failover log lines. `primary_stream_tier3` gains eight refusal
+arms; `orchestrator_tier3`'s rerouting cases get a canned reroute leg.
+
 #### 2026-09-25 — feat(concierge): the legacy image dialog on the image-failover chokepoint (P4.D225 unit 8d)
 
 _Versions: core 0.0.1074, harness 0.0.993._
