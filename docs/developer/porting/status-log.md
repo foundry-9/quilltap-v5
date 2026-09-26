@@ -151826,3 +151826,66 @@ a census ROW, `V4::Query`); `get_messages_caller_census` 80 → **81** fallback
 | M7 | keep synthesizing flags on Unmoderated | `orchestrator_tier3` |
 | M8 | drop `details` on an undefined code | the family (`chat_picture_failed_no_code`, `…success_no_images`) |
 | M9 | revert ONE help file (`story-backgrounds.md`) | `help_tree_equivalence` RED; `help_tree_embed_guard` stays GREEN (it compares embedded vs disk only — as predicted) |
+
+### The gate
+
+- §R.2 probe before every regen batch: PASS under the waiver (HEAD `f7f3d7bf0`,
+  exactly the three waived commits, clean, `bugfix` empty).
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (default;
+  `--features quilltap-core/native-transport`).
+- `cargo build --workspace --release` clean (3 m 47 s).
+- `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's env
+  block (every oracle staged under `/tmp/p4d228/{mut,gate}` — lane-private
+  copies, since several recipes write fixed `/tmp` paths): **644 binaries /
+  3,835 passed / 2 failed / 3 ignored**. The two reds are exactly the standing
+  `provider_sdk_version_guard` pair (P4.D232's, designed — §S.4). Every lane
+  family confirmed RUN by its own `test result` line; the 511 `SKIP:` lines
+  are families outside the block.
+- Censuses/guards: as in Unit 2; `help_tree_embed_guard` +
+  `host_help_docs_boot` + `host_help_boot_order` green at 129 (Unit 1).
+- Tier R NOT run: this lane touches no core file the CLI's differential
+  exercises (`db/chats.rs` etc. untouched).
+
+### Deferrals and records (loud)
+
+- **Tier 3 item 11:** `override-danger-flag` and the message REST leg — never
+  ported; the `availableActions` order stays moot; v4's `404 Chat not found`
+  on the message route has no v5 analogue (RPC-only, no chat id).
+- **Tier 3 item 12 — candidate upstream notes:** E.8 (a forced background's
+  refusal trips the auto-switch, flipping a Moderated chat — the retry is
+  promised never to change the chat's state) and E.9 (the dedupe drops the
+  force silently). P4.D225's tool-loop asymmetry stands as recorded there.
+- **STOP-and-recorded (§S.7):** the picture arm's 502 rides `kind: internal`
+  (HTTP 500 over dispatch) with v4's body; a `BadGateway` `ErrorKind` is the
+  unifier's call (~60 exhaustive matches across lanes).
+- Pre-existing absent lines NOT restored (outside the order's list): v4's
+  `[Chats v1] Failed to queue story background regeneration` ERROR and the
+  queue's `[StoryBackground] Reusing existing pending job for chat` INFO; v4's
+  `connection-resolver` `Connection profile resolution failed` ERROR (the
+  text gate's caught throw logs it in v4; v5's resolver returns `None`).
+- `image_generation_tier3`'s regen hang at `acadcc7cd` (above) — for the
+  unifier / next drift pass.
+- **Tier 3 item 13 — the `docs/v4/` mirror pre-list (§R.9), bytes at
+  `acadcc7cd`:** `docs/developer/API.md` (229,906; #77 adds +50 — its
+  exclusion prose omits the same-provider+model exclusion),
+  `docs/developer/features/concierge-overhaul.md` (8,232),
+  `docs/developer/features/concierge-overhaul-phase-5-salon-polish.md`
+  (16,792, NEW). The unifier's to copy.
+
+### For the unifier
+
+- Versions this lane: core 0.0.1083 → **0.0.1084**, harness 0.0.1003 →
+  **0.0.1004**, host 0.0.161 → **0.0.162**, web 0.0.199 → **0.0.200** (one
+  bump each, sequential on the chain).
+- §S.3 served as written, with the 502 and the message-route 404 above as the
+  two recorded exceptions; P4.D229 maps the 409 by `message`
+  (`locked` / `no-understudy`) on `kind: 'conflict'`.
+- The fixture spec edits are ADDITIONS only (`story-background-job.json`
+  gains a non-compatible `Blocked Desk` image profile and six chats;
+  `image-failover.json` two chats + two cases; `regenerate-swipe-tier3.json`
+  one profile + one chat + three calls; `primary-stream-tier3.json`,
+  `image-generation.json`, `tool-execution-tier2.json` one case each). No
+  committed `.db` pair changed.
+
+**P4.D228 LANE COMPLETE.**

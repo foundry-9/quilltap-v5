@@ -12,6 +12,13 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-26 — docs(porting): P4.D228 lane complete — the gate, the deferrals, the order's status header
+
+_Versions: docs only._
+
+- The lane record in `status-log.md` gains the gate (644 test binaries, 3,835 passed; the two standing SDK-guard reds), the deferrals, the recorded 502 divergence and the `docs/v4/` pre-list.
+- The order's header says LANE COMPLETE.
+
 #### 2026-09-26 — feat(concierge): "Try uncensored" — the picture/backdrop and text-line retry verbs, the swipe override, the Lantern's refusal bubble, Unmoderated turns without synthesized flags (P4.D228)
 
 _Versions: core 0.0.1084, harness 0.0.1004, host 0.0.162, web 0.0.200._
