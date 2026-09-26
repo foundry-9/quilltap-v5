@@ -151351,3 +151351,49 @@ Result file: `/tmp/p4d226/first-act-4d370a90f.json` (kept in the lane's scratch)
       (`refused_non_extractable` — no oracle-case header).
   - `ai_import_tier3` was red only on the version stamp and is green after
     the constant moved.
+- **Recorded for the unifier — two unanchored jest filters** (measured from the
+  full sweep's `Test Suites:` lines): `image_generation_tier3_equivalence`'s
+  regen runs `-- image-generation` and collects **5** suites (v4's own
+  `image-generation*` tests beside the oracle case), and
+  `mount_index_equivalence` collects **35**. Neither changes a result: every
+  suite passed, and the oracle NDJSON is written by the case alone. Both
+  cost minutes per regen and would red a family on an unrelated v4 test
+  failure. It is the same class as the anchored-filter fix at `a2db63da7`'s
+  unification. The lane left both headers alone (`mount_index` is not in
+  its list).
+- **The lane's final gate (`8062508c6` + the census row below):**
+  - `cargo fmt --all --check` clean.
+  - clippy clean on both feature sets (`-D warnings`).
+  - `cargo build --release --workspace` green (3 m 29 s).
+  - `cargo test --workspace --no-fail-fast` with Tier R armed
+    (`QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d226-4d370a90f`, `QT_NODE` = Node
+    24.13.1): **640 test binaries / 3,809 passed / 3 failed / 3 ignored**.
+    `cli_differential` **ok** (Tier R at the pin). `qtap_schema_embed_guard`
+    is now GREEN.
+  - The three reds:
+    - `provider_sdk_version_guard` ×2 — pre-existing on the base, the
+      unifier's regen event.
+    - `get_messages_caller_census` — the lane's own unit-6 read-path test is
+      a new fallback call site. The census gained its row (79 → 80 fallback
+      sites, 51 files, arithmetic in the comment), then 3/3 by name.
+  - The differential families' proof is the full sweep above (every family
+    regenerated from the pin and run by name). The gate ran without the
+    whole env block: the sweep's 27 shared `/tmp` paths would make a
+    concurrent-block run lie.
+- **Tier 3 deferrals (loud, per the order):**
+  - item 14, the `conciergeOverride` READ retirement + the DROP tolerance →
+    P4.D227; the column stays in `ALL_COLUMNS` at this pin;
+  - item 15, `newChatsStartAs`, the off-duty ignore, `routeDirect` on
+    attempt 0 → P4.D227;
+  - item 16, `prettify.ts`'s label and the renamed dogfood script → NO-PORT;
+    the four job-child test names → NO-COUNTERPART (`is_job_child()` is
+    constant false in v5, so their arms are dead by construction).
+- **P4.D226 LANE COMPLETE.** Commits on `claude/p4-three-states-work-orders-858137`:
+  - `64c286ccb` unit 1 (the 41 widened pairs + the vintage trio);
+  - `3d62dd6ef` unit 2 (the three states: core, repository, flip, resolver,
+    classifier switch);
+  - `a719ff70e` unit 3 (the Locked chokepoint arms);
+  - `1ad8f9171` unit 4 (the wire + the greeting);
+  - `9d8ded7eb` unit 5 (restore/import + the export schema);
+  - `8062508c6` unit 6 (the consumer re-keys + the full sweep);
+  - the closing commit (the census row + this record + the order header).

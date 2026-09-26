@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-26 — test(concierge): the get_messages census gains the retired-kinds read pin; P4.D226 lane complete
+
+_Versions: harness 0.0.1002._
+
+- The `get_messages` caller census records the new unit-test read (80 fallback sites).
+
 #### 2026-09-26 — test(concierge): the consumer fixtures re-keyed, the retired kinds' read path pinned, the full sweep at `4d370a90f` (P4.D226 unit 6)
 
 _Versions: core 0.0.1082, harness 0.0.1001._

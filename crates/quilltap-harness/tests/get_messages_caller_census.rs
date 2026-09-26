@@ -202,6 +202,12 @@ const CENSUS: &[(&str, &str, Variant)] = &[
         "sweep_prior_relevant_conversation_whispers",
         F,
     ),
+    // P4.D226: the retired kinds' read-path pin reads the transcript once.
+    (
+        "services/concierge_notifications.rs",
+        "the_six_retired_kinds_read_back_unchanged",
+        F,
+    ),
     // P4.D225: the refusal announcement's unit test reads the chat back twice.
     (
         "services/concierge_notifications.rs",
@@ -471,8 +477,10 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // is not a `getMessages` read): strict 8 − 1 = 7; the file keeps its two
     // fallback sites, so still 50 files. P4.D225 added three unit-test
     // fallback calls (the trail round-trip; the refusal announcement twice)
-    // and one file (`concierge_notifications.rs`): 79 and 51.
-    assert_eq!((swallowing, strict), (79, 7), "census totals");
+    // and one file (`concierge_notifications.rs`): 79 and 51. P4.D226 added
+    // one unit-test fallback call in that same file (the six retired kinds'
+    // read-back): 80 and 51.
+    assert_eq!((swallowing, strict), (80, 7), "census totals");
     assert_eq!(file_count, 51, "census files");
 }
 
