@@ -151397,3 +151397,161 @@ Result file: `/tmp/p4d226/first-act-4d370a90f.json` (kept in the lane's scratch)
   - `9d8ded7eb` unit 5 (restore/import + the export schema);
   - `8062508c6` unit 6 (the consumer re-keys + the full sweep);
   - the closing commit (the census row + this record + the order header).
+
+## P4.D227 — the Concierge's own settings + the DROP + the consumer sweep (v4 `3b463d6b1` #76, server) — lane record
+
+Lane branch `claude/gifted-yonath-c6c361` (the harness-made worktree name, not
+the order's `claude/p4-d227-concierge-settings-<hash>`), cut from P4.D226's
+LANE COMPLETE tip `e51ce5dfd`. Pins: target `/tmp/qt-v4-pin-p4d227-3b463d6b1`,
+before `/tmp/qt-v4-pin-p4d227-4d370a90f` (ledger §5.1). §R.2 probe: FAILED at
+the first start (v4 had moved past the ledger), the lane STOPPED; resumed
+under the ledger's recorded waiver (`main`, clean, `f7f3d7bf0`, exactly the
+three waived commits in `acadcc7cd..main`, `bugfix` log empty). The probe
+passed again before the mid-lane sweep and before the final sweep. Node
+24.13.1. Staging under `/tmp/p4d227/`.
+
+### Unit 0 — the first act (§R.12)
+
+P4.D226's 43-family list at `3b463d6b1`, unchanged code: 14 ok, 29 red — every
+red one of #76's hunks (the resolver, the failover gates, the writer's `'mode'`
+sentences, the settings shapes, the D23 tripwire). None a P4.D226 handoff
+except the recorded one (`answer_confirmation_tier3`, below).
+`post_office_writers_tier3` is P4.D233's fence (unchanged).
+
+### Unit 1 — the D23 re-dump, the fixtures, the settings twin
+
+- `fresh_schema.json` + `chat_settings_seed.json` re-dumped mechanically from
+  the pin: three statements move (`conciergeOverride` gone from `chats`;
+  `uncensoredImageDescriptionProfileId` and `dangerousContentSettings` gone from
+  `chat_settings`; `conciergeSettings` added with the `.default()` literal). The
+  seed carries `DEFAULT_CONCIERGE_SETTINGS` with the null keys present.
+  `provisioning_equivalence` red-first, then green.
+- **Fixtures widened through v4's REAL modules** (`add-concierge-settings` +
+  `drop-chat-concierge-override`, the P4.D226 migrator arm): the 41
+  chats-bearing pairs + `llm-log-cleanup-main` (42). ⚠ **Order count
+  corrected:** 22 settings-bearing pairs, not 23. Seven pairs the modules
+  rewrote with no logical change (page 1 re-encrypts on any read-write open)
+  were `git restore`d. The migration-vintage trio REBUILT at the pin (119
+  migrations run).
+- `db/chat_settings.rs`: ONE hand-rolled `ConciergeSettingsSchema` twin
+  (`zod_parse_concierge_settings`) reads all three stored byte shapes and writes
+  the PUT-materialized one; the legacy keys stripped on read; the two retired
+  columns out of the binders. Pinned by `the_three_stored_concierge_shapes_read_back`
+  and `a_legacy_keyed_row_reads_without_the_retired_keys`.
+
+### Unit 2 — the policy, the mapper, the chokepoints, the routes
+
+- `resolver.rs` rewritten over `ResolvedConciergePolicy` (v4's branch order);
+  NEW `legacy_concierge_settings.rs` (v4's mapper rule for rule);
+  `current_state::read_current_concierge_on_duty`. `danger_resolver_equivalence`
+  rewritten over the real modules (109 rows at the pin), red-first (the old case
+  cannot import at the pin).
+- The two chokepoints' DIFFERENT gates: image `(failover_allowed || on_duty) &&
+  on-duty re-read` (off duty: ledger yes, announcement no); text
+  `failover_allowed && on-duty re-read`. `refusal-not-permitted` narrowed to
+  Locked; **the `'mode'` sentences DELETED** (found by the mid-lane sweep —
+  `post_office_concierge_lantern_suparna` — and fixed; the family now pins
+  their absence both ways, 90 refusal rows).
+- `api/settings.rs`: the retired-key 400 runs FIRST; ⚠ **order premise
+  corrected (measured):** the malformed-`conciergeSettings` 400 runs at its OWN
+  slot (after `contextCompressionSettings`), not before every field — v4's
+  `s_put_concierge_after_earlier_field` answers the earlier field's error.
+- The create: `requested_concierge_state_at_creation` (E.8's operator/manual
+  pinned by the capstone), the off-duty ignore, the greeting's `route_direct`.
+- E.4: rows 2 / 13 / 28 located (`api/memories.rs` dry-run; scene-state; the
+  orchestrator's recall fallback — all through `resolve_uncensored_cheap_llm_selection`).
+- E.6 MEASURED: v4's `.qtap` export at the pin exports single entity types and
+  carries NO chat settings — `conciergeSettings` never reaches an export, the
+  vendored schema is correctly unmoved, no v4 bug to file.
+
+### Unit 3 — the consumer sweep + `conciergeOverride` out
+
+Both `DangerousContentSettings` structs and `provider_failover::DangerSettings`
+retired; the policy threaded through every consumer (the 39 rows + the v5-only
+callers). `conciergeOverride` out of `ALL_COLUMNS` and the INSERT; the
+both-shapes read pinned (`a_chat_reads_the_same_with_or_without_the_dropped_override_column`).
+
+### Unit 4 — the harness families re-keyed at the pin
+
+Every family re-keyed from the retired mode bag to stored `conciergeSettings`
+resolved WITH the case's chat, and regenerated from the pin through the driver:
+`image_failover_tier3` (22 cases; NEW sent-off-duty and unlocked-mid-call
+arms), `refusal_ledger_tier3`, `cheap_llm_fallback` (+ the refusal spec),
+`cheap_llm_selection` (+3 policy arms), `danger_routing` (+ the Unmoderated
+direct route, text and image), `almanack_tier2` (builder re-keyed; runs at the
+pin), `appearance_sanitize_gate_tier3` (30 cases, +3 pass-throughs),
+`images_generate_route` (+ the direct block ×2, on a REAL fixture chat),
+`enclave_step`, `precompute`, `memory_processor`, `compression`,
+`context_summary_service`, `message_finalizer`, `answer_confirmation_tier3`
+(**P4.D226's handoff CLOSED**: the builder seeds `conciergeMode: 'unmoderated'`,
+the harness derives `dangerous` from the chat, and a guard pins the two
+agree), `file_attachment_tier3` (NEW section G: the vision fallback on a
+Moderated / Locked / exempt / off-duty chat, the describer chain cut for the
+section), `orchestrator_tier3`, `primary_stream_tier3` (+ the two off-duty
+mid-call arms; the on-duty re-read runs REAL both sides), the three
+`conciergeOverride` plants (`salon_reads`, `characters_reads`,
+`projects_routes`), `story_background_job` / `image_generation` (per-case
+settings translated with v4's mapping), `system_restore_state` (the bag-key arm
+re-keyed: the archive's override arrives as the derived STATE; the dropped
+column never returns), `attach_mount_file` (the migrated pair is OFF DUTY —
+v4's real translation — so the case puts the copy on duty with the same raw SQL
+both sides), `backup_uuid_remap` (+2 arms, the corpus re-authored),
+`chat_create_capstone` (+7 `newChatsStartAs` cases, v4's names), `help_tools`
+(the `concierge` category + the new URL). Host DDL mirrors re-keyed
+(`host_cadence`, `host_boot`, `host_llm_log_cleanup`).
+
+### Unit 5 — pins, mutations, census
+
+- Capture pins + silence legs: the on-duty re-read (INFO / WARN / silence),
+  the cheap-LLM pair, the settings PUT's retired-key WARN + 400, the vision
+  fallback's DEBUG.
+- **Mutations (all reverted by file backup, restore byte-checked):** M1b red
+  (`s_put_concierge_after_earlier_field`); M2, M3, M4 (unlocked mid-call), M5
+  (refused-off-duty logs), M7 (the capstone's off-duty ignore), M8 (the tool
+  definition bytes), M9 (both the D23 alignment test and the both-shapes read),
+  M10 (the mapper's OFF arms) — all red. ⚠ **M6 as ordered is an EQUIVALENT
+  mutant:** v4's classification handler gates the exempt type and the
+  non-Moderated states BEFORE the policy, so resolving without the chat cannot
+  move `summaryClassification` there. Re-aimed at the enqueue trigger (M6b):
+  red on `danger_trigger`'s `skips_when_exempt_chat_type`.
+- NEW `concierge_legacy_settings_census` (Tier 2 item 11): no retired
+  identifier survives; the two wire keys only in the mapper and the refusal; the
+  crafter under the cheap-LLM bag only there and in the strip. Mutation-proven
+  (a planted key in `cheap_llm.rs` reds it).
+
+### The gate
+
+- fmt clean; clippy clean in both feature sets; release build (below).
+- `cargo test --workspace` (no env block — see P4.D226's reasoning: the 27
+  shared `/tmp` paths make a concurrent block lie): **641 binaries / 3,821
+  passed / 3 failed / 3 ignored** — the two `provider_sdk_version_guard` tests
+  (pre-existing, P4.D232's) and one new pin whose module name my filter had
+  missed; fixed and green by name afterwards.
+- **The full sweep from the pin** (`--collisions` first: 27 standing shared
+  paths, sequential): **560 ok / 7 run_failed / 3 refused of 570**. Result:
+  `harness/tools/sweep-results/2026-09-26-3b463d6b1-p4d227-full.json`. Every
+  non-ok family carries the SAME status as P4.D226's committed sweep:
+  `ariel_writers_tier3` + `memory_processor_tier3` (compressed-text byte
+  parity, decoded identical — recorded for the unifier), `help_section_size` +
+  `help_tree` (the `help/` tree, P4.D228's), `post_office_writers_tier3`
+  (P4.D233's fence), `provider_sdk_version_guard` (P4.D232's),
+  `search_replace` (`missing_action_recorded`, pre-existing);
+  `backup_uuid_remap` refused by design (repo-write corpus — run by hand from
+  the pin, green); `avatar_rolls_routes` / `generator_sse_wire`
+  non-extractable (standing). Two of P4.D226's reds are now GREEN
+  (`answer_confirmation_tier3` — the handoff; `ai_import_tier3` — the
+  `V4_APP_VERSION` stamp moved to `4.10.0-dev.88`).
+
+### Deferrals (loud)
+
+- Tier 3 items 12–14 as ordered: the twelve `help/` pages (P4.D228), the
+  client (P4.D230); `foundry/subsystem-defaults.ts`, `prettify.ts`,
+  `instrumentation.ts` — NO-PORT (E.5); no v5 boot-side ADD / backfill / DROP
+  (E.2). Dogfood copy rule for the unifier: a pre-`-dev.88` instance must be
+  migrated by v4 before v5 opens it.
+- Capture pins NOT added for the per-consumer `[… ] Concierge policy
+  resolved` DEBUGs and the `[Chats v1]` requested-state WARN/DEBUG — the
+  families that reach those sites do not capture logs; recorded for the next
+  smalls lane.
+
+**P4.D227 LANE COMPLETE.**

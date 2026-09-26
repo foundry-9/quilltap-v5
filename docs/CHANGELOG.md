@@ -12,6 +12,13 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-26 — docs(porting): P4.D227 lane complete — the full sweep at `3b463d6b1`, the lane record, the order's status header
+
+_Versions: docs only._
+
+- The full recipe sweep from the pin is committed under `harness/tools/sweep-results/` (560 ok / 7 pre-existing reds / 3 refused of 570).
+- The lane record is appended to `status-log.md`; the order's header says LANE COMPLETE.
+
 #### 2026-09-26 — feat(concierge): the Concierge's own settings, the policy resolver and the consumer sweep; `conciergeOverride` dropped (P4.D227)
 
 _Versions: core 0.0.1083, harness 0.0.1003, host 0.0.161._
