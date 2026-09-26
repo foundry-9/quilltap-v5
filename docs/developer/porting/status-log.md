@@ -150831,3 +150831,25 @@ Regen outputs staged under `/tmp/p4d225/`.
   deleted helpers (`provider_routing.rs`, the RETIRED block), the retired
   reroute tests (`image_job_common.rs`).
 - Gate: fmt + clippy (workspace) clean; the two pins green (above).
+
+### Unit 11 — the settings read materializes `autoSwitchAfterRefusals` (found by the final sweep)
+
+- The lane's final sweep (53 families at `49059fb14`) reddened
+  `salon_reads_equivalence`'s `settings` case: v4's read parses the stored
+  `dangerousContentSettings` through Zod, so a row written before #74 reads
+  back WITH `autoSwitchAfterRefusals: 2`; v5's `chat_settings::
+  find_by_user_id` returned the stored object raw. Unit 7b had put the key on
+  the typed twin (the resolver/PUT path) but not on this JSON read. Fixed:
+  `with_auto_switch_default` appends the default (the schema's LAST field, so
+  Zod's shape order puts it at the end) to an object that lacks it; a
+  non-object cell is untouched. `salon_reads`, `chat_settings_tier2`,
+  `chat_settings_composer_web_routes`, `settings_routes` green through the
+  driver at the target (the pre-fix sweep run is the red).
+- ⚠ **Measured-wrong premise, handed off (fenced):** the order's "`fresh_
+  schema.json` UNMOVED and `provisioning_equivalence` GREEN at the pin" is
+  FALSE — v4's `generateDDL` at `49059fb14` bakes `"autoSwitchAfterRefusals":2`
+  into the `chat_settings.dangerousContentSettings` column DEFAULT (the ONLY
+  schema difference, measured by DDL diff). `fresh_schema.json` is P4.D226's
+  re-dump, so `provisioning_equivalence` is RED on this branch by design until
+  the unifier composes P4.D226's re-dump (which must be taken at or after
+  `49059fb14` to carry the key).

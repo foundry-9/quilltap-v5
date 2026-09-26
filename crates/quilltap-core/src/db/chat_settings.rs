@@ -883,6 +883,22 @@ pub fn find_by_user_id(
     // NULL cell would be Zod-defaulted by v4, but the corpus never writes NULL
     // JSON columns (create writes every column), so a NULL → `null` here is fine
     // and never exercised.
+    // v4 `49059fb14` (#74): `autoSwitchAfterRefusals` is the settings
+    // object's LAST field, `.default(2)`. v4's read parses the stored object
+    // through the Zod schema, so a row written before the key existed reads
+    // back WITH it (appended — Zod emits the shape order and the key is
+    // declared last). A non-object cell is left as it was.
+    fn with_auto_switch_default(mut settings: Value) -> Value {
+        if let Some(obj) = settings.as_object_mut() {
+            if !obj.contains_key("autoSwitchAfterRefusals") {
+                obj.insert(
+                    "autoSwitchAfterRefusals".into(),
+                    Value::from(DEFAULT_AUTO_SWITCH_AFTER_REFUSALS),
+                );
+            }
+        }
+        settings
+    }
     fn parse_json(cell: Option<String>) -> Value {
         match cell {
             Some(text) if !text.is_empty() => serde_json::from_str(&text).unwrap_or(Value::Null),
@@ -1137,7 +1153,7 @@ pub fn find_by_user_id(
                 );
                 obj.insert(
                     "dangerousContentSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(34)?),
+                    with_auto_switch_default(parse_json(r.get::<_, Option<String>>(34)?)),
                 );
                 obj.insert(
                     "autoLockSettings".into(),

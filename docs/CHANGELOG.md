@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — fix(settings): the chat settings read fills autoSwitchAfterRefusals (P4.D225 unit 11)
+
+_Versions: core 0.0.1077._
+
+Reading chat settings now returns `autoSwitchAfterRefusals: 2` inside
+`dangerousContentSettings` when the stored object predates the setting, as
+v4's schema parse does. Found by the lane's final `salon_reads` run.
+
 #### 2026-09-25 — test(concierge): pin the unprefixed deprioritising line and the both-empty seat (P4.D225 unit 10)
 
 _Versions: core 0.0.1076, harness 0.0.995._
