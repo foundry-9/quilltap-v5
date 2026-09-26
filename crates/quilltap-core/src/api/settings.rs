@@ -171,7 +171,7 @@ fn is_valid_model_class_name(name: &str) -> bool {
 /// v4 `supportsImageGeneration` (`lib/llm/image-capable.ts`): upper-case the
 /// provider, then the registry `imageGeneration` capability (uninitialized → false;
 /// here the registry is always built).
-fn supports_image_generation(provider: &str) -> bool {
+pub(crate) fn supports_image_generation(provider: &str) -> bool {
     Registry::built_in().supports_capability(&provider.to_uppercase(), Capability::ImageGeneration)
 }
 

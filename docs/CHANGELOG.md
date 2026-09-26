@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the legacy image dialog on the image-failover chokepoint (P4.D225 unit 8d)
+
+_Versions: core 0.0.1074, harness 0.0.993._
+
+`/api/v1/images?action=generate` now resolves its Concierge settings with the
+asking chat (a chat's Vouched Safe / Uncensored state governs its pictures),
+and calls its provider through the image-failover chokepoint with a
+connection-profile understudy restricted to providers that can generate
+images. After a reroute the file row and the response metadata name the
+answering profile. Ports v4's three `[Images v1]` lines for the settings
+read and the reroute. `images_generate_route` gains its first refusal arms
+(rerouted; not permitted → 500) and now initializes v4's real provider
+registry: 48/48.
+
 #### 2026-09-25 — feat(concierge): the generate_image tool on the image-failover chokepoint (P4.D225 unit 8c)
 
 _Versions: core 0.0.1073, harness 0.0.992._

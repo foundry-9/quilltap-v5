@@ -150686,3 +150686,42 @@ Regen outputs staged under `/tmp/p4d225/`.
   `refused_rerouted_to_the_understudy`; no trail on the TOOL row →
   `chat_messages diverged` in `tool_execution_tier2`. Restored (cmp).
 - Gate: fmt + clippy (workspace) clean; `quilltap-core --lib` 2627/0.
+
+### Unit 8d — the legacy image dialog on the chokepoint
+
+- `api/images.rs`: the Concierge inputs split into v4's two `try`s —
+  `read_concierge_settings` (chat settings, then the asking chat; a throw keeps
+  what was read and WARNs `[Images v1] Could not load Concierge settings;
+  using defaults`; the DEBUG `[Images v1] Generate: resolved Concierge
+  settings` {`chat_id, mode, with_chat`}), settings resolved WITH the chat;
+  the classification `try` keeps its ERROR arm and now reads the profiles
+  itself. The provider call runs through `generate_image_with_concierge_
+  failover`: `DialogUnderstudy` (the uncensored TEXT resolver over
+  connection profiles, `filter: supports_image_generation` — made
+  `pub(crate)` in `api/settings.rs` — applied to the explicit pick too,
+  keys through `ConnApiKeys`), `profile_kind: Connection` (no `profileKind`
+  key), `primary_via: concierge` after the pre-flight swap, no persisted trail
+  (no message). A failure is the flat 500, as v4's unwrapped throw. After a
+  reroute: INFO `[Images v1] Concierge rerouted a refused image request`
+  {`user_id, original_profile_id, answering_profile_id, answering_provider`}
+  and `profile = failover.profile` — the file row's `generationModel` and the
+  metadata `provider`/`model` name the answering profile.
+- **`images_generate_route` gains its first refusal arms** (a `refuseFirst`
+  provider mode on both sides: the case's first call throws the OpenAI
+  safety-system sentence): `generate_refused_rerouted` (Auto-Route; the desk's
+  `uncensoredTextProfileId` names the OLLAMA profile; GROK answers — two
+  provider calls, 201, GROK in the metadata) and `generate_refused_not_
+  permitted` (Detect Only → 500, one call).
+- ⚠ **Oracle-environment finding:** the first regen measured v4 with NO
+  understudy (500, one call) — the case never initialized v4's provider
+  registry, so `supportsImageGeneration` answered false for EVERY provider
+  (the standing empty-registry trap). The case now initializes the REAL
+  registry with the ten dist plugins per case (after `resetModules`); every
+  pre-existing case still matches. **48/48 through the driver.**
+- ⚠ **Mutation SURVIVED, recorded as a named gap:** dropping the dialog's
+  `filter` leaves the family green — this fixture's explicit OLLAMA pick falls
+  through without the filter too (cause not isolated). The resolver's
+  filter-on-the-explicit-pick is pinned by `danger_routing`'s
+  `tu-configured-filtered-out`; the dialog's WIRING of
+  `supports_image_generation` as that filter is proven by review only.
+- Gate: fmt + clippy (workspace) clean; `quilltap-core --lib` 2627/0.

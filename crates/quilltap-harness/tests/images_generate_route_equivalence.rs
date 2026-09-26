@@ -153,6 +153,9 @@ enum ProviderMode {
     NoData,
     /// P4.104: the 748 KB LOSSLESS WebP seed, as `image/webp`.
     Lossless,
+    /// P4.D225: the case's FIRST call refuses (the OpenAI safety-system
+    /// sentence); later calls answer as `Webp`.
+    RefuseFirst,
 }
 
 /// The image-provider seam: behavioural (answers `params.n` images built from
@@ -182,6 +185,11 @@ impl ImageProvider for RecordingImageProvider {
         }));
         if self.mode == ProviderMode::Throw {
             return Err(ImageGenError::new("canned provider failure"));
+        }
+        if self.mode == ProviderMode::RefuseFirst && self.calls.lock().unwrap().len() == 1 {
+            return Err(ImageGenError::new(
+                "400 Your request was rejected as a result of our safety system.",
+            ));
         }
         let n = params.n.unwrap_or(1.0).max(1.0) as usize;
         let images = (0..n)
@@ -693,6 +701,21 @@ fn cases() -> Vec<Case> {
             danger: Some(json!({ "mode": "AUTO_ROUTE", "scanImagePrompts": false })),
             classify: dangerous(),
             ..ok("generate_scan_disabled")
+        },
+        // ── P4.D225: the image-failover chokepoint ──
+        Case {
+            danger: Some(json!({
+                "mode": "AUTO_ROUTE",
+                "scanImagePrompts": false,
+                "uncensoredTextProfileId": PROFILE_NOIMAGE
+            })),
+            provider: ProviderMode::RefuseFirst,
+            ..ok("generate_refused_rerouted")
+        },
+        Case {
+            danger: Some(json!({ "mode": "DETECT_ONLY", "scanImagePrompts": false })),
+            provider: ProviderMode::RefuseFirst,
+            ..ok("generate_refused_not_permitted")
         },
         // ── the refusals ──
         Case::new(

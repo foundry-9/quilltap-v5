@@ -104,7 +104,7 @@ const PNG_1X1 = Buffer.from(
   'base64',
 );
 
-type ProviderMode = 'webp' | 'png' | 'throw' | 'nodata' | 'lossless';
+type ProviderMode = 'webp' | 'png' | 'throw' | 'nodata' | 'lossless' | 'refuseFirst';
 
 /** P4.104: the 748 KB LOSSLESS WebP seed (`fixtures/photo-lossless.webp`). */
 const LOSSLESS_WEBP = readFileSync(join(__dirname, '..', 'fixtures', 'photo-lossless.webp'));
@@ -262,6 +262,12 @@ function applyMocks(spec: Spec): void {
             providerCalls.push({ provider, baseUrl: baseUrl ?? null, apiKey, params });
             if (providerMode === 'throw') {
               throw new Error('canned provider failure');
+            }
+            // P4.D225: the case's FIRST call refuses with the OpenAI
+            // safety-system sentence (a message-pattern refusal); later calls
+            // answer. The chokepoint's reroute is the second call.
+            if (providerMode === 'refuseFirst' && providerCalls.length === 1) {
+              throw new Error('400 Your request was rejected as a result of our safety system.');
             }
             const n = Math.max(1, Number(params.n ?? 1));
             return { images: cannedImages(n) };
@@ -480,6 +486,27 @@ function buildCases(): CaseSpec[] {
       classify: DANGEROUS,
     },
 
+    // ── P4.D225: the image-failover chokepoint (v4 `8bd080267`) ─────────────
+    // The primary refuses; under Auto-Route the dialog's CONNECTION-profile
+    // understudy answers. The desk's `uncensoredTextProfileId` names the OLLAMA
+    // profile, which cannot draw: v4's `filter: supportsImageGeneration`
+    // applies to the EXPLICIT pick too, so the resolver falls through to the
+    // compatible GROK profile. No classify (`scanImagePrompts` off).
+    {
+      name: 'generate_refused_rerouted',
+      body: { prompt, profileId: PROFILE_MAIN },
+      danger: { mode: 'AUTO_ROUTE', scanImagePrompts: false, uncensoredTextProfileId: PROFILE_NOIMAGE },
+      provider: 'refuseFirst',
+    },
+    // The same refusal under Detect Only: not rerouted; the throw escapes to
+    // the middleware's flat 500, nothing written.
+    {
+      name: 'generate_refused_not_permitted',
+      body: { prompt, profileId: PROFILE_MAIN },
+      danger: { mode: 'DETECT_ONLY', scanImagePrompts: false },
+      provider: 'refuseFirst',
+    },
+
     // ── the refusals ────────────────────────────────────────────────────────
     { name: 'generate_profile_missing', body: { prompt, profileId: MISSING_PROFILE } },
     // v4's factory throws → the route's ONE 400, naming the profile's provider.
@@ -636,6 +663,25 @@ async function runCase(
   } as unknown as DateConstructor;
 
   try {
+    // P4.D225: the REAL provider registry, initialized with the ten dist
+    // plugins (the danger-routing / fallback-engine arrangement). The dialog's
+    // understudy filter is `supportsImageGeneration`, which answers FALSE for
+    // every provider on an uninitialized registry — so without this the
+    // refusal arm measured the oracle's empty registry, not v4 (v5's manifests
+    // are baked, so it always answers the registry tier).
+    {
+      const { initializeProviderRegistry } = await import('@/lib/plugins/provider-registry');
+      const PLUGIN_DIRS = [
+        'anthropic', 'openai', 'google', 'grok', 'deepseek',
+        'z-ai', 'openrouter', 'ollama', 'openai-compatible', 'nanogpt',
+      ];
+      await initializeProviderRegistry(
+        PLUGIN_DIRS.map((d) => {
+          const m = require(join(process.cwd(), 'plugins', 'dist', `qtap-plugin-${d}`, 'index.js'));
+          return m.plugin || m.default?.plugin || m.default;
+        }),
+      );
+    }
     const route = (await import('@/app/api/v1/images/route')) as {
       POST: (req: unknown) => Promise<{ status: number; json: () => Promise<unknown> }>;
     };

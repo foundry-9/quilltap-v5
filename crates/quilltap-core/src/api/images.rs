@@ -27,10 +27,12 @@
 //!   `tagId` v4's schemaless upload leg writes (the P4.62(a) raw carry) becomes
 //!   invisible to its own list. Reproduced in [`file_entry_row_is_valid`].
 //! * **The generate leg is its OWN implementation**, not a call into the
-//!   Salon's `generate_image` tool: its Concierge gate is `scanImagePrompts`
-//!   with no chat, its reroute picks the first `isDangerousCompatible` profile
-//!   rather than consulting the Concierge desk, and it resolves NO orientation
-//!   (`params_builder`'s `orientation: None` arm exists for this caller).
+//!   Salon's `generate_image` tool: its Concierge settings are resolved WITH
+//!   the asking chat (v4 `8bd080267`), its pre-flight reroute picks the first
+//!   `isDangerousCompatible` profile rather than consulting the Concierge
+//!   desk, its post-hoc refusal failover asks a CONNECTION-profile understudy
+//!   that can draw, and it resolves NO orientation (`params_builder`'s
+//!   `orientation: None` arm exists for this caller).
 //! * **The route-level timestamps are the route's own.** The upload / import
 //!   receipts stamp `new Date().toISOString()` at `route.ts:443-444` /
 //!   `:494-495`, NOT the row's — so they are minted values, normalized in the
@@ -1502,36 +1504,109 @@ fn zod_int(v: &Value) -> Option<i64> {
 /// The DB reads v4's Concierge block makes, gathered in one pass. v4 issues
 /// them inside its try/catch, so a failure here is that catch's `continue
 /// normally`, not a 500.
-struct ConciergeInputs {
+/// The Concierge's inputs, read in v4's two separate `try`s (P4.D225, v4
+/// `8bd080267`): the settings — resolved WITH the chat when one asked, so a
+/// chat's own Concierge state (Vouched Safe, Uncensored) governs its pictures
+/// too — and, inside the classification block, the profiles.
+struct ConciergeSettings {
     settings: DangerousContentSettings,
-    all_profiles: Vec<Value>,
     cheap_settings: Option<Value>,
 }
 
-fn read_concierge_inputs(
-    conn: &rusqlite::Connection,
-    user_id: &str,
-) -> Result<ConciergeInputs, DbError> {
-    // v4 `repos.chatSettings.findByUserId(user.id)` →
-    // `resolveDangerousContentSettings(chatSettings ?? null)` with NO chat: this
-    // route has none, so the exempt / vouched / uncensored chat arms can never
-    // fire and the global bag is the whole answer.
-    let chat_settings = crate::db::chat_settings::find_by_user_id(conn, user_id)?;
+/// v4's settings `try`: `chatSettings = findByUserId(user.id)`, then (with a
+/// chat) `chatForConcierge = chats.findById(chatId)`; a throw keeps whatever was
+/// already read and WARNs `Could not load Concierge settings; using defaults`.
+fn read_concierge_settings(db: &Db, user_id: &str, chat_id: Option<&str>) -> ConciergeSettings {
+    let mut chat_settings: Option<Value> = None;
+    let mut chat: Option<Value> = None;
+    let read = (|| -> Result<(), DbError> {
+        chat_settings = db.read_main(|c| crate::db::chat_settings::find_by_user_id(c, user_id))?;
+        if let Some(id) = chat_id {
+            chat = db.read_main(|c| crate::db::chats_read::find_by_id(c, id))?;
+        }
+        Ok(())
+    })();
+    if let Err(e) = read {
+        tracing::warn!(
+            chat_id = ?chat_id,
+            error = %e,
+            "[Images v1] Could not load Concierge settings; using defaults"
+        );
+    }
     let global = chat_settings
         .as_ref()
         .and_then(|cs| cs.get("dangerousContentSettings"))
         .and_then(|d| serde_json::from_value::<DangerousContentSettings>(d.clone()).ok());
-    let resolved = crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
-        global, None,
+    let settings =
+        crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
+            global,
+            chat.as_ref(),
+        )
+        .settings;
+    tracing::debug!(
+        chat_id = ?chat_id,
+        mode = %settings.mode,
+        with_chat = chat.is_some(),
+        "[Images v1] Generate: resolved Concierge settings"
     );
-    Ok(ConciergeInputs {
-        settings: resolved.settings,
-        all_profiles: crate::db::connection_profiles::find_by_user_id(conn, user_id)?,
+    ConciergeSettings {
+        settings,
         cheap_settings: chat_settings
             .as_ref()
             .and_then(|cs| cs.get("cheapLLMSettings"))
             .cloned(),
-    })
+    }
+}
+
+/// The legacy dialog's understudy (v4 `8bd080267`): this route still draws from
+/// CONNECTION profiles, so its understudy is the uncensored TEXT resolver's
+/// pick, filtered to providers that can generate images — the filter applied
+/// to the explicit pick too.
+struct DialogUnderstudy<'a> {
+    db: &'a Db,
+    user_id: &'a str,
+    uncensored_text_profile_id: Option<&'a str>,
+}
+
+impl crate::services::dangerous_content::image_failover::UnderstudySource for DialogUnderstudy<'_> {
+    async fn resolve(
+        &self,
+        exclude: &[String],
+    ) -> Option<(
+        crate::services::dangerous_content::image_failover::FailoverProfile,
+        String,
+    )> {
+        let can_draw = |p: &Value| {
+            super::settings::supports_image_generation(
+                p.get("provider")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            )
+        };
+        let found = self
+            .db
+            .read_main(|conn| {
+                Ok(crate::services::dangerous_content::understudy::resolve_uncensored_text_understudy(
+                    conn,
+                    &crate::services::dangerous_content::provider_routing::ConnApiKeys::new(conn),
+                    crate::services::dangerous_content::understudy::TextUnderstudyLookup {
+                        user_id: self.user_id,
+                        uncensored_text_profile_id: self.uncensored_text_profile_id,
+                        exclude,
+                        turn_attachment_mime_types: &[],
+                        filter: Some(&can_draw),
+                    },
+                ))
+            })
+            .ok()
+            .flatten()?;
+        Some((
+            crate::services::dangerous_content::image_failover::FailoverProfile::from_row(
+                &found.row,
+            ),
+            found.api_key,
+        ))
+    }
 }
 
 /// v4 `handleGenerateImage` (`route.ts:177-408`), whole.
@@ -1606,32 +1681,33 @@ async fn run_images_generate(
     let original_profile_id = body.profile_id.clone();
 
     // ── the Concierge integration (route.ts:190-257) ────────────────────────
-    // ONE try/catch around the whole block: "Fail safe — never block on the
-    // Concierge errors". Every `?`-shaped failure below therefore lands in
+    // The settings first, in their own fail-safe `try` (v4 `8bd080267`), then
+    // ONE try/catch around the classification: "Fail safe — never block on the
+    // Concierge errors". Every `?`-shaped failure in the second lands in
     // `concierge_failed` and continues with the ORIGINAL profile.
-    let inputs = db.read_main(|c| read_concierge_inputs(c, user_id));
-    match inputs {
-        Err(e) => {
-            tracing::error!(
-                context = "Images v1",
-                user_id = %user_id,
-                error = %e,
-                "[Images v1] the Concierge classification failed, continuing normally"
-            );
-        }
-        Ok(inputs) => {
-            if inputs.settings.mode != "OFF" && inputs.settings.scan_image_prompts {
+    let concierge = read_concierge_settings(db, user_id, body.chat_id.as_deref());
+    if concierge.settings.mode != "OFF" && concierge.settings.scan_image_prompts {
+        match db.read_main(|c| crate::db::connection_profiles::find_by_user_id(c, user_id)) {
+            Err(e) => {
+                tracing::error!(
+                    context = "Images v1",
+                    user_id = %user_id,
+                    error = %e,
+                    "[Images v1] the Concierge classification failed, continuing normally"
+                );
+            }
+            Ok(all_profiles) => {
                 // v4 builds the selection from the DEFAULT profile (or the
                 // first) — `build_cheap_llm_selection` is `None` only when the
                 // user has no profiles at all, which is v4's `if (defaultProfile)`.
                 let selection = crate::services::image_job_common::build_cheap_llm_selection(
-                    &inputs.all_profiles,
-                    inputs.cheap_settings.as_ref(),
+                    &all_profiles,
+                    concierge.cheap_settings.as_ref(),
                 );
                 if let Some(selection) = selection {
                     let classification = seams
                         .classifier
-                        .classify(db, &body.prompt, &selection, user_id, &inputs.settings)
+                        .classify(db, &body.prompt, &selection, user_id, &concierge.settings)
                         .await;
                     if classification.is_dangerous {
                         tracing::info!(
@@ -1643,10 +1719,10 @@ async fn run_images_generate(
                                 .iter()
                                 .map(|c| c.category.clone())
                                 .collect::<Vec<_>>(),
-                            mode = %inputs.settings.mode,
+                            mode = %concierge.settings.mode,
                             "[Images v1] Front page image prompt classified as dangerous"
                         );
-                        if inputs.settings.mode == "AUTO_ROUTE" {
+                        if concierge.settings.mode == "AUTO_ROUTE" {
                             // v4 `allProfiles.find(p => p.isDangerousCompatible
                             // === true && p.id !== profile.id)` — the FIRST
                             // compatible profile in `findByUserId` order, NOT
@@ -1654,7 +1730,7 @@ async fn run_images_generate(
                             // (which is what the tool's reroute reads). The
                             // comparison is against the CURRENT `profile.id`,
                             // which at this point is still the requested one.
-                            let uncensored = inputs.all_profiles.iter().find(|p| {
+                            let uncensored = all_profiles.iter().find(|p| {
                                 p.get("isDangerousCompatible").and_then(Value::as_bool)
                                     == Some(true)
                                     && p.get("id").and_then(Value::as_str)
@@ -1740,41 +1816,96 @@ async fn run_images_generate(
         );
     }
 
-    // ── the shared params builder, with NO orientation (route.ts:277-296) ────
-    let model_name = profile.get("modelName").and_then(Value::as_str);
-    let built = crate::image_gen::params_builder::build_image_gen_params(
-        crate::image_gen::params_builder::ImageProfileLike {
-            provider: &provider_name,
-            model_name,
-            parameters: profile.get("parameters"),
+    // ── the provider call, through the Concierge's failover chokepoint ────────
+    // (v4 `8bd080267`). One call against one connection profile: the shared
+    // builder gives this route the profile's stored defaults, LoRAs and
+    // residual options with NO orientation ("this route's caller passes an
+    // explicit size and means it"). A refusal is retried once on an uncensored
+    // CONNECTION-profile understudy that can draw; the trail labels the rows
+    // `connection` (no `profileKind` key) and is NOT persisted — this route has
+    // no message to carry it. A failure escapes to the middleware's flat 500,
+    // as v4's unwrapped throw does.
+    let (prompt, overrides) = (&body.prompt, &body.overrides);
+    let attempt =
+        |candidate: crate::services::dangerous_content::image_failover::FailoverProfile,
+         key: String| async move {
+            let candidate_provider = candidate.provider.clone();
+            let built = crate::image_gen::params_builder::build_image_gen_params(
+                crate::image_gen::params_builder::ImageProfileLike {
+                    provider: &candidate_provider,
+                    model_name: candidate.row.get("modelName").and_then(Value::as_str),
+                    parameters: candidate.row.get("parameters"),
+                },
+                prompt,
+                overrides,
+                None,
+                "dall-e-3",
+                &crate::image_gen_data::image_declarations_for(&candidate_provider),
+                &crate::image_gen::params_builder::ImageParamsLogContext {
+                    context: "api.v1.images.generate",
+                    profile_id: Some(candidate.id.clone()),
+                    ..Default::default()
+                },
+            );
+            seams
+                .provider
+                .generate_image(&candidate_provider, &key, &built.params)
+                .await
+        };
+    let understudy = DialogUnderstudy {
+        db,
+        user_id,
+        uncensored_text_profile_id: concierge.settings.uncensored_text_profile_id.as_deref(),
+    };
+    let primary =
+        crate::services::dangerous_content::image_failover::FailoverProfile::from_row(&profile);
+    let primary_via = if primary.id != original_profile_id {
+        crate::services::route_trail::RouteAttemptVia::Concierge
+    } else {
+        crate::services::route_trail::RouteAttemptVia::Primary
+    };
+    let failover = match crate::services::dangerous_content::image_failover::generate_image_with_concierge_failover(
+        (primary, decrypted_key),
+        attempt,
+        &crate::services::dangerous_content::image_failover::ImageFailoverContext {
+            db,
+            chat_id: body.chat_id.as_deref(),
+            purpose: crate::services::dangerous_content::image_failover::ImagePurpose::Dialog,
+            settings: &concierge.settings,
+            understudy: &understudy,
+            profile_kind: crate::services::route_trail::RouteProfileKind::Connection,
+            primary_via,
         },
-        &body.prompt,
-        &body.overrides,
-        // "No orientation is resolved: this route's caller passes an explicit
-        // size and means it."
-        None,
-        "dall-e-3",
-        &crate::image_gen_data::image_declarations_for(&provider_name),
-        &crate::image_gen::params_builder::ImageParamsLogContext {
-            context: "api.v1.images.generate",
-            profile_id: profile
-                .get("id")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            ..Default::default()
-        },
-    );
-
-    // ── the provider call (route.ts:298) ────────────────────────────────────
-    // v4 does not wrap it: a throw escapes to the middleware's flat 500.
-    let response = match seams
-        .provider
-        .generate_image(&provider_name, &decrypted_key, &built.params)
-        .await
+    )
+    .await
     {
-        Ok(r) => r,
+        Ok(f) => f,
         Err(_) => return internal_error(),
     };
+    if failover.rerouted {
+        let original = profile
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        tracing::info!(
+            user_id = %user_id,
+            original_profile_id = %original,
+            answering_profile_id = %failover.profile.id,
+            answering_provider = %failover.profile.provider,
+            "[Images v1] Concierge rerouted a refused image request"
+        );
+        // v4 `profile = failover.profile`: the file row's `generationModel` and
+        // the metadata name the profile that actually drew.
+        profile = failover.profile.row.clone();
+    }
+    let response = failover.result;
+    let provider_name = profile
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let model_name = profile.get("modelName").and_then(Value::as_str);
 
     // ── store each image (route.ts:304-318) ─────────────────────────────────
     // Build `linkedTo` from the tags plus the chat that asked for the image.
