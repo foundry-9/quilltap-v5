@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — test(fixtures): widen the 41 chats-bearing pairs through v4's real Concierge migrations; rebuild the migration-vintage trio (P4.D226 unit 1)
+
+_Versions: web 0.0.197._
+
+Every committed `*-main.db` that carries a `chats` table (41 of them) now has
+the refusal-ledger columns and the three Concierge-mode columns, added by
+running v4's own `add-chat-refusal-ledger-v1` and `add-chat-concierge-mode-v1`
+modules from a worktree pinned at `4d370a90f`, backfill included (8 rows in 4
+pairs moved off Moderated by v4's legacy table). The migration-vintage trio is
+rebuilt at the same pin through v4's migration runner. The fixture migrator
+gains a `--module <file>#<export>` arm, and its `--report-only` now measures a
+throwaway copy: a dry run opens v4's migration connection read-write, which
+re-encrypted the committed file's first page and changed its bytes.
+
 #### 2026-09-25 — docs(porting): P4.D225 lane complete — the order's status header
 
 _Versions: none (docs only)._

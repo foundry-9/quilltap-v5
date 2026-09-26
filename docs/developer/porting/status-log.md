@@ -150878,3 +150878,92 @@ Regen outputs staged under `/tmp/p4d225/`.
   (the vendored schema is byte-identical to `49059fb14`'s; the guard reads
   the LIVE checkout at `acadcc7cd`, which later lanes re-vendor). Tier R:
   **266 cases / 0 failures** at the pin.
+
+## P4.D226 — the three Concierge states (v4 `4d370a90f` #75, server) — lane record
+
+Lane branch `claude/p4-three-states-work-orders-858137`, cut from P4.D225's lane
+branch `claude/p4-d225-refusal-substrate-5a5d06` at its LANE COMPLETE tip
+`17c49e013` (the order's `claude/p4-d226-three-states-<hash>` branch name was
+not used — the session's worktree carries the harness-made name). Pins: target
+`/tmp/qt-v4-pin-p4d226-4d370a90f`, before `/tmp/qt-v4-pin-p4d226-49059fb14`
+(ledger §5.1, the three symlink classes; marker: `classifier-switch.ts` 67 lines
+at the target, absent at `49059fb14`). §R.2 probe at lane start: PASS (`main`,
+`acadcc7cd`, clean, both logs empty). Node 24.13.1. Regen outputs staged under
+`/tmp/p4d226/`.
+
+### Unit 0 — the first act (§R.12): P4.D225's family list at `4d370a90f`
+
+P4.D225's 53-family list was not committed (its `/tmp/p4d225` staging was gone),
+so it was re-derived from its §H + the families its record names: 41 families
+(`openai_chaining_fallback` lives inside `primary_stream_tier3`'s binary).
+`recipe_sweep.py --run-all --v4 /tmp/qt-v4-pin-p4d226-4d370a90f --families …`
+on P4.D225's tip, unchanged: **29 ok, 12 red — every red one of #75's hunks or
+the D23 tripwire; none a P4.D225 handoff:**
+
+| family | why red at `4d370a90f` |
+|---|---|
+| `chat_create_capstone` | `cs_monitored_explicit_noop`: v4 now answers 400 on `monitored` (the three-value enum) |
+| `orchestrator_tier3` | `danger_live_reroute`: the chat's `UNCENSORED` override no longer reads Unmoderated |
+| `post_office_concierge_lantern_suparna` | the auto-flag sentences ("set it back to Moderated", "switched this chat to Unmoderated") |
+| `danger_resolver` (both tests) | the resolver's arms and the four-state flip |
+| `refusal_ledger_tier3` | "switched a chat to Unmoderated" |
+| `cheap_llm_fallback` | the same auto-switch line |
+| `image_failover_tier3` | the same auto-switch line (`rerouted-earns-the-switch`) |
+| `post_office_writers_tier3` | v4 has no builder for the five retired manual kinds — **a fence**, see unit 2 |
+| `story_background_job_tier3` | `danger_candid`: the chat's legacy override no longer reads Unmoderated |
+| `salon_reads` | the chat GET drops `conciergeOverride` |
+| `provisioning` | the D23 tripwire (two statements) |
+| `danger_trigger` | the two operator arms, keyed on the legacy pair |
+
+Result file: `/tmp/p4d226/first-act-4d370a90f.json` (kept in the lane's scratch).
+
+### Unit 1 — the 41 chats-bearing pairs widened through v4's REAL modules + the vintage trio rebuilt
+
+- **The census:** 106 committed `*.db` + the migration-vintage trio; **41** carry
+  a `chats` table (the order's "42" = these 41 + `migration-vintage/quilltap.db`).
+  None carried the ledger or mode columns before.
+- **The migrator's module-running arm** (`migrate-memories-fixture-columns.ts
+  --module <file>#<export>`, repeatable, argv order): P4.D225 had built the
+  `runV4Migrations` helper but not the flag (its lane record). In module mode
+  the column table is NOT applied, so a run moves exactly what the modules do.
+- ⚠ **Measured trap, fixed:** a `--report-only` pass MUTATED every committed
+  file. `shouldRun()` opens v4's migration connection read-WRITE (and sets
+  `journal_mode = WAL`); the helper skipped its journal-mode restore in report
+  mode, and even with the restore the bytes still move — any read-write open
+  re-encrypts page 1 under a fresh ChaCha20 nonce (41/41 copies differed;
+  logically identical — schema, rows and journal mode compared). Fixed twice:
+  `v4-migrations.ts` now restores the journal mode in both modes, and the
+  migrator's module dry run measures a throwaway COPY (the committed file's md5
+  proven unmoved).
+- **The three known unguarded `ADD COLUMN` plants** (`salon-reads.test.ts:176/
+  188`, `chat-scenario-routes.test.ts:240/243`, `p4d171-columns.ts:27`) plant
+  `cycleOrderParticipantIds` / `transcriptVersion` only — none a column this
+  widen adds: no duplicate-column hazard.
+- Dry run (copies): 41 × `WOULD RUN add-chat-refusal-ledger-v1; WOULD RUN
+  add-chat-concierge-mode-v1`. Applied from the target pin:
+  ```
+  cd /tmp/qt-v4-pin-p4d226-4d370a90f
+  $N/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+    --module migrations/scripts/add-chat-refusal-ledger.ts#addChatRefusalLedgerMigration \
+    --module migrations/scripts/add-chat-concierge-mode.ts#addChatConciergeModeMigration \
+    $F/<the 41 *-main.db>
+  ```
+  → 41 × `Added 2 refusal ledger column(s)` + `Added 3 Concierge mode column(s)`;
+  **the backfill moved 8 rows in 4 pairs**: `almanack` 1 (dangerous →
+  unmoderated/concierge/classifier), `chat-send` 2 (an `OFF` chat → locked/
+  operator/migration; a dangerous one → unmoderated/concierge/classifier),
+  `home` 3 (`OFF` + dangerous → **locked** — the override-precedence row;
+  `UNCENSORED` → unmoderated/operator/migration; dangerous → classifier),
+  `in-scene-voiced` 2 (both `UNCENSORED` → unmoderated/operator/migration). Every
+  other row carries the MIGRATION's literal `'moderated'` default (not NULL — a
+  migrated instance's shape). A re-run reports both modules `not needed`; no
+  journal residue.
+- ⚠ **Order premise corrected:** "`chat-send-main`'s `OFF`+dangerous chat becomes
+  LOCKED" — `chat-send`'s `OFF` chat is NOT dangerous (`isDangerousChat` NULL);
+  the `OFF` + dangerous → Locked row is `home-main`'s `c3000000-…01`.
+- **The migration-vintage trio REBUILT** at the target pin
+  (`build-migration-vintage-fixture.ts`, v4's `MigrationRunner`): 117 migrations
+  run, 88 skipped; both new migrations ran (`rowsBackfilled 0` — the instance is
+  empty of user rows by design).
+- Readers: every chats-reading family — proven by the lane's full sweep (unit
+  11 / the gate), not per-unit.

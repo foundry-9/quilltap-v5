@@ -129,8 +129,12 @@ export async function runV4Migrations(opts: RunV4MigrationsOptions): Promise<str
     rmSync(scratch, { recursive: true, force: true });
   }
 
-  // Put the header's journal mode back and sweep WAL residue.
-  if (!opts.reportOnly) {
+  // Put the header's journal mode back and sweep WAL residue — in BOTH modes.
+  // `reportOnly` writes no migration, but `shouldRun()` still opens v4's
+  // migration connection, which sets `journal_mode = WAL` in the header: a dry
+  // run over a committed fixture left it byte-changed until P4.D226 measured it
+  // (41 of 41 copies differed after a `--report-only` pass).
+  {
     const db = new Database(opts.dbPath);
     try {
       db.pragma(`key = "x'${keyHex(opts.pepperBase64)}'"`);

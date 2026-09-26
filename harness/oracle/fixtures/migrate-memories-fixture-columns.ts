@@ -279,12 +279,39 @@
  *   same change, with the human's approval. Any FUTURE widen of a pair an
  *   oracle case plants columns into needs the same check: grep the cases
  *   for `ADD COLUMN` over the pair before applying.)
+ *
+ * ## The module-running arm (`--module`, P4.D226)
+ *
+ * `--module <file>#<exportName>` (repeatable, in the order given) switches the
+ * migrator to a DIFFERENT mode: instead of the column table below it imports
+ * and RUNS v4's REAL migration modules (`shouldRun()` / `run()`) against each
+ * target through `harness/oracle/lib/v4-migrations.ts` — the only shape that
+ * carries a migration's JavaScript backfill (#75's `add-chat-concierge-mode-
+ * v1`) or a DROP (#76). The column table is NOT applied in this mode, so a
+ * module run measures and moves exactly what the modules do. The pepper is
+ * found the same way (each known one in turn); `--report-only` reports each
+ * module's `shouldRun()` verdict and writes nothing. cwd = the v4 PIN the
+ * modules are taken from (never the live checkout when it is past the lane's
+ * target).
+ *
+ * The P4.D226 widening (v4 `4d370a90f` — the refusal ledger + the three
+ * Concierge-mode columns, BACKFILL included, over all 41 chats-bearing pairs):
+ *   cd /tmp/qt-v4-pin-p4d226-4d370a90f
+ *   $N/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+ *     --module migrations/scripts/add-chat-refusal-ledger.ts#addChatRefusalLedgerMigration \
+ *     --module migrations/scripts/add-chat-concierge-mode.ts#addChatConciergeModeMigration \
+ *     [--report-only] $F/<every *-main.db carrying a chats table>
+ *   (the list, the measured report and the four backfilled pairs are in the
+ *   P4.D226 lane record in `status-log.md`)
  */
 
-import { readFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { runV4Migrations, type V4MigrationRef } from '../lib/v4-migrations';
 
 // Resolve better-sqlite3 (v4 aliases it to better-sqlite3-multiple-ciphers — the
 // sqleet/ChaCha20 binding) from the v4 checkout: run this script with cwd there.
@@ -499,14 +526,82 @@ const MIGRATIONS: {
   },
 ];
 
-function main(): void {
+/** The first known test pepper that opens `path` (read-only probe). */
+function pepperFor(path: string): { name: string; base64: string } {
+  for (const pepper of TEST_PEPPERS) {
+    const candidate = new Database(path, { readonly: true });
+    try {
+      candidate.pragma(`key = "x'${Buffer.from(pepper.base64, 'base64').toString('hex')}'"`);
+      candidate.prepare(`SELECT name FROM sqlite_master LIMIT 1`).get();
+      return pepper;
+    } catch {
+      // try the next
+    } finally {
+      candidate.close();
+    }
+  }
+  throw new Error(
+    `no known test pepper opens ${path} (tried: ${TEST_PEPPERS.map((p) => p.name).join(', ')})`,
+  );
+}
+
+/** The `--module` arm (P4.D226): v4's REAL migration modules, in argv order. */
+async function runModules(
+  paths: string[],
+  modules: V4MigrationRef[],
+  reportOnly: boolean,
+): Promise<void> {
+  for (const path of paths) {
+    const pepper = pepperFor(path);
+    // A dry run still opens v4's migration connection read-WRITE (`shouldRun()`
+    // goes through it), and any read-write open re-encrypts page 1 under a fresh
+    // ChaCha20 nonce — the file stays logically identical but its BYTES move
+    // (measured, P4.D226). So `--report-only` measures a throwaway copy and the
+    // committed fixture is never opened for writing.
+    const scratch = reportOnly ? mkdtempSync(join(tmpdir(), 'qt-module-dry-')) : null;
+    const target = scratch ? join(scratch, basename(path)) : path;
+    if (scratch) copyFileSync(path, target);
+    try {
+      const report = await runV4Migrations({
+        dbPath: target,
+        pepperBase64: pepper.base64,
+        migrations: modules,
+        reportOnly,
+      });
+      process.stderr.write(`${path}: ${report.join('; ')}\n`);
+    } finally {
+      if (scratch) rmSync(scratch, { recursive: true, force: true });
+    }
+  }
+}
+
+async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const reportOnly = argv.includes('--report-only');
-  const paths = argv.filter((a) => a !== '--report-only');
+  const modules: V4MigrationRef[] = [];
+  const paths: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--report-only') continue;
+    if (a === '--module') {
+      const spec = argv[++i];
+      const hash = spec?.indexOf('#') ?? -1;
+      if (!spec || hash <= 0 || hash === spec.length - 1) {
+        throw new Error(`--module wants <file>#<exportName>, got ${JSON.stringify(spec)}`);
+      }
+      modules.push({ file: spec.slice(0, hash), exportName: spec.slice(hash + 1) });
+      continue;
+    }
+    paths.push(a);
+  }
   if (paths.length === 0) {
     throw new Error(
-      'usage: migrate-memories-fixture-columns.ts [--report-only] <fixture.db> [<fixture.db> …]',
+      'usage: migrate-memories-fixture-columns.ts [--report-only] [--module <file>#<export> …] <fixture.db> [<fixture.db> …]',
     );
+  }
+  if (modules.length > 0) {
+    await runModules(paths, modules, reportOnly);
+    return;
   }
 
   for (const path of paths) {
@@ -585,4 +680,7 @@ function main(): void {
   }
 }
 
-main();
+main().catch((error) => {
+  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+  process.exit(1);
+});
