@@ -172,7 +172,9 @@ mod tests {
         // plus `chats.chatInforms` and `counts.chatInforms`).
         // P4.D225: 96,049 at v4 `49059fb14` (`8bd080267` #73's route-trail
         // widening — the five-valued `evidence`, `profileKind`).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 96_049);
+        // P4.D226: 96,967 at v4 `4d370a90f` (#75: `conciergeOverride`
+        // deprecated, the three Concierge keys after it).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 96_967);
     }
 
     #[test]

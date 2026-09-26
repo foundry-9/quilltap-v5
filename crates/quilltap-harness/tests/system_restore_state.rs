@@ -903,6 +903,10 @@ fn archive_for(name: &str) -> &'static str {
         // every other committed archive has both columns NULL on both chats and
         // cannot see the strip at all.
         "restore_bug158_replace" => "restore-archive-bug158.zip",
+        // P4.D226 (v4 `4d370a90f`, #75): the four rows v4's legacy Concierge
+        // derive table distinguishes, plus a 4.10 row it leaves alone. Built
+        // by `harness/oracle/fixtures/derive-restore-archive-concierge-legacy.py`.
+        "restore_concierge_legacy_replace" => "restore-archive-concierge-legacy.zip",
         "restore_legacy_archive" => "restore-archive-legacy.zip",
         "restore_minimal" => "restore-archive-minimal.zip",
         "restore_new_account" => "restore-archive.zip",
@@ -1264,13 +1268,15 @@ fn system_restore_state_equivalence() {
     }
 
     // 18 + 1 = 19: P4.D208's bug-158 arm (the seeded summary a stale backup
-    // carries, stripped on the way in).
+    // carries, stripped on the way in). 19 + 1 = 20: P4.D226's legacy
+    // Concierge arm (the three states derived from the legacy pair).
     assert_eq!(
-        seen, 19,
-        "expected all nineteen restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 20,
+        "expected all twenty restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
-         + P4.D158's two bag-key arms + P4.D208's bug-158 arm)"
+         + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
+         + P4.D226's legacy-Concierge arm)"
     );
     assert!(
         failures.is_empty(),

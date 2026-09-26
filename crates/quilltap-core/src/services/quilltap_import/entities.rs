@@ -759,8 +759,17 @@ fn create_chat(
     obj.remove("messages");
     obj.remove("createdAt");
     obj.remove("updatedAt");
-    let mut create: ChatCreate =
-        serde_json::from_value(Value::Object(obj)).map_err(|e| e.to_string())?;
+    // v4 `4d370a90f` (#75): a bundle from before the three Concierge states
+    // carries only the legacy pair; derive the state so the chat keeps its
+    // behaviour (`withConciergeModeFromLegacy(stripScenarioSeededSummary(…))` at
+    // both of v4's `importChats` create sites — the one fork here covers both,
+    // as for the strip below). The derive reads only the Concierge keys and the
+    // strip only the summary pair, so applying it to the bundle's JSON before
+    // the typed decode is v4's composition exactly.
+    let obj = crate::services::dangerous_content::chat_override::with_concierge_mode_from_legacy(
+        Value::Object(obj),
+    );
+    let mut create: ChatCreate = serde_json::from_value(obj).map_err(|e| e.to_string())?;
     // v4 bug 158 (`da9c4f34f`): a pre-fix export carries the chat's scenario in
     // `contextSummary` as well as `scenarioText`; the boot heal that cleared
     // those rows has long since run in this instance, so the import is the only

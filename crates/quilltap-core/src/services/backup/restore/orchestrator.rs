@@ -468,14 +468,24 @@ fn restore_on_writer(
         for chat in &data.chats {
             let title = s(chat, "title");
             let id = id_of(chat);
-            let mut create: crate::db::chats::ChatCreate =
-                match serde_json::from_value(chat.clone()) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        w.push(format!("Failed to restore chat \"{title}\": {e}"));
-                        continue;
-                    }
-                };
+            // v4 `4d370a90f` (#75), `restore.ts:207`: a backup from before the
+            // three Concierge states carries only the legacy pair; derive the
+            // state so the restored chat keeps its behaviour. The derive reads
+            // only the Concierge keys and the bug-158 strip below only the
+            // summary pair, so deriving on the archive's JSON before the typed
+            // decode is v4's `withConciergeModeFromLegacy(stripScenarioSeeded
+            // Summary(chat))` exactly.
+            let mut create: crate::db::chats::ChatCreate = match serde_json::from_value(
+                crate::services::dangerous_content::chat_override::with_concierge_mode_from_legacy(
+                    chat.clone(),
+                ),
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    w.push(format!("Failed to restore chat \"{title}\": {e}"));
+                    continue;
+                }
+            };
             // The user-scoped `create` re-owns the chat (see phase 1).
             create.user_id = target_user_id.to_string();
             // P4.D208 OUT-OF-MANDATE — P4.D205 preserves. v4 bug 158

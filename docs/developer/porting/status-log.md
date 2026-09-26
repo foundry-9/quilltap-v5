@@ -151243,3 +151243,56 @@ Result file: `/tmp/p4d226/first-act-4d370a90f.json` (kept in the lane's scratch)
     Concierge state").
   - (A first M8 attempt ran with the env vars in a separate shell and
     SKIPPED in 0.00s — caught by the timing, re-run inline.)
+- Unit 4's workspace gate (`1ad8f9171`, no env block): 640 test binaries /
+  3,808 passed / 3 failed / 3 ignored. The three reds are unit 3's three,
+  unchanged: `provider_sdk_version_guard` ×2 (pre-existing on the base, a
+  unifier handoff) and `qtap_schema_embed_guard` (unit 5 re-vendors it).
+- **P4.D226 unit 5 — restore + import + the export schema (core 0.0.1081,
+  harness 0.0.1000, web 0.0.199).**
+  - Both `chats.create` sites run the chat's JSON through
+    `with_concierge_mode_from_legacy` before the typed decode
+    (`backup/restore/orchestrator.rs`, `quilltap_import/entities.rs::create_chat`).
+    That is v4's `withConciergeModeFromLegacy(stripScenarioSeededSummary(chat))`
+    exactly: the derive reads only the Concierge keys and the strip only the
+    summary pair. v4 has TWO import create sites (`import-entities.ts:353`
+    duplicate, `:383` preserve/plain); v5's one forked `create_chat` covers
+    both, as for the bug-158 strip.
+  - The export schema was byte-copied from the pin (96,049 → 96,967 bytes).
+    Both hard-coded size copies moved: `qtap_schema_embed_guard::VENDORED_BYTES`
+    and `generators::qtap_schema`'s own test.
+  - `schema-key-order.json` was regenerated through the shipped
+    `dump-export-key-order.ts` at the pin. Its only delta is the three keys
+    after `conciergeOverride`.
+  - NEW committed archive `restore-archive-concierge-legacy.zip`, derived from
+    `restore-archive.zip` by the committed
+    `harness/oracle/fixtures/derive-restore-archive-concierge-legacy.py`:
+    - c…0001 UNCENSORED;
+    - c…0002 OFF + dangerous (the override wins → locked);
+    - c…0003 (clone, no messages) dangerous only → concierge/classifier;
+    - c…0004 (clone) a 4.10 row already `locked`/operator/manual over a stale
+      UNCENSORED override → left alone;
+    - `counts.chats` 2 → 4.
+    It ADDS an archive and rebuilds none. `system_restore_state`'s case count
+    moves 19 → 20.
+  - NEW import arm `execute_concierge_legacy`: five chats built from the real
+    cross-instance chats export, the four derive rows plus a plain chat
+    (explicit `'moderated'`, no provenance). `system_import_state`'s count
+    moves 40 → 41, with a non-vacuity pin that v4's end-state carries all five
+    rows.
+  - Through the driver at the pin: 9/10 OK on the first pass
+    (`system_restore_state`, `system_restore_equivalence`,
+    `system_import_equivalence`, `system_export_equivalence`,
+    `system_backup_equivalence`, `qtap_import_equivalence`,
+    `qtap_schema_validate_equivalence`, `restore_vintage_state`,
+    `chat_export_equivalence`). `system_import_state` tripped only its
+    case-count constant; every case matched. It is green after the count and
+    the pin.
+  - `qtap_schema_embed_guard` is GREEN (the live checkout's file is
+    byte-identical to the pin's).
+  - Red-first, by mutation (both wraps → `identity`, reverted):
+    - `system_import_state` RED on `execute_concierge_legacy` alone
+      ("main.chats differs"). Every other import payload is a 4.10 export that
+      already carries `conciergeMode`.
+    - `system_restore_state` RED on EVERY case. Every committed archive
+      predates the three states, so v4 now writes an explicit `'moderated'`
+      on every restored chat, where the unported path left NULL.

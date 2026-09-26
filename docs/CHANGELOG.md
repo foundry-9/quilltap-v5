@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-26 — feat(concierge): restore and .qtap import derive the three states from the legacy pair; the export schema re-vendored (P4.D226 unit 5)
+
+_Versions: core 0.0.1081, harness 0.0.1000, web 0.0.199._
+
+- Restore and `.qtap` import run each chat through `with_concierge_mode_from_legacy` before it is created (v4 `4d370a90f`): a chat with no `conciergeMode` gets its state derived from `conciergeOverride` / `isDangerousChat`; a chat that already carries one is left alone.
+- The vendored export schema is v4's at `4d370a90f` (`conciergeOverride` deprecated; `conciergeMode`, `conciergeModeSetBy`, `conciergeModeReason` added); the export key order gains the three keys.
+- New restore archive `restore-archive-concierge-legacy.zip` (derived by a committed script) and a new import arm `execute_concierge_legacy`, each covering every row of v4's derive table.
+
 #### 2026-09-25 — feat(concierge): the three states on the wire, the create's applied state, and the greeting's Locked gate (P4.D226 unit 4)
 
 _Versions: core 0.0.1080, harness 0.0.999, web 0.0.198._

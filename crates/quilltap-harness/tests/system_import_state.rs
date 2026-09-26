@@ -1195,7 +1195,49 @@ fn system_import_execute_state_equivalence() {
     // …+ P4.63's bug-105 arm (a plain equality since v4 converged at
     // `679e450e3` — P4.D131).
     // …+ P4.106's three `execute_chats_informs_*` arms (37 + 3 = 40).
-    assert_eq!(ran, 40, "expected 40 cases, ran {ran}");
+    // …+ P4.D226's `execute_concierge_legacy` arm (40 + 1 = 41).
+    assert_eq!(ran, 41, "expected 41 cases, ran {ran}");
+    // [P4.D226] The legacy-Concierge arm is non-vacuous only if v4's end-state
+    // really took every row of the derive table — a payload that lost its
+    // legacy keys would land five Moderated chats on BOTH sides and still be
+    // equal. v5's end-state is the whole-state diff's.
+    {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == "execute_concierge_legacy")
+            .expect("the oracle is missing `execute_concierge_legacy`");
+        let mut got: Vec<(String, Value, Value, Value)> = case["state"]["main"]["chats"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|c| {
+                let title = c["title"].as_str()?;
+                title.starts_with("Concierge Legacy ").then(|| {
+                    (
+                        title.to_string(),
+                        c["conciergeMode"].clone(),
+                        c["conciergeModeSetBy"].clone(),
+                        c["conciergeModeReason"].clone(),
+                    )
+                })
+            })
+            .collect();
+        got.sort_by(|a, b| a.0.cmp(&b.0));
+        let row = |n: u8, m: &str, by: Value, why: Value| {
+            (format!("Concierge Legacy {n}"), json!(m), by, why)
+        };
+        assert_eq!(
+            got,
+            vec![
+                row(1, "unmoderated", json!("operator"), json!("migration")),
+                row(2, "locked", json!("operator"), json!("migration")),
+                row(3, "unmoderated", json!("concierge"), json!("classifier")),
+                row(4, "locked", json!("operator"), json!("manual")),
+                row(5, "moderated", Value::Null, Value::Null),
+            ],
+            "v4's end-state must carry every row of the legacy derive table"
+        );
+    }
     // [P4.106 item 6] The chats-only `.qtap` over planted informs — non-vacuous
     // by construction: the payload carries all five rows (two pending, two
     // consumed, one for a seat its chat lacks), the target starts with none,

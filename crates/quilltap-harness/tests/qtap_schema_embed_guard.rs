@@ -32,7 +32,10 @@ use serde_json::{json, Value};
 /// trail (`evidence` five-valued, `profileKind` between `evidence` and
 /// `detail`, the three descriptions); `49059fb14` left the file alone (the
 /// refusal ledger is NOT exported).
-const VENDORED_BYTES: usize = 96_049;
+/// P4.D226: 96,967 at v4 `4d370a90f` — #75's `chats.conciergeOverride`
+/// DEPRECATED (its description rewritten) and the three Concierge keys
+/// `conciergeMode` / `conciergeModeSetBy` / `conciergeModeReason` after it.
+const VENDORED_BYTES: usize = 96_967;
 
 fn v4_root() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("QT_V4_ROOT") {

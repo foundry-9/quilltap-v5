@@ -1429,6 +1429,53 @@ function bug105SeedAbortPayload(): { manifest: unknown; data: Record<string, unk
   };
 }
 
+/**
+ * [P4.D226 → v4 `4d370a90f`, #75] A `.qtap` from before the three Concierge
+ * states: its chats carry only the legacy pair. `import-entities.ts:383` wraps
+ * the create in `withConciergeModeFromLegacy`, so each chat's state is DERIVED
+ * — one chat per row of v4's derive table, a plain chat (no legacy key at all →
+ * an explicit `'moderated'`, no provenance), and a 4.10 chat whose
+ * `conciergeMode` is already set and is left alone over a stale override.
+ *
+ * Built from the real export of the fixture's chats (`chatsInformsPayload`,
+ * every id rewritten so the chats are new to the target), keeping only the
+ * first chat as the template and dropping the informs that referenced it.
+ */
+function conciergeLegacyPayload(base: { manifest: unknown; data: Record<string, unknown[]> }) {
+  const p = JSON.parse(JSON.stringify(rewriteIds(base))) as {
+    manifest: unknown;
+    data: Record<string, unknown[]>;
+  };
+  const tmpl = p.data.chats[0] as Record<string, unknown>;
+  const mk = (n: number, extra: Record<string, unknown>) => {
+    const c = JSON.parse(JSON.stringify(tmpl)) as Record<string, unknown>;
+    delete c.conciergeMode;
+    delete c.conciergeModeSetBy;
+    delete c.conciergeModeReason;
+    delete c.conciergeOverride;
+    c.isDangerousChat = false;
+    c.id = `ad226000-0000-4000-8000-00000000000${n}`;
+    c.title = `Concierge Legacy ${n}`;
+    c.messages = [];
+    return { ...c, ...extra };
+  };
+  p.data = {
+    chats: [
+      mk(1, { conciergeOverride: 'UNCENSORED' }),
+      mk(2, { conciergeOverride: 'OFF', isDangerousChat: true }),
+      mk(3, { isDangerousChat: true }),
+      mk(4, {
+        conciergeOverride: 'UNCENSORED',
+        conciergeMode: 'locked',
+        conciergeModeSetBy: 'operator',
+        conciergeModeReason: 'manual',
+      }),
+      mk(5, {}),
+    ],
+  };
+  return p;
+}
+
 function executeCase(
   name: string,
   payload: (spec: Spec) => Promise<unknown> | unknown,
@@ -1857,6 +1904,12 @@ async function main(): Promise<void> {
       includeRelatedEntities: false,
     }),
     executeCase('execute_chats_informs_cross_instance', () => rewriteIds(chatsInformsPayload), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // P4.D226 (`4d370a90f`, #75): the legacy Concierge pair derived on import.
+    executeCase('execute_concierge_legacy', () => conciergeLegacyPayload(chatsInformsPayload), {
       conflictStrategy: 'skip',
       includeMemories: false,
       includeRelatedEntities: false,

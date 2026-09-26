@@ -245,6 +245,18 @@ const RESTORE_CASES: Array<{
   // is not the seed, however much of the scenario it quotes.
   { name: 'restore_bug158_replace', archive: 'restore-archive-bug158.zip' },
 
+  // ── P4.D226 (`4d370a90f`, #75): a backup from before the three states ──────
+  //
+  // `restore-archive-concierge-legacy.zip` is `restore-archive.zip` with its
+  // chats given the four rows v4's `deriveConciergeModeFromLegacy` table tells
+  // apart (UNCENSORED → unmoderated/operator/migration; OFF + dangerous →
+  // locked, the override winning; dangerous alone → unmoderated/concierge/
+  // classifier) plus a 4.10 row whose `conciergeMode` is already set and is
+  // left alone over a stale override. `restore.ts:207` wraps the create in
+  // `withConciergeModeFromLegacy`. Built by
+  // `fixtures/derive-restore-archive-concierge-legacy.py`.
+  { name: 'restore_concierge_legacy_replace', archive: 'restore-archive-concierge-legacy.zip' },
+
   // ── P4.D126 (`e000d6bfc`, bug 103): the columns an older archive predates ─
   //
   // `restore-archive-legacy-profiles.zip` is the ONE archive that can see the
