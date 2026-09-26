@@ -115,14 +115,17 @@ The **Starting Scenario** box need not be filled by your own hand. On the same l
 
 Some conversations announce their character before the first syllable is spoken, and it has always been a small indignity to have to start such a chat in the ordinary way, wait for the room to be dressed, open the sidebar, and only *then* inform the Concierge of what everybody already knew — by which time the opening line had gone out through the ordinary desk and, on occasion, come back refused.
 
-The new-chat form therefore carries **The Concierge** directly above **Starting Scenario**, offering the same four postures as the chat's own sidebar, in the same two companies:
+The new-chat form therefore carries **The Concierge** directly above **Starting Scenario**, offering the same three postures as the chat's own sidebar:
 
-- **The Concierge decides** — *Monitored* (the default, and the state of every chat that has ever been created without a word on the subject) and *Flagged*.
-- **You decide** — *Vouched Safe* and *Uncensored*.
+- *Moderated* — the default, and the state of every chat created without a word on the subject (unless you have told the Concierge that **New chats start as** Unmoderated, on his tab at `/settings?tab=concierge&section=refusals`). The usual providers first; the uncensored desk only when one of them refuses.
+- *Unmoderated* — the uncensored desk and nowhere else.
+- *Locked* — the usual providers only, and a refusal stands.
 
-Beneath the dropdown, the Concierge states plainly what the posture you have selected commits him to. Choose one other than Monitored and he posts a brief note at the top of the new conversation saying so, immediately after the system prompt and before the scene is set — the history is thereby honest about which arrangement was in force from the very first word. The opening greeting is then composed under that arrangement: a chat opened *Uncensored* goes to the frank desk on the first attempt rather than after a refusal, and a chat opened *Vouched Safe* is never rerouted at all.
+Beneath the dropdown, the Concierge states plainly what the posture you have selected commits him to. Choose one other than Moderated and he posts a brief note at the top of the new conversation saying so, immediately after the system prompt and before the scene is set — the history is thereby honest about which arrangement was in force from the very first word. The opening greeting is then composed under that arrangement: a chat opened *Unmoderated* goes to the frank desk on the first attempt rather than after a refusal, and a chat opened *Locked* is never rerouted at all.
 
-Two consequences worth knowing before you choose. A chat created *Uncensored* or *Flagged* wears its mark in every list from its first appearance, and vanishes the moment you pull the **Quick-hide** cord with *Dangerous Chats* selected — which is generally the point. And when you take a conversation elsewhere by way of **Continue Elsewhere**, the new venue inherits the old one's posture, so a spirited conversation does not quietly become a decorous one on changing rooms; the dropdown is right there should you wish otherwise.
+Two consequences worth knowing before you choose. A chat created *Unmoderated* wears its mark in every list from its first appearance, and vanishes the moment you pull the **Quick-hide** cord with *Dangerous Chats* selected — which is generally the point. And when you take a conversation elsewhere by way of **Continue Elsewhere**, the new venue inherits the old one's posture, so a spirited conversation does not quietly become a decorous one on changing rooms; the dropdown is right there should you wish otherwise.
+
+Should the Concierge be off duty altogether (see [The Concierge](the-concierge.md)), the dropdown is shown but disabled, with a note directing you to the switch.
 
 None of this is a life sentence. The **The Concierge** control in the chat's own sidebar remains exactly where it was, ready to reconsider the matter at any hour.
 
@@ -363,12 +366,13 @@ Quilltap thereupon does the heavy lifting:
 - A fresh chat is created with the chosen project and scenario.
 - The Host posts a brief notice at the top of the new chat linking back to the previous one.
 - The Librarian's most recent summary, together with every message that followed it, is replayed into the new chat — your characters carry on, mid-thought, as though the change of address were a passing remark.
+- Anyone from the old cast who did not come along is named by the Host at the end of the carried-over history, as having remained behind — not in the room, unable to hear, unable to answer — so the travelling party does not go on addressing an empty chair. (Only their own lines are left out of the carryover; everyone else's remarks to them come along.) See [The Host's Introductions](salon-host-introductions.md).
 - The turn order, who is up to speak, and whether the proceedings are paused are all preserved, so nothing in the conversational rhythm is lost.
 - The Host posts a closing notice in the original chat, linking forward to the new venue.
 
 The original chat is not deleted; you may always return to it. But henceforth the canonical thread continues at the new address.
 
-A particularly civilised variation: in the same dialog you may flip the chat over to an **autonomous room**, taking yourself out of the picture entirely and letting the LLMs carry the conversation forward without you. Remove your own character from the cast, enable the autonomous controls (cadence, budget, visibility), and press **Continue**. The carryover proceeds as above — Librarian summary, recent messages, turn order, Host bookends — and the new room then runs on its own schedule, with you free to attend to other matters. Autonomous rooms require at least two LLM-controlled characters and no user-controlled participant, which the dialog will enforce before letting you proceed.
+A particularly civilised variation: in the same dialog you may flip the chat over to an **autonomous room**, taking yourself out of the picture entirely and letting the LLMs carry the conversation forward without you. Remove your own character from the cast, enable the autonomous controls (cadence, budget, visibility), and press **Continue**. The carryover proceeds as above — Librarian summary, recent messages, turn order, Host bookends, and the Host's note that your own character stayed behind — and the new room then runs on its own schedule, with you free to attend to other matters. Autonomous rooms require at least two LLM-controlled characters and no user-controlled participant, which the dialog will enforce before letting you proceed.
 
 ### Merging a Conversation In
 

@@ -151555,3 +151555,86 @@ both sides), `backup_uuid_remap` (+2 arms, the corpus re-authored),
   smalls lane.
 
 **P4.D227 LANE COMPLETE.**
+
+## P4.D228 — "Try uncensored" (v4 `ce2f1dabf` #77, server) + the `help/` tree at `acadcc7cd` — lane record
+
+Lane branch `claude/salon-polish-help-tree-ae8cda` (the harness-made worktree
+name, not the order's `claude/p4-d228-salon-polish-<hash>`), cut from P4.D227's
+LANE COMPLETE tip `f8776dbce` (`claude/gifted-yonath-c6c361`). Pins: target
+`/tmp/qt-v4-pin-p4d228-acadcc7cd` (marker: `apply-chat-continuation.ts` names
+`findLeftBehindCharacters` ×2; `help/scenario-builder.md` carries `## Called to
+a Shelf` ×2, the `3b463d6b1` pin ×0), before `/tmp/qt-v4-pin-p4d228-3b463d6b1`.
+§R.2 probe at lane start: v4 `main`, CLEAN, HEAD `f7f3d7bf0`,
+`acadcc7cd..main` = exactly the three waived commits (`39bc98ffc`,
+`12c336fad`, `f7f3d7bf0`), `1a2b2164c..bugfix` empty — PASS under the human's
+2026-09-26 waiver (recorded in `main`'s ledger §1, `483126fbc`; not on this
+stacked branch). Node 24.13.1. Staging under `/tmp/p4d228/`.
+
+### Unit 0 — the first act (§R.12): P4.D227's family list at `acadcc7cd`
+
+59 families (P4.D227's lane list + this lane's own) through the sweep driver
+from the pin on the UNCHANGED P4.D227 tip: **53 ok, 6 red, every red
+accounted for:**
+
+- `orchestrator_tier3` — #77's: v5 still writes synthesized `dangerFlags` on
+  the three Unmoderated USER rows (`danger_live_reroute`,
+  `danger_uncensored_no_enqueue`, `route_via_concierge`); v4 at the pin writes
+  none. ⚠ **Order premise corrected:** the order says "no scenario is
+  dangerous today → a NEW arm"; three existing scenarios ARE Unmoderated with
+  content, so the deletion reds EXISTING arms (the red-first is free).
+- `help_tree` — the tree (this lane's Unit 1).
+- `query_param_semantics` — the chat POST `availableActions` gains
+  `retry-image-uncensored` (106 byte-compared refusal rows where 110 were
+  expected: the four `chat_item_post` refusal shapes moved).
+- `post_office_writers_tier3` — `acadcc7cd`'s Host writer (22 rows vs 17):
+  P4.D233's fence, re-run here as neutrality only.
+- `memory_processor_tier3` — the standing pre-existing red P4.D226/P4.D227
+  recorded (compressed-text byte parity), unchanged.
+- `image_generation_tier3` — `regen_failed`: the ORACLE finished (`55 lines`),
+  then jest hung on one of v4's OWN `__tests__/unit/**/image-generation*`
+  tests, which the recipe's unanchored `-- image-generation` pattern also
+  runs (one worker CPU-bound 11+ minutes at `acadcc7cd`). Killed; the family
+  is re-run with the anchored pattern `"cases/image-generation\.test\.ts$"`
+  (the recipe header is anchored in this lane's image-generation unit).
+
+No P4.D227 handoff. **E.10 measured:** every refused `story_background_job`
+case at the pin is refused → rerouted → ANSWERED (the scan finds the one
+compatible profile even with no desk configured), so NO existing case flips
+from failed-job to completed-job — the order's predicted flips
+(`flagged_no_profile_moderation`, `moderation_recraft_fails`) are wrong; the
+refused-and-unanswered arms are ADDED in the story unit.
+
+### Unit 1 — `help/**` re-vendored WHOLE at `acadcc7cd` (docs-only)
+
+`rsync -a --delete $PIN/help/ help/`; `diff -rq help $PIN/help` empty; 129
+files before and after. **20 files differ vs the previous vendor** (the order's
+title says 19 — the body's 20 is right: 18 modified + 1 deleted + 1 added).
+md5 / bytes at `acadcc7cd`:
+
+    8249426e8dd8754f7c36cac329923bd0 21940 help/autonomous-rooms.md
+    7321cecaa93578f16d4b1517d869eeae 16686 help/chat-message-actions.md
+    adf14a196bad5c89bb27f1794a5845fc 20442 help/chat-settings-ai-services.md
+    ff22cf1a84c21379a8a175c6d035d138 13510 help/chat-settings.md
+    cf743179047be8c14a6f906f596f087d 43669 help/chats.md
+    DELETED help/dangerous-content.md
+    dbb318ec7dc74e5c24959f748be57baa 10412 help/general-scenarios.md
+    bbfe2a8240ca651a46fdcacdcc2d6925 9721 help/groups.md
+    10179b6865bfc41700e45942f4eb4a6e 3329 help/homepage.md
+    17054d3cc1e11fa781a5a0a312f0ac2b 27779 help/image-generation-profiles.md
+    980e785813544a7ca1cdc3bbc454a6bc 4796 help/memory-regenerate.md
+    ad0ccc9cdb8deb087d5dd12dc256026a 10172 help/project-scenarios.md
+    c2cb682d8b4f6144eedee5305f141cae 7352 help/provider-recommendations.md
+    550959e7a4411a05783edb79b195a317 10683 help/quick-hide.md
+    c2e551931ad5351121da094071263031 4964 help/salon-host-introductions.md
+    b87367ea8203ceaad1444cd55480c776 9131 help/scenario-builder.md
+    b75c24a97f2166dbd4faebf2e3bee5a4 2862 help/scene-state-tracker.md
+    48194441585ab29aead80983b62fd7d9 10760 help/settings.md
+    9399cf1760152fc7993482c6d4cf614e 10178 help/story-backgrounds.md
+    0b7282972f1cccc3ff0eb778c6f6443e 27789 help/the-concierge.md
+
+Proof: the 12 `help_*` families through the driver from the pin — **12/12
+ok** (`help_tree_equivalence` NDJSON names `the-concierge` ×1 and
+`dangerous-content` ×0); `help_tree_embed_guard` green and
+`host_help_docs_boot` + `host_help_boot_order` green with BOTH 129 literals
+UNMOVED. (The embed guard compares embedded vs DISK only — it would have been
+green on the stale tree too; `help_tree_equivalence` is the proof.)

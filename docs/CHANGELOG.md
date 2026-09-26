@@ -12,6 +12,13 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-26 — docs(help): re-vendor the help tree whole at v4 `acadcc7cd` (129 stays 129) (P4.D228 unit 1)
+
+_Docs-only change._
+
+- `help/` is replaced with v4's tree at `acadcc7cd` (`diff -r` empty). Twenty files differ from the previous vendor: `dangerous-content.md` is deleted, `the-concierge.md` is added, and eighteen pages are updated (the Concierge overhaul #75–#77, the Scenario Builder shelves, the bug-171/172 host introductions).
+- The file count stays 129, so both count literals are unchanged; the embed guard and the host boot test pass. `help_tree_equivalence` and the eleven other `help_*` families pass against v4 at the pin.
+
 #### 2026-09-26 — docs(porting): P4.D227 lane complete — the full sweep at `3b463d6b1`, the lane record, the order's status header
 
 _Versions: docs only._
