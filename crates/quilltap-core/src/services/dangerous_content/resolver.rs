@@ -281,6 +281,16 @@ fn desk_from(settings: &ConciergeSettings) -> ResolvedConciergeDesk {
     }
 }
 
+/// v4 `resolveConfiguredConciergeDesk(globalSettings)` (NEW at `ce2f1dabf`,
+/// #77) — the uncensored desk AS CONFIGURED, whatever the Concierge's duty or
+/// the chat's state. Only for the operator's own explicit "Try uncensored"
+/// ([`super::retry_uncensored`]), which is gated by the chat's state alone —
+/// every automatic path reads [`resolve_concierge_settings`]`(…).desk`, which
+/// is empty off duty and on Locked or exempt chats.
+pub fn resolve_configured_concierge_desk(global_settings: Option<&Value>) -> ResolvedConciergeDesk {
+    desk_from(&read_concierge_settings(global_settings))
+}
+
 /// v4 `preScreenFrom`. A disabled pre-screen still carries the threshold and
 /// the prompt: the summary classifier reads them.
 fn pre_screen_from(pre: &ConciergePreScreenSettings) -> ResolvedPreScreen {

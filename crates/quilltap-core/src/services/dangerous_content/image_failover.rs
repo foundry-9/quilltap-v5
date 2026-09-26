@@ -22,7 +22,10 @@
 //!      re-asked against the CURRENT switch — v4 `3b463d6b1`) → the ledger, no
 //!      announcement, fail;
 //!   5. ask the understudy resolver (excluding the primary). Nobody → announce
-//!      `refusal-no-understudy`, fail;
+//!      `refusal-no-understudy`, fail (a caller that reports unresolved
+//!      refusals itself — the Lantern — passes `announce_unresolved_refusal:
+//!      false` and the chokepoint stays silent in steps 4 and 5; v4
+//!      `ce2f1dabf`, #77);
 //!   6. ask the understudy once. It answers → announce `refusal-rerouted` and
 //!      return; it fails → record its own verdict and fail.
 //!
@@ -186,6 +189,14 @@ pub struct ImageFailoverContext<'a, U: UnderstudySource> {
     /// How the primary came to be asked: `Concierge` when a pre-flight
     /// classifier reroute already swapped it in; v4's default `Primary`.
     pub primary_via: RouteAttemptVia,
+    /// v4 `announceUnresolvedRefusal` (NEW at `ce2f1dabf`, #77; default
+    /// `true`): whether the Concierge announces a refusal he could not get
+    /// past (`refusal-no-understudy`, `refusal-not-permitted`). The Lantern
+    /// passes `false` — its own `background-refused` bubble reports the
+    /// refusal and carries the retry, one bubble per refusal. The ledger and
+    /// the rethrow are UNGATED, and so is the success exit's
+    /// `refusal-rerouted`.
+    pub announce_unresolved_refusal: bool,
 }
 
 /// v4 `ImageFailoverOutcome`.
@@ -413,14 +424,16 @@ where
             "Refusal not rerouted: the chat is Locked",
             concierge_state = concierge_state.as_str()
         );
-        announce(
-            ctx,
-            ConciergeRefusalKind::RefusalNotPermitted,
-            p,
-            None,
-            Some(ConciergeRefusalBar::Locked),
-        )
-        .await;
+        if ctx.announce_unresolved_refusal {
+            announce(
+                ctx,
+                ConciergeRefusalKind::RefusalNotPermitted,
+                p,
+                None,
+                Some(ConciergeRefusalBar::Locked),
+            )
+            .await;
+        }
         ledger(ctx, p, &verdict, false).await;
         return Err(ImageFailoverError {
             error: primary_error,
@@ -461,14 +474,16 @@ where
             p,
             "Refusal not rerouted: no uncensored understudy is available"
         );
-        announce(
-            ctx,
-            ConciergeRefusalKind::RefusalNoUnderstudy,
-            p,
-            None,
-            None,
-        )
-        .await;
+        if ctx.announce_unresolved_refusal {
+            announce(
+                ctx,
+                ConciergeRefusalKind::RefusalNoUnderstudy,
+                p,
+                None,
+                None,
+            )
+            .await;
+        }
         ledger(ctx, p, &verdict, false).await;
         return Err(ImageFailoverError {
             error: primary_error,

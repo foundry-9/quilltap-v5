@@ -355,6 +355,8 @@ fn image_failover_matches_v4() {
                 None => RouteAttemptVia::Primary,
                 Some(other) => panic!("via {other}"),
             },
+            // P4.D228 (v4 `ce2f1dabf`, #77): default true.
+            announce_unresolved_refusal: case["announceUnresolvedRefusal"].as_bool() != Some(false),
         };
         let script: Mutex<HashMap<String, Vec<Value>>> = Mutex::new(
             case["script"]

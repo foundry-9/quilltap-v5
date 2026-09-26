@@ -693,6 +693,15 @@ fn build_tool_message_content(tool_msg: &ToolMessage) -> Result<String, DbError>
         .map_err(|e| DbError::Internal(format!("tool message content serialize: {e}")))
 }
 
+/// v4 `saveToolMessages`' trailing `options?: { createdAt?: string }` (NEW at
+/// `ce2f1dabf`, #77). `created_at` files the rows at a chosen moment instead of
+/// now — the Concierge's "Try uncensored" puts a retried picture beside the
+/// original. `Default` is every other caller's absent bag.
+#[derive(Debug, Clone, Default)]
+pub struct SaveToolMessagesOptions {
+    pub created_at: Option<String>,
+}
+
 /// Persist a tool-message slate and link/tag generated images (v4
 /// `saveToolMessages`, :176–254). One `type:'message'` / `role:'TOOL'` row per
 /// tool message (through `add_message`, so a TOOL row bumps the chat's minted
@@ -706,12 +715,39 @@ fn build_tool_message_content(tool_msg: &ToolMessage) -> Result<String, DbError>
 pub fn save_tool_messages(
     writer: &Writer,
     chat_id: &str,
+    user_id: &str,
+    tool_messages: &[ToolMessage],
+    generated_image_paths: &[GeneratedImage],
+    character_id: Option<&str>,
+    participant_id: Option<&str>,
+    whisper_context: Option<&ToolWhisperContext>,
+) -> Result<SaveToolMessagesResult, DbError> {
+    save_tool_messages_with_options(
+        writer,
+        chat_id,
+        user_id,
+        tool_messages,
+        generated_image_paths,
+        character_id,
+        participant_id,
+        whisper_context,
+        SaveToolMessagesOptions::default(),
+    )
+}
+
+/// [`save_tool_messages`] with v4's trailing `options` bag (`ce2f1dabf`, #77) —
+/// the one caller that passes it is "Try uncensored"'s picture retry.
+#[allow(clippy::too_many_arguments)]
+pub fn save_tool_messages_with_options(
+    writer: &Writer,
+    chat_id: &str,
     _user_id: &str,
     tool_messages: &[ToolMessage],
     generated_image_paths: &[GeneratedImage],
     character_id: Option<&str>,
     participant_id: Option<&str>,
     whisper_context: Option<&ToolWhisperContext>,
+    options: SaveToolMessagesOptions,
 ) -> Result<SaveToolMessagesResult, DbError> {
     let mut first_tool_message_id: Option<String> = None;
     let generated_image_ids: Vec<String> = generated_image_paths
@@ -745,7 +781,14 @@ pub fn save_tool_messages(
         msg.insert("participantId".into(), json!(participant_id));
         msg.insert("targetParticipantIds".into(), json!(target_participant_ids));
         msg.insert("content".into(), json!(content));
-        msg.insert("createdAt".into(), json!(crate::clock::now_iso()));
+        // v4 `options?.createdAt ?? new Date().toISOString()` (`ce2f1dabf`).
+        msg.insert(
+            "createdAt".into(),
+            json!(options
+                .created_at
+                .clone()
+                .unwrap_or_else(crate::clock::now_iso)),
+        );
         msg.insert("attachments".into(), json!(tool_attachments));
         // An image refused on the way carries the Concierge's call sheet — the
         // image profiles tried, in order (v4 `8bd080267`). `add_message` stores

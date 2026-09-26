@@ -666,6 +666,38 @@ pub async fn enqueue_story_background_generation(
     scene_context: Option<&str>,
     project_id: Option<String>,
 ) -> Result<(String, bool), DbError> {
+    enqueue_story_background_generation_with(
+        db,
+        user_id,
+        chat_id,
+        image_profile_id,
+        character_ids,
+        scene_context,
+        project_id,
+        false,
+    )
+    .await
+}
+
+/// [`enqueue_story_background_generation`] with v4's `forceUncensored` payload
+/// key (`ce2f1dabf`, #77): spread LAST, after `projectId`, and ONLY when true
+/// (`...(forceUncensored ? { forceUncensored: true } : {})`) — so a plain
+/// regenerate's payload is byte-unchanged.
+///
+/// ⚠ **The dedupe drops the force silently** (v4's, ported as-is; a candidate
+/// upstream note): a forced request that finds an in-flight PLAIN job for the
+/// chat reuses it (`is_new = false`) and that job paints moderated.
+#[allow(clippy::too_many_arguments)]
+pub async fn enqueue_story_background_generation_with(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    image_profile_id: &str,
+    character_ids: &[String],
+    scene_context: Option<&str>,
+    project_id: Option<String>,
+    force_uncensored: bool,
+) -> Result<(String, bool), DbError> {
     let cid = chat_id.to_string();
     let pending = db.read_main(|conn| {
         crate::db::background_jobs::BackgroundJobsRepository::new(conn).find_pending_for_chat(&cid)
@@ -704,6 +736,9 @@ pub async fn enqueue_story_background_generation(
             None => Value::Null,
         },
     );
+    if force_uncensored {
+        payload.insert("forceUncensored".into(), Value::Bool(true));
+    }
 
     let job_id = enqueue_job_with_priority(
         db,

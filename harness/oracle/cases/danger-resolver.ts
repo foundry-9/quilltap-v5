@@ -69,6 +69,10 @@ import {
   withConciergeModeFromLegacy,
 } from '@/lib/services/dangerous-content/chat-override'
 import type { ConciergeSettings } from '@/lib/schemas/settings.types'
+// P4.D228 (v4 `ce2f1dabf`, #77): the configured desk. Imported as a namespace
+// so the case still loads at a pin that predates it (the rows are simply
+// absent there, and the Rust shape guard says so).
+import * as resolverNs from '@/lib/services/dangerous-content/resolver.service'
 
 type ChatView = Record<string, unknown>
 
@@ -358,4 +362,27 @@ for (const c of withCases) {
   process.stdout.write(
     JSON.stringify({ kind: 'withLegacy', id: c.id, chat: c.chat, out, identical: out === c.chat }) + '\n'
   )
+}
+
+// --- resolveConfiguredConciergeDesk (P4.D228, v4 `ce2f1dabf` #77) ---
+// The desk AS CONFIGURED, whatever the duty roster or the chat's state — only
+// the operator's explicit "Try uncensored" reads it. There is no chat
+// argument at all: Locked / exempt / off-duty cannot empty it.
+const configuredDesk = (resolverNs as Record<string, unknown>).resolveConfiguredConciergeDesk as
+  | ((g: unknown) => unknown)
+  | undefined
+if (configuredDesk) {
+  const deskCases: Array<{ id: string; global: unknown }> = [
+    { id: 'desk-no-row', global: null },
+    { id: 'desk-undefined', global: undefined },
+    { id: 'desk-settings-null', global: global(null) },
+    { id: 'desk-on-duty', global: global(concierge({})) },
+    { id: 'desk-off-duty-keeps-the-desk', global: global(concierge({ enabled: false })) },
+    { id: 'desk-partial', global: global({ enabled: false, uncensoredImageProfileId: 'img-desk' }) },
+  ]
+  for (const c of deskCases) {
+    process.stdout.write(
+      JSON.stringify({ kind: 'configuredDesk', id: c.id, global: c.global === undefined ? '<undefined>' : c.global, desk: configuredDesk(c.global as any) }) + '\n'
+    )
+  }
 }

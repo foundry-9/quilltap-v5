@@ -91,6 +91,8 @@ async function main(): Promise<void> {
       call.characterId,
       call.participantId,
       call.whisperContext as never,
+      // P4.D228 (v4 `ce2f1dabf`, #77): the trailing `options` bag.
+      ...((call as { options?: unknown }).options ? [(call as { options?: unknown }).options as never] : []),
     );
     returns.push({ name: call.name, firstToolMessageId: result.firstToolMessageId, generatedImageIds: result.generatedImageIds });
   }

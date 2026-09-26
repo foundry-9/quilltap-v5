@@ -83,6 +83,13 @@ interface CallSpec {
   userId: string;
   targetMessageId: string;
   expectThrow?: boolean;
+  /**
+   * P4.D228 (v4 `ce2f1dabf`, #77): "Try uncensored" — generate on this
+   * connection profile instead of the responder's (`profileOverride`), and
+   * persist this trail on the new swipe (`routeTrail`).
+   */
+  profileOverrideId?: string;
+  routeTrail?: unknown[];
 }
 interface Spec {
   testPepperBase64: string;
@@ -300,6 +307,10 @@ async function main(): Promise<void> {
   const { encodeStatusEvent, encodeContentChunk, encodeReasoningChunk } = await import(
     '@/lib/services/chat-message'
   );
+  // P4.D228: v4's OWN context-limit table (`getModelContextLimit`), recorded per
+  // call for the responder AND the override, so the port budgets each arm with
+  // v4's numbers rather than a transcription of them.
+  const { getModelContextLimit } = await import('@/lib/llm/model-context-data');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -357,6 +368,32 @@ async function main(): Promise<void> {
       const allMessages = await repos.chats.getMessages(call.chatId);
       const targetMessage = allMessages.find((m: { id?: string }) => m.id === call.targetMessageId);
       if (!targetMessage) throw new Error(`target message not found: ${call.targetMessageId}`);
+      // P4.D228: the override the retry route hands the service — the
+      // understudy's WHOLE profile and a key (the jest arrangement's canned
+      // one), exactly the shape `resolveTextRetryUnderstudy` returns.
+      const override = call.profileOverrideId
+        ? await repos.connections.findById(call.profileOverrideId)
+        : null;
+      if (call.profileOverrideId && !override) {
+        throw new Error(`override profile not seeded: ${call.profileOverrideId}`);
+      }
+      const participant = chat.participants.find(
+        (p: { id: string }) => p.id === (targetMessage as { participantId?: string }).participantId,
+      );
+      const character = participant?.characterId
+        ? await repos.characters.findById(participant.characterId)
+        : null;
+      const responder = character?.defaultConnectionProfileId
+        ? await repos.connections.findById(character.defaultConnectionProfileId)
+        : null;
+      lines.push(
+        JSON.stringify({
+          kind: 'limits',
+          call: call.name,
+          responder: responder ? getModelContextLimit(responder.provider, responder.modelName) : null,
+          override: override ? getModelContextLimit(override.provider, override.modelName) : null,
+        }),
+      );
       await regenerateMessageAsSwipe({
         repos,
         userId: call.userId,
@@ -367,6 +404,8 @@ async function main(): Promise<void> {
         onProgress: (event: { kind: string; content?: string; reasoning?: string }) => {
           frames.push(encodeFrame(event));
         },
+        ...(override ? { profileOverride: { profile: override, apiKey: 'override-key' } } : {}),
+        ...(call.routeTrail !== undefined ? { routeTrail: call.routeTrail } : {}),
       } as never);
     } catch (err) {
       threw = true;

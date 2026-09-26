@@ -55,4 +55,5 @@ pub mod provider_routing;
 pub mod refusal;
 pub mod refusal_ledger;
 pub mod resolver;
+pub mod retry_uncensored;
 pub mod understudy;

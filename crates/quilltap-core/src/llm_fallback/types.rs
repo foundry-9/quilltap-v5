@@ -45,6 +45,21 @@ impl FallbackTrigger {
             FallbackTrigger::ModerationRefusal => "moderation-refusal",
         }
     }
+
+    /// The inverse of [`Self::as_str`] (P4.D228 — a stored trail row read back
+    /// into its typed row); `None` outside v4's union.
+    pub fn from_wire(s: &str) -> Option<Self> {
+        Some(match s {
+            "auth" => FallbackTrigger::Auth,
+            "rate-limit" => FallbackTrigger::RateLimit,
+            "network" => FallbackTrigger::Network,
+            "model-missing" => FallbackTrigger::ModelMissing,
+            "provider-error" => FallbackTrigger::ProviderError,
+            "empty-response" => FallbackTrigger::EmptyResponse,
+            "moderation-refusal" => FallbackTrigger::ModerationRefusal,
+            _ => return None,
+        })
+    }
 }
 
 impl std::fmt::Display for FallbackTrigger {

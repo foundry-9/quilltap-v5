@@ -47,6 +47,13 @@
 //! (`blob_image_facts/mod.rs`), with every encoder-owned value of that case's
 //! result + dumps blanked on both sides ([`blank_encoder_dumps`]).
 //!
+//! P4.D228: at v4 `acadcc7cd` the oracle WRITES its 55 lines and then jest
+//! never exits — one worker stays CPU-bound on a handle the run leaves open
+//! (measured three times; the old unanchored `-- image-generation` pattern
+//! also swept in v4's OWN `image-generation*` unit tests). The pattern is now
+//! anchored to this case and the run takes `--forceExit`, which ends jest once
+//! the case has passed — the NDJSON is complete by then.
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout). The oracle case
 //! MUST be staged OUTSIDE any `.claude/` path (v4's jest ignores `/\.claude/`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<this worktree root>
@@ -62,8 +69,8 @@
 //!     $N/node --import tsx $WT/harness/oracle/fixtures/build-image-generation-fixture.ts
 //!   QT_FIXTURE_IMGGEN_MAIN=/tmp/qt-imggen-main.db QT_FIXTURE_IMGGEN_MOUNT=/tmp/qt-imggen-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-image-generation.ndjson \
-//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
-//!       --roots "$PWD" --roots "$STAGE/cases" -- image-generation
+//!     $N/npx jest --silent --watchman=false --testTimeout=120000 --forceExit \
+//!       --roots "$PWD" --roots "$STAGE/cases" -- "cases/image-generation\\.test\\.ts$"
 //! Run:
 //!   QT_ORACLE_IMGGEN=/tmp/oracle-image-generation.ndjson \
 //!   QT_FIXTURE_IMGGEN_MAIN=/tmp/qt-imggen-main.db QT_FIXTURE_IMGGEN_MOUNT=/tmp/qt-imggen-mount.db \
@@ -279,6 +286,10 @@ struct ChatSpec {
     /// `spec.profileId`).
     #[serde(default, rename = "profileId")]
     profile_id: Option<String>,
+    /// P4.D228 (v4 `ce2f1dabf`, #77): the tool context's `primaryVia`
+    /// ("Try uncensored" hands `concierge`).
+    #[serde(default, rename = "primaryVia")]
+    primary_via: Option<String>,
     /// P4.104: the seed image (under `normalize-blob-image/`) the provider
     /// answers — and the switch that makes this case's transcode + blob
     /// normalization REAL.
@@ -1010,6 +1021,11 @@ fn image_generation_matches_oracle() {
                     .unwrap_or_else(|| spec.profile_id.clone()),
                 chat_id: Some(chat_id.clone()),
                 calling_participant_id: Some(spec.calling_participant_id.clone()),
+                primary_via: case.primary_via.as_deref().map(|v| match v {
+                    "concierge" => quilltap_core::services::route_trail::RouteAttemptVia::Concierge,
+                    "primary" => quilltap_core::services::route_trail::RouteAttemptVia::Primary,
+                    other => panic!("primaryVia {other}"),
+                }),
             };
 
             let out = rt.block_on(execute_image_generation_tool(&db, &deps, &input, &ctx));

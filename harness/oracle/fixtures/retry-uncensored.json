@@ -1,0 +1,1971 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-01-02T03:04:05.000Z",
+  "users": {
+    "operator": "e18e05bc-63e8-4539-8a85-719b7a508850",
+    "lonely": "22222222-2222-4222-8222-222222222222"
+  },
+  "apiKeys": {
+    "a7000001-0000-4000-8000-000000000001": "KEY_1",
+    "a7000002-0000-4000-8000-000000000001": "KEY_2",
+    "a7000003-0000-4000-8000-000000000001": "KEY_3",
+    "a7000004-0000-4000-8000-000000000001": "KEY_4",
+    "a7000005-0000-4000-8000-000000000001": "KEY_5",
+    "a7000006-0000-4000-8000-000000000001": "KEY_6",
+    "a7000007-0000-4000-8000-000000000001": "KEY_7",
+    "a7000008-0000-4000-8000-000000000001": "KEY_8",
+    "a7000009-0000-4000-8000-000000000001": "KEY_9",
+    "a7000010-0000-4000-8000-000000000001": "KEY_10"
+  },
+  "chatSettings": [
+    {
+      "id": "5e700001-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": "c7000002-0000-4000-8000-000000000001",
+        "uncensoredImageProfileId": "17000002-0000-4000-8000-000000000001"
+      },
+      "storyBackgroundsSettings": {
+        "enabled": true
+      }
+    },
+    {
+      "id": "5e700002-0000-4000-8000-000000000001",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "conciergeSettings": {
+        "enabled": true
+      },
+      "storyBackgroundsSettings": {
+        "enabled": true
+      }
+    }
+  ],
+  "connectionProfiles": [
+    {
+      "id": "c7000001-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "name": "Responder",
+      "provider": "ANTHROPIC",
+      "modelName": "claude-sonnet-4",
+      "apiKeyId": "a7000001-0000-4000-8000-000000000001",
+      "isDangerousCompatible": false
+    },
+    {
+      "id": "c7000002-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "name": "Uncensored Desk",
+      "provider": "OPENROUTER",
+      "modelName": "venice/uncensored",
+      "apiKeyId": "a7000002-0000-4000-8000-000000000001",
+      "isDangerousCompatible": true
+    },
+    {
+      "id": "c7000003-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "name": "Desk Twin",
+      "provider": "OPENROUTER",
+      "modelName": "venice/uncensored",
+      "apiKeyId": "a7000003-0000-4000-8000-000000000001",
+      "isDangerousCompatible": true
+    },
+    {
+      "id": "c7000004-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "name": "Second Desk",
+      "provider": "GROK",
+      "modelName": "grok-4",
+      "apiKeyId": "a7000004-0000-4000-8000-000000000001",
+      "isDangerousCompatible": true
+    },
+    {
+      "id": "c7000005-0000-4000-8000-000000000001",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "name": "Lone Desk",
+      "provider": "GROK",
+      "modelName": "grok-4",
+      "apiKeyId": "a7000005-0000-4000-8000-000000000001",
+      "isDangerousCompatible": true
+    }
+  ],
+  "imageProfiles": [
+    {
+      "id": "17000001-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "name": "House Painter",
+      "provider": "OPENAI",
+      "modelName": "gpt-image-1",
+      "apiKeyId": "a7000006-0000-4000-8000-000000000001",
+      "isDangerousCompatible": false
+    },
+    {
+      "id": "17000002-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "name": "Uncensored Painter",
+      "provider": "GROK",
+      "modelName": "grok-2-image",
+      "apiKeyId": "a7000007-0000-4000-8000-000000000001",
+      "isDangerousCompatible": true
+    },
+    {
+      "id": "17000003-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "name": "Painter Twin",
+      "provider": "GROK",
+      "modelName": "grok-2-image",
+      "apiKeyId": "a7000008-0000-4000-8000-000000000001",
+      "isDangerousCompatible": true
+    },
+    {
+      "id": "17000004-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "name": "Second Painter",
+      "provider": "GOOGLE",
+      "modelName": "imagen-4",
+      "apiKeyId": "a7000009-0000-4000-8000-000000000001",
+      "isDangerousCompatible": true
+    },
+    {
+      "id": "17000005-0000-4000-8000-000000000001",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "name": "Lone Painter",
+      "provider": "GOOGLE",
+      "modelName": "imagen-4",
+      "apiKeyId": "a7000010-0000-4000-8000-000000000001",
+      "isDangerousCompatible": true
+    }
+  ],
+  "characters": [
+    {
+      "id": "b7000001-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "name": "Bertie",
+      "controlledBy": "llm",
+      "talkativeness": 0.5,
+      "defaultConnectionProfileId": "c7000001-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "b7000002-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "name": "Nameless",
+      "controlledBy": "llm",
+      "talkativeness": 0.5
+    },
+    {
+      "id": "b7000003-0000-4000-8000-000000000001",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "name": "Lonely",
+      "controlledBy": "llm",
+      "talkativeness": 0.5,
+      "defaultConnectionProfileId": "c7000005-0000-4000-8000-000000000001"
+    }
+  ],
+  "chats": [
+    {
+      "id": "d7000001-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "title": "The Moderated Room",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "e7001001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "b7000001-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active",
+          "createdAt": "2026-01-02T03:04:05.000Z",
+          "updatedAt": "2026-01-02T03:04:05.000Z"
+        },
+        {
+          "id": "e7001002-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "b7000002-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active",
+          "createdAt": "2026-01-02T03:04:05.000Z",
+          "updatedAt": "2026-01-02T03:04:05.000Z"
+        }
+      ],
+      "conciergeMode": "moderated",
+      "imageProfileId": "17000001-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "id": "f7001001-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "Paint me the harbour.",
+          "participantId": null,
+          "createdAt": "2026-01-02T03:05:01.250Z"
+        },
+        {
+          "id": "f7001002-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "I would rather not.",
+          "participantId": "e7001001-0000-4000-8000-000000000001",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet-4",
+          "createdAt": "2026-01-02T03:05:02.250Z",
+          "routeTrail": [
+            {
+              "profileId": "c7000001-0000-4000-8000-000000000001",
+              "profileName": "Responder",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-4",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "finish-reason",
+              "detail": "content_filter"
+            },
+            {
+              "profileId": "c7000004-0000-4000-8000-000000000001",
+              "profileName": "Second Desk",
+              "provider": "GROK",
+              "modelName": "grok-4",
+              "via": "concierge",
+              "outcome": "failed",
+              "trigger": "network",
+              "detail": "socket hang up"
+            }
+          ]
+        },
+        {
+          "id": "f7001003-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "A polite paragraph about nothing.",
+          "participantId": "e7001001-0000-4000-8000-000000000001",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet-4",
+          "createdAt": "2026-01-02T03:05:03.250Z"
+        },
+        {
+          "id": "f7001004-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "The desk answered this one.",
+          "participantId": "e7001001-0000-4000-8000-000000000001",
+          "provider": "OPENROUTER",
+          "modelName": "venice/uncensored",
+          "createdAt": "2026-01-02T03:05:04.250Z",
+          "routeTrail": [
+            {
+              "profileId": "c7000001-0000-4000-8000-000000000001",
+              "profileName": "Responder",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-4",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "typed-error"
+            },
+            {
+              "profileId": "c7000002-0000-4000-8000-000000000001",
+              "profileName": "Uncensored Desk",
+              "provider": "OPENROUTER",
+              "modelName": "venice/uncensored",
+              "via": "concierge",
+              "outcome": "answered"
+            }
+          ]
+        },
+        {
+          "id": "f7001005-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "Who am I?",
+          "participantId": "e7001002-0000-4000-8000-000000000001",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet-4",
+          "createdAt": "2026-01-02T03:05:05.250Z"
+        },
+        {
+          "id": "f7001006-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "The Lantern hangs a new backdrop.",
+          "participantId": null,
+          "systemSender": "lantern",
+          "systemKind": "background",
+          "createdAt": "2026-01-02T03:05:06.250Z"
+        },
+        {
+          "id": "f7001007-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7001001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:07.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": false, \"result\": \"refused\", \"arguments\": {\"prompt\": \"a quiet harbour at dusk\", \"size\": \"1024x1024\"}}",
+          "routeTrail": [
+            {
+              "profileId": "17000001-0000-4000-8000-000000000001",
+              "profileName": "House Painter",
+              "provider": "OPENAI",
+              "modelName": "gpt-image-1",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "provider-code",
+              "profileKind": "image",
+              "detail": "moderation_blocked"
+            }
+          ]
+        },
+        {
+          "id": "f7001008-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7001001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:08.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"two figures on the pier\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7001009-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7001001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:09.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"the lighthouse, candidly\"}, \"provider\": \"GROK\", \"model\": \"grok-2-image\"}",
+          "routeTrail": [
+            {
+              "profileId": "17000001-0000-4000-8000-000000000001",
+              "profileName": "House Painter",
+              "provider": "OPENAI",
+              "modelName": "gpt-image-1",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "typed-error",
+              "profileKind": "image"
+            },
+            {
+              "profileId": "17000002-0000-4000-8000-000000000001",
+              "profileName": "Uncensored Painter",
+              "provider": "GROK",
+              "modelName": "grok-2-image",
+              "via": "concierge",
+              "outcome": "answered",
+              "profileKind": "image"
+            }
+          ]
+        },
+        {
+          "id": "f7001010-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7001001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:10Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"gulls\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7001011-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7001001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:11.250Z",
+          "content": "{\"toolName\": \"rng\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"sides\": 6}}"
+        },
+        {
+          "id": "f7001012-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7001001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:12.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7001013-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7001001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:13.250Z",
+          "content": "not json at all"
+        },
+        {
+          "id": "f7001014-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": null,
+          "createdAt": "2026-01-02T03:05:14.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"an operator's own picture\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        }
+      ]
+    },
+    {
+      "id": "d7000002-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "title": "The Locked Room",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "e7002001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "b7000001-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active",
+          "createdAt": "2026-01-02T03:04:05.000Z",
+          "updatedAt": "2026-01-02T03:04:05.000Z"
+        }
+      ],
+      "conciergeMode": "locked",
+      "imageProfileId": "17000001-0000-4000-8000-000000000001",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual",
+      "messages": [
+        {
+          "id": "f7002001-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "Paint me the harbour.",
+          "participantId": null,
+          "createdAt": "2026-01-02T03:05:01.250Z"
+        },
+        {
+          "id": "f7002002-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "I would rather not.",
+          "participantId": "e7002001-0000-4000-8000-000000000001",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet-4",
+          "createdAt": "2026-01-02T03:05:02.250Z",
+          "routeTrail": [
+            {
+              "profileId": "c7000001-0000-4000-8000-000000000001",
+              "profileName": "Responder",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-4",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "finish-reason",
+              "detail": "content_filter"
+            },
+            {
+              "profileId": "c7000004-0000-4000-8000-000000000001",
+              "profileName": "Second Desk",
+              "provider": "GROK",
+              "modelName": "grok-4",
+              "via": "concierge",
+              "outcome": "failed",
+              "trigger": "network",
+              "detail": "socket hang up"
+            }
+          ]
+        },
+        {
+          "id": "f7002003-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "A polite paragraph about nothing.",
+          "participantId": "e7002001-0000-4000-8000-000000000001",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet-4",
+          "createdAt": "2026-01-02T03:05:03.250Z"
+        },
+        {
+          "id": "f7002004-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "The desk answered this one.",
+          "participantId": "e7002001-0000-4000-8000-000000000001",
+          "provider": "OPENROUTER",
+          "modelName": "venice/uncensored",
+          "createdAt": "2026-01-02T03:05:04.250Z",
+          "routeTrail": [
+            {
+              "profileId": "c7000001-0000-4000-8000-000000000001",
+              "profileName": "Responder",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-4",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "typed-error"
+            },
+            {
+              "profileId": "c7000002-0000-4000-8000-000000000001",
+              "profileName": "Uncensored Desk",
+              "provider": "OPENROUTER",
+              "modelName": "venice/uncensored",
+              "via": "concierge",
+              "outcome": "answered"
+            }
+          ]
+        },
+        {
+          "id": "f7002006-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "The Lantern hangs a new backdrop.",
+          "participantId": null,
+          "systemSender": "lantern",
+          "systemKind": "background",
+          "createdAt": "2026-01-02T03:05:06.250Z"
+        },
+        {
+          "id": "f7002007-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7002001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:07.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": false, \"result\": \"refused\", \"arguments\": {\"prompt\": \"a quiet harbour at dusk\", \"size\": \"1024x1024\"}}",
+          "routeTrail": [
+            {
+              "profileId": "17000001-0000-4000-8000-000000000001",
+              "profileName": "House Painter",
+              "provider": "OPENAI",
+              "modelName": "gpt-image-1",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "provider-code",
+              "profileKind": "image",
+              "detail": "moderation_blocked"
+            }
+          ]
+        },
+        {
+          "id": "f7002008-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7002001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:08.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"two figures on the pier\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7002009-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7002001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:09.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"the lighthouse, candidly\"}, \"provider\": \"GROK\", \"model\": \"grok-2-image\"}",
+          "routeTrail": [
+            {
+              "profileId": "17000001-0000-4000-8000-000000000001",
+              "profileName": "House Painter",
+              "provider": "OPENAI",
+              "modelName": "gpt-image-1",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "typed-error",
+              "profileKind": "image"
+            },
+            {
+              "profileId": "17000002-0000-4000-8000-000000000001",
+              "profileName": "Uncensored Painter",
+              "provider": "GROK",
+              "modelName": "grok-2-image",
+              "via": "concierge",
+              "outcome": "answered",
+              "profileKind": "image"
+            }
+          ]
+        },
+        {
+          "id": "f7002010-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7002001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:10Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"gulls\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7002011-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7002001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:11.250Z",
+          "content": "{\"toolName\": \"rng\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"sides\": 6}}"
+        },
+        {
+          "id": "f7002012-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7002001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:12.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7002013-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7002001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:13.250Z",
+          "content": "not json at all"
+        },
+        {
+          "id": "f7002014-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": null,
+          "createdAt": "2026-01-02T03:05:14.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"an operator's own picture\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        }
+      ]
+    },
+    {
+      "id": "d7000003-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "title": "The Unmoderated Room",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "e7003001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "b7000001-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active",
+          "createdAt": "2026-01-02T03:04:05.000Z",
+          "updatedAt": "2026-01-02T03:04:05.000Z"
+        }
+      ],
+      "conciergeMode": "unmoderated",
+      "imageProfileId": "17000001-0000-4000-8000-000000000001",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual",
+      "messages": [
+        {
+          "id": "f7003001-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "Paint me the harbour.",
+          "participantId": null,
+          "createdAt": "2026-01-02T03:05:01.250Z"
+        },
+        {
+          "id": "f7003002-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "I would rather not.",
+          "participantId": "e7003001-0000-4000-8000-000000000001",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet-4",
+          "createdAt": "2026-01-02T03:05:02.250Z",
+          "routeTrail": [
+            {
+              "profileId": "c7000001-0000-4000-8000-000000000001",
+              "profileName": "Responder",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-4",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "finish-reason",
+              "detail": "content_filter"
+            },
+            {
+              "profileId": "c7000004-0000-4000-8000-000000000001",
+              "profileName": "Second Desk",
+              "provider": "GROK",
+              "modelName": "grok-4",
+              "via": "concierge",
+              "outcome": "failed",
+              "trigger": "network",
+              "detail": "socket hang up"
+            }
+          ]
+        },
+        {
+          "id": "f7003003-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "A polite paragraph about nothing.",
+          "participantId": "e7003001-0000-4000-8000-000000000001",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet-4",
+          "createdAt": "2026-01-02T03:05:03.250Z"
+        },
+        {
+          "id": "f7003004-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "The desk answered this one.",
+          "participantId": "e7003001-0000-4000-8000-000000000001",
+          "provider": "OPENROUTER",
+          "modelName": "venice/uncensored",
+          "createdAt": "2026-01-02T03:05:04.250Z",
+          "routeTrail": [
+            {
+              "profileId": "c7000001-0000-4000-8000-000000000001",
+              "profileName": "Responder",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-4",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "typed-error"
+            },
+            {
+              "profileId": "c7000002-0000-4000-8000-000000000001",
+              "profileName": "Uncensored Desk",
+              "provider": "OPENROUTER",
+              "modelName": "venice/uncensored",
+              "via": "concierge",
+              "outcome": "answered"
+            }
+          ]
+        },
+        {
+          "id": "f7003006-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "The Lantern hangs a new backdrop.",
+          "participantId": null,
+          "systemSender": "lantern",
+          "systemKind": "background",
+          "createdAt": "2026-01-02T03:05:06.250Z"
+        },
+        {
+          "id": "f7003007-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7003001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:07.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": false, \"result\": \"refused\", \"arguments\": {\"prompt\": \"a quiet harbour at dusk\", \"size\": \"1024x1024\"}}",
+          "routeTrail": [
+            {
+              "profileId": "17000001-0000-4000-8000-000000000001",
+              "profileName": "House Painter",
+              "provider": "OPENAI",
+              "modelName": "gpt-image-1",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "provider-code",
+              "profileKind": "image",
+              "detail": "moderation_blocked"
+            }
+          ]
+        },
+        {
+          "id": "f7003008-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7003001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:08.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"two figures on the pier\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7003009-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7003001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:09.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"the lighthouse, candidly\"}, \"provider\": \"GROK\", \"model\": \"grok-2-image\"}",
+          "routeTrail": [
+            {
+              "profileId": "17000001-0000-4000-8000-000000000001",
+              "profileName": "House Painter",
+              "provider": "OPENAI",
+              "modelName": "gpt-image-1",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "typed-error",
+              "profileKind": "image"
+            },
+            {
+              "profileId": "17000002-0000-4000-8000-000000000001",
+              "profileName": "Uncensored Painter",
+              "provider": "GROK",
+              "modelName": "grok-2-image",
+              "via": "concierge",
+              "outcome": "answered",
+              "profileKind": "image"
+            }
+          ]
+        },
+        {
+          "id": "f7003010-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7003001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:10Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"gulls\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7003011-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7003001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:11.250Z",
+          "content": "{\"toolName\": \"rng\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"sides\": 6}}"
+        },
+        {
+          "id": "f7003012-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7003001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:12.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7003013-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7003001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:13.250Z",
+          "content": "not json at all"
+        },
+        {
+          "id": "f7003014-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": null,
+          "createdAt": "2026-01-02T03:05:14.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"an operator's own picture\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        }
+      ]
+    },
+    {
+      "id": "d7000004-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "title": "Help",
+      "chatType": "help",
+      "participants": [
+        {
+          "id": "e7004001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "b7000001-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active",
+          "createdAt": "2026-01-02T03:04:05.000Z",
+          "updatedAt": "2026-01-02T03:04:05.000Z"
+        }
+      ],
+      "conciergeMode": "moderated",
+      "imageProfileId": "17000001-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "id": "f7004001-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "Paint me the harbour.",
+          "participantId": null,
+          "createdAt": "2026-01-02T03:05:01.250Z"
+        },
+        {
+          "id": "f7004002-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "I would rather not.",
+          "participantId": "e7004001-0000-4000-8000-000000000001",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet-4",
+          "createdAt": "2026-01-02T03:05:02.250Z",
+          "routeTrail": [
+            {
+              "profileId": "c7000001-0000-4000-8000-000000000001",
+              "profileName": "Responder",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-4",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "finish-reason",
+              "detail": "content_filter"
+            },
+            {
+              "profileId": "c7000004-0000-4000-8000-000000000001",
+              "profileName": "Second Desk",
+              "provider": "GROK",
+              "modelName": "grok-4",
+              "via": "concierge",
+              "outcome": "failed",
+              "trigger": "network",
+              "detail": "socket hang up"
+            }
+          ]
+        },
+        {
+          "id": "f7004003-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "A polite paragraph about nothing.",
+          "participantId": "e7004001-0000-4000-8000-000000000001",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet-4",
+          "createdAt": "2026-01-02T03:05:03.250Z"
+        },
+        {
+          "id": "f7004004-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "The desk answered this one.",
+          "participantId": "e7004001-0000-4000-8000-000000000001",
+          "provider": "OPENROUTER",
+          "modelName": "venice/uncensored",
+          "createdAt": "2026-01-02T03:05:04.250Z",
+          "routeTrail": [
+            {
+              "profileId": "c7000001-0000-4000-8000-000000000001",
+              "profileName": "Responder",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-4",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "typed-error"
+            },
+            {
+              "profileId": "c7000002-0000-4000-8000-000000000001",
+              "profileName": "Uncensored Desk",
+              "provider": "OPENROUTER",
+              "modelName": "venice/uncensored",
+              "via": "concierge",
+              "outcome": "answered"
+            }
+          ]
+        },
+        {
+          "id": "f7004006-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "The Lantern hangs a new backdrop.",
+          "participantId": null,
+          "systemSender": "lantern",
+          "systemKind": "background",
+          "createdAt": "2026-01-02T03:05:06.250Z"
+        },
+        {
+          "id": "f7004007-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7004001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:07.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": false, \"result\": \"refused\", \"arguments\": {\"prompt\": \"a quiet harbour at dusk\", \"size\": \"1024x1024\"}}",
+          "routeTrail": [
+            {
+              "profileId": "17000001-0000-4000-8000-000000000001",
+              "profileName": "House Painter",
+              "provider": "OPENAI",
+              "modelName": "gpt-image-1",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "provider-code",
+              "profileKind": "image",
+              "detail": "moderation_blocked"
+            }
+          ]
+        },
+        {
+          "id": "f7004008-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7004001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:08.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"two figures on the pier\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7004009-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7004001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:09.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"the lighthouse, candidly\"}, \"provider\": \"GROK\", \"model\": \"grok-2-image\"}",
+          "routeTrail": [
+            {
+              "profileId": "17000001-0000-4000-8000-000000000001",
+              "profileName": "House Painter",
+              "provider": "OPENAI",
+              "modelName": "gpt-image-1",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "typed-error",
+              "profileKind": "image"
+            },
+            {
+              "profileId": "17000002-0000-4000-8000-000000000001",
+              "profileName": "Uncensored Painter",
+              "provider": "GROK",
+              "modelName": "grok-2-image",
+              "via": "concierge",
+              "outcome": "answered",
+              "profileKind": "image"
+            }
+          ]
+        },
+        {
+          "id": "f7004010-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7004001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:10Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"gulls\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7004011-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7004001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:11.250Z",
+          "content": "{\"toolName\": \"rng\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"sides\": 6}}"
+        },
+        {
+          "id": "f7004012-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7004001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:12.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7004013-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7004001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:13.250Z",
+          "content": "not json at all"
+        },
+        {
+          "id": "f7004014-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": null,
+          "createdAt": "2026-01-02T03:05:14.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"an operator's own picture\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        }
+      ]
+    },
+    {
+      "id": "d7000005-0000-4000-8000-000000000001",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "title": "The Lonely Room",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "e7005001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "b7000003-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active",
+          "createdAt": "2026-01-02T03:04:05.000Z",
+          "updatedAt": "2026-01-02T03:04:05.000Z"
+        }
+      ],
+      "conciergeMode": "moderated",
+      "imageProfileId": "17000005-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "id": "f7005001-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "Paint me the harbour.",
+          "participantId": null,
+          "createdAt": "2026-01-02T03:05:01.250Z"
+        },
+        {
+          "id": "f7005002-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "I would rather not.",
+          "participantId": "e7005001-0000-4000-8000-000000000001",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet-4",
+          "createdAt": "2026-01-02T03:05:02.250Z",
+          "routeTrail": [
+            {
+              "profileId": "c7000001-0000-4000-8000-000000000001",
+              "profileName": "Responder",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-4",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "finish-reason",
+              "detail": "content_filter"
+            },
+            {
+              "profileId": "c7000004-0000-4000-8000-000000000001",
+              "profileName": "Second Desk",
+              "provider": "GROK",
+              "modelName": "grok-4",
+              "via": "concierge",
+              "outcome": "failed",
+              "trigger": "network",
+              "detail": "socket hang up"
+            }
+          ]
+        },
+        {
+          "id": "f7005003-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "A polite paragraph about nothing.",
+          "participantId": "e7005001-0000-4000-8000-000000000001",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet-4",
+          "createdAt": "2026-01-02T03:05:03.250Z"
+        },
+        {
+          "id": "f7005004-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "The desk answered this one.",
+          "participantId": "e7005001-0000-4000-8000-000000000001",
+          "provider": "OPENROUTER",
+          "modelName": "venice/uncensored",
+          "createdAt": "2026-01-02T03:05:04.250Z",
+          "routeTrail": [
+            {
+              "profileId": "c7000001-0000-4000-8000-000000000001",
+              "profileName": "Responder",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-4",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "typed-error"
+            },
+            {
+              "profileId": "c7000002-0000-4000-8000-000000000001",
+              "profileName": "Uncensored Desk",
+              "provider": "OPENROUTER",
+              "modelName": "venice/uncensored",
+              "via": "concierge",
+              "outcome": "answered"
+            }
+          ]
+        },
+        {
+          "id": "f7005006-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "The Lantern hangs a new backdrop.",
+          "participantId": null,
+          "systemSender": "lantern",
+          "systemKind": "background",
+          "createdAt": "2026-01-02T03:05:06.250Z"
+        },
+        {
+          "id": "f7005007-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7005001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:07.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": false, \"result\": \"refused\", \"arguments\": {\"prompt\": \"a quiet harbour at dusk\", \"size\": \"1024x1024\"}}",
+          "routeTrail": [
+            {
+              "profileId": "17000001-0000-4000-8000-000000000001",
+              "profileName": "House Painter",
+              "provider": "OPENAI",
+              "modelName": "gpt-image-1",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "provider-code",
+              "profileKind": "image",
+              "detail": "moderation_blocked"
+            }
+          ]
+        },
+        {
+          "id": "f7005008-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7005001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:08.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"two figures on the pier\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7005009-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7005001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:09.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"the lighthouse, candidly\"}, \"provider\": \"GROK\", \"model\": \"grok-2-image\"}",
+          "routeTrail": [
+            {
+              "profileId": "17000001-0000-4000-8000-000000000001",
+              "profileName": "House Painter",
+              "provider": "OPENAI",
+              "modelName": "gpt-image-1",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "typed-error",
+              "profileKind": "image"
+            },
+            {
+              "profileId": "17000002-0000-4000-8000-000000000001",
+              "profileName": "Uncensored Painter",
+              "provider": "GROK",
+              "modelName": "grok-2-image",
+              "via": "concierge",
+              "outcome": "answered",
+              "profileKind": "image"
+            }
+          ]
+        },
+        {
+          "id": "f7005010-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7005001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:10Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"gulls\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7005011-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7005001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:11.250Z",
+          "content": "{\"toolName\": \"rng\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"sides\": 6}}"
+        },
+        {
+          "id": "f7005012-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7005001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:12.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        },
+        {
+          "id": "f7005013-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": "e7005001-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-02T03:05:13.250Z",
+          "content": "not json at all"
+        },
+        {
+          "id": "f7005014-0000-4000-8000-000000000001",
+          "role": "TOOL",
+          "participantId": null,
+          "createdAt": "2026-01-02T03:05:14.250Z",
+          "content": "{\"toolName\": \"generate_image\", \"success\": true, \"result\": \"Generated 1 image(s)\", \"arguments\": {\"prompt\": \"an operator's own picture\"}, \"provider\": \"OPENAI\", \"model\": \"gpt-image-1\"}"
+        }
+      ]
+    },
+    {
+      "id": "d7000006-0000-4000-8000-000000000001",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "title": "Nobody Home",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "e7006001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "b7000003-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "absent",
+          "createdAt": "2026-01-02T03:04:05.000Z",
+          "updatedAt": "2026-01-02T03:04:05.000Z"
+        }
+      ],
+      "conciergeMode": "moderated",
+      "imageProfileId": "17000005-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "d7000007-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "title": "No Painter Room",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "e7007001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "b7000001-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active",
+          "createdAt": "2026-01-02T03:04:05.000Z",
+          "updatedAt": "2026-01-02T03:04:05.000Z"
+        }
+      ],
+      "conciergeMode": "moderated",
+      "imageProfileId": null
+    }
+  ],
+  "cases": [
+    {
+      "kind": "service",
+      "name": "text_locked",
+      "fn": "text",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000002-0000-4000-8000-000000000001",
+      "messageId": "f7002002-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "service",
+      "name": "text_trail_responder_excluded",
+      "fn": "text",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001002-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "service",
+      "name": "text_soft_refusal",
+      "fn": "text",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001003-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "service",
+      "name": "text_same_model_excluded",
+      "fn": "text",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001004-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "service",
+      "name": "text_responder_unresolvable",
+      "fn": "text",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001005-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "service",
+      "name": "text_off_duty_keeps_configured_desk",
+      "fn": "text",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001003-0000-4000-8000-000000000001",
+      "settings": {
+        "enabled": false,
+        "uncensoredTextProfileId": "c7000002-0000-4000-8000-000000000001",
+        "uncensoredImageProfileId": "17000002-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "kind": "service",
+      "name": "text_off_duty_empty_desk_scans",
+      "fn": "text",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001003-0000-4000-8000-000000000001",
+      "settings": {
+        "enabled": false
+      }
+    },
+    {
+      "kind": "service",
+      "name": "text_exempt_help_chat",
+      "fn": "text",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000004-0000-4000-8000-000000000001",
+      "messageId": "f7004003-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "service",
+      "name": "text_unmoderated",
+      "fn": "text",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000003-0000-4000-8000-000000000001",
+      "messageId": "f7003002-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "service",
+      "name": "text_no_understudy",
+      "fn": "text",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "chatId": "d7000005-0000-4000-8000-000000000001",
+      "messageId": "f7005003-0000-4000-8000-000000000001",
+      "settings": {
+        "enabled": true
+      }
+    },
+    {
+      "kind": "service",
+      "name": "image_locked",
+      "fn": "image",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000002-0000-4000-8000-000000000001",
+      "exclude": [
+        "17000001-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "kind": "service",
+      "name": "image_picture_refused",
+      "fn": "image",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001007-0000-4000-8000-000000000001",
+      "exclude": "chat",
+      "answeredFromTool": true
+    },
+    {
+      "kind": "service",
+      "name": "image_picture_soft",
+      "fn": "image",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001008-0000-4000-8000-000000000001",
+      "exclude": "chat",
+      "answeredFromTool": true
+    },
+    {
+      "kind": "service",
+      "name": "image_picture_desk_drew",
+      "fn": "image",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001009-0000-4000-8000-000000000001",
+      "exclude": "chat",
+      "answeredFromTool": true
+    },
+    {
+      "kind": "service",
+      "name": "image_background_resolved",
+      "fn": "image",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "exclude": [
+        "17000001-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "kind": "service",
+      "name": "image_null_exclude",
+      "fn": "image",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000007-0000-4000-8000-000000000001",
+      "exclude": [
+        null,
+        ""
+      ]
+    },
+    {
+      "kind": "service",
+      "name": "image_off_duty_keeps_configured_desk",
+      "fn": "image",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "exclude": [
+        "17000001-0000-4000-8000-000000000001"
+      ],
+      "settings": {
+        "enabled": false,
+        "uncensoredTextProfileId": "c7000002-0000-4000-8000-000000000001",
+        "uncensoredImageProfileId": "17000002-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "kind": "service",
+      "name": "image_exempt_help_chat",
+      "fn": "image",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000004-0000-4000-8000-000000000001",
+      "exclude": [
+        "17000001-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "kind": "service",
+      "name": "image_no_understudy",
+      "fn": "image",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "chatId": "d7000005-0000-4000-8000-000000000001",
+      "exclude": [
+        "17000005-0000-4000-8000-000000000001"
+      ],
+      "settings": {
+        "enabled": true
+      }
+    },
+    {
+      "kind": "service",
+      "name": "compose_connection_from_trail",
+      "fn": "compose",
+      "messageId": "f7001002-0000-4000-8000-000000000001",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "profileKind": "connection",
+      "answering": "c7000002-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "service",
+      "name": "compose_image_drops_answered",
+      "fn": "compose",
+      "messageId": "f7001009-0000-4000-8000-000000000001",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "profileKind": "image",
+      "answering": "17000004-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "service",
+      "name": "compose_no_trail",
+      "fn": "compose",
+      "messageId": "f7001003-0000-4000-8000-000000000001",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "profileKind": "connection",
+      "answering": "c7000002-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "service",
+      "name": "may_retry_each_state",
+      "fn": "may",
+      "chatIds": [
+        "d7000001-0000-4000-8000-000000000001",
+        "d7000002-0000-4000-8000-000000000001",
+        "d7000003-0000-4000-8000-000000000001",
+        "d7000004-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "kind": "service",
+      "name": "configured_desk",
+      "fn": "desk",
+      "settingsList": [
+        {
+          "enabled": false,
+          "uncensoredTextProfileId": "c7000002-0000-4000-8000-000000000001",
+          "uncensoredImageProfileId": "17000002-0000-4000-8000-000000000001"
+        },
+        {
+          "enabled": true
+        },
+        null
+      ]
+    },
+    {
+      "kind": "chat",
+      "name": "chat_bad_body",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": 5
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_malformed_json",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": null,
+      "malformed": true
+    },
+    {
+      "kind": "chat",
+      "name": "chat_empty_tool_id",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": ""
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_unknown_tool_message",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7099999-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_not_a_tool_row",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001002-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_rng_tool",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001011-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_no_arguments",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001012-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_not_json_content",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001013-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_locked",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000002-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7002007-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_no_understudy",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "chatId": "d7000005-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7005008-0000-4000-8000-000000000001"
+      },
+      "settings": {
+        "enabled": true
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_refused_redrawn",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001007-0000-4000-8000-000000000001",
+        "kind": "background"
+      },
+      "imageResult": {
+        "success": true,
+        "images": [
+          {
+            "id": "fa000001-0000-4000-8000-000000000001",
+            "url": "/api/v1/files/fa000001-0000-4000-8000-000000000001",
+            "filename": "generated_1.webp",
+            "filepath": "files/fa000001.webp",
+            "mimeType": "image/webp",
+            "size": 2048,
+            "width": 1024,
+            "height": 768,
+            "sha256": "abababababababababababababababababababababababababababababababab"
+          }
+        ],
+        "provider": "GROK",
+        "model": "grok-2-image",
+        "expandedPrompt": "a quiet harbour at dusk, candidly"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_soft_redrawn",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001008-0000-4000-8000-000000000001"
+      },
+      "imageResult": {
+        "success": true,
+        "images": [
+          {
+            "id": "fa000001-0000-4000-8000-000000000001",
+            "url": "/api/v1/files/fa000001-0000-4000-8000-000000000001",
+            "filename": "generated_1.webp",
+            "filepath": "files/fa000001.webp",
+            "mimeType": "image/webp",
+            "size": 2048,
+            "width": 1024,
+            "height": 768,
+            "sha256": "abababababababababababababababababababababababababababababababab"
+          }
+        ],
+        "provider": "GROK",
+        "model": "grok-2-image",
+        "expandedPrompt": "a quiet harbour at dusk, candidly"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_desk_drew_goes_elsewhere",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001009-0000-4000-8000-000000000001"
+      },
+      "imageResult": {
+        "success": true,
+        "images": [
+          {
+            "id": "fa000001-0000-4000-8000-000000000001",
+            "url": "/api/v1/files/fa000001-0000-4000-8000-000000000001",
+            "filename": "generated_1.webp",
+            "filepath": "files/fa000001.webp",
+            "mimeType": "image/webp",
+            "size": 2048,
+            "width": 1024,
+            "height": 768,
+            "sha256": "abababababababababababababababababababababababababababababababab"
+          }
+        ],
+        "provider": "GOOGLE",
+        "model": "imagen-4",
+        "expandedPrompt": "a quiet harbour at dusk, candidly"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_no_ms_created_at",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001010-0000-4000-8000-000000000001"
+      },
+      "imageResult": {
+        "success": true,
+        "images": [
+          {
+            "id": "fa000001-0000-4000-8000-000000000001",
+            "url": "/api/v1/files/fa000001-0000-4000-8000-000000000001",
+            "filename": "generated_1.webp",
+            "filepath": "files/fa000001.webp",
+            "mimeType": "image/webp",
+            "size": 2048,
+            "width": 1024,
+            "height": 768,
+            "sha256": "abababababababababababababababababababababababababababababababab"
+          }
+        ],
+        "provider": "GROK",
+        "model": "grok-2-image",
+        "expandedPrompt": "a quiet harbour at dusk, candidly"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_operator_row",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001014-0000-4000-8000-000000000001"
+      },
+      "imageResult": {
+        "success": true,
+        "images": [
+          {
+            "id": "fa000001-0000-4000-8000-000000000001",
+            "url": "/api/v1/files/fa000001-0000-4000-8000-000000000001",
+            "filename": "generated_1.webp",
+            "filepath": "files/fa000001.webp",
+            "mimeType": "image/webp",
+            "size": 2048,
+            "width": 1024,
+            "height": 768,
+            "sha256": "abababababababababababababababababababababababababababababababab"
+          }
+        ],
+        "provider": "GROK",
+        "model": "grok-2-image",
+        "expandedPrompt": "a quiet harbour at dusk, candidly"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_understudy_rerouted",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000003-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7003007-0000-4000-8000-000000000001"
+      },
+      "imageResult": {
+        "success": true,
+        "images": [
+          {
+            "id": "fa000001-0000-4000-8000-000000000001",
+            "url": "/api/v1/files/fa000001-0000-4000-8000-000000000001",
+            "filename": "generated_1.webp",
+            "filepath": "files/fa000001.webp",
+            "mimeType": "image/webp",
+            "size": 2048,
+            "width": 1024,
+            "height": 768,
+            "sha256": "abababababababababababababababababababababababababababababababab"
+          }
+        ],
+        "provider": "GOOGLE",
+        "model": "imagen-4",
+        "expandedPrompt": "a quiet harbour at dusk, candidly",
+        "routeTrail": [
+          {
+            "profileId": "17000002-0000-4000-8000-000000000001",
+            "profileName": "Uncensored Painter",
+            "provider": "GROK",
+            "modelName": "grok-2-image",
+            "via": "concierge",
+            "outcome": "refused",
+            "profileKind": "image",
+            "trigger": "moderation-refusal",
+            "evidence": "typed-error",
+            "detail": "no"
+          },
+          {
+            "profileId": "17000004-0000-4000-8000-000000000001",
+            "profileName": "Second Painter",
+            "provider": "GOOGLE",
+            "modelName": "imagen-4",
+            "via": "concierge",
+            "outcome": "answered",
+            "profileKind": "image"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_failed_with_code",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001008-0000-4000-8000-000000000001"
+      },
+      "imageResult": {
+        "success": false,
+        "error": "PROVIDER_ERROR",
+        "message": "The painter fell over"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_failed_no_code",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001008-0000-4000-8000-000000000001"
+      },
+      "imageResult": {
+        "success": false
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_success_no_images",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001008-0000-4000-8000-000000000001"
+      },
+      "imageResult": {
+        "success": true,
+        "images": []
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_exempt_help",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000004-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7004007-0000-4000-8000-000000000001"
+      },
+      "imageResult": {
+        "success": true,
+        "images": [
+          {
+            "id": "fa000001-0000-4000-8000-000000000001",
+            "url": "/api/v1/files/fa000001-0000-4000-8000-000000000001",
+            "filename": "generated_1.webp",
+            "filepath": "files/fa000001.webp",
+            "mimeType": "image/webp",
+            "size": 2048,
+            "width": 1024,
+            "height": 768,
+            "sha256": "abababababababababababababababababababababababababababababababab"
+          }
+        ],
+        "provider": "GROK",
+        "model": "grok-2-image",
+        "expandedPrompt": "a quiet harbour at dusk, candidly"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_background_locked",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000002-0000-4000-8000-000000000001",
+      "body": {
+        "kind": "background"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_background_no_understudy_before_no_characters",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "chatId": "d7000006-0000-4000-8000-000000000001",
+      "body": {
+        "kind": "background"
+      },
+      "settings": {
+        "enabled": true
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_background_queued",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "",
+        "kind": "background"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_background_dedupe_drops_force",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000003-0000-4000-8000-000000000001",
+      "body": {
+        "kind": "background"
+      },
+      "plantJob": true
+    },
+    {
+      "kind": "chat",
+      "name": "chat_background_no_painter_400_after_gate",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000007-0000-4000-8000-000000000001",
+      "body": {
+        "kind": "background"
+      }
+    },
+    {
+      "kind": "chat",
+      "name": "chat_background_disabled_400_after_gate",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "kind": "background"
+      },
+      "storyBackgroundsEnabled": false
+    },
+    {
+      "kind": "message",
+      "name": "msg_unknown_message",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7099999-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "message",
+      "name": "msg_user_row",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001001-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "message",
+      "name": "msg_tool_row",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001007-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "message",
+      "name": "msg_staff_row",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001006-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "message",
+      "name": "msg_locked",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000002-0000-4000-8000-000000000001",
+      "messageId": "f7002002-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "message",
+      "name": "msg_no_understudy",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "chatId": "d7000005-0000-4000-8000-000000000001",
+      "messageId": "f7005003-0000-4000-8000-000000000001",
+      "settings": {
+        "enabled": true
+      }
+    },
+    {
+      "kind": "message",
+      "name": "msg_retry_refused_turn",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001002-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "message",
+      "name": "msg_retry_soft_refusal",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001003-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "message",
+      "name": "msg_retry_desk_answered",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001004-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "message",
+      "name": "msg_retry_streamed",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001002-0000-4000-8000-000000000001",
+      "stream": true
+    },
+    {
+      "kind": "message",
+      "name": "msg_retry_off_duty",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "messageId": "f7001003-0000-4000-8000-000000000001",
+      "settings": {
+        "enabled": false,
+        "uncensoredTextProfileId": "c7000002-0000-4000-8000-000000000001",
+        "uncensoredImageProfileId": "17000002-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "kind": "message",
+      "name": "msg_retry_service_throws",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000003-0000-4000-8000-000000000001",
+      "messageId": "f7003002-0000-4000-8000-000000000001",
+      "serviceThrows": "the understudy fell silent"
+    }
+  ]
+}

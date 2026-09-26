@@ -223,6 +223,85 @@ pub struct RouteSeat<'a> {
     pub model_name: &'a str,
 }
 
+impl RouteAttempt {
+    /// A stored trail row back into the typed row (P4.D228 — "Try
+    /// uncensored" re-files a TOOL row's prior trail through
+    /// `save_tool_messages`, which takes typed rows). `None` for a row the
+    /// schema would reject: a missing string field, or a `via` / `outcome` /
+    /// `trigger` / `evidence` / `profileKind` outside v4's unions. The five
+    /// optional keys are ABSENT when absent (key presence is a comparand).
+    pub fn from_value(v: &serde_json::Value) -> Option<Self> {
+        let s = |k: &str| v.get(k).and_then(serde_json::Value::as_str);
+        let opt = |k: &str| v.get(k).filter(|x| !x.is_null());
+        Some(RouteAttempt {
+            profile_id: s("profileId")?.to_string(),
+            profile_name: s("profileName")?.to_string(),
+            provider: s("provider")?.to_string(),
+            model_name: s("modelName")?.to_string(),
+            via: match s("via")? {
+                "primary" => RouteAttemptVia::Primary,
+                "retry" => RouteAttemptVia::Retry,
+                "concierge" => RouteAttemptVia::Concierge,
+                "understudy" => RouteAttemptVia::Understudy,
+                "tier-pick" => RouteAttemptVia::TierPick,
+                _ => return None,
+            },
+            outcome: match s("outcome")? {
+                "answered" => RouteAttemptOutcome::Answered,
+                "failed" => RouteAttemptOutcome::Failed,
+                "refused" => RouteAttemptOutcome::Refused,
+                _ => return None,
+            },
+            trigger: match opt("trigger") {
+                None => None,
+                Some(t) => Some(FallbackTrigger::from_wire(t.as_str()?)?),
+            },
+            evidence: match opt("evidence") {
+                None => None,
+                Some(e) => Some(RouteAttemptEvidence::from_wire(e.as_str()?)?),
+            },
+            profile_kind: match opt("profileKind").map(serde_json::Value::as_str) {
+                None => None,
+                Some(Some("image")) => Some(RouteProfileKind::Image),
+                Some(Some("connection")) => Some(RouteProfileKind::Connection),
+                Some(_) => return None,
+            },
+            detail: match opt("detail") {
+                None => None,
+                Some(d) => Some(d.as_str()?.to_string()),
+            },
+        })
+    }
+
+    /// The row in the image-failover chokepoint's IN-MEMORY key order (v4
+    /// `image-failover.ts` `row()`: `…outcome, profileKind?, trigger?,
+    /// evidence?, detail?`) — the order a caller that returns the trail
+    /// WITHOUT persisting it puts on the wire (v4's `retry-image-uncensored`
+    /// 200 body). The persisted order is the schema's (the `Serialize` impl).
+    pub fn to_chokepoint_value(&self) -> serde_json::Value {
+        let mut o = serde_json::Map::new();
+        o.insert("profileId".into(), self.profile_id.clone().into());
+        o.insert("profileName".into(), self.profile_name.clone().into());
+        o.insert("provider".into(), self.provider.clone().into());
+        o.insert("modelName".into(), self.model_name.clone().into());
+        o.insert("via".into(), self.via.as_str().into());
+        o.insert("outcome".into(), self.outcome.as_str().into());
+        if let Some(k) = self.profile_kind {
+            o.insert("profileKind".into(), k.as_str().into());
+        }
+        if let Some(t) = self.trigger {
+            o.insert("trigger".into(), t.as_str().into());
+        }
+        if let Some(e) = self.evidence {
+            o.insert("evidence".into(), e.as_str().into());
+        }
+        if let Some(d) = &self.detail {
+            o.insert("detail".into(), d.clone().into());
+        }
+        serde_json::Value::Object(o)
+    }
+}
+
 impl<'a> From<&'a EffectiveProfile> for RouteSeat<'a> {
     fn from(p: &'a EffectiveProfile) -> Self {
         RouteSeat {

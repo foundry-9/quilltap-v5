@@ -407,6 +407,12 @@ pub struct ImageToolExecutionContext {
     pub profile_id: String,
     pub chat_id: Option<String>,
     pub calling_participant_id: Option<String>,
+    /// v4 `primaryVia?` (NEW at `ce2f1dabf`, #77): how `profile_id` came to be
+    /// asked. `Concierge` when the operator's "Try uncensored" already put the
+    /// Concierge's uncensored understudy in the chair (`retry-image-
+    /// uncensored`); `None` for an ordinary call, where the trail says
+    /// `concierge` only if a pre-flight reroute swapped the profile.
+    pub primary_via: Option<RouteAttemptVia>,
 }
 
 /// The Lantern image-notification writer seam (v4 `postLanternImageNotification`).
@@ -2100,11 +2106,14 @@ where
         &concierge_policy,
         &db_ctx,
         ctx,
-        if final_profile.id != image_profile.id {
-            RouteAttemptVia::Concierge
-        } else {
-            RouteAttemptVia::Primary
-        },
+        // v4 `context.primaryVia ?? (finalProfile.id !== imageProfile.id ?
+        // 'concierge' : 'primary')` (`ce2f1dabf`, #77).
+        ctx.primary_via
+            .unwrap_or(if final_profile.id != image_profile.id {
+                RouteAttemptVia::Concierge
+            } else {
+                RouteAttemptVia::Primary
+            }),
     )
     .await
     {
@@ -2735,6 +2744,7 @@ where
             understudy: &understudy,
             profile_kind: RouteProfileKind::Image,
             primary_via,
+            announce_unresolved_refusal: true,
         },
     )
     .await
@@ -3127,6 +3137,7 @@ mod duration_tests {
             profile_id: "profile-1".to_string(),
             chat_id: None,
             calling_participant_id: None,
+            primary_via: None,
         };
 
         let out = generate_images_with_provider(

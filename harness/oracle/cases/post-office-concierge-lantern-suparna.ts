@@ -41,6 +41,9 @@ import {
 // that predates them (the rows are simply absent there).
 import * as conciergeWriter from '@/lib/services/concierge-notifications/writer';
 import { isLanternImageAlertEnabled } from '@/lib/services/lantern-notifications/resolver';
+// P4.D228 (v4 `ce2f1dabf`, #77): the Lantern's `background-refused` bubble.
+// Imported as a namespace so the case still loads at a pin that predates it.
+import * as lanternWriter from '@/lib/services/lantern-notifications/writer';
 import { buildSuparnaMailWhisper } from '@/lib/services/suparna-notifications/writer';
 import type { DeliveredLetterSummary } from '@/lib/post-office/mailbox';
 
@@ -240,6 +243,24 @@ function main(): void {
         emit('autoflag_content', id, content(details), { details });
         emit('autoflag_opaque', id, opaque(details), { details });
       }
+    }
+  }
+
+  // ---- P4.D228: the Lantern's refusal bubble (content + opaque twin) ----
+  const lw = lanternWriter as Record<string, unknown>;
+  if (typeof lw.buildLanternRefusalContent === 'function') {
+    const content = lw.buildLanternRefusalContent as (r: unknown) => string;
+    const opaque = lw.buildLanternRefusalOpaqueContent as (r: unknown) => string;
+    const refusals: Array<{ id: string; provider: string; modelName: string }> = [
+      { id: 'google', provider: 'GOOGLE', modelName: 'gemini-2.5-flash-image' },
+      { id: 'openai', provider: 'OPENAI', modelName: 'gpt-image-1' },
+      { id: 'empty-model', provider: 'GROK', modelName: '' },
+      { id: 'unicode-model', provider: 'OPENROUTER', modelName: 'flux\u00b7pro \u2014 dev' },
+    ];
+    for (const r of refusals) {
+      const refusal = { kind: 'background-refused', provider: r.provider, modelName: r.modelName };
+      emit('lantern_refusal_content', r.id, content(refusal), { refusal });
+      emit('lantern_refusal_opaque', r.id, opaque(refusal), { refusal });
     }
   }
 

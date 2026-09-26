@@ -58,7 +58,7 @@ use quilltap_core::services::dangerous_content::manual_flip::{
 };
 use quilltap_core::services::dangerous_content::resolver::{
     default_concierge_settings, read_concierge_settings, resolve_concierge_settings,
-    DEFAULT_AUTO_SWITCH_AFTER_REFUSALS,
+    resolve_configured_concierge_desk, DEFAULT_AUTO_SWITCH_AFTER_REFUSALS,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -186,6 +186,15 @@ enum PureRow {
         id: String,
         legacy: Value,
         columns: Value,
+    },
+    /// P4.D228 (v4 `ce2f1dabf`, #77): `resolveConfiguredConciergeDesk` — the
+    /// desk AS CONFIGURED, off duty included (the operator's explicit "Try
+    /// uncensored" is the one reader).
+    #[serde(rename = "configuredDesk")]
+    ConfiguredDesk {
+        id: String,
+        global: Value,
+        desk: Value,
     },
     /// `withConciergeModeFromLegacy` — the returned object's BYTES (key order)
     /// and v4's `toBe(chat)` identity.
@@ -430,13 +439,22 @@ fn danger_resolver_pure_matches_oracle() {
                 assert_eq!(got == chat, identical, "withLegacy[{id}] untouched");
                 *kinds.entry("withLegacy").or_default() += 1;
             }
+            PureRow::ConfiguredDesk { id, global, desk } => {
+                let got = resolve_configured_concierge_desk(undefined_as_none(&global));
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap(),
+                    serde_json::to_string(&desk).unwrap(),
+                    "configuredDesk[{id}]"
+                );
+                *kinds.entry("configuredDesk").or_default() += 1;
+            }
         }
         count += 1;
     }
     // Shape guard: an oracle regenerated before `3b463d6b1` cannot even load the
     // case (the new exports are absent), and one from a narrower case would
     // carry none of the new kinds and pass vacuously.
-    let want: [(&str, usize); 10] = [
+    let want: [(&str, usize); 11] = [
         ("defaults", 1),
         ("readSettings", 9),
         ("resolve", 32),
@@ -447,6 +465,8 @@ fn danger_resolver_pure_matches_oracle() {
         ("states", 1),
         ("derive", 11),
         ("withLegacy", 5),
+        // P4.D228: absent from an oracle regenerated before `ce2f1dabf`.
+        ("configuredDesk", 6),
     ];
     for (kind, n) in want {
         assert_eq!(

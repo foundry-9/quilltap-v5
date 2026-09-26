@@ -151638,3 +151638,191 @@ ok** (`help_tree_equivalence` NDJSON names `the-concierge` ×1 and
 `host_help_docs_boot` + `host_help_boot_order` green with BOTH 129 literals
 UNMOVED. (The embed guard compares embedded vs DISK only — it would have been
 green on the stale tree too; `help_tree_equivalence` is the proof.)
+
+### Unit 2 — "Try uncensored": the server whole (Tier 1 items 1–7)
+
+**Core.**
+
+- NEW `services/dangerous_content/retry_uncensored.rs` — v4's
+  `retry-uncensored.ts` whole: `may_retry_uncensored` (Locked alone refuses;
+  off duty and exempt chat types do NOT — E.7, v4's, recorded), `retry_policy`
+  (the chat's policy with the CONFIGURED desk), `same_model_ids` (both halves
+  truthy), `trail_profile_ids` (absent kind = connection),
+  `resolve_text_retry_understudy` (Locked → INFO, no lookup; exclude = the
+  connection-kind trail ids + the responder's `resolveConnectionProfile` (NO
+  chat default — its throw is the DEBUG) + same provider+model over
+  `connections.findAll`; no MIME types, no filter),
+  `resolve_image_retry_understudy` (the caller's ids minus null/empty + the
+  image-kind trail ids + same provider+model over `imageProfiles.findAll`),
+  `compose_retry_route_trail` (the `answered` rows DROPPED; ONE appended row,
+  `profileKind` LAST), `retry_answer_attempt` (its typed twin for the story
+  job). The seven service lines under `quilltap::concierge_retry_uncensored`,
+  no `[DangerousContent]` prefix (v4's `ConciergeRetryUncensored` logger).
+- `resolver::resolve_configured_concierge_desk` (v4 `+13`).
+- `route_trail`: `RouteAttempt::from_value` (a stored row back to the typed
+  row) and `to_chokepoint_value` (v4 image-failover `row()`'s IN-MEMORY key
+  order — `profileKind` before `trigger` — which is what v4's picture 200 body
+  carries for the understudy's own rows, since it returns them un-reparsed);
+  `FallbackTrigger::from_wire`.
+- `api/chat_media.rs`: `chat_retry_image_uncensored` — the chat first (404),
+  `decode_retry_image_body` (Zod union: first branch wins, keys stripped), the
+  chat settings read BEFORE branching; the background arm (the RESOLVED
+  profile excluded; 409 BEFORE `regenerate-background`'s 400s; the INFO fires
+  even when the regenerate then 400s) → `regenerate_background(…, true)`; the
+  picture arm (the FALLBACK `get_messages` read; 404 / 400; the RAW
+  `chat.imageProfileId` + trail + the content's provider/model excluded; the
+  generator run SYNCHRONOUSLY through the engine's existing
+  `ErasedImageGeneration` runner — no new host seam, E.2; no image → WARN +
+  the 502 body; `+1 ms` filing; `refusal-rerouted` only with a `refused` row;
+  200 `{toolMessageId, images, routeTrail}`). `chat_regenerate_background`
+  delegates to `regenerate_background(…, force)`, which restores v4's two
+  `[Chats v1]` INFO lines (never emitted by v5 before) with `forceUncensored`
+  / `forceUncensoredRequested`.
+- `api/salon.rs`: `message_retry_uncensored` — 404 Message → 400 `Only
+  assistant messages can be retried` (its OWN sentence) → 400 Staff → the text
+  gate (409) → INFO → `SwipeGenerateRequest` with the understudy's ROW and the
+  composed trail; the two failure lines (streamed / not) and the `error` frame.
+- `api/chat_send.rs`: `SwipeGenerateRequest` gains `profile_override:
+  Option<Value>` (the WHOLE row, not an id — the host never re-reads a profile
+  the gate already chose; a deliberate refinement of E.3's "an
+  `override_profile_id`", recorded) and `route_trail`.
+- `services/regenerate_swipe.rs`: `RegenerateSwipeOptions` gains
+  `profile_override: Option<SwipeProfileOverride { profile, model_context_limit
+  }>` and `route_trail`; the override feeds the context build (ITS limit), the
+  provider/params/model and the row; `cacheKey` stays the character; the
+  `[RegenerateSwipe] Regenerating on an override profile` INFO; the trail
+  AFTER `createdAt`, only when non-empty. The KEY has no home in v5's core (the
+  transport resolves keys per provider — the standing provider-I/O ruling).
+- `quilltap-host/src/spine.rs` `run_swipe`: the override's context limit
+  resolved through the SAME `registry_inputs` as the responder's.
+- `services/orchestrator.rs`: the synthesized Unmoderated `dangerFlags`, their
+  inline `markFlagsAsRerouted`, and the USER-row attach DELETED;
+  `content_was_flagged_dangerous` stays true on the direct route (= v4's
+  `routedDirect`; `is_dangerous_routed` unchanged).
+- `services/tool_execution.rs`: `save_tool_messages_with_options` +
+  `SaveToolMessagesOptions { created_at }` (the old signature is the
+  default-options wrapper — no other caller touched).
+- `tools/generate_image.rs`: `ImageToolExecutionContext.primary_via` (`None` at
+  the three existing sites; `ctx.primary_via.unwrap_or(<the swap test>)`).
+- `services/dangerous_content/image_failover.rs`:
+  `ImageFailoverContext.announce_unresolved_refusal` (the Locked and
+  no-understudy exits' announcements gated; ledger + rethrow + the success
+  exit's `refusal-rerouted` ungated); `image_job_common::generate_job_image`
+  threads it (the Lantern `false`, Aurora + the dialog `true`).
+- `services/lantern_notifications.rs`: `LanternRefusal`,
+  `build_lantern_refusal_content` / `…_opaque_content` (v4's bytes, U+2014),
+  `post_lantern_refusal_notification` (NOT alert-gated; the three lines).
+- `services/story_background_job.rs`: `StoryBackgroundPayload.force_uncensored`
+  (JS-truthy); the run-time re-check AFTER the cheap-LLM early return (Locked /
+  no-understudy → INFO, `Ok(())` quietly); the forced seat (INFO) and
+  `uncensored_image_target`; `primary_via` + `announce_unresolved_refusal:
+  false` on EVERY backdrop; a refused-and-unanswered trail → INFO + the
+  Lantern bubble + a COMPLETED job; the forced first-time answer's composed
+  trail.
+- `services/queue_service.rs`: `enqueue_story_background_generation_with(…,
+  force)` — `forceUncensored: true` spread LAST, only when true (a plain
+  regenerate byte-unchanged; `cost_background_routes` neutral, measured); the
+  dedupe drops the force silently (E.9 — v4's, ported as-is).
+- `api/types.rs` + `api/engine.rs`: `Request::ChatRetryImageUncensored {
+  chat_id, body: Value }` and `Request::MessageRetryUncensored { message_id,
+  stream }` (RPC-only); no new `Response` variant (`ChatMedia` / `Message`).
+
+**Web.** `CHAT_POST_ACTIONS` gains `retry-image-uncensored` at index 24 (48
+keys; the comment's count moved); the REST arm answers the dispatch pointer
+(`web_edge_action_sites_census` UNMOVED — a list entry is not an `"action"`
+literal).
+
+**Families — each through the sweep driver from the `acadcc7cd` pin** (two
+batches; results `/tmp/p4d228/lane-sweep-{1,2}.json`):
+
+| family | result | what moved |
+|---|---|---|
+| NEW `retry_uncensored_tier3` | **62/62 match v4** (4 `refusal-rerouted`) | 24 service + 26 chat-action + 12 message-action cases over v4's REAL `retry-uncensored.ts` and BOTH REAL route handlers on the purpose-built `retry-uncensored.json` fixture; results, recorded boundary calls, every service / `[DangerousContent]` / `[Chats v1]` / `[ConciergeNotification]` line (null bag values = omitted fields; arrays on the `…Json` convention), and the rows each case wrote (the TOOL row's `createdAt` a comparand, not placeholdered) |
+| `orchestrator_tier3` | ok | RED at the first act on the three Unmoderated USER rows' `dangerFlags` (red-first from EXISTING arms); green after |
+| `primary_stream_tier3` | ok | NEW `hard_error_routed_direct_dangerous`: `isDangerousRouted: true`, no flags — the tier spare is cleared (`no tier replacement qualified`) where `hard_error_chain_exhausted` tries it |
+| `story_background_job_tier3` | ok | NEW six: Locked / off-duty refusal → the job COMPLETES with the Lantern `background-refused` bubble (trail on the row, NO Concierge bubble, ledger counted); the forced seat (via `concierge`, composed trail); forced abandoned Locked / no-understudy (nothing written); **E.8** below. The footprint gains `lanternRefusals` + `state` |
+| `regenerate_swipe_tier3` | ok | NEW three on a long-history chat: the responder's 200 000 budget sends 22 messages; the OLLAMA `phi3:mini` override (v4's own `getModelContextLimit` → 4096, recorded per call in a `limits` line) sends 7; the row carries the override's provider/model; the trail after `createdAt`; an empty trail writes no key |
+| `image_generation_tier3` | ok (run by hand, below) | NEW `retry_primary_via_concierge`: the refused first row says `via: concierge` where its twin says `primary` |
+| `image_failover_tier3` | ok | NEW `lantern-silent-on-no-understudy` / `lantern-silent-on-locked` (`announceUnresolvedRefusal: false`) |
+| `tool_execution_tier2` | ok | NEW `options_created_at_filed_beside` (the chosen stamp asserted on both sides, then kept un-placeholdered) |
+| `danger_resolver` | ok | NEW six `configuredDesk` rows (off duty keeps the desk; no row / null → all null) |
+| `post_office_concierge_lantern_suparna` | ok | NEW 8 Lantern refusal rows (4 × 2 audiences; floor asserted) |
+| `query_param_semantics` | ok | RED at the first act (106 byte rows / 110 expected); green with the 48-key list |
+| `salon_swipe_generate`, `messages_swipe_sse_route`, `cost_background_routes`, `tool_execution_process_tier3`, `avatar_job_tier3`, `images_generate_route`, `image_generate_route` | ok | neutrality (the plain regenerate payload byte-unchanged; the refresh-icon swipe asserts no override / no trail) |
+| `post_office_writers_tier3` | run_failed — IDENTICAL to the first act (22 vs 17) | P4.D233's fence, unmoved by this lane |
+
+⚠ **`image_generation_tier3`'s regen hangs at `acadcc7cd`**: the oracle
+writes its NDJSON, then a TIMER-fired async task in v4's own code spins in
+`Array.prototype.includes` (a `sample` of the worker) and jest never exits —
+`--forceExit` cannot help a busy worker. The recipe is anchored and takes
+`--forceExit` anyway; the harness was run by hand against the complete
+NDJSON (58 lines, the new arm present). Recorded for the unifier and the next
+drift pass (not this lane's to chase in v4).
+
+**Measurements.**
+
+- **E.8 — MEASURED, v4's (a candidate upstream note):** a forced background
+  whose configured desk REFUSES (then the scan's understudy answers) records
+  the refusal on the ledger, and with one planted the auto-switch **flips the
+  Moderated chat to Unmoderated** (`concierge` / `refusals`) — despite the
+  route's "the retry never changes the chat's state". v5 matches.
+- **E.9** — the dedupe drops the force silently (`chat_background_dedupe_drops_force`:
+  200 "already in progress", the planted plain job's id); v4's, ported as-is.
+- **E.4** — v4 streams the two regenerations on two independent SSE
+  responses; v5 narrates both on ONE `swipeProgress` broadcast keyed by the
+  message id, so a refresh and a Try-uncensored running at once on one line
+  interleave their frames. A recorded shape divergence, no server change
+  (P4.D229 decides whether both buttons disable).
+- **E.6** — the export schema's trail item already carries `profileKind`
+  (P4.D225); the family's persisted TOOL rows show v4's schema accepting and
+  re-emitting an `answered` row with `profileKind` byte-identically.
+- **E.7** — an exempt (`help`) chat IS retried (text and picture arms),
+  v4's; recorded.
+- **§S.3 kinds:** a 409 is `kind: 'conflict'` with the bare `locked` /
+  `no-understudy` message (both wire tests).
+- ⚠ **Recorded divergence — the 502:** v5 has no 502 `ErrorKind`, and adding
+  one ripples through ~60 exhaustive `ErrorKind` matches across lanes, so the
+  picture arm's "no image" answers `kind: 'internal'` (HTTP 500 over
+  dispatch) carrying v4's body (`{error, details: {code}}`, `details: {}` with
+  no code — M8 pins it). v4's own client reads only `res.ok` and the 409.
+  **STOP-and-recorded for the unifier** (§S.7): a `BadGateway` kind is the
+  fix if the SPA ever needs the status.
+- ⚠ **Recorded:** v4's message route 404s `Chat not found` on a URL chat id
+  that names nothing; the RPC-only verb carries no chat id, so the arm has no
+  v5 analogue. `override-danger-flag` never ported; the `availableActions`
+  order stays MOOT (Tier 3 item 11).
+- **E.3 refinement:** the swipe request carries the override's ROW (not an
+  id) so the host never re-reads a profile the gate chose; the host resolves
+  its limit; the key is per provider at the transport.
+
+**Wire tests (NEW, `quilltap-web`):** `chat_retry_image_uncensored_dispatch_wire`
+(3 — the four union shapes after serde with the 400 envelope's bytes, the
+404s, the 409 kinds, a wrong-type `chatId`, the REST pointer and "not an
+unknown action") and `message_retry_uncensored_dispatch_wire` (3 — every
+refusal BEFORE any frame, `locked` checked before the lookup, and a streamed
+retry through the REAL host spine: four beats keyed by the target, `done`
+carrying a swipe on the understudy's provider/model whose trail ends via the
+Concierge).
+
+**Censuses.** `dispatch_wrong_type_census` **449 → 451** (+2: the two verbs'
+`chat_id` / `message_id`; `body` is a raw `Value`; `MessageRetryUncensored.stream`
+a census ROW, `V4::Query`); `get_messages_caller_census` 80 → **81** fallback
+(the picture arm), 7 strict, 51 files; `web_edge_action_sites_census`,
+`blob_write_sites_census`, `compressed_column_write_sites_census`,
+`concierge_state_writers_census`, `stream_watchdog_wrap_census`,
+`concierge_legacy_settings_census` UNMOVED.
+
+**Mutation proofs** (file-backup revert, md5-verified; driver
+`/tmp/p4d228/mut/run_mutations.py`):
+
+| # | mutation | reddens |
+|---|---|---|
+| M1 | decode `kind` before `toolMessageId` | `chat_retry_image_uncensored_dispatch_wire` + the family |
+| M2 | the background 409 after the regenerate's 400s | the family (`chat_background_no_understudy_before_no_characters`, `chat_background_locked`) |
+| M3 | file the retry row at the original's `createdAt` | the family |
+| M4 | announce on a soft refusal | the family (8 cases) |
+| M5 | keep the `answered` row in the retry trail | the family |
+| M6 | budget the swipe context for the responder | `regenerate_swipe_tier3` (canned-key miss: 23 messages where v4 sent 7) |
+| M7 | keep synthesizing flags on Unmoderated | `orchestrator_tier3` |
+| M8 | drop `details` on an undefined code | the family (`chat_picture_failed_no_code`, `…success_no_images`) |
+| M9 | revert ONE help file (`story-backgrounds.md`) | `help_tree_equivalence` RED; `help_tree_embed_guard` stays GREEN (it compares embedded vs disk only — as predicted) |

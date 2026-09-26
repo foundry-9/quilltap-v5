@@ -257,6 +257,25 @@
       "chatType": "salon",
       "isDangerousChat": false,
       "messageCount": 28
+    },
+    {
+      "id": "c0000f19-0000-4000-8000-000000000001",
+      "userId": "aa0000f2-0000-4000-8000-0000000000aa",
+      "title": "image failover 4",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "messageCount": 14
+    },
+    {
+      "id": "c0000f20-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 14",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "messageCount": 24,
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual"
     }
   ],
   "ledgerPlants": [
@@ -834,6 +853,58 @@
           }
         ]
       }
+    },
+    {
+      "name": "lantern-silent-on-no-understudy",
+      "userId": "aa0000f2-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f19-0000-4000-8000-000000000001",
+      "purpose": "avatar",
+      "concierge": {
+        "enabled": true
+      },
+      "primary": "e10000f5-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f5-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Your request was rejected",
+              "status": 400,
+              "providerReason": "moderation_blocked"
+            }
+          }
+        ]
+      },
+      "announceUnresolvedRefusal": false,
+      "$comment": "P4.D228 (v4 ce2f1dabf, #77): a caller that reports an unresolved refusal itself (the Lantern) passes announceUnresolvedRefusal:false -- no refusal-no-understudy bubble; the WARN, the ledger and the rethrow stand."
+    },
+    {
+      "name": "lantern-silent-on-locked",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f20-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "concierge": {
+        "enabled": true,
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "chat": {
+        "conciergeMode": "locked"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ]
+      },
+      "announceUnresolvedRefusal": false,
+      "$comment": "P4.D228: the same, on a Locked chat -- no refusal-not-permitted bubble; the ledger and the rethrow stand."
     }
   ]
 }

@@ -526,6 +526,40 @@
           "summaryClassification": false
         }
       }
+    },
+    "retry_primary_via_concierge": {
+      "$comment": "P4.D228 (v4 ce2f1dabf, #77): `ImageToolExecutionContext.primaryVia` -- \"Try uncensored\" hands the tool `primaryVia: 'concierge'` because the operator already put the uncensored desk in the chair. The chokepoint's FIRST trail row then says `via: concierge` where the same script without it says `primary` (refused_rerouted_to_the_understudy); the context's `primaryVia` overrides the pre-flight swap test.",
+      "id": "aaaa0043-0000-4000-8000-000000000043",
+      "op": "generate",
+      "prompt": "a lighthouse keeper's cottage in a tempest",
+      "orientation": "square",
+      "refuseModels": [
+        "dall-e-3"
+      ],
+      "imageSeed": "photo-lossless.webp",
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": null,
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "primaryVia": "concierge"
     }
   }
 }

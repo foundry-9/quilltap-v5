@@ -135,6 +135,8 @@ interface ChatSpec {
    * image-failover chokepoint's refusal arms. Recorded as `cannedImageThrow`.
    */
   refuseModels?: string[];
+  /** P4.D228 (v4 `ce2f1dabf`, #77): the tool context's `primaryVia`. */
+  primaryVia?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -483,6 +485,8 @@ async function main(): Promise<void> {
             profileId: chat.profileId ?? spec.profileId,
             chatId: chat.id,
             callingParticipantId: spec.callingParticipantId,
+            // P4.D228 (v4 `ce2f1dabf`, #77): "Try uncensored"'s context key.
+            ...(chat.primaryVia ? { primaryVia: chat.primaryVia } : {}),
           },
         );
         record.resultJson = JSON.stringify(out);

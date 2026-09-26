@@ -225,6 +225,20 @@ impl SwipeGenerateDriver for TestSwipeDriver<'_> {
                 // is the seam this family proves, so it must not substitute one
                 // of its own.
                 progress: req.progress,
+                // P4.D228: the refresh icon's swipe carries no override and no
+                // trail — pinned rather than assumed (the retry verb is
+                // `retry_uncensored_tier3`'s).
+                profile_override: {
+                    assert!(
+                        req.profile_override.is_none(),
+                        "a plain swipe with an override"
+                    );
+                    None
+                },
+                route_trail: {
+                    assert!(req.route_trail.is_none(), "a plain swipe with a trail");
+                    None
+                },
             };
             regenerate_message_as_swipe(
                 db, embedding, completion, streaming, executor, &bc, &mc, opts,

@@ -348,6 +348,9 @@ pub(crate) async fn generate_job_image<I: ImageProvider, A: ApiKeyResolver>(
     job_id: Option<&str>,
     purpose: ImagePurpose,
     primary_via: RouteAttemptVia,
+    // v4 `announceUnresolvedRefusal` (`ce2f1dabf`, #77): the Lantern passes
+    // `false` (its own refusal bubble reports it); every other job `true`.
+    announce_unresolved_refusal: bool,
 ) -> Result<ImageFailoverOutcome<ImageGenResponse>, ImageFailoverError> {
     let prebuilt_params = &prebuilt_params;
     let attempt = |profile: FailoverProfile, key: String| async move {
@@ -421,6 +424,7 @@ pub(crate) async fn generate_job_image<I: ImageProvider, A: ApiKeyResolver>(
             understudy: &understudy,
             profile_kind: RouteProfileKind::Image,
             primary_via,
+            announce_unresolved_refusal,
         },
     )
     .await
@@ -727,6 +731,7 @@ mod tests {
             None,
             ImagePurpose::Lantern,
             RouteAttemptVia::Primary,
+            true,
         )
         .await
     }

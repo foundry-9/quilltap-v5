@@ -76,6 +76,18 @@ pub struct SwipeGenerateRequest {
     /// which is v4's absent callback: *with no callback the generation is
     /// identical, just silent.*
     pub progress: crate::services::regenerate_swipe::SwipeProgressEmitter,
+    /// P4.D228 (v4 `profileOverride`, `ce2f1dabf` #77): "Try uncensored"
+    /// regenerates on the Concierge's uncensored understudy instead of the
+    /// responder's own profile — its WHOLE stored connection-profile row, as
+    /// the route resolved it before any frame. The HOST resolves what core
+    /// cannot: the model context limit for THIS profile's model (the key is the
+    /// transport's, per provider — the standing provider-I/O ruling). The row
+    /// rides rather than an id, so the host never re-reads a profile the gate
+    /// already chose. `None` is a plain re-roll.
+    pub profile_override: Option<Value>,
+    /// P4.D228 (v4 `routeTrail`): the trail to persist on the new swipe —
+    /// `None` / empty for a plain re-roll (no key written).
+    pub route_trail: Option<Vec<Value>>,
 }
 
 /// The boxed future a [`SwipeGenerateDriver`] returns (the new swipe `chat_messages`

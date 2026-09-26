@@ -1688,6 +1688,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             profile_id,
             chat_id: Some(ctx.chat_id.clone()).filter(|s| !s.is_empty()),
             calling_participant_id: ctx.calling_participant_id.clone(),
+            primary_via: None,
         };
 
         let out = self

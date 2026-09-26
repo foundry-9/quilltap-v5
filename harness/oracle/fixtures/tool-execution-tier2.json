@@ -158,6 +158,36 @@
         ] } },
         { "toolName": "generate_image", "success": true, "content": "Generated 1 image(s)", "arguments": { "prompt": "a harbour" }, "callId": "call-img-rt2", "metadata": { "provider": "GOOGLE", "model": "gemini-2.5-flash-image", "expandedPrompt": "a harbour", "routeTrail": [] } }
       ]
+    },
+    {
+      "name": "options_created_at_filed_beside",
+      "chatId": "cccccccc-0000-4000-8000-00000000c1a1",
+      "characterId": "bbbb2222-2222-4222-8222-222222222222",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "whisperContext": {
+        "userParticipantId": "fa000000-0000-4000-8000-0000000000fa",
+        "allowCrossCharacterVaultReads": false
+      },
+      "generatedImagePaths": [],
+      "toolMessages": [
+        {
+          "toolName": "generate_image",
+          "success": true,
+          "content": "Generated 1 image(s)",
+          "arguments": {
+            "prompt": "a harbour at dusk"
+          },
+          "metadata": {
+            "provider": "GROK",
+            "model": "grok-2-image",
+            "expandedPrompt": "a harbour at dusk, candidly"
+          }
+        }
+      ],
+      "options": {
+        "createdAt": "2026-01-02T03:04:05.001Z"
+      },
+      "$comment": "P4.D228 (v4 ce2f1dabf, #77): saveToolMessages' trailing `options.createdAt` files the row at a chosen moment instead of now -- \"Try uncensored\" puts a retried picture a millisecond after the original. The stamp is a comparand (not placeholdered), and the chat's lastMessageAt follows it."
     }
   ]
 }

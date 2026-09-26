@@ -1285,6 +1285,24 @@ where
             )
             .await;
         let (model_context_limit, _web) = self.registry_inputs(resolved);
+        // P4.D228 (v4 `profileOverride`, `ce2f1dabf` #77): "Try uncensored"
+        // generates on the understudy, so the context is budgeted for ITS
+        // model — resolved here, where `getModelContextLimit`'s registry and
+        // pricing tables live, and handed to core beside the row. (The key is
+        // the transport's, per provider — nothing to resolve for it.)
+        let profile_override = req.profile_override.as_ref().map(|row| {
+            let field = |k: &str| {
+                row.get(k)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            let (limit, _web) = self.registry_inputs(Some((field("provider"), field("modelName"))));
+            quilltap_core::services::regenerate_swipe::SwipeProfileOverride {
+                profile: row.clone(),
+                model_context_limit: limit,
+            }
+        });
         let timestamp_config = self.resolve_timestamp_config(&chat_id);
 
         let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
@@ -1315,6 +1333,8 @@ where
             // `stream` flag and carried through the driver seam. Inert unless
             // the caller asked to be narrated to.
             progress: req.progress.clone(),
+            profile_override,
+            route_trail: req.route_trail.clone(),
         };
 
         regenerate_message_as_swipe(

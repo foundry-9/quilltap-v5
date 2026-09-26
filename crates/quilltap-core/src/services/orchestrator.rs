@@ -1400,38 +1400,26 @@ where
     let mut effective_profile = to_effective_profile(&connection_profile);
     let mut effective_api_key = resolution.api_key.clone().unwrap_or_default();
     let mut did_reroute = false;
+    // v4 `ce2f1dabf` (#77): `contentTreatedAsDangerous = (dangerFlags?.length
+    // ?? 0) > 0 || dangerState.routedDirect`. v5 has no pre-screen branch (the
+    // classify is an injected seam) and so no flag writer at all any more —
+    // this is v4's `routedDirect` alone.
     let mut content_was_flagged_dangerous = false;
-    // The synthesized flags (v4 attaches them to the saved USER message below).
-    let mut danger_flags: Option<Vec<Value>> = None;
 
     // Unmoderated chat: straight to the uncensored desk, no pre-screen needed.
+    //
+    // No per-message flags are written here (v4 `ce2f1dabf`, #77 — the
+    // synthesized `dangerFlags` and their inline `markFlagsAsRerouted` are
+    // DELETED, and with them the attach to the saved USER message). The chat's
+    // route is already decided by its state, so a badge on every user message
+    // would say nothing the header pill and the assistant row's route trail do
+    // not already say (the orchestrator tags the turn `routeVia: 'concierge'`
+    // when the profile was swapped). `routedDirect` carries the one thing the
+    // flags used to carry for the failover service: this turn's content is
+    // headed for the uncensored desk, so an empty body reads as a refusal and
+    // a stand-in must be cleared for it.
     if concierge_policy.route_direct && !is_continue_mode && !input.options.content.is_empty() {
         content_was_flagged_dangerous = true;
-        // v4: `categories = chat.dangerCategories?.length ? chat.dangerCategories
-        //      : ['unspecified']`; each → a flag { category, score:1, ... }.
-        let categories: Vec<String> = chat
-            .get("dangerCategories")
-            .and_then(Value::as_array)
-            .filter(|a| !a.is_empty())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect()
-            })
-            .filter(|v: &Vec<String>| !v.is_empty())
-            .unwrap_or_else(|| vec!["unspecified".to_string()]);
-        let mut flags: Vec<Value> = categories
-            .iter()
-            .map(|cat| {
-                json!({
-                    "category": cat,
-                    "score": 1.0,
-                    "userOverridden": false,
-                    "wasRerouted": false,
-                })
-            })
-            .collect();
-
         let profile_is_dangerous_compatible = connection_profile
             .get("isDangerousCompatible")
             .and_then(Value::as_bool)
@@ -1452,21 +1440,6 @@ where
                 )
                 .await;
             if route.rerouted {
-                // v4 `markFlagsAsRerouted`: set `wasRerouted` + the rerouted
-                // provider/model on every flag.
-                for flag in &mut flags {
-                    if let Some(obj) = flag.as_object_mut() {
-                        obj.insert("wasRerouted".into(), json!(true));
-                        obj.insert(
-                            "reroutedProvider".into(),
-                            json!(route.connection_profile.provider),
-                        );
-                        obj.insert(
-                            "reroutedModel".into(),
-                            json!(route.connection_profile.model_name),
-                        );
-                    }
-                }
                 tracing::info!(
                     target: "quilltap::chat_danger_orchestrator",
                     chat_id = %chat_id,
@@ -1493,7 +1466,6 @@ where
                 "[DangerousContent] Unmoderated chat already on an uncensored-compatible profile"
             );
         }
-        danger_flags = Some(flags);
     }
 
     // v4 `isEffectiveCourier = streamingState.effectiveProfile.transport === 'courier'`.
@@ -1818,25 +1790,12 @@ where
         user_message_id = Some(id);
     }
 
-    // --- Attach dangerFlags to the saved user message (orchestrator.service.ts:673–685) ---
-    // v4 attaches the synthesized flags to the USER message via `updateMessage`
-    // (best-effort — a failure is logged and swallowed). Reached only for an
-    // actively-dangerous, non-continue turn with content (`danger_flags` is
-    // `Some` iff the first-branch fired above).
-    if let (Some(flags), Some(mid)) = (&danger_flags, &user_message_id) {
-        if !flags.is_empty() {
-            let chat_id_owned = chat_id.clone();
-            let mid = mid.clone();
-            let updates = json!({ "dangerFlags": flags });
-            db.write(move |w| {
-                w.main()
-                    .chat_messages()
-                    .update_message(&chat_id_owned, &mid, &updates)
-                    .map(|_| ())
-            })
-            .await?;
-        }
-    }
+    // --- The dangerFlags attach (orchestrator.service.ts:673–685) is RETIRED ---
+    // v4's attach step stays in its source guarded on a non-empty list, but after
+    // `ce2f1dabf` (#77) only the classifier PRE-SCREEN writes flags, and v5 has
+    // no pre-screen branch (the classify is an injected seam). The synthesized
+    // Unmoderated flags were v5's ONLY writer, so the attach had no input left
+    // and is deleted rather than kept dead.
     let _ = user_message_id;
 
     // ============================================================================

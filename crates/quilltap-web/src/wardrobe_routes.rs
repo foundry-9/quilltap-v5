@@ -440,6 +440,10 @@ const CHAT_POST_ACTIONS: &[&str] = &[
     "run-tool",
     "toggle-agent-mode",
     "regenerate-background",
+    // P4.D228 (v4 `ce2f1dabf`, #77): the 24th key, between
+    // `regenerate-background` and `reclassify-danger` — served over dispatch
+    // (`chatRetryImageUncensored`); the REST arm answers the pointer.
+    "retry-image-uncensored",
     "reclassify-danger",
     "equip",
     "toggle-avatar-generation",
@@ -476,7 +480,7 @@ pub async fn chat_action_post(
     Query(pairs): Query<crate::query::QueryPairs>,
     body: String,
 ) -> AxumResponse {
-    // v4 `dispatchAction(req, { …forty-seven… })` with NO fallback
+    // v4 `dispatchAction(req, { …forty-eight… })` with NO fallback
     // (`ad1c4c37f`): absent → `Action parameter required`, bare / unknown →
     // `Unknown action`, answered here byte-for-byte. v4 looks the chat up
     // FIRST (`notFound('Chat')`); this edge gates without a lookup — the

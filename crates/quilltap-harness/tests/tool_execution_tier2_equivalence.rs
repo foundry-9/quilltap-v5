@@ -75,6 +75,15 @@ struct Call {
     generated_image_paths: Vec<WireImage>,
     #[serde(rename = "toolMessages")]
     tool_messages: Vec<WireToolMessage>,
+    /// P4.D228 (v4 `ce2f1dabf`, #77): `saveToolMessages`' trailing options.
+    #[serde(default)]
+    options: Option<WireOptions>,
+}
+
+#[derive(Deserialize)]
+struct WireOptions {
+    #[serde(rename = "createdAt")]
+    created_at: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -249,7 +258,8 @@ fn placeholder_ts(obj: &mut serde_json::Map<String, Value>, cols: &[&str], senti
 }
 
 /// Remap message ids to tokens (re-sorting rows by the token) and placeholder
-/// minted `createdAt`.
+/// minted `createdAt` — EXCEPT a stamp a call chose (P4.D228's
+/// `options.createdAt`, the `+1 ms` filing), which is the comparand.
 fn normalize_messages(messages: &mut Value, id_map: &HashMap<String, String>) {
     let rows = messages["rows"].as_array_mut().expect("messages rows");
     for row in rows.iter_mut() {
@@ -259,7 +269,10 @@ fn normalize_messages(messages: &mut Value, id_map: &HashMap<String, String>) {
                 obj.insert("id".into(), Value::String(tok.clone()));
             }
         }
-        obj.insert("createdAt".into(), Value::String("<ts>".into()));
+        let chosen = obj.get("createdAt").and_then(Value::as_str) == Some(CHOSEN_CREATED_AT);
+        if !chosen {
+            obj.insert("createdAt".into(), Value::String("<ts>".into()));
+        }
     }
     rows.sort_by(|a, b| {
         a["id"]
@@ -268,6 +281,9 @@ fn normalize_messages(messages: &mut Value, id_map: &HashMap<String, String>) {
             .cmp(b["id"].as_str().unwrap_or_default())
     });
 }
+
+/// The one `createdAt` the corpus CHOOSES (`options_created_at_filed_beside`).
+const CHOSEN_CREATED_AT: &str = "2026-01-02T03:04:05.001Z";
 
 fn normalize_chats(chats: &mut Value, sentinel: &str) {
     for row in chats["rows"].as_array_mut().expect("chats rows") {
@@ -370,16 +386,31 @@ fn tool_execution_tier2_matches_oracle() {
             user_participant_id: w.user_participant_id.clone(),
             allow_cross_character_vault_reads: w.allow_cross_character_vault_reads,
         });
-        let result = save_tool_messages(
-            &writer,
-            &call.chat_id,
-            &spec.user_id,
-            &tool_messages,
-            &images,
-            call.character_id.as_deref(),
-            call.participant_id.as_deref(),
-            whisper.as_ref(),
-        )
+        let result = match &call.options {
+            None => save_tool_messages(
+                &writer,
+                &call.chat_id,
+                &spec.user_id,
+                &tool_messages,
+                &images,
+                call.character_id.as_deref(),
+                call.participant_id.as_deref(),
+                whisper.as_ref(),
+            ),
+            Some(o) => quilltap_core::services::tool_execution::save_tool_messages_with_options(
+                &writer,
+                &call.chat_id,
+                &spec.user_id,
+                &tool_messages,
+                &images,
+                call.character_id.as_deref(),
+                call.participant_id.as_deref(),
+                whisper.as_ref(),
+                quilltap_core::services::tool_execution::SaveToolMessagesOptions {
+                    created_at: o.created_at.clone(),
+                },
+            ),
+        }
         .expect("save_tool_messages");
         returns.push(serde_json::json!({
             "firstToolMessageId": result.first_tool_message_id,
@@ -393,6 +424,18 @@ fn tool_execution_tier2_matches_oracle() {
     let mut got_chats = writer.dump_table_json("chats", "id").expect("dump chats");
     let mut got_files = writer.dump_table_json("files", "id").expect("dump files");
     let _ = std::fs::remove_file(&work);
+
+    // P4.D228: the chosen `createdAt` landed on exactly one row, on BOTH sides
+    // (a normalizer that placeholdered it would make the arm vacuous).
+    for (side, dump) in [("rust", &got_messages), ("oracle", &oracle["messages"])] {
+        let n = dump["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["createdAt"].as_str() == Some(CHOSEN_CREATED_AT))
+            .count();
+        assert_eq!(n, 1, "{side}: the options.createdAt row");
+    }
 
     // Build the shared id-map from each side's OWN messages (same content → same
     // tokens), then normalize both.

@@ -1939,6 +1939,7 @@ async fn run_images_generate(
             understudy: &understudy,
             profile_kind: crate::services::route_trail::RouteProfileKind::Connection,
             primary_via,
+            announce_unresolved_refusal: true,
         },
     )
     .await

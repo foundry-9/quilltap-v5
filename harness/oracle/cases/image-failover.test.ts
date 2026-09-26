@@ -64,6 +64,8 @@ interface Case {
   chat?: Record<string, unknown> | null;
   /** P4.D226: the operator locks the chat while the primary is thinking. */
   lockDuringAttempt?: boolean;
+  /** P4.D228 (v4 `ce2f1dabf`, #77): `ctx.announceUnresolvedRefusal`. */
+  announceUnresolvedRefusal?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -214,6 +216,9 @@ async function main(): Promise<void> {
       ...(c.profileKind ? { profileKind: c.profileKind } : {}),
       ...(c.primaryVia ? { primaryVia: c.primaryVia } : {}),
       ...('chat' in c ? { chat: c.chat } : {}),
+      ...(c.announceUnresolvedRefusal !== undefined
+        ? { announceUnresolvedRefusal: c.announceUnresolvedRefusal }
+        : {}),
     };
     if ('customUnderstudy' in c) {
       ctx.resolveUnderstudy = async (_exclude: string[]) => {

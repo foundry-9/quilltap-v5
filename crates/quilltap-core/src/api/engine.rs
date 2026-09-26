@@ -1826,6 +1826,31 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // === P4.D228 ===
+            // Every refusal (404 / 400 / 409) answers BEFORE any frame; the
+            // narration is `messageSwipe`'s, keyed by the target message id.
+            Request::MessageRetryUncensored { message_id, stream } => match self.ready_db() {
+                Ok(db) => {
+                    let driver = self.ready_swipe().ok().map(|(_, d)| d);
+                    super::salon::message_retry_uncensored(
+                        &db,
+                        &crate::services::dangerous_content::provider_routing::DbApiKeys(
+                            db.clone(),
+                        ),
+                        driver.as_deref(),
+                        SINGLE_USER_ID,
+                        &message_id,
+                        crate::services::regenerate_swipe::SwipeProgressEmitter::from_flag(
+                            stream,
+                            &message_id,
+                            self.event_sender().clone(),
+                        ),
+                    )
+                    .await
+                }
+                Err(resp) => resp,
+            },
+            // === end P4.D228 ===
             Request::MessageSwipe {
                 message_id,
                 swipe_index,
@@ -4948,6 +4973,29 @@ impl CoreEngine {
                 }
                 Err(resp) => resp,
             },
+            // === P4.D228 ===
+            // The picture arm runs the image tool SYNCHRONOUSLY through the
+            // SAME assembled runner `imageProfileGenerate` uses (no new host
+            // seam, E.2); an unassembled runner is the loud refusal, answered
+            // only AFTER the gate (the background arm never needs it).
+            Request::ChatRetryImageUncensored { chat_id, body } => match self.ready_db() {
+                Ok(db) => {
+                    let runner = self.ready_generate_image().ok().map(|(_, r)| r);
+                    super::chat_media::chat_retry_image_uncensored(
+                        &db,
+                        &crate::services::dangerous_content::provider_routing::DbApiKeys(
+                            db.clone(),
+                        ),
+                        runner.as_ref(),
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &body,
+                    )
+                    .await
+                }
+                Err(resp) => resp,
+            },
+            // === end P4.D228 ===
             // === end P4.6ak ===
             // === P4.6ao ===
             Request::ChatGetCost { chat_id, detailed } => match self.ready_db() {

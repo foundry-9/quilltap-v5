@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-26 — feat(concierge): "Try uncensored" — the picture/backdrop and text-line retry verbs, the swipe override, the Lantern's refusal bubble, Unmoderated turns without synthesized flags (P4.D228)
+
+_Versions: core 0.0.1084, harness 0.0.1004, host 0.0.162, web 0.0.200._
+
+- New dispatch verb `chatRetryImageUncensored { chatId, body }` (v4 `?action=retry-image-uncensored`, `ce2f1dabf` #77). The body is decoded with v4's union rules (first branch wins, unknown keys stripped). The picture arm re-runs a `generate_image` TOOL call on the Concierge's uncensored image understudy, files the new TOOL row one millisecond after the original, and posts `refusal-rerouted` only when the original was a stated refusal; the background arm queues a story background with `forceUncensored`. `locked` / `no-understudy` answer 409 before any other check.
+- New RPC verb `messageRetryUncensored { messageId, stream }` (v4 `?action=retry-uncensored`): regenerates the line as a swipe on the uncensored text understudy, narrated on the existing `swipeProgress` channel; the swipe's route trail ends on a `via: concierge` answered row.
+- New `retry_uncensored` service: Locked refuses (off duty and exempt chat types do not), the configured desk is used, and the understudy excludes the original's profile, its trail, and every profile on the model that answered it. `resolve_configured_concierge_desk` added to the resolver.
+- `regenerate_message_as_swipe` takes a profile override (the context is budgeted for the override's model, which the host resolves) and a route trail written after `createdAt`.
+- `chat_regenerate_background` gains the force flag (spread last on the payload) and v4's two `[Chats v1]` lines.
+- The story job repeats the understudy lookup at run time for a forced job (returning quietly when Locked or when nobody can take it), paints on the understudy, and completes with the Lantern's new `background-refused` bubble when the painter refused and nobody answered. Every Lantern backdrop tells the image chokepoint not to post its own unresolved-refusal bubble.
+- An Unmoderated turn no longer writes synthesized `dangerFlags` on the user message; the failover still treats the turn as dangerous.
+- `save_tool_messages_with_options` (a chosen `createdAt`), the image tool's `primary_via`, `RouteAttempt::from_value` / `to_chokepoint_value`, `FallbackTrigger::from_wire`.
+- `CHAT_POST_ACTIONS` gains `retry-image-uncensored` at index 24 (48 keys).
+- New family `retry_uncensored_tier3_equivalence` (62 cases over v4's real service and both route handlers on a purpose-built fixture) and two dispatch wire tests; new arms in `regenerate_swipe_tier3`, `story_background_job_tier3`, `image_generation_tier3`, `image_failover_tier3`, `primary_stream_tier3`, `tool_execution_tier2`, `danger_resolver`, `post_office_concierge_lantern_suparna`. `dispatch_wrong_type_census` 449 → 451; `get_messages_caller_census` 80 → 81.
+
 #### 2026-09-26 — docs(help): re-vendor the help tree whole at v4 `acadcc7cd` (129 stays 129) (P4.D228 unit 1)
 
 _Docs-only change._

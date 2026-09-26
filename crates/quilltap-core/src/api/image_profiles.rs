@@ -943,6 +943,7 @@ pub async fn image_profile_generate(
         chat_id: parsed.chat_id,
         // v4's route passes no callingParticipantId (undefined).
         calling_participant_id: None,
+        primary_via: None,
     };
 
     let out = runner.run(db, &input, &ctx).await;

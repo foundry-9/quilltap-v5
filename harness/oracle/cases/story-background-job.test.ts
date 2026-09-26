@@ -86,6 +86,13 @@ interface ChatSpec {
    * identically on both sides).
    */
   conciergeSettings?: Record<string, unknown>;
+  /**
+   * P4.D228 (v4 `ce2f1dabf`, #77): "Try uncensored" — the payload's
+   * `forceUncensored`, spread LAST (as the enqueue writes it).
+   */
+  forceUncensored?: boolean;
+  /** P4.D228 (E.8): a planted refusal ledger count on the chat. */
+  ledgerPlant?: number;
 }
 interface Spec {
   testPepperBase64: string;
@@ -375,6 +382,15 @@ async function main(): Promise<void> {
       ]);
     }
 
+    // P4.D228 (E.8): the chat's refusal ledger, planted so a refusal on this
+    // run reaches the auto-switch threshold (the identical UPDATE both sides).
+    if (chat.ledgerPlant !== undefined) {
+      await rawQuery(
+        'UPDATE chats SET "moderationRefusalCount" = ?, "lastModerationRefusalAt" = ? WHERE id = ?',
+        [chat.ledgerPlant, '2020-01-01T00:00:00.000Z', chat.id],
+      );
+    }
+
     const frozen = spec.frozenNowMs;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     global.Date = class extends RealDate {
@@ -401,6 +417,7 @@ async function main(): Promise<void> {
           imageProfileId: chat.imageProfileId,
           characterIds: chat.characterIds,
           ...(chat.projectId ? { projectId: chat.projectId } : {}),
+          ...(chat.forceUncensored ? { forceUncensored: true } : {}),
         },
       };
       try {
@@ -466,10 +483,24 @@ async function main(): Promise<void> {
           `SELECT qt_text(content) AS content, qt_text(opaqueContent) AS opaqueContent FROM chat_messages WHERE chatId = ? AND systemKind = 'refusal' ORDER BY createdAt`,
           [chat.id],
         )) as Array<{ content: string; opaqueContent: string }>;
+        // P4.D228 (v4 `ce2f1dabf`, #77): the Lantern's own `background-refused`
+        // bubble (a refusal nobody got past now COMPLETES the job), its stored
+        // trail TEXT, and the chat's Concierge state after the run (E.8 — does
+        // a forced job's refusal trip the auto-switch?).
+        const lanternRefusals = (await rawQuery(
+          `SELECT qt_text(content) AS content, qt_text(opaqueContent) AS opaqueContent, qt_text(routeTrail) AS routeTrail FROM chat_messages WHERE chatId = ? AND systemSender = 'lantern' AND systemKind = 'background-refused' ORDER BY createdAt`,
+          [chat.id],
+        )) as Array<{ content: string; opaqueContent: string; routeTrail: string | null }>;
         record.concierge = {
           refusalCount: chatAll[0]?.moderationRefusalCount ?? null,
           lanternRouteTrail: trailRows[0]?.routeTrail ?? null,
           refusalBubbles: refusals,
+          lanternRefusals,
+          state: {
+            conciergeMode: chatAll[0]?.conciergeMode ?? null,
+            conciergeModeSetBy: chatAll[0]?.conciergeModeSetBy ?? null,
+            conciergeModeReason: chatAll[0]?.conciergeModeReason ?? null,
+          },
         };
       }
 

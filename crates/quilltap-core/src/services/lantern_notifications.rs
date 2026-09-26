@@ -13,6 +13,9 @@
 //!   - `character-image` → The Lantern (ad-hoc image on request)— `systemSender: 'lantern'`
 //!
 //! `systemKind` is the kind string (`'avatar'` / `'background'` / `'character-image'`).
+//! A fourth, IMAGE-LESS kind — `background-refused` — has its own writer
+//! ([`post_lantern_refusal_notification`], v4 `ce2f1dabf`, #77): the Lantern's
+//! painter refused the scene and nobody painted it instead.
 //!
 //! Gated by `alertCharactersOfLanternImages` (chat override) and
 //! `defaultAlertCharactersOfLanternImages` (project default), falling back to OFF
@@ -304,6 +307,131 @@ pub async fn post_lantern_image_notification(db: &Db, params: LanternPostParams)
     Some(message)
 }
 
+/// The Lantern's painter refused the scene and nobody painted it instead (v4
+/// `LanternRefusalKind`, NEW at `ce2f1dabf`, #77). No image, so it has its own
+/// writer ([`post_lantern_refusal_notification`]) rather than a branch of the
+/// image announcement — deliberately NOT a [`LanternNotificationKind`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LanternRefusal {
+    /// Provider of the image profile that refused (e.g. `GOOGLE`).
+    pub provider: String,
+    /// Its image model.
+    pub model_name: String,
+}
+
+impl LanternRefusal {
+    /// v4 `refusal.kind` — the ONE kind, `background-refused`.
+    pub const SYSTEM_KIND: &'static str = "background-refused";
+}
+
+/// v4 `buildLanternRefusalContent` (`ce2f1dabf`). The em dash is U+2014; the
+/// apostrophe is ASCII.
+pub fn build_lantern_refusal_content(refusal: &LanternRefusal) -> String {
+    format!(
+        "The Lantern's usual painter ({} {}) would not take the scene \u{2014} called it improper and downed brushes. The backdrop stays as it was.",
+        refusal.provider, refusal.model_name
+    )
+}
+
+/// v4 `buildLanternRefusalOpaqueContent` (`ce2f1dabf`).
+pub fn build_lantern_refusal_opaque_content(refusal: &LanternRefusal) -> String {
+    format!(
+        "Story background refused by {} {} on content grounds; the previous backdrop is unchanged.",
+        refusal.provider, refusal.model_name
+    )
+}
+
+/// Tell the operator the Lantern's painter refused the backdrop (v4
+/// `postLanternRefusalNotification`, `ce2f1dabf`).
+///
+/// **Not gated by the image-alert setting**: that setting decides whether
+/// *characters* are shown new pictures, and this is a report to the operator
+/// — the Salon's "Try uncensored" button rides on it (identified by
+/// `systemKind: 'background-refused'`). It replaces the Concierge's own
+/// `refusal-*` bubble for the Lantern (one bubble per refusal — the job hands
+/// the chokepoint `announce_unresolved_refusal: false`). Never fails: a
+/// missing chat is a DEBUG and `None`, a write failure an ERROR and `None`.
+pub async fn post_lantern_refusal_notification(
+    db: &Db,
+    chat_id: &str,
+    refusal: &LanternRefusal,
+    route_trail: &[crate::services::route_trail::RouteAttempt],
+) -> Option<Value> {
+    let failed = |error: String| {
+        tracing::error!(
+            target: "quilltap::lantern_notification",
+            context = "lantern-notifications",
+            chat_id = %chat_id,
+            error = %error,
+            "[LanternNotification] Failed to post background refusal"
+        );
+    };
+    let cid = chat_id.to_string();
+    let chat = match db.read_main(move |conn| crate::db::chats_read::find_by_id(conn, &cid)) {
+        Ok(chat) => chat,
+        Err(e) => {
+            failed(e.to_string());
+            return None;
+        }
+    };
+    if chat.is_none() {
+        tracing::debug!(
+            target: "quilltap::lantern_notification",
+            context = "lantern-notifications",
+            chat_id = %chat_id,
+            "[LanternNotification] Refusal bubble skipped: chat not found"
+        );
+        return None;
+    }
+
+    let message_id = uuid::Uuid::new_v4().to_string();
+    let mut message = json!({
+        "type": "message",
+        "id": message_id,
+        "role": "ASSISTANT",
+        "content": build_lantern_refusal_content(refusal),
+        "opaqueContent": build_lantern_refusal_opaque_content(refusal),
+        "attachments": [],
+        "createdAt": crate::clock::now_iso(),
+        "participantId": Value::Null,
+        "systemSender": "lantern",
+        "systemKind": LanternRefusal::SYSTEM_KIND,
+    });
+    if !route_trail.is_empty() {
+        message.as_object_mut().unwrap().insert(
+            "routeTrail".into(),
+            serde_json::to_value(route_trail).unwrap_or(Value::Null),
+        );
+    }
+    let event: ChatEventInput = match serde_json::from_value(message.clone()) {
+        Ok(event) => event,
+        Err(e) => {
+            failed(e.to_string());
+            return None;
+        }
+    };
+    let cid = chat_id.to_string();
+    if let Err(e) = db
+        .write(move |writers| writers.main().chat_messages().add_message(&cid, &event))
+        .await
+    {
+        failed(e.to_string());
+        return None;
+    }
+
+    tracing::info!(
+        target: "quilltap::lantern_notification",
+        context = "lantern-notifications",
+        chat_id = %chat_id,
+        message_id = %message_id,
+        provider = %refusal.provider,
+        model_name = %refusal.model_name,
+        route_trail_length = route_trail.len(),
+        "[LanternNotification] Background refusal posted"
+    );
+    Some(message)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,6 +456,26 @@ mod tests {
         let chat = json!({ "alertCharactersOfLanternImages": null });
         assert!(!is_lantern_image_alert_enabled(Some(&chat), None));
         assert!(!is_lantern_image_alert_enabled(None, None));
+    }
+
+    /// v4 `buildLanternRefusalContent` / `…OpaqueContent` (`ce2f1dabf`) — the
+    /// em dash is U+2014 and the apostrophe ASCII (the tier-1 rows are in
+    /// `post_office_concierge_lantern_suparna`).
+    #[test]
+    fn refusal_bodies_are_v4_bytes() {
+        let r = LanternRefusal {
+            provider: "GOOGLE".into(),
+            model_name: "imagen-4".into(),
+        };
+        assert_eq!(
+            build_lantern_refusal_content(&r),
+            "The Lantern's usual painter (GOOGLE imagen-4) would not take the scene \u{2014} called it improper and downed brushes. The backdrop stays as it was."
+        );
+        assert_eq!(
+            build_lantern_refusal_opaque_content(&r),
+            "Story background refused by GOOGLE imagen-4 on content grounds; the previous backdrop is unchanged."
+        );
+        assert_eq!(LanternRefusal::SYSTEM_KIND, "background-refused");
     }
 
     #[test]

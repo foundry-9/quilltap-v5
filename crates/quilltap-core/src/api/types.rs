@@ -288,6 +288,21 @@ pub enum Request {
         stream: bool,
         // === end P4.D207 ===
     },
+    // === P4.D228 ===
+    /// v4 `POST /api/v1/chats/[id]/messages/[messageId]?action=retry-
+    /// uncensored[&stream=1]` ("Try uncensored" on a text line, `ce2f1dabf`
+    /// #77). RPC-ONLY: v5 routes no REST `chats/{id}/messages/{messageId}`
+    /// leg (and never ported `override-danger-flag`), so v4's
+    /// `availableActions` order has nowhere to appear. No chat id — the chat
+    /// is the message's own. `stream` is `MessageSwipe`'s flag, narrated on
+    /// the same `swipeProgress` channel keyed by the target message id.
+    #[serde(rename_all = "camelCase")]
+    MessageRetryUncensored {
+        message_id: String,
+        #[serde(default)]
+        stream: bool,
+    },
+    // === end P4.D228 ===
     /// The general chat edit (v4 `PUT /api/v1/chats/{id}` → `processChatUpdates`):
     /// the Salon pause/resume + title path. `chat` is the partial field bag
     /// (`updateChatSchema`).
@@ -2404,6 +2419,21 @@ pub enum Request {
     ChatRegenerateBackground {
         chat_id: String,
     },
+    // === P4.D228 ===
+    /// v4 `POST /api/v1/chats/[id]?action=retry-image-uncensored` ("Try
+    /// uncensored" on a picture or the Lantern's backdrop, `ce2f1dabf` #77).
+    /// `body` is v4's JSON body VERBATIM — `{ toolMessageId }` |
+    /// `{ kind: 'background' }` — decoded in core with Zod's union semantics
+    /// (first branch wins, unknown keys stripped), so it rides as ONE raw
+    /// `Value` (the raw-body precedent) rather than typed fields that would
+    /// decide the union before v4's order does.
+    #[serde(rename_all = "camelCase")]
+    ChatRetryImageUncensored {
+        chat_id: String,
+        #[serde(default)]
+        body: serde_json::Value,
+    },
+    // === end P4.D228 ===
     // === end P4.6ak ===
     // === P4.6ao: the token/cost read (lane A, append-only) ===
     /// v4 `GET /api/v1/chats/[id]?action=cost[&detailed=true]` → the cost

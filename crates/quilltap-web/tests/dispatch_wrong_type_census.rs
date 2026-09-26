@@ -351,6 +351,19 @@ const CENSUS: &[Row] = &[
         v4: V4::Query,
         note: "`messages/[id]/route.ts:267` `searchParams.get('stream') === '1'`",
     },
+    // P4.D228 (v4 `ce2f1dabf`, #77): "Try uncensored"'s flag — the SAME query
+    // read as `MessageSwipe.stream` two rows above, on the message route's
+    // retry action. A census ROW, not an exclusion.
+    Row {
+        variant: "MessageRetryUncensored",
+        field: "stream",
+        rust_type: "bool",
+        v4: V4::Query,
+        note: concat!(
+            "`chats/[id]/messages/[messageId]/route.ts:445` ",
+            "`req.nextUrl?.searchParams.get('stream') === '1'`"
+        ),
+    },
     Row {
         variant: "ChatSend",
         field: "content",
@@ -2578,7 +2591,18 @@ fn is_route_identifier(field: &str) -> bool {
 // set, and `request_envelope`'s tri-state guard is unmoved (no
 // `Option<Option<…>>` key). Measured by running the test (red at 449 against
 // 447 first). Stacked on P4.D216: the unifier recounts as base + both lanes.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 449;
+//
+// **P4.D228 (+2): 449 → 451** — `Request::ChatRetryImageUncensored.chat_id`
+// (v4's `[id]` path segment on `POST /api/v1/chats/[id]?action=
+// retry-image-uncensored`) and `Request::MessageRetryUncensored.message_id`
+// (the `[messageId]` segment of the RPC-only message action). Both are route
+// identifiers the rule drops, as designed. The chat verb's v4 BODY rides as
+// ONE raw `serde_json::Value` (`body` — the union is decoded in core), which
+// `typed_request_fields` never sees; `MessageRetryUncensored.stream` is a
+// query flag with no `*_id` suffix. P4.D226/P4.D227 left 449 unmoved (the
+// chain's literal before this lane). Measured by running the test (red at 451
+// against 449 first).
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 451;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

@@ -266,6 +266,28 @@ fn rust_value(kind: &str, id: &str, input: &Value) -> Value {
             ))
         }
         "suparna_whisper" => Value::String(build_suparna_mail_whisper(&suparna_case(id))),
+        // P4.D228 (v4 `ce2f1dabf`, #77): the Lantern's `background-refused`
+        // bubble, both audiences.
+        "lantern_refusal_content" | "lantern_refusal_opaque" => {
+            let r = &input["refusal"];
+            assert_eq!(
+                r["kind"], "background-refused",
+                "{id}: the one refusal kind"
+            );
+            let refusal = quilltap_core::services::lantern_notifications::LanternRefusal {
+                provider: r["provider"].as_str().unwrap().into(),
+                model_name: r["modelName"].as_str().unwrap().into(),
+            };
+            Value::String(if kind == "lantern_refusal_content" {
+                quilltap_core::services::lantern_notifications::build_lantern_refusal_content(
+                    &refusal,
+                )
+            } else {
+                quilltap_core::services::lantern_notifications::build_lantern_refusal_opaque_content(
+                    &refusal,
+                )
+            })
+        }
         other => panic!("unknown oracle kind {other}"),
     }
 }
@@ -302,6 +324,13 @@ fn post_office_concierge_lantern_suparna_matches_oracle() {
     assert!(
         refusal_rows == 90 && autoflag_rows == 58,
         "the refusal/auto-flag corpus is incomplete: {refusal_rows} / {autoflag_rows}"
+    );
+    // P4.D228 (v4 `ce2f1dabf`, #77): the Lantern's refusal bubble — 4 cases ×
+    // 2 audiences, present only at a pin carrying `ce2f1dabf`.
+    let lantern_refusal_rows = text.matches("\"kind\":\"lantern_refusal_").count();
+    assert_eq!(
+        lantern_refusal_rows, 8,
+        "the Lantern refusal rows are missing — an oracle from before `ce2f1dabf`?"
     );
     // P4.D227: the divergence VANISHED — the retired Concierge-mode sentences
     // ("were he set to Auto-Route", "The Concierge mode does not permit

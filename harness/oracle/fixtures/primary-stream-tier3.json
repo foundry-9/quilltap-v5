@@ -1021,6 +1021,23 @@
           "done": true
         }
       ]
+    ],
+    "routed_direct_then_understudy_fails": [
+      [
+        {
+          "error": "401 Unauthorized"
+        }
+      ],
+      [
+        {
+          "error": "429 Too Many Requests"
+        }
+      ],
+      [
+        {
+          "error": "503 Service Unavailable"
+        }
+      ]
     ]
   },
   "calls": [
@@ -1217,6 +1234,19 @@
       "attachedFiles": [],
       "originalMessage": "every candidate is indisposed tonight",
       "comment": "Understudy AND the tier pick both fail: the chain is exhausted, the buffers are left empty, and the rethrown error carries summarizeFallbackAttempts' roll."
+    },
+    {
+      "name": "hard_error_routed_direct_dangerous",
+      "kind": "hardFailover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000071-0000-4000-8000-000000000071",
+      "hasTools": false,
+      "streamLabel": "routed_direct_then_understudy_fails",
+      "attachedFiles": [],
+      "originalMessage": "an unmoderated turn headed straight for the uncensored desk",
+      "comment": "P4.D228 (v4 ce2f1dabf, #77): an Unmoderated turn writes NO per-message dangerFlags any more; `routedDirect` keeps the failover treating its content as dangerous. The orchestrator's contentTreatedAsDangerous reaches this seam as isDangerousRouted: true with no flag anywhere -- the chain then clears the tier picks, the same script as hard_error_chain_exhausted run dangerous.",
+      "isDangerousRouted": true
     },
     {
       "name": "hard_error_after_content",

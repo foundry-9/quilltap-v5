@@ -64,6 +64,10 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     ("api/characters.rs", "character_chats", F),
     ("api/chat_media.rs", "message_save_image", F),
     ("api/chat_media.rs", "chat_files_list", F),
+    // P4.D228 (v4 `ce2f1dabf`, #77): "Try uncensored"'s picture arm finds the
+    // TOOL row through v4's `repos.chats.getMessages(chatId)` — the FALLBACK
+    // read (a failed query reads as `[]`, i.e. `Tool message not found`).
+    ("api/chat_media.rs", "retry_picture_uncensored", F),
     ("api/chat_transcript.rs", "chat_message_events", F),
     ("api/files.rs", "dissociate_file_from_all", F),
     ("api/files.rs", "compute_associations", F),
@@ -479,8 +483,9 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // fallback calls (the trail round-trip; the refusal announcement twice)
     // and one file (`concierge_notifications.rs`): 79 and 51. P4.D226 added
     // one unit-test fallback call in that same file (the six retired kinds'
-    // read-back): 80 and 51.
-    assert_eq!((swallowing, strict), (80, 7), "census totals");
+    // read-back): 80 and 51. P4.D228 added ONE fallback call site in an
+    // existing file (`api/chat_media.rs`'s picture retry): 81 and 51.
+    assert_eq!((swallowing, strict), (81, 7), "census totals");
     assert_eq!(file_count, 51, "census files");
 }
 

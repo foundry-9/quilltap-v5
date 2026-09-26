@@ -317,6 +317,32 @@ pub struct RegenerateSwipeOptions {
     /// absent callback: *with no callback the generation is identical, just
     /// silent.*
     pub progress: SwipeProgressEmitter,
+    /// v4 `profileOverride?` (NEW at `ce2f1dabf`, #77): generate on this
+    /// profile instead of the responder's own. "Try uncensored" passes the
+    /// Concierge's uncensored understudy — resolved by the caller so a
+    /// missing one is refused before any stream opens. The override feeds
+    /// EVERYTHING downstream: the context is built and trimmed for ITS model
+    /// ([`SwipeProfileOverride::model_context_limit`], not
+    /// [`Self::model_context_limit`]), and the provider, params, model and the
+    /// row's `provider`/`modelName` are its. `cacheKey` stays the character.
+    pub profile_override: Option<SwipeProfileOverride>,
+    /// v4 `routeTrail?` — persisted on the new swipe AFTER `createdAt` when
+    /// non-empty; `None` / empty for a plain re-roll (no key written).
+    pub route_trail: Option<Vec<Value>>,
+}
+
+/// The override half of [`RegenerateSwipeOptions`] (v4 `profileOverride:
+/// { profile, apiKey }`). Across v5's core/host split the host resolves what
+/// core cannot: the model context limit for the OVERRIDE's model (v4 computes
+/// it inside `buildMessageContext` from the profile it is handed). The key is
+/// the transport's, per provider (the standing provider-I/O ruling), so it has
+/// no home here.
+#[derive(Debug, Clone)]
+pub struct SwipeProfileOverride {
+    /// The whole stored connection-profile row.
+    pub profile: Value,
+    /// `getModelContextLimit(profile.provider, profile.modelName)`.
+    pub model_context_limit: i64,
 }
 
 /// Error from a regenerate-swipe (v4 throws for a non-regenerable target).
@@ -398,6 +424,8 @@ where
         local_offset_minutes,
         random01,
         progress,
+        profile_override,
+        route_trail,
     } = opts;
 
     // --- Guards (v4 lines 60–67) ---
@@ -436,7 +464,24 @@ where
 
     let character_participant = resolution.character_participant.clone();
     let character = resolution.character.clone();
-    let connection_profile = resolution.connection_profile.clone();
+    // v4 `connectionProfile = profileOverride?.profile ??
+    // participantResult.connectionProfile` (`ce2f1dabf`, #77) — and the
+    // context is budgeted for whichever profile generates.
+    let (connection_profile, model_context_limit) = match &profile_override {
+        Some(o) => {
+            tracing::info!(
+                target: "quilltap::regenerate_swipe",
+                chat_id = %json_str(&chat, "id").unwrap_or_default(),
+                target_message_id = %json_str(&target_message, "id").unwrap_or_default(),
+                responder_profile_id = %json_str(&resolution.connection_profile, "id").unwrap_or_default(),
+                override_profile_id = %json_str(&o.profile, "id").unwrap_or_default(),
+                override_profile_name = %json_str(&o.profile, "name").unwrap_or_default(),
+                "[RegenerateSwipe] Regenerating on an override profile"
+            );
+            (o.profile.clone(), o.model_context_limit)
+        }
+        None => (resolution.connection_profile.clone(), model_context_limit),
+    };
     let is_multi_character = resolution.is_multi_character;
 
     let character_id = json_str(&character, "id").unwrap_or_default();
@@ -966,6 +1011,11 @@ where
         "createdAt".into(),
         json!(json_str(&target_message, "createdAt")),
     );
+    // v4 `...(routeTrail && routeTrail.length > 0 ? { routeTrail } : {})`,
+    // AFTER `createdAt` (`ce2f1dabf`, #77). A plain re-roll writes no trail.
+    if let Some(trail) = route_trail.filter(|t| !t.is_empty()) {
+        swipe.insert("routeTrail".into(), Value::Array(trail));
+    }
     let new_swipe = Value::Object(swipe);
 
     let write_chat_id = chat_id.clone();

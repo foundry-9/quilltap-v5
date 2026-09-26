@@ -229,6 +229,18 @@
       "isDefault": false,
       "isDangerousCompatible": true,
       "tags": []
+    },
+    {
+      "id": "e5000000-0000-4000-8000-000000000005",
+      "name": "Blocked Desk",
+      "provider": "OPENAI",
+      "modelName": "blocked-model",
+      "apiKeyId": "a5000000-0000-4000-8000-0000000000c1",
+      "baseUrl": null,
+      "parameters": {},
+      "isDefault": false,
+      "isDangerousCompatible": false,
+      "tags": []
     }
   ],
   "connectionProfiles": [
@@ -699,6 +711,215 @@
       },
       "expectWrite": true,
       "expectDerive": true
+    },
+    "refused_locked_lantern_bubble": {
+      "id": "5c000020-0000-4000-8000-000000000020",
+      "characterIds": [],
+      "recentMessages": [
+        "P4.D228 case 32: the lamps were low."
+      ],
+      "expectWrite": false,
+      "expectDerive": true,
+      "imageProfileId": "e5000000-0000-4000-8000-000000000003",
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual",
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002",
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "$comment": "P4.D228 (v4 ce2f1dabf, #77): a refusal on a Locked chat is not rerouted; the chokepoint's refusal-not-permitted bubble is SUPPRESSED (announceUnresolvedRefusal:false on every Lantern backdrop) and the job COMPLETES with the Lantern's own background-refused bubble carrying the one-row trail."
+    },
+    "refused_off_duty_lantern_bubble": {
+      "id": "5c000021-0000-4000-8000-000000000021",
+      "characterIds": [],
+      "recentMessages": [
+        "P4.D228 case 33: the lamps were low."
+      ],
+      "expectWrite": false,
+      "expectDerive": true,
+      "imageProfileId": "e5000000-0000-4000-8000-000000000003",
+      "conciergeSettings": {
+        "enabled": false,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002",
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "$comment": "P4.D228: off duty the refusal is not rerouted (the ledger still counts, no announcement) and the job completes with the Lantern's background-refused bubble."
+    },
+    "forced_paints_on_understudy": {
+      "id": "5c000022-0000-4000-8000-000000000022",
+      "characterIds": [],
+      "recentMessages": [
+        "P4.D228 case 34: the lamps were low."
+      ],
+      "expectWrite": true,
+      "expectDerive": true,
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "forceUncensored": true,
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002",
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "$comment": "P4.D228: \"Try uncensored\" puts the configured desk in the painter's chair (via concierge), crafts candidly, and the backdrop's trail is the one composed answered row."
+    },
+    "forced_abandoned_locked": {
+      "id": "5c000023-0000-4000-8000-000000000023",
+      "characterIds": [],
+      "recentMessages": [
+        "P4.D228 case 35: the lamps were low."
+      ],
+      "expectWrite": false,
+      "expectDerive": true,
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "forceUncensored": true,
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual",
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002",
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "$comment": "P4.D228: the run-time re-check refuses a Locked chat -- the job returns quietly, nothing written, no bubble."
+    },
+    "forced_abandoned_no_understudy": {
+      "id": "5c000024-0000-4000-8000-000000000024",
+      "characterIds": [],
+      "recentMessages": [
+        "P4.D228 case 36: the lamps were low."
+      ],
+      "expectWrite": false,
+      "expectDerive": true,
+      "imageProfileId": "e5000000-0000-4000-8000-000000000004",
+      "forceUncensored": true,
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": null,
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002",
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "$comment": "P4.D228: the payload's profile is the only compatible one and it is excluded; no desk is configured -- no understudy at run time, the job returns quietly."
+    },
+    "forced_desk_refuses_ledger_auto_switch": {
+      "id": "5c000025-0000-4000-8000-000000000025",
+      "characterIds": [],
+      "recentMessages": [
+        "P4.D228 case 37: the lamps were low."
+      ],
+      "expectWrite": true,
+      "expectDerive": true,
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "forceUncensored": true,
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000005",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002",
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "ledgerPlant": 1,
+      "$comment": "P4.D228 E.8 (measured, not designed): the forced seat is the configured desk (Blocked Desk -- the explicit pick needs ownership only), which REFUSES; the chokepoint reroutes to the scan's compatible profile, which answers. The refusal reaches the ledger (primaryVia concierge) with one planted -- does the auto-switch flip a Moderated chat on a retry the route promised never changes the chat's state? The footprint's `state` pins what v4 does."
     }
   }
 }

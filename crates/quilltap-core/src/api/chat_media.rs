@@ -1360,6 +1360,22 @@ pub fn chat_get_cost(db: &Db, chat_id: &str, detailed: bool) -> Response {
 /// a `Db` failure lands there rather than on [`internal`], because that is the
 /// string v4 answers.
 pub async fn chat_regenerate_background(db: &Db, user_id: &str, chat_id: &str) -> Response {
+    regenerate_background(db, user_id, chat_id, false).await
+}
+
+/// v4 `handleRegenerateBackground(chatId, chat, ctx, { forceUncensored })`
+/// (`ce2f1dabf`, #77 widened it with the options bag): the plain action passes
+/// `false`; "Try uncensored"'s background arm passes `true`, which spreads
+/// `forceUncensored: true` LAST onto the queue payload. The two `[Chats v1]`
+/// INFO lines (v4's, never emitted by v5 before — restored with the force
+/// keys: `forceUncensored` on the queued line, `forceUncensoredRequested` on
+/// the dedupe line, both present on a plain regenerate too).
+async fn regenerate_background(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    force_uncensored: bool,
+) -> Response {
     let cid = chat_id.to_string();
     let uid = user_id.to_string();
 
@@ -1443,7 +1459,7 @@ pub async fn chat_regenerate_background(db: &Db, user_id: &str, chat_id: &str) -
         .and_then(Value::as_str)
         .map(str::to_string);
 
-    match crate::services::queue_service::enqueue_story_background_generation(
+    match crate::services::queue_service::enqueue_story_background_generation_with(
         db,
         &uid,
         &cid,
@@ -1451,18 +1467,41 @@ pub async fn chat_regenerate_background(db: &Db, user_id: &str, chat_id: &str) -
         &character_ids,
         scene_context,
         project_id,
+        force_uncensored,
     )
     .await
     {
-        Ok((job_id, is_new)) => Response::ChatMedia(json!({
-            "message": if is_new {
-                "Story background regeneration queued"
+        Ok((job_id, is_new)) => {
+            if is_new {
+                tracing::info!(
+                    target: "quilltap::chats",
+                    chat_id = %chat_id,
+                    job_id = %job_id,
+                    image_profile_id = %image_profile_id,
+                    character_count = character_ids.len(),
+                    force_uncensored,
+                    "[Chats v1] Queued story background regeneration"
+                );
             } else {
-                "Story background generation already in progress"
-            },
-            "queued": true,
-            "jobId": job_id,
-        })),
+                tracing::info!(
+                    target: "quilltap::chats",
+                    chat_id = %chat_id,
+                    job_id = %job_id,
+                    image_profile_id = %image_profile_id,
+                    force_uncensored_requested = force_uncensored,
+                    "[Chats v1] Story background generation already in progress"
+                );
+            }
+            Response::ChatMedia(json!({
+                "message": if is_new {
+                    "Story background regeneration queued"
+                } else {
+                    "Story background generation already in progress"
+                },
+                "queued": true,
+                "jobId": job_id,
+            }))
+        }
         Err(_) => server_error_regenerate(),
     }
 }
@@ -1473,6 +1512,534 @@ fn server_error_regenerate() -> Response {
         ErrorKind::Internal,
         "Failed to queue story background regeneration",
     )
+}
+
+/// The target the `[DangerousContent]` route lines of "Try uncensored" log
+/// under (both verbs share it; the SERVICE's lines carry
+/// `quilltap::concierge_retry_uncensored` and no prefix).
+pub(crate) const RETRY_TARGET: &str = "quilltap::concierge_retry";
+
+use crate::services::dangerous_content::provider_routing::ApiKeyResolver;
+use crate::services::dangerous_content::retry_uncensored::{
+    compose_retry_route_trail, resolve_image_retry_understudy, AnsweredBy, AnsweringProfile,
+    RetryProfileKind,
+};
+// ===========================================================================
+// P4.D228 — "Try uncensored" on a picture (v4 `retry-image-uncensored`,
+// `app/api/v1/chats/[id]/actions/retry-image-uncensored.ts`, NEW at
+// `ce2f1dabf`, #77)
+// ===========================================================================
+
+/// v4's union-refusal sentence (`badRequest(...)` on a failed `safeParse`).
+pub const RETRY_IMAGE_BODY_REFUSAL: &str = "Expected { toolMessageId } or { kind: \"background\" }";
+
+/// What a `retry-image-uncensored` body asks for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RetryImageTarget {
+    /// `{ toolMessageId }` — redraw a `generate_image` picture.
+    Picture(String),
+    /// `{ kind: 'background' }` — queue the Lantern's backdrop on the desk.
+    Background,
+}
+
+/// v4's `retryImageSchema` — `z.union([z.object({ toolMessageId:
+/// z.string().min(1) }), z.object({ kind: z.literal('background') })])` —
+/// decoded with Zod's union semantics: the FIRST branch that parses wins, and
+/// an object branch STRIPS unknown keys. So `{toolMessageId: 'x', kind:
+/// 'background'}` is a PICTURE retry and `{toolMessageId: '', kind:
+/// 'background'}` a BACKGROUND one. A decode that looked at `kind` first would
+/// invert the former. `None` is v4's 400 ([`RETRY_IMAGE_BODY_REFUSAL`]).
+pub fn decode_retry_image_body(body: &Value) -> Option<RetryImageTarget> {
+    let obj = body.as_object()?;
+    if let Some(id) = obj.get("toolMessageId").and_then(Value::as_str) {
+        // `.min(1)` counts UTF-16 units; only the empty string fails it.
+        if !id.is_empty() {
+            return Some(RetryImageTarget::Picture(id.to_string()));
+        }
+    }
+    (obj.get("kind").and_then(Value::as_str) == Some("background"))
+        .then_some(RetryImageTarget::Background)
+}
+
+/// v4 `parseToolContent` — the stored TOOL content as an object, or `None`
+/// (`JSON.parse` threw, or it parsed to a non-object / null).
+fn parse_tool_content(content: Option<&str>) -> Option<Map<String, Value>> {
+    let parsed: Value = serde_json::from_str(content?).ok()?;
+    match parsed {
+        Value::Object(o) => Some(o),
+        // v4 `parsed && typeof parsed === 'object'` — an array IS an object
+        // to JS; it then fails `toolName !== 'generate_image'` all the same.
+        Value::Array(_) => Some(Map::new()),
+        _ => None,
+    }
+}
+
+fn conflict(reason: &str) -> Response {
+    Response::error(ErrorKind::Conflict, reason)
+}
+
+/// v4 `handleRetryImageUncensored` — `POST /api/v1/chats/[id]?action=
+/// retry-image-uncensored`, served as the dispatch verb
+/// `chatRetryImageUncensored` (the REST arm answers the "ride POST
+/// /api/dispatch" pointer, as its siblings do).
+///
+/// The order IS the contract: the chat (v4's `handlePost` 404s first) → the
+/// union decode → the chat settings (read BEFORE branching) → the arm.
+///
+/// - **background** — the RESOLVED image profile excluded; `locked` /
+///   `no-understudy` → 409 BEFORE any of `regenerate-background`'s own 400s;
+///   the INFO fires even when the regenerate then 400s.
+/// - **picture** — the TOOL row by id (404), `generate_image` with arguments
+///   (400), the chat's RAW `imageProfileId` + the row's image-kind trail + the
+///   content's provider+model excluded (409); the generator run
+///   SYNCHRONOUSLY on the understudy with `primary_via: 'concierge'`; no image
+///   → WARN + 502 (v5: [`ErrorKind::Internal`] carrying v4's `details`, see
+///   the family's recorded divergence) and nothing saved; else the new TOOL
+///   row filed at the original's `createdAt + 1 ms` beside it, the
+///   `refusal-rerouted` announcement ONLY when the original trail has a
+///   `refused` row (a soft refusal names nobody), and 200 `{ toolMessageId,
+///   images, routeTrail }`.
+///
+/// Neither arm ever writes the chat's Concierge state.
+pub async fn chat_retry_image_uncensored<A: ApiKeyResolver>(
+    db: &Db,
+    api_keys: &A,
+    image_generation: Option<&crate::tools::generate_image::ErasedImageGeneration>,
+    user_id: &str,
+    chat_id: &str,
+    body: &Value,
+) -> Response {
+    let cid = chat_id.to_string();
+    let chat = match db.read_main(move |c| chats_read::find_by_id(c, &cid)) {
+        Ok(Some(chat)) => chat,
+        Ok(None) => return not_found("Chat"),
+        Err(e) => return internal(e),
+    };
+    let Some(target) = decode_retry_image_body(body) else {
+        return bad_request(RETRY_IMAGE_BODY_REFUSAL);
+    };
+    let uid = user_id.to_string();
+    let chat_settings =
+        match db.read_main(move |c| crate::db::chat_settings::find_by_user_id(c, &uid)) {
+            Ok(s) => s,
+            Err(e) => return internal(e),
+        };
+
+    match target {
+        RetryImageTarget::Background => {
+            retry_background_uncensored(
+                db,
+                api_keys,
+                user_id,
+                chat_id,
+                &chat,
+                chat_settings.as_ref(),
+            )
+            .await
+        }
+        RetryImageTarget::Picture(tool_message_id) => {
+            retry_picture_uncensored(
+                db,
+                api_keys,
+                image_generation,
+                user_id,
+                chat_id,
+                &chat,
+                chat_settings.as_ref(),
+                &tool_message_id,
+            )
+            .await
+        }
+    }
+}
+
+/// The background arm (v4 `retry-image-uncensored.ts:71-88`).
+async fn retry_background_uncensored<A: ApiKeyResolver>(
+    db: &Db,
+    api_keys: &A,
+    user_id: &str,
+    chat_id: &str,
+    chat: &Value,
+    chat_settings: Option<&Value>,
+) -> Response {
+    // The RESOLVED profile (`resolveImageProfileForChat`), where the picture
+    // arm excludes the chat's raw column.
+    let image_profile_id = {
+        let (uid, chat, settings) = (user_id.to_string(), chat.clone(), chat_settings.cloned());
+        match read_main_mount(db, move |main, mount| {
+            Ok(
+                crate::services::image_profile_resolution::resolve_image_profile_for_chat(
+                    main,
+                    Some(mount),
+                    &uid,
+                    &chat,
+                    settings.as_ref(),
+                ),
+            )
+        }) {
+            Ok(id) => id,
+            Err(e) => return internal(e),
+        }
+    };
+    let gate = resolve_image_retry_understudy(
+        db,
+        api_keys,
+        user_id,
+        chat,
+        chat_settings,
+        &[image_profile_id.as_deref()],
+        None,
+        AnsweredBy::default(),
+    )
+    .await;
+    match gate {
+        Err(reason) => {
+            tracing::info!(
+                target: RETRY_TARGET,
+                chat_id = %chat_id,
+                reason = reason.as_str(),
+                "[DangerousContent] Uncensored background retry refused"
+            );
+            conflict(reason.as_str())
+        }
+        Ok(understudy) => {
+            tracing::info!(
+                target: RETRY_TARGET,
+                chat_id = %chat_id,
+                understudy_profile_id = %understudy.profile.id,
+                "[DangerousContent] Queueing a story background on the uncensored desk"
+            );
+            regenerate_background(db, user_id, chat_id, true).await
+        }
+    }
+}
+
+/// The picture arm (v4 `retry-image-uncensored.ts:90-226`).
+#[allow(clippy::too_many_arguments)]
+async fn retry_picture_uncensored<A: ApiKeyResolver>(
+    db: &Db,
+    api_keys: &A,
+    image_generation: Option<&crate::tools::generate_image::ErasedImageGeneration>,
+    user_id: &str,
+    chat_id: &str,
+    chat: &Value,
+    chat_settings: Option<&Value>,
+    tool_message_id: &str,
+) -> Response {
+    use crate::services::route_trail::{RouteAttempt, RouteAttemptOutcome};
+    use crate::services::tool_execution::{GeneratedImage, ToolMessage, ToolMetadata};
+
+    // v4 `repos.chats.getMessages` — the FALLBACK read (a `safeQuery` that
+    // answers `[]` on a failed query), so a read error reads as "not found".
+    let cid = chat_id.to_string();
+    let messages = db
+        .read_main(move |c| crate::db::chats_messages_read::get_messages(c, &cid))
+        .unwrap_or_default();
+    let Some(tool_message) = messages.into_iter().find(|m| {
+        m.get("type").and_then(Value::as_str) == Some("message")
+            && m.get("id").and_then(Value::as_str) == Some(tool_message_id)
+    }) else {
+        return not_found("Tool message");
+    };
+    if tool_message.get("role").and_then(Value::as_str) != Some("TOOL") {
+        return not_found("Tool message");
+    }
+    let stored = parse_tool_content(tool_message.get("content").and_then(Value::as_str));
+    let arguments = stored
+        .as_ref()
+        .and_then(|s| s.get("arguments"))
+        .filter(|a| crate::api::system_qtap::js_truthy(Some(a)))
+        .cloned();
+    let (Some(stored), Some(arguments)) = (
+        stored.filter(|s| s.get("toolName").and_then(Value::as_str) == Some("generate_image")),
+        arguments,
+    ) else {
+        return bad_request("Only generate_image pictures can be retried uncensored");
+    };
+
+    let trail = tool_message.get("routeTrail").filter(|t| !t.is_null());
+    let gate = resolve_image_retry_understudy(
+        db,
+        api_keys,
+        user_id,
+        chat,
+        chat_settings,
+        &[chat.get("imageProfileId").and_then(Value::as_str)],
+        trail,
+        AnsweredBy {
+            provider: stored.get("provider").and_then(Value::as_str),
+            model_name: stored.get("model").and_then(Value::as_str),
+        },
+    )
+    .await;
+    let understudy = match gate {
+        Ok(u) => u,
+        Err(reason) => {
+            tracing::info!(
+                target: RETRY_TARGET,
+                chat_id = %chat_id,
+                tool_message_id = %tool_message_id,
+                reason = reason.as_str(),
+                "[DangerousContent] Uncensored picture retry refused"
+            );
+            return conflict(reason.as_str());
+        }
+    };
+    tracing::info!(
+        target: RETRY_TARGET,
+        chat_id = %chat_id,
+        tool_message_id = %tool_message_id,
+        understudy_profile_id = %understudy.profile.id,
+        understudy_name = %understudy.profile.name,
+        "[DangerousContent] Retrying a picture on the uncensored desk"
+    );
+
+    let Some(runner) = image_generation else {
+        return Response::error(
+            ErrorKind::Internal,
+            "image generation not assembled (image-generation seam deferral)",
+        );
+    };
+    let participant_id = tool_message
+        .get("participantId")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let result = runner
+        .run(
+            db,
+            &crate::tools::generate_image::ImageGenerationToolInput::from_arguments(&arguments),
+            &crate::tools::generate_image::ImageToolExecutionContext {
+                user_id: user_id.to_string(),
+                profile_id: understudy.profile.id.clone(),
+                chat_id: Some(chat_id.to_string()),
+                calling_participant_id: participant_id.clone(),
+                primary_via: Some(crate::services::route_trail::RouteAttemptVia::Concierge),
+            },
+        )
+        .await;
+
+    if !result.success || result.images.is_empty() {
+        tracing::warn!(
+            target: RETRY_TARGET,
+            chat_id = %chat_id,
+            tool_message_id = %tool_message_id,
+            error = result.error.as_deref(),
+            message = result.message.as_deref(),
+            "[DangerousContent] Uncensored picture retry did not produce an image"
+        );
+        // v4 `errorResponse(msg, 502, { code: result.error })`: `details` is
+        // always present — `{}` when the code is undefined (JSON drops the
+        // key, `details !== undefined` keeps the object).
+        let mut details = Map::new();
+        if let Some(code) = &result.error {
+            details.insert("code".into(), json!(code));
+        }
+        let message = result
+            .message
+            .clone()
+            .filter(|m| !m.is_empty())
+            .unwrap_or_else(|| "The uncensored desk could not produce the picture".to_string());
+        let mut response = Response::error(ErrorKind::Internal, message);
+        if let Response::Error(e) = &mut response {
+            e.details = Some(Box::new(Value::Object(details)));
+        }
+        return response;
+    }
+
+    // The original's refusals, then whatever the understudy's own call sheet
+    // says (non-empty only when it, too, was refused and rerouted on). The
+    // BODY carries the understudy's rows in the chokepoint's in-memory key
+    // order (v4 returns them un-reparsed); the saved row re-parses through the
+    // schema on both sides.
+    let prior: Vec<Value> = trail
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .filter(|a| a.get("outcome").and_then(Value::as_str) != Some("answered"))
+        .cloned()
+        .collect();
+    let body_trail: Vec<Value> = if !result.route_trail.is_empty() {
+        prior
+            .into_iter()
+            .chain(
+                result
+                    .route_trail
+                    .iter()
+                    .map(RouteAttempt::to_chokepoint_value),
+            )
+            .collect()
+    } else {
+        compose_retry_route_trail(
+            trail,
+            AnsweringProfile {
+                id: &understudy.profile.id,
+                name: &understudy.profile.name,
+                provider: &understudy.profile.provider,
+                model_name: &understudy.profile.model_name,
+            },
+            RetryProfileKind::Image,
+        )
+    };
+    let saved_trail: Vec<RouteAttempt> = body_trail
+        .iter()
+        .filter_map(RouteAttempt::from_value)
+        .collect();
+
+    let generated: Vec<GeneratedImage> = result
+        .images
+        .iter()
+        .map(|img| GeneratedImage {
+            id: img.id.clone(),
+            filename: img.filename.clone(),
+            filepath: img.filepath.clone().unwrap_or_else(|| img.url.clone()),
+            mime_type: img
+                .mime_type
+                .clone()
+                .filter(|m| !m.is_empty())
+                .unwrap_or_else(|| "image/png".to_string()),
+            // `img.size || 0` — NaN and 0 both fall through.
+            size: img.size.filter(|s| *s != 0.0 && !s.is_nan()).unwrap_or(0.0),
+            width: img.width,
+            height: img.height,
+            sha256: img.sha256.clone(),
+        })
+        .collect();
+    let images_json: Vec<Value> = generated
+        .iter()
+        .map(|g| {
+            let mut o = Map::new();
+            o.insert("id".into(), json!(g.id));
+            o.insert("filename".into(), json!(g.filename));
+            o.insert("filepath".into(), json!(g.filepath));
+            o.insert("mimeType".into(), json!(g.mime_type));
+            o.insert("size".into(), crate::db::js_number_to_json(g.size));
+            if let Some(w) = g.width {
+                o.insert("width".into(), crate::db::js_number_to_json(w));
+            }
+            if let Some(h) = g.height {
+                o.insert("height".into(), crate::db::js_number_to_json(h));
+            }
+            if let Some(s) = &g.sha256 {
+                o.insert("sha256".into(), json!(s));
+            }
+            Value::Object(o)
+        })
+        .collect();
+    let retry_tool_message = ToolMessage {
+        tool_name: "generate_image".to_string(),
+        success: true,
+        content: format!("Generated {} image(s)", generated.len()),
+        arguments: Some(arguments),
+        call_id: None,
+        anchor_offset: None,
+        seq: None,
+        metadata: Some(ToolMetadata {
+            provider: result.provider.clone(),
+            model: result.model.clone(),
+            expanded_prompt: result.expanded_prompt.clone(),
+            route_trail: saved_trail,
+        }),
+    };
+    let character_id = participant_id.as_deref().and_then(|pid| {
+        chat.get("participants")
+            .and_then(Value::as_array)
+            .and_then(|ps| {
+                ps.iter()
+                    .find(|p| p.get("id").and_then(Value::as_str) == Some(pid))
+            })
+            .and_then(|p| p.get("characterId").and_then(Value::as_str))
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    });
+    // Filed a millisecond after the original, so the new picture sits beside
+    // the one it answers rather than at the foot of the transcript. v4's
+    // `new Date(new Date(createdAt).getTime() + 1).toISOString()` — a stored
+    // stamp without milliseconds reformats to `.001Z`; an unparseable one is
+    // v4's `RangeError: Invalid time value`.
+    let Some(original_ms) = tool_message
+        .get("createdAt")
+        .and_then(Value::as_str)
+        .and_then(crate::clock::iso_to_ms)
+    else {
+        return internal("Invalid time value");
+    };
+    let created_at = crate::clock::iso_from_unix_ms(original_ms + 1);
+    let image_count = generated.len();
+    let (cid, uid) = (chat_id.to_string(), user_id.to_string());
+    let saved = db
+        .write(move |w| {
+            crate::services::tool_execution::save_tool_messages_with_options(
+                w.main(),
+                &cid,
+                &uid,
+                &[retry_tool_message],
+                &generated,
+                character_id.as_deref(),
+                participant_id.as_deref(),
+                None,
+                crate::services::tool_execution::SaveToolMessagesOptions {
+                    created_at: Some(created_at),
+                },
+            )
+        })
+        .await;
+    let saved = match saved {
+        Ok(s) => s,
+        Err(e) => return internal(e),
+    };
+
+    // The Concierge says so when the original was a refusal he could not get
+    // past. A soft refusal (a sanitized picture that "succeeded") has nobody
+    // to name as refusing, so it passes without an announcement.
+    let refused = trail
+        .and_then(Value::as_array)
+        .and_then(|rows| {
+            rows.iter().find(|a| {
+                a.get("outcome").and_then(Value::as_str)
+                    == Some(RouteAttemptOutcome::Refused.as_str())
+            })
+        })
+        .cloned();
+    if let Some(refused) = &refused {
+        crate::services::concierge_notifications::post_concierge_refusal_announcement(
+            db,
+            chat_id,
+            crate::services::concierge_notifications::ConciergeRefusalKind::RefusalRerouted,
+            &crate::services::concierge_notifications::ConciergeRefusalDetails {
+                refusing_provider: refused
+                    .get("provider")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                refusing_model: refused
+                    .get("modelName")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                answering_profile_name: Some(understudy.profile.name.clone()),
+                purpose: crate::services::concierge_notifications::ConciergeRefusalPurpose::Tool,
+                reason: None,
+            },
+        )
+        .await;
+    }
+
+    tracing::info!(
+        target: RETRY_TARGET,
+        chat_id = %chat_id,
+        original_tool_message_id = %tool_message_id,
+        tool_message_id = saved.first_tool_message_id.as_deref(),
+        image_count,
+        announced = refused.is_some(),
+        "[DangerousContent] Uncensored picture retry posted"
+    );
+
+    Response::ChatMedia(json!({
+        "toolMessageId": saved.first_tool_message_id,
+        "images": images_json,
+        "routeTrail": body_trail,
+    }))
 }
 
 // ===========================================================================

@@ -114,6 +114,12 @@ struct CallW {
     target_message_id: String,
     #[serde(default)]
     expect_throw: bool,
+    /// P4.D228 (v4 `ce2f1dabf`, #77): "Try uncensored" — generate on this
+    /// connection profile (`profileOverride`) and persist this trail.
+    #[serde(default)]
+    profile_override_id: Option<String>,
+    #[serde(default)]
+    route_trail: Option<Vec<Value>>,
 }
 
 #[derive(Deserialize)]
@@ -352,6 +358,24 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
 
     let want_progress = oracle_progress(&oracle_text);
 
+    // P4.D228: v4's OWN `getModelContextLimit` per call, for the responder and
+    // the override — the port budgets each call with v4's numbers.
+    let mut limits: HashMap<String, (Option<i64>, Option<i64>)> = HashMap::new();
+    for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
+        let v: Value = serde_json::from_str(line).unwrap();
+        if v.get("kind").and_then(Value::as_str) == Some("limits") {
+            limits.insert(
+                v["call"].as_str().unwrap().to_string(),
+                (v["responder"].as_i64(), v["override"].as_i64()),
+            );
+        }
+    }
+    assert_eq!(
+        limits.len(),
+        spec.calls.len(),
+        "the oracle recorded no `limits` line for some call — it predates P4.D228; re-record it"
+    );
+
     // Canned streams (P4.D207 — the generation is read as a stream).
     let mut canned_streams: Vec<CannedStreamW> = Vec::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
@@ -496,6 +520,21 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
             .expect("target present")
             .clone();
 
+        let (responder_limit, override_limit) = limits[&call.name];
+        // Every call before P4.D228 ran on a hard-coded 200_000; that WAS
+        // v4's number for the ANTHROPIC responder (pinned here, not assumed).
+        let responder_limit = responder_limit.unwrap_or(200_000);
+        let profile_override = call.profile_override_id.as_ref().map(|id| {
+            let id = id.clone();
+            let row = db
+                .read_main(move |c| quilltap_core::db::connection_profiles::find_by_id(c, &id))
+                .expect("override read")
+                .expect("override profile seeded");
+            quilltap_core::services::regenerate_swipe::SwipeProfileOverride {
+                profile: row,
+                model_context_limit: override_limit.expect("v4 recorded the override's limit"),
+            }
+        });
         let result = rt.block_on(regenerate_message_as_swipe(
             &db,
             &embedding,
@@ -510,7 +549,7 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
                 target_message: target,
                 all_messages,
                 active_user_participant_id: None,
-                model_context_limit: 200_000,
+                model_context_limit: responder_limit,
                 timestamp_config: None,
                 timezone: Some("UTC".to_string()),
                 server_tz: Some("UTC".to_string()),
@@ -528,6 +567,8 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
                 } else {
                     SwipeProgressEmitter::inert()
                 },
+                profile_override,
+                route_trail: call.route_trail.clone(),
             },
         ));
 

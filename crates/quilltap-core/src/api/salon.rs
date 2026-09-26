@@ -1260,6 +1260,8 @@ pub async fn message_swipe_generate(
         all_messages,
         active_user_participant_id,
         progress: progress.clone(),
+        profile_override: None,
+        route_trail: None,
     };
     match driver.generate_swipe(req).await {
         Ok(new_swipe) => {
@@ -1273,6 +1275,165 @@ pub async fn message_swipe_generate(
             // `error` FRAME whose `details` is the raw `error.message`; the
             // response envelope is unchanged (v4's JSON leg answers
             // `serverError(error.message)` from the same catch).
+            progress.emit_error(&e.message);
+            Response::Error(e)
+        }
+    }
+}
+
+/// v4 `handleRetryUncensored` — `POST /api/v1/chats/[id]/messages/[messageId]
+/// ?action=retry-uncensored[&stream=1]` (NEW at `ce2f1dabf`, #77), served as
+/// the RPC-only verb `messageRetryUncensored { messageId, stream }`.
+///
+/// **RPC-only, and the order trap is moot.** v5 has no REST
+/// `chats/{id}/messages/{messageId}` leg and never ported `override-danger-
+/// flag`, so no `availableActions` list exists to order (v4's is
+/// `override-danger-flag, resolve-external-turn, cancel-external-turn,
+/// save-image, retry-uncensored`). A REST leg would owe that list, with
+/// `override-danger-flag` ported or pinned as a divergence. The verb carries
+/// no chat id — the chat is the message's own — so v4's `404 Chat not found`
+/// (a URL chat id that names nothing) has no v5 analogue.
+///
+/// The gate order: 404 Message → 400 `Only assistant messages can be
+/// retried` (the retry's OWN sentence — the swipe edge says "swiped", the
+/// service backstop "regenerated") → 400 Staff → the understudy (409
+/// `locked` / `no-understudy`) → the generation: the SAME swipe as the
+/// refresh icon ([`message_swipe_generate`]'s driver), on the understudy's
+/// profile (`profile_override`), its trail composed here and ending on a
+/// `via: 'concierge'`, `outcome: 'answered'` row. Every refusal is an
+/// ordinary error BEFORE any frame; with `stream` the narration rides the
+/// `swipeProgress` channel keyed by the target message id (P4.D207's shape —
+/// v4 has two independent SSE streams, v5 one broadcast per message id: a
+/// recorded shape divergence). The chat's Concierge state is never written.
+pub async fn message_retry_uncensored<
+    A: crate::services::dangerous_content::provider_routing::ApiKeyResolver,
+>(
+    db: &Db,
+    api_keys: &A,
+    driver: Option<&dyn super::chat_send::SwipeGenerateDriver>,
+    user_id: &str,
+    message_id: &str,
+    progress: crate::services::regenerate_swipe::SwipeProgressEmitter,
+) -> Response {
+    let (chat, messages, message) = match resolve_message(db, user_id, message_id) {
+        Ok(Some(v)) => v,
+        Ok(None) => return not_found("Message"),
+        Err(e) => return internal(e),
+    };
+    if message.get("role").and_then(Value::as_str) != Some("ASSISTANT") {
+        return bad_request("Only assistant messages can be retried");
+    }
+    if message
+        .get("systemSender")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.is_empty())
+    {
+        return bad_request("Staff and system messages cannot be regenerated");
+    }
+
+    let chat_id = chat
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let uid = user_id.to_string();
+    let chat_settings =
+        match db.read_main(move |c| crate::db::chat_settings::find_by_user_id(c, &uid)) {
+            Ok(s) => s,
+            Err(e) => return internal(e),
+        };
+    let understudy =
+        match crate::services::dangerous_content::retry_uncensored::resolve_text_retry_understudy(
+            db,
+            api_keys,
+            user_id,
+            &chat,
+            chat_settings.as_ref(),
+            &message,
+        )
+        .await
+        {
+            Ok(u) => u,
+            Err(reason) => {
+                tracing::info!(
+                    target: super::chat_media::RETRY_TARGET,
+                    chat_id = %chat_id,
+                    message_id = %message_id,
+                    reason = reason.as_str(),
+                    "[DangerousContent] Uncensored retry refused"
+                );
+                return Response::error(ErrorKind::Conflict, reason.as_str());
+            }
+        };
+    let route_trail =
+        crate::services::dangerous_content::retry_uncensored::compose_retry_route_trail(
+            message.get("routeTrail").filter(|t| !t.is_null()),
+            crate::services::dangerous_content::retry_uncensored::AnsweringProfile {
+                id: &understudy.profile.id,
+                name: &understudy.profile.name,
+                provider: &understudy.profile.provider,
+                model_name: &understudy.profile.model_name,
+            },
+            crate::services::dangerous_content::retry_uncensored::RetryProfileKind::Connection,
+        );
+    tracing::info!(
+        target: super::chat_media::RETRY_TARGET,
+        chat_id = %chat_id,
+        message_id = %message_id,
+        understudy_profile_id = %understudy.profile.id,
+        understudy_name = %understudy.profile.name,
+        "[DangerousContent] Retrying a turn on the uncensored desk"
+    );
+
+    let Some(driver) = driver else {
+        return Response::error(
+            ErrorKind::Internal,
+            "swipe generation not assembled (model-boundary seam deferral)",
+        );
+    };
+    let all_messages: Vec<Value> = messages
+        .into_iter()
+        .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
+        .collect();
+    let active_user_participant_id = chat
+        .get("activeTypingParticipantId")
+        .and_then(Value::as_str)
+        .map(String::from);
+    let streaming = progress.is_active();
+    let req = super::chat_send::SwipeGenerateRequest {
+        user_id: user_id.to_string(),
+        chat,
+        target_message: message,
+        all_messages,
+        active_user_participant_id,
+        progress: progress.clone(),
+        profile_override: Some(understudy.row.clone()),
+        route_trail: Some(route_trail),
+    };
+    match driver.generate_swipe(req).await {
+        Ok(new_swipe) => {
+            progress.emit_done(&new_swipe);
+            Response::Message(json!({ "message": new_swipe }))
+        }
+        Err(e) => {
+            if streaming {
+                // v4 `streamSwipeRegeneration(options, '[DangerousContent]
+                // Uncensored retry:')`'s catch.
+                tracing::error!(
+                    target: super::chat_media::RETRY_TARGET,
+                    message_id = %message_id,
+                    chat_id = %chat_id,
+                    "[DangerousContent] Uncensored retry: Streaming swipe generation failed"
+                );
+            } else {
+                tracing::error!(
+                    target: super::chat_media::RETRY_TARGET,
+                    chat_id = %chat_id,
+                    message_id = %message_id,
+                    error = %e.message,
+                    "[DangerousContent] Uncensored retry failed"
+                );
+            }
             progress.emit_error(&e.message);
             Response::Error(e)
         }

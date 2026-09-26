@@ -15,6 +15,16 @@
         "max_tokens": 321,
         "topP": 0.87
       }
+    },
+    {
+      "id": "cc000002-0000-4000-8000-000000000002",
+      "name": "Uncensored Understudy",
+      "provider": "OLLAMA",
+      "modelName": "phi3:mini",
+      "parameters": {
+        "temperature": 0.9,
+        "max_tokens": 222
+      }
     }
   ],
   "characters": [
@@ -297,6 +307,174 @@
           "createdAt": "2026-01-02T03:04:06.000Z"
         }
       ]
+    },
+    {
+      "id": "aa000007-0000-4000-8000-000000000007",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "aa0a0007-0000-4000-8000-0000000000a7",
+          "character": "bb000001-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "aa0b0007-0000-4000-8000-0000000000b7",
+          "character": "bb000002-0000-4000-8000-000000000002",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "aa070001-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "[01] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0b0007-0000-4000-8000-0000000000b7",
+          "createdAt": "2026-01-02T03:11:05.000Z"
+        },
+        {
+          "id": "aa070002-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "[02] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0a0007-0000-4000-8000-0000000000a7",
+          "createdAt": "2026-01-02T03:12:05.000Z"
+        },
+        {
+          "id": "aa070003-0000-4000-8000-000000000003",
+          "role": "USER",
+          "content": "[03] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0b0007-0000-4000-8000-0000000000b7",
+          "createdAt": "2026-01-02T03:13:05.000Z"
+        },
+        {
+          "id": "aa070004-0000-4000-8000-000000000004",
+          "role": "ASSISTANT",
+          "content": "[04] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0a0007-0000-4000-8000-0000000000a7",
+          "createdAt": "2026-01-02T03:14:05.000Z"
+        },
+        {
+          "id": "aa070005-0000-4000-8000-000000000005",
+          "role": "USER",
+          "content": "[05] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0b0007-0000-4000-8000-0000000000b7",
+          "createdAt": "2026-01-02T03:15:05.000Z"
+        },
+        {
+          "id": "aa070006-0000-4000-8000-000000000006",
+          "role": "ASSISTANT",
+          "content": "[06] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0a0007-0000-4000-8000-0000000000a7",
+          "createdAt": "2026-01-02T03:16:05.000Z"
+        },
+        {
+          "id": "aa070007-0000-4000-8000-000000000007",
+          "role": "USER",
+          "content": "[07] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0b0007-0000-4000-8000-0000000000b7",
+          "createdAt": "2026-01-02T03:17:05.000Z"
+        },
+        {
+          "id": "aa070008-0000-4000-8000-000000000008",
+          "role": "ASSISTANT",
+          "content": "[08] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0a0007-0000-4000-8000-0000000000a7",
+          "createdAt": "2026-01-02T03:18:05.000Z"
+        },
+        {
+          "id": "aa070009-0000-4000-8000-000000000009",
+          "role": "USER",
+          "content": "[09] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0b0007-0000-4000-8000-0000000000b7",
+          "createdAt": "2026-01-02T03:19:05.000Z"
+        },
+        {
+          "id": "aa070010-0000-4000-8000-000000000010",
+          "role": "ASSISTANT",
+          "content": "[10] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0a0007-0000-4000-8000-0000000000a7",
+          "createdAt": "2026-01-02T03:20:05.000Z"
+        },
+        {
+          "id": "aa070011-0000-4000-8000-000000000011",
+          "role": "USER",
+          "content": "[11] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0b0007-0000-4000-8000-0000000000b7",
+          "createdAt": "2026-01-02T03:21:05.000Z"
+        },
+        {
+          "id": "aa070012-0000-4000-8000-000000000012",
+          "role": "ASSISTANT",
+          "content": "[12] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0a0007-0000-4000-8000-0000000000a7",
+          "createdAt": "2026-01-02T03:22:05.000Z"
+        },
+        {
+          "id": "aa070013-0000-4000-8000-000000000013",
+          "role": "USER",
+          "content": "[13] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0b0007-0000-4000-8000-0000000000b7",
+          "createdAt": "2026-01-02T03:23:05.000Z"
+        },
+        {
+          "id": "aa070014-0000-4000-8000-000000000014",
+          "role": "ASSISTANT",
+          "content": "[14] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0a0007-0000-4000-8000-0000000000a7",
+          "createdAt": "2026-01-02T03:24:05.000Z"
+        },
+        {
+          "id": "aa070015-0000-4000-8000-000000000015",
+          "role": "USER",
+          "content": "[15] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0b0007-0000-4000-8000-0000000000b7",
+          "createdAt": "2026-01-02T03:25:05.000Z"
+        },
+        {
+          "id": "aa070016-0000-4000-8000-000000000016",
+          "role": "ASSISTANT",
+          "content": "[16] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0a0007-0000-4000-8000-0000000000a7",
+          "createdAt": "2026-01-02T03:26:05.000Z"
+        },
+        {
+          "id": "aa070017-0000-4000-8000-000000000017",
+          "role": "USER",
+          "content": "[17] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0b0007-0000-4000-8000-0000000000b7",
+          "createdAt": "2026-01-02T03:27:05.000Z"
+        },
+        {
+          "id": "aa070018-0000-4000-8000-000000000018",
+          "role": "ASSISTANT",
+          "content": "[18] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0a0007-0000-4000-8000-0000000000a7",
+          "createdAt": "2026-01-02T03:28:05.000Z"
+        },
+        {
+          "id": "aa070019-0000-4000-8000-000000000019",
+          "role": "USER",
+          "content": "[19] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0b0007-0000-4000-8000-0000000000b7",
+          "createdAt": "2026-01-02T03:29:05.000Z"
+        },
+        {
+          "id": "aa070020-0000-4000-8000-000000000020",
+          "role": "ASSISTANT",
+          "content": "[20] The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. The harbour lamps guttered one by one as the fog rolled in off the grey water, and the old ferryman told the story of the drowned bell again, slower this time, as though the words themselves were oars he had to pull against the tide. ",
+          "participantId": "aa0a0007-0000-4000-8000-0000000000a7",
+          "createdAt": "2026-01-02T03:30:05.000Z"
+        },
+        {
+          "id": "aa070001-0000-4000-8000-000000000701",
+          "role": "ASSISTANT",
+          "content": "I would rather not say.",
+          "participantId": "aa0a0007-0000-4000-8000-0000000000a7",
+          "createdAt": "2026-01-02T03:59:05.000Z"
+        }
+      ]
     }
   ],
   "seedMemories": [
@@ -427,6 +605,51 @@
       "chatId": "aa000006-0000-4000-8000-000000000006",
       "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
       "targetMessageId": "aa060001-0000-4000-8000-000000000601"
+    },
+    {
+      "name": "plain_swipe_long_history",
+      "chatId": "aa000007-0000-4000-8000-000000000007",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "targetMessageId": "aa070001-0000-4000-8000-000000000701",
+      "_comment": "P4.D228: the long history on the RESPONDER's budget (v4 getModelContextLimit ANTHROPIC -> 200000): nothing is trimmed. The contrast for the override arm."
+    },
+    {
+      "name": "override_swipe_budgeted_for_override",
+      "chatId": "aa000007-0000-4000-8000-000000000007",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "targetMessageId": "aa070001-0000-4000-8000-000000000701",
+      "profileOverrideId": "cc000002-0000-4000-8000-000000000002",
+      "routeTrail": [
+        {
+          "profileId": "cc000001-0000-4000-8000-000000000001",
+          "profileName": "Primary",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet",
+          "via": "primary",
+          "outcome": "refused",
+          "trigger": "moderation-refusal",
+          "evidence": "finish-reason",
+          "detail": "content_filter"
+        },
+        {
+          "profileId": "cc000002-0000-4000-8000-000000000002",
+          "profileName": "Uncensored Understudy",
+          "provider": "OLLAMA",
+          "modelName": "phi3:mini",
+          "via": "concierge",
+          "outcome": "answered"
+        }
+      ],
+      "_comment": "P4.D228 (v4 ce2f1dabf, #77): \"Try uncensored\" regenerates on the understudy. The override feeds EVERYTHING downstream -- the context is built and trimmed for ITS model (OLLAMA phi3:mini -> 4096, v4 MODEL_CONTEXT_OVERRIDES), the provider/model/params, the row's provider/modelName -- while cacheKey stays the character; the trail rides the row AFTER createdAt."
+    },
+    {
+      "name": "override_swipe_empty_trail",
+      "chatId": "aa000007-0000-4000-8000-000000000007",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "targetMessageId": "aa070001-0000-4000-8000-000000000701",
+      "profileOverrideId": "cc000002-0000-4000-8000-000000000002",
+      "routeTrail": [],
+      "_comment": "P4.D228: `...(routeTrail && routeTrail.length > 0 ? { routeTrail } : {})` -- an empty trail writes no key."
     }
   ],
   "informs": [

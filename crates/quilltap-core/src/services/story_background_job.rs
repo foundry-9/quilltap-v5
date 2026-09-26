@@ -64,6 +64,12 @@ pub struct StoryBackgroundPayload {
     pub character_ids: Vec<String>,
     pub scene_context: Option<String>,
     pub project_id: Option<String>,
+    /// v4 `forceUncensored?` (NEW at `ce2f1dabf`, #77): "Try uncensored" —
+    /// paint on the Concierge's uncensored understudy instead of
+    /// `image_profile_id` (which is then only EXCLUDED from the lookup). Set by
+    /// the `chatRetryImageUncensored` verb's background arm. Never changes the
+    /// chat's state. Read with JS truthiness (v4 `if (payload.forceUncensored)`).
+    pub force_uncensored: bool,
 }
 
 impl StoryBackgroundPayload {
@@ -96,12 +102,14 @@ impl StoryBackgroundPayload {
             .get("projectId")
             .and_then(Value::as_str)
             .map(str::to_string);
+        let force_uncensored = crate::api::system_qtap::js_truthy(payload.get("forceUncensored"));
         Ok(Self {
             chat_id,
             image_profile_id,
             character_ids,
             scene_context,
             project_id,
+            force_uncensored,
         })
     }
 }
@@ -310,8 +318,47 @@ where
     // never crafted for a chat the Concierge will not send to the uncensored
     // desk, or its franker prompt would go straight to the moderated provider.
     // A PROMPT-CRAFTING change, not only a reroute one.
-    let uncensored_image_target =
-        is_dangerous_chat && has_uncensored_image_provider && concierge_policy.route_direct;
+    //
+    // "Try uncensored" (`payload.force_uncensored`, v4 `ce2f1dabf` #77) puts the
+    // Concierge's uncensored understudy in the painter's chair for this one
+    // job, whatever the chat's state, so its prompt is crafted candidly too.
+    // The lookup is repeated here rather than trusted from the request: the
+    // chat may have been Locked, or the understudy removed, while the job
+    // waited. It runs AFTER the cheap-LLM "no connection profiles" early
+    // return above (v4's placement), and a refusal here RETURNS quietly — a
+    // completed job, nothing written, no bubble.
+    let mut forced_understudy: Option<crate::services::dangerous_content::understudy::Understudy> =
+        None;
+    if payload.force_uncensored {
+        let requested_id = common::str_field(&image_profile, "id").unwrap_or("");
+        match crate::services::dangerous_content::retry_uncensored::resolve_image_retry_understudy(
+            db,
+            deps.api_keys,
+            user_id,
+            &chat,
+            chat_settings.as_ref(),
+            &[Some(requested_id)],
+            None,
+            crate::services::dangerous_content::retry_uncensored::AnsweredBy::default(),
+        )
+        .await
+        {
+            Ok(understudy) => forced_understudy = Some(understudy),
+            Err(reason) => {
+                tracing::info!(
+                    target: "quilltap::story_background",
+                    context = "background-jobs.story-background",
+                    job_id = job_id,
+                    chat_id = %payload.chat_id,
+                    reason = reason.as_str(),
+                    "[StoryBackground] Uncensored retry abandoned at run time"
+                );
+                return Ok(());
+            }
+        }
+    }
+    let uncensored_image_target = forced_understudy.is_some()
+        || (is_dangerous_chat && has_uncensored_image_provider && concierge_policy.route_direct);
     tracing::debug!(
         target: "quilltap::story_background",
         context = "background-jobs.story-background",
@@ -593,7 +640,18 @@ where
         row: Value::Null,
     };
     let mut primary_image_key = api_key.clone();
-    if uncensored_image_target {
+    if let Some(understudy) = &forced_understudy {
+        primary_image_profile = FailoverProfile::from_row(&understudy.row);
+        primary_image_key = understudy.api_key.clone();
+        tracing::info!(
+            target: "quilltap::story_background",
+            context = "background-jobs.story-background",
+            job_id = job_id,
+            profile_id = %primary_image_profile.id,
+            profile_name = %primary_image_profile.name,
+            "[StoryBackground] \"Try uncensored\": painting on the uncensored understudy"
+        );
+    } else if uncensored_image_target {
         let original = RouteProfile {
             id: primary_image_profile.id.clone(),
             name: primary_image_profile.name.clone(),
@@ -795,12 +853,55 @@ where
         None,
         Some(job_id),
         ImagePurpose::Lantern,
-        RouteAttemptVia::Primary,
+        if forced_understudy.is_some() {
+            RouteAttemptVia::Concierge
+        } else {
+            RouteAttemptVia::Primary
+        },
+        // The Lantern reports a refusal nobody got past in its own bubble — on
+        // EVERY backdrop, forced or not (v4 `ce2f1dabf`, #77).
+        false,
     )
     .await
     {
         Ok(failover) => failover,
         Err(error) => {
+            // A refusal is an outcome, not a failure: the operator is told
+            // (with a retry to hand) and the job completes, leaving the
+            // backdrop as it was. Only a trail with a `refused` row and NO
+            // `answered` row qualifies; the refusal named is the FIRST one (the
+            // primary's, even when an understudy then failed-not-refused).
+            let trail = error.concierge_trail().unwrap_or_default();
+            let refused = trail
+                .iter()
+                .find(|a| a.outcome == crate::services::route_trail::RouteAttemptOutcome::Refused);
+            if let Some(refused) = refused.filter(|_| {
+                !trail.iter().any(|a| {
+                    a.outcome == crate::services::route_trail::RouteAttemptOutcome::Answered
+                })
+            }) {
+                tracing::info!(
+                    target: "quilltap::story_background",
+                    context = "background-jobs.story-background",
+                    job_id = job_id,
+                    chat_id = %payload.chat_id,
+                    refusing_provider = %refused.provider,
+                    refusing_model = %refused.model_name,
+                    conciergeTrailJson = common::concierge_trail_log_json(&error).as_deref(),
+                    "[StoryBackground] Painter refused the scene; posting the Lantern's refusal"
+                );
+                let _ = crate::services::lantern_notifications::post_lantern_refusal_notification(
+                    db,
+                    &payload.chat_id,
+                    &crate::services::lantern_notifications::LanternRefusal {
+                        provider: refused.provider.clone(),
+                        model_name: refused.model_name.clone(),
+                    },
+                    trail,
+                )
+                .await;
+                return Ok(());
+            }
             tracing::error!(
                 target: "quilltap::story_background",
                 context = "background-jobs.story-background",
@@ -834,7 +935,23 @@ where
             "[StoryBackground] Concierge uncensored reroute succeeded"
         );
     }
-    let route_trail = failover.trail;
+    // A "Try uncensored" backdrop answered first time still says who sent it
+    // (v4 `composeRetryRouteTrail(null, activeImageProfile, 'image')`).
+    let route_trail = if forced_understudy.is_some() && failover.trail.is_empty() {
+        vec![
+            crate::services::dangerous_content::retry_uncensored::retry_answer_attempt(
+                crate::services::dangerous_content::retry_uncensored::AnsweringProfile {
+                    id: &failover.profile.id,
+                    name: &failover.profile.name,
+                    provider: &failover.profile.provider,
+                    model_name: &failover.profile.model_name,
+                },
+                crate::services::dangerous_content::retry_uncensored::RetryProfileKind::Image,
+            ),
+        ]
+    } else {
+        failover.trail
+    };
     let outcome = common::GenOutcome {
         images: failover.result.images,
         active_provider: failover.profile.provider,

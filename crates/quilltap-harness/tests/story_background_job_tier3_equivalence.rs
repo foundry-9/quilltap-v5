@@ -95,6 +95,12 @@ struct ChatSpec {
     /// [`patch_danger_settings`]).
     #[serde(default, rename = "conciergeSettings")]
     dangerous_content_settings: Option<Value>,
+    /// P4.D228 (v4 `ce2f1dabf`, #77): the payload's `forceUncensored`.
+    #[serde(default, rename = "forceUncensored")]
+    force_uncensored: bool,
+    /// P4.D228 (E.8): a planted refusal ledger count on the chat.
+    #[serde(default, rename = "ledgerPlant")]
+    ledger_plant: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -317,6 +323,20 @@ fn patch_danger_settings(main_work: &Path, pepper: &str, user_id: &str, settings
             rusqlite::params![settings.to_string(), user_id],
         )
         .expect("patch chat_settings.conciergeSettings");
+}
+
+/// P4.D228 (E.8): plant the chat's refusal ledger — the oracle runs the
+/// identical `UPDATE` on its copy.
+fn plant_ledger(main_work: &Path, pepper: &str, chat_id: &str, count: i64) {
+    let conn =
+        quilltap_core::db::Writer::open_writable(main_work, pepper).expect("open for the plant");
+    quilltap_core::test_support::ensure_p4d225_columns(conn.connection());
+    conn.connection()
+        .execute(
+            "UPDATE chats SET \"moderationRefusalCount\" = ?1, \"lastModerationRefusalAt\" = ?2 WHERE id = ?3",
+            rusqlite::params![count, "2020-01-01T00:00:00.000Z", chat_id],
+        )
+        .expect("plant the ledger");
 }
 
 fn cleanup(main: &Path, mount: &Path) {
@@ -667,6 +687,9 @@ fn story_background_job_matches_oracle() {
         if let Some(danger) = case.dangerous_content_settings.as_ref() {
             patch_danger_settings(&main_work, &spec.test_pepper_base64, &spec.user_id, danger);
         }
+        if let Some(count) = case.ledger_plant {
+            plant_ledger(&main_work, &spec.test_pepper_base64, &case.id, count);
+        }
 
         let db = Db::open(
             DbPaths {
@@ -710,6 +733,7 @@ fn story_background_job_matches_oracle() {
             character_ids: case.character_ids.clone(),
             scene_context: None,
             project_id: case.project_id.clone(),
+            force_uncensored: case.force_uncensored,
         };
 
         let outcome = rt.block_on(handle_story_background_generation(
@@ -1003,10 +1027,38 @@ fn concierge_footprint(db: &Db, chat_id: &str, sender: &str, kind: &str) -> Valu
                 }))
             })?
             .collect::<Result<_, _>>()?;
+        // P4.D228: the Lantern's `background-refused` bubbles + the chat's
+        // Concierge state after the run (E.8).
+        let mut stmt = c.prepare(
+            "SELECT qt_text(content), qt_text(opaqueContent), qt_text(routeTrail) FROM chat_messages WHERE chatId = ?1 AND systemSender = 'lantern' AND systemKind = 'background-refused' ORDER BY createdAt",
+        )?;
+        let lantern_refusals: Vec<Value> = stmt
+            .query_map([&cid], |r| {
+                Ok(serde_json::json!({
+                    "content": r.get::<_, String>(0)?,
+                    "opaqueContent": r.get::<_, String>(1)?,
+                    "routeTrail": r.get::<_, Option<String>>(2)?,
+                }))
+            })?
+            .collect::<Result<_, _>>()?;
+        let state: Value = c
+            .query_row(
+                "SELECT conciergeMode, conciergeModeSetBy, conciergeModeReason FROM chats WHERE id = ?1",
+                [&cid],
+                |r| {
+                    Ok(serde_json::json!({
+                        "conciergeMode": r.get::<_, Option<String>>(0)?,
+                        "conciergeModeSetBy": r.get::<_, Option<String>>(1)?,
+                        "conciergeModeReason": r.get::<_, Option<String>>(2)?,
+                    }))
+                },
+            )?;
         Ok(serde_json::json!({
             "refusalCount": count,
             "lanternRouteTrail": trail,
             "refusalBubbles": bubbles,
+            "lanternRefusals": lantern_refusals,
+            "state": state,
         }))
     })
     .expect("read the Concierge footprint")

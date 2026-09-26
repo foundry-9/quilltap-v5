@@ -672,6 +672,7 @@ where
         Some(job_id),
         ImagePurpose::Avatar,
         primary_via,
+        true,
     )
     .await
     {
