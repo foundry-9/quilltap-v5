@@ -2305,7 +2305,8 @@ const CHAT_CREATE_TRIO: &[Row] = &[
         rust_type: "Option<Option<Value>>",
         v4: V4::BodyParse,
         note: "FIXED(P4.73) — v4 `chats/route.ts:146,993` \
-               `createChatSchema.conciergeState: z.enum([...]).optional()` under an \
+               `createChatSchema.conciergeState: ConciergeModeSchema.optional()` (the \
+               three states since `4d370a90f`; a raw `z.enum([...])` before) under an \
                uncaught `.parse` → `{\"error\":\"Validation error\",\"details\":[…]}`. \
                v5 used to answer `invalid chatCreate request: …` from \
                `quilltap-host/src/spine.rs:1871`; since P4.73 the field is a raw \

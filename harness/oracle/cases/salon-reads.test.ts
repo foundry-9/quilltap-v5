@@ -64,6 +64,13 @@ interface CaseSpec {
     conciergeOverride: 'OFF' | 'UNCENSORED' | null;
     isDangerousChat: boolean | null;
     dangerCategories: string[] | null;
+    /** P4.D226 (v4 `4d370a90f`): the three-state columns the payloads derive
+     * from (the legacy pair above is kept — ignored — as a migrated row keeps
+     * it), and the refusal ledger's tally the GET projects. */
+    conciergeMode?: 'moderated' | 'unmoderated' | 'locked';
+    conciergeModeSetBy?: 'operator' | 'concierge' | null;
+    conciergeModeReason?: 'manual' | 'refusals' | 'classifier' | 'migration' | null;
+    moderationRefusalCount?: number;
   }>;
   /** P4.D171: plant a non-null route trail (on a message) and a non-`'[]'`
    * drawn rotation (on the chat), the two `78b381a96`-round schema moves the
@@ -214,6 +221,18 @@ async function runCase(
       set.dangerCategories === null ? null : JSON.stringify(set.dangerCategories),
       set.chatId,
     ]);
+    if (set.conciergeMode !== undefined) {
+      rawQuery(
+        'UPDATE "chats" SET "conciergeMode" = ?, "conciergeModeSetBy" = ?, "conciergeModeReason" = ? WHERE "id" = ?',
+        [set.conciergeMode, set.conciergeModeSetBy ?? null, set.conciergeModeReason ?? null, set.chatId],
+      );
+    }
+    if (set.moderationRefusalCount !== undefined) {
+      rawQuery('UPDATE "chats" SET "moderationRefusalCount" = ? WHERE "id" = ?', [
+        set.moderationRefusalCount,
+        set.chatId,
+      ]);
+    }
   }
 
   // P4.D171: the two `78b381a96`-round schema moves the committed fixture
@@ -342,32 +361,40 @@ async function main(): Promise<void> {
       },
     },
     // P4.D143 (v4 `c43d3b1b4`): the list carries the DERIVED state, not the raw
-    // pair. One chat per non-Monitored state, with the preserved label set the
-    // wrong way round on both operator rows so a payload that leaked
-    // `isDangerousChat` would be visibly wrong: Solo is Vouched Safe over a
-    // TRUE label (v4 drops the red mark), Group is Uncensored over a FALSE one
-    // (v4 gains a blue mark), and Ridge is plainly Flagged with categories.
+    // columns — re-keyed by P4.D226 (v4 `4d370a90f`) to the three states plus
+    // provenance (`conciergeSetBy` / `conciergeReason`, v4's two new list
+    // keys). The legacy pair is planted the wrong way round on every row so a
+    // payload that still read it would be visibly wrong: Solo is Locked (a
+    // migrated Vouched Safe) over a TRUE label, Group is Unmoderated by the
+    // operator over a FALSE one, Ridge is Unmoderated by the classifier with
+    // categories.
     {
       name: 'list_concierge_states',
       kind: 'list',
       url: 'http://localhost/api/v1/chats',
       setConcierge: [
-        { chatId: soloId, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: null },
-        { chatId: groupId, conciergeOverride: 'UNCENSORED', isDangerousChat: false, dangerCategories: null },
-        { chatId: thirdId, conciergeOverride: null, isDangerousChat: true, dangerCategories: ['Violence', 'Substance Use'] },
+        { chatId: soloId, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: null,
+          conciergeMode: 'locked', conciergeModeSetBy: 'operator', conciergeModeReason: 'migration' },
+        { chatId: groupId, conciergeOverride: 'UNCENSORED', isDangerousChat: false, dangerCategories: null,
+          conciergeMode: 'unmoderated', conciergeModeSetBy: 'operator', conciergeModeReason: 'manual' },
+        { chatId: thirdId, conciergeOverride: null, isDangerousChat: true, dangerCategories: ['Violence', 'Substance Use'],
+          conciergeMode: 'unmoderated', conciergeModeSetBy: 'concierge', conciergeModeReason: 'classifier' },
       ],
     },
-    // The single-chat GET is UNTOUCHED by `c43d3b1b4` — the detail view still
-    // needs the raw trio for the sidebar control. Same mutation, and the body
-    // must still carry `isDangerousChat` / `dangerCategories` /
-    // `conciergeOverride` and NO `conciergeState`.
+    // P4.D226 (v4 `4d370a90f`, `get.test.ts`'s `projects the Concierge state,
+    // provenance and refusal tally, and no conciergeOverride`): the detail GET
+    // drops `conciergeOverride` and gains `conciergeState` / `conciergeSetBy` /
+    // `conciergeReason` / `conciergeRefusalCount` — here a chat the Concierge
+    // moved after refusals, with its ledger at 2.
     {
-      name: 'get_vouched_keeps_raw_trio',
+      name: 'get_concierge_projection',
       kind: 'get',
       url: `http://localhost/api/v1/chats/${soloId}`,
       chatId: soloId,
       setConcierge: [
-        { chatId: soloId, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: ['Violence'] },
+        { chatId: soloId, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: ['Violence'],
+          conciergeMode: 'unmoderated', conciergeModeSetBy: 'concierge', conciergeModeReason: 'refusals',
+          moderationRefusalCount: 2 },
       ],
     },
     // P4.D220 (v4 `944127d9a` + `ad1c4c37f`): the Quick-hide probe

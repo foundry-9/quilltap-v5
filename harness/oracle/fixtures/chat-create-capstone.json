@@ -703,7 +703,7 @@
       }
     },
     {
-      "name": "cs_omitted_is_monitored",
+      "name": "cs_omitted_is_moderated",
       "progressId": "e0000000-0000-4000-8000-0000000000f1",
       "tz": "UTC",
       "nowMs": 1793664000000,
@@ -720,7 +720,7 @@
       }
     },
     {
-      "name": "cs_monitored_explicit_noop",
+      "name": "cs_moderated_explicit_noop",
       "progressId": "e0000000-0000-4000-8000-0000000000f2",
       "tz": "UTC",
       "nowMs": 1793664000000,
@@ -734,11 +734,11 @@
             "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
           }
         ],
-        "conciergeState": "monitored"
+        "conciergeState": "moderated"
       }
     },
     {
-      "name": "cs_flagged_bubble_after_prompt",
+      "name": "cs_unmoderated_bubble_after_prompt",
       "progressId": "e0000000-0000-4000-8000-0000000000f3",
       "tz": "UTC",
       "nowMs": 1793664000000,
@@ -752,11 +752,11 @@
             "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
           }
         ],
-        "conciergeState": "flagged"
+        "conciergeState": "unmoderated"
       }
     },
     {
-      "name": "cs_vouched_bubble_preserves_label",
+      "name": "cs_locked_bubble_after_prompt",
       "progressId": "e0000000-0000-4000-8000-0000000000f4",
       "tz": "UTC",
       "nowMs": 1793664000000,
@@ -770,7 +770,7 @@
             "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
           }
         ],
-        "conciergeState": "vouched"
+        "conciergeState": "locked"
       }
     },
     {
@@ -824,12 +824,12 @@
             "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
           }
         ],
-        "conciergeState": "flagged",
+        "conciergeState": "unmoderated",
         "continuationFromChatId": "cc000000-0000-4000-8000-0000000000cc"
       }
     },
     {
-      "name": "cs_autonomous_flagged",
+      "name": "cs_autonomous_unmoderated",
       "progressId": "e0000000-0000-4000-8000-0000000000f8",
       "tz": "UTC",
       "nowMs": 1793664000000,
@@ -849,11 +849,11 @@
             "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
           }
         ],
-        "conciergeState": "flagged"
+        "conciergeState": "unmoderated"
       }
     },
     {
-      "name": "cs_uncensored_attempt0",
+      "name": "cs_unmoderated_attempt0",
       "progressId": "e0000000-0000-4000-8000-0000000000f9",
       "tz": "UTC",
       "nowMs": 1793664000000,
@@ -877,11 +877,11 @@
             "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
           }
         ],
-        "conciergeState": "uncensored"
+        "conciergeState": "unmoderated"
       }
     },
     {
-      "name": "cs_uncensored_desk_empty_falls_through",
+      "name": "cs_unmoderated_desk_empty_falls_through",
       "progressId": "e0000000-0000-4000-8000-0000000000fa",
       "tz": "UTC",
       "nowMs": 1793664000000,
@@ -908,11 +908,11 @@
             "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
           }
         ],
-        "conciergeState": "uncensored"
+        "conciergeState": "unmoderated"
       }
     },
     {
-      "name": "cs_flagged_greets_on_uncensored_desk",
+      "name": "cs_unmoderated_greets_on_uncensored_desk",
       "progressId": "e0000000-0000-4000-8000-0000000000fb",
       "tz": "UTC",
       "nowMs": 1793664000000,
@@ -936,11 +936,11 @@
             "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
           }
         ],
-        "conciergeState": "flagged"
+        "conciergeState": "unmoderated"
       }
     },
     {
-      "name": "cs_vouched_never_reroutes",
+      "name": "cs_locked_never_tries_the_uncensored_desk",
       "progressId": "e0000000-0000-4000-8000-0000000000fc",
       "tz": "UTC",
       "nowMs": 1793664000000,
@@ -964,11 +964,11 @@
             "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
           }
         ],
-        "conciergeState": "vouched"
+        "conciergeState": "locked"
       }
     },
     {
-      "name": "cs_uncensored_content_filter_skips_second",
+      "name": "cs_unmoderated_content_filter_skips_second",
       "progressId": "e0000000-0000-4000-8000-0000000000fd",
       "tz": "UTC",
       "nowMs": 1793664000000,
@@ -995,7 +995,7 @@
             "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
           }
         ],
-        "conciergeState": "uncensored"
+        "conciergeState": "unmoderated"
       }
     },
     {
@@ -2962,7 +2962,7 @@
             "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
           }
         ],
-        "conciergeState": "uncensored"
+        "conciergeState": "unmoderated"
       },
       "greetingByModel": {
         "frank-model": {
@@ -3108,7 +3108,7 @@
             "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
           }
         ],
-        "conciergeState": "uncensored"
+        "conciergeState": "unmoderated"
       },
       "greetingByModel": {
         "frank-model": {
@@ -3133,6 +3133,118 @@
           ]
         }
       }
+    },
+    {
+      "name": "cs_rejects_retired_monitored_400",
+      "progressId": "e0000000-0000-4000-8000-0000000002a1",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000002a1",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "monitored"
+      },
+      "comment": "P4.D226 (v4 `4d370a90f`, route.concierge-state.test.ts `it.each(['monitored','flagged','vouched','uncensored'])`): the retired four-state value 'monitored' is refused with 400, nothing written."
+    },
+    {
+      "name": "cs_rejects_retired_flagged_400",
+      "progressId": "e0000000-0000-4000-8000-0000000002a2",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000002a2",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "flagged"
+      },
+      "comment": "P4.D226 (v4 `4d370a90f`, route.concierge-state.test.ts `it.each(['monitored','flagged','vouched','uncensored'])`): the retired four-state value 'flagged' is refused with 400, nothing written."
+    },
+    {
+      "name": "cs_rejects_retired_vouched_400",
+      "progressId": "e0000000-0000-4000-8000-0000000002a3",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000002a3",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "vouched"
+      },
+      "comment": "P4.D226 (v4 `4d370a90f`, route.concierge-state.test.ts `it.each(['monitored','flagged','vouched','uncensored'])`): the retired four-state value 'vouched' is refused with 400, nothing written."
+    },
+    {
+      "name": "cs_rejects_retired_uncensored_400",
+      "progressId": "e0000000-0000-4000-8000-0000000002a4",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000002a4",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "uncensored"
+      },
+      "comment": "P4.D226 (v4 `4d370a90f`, route.concierge-state.test.ts `it.each(['monitored','flagged','vouched','uncensored'])`): the retired four-state value 'uncensored' is refused with 400, nothing written."
+    },
+    {
+      "name": "cs_moderated_content_filter_tries_the_uncensored_desk",
+      "progressId": "e0000000-0000-4000-8000-0000000002b1",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "greetingByModel": {
+        "claude-sonnet-4-5": {
+          "content": "",
+          "usage": {
+            "promptTokens": 40,
+            "completionTokens": 9,
+            "totalTokens": 49
+          }
+        },
+        "frank-model": {
+          "content": "The frank desk takes the refused greeting.",
+          "usage": {
+            "promptTokens": 40,
+            "completionTokens": 8,
+            "totalTokens": 48
+          }
+        }
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000002b1",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ]
+      },
+      "comment": "P4.D226 (v4 `does try the uncensored desk for a Moderated chat whose greeting hits a content filter`): a Moderated chat (no requested state), the own profile's greeting comes back empty with completion tokens (a content filter) on both rungs, and attempt 3's `mayFailOver(chatRow)` lets the Concierge desk answer."
     }
   ],
   "dangerousContentSettings": {

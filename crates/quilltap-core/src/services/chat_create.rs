@@ -57,7 +57,7 @@ use crate::services::chat_participants::VALIDATION_ERROR;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::creation_progress::CreationProgressEmitter;
 use crate::services::dangerous_content::chat_override::{
-    should_use_uncensored_route, ConciergeState,
+    may_fail_over, should_use_uncensored_route, ConciergeState,
 };
 use crate::services::dangerous_content::manual_flip::{
     apply_concierge_flip, RealConciergeAnnouncer,
@@ -229,11 +229,11 @@ pub struct ChatCreateRequest {
     /// `Invalid request: …` would never get there (the P4.60
     /// wrong-type-collapse convention; MEASURED at `rt_wrong_type_400`).
     pub roleplay_template_id: Option<Option<Value>>,
-    /// v4 [`303288fb4`] `conciergeState:
-    /// z.enum(['monitored','flagged','vouched','uncensored']).optional()` — the
+    /// v4 [`303288fb4`] `conciergeState: ConciergeModeSchema.optional()` (the
+    /// three states since `4d370a90f`; the retired four-state values 400) — the
     /// per-chat Concierge state to set at creation, using the same enum as the
-    /// sidebar's PUT `conciergeState`. Omitted or `'monitored'` → the chat is
-    /// created Monitored exactly as before (no write, no announcement). Any
+    /// sidebar's PUT `conciergeState`. Omitted or `'moderated'` → the chat is
+    /// created Moderated exactly as before (no write, no announcement). Any
     /// other value is applied through
     /// [`apply_concierge_flip`](crate::services::dangerous_content::manual_flip::apply_concierge_flip)
     /// after the system-prompt message and before any staff announcement or
@@ -852,7 +852,9 @@ pub fn validate_create_body(body: &Map<String, Value>) -> Result<(), Vec<CreateZ
     }
     check_opt_enum(
         body.get("conciergeState"),
-        &["monitored", "flagged", "vouched", "uncensored"],
+        // v4 `4d370a90f`: `ConciergeModeSchema` — the retired four-state values
+        // are refused with 400 like any other outside value.
+        &["moderated", "unmoderated", "locked"],
         at("conciergeState"),
         &mut issues,
     );
@@ -1567,15 +1569,25 @@ where
     emitter.status("Committing everyone\u{2019}s particulars to memory\u{2026}");
     let _ = compile_all_identity_stacks(main, mount, &chat);
 
+    // The Concierge columns the 201 body carries (v4 `4d370a90f`): as first
+    // inserted, or — when the requested state's flip wrote anything — re-read.
+    let concierge_columns: Map<String, Value>;
+
     // 11. Seed the opening messages (branch on continuation / autonomous / normal).
     if let Some(source_id) = req.continuation_from_chat_id.as_deref() {
         emitter.status("Recalling the previous chapter\u{2026}");
         write_system_prompt_message(main, &chat_context, &chat_id)?;
         // Before the backfill: the Concierge's note must precede the replayed
         // tail, so the history reads "state set, then the previous chapter".
-        apply_requested_concierge_state(db, &chat_id, &chat, requested_concierge_state, emitter)
-            .await
-            .map_err(HandleCreateError::Db)?;
+        concierge_columns = apply_requested_concierge_state(
+            db,
+            &chat_id,
+            &chat,
+            requested_concierge_state,
+            emitter,
+        )
+        .await
+        .map_err(HandleCreateError::Db)?;
         let _ = apply_chat_continuation(db, &chat_id, source_id).await;
         create_initial_messages_scenario_and_staff(
             db,
@@ -1593,9 +1605,15 @@ where
         .await;
     } else if is_autonomous {
         write_system_prompt_message(main, &chat_context, &chat_id)?;
-        apply_requested_concierge_state(db, &chat_id, &chat, requested_concierge_state, emitter)
-            .await
-            .map_err(HandleCreateError::Db)?;
+        concierge_columns = apply_requested_concierge_state(
+            db,
+            &chat_id,
+            &chat,
+            requested_concierge_state,
+            emitter,
+        )
+        .await
+        .map_err(HandleCreateError::Db)?;
         create_initial_messages_scenario_and_staff(
             db,
             main,
@@ -1616,9 +1634,15 @@ where
         // the greeting, which is then generated under the chosen state.
         emitter.status("Setting the opening scene\u{2026}");
         write_system_prompt_message(main, &chat_context, &chat_id)?;
-        apply_requested_concierge_state(db, &chat_id, &chat, requested_concierge_state, emitter)
-            .await
-            .map_err(HandleCreateError::Db)?;
+        concierge_columns = apply_requested_concierge_state(
+            db,
+            &chat_id,
+            &chat,
+            requested_concierge_state,
+            emitter,
+        )
+        .await
+        .map_err(HandleCreateError::Db)?;
         create_initial_messages_scenario_and_staff(
             db,
             main,
@@ -1658,6 +1682,18 @@ where
 
     emitter.status("The players are ready.");
     emitter.finish();
+
+    // v4 `created({ chat: { ...chat, ...conciergeColumns, participants } })`:
+    // the three RAW columns spread over the row as first inserted — an absent
+    // key appends (the as-inserted row carries none of them when NULL), a
+    // present one is overwritten in place. `participants` is replaced in place
+    // by the driver, keeping its position.
+    let mut chat = chat;
+    if let Value::Object(obj) = &mut chat {
+        for (k, v) in concierge_columns {
+            obj.insert(k, v);
+        }
+    }
 
     Ok(ChatCreateResult {
         chat,
@@ -1878,26 +1914,29 @@ fn write_system_prompt_message(
 ///
 /// The route runs in the parent process, so the announcement's write lands
 /// immediately — every later reader (the greeting's own `find_by_id`, the
-/// scheduled danger scan, memory extraction, story backgrounds) sees the pair.
+/// scheduled danger scan, memory extraction, story backgrounds) sees the state.
 ///
 /// `chat_id` is the caller's own id (v4 reads `chat.id` unconditionally — there
 /// is no "row without an id" arm, so none is invented here); `chat` is the
 /// created row the caller already holds (v4's `ChatMetadata` from
-/// `chats.create`; here the step-8 re-read). A fresh chat's
-/// `conciergeOverride`/`isDangerousChat` are null, so `get_concierge_state`
-/// reads Monitored and any non-Monitored request always CHANGES.
+/// `chats.create`; here the step-8 re-read). A fresh chat's `conciergeMode` is
+/// NULL, so `get_concierge_state` reads Moderated and any non-Moderated
+/// request always CHANGES. Returns the three Concierge columns the 201 body
+/// spreads RAW (v4 `4d370a90f`): as created, or re-read after a flip that
+/// wrote.
 async fn apply_requested_concierge_state(
     db: &Db,
     chat_id: &str,
     chat: &Value,
     requested: Option<ConciergeState>,
     emitter: &CreationProgressEmitter,
-) -> Result<(), DbError> {
+) -> Result<Map<String, Value>, DbError> {
+    let as_created = concierge_columns_of(chat);
     let Some(requested) = requested else {
-        return Ok(());
+        return Ok(as_created);
     };
     if requested == ConciergeState::Moderated {
-        return Ok(());
+        return Ok(as_created);
     }
     emitter.status("Briefing the Concierge\u{2026}");
     let result =
@@ -1908,7 +1947,34 @@ async fn apply_requested_concierge_state(
         changed = result.changed,
         "[Chats v1] Applied Concierge state at creation"
     );
-    Ok(())
+    if !result.changed {
+        return Ok(as_created);
+    }
+    // v4 `4d370a90f`: re-read, so the create response reports the state that
+    // was actually applied, not the row as it was first inserted.
+    let cid = chat_id.to_string();
+    let fresh = db.read_main(move |c| chats_read::find_by_id(c, &cid))?;
+    Ok(fresh
+        .as_ref()
+        .map(concierge_columns_of)
+        .unwrap_or(as_created))
+}
+
+/// v4 `ConciergeColumns` — `{ conciergeMode: row.conciergeMode ?? null,
+/// conciergeModeSetBy: … ?? null, conciergeModeReason: … ?? null }`, in that
+/// key order.
+fn concierge_columns_of(chat: &Value) -> Map<String, Value> {
+    let mut m = Map::new();
+    for k in ["conciergeMode", "conciergeModeSetBy", "conciergeModeReason"] {
+        m.insert(
+            k.to_string(),
+            chat.get(k)
+                .filter(|v| !v.is_null())
+                .cloned()
+                .unwrap_or(Value::Null),
+        );
+    }
+    m
 }
 
 /// v4 `createInitialMessagesScenarioAndStaff`: the Prospero / Host / Aurora seed
@@ -2592,10 +2658,10 @@ where
     // nothing about whether this character's own one will.
     let mut own_profile_stalled = false;
 
-    // Attempt 0 (v4 `303288fb4`): a Flagged or Uncensored chat opens at the
-    // uncensored desk. The three-attempt ladder below (with memories → without →
-    // uncensored on a content filter) stays the path for Monitored and Vouched
-    // Safe chats.
+    // Attempt 0 (v4 `303288fb4`): an Unmoderated chat opens at the uncensored
+    // desk (v4 `4d370a90f`'s three states). The three-attempt ladder below
+    // (with memories → without → uncensored on a content filter) stays the path
+    // for Moderated and Locked chats.
     let mut uncensored_desk_tried = false;
     if should_use_uncensored_route(chat_row.as_ref()) {
         uncensored_desk_tried = true;
@@ -2704,11 +2770,14 @@ where
         }
     }
 
-    // Attempt 3: if a content filter was detected, try the Concierge uncensored
-    // provider — unless the chat's own state already sent us there first, in
-    // which case there is nothing new to try. A Vouched Safe chat resolves to
-    // `mode: 'OFF'` inside the helper and never reroutes, whatever the globe says.
-    if content_filter_hit && !uncensored_desk_tried {
+    // Attempt 3: if a content filter was detected on a Moderated chat, try the
+    // Concierge uncensored provider — unless the chat's own state already sent
+    // us there first, in which case there is nothing new to try. A Locked
+    // chat's refusal stands: it never reaches the uncensored desk, whatever the
+    // globe says (v4 `4d370a90f`: `mayFailOver(chatRow)` — the SNAPSHOT read
+    // at the top of the greeting, deliberately NOT a re-read), and it posts no
+    // announcement (those live only in the failover chokepoints).
+    if content_filter_hit && !uncensored_desk_tried && may_fail_over(chat_row.as_ref()) {
         tracing::info!(
             character_id = %character_id,
             "[Chats v1] Content filter detected on greeting — falling back to Concierge uncensored provider"
@@ -3472,9 +3541,19 @@ mod tests {
             std::sync::Mutex<std::collections::HashMap<String, std::collections::VecDeque<Posed>>>,
         >,
         calls: std::sync::Arc<std::sync::Mutex<Vec<(String, String)>>>,
+        /// Run once, on the FIRST call, before its answer is posed — how a test
+        /// changes the world while a stream is on the wire (P4.D226's
+        /// mid-greeting lock).
+        on_first_call: std::sync::Arc<std::sync::Mutex<Option<OnCall>>>,
     }
 
+    type OnCall = Box<dyn FnOnce() + Send>;
+
     impl PosedByModel {
+        fn on_first_call(self, hook: OnCall) -> Self {
+            *self.on_first_call.lock().unwrap() = Some(hook);
+            self
+        }
         fn with(self, model: &str, answers: Vec<Posed>) -> Self {
             self.queues
                 .lock()
@@ -3501,6 +3580,9 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((provider.to_string(), params.model.clone()));
+            if let Some(hook) = self.on_first_call.lock().unwrap().take() {
+                hook();
+            }
             let posed = self
                 .queues
                 .lock()
@@ -4129,6 +4211,157 @@ mod tests {
         );
         no_line_with(&captured, "Greeting abandoned");
     }
+    // =======================================================================
+    // P4.D226 (v4 `4d370a90f`, #75): attempt 3's Concierge gate is v4's
+    // `mayFailOver(chat)` over the chat row read BEFORE the ladder — a SNAPSHOT,
+    // never a re-read (the order's M6: "do not 'improve' to a re-read").
+    // =======================================================================
+
+    /// Seed the ladder chat in a given Concierge state (`None` = the fresh DDL's
+    /// NULL, which reads as Moderated).
+    fn seed_ladder_chat(c: &Connection, mode: Option<&str>) {
+        c.execute(
+            "INSERT INTO chats (id, userId, title, conciergeMode, createdAt, updatedAt) \
+             VALUES (?1, ?2, 'T', ?3, '2026-02-01T00:00:00.000Z', \
+             '2026-02-01T00:00:00.000Z')",
+            rusqlite::params![LADDER_CHAT, SINGLE_USER_ID, mode],
+        )
+        .unwrap();
+    }
+
+    const CONTENT_FILTER_FALLBACK: &str =
+        "[Chats v1] Content filter detected on greeting — falling back to Concierge uncensored provider";
+
+    /// A Locked chat's content-filtered greeting never asks the desk: attempt 3
+    /// is skipped whole (no INFO line, no desk call) and attempt 4 recovers.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_locked_chat_never_asks_the_desk_after_a_content_filter() {
+        let (_d, db, w) = ladder_venue(true);
+        seed_ladder_chat(w.connection(), Some("locked"));
+        let streaming = PosedByModel::default()
+            .with(
+                "claude-sonnet-4-5",
+                vec![Posed::Answer("", 9), Posed::Answer("Hold fast.", 9)],
+            )
+            .with("frank-model", vec![Posed::Answer("Never asked.", 9)]);
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &DeskKey,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "Hold fast.");
+        assert_eq!(
+            streaming.calls(),
+            vec![
+                ("ANTHROPIC".to_string(), "claude-sonnet-4-5".to_string()),
+                ("ANTHROPIC".to_string(), "claude-sonnet-4-5".to_string()),
+            ],
+            "a Locked chat's refusal stands: the desk is never asked"
+        );
+        let captured = logs.lock().unwrap().clone();
+        no_line_with(&captured, CONTENT_FILTER_FALLBACK);
+    }
+
+    /// The same ladder on a Moderated (NULL) chat DOES ask the desk — the
+    /// Locked arm above is the gate, not a desk that was never reachable.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_moderated_chat_asks_the_desk_after_a_content_filter() {
+        let (_d, db, w) = ladder_venue(true);
+        seed_ladder_chat(w.connection(), None);
+        let streaming = PosedByModel::default()
+            .with("claude-sonnet-4-5", vec![Posed::Answer("", 9)])
+            .with("frank-model", vec![Posed::Answer("The desk answers.", 9)]);
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &DeskKey,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "The desk answers.");
+        assert_eq!(
+            streaming.calls(),
+            vec![
+                ("ANTHROPIC".to_string(), "claude-sonnet-4-5".to_string()),
+                ("OPENROUTER".to_string(), "frank-model".to_string()),
+            ]
+        );
+        let captured = logs.lock().unwrap().clone();
+        one_at(&captured, "INFO", CONTENT_FILTER_FALLBACK);
+    }
+
+    /// The SNAPSHOT arm (M6): the chat is Moderated when the ladder reads it and
+    /// is Locked by the operator WHILE attempt 1 is on the wire. v4 gates attempt
+    /// 3 on the row it read before the ladder, so the desk is still asked; a
+    /// re-read at attempt 3 would skip it and this test reds.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_chat_locked_mid_greeting_still_asks_the_desk() {
+        let (d, db, w) = ladder_venue(true);
+        seed_ladder_chat(w.connection(), Some("moderated"));
+        let main_path = d.path().join("quilltap.db");
+        let streaming = PosedByModel::default()
+            .with("claude-sonnet-4-5", vec![Posed::Answer("", 9)])
+            .with("frank-model", vec![Posed::Answer("The desk answers.", 9)])
+            .on_first_call(Box::new(move || {
+                let lock = crate::db::Writer::open_writable(&main_path, LADDER_PEPPER)
+                    .expect("second writer");
+                let changed = lock
+                    .connection()
+                    .execute(
+                        "UPDATE chats SET conciergeMode = 'locked', \
+                         conciergeModeSetBy = 'manual' WHERE id = ?1",
+                        rusqlite::params![LADDER_CHAT],
+                    )
+                    .unwrap();
+                assert_eq!(changed, 1, "the ladder chat must be the one we lock");
+            }));
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &DeskKey,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        // The lock really landed (so the snapshot is what let the desk in).
+        let now: Option<String> = w
+            .connection()
+            .query_row(
+                "SELECT conciergeMode FROM chats WHERE id = ?1",
+                rusqlite::params![LADDER_CHAT],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(now.as_deref(), Some("locked"));
+        assert_eq!(greeting.content, "The desk answers.");
+        assert_eq!(
+            streaming.calls(),
+            vec![
+                ("ANTHROPIC".to_string(), "claude-sonnet-4-5".to_string()),
+                ("OPENROUTER".to_string(), "frank-model".to_string()),
+            ],
+            "attempt 3 gates on the SNAPSHOT (v4 `mayFailOver(chat)`), never a re-read"
+        );
+        let captured = logs.lock().unwrap().clone();
+        one_at(&captured, "INFO", CONTENT_FILTER_FALLBACK);
+    }
+
     // =======================================================================
     // P4.90 — the SIX `autoGenerateFirstMessage` lines v5 never carried
     // (`app/api/v1/chats/route.ts:647 / :672 / :692 / :882 / :895 / :942`),

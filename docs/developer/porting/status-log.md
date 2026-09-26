@@ -151173,3 +151173,73 @@ Result file: `/tmp/p4d226/first-act-4d370a90f.json` (kept in the lane's scratch)
   script never posed); both text-failover arms reading the snapshot → `primary_
   stream_tier3` RED at `empty_locked_mid_turn_not_rerouted` ("result object
   diverges").
+- Unit 3's workspace gate (`a719ff70e`, no env block): 640 test binaries /
+  3,804 passed / 3 failed / 3 ignored. None of the three reds comes from unit 3:
+  - **`provider_sdk_version_guard` ×2 — PRE-EXISTING on the lane's base, NOT
+    this lane's.** P4.D225 unit 4 (`090e5af35`) re-recorded
+    `image-dialects.recorded.ndjson` with eight `openai` 7.23.0 stamps (main
+    and `090e5af35~1` carry 7.20.0) without moving `RECORDED_OPENAI_SDK`
+    (7.20.0). Separately, the live v4 checkout's installed SDKs moved (openai
+    7.20.0 → 7.23.0, `@openrouter/sdk` 1.3.11 → 1.3.28), and the pinned
+    worktree's `node_modules` is a symlink into that checkout. This is a
+    handoff for the unifier: an SDK regen event under the guard's own
+    procedure. The lane leaves it untouched.
+  - **`qtap_schema_embed_guard`** — the #75 export schema (the live file is
+    byte-identical to the pin's). Unit 5 re-vendors it.
+- **The human's instruction (2026-09-25, mid-lane):** the human is committing
+  to v4 during this lane and ruled that the lane keeps matching `4d370a90f`.
+  The lane does not port the new commit; every regen stays on the pinned
+  worktree `/tmp/qt-v4-pin-p4d226-4d370a90f`.
+- **P4.D226 unit 4 — the wire + the greeting (core 0.0.1080, harness 0.0.999,
+  web 0.0.198).** v4 `4d370a90f` §S.1:
+  - The GET projects the four keys, with the ledger's count read through
+    `get_moderation_refusal_ledger`, and drops `conciergeOverride`.
+  - The PUT decodes the three states. The four retired values reach the
+    handler and answer 400 (the `api/types.rs` pin moved: `unmoderated` is
+    valid, the retired four are not).
+  - The create validator's enum is v4's three.
+  - `apply_requested_concierge_state` returns the RE-READ Concierge columns,
+    and all three create sites spread them over the chat before
+    `ChatCreateResult`.
+  - The four list payloads gain `conciergeSetBy` + `conciergeReason` after
+    `conciergeState`.
+  - Greeting attempt 3 is gated on `may_fail_over(chat_row)` — the SNAPSHOT.
+  - Oracles re-keyed on both sides:
+    - `salon_mutations`: `unmoderated`/`locked` applied, `moderated` the
+      no-op, the four retired values as 400 arms, the with-bag arm on
+      `locked`.
+    - `salon_reads`: `get_concierge_projection` with
+      `moderationRefusalCount: 2`; the pristine reset restores the trio and
+      the ledger.
+    - `characters_reads` / `projects_routes`: Locked, operator-Unmoderated
+      and classifier-Unmoderated rows.
+    - `chat-create-capstone.json`: `cs_*` renamed, plus the four retired-400
+      arms and a Moderated content-filter-to-desk arm.
+  - The capstone gains an explicit "reports the applied state" pin: every
+    non-Moderated request's 201 carries all three columns as strings, equal
+    to v4's.
+  - A `reclassify-danger` unit pin: a Locked-by-operator chat's trio is
+    byte-identical after the reset, and the reset really ran.
+  - Three greeting-ladder tests:
+    - Locked → no desk, no INFO;
+    - Moderated → desk + INFO;
+    - locked mid-greeting through a new `PosedByModel::on_first_call` hook →
+      the desk is still asked.
+- Through the driver at the pin: **9/9 OK** (`salon_reads`, `salon_mutations`,
+  `chat_create_capstone`, `characters_reads`, `projects_routes`,
+  `home_routes`, `chat_cast_routes`, `chat_scenario_routes`,
+  `in_scene_voiced_tier3`). The capstone's first run went red on the lane's
+  OWN new pin, which hard-coded `conciergeModeSetBy: "manual"`. v4 writes
+  `operator` (the reason is `manual`). The pin now compares against v4's body.
+- `dispatch_wrong_type_census` and `tri_state_edges_share_the_decoder` were
+  re-measured: green, with the 449 exclusion constant unmoved.
+- Mutation proofs, each reverted:
+  - drop the attempt-3 gate → `a_locked_chat_never_asks_the_desk_after_a_
+    content_filter` RED;
+  - re-read at attempt 3 (M6) → `a_chat_locked_mid_greeting_still_asks_the_
+    desk` RED;
+  - skip the create's re-read (M8) → the capstone RED at
+    `cs_unmoderated_bubble_after_prompt` ("the 201 must report the applied
+    Concierge state").
+  - (A first M8 attempt ran with the env vars in a separate shell and
+    SKIPPED in 0.00s — caught by the timing, re-run inline.)

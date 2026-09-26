@@ -39,7 +39,9 @@ use crate::db::{characters_read, files};
 use crate::photos::resolve_character_avatar::{
     build_legacy_file_url, build_mount_file_url, resolve_character_avatar,
 };
-use crate::services::dangerous_content::chat_override::get_concierge_state;
+use crate::services::dangerous_content::chat_override::{
+    get_concierge_provenance, get_concierge_reason, get_concierge_state,
+};
 
 /// Pre-loaded data for batched list enrichment (v4 `ChatListPreloaded`,
 /// `chat-enrichment.service.ts:38-56`). Populated once by
@@ -597,11 +599,14 @@ pub struct EnrichedChatSummary {
     pub tags: Vec<EnrichedTag>,
     pub project: Option<EnrichedProject>,
     pub story_background: Option<EnrichedStoryBackground>,
-    /// The derived Concierge four-state (v4 `c43d3b1b4`). Lists carry this
-    /// instead of the raw `isDangerousChat` / `conciergeOverride` pair so
-    /// nothing downstream has to read the two stored fields together (and get
-    /// it wrong). The wire strings are `ConciergeState::as_str`'s.
+    /// The derived Concierge state (v4 `c43d3b1b4`; three states since
+    /// `4d370a90f`). Lists carry this instead of the stored columns. The wire
+    /// strings are `ConciergeState::as_str`'s.
     pub concierge_state: String,
+    /// v4 `4d370a90f`: who put the chat in its state — `null` when Moderated.
+    pub concierge_set_by: Option<String>,
+    /// v4 `4d370a90f`: why — `null` when Moderated (the stored value otherwise).
+    pub concierge_reason: Option<Value>,
     /// The classifier's categories, surfaced only for `'flagged'`. `[]` when
     /// none (v4 `chat.dangerCategories ?? []`). Carried element-for-element as
     /// stored — `chats_read`'s hydrator already guarantees an array, so v4's
@@ -760,6 +765,8 @@ pub fn enrich_chat_for_list(
         project,
         story_background,
         concierge_state: get_concierge_state(Some(chat)).as_str().to_string(),
+        concierge_set_by: get_concierge_provenance(Some(chat)).map(|b| b.as_str().to_string()),
+        concierge_reason: get_concierge_reason(Some(chat)),
         danger_categories: chat
             .get("dangerCategories")
             .and_then(Value::as_array)

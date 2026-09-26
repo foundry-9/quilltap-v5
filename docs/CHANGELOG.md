@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the three states on the wire, the create's applied state, and the greeting's Locked gate (P4.D226 unit 4)
+
+_Versions: core 0.0.1080, harness 0.0.999, web 0.0.198._
+
+- The chat GET reports `conciergeState`, `conciergeSetBy`, `conciergeReason` and `moderationRefusalCount`, and no longer carries `conciergeOverride` (v4 `4d370a90f`).
+- The chat PUT and create accept `moderated` / `unmoderated` / `locked` only; the four retired values answer 400.
+- The create's 201 reports the Concierge columns re-read after the flip, not the row as inserted.
+- Chat list payloads (Salon, home, characters, projects) gain `conciergeSetBy` and `conciergeReason`.
+- The greeting's content-filter fallback (attempt 3) never reaches the uncensored desk on a Locked chat; the gate reads the chat as it stood when the greeting began.
+- `reclassify-danger` is pinned to leave the Concierge state alone.
+
 #### 2026-09-25 — feat(concierge): a Locked chat's refusal stands on both failover chokepoints (P4.D226 unit 3)
 
 _Versions: core 0.0.1079, harness 0.0.998._

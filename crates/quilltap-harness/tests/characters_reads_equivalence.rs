@@ -415,24 +415,41 @@ fn characters_reads_match_oracle() {
     // `isDangerousChat` would be visibly wrong rather than accidentally right.
     // `chats_plain` above is the Monitored arm. These mutate the shared Db, so
     // they come LAST (jest copies the fixture per case; the Rust side does not).
-    for (name, over, danger, categories) in [
-        ("chats_vouched_over_true_label", "'OFF'", "1", "NULL"),
+    // P4.D226 (v4 `4d370a90f`): re-keyed to the three states + provenance; the
+    // legacy pair stays painted the wrong way round (ignored by both sides).
+    for (name, over, danger, categories, mode, by, why) in [
         (
-            "chats_uncensored_over_false_label",
+            "chats_locked_over_true_label",
+            "'OFF'",
+            "1",
+            "NULL",
+            "'locked'",
+            "'operator'",
+            "'migration'",
+        ),
+        (
+            "chats_unmoderated_by_operator_over_false_label",
             "'UNCENSORED'",
             "0",
             "NULL",
+            "'unmoderated'",
+            "'operator'",
+            "'manual'",
         ),
         (
-            "chats_flagged_with_categories",
+            "chats_unmoderated_by_classifier_with_categories",
             "NULL",
             "1",
             "'[\"Violence\",\"Substance Use\"]'",
+            "'unmoderated'",
+            "'concierge'",
+            "'classifier'",
         ),
     ] {
         let sql = format!(
             "UPDATE \"chats\" SET \"conciergeOverride\" = {over}, \"isDangerousChat\" = {danger}, \
-             \"dangerCategories\" = {categories} WHERE \"id\" = '{CHAT}'"
+             \"dangerCategories\" = {categories}, \"conciergeMode\" = {mode}, \
+             \"conciergeModeSetBy\" = {by}, \"conciergeModeReason\" = {why} WHERE \"id\" = '{CHAT}'"
         );
         db.write_blocking(move |w| {
             w.main().connection().execute_batch(&sql)?;

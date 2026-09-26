@@ -32,7 +32,9 @@ use crate::db::vault_wardrobe_public::{
 };
 use crate::db::{archetype_wardrobe, characters_read, chats_read, tags, DbError};
 use crate::services::character_enrichment::enrich_with_default_image;
-use crate::services::dangerous_content::chat_override::get_concierge_state;
+use crate::services::dangerous_content::chat_override::{
+    get_concierge_provenance, get_concierge_reason, get_concierge_state,
+};
 use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_instructions::{
@@ -756,6 +758,9 @@ pub fn project_chat_list(
                 // v4 `c43d3b1b4`: the DERIVED state + the classifier's
                 // categories, in the raw label's slot.
                 "conciergeState": get_concierge_state(Some(chat)).as_str(),
+                // v4 `4d370a90f` (`projects/[id]/actions/chats.ts:104-105`).
+                "conciergeSetBy": get_concierge_provenance(Some(chat)).map(|b| b.as_str()),
+                "conciergeReason": get_concierge_reason(Some(chat)),
                 "dangerCategories": chat
                     .get("dangerCategories")
                     .filter(|v| v.is_array())

@@ -243,6 +243,16 @@ async function main(): Promise<void> {
         const { rawQuery } = await import('@/lib/database/manager');
         await rawQuery('UPDATE "chats" SET "conciergeOverride" = ?, "isDangerousChat" = 1 WHERE "id" = ?', ['OFF', CHAT_A]);
         await rawQuery('UPDATE "chats" SET "conciergeOverride" = ?, "isDangerousChat" = 0 WHERE "id" = ?', ['UNCENSORED', CHAT_B]);
+        // P4.D226 (v4 `4d370a90f`): the states the rows derive from — the
+        // legacy pair above is ignored (a migrated row keeps it).
+        await rawQuery(
+          'UPDATE "chats" SET "conciergeMode" = ?, "conciergeModeSetBy" = ?, "conciergeModeReason" = ? WHERE "id" = ?',
+          ['locked', 'operator', 'migration', CHAT_A],
+        );
+        await rawQuery(
+          'UPDATE "chats" SET "conciergeMode" = ?, "conciergeModeSetBy" = ?, "conciergeModeReason" = ? WHERE "id" = ?',
+          ['unmoderated', 'operator', 'manual', CHAT_B],
+        );
         return respond(
           await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-chats`), p(IOTA)),
         );
@@ -256,6 +266,10 @@ async function main(): Promise<void> {
           JSON.stringify(['Violence', 'Substance Use']),
           CHAT_A,
         ]);
+        await rawQuery(
+          'UPDATE "chats" SET "conciergeMode" = ?, "conciergeModeSetBy" = ?, "conciergeModeReason" = ? WHERE "id" = ?',
+          ['unmoderated', 'concierge', 'classifier', CHAT_A],
+        );
         return respond(
           await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-chats`), p(IOTA)),
         );

@@ -520,16 +520,16 @@ fn salon_mutations_match_oracle() {
                 ))
             }),
         ),
-        // ── P4.D141: the `conciergeState` arm of the chat PUT ──
+        // ── P4.D141 (re-keyed P4.D226, v4 `4d370a90f`): the `conciergeState` arm ──
         (
-            "chat_update_concierge_flagged",
+            "chat_update_concierge_unmoderated",
             Box::new(|db: &Db| {
                 rt.block_on(salon::chat_update(
                     db,
                     &uid,
                     GROUP,
                     &serde_json::json!({}),
-                    Some(&serde_json::json!("flagged")),
+                    Some(&serde_json::json!("unmoderated")),
                     None,
                     None,
                     None,
@@ -537,29 +537,14 @@ fn salon_mutations_match_oracle() {
             }),
         ),
         (
-            "chat_update_concierge_vouched",
+            "chat_update_concierge_locked",
             Box::new(|db: &Db| {
                 rt.block_on(salon::chat_update(
                     db,
                     &uid,
                     GROUP,
                     &serde_json::json!({}),
-                    Some(&serde_json::json!("vouched")),
-                    None,
-                    None,
-                    None,
-                ))
-            }),
-        ),
-        (
-            "chat_update_concierge_uncensored",
-            Box::new(|db: &Db| {
-                rt.block_on(salon::chat_update(
-                    db,
-                    &uid,
-                    GROUP,
-                    &serde_json::json!({}),
-                    Some(&serde_json::json!("uncensored")),
+                    Some(&serde_json::json!("locked")),
                     None,
                     None,
                     None,
@@ -574,7 +559,67 @@ fn salon_mutations_match_oracle() {
                     &uid,
                     GROUP,
                     &serde_json::json!({}),
+                    Some(&serde_json::json!("moderated")),
+                    None,
+                    None,
+                    None,
+                ))
+            }),
+        ),
+        (
+            "chat_update_concierge_retired_monitored",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    &uid,
+                    GROUP,
+                    &serde_json::json!({}),
                     Some(&serde_json::json!("monitored")),
+                    None,
+                    None,
+                    None,
+                ))
+            }),
+        ),
+        (
+            "chat_update_concierge_retired_flagged",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    &uid,
+                    GROUP,
+                    &serde_json::json!({}),
+                    Some(&serde_json::json!("flagged")),
+                    None,
+                    None,
+                    None,
+                ))
+            }),
+        ),
+        (
+            "chat_update_concierge_retired_vouched",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    &uid,
+                    GROUP,
+                    &serde_json::json!({}),
+                    Some(&serde_json::json!("vouched")),
+                    None,
+                    None,
+                    None,
+                ))
+            }),
+        ),
+        (
+            "chat_update_concierge_retired_uncensored",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    &uid,
+                    GROUP,
+                    &serde_json::json!({}),
+                    Some(&serde_json::json!("uncensored")),
                     None,
                     None,
                     None,
@@ -633,8 +678,8 @@ fn salon_mutations_match_oracle() {
                     db,
                     &uid,
                     GROUP,
-                    &serde_json::json!({ "title": "Vouched And Renamed" }),
-                    Some(&serde_json::json!("vouched")),
+                    &serde_json::json!({ "title": "Locked And Renamed" }),
+                    Some(&serde_json::json!("locked")),
                     None,
                     None,
                     None,

@@ -59,6 +59,10 @@ interface CaseSpec {
     conciergeOverride: 'OFF' | 'UNCENSORED' | null;
     isDangerousChat: boolean | null;
     dangerCategories: string[] | null;
+    /** P4.D226 (v4 `4d370a90f`): the three-state columns the row derives from. */
+    conciergeMode?: 'moderated' | 'unmoderated' | 'locked';
+    conciergeModeSetBy?: 'operator' | 'concierge' | null;
+    conciergeModeReason?: 'manual' | 'refusals' | 'classifier' | 'migration' | null;
   };
   /** P4.D185 (v4 `4dcbe0d21`): plant an `images/history/` link into Aria's
    * vault before the read. The committed fixture has no avatar roll, so
@@ -162,6 +166,17 @@ async function runCase(
       c.setConcierge.dangerCategories === null ? null : JSON.stringify(c.setConcierge.dangerCategories),
       c.setConcierge.chatId,
     ]);
+    if (c.setConcierge.conciergeMode !== undefined) {
+      rawQuery(
+        'UPDATE "chats" SET "conciergeMode" = ?, "conciergeModeSetBy" = ?, "conciergeModeReason" = ? WHERE "id" = ?',
+        [
+          c.setConcierge.conciergeMode,
+          c.setConcierge.conciergeModeSetBy ?? null,
+          c.setConcierge.conciergeModeReason ?? null,
+          c.setConcierge.chatId,
+        ],
+      );
+    }
   }
 
   // P4.D185: the avatar roll the committed fixture cannot express. The links
@@ -282,25 +297,28 @@ async function main(): Promise<void> {
     // `isDangerousChat` would be visibly wrong, not accidentally right.
     // `chats_plain` above is the Monitored arm.
     {
-      name: 'chats_vouched_over_true_label',
+      name: 'chats_locked_over_true_label',
       module: '@/app/api/v1/characters/[id]/route',
       url: `${B}/${aria}?action=chats`,
       params: { id: aria },
-      setConcierge: { chatId: CHAT, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: null },
+      setConcierge: { chatId: CHAT, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: null,
+        conciergeMode: 'locked', conciergeModeSetBy: 'operator', conciergeModeReason: 'migration' },
     },
     {
-      name: 'chats_uncensored_over_false_label',
+      name: 'chats_unmoderated_by_operator_over_false_label',
       module: '@/app/api/v1/characters/[id]/route',
       url: `${B}/${aria}?action=chats`,
       params: { id: aria },
-      setConcierge: { chatId: CHAT, conciergeOverride: 'UNCENSORED', isDangerousChat: false, dangerCategories: null },
+      setConcierge: { chatId: CHAT, conciergeOverride: 'UNCENSORED', isDangerousChat: false, dangerCategories: null,
+        conciergeMode: 'unmoderated', conciergeModeSetBy: 'operator', conciergeModeReason: 'manual' },
     },
     {
-      name: 'chats_flagged_with_categories',
+      name: 'chats_unmoderated_by_classifier_with_categories',
       module: '@/app/api/v1/characters/[id]/route',
       url: `${B}/${aria}?action=chats`,
       params: { id: aria },
-      setConcierge: { chatId: CHAT, conciergeOverride: null, isDangerousChat: true, dangerCategories: ['Violence', 'Substance Use'] },
+      setConcierge: { chatId: CHAT, conciergeOverride: null, isDangerousChat: true, dangerCategories: ['Violence', 'Substance Use'],
+        conciergeMode: 'unmoderated', conciergeModeSetBy: 'concierge', conciergeModeReason: 'classifier' },
     },
     // P4.6i: ST export (JSON leg) — the chara_card_v2 card. The handler returns a
     // raw `JSON.stringify(card)` NextResponse; `response.json()` reparses it.

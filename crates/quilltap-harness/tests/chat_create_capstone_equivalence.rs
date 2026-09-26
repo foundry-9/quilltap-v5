@@ -998,6 +998,36 @@ fn chat_create_capstone_matches_oracle() {
         }
         let got_dto = json!({ "chat": chat });
 
+        // P4.D226 (v4 `4d370a90f`): the 201 REPORTS THE APPLIED STATE. v4 spreads
+        // the post-flip RE-READ of the three Concierge columns over the create
+        // echo, so a create that asked for a non-Moderated state answers with it
+        // — never the INSERT's NULL. Pinned by presence here as well as by the
+        // whole-DTO diff below, because the null seam drops a NULL key on both
+        // sides and a missing re-read would otherwise read as "absent" (the
+        // order's M8).
+        if let Some(asked) = c.request.get("conciergeState").and_then(Value::as_str) {
+            if asked != "moderated" {
+                assert_eq!(
+                    got_dto["chat"]["conciergeMode"].as_str(),
+                    Some(asked),
+                    "case {}: the 201 must report the applied Concierge state",
+                    c.name
+                );
+                for key in ["conciergeMode", "conciergeModeSetBy", "conciergeModeReason"] {
+                    assert!(
+                        got_dto["chat"][key].is_string(),
+                        "case {}: the 201 must report the applied `{key}`",
+                        c.name
+                    );
+                    assert_eq!(
+                        got_dto["chat"][key], want["body"]["chat"][key],
+                        "case {}: the applied `{key}` must be v4's",
+                        c.name
+                    );
+                }
+            }
+        }
+
         // Dump the four MAIN-db tables (the `dump` closure is defined above the
         // reject branch, which uses it too).
         let got_chats = dump("chats");

@@ -5399,7 +5399,7 @@ mod tests {
     };
 
     /// P4.D141: the chat PUT's `conciergeState` must survive SERDE decoding in
-    /// all four shapes, because v4 validates it with Zod INSIDE the handler and
+    /// every shape, because v4 validates it with Zod INSIDE the handler and
     /// answers `Validation error` — a boundary that refused the wrong-typed or
     /// out-of-domain value with its own `Invalid request: …` would never reach
     /// v4's 400 (the P4.60 wrong-type-collapse convention). Absent, a valid
@@ -5420,10 +5420,19 @@ mod tests {
         let base = r#""type":"chatUpdate","chatId":"c1","chat":{}"#;
         assert_eq!(decode(&format!("{{{base}}}")), None, "absent");
         assert_eq!(
-            decode(&format!(r#"{{{base},"conciergeState":"uncensored"}}"#)),
-            Some(serde_json::json!("uncensored")),
-            "a valid four-state value"
+            decode(&format!(r#"{{{base},"conciergeState":"unmoderated"}}"#)),
+            Some(serde_json::json!("unmoderated")),
+            "a valid three-state value (v4 `4d370a90f`)"
         );
+        // P4.D226: the retired four-state values are now REFUSED (400) — by the
+        // handler, so they too must reach it.
+        for retired in ["monitored", "flagged", "vouched", "uncensored"] {
+            assert_eq!(
+                decode(&format!(r#"{{{base},"conciergeState":"{retired}"}}"#)),
+                Some(serde_json::json!(retired)),
+                "the retired '{retired}' reaches the handler's refusal"
+            );
+        }
         // The retired tri-state spelling must reach the handler to be REFUSED
         // there, not be swallowed at the boundary.
         assert_eq!(

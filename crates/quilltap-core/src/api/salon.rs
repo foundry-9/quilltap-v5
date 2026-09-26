@@ -16,7 +16,9 @@ use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{chat_settings, chats_read, DbError};
-use crate::services::dangerous_content::chat_override::ConciergeState;
+use crate::services::dangerous_content::chat_override::{
+    get_concierge_provenance, get_concierge_reason, get_concierge_state, ConciergeState,
+};
 use crate::services::dangerous_content::manual_flip::{
     apply_concierge_flip, RealConciergeAnnouncer,
 };
@@ -236,6 +238,11 @@ fn assemble_chat_get(
     // (v4 `handlers/get.ts:300-308`).
     let transcript_version =
         crate::db::chats::ChatsRepository::new(main).get_transcript_version(chat_id);
+    // The Concierge's tally, for the helper text of a chat he moved after
+    // refusals ("after N refusals"); emptied when the chat returns to Moderated
+    // (v4 `4d370a90f`, `handlers/get.ts:331`). Never fails (v4's fallback read).
+    let concierge_ledger =
+        crate::db::chats::ChatsRepository::new(main).get_moderation_refusal_ledger(chat_id);
 
     // The transcript itself — attachments and the off-scene author cards — is
     // projected by the one module the conditional re-read
@@ -479,9 +486,27 @@ fn assemble_chat_get(
         get_v("isDangerousChat").unwrap_or(Value::Null),
     );
     out.insert("dangerCategories".into(), arr_or_empty("dangerCategories"));
+    // v4 `4d370a90f` (#75): `conciergeOverride` is gone from the payload; the
+    // DERIVED three-state posture, its provenance and the ledger tally take its
+    // place (`get.ts:398-403`, in this order). Provenance and reason are `null`
+    // for a Moderated chat.
     out.insert(
-        "conciergeOverride".into(),
-        get_v("conciergeOverride").unwrap_or(Value::Null),
+        "conciergeState".into(),
+        json!(get_concierge_state(Some(chat)).as_str()),
+    );
+    out.insert(
+        "conciergeSetBy".into(),
+        get_concierge_provenance(Some(chat))
+            .map(|b| json!(b.as_str()))
+            .unwrap_or(Value::Null),
+    );
+    out.insert(
+        "conciergeReason".into(),
+        get_concierge_reason(Some(chat)).unwrap_or(Value::Null),
+    );
+    out.insert(
+        "conciergeRefusalCount".into(),
+        json!(concierge_ledger.count),
     );
     out.insert(
         "documentEditingMode".into(),
@@ -1341,7 +1366,8 @@ pub async fn chat_update(
 
     // v4's PUT handler runs `chatUpdateRequestSchema.parse(body)` AFTER the 404
     // and BEFORE `processChatUpdates`, so a `conciergeState` outside
-    // `z.enum(['monitored','flagged','vouched','uncensored'])` refuses the WHOLE
+    // `ConciergeModeSchema` (`'moderated' | 'unmoderated' | 'locked'` since v4
+    // `4d370a90f` — the retired four-state values included) refuses the WHOLE
     // request with nothing written. `.parse` is uncaught, so the middleware's
     // `validationError` answers 400 `{error: 'Validation error'}` (the `details`
     // issue array is the standing project-wide deferral). `.optional()` is not
@@ -1518,9 +1544,9 @@ pub async fn chat_update(
             }
         }
     }
-    // Per-chat Concierge four-state. Routed through the manual-flip helper so each
-    // transition does the right combination of DB updates + Concierge announcement
-    // in one place. v4 runs this AFTER `addParticipant` and BEFORE
+    // Per-chat Concierge state (Moderated / Unmoderated / Locked). Routed through
+    // the one transition chokepoint so each change does the right DB writes and
+    // posts the Concierge's announcement in one place. v4 runs this AFTER `addParticipant` and BEFORE
     // `removeParticipantId` (`helpers.ts:587`), and re-reads the chat only when the
     // flip actually CHANGED something.
     //

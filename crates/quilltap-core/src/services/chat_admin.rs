@@ -1073,12 +1073,12 @@ mod rebuild_summary_tests {
     use std::sync::{Arc, Mutex};
 
     const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
-    const CHAT: &str = "c1000000-0000-4000-8000-0000000000d2";
+    pub(super) const CHAT: &str = "c1000000-0000-4000-8000-0000000000d2";
     const SEAT: &str = "e1000000-0000-4000-8000-0000000000d2";
     const PROFILE: &str = "b1000000-0000-4000-8000-0000000000d2";
     const NOW: &str = "2026-09-22T00:00:00.000Z";
 
-    fn provisioned() -> (tempfile::TempDir, Db) {
+    pub(super) fn provisioned() -> (tempfile::TempDir, Db) {
         let dir = tempfile::tempdir().unwrap();
         let data = dir.path().join("rs");
         std::fs::create_dir_all(&data).unwrap();
@@ -1095,7 +1095,7 @@ mod rebuild_summary_tests {
         (dir, db)
     }
 
-    async fn seed(db: &Db) {
+    pub(super) async fn seed(db: &Db) {
         let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
             "userId": crate::api::SINGLE_USER_ID,
             "title": "The Rebuild Room",
@@ -1301,5 +1301,65 @@ mod rebuild_summary_tests {
                 .contains(&("chats".to_string(), Some(CHAT.to_string()))),
             "the publish never ran"
         );
+    }
+}
+
+#[cfg(test)]
+mod reclassify_concierge_state_tests {
+    //! P4.D226 (v4 `4d370a90f`, #75): `?action=reclassify-danger` resets the
+    //! five danger TELEMETRY columns and leaves the Concierge state alone — the
+    //! trio is patch-only, written by `applyConciergeFlip` alone, and v4's
+    //! handler never names it. Pinned on a Locked-by-operator chat: after the
+    //! reset the stored trio is byte-identical.
+    use super::rebuild_summary_tests::{provisioned, seed, CHAT};
+    use super::*;
+
+    fn trio(db: &Db) -> (Option<String>, Option<String>, Option<String>) {
+        db.read_main(|c| {
+            Ok(c.query_row(
+                "SELECT conciergeMode, conciergeModeSetBy, conciergeModeReason \
+                 FROM chats WHERE id = ?1",
+                [CHAT],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )?)
+        })
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn reclassify_danger_leaves_the_concierge_state_alone() {
+        let (_dir, db) = provisioned();
+        seed(&db).await;
+        db.write(|w| {
+            w.main().connection().execute(
+                "UPDATE chats SET conciergeMode = 'locked', conciergeModeSetBy = 'operator', \
+                 conciergeModeReason = 'manual', isDangerousChat = 1, dangerScore = 0.9, \
+                 dangerCategories = '[\"violence\"]' WHERE id = ?1",
+                [CHAT],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+        let before = trio(&db);
+        assert_eq!(before.0.as_deref(), Some("locked"));
+
+        let resp = chat_reclassify_danger(&db, crate::api::SINGLE_USER_ID, CHAT).await;
+        assert!(matches!(resp, Response::ChatAdmin(_)), "{resp:?}");
+
+        // The reset really ran (so the pin is not vacuous) …
+        let (dangerous, categories): (Option<i64>, String) = db
+            .read_main(|c| {
+                Ok(c.query_row(
+                    "SELECT isDangerousChat, dangerCategories FROM chats WHERE id = ?1",
+                    [CHAT],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?)
+            })
+            .unwrap();
+        assert_eq!(dangerous, None);
+        assert_eq!(categories, "[]");
+        // … and the Concierge state did not move.
+        assert_eq!(trio(&db), before);
     }
 }

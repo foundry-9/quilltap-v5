@@ -342,19 +342,28 @@ fn salon_reads_match_oracle() {
         cases.push(("get_impersonated".into(), got, want));
     }
     // P4.D143 (v4 `c43d3b1b4`): the list carries the DERIVED `conciergeState` +
-    // `dangerCategories`, never the raw pair. Paint one chat per non-Monitored
-    // state with the preserved label set the wrong way round on both operator
-    // rows (Vouched over a TRUE label, Uncensored over a FALSE one), so a
-    // payload that leaked `isDangerousChat` would be visibly wrong rather than
-    // accidentally right. Mirrors the oracle's `setConcierge` UPDATEs exactly.
-    // AFTER `get_impersonated`: the shared-db mutation must not reach it.
+    // `dangerCategories`, never the raw columns — re-keyed by P4.D226 (v4
+    // `4d370a90f`) to the three states plus the provenance pair. The legacy
+    // pair is painted the wrong way round on every row (Solo Locked over a TRUE
+    // label, Group Unmoderated by the operator over a FALSE one, Ridge
+    // Unmoderated by the classifier), so a payload that still read it would be
+    // visibly wrong. Mirrors the oracle's `setConcierge` UPDATEs exactly. AFTER
+    // `get_impersonated`: the shared-db mutation must not reach it.
     let third = &spec.chats[2].id;
     {
         let sql = format!(
             "UPDATE \"chats\" SET \"conciergeOverride\" = 'OFF', \"isDangerousChat\" = 1, \
-             \"dangerCategories\" = NULL WHERE \"id\" = '{solo}';              UPDATE \"chats\" SET \"conciergeOverride\" = 'UNCENSORED', \"isDangerousChat\" = 0, \
-             \"dangerCategories\" = NULL WHERE \"id\" = '{group}';              UPDATE \"chats\" SET \"conciergeOverride\" = NULL, \"isDangerousChat\" = 1, \
-             \"dangerCategories\" = '[\"Violence\",\"Substance Use\"]' WHERE \"id\" = '{third}'"
+             \"dangerCategories\" = NULL WHERE \"id\" = '{solo}'; \
+             UPDATE \"chats\" SET \"conciergeMode\" = 'locked', \"conciergeModeSetBy\" = 'operator', \
+             \"conciergeModeReason\" = 'migration' WHERE \"id\" = '{solo}'; \
+             UPDATE \"chats\" SET \"conciergeOverride\" = 'UNCENSORED', \"isDangerousChat\" = 0, \
+             \"dangerCategories\" = NULL WHERE \"id\" = '{group}'; \
+             UPDATE \"chats\" SET \"conciergeMode\" = 'unmoderated', \"conciergeModeSetBy\" = 'operator', \
+             \"conciergeModeReason\" = 'manual' WHERE \"id\" = '{group}'; \
+             UPDATE \"chats\" SET \"conciergeOverride\" = NULL, \"isDangerousChat\" = 1, \
+             \"dangerCategories\" = '[\"Violence\",\"Substance Use\"]' WHERE \"id\" = '{third}'; \
+             UPDATE \"chats\" SET \"conciergeMode\" = 'unmoderated', \"conciergeModeSetBy\" = 'concierge', \
+             \"conciergeModeReason\" = 'classifier' WHERE \"id\" = '{third}'"
         );
         rt.block_on(db.write(move |w| {
             w.main().connection().execute_batch(&sql)?;
@@ -365,41 +374,42 @@ fn salon_reads_match_oracle() {
         let want = oracle["list_concierge_states"]["body"]["chats"].clone();
         cases.push(("list_concierge_states".into(), got, want));
     }
-    // The single-chat GET is UNTOUCHED by `c43d3b1b4`: the detail view keeps
-    // the raw trio for the sidebar control. Same painted state, and the body
-    // must still carry `isDangerousChat` / `dangerCategories` /
-    // `conciergeOverride` and NO `conciergeState`.
+    // P4.D226 (v4 `4d370a90f`): the detail GET drops `conciergeOverride` and
+    // projects the state, its provenance and the ledger's tally — a chat the
+    // Concierge moved after refusals, its ledger at 2.
     {
         let sql = format!(
-            "UPDATE \"chats\" SET \"dangerCategories\" = '[\"Violence\"]' WHERE \"id\" = '{solo}'"
+            "UPDATE \"chats\" SET \"conciergeOverride\" = 'OFF', \"isDangerousChat\" = 1, \
+             \"dangerCategories\" = '[\"Violence\"]' WHERE \"id\" = '{solo}'; \
+             UPDATE \"chats\" SET \"conciergeMode\" = 'unmoderated', \"conciergeModeSetBy\" = 'concierge', \
+             \"conciergeModeReason\" = 'refusals' WHERE \"id\" = '{solo}'; \
+             UPDATE \"chats\" SET \"moderationRefusalCount\" = 2 WHERE \"id\" = '{solo}'"
         );
         rt.block_on(db.write(move |w| {
             w.main().connection().execute_batch(&sql)?;
             Ok(())
         }))
-        .expect("paint solo categories");
+        .expect("paint solo's Concierge projection");
         let got = response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None)));
-        let mut want = oracle["get_vouched_keeps_raw_trio"]["body"].clone();
+        let mut want = oracle["get_concierge_projection"]["body"].clone();
         strip_rendered_html(&mut want);
         // The claim in its own right, so a normalizer change can never make it
-        // vacuous: the detail body keeps all three raw keys and gains none of
-        // the list's derived one.
-        for key in ["isDangerousChat", "dangerCategories", "conciergeOverride"] {
-            assert!(
-                want["chat"].get(key).is_some(),
-                "oracle's detail body lost {key} — v4's detail view is supposed to keep the raw trio"
-            );
-            assert!(
-                got["chat"].get(key).is_some(),
-                "v5's detail body lost {key}"
-            );
+        // vacuous: the four keys, and no `conciergeOverride`.
+        for (key, value) in [
+            ("conciergeState", serde_json::json!("unmoderated")),
+            ("conciergeSetBy", serde_json::json!("concierge")),
+            ("conciergeReason", serde_json::json!("refusals")),
+            ("conciergeRefusalCount", serde_json::json!(2)),
+        ] {
+            assert_eq!(want["chat"].get(key), Some(&value), "oracle's detail {key}");
+            assert_eq!(got["chat"].get(key), Some(&value), "v5's detail {key}");
         }
         assert!(
-            want["chat"].get("conciergeState").is_none()
-                && got["chat"].get("conciergeState").is_none(),
-            "the detail GET must NOT carry the list's derived conciergeState"
+            want["chat"].get("conciergeOverride").is_none()
+                && got["chat"].get("conciergeOverride").is_none(),
+            "the detail GET no longer carries conciergeOverride (v4 `4d370a90f`)"
         );
-        cases.push(("get_vouched_keeps_raw_trio".into(), got, want));
+        cases.push(("get_concierge_projection".into(), got, want));
     }
     // P4.D171: the route trail (on a message) and the drawn rotation (on the
     // chat) — the two `78b381a96`-round schema moves. The oracle's
@@ -412,7 +422,9 @@ fn salon_reads_match_oracle() {
         rt.block_on(db.write(|w| {
             w.main().connection().execute_batch(
                 "UPDATE \"chats\" SET \"conciergeOverride\" = NULL, \"isDangerousChat\" = NULL, \
-                 \"dangerCategories\" = NULL",
+                 \"dangerCategories\" = NULL, \"conciergeMode\" = 'moderated', \
+                 \"conciergeModeSetBy\" = NULL, \"conciergeModeReason\" = NULL, \
+                 \"moderationRefusalCount\" = 0",
             )?;
             Ok(())
         }))

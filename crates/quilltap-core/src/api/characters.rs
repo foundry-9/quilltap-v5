@@ -38,7 +38,9 @@ use crate::db::{
 use crate::photos::resolve_character_avatar::resolve_character_avatar;
 use crate::services::aesthetics::DEPICTION_GUIDELINES_FILENAME;
 use crate::services::character_enrichment;
-use crate::services::dangerous_content::chat_override::get_concierge_state;
+use crate::services::dangerous_content::chat_override::{
+    get_concierge_provenance, get_concierge_reason, get_concierge_state,
+};
 use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_instructions::{
@@ -688,6 +690,9 @@ pub fn character_chats(
             // v4 `c43d3b1b4`: the conversations row carries the DERIVED state
             // and the classifier's categories, never the raw label.
             let concierge_state = get_concierge_state(Some(chat)).as_str();
+            // v4 `4d370a90f` (`characters/[id]/handlers/get.ts:221-222`).
+            let concierge_set_by = get_concierge_provenance(Some(chat)).map(|b| b.as_str());
+            let concierge_reason = get_concierge_reason(Some(chat));
             let danger_categories = chat
                 .get("dangerCategories")
                 .filter(|v| v.is_array())
@@ -706,6 +711,8 @@ pub fn character_chats(
                 "messages": recent_messages,
                 "tags": tag_data,
                 "conciergeState": concierge_state,
+                "conciergeSetBy": concierge_set_by,
+                "conciergeReason": concierge_reason,
                 "dangerCategories": danger_categories,
                 "_count": { "messages": message_count, "memories": memory_count },
                 "scriptoriumStatus": scriptorium_status,

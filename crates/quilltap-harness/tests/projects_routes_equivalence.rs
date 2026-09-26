@@ -405,6 +405,17 @@ fn projects_routes_match_oracle() {
             r#"UPDATE "chats" SET "conciergeOverride" = ?1, "isDangerousChat" = 0 WHERE "id" = ?2"#,
             vec!["UNCENSORED".into(), CHAT_B.into()],
         );
+        // P4.D226 (v4 `4d370a90f`): the states the rows derive from.
+        mutate(
+            &db,
+            r#"UPDATE "chats" SET "conciergeMode" = 'locked', "conciergeModeSetBy" = 'operator', "conciergeModeReason" = 'migration' WHERE "id" = ?1"#,
+            vec![CHAT_A.into()],
+        );
+        mutate(
+            &db,
+            r#"UPDATE "chats" SET "conciergeMode" = 'unmoderated', "conciergeModeSetBy" = 'operator', "conciergeModeReason" = 'manual' WHERE "id" = ?1"#,
+            vec![CHAT_B.into()],
+        );
         check(
             "list_chats_operator_states",
             &response_data(&projects::project_chat_list(&db, IOTA, None, None)),
@@ -418,6 +429,11 @@ fn projects_routes_match_oracle() {
             &db,
             r#"UPDATE "chats" SET "isDangerousChat" = 1, "dangerCategories" = ?1 WHERE "id" = ?2"#,
             vec![r#"["Violence","Substance Use"]"#.into(), CHAT_A.into()],
+        );
+        mutate(
+            &db,
+            r#"UPDATE "chats" SET "conciergeMode" = 'unmoderated', "conciergeModeSetBy" = 'concierge', "conciergeModeReason" = 'classifier' WHERE "id" = ?1"#,
+            vec![CHAT_A.into()],
         );
         check(
             "list_chats_flagged_categories",

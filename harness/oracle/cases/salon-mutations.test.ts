@@ -321,16 +321,24 @@ async function main(): Promise<void> {
     { name: 'chat_update_timeline_set', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { timelineMode: 'narrative' } } },
     { name: 'chat_update_timeline_null', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { timelineMode: null } } },
     { name: 'chat_update_timeline_invalid', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { timelineMode: 'dreamtime' } } },
-    // P4.D141 (v4 `60e3c4a0a`): the `conciergeState` arm of the chat PUT — a
-    // SIBLING of `chat`, routed through `applyConciergeFlip`. Each accepted value
-    // writes the stored pair AND posts a Concierge bubble; the no-op writes
-    // nothing; the two refusals are `chatUpdateRequestSchema.parse` throwing
-    // before `processChatUpdates` runs, so nothing is written at all.
-    { name: 'chat_update_concierge_flagged', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'flagged' } },
-    { name: 'chat_update_concierge_vouched', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'vouched' } },
-    { name: 'chat_update_concierge_uncensored', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'uncensored' } },
-    // The seeded chat is already Monitored, so this is the no-op arm.
-    { name: 'chat_update_concierge_noop', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'monitored' } },
+    // P4.D141 (v4 `60e3c4a0a`), re-keyed by P4.D226 (v4 `4d370a90f`, the three
+    // states): the `conciergeState` arm of the chat PUT — a SIBLING of `chat`,
+    // routed through `applyConciergeFlip`. Each accepted value writes the three
+    // Concierge columns (`setConciergeMode`, no `updatedAt` mint) AND posts a
+    // Concierge bubble; the no-op writes nothing; every refusal is
+    // `chatUpdateRequestSchema.parse` throwing before `processChatUpdates` runs,
+    // so nothing is written at all.
+    { name: 'chat_update_concierge_unmoderated', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'unmoderated' } },
+    { name: 'chat_update_concierge_locked', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'locked' } },
+    // The seeded chat is already Moderated (the migration's default), so this is
+    // the no-op arm.
+    { name: 'chat_update_concierge_noop', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'moderated' } },
+    // The four RETIRED four-state values are refused with 400 (v4 `schemas.ts`:
+    // "rejected with 400").
+    { name: 'chat_update_concierge_retired_monitored', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'monitored' } },
+    { name: 'chat_update_concierge_retired_flagged', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'flagged' } },
+    { name: 'chat_update_concierge_retired_vouched', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'vouched' } },
+    { name: 'chat_update_concierge_retired_uncensored', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'uncensored' } },
     // `'off'` is the RETIRED tri-state spelling — the most valuable invalid value
     // there is, because a port that forgot to widen the enum would accept it.
     { name: 'chat_update_concierge_invalid', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'off' } },
@@ -340,7 +348,7 @@ async function main(): Promise<void> {
     // error (the P4.60 wrong-type-collapse convention).
     { name: 'chat_update_concierge_wrong_type', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 42 } },
     // Both families in one request: the `chat` bag is applied first, then the flip.
-    { name: 'chat_update_concierge_with_bag', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { title: 'Vouched And Renamed' }, conciergeState: 'vouched' } },
+    { name: 'chat_update_concierge_with_bag', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { title: 'Locked And Renamed' }, conciergeState: 'locked' } },
     // GUARD ORDER — the arm that matters most. v4 parses the WHOLE body before
     // `processChatUpdates` runs, so an invalid `conciergeState` refuses the
     // request with the `chat` bag UNWRITTEN. A port that validated the state at
