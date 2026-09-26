@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-26 — test(concierge): the consumer fixtures re-keyed, the retired kinds' read path pinned, the full sweep at `4d370a90f` (P4.D226 unit 6)
+
+_Versions: core 0.0.1082, harness 0.0.1001._
+
+- The message-finalizer, precompute and chats-read fixtures state their chats' Concierge state through the three columns (v4 `4d370a90f`).
+- A transcript holding all six retired Concierge bubble kinds reads back unchanged.
+- The full recipe sweep from the pin is committed under `harness/tools/sweep-results/`.
+
 #### 2026-09-26 — feat(concierge): restore and .qtap import derive the three states from the legacy pair; the export schema re-vendored (P4.D226 unit 5)
 
 _Versions: core 0.0.1081, harness 0.0.1000, web 0.0.199._

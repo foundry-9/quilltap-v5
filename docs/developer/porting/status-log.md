@@ -151296,3 +151296,58 @@ Result file: `/tmp/p4d226/first-act-4d370a90f.json` (kept in the lane's scratch)
     - `system_restore_state` RED on EVERY case. Every committed archive
       predates the three states, so v4 now writes an explicit `'moderated'`
       on every restored chat, where the unported path left NULL.
+- **P4.D226 unit 6 — the consumer re-keys + the full sweep (core 0.0.1082,
+  harness 0.0.1001).**
+  - Re-keyed:
+    - `message-finalizer-tier3.json` by v4's derive table, with the builder
+      passing the trio through;
+    - `precompute-cases.json`'s inline chat trio;
+    - `chats-read-tier2.json`'s rich row (locked/operator/migration).
+  - Tier 2 item 13: `the_six_retired_kinds_read_back_unchanged` — one bubble
+    of each retired kind, posted through the pre-phase-3 writer path, reads
+    back through `get_messages` in order with content, opaque content, sender
+    and kind unchanged.
+  - `ai_import_tier3`'s `V4_APP_VERSION` moved to the pin's `4.10.0-dev.86`
+    (it moves with every regen by design).
+- **The FULL sweep from the pin** (`--collisions` first: 27 standing shared
+  paths, sequential run; the tree was `9d8ded7eb` plus this unit's fixture
+  re-keys): **558 ok / 9 run_failed / 3 refused of 570**. Result:
+  `harness/tools/sweep-results/2026-09-26-4d370a90f-p4d226-full.json`.
+  Every non-ok family is classified below.
+  - **Not this lane's; measured at the lane's BASE (`17c49e013`, P4.D225's
+    tip, in a scratch worktree, same pin): all four red IDENTICALLY there.**
+    - `answer_confirmation_tier3` (`dangerous_escalation`: v5
+      `confirmed: null` vs v4 `true`). Cause measured: the harness passes the
+      spec's `dangerous` flag straight in (`:689`), while v4's oracle
+      computes `shouldUseUncensoredRoute(chat)`. At #75 that reads
+      `conciergeMode`, and the builder seeds only the legacy
+      `isDangerousChat`, so v4's case silently stopped being dangerous.
+      **Handoff to P4.D227**, whose order owns `answer_confirmation*` and
+      lists this family as a designed red. The fix is the builder seeding
+      `conciergeMode: 'unmoderated'` and the harness deriving the flag from
+      the chat.
+    - `memory_processor_tier3` (a MEMORY_EXTRACTION `request` cell) and
+      `ariel_writers_tier3` (`chat_messages` row 0 `content`). Both are
+      compressed-TEXT byte differences. The Ariel pair DECODES (node brotli)
+      to byte-identical 16,531-char text, so this is a codec byte-parity
+      question, not a Concierge one. v4's `text-compression.ts` is unchanged
+      across `b0b6656b5..4d370a90f`. `memory_processor_tier3` is on
+      P4.D227's designed-red list. **Recorded for the unifier.**
+    - `search_replace_equivalence` (`missing_action_recorded`) — unrelated
+      to the Concierge. **Recorded for the unifier.**
+  - **Out of ownership:** `help_tree_equivalence` +
+    `help_section_size_equivalence` are #75's `help/` edits (e.g.
+    `autonomous-rooms.md` "The Concierge in an autonomous room"). `help/**`
+    is excluded from this lane; the order's §9 names P4.D228 for the tree.
+    `post_office_writers_tier3` is the fence recorded at the first act
+    (P4.D233-owned: it posts five retired kinds and is red against post-#75
+    oracles). `provider_sdk_version_guard` is pre-existing on the base (see
+    unit 3's gate).
+  - **Driver refusals (not results):**
+    - `backup_uuid_remap_equivalence` (`refused_repo_write` — its recipe
+      rewrites the committed corpus; the order gives its #76 change, the four
+      desk ids, to P4.D227);
+    - `avatar_rolls_routes` and `generator_sse_wire`
+      (`refused_non_extractable` — no oracle-case header).
+  - `ai_import_tier3` was red only on the version stamp and is green after
+    the constant moved.

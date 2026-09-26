@@ -953,6 +953,58 @@ mod tests {
         crate::test_support::captured_with(|| rt.block_on(f))
     }
 
+    /// P4.D226 Tier 2 item 13 (v4 `4d370a90f`: "Transcripts written before
+    /// phase 3 carry bubbles of the retired kinds … they are plain messages and
+    /// render as they always did"). A transcript holding one bubble of each of
+    /// the six retired kinds — written exactly as the pre-phase-3 writer wrote
+    /// them — reads back through the transcript read every consumer shares
+    /// (`get_messages`, under the chat GET and the export) in order, with
+    /// content, opaque content, sender and kind unchanged.
+    #[test]
+    fn the_six_retired_kinds_read_back_unchanged() {
+        let (_dir, db) = provisioned();
+        let retired = [
+            ConciergeManualKind::ManualFlagged,
+            ConciergeManualKind::ManualSafe,
+            ConciergeManualKind::ManualVouched,
+            ConciergeManualKind::ManualResumed,
+            ConciergeManualKind::ManualUncensored,
+            ConciergeManualKind::AutoFlaggedRefusals,
+        ];
+        assert!(retired.iter().all(|k| k.is_retired()));
+        let (posted, _) = run(async {
+            seed_chat(&db).await;
+            let mut posted = Vec::new();
+            for kind in retired {
+                posted.push(
+                    post_concierge_manual_announcement(&db, CHAT, kind)
+                        .await
+                        .expect("a retired bubble posts (a pre-phase-3 transcript)"),
+                );
+            }
+            posted
+        });
+        let read = db
+            .read_main(|c| crate::db::chats_messages_read::get_messages(c, CHAT))
+            .unwrap();
+        let got: Vec<&Value> = read
+            .iter()
+            .filter(|m| m["systemSender"] == "concierge")
+            .collect();
+        assert_eq!(got.len(), 6, "every retired bubble reads back: {read:#?}");
+        for ((kind, want), got) in retired.iter().zip(&posted).zip(got) {
+            assert_eq!(got["id"], want["id"], "{kind:?}: order");
+            assert_eq!(got["content"], build_manual_content(*kind), "{kind:?}");
+            assert_eq!(
+                got["opaqueContent"],
+                build_manual_opaque_content(*kind),
+                "{kind:?}"
+            );
+            assert_eq!(got["systemKind"], "danger", "{kind:?}");
+            assert_eq!(got["role"], "ASSISTANT", "{kind:?}");
+        }
+    }
+
     /// v4 `postConciergeRefusalAnnouncement` (`8bd080267`): the message literal
     /// IN v4's ORDER with `systemKind: 'refusal'`, persisted and read back, and
     /// the ONE INFO line with v4's bag (an absent answerer is an absent field).

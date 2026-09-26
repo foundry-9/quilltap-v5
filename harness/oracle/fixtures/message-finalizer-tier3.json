@@ -270,6 +270,9 @@
     },
     {
       "id": "f3000000-0000-4000-8000-000000000003",
+      "conciergeMode": "unmoderated",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "migration",
       "chatType": "salon",
       "participants": [
         {
@@ -297,6 +300,9 @@
     },
     {
       "id": "f4000000-0000-4000-8000-000000000004",
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "migration",
       "chatType": "salon",
       "participants": [
         {

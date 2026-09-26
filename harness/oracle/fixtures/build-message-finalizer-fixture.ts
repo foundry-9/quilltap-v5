@@ -70,6 +70,11 @@ interface ChatSpec {
    * on the operator chats: the sticky check would otherwise catch them and the
    * new gate would prove nothing. */
   isDangerousChat?: boolean;
+  /** P4.D226 (v4 `4d370a90f`): the three-state columns the on-duty gate reads
+   * (the legacy pair above is kept as a migrated row keeps it — ignored). */
+  conciergeMode?: 'moderated' | 'unmoderated' | 'locked';
+  conciergeModeSetBy?: 'operator' | 'concierge';
+  conciergeModeReason?: 'manual' | 'refusals' | 'classifier' | 'migration';
 }
 interface Spec {
   testPepperBase64: string;
@@ -242,6 +247,14 @@ async function main(): Promise<void> {
           : {}),
         ...(chat.isDangerousChat !== undefined
           ? { isDangerousChat: chat.isDangerousChat }
+          : {}),
+        // P4.D226 (v4 `4d370a90f`): the state the gate now reads.
+        ...(chat.conciergeMode !== undefined ? { conciergeMode: chat.conciergeMode } : {}),
+        ...(chat.conciergeModeSetBy !== undefined
+          ? { conciergeModeSetBy: chat.conciergeModeSetBy }
+          : {}),
+        ...(chat.conciergeModeReason !== undefined
+          ? { conciergeModeReason: chat.conciergeModeReason }
           : {}),
       } as never,
       { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }

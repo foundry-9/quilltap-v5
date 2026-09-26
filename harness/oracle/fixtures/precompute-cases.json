@@ -118,7 +118,10 @@
       "chat": {
         "id": "cd000000-0000-4000-8000-000000000001",
         "timelineMode": "realtime",
-        "isDangerousChat": true
+        "isDangerousChat": true,
+        "conciergeMode": "unmoderated",
+        "conciergeModeSetBy": "concierge",
+        "conciergeModeReason": "classifier"
       },
       "dangerSettings": {
         "mode": "AUTO_ROUTE",
