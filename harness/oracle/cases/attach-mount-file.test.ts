@@ -312,7 +312,7 @@ async function runCase(
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
   process.env.SQLITE_LLM_LOGS_PATH = llmLogsWork;
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
@@ -320,6 +320,14 @@ async function runCase(
     '@/lib/database/backends/sqlite/llm-logs-client'
   );
   await initializeDatabase();
+  // P4.D227 (v4 `3b463d6b1`, #76): the committed pair carries v4's migration of
+  // the retired OFF bag for a user with no Unmoderated chat — OFF DUTY, which
+  // (correctly) withholds the uncensored vision retry this family covers. Put
+  // the Concierge on duty on this copy; the same raw SQL on the Rust side.
+  await rawQuery(
+    "UPDATE chat_settings SET conciergeSettings = json_set(conciergeSettings, '$.enabled', json('true')) WHERE userId = ?",
+    [spec.userId],
+  );
 
   try {
     const out = await c.run(meta);

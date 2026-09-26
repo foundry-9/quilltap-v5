@@ -1587,33 +1587,43 @@ fn assert_bag_keys_survive(
     //
     // Two rows, because a NARROWING and a DROP are different bugs: narrowing
     // 'UNCENSORED' to 'OFF' moves only the first cell (and would silently re-arm
-    // the classifier on a chat the operator had ruled on); dropping the column
-    // moves both. The chats are identified by title, since `new-account` remaps
-    // every id.
+    // the classifier on a chat the operator had ruled on); dropping it moves
+    // both. The chats are identified by title, since `new-account` remaps every
+    // id. P4.D227 (v4 `3b463d6b1`, #76): `chats.conciergeOverride` is DROPPED,
+    // so the archive's legacy value now survives as the STATE restore derives
+    // from it (P4.D226's translation: `UNCENSORED` → Unmoderated, `OFF` →
+    // Locked), and the dropped column must not come back on the row.
     let chats = table("chats");
     let by_title = |t: &str| -> Option<&Value> {
         chats
             .iter()
             .find(|r| r.get("title").and_then(Value::as_str) == Some(t))
     };
-    for (title, want) in [
-        ("A Lesson in Lift", "UNCENSORED"),
-        ("Quiet Interlude", "OFF"),
+    for (title, archived, want) in [
+        ("A Lesson in Lift", "UNCENSORED", "unmoderated"),
+        ("Quiet Interlude", "OFF", "locked"),
     ] {
         match by_title(title) {
             None => fail(
-                "1 conciergeOverride",
+                "1 conciergeMode",
                 format!("no restored chat titled {title:?}"),
             ),
             Some(row) => {
-                let got_v = row.get("conciergeOverride");
+                let got_v = row.get("conciergeMode");
                 if got_v.and_then(Value::as_str) != Some(want) {
                     fail(
-                        "1 conciergeOverride",
+                        "1 conciergeMode",
                         format!(
-                            "chat {title:?} restored as {} — the archive carries {want:?}",
+                            "chat {title:?} restored as {} — the archive's {archived:?} \
+                             derives {want:?}",
                             serde_json::to_string(&got_v).unwrap()
                         ),
+                    );
+                }
+                if row.get("conciergeOverride").is_some() {
+                    fail(
+                        "1 conciergeOverride",
+                        format!("chat {title:?} carries the DROPPED column"),
                     );
                 }
             }

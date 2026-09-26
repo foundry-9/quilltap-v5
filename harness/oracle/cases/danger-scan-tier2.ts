@@ -69,7 +69,7 @@ async function main(): Promise<void> {
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { resolveDangerousContentSettings } = await import(
+  const { readConciergeSettings } = await import(
     '@/lib/services/dangerous-content/resolver.service'
   );
   const { runScheduledDangerScan } = await import(
@@ -78,11 +78,13 @@ async function main(): Promise<void> {
 
   await initializeDatabase();
 
-  // The scheduleDangerScan pre-check condition, recomputed v4's way.
+  // The scheduleDangerScan pre-check condition, recomputed v4's way (v4
+  // `3b463d6b1`: the module-private `wantsSummaryClassification` — its one line
+  // over the REAL exported `readConciergeSettings`).
   const allChatSettings = await getRepositories().chatSettings.findAll();
   const anyEnabled = allChatSettings.some((settings) => {
-    const { settings: dangerSettings } = resolveDangerousContentSettings(settings);
-    return dangerSettings.mode !== 'OFF';
+    const concierge = readConciergeSettings(settings);
+    return concierge.enabled && concierge.preScreen.summaryClassification;
   });
 
   const result = await runScheduledDangerScan();

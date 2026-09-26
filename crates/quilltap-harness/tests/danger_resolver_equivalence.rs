@@ -42,7 +42,6 @@
 //!   QT_FIXTURE_MANUAL_FLIP=/tmp/qt-danger-manual-flip.db \
 //!     cargo test -p quilltap-harness --test danger_resolver_equivalence
 
-use quilltap_core::db::chat_settings::DangerousContentSettings;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::db::{chats_read, dump_table_json_conn};
 use quilltap_core::services::dangerous_content::chat_override::{
@@ -51,10 +50,16 @@ use quilltap_core::services::dangerous_content::chat_override::{
     get_concierge_state, is_classifier_on_duty, may_fail_over, should_show_danger_styling,
     should_use_uncensored_route, with_concierge_mode_from_legacy, ConciergeState, CONCIERGE_STATES,
 };
+use quilltap_core::services::dangerous_content::legacy_concierge_settings::{
+    map_legacy_concierge_settings, with_concierge_settings_from_legacy, LegacyConciergeSources,
+};
 use quilltap_core::services::dangerous_content::manual_flip::{
     apply_concierge_flip_with, RealConciergeAnnouncer,
 };
-use quilltap_core::services::dangerous_content::resolver::resolve_dangerous_content_settings;
+use quilltap_core::services::dangerous_content::resolver::{
+    default_concierge_settings, read_concierge_settings, resolve_concierge_settings,
+    DEFAULT_AUTO_SWITCH_AFTER_REFUSALS,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -83,16 +88,61 @@ fn canon(mut v: Value) -> Value {
 
 // --- section 1: pure resolver + the Concierge truth table ---
 
+/// v4's `undefined` (rendered `"<undefined>"`) and `null` are both "absent" to
+/// a Rust `Option<&Value>`; every other value is passed through.
+fn undefined_as_none(v: &Value) -> Option<&Value> {
+    match v {
+        Value::Null => None,
+        Value::String(s) if s == "<undefined>" => None,
+        other => Some(other),
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "kind")]
 enum PureRow {
+    /// P4.D227 (v4 `3b463d6b1`, #76): `resolveConciergeSettings` — the whole
+    /// `ResolvedConciergePolicy`, over v4's `resolver.test.ts` builders.
     #[serde(rename = "resolve")]
     Resolve {
         id: String,
-        global: Option<Value>,
-        chat: Option<Value>,
+        /// `"<undefined>"` for v4's `undefined` carrier.
+        global: Value,
+        chat: Value,
+        policy: Value,
+    },
+    /// `DEFAULT_CONCIERGE_SETTINGS` + `DEFAULT_AUTO_SWITCH_AFTER_REFUSALS`.
+    #[serde(rename = "defaults")]
+    Defaults {
+        id: String,
         settings: Value,
-        source: String,
+        #[serde(rename = "autoSwitch")]
+        auto_switch: i64,
+    },
+    /// `readConciergeSettings` — the merged object's BYTES.
+    #[serde(rename = "readSettings")]
+    ReadSettings {
+        id: String,
+        global: Value,
+        settings: Value,
+    },
+    /// `mapLegacyConciergeSettings` — the migrated object's BYTES.
+    #[serde(rename = "legacyMap")]
+    LegacyMap {
+        id: String,
+        sources: Value,
+        migrated: Value,
+    },
+    /// `withConciergeSettingsFromLegacy` — the returned record's BYTES and
+    /// v4's `toBe(settings)` identity.
+    #[serde(rename = "withSettingsLegacy")]
+    WithSettingsLegacy {
+        id: String,
+        settings: Value,
+        #[serde(rename = "hasUnmoderatedChats")]
+        has_unmoderated_chats: bool,
+        out: Value,
+        identical: bool,
     },
     /// P4.D226 (v4 `4d370a90f`): every question `chat-override.ts` exports,
     /// over v4's own 3x2 TABLE + the payload-key and hydrated-row edges.
@@ -165,16 +215,90 @@ fn danger_resolver_pure_matches_oracle() {
                 id,
                 global,
                 chat,
-                settings,
-                source,
+                policy,
             } => {
-                let global_settings: Option<DangerousContentSettings> =
-                    global.map(|v| serde_json::from_value(v).expect("deserialize global settings"));
-                let resolved = resolve_dangerous_content_settings(global_settings, chat.as_ref());
-                let got = serde_json::to_value(&resolved.settings).expect("serialize settings");
-                assert_eq!(canon(got), canon(settings), "resolve[{id}] settings");
-                assert_eq!(resolved.source.as_str(), source, "resolve[{id}] source");
+                let got = resolve_concierge_settings(
+                    undefined_as_none(&global),
+                    undefined_as_none(&chat),
+                );
+                // Bytes: the policy's key order is v4's interface order, and
+                // `threshold` a JS number (`1`, never `1.0`).
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap(),
+                    serde_json::to_string(&policy).unwrap(),
+                    "resolve[{id}] policy"
+                );
                 *kinds.entry("resolve").or_default() += 1;
+            }
+            PureRow::Defaults {
+                id,
+                settings,
+                auto_switch,
+            } => {
+                assert_eq!(
+                    serde_json::to_string(&default_concierge_settings()).unwrap(),
+                    serde_json::to_string(&settings).unwrap(),
+                    "defaults[{id}] DEFAULT_CONCIERGE_SETTINGS"
+                );
+                assert_eq!(
+                    DEFAULT_AUTO_SWITCH_AFTER_REFUSALS, auto_switch,
+                    "defaults[{id}]"
+                );
+                *kinds.entry("defaults").or_default() += 1;
+            }
+            PureRow::ReadSettings {
+                id,
+                global,
+                settings,
+            } => {
+                let got = read_concierge_settings(undefined_as_none(&global));
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap(),
+                    serde_json::to_string(&settings).unwrap(),
+                    "readSettings[{id}]"
+                );
+                *kinds.entry("readSettings").or_default() += 1;
+            }
+            PureRow::LegacyMap {
+                id,
+                sources,
+                migrated,
+            } => {
+                let got = map_legacy_concierge_settings(&LegacyConciergeSources {
+                    dangerous_content_settings: sources.get("dangerousContentSettings"),
+                    uncensored_image_description_profile_id: sources
+                        .get("uncensoredImageDescriptionProfileId"),
+                    cheap_llm_settings: sources.get("cheapLLMSettings"),
+                    // v4 `sources.hasUnmoderatedChats === true`.
+                    has_unmoderated_chats: sources.get("hasUnmoderatedChats")
+                        == Some(&Value::Bool(true)),
+                });
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap(),
+                    serde_json::to_string(&migrated).unwrap(),
+                    "legacyMap[{id}] bytes"
+                );
+                *kinds.entry("legacyMap").or_default() += 1;
+            }
+            PureRow::WithSettingsLegacy {
+                id,
+                settings,
+                has_unmoderated_chats,
+                out,
+                identical,
+            } => {
+                let got = with_concierge_settings_from_legacy(&settings, has_unmoderated_chats);
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap(),
+                    serde_json::to_string(&out).unwrap(),
+                    "withSettingsLegacy[{id}] bytes"
+                );
+                assert_eq!(
+                    got == settings,
+                    identical,
+                    "withSettingsLegacy[{id}] untouched"
+                );
+                *kinds.entry("withSettingsLegacy").or_default() += 1;
             }
             PureRow::Override {
                 id,
@@ -309,11 +433,15 @@ fn danger_resolver_pure_matches_oracle() {
         }
         count += 1;
     }
-    // Shape guard: an oracle regenerated before `4d370a90f` cannot even load the
+    // Shape guard: an oracle regenerated before `3b463d6b1` cannot even load the
     // case (the new exports are absent), and one from a narrower case would
     // carry none of the new kinds and pass vacuously.
-    let want: [(&str, usize); 6] = [
-        ("resolve", 22),
+    let want: [(&str, usize); 10] = [
+        ("defaults", 1),
+        ("readSettings", 9),
+        ("resolve", 32),
+        ("legacyMap", 16),
+        ("withSettingsLegacy", 6),
         ("override", 25),
         ("stateRoute", 3),
         ("states", 1),
@@ -700,27 +828,23 @@ fn danger_manual_flip_matches_oracle() {
     );
 }
 
-/// No flip writes `conciergeOverride` any more (v4 `4d370a90f`). Fails loudly
-/// if the corpus seeds no non-NULL legacy override at all.
+/// No flip writes `conciergeOverride` (v4 `4d370a90f`), and since `3b463d6b1`
+/// (#76) the fresh DDL has no such column at all — v4 deleted it from both chat
+/// schemas. The spec still SEEDS legacy values (the builder's `chats.create`
+/// strips them as unknown keys, as a post-#76 v4 does with a stale bundle), so
+/// the pin is now: neither dump carries the key. Fails loudly if the corpus
+/// stops seeding them (the probe would be vacuous).
 fn assert_legacy_override_untouched(spec: &FlipSpec, rows: &[Value]) {
-    let mut seeded_legacy = 0usize;
-    for chat in &spec.chats {
-        let id = chat["id"].as_str().unwrap();
-        let seeded = chat
-            .get("conciergeOverride")
-            .cloned()
-            .unwrap_or(Value::Null);
-        if !seeded.is_null() {
-            seeded_legacy += 1;
-        }
-        let row = rows
-            .iter()
-            .find(|r| r.get("id").and_then(Value::as_str) == Some(id))
-            .unwrap_or_else(|| panic!("chat {id} missing from the dump"));
-        assert_eq!(
-            row.get("conciergeOverride").cloned().unwrap_or(Value::Null),
-            seeded,
-            "chat {id}: conciergeOverride must never be written"
+    let seeded_legacy = spec
+        .chats
+        .iter()
+        .filter(|c| c.get("conciergeOverride").is_some_and(|v| !v.is_null()))
+        .count();
+    for row in rows {
+        assert!(
+            row.get("conciergeOverride").is_none(),
+            "chat {:?}: the fresh DDL has no conciergeOverride column (v4 `3b463d6b1`)",
+            row.get("id")
         );
     }
     assert!(seeded_legacy >= 2, "the corpus must seed legacy overrides");

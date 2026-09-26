@@ -1,7 +1,8 @@
 //! The Concierge's refusal ledger (port of v4
 //! `lib/services/dangerous-content/refusal-ledger.ts`, NEW at `49059fb14`,
 //! #74): count the STATED moderation refusals a chat has earned, and — after
-//! `autoSwitchAfterRefusals` of them on a Moderated chat under Auto-Route —
+//! `autoSwitchAfterRefusals` of them on a Moderated chat (0 = never, and always
+//! 0 off duty — the policy folds both into one number, v4 `3b463d6b1`) —
 //! switch it to Unmoderated, announcing why (the three states, v4 `4d370a90f`;
 //! Monitored → Flagged at `49059fb14`).
 //!
@@ -35,7 +36,6 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use serde_json::Value;
 
-use crate::db::chat_settings::DangerousContentSettings;
 use crate::db::runtime::Db;
 
 use super::chat_override::{get_concierge_state, is_classifier_on_duty, ConciergeState};
@@ -44,7 +44,7 @@ use super::manual_flip::{
     RealConciergeAnnouncer,
 };
 use super::refusal::RefusalEvidence;
-use super::resolver::resolve_dangerous_content_settings;
+use super::resolver::resolve_concierge_settings;
 
 /// What was refused (v4 `RefusalRecord.kind`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -298,21 +298,12 @@ pub async fn maybe_auto_switch_after_refusal_with<P: AutoSwitchProbe>(
     switched
 }
 
-/// The resolved settings, the way v4's `runAutoSwitchCheck` reads them:
-/// `resolveDangerousContentSettings(chatSettings, chat)`.
-fn resolve_for_chat(
-    chat_settings: Option<&Value>,
-    chat: &Value,
-) -> crate::services::dangerous_content::resolver::ResolvedDangerousContentSettings {
-    let global = chat_settings
-        .and_then(|cs| cs.get("dangerousContentSettings"))
-        .and_then(|d| serde_json::from_value::<DangerousContentSettings>(d.clone()).ok());
-    resolve_dangerous_content_settings(global, Some(chat))
-}
-
-/// v4 `runAutoSwitchCheck`, in v4's order: chat → Moderated → settings →
-/// threshold → ledger; the threshold gate BEFORE the mode gate; the RE-READ
-/// only after `count >= threshold`; `switched = result.changed`.
+/// v4 `runAutoSwitchCheck`, in v4's order: chat → Moderated → policy →
+/// threshold → ledger; the RE-READ only after `count >= threshold`;
+/// `switched = result.changed`. v4 `3b463d6b1` (#76): the threshold is the
+/// policy's `autoSwitchAfterRefusals`, which folds "the auto-switch is off",
+/// "the Concierge is off duty" and "the chat is not Moderated" into one `0`,
+/// so the separate mode gate is gone.
 async fn run_auto_switch_check<P: AutoSwitchProbe>(
     db: &Db,
     chat_id: &str,
@@ -351,16 +342,16 @@ async fn run_auto_switch_check<P: AutoSwitchProbe>(
             .to_string();
         let chat_settings =
             db.read_main(move |c| crate::db::chat_settings::find_by_user_id(c, &user_id))?;
-        let resolved = resolve_for_chat(chat_settings.as_ref(), &chat);
-        let threshold = resolved.settings.auto_switch_after_refusals;
+        let concierge_policy = resolve_concierge_settings(chat_settings.as_ref(), Some(&chat));
+        let threshold = concierge_policy.auto_switch_after_refusals;
         let id = chat_id.to_string();
         let count = db
             .read_main(move |c| {
                 Ok(crate::db::chats::ChatsRepository::new(c).get_moderation_refusal_ledger(&id))
             })?
             .count;
-        let mode = resolved.settings.mode.clone();
-        let source = resolved.source.as_str();
+        let concierge_source = concierge_policy.source.as_str();
+        let on_duty = concierge_policy.on_duty;
 
         macro_rules! decision {
             ($level:ident, $msg:literal $(, $k:ident = $v:expr)*) => {
@@ -369,8 +360,8 @@ async fn run_auto_switch_check<P: AutoSwitchProbe>(
                     chat_id = %chat_id,
                     count = count,
                     threshold = threshold,
-                    mode = %mode,
-                    source = source,
+                    concierge_source = concierge_source,
+                    on_duty = on_duty,
                     $($k = $v,)*
                     $msg
                 )
@@ -378,13 +369,9 @@ async fn run_auto_switch_check<P: AutoSwitchProbe>(
         }
 
         if threshold <= 0 {
-            decision!(debug, "Auto-switch check: the auto-switch is off");
-            return Ok(false);
-        }
-        if mode != "AUTO_ROUTE" {
             decision!(
                 debug,
-                "Auto-switch check: the Concierge mode does not permit it"
+                "Auto-switch check: the auto-switch is off for this chat"
             );
             return Ok(false);
         }

@@ -117,7 +117,7 @@ fn chats_ddl() -> String {
         "dangerCategories TEXT",
         "dangerClassifiedAt TEXT",
         "dangerClassifiedAtMessageCount REAL",
-        "conciergeOverride TEXT",
+        // P4.D227 (v4 `3b463d6b1`, #76): `conciergeOverride` DROPPED.
         "conciergeMode TEXT",
         "conciergeModeSetBy TEXT",
         "conciergeModeReason TEXT",

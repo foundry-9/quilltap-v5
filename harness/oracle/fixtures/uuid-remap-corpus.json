@@ -207,6 +207,7 @@
             "state": {},
             "agentTurnCount": 0,
             "dangerCategories": [],
+            "conciergeMode": "moderated",
             "chatType": "salon",
             "runMilestonesAnnounced": 0,
             "runDestructiveToolsAllowed": 0,
@@ -285,6 +286,7 @@
             "state": {},
             "agentTurnCount": 0,
             "dangerCategories": [],
+            "conciergeMode": "moderated",
             "chatType": "salon",
             "runMilestonesAnnounced": 0,
             "runDestructiveToolsAllowed": 0,
@@ -810,14 +812,27 @@
               "enabled": false,
               "defaultImageProfileId": null
             },
-            "dangerousContentSettings": {
-              "mode": "OFF",
-              "threshold": 0.7,
-              "scanTextChat": true,
-              "scanImagePrompts": true,
-              "scanImageGeneration": false,
-              "displayMode": "SHOW",
-              "showWarningBadges": true
+            "conciergeSettings": {
+              "enabled": false,
+              "uncensoredTextProfileId": null,
+              "uncensoredImageProfileId": null,
+              "uncensoredVisionProfileId": null,
+              "imagePromptProfileId": null,
+              "autoSwitchAfterRefusals": 2,
+              "newChatsStartAs": "moderated",
+              "display": {
+                "mode": "SHOW",
+                "showWarningBadges": true
+              },
+              "preScreen": {
+                "enabled": false,
+                "threshold": 0.7,
+                "scanTextChat": true,
+                "scanImagePrompts": true,
+                "scanImageGeneration": false,
+                "customClassificationPrompt": null,
+                "summaryClassification": false
+              }
             },
             "autoLockSettings": {
               "enabled": false,
@@ -3421,6 +3436,144 @@
             "id": "cs-4",
             "cheapLLMSettings": null,
             "storyBackgroundsSettings": null
+          }
+        ],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "chat_settings_concierge_desk_ids",
+      "note": "a 4.10 archive: conciergeSettings present, its four desk ids remapped in place, every other key kept",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [
+          {
+            "id": "cs-5",
+            "userId": "old-user",
+            "conciergeSettings": {
+              "enabled": true,
+              "uncensoredTextProfileId": "desk-text",
+              "uncensoredImageProfileId": "desk-image",
+              "uncensoredVisionProfileId": "desk-vision",
+              "imagePromptProfileId": "desk-crafter",
+              "autoSwitchAfterRefusals": 3,
+              "newChatsStartAs": "unmoderated",
+              "display": {
+                "mode": "BLUR",
+                "showWarningBadges": false
+              },
+              "preScreen": {
+                "enabled": true,
+                "threshold": 0.4,
+                "summaryClassification": true
+              }
+            }
+          }
+        ],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "chat_settings_legacy_with_unmoderated_chat",
+      "note": "a pre-4.10 archive with the Concierge OFF but an Unmoderated chat in the same backup: the translation keeps him on duty (pre-screen off)",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [
+          {
+            "id": "chat-u",
+            "userId": "old-user",
+            "title": "frank",
+            "conciergeOverride": "UNCENSORED",
+            "participants": [],
+            "messages": []
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [
+          {
+            "id": "cs-6",
+            "userId": "old-user",
+            "uncensoredImageDescriptionProfileId": "uidp-6",
+            "cheapLLMSettings": {
+              "imagePromptProfileId": "cheap-6"
+            },
+            "dangerousContentSettings": {
+              "mode": "OFF",
+              "uncensoredTextProfileId": "danger-6",
+              "threshold": 0.3
+            }
           }
         ],
         "folders": [],

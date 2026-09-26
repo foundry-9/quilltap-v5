@@ -2061,14 +2061,14 @@ async fn maintenance_loop(
     }
 }
 
-/// v4 `scheduled-danger-scan.ts`: the all-users-OFF pre-check gates STARTING
-/// the loop at all (a check failure also skips — v4 warns and returns); when
+/// v4 `scheduled-danger-scan.ts`: the summary-classification pre-check (v4
+/// `3b463d6b1` — no user opted in, no loop) gates STARTING the loop at all (a
+/// check failure also skips — v4 warns and returns); when
 /// enabled, scan immediately and then every 10 min. Sweep errors are swallowed
 /// (v4 catches + logs).
 async fn danger_scan_loop(db: Db, mut stop: watch::Receiver<bool>, interval_ms: u64) {
-    match danger_scan::any_user_danger_enabled(&db).await {
-        Ok(true) => {}
-        Ok(false) | Err(_) => return,
+    if !danger_scan::any_user_wants_summary_classification(&db).await {
+        return;
     }
     loop {
         if *stop.borrow() {

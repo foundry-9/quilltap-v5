@@ -601,34 +601,31 @@ pub struct ConciergeRefusalDetails {
     pub answering_profile_name: Option<String>,
     pub purpose: ConciergeRefusalPurpose,
     /// `refusal-not-permitted` only: what barred the reroute (v4 `4d370a90f`,
-    /// #75). `None` reads as the Concierge mode.
+    /// #75) — since `3b463d6b1` (#76) only ever Locked, and the sentences no
+    /// longer read it (an off-duty Concierge announces nothing at all).
     pub reason: Option<ConciergeRefusalBar>,
 }
 
-/// What barred a reroute (v4 `ConciergeRefusalDetails.reason: 'locked' |
-/// 'mode'`, `4d370a90f`). #75 keeps the `'mode'` sentences (the #73 ones this
-/// writer already carried); #76 (`3b463d6b1`) narrows the domain to `'locked'`
-/// and DELETES them — P4.D227's, not this file's at this pin.
+/// What barred a reroute (v4 `ConciergeRefusalDetails.reason?: 'locked'`).
+/// #75 (`4d370a90f`) had a second value, `'mode'`, with its own two sentences;
+/// #76 (`3b463d6b1`) narrowed the domain to `'locked'` and DELETED them — the
+/// Concierge's mode is gone, and off duty he announces nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConciergeRefusalBar {
     /// The chat is Locked.
     Locked,
-    /// The Concierge mode (Off / Detect Only).
-    Mode,
 }
 
 impl ConciergeRefusalBar {
     pub fn as_wire(self) -> &'static str {
         match self {
             Self::Locked => "locked",
-            Self::Mode => "mode",
         }
     }
 
     pub fn from_wire(s: &str) -> Option<Self> {
         match s {
             "locked" => Some(Self::Locked),
-            "mode" => Some(Self::Mode),
             _ => None,
         }
     }
@@ -659,15 +656,9 @@ pub fn build_refusal_content(
         ConciergeRefusalKind::RefusalNoUnderstudy => format!(
             "The Concierge regrets to report that {house} ({painter}) declined {voiced} on grounds of propriety, and he knows of no more obliging establishment to take it to. Should you care to name one, tick \"Uncensored-compatible\" on a suitable profile, or choose one in the Concierge's settings."
         ),
-        ConciergeRefusalKind::RefusalNotPermitted
-            if details.reason == Some(ConciergeRefusalBar::Locked) =>
-        {
-            format!(
-                "The Concierge observes that {house} ({painter}) declined {voiced} on grounds of propriety. This conversation is Locked to the usual desks, so the refusal stands; set it to Moderated should you wish him to take such things elsewhere."
-            )
-        }
+        // v4 `3b463d6b1` (#76): the one remaining bar is a Locked chat.
         ConciergeRefusalKind::RefusalNotPermitted => format!(
-            "The Concierge observes that {house} ({painter}) declined {voiced} on grounds of propriety. His present instructions forbid him from taking it elsewhere; were he set to Auto-Route, he would have done so."
+            "The Concierge observes that {house} ({painter}) declined {voiced} on grounds of propriety. This conversation is Locked to the usual desks, so the refusal stands; set it to Moderated should you wish him to take such things elsewhere."
         ),
     }
 }
@@ -690,15 +681,8 @@ pub fn build_refusal_opaque_content(
         ConciergeRefusalKind::RefusalNoUnderstudy => format!(
             "Provider {who} refused {plain} on content grounds. No uncensored profile is available to retry it; mark a profile \"Uncensored-compatible\" or choose one in the Concierge settings."
         ),
-        ConciergeRefusalKind::RefusalNotPermitted
-            if details.reason == Some(ConciergeRefusalBar::Locked) =>
-        {
-            format!(
-                "Provider {who} refused {plain} on content grounds. This chat is Locked, so it was not rerouted; set it to Moderated to allow an uncensored retry."
-            )
-        }
         ConciergeRefusalKind::RefusalNotPermitted => format!(
-            "Provider {who} refused {plain} on content grounds. The Concierge mode does not permit rerouting; Auto-Route would have retried it on an uncensored profile."
+            "Provider {who} refused {plain} on content grounds. This chat is Locked, so it was not rerouted; set it to Moderated to allow an uncensored retry."
         ),
     }
 }

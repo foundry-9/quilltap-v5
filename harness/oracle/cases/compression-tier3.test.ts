@@ -95,7 +95,8 @@ interface CallSpec {
     isLocal: boolean;
     profileParameters?: Record<string, unknown>;
   };
-  dangerSettings: { mode: string; uncensoredTextProfileId?: string } | null;
+  /** v4 `3b463d6b1` (#76): the stored `conciergeSettings` the policy resolves from (no chat); null = no policy. */
+  concierge: Record<string, unknown> | null;
   availableProfiles: ProfileSpec[] | null;
   completionRules: CompletionRule[];
 }
@@ -211,6 +212,7 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/llm-logs-client'
   );
   const { applyContextCompression } = await import('@/lib/chat/context/compression');
+  const { resolveConciergeSettings } = await import('@/lib/services/dangerous-content/resolver.service');
 
   await initializeDatabase();
 
@@ -218,7 +220,7 @@ async function main(): Promise<void> {
 
   for (const call of spec.calls) {
     currentCall = call;
-    // v4 builds `uncensoredFallback` from `dangerSettings && availableProfiles`;
+    // v4 builds `uncensoredFallback` from `conciergePolicy && availableProfiles`;
     // `isDangerousChat` is NOT part of `ContextCompressionOptions`.
     const result = await applyContextCompression(
       call.messages as never,
@@ -232,7 +234,9 @@ async function main(): Promise<void> {
         userId: call.userId,
         characterName: call.characterName,
         userName: call.userName,
-        ...(call.dangerSettings ? { dangerSettings: call.dangerSettings as never } : {}),
+        ...(call.concierge
+          ? { conciergePolicy: resolveConciergeSettings({ conciergeSettings: call.concierge as never }) }
+          : {}),
         ...(call.availableProfiles
           ? { availableProfiles: call.availableProfiles as never }
           : {}),

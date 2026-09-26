@@ -417,10 +417,11 @@ fn characters_reads_match_oracle() {
     // they come LAST (jest copies the fixture per case; the Rust side does not).
     // P4.D226 (v4 `4d370a90f`): re-keyed to the three states + provenance; the
     // legacy pair stays painted the wrong way round (ignored by both sides).
-    for (name, over, danger, categories, mode, by, why) in [
+    // P4.D227 (v4 `3b463d6b1`, #76): the legacy column is DROPPED; only the
+    // wrong-way label remains painted.
+    for (name, danger, categories, mode, by, why) in [
         (
             "chats_locked_over_true_label",
-            "'OFF'",
             "1",
             "NULL",
             "'locked'",
@@ -429,7 +430,6 @@ fn characters_reads_match_oracle() {
         ),
         (
             "chats_unmoderated_by_operator_over_false_label",
-            "'UNCENSORED'",
             "0",
             "NULL",
             "'unmoderated'",
@@ -438,7 +438,6 @@ fn characters_reads_match_oracle() {
         ),
         (
             "chats_unmoderated_by_classifier_with_categories",
-            "NULL",
             "1",
             "'[\"Violence\",\"Substance Use\"]'",
             "'unmoderated'",
@@ -447,7 +446,7 @@ fn characters_reads_match_oracle() {
         ),
     ] {
         let sql = format!(
-            "UPDATE \"chats\" SET \"conciergeOverride\" = {over}, \"isDangerousChat\" = {danger}, \
+            "UPDATE \"chats\" SET \"isDangerousChat\" = {danger}, \
              \"dangerCategories\" = {categories}, \"conciergeMode\" = {mode}, \
              \"conciergeModeSetBy\" = {by}, \"conciergeModeReason\" = {why} WHERE \"id\" = '{CHAT}'"
         );

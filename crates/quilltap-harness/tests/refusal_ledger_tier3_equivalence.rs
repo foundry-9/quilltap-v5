@@ -10,15 +10,17 @@
 //! and the `chat_messages` dump (the Concierge's auto-flag bubble, one per
 //! switch — the concurrent pair must post exactly ONE).
 //!
-//! Arms: below / at / over the threshold, a per-user threshold of 3, threshold
-//! 0 under DETECT_ONLY (the gate ORDER — v4 says "off", not "mode"), DETECT_ONLY
-//! at the threshold, a vouched chat and an already-flagged one (recorded, never
+//! Arms: below / at / over the threshold, a per-user threshold of 3, the
+//! auto-switch set to 0 on duty, the Concierge OFF DUTY at a threshold of 2
+//! (v4 `3b463d6b1`, #76: the policy folds off duty into a threshold of 0, so
+//! the ledger counts and nothing ever switches — ONE "off for this chat"
+//! line), a vouched chat and an already-flagged one (recorded, never
 //! switched), the re-read race (an operator vouch planted mid-check →
 //! abandoned), `inferred` and an absent evidence (never recorded), an empty
 //! chat id, a missing chat (the repository's `0`, then "chat not found"), a
 //! direct check with no last refusal (the bubble without a provider), two
-//! checks landing together, a user with no settings row (v4's defaults: mode
-//! OFF).
+//! checks landing together, a user with no settings row (v4's defaults: on
+//! duty at a threshold of 2).
 //!
 //! Regenerate the oracle (Node 24, from the v4 checkout; stage the case OUTSIDE
 //! any `.claude/` path — v4's jest ignores `/\.claude/`). While v4 HEAD is past

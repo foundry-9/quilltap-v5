@@ -397,13 +397,14 @@ fn projects_routes_match_oracle() {
         let db = fresh_db(&spec, "lcos");
         mutate(
             &db,
-            r#"UPDATE "chats" SET "conciergeOverride" = ?1, "isDangerousChat" = 1 WHERE "id" = ?2"#,
-            vec!["OFF".into(), CHAT_A.into()],
+            // P4.D227 (v4 `3b463d6b1`, #76): `conciergeOverride` is DROPPED.
+            r#"UPDATE "chats" SET "isDangerousChat" = 1 WHERE "id" = ?1"#,
+            vec![CHAT_A.into()],
         );
         mutate(
             &db,
-            r#"UPDATE "chats" SET "conciergeOverride" = ?1, "isDangerousChat" = 0 WHERE "id" = ?2"#,
-            vec!["UNCENSORED".into(), CHAT_B.into()],
+            r#"UPDATE "chats" SET "isDangerousChat" = 0 WHERE "id" = ?1"#,
+            vec![CHAT_B.into()],
         );
         // P4.D226 (v4 `4d370a90f`): the states the rows derive from.
         mutate(

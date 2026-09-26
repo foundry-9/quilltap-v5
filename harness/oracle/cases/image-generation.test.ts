@@ -115,12 +115,13 @@ interface ChatSpec {
   /** RAW tool arguments (see the call site) — deliberately `unknown`. */
   toolInput?: unknown;
   /**
-   * [cc65d6bfc / bug 133] The case's own `chat_settings.dangerousContentSettings`
+   * [cc65d6bfc / bug 133] The case's own `chat_settings.conciergeSettings` (v4 `3b463d6b1`, #76 —
+   * `dangerousContentSettings` before)
    * bag, patched onto the fresh copy before the handler runs (one chat-settings
    * row, one user — so a per-case danger bag has to be fixture state applied
    * here, identically on both sides). The story family's shape.
    */
-  dangerousContentSettings?: Record<string, unknown>;
+  conciergeSettings?: Record<string, unknown>;
   /** P4.104: the image profile this case generates through (default `spec.profileId`). */
   profileId?: string;
   /**
@@ -429,10 +430,10 @@ async function main(): Promise<void> {
       await rawQuery('DELETE FROM "instance_settings" WHERE "key" = ?', ['lanternBackgroundsMountPointId']);
     }
 
-    // [cc65d6bfc / bug 133] The case's own danger settings, onto this copy only.
-    if (chat.dangerousContentSettings) {
-      await rawQuery('UPDATE chat_settings SET dangerousContentSettings = ? WHERE userId = ?', [
-        JSON.stringify(chat.dangerousContentSettings),
+    // [cc65d6bfc / bug 133] The case's own Concierge settings (v4 `3b463d6b1`, #76), onto this copy only.
+    if (chat.conciergeSettings) {
+      await rawQuery('UPDATE chat_settings SET conciergeSettings = ? WHERE userId = ?', [
+        JSON.stringify(chat.conciergeSettings),
         spec.userId,
       ]);
     }

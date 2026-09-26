@@ -14,7 +14,9 @@
  *   3. Image profiles (OPENAI + GROK) + two connection profiles (a cheap OPENAI
  *      default + an OLLAMA one used as the imagePromptProfileId uncensored retry
  *      selection).
- *   4. One OFF chat-settings row (imagePromptProfileId = the OLLAMA profile).
+ *   4. One chat-settings row: v4's migration of the retired OFF bag for a user
+ *      with an Unmoderated chat (on duty, the pre-screen off), the desk's
+ *      imagePromptProfileId = the OLLAMA profile (v4 `3b463d6b1`, #76).
  *   5. A provisioned Quilltap General store carrying lantern/aurora-aesthetics.md +
  *      a provisioned Lantern Backgrounds store + a project P (backgroundDisplayMode
  *      latest_chat) whose official store carries its OWN lantern/aurora-aesthetics.md.
@@ -61,7 +63,6 @@ interface ChatSpec {
    * the four-state feature's motivating regression: the operator asserts the
    * chat spicy, the global mode is OFF, and the prompt must still go out candid.
    */
-  conciergeOverride?: 'OFF' | 'UNCENSORED';
   /** P4.D226: the three-state Concierge columns (v4 `4d370a90f`). */
   conciergeMode?: 'moderated' | 'unmoderated' | 'locked';
   conciergeModeSetBy?: 'operator' | 'concierge';
@@ -77,11 +78,12 @@ interface ChatSpec {
    */
   participants?: Array<{ characterId: string; status: 'active' | 'silent' | 'absent' | 'removed' }>;
   /**
-   * [decd8ef9] The per-case `chat_settings.dangerousContentSettings` bag. NOT
+   * [decd8ef9] The per-case `chat_settings.conciergeSettings` (v4 `3b463d6b1`,
+   * #76 — `dangerousContentSettings` before). NOT
    * baked in here (one row, one user): both sides UPDATE it on their own fresh
    * copy before the case runs. Declared so the shape lives in one place.
    */
-  dangerousContentSettings?: Record<string, unknown>;
+  conciergeSettings?: Record<string, unknown>;
   expectWrite: boolean;
   expectDerive: boolean;
 }
@@ -329,7 +331,6 @@ async function main(): Promise<void> {
     const extra: Record<string, unknown> = {};
     if (chat.projectId) extra.projectId = chat.projectId;
     if (chat.isDangerousChat) extra.isDangerousChat = true;
-    if (chat.conciergeOverride) extra.conciergeOverride = chat.conciergeOverride;
     // P4.D226 (v4 `4d370a90f`): the state the legacy pair used to MEAN.
     if (chat.conciergeMode) extra.conciergeMode = chat.conciergeMode;
     if (chat.conciergeModeSetBy) extra.conciergeModeSetBy = chat.conciergeModeSetBy;

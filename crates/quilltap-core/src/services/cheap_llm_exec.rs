@@ -88,7 +88,8 @@ impl<T> CheapLlmTaskResult<T> {
 
 /// v4 `shouldAttemptUncensoredFallback`: whether an empty response should be
 /// retried on the configured uncensored provider, and with which selection.
-/// Only in `AUTO_ROUTE` mode with an uncensored text profile configured; a
+/// Only when the Concierge policy allows failover (v4 `3b463d6b1`, #76 —
+/// on duty and not Locked) with an uncensored text profile at the desk; a
 /// dangerous-compatible current profile suppresses it unless the chat itself
 /// is dangerous (uncensored→uncensored fallback allowed there).
 fn should_attempt_uncensored_fallback(
@@ -100,13 +101,16 @@ fn should_attempt_uncensored_fallback(
         return None;
     }
     let options = uncensored_fallback?;
-    let danger = options.danger_settings;
+    let policy = options.concierge_policy;
 
-    if danger.mode != "AUTO_ROUTE" {
+    // Only attempt when the Concierge policy allows a refusal to fail over.
+    if !policy.failover_allowed {
         return None;
     }
-    let uncensored_id = danger
-        .uncensored_text_profile_id
+    // Need an uncensored text profile at the desk.
+    let uncensored_id = policy
+        .desk
+        .text_profile_id
         .as_deref()
         .filter(|s| !s.is_empty())?;
 
@@ -1506,7 +1510,7 @@ pub fn activity_kind_for_task(task_type: Option<&str>) -> ActivityKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cheap_llm::{CheapLlmProfile, DangerousContentSettings};
+    use crate::cheap_llm::CheapLlmProfile;
     use crate::db::runtime::DbPaths;
     use crate::db::Writer;
     use crate::model::completion::CannedCompletionProvider;
@@ -3056,10 +3060,8 @@ mod tests {
             first_provider: "ANTHROPIC".to_string(),
             first_delay_ms: 30_000,
         };
-        let danger = DangerousContentSettings {
-            mode: "AUTO_ROUTE".to_string(),
-            uncensored_text_profile_id: Some("u1".to_string()),
-        };
+        let danger =
+            crate::services::dangerous_content::resolver::test_policy("AUTO_ROUTE", Some("u1"));
         let profiles = vec![
             CheapLlmProfile {
                 id: "cur".to_string(),
@@ -3075,7 +3077,7 @@ mod tests {
             },
         ];
         let options = UncensoredFallbackOptions {
-            danger_settings: &danger,
+            concierge_policy: &danger,
             available_profiles: &profiles,
             is_dangerous_chat: None,
         };
@@ -3123,10 +3125,8 @@ mod tests {
             first_provider: "ANTHROPIC".to_string(),
             first_delay_ms: 30_000,
         };
-        let danger = DangerousContentSettings {
-            mode: "AUTO_ROUTE".to_string(),
-            uncensored_text_profile_id: Some("u1".to_string()),
-        };
+        let danger =
+            crate::services::dangerous_content::resolver::test_policy("AUTO_ROUTE", Some("u1"));
         let profiles = vec![
             CheapLlmProfile {
                 id: "cur".to_string(),
@@ -3142,7 +3142,7 @@ mod tests {
             },
         ];
         let options = UncensoredFallbackOptions {
-            danger_settings: &danger,
+            concierge_policy: &danger,
             available_profiles: &profiles,
             is_dangerous_chat: None,
         };
@@ -3374,10 +3374,8 @@ mod tests {
         let exec = CheapLlmTaskExecutor::new();
         let sel = selection("ANTHROPIC", "safe");
 
-        let danger = DangerousContentSettings {
-            mode: "AUTO_ROUTE".to_string(),
-            uncensored_text_profile_id: Some("u1".to_string()),
-        };
+        let danger =
+            crate::services::dangerous_content::resolver::test_policy("AUTO_ROUTE", Some("u1"));
         let profiles = vec![
             CheapLlmProfile {
                 id: "cur".to_string(),
@@ -3393,7 +3391,7 @@ mod tests {
             },
         ];
         let options = UncensoredFallbackOptions {
-            danger_settings: &danger,
+            concierge_policy: &danger,
             available_profiles: &profiles,
             is_dangerous_chat: None,
         };

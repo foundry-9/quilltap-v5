@@ -138,6 +138,7 @@ impl ImageDescribeDriver for TestDescribeRunner {
     fn describe<'a>(
         &'a self,
         file: FallbackFile,
+        chat_id: Option<&'a str>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = FallbackResult> + Send + 'a>> {
         Box::pin(async move {
             let transcoder = NotConfiguredTranscoder;
@@ -146,6 +147,7 @@ impl ImageDescribeDriver for TestDescribeRunner {
                 completion: &*self.completion,
                 transcoder: &transcoder,
                 user_id: &self.user_id,
+                chat_id,
                 now_ms: NOW_MS,
             };
             file_fallback::generate_image_description(&deps, &file).await
@@ -283,6 +285,15 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     {
         let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
         quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+        // P4.D227 (v4 `3b463d6b1`, #76): the pair's migrated settings are off
+        // duty (the retired OFF bag, no Unmoderated chat), which withholds the
+        // uncensored vision retry — on duty on this copy, the oracle's SQL.
+        w.connection()
+            .execute(
+                "UPDATE chat_settings SET conciergeSettings = json_set(conciergeSettings, '$.enabled', json('true')) WHERE userId = ?",
+                [&spec.user_id],
+            )
+            .unwrap();
     }
     Db::open(
         DbPaths {
@@ -763,6 +774,7 @@ fn a_second_attach_of_a_twinned_blob_does_not_re_run_vision() {
         fn describe<'a>(
             &'a self,
             _file: FallbackFile,
+            _chat_id: Option<&'a str>,
         ) -> std::pin::Pin<Box<dyn std::future::Future<Output = FallbackResult> + Send + 'a>>
         {
             self.calls.fetch_add(1, Ordering::SeqCst);

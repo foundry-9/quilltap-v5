@@ -19,15 +19,19 @@
 //! message ids placeholdered). Then the `chats` + `chat_messages` dumps.
 //!
 //! The six exits in order: answered first time; not a refusal (untouched, no
-//! trail); refused under a non-Auto-Route mode (`refusal-not-permitted`); no
-//! understudy (`refusal-no-understudy`); the understudy answers
+//! trail); refused on a Locked chat (`refusal-not-permitted`) or with the
+//! Concierge off duty (v4 `3b463d6b1`, #76: NO announcement, the ledger still
+//! counts); no understudy (`refusal-no-understudy`); the understudy answers
 //! (`refusal-rerouted`, the ledger `rerouted: true`); the understudy fails —
 //! refused / network / unclassified (no announcement, the PRIMARY's verdict on
 //! the ledger). Plus: chatless calls (the `No chat to announce` line, no
 //! ledger), connection-kind rows (no `profileKind`), a pre-flight-rerouted
 //! primary (`via: concierge`, the configured profile excluded), the
 //! provider-code and message-pattern evidences, a detail truncated at 200, and
-//! a planted ledger the reroute tips into the auto-switch.
+//! a planted ledger the reroute tips into the auto-switch. And #76's two
+//! refusal-time re-reads: the operator sends the Concierge off duty while the
+//! provider is thinking (the on-duty INFO; no reroute), and a chat Locked when
+//! the call began is unlocked by then (the policy said no; it fails over).
 //!
 //! Regenerate the oracle (Node 24, from the v4 checkout; stage the case OUTSIDE
 //! any `.claude/` path — v4's jest ignores `/\.claude/`). While v4 HEAD is past
@@ -54,7 +58,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use quilltap_core::db::chat_settings::DangerousContentSettings;
+use quilltap_core::db::chat_settings::zod_parse_concierge_settings;
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::model::image::ImageGenError;
@@ -64,6 +68,7 @@ use quilltap_core::services::dangerous_content::image_failover::{
 };
 use quilltap_core::services::dangerous_content::provider_routing::ApiKeyResolver;
 use quilltap_core::services::dangerous_content::refusal::RefusalError;
+use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
 use quilltap_core::services::route_trail::{RouteAttemptVia, RouteProfileKind};
 use quilltap_core::test_support::captured_with;
 use serde_json::{json, Value};
@@ -302,17 +307,13 @@ fn image_failover_matches_v4() {
         let kind = case["profileKind"].as_str().unwrap_or("image");
         let primary_row = find(case["primary"].as_str().unwrap(), kind);
         let primary_key = keys[primary_row["apiKeyId"].as_str().unwrap()].clone();
-        let settings: DangerousContentSettings = serde_json::from_value(json!({
-            "mode": case["settings"]["mode"],
-            "threshold": 0.7,
-            "scanTextChat": true,
-            "scanImagePrompts": true,
-            "scanImageGeneration": false,
-            "displayMode": "SHOW",
-            "showWarningBadges": true,
-            "uncensoredImageProfileId": case["settings"].get("uncensoredImageProfileId"),
-        }))
-        .expect("settings");
+        // v4 `3b463d6b1` (#76): the policy resolved from the case's stored
+        // `conciergeSettings` (through the schema, as the builder stores it),
+        // WITH the chat snapshot where the case names one.
+        let (stored, issues) = zod_parse_concierge_settings(&case["concierge"]);
+        assert!(issues.is_empty(), "{name}: concierge settings parse");
+        let chat_snapshot = case.get("chat").cloned().filter(|c| !c.is_null());
+        let policy = resolve_stored_concierge_settings(Some(&stored), chat_snapshot.as_ref());
         let source = if case.get("customUnderstudy").is_some() {
             Source::Connection(ConnectionUnderstudy {
                 found: case["customUnderstudy"].as_str().map(|id| {
@@ -326,15 +327,15 @@ fn image_failover_matches_v4() {
                 db: &db,
                 api_keys: &api_keys,
                 user_id: case["userId"].as_str().unwrap(),
-                uncensored_image_profile_id: settings.uncensored_image_profile_id.as_deref(),
+                uncensored_image_profile_id: policy.desk.image_profile_id.as_deref(),
             })
         };
         // P4.D226 (v4 `4d370a90f`): the chat's state when the call began.
-        let chat_snapshot = case.get("chat").cloned();
         let ctx = ImageFailoverContext {
             db: &db,
             chat_id: case["chatId"].as_str(),
-            chat: chat_snapshot.as_ref().filter(|c| !c.is_null()),
+            user_id: case["userId"].as_str().unwrap(),
+            chat: chat_snapshot.as_ref(),
             purpose: match case["purpose"].as_str().unwrap() {
                 "tool" => ImagePurpose::Tool,
                 "lantern" => ImagePurpose::Lantern,
@@ -342,7 +343,7 @@ fn image_failover_matches_v4() {
                 "dialog" => ImagePurpose::Dialog,
                 other => panic!("purpose {other}"),
             },
-            settings: &settings,
+            concierge_policy: &policy,
             understudy: &source,
             profile_kind: if kind == "connection" {
                 RouteProfileKind::Connection
@@ -391,7 +392,9 @@ fn image_failover_matches_v4() {
                 }
                 let step = {
                     let mut s = script.lock().unwrap();
-                    let steps = s.get_mut(&profile.id).expect("scripted profile");
+                    let steps = s
+                        .get_mut(&profile.id)
+                        .unwrap_or_else(|| panic!("{name}: {} is not scripted", profile.id));
                     assert!(!steps.is_empty(), "{name}: no step left for {}", profile.id);
                     steps.remove(0)
                 };

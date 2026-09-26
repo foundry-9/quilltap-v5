@@ -1412,12 +1412,12 @@ pub async fn memory_regenerate_all(db: &Db, user_id: &str) -> Response {
         let Some(standard) = standard else {
             return Ok(None);
         };
-        let uncensored_id = settings
-            .as_ref()
-            .and_then(|s| s.get("dangerousContentSettings"))
-            .and_then(|d| d.get("uncensoredTextProfileId"))
-            .and_then(Value::as_str)
-            .map(str::to_string);
+        // v4 `3b463d6b1` (#76): `readConciergeSettings(settings).uncensoredTextProfileId
+        // ?? null` — the desk's text profile moved into `conciergeSettings`.
+        let uncensored_id = crate::services::dangerous_content::resolver::read_concierge_settings(
+            settings.as_ref(),
+        )
+        .uncensored_text_profile_id;
         let is_cheap = |p: &Value| p.get("isCheap").and_then(Value::as_bool) == Some(true);
         let is_dangerous =
             |p: &Value| p.get("isDangerousCompatible").and_then(Value::as_bool) == Some(true);

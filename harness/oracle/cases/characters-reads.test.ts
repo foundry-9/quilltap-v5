@@ -56,7 +56,6 @@ interface CaseSpec {
    * the fresh fixture copy, mirrored on the Rust side. */
   setConcierge?: {
     chatId: string;
-    conciergeOverride: 'OFF' | 'UNCENSORED' | null;
     isDangerousChat: boolean | null;
     dangerCategories: string[] | null;
     /** P4.D226 (v4 `4d370a90f`): the three-state columns the row derives from. */
@@ -158,10 +157,10 @@ async function runCase(
 
   await initializeDatabase();
 
+  // P4.D227 (v4 `3b463d6b1`, #76): `conciergeOverride` is DROPPED at this pin — the legacy half is gone from the plant.
   // P4.D143: paint the Concierge state the committed fixture cannot express.
   if (c.setConcierge) {
-    rawQuery('UPDATE "chats" SET "conciergeOverride" = ?, "isDangerousChat" = ?, "dangerCategories" = ? WHERE "id" = ?', [
-      c.setConcierge.conciergeOverride,
+    rawQuery('UPDATE "chats" SET "isDangerousChat" = ?, "dangerCategories" = ? WHERE "id" = ?', [
       c.setConcierge.isDangerousChat === null ? null : c.setConcierge.isDangerousChat ? 1 : 0,
       c.setConcierge.dangerCategories === null ? null : JSON.stringify(c.setConcierge.dangerCategories),
       c.setConcierge.chatId,
@@ -301,7 +300,7 @@ async function main(): Promise<void> {
       module: '@/app/api/v1/characters/[id]/route',
       url: `${B}/${aria}?action=chats`,
       params: { id: aria },
-      setConcierge: { chatId: CHAT, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: null,
+      setConcierge: { chatId: CHAT, isDangerousChat: true, dangerCategories: null,
         conciergeMode: 'locked', conciergeModeSetBy: 'operator', conciergeModeReason: 'migration' },
     },
     {
@@ -309,7 +308,7 @@ async function main(): Promise<void> {
       module: '@/app/api/v1/characters/[id]/route',
       url: `${B}/${aria}?action=chats`,
       params: { id: aria },
-      setConcierge: { chatId: CHAT, conciergeOverride: 'UNCENSORED', isDangerousChat: false, dangerCategories: null,
+      setConcierge: { chatId: CHAT, isDangerousChat: false, dangerCategories: null,
         conciergeMode: 'unmoderated', conciergeModeSetBy: 'operator', conciergeModeReason: 'manual' },
     },
     {
@@ -317,7 +316,7 @@ async function main(): Promise<void> {
       module: '@/app/api/v1/characters/[id]/route',
       url: `${B}/${aria}?action=chats`,
       params: { id: aria },
-      setConcierge: { chatId: CHAT, conciergeOverride: null, isDangerousChat: true, dangerCategories: ['Violence', 'Substance Use'],
+      setConcierge: { chatId: CHAT, isDangerousChat: true, dangerCategories: ['Violence', 'Substance Use'],
         conciergeMode: 'unmoderated', conciergeModeSetBy: 'concierge', conciergeModeReason: 'classifier' },
     },
     // P4.6i: ST export (JSON leg) — the chara_card_v2 card. The handler returns a

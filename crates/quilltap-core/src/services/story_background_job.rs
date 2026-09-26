@@ -41,7 +41,10 @@ use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::gatekeeper::ModerationProvider;
 use crate::services::dangerous_content::image_failover::{FailoverProfile, ImagePurpose};
-use crate::services::dangerous_content::provider_routing::ApiKeyResolver;
+use crate::services::dangerous_content::provider_routing::{
+    resolve_image_provider_for_dangerous_content, ApiKeyResolver, RouteProfile,
+};
+use crate::services::dangerous_content::resolver::resolve_concierge_settings;
 use crate::services::image_job_common as common;
 use crate::services::image_job_storage::write_lantern_background_to_mount_store;
 use crate::services::image_scene_tasks::{
@@ -286,11 +289,13 @@ where
         return Ok(());
     };
 
-    // Concierge settings.
-    let danger_settings = common::resolve_danger_settings_for_chat(chat_settings.as_ref(), &chat);
+    // Resolve the Concierge policy early (needed for uncensored routing and
+    // appearance sanitization; v4 `3b463d6b1`).
+    let concierge_policy = resolve_concierge_settings(chat_settings.as_ref(), Some(&chat));
     let is_dangerous_chat = should_use_uncensored_route(Some(&chat));
-    let has_uncensored_image_provider = danger_settings
-        .uncensored_image_profile_id
+    let has_uncensored_image_provider = concierge_policy
+        .desk
+        .image_profile_id
         .as_deref()
         .map(|s| !s.is_empty())
         .unwrap_or(false);
@@ -300,12 +305,22 @@ where
     // `sanitize_appearances_if_needed` rule 2), so the prompt crafter should too
     // rather than draping a sheet over a scene nobody asked to have covered.
     //
-    // Only under Auto-Route (v4 `8bd080267`): a candid prompt is never crafted
-    // for a route that cannot reroute, or a Flagged chat under Detect Only
-    // would send its franker prompt straight to the moderated provider. A
-    // PROMPT-CRAFTING change, not only a reroute one.
+    // Only when the policy routes direct (on duty and Unmoderated — v4
+    // `3b463d6b1`; it was Auto-Route since `8bd080267`): a candid prompt is
+    // never crafted for a chat the Concierge will not send to the uncensored
+    // desk, or its franker prompt would go straight to the moderated provider.
+    // A PROMPT-CRAFTING change, not only a reroute one.
     let uncensored_image_target =
-        is_dangerous_chat && has_uncensored_image_provider && danger_settings.mode == "AUTO_ROUTE";
+        is_dangerous_chat && has_uncensored_image_provider && concierge_policy.route_direct;
+    tracing::debug!(
+        target: "quilltap::story_background",
+        context = "background-jobs.story-background",
+        job_id = job_id,
+        concierge_source = concierge_policy.source.as_str(),
+        concierge_state = concierge_policy.state.as_str(),
+        uncensored_image_target,
+        "[StoryBackground] Concierge policy resolved"
+    );
 
     // Dangerous chats: upgrade the cheap selection for all cheap tasks.
     if is_dangerous_chat {
@@ -313,14 +328,10 @@ where
             .iter()
             .map(common::cheap_llm_profile_from_value)
             .collect();
-        let cheap_danger = crate::cheap_llm::DangerousContentSettings {
-            mode: danger_settings.mode.clone(),
-            uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
-        };
         cheap_selection = resolve_uncensored_cheap_llm_selection(
             cheap_selection,
             true,
-            Some(&cheap_danger),
+            Some(&concierge_policy),
             &profiles,
         );
     }
@@ -349,8 +360,12 @@ where
     .await
     .map_err(|e| e.to_string())?;
 
-    // Uncensored cheap selection (from `imagePromptProfileId`).
-    let uncensored_selection = build_uncensored_selection(&all_profiles, cheap_settings);
+    // Uncensored cheap selection (from the Concierge desk's
+    // `imagePromptProfileId` — v4 `3b463d6b1` moved it out of `cheapLLMSettings`).
+    let uncensored_selection = build_uncensored_selection(
+        &all_profiles,
+        concierge_policy.desk.image_prompt_profile_id.as_deref(),
+    );
 
     // Appearance selection: uncensored for a dangerous chat if available, else cheap.
     let used_uncensored_for_appearance = is_dangerous_chat && uncensored_selection.is_some();
@@ -473,7 +488,7 @@ where
                 deps.moderation,
                 deps.completion,
                 appearances.clone(),
-                &danger_settings,
+                &concierge_policy,
                 is_dangerous_chat,
                 // [cc65d6bfc] Story backgrounds never route up front — only an
                 // `uncensored_image_target` scene actually reaches the
@@ -562,11 +577,66 @@ where
             })
             .collect();
 
+    // An Unmoderated chat with an uncensored image profile goes straight to the
+    // uncensored desk (`route_direct`): the candid prompt crafted below must
+    // never be sent to the ordinary painter first (v4 `3b463d6b1`, #76).
+    let image_profile_id = common::str_field(&image_profile, "id")
+        .unwrap_or("")
+        .to_string();
+    let mut primary_image_profile = FailoverProfile {
+        id: image_profile_id.clone(),
+        name: common::str_field(&image_profile, "name")
+            .unwrap_or("")
+            .to_string(),
+        provider: image_provider_name.clone(),
+        model_name: image_model.clone(),
+        row: Value::Null,
+    };
+    let mut primary_image_key = api_key.clone();
+    if uncensored_image_target {
+        let original = RouteProfile {
+            id: primary_image_profile.id.clone(),
+            name: primary_image_profile.name.clone(),
+            provider: primary_image_profile.provider.clone(),
+            model_name: primary_image_profile.model_name.clone(),
+            base_url: common::owned_field(&image_profile, "baseUrl"),
+        };
+        let orig_key = api_key.clone();
+        let policy = concierge_policy.clone();
+        let uid = user_id.to_string();
+        let api_keys = deps.api_keys;
+        let route = db
+            .read_main(move |conn| {
+                Ok(resolve_image_provider_for_dangerous_content(
+                    conn, api_keys, &original, &orig_key, &policy, &uid,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        if route.rerouted {
+            primary_image_profile = FailoverProfile {
+                id: route.image_profile.id,
+                name: route.image_profile.name,
+                provider: route.image_profile.provider,
+                model_name: route.image_profile.model_name,
+                row: Value::Null,
+            };
+            primary_image_key = route.api_key;
+        }
+        tracing::info!(
+            target: "quilltap::story_background",
+            context = "background-jobs.story-background",
+            job_id = job_id,
+            rerouted = route.rerouted,
+            profile_id = %primary_image_profile.id,
+            "[StoryBackground] Unmoderated chat: routed direct to the uncensored desk"
+        );
+    }
+
     // 10. Craft the background prompt.
     let craft_ctx = StoryBackgroundPromptContext {
         scene_context: scene_context.clone(),
         characters: character_descriptions.clone(),
-        provider: image_provider_name.clone(),
+        provider: primary_image_profile.provider.clone(),
         scene_aesthetic: scene_aesthetic.clone(),
         character_aesthetic: character_aesthetic.clone(),
         depiction_guidelines: depiction_for_task.clone(),
@@ -688,8 +758,9 @@ where
     // 10. Generate the image — through the Concierge's failover chokepoint (v4
     // `8bd080267`).
     //
-    // A refusal is retried once on an uncensored understudy under Auto-Route,
-    // in any chat state. The old gate (bug 133, `cc65d6bfc`) barred that for a
+    // A refusal is retried once on an uncensored understudy while the
+    // Concierge is on duty (v4 `3b463d6b1`; Auto-Route before), in any chat
+    // that is not Locked. The old gate (bug 133, `cc65d6bfc`) barred that for a
     // chat still Monitored, on the ground that a refusal should not "promote"
     // the chat. That concern belongs to the chat *switch*, not to a retry that
     // resends the same prompt to a provider that will take it: the prompt is
@@ -699,23 +770,16 @@ where
     //
     // Backgrounds default to landscape; every profile rebuilds its own params
     // (`…concierge-reroute` for any profile but the requested one).
-    let image_profile_id = common::str_field(&image_profile, "id")
-        .unwrap_or("")
-        .to_string();
+    // The primary is `primary_image_profile` — the uncensored desk when an
+    // Unmoderated chat was routed direct above; the reroute suffix and the
+    // `…concierge-reroute` context still key on the REQUESTED profile (v4
+    // `profile.id !== imageProfile.id`).
     let failover = match common::generate_job_image(
         db,
         deps.image_provider,
         deps.api_keys,
-        FailoverProfile {
-            id: image_profile_id.clone(),
-            name: common::str_field(&image_profile, "name")
-                .unwrap_or("")
-                .to_string(),
-            provider: image_provider_name.clone(),
-            model_name: image_model.clone(),
-            row: Value::Null,
-        },
-        api_key.clone(),
+        primary_image_profile,
+        primary_image_key,
         &image_profile_id,
         None,
         &image_profile_id,
@@ -724,7 +788,7 @@ where
         deps.declarations_for,
         "background-jobs.story-background",
         "background-jobs.story-background.concierge-reroute",
-        &danger_settings,
+        &concierge_policy,
         user_id,
         Some(&payload.chat_id),
         Some(&chat),
@@ -744,7 +808,7 @@ where
                 error = %error.error.message,
                 is_dangerous_chat = is_dangerous_chat,
                 has_uncensored_image_provider = has_uncensored_image_provider,
-                danger_mode = %danger_settings.mode,
+                concierge_source = concierge_policy.source.as_str(),
                 conciergeTrailJson = common::concierge_trail_log_json(&error).as_deref(),
                 "[StoryBackground] Image generation failed"
             );
@@ -1204,12 +1268,9 @@ fn build_appearance_inputs(
 /// baseUrl `http://localhost:11434`).
 fn build_uncensored_selection(
     all_profiles: &[Value],
-    cheap_settings: Option<&Value>,
+    image_prompt_profile_id: Option<&str>,
 ) -> Option<CheapLlmSelection> {
-    let profile_id = cheap_settings?
-        .get("imagePromptProfileId")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())?;
+    let profile_id = image_prompt_profile_id.filter(|s| !s.is_empty())?;
     let profile = all_profiles
         .iter()
         .find(|p| p.get("id").and_then(Value::as_str) == Some(profile_id))?;

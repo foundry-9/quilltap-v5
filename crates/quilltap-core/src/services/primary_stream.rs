@@ -1255,8 +1255,9 @@ pub async fn run_primary_stream<P, S, FR, RT, CMP>(
     sink: &S,
     preserve: &mut PreservePartialOnError,
     repos: Option<&FR>,
-    // v4 `dangerSettings` (`8bd080267`, #73): a thrown content refusal is
-    // retried on the uncensored understudy under Auto-Route before the
+    // v4 `conciergePolicy` (`dangerSettings` at `8bd080267`, #73; the policy
+    // since `3b463d6b1`, #76): a thrown content refusal is retried on the
+    // uncensored understudy when the policy allows failover, before the
     // fallback chain runs — and recorded on the chat's ledger either way.
     concierge: super::provider_failover::ConciergeFailoverSeam<'_, RT, CMP>,
     opts: RunPrimaryStreamOptions<'_>,
@@ -1660,11 +1661,15 @@ mod tests {
                 crate::services::dangerous_content::chat_override::ConciergeState::Moderated,
             )
         }
+
+        fn read_current_concierge_on_duty(&self, _user_id: &str, snapshot: bool) -> bool {
+            snapshot
+        }
         async fn resolve(
             &self,
             p: &EffectiveProfile,
             k: &str,
-            _s: &crate::services::provider_failover::DangerSettings,
+            _s: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             _u: &str,
             _mimes: &[String],
         ) -> crate::services::provider_failover::RouteResult {
@@ -1673,12 +1678,13 @@ mod tests {
                 connection_profile: p.clone(),
                 api_key: k.to_string(),
                 profile_row: None,
+                reason: String::new(),
             }
         }
         async fn resolve_understudy(
             &self,
             _user_id: &str,
-            _settings: &crate::services::provider_failover::DangerSettings,
+            _settings: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             _exclude: &[String],
             _mimes: &[String],
         ) -> Option<crate::services::provider_failover::TextUnderstudy> {
@@ -1706,7 +1712,7 @@ mod tests {
         crate::services::provider_failover::ConciergeFailoverSeam {
             router: &NoConcierge,
             concierge_state: None,
-            danger_settings: None,
+            concierge_policy: None,
             adapter: None,
         }
     }

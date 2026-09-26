@@ -846,7 +846,28 @@ fn restore_on_writer(
     // ── 16. Chat settings ────────────────────────────────────────────────────
     {
         let repo = crate::db::chat_settings::ChatSettingsRepository::new(main);
-        for row in &data.chat_settings {
+        // A pre-4.10 backup carries the retired Concierge settings and no
+        // conciergeSettings; translate them before the schema strips the old
+        // keys (v4 `3b463d6b1`, #76 — the flag reads the BACKUP's chats).
+        let backup_has_unmoderated_chats =
+            crate::services::backup::uuid_remap::backup_has_unmoderated_chats(&data.chats);
+        for raw_row in &data.chat_settings {
+            let translated =
+                crate::services::dangerous_content::legacy_concierge_settings::with_concierge_settings_from_legacy(
+                    raw_row,
+                    backup_has_unmoderated_chats,
+                );
+            // v4 `settings !== rawSettings` — the translation returns the
+            // record untouched when it already carried a truthy object.
+            if &translated != raw_row {
+                tracing::debug!(
+                    target: "quilltap::restore",
+                    settings_id = %id_of(raw_row),
+                    backup_has_unmoderated_chats,
+                    "Translated pre-4.10 Concierge settings for restore"
+                );
+            }
+            let row = &translated;
             let create: crate::db::chat_settings::ChatSettingsCreate =
                 match serde_json::from_value(row.clone()) {
                     Ok(v) => v,

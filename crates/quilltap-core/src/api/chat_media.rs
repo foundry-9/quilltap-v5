@@ -1492,9 +1492,13 @@ fn server_error_regenerate() -> Response {
 /// ⚠ LIVE means real money: one vision-LLM call per attach of an undescribed
 /// image (the cached / kept-image / non-image arms never reach the driver).
 pub trait ImageDescribeDriver: Send + Sync {
+    /// `chat_id` is v4's `ImageDescriptionOptions.chatId` (`3b463d6b1`, #76):
+    /// the chat the image is being described for, whose Concierge state
+    /// decides the uncensored vision fallback.
     fn describe<'a>(
         &'a self,
         file: crate::services::file_fallback::FallbackFile,
+        chat_id: Option<&'a str>,
     ) -> Pin<Box<dyn Future<Output = crate::services::file_fallback::FallbackResult> + Send + 'a>>;
 }
 
@@ -1510,6 +1514,8 @@ pub trait ImageDescribeDriver: Send + Sync {
 async fn ensure_image_description(
     db: &Db,
     describe: Option<&Arc<dyn ImageDescribeDriver>>,
+    // v4 `3b463d6b1`: `ensureImageDescription(repos, userId, chatId, blob)`.
+    chat_id: &str,
     blob: &crate::db::doc_mount_blobs::BlobWithLink,
 ) -> String {
     use crate::db::doc_mount_blobs::DocMountBlobsRepository;
@@ -1552,18 +1558,21 @@ async fn ensure_image_description(
         base64::engine::general_purpose::STANDARD.encode(&bytes)
     };
     let result = describe
-        .describe(crate::services::file_fallback::FallbackFile {
-            id: blob.id.clone(),
-            // v4 `files/route.ts:220` passes `blob.originalFileName` raw — a
-            // nullable column (the import writes NULL when the bundle has none),
-            // so `undefined` reaches the describer there; the nearest String
-            // here is empty. (The `f45a517a9` round's unification: the joined
-            // blob row read this column as a bare `String` and a NULL took the
-            // whole attach down with `Invalid column type Null`.)
-            filename: blob.original_file_name.clone().unwrap_or_default(),
-            mime_type: blob.stored_mime_type.clone(),
-            data: Some(data),
-        })
+        .describe(
+            crate::services::file_fallback::FallbackFile {
+                id: blob.id.clone(),
+                // v4 `files/route.ts:220` passes `blob.originalFileName` raw — a
+                // nullable column (the import writes NULL when the bundle has none),
+                // so `undefined` reaches the describer there; the nearest String
+                // here is empty. (The `f45a517a9` round's unification: the joined
+                // blob row read this column as a bare `String` and a NULL took the
+                // whole attach down with `Invalid column type Null`.)
+                filename: blob.original_file_name.clone().unwrap_or_default(),
+                mime_type: blob.stored_mime_type.clone(),
+                data: Some(data),
+            },
+            Some(chat_id),
+        )
         .await;
 
     // v4 checks the UNTRIMMED description for emptiness, then trims.
@@ -1738,7 +1747,7 @@ pub async fn chat_attach_mount_file(
     }
     if description.is_empty() {
         let had_cached = !crate::jsstr::js_trim(&blob.description).is_empty();
-        description = ensure_image_description(db, describe, &blob).await;
+        description = ensure_image_description(db, describe, chat_id, &blob).await;
         if !description.is_empty() {
             description_source = if had_cached {
                 "vision-llm-cached"

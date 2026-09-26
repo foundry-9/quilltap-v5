@@ -571,10 +571,11 @@
         "strategy": "PROVIDER_CHEAPEST",
         "fallbackToLocal": false
       },
-      "dangerSettings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c003"
       },
+      "conciergeMode": "moderated",
       "isDangerousChat": false,
       "memoryExtractionLimits": {
         "enabled": true,
@@ -660,10 +661,11 @@
         "strategy": "PROVIDER_CHEAPEST",
         "fallbackToLocal": false
       },
-      "dangerSettings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c003"
       },
+      "conciergeMode": "unmoderated",
       "isDangerousChat": true,
       "memoryExtractionLimits": null,
       "sourceMessageTimestamp": null,
@@ -713,7 +715,7 @@
         "strategy": "PROVIDER_CHEAPEST",
         "fallbackToLocal": false
       },
-      "dangerSettings": null,
+      "concierge": null,
       "isDangerousChat": false,
       "memoryExtractionLimits": null,
       "sourceMessageTimestamp": null,
@@ -738,7 +740,7 @@
         "userDefinedProfileId": "bb000000-0000-4000-8000-00000000c004",
         "fallbackToLocal": false
       },
-      "dangerSettings": null,
+      "concierge": null,
       "isDangerousChat": false,
       "memoryExtractionLimits": null,
       "sourceMessageTimestamp": null,
@@ -791,7 +793,7 @@
         "userDefinedProfileId": "bb000000-0000-4000-8000-00000000c005",
         "fallbackToLocal": false
       },
-      "dangerSettings": null,
+      "concierge": null,
       "isDangerousChat": false,
       "memoryExtractionLimits": null,
       "sourceMessageTimestamp": null,

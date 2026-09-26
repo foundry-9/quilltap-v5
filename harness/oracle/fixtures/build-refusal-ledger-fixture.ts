@@ -5,11 +5,12 @@
  *
  * Bakes one `chats` row per scenario (pinned ids + timestamps) and one
  * `chat_settings` row per user — each user carries the Concierge settings its
- * scenarios need (AUTO_ROUTE at the default threshold, DETECT_ONLY with the
- * auto-switch off, …), materialized through v4's REAL
- * `DangerousContentSettingsSchema` so the stored object is Zod-shaped at the
- * pin. One user deliberately has NO settings row (v4's `findByUserId` → null →
- * the defaults, mode OFF). Then runs v4's own `add-chat-refusal-ledger-v1`
+ * scenarios need (on duty at the default threshold, the auto-switch off, off
+ * duty, …), materialized through v4's REAL `ConciergeSettingsSchema` (v4
+ * `3b463d6b1`, #76 — the Concierge's own settings object, which replaced the
+ * retired `dangerousContentSettings` bag) so the stored object is Zod-shaped
+ * at the pin. One user deliberately has NO settings row (v4's `findByUserId`
+ * → null → the defaults: on duty). Then runs v4's own `add-chat-refusal-ledger-v1`
  * migration module: `initializeDatabase` builds `chats` from the Zod schema,
  * which omits the ledger's columns.
  *
@@ -34,7 +35,7 @@ interface Spec {
   testPepperBase64: string;
   seedTimestamp: string;
   characterId: string;
-  chatSettings: Array<{ id: string; userId: string; dangerousContentSettings: Record<string, unknown> }>;
+  chatSettings: Array<{ id: string; userId: string; conciergeSettings: Record<string, unknown> }>;
   chats: Array<Record<string, unknown> & { id: string; userId: string }>;
   connectionProfiles?: Array<Record<string, unknown> & { id: string; userId: string }>;
   imageProfiles?: Array<Record<string, unknown> & { id: string; userId: string }>;
@@ -63,7 +64,7 @@ async function main(): Promise<void> {
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { DangerousContentSettingsSchema } = await import('@/lib/schemas/settings.types');
+  const { ConciergeSettingsSchema } = await import('@/lib/schemas/settings.types');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -73,7 +74,7 @@ async function main(): Promise<void> {
     await repos.chatSettings.create(
       {
         userId: cs.userId,
-        dangerousContentSettings: DangerousContentSettingsSchema.parse(cs.dangerousContentSettings),
+        conciergeSettings: ConciergeSettingsSchema.parse(cs.conciergeSettings),
       } as never,
       { id: cs.id, createdAt: ts, updatedAt: ts },
     );

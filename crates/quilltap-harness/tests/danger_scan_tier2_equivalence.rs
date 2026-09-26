@@ -33,7 +33,9 @@ use std::collections::HashMap;
 
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::Db;
-use quilltap_core::services::danger_scan::{any_user_danger_enabled, run_scheduled_danger_scan};
+use quilltap_core::services::danger_scan::{
+    any_user_wants_summary_classification, run_scheduled_danger_scan,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -124,9 +126,7 @@ fn danger_scan_matches_oracle() {
         .unwrap();
 
     // 1) The all-users-OFF pre-check agrees with v4's recomputation.
-    let any_enabled = rt
-        .block_on(any_user_danger_enabled(&db))
-        .expect("pre-check");
+    let any_enabled = rt.block_on(any_user_wants_summary_classification(&db));
     let want_precheck = oracle_line(&oracle_text, "precheck");
     assert_eq!(
         Value::Bool(any_enabled),

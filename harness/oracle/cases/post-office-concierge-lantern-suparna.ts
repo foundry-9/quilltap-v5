@@ -211,14 +211,15 @@ function main(): void {
         }
       }
     }
-    // P4.D226 (v4 `4d370a90f`, #75): `details.reason` — `'locked'` names the
-    // Locked chat in `refusal-not-permitted`'s two sentences; `'mode'` (and
-    // absence) keeps the Concierge-mode sentences. Every kind carries it, so the
-    // other two kinds prove it is ignored there. (#76 narrows the domain to
-    // `'locked'` and deletes the mode sentences — P4.D227's.)
+    // P4.D226 (v4 `4d370a90f`, #75): `details.reason: 'locked'` names the
+    // Locked chat. Every kind carries it, so the other two kinds prove it is
+    // ignored there. P4.D227 (v4 `3b463d6b1`, #76): the domain is narrowed to
+    // `'locked'` and the `'mode'` sentences are DELETED — `refusal-not-
+    // permitted` reads the Locked sentence with or without a reason (the
+    // `…/unnamed` + `…/named` rows above are the no-reason arm).
     for (const kind of REFUSAL_KINDS) {
       for (const purpose of REFUSAL_PURPOSES) {
-        for (const reason of ['locked', 'mode']) {
+        for (const reason of ['locked']) {
           const details = { refusingProvider: 'GOOGLE', refusingModel: 'gemini-3-pro', purpose, answeringProfileName: 'Frank Desk', reason };
           const id = `${kind}/${purpose}/reason-${reason}`;
           emit('refusal_content', id, content(kind, details), { kind, details });

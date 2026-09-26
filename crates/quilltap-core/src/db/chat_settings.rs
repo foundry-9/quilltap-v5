@@ -37,16 +37,18 @@
 //!     `contextCompressionSettings`, `llmLoggingSettings`, `agentModeSettings`,
 //!     `coreWhisper`, `thinkingDisplay`, `answerConfirmationSettings`,
 //!     `smartTypographySettings`, `storyBackgroundsSettings`,
-//!     `dangerousContentSettings`, `autoLockSettings`).
+//!     `conciergeSettings` (v4 `3b463d6b1`, #76 — `dangerousContentSettings`
+//!     before), `autoLockSettings`).
 //!     Each is reproduced
 //!     byte-for-byte with a serde struct in **schema field order**, which is what
 //!     v4's `JSON.stringify(zodParsed)` emits (its key order is the Zod schema's
 //!     field order). A typed struct — not a `serde_json::Value` — is what makes
 //!     that order explicit and reviewable at the declaration site. This extends
 //!     the `tags.visualStyle` typed-struct rule across many columns at once.
-//!   - **five nullable UUID TEXT columns** (`imageDescriptionProfileId`,
-//!     `uncensoredImageDescriptionProfileId`, `defaultRoleplayTemplateId`,
-//!     plus the nested `*ProfileId` fields) → `Option<String>`; `None` → SQL
+//!   - **the nullable UUID TEXT columns** (`imageDescriptionProfileId`,
+//!     `defaultRoleplayTemplateId` — `uncensoredImageDescriptionProfileId`
+//!     retired at v4 `3b463d6b1` into `conciergeSettings.uncensoredVisionProfileId`
+//!     — plus the nested `*ProfileId` fields) → `Option<String>`; `None` → SQL
 //!     NULL.
 //!   - **one nullable string TEXT column** (`timezone`) → `Option<String>`.
 //!   - **one optional INTEGER column** (`sidebarWidth`,
@@ -125,7 +127,6 @@ pub struct CheapLlmSettings {
     pub default_cheap_profile_id: Option<String>,
     pub fallback_to_local: bool,
     pub embedding_provider: String,
-    pub image_prompt_profile_id: Option<String>,
     /// v4 `65f5021c8` appended `allowCheapFallback: z.boolean().default(false)`
     /// at the END of the schema (P4.D135). A `.default()` is ALWAYS present after
     /// a parse, so every bag v4 writes carries it and every bag v4 READS gains
@@ -134,6 +135,31 @@ pub struct CheapLlmSettings {
     /// [`default_cheap_llm_keys`].
     #[serde(default)]
     pub allow_cheap_fallback: bool,
+}
+
+/// v4 `3b463d6b1` (#76) moved `cheapLLMSettings.imagePromptProfileId` into
+/// `conciergeSettings` and deleted it from `CheapLLMSettingsSchema`; the
+/// migration leaves the stored key where it was, and v4's read strips it as an
+/// unknown key. Remove it the same way (the rest of the bag keeps its order).
+fn strip_retired_cheap_llm_keys(mut bag: serde_json::Value) -> serde_json::Value {
+    if let Some(o) = bag.as_object_mut() {
+        o.shift_remove("imagePromptProfileId");
+    }
+    bag
+}
+
+/// A stored `conciergeSettings` cell as v4's hydrate + `ConciergeSettingsSchema`
+/// parse reads it (see [`zod_parse_concierge_settings`]).
+pub fn read_concierge_settings_cell(cell: Option<String>) -> serde_json::Value {
+    let default =
+        || serde_json::from_str(CONCIERGE_SETTINGS_DEFAULT_JSON).unwrap_or(serde_json::Value::Null);
+    match cell {
+        Some(text) if !text.is_empty() => match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(serde_json::Value::Null) | Err(_) => default(),
+            Ok(v) => zod_parse_concierge_settings(&v).0,
+        },
+        _ => default(),
+    }
 }
 
 /// Fill the Zod `.default()`s a stored `cheapLLMSettings` bag can predate, so a
@@ -352,45 +378,325 @@ pub struct StoryBackgroundsSettings {
     pub default_image_profile_id: Option<String>,
 }
 
-/// `DangerousContentSettingsSchema` (settings.types.ts L276). `threshold` is a
-/// fractional `f64`. The three `.nullable().optional()` (no default) fields —
-/// `uncensoredTextProfileId`, `uncensoredImageProfileId`,
-/// `customClassificationPrompt` — are `skip_serializing_if`: Zod omits them when
-/// absent. The corpus omits them, matching v4.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// ============================================================================
+// conciergeSettings — the Concierge's own settings object (v4 `3b463d6b1`, #76)
+// ============================================================================
+
+/// `DangerousContentDisplayModeEnum` — kept by #76 for `display.mode`.
+pub const CONCIERGE_DISPLAY_MODES: [&str; 3] = ["SHOW", "BLUR", "COLLAPSE"];
+
+/// `ConciergeNewChatStateEnum`.
+pub const CONCIERGE_NEW_CHAT_STATES: [&str; 2] = ["moderated", "unmoderated"];
+
+/// v4 `ConciergeDisplaySettingsSchema`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DangerousContentSettings {
+pub struct ConciergeDisplaySettings {
     pub mode: String,
+    pub show_warning_badges: bool,
+}
+
+/// v4 `ConciergePreScreenSettingsSchema`, every key present — the shape
+/// `DEFAULT_CONCIERGE_SETTINGS` and the migration's `JSON.stringify` both
+/// write (`customClassificationPrompt` BEFORE `summaryClassification`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConciergePreScreenSettings {
+    pub enabled: bool,
+    /// A JS number: an integral `1` stringifies as `1`, never `1.0`.
+    #[serde(serialize_with = "serialize_js_number")]
     pub threshold: f64,
     pub scan_text_chat: bool,
     pub scan_image_prompts: bool,
     pub scan_image_generation: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub uncensored_text_profile_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub uncensored_image_profile_id: Option<String>,
-    pub display_mode: String,
-    pub show_warning_badges: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_classification_prompt: Option<String>,
-    /// v4 `autoSwitchAfterRefusals: z.number().int().min(0).max(10).default(2)`
-    /// (`49059fb14`, #74) — declared LAST, after `customClassificationPrompt`,
-    /// which fixes the stored key order. After this many stated moderation
-    /// refusals on a Monitored chat, the Concierge flips it to Flagged; `0` =
-    /// never. The Zod default materializes on every parse, so an OLD stored
-    /// object without the key reads as 2 (`serde(default)`), and every write
-    /// carries it.
-    #[serde(default = "default_auto_switch_after_refusals")]
+    pub summary_classification: bool,
+}
+
+/// v4 `ConciergeSettings` as `readConciergeSettings` hands it out — every key
+/// present, in schema order (the four ids and the prompt `null` when unset).
+/// The STORED shapes differ (see [`zod_parse_concierge_settings`]); this is the
+/// read-side view every consumer asks its questions of.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConciergeSettings {
+    pub enabled: bool,
+    pub uncensored_text_profile_id: Option<String>,
+    pub uncensored_image_profile_id: Option<String>,
+    pub uncensored_vision_profile_id: Option<String>,
+    pub image_prompt_profile_id: Option<String>,
     pub auto_switch_after_refusals: i64,
+    pub new_chats_start_as: String,
+    pub display: ConciergeDisplaySettings,
+    pub pre_screen: ConciergePreScreenSettings,
 }
 
-/// v4 `DEFAULT_AUTO_SWITCH_AFTER_REFUSALS` (`resolver.service.ts`) — "mirrors
-/// the schema default".
-pub const DEFAULT_AUTO_SWITCH_AFTER_REFUSALS: i64 = 2;
-
-fn default_auto_switch_after_refusals() -> i64 {
-    DEFAULT_AUTO_SWITCH_AFTER_REFUSALS
+impl ConciergeSettings {
+    /// The JSON object, in schema key order.
+    pub fn to_value(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
 }
+
+fn serialize_js_number<S: serde::Serializer>(n: &f64, s: S) -> Result<S::Ok, S::Error> {
+    super::js_number_to_json(*n).serialize(s)
+}
+
+/// The `.default()` literal of `ChatSettingsSchema.conciergeSettings` — the
+/// fresh DDL's `DEFAULT` and what a hydrated read yields for a NULL / absent
+/// cell. It OMITS the four profile ids and `customClassificationPrompt` (they
+/// are `.nullable().optional()` with no default).
+pub const CONCIERGE_SETTINGS_DEFAULT_JSON: &str =
+    "{\"enabled\":true,\"autoSwitchAfterRefusals\":2,\
+\"newChatsStartAs\":\"moderated\",\"display\":{\"mode\":\"SHOW\",\"showWarningBadges\":true},\
+\"preScreen\":{\"enabled\":false,\"threshold\":0.7,\"scanTextChat\":true,\"scanImagePrompts\":true,\
+\"scanImageGeneration\":false,\"summaryClassification\":false}}";
+
+/// v4 `ConciergeSettingsSchema.safeParse(input)` — ONE hand-rolled twin for
+/// the settings PUT (which stores the materialized object) and the hydrated
+/// read (which parses the stored cell the same way).
+///
+/// Materializes every `.default()` (top-level and the two nested objects,
+/// filled per key when present, the whole `.default({...})` literal when
+/// absent), keeps a present optional key (a `null` kept) and omits an absent
+/// one, STRIPS unknown keys, and emits schema declaration order. Issues are
+/// collected in declaration order, nested paths joined (`display.mode`,
+/// `preScreen.threshold`). The texts are zod 4.6.5's, through the shared
+/// [`crate::api::zod_issues`] home.
+pub fn zod_parse_concierge_settings(
+    input: &serde_json::Value,
+) -> (serde_json::Value, Vec<crate::api::zod_issues::ZodIssue>) {
+    use crate::api::zod_issues::{zod_uuid_ok, ZodIssue, MAX_SAFE_INTEGER};
+    use serde_json::{json, Map, Value};
+
+    fn path(prefix: &[&str], key: &str) -> Vec<Value> {
+        let mut p: Vec<Value> = prefix.iter().map(|s| json!(s)).collect();
+        p.push(json!(key));
+        p
+    }
+    fn boolean(
+        o: &Map<String, Value>,
+        key: &str,
+        d: bool,
+        pre: &[&str],
+        out: &mut Map<String, Value>,
+        issues: &mut Vec<ZodIssue>,
+    ) {
+        let v = match o.get(key) {
+            None => json!(d),
+            Some(Value::Bool(b)) => json!(b),
+            other => {
+                issues.push(ZodIssue::invalid_type("boolean", path(pre, key), other));
+                json!(d)
+            }
+        };
+        out.insert(key.to_string(), v);
+    }
+    fn enumeration(
+        o: &Map<String, Value>,
+        key: &str,
+        d: &str,
+        values: &[&str],
+        pre: &[&str],
+        out: &mut Map<String, Value>,
+        issues: &mut Vec<ZodIssue>,
+    ) {
+        let v = match o.get(key) {
+            None => json!(d),
+            Some(Value::String(s)) if values.contains(&s.as_str()) => json!(s),
+            Some(_) => {
+                issues.push(ZodIssue::invalid_value(values, path(pre, key)));
+                json!(d)
+            }
+        };
+        out.insert(key.to_string(), v);
+    }
+    // `UUIDSchema.nullable().optional()`: absent → omitted, `null` kept, a
+    // string format-checked, anything else `invalid_type` (type before format).
+    fn opt_uuid(
+        o: &Map<String, Value>,
+        key: &str,
+        out: &mut Map<String, Value>,
+        issues: &mut Vec<ZodIssue>,
+    ) {
+        match o.get(key) {
+            None => {}
+            Some(Value::Null) => {
+                out.insert(key.to_string(), Value::Null);
+            }
+            Some(Value::String(s)) if zod_uuid_ok(s) => {
+                out.insert(key.to_string(), json!(s));
+            }
+            Some(Value::String(_)) => issues.push(ZodIssue::invalid_uuid(path(&[], key))),
+            other => issues.push(ZodIssue::invalid_type("string", path(&[], key), other)),
+        }
+    }
+    // A nested `Schema.default({...})` object: absent → the literal as it
+    // stands (Zod 4 short-circuits a default, it does not re-parse it);
+    // present → an object gate, then `fill`.
+    fn nested(
+        o: &Map<String, Value>,
+        key: &str,
+        default_json: &str,
+        out: &mut Map<String, Value>,
+        issues: &mut Vec<ZodIssue>,
+        fill: impl FnOnce(&Map<String, Value>, &mut Map<String, Value>, &mut Vec<ZodIssue>),
+    ) {
+        match o.get(key) {
+            None => {
+                out.insert(
+                    key.to_string(),
+                    serde_json::from_str(default_json).unwrap_or(Value::Null),
+                );
+            }
+            Some(Value::Object(inner)) => {
+                let mut sub = Map::new();
+                fill(inner, &mut sub, issues);
+                out.insert(key.to_string(), Value::Object(sub));
+            }
+            other => issues.push(ZodIssue::invalid_type("object", path(&[], key), other)),
+        }
+    }
+
+    let Some(o) = input.as_object() else {
+        return (
+            Value::Null,
+            vec![ZodIssue::invalid_type("object", vec![], Some(input))],
+        );
+    };
+    let mut out = Map::new();
+    let mut issues: Vec<ZodIssue> = Vec::new();
+
+    boolean(o, "enabled", true, &[], &mut out, &mut issues);
+    for key in [
+        "uncensoredTextProfileId",
+        "uncensoredImageProfileId",
+        "uncensoredVisionProfileId",
+        "imagePromptProfileId",
+    ] {
+        opt_uuid(o, key, &mut out, &mut issues);
+    }
+    // `z.number().int().min(0).max(10).default(2)` — a non-number is
+    // `invalid_type`; a non-whole number is the int issue ALONE (the int check
+    // aborts); a whole number reports the safe-integer bound (which does not
+    // abort), then min / max.
+    let auto_path = || path(&[], "autoSwitchAfterRefusals");
+    let auto = match o.get("autoSwitchAfterRefusals") {
+        None => {
+            json!(crate::services::dangerous_content::resolver::DEFAULT_AUTO_SWITCH_AFTER_REFUSALS)
+        }
+        Some(v) => match v.as_f64() {
+            None => {
+                issues.push(ZodIssue::invalid_type("number", auto_path(), Some(v)));
+                Value::Null
+            }
+            Some(n) if !n.is_finite() || n.fract() != 0.0 => {
+                issues.push(ZodIssue::invalid_int_type(auto_path(), Some(v)));
+                Value::Null
+            }
+            Some(n) => {
+                if n > MAX_SAFE_INTEGER {
+                    issues.push(ZodIssue::too_big_int(auto_path()));
+                } else if n < -MAX_SAFE_INTEGER {
+                    issues.push(ZodIssue::too_small_int(auto_path()));
+                }
+                if n < 0.0 {
+                    issues.push(ZodIssue::too_small_number(json!(0), auto_path()));
+                } else if n > 10.0 {
+                    issues.push(ZodIssue::too_big_number(json!(10), auto_path()));
+                }
+                json!(n as i64)
+            }
+        },
+    };
+    out.insert("autoSwitchAfterRefusals".into(), auto);
+    enumeration(
+        o,
+        "newChatsStartAs",
+        "moderated",
+        &CONCIERGE_NEW_CHAT_STATES,
+        &[],
+        &mut out,
+        &mut issues,
+    );
+    nested(
+        o,
+        "display",
+        CONCIERGE_DISPLAY_DEFAULT_JSON,
+        &mut out,
+        &mut issues,
+        |d, sub, issues| {
+            enumeration(
+                d,
+                "mode",
+                "SHOW",
+                &CONCIERGE_DISPLAY_MODES,
+                &["display"],
+                sub,
+                issues,
+            );
+            boolean(d, "showWarningBadges", true, &["display"], sub, issues);
+        },
+    );
+    nested(
+        o,
+        "preScreen",
+        CONCIERGE_PRE_SCREEN_DEFAULT_JSON,
+        &mut out,
+        &mut issues,
+        |p, sub, issues| {
+            const PRE: &[&str] = &["preScreen"];
+            boolean(p, "enabled", false, PRE, sub, issues);
+            // `z.number().min(0).max(1).default(0.7)`, stored as the INCOMING
+            // number so an integral `1` re-emits as `1`.
+            let threshold = match p.get("threshold") {
+                None => json!(0.7),
+                Some(n @ Value::Number(num)) => {
+                    let f = num.as_f64().unwrap_or_default();
+                    if f < 0.0 {
+                        issues.push(ZodIssue::too_small_number(json!(0), path(PRE, "threshold")));
+                    } else if f > 1.0 {
+                        issues.push(ZodIssue::too_big_number(json!(1), path(PRE, "threshold")));
+                    }
+                    n.clone()
+                }
+                other => {
+                    issues.push(ZodIssue::invalid_type(
+                        "number",
+                        path(PRE, "threshold"),
+                        other,
+                    ));
+                    json!(0.7)
+                }
+            };
+            sub.insert("threshold".into(), threshold);
+            boolean(p, "scanTextChat", true, PRE, sub, issues);
+            boolean(p, "scanImagePrompts", true, PRE, sub, issues);
+            boolean(p, "scanImageGeneration", false, PRE, sub, issues);
+            // `z.string().nullable().optional()` — no format check.
+            match p.get("customClassificationPrompt") {
+                None => {}
+                Some(v @ (Value::Null | Value::String(_))) => {
+                    sub.insert("customClassificationPrompt".into(), v.clone());
+                }
+                other => issues.push(ZodIssue::invalid_type(
+                    "string",
+                    path(PRE, "customClassificationPrompt"),
+                    other,
+                )),
+            }
+            boolean(p, "summaryClassification", false, PRE, sub, issues);
+        },
+    );
+    (Value::Object(out), issues)
+}
+
+/// `ConciergeDisplaySettingsSchema.default(...)`'s literal.
+const CONCIERGE_DISPLAY_DEFAULT_JSON: &str = "{\"mode\":\"SHOW\",\"showWarningBadges\":true}";
+/// `ConciergePreScreenSettingsSchema.default(...)`'s literal (no prompt key).
+const CONCIERGE_PRE_SCREEN_DEFAULT_JSON: &str = "{\"enabled\":false,\"threshold\":0.7,\
+\"scanTextChat\":true,\"scanImagePrompts\":true,\"scanImageGeneration\":false,\
+\"summaryClassification\":false}";
 
 /// `AutoLockSettingsSchema` (settings.types.ts L305). `idleMinutes` is a nested
 /// bounded integer.
@@ -434,9 +740,6 @@ pub struct ChatSettingsCreate {
     /// Nullable UUID TEXT; `None` => SQL NULL.
     #[serde(default)]
     pub image_description_profile_id: Option<String>,
-    /// Nullable UUID TEXT; `None` => SQL NULL.
-    #[serde(default)]
-    pub uncensored_image_description_profile_id: Option<String>,
     /// Nullable UUID TEXT; `None` => SQL NULL.
     #[serde(default)]
     pub default_roleplay_template_id: Option<String>,
@@ -496,7 +799,15 @@ pub struct ChatSettingsCreate {
     #[serde(default)]
     pub smart_typography_settings: SmartTypographySettings,
     pub story_backgrounds_settings: StoryBackgroundsSettings,
-    pub dangerous_content_settings: DangerousContentSettings,
+    /// v4 `3b463d6b1` (#76): the Concierge's own settings object, in
+    /// `dangerousContentSettings`' old slot. Carried as the raw object and
+    /// Zod-parsed at the write ([`concierge_settings_column_text`]) — absent
+    /// is the schema's `.default()` literal, as v4's parse makes it. A
+    /// restored pre-4.10 row is translated BEFORE it reaches here (restore
+    /// runs `with_concierge_settings_from_legacy`, then the legacy keys are
+    /// simply unknown to this struct and dropped — v4's schema strip).
+    #[serde(default)]
+    pub concierge_settings: Option<serde_json::Value>,
     pub auto_lock_settings: AutoLockSettings,
     /// Nullable string TEXT; `None` => SQL NULL.
     #[serde(default)]
@@ -528,7 +839,8 @@ pub struct ChatSettingsUpdate {
     pub default_roleplay_template_id: Option<String>,
     pub theme_preference: Option<ThemePreference>,
     pub sidebar_width: Option<i64>,
-    pub dangerous_content_settings: Option<DangerousContentSettings>,
+    /// `conciergeSettings`, a whole-object replace (Zod-parsed at the write).
+    pub concierge_settings: Option<serde_json::Value>,
     pub auto_lock_settings: Option<AutoLockSettings>,
     pub auto_detect_rng: Option<bool>,
     pub custom_tools: Option<bool>,
@@ -554,6 +866,20 @@ pub struct ChatSettingsRepository<'c> {
 /// via serde struct declaration order). Errors map to [`DbError::Internal`].
 fn to_json<T: Serialize>(label: &str, value: &T) -> Result<String, DbError> {
     serde_json::to_string(value).map_err(|e| DbError::Internal(format!("{label} serialize: {e}")))
+}
+
+/// The stored text of a `conciergeSettings` value as v4's write produces it:
+/// the object through `ConciergeSettingsSchema` (defaults materialized,
+/// unknown keys stripped, schema order), or the `.default()` literal when
+/// absent. The repository write is v4's `_create`/`_update` Zod parse; a
+/// value that fails it would have been refused by v4 before the write — the
+/// PUT validates first — so the parsed shape is written as it stands.
+pub fn concierge_settings_column_text(value: Option<&serde_json::Value>) -> String {
+    match value {
+        None | Some(serde_json::Value::Null) => CONCIERGE_SETTINGS_DEFAULT_JSON.to_string(),
+        Some(v) => serde_json::to_string(&zod_parse_concierge_settings(v).0)
+            .unwrap_or_else(|_| CONCIERGE_SETTINGS_DEFAULT_JSON.to_string()),
+    }
 }
 
 impl<'c> ChatSettingsRepository<'c> {
@@ -607,8 +933,7 @@ impl<'c> ChatSettingsRepository<'c> {
             to_json("smartTypographySettings", &data.smart_typography_settings)?;
         let story_backgrounds_settings =
             to_json("storyBackgroundsSettings", &data.story_backgrounds_settings)?;
-        let dangerous_content_settings =
-            to_json("dangerousContentSettings", &data.dangerous_content_settings)?;
+        let concierge_settings = concierge_settings_column_text(data.concierge_settings.as_ref());
         let auto_lock_settings = to_json("autoLockSettings", &data.auto_lock_settings)?;
 
         // Booleans bind as i64; bound to locals so the `&dyn ToSql` refs below
@@ -636,10 +961,6 @@ impl<'c> ChatSettingsRepository<'c> {
                 (
                     "imageDescriptionProfileId",
                     &data.image_description_profile_id,
-                ),
-                (
-                    "uncensoredImageDescriptionProfileId",
-                    &data.uncensored_image_description_profile_id,
                 ),
                 (
                     "defaultRoleplayTemplateId",
@@ -671,7 +992,7 @@ impl<'c> ChatSettingsRepository<'c> {
                 ("coreWhisper", &core_whisper),
                 ("thinkingDisplay", &thinking_display),
                 ("storyBackgroundsSettings", &story_backgrounds_settings),
-                ("dangerousContentSettings", &dangerous_content_settings),
+                ("conciergeSettings", &concierge_settings),
                 ("autoLockSettings", &auto_lock_settings),
                 ("timezone", &data.timezone),
                 ("createdAt", &opts.created_at),
@@ -727,12 +1048,11 @@ impl<'c> ChatSettingsRepository<'c> {
             assignments.push(format!("sidebarWidth = ?{}", values.len() + 1));
             values.push(Box::new(sidebar_width));
         }
-        if let Some(dangerous_content_settings) = &patch.dangerous_content_settings {
-            assignments.push(format!("dangerousContentSettings = ?{}", values.len() + 1));
-            values.push(Box::new(to_json(
-                "dangerousContentSettings",
-                dangerous_content_settings,
-            )?));
+        if let Some(concierge_settings) = &patch.concierge_settings {
+            assignments.push(format!("conciergeSettings = ?{}", values.len() + 1));
+            values.push(Box::new(concierge_settings_column_text(Some(
+                concierge_settings,
+            ))));
         }
         if let Some(auto_lock_settings) = &patch.auto_lock_settings {
             assignments.push(format!("autoLockSettings = ?{}", values.len() + 1));
@@ -856,9 +1176,10 @@ impl<'c> ChatSettingsRepository<'c> {
 /// Marshaling faithful to v4's `hydrateRow` + Zod parse:
 ///   - every JSON-object column is parsed raw (a v4-written cell always carries
 ///     the Zod-materialized defaults);
-///   - the four `.nullable().optional()` (no-default) columns
-///     (`imageDescriptionProfileId`, `uncensoredImageDescriptionProfileId`,
-///     `defaultRoleplayTemplateId`, `timezone`) are OMITTED when SQL NULL
+///   - the three `.nullable().optional()` (no-default) columns
+///     (`imageDescriptionProfileId`, `defaultRoleplayTemplateId`, `timezone`;
+///     v4 `3b463d6b1` retired `uncensoredImageDescriptionProfileId`) are
+///     OMITTED when SQL NULL
 ///     (`hydrateRow` maps NULL → `undefined`, which Zod `.optional()` drops from
 ///     the parsed object); present as a string otherwise;
 ///   - the five boolean columns render as JSON booleans;
@@ -883,22 +1204,6 @@ pub fn find_by_user_id(
     // NULL cell would be Zod-defaulted by v4, but the corpus never writes NULL
     // JSON columns (create writes every column), so a NULL → `null` here is fine
     // and never exercised.
-    // v4 `49059fb14` (#74): `autoSwitchAfterRefusals` is the settings
-    // object's LAST field, `.default(2)`. v4's read parses the stored object
-    // through the Zod schema, so a row written before the key existed reads
-    // back WITH it (appended — Zod emits the shape order and the key is
-    // declared last). A non-object cell is left as it was.
-    fn with_auto_switch_default(mut settings: Value) -> Value {
-        if let Some(obj) = settings.as_object_mut() {
-            if !obj.contains_key("autoSwitchAfterRefusals") {
-                obj.insert(
-                    "autoSwitchAfterRefusals".into(),
-                    Value::from(DEFAULT_AUTO_SWITCH_AFTER_REFUSALS),
-                );
-            }
-        }
-        settings
-    }
     fn parse_json(cell: Option<String>) -> Value {
         match cell {
             Some(text) if !text.is_empty() => serde_json::from_str(&text).unwrap_or(Value::Null),
@@ -942,7 +1247,6 @@ pub fn find_by_user_id(
             "tagStyles",
             "cheapLLMSettings",
             "imageDescriptionProfileId",
-            "uncensoredImageDescriptionProfileId",
             "defaultRoleplayTemplateId",
             "themePreference",
             "sidebarWidth",
@@ -969,7 +1273,7 @@ pub fn find_by_user_id(
             "answerConfirmationSettings",
             "smartTypographySettings",
             "storyBackgroundsSettings",
-            "dangerousContentSettings",
+            "conciergeSettings",
             "autoLockSettings",
             "timezone",
             "createdAt",
@@ -1000,7 +1304,9 @@ pub fn find_by_user_id(
                 );
                 obj.insert(
                     "cheapLLMSettings".into(),
-                    default_cheap_llm_keys(parse_json(r.get::<_, Option<String>>(5)?)),
+                    strip_retired_cheap_llm_keys(default_cheap_llm_keys(parse_json(
+                        r.get::<_, Option<String>>(5)?,
+                    ))),
                 );
                 put_opt(
                     &mut obj,
@@ -1009,61 +1315,56 @@ pub fn find_by_user_id(
                 );
                 put_opt(
                     &mut obj,
-                    "uncensoredImageDescriptionProfileId",
-                    r.get::<_, Option<String>>(7)?,
-                );
-                put_opt(
-                    &mut obj,
                     "defaultRoleplayTemplateId",
-                    r.get::<_, Option<String>>(8)?,
+                    r.get::<_, Option<String>>(7)?,
                 );
                 obj.insert(
                     "themePreference".into(),
-                    parse_json(r.get::<_, Option<String>>(9)?),
+                    parse_json(r.get::<_, Option<String>>(8)?),
                 );
                 // `.default(256).optional()` — the OUTER optional means an
                 // absent key stays absent (the default never fires on
                 // undefined), so a NULL/missing cell OMITS the key. A fresh
                 // create always writes the column; NULL only arises on a
                 // migration-vintage instance missing the column entirely.
-                if let Some(w) = r.get::<_, Option<f64>>(10)? {
+                if let Some(w) = r.get::<_, Option<f64>>(9)? {
                     obj.insert("sidebarWidth".into(), super::js_number_to_json(w));
                 }
                 obj.insert(
                     "defaultTimestampConfig".into(),
-                    parse_json(r.get::<_, Option<String>>(11)?),
+                    parse_json(r.get::<_, Option<String>>(10)?),
                 );
                 obj.insert(
                     "memoryCascadePreferences".into(),
-                    parse_json(r.get::<_, Option<String>>(12)?),
+                    parse_json(r.get::<_, Option<String>>(11)?),
                 );
                 obj.insert(
                     "autoHousekeepingSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(13)?),
+                    parse_json(r.get::<_, Option<String>>(12)?),
                 );
                 obj.insert(
                     "memoryExtractionLimits".into(),
-                    parse_json(r.get::<_, Option<String>>(14)?),
+                    parse_json(r.get::<_, Option<String>>(13)?),
                 );
                 obj.insert(
                     "autonomousRoomSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(15)?),
+                    parse_json(r.get::<_, Option<String>>(14)?),
                 );
                 obj.insert(
                     "tokenDisplaySettings".into(),
-                    parse_json(r.get::<_, Option<String>>(16)?),
+                    parse_json(r.get::<_, Option<String>>(15)?),
                 );
                 obj.insert(
                     "contextCompressionSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(17)?),
+                    parse_json(r.get::<_, Option<String>>(16)?),
                 );
                 obj.insert(
                     "llmLoggingSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(18)?),
+                    parse_json(r.get::<_, Option<String>>(17)?),
                 );
                 obj.insert(
                     "autoDetectRng".into(),
-                    Value::Bool(r.get::<_, i64>(19)? == 1),
+                    Value::Bool(r.get::<_, i64>(18)? == 1),
                 );
                 // NULL here means the COLUMN IS ABSENT (the tolerant list above
                 // substitutes NULL for a column the table lacks), not a stored
@@ -1077,15 +1378,15 @@ pub fn find_by_user_id(
                 // such an instance must still OPEN.
                 obj.insert(
                     "customTools".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(20)?.is_none_or(|v| v == 1)),
+                    Value::Bool(r.get::<_, Option<i64>>(19)?.is_none_or(|v| v == 1)),
                 );
                 obj.insert(
                     "compositionModeDefault".into(),
-                    Value::Bool(r.get::<_, i64>(21)? == 1),
+                    Value::Bool(r.get::<_, i64>(20)? == 1),
                 );
                 obj.insert(
                     "composerSpellcheck".into(),
-                    Value::Bool(r.get::<_, i64>(22)? == 1),
+                    Value::Bool(r.get::<_, i64>(21)? == 1),
                 );
                 // P4.D73, same shape as `customTools` above: v5 adopts the
                 // three 4.8.2 columns without porting v4's migration runner,
@@ -1096,11 +1397,11 @@ pub fn find_by_user_id(
                 // must surface as `true` and the row must still READ.
                 obj.insert(
                     "composerEmoji".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(23)?.is_none_or(|v| v == 1)),
+                    Value::Bool(r.get::<_, Option<i64>>(22)?.is_none_or(|v| v == 1)),
                 );
                 obj.insert(
                     "composerUnicode".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(24)?.is_none_or(|v| v == 1)),
+                    Value::Bool(r.get::<_, Option<i64>>(23)?.is_none_or(|v| v == 1)),
                 );
                 // P4.D179 (v4 `686954937`), the same tolerance shape as its
                 // P4.D73 neighbours above — with the default the OTHER WAY
@@ -1110,31 +1411,31 @@ pub fn find_by_user_id(
                 // absent column agree. (`is_some_and`, not `is_none_or`.)
                 obj.insert(
                     "impersonationVoiceRewrite".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(25)?.is_some_and(|v| v == 1)),
+                    Value::Bool(r.get::<_, Option<i64>>(24)?.is_some_and(|v| v == 1)),
                 );
                 obj.insert(
                     "textReplacementsEnabled".into(),
-                    Value::Bool(r.get::<_, i64>(26)? == 1),
+                    Value::Bool(r.get::<_, i64>(25)? == 1),
                 );
                 obj.insert(
                     "autoScrollOnResponseComplete".into(),
-                    Value::Bool(r.get::<_, i64>(27)? == 1),
+                    Value::Bool(r.get::<_, i64>(26)? == 1),
                 );
                 obj.insert(
                     "agentModeSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(28)?),
+                    parse_json(r.get::<_, Option<String>>(27)?),
                 );
                 obj.insert(
                     "coreWhisper".into(),
-                    parse_json(r.get::<_, Option<String>>(29)?),
+                    parse_json(r.get::<_, Option<String>>(28)?),
                 );
                 obj.insert(
                     "thinkingDisplay".into(),
-                    parse_json(r.get::<_, Option<String>>(30)?),
+                    parse_json(r.get::<_, Option<String>>(29)?),
                 );
                 obj.insert(
                     "answerConfirmationSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(31)?),
+                    parse_json(r.get::<_, Option<String>>(30)?),
                 );
                 // The JSON-column twin of the two booleans above: an absent
                 // column (or a NULL cell) is `undefined` to v4, and
@@ -1143,25 +1444,36 @@ pub fn find_by_user_id(
                 obj.insert(
                     "smartTypographySettings".into(),
                     parse_json_or_default(
-                        r.get::<_, Option<String>>(32)?,
+                        r.get::<_, Option<String>>(31)?,
                         super::chat_settings_composer_repair::SMART_TYPOGRAPHY_DEFAULT_JSON,
                     ),
                 );
                 obj.insert(
                     "storyBackgroundsSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(33)?),
+                    parse_json(r.get::<_, Option<String>>(32)?),
                 );
+                // v4 `3b463d6b1` (#76): `conciergeSettings` in
+                // `dangerousContentSettings`' old slot, read through the
+                // schema as v4's hydrate + parse does: a NULL / empty /
+                // absent cell (a migrated row the backfill has not reached,
+                // an instance from before the column) is the `.default()`
+                // literal; a stored object — the migration's, the DDL
+                // literal's, or a PUT's — is re-emitted in schema order with
+                // the defaults filled and unknown keys stripped. The two
+                // retired columns are not read at all, so their stale values
+                // on a migrated row never reach the payload (v4's schema
+                // strips them).
                 obj.insert(
-                    "dangerousContentSettings".into(),
-                    with_auto_switch_default(parse_json(r.get::<_, Option<String>>(34)?)),
+                    "conciergeSettings".into(),
+                    read_concierge_settings_cell(r.get::<_, Option<String>>(33)?),
                 );
                 obj.insert(
                     "autoLockSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(35)?),
+                    parse_json(r.get::<_, Option<String>>(34)?),
                 );
-                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(36)?);
-                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(37)?));
-                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(38)?));
+                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(35)?);
+                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(36)?));
+                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(37)?));
                 Ok(Value::Object(obj))
             },
         )
@@ -1715,5 +2027,101 @@ mod tests {
             serde_json::Value::Bool(true)
         );
         assert_eq!(row["answerConfirmationSettings"], serde_json::Value::Null);
+    }
+
+    /// P4.D227 (v4 `3b463d6b1`, #76): the THREE stored `conciergeSettings`
+    /// byte shapes all read through the one twin. v4's hydrate parses the cell
+    /// with `ConciergeSettingsSchema`, which keeps a present key (a `null`
+    /// kept), fills a missing default and never invents an absent optional —
+    /// so the migration's every-key shape and the DDL literal read back
+    /// byte-identical, and a PUT's partial object reads back materialized.
+    #[test]
+    fn the_three_stored_concierge_shapes_read_back() {
+        // 1. `add-concierge-settings-v1`'s `JSON.stringify` of the mapped object.
+        let migrated = "{\"enabled\":false,\"uncensoredTextProfileId\":null,\
+            \"uncensoredImageProfileId\":null,\"uncensoredVisionProfileId\":null,\
+            \"imagePromptProfileId\":null,\"autoSwitchAfterRefusals\":2,\
+            \"newChatsStartAs\":\"moderated\",\"display\":{\"mode\":\"SHOW\",\
+            \"showWarningBadges\":true},\"preScreen\":{\"enabled\":false,\"threshold\":0.7,\
+            \"scanTextChat\":true,\"scanImagePrompts\":true,\"scanImageGeneration\":false,\
+            \"customClassificationPrompt\":null,\"summaryClassification\":false}}";
+        let read = read_concierge_settings_cell(Some(migrated.into()));
+        assert_eq!(serde_json::to_string(&read).unwrap(), migrated);
+        // 2. The fresh DDL's `.default()` literal (no desk ids, no prompt).
+        let read = read_concierge_settings_cell(Some(CONCIERGE_SETTINGS_DEFAULT_JSON.into()));
+        assert_eq!(
+            serde_json::to_string(&read).unwrap(),
+            CONCIERGE_SETTINGS_DEFAULT_JSON
+        );
+        // …which is also what a NULL / empty cell reads as.
+        for cell in [None, Some(String::new()), Some("null".into())] {
+            let read = read_concierge_settings_cell(cell);
+            assert_eq!(
+                serde_json::to_string(&read).unwrap(),
+                CONCIERGE_SETTINGS_DEFAULT_JSON
+            );
+        }
+        // 3. The PUT stores the MATERIALIZED object: a partial write comes back
+        // with every default filled, the nested objects filled per key, and
+        // the absent optionals still absent.
+        let put = serde_json::json!({ "enabled": false, "preScreen": { "threshold": 1 } });
+        let text = concierge_settings_column_text(Some(&put));
+        assert_eq!(
+            text,
+            "{\"enabled\":false,\"autoSwitchAfterRefusals\":2,\"newChatsStartAs\":\"moderated\",\
+             \"display\":{\"mode\":\"SHOW\",\"showWarningBadges\":true},\"preScreen\":{\
+             \"enabled\":false,\"threshold\":1,\"scanTextChat\":true,\"scanImagePrompts\":true,\
+             \"scanImageGeneration\":false,\"summaryClassification\":false}}"
+        );
+        assert_eq!(
+            serde_json::to_string(&read_concierge_settings_cell(Some(text.clone()))).unwrap(),
+            text
+        );
+    }
+
+    /// P4.D227: a migrated instance's row still CARRIES the retired columns
+    /// (`add-concierge-settings` never drops them — E.2) and a pre-4.10 cheap-LLM
+    /// bag still carries the crafter; v4's repository schema strips all three
+    /// on read, so the settings GET never shows them (the order's M3).
+    #[test]
+    fn a_legacy_keyed_row_reads_without_the_retired_keys() {
+        let conn = Connection::open_in_memory().unwrap();
+        let seed: SeedRow = serde_json::from_str(CHAT_SETTINGS_SEED_JSON).unwrap();
+        let cols = seed
+            .columns
+            .iter()
+            .map(|c| {
+                let ty = match seed.values.get(c) {
+                    Some(serde_json::Value::Number(_)) => "INTEGER",
+                    _ => "TEXT",
+                };
+                format!("\"{c}\" {ty}")
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        conn.execute_batch(&format!(
+            "CREATE TABLE chat_settings (id TEXT PRIMARY KEY, userId TEXT, {cols}, \
+             \"dangerousContentSettings\" TEXT, \"uncensoredImageDescriptionProfileId\" TEXT, \
+             createdAt TEXT, updatedAt TEXT);"
+        ))
+        .unwrap();
+        update_for_user(&conn, "u1", &[], "2026-09-26T00:00:00.000Z").expect("create");
+        conn.execute(
+            "UPDATE chat_settings SET \"dangerousContentSettings\" = '{\"mode\":\"AUTO_ROUTE\"}', \
+             \"uncensoredImageDescriptionProfileId\" = 'vision-1', \
+             \"cheapLLMSettings\" = '{\"strategy\":\"PROVIDER_CHEAPEST\",\"fallbackToLocal\":true,\
+             \"imagePromptProfileId\":\"crafter-1\"}' WHERE userId = 'u1'",
+            [],
+        )
+        .unwrap();
+        let row = find_by_user_id(&conn, "u1").unwrap().expect("row");
+        assert!(row.get("dangerousContentSettings").is_none());
+        assert!(row.get("uncensoredImageDescriptionProfileId").is_none());
+        assert!(row["cheapLLMSettings"]
+            .get("imagePromptProfileId")
+            .is_none());
+        assert_eq!(row["cheapLLMSettings"]["strategy"], "PROVIDER_CHEAPEST");
+        // …and the Concierge's own settings are there, whole.
+        assert_eq!(row["conciergeSettings"]["enabled"], true);
     }
 }

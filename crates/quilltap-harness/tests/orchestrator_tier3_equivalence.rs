@@ -630,8 +630,8 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
 
 // ---------------------------------------------------------------------------
 // W4.2u/W4.10a: the REAL uncensored-reroute router. The differential runs v4's
-// REAL danger resolution (global mode AUTO_ROUTE, no `uncensoredTextProfileId`, so
-// only the FIRST-branch reroute on an actively-dangerous chat fires), so the Rust
+// REAL Concierge resolution (on duty, no desk text profile — v4 `3b463d6b1`, #76 —
+// so only the direct route on an Unmoderated chat fires), so the Rust
 // side wires the REAL `DangerContentRouter` (scans `connection_profiles` for an
 // `isDangerousCompatible` profile off the read pool). W4.10a swaps the prior canned
 // key map for the REAL DB-backed `DbApiKeys` resolver, reading the fixture-seeded
@@ -2567,27 +2567,13 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
             // non-default value and still a discriminator.
             agent_mode_default_enabled: false,
             agent_mode_max_turns: 1,
-            // W4.2u: the fixture's single chat_settings row sets
-            // `dangerousContentSettings = { mode: AUTO_ROUTE }` (no
-            // `uncensoredTextProfileId`, so the empty-response uncensored failover
-            // stays inert — only the FIRST-branch reroute on an actively-dangerous
-            // chat fires; every salon chat is not dangerous → no-op). The resolver
-            // reads this global + the chat's `conciergeOverride`/`chatType`.
-            danger_settings: Some(quilltap_core::db::chat_settings::DangerousContentSettings {
-                mode: "AUTO_ROUTE".to_string(),
-                threshold: 0.7,
-                scan_text_chat: true,
-                scan_image_prompts: true,
-                scan_image_generation: false,
-                uncensored_text_profile_id: None,
-                uncensored_image_profile_id: None,
-                display_mode: "SHOW".to_string(),
-                show_warning_badges: true,
-                custom_classification_prompt: None,
-                // P4.D225: v4 `49059fb14`'s schema default (the fixture's stored
-                // settings object predates the key; Zod fills 2 on read).
-                auto_switch_after_refusals: 2,
-            }),
+            // The fixture's single chat_settings row stores `conciergeSettings
+            // = { enabled: true }` (v4 `3b463d6b1`, #76 — the retired
+            // `{ mode: AUTO_ROUTE }`; no desk text profile, so the empty-response
+            // uncensored failover stays inert — only an Unmoderated chat's direct
+            // route fires; every other salon chat is Moderated → no-op). The
+            // resolver reads this global + the chat's `conciergeMode`/`chatType`.
+            concierge_settings: Some(serde_json::json!({ "enabled": true })),
             // Round-3 Group 8: the fixture's `cheapLLMSettings =
             // { strategy: PROVIDER_CHEAPEST, fallbackToLocal: false,
             //   defaultCheapProfileId: <CheapDefault> }`. The spine resolves the

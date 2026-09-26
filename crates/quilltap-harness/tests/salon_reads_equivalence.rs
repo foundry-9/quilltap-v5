@@ -352,15 +352,15 @@ fn salon_reads_match_oracle() {
     let third = &spec.chats[2].id;
     {
         let sql = format!(
-            "UPDATE \"chats\" SET \"conciergeOverride\" = 'OFF', \"isDangerousChat\" = 1, \
+            "UPDATE \"chats\" SET \"isDangerousChat\" = 1, \
              \"dangerCategories\" = NULL WHERE \"id\" = '{solo}'; \
              UPDATE \"chats\" SET \"conciergeMode\" = 'locked', \"conciergeModeSetBy\" = 'operator', \
              \"conciergeModeReason\" = 'migration' WHERE \"id\" = '{solo}'; \
-             UPDATE \"chats\" SET \"conciergeOverride\" = 'UNCENSORED', \"isDangerousChat\" = 0, \
+             UPDATE \"chats\" SET \"isDangerousChat\" = 0, \
              \"dangerCategories\" = NULL WHERE \"id\" = '{group}'; \
              UPDATE \"chats\" SET \"conciergeMode\" = 'unmoderated', \"conciergeModeSetBy\" = 'operator', \
              \"conciergeModeReason\" = 'manual' WHERE \"id\" = '{group}'; \
-             UPDATE \"chats\" SET \"conciergeOverride\" = NULL, \"isDangerousChat\" = 1, \
+             UPDATE \"chats\" SET \"isDangerousChat\" = 1, \
              \"dangerCategories\" = '[\"Violence\",\"Substance Use\"]' WHERE \"id\" = '{third}'; \
              UPDATE \"chats\" SET \"conciergeMode\" = 'unmoderated', \"conciergeModeSetBy\" = 'concierge', \
              \"conciergeModeReason\" = 'classifier' WHERE \"id\" = '{third}'"
@@ -379,7 +379,7 @@ fn salon_reads_match_oracle() {
     // Concierge moved after refusals, its ledger at 2.
     {
         let sql = format!(
-            "UPDATE \"chats\" SET \"conciergeOverride\" = 'OFF', \"isDangerousChat\" = 1, \
+            "UPDATE \"chats\" SET \"isDangerousChat\" = 1, \
              \"dangerCategories\" = '[\"Violence\"]' WHERE \"id\" = '{solo}'; \
              UPDATE \"chats\" SET \"conciergeMode\" = 'unmoderated', \"conciergeModeSetBy\" = 'concierge', \
              \"conciergeModeReason\" = 'refusals' WHERE \"id\" = '{solo}'; \
@@ -421,7 +421,7 @@ fn salon_reads_match_oracle() {
     {
         rt.block_on(db.write(|w| {
             w.main().connection().execute_batch(
-                "UPDATE \"chats\" SET \"conciergeOverride\" = NULL, \"isDangerousChat\" = NULL, \
+                "UPDATE \"chats\" SET \"isDangerousChat\" = NULL, \
                  \"dangerCategories\" = NULL, \"conciergeMode\" = 'moderated', \
                  \"conciergeModeSetBy\" = NULL, \"conciergeModeReason\" = NULL, \
                  \"moderationRefusalCount\" = 0",

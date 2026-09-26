@@ -53,10 +53,12 @@ use crate::tools::llm_number::llm_number;
 // help_settings
 // ============================================================================
 
-/// The eight valid categories (v4 `HelpSettingsCategory`).
-const HELP_SETTINGS_CATEGORIES: [&str; 8] = [
+/// The nine valid categories (v4 `HelpSettingsCategory`; `concierge` inserted
+/// after `chat` at `3b463d6b1`, #76 — not appended).
+const HELP_SETTINGS_CATEGORIES: [&str; 9] = [
     "overview",
     "chat",
+    "concierge",
     "connections",
     "embeddings",
     "images",
@@ -79,7 +81,7 @@ pub struct HelpSettingsOutput {
 }
 
 /// v4 `validateHelpSettingsInput` — the Zod object requires `category` to be one
-/// of the eight enum values. Returns the validated category, or `None` when the
+/// of the nine enum values. Returns the validated category, or `None` when the
 /// input is not an object with a valid `category` string.
 fn validate_help_settings_input(args: &Value) -> Option<String> {
     let category = args.as_object()?.get("category")?.as_str()?;
@@ -91,7 +93,7 @@ fn validate_help_settings_input(args: &Value) -> Option<String> {
 }
 
 /// The exact v4 validation-failure message.
-const HELP_SETTINGS_INVALID: &str = "Invalid input: category is required and must be one of: overview, chat, connections, embeddings, images, appearance, templates, system";
+const HELP_SETTINGS_INVALID: &str = "Invalid input: category is required and must be one of: overview, chat, concierge, connections, embeddings, images, appearance, templates, system";
 
 /// Execute the `help_settings` tool. Reads the requested category's settings for
 /// `user_id` and returns v4's `HelpSettingsToolOutput`. A validation failure
@@ -162,6 +164,7 @@ fn title_case_first(s: &str) -> String {
 fn fetch_category_settings(db: &Db, category: &str, user_id: &str) -> Result<Value, DbError> {
     match category {
         "chat" => fetch_chat(db, user_id),
+        "concierge" => fetch_concierge(db, user_id),
         "connections" => fetch_connections(db, user_id),
         "embeddings" => fetch_embeddings(db, user_id),
         "images" => fetch_images(db, user_id),
@@ -205,11 +208,9 @@ fn fetch_chat(db: &Db, user_id: &str) -> Result<Value, DbError> {
         "defaultTimestampConfig".into(),
         field(&s, "defaultTimestampConfig"),
     );
+    // (`dangerousContentSettings` left this category at v4 `3b463d6b1`: the
+    // Concierge's settings have their own category now.)
     obj.insert("agentModeSettings".into(), field(&s, "agentModeSettings"));
-    obj.insert(
-        "dangerousContentSettings".into(),
-        field(&s, "dangerousContentSettings"),
-    );
     obj.insert("autoDetectRng".into(), field(&s, "autoDetectRng"));
     obj.insert("customTools".into(), field(&s, "customTools"));
     obj.insert("llmLoggingSettings".into(), field(&s, "llmLoggingSettings"));
@@ -219,6 +220,21 @@ fn fetch_chat(db: &Db, user_id: &str) -> Result<Value, DbError> {
     // when the hydrated object omits it (NULL), the key is `undefined` → dropped.
     put_field_if_present(&mut obj, &s, "timezone");
     Ok(Value::Object(obj))
+}
+
+// --- concierge ----------------------------------------------------------------
+
+/// v4 `case 'concierge'` (`3b463d6b1`, #76): `{ conciergeSettings:
+/// readConciergeSettings(settings) }` — every key present, defaults filled —
+/// or the placeholder when the user has no settings row.
+fn fetch_concierge(db: &Db, user_id: &str) -> Result<Value, DbError> {
+    let Some(s) = read_chat_settings(db, user_id)? else {
+        return Ok(json!({ "message": "No chat settings configured yet" }));
+    };
+    Ok(json!({
+        "conciergeSettings":
+            crate::services::dangerous_content::resolver::read_concierge_settings(Some(&s)).to_value(),
+    }))
 }
 
 // --- connections --------------------------------------------------------------
@@ -498,6 +514,11 @@ fn fetch_overview(db: &Db, user_id: &str) -> Result<Value, DbError> {
         "theme": theme,
         "agentMode": agent,
         "contextCompression": compression,
+        // v4 `3b463d6b1`: `readConciergeSettings(settings).enabled` — the
+        // defaults' `true` when there is no row.
+        "conciergeOnDuty":
+            crate::services::dangerous_content::resolver::read_concierge_settings(settings.as_ref())
+                .enabled,
     }))
 }
 

@@ -36,7 +36,7 @@ const TERMINAL_SESSIONS_DDL: &str = "CREATE TABLE terminal_sessions (\
 
 const CHAT_SETTINGS_DDL: &str = "CREATE TABLE chat_settings (\
     id TEXT PRIMARY KEY, userId TEXT NOT NULL, autoHousekeepingSettings TEXT, \
-    llmLoggingSettings TEXT, dangerousContentSettings TEXT, \
+    llmLoggingSettings TEXT, conciergeSettings TEXT, \
     createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);";
 
 const CONNECTION_PROFILES_DDL: &str = "CREATE TABLE connection_profiles (\
@@ -108,7 +108,7 @@ fn chats_ddl() -> String {
         "dangerCategories TEXT",
         "dangerClassifiedAt TEXT",
         "dangerClassifiedAtMessageCount REAL",
-        "conciergeOverride TEXT",
+        // P4.D227 (v4 `3b463d6b1`, #76): `conciergeOverride` DROPPED.
         "conciergeMode TEXT",
         "conciergeModeSetBy TEXT",
         "conciergeModeReason TEXT",
@@ -169,12 +169,16 @@ fn make_instance(base: &Path, danger_mode: &str) {
     c.execute_batch(CONNECTION_PROFILES_DDL).unwrap();
     c.execute_batch(&chats_ddl()).unwrap();
 
-    // One chat_settings row; the danger sub-object drives the scan gate.
-    let dcs = format!(
-        r#"{{"mode":"{danger_mode}","threshold":0.7,"scanTextChat":true,"scanImagePrompts":false,"scanImageGeneration":false,"displayMode":"SHOW","showWarningBadges":true}}"#
-    );
+    // One chat_settings row; the Concierge's settings drive the scan gate (v4
+    // `3b463d6b1`, #76: the summary classifier's opt-in — `DETECT_ONLY` reads
+    // as on duty with it on, `OFF` as off duty, the migration's translation).
+    let dcs = match danger_mode {
+        "OFF" => r#"{"enabled":false}"#.to_string(),
+        _ => r#"{"enabled":true,"preScreen":{"enabled":true,"summaryClassification":true}}"#
+            .to_string(),
+    };
     c.execute(
-        "INSERT INTO chat_settings (id, userId, dangerousContentSettings, createdAt, updatedAt) \
+        "INSERT INTO chat_settings (id, userId, conciergeSettings, createdAt, updatedAt) \
          VALUES ('a0000000-0000-4000-8000-00000000000a', ?1, ?2, \
                  '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
         rusqlite::params![USER, dcs],

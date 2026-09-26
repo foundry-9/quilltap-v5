@@ -11,10 +11,13 @@
 //! throughout — which is precisely why its fourth parameter could mean the wrong
 //! thing for a whole phase without a single red row.
 //!
-//! Both sides run the same 27-case grid (`appearance-sanitize-gate.json`): mode
-//! {OFF, DETECT_ONLY, AUTO_ROUTE} x `isDangerousChat` {t,f} x
-//! `routesDangerousToUncensored` {t,f} x classification {safe, dangerous}, plus a
-//! `customClassificationPrompt` row and two sanitizer-answer edges. Compared per
+//! Both sides run the same 30-case grid (`appearance-sanitize-gate.json`): the
+//! Concierge policy (v4 `3b463d6b1`, #76 — resolved per row from its stored
+//! `concierge` settings WITH its `chat`) {off duty, Moderated + pre-screen,
+//! Unmoderated} x `isDangerousChat` {t,f} x `routesDangerousToUncensored`
+//! {t,f} x classification {safe, dangerous}, plus a
+//! `customClassificationPrompt` row, two sanitizer-answer edges, and #76's
+//! three pass-throughs (Moderated without the pre-screen, Locked, exempt). Compared per
 //! case: the returned appearances field-for-field, AND the NUMBER of completion
 //! calls — which is what says WHICH rule fired (rules 1 and 2 make none, rule
 //! 3-safe one, rule 4 one, rule 5 two). A gate that returned the right
@@ -52,7 +55,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use quilltap_core::cheap_llm::CheapLlmSelection;
-use quilltap_core::db::chat_settings::DangerousContentSettings;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::Writer;
 use quilltap_core::model::completion::{
@@ -64,6 +66,7 @@ use quilltap_core::services::appearance_resolution::{
 };
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::dangerous_content::gatekeeper::NoModerationProvider;
+use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -74,11 +77,12 @@ const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 struct CaseSpec {
     label: String,
     token: String,
-    mode: String,
+    /// v4 `3b463d6b1` (#76): the stored `conciergeSettings` + the chat the
+    /// policy resolves WITH.
+    concierge: serde_json::Value,
+    chat: serde_json::Value,
     is_dangerous_chat: bool,
     routes_dangerous_to_uncensored: bool,
-    #[serde(default)]
-    custom_classification_prompt: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -100,7 +104,6 @@ struct CheapSelectionSpec {
 #[serde(rename_all = "camelCase")]
 struct Spec {
     user_id: String,
-    threshold: f64,
     #[serde(rename = "cheapLLMSelection")]
     cheap_llm_selection: CheapSelectionSpec,
     characters: Vec<CharacterSpec>,
@@ -222,24 +225,6 @@ fn appearances_for(spec: &Spec, token: &str) -> Vec<ResolvedCharacterAppearance>
         .collect()
 }
 
-fn danger_settings(case: &CaseSpec, threshold: f64) -> DangerousContentSettings {
-    DangerousContentSettings {
-        mode: case.mode.clone(),
-        threshold,
-        scan_text_chat: true,
-        scan_image_prompts: false,
-        scan_image_generation: false,
-        uncensored_text_profile_id: None,
-        uncensored_image_profile_id: None,
-        display_mode: "SHOW".to_string(),
-        show_warning_badges: true,
-        custom_classification_prompt: case.custom_classification_prompt.clone(),
-        // P4.D225 OUT-OF-MANDATE (a required field on a shared struct): v4
-        // `49059fb14`'s schema default.
-        auto_switch_after_refusals: 2,
-    }
-}
-
 #[tokio::test]
 async fn appearance_sanitize_gate_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_APPEARANCE_GATE") else {
@@ -329,7 +314,7 @@ async fn appearance_sanitize_gate_matches_oracle() {
             &moderation,
             &completion,
             appearances_for(&spec, &case.token),
-            &danger_settings(case, spec.threshold),
+            &resolve_stored_concierge_settings(Some(&case.concierge), Some(&case.chat)),
             case.is_dangerous_chat,
             case.routes_dangerous_to_uncensored,
             &selection,

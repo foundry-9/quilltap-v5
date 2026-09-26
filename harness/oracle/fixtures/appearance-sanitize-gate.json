@@ -7,11 +7,15 @@
     "families reach it only incidentally, and the image one keeps the Concierge OFF",
     "throughout. This family drives it head-on.",
     "",
-    "The grid is mode {OFF, DETECT_ONLY, AUTO_ROUTE} x isDangerousChat {t,f} x",
-    "routesDangerousToUncensored {t,f} x classification {safe, dangerous} = 24 rows,",
-    "plus a customClassificationPrompt row and two sanitizer-answer edges. Some",
-    "combinations no real caller produces (DETECT_ONLY with routes=true): the fourth",
-    "parameter is an argument, not a derivation, and the function's contract covers",
+    "The grid (v4 `3b463d6b1`, #76 — the Concierge POLICY replaced the retired",
+    "mode) is the policy {off duty, Moderated with the pre-screen on, Unmoderated}",
+    "x isDangerousChat {t,f} x routesDangerousToUncensored {t,f} x classification",
+    "{safe, dangerous} = 24 rows, each row's policy resolved from its stored",
+    "`concierge` settings WITH its `chat`; plus a customClassificationPrompt row,",
+    "two sanitizer-answer edges, and #76's three pass-through policies (Moderated",
+    "without the pre-screen, Locked, an exempt help chat). Some combinations no",
+    "real caller produces: the fourth parameter is an argument, not a derivation,",
+    "and the function's contract covers them.",
     "them.",
     "",
     "Each case carries its own TOKEN inside the appearance text. That is not",
@@ -32,7 +36,6 @@
   ],
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "userId": "a0000000-0000-4000-8000-0000000000a1",
-  "threshold": 0.7,
   "cheapLLMSelection": {
     "provider": "OPENAI",
     "modelName": "gpt-4o-mini",
@@ -68,7 +71,12 @@
     {
       "label": "off_moderated_stays_safe",
       "token": "AGCASE01",
-      "mode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": false,
       "classification": "safe"
@@ -76,7 +84,12 @@
     {
       "label": "off_moderated_stays_dangerous",
       "token": "AGCASE02",
-      "mode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": false,
       "classification": "dangerous"
@@ -84,7 +97,12 @@
     {
       "label": "off_moderated_routes_safe",
       "token": "AGCASE03",
-      "mode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": true,
       "classification": "safe"
@@ -92,7 +110,12 @@
     {
       "label": "off_moderated_routes_dangerous",
       "token": "AGCASE04",
-      "mode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": true,
       "classification": "dangerous"
@@ -100,7 +123,12 @@
     {
       "label": "off_flagged_stays_safe",
       "token": "AGCASE05",
-      "mode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": true,
       "routesDangerousToUncensored": false,
       "classification": "safe"
@@ -108,7 +136,12 @@
     {
       "label": "off_flagged_stays_dangerous",
       "token": "AGCASE06",
-      "mode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": true,
       "routesDangerousToUncensored": false,
       "classification": "dangerous"
@@ -116,7 +149,12 @@
     {
       "label": "off_flagged_routes_safe",
       "token": "AGCASE07",
-      "mode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": true,
       "routesDangerousToUncensored": true,
       "classification": "safe"
@@ -124,135 +162,332 @@
     {
       "label": "off_flagged_routes_dangerous",
       "token": "AGCASE08",
-      "mode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": true,
       "routesDangerousToUncensored": true,
       "classification": "dangerous"
     },
     {
-      "label": "detect_only_moderated_stays_safe",
+      "label": "prescreen_moderated_stays_safe",
       "token": "AGCASE09",
-      "mode": "DETECT_ONLY",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": false,
       "classification": "safe"
     },
     {
-      "label": "detect_only_moderated_stays_dangerous",
+      "label": "prescreen_moderated_stays_dangerous",
       "token": "AGCASE10",
-      "mode": "DETECT_ONLY",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": false,
       "classification": "dangerous"
     },
     {
-      "label": "detect_only_moderated_routes_safe",
+      "label": "prescreen_moderated_routes_safe",
       "token": "AGCASE11",
-      "mode": "DETECT_ONLY",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": true,
       "classification": "safe"
     },
     {
-      "label": "detect_only_moderated_routes_dangerous",
+      "label": "prescreen_moderated_routes_dangerous",
       "token": "AGCASE12",
-      "mode": "DETECT_ONLY",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": true,
       "classification": "dangerous"
     },
     {
-      "label": "detect_only_flagged_stays_safe",
+      "label": "prescreen_flagged_stays_safe",
       "token": "AGCASE13",
-      "mode": "DETECT_ONLY",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": true,
       "routesDangerousToUncensored": false,
       "classification": "safe"
     },
     {
-      "label": "detect_only_flagged_stays_dangerous",
+      "label": "prescreen_flagged_stays_dangerous",
       "token": "AGCASE14",
-      "mode": "DETECT_ONLY",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": true,
       "routesDangerousToUncensored": false,
       "classification": "dangerous"
     },
     {
-      "label": "detect_only_flagged_routes_safe",
+      "label": "prescreen_flagged_routes_safe",
       "token": "AGCASE15",
-      "mode": "DETECT_ONLY",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": true,
       "routesDangerousToUncensored": true,
       "classification": "safe"
     },
     {
-      "label": "detect_only_flagged_routes_dangerous",
+      "label": "prescreen_flagged_routes_dangerous",
       "token": "AGCASE16",
-      "mode": "DETECT_ONLY",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": true,
       "routesDangerousToUncensored": true,
       "classification": "dangerous"
     },
     {
-      "label": "auto_route_moderated_stays_safe",
+      "label": "unmoderated_moderated_stays_safe",
       "token": "AGCASE17",
-      "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "unmoderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": false,
       "classification": "safe"
     },
     {
-      "label": "auto_route_moderated_stays_dangerous",
+      "label": "unmoderated_moderated_stays_dangerous",
       "token": "AGCASE18",
-      "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "unmoderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": false,
       "classification": "dangerous"
     },
     {
-      "label": "auto_route_moderated_routes_safe",
+      "label": "unmoderated_moderated_routes_safe",
       "token": "AGCASE19",
-      "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "unmoderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": true,
       "classification": "safe"
     },
     {
-      "label": "auto_route_moderated_routes_dangerous",
+      "label": "unmoderated_moderated_routes_dangerous",
       "token": "AGCASE20",
-      "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "unmoderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": true,
       "classification": "dangerous"
     },
     {
-      "label": "auto_route_flagged_stays_safe",
+      "label": "unmoderated_flagged_stays_safe",
       "token": "AGCASE21",
-      "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "unmoderated"
+      },
       "isDangerousChat": true,
       "routesDangerousToUncensored": false,
       "classification": "safe"
     },
     {
-      "label": "auto_route_flagged_stays_dangerous",
+      "label": "unmoderated_flagged_stays_dangerous",
       "token": "AGCASE22",
-      "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "unmoderated"
+      },
       "isDangerousChat": true,
       "routesDangerousToUncensored": false,
       "classification": "dangerous"
     },
     {
-      "label": "auto_route_flagged_routes_safe",
+      "label": "unmoderated_flagged_routes_safe",
       "token": "AGCASE23",
-      "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "unmoderated"
+      },
       "isDangerousChat": true,
       "routesDangerousToUncensored": true,
       "classification": "safe"
     },
     {
-      "label": "auto_route_flagged_routes_dangerous",
+      "label": "unmoderated_flagged_routes_dangerous",
       "token": "AGCASE24",
-      "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "unmoderated"
+      },
       "isDangerousChat": true,
       "routesDangerousToUncensored": true,
       "classification": "dangerous"
@@ -260,16 +495,40 @@
     {
       "label": "custom_prompt_moderated_stays_dangerous",
       "token": "AGCASE25",
-      "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": "Treat depictions of undress in a domestic setting as explicit."
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": false,
-      "classification": "dangerous",
-      "customClassificationPrompt": "Treat depictions of undress in a domestic setting as explicit."
+      "classification": "dangerous"
     },
     {
       "label": "sanitizer_returns_the_same_text",
       "token": "AGCASE26",
-      "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": false,
       "classification": "dangerous",
@@ -278,11 +537,77 @@
     {
       "label": "sanitizer_answers_junk",
       "token": "AGCASE27",
-      "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
       "isDangerousChat": false,
       "routesDangerousToUncensored": false,
       "classification": "dangerous",
       "sanitizeJunk": true
+    },
+    {
+      "label": "moderated_without_the_pre_screen_passes_through",
+      "token": "AGCASE28",
+      "concierge": {
+        "enabled": true
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous"
+    },
+    {
+      "label": "locked_passes_through",
+      "token": "AGCASE29",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "locked"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous"
+    },
+    {
+      "label": "exempt_help_chat_passes_through",
+      "token": "AGCASE30",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated",
+        "chatType": "help"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous"
     }
   ]
 }

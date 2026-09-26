@@ -1281,9 +1281,10 @@ mod validate_image_file_tests {
 // route-level implementation, NOT a call into the Salon's `generate_image`
 // tool, and the differences are the whole point:
 //
-// * the Concierge gate is `scanImagePrompts` with **no chat** — the settings
-//   are the user's global bag, resolved with `chat: None`;
-// * the AUTO_ROUTE reroute picks the FIRST `isDangerousCompatible` profile
+// * the Concierge gate is the pre-screen's `scanImagePrompts`, the policy
+//   resolved WITH the body's chat when it names one (v4 `3b463d6b1`, #76 —
+//   which also routes an Unmoderated chat direct);
+// * the failover reroute picks the FIRST `isDangerousCompatible` profile
 //   other than the current one, rather than consulting the Concierge desk's
 //   `uncensoredImageProfileId` the way the tool's `reroute_image_profile` does;
 // * NO orientation is resolved (`params_builder`'s `orientation: None` arm
@@ -1299,9 +1300,9 @@ mod validate_image_file_tests {
 // ⚠ 💸 LIVE MONEY: one image-provider call per request, plus (when the
 // Concierge is armed) one cheap-LLM classification.
 
-use crate::db::chat_settings::DangerousContentSettings;
 use crate::model::image::{ErasedImageGenerate, GeneratedImageData};
 use crate::services::dangerous_content::gatekeeper::DangerClassificationResult;
+use crate::services::dangerous_content::resolver::ResolvedConciergePolicy;
 
 /// The classification call v4's route makes, with its two provider generics
 /// erased — `classify_content(db, moderation, completion, …)` is object-safe in
@@ -1318,7 +1319,7 @@ pub trait ImagePromptClassifier: Send + Sync {
         content: &'a str,
         selection: &'a crate::cheap_llm::CheapLlmSelection,
         user_id: &'a str,
-        settings: &'a DangerousContentSettings,
+        concierge_policy: &'a ResolvedConciergePolicy,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = DangerClassificationResult> + Send + 'a>>;
 }
 
@@ -1337,10 +1338,10 @@ impl ErasedImagePromptClassifier {
         content: &str,
         selection: &crate::cheap_llm::CheapLlmSelection,
         user_id: &str,
-        settings: &DangerousContentSettings,
+        concierge_policy: &ResolvedConciergePolicy,
     ) -> DangerClassificationResult {
         self.0
-            .classify(db, content, selection, user_id, settings)
+            .classify(db, content, selection, user_id, concierge_policy)
             .await
     }
 }
@@ -1509,7 +1510,8 @@ fn zod_int(v: &Value) -> Option<i64> {
 /// chat's own Concierge state (Locked, Unmoderated — v4 `4d370a90f`) governs
 /// its pictures too — and, inside the classification block, the profiles.
 struct ConciergeSettings {
-    settings: DangerousContentSettings,
+    /// v4 `conciergePolicy` (`3b463d6b1`, #76 — replaces `dangerSettings`).
+    policy: ResolvedConciergePolicy,
     cheap_settings: Option<Value>,
     /// v4 `chatForConcierge` — the chokepoint's state snapshot (`4d370a90f`).
     chat: Option<Value>,
@@ -1535,24 +1537,20 @@ fn read_concierge_settings(db: &Db, user_id: &str, chat_id: Option<&str>) -> Con
             "[Images v1] Could not load Concierge settings; using defaults"
         );
     }
-    let global = chat_settings
-        .as_ref()
-        .and_then(|cs| cs.get("dangerousContentSettings"))
-        .and_then(|d| serde_json::from_value::<DangerousContentSettings>(d.clone()).ok());
-    let settings =
-        crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
-            global,
-            chat.as_ref(),
-        )
-        .settings;
+    let policy = crate::services::dangerous_content::resolver::resolve_concierge_settings(
+        chat_settings.as_ref(),
+        chat.as_ref(),
+    );
     tracing::debug!(
         chat_id = ?chat_id,
-        mode = %settings.mode,
+        concierge_source = policy.source.as_str(),
+        concierge_state = policy.state.as_str(),
+        pre_screen = policy.pre_screen.enabled,
         with_chat = chat.is_some(),
-        "[Images v1] Generate: resolved Concierge settings"
+        "[Images v1] Generate: resolved Concierge policy"
     );
     ConciergeSettings {
-        settings,
+        policy,
         cheap_settings: chat_settings
             .as_ref()
             .and_then(|cs| cs.get("cheapLLMSettings"))
@@ -1565,6 +1563,44 @@ fn read_concierge_settings(db: &Db, user_id: &str, chat_id: Option<&str>) -> Con
 /// CONNECTION profiles, so its understudy is the uncensored TEXT resolver's
 /// pick, filtered to providers that can generate images — the filter applied
 /// to the explicit pick too.
+/// v4 `resolveUncensoredTextUnderstudy({ userId, conciergePolicy, exclude,
+/// filter: (c) => supportsImageGeneration(c.provider) })` — the image-capable
+/// text understudy, its whole row and key. Shared by the direct block
+/// (`3b463d6b1`) and the post-hoc failover's [`DialogUnderstudy`].
+fn dialog_text_understudy(
+    db: &Db,
+    user_id: &str,
+    uncensored_text_profile_id: Option<&str>,
+    exclude: &[String],
+) -> Option<(Value, String)> {
+    let can_draw = |p: &Value| {
+        super::settings::supports_image_generation(
+            p.get("provider")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        )
+    };
+    let found = db
+        .read_main(|conn| {
+            Ok(
+                crate::services::dangerous_content::understudy::resolve_uncensored_text_understudy(
+                    conn,
+                    &crate::services::dangerous_content::provider_routing::ConnApiKeys::new(conn),
+                    crate::services::dangerous_content::understudy::TextUnderstudyLookup {
+                        user_id,
+                        uncensored_text_profile_id,
+                        exclude,
+                        turn_attachment_mime_types: &[],
+                        filter: Some(&can_draw),
+                    },
+                ),
+            )
+        })
+        .ok()
+        .flatten()?;
+    Some((found.row, found.api_key))
+}
+
 struct DialogUnderstudy<'a> {
     db: &'a Db,
     user_id: &'a str,
@@ -1579,35 +1615,15 @@ impl crate::services::dangerous_content::image_failover::UnderstudySource for Di
         crate::services::dangerous_content::image_failover::FailoverProfile,
         String,
     )> {
-        let can_draw = |p: &Value| {
-            super::settings::supports_image_generation(
-                p.get("provider")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default(),
-            )
-        };
-        let found = self
-            .db
-            .read_main(|conn| {
-                Ok(crate::services::dangerous_content::understudy::resolve_uncensored_text_understudy(
-                    conn,
-                    &crate::services::dangerous_content::provider_routing::ConnApiKeys::new(conn),
-                    crate::services::dangerous_content::understudy::TextUnderstudyLookup {
-                        user_id: self.user_id,
-                        uncensored_text_profile_id: self.uncensored_text_profile_id,
-                        exclude,
-                        turn_attachment_mime_types: &[],
-                        filter: Some(&can_draw),
-                    },
-                ))
-            })
-            .ok()
-            .flatten()?;
+        let (row, key) = dialog_text_understudy(
+            self.db,
+            self.user_id,
+            self.uncensored_text_profile_id,
+            exclude,
+        )?;
         Some((
-            crate::services::dangerous_content::image_failover::FailoverProfile::from_row(
-                &found.row,
-            ),
-            found.api_key,
+            crate::services::dangerous_content::image_failover::FailoverProfile::from_row(&row),
+            key,
         ))
     }
 }
@@ -1689,7 +1705,47 @@ async fn run_images_generate(
     // Concierge errors". Every `?`-shaped failure in the second lands in
     // `concierge_failed` and continues with the ORIGINAL profile.
     let concierge = read_concierge_settings(db, user_id, body.chat_id.as_deref());
-    if concierge.settings.mode != "OFF" && concierge.settings.scan_image_prompts {
+    // An Unmoderated chat routes direct (v4 `3b463d6b1`, #76): the verdict is
+    // already in — no pre-screen to wait on. Inside v4's same fail-safe `try`.
+    if concierge.policy.route_direct {
+        let exclude = [original_profile_id.clone()];
+        match dialog_text_understudy(
+            db,
+            user_id,
+            concierge.policy.desk.text_profile_id.as_deref(),
+            &exclude,
+        ) {
+            Some((row, _key)) => {
+                let new_id = row
+                    .get("id")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let new_name = row
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                tracing::info!(
+                    context = "Images v1",
+                    user_id = %user_id,
+                    chat_id = ?body.chat_id,
+                    original_profile_id = %original_profile_id,
+                    uncensored_profile_id = %new_id,
+                    uncensored_profile_name = %new_name,
+                    "[Images v1] Unmoderated chat routed direct to uncensored connection profile"
+                );
+                profile = row;
+            }
+            None => tracing::debug!(
+                context = "Images v1",
+                user_id = %user_id,
+                chat_id = ?body.chat_id,
+                "[Images v1] Unmoderated chat has no uncensored image-capable profile; using original"
+            ),
+        }
+    }
+    if concierge.policy.pre_screen.enabled && concierge.policy.pre_screen.scan_image_prompts {
         match db.read_main(|c| crate::db::connection_profiles::find_by_user_id(c, user_id)) {
             Err(e) => {
                 tracing::error!(
@@ -1710,7 +1766,7 @@ async fn run_images_generate(
                 if let Some(selection) = selection {
                     let classification = seams
                         .classifier
-                        .classify(db, &body.prompt, &selection, user_id, &concierge.settings)
+                        .classify(db, &body.prompt, &selection, user_id, &concierge.policy)
                         .await;
                     if classification.is_dangerous {
                         tracing::info!(
@@ -1722,10 +1778,12 @@ async fn run_images_generate(
                                 .iter()
                                 .map(|c| c.category.clone())
                                 .collect::<Vec<_>>(),
-                            mode = %concierge.settings.mode,
+                            concierge_source = concierge.policy.source.as_str(),
                             "[Images v1] Front page image prompt classified as dangerous"
                         );
-                        if concierge.settings.mode == "AUTO_ROUTE" {
+                        // Where failover is allowed, try to find an
+                        // uncensored provider.
+                        if concierge.policy.failover_allowed {
                             // v4 `allProfiles.find(p => p.isDangerousCompatible
                             // === true && p.id !== profile.id)` — the FIRST
                             // compatible profile in `findByUserId` order, NOT
@@ -1858,7 +1916,7 @@ async fn run_images_generate(
     let understudy = DialogUnderstudy {
         db,
         user_id,
-        uncensored_text_profile_id: concierge.settings.uncensored_text_profile_id.as_deref(),
+        uncensored_text_profile_id: concierge.policy.desk.text_profile_id.as_deref(),
     };
     let primary =
         crate::services::dangerous_content::image_failover::FailoverProfile::from_row(&profile);
@@ -1872,11 +1930,12 @@ async fn run_images_generate(
         attempt,
         &crate::services::dangerous_content::image_failover::ImageFailoverContext {
             db,
+            user_id,
             chat_id: body.chat_id.as_deref(),
             // v4 `chat: chatForConcierge` (`4d370a90f`).
             chat: concierge.chat.as_ref(),
             purpose: crate::services::dangerous_content::image_failover::ImagePurpose::Dialog,
-            settings: &concierge.settings,
+            concierge_policy: &concierge.policy,
             understudy: &understudy,
             profile_kind: crate::services::route_trail::RouteProfileKind::Connection,
             primary_via,

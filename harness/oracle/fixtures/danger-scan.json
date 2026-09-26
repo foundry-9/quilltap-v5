@@ -4,6 +4,7 @@
   "userOn": "aaaa1111-1111-4111-8111-111111111111",
   "userOff": "bbbb2222-2222-4222-8222-222222222222",
   "userNoProfiles": "cccc3333-3333-4333-8333-333333333333",
+  "userNotOptedIn": "eeee5555-5555-4555-8555-555555555555",
   "characterId": "dddd4444-4444-4444-8444-444444444444",
   "profileP1": "e0000000-0000-4000-8000-0000000000e1",
   "profileP2": "e0000000-0000-4000-8000-0000000000e2",
@@ -11,22 +12,19 @@
     "usersProcessed": 2,
     "chatsEnqueued": 5
   },
-  "dangerOn": {
-    "mode": "DETECT_ONLY",
-    "threshold": 0.7,
-    "scanTextChat": true,
-    "scanImagePrompts": false,
-    "scanImageGeneration": false,
-    "displayMode": "SHOW",
-    "showWarningBadges": true
+  "conciergeOn": {
+    "enabled": true,
+    "preScreen": {
+      "summaryClassification": true
+    }
   },
-  "dangerOff": {
-    "mode": "OFF",
-    "threshold": 0.7,
-    "scanTextChat": true,
-    "scanImagePrompts": false,
-    "scanImageGeneration": false,
-    "displayMode": "SHOW",
-    "showWarningBadges": true
+  "conciergeOff": {
+    "enabled": false,
+    "preScreen": {
+      "summaryClassification": true
+    }
+  },
+  "conciergeNotOptedIn": {
+    "enabled": true
   }
 }

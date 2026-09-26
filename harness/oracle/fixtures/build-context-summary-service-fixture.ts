@@ -63,7 +63,6 @@ interface ChatSeed {
   title: string;
   chatType?: string;
   isDangerousChat?: boolean;
-  conciergeOverride?: 'OFF';
   contextSummary?: string | null;
   compactionGeneration?: number;
   lastSummaryTurn?: number;
@@ -302,7 +301,6 @@ async function main(): Promise<void> {
         participants: c.participants,
         chatType: c.chatType ?? 'salon',
         isDangerousChat: c.isDangerousChat ?? null,
-        conciergeOverride: c.conciergeOverride ?? null,
         ...(c.imageProfileId !== undefined ? { imageProfileId: c.imageProfileId } : {}),
       } as never,
       { id: c.id, createdAt: TS, updatedAt: TS }

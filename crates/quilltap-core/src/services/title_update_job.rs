@@ -42,7 +42,7 @@ use serde_json::Value;
 use crate::chat_predicates::is_help_like_chat_type;
 use crate::cheap_llm::{
     get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, CheapLlmConfig,
-    CheapLlmProfile, CheapLlmSelection, DangerousContentSettings,
+    CheapLlmProfile, CheapLlmSelection,
 };
 use crate::clock::iso_from_unix_ms;
 use crate::db::background_jobs::BackgroundJob;
@@ -60,7 +60,7 @@ use crate::services::context_summary::title_verdict::TitleVerdict;
 use crate::services::auto_title::{apply_auto_title, AutoTitleExtraPatch, AutoTitleSource};
 use crate::services::cost_estimation::{MessageCostEstimator, NoMessageCost};
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
-use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
+use crate::services::dangerous_content::resolver::resolve_concierge_settings;
 use crate::services::job_runner::{JobFuture, JobHandler, JobOutcome};
 
 /// v4's `context: 'background-jobs.title-update'` for this handler's warn lines
@@ -244,24 +244,15 @@ where
         None,
     );
 
-    // Dangerous chats route to the uncensored provider to dodge content
-    // refusals; off-duty chats are explicitly opted out (inside the predicate).
-    // v4 `resolveDangerousContentSettings(chatSettings, chat)`, then narrowed to
-    // the slim `cheap_llm` shape the selection resolver consumes.
-    let resolved_danger = resolve_dangerous_content_settings(
-        global_danger_from_settings(&chat_settings),
-        Some(&chat),
-    )
-    .settings;
-    let danger_settings = DangerousContentSettings {
-        mode: resolved_danger.mode,
-        uncensored_text_profile_id: resolved_danger.uncensored_text_profile_id,
-    };
+    // Unmoderated chats go to the uncensored desk to avoid content refusals
+    // (the policy's `route_direct`); off duty or Locked, they never do (v4
+    // `3b463d6b1`: `resolveConciergeSettings(chatSettings, chat)`).
+    let concierge_policy = resolve_concierge_settings(Some(&chat_settings), Some(&chat));
     if should_use_uncensored_route(Some(&chat)) {
         selection = resolve_uncensored_cheap_llm_selection(
             selection,
             true,
-            Some(&danger_settings),
+            Some(&concierge_policy),
             &available_profiles,
         );
     }
@@ -476,16 +467,6 @@ where
     .map_err(|e| e.to_string())?;
 
     Ok(())
-}
-
-/// The user's global dangerous-content settings off the chat-settings read (the
-/// `carina_memory_extraction` precedent, `:381`).
-fn global_danger_from_settings(
-    chat_settings: &Value,
-) -> Option<crate::db::chat_settings::DangerousContentSettings> {
-    chat_settings
-        .get("dangerousContentSettings")
-        .and_then(|d| serde_json::from_value(d.clone()).ok())
 }
 
 /// The `TITLE_UPDATE` [`JobHandler`] — a payload decode around

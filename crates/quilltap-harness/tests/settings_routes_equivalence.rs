@@ -337,6 +337,7 @@ fn settings_routes_match_v4() {
     let mut composer_settings_cases = 0;
     let mut impersonation_voice_cases = 0;
     let mut settings_zod_cases = 0;
+    let mut concierge_settings_cases = 0;
     let mut connection_profile_cases = 0;
     let mut profile_tag_cases = 0;
     let mut recorded_cases = 0;
@@ -544,6 +545,9 @@ fn settings_routes_match_v4() {
         if row["family"].as_str() == Some("settings_zod") {
             settings_zod_cases += 1;
         }
+        if row["family"].as_str() == Some("concierge_settings") {
+            concierge_settings_cases += 1;
+        }
         if row["family"].as_str() == Some("connection_profiles") {
             connection_profile_cases += 1;
         }
@@ -551,7 +555,8 @@ fn settings_routes_match_v4() {
             profile_tag_cases += 1;
         }
     }
-    // 19 at P4.6d + the two P4.6an dangerousContentSettings cases.
+    // 19 at P4.6d + the two P4.6an settings cases (re-keyed onto
+    // `conciergeSettings` at P4.D227).
     assert!(n >= 21, "expected >= 21 cases, got {n}");
     // P4.56: the data-retention family, whose arms are meaningful only through
     // the `Request` serde path this lane rewired it onto. Row-driven floor — it
@@ -597,6 +602,15 @@ fn settings_routes_match_v4() {
     assert!(
         settings_zod_cases >= 36,
         "expected >= 36 settings_zod cases, got {settings_zod_cases} — regenerate the oracle"
+    );
+    // P4.D227 (v4 `3b463d6b1`, #76): the retired Concierge keys (v4's own
+    // `route.concierge` `it.each`, each key alone, the null, all three), the
+    // two precedence arms either side of `conciergeSettings`' slot, the
+    // crafter-less cheap-LLM PUT and the create branch. A pre-#76 oracle
+    // carries none of these rows.
+    assert!(
+        concierge_settings_cases >= 11,
+        "expected >= 11 concierge_settings cases, got {concierge_settings_cases} — regenerate the oracle"
     );
     // P4.D79: the eight multi-character-prefill arms on top of the family's
     // original seven. Same stale-oracle guard as the families above — the three

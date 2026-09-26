@@ -95,7 +95,7 @@ Categories: overview, chat, connections, embeddings, images, appearance, templat
 const HELP_NAVIGATE: &str = r#"
 ### Help Navigate
 Navigate the user's browser to a specific Quilltap page or settings section.
-Format: [[HELP_NAVIGATE url="/settings?tab=chat&section=dangerous-content" /]]"#;
+Format: [[HELP_NAVIGATE url="/settings?tab=concierge&section=uncensored-desk" /]]"#;
 
 const CREATE_NOTE: &str = r#"
 ### Create Note

@@ -18,7 +18,9 @@
 //!      not the reroute later succeeds;
 //!   4. the chat may not fail over (it is Locked — re-read NOW, v4
 //!      `4d370a90f`) → announce `refusal-not-permitted` with `reason: locked`,
-//!      fail; mode is not `AUTO_ROUTE` → announce `refusal-not-permitted`, fail;
+//!      fail; the Concierge is off duty (the policy's `failover_allowed || on_duty`,
+//!      re-asked against the CURRENT switch — v4 `3b463d6b1`) → the ledger, no
+//!      announcement, fail;
 //!   5. ask the understudy resolver (excluding the primary). Nobody → announce
 //!      `refusal-no-understudy`, fail;
 //!   6. ask the understudy once. It answers → announce `refusal-rerouted` and
@@ -37,7 +39,6 @@
 
 use serde_json::Value;
 
-use crate::db::chat_settings::DangerousContentSettings;
 use crate::db::runtime::Db;
 use crate::llm_fallback::{classify_fallback_trigger, FallbackError, FallbackTrigger};
 use crate::model::image::ImageGenError;
@@ -50,12 +51,13 @@ use crate::services::route_trail::{
 };
 
 use super::chat_override::{concierge_state_may_fail_over, get_concierge_state};
-use super::current_state::read_current_concierge_state;
+use super::current_state::{read_current_concierge_on_duty, read_current_concierge_state};
 use super::provider_routing::ApiKeyResolver;
 use super::refusal::{classify_refusal, RefusalInput, RefusalVerdict};
 use super::refusal_ledger::{
     record_moderation_refusal, RefusalKind, RefusalPurpose, RefusalRecord,
 };
+use super::resolver::ResolvedConciergePolicy;
 use super::understudy::{resolve_uncensored_image_understudy, ImageUnderstudyLookup};
 
 const TARGET: &str = "quilltap::concierge_image_failover";
@@ -165,8 +167,12 @@ pub struct ImageFailoverContext<'a, U: UnderstudySource> {
     /// Announcements and the ledger need it; the dialog may have none.
     pub chat_id: Option<&'a str>,
     pub purpose: ImagePurpose,
-    /// Already resolved WITH the chat where there is one.
-    pub settings: &'a DangerousContentSettings,
+    /// v4 `ctx.userId` — whose Concierge switch the refusal-time on-duty
+    /// re-read asks (`3b463d6b1`, #76).
+    pub user_id: &'a str,
+    /// The Concierge policy, already resolved WITH the chat where there is
+    /// one (v4 `3b463d6b1`, #76 — replaces the retired settings bag).
+    pub concierge_policy: &'a ResolvedConciergePolicy,
     /// The chat's Concierge state when the call began, where there is a chat
     /// (v4 `4d370a90f`, #75). A Locked chat never fails over, whatever the
     /// mode says. At refusal time the chokepoint re-reads the chat (by
@@ -388,11 +394,13 @@ where
         "Image provider refused on content grounds",
         evidence = verdict.evidence.map(|e| e.as_str()),
         detail = verdict.detail.as_deref(),
-        mode = ctx.settings.mode.as_str()
+        concierge_source = ctx.concierge_policy.source.as_str(),
+        concierge_state = ctx.concierge_policy.state.as_str()
     );
 
     // 4. The caller's policy, stated here where a reader can see it: a Locked
-    //    chat never fails over, and otherwise failover obeys Auto-Route. The
+    //    chat never fails over, and otherwise failover needs the Concierge on
+    //    duty (`failover_allowed` is exactly "on duty and not Locked"). The
     //    state is read now, not when the call began: the operator may have
     //    locked the chat while the provider was thinking (v4 `4d370a90f`).
     let concierge_state =
@@ -419,22 +427,24 @@ where
             trail,
         });
     }
-    if ctx.settings.mode != "AUTO_ROUTE" {
+    // The Locked half of `failover_allowed` was just re-asked against the
+    // current state, so what remains of it is "is the Concierge on duty?" — a
+    // chat unlocked mid-call may fail over even though its snapshot policy,
+    // resolved while Locked, said no. The global switch is re-asked too: the
+    // operator may have sent the Concierge off duty while the provider was
+    // thinking (v4 `3b463d6b1`, #76).
+    let failover_allowed = (ctx.concierge_policy.failover_allowed || ctx.concierge_policy.on_duty)
+        && read_current_concierge_on_duty(ctx.db, Some(ctx.user_id), ctx.concierge_policy.on_duty);
+    if !failover_allowed {
+        // Off duty (or an exempt chat type): the Concierge does nothing at
+        // all, announcements included — the refusal still reaches the ledger.
         failover_line!(
             info,
             ctx,
             p,
-            "Refusal not rerouted: the Concierge mode does not permit it",
-            mode = ctx.settings.mode.as_str()
+            "Refusal not rerouted: the Concierge is off duty",
+            concierge_source = ctx.concierge_policy.source.as_str()
         );
-        announce(
-            ctx,
-            ConciergeRefusalKind::RefusalNotPermitted,
-            p,
-            None,
-            None,
-        )
-        .await;
         ledger(ctx, p, &verdict, false).await;
         return Err(ImageFailoverError {
             error: primary_error,

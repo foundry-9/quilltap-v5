@@ -136,7 +136,8 @@ interface OpsSpec {
   userId: string;
   profiles: ProfileSpec[];
   currentProfileId: string;
-  dangerSettings: { mode: string; uncensoredTextProfileId?: string } | null;
+  /** v4 `3b463d6b1` (#76): unused by the service ops (no policy handed in); kept null. */
+  concierge: Record<string, unknown> | null;
   completionRules: CompletionRule[];
   ops: OpSpec[];
 }

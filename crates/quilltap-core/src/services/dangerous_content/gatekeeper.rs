@@ -25,8 +25,8 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
+use super::resolver::ResolvedConciergePolicy;
 use crate::clock::now_unix_ms;
-use crate::db::chat_settings::DangerousContentSettings;
 use crate::db::runtime::Db;
 use crate::memory_tasks::strip_code_fences;
 use crate::model::completion::{
@@ -119,7 +119,7 @@ pub trait ModerationProvider {
         &self,
         content: &str,
         user_id: &str,
-        settings: &DangerousContentSettings,
+        concierge_policy: &ResolvedConciergePolicy,
         chat_id: Option<&str>,
     ) -> impl std::future::Future<Output = ModerationOutcome> + Send;
 }
@@ -133,7 +133,7 @@ impl ModerationProvider for NoModerationProvider {
         &self,
         _content: &str,
         _user_id: &str,
-        _settings: &DangerousContentSettings,
+        _concierge_policy: &ResolvedConciergePolicy,
         _chat_id: Option<&str>,
     ) -> ModerationOutcome {
         ModerationOutcome::NotAvailable
@@ -417,7 +417,7 @@ pub async fn classify_content<M, C>(
     content: &str,
     cheap_llm_selection: &CheapLlmSelection,
     user_id: &str,
-    settings: &DangerousContentSettings,
+    concierge_policy: &ResolvedConciergePolicy,
     chat_id: Option<&str>,
 ) -> DangerClassificationResult
 where
@@ -438,7 +438,7 @@ where
             content,
             cheap_llm_selection,
             user_id,
-            settings,
+            concierge_policy,
             chat_id,
         ),
     )
@@ -458,7 +458,7 @@ async fn classify_inner<M, C>(
     content: &str,
     cheap_llm_selection: &CheapLlmSelection,
     user_id: &str,
-    settings: &DangerousContentSettings,
+    concierge_policy: &ResolvedConciergePolicy,
     chat_id: Option<&str>,
 ) -> Result<DangerClassificationResult, ()>
 where
@@ -476,14 +476,14 @@ where
     // were hollow.
     let moderation_started_at = crate::clock::now_unix_ms();
     match moderation
-        .moderate(content, user_id, settings, chat_id)
+        .moderate(content, user_id, concierge_policy, chat_id)
         .await
     {
         ModerationOutcome::Moderated {
             result,
             provider_name,
         } => {
-            let mut mapped = map_moderation_result(&result, settings.threshold);
+            let mut mapped = map_moderation_result(&result, concierge_policy.pre_screen.threshold);
             mapped.source = Some("moderation".to_string());
             mapped.provider_name = Some(provider_name.clone());
             cache_result(hash, mapped.clone());
@@ -539,7 +539,8 @@ where
 
     // Fall back to cheap-LLM classification. API-key acquisition is host-side.
     let mut system_prompt = prompt_text::CLASSIFICATION_SYSTEM_PROMPT.to_string();
-    if let Some(custom) = settings
+    if let Some(custom) = concierge_policy
+        .pre_screen
         .custom_classification_prompt
         .as_deref()
         .filter(|s| !s.is_empty())
@@ -631,7 +632,8 @@ where
     };
     let _ = log_llm_call(db, log_params, &LogContext::none()).await;
 
-    let mut result = parse_classification_response(&response.content, settings.threshold);
+    let mut result =
+        parse_classification_response(&response.content, concierge_policy.pre_screen.threshold);
     result.usage = response.usage;
     result.source = Some("llm".to_string());
     result.provider_name = Some(cheap_llm_selection.provider.clone());

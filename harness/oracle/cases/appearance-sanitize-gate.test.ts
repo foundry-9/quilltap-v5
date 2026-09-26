@@ -47,18 +47,18 @@ import { dirname, join } from 'node:path';
 interface CaseSpec {
   label: string;
   token: string;
-  mode: string;
+  /** v4 `3b463d6b1` (#76): the stored `conciergeSettings` + the chat the policy resolves WITH. */
+  concierge: Record<string, unknown>;
+  chat: Record<string, unknown>;
   isDangerousChat: boolean;
   routesDangerousToUncensored: boolean;
   classification: 'safe' | 'dangerous';
-  customClassificationPrompt?: string;
   sanitizeEchoes?: boolean;
   sanitizeJunk?: boolean;
 }
 
 interface Spec {
   userId: string;
-  threshold: number;
   cheapLLMSelection: { provider: string; modelName: string; connectionProfileId: string };
   characters: Array<{ characterId: string; name: string }>;
   classifications: Record<string, string>;
@@ -194,6 +194,7 @@ async function main(): Promise<void> {
   });
 
   const { sanitizeAppearancesIfNeeded } = await import('@/lib/image-gen/appearance-resolution');
+  const { resolveConciergeSettings } = await import('@/lib/services/dangerous-content/resolver.service');
 
   const selection = {
     provider: spec.cheapLLMSelection.provider,
@@ -205,21 +206,13 @@ async function main(): Promise<void> {
   for (const c of spec.cases) {
     current = c;
     calls = 0;
-    const dangerSettings = {
-      mode: c.mode,
-      threshold: spec.threshold,
-      scanTextChat: true,
-      scanImagePrompts: false,
-      scanImageGeneration: false,
-      displayMode: 'SHOW',
-      showWarningBadges: true,
-      ...(c.customClassificationPrompt
-        ? { customClassificationPrompt: c.customClassificationPrompt }
-        : {}),
-    };
+    const conciergePolicy = resolveConciergeSettings(
+      { conciergeSettings: c.concierge as never },
+      c.chat as never,
+    );
     const out = await sanitizeAppearancesIfNeeded(
       appearancesFor(spec, c) as never,
-      dangerSettings as never,
+      conciergePolicy,
       c.isDangerousChat,
       c.routesDangerousToUncensored,
       selection as never,

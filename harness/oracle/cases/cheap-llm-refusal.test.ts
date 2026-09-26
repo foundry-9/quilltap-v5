@@ -43,7 +43,8 @@ interface Case {
 interface Spec {
   testPepperBase64: string;
   userId: string;
-  dangerSettings: Record<string, unknown>;
+  /** v4 `3b463d6b1` (#76): the stored `conciergeSettings` the fallback's policy resolves from. */
+  concierge: Record<string, unknown>;
   connectionProfiles: Array<{ id: string }>;
   ledgerPlants: Array<{ chatId: string; count: number; lastAt: string }>;
   cases: Case[];
@@ -139,7 +140,8 @@ async function main(): Promise<void> {
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { executeCheapLLMTask } = await import('@/lib/memory/cheap-llm-tasks/core-execution');
-  const { DangerousContentSettingsSchema } = await import('@/lib/schemas/settings.types');
+  const { ConciergeSettingsSchema } = await import('@/lib/schemas/settings.types');
+  const { resolveConciergeSettings } = await import('@/lib/services/dangerous-content/resolver.service');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -155,9 +157,11 @@ async function main(): Promise<void> {
     if (!row) throw new Error(`connection profile ${p.id} not seeded`);
     availableProfiles.push(row);
   }
-  const dangerSettings = DangerousContentSettingsSchema.parse(spec.dangerSettings);
+  const conciergePolicy = resolveConciergeSettings({
+    conciergeSettings: ConciergeSettingsSchema.parse(spec.concierge),
+  });
 
-  const lines: string[] = [JSON.stringify({ kind: 'dangerSettings', dangerSettings })];
+  const lines: string[] = [JSON.stringify({ kind: 'conciergePolicy', conciergePolicy })];
   for (const c of spec.cases) {
     script = c.script.slice();
     logs.length = 0;
@@ -170,7 +174,7 @@ async function main(): Promise<void> {
       c.chatId ?? undefined,
       undefined,
       c.uncensored
-        ? ({ dangerSettings, availableProfiles, isDangerousChat: false } as never)
+        ? ({ conciergePolicy, availableProfiles, isDangerousChat: false } as never)
         : undefined,
     );
     if (script.length !== 0) throw new Error(`${c.name}: ${script.length} scripted step(s) unused`);

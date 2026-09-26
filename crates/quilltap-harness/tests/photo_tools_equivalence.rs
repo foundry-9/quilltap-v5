@@ -854,6 +854,7 @@ impl quilltap_core::api::chat_media::ImageDescribeDriver for CannedModuleDriver 
     fn describe<'a>(
         &'a self,
         file: quilltap_core::services::file_fallback::FallbackFile,
+        _chat_id: Option<&'a str>,
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<Output = quilltap_core::services::file_fallback::FallbackResult>
@@ -1286,6 +1287,8 @@ fn photo_tools_matches_oracle() {
                 &side_effects,
                 Some(&driver),
                 &uuid,
+                // The oracle's module op names no chat (v4's `chatId` absent).
+                None,
             ))
             // The corpus drives no DB-failure arm (v4 lets those THROW; the
             // a14a1811 §3 review made v5 propagate them as Err) — an Err here

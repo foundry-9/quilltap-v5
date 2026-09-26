@@ -54,7 +54,13 @@
     },
     "autoDetectRng": true,
     "answerConfirmationEnabled": false,
-    "dangerMode": "DETECT_ONLY"
+    "concierge": {
+      "enabled": true,
+      "preScreen": {
+        "enabled": true,
+        "summaryClassification": true
+      }
+    }
   },
   "chats": [
     {
@@ -287,7 +293,6 @@
         }
       ],
       "contextSummary": "A prior summary so danger classification can fire.",
-      "conciergeOverride": "UNCENSORED",
       "isDangerousChat": false,
       "messages": [
         {
@@ -317,7 +322,6 @@
         }
       ],
       "contextSummary": "A prior summary so danger classification can fire.",
-      "conciergeOverride": "OFF",
       "isDangerousChat": false,
       "messages": [
         {
@@ -836,7 +840,7 @@
       ],
       "routeFailures": [],
       "routeVia": "primary",
-      "$comment": "The common turn: nothing failed, so buildRouteTrail answers NULL and the column stays empty \u2014 even though routeVia is set.",
+      "$comment": "The common turn: nothing failed, so buildRouteTrail answers NULL and the column stays empty — even though routeVia is set.",
       "effectiveProfileId": "a1b2c3d4-0000-4000-8000-000000000001",
       "effectiveProfileName": "House Anthropic"
     },
@@ -869,7 +873,7 @@
       ],
       "routeFailures": [],
       "routeVia": "concierge",
-      "$comment": "The Concierge's PRE-CALL reroute: the seat answered first time, so there is no failure row and the trail is still NULL \u2014 routeVia alone writes nothing.",
+      "$comment": "The Concierge's PRE-CALL reroute: the seat answered first time, so there is no failure row and the trail is still NULL — routeVia alone writes nothing.",
       "effectiveProfileId": "a1b2c3d4-0000-4000-8000-000000000001",
       "effectiveProfileName": "House Anthropic"
     },
@@ -957,7 +961,7 @@
         }
       ],
       "routeVia": "concierge",
-      "$comment": "A stated moderation refusal (finish-reason evidence), answered by the uncensored desk \u2014 but the ANSWERING entry is state.effectiveProfile, which is still the finalizer's profile here.",
+      "$comment": "A stated moderation refusal (finish-reason evidence), answered by the uncensored desk — but the ANSWERING entry is state.effectiveProfile, which is still the finalizer's profile here.",
       "effectiveProfileId": "a1b2c3d4-0000-4000-8000-000000000001",
       "effectiveProfileName": "House Anthropic"
     },
@@ -1001,7 +1005,7 @@
         },
         {
           "profileId": "a1b2c3d4-0000-4000-8000-000000000003",
-          "profileName": "Understudy \u2014 Haiku",
+          "profileName": "Understudy — Haiku",
           "provider": "ANTHROPIC",
           "modelName": "claude-haiku-4-5",
           "via": "understudy",
@@ -1051,7 +1055,7 @@
           "via": "concierge",
           "outcome": "failed",
           "trigger": "provider-error",
-          "detail": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\u2026"
+          "detail": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
         }
       ],
       "routeVia": "understudy",

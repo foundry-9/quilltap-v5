@@ -1091,21 +1091,17 @@ async fn run_summary_fold<C: CompletionProvider + Sync, E: EmbeddingProvider + S
 
     // The fold's dangerous-chat escalation reads the user's danger settings
     // (v4 resolves them INSIDE `generateContextSummary` — a fresh
-    // `chatSettings.findByUserId` + `resolveDangerousContentSettings` — and
+    // `chatSettings.findByUserId` + `resolveConciergeSettings` — and
     // ONLY when the chat is actively dangerous; the ported fold takes the
     // resolved settings injected, consulted only on a dangerous chat, so a
     // non-dangerous room never reads them on either side).
-    let global_danger: Option<chat_settings::DangerousContentSettings> = settings
-        .get("dangerousContentSettings")
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-    let resolved = crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
-        global_danger,
-        Some(chat),
+    // v4 `3b463d6b1`: `resolveConciergeSettings(chatSettings, chat)`.
+    let concierge_policy = Some(
+        crate::services::dangerous_content::resolver::resolve_concierge_settings(
+            Some(settings),
+            Some(chat),
+        ),
     );
-    let danger_settings = Some(crate::cheap_llm::DangerousContentSettings {
-        mode: resolved.settings.mode.clone(),
-        uncensored_text_profile_id: resolved.settings.uncensored_text_profile_id.clone(),
-    });
 
     // The fold's cheap-LLM call runs outside the run-id scope (see the 9c call
     // site), so the seams carry the same UNtagged executor as the fold itself.
@@ -1124,7 +1120,7 @@ async fn run_summary_fold<C: CompletionProvider + Sync, E: EmbeddingProvider + S
         &cheap_settings,
         &available_profiles,
         user_id,
-        danger_settings.as_ref(),
+        concierge_policy.as_ref(),
         // The registry-cheapest seam: None (the spine precedent — Round-3
         // Group 8; the differential's fixture providers resolve identically).
         None,
@@ -1455,7 +1451,7 @@ mod tests {
     use crate::services::orchestrator::NoopOrchestratorSeams;
     use crate::services::pricing_fetcher::PricingFetcher;
     use crate::services::primary_stream::EffectiveProfile;
-    use crate::services::provider_failover::{DangerSettings, RouteResult};
+    use crate::services::provider_failover::RouteResult;
     use crate::tools::ask_carina::ErasedAskCarina;
     use serde_json::json;
 
@@ -1725,11 +1721,15 @@ mod tests {
                 crate::services::dangerous_content::chat_override::ConciergeState::Moderated,
             )
         }
+
+        fn read_current_concierge_on_duty(&self, _user_id: &str, snapshot: bool) -> bool {
+            snapshot
+        }
         fn resolve(
             &self,
             p: &EffectiveProfile,
             k: &str,
-            _s: &DangerSettings,
+            _s: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             _u: &str,
             _mimes: &[String],
         ) -> impl std::future::Future<Output = RouteResult> + Send {
@@ -1741,13 +1741,14 @@ mod tests {
                     connection_profile: profile,
                     api_key: key,
                     profile_row: None,
+                    reason: String::new(),
                 }
             }
         }
         async fn resolve_understudy(
             &self,
             _user_id: &str,
-            _settings: &crate::services::provider_failover::DangerSettings,
+            _settings: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             _exclude: &[String],
             _mimes: &[String],
         ) -> Option<crate::services::provider_failover::TextUnderstudy> {

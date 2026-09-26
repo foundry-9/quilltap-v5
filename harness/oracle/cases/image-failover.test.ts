@@ -49,7 +49,11 @@ interface Case {
   userId: string;
   chatId: string | null;
   purpose: string;
-  settings: Record<string, unknown>;
+  /**
+   * v4 `3b463d6b1` (#76): the stored `conciergeSettings` the policy is
+   * resolved from (WITH `chat` where the case names one), as the callers do.
+   */
+  concierge: Record<string, unknown>;
   primary: string;
   script: Record<string, Step[]>;
   profileKind?: 'connection' | 'image';
@@ -140,7 +144,8 @@ async function main(): Promise<void> {
   const { generateImageWithConciergeFailover, getConciergeTrail } = await import(
     '@/lib/services/dangerous-content/image-failover'
   );
-  const { DangerousContentSettingsSchema } = await import('@/lib/schemas/settings.types');
+  const { ConciergeSettingsSchema } = await import('@/lib/schemas/settings.types');
+  const { resolveConciergeSettings } = await import('@/lib/services/dangerous-content/resolver.service');
   // The plugin contract's REAL class, by path: a bare `@quilltap/plugin-types`
   // resolves against THIS file's directory, outside the v4 tree.
   const { ModerationRejectionError } = require(
@@ -197,12 +202,15 @@ async function main(): Promise<void> {
       }
       return step.answers;
     };
-    const settings = DangerousContentSettingsSchema.parse(c.settings);
+    const conciergePolicy = resolveConciergeSettings(
+      { conciergeSettings: ConciergeSettingsSchema.parse(c.concierge) },
+      (c.chat ?? null) as never,
+    );
     const ctx: Record<string, unknown> = {
       userId: c.userId,
       chatId: c.chatId,
       purpose: c.purpose,
-      settings,
+      conciergePolicy,
       ...(c.profileKind ? { profileKind: c.profileKind } : {}),
       ...(c.primaryVia ? { primaryVia: c.primaryVia } : {}),
       ...('chat' in c ? { chat: c.chat } : {}),

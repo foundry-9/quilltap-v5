@@ -56,16 +56,16 @@ use crate::services::chat_initialize::{build_chat_context, ChatContext};
 use crate::services::chat_participants::VALIDATION_ERROR;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::creation_progress::CreationProgressEmitter;
-use crate::services::dangerous_content::chat_override::{
-    may_fail_over, should_use_uncensored_route, ConciergeState,
-};
+use crate::services::dangerous_content::chat_override::{may_fail_over, ConciergeState};
 use crate::services::dangerous_content::manual_flip::{
     apply_concierge_flip, RealConciergeAnnouncer,
 };
 use crate::services::dangerous_content::provider_routing::{
     resolve_provider_for_dangerous_content, ApiKeyResolver, RouteProfile,
 };
-use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
+use crate::services::dangerous_content::resolver::{
+    resolve_concierge_settings, ResolvedConciergePolicy,
+};
 use crate::services::first_message_context::{
     build_first_message_context, ChatParticipantInput, FirstMessageContextOptions,
 };
@@ -1583,7 +1583,11 @@ where
             db,
             &chat_id,
             &chat,
-            requested_concierge_state,
+            requested_concierge_state_at_creation(
+                requested_concierge_state,
+                chat_settings.as_ref(),
+                &chat,
+            ),
             emitter,
         )
         .await
@@ -1609,7 +1613,11 @@ where
             db,
             &chat_id,
             &chat,
-            requested_concierge_state,
+            requested_concierge_state_at_creation(
+                requested_concierge_state,
+                chat_settings.as_ref(),
+                &chat,
+            ),
             emitter,
         )
         .await
@@ -1638,7 +1646,11 @@ where
             db,
             &chat_id,
             &chat,
-            requested_concierge_state,
+            requested_concierge_state_at_creation(
+                requested_concierge_state,
+                chat_settings.as_ref(),
+                &chat,
+            ),
             emitter,
         )
         .await
@@ -1958,6 +1970,49 @@ async fn apply_requested_concierge_state(
         .as_ref()
         .map(concierge_columns_of)
         .unwrap_or(as_created))
+}
+
+/// v4 `requestedConciergeStateAtCreation(requested, chatSettings, chat)`
+/// (`3b463d6b1`, #76) — the Concierge state a new chat should start in. The
+/// request's own `conciergeState` wins; absent, the operator's
+/// `newChatsStartAs` default applies — but only where the Concierge is on duty
+/// for THIS chat (enabled globally and not a moderation-exempt chat type: the
+/// policy is resolved WITH the just-created chat), so an off-duty Concierge
+/// never posts an announcement on a brand-new chat. Off duty, a request that
+/// still names a non-Moderated state (a form opened before the switch was
+/// thrown) is not honoured either.
+fn requested_concierge_state_at_creation(
+    requested: Option<ConciergeState>,
+    chat_settings: Option<&Value>,
+    chat: &Value,
+) -> Option<ConciergeState> {
+    let policy = resolve_concierge_settings(chat_settings, Some(chat));
+    let chat_id = chat.get("id").and_then(Value::as_str).unwrap_or("");
+    if let Some(requested) = requested {
+        if !policy.on_duty && requested != ConciergeState::Moderated {
+            tracing::warn!(
+                chat_id = chat_id,
+                requested = requested.as_str(),
+                concierge_source = policy.source.as_str(),
+                "[Chats v1] Ignoring a requested Concierge state: the Concierge is off duty"
+            );
+            return None;
+        }
+        return Some(requested);
+    }
+    let fallback = if policy.on_duty {
+        ConciergeState::from_wire(&policy.new_chats_start_as)
+    } else {
+        None
+    };
+    tracing::debug!(
+        chat_id = chat_id,
+        new_chats_start_as = %policy.new_chats_start_as,
+        concierge_source = policy.source.as_str(),
+        applied = fallback.map(ConciergeState::as_str).unwrap_or("none"),
+        "[Chats v1] No Concierge state requested at creation; using the default"
+    );
+    fallback
 }
 
 /// v4 `ConciergeColumns` — `{ conciergeMode: row.conciergeMode ?? null,
@@ -2603,6 +2658,25 @@ where
     // gone, which reads as Monitored everywhere below.)
     let chat_row = chats_read::find_by_id(main, chat_id).ok().flatten();
 
+    // The resolver is asked WITH the chat: an Unmoderated chat routes direct,
+    // a Locked chat never fails over, and an off-duty Concierge does neither
+    // (v4 `3b463d6b1`, #76 — ONE policy for the whole ladder).
+    let concierge_policy = resolve_concierge_settings(
+        chat_settings::find_by_user_id(main, SINGLE_USER_ID)
+            .ok()
+            .flatten()
+            .as_ref(),
+        chat_row.as_ref(),
+    );
+    tracing::debug!(
+        chat_id = chat_id,
+        concierge_source = concierge_policy.source.as_str(),
+        concierge_state = concierge_policy.state.as_str(),
+        route_direct = concierge_policy.route_direct,
+        failover_allowed = concierge_policy.failover_allowed,
+        "[Chats v1] Resolved Concierge policy for greeting"
+    );
+
     let make_log = || -> Option<GreetingLog<'_>> {
         if deps.greeting_log && llm_logs.is_some() {
             Some(GreetingLog {
@@ -2659,11 +2733,12 @@ where
     let mut own_profile_stalled = false;
 
     // Attempt 0 (v4 `303288fb4`): an Unmoderated chat opens at the uncensored
-    // desk (v4 `4d370a90f`'s three states). The three-attempt ladder below
-    // (with memories → without → uncensored on a content filter) stays the path
-    // for Moderated and Locked chats.
+    // desk — since `3b463d6b1` asked as the policy's `route_direct` (on duty
+    // AND Unmoderated). The three-attempt ladder below (with memories →
+    // without → uncensored on a content filter) stays the path for Moderated
+    // and Locked chats.
     let mut uncensored_desk_tried = false;
-    if should_use_uncensored_route(chat_row.as_ref()) {
+    if concierge_policy.route_direct {
         uncensored_desk_tried = true;
         match generate_via_uncensored_desk(
             main,
@@ -2678,7 +2753,8 @@ where
             recent_block_opt(&recent_conversations_block).as_deref(),
             make_log().as_ref(),
             "chat-state",
-            chat_row.as_ref(),
+            &concierge_policy,
+            chat_id,
         )
         .await
         {
@@ -2795,7 +2871,8 @@ where
             recent_block_opt(&recent_conversations_block).as_deref(),
             make_log().as_ref(),
             "content-filter",
-            chat_row.as_ref(),
+            &concierge_policy,
+            chat_id,
         )
         .await
         {
@@ -2881,14 +2958,13 @@ fn borrow_sampling(
 /// v4 `303288fb4` `generateViaUncensoredDesk` (formerly the attempt-3 body,
 /// L748-804): generate the greeting on the Concierge's uncensored desk.
 ///
-/// `Ok(None)` when there is nothing to reroute to — the resolved mode isn't
-/// `AUTO_ROUTE`, no uncensored profile is configured, its key is unusable — or
-/// the attempt came back empty, so the caller falls through to the
-/// participant's own profile.
+/// `Ok(None)` when there is nothing to reroute to — the chat's Concierge
+/// policy neither routes direct nor allows failover (v4 `3b463d6b1`, #76), no
+/// uncensored profile is configured, its key is unusable — or the attempt came
+/// back empty, so the caller falls through to the participant's own profile.
 ///
-/// The resolver is asked WITH the chat: a Vouched Safe chat collapses to
-/// `mode: 'OFF'` and never reroutes even under a global `AUTO_ROUTE`, and an
-/// Uncensored chat reroutes even when the global mode is `OFF`. (Before
+/// The policy is resolved WITH the chat: a Locked chat never reroutes, and an
+/// Unmoderated one routes direct while the Concierge is on duty. (Before
 /// `303288fb4` this passed `None` and so asked the globe — the bug that made a
 /// per-chat state mean nothing to the opening line.)
 ///
@@ -2917,7 +2993,10 @@ async fn generate_via_uncensored_desk<EMB, CMP, STR>(
     // call sites asked. Carried into the two info lines so a log says WHY the
     // desk was used, not just that it was.
     trigger: &'static str,
-    chat_row: Option<&Value>,
+    // v4 `3b463d6b1`: the ONE policy resolved for this greeting, and the chat
+    // its not-permitted DEBUG names.
+    concierge_policy: &ResolvedConciergePolicy,
+    chat_id: &str,
 ) -> Result<Option<GeneratedGreeting>, StreamError>
 where
     EMB: EmbeddingProvider + Send + Sync,
@@ -2925,13 +3004,20 @@ where
     STR: StreamingCompletionProvider + Send + Sync,
 {
     let user_id = SINGLE_USER_ID;
-    let chat_settings = chat_settings::find_by_user_id(main, user_id).ok().flatten();
-    let global_settings = chat_settings
-        .as_ref()
-        .and_then(|s| s.get("dangerousContentSettings"))
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-    let resolved = resolve_dangerous_content_settings(global_settings, chat_row);
-    if resolved.settings.mode != "AUTO_ROUTE" {
+    // `routeDirect` for the chat's own state, `failoverAllowed` for a content
+    // filter.
+    let permitted = if trigger == "chat-state" {
+        concierge_policy.route_direct
+    } else {
+        concierge_policy.failover_allowed
+    };
+    if !permitted {
+        tracing::debug!(
+            chat_id = chat_id,
+            trigger = trigger,
+            concierge_source = concierge_policy.source.as_str(),
+            "[Chats v1] Concierge policy does not permit the uncensored desk for this greeting"
+        );
         return Ok(None);
     }
 
@@ -2944,8 +3030,7 @@ where
         &resolver,
         &original,
         api_key,
-        "AUTO_ROUTE",
-        resolved.settings.uncensored_text_profile_id.as_deref(),
+        concierge_policy,
         user_id,
         // v4 `app/api/v1/chats/route.ts:763` takes the `[]` default — a chat
         // being created carries no turn yet (v4 `a1d88aa3a`).
@@ -2958,7 +3043,7 @@ where
     tracing::info!(
         character_id = %character_id,
         trigger = trigger,
-        settings_source = resolved.source.as_str(),
+        concierge_source = concierge_policy.source.as_str(),
         uncensored_profile = %route.connection_profile.name,
         uncensored_provider = %route.connection_profile.provider,
         uncensored_model = %route.connection_profile.model_name,
@@ -3666,28 +3751,23 @@ mod tests {
                 rusqlite::params![DESK_CP, SINGLE_USER_ID, DESK_KEY],
             )
             .unwrap();
-            // Every field: `DangerousContentSettings` is a strict deserialize
-            // (only the three `.nullable().optional()` ones default), so a thin
-            // bag silently parses to `None` and the desk is never asked.
+            // The Concierge on duty with the frank desk as its text profile
+            // (v4 `3b463d6b1`: `conciergeSettings` — the retired AUTO_ROUTE
+            // bag's successor; a Moderated chat may fail over, an Unmoderated
+            // one routes direct).
             let bag = serde_json::json!({
-                "mode": "AUTO_ROUTE",
-                "threshold": 0.7,
-                "scanTextChat": true,
-                "scanImagePrompts": true,
-                "scanImageGeneration": false,
+                "enabled": true,
                 "uncensoredTextProfileId": DESK_CP,
-                "displayMode": "SHOW",
-                "showWarningBadges": true,
             })
             .to_string();
             // UPDATE, not INSERT: `provision_fresh_instance` already seeds the
             // user's settings row, and a second one would simply be shadowed by
-            // it — `find_by_user_id` would keep answering the schema default
-            // (`mode: "OFF"`, no uncensored profile) and the desk would never be
-            // asked, with nothing in the test saying why.
+            // it — `find_by_user_id` would keep answering the seeded default
+            // (no desk profile) and the desk would never be asked, with nothing
+            // in the test saying why.
             let changed = c
                 .execute(
-                    "UPDATE chat_settings SET dangerousContentSettings = ?2 WHERE userId = ?1",
+                    "UPDATE chat_settings SET conciergeSettings = ?2 WHERE userId = ?1",
                     rusqlite::params![SINGLE_USER_ID, bag],
                 )
                 .unwrap();

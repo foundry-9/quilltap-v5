@@ -60,6 +60,7 @@ import {
 } from '@/lib/llm/cheap-llm';
 import { deadlineFor } from '@/lib/memory/cheap-llm-tasks/core-execution';
 import type { ConnectionProfile } from '@/lib/schemas/types';
+import { resolveConciergeSettings } from '@/lib/services/dangerous-content/resolver.service';
 
 interface CorpusProfile {
   id: string;
@@ -86,7 +87,9 @@ interface Corpus {
     name: string;
     standard: string;
     isDangerousChat: boolean;
-    dangerSettings: { mode: string; uncensoredTextProfileId?: string };
+    /** v4 `3b463d6b1` (#76): the stored `conciergeSettings`; null = no policy. */
+    concierge: Record<string, unknown> | null;
+    chat: { conciergeMode: string } | null;
     available: string[];
   }>;
 }
@@ -156,7 +159,9 @@ for (const c of corpus.uncensored) {
     resolveUncensoredCheapLLMSelection(
       standard,
       c.isDangerousChat,
-      c.dangerSettings as never,
+      c.concierge === null
+        ? undefined
+        : resolveConciergeSettings({ conciergeSettings: c.concierge as never }, c.chat as never),
       c.available.map(profile),
     ),
   );

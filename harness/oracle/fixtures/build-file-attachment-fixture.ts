@@ -68,6 +68,8 @@ interface Spec {
   chatSettingsId: string;
   descProfileId: string;
   uncensoredProfileId: string;
+  /** P4.D227 (v4 `3b463d6b1`, #76): section G's Locked + exempt chats. */
+  conciergeChats: { lockedChatId: string; helpChatId: string };
   connectionProfiles: Array<Record<string, unknown>>;
   files: FileSpec[];
   mount: {
@@ -199,7 +201,9 @@ async function main(): Promise<void> {
     {
       userId: spec.userId,
       imageDescriptionProfileId: spec.descProfileId,
-      uncensoredImageDescriptionProfileId: spec.uncensoredProfileId,
+      // v4 `3b463d6b1` (#76): the uncensored vision fallback is the
+      // Concierge desk's `uncensoredVisionProfileId`.
+      conciergeSettings: { enabled: true, uncensoredVisionProfileId: spec.uncensoredProfileId },
     } as never,
     { id: spec.chatSettingsId, createdAt: TS, updatedAt: TS } as never,
   );
@@ -255,6 +259,20 @@ async function main(): Promise<void> {
     } as never,
     { id: spec.chatId, createdAt: TS, updatedAt: TS } as never,
   );
+  // P4.D227 (v4 `3b463d6b1`, #76): a Locked chat and an exempt (help) chat —
+  // their resolved policy has an empty desk, so no uncensored vision fallback.
+  for (const [id, extra] of [
+    [
+      spec.conciergeChats.lockedChatId,
+      { chatType: 'salon', conciergeMode: 'locked', conciergeModeSetBy: 'operator', conciergeModeReason: 'manual' },
+    ],
+    [spec.conciergeChats.helpChatId, { chatType: 'help' }],
+  ] as const) {
+    await repos.chats.create(
+      { userId: spec.userId, title: `Concierge ${id}`, participants: [], ...extra } as never,
+      { id, createdAt: TS, updatedAt: TS } as never,
+    );
+  }
 
   // 5. Provision the Scriptorium mount + a blob file (the mount-path branch).
   await repos.docMountPoints.create(

@@ -185,7 +185,7 @@ where
         &self,
         content: &str,
         user_id: &str,
-        _settings: &crate::db::chat_settings::DangerousContentSettings,
+        _concierge_policy: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
         _chat_id: Option<&str>,
     ) -> ModerationOutcome {
         // No key auto-detected → fall through to the LLM (v4's `return null`).

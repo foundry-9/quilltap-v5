@@ -434,6 +434,11 @@ pub struct ProcessFilesDeps<'a, CMP: CompletionProvider> {
     /// The wall clock for the vision `logLLMCall` `durationMs` (frozen in the
     /// differential; the dump normalizes it).
     pub now_ms: i64,
+    /// The chat whose files these are — v4 `3b463d6b1` (#76) passes
+    /// `{ chatId }` to every describe on the turn (the attachment pass, the
+    /// rehydration, the Lantern loop), so the chat's Concierge state decides
+    /// the uncensored vision fallback. `None` only where there is no chat.
+    pub chat_id: Option<&'a str>,
 }
 
 impl<'a, CMP: CompletionProvider> ProcessFilesDeps<'a, CMP> {
@@ -444,6 +449,7 @@ impl<'a, CMP: CompletionProvider> ProcessFilesDeps<'a, CMP> {
             transcoder: self.transcoder,
             user_id: self.user_id,
             now_ms: self.now_ms,
+            chat_id: self.chat_id,
         }
     }
 }

@@ -9,7 +9,8 @@
 //!
 //!   1. **Same-provider retry** — if the content was NOT flagged dangerous, an
 //!      empty response is likely transient; re-stream the same request once.
-//!   2. **Uncensored failover** — if still empty AND Concierge Auto-Route is on,
+//!   2. **Uncensored failover** — if still empty AND the Concierge policy allows
+//!      failover (and he is still on duty — re-read, v4 `3b463d6b1`),
 //!      ask the uncensored understudy ([`attempt_uncensored_retry`], v4
 //!      `8bd080267`, #73) and re-stream. On a non-empty result the state's
 //!      `effective_profile` / `effective_api_key` switch to the uncensored
@@ -70,15 +71,7 @@ use crate::services::dangerous_content::refusal::RefusalEvidence;
 use crate::services::dangerous_content::refusal_ledger::{
     RefusalKind, RefusalPurpose, RefusalRecord,
 };
-
-/// v4 `DangerousContentSettings` subset the failover reads.
-#[derive(Clone, Debug, PartialEq)]
-pub struct DangerSettings {
-    /// v4 `mode` — the failover only reroutes when this is `"AUTO_ROUTE"`.
-    pub mode: String,
-    /// v4 `uncensoredTextProfileId` — reroute is gated on this being set.
-    pub uncensored_text_profile_id: Option<String>,
-}
+use crate::services::dangerous_content::resolver::ResolvedConciergePolicy;
 
 /// The route decision (v4 `DangerousProviderRouteResult` subset): whether a
 /// reroute happened, and the effective profile + api key to use.
@@ -97,6 +90,10 @@ pub struct RouteResult {
     /// re-decide then skips, which is v4's own `repos ? … : formattedMessages`
     /// arm rather than a v5 invention.
     pub profile_row: Option<serde_json::Value>,
+    /// v4 `routeResult.reason` — the wrapper's sentence (the danger
+    /// orchestrator's "not rerouted" DEBUG carries it, `3b463d6b1`). Empty for
+    /// a test double with nothing to say.
+    pub reason: String,
 }
 
 /// The dangerous-content routing seam — v4
@@ -113,19 +110,19 @@ pub trait DangerousContentRouter {
         &self,
         original_profile: &EffectiveProfile,
         original_api_key: &str,
-        settings: &DangerSettings,
+        concierge_policy: &ResolvedConciergePolicy,
         user_id: &str,
         turn_attachment_mime_types: &[String],
     ) -> impl std::future::Future<Output = RouteResult> + Send;
 
     /// v4 `resolveUncensoredTextUnderstudy` (`8bd080267`, #73) — the uncensored
     /// profile that could take this turn instead, never one of `exclude`. The
-    /// resolver reads no mode: the Auto-Route gate is the CALLER's. `None` when
-    /// nobody qualifies.
+    /// resolver reads only the policy's `desk`, never its gates: the gate is the
+    /// CALLER's. `None` when nobody qualifies.
     fn resolve_understudy(
         &self,
         user_id: &str,
-        settings: &DangerSettings,
+        concierge_policy: &ResolvedConciergePolicy,
         exclude: &[String],
         turn_attachment_mime_types: &[String],
     ) -> impl std::future::Future<Output = Option<TextUnderstudy>> + Send;
@@ -157,6 +154,13 @@ pub trait DangerousContentRouter {
         chat_id: &str,
         snapshot: Option<ConciergeState>,
     ) -> ConciergeState;
+
+    /// v4 `readCurrentConciergeOnDuty(userId, snapshot)` (`3b463d6b1`, #76) —
+    /// the global on-duty switch as it stands NOW; the snapshot when there is
+    /// no user or the read fails. Required for the same reason as the state
+    /// re-read: the real router re-reads the settings row, a test double
+    /// returns the snapshot.
+    fn read_current_concierge_on_duty(&self, user_id: &str, snapshot: bool) -> bool;
 }
 
 /// A resolved text understudy (v4 `Understudy` for a connection profile): who
@@ -179,10 +183,11 @@ pub struct AttemptEmptyResponseRecoveryOptions<'a> {
     /// A non-empty tool loop means the "empty response" is expected — skip.
     pub tool_messages_length: usize,
     pub content_was_flagged_dangerous: bool,
-    pub danger_settings: DangerSettings,
+    /// v4 `conciergePolicy` (`3b463d6b1`, #76 — replaces `dangerSettings`).
+    pub concierge_policy: ResolvedConciergePolicy,
     /// The chat's Concierge state when the turn began (v4 `4d370a90f`). A
     /// Locked chat never reroutes a refusal to the uncensored desk, whatever
-    /// the mode says. The chat is re-read at refusal time; this is used only
+    /// the policy says. The chat is re-read at refusal time; this is used only
     /// if that read fails. `None` reads as Moderated.
     pub concierge_state: Option<ConciergeState>,
     /// The original (pre-failover) profile, for the "both empty" log (v4
@@ -288,7 +293,7 @@ where
         state,
         tool_messages_length,
         content_was_flagged_dangerous,
-        danger_settings,
+        concierge_policy,
         concierge_state,
         connection_profile,
         params,
@@ -494,7 +499,7 @@ where
     //
     // v4 `8bd080267` (#73) dropped the `uncensoredTextProfileId` conjunct: the
     // understudy resolver falls back to any `isDangerousCompatible` profile, so
-    // Auto-Route alone opens the door, and "nobody to ask" is now the
+    // the policy alone opens the door, and "nobody to ask" is now the
     // resolver's answer rather than the gate's.
     //
     // v4 `4d370a90f` (#75): read at refusal time, not when the turn began — the
@@ -531,7 +536,14 @@ where
         }
     }
 
-    if empty && !locked_out && danger_settings.mode == "AUTO_ROUTE" {
+    // The policy was resolved when the turn began; the Concierge may have been
+    // sent off duty since. Only asked when there is a refusal to act on (v4
+    // `3b463d6b1`, #76 — `&&` short-circuits the re-read).
+    if empty
+        && !locked_out
+        && concierge_policy.failover_allowed
+        && router.read_current_concierge_on_duty(&user_id, concierge_policy.on_duty)
+    {
         let seat = state
             .effective_profile
             .clone()
@@ -543,7 +555,7 @@ where
             adapter,
             UncensoredRetryOptions {
                 state,
-                danger_settings: &danger_settings,
+                concierge_policy: &concierge_policy,
                 seat: &seat,
                 params: &params,
                 // v4's empty-response callers pass no `stop`.
@@ -673,7 +685,7 @@ async fn record_text_refusal<R: DangerousContentRouter>(
 /// attachment adapter the caller passes alongside).
 pub struct UncensoredRetryOptions<'a> {
     pub state: &'a mut StreamingState,
-    pub danger_settings: &'a DangerSettings,
+    pub concierge_policy: &'a ResolvedConciergePolicy,
     /// The seat that just refused or came back empty — v4's
     /// `state.effectiveProfile`, supplied because v5's state carries it as an
     /// `Option`.
@@ -716,7 +728,8 @@ pub struct UncensoredRetryResult {
 /// v4 `attemptUncensoredRetry` — ask the Concierge's uncensored understudy to
 /// take a turn the effective profile refused or left empty.
 ///
-/// The *policy* — Auto-Route only — is the caller's, stated at its call site.
+/// The *policy* — `concierge_policy.failover_allowed` only — is the caller's,
+/// stated at its call site.
 /// This function asks the router's understudy resolver (the configured
 /// uncensored profile, else any `isDangerousCompatible` one), excluding every
 /// profile already tried, streams one attempt, and records the outcome on the
@@ -739,7 +752,7 @@ where
 {
     let UncensoredRetryOptions {
         state,
-        danger_settings,
+        concierge_policy,
         seat,
         params,
         stop,
@@ -758,7 +771,7 @@ where
     let understudy = router
         .resolve_understudy(
             user_id,
-            danger_settings,
+            concierge_policy,
             &exclude,
             // What the array is actually carrying, so the scan does not offer a
             // substitute the payload rules out (v4 `a1d88aa3a`, bug 106).
@@ -1030,8 +1043,8 @@ pub fn get_empty_response_reason(
         return format!(
             "The AI model returned an empty response, likely because the Concierge flagged this \
              content as dangerous and the provider refused to generate a response. Consider \
-             enabling Auto-Route mode in the Concierge settings to automatically reroute \
-             dangerous content to an uncensored provider.{understudy_roll}"
+             configuring an uncensored text profile in the Concierge settings so refused \
+             content can be rerouted to an uncensored provider.{understudy_roll}"
         );
     }
     if same_provider_retry_attempted {
@@ -1626,7 +1639,8 @@ where
 
         let mut already_tried = opts.context.already_tried.clone();
         // The caller's gate, stated here: a Locked chat's refusal stands, and
-        // otherwise the Concierge reroutes under Auto-Route only. Read at
+        // otherwise the Concierge reroutes only when his policy allows
+        // failover (v4 `3b463d6b1`). Read at
         // refusal time, not when the turn began (v4 `4d370a90f`).
         if !concierge_state_may_fail_over(
             concierge
@@ -1662,8 +1676,14 @@ where
             .await;
             return walk_fallback_chain(provider, sink, opts, opening, log).await;
         }
-        if let Some(danger_settings) = concierge.danger_settings.filter(|d| d.mode == "AUTO_ROUTE")
-        {
+        // Re-asked at refusal time: the Concierge may have gone off duty
+        // mid-call (v4 `3b463d6b1`, #76).
+        if let Some(concierge_policy) = concierge.concierge_policy.filter(|p| {
+            p.failover_allowed
+                && concierge
+                    .router
+                    .read_current_concierge_on_duty(&opts.context.user_id, p.on_duty)
+        }) {
             let stream_log =
                 log.filter(|_| !opts.context.user_id.is_empty())
                     .map(|l| StreamLogCtx {
@@ -1682,7 +1702,7 @@ where
                 concierge.adapter,
                 UncensoredRetryOptions {
                     state: &mut *opts.state,
-                    danger_settings,
+                    concierge_policy,
                     seat: &refusing,
                     params: &opts.params,
                     stop: Some(&opts.params.stop),
@@ -1745,8 +1765,9 @@ where
         tracing::info!(
             target: "quilltap::failover",
             chat_id = %opts.chat_id,
-            mode = concierge.danger_settings.map(|d| d.mode.as_str()),
-            "[Failover] Refusal not rerouted to an uncensored profile: the Concierge mode does not permit it"
+            concierge_source = concierge.concierge_policy.map(|p| p.source.as_str()),
+            concierge_state = concierge.concierge_policy.map(|p| p.state.as_str()),
+            "[Failover] Refusal not rerouted to an uncensored profile: the Concierge policy does not permit it"
         );
         record_text_refusal(
             concierge.router,
@@ -1783,9 +1804,9 @@ pub struct ConciergeFailoverSeam<'a, RT, CMP: crate::model::completion::Completi
     /// at refusal time, used only if that read fails. `None` reads as
     /// Moderated.
     pub concierge_state: Option<ConciergeState>,
-    /// v4 `dangerSettings?` — `None` means no uncensored retry (the refusal is
-    /// still recorded and the chain still walks).
-    pub danger_settings: Option<&'a DangerSettings>,
+    /// v4 `conciergePolicy?` (`3b463d6b1`, #76) — `None` means no uncensored
+    /// retry (the refusal is still recorded and the chain still walks).
+    pub concierge_policy: Option<&'a ResolvedConciergePolicy>,
     /// v4 `repos ? adaptMessagesForProfile(…) : formattedMessages` — `None`
     /// reroutes the array unchanged.
     pub adapter: Option<&'a crate::services::file_fallback::FallbackDeps<'a, CMP>>,
@@ -1793,8 +1814,8 @@ pub struct ConciergeFailoverSeam<'a, RT, CMP: crate::model::completion::Completi
 
 /// Walk the effective profile's fallback chain after an *empty* response.
 ///
-/// Runs last in the empty-response order — after the same-profile retry and, in
-/// Auto-Route territory, after the uncensored reroute. Those two come first on
+/// Runs last in the empty-response order — after the same-profile retry and,
+/// when the Concierge allows failover, after the uncensored reroute. Those two come first on
 /// purpose: an empty body is usually transient, and when it isn't it is usually
 /// a refusal, which is a content problem the uncensored profile exists to
 /// answer. Only once both have come back empty is it worth concluding the route
@@ -2000,11 +2021,15 @@ mod tests {
                 crate::services::dangerous_content::chat_override::ConciergeState::Moderated,
             )
         }
+
+        fn read_current_concierge_on_duty(&self, _user_id: &str, snapshot: bool) -> bool {
+            snapshot
+        }
         async fn resolve(
             &self,
             original_profile: &EffectiveProfile,
             original_api_key: &str,
-            _settings: &DangerSettings,
+            _settings: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             _user_id: &str,
             _mimes: &[String],
         ) -> RouteResult {
@@ -2013,12 +2038,13 @@ mod tests {
                 connection_profile: original_profile.clone(),
                 api_key: original_api_key.to_string(),
                 profile_row: None,
+                reason: String::new(),
             }
         }
         async fn resolve_understudy(
             &self,
             _user_id: &str,
-            _settings: &crate::services::provider_failover::DangerSettings,
+            _settings: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             _exclude: &[String],
             _mimes: &[String],
         ) -> Option<crate::services::provider_failover::TextUnderstudy> {
@@ -2053,11 +2079,15 @@ mod tests {
                 crate::services::dangerous_content::chat_override::ConciergeState::Moderated,
             )
         }
+
+        fn read_current_concierge_on_duty(&self, _user_id: &str, snapshot: bool) -> bool {
+            snapshot
+        }
         async fn resolve(
             &self,
             _original_profile: &EffectiveProfile,
             _original_api_key: &str,
-            _settings: &DangerSettings,
+            _settings: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             _user_id: &str,
             _mimes: &[String],
         ) -> RouteResult {
@@ -2066,12 +2096,13 @@ mod tests {
                 connection_profile: self.profile.clone(),
                 api_key: self.key.clone(),
                 profile_row: None,
+                reason: String::new(),
             }
         }
         async fn resolve_understudy(
             &self,
             _user_id: &str,
-            _settings: &DangerSettings,
+            _settings: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             exclude: &[String],
             _mimes: &[String],
         ) -> Option<crate::services::provider_failover::TextUnderstudy> {
@@ -2201,10 +2232,9 @@ mod tests {
                 state: &mut state,
                 tool_messages_length: 0,
                 content_was_flagged_dangerous: false,
-                danger_settings: DangerSettings {
-                    mode: "OFF".into(),
-                    uncensored_text_profile_id: None,
-                },
+                concierge_policy: crate::services::dangerous_content::resolver::test_policy(
+                    "OFF", None,
+                ),
                 concierge_state: None,
                 connection_profile: profile("p1", "OPENAI"),
                 params,
@@ -2266,10 +2296,9 @@ mod tests {
                 state: &mut state,
                 tool_messages_length: 0,
                 content_was_flagged_dangerous: false,
-                danger_settings: DangerSettings {
-                    mode: "OFF".into(),
-                    uncensored_text_profile_id: None,
-                },
+                concierge_policy: crate::services::dangerous_content::resolver::test_policy(
+                    "OFF", None,
+                ),
                 concierge_state: None,
                 connection_profile: profile("p1", "OPENAI"),
                 params,
@@ -2327,10 +2356,10 @@ mod tests {
                 state: &mut state,
                 tool_messages_length: 0,
                 content_was_flagged_dangerous: true,
-                danger_settings: DangerSettings {
-                    mode: "AUTO_ROUTE".into(),
-                    uncensored_text_profile_id: Some("p2".into()),
-                },
+                concierge_policy: crate::services::dangerous_content::resolver::test_policy(
+                    "AUTO_ROUTE",
+                    Some("p2"),
+                ),
                 concierge_state: None,
                 connection_profile: profile("p1", "OPENAI"),
                 params,
@@ -2380,10 +2409,9 @@ mod tests {
                 state: &mut state,
                 tool_messages_length: 0,
                 content_was_flagged_dangerous: false,
-                danger_settings: DangerSettings {
-                    mode: "OFF".into(),
-                    uncensored_text_profile_id: None,
-                },
+                concierge_policy: crate::services::dangerous_content::resolver::test_policy(
+                    "OFF", None,
+                ),
                 concierge_state: None,
                 connection_profile: profile("p1", "OPENAI"),
                 params,
@@ -2433,10 +2461,9 @@ mod tests {
                 state: &mut state,
                 tool_messages_length: 0,
                 content_was_flagged_dangerous: false,
-                danger_settings: DangerSettings {
-                    mode: "OFF".into(),
-                    uncensored_text_profile_id: None,
-                },
+                concierge_policy: crate::services::dangerous_content::resolver::test_policy(
+                    "OFF", None,
+                ),
                 concierge_state: None,
                 connection_profile: profile("p1", "OPENAI"),
                 params,
@@ -2651,10 +2678,10 @@ mod tests {
                 state: &mut state,
                 tool_messages_length: 0,
                 content_was_flagged_dangerous: false,
-                danger_settings: DangerSettings {
-                    mode: "AUTO_ROUTE".into(),
-                    uncensored_text_profile_id: Some("p2".into()),
-                },
+                concierge_policy: crate::services::dangerous_content::resolver::test_policy(
+                    "AUTO_ROUTE",
+                    Some("p2"),
+                ),
                 concierge_state: None,
                 connection_profile: profile("p1", "ANTHROPIC"),
                 params,
@@ -2801,10 +2828,9 @@ mod tests {
                 state: &mut state,
                 tool_messages_length: 0,
                 content_was_flagged_dangerous: false,
-                danger_settings: DangerSettings {
-                    mode: "OFF".into(),
-                    uncensored_text_profile_id: None,
-                },
+                concierge_policy: crate::services::dangerous_content::resolver::test_policy(
+                    "OFF", None,
+                ),
                 concierge_state: None,
                 connection_profile: profile("p1", "ANTHROPIC"),
                 params,
@@ -2869,10 +2895,9 @@ mod tests {
                 state: &mut state,
                 tool_messages_length: 0,
                 content_was_flagged_dangerous: false,
-                danger_settings: DangerSettings {
-                    mode: "OFF".into(),
-                    uncensored_text_profile_id: None,
-                },
+                concierge_policy: crate::services::dangerous_content::resolver::test_policy(
+                    "OFF", None,
+                ),
                 concierge_state: None,
                 connection_profile: profile("p1", "ANTHROPIC"),
                 params,
@@ -3266,10 +3291,10 @@ mod tests {
                 // Flagged, so the same-provider retry is skipped and the
                 // uncensored reroute is the FIRST call this recovery makes.
                 content_was_flagged_dangerous: true,
-                danger_settings: DangerSettings {
-                    mode: "AUTO_ROUTE".into(),
-                    uncensored_text_profile_id: Some("p2".into()),
-                },
+                concierge_policy: crate::services::dangerous_content::resolver::test_policy(
+                    "AUTO_ROUTE",
+                    Some("p2"),
+                ),
                 concierge_state: None,
                 connection_profile: profile("p1", "OPENAI"),
                 params,
@@ -3360,11 +3385,15 @@ mod tests {
                 crate::services::dangerous_content::chat_override::ConciergeState::Moderated,
             )
         }
+
+        fn read_current_concierge_on_duty(&self, _user_id: &str, snapshot: bool) -> bool {
+            snapshot
+        }
         async fn resolve(
             &self,
             _p: &EffectiveProfile,
             _k: &str,
-            _s: &DangerSettings,
+            _s: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             _u: &str,
             _m: &[String],
         ) -> RouteResult {
@@ -3373,7 +3402,7 @@ mod tests {
         async fn resolve_understudy(
             &self,
             _user_id: &str,
-            _settings: &DangerSettings,
+            _settings: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             exclude: &[String],
             _mimes: &[String],
         ) -> Option<TextUnderstudy> {
@@ -3426,10 +3455,8 @@ mod tests {
             profiles: vec![failed.clone()],
             keys: Default::default(),
         };
-        let settings = mode.map(|m| DangerSettings {
-            mode: m.into(),
-            uncensored_text_profile_id: None,
-        });
+        let settings =
+            mode.map(|m| crate::services::dangerous_content::resolver::test_policy(m, None));
         let sink = RecordingSink::new();
         let mut state = StreamingState {
             effective_profile: Some(profile("p1", "ANTHROPIC")),
@@ -3443,7 +3470,7 @@ mod tests {
                 ConciergeFailoverSeam::<_, crate::model::completion::CannedCompletionProvider> {
                     router,
                     concierge_state: None,
-                    danger_settings: settings.as_ref(),
+                    concierge_policy: settings.as_ref(),
                     adapter: None,
                 },
                 WalkFallbackChainOptions {
@@ -3525,12 +3552,18 @@ mod tests {
         );
     }
 
-    /// v4's not-permitted INFO (mode in the bag; absent settings omit it), the
+    /// v4's not-permitted INFO (the policy in the bag; absent omits it), the
     /// ledger record (`rerouted: false`), and no understudy lookup at all.
     #[tokio::test]
     async fn hard_refusal_outside_auto_route_logs_the_mode_and_records() {
+        // v4 `3b463d6b1` (#76): the not-permitted INFO carries the POLICY
+        // (`conciergeSource`, `conciergeState`), still logged off duty — and
+        // with no policy at all, `chatId` alone (v4's `?.` renders undefined).
         for (mode, keys) in [
-            (Some("DETECT_ONLY"), vec!["chat_id", "mode"]),
+            (
+                Some("OFF"),
+                vec!["chat_id", "concierge_source", "concierge_state"],
+            ),
             (None, vec!["chat_id"]),
         ] {
             let router = RecordingConcierge::new(Some(dolphin()));
@@ -3539,12 +3572,13 @@ mod tests {
             assert!(!result.recovered);
             let l = line(
                 &lines,
-                "[Failover] Refusal not rerouted to an uncensored profile: the Concierge mode does not permit it",
+                "[Failover] Refusal not rerouted to an uncensored profile: the Concierge policy does not permit it",
             );
             assert!(l.starts_with("INFO quilltap::failover"), "{l}");
             assert_eq!(field_keys(l), keys, "{l}");
-            if let Some(m) = mode {
-                assert!(l.contains(&format!("mode={m}")), "{l}");
+            if mode.is_some() {
+                assert!(l.contains("concierge_source=off-duty"), "{l}");
+                assert!(l.contains("concierge_state=moderated"), "{l}");
             }
             assert!(router.lookups.lock().unwrap().is_empty());
             let records = router.records.lock().unwrap();
@@ -3683,10 +3717,10 @@ mod tests {
                     tool_messages_length: 0,
                     // Flagged: the same-provider retry is skipped.
                     content_was_flagged_dangerous: true,
-                    danger_settings: DangerSettings {
-                        mode: "AUTO_ROUTE".into(),
-                        uncensored_text_profile_id: None,
-                    },
+                    concierge_policy: crate::services::dangerous_content::resolver::test_policy(
+                        "AUTO_ROUTE",
+                        None,
+                    ),
                     concierge_state: None,
                     connection_profile: profile("p1", "ANTHROPIC"),
                     params,

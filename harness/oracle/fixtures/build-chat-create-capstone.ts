@@ -48,13 +48,15 @@ interface Spec {
   /** The project default, hung on the existing Lantern project. */
   roleplayTemplateProjectDefaultId: string;
   /**
-   * P4.D148 — the GLOBAL `chat_settings.dangerousContentSettings`. AUTO_ROUTE
-   * with an explicitly named uncensored profile, so the greeting-routing cases
+   * P4.D148 — the GLOBAL Concierge settings: since P4.D227 (v4 `3b463d6b1`,
+   * #76) the `conciergeSettings` v4's `add-concierge-settings` migration makes
+   * of the retired AUTO_ROUTE bag (on duty, the pre-screen on) with an
+   * explicitly named uncensored text profile, so the greeting-routing cases
    * can ask what the CHAT's own state does to a globe that says yes. It changes
    * nothing for a Monitored chat whose greeting never hits a content filter,
    * which is every pre-P4.D148 case.
    */
-  dangerousContentSettings: Record<string, unknown>;
+  conciergeSettings: Record<string, unknown>;
   /**
    * P4.D148 — the source chat `cs_continuation_bubble_before_replay` continues
    * from. Seeded with CLEO (never the greeting character) and NO
@@ -234,7 +236,7 @@ async function main(): Promise<void> {
   // request omits the key walks the real default chain.
   await repos.chatSettings.updateForUser(spec.userId, {
     defaultRoleplayTemplateId: spec.roleplayTemplateUserDefaultId,
-    dangerousContentSettings: spec.dangerousContentSettings,
+    conciergeSettings: spec.conciergeSettings,
   } as never);
 
   // 3. Api keys (pinned ids via a direct collection insert — createApiKey mints

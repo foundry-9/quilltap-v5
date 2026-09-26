@@ -69,7 +69,7 @@ use serde_json::{json, Value};
 use crate::chat_predicates::is_help_like_chat_type;
 use crate::cheap_llm::{
     get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, CheapLlmConfig,
-    CheapLlmProfile, CheapLlmSelection, DangerousContentSettings,
+    CheapLlmProfile, CheapLlmSelection,
 };
 use crate::clock::now_iso;
 use crate::context_summary::{
@@ -96,6 +96,7 @@ use crate::services::conversation_summary_vault_bridge::{
     compute_conversation_stats, write_conversation_summary_to_vaults, WriteConversationSummaryInput,
 };
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
+use crate::services::dangerous_content::resolver::ResolvedConciergePolicy;
 use crate::services::fold_episode_pass::{
     run_fold_episode_pass, FoldWindowMessage, RunFoldEpisodePassInput,
 };
@@ -142,12 +143,12 @@ pub struct GenerateSummaryOptions {
     pub available_profiles: Vec<CheapLlmProfile>,
     /// Force an unconditional T-hard rebuild (v4 `forceRegenerate`).
     pub force_regenerate: bool,
-    /// The resolved dangerous-content settings for the user. v4 reads these from
-    /// `chatSettings.findByUserId(userId)` + `resolveDangerousContentSettings`
-    /// only when the chat is active-dangerous; the resolution is a host seam
-    /// (as in the memory processor), so the caller injects the already-resolved
-    /// value (or `None` — then the uncensored swap is skipped).
-    pub danger_settings: Option<DangerousContentSettings>,
+    /// The chat's resolved Concierge policy. v4 reads it from
+    /// `chatSettings.findByUserId(userId)` + `resolveConciergeSettings(…, chat)`
+    /// (`3b463d6b1`) only when the chat is active-dangerous; the resolution is a
+    /// host seam (as in the memory processor), so the caller injects the
+    /// already-resolved value (or `None` — then the uncensored swap is skipped).
+    pub concierge_policy: Option<ResolvedConciergePolicy>,
     /// Registry cheapest-model answer for the connection profile's provider (the
     /// injected `getCheapModelConfig` seam; `None` = no plugin → v4 legacy map).
     pub registry_cheapest_for_current: Option<String>,
@@ -642,10 +643,18 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
     // always yields a selection (its priority-5 fallback), matching v4's own
     // behavior on the differential (a valid current profile is always present).
     let selection = if should_use_uncensored_route(Some(&chat)) {
+        if let Some(policy) = options.concierge_policy.as_ref() {
+            tracing::debug!(
+                chat_id = %chat_id,
+                concierge_source = policy.source.as_str(),
+                route_direct = policy.route_direct,
+                "[Context Summary] Unmoderated chat; resolving uncensored cheap LLM"
+            );
+        }
         resolve_uncensored_cheap_llm_selection(
             selection,
             true,
-            options.danger_settings.as_ref(),
+            options.concierge_policy.as_ref(),
             &options.available_profiles,
         )
     } else {
@@ -1222,7 +1231,7 @@ pub async fn check_and_generate_summary_if_needed<C: CompletionProvider>(
     cheap_llm_settings: &CheapLlmSettings,
     available_profiles: &[CheapLlmProfile],
     user_id: &str,
-    danger_settings: Option<&DangerousContentSettings>,
+    concierge_policy: Option<&ResolvedConciergePolicy>,
     registry_cheapest_for_current: Option<&str>,
     await_fold: bool,
 ) -> Result<Option<CheckOutcome>, DbError> {
@@ -1235,7 +1244,7 @@ pub async fn check_and_generate_summary_if_needed<C: CompletionProvider>(
         cheap_llm_settings,
         available_profiles,
         user_id,
-        danger_settings,
+        concierge_policy,
         registry_cheapest_for_current,
         await_fold,
         &NoopSeams,
@@ -1262,7 +1271,7 @@ pub async fn check_and_generate_summary_if_needed_with_seams<
     cheap_llm_settings: &CheapLlmSettings,
     available_profiles: &[CheapLlmProfile],
     user_id: &str,
-    danger_settings: Option<&DangerousContentSettings>,
+    concierge_policy: Option<&ResolvedConciergePolicy>,
     registry_cheapest_for_current: Option<&str>,
     _await_fold: bool,
     seams: &S,
@@ -1322,7 +1331,7 @@ pub async fn check_and_generate_summary_if_needed_with_seams<
             cheap_llm_settings: cheap_llm_settings.clone(),
             available_profiles: available_profiles.to_vec(),
             force_regenerate: decision == SummarizationGateDecision::Hard,
-            danger_settings: danger_settings.cloned(),
+            concierge_policy: concierge_policy.cloned(),
             registry_cheapest_for_current: registry_cheapest_for_current.map(str::to_string),
             // The gate path's mirror/refresh arms are no-ops in every current
             // seams impl, so the refresh list size is irrelevant — `None`.

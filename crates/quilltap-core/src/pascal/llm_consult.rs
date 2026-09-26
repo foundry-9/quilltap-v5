@@ -30,7 +30,7 @@ use serde_json::Value;
 
 use crate::cheap_llm::{
     get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, CheapLlmProfile,
-    CheapLlmSelection, DangerousContentSettings,
+    CheapLlmSelection,
 };
 use crate::db::runtime::Db;
 use crate::db::{chats_read, connection_profiles};
@@ -40,7 +40,7 @@ use crate::services::cheap_llm_exec::{
     CheapLlmLogConfig, CheapLlmTaskExecutor, CheapLlmTaskOptions,
 };
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
-use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
+use crate::services::dangerous_content::resolver::resolve_concierge_settings;
 use crate::services::image_job_common::{
     cheap_llm_config_from_settings, cheap_llm_profile_from_value,
 };
@@ -245,16 +245,8 @@ where
             None,
         );
 
-        let global_danger = chat_settings
-            .as_ref()
-            .and_then(|s| s.get("dangerousContentSettings"))
-            .and_then(|d| serde_json::from_value(d.clone()).ok());
-        let resolved_danger =
-            resolve_dangerous_content_settings(global_danger, chat.as_ref()).settings;
-        let danger_settings = DangerousContentSettings {
-            mode: resolved_danger.mode,
-            uncensored_text_profile_id: resolved_danger.uncensored_text_profile_id,
-        };
+        // v4 `3b463d6b1`: `resolveConciergeSettings(chatSettings, chat ?? undefined)`.
+        let concierge_policy = resolve_concierge_settings(chat_settings.as_ref(), chat.as_ref());
         // A null chat is NEVER dangerous, which is exactly why the Workbench
         // bench run is never rerouted.
         let dangerous = should_use_uncensored_route(chat.as_ref());
@@ -262,7 +254,7 @@ where
             selection = resolve_uncensored_cheap_llm_selection(
                 selection,
                 true,
-                Some(&danger_settings),
+                Some(&concierge_policy),
                 &profiles,
             );
         }
@@ -305,7 +297,7 @@ where
                 // v4's identity parse — the raw content IS the answer.
                 |content: &str| content.to_string(),
                 Some(&crate::cheap_llm::UncensoredFallbackOptions {
-                    danger_settings: &danger_settings,
+                    concierge_policy: &concierge_policy,
                     available_profiles: &profiles,
                     is_dangerous_chat: Some(dangerous),
                 }),

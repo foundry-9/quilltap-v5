@@ -83,6 +83,12 @@ interface Spec {
 interface CaseSpec {
   name: string;
   progressId: string;
+  /**
+   * P4.D227 (v4 `3b463d6b1`, #76): the case's own stored `conciergeSettings`,
+   * written raw onto this copy's settings row before the create (the
+   * `newChatsStartAs` arms). The Rust side writes the same bytes.
+   */
+  conciergeSettings?: Record<string, unknown>;
   tz: string;
   nowMs: number;
   random01: number;
@@ -356,6 +362,11 @@ async function runCase(
   const { POST } = await import('@/app/api/v1/chats/route');
 
   await initializeDatabase();
+  if (c.conciergeSettings) {
+    getRawDatabase()
+      .prepare('UPDATE chat_settings SET "conciergeSettings" = ? WHERE "userId" = ?')
+      .run(JSON.stringify(c.conciergeSettings), spec.userId);
+  }
 
   try {
     const req = createMockRequest(c.request);

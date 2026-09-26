@@ -79,12 +79,13 @@ interface ChatSpec {
   imageProfileId: string;
   projectId?: string;
   /**
-   * [decd8ef9] The case's own `chat_settings.dangerousContentSettings` bag,
+   * [decd8ef9] The case's own `chat_settings.conciergeSettings` (v4 `3b463d6b1`, #76 —
+   * `dangerousContentSettings` before) bag,
    * patched onto the fresh copy before the handler runs (one chat-settings row,
    * one user — so a per-case danger bag has to be fixture state applied here,
    * identically on both sides).
    */
-  dangerousContentSettings?: Record<string, unknown>;
+  conciergeSettings?: Record<string, unknown>;
 }
 interface Spec {
   testPepperBase64: string;
@@ -366,10 +367,10 @@ async function main(): Promise<void> {
       return { id, userId, label: 'canned', provider: 'OPENAI', key_value: key, isActive: true, createdAt: '2020-01-01T00:00:00.000Z', updatedAt: '2020-01-01T00:00:00.000Z' };
     };
 
-    // [decd8ef9] The case's own danger settings, onto this copy only.
-    if (chat.dangerousContentSettings) {
-      await rawQuery('UPDATE chat_settings SET dangerousContentSettings = ? WHERE userId = ?', [
-        JSON.stringify(chat.dangerousContentSettings),
+    // [decd8ef9] The case's own Concierge settings (v4 `3b463d6b1`, #76), onto this copy only.
+    if (chat.conciergeSettings) {
+      await rawQuery('UPDATE chat_settings SET conciergeSettings = ? WHERE userId = ?', [
+        JSON.stringify(chat.conciergeSettings),
         spec.userId,
       ]);
     }

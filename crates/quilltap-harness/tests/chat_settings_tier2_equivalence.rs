@@ -37,8 +37,8 @@ use std::path::{Path, PathBuf};
 use quilltap_core::db::chat_settings::{
     AgentModeSettings, AnswerConfirmationSettings, AutoHousekeepingSettings, AutoLockSettings,
     AutonomousRoomSettings, ChatSettingsCreate, ChatSettingsUpdate, CheapLlmSettings,
-    ContextCompressionSettings, CoreWhisperSettings, CreateOptions, DangerousContentSettings,
-    LlmLoggingSettings, MemoryCascadePreferences, MemoryExtractionLimits, SmartTypographySettings,
+    ContextCompressionSettings, CoreWhisperSettings, CreateOptions, LlmLoggingSettings,
+    MemoryCascadePreferences, MemoryExtractionLimits, SmartTypographySettings,
     StoryBackgroundsSettings, ThemePreference, ThinkingDisplaySettings, TimestampConfig,
     TokenDisplaySettings,
 };
@@ -87,8 +87,9 @@ struct CreateData {
     cheap_llm_settings: CheapLlmSettings,
     #[serde(default)]
     image_description_profile_id: Option<String>,
-    #[serde(default)]
-    uncensored_image_description_profile_id: Option<String>,
+    // (`uncensoredImageDescriptionProfileId` left the schema at v4 `3b463d6b1`;
+    // a spec row still carrying it is a strip probe, ignored here as v4's Zod
+    // drops it.)
     #[serde(default)]
     default_roleplay_template_id: Option<String>,
     theme_preference: ThemePreference,
@@ -118,7 +119,10 @@ struct CreateData {
     answer_confirmation_settings: AnswerConfirmationSettings,
     smart_typography_settings: SmartTypographySettings,
     story_backgrounds_settings: StoryBackgroundsSettings,
-    dangerous_content_settings: DangerousContentSettings,
+    /// v4 `3b463d6b1` (#76): the raw object (absent → the `.default()`
+    /// literal), Zod-parsed by the repository write.
+    #[serde(default)]
+    concierge_settings: Option<Value>,
     auto_lock_settings: AutoLockSettings,
     #[serde(default)]
     timezone: Option<String>,
@@ -154,7 +158,7 @@ struct UpdateData {
     #[serde(default)]
     sidebar_width: Option<i64>,
     #[serde(default)]
-    dangerous_content_settings: Option<DangerousContentSettings>,
+    concierge_settings: Option<Value>,
     #[serde(default)]
     auto_lock_settings: Option<AutoLockSettings>,
     #[serde(default)]
@@ -240,8 +244,6 @@ fn chat_settings_tier2_matches_oracle() {
                             tag_styles: data.tag_styles,
                             cheap_llm_settings: data.cheap_llm_settings,
                             image_description_profile_id: data.image_description_profile_id,
-                            uncensored_image_description_profile_id: data
-                                .uncensored_image_description_profile_id,
                             default_roleplay_template_id: data.default_roleplay_template_id,
                             theme_preference: data.theme_preference,
                             sidebar_width: data.sidebar_width,
@@ -268,7 +270,7 @@ fn chat_settings_tier2_matches_oracle() {
                             answer_confirmation_settings: data.answer_confirmation_settings,
                             smart_typography_settings: data.smart_typography_settings,
                             story_backgrounds_settings: data.story_backgrounds_settings,
-                            dangerous_content_settings: data.dangerous_content_settings,
+                            concierge_settings: data.concierge_settings,
                             auto_lock_settings: data.auto_lock_settings,
                             timezone: data.timezone,
                         },
@@ -293,7 +295,7 @@ fn chat_settings_tier2_matches_oracle() {
                                 default_roleplay_template_id: data.default_roleplay_template_id,
                                 theme_preference: data.theme_preference,
                                 sidebar_width: data.sidebar_width,
-                                dangerous_content_settings: data.dangerous_content_settings,
+                                concierge_settings: data.concierge_settings,
                                 auto_lock_settings: data.auto_lock_settings,
                                 auto_detect_rng: data.auto_detect_rng,
                                 custom_tools: data.custom_tools,

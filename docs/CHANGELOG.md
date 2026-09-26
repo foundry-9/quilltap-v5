@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-26 — feat(concierge): the Concierge's own settings, the policy resolver and the consumer sweep; `conciergeOverride` dropped (P4.D227)
+
+_Versions: core 0.0.1083, harness 0.0.1003, host 0.0.161._
+
+- `chat_settings.conciergeSettings` replaces `dangerousContentSettings`, `uncensoredImageDescriptionProfileId` and `cheapLLMSettings.imagePromptProfileId` (v4 `3b463d6b1`, #76). One schema twin reads all three stored shapes (the migration's, the DDL default, the PUT's materialized object); the retired keys are stripped on read.
+- The settings PUT refuses any retired key with a 400 before reading another field; a malformed `conciergeSettings` is refused at its own slot.
+- `resolve_concierge_settings` returns a `ResolvedConciergePolicy` (exempt → off duty → Locked → Unmoderated → Moderated). Both old `DangerousContentSettings` structs and the failover `DangerSettings` carrier are gone; every consumer asks the policy a named question.
+- New `legacy_concierge_settings` mapper, used by restore and the backup UUID remap to translate pre-4.10 settings (the four desk ids remapped).
+- The failover chokepoints re-read the on-duty switch at refusal time. Off duty the image path records the refusal but announces nothing; `refusal-not-permitted` now always reads the Locked sentence (the retired Auto-Route sentences are deleted).
+- New chats start in the operator's `newChatsStartAs` state while the Concierge is on duty; off duty a requested state is ignored. The greeting, images route, avatar and story jobs route an Unmoderated chat direct to the uncensored desk.
+- The vision fallback is the desk's `uncensoredVisionProfileId`, decided by the chat being described.
+- `help_settings` gains the `concierge` category; the Almanack reports the Concierge block.
+- The fresh DDL and settings seed are re-dumped from v4 (`conciergeOverride` and the two settings columns dropped; `conciergeSettings` added). `conciergeOverride` is out of every chats read and write; a migrated table that still has it reads the same.
+- The committed chats- and settings-bearing fixtures are widened through v4's real `add-concierge-settings` and `drop-chat-concierge-override` modules; the migration-vintage trio is rebuilt.
+- The harness families are re-keyed to the new settings, with new arms for off duty, Locked, exempt and mid-call switch changes; the seven `newChatsStartAs` create cases; a census that no retired identifier survives.
+
 #### 2026-09-26 — test(concierge): the get_messages census gains the retired-kinds read pin; P4.D226 lane complete
 
 _Versions: harness 0.0.1002._

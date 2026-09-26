@@ -241,10 +241,11 @@ async function main(): Promise<void> {
       name: 'list_chats_operator_states',
       run: async () => {
         const { rawQuery } = await import('@/lib/database/manager');
-        await rawQuery('UPDATE "chats" SET "conciergeOverride" = ?, "isDangerousChat" = 1 WHERE "id" = ?', ['OFF', CHAT_A]);
-        await rawQuery('UPDATE "chats" SET "conciergeOverride" = ?, "isDangerousChat" = 0 WHERE "id" = ?', ['UNCENSORED', CHAT_B]);
-        // P4.D226 (v4 `4d370a90f`): the states the rows derive from — the
-        // legacy pair above is ignored (a migrated row keeps it).
+        await rawQuery('UPDATE "chats" SET "isDangerousChat" = 1 WHERE "id" = ?', [CHAT_A]);
+        await rawQuery('UPDATE "chats" SET "isDangerousChat" = 0 WHERE "id" = ?', [CHAT_B]);
+        // P4.D226 (v4 `4d370a90f`): the states the rows derive from. P4.D227
+        // (`3b463d6b1`, #76): the legacy `conciergeOverride` column is DROPPED
+        // at this pin, so the plant no longer writes it.
         await rawQuery(
           'UPDATE "chats" SET "conciergeMode" = ?, "conciergeModeSetBy" = ?, "conciergeModeReason" = ? WHERE "id" = ?',
           ['locked', 'operator', 'migration', CHAT_A],

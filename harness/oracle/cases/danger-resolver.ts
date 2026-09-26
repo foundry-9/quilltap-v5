@@ -45,8 +45,15 @@
  */
 
 import {
-  resolveDangerousContentSettings,
+  DEFAULT_AUTO_SWITCH_AFTER_REFUSALS,
+  DEFAULT_CONCIERGE_SETTINGS,
+  readConciergeSettings,
+  resolveConciergeSettings,
 } from '@/lib/services/dangerous-content/resolver.service'
+import {
+  mapLegacyConciergeSettings,
+  withConciergeSettingsFromLegacy,
+} from '@/lib/services/dangerous-content/legacy-concierge-settings'
 import {
   CONCIERGE_STATES,
   getConciergeState,
@@ -61,91 +68,183 @@ import {
   deriveConciergeModeFromLegacy,
   withConciergeModeFromLegacy,
 } from '@/lib/services/dangerous-content/chat-override'
-import {
-  DangerousContentSettingsSchema,
-  type DangerousContentSettings,
-} from '@/lib/schemas/settings.types'
-
-// A fully-materialized (Zod-shaped) settings object — what the repository hands
-// the resolver in production. Built from v4's REAL schema defaults
-// (`parse({})`) so it is the right shape at ANY pin: since `49059fb14` (#74,
-// P4.D225) that shape carries `autoSwitchAfterRefusals: 2`, which a hand-written
-// literal silently lacked. Optional profile ids are kept ABSENT (never explicit
-// null) so the 'global' passthrough round-trips byte-for-byte through the Rust
-// typed struct (the null-vs-absent optional is a documented corpus constraint).
-function settings(mode: string, extra: Partial<DangerousContentSettings> = {}): DangerousContentSettings {
-  return {
-    ...DangerousContentSettingsSchema.parse({}),
-    mode: mode as DangerousContentSettings['mode'],
-    ...extra,
-  }
-}
+import type { ConciergeSettings } from '@/lib/schemas/settings.types'
 
 type ChatView = Record<string, unknown>
 
-// --- resolver matrix ---
-// The per-chat arms are keyed on `conciergeMode` (v4 `4d370a90f`). The rows that
-// still name the legacy pair PROVE it is ignored: v4's own resolver test
-// "ignores the legacy conciergeOverride column".
-const resolveCases: Array<{ id: string; global: DangerousContentSettings | null; chat: ChatView | null }> = [
-  { id: 'no-settings-no-chat', global: null, chat: null },
-  { id: 'global-auto-route-no-chat', global: settings('AUTO_ROUTE'), chat: null },
-  { id: 'global-detect-only', global: settings('DETECT_ONLY'), chat: { chatType: 'salon', conciergeMode: null } },
-  { id: 'global-off', global: settings('OFF'), chat: { chatType: 'salon' } },
-  { id: 'help-exempt', global: settings('AUTO_ROUTE'), chat: { chatType: 'help', conciergeMode: 'locked' } },
-  { id: 'brahma-exempt', global: settings('AUTO_ROUTE'), chat: { chatType: 'brahma' } },
-  { id: 'default-no-global-plain-chat', global: null, chat: { chatType: 'salon' } },
-  { id: 'global-with-uncensored', global: settings('AUTO_ROUTE', { uncensoredTextProfileId: 'prof-unc-1' }), chat: { chatType: 'salon' } },
-  { id: 'global-with-custom-prompt', global: settings('DETECT_ONLY', { customClassificationPrompt: 'Also flag squick.' }), chat: null },
-  // --- per-chat Locked (v4 resolver.test.ts `per-chat Locked state`) ---
-  { id: 'locked-collapses', global: settings('AUTO_ROUTE'), chat: { chatType: 'salon', conciergeMode: 'locked' } },
-  { id: 'locked-no-global', global: null, chat: { conciergeMode: 'locked' } },
-  { id: 'locked-over-global-auto-route-with-ids', global: settings('AUTO_ROUTE', { uncensoredTextProfileId: 'prof-unc-1', autoSwitchAfterRefusals: 5 }), chat: { chatType: 'salon', conciergeMode: 'locked', conciergeModeSetBy: 'operator', conciergeModeReason: 'manual' } },
-  { id: 'moderated-respects-global', global: settings('DETECT_ONLY'), chat: { chatType: 'salon', conciergeMode: 'moderated' } },
-  // The legacy pair is ignored: an `OFF` override is NOT Locked any more, an
-  // `UNCENSORED` one is NOT Unmoderated, a dangerous label is NOT Unmoderated.
-  { id: 'legacy-off-ignored', global: settings('AUTO_ROUTE'), chat: { chatType: 'salon', conciergeOverride: 'OFF' } },
-  { id: 'legacy-uncensored-ignored', global: settings('OFF'), chat: { chatType: 'salon', conciergeOverride: 'UNCENSORED', isDangerousChat: true } },
-  // --- per-chat Unmoderated: AUTO_ROUTE forced even under a global OFF ---
-  {
-    id: 'unmoderated-forces-auto-route-under-global-off',
-    global: settings('OFF', {
-      scanImageGeneration: true,
-      uncensoredTextProfileId: '11111111-1111-4111-8111-111111111111',
-      uncensoredImageProfileId: '22222222-2222-4222-8222-222222222222',
-    }),
-    chat: { chatType: 'salon', conciergeMode: 'unmoderated', conciergeModeSetBy: 'operator', conciergeModeReason: 'manual' },
-  },
-  {
-    id: 'unmoderated-by-concierge-over-global-auto-route',
-    global: settings('AUTO_ROUTE', { uncensoredTextProfileId: 'prof-unc-1' }),
-    chat: { chatType: 'salon', conciergeMode: 'unmoderated', conciergeModeSetBy: 'concierge', conciergeModeReason: 'refusals' },
-  },
-  // No global settings at all: v4 spreads DEFAULT_DANGEROUS_CONTENT_SETTINGS.
-  { id: 'unmoderated-no-global', global: null, chat: { conciergeMode: 'unmoderated' } },
-  // The payload key (a server-derived chat) reads the same as the column.
-  { id: 'unmoderated-by-payload-key', global: settings('DETECT_ONLY'), chat: { conciergeState: 'unmoderated' } },
-  // Branch order: exempt beats Unmoderated and Locked (v4's own test pins the
-  // first: "moderation-exempt chat types win over the Unmoderated state").
-  {
-    id: 'brahma-exempt-beats-unmoderated',
-    global: settings('AUTO_ROUTE', { uncensoredTextProfileId: 'prof-unc-1' }),
-    chat: { chatType: 'brahma', conciergeMode: 'unmoderated' },
-  },
-  {
-    id: 'help-exempt-beats-unmoderated',
-    global: settings('DETECT_ONLY'),
-    chat: { chatType: 'help', conciergeMode: 'unmoderated' },
-  },
-  // An unknown stored value reads as Moderated.
-  { id: 'unknown-mode-reads-moderated', global: settings('DETECT_ONLY'), chat: { conciergeMode: 'vouched' } },
-]
+// --- the defaults (v4 resolver.test.ts `DEFAULT_CONCIERGE_SETTINGS`) ---
+process.stdout.write(
+  JSON.stringify({
+    kind: 'defaults',
+    id: 'default-concierge-settings',
+    settings: DEFAULT_CONCIERGE_SETTINGS,
+    autoSwitch: DEFAULT_AUTO_SWITCH_AFTER_REFUSALS,
+  }) + '\n'
+)
 
-for (const c of resolveCases) {
-  const globalSettings = c.global ? ({ dangerousContentSettings: c.global } as any) : null
-  const r = resolveDangerousContentSettings(globalSettings, c.chat as any)
+// v4 `resolver.test.ts`'s own builders, verbatim: a fully-populated global
+// object with the four desk ids, a non-default auto-switch and an opted-in
+// pre-screen, over which each case lays its overrides (nested one level).
+const TEXT_ID = '11111111-1111-4111-8111-111111111111'
+const IMAGE_ID = '22222222-2222-4222-8222-222222222222'
+const VISION_ID = '33333333-3333-4333-8333-333333333333'
+const PROMPT_ID = '44444444-4444-4444-8444-444444444444'
+
+function concierge(overrides: Partial<ConciergeSettings> = {}): ConciergeSettings {
+  return {
+    ...DEFAULT_CONCIERGE_SETTINGS,
+    uncensoredTextProfileId: TEXT_ID,
+    uncensoredImageProfileId: IMAGE_ID,
+    uncensoredVisionProfileId: VISION_ID,
+    imagePromptProfileId: PROMPT_ID,
+    autoSwitchAfterRefusals: 3,
+    ...overrides,
+    display: { ...DEFAULT_CONCIERGE_SETTINGS.display, ...(overrides.display ?? {}) },
+    preScreen: {
+      ...DEFAULT_CONCIERGE_SETTINGS.preScreen,
+      enabled: true,
+      threshold: 0.55,
+      scanTextChat: true,
+      scanImagePrompts: false,
+      scanImageGeneration: true,
+      customClassificationPrompt: 'Be strict about gore.',
+      summaryClassification: true,
+      ...(overrides.preScreen ?? {}),
+    },
+  }
+}
+const global = (settings: unknown) => ({ conciergeSettings: settings })
+
+const moderated = { conciergeMode: 'moderated', chatType: 'salon' }
+const unmoderated = { conciergeMode: 'unmoderated', chatType: 'salon' }
+const locked = { conciergeMode: 'locked', chatType: 'salon' }
+
+// --- readConciergeSettings (v4 resolver.test.ts + the merge's edges) ---
+const readCases: Array<{ id: string; global: unknown }> = [
+  { id: 'no-settings-row', global: null },
+  { id: 'no-settings-undefined', global: undefined },
+  { id: 'concierge-settings-missing', global: global(undefined) },
+  { id: 'concierge-settings-null', global: global(null) },
+  { id: 'fills-nested-gaps', global: global({ enabled: false, preScreen: { enabled: true }, display: { mode: 'BLUR' } }) },
+  // `?? {}` — a stored `null` nested object spreads nothing.
+  { id: 'nested-null-spreads-nothing', global: global({ display: null, preScreen: null, autoSwitchAfterRefusals: 0 }) },
+  // The fresh DDL's `.default()` literal: no ids, no prompt.
+  { id: 'ddl-default-literal', global: global({ enabled: true, autoSwitchAfterRefusals: 2, newChatsStartAs: 'moderated', display: { mode: 'SHOW', showWarningBadges: true }, preScreen: { enabled: false, threshold: 0.7, scanTextChat: true, scanImagePrompts: true, scanImageGeneration: false, summaryClassification: false } }) },
+  { id: 'full-object', global: global(concierge({ newChatsStartAs: 'unmoderated' })) },
+  { id: 'integral-threshold', global: global({ preScreen: { threshold: 1 } }) },
+]
+for (const c of readCases) {
   process.stdout.write(
-    JSON.stringify({ kind: 'resolve', id: c.id, global: c.global, chat: c.chat, settings: r.settings, source: r.source }) + '\n'
+    JSON.stringify({ kind: 'readSettings', id: c.id, global: c.global === undefined ? '<undefined>' : c.global, settings: readConciergeSettings(c.global as any) }) + '\n'
+  )
+}
+
+// --- resolveConciergeSettings (v4 resolver.test.ts, every describe) ---
+const resolveCases: Array<{ id: string; global: unknown; chat: ChatView | null | undefined }> = [
+  // enabled: false (off duty) — "allows nothing anywhere, with or without a chat"
+  { id: 'off-duty-no-chat', global: global(concierge({ enabled: false })), chat: undefined },
+  { id: 'off-duty-moderated', global: global(concierge({ enabled: false })), chat: moderated },
+  { id: 'off-duty-unmoderated', global: global(concierge({ enabled: false })), chat: unmoderated },
+  { id: 'off-duty-locked', global: global(concierge({ enabled: false })), chat: locked },
+  // "still reports the state and newChatsStartAs"
+  { id: 'off-duty-reports-state', global: global(concierge({ enabled: false, newChatsStartAs: 'unmoderated' })), chat: unmoderated },
+  // Locked — "allows no failover, …, and empties the desk" / "keeps the global display settings"
+  { id: 'locked', global: global(concierge()), chat: locked },
+  { id: 'locked-keeps-display', global: global(concierge({ display: { mode: 'COLLAPSE', showWarningBadges: true } })), chat: locked },
+  // Unmoderated — routes direct, the desk, hides badges
+  { id: 'unmoderated', global: global(concierge()), chat: unmoderated },
+  { id: 'unmoderated-blur', global: global(concierge({ display: { mode: 'BLUR', showWarningBadges: true } })), chat: unmoderated },
+  // Moderated
+  { id: 'moderated-global', global: global(concierge()), chat: moderated },
+  { id: 'moderated-no-chat', global: global(concierge()), chat: undefined },
+  { id: 'moderated-null-chat', global: global(concierge()), chat: null },
+  { id: 'moderated-no-concierge-mode', global: global(concierge()), chat: { chatType: 'salon' } },
+  { id: 'moderated-pre-screen-off-keeps-threshold-prompt', global: global(concierge({ preScreen: { enabled: false } as ConciergeSettings['preScreen'] })), chat: moderated },
+  { id: 'moderated-summary-off', global: global(concierge({ preScreen: { summaryClassification: false } as ConciergeSettings['preScreen'] })), chat: moderated },
+  { id: 'moderated-auto-switch-never', global: global(concierge({ autoSwitchAfterRefusals: 0 })), chat: moderated },
+  // exempt chat types — every state
+  ...['help', 'brahma'].flatMap((chatType) =>
+    ['moderated', 'unmoderated', 'locked'].map((conciergeMode) => ({
+      id: `exempt-${chatType}-${conciergeMode}`, global: global(concierge()), chat: { conciergeMode, chatType },
+    }))),
+  // exempt beats off duty (branch 1 before branch 2)
+  { id: 'exempt-beats-off-duty', global: global(concierge({ enabled: false })), chat: { conciergeMode: 'locked', chatType: 'help' } },
+  // missing conciergeSettings — the defaults with source "default"
+  { id: 'missing-null', global: null, chat: moderated },
+  { id: 'missing-undefined', global: undefined, chat: moderated },
+  { id: 'missing-key', global: global(undefined), chat: moderated },
+  { id: 'missing-unmoderated', global: null, chat: unmoderated },
+  { id: 'missing-locked', global: null, chat: locked },
+  // The stored DDL literal is truthy: source 'global' though nothing was chosen.
+  { id: 'ddl-default-literal-reads-global', global: global({ enabled: true, autoSwitchAfterRefusals: 2, newChatsStartAs: 'moderated', display: { mode: 'SHOW', showWarningBadges: true }, preScreen: { enabled: false, threshold: 0.7, scanTextChat: true, scanImagePrompts: true, scanImageGeneration: false, summaryClassification: false } }), chat: moderated },
+  // The legacy pair is ignored; the payload key reads like the column.
+  { id: 'legacy-override-ignored', global: global(concierge()), chat: { chatType: 'salon', conciergeOverride: 'OFF', isDangerousChat: true } },
+  { id: 'payload-key-unmoderated', global: global(concierge()), chat: { conciergeState: 'unmoderated' } },
+  { id: 'unknown-mode-reads-moderated', global: global(concierge()), chat: { conciergeMode: 'vouched' } },
+]
+for (const c of resolveCases) {
+  const policy = resolveConciergeSettings(c.global as any, c.chat as any)
+  process.stdout.write(
+    JSON.stringify({
+      kind: 'resolve',
+      id: c.id,
+      global: c.global === undefined ? '<undefined>' : c.global,
+      chat: c.chat === undefined ? '<undefined>' : c.chat,
+      policy,
+    }) + '\n'
+  )
+}
+
+// --- mapLegacyConciergeSettings (v4 add-concierge-settings.test.ts, by name,
+// plus every clamp / idOrNull / bool edge) — the migrated BYTES ---
+const legacyCases: Array<{ id: string; sources: Record<string, unknown> }> = [
+  { id: 'off-goes-off-duty', sources: { dangerousContentSettings: { mode: 'OFF' } } },
+  { id: 'detect-only-on-duty', sources: { dangerousContentSettings: { mode: 'DETECT_ONLY' } } },
+  { id: 'auto-route-on-duty', sources: { dangerousContentSettings: { mode: 'AUTO_ROUTE' } } },
+  {
+    id: 'carries-scans-threshold-prompt-desk-display-auto-switch',
+    sources: {
+      dangerousContentSettings: {
+        mode: 'AUTO_ROUTE', threshold: 0.4, scanTextChat: false, scanImagePrompts: false, scanImageGeneration: true,
+        uncensoredTextProfileId: TEXT_ID, uncensoredImageProfileId: IMAGE_ID, displayMode: 'COLLAPSE',
+        showWarningBadges: false, customClassificationPrompt: 'Flag squick.', autoSwitchAfterRefusals: 5,
+      },
+      uncensoredImageDescriptionProfileId: VISION_ID,
+      cheapLLMSettings: { strategy: 'PROVIDER_CHEAPEST', imagePromptProfileId: PROMPT_ID },
+    },
+  },
+  { id: 'no-dangerous-content-settings', sources: {} },
+  { id: 'null-dangerous-content-settings', sources: { dangerousContentSettings: null, cheapLLMSettings: null } },
+  { id: 'off-with-unmoderated-chat', sources: { dangerousContentSettings: { mode: 'OFF' }, hasUnmoderatedChats: true } },
+  { id: 'unknown-mode-is-off', sources: { dangerousContentSettings: { mode: 'SOMETIMES' } } },
+  { id: 'lowercase-mode-is-off', sources: { dangerousContentSettings: { mode: 'auto_route' } } },
+  { id: 'clamps-out-of-range', sources: { dangerousContentSettings: { mode: 'DETECT_ONLY', threshold: 1.5, autoSwitchAfterRefusals: 11, displayMode: 'HIDE' } } },
+  { id: 'clamps-negative', sources: { dangerousContentSettings: { threshold: -0.1, autoSwitchAfterRefusals: -1 } } },
+  { id: 'clamps-fractional-auto-switch', sources: { dangerousContentSettings: { autoSwitchAfterRefusals: 2.5, threshold: 1 } } },
+  { id: 'wrong-types-fall-back', sources: { dangerousContentSettings: { threshold: '0.5', scanTextChat: 'yes', showWarningBadges: 0, autoSwitchAfterRefusals: '3', customClassificationPrompt: 7 } } },
+  { id: 'empty-strings-are-null', sources: { dangerousContentSettings: { uncensoredTextProfileId: '', customClassificationPrompt: '' }, uncensoredImageDescriptionProfileId: '', cheapLLMSettings: { imagePromptProfileId: '' } } },
+  { id: 'threshold-zero-and-one-survive', sources: { dangerousContentSettings: { threshold: 0, autoSwitchAfterRefusals: 0 } } },
+  { id: 'has-unmoderated-must-be-true', sources: { dangerousContentSettings: { mode: 'OFF' }, hasUnmoderatedChats: 1 } },
+]
+for (const c of legacyCases) {
+  process.stdout.write(
+    JSON.stringify({ kind: 'legacyMap', id: c.id, sources: c.sources, migrated: mapLegacyConciergeSettings(c.sources as any) }) + '\n'
+  )
+}
+
+// --- withConciergeSettingsFromLegacy: the returned record, in key order ---
+const withSettingsCases: Array<{ id: string; settings: Record<string, unknown>; hasUnmoderatedChats: boolean }> = [
+  { id: 'translates-when-absent', settings: { id: 's', dangerousContentSettings: { mode: 'AUTO_ROUTE' }, uncensoredImageDescriptionProfileId: VISION_ID }, hasUnmoderatedChats: false },
+  { id: 'translates-a-null-in-place', settings: { id: 's', conciergeSettings: null, timezone: 'UTC', dangerousContentSettings: { mode: 'OFF' } }, hasUnmoderatedChats: true },
+  { id: 'keeps-an-existing-object', settings: { id: 's', conciergeSettings: { enabled: false }, dangerousContentSettings: { mode: 'AUTO_ROUTE' } }, hasUnmoderatedChats: true },
+  { id: 'keeps-an-empty-object', settings: { id: 's', conciergeSettings: {} }, hasUnmoderatedChats: false },
+  { id: 'translates-an-empty-string', settings: { id: 's', conciergeSettings: '' }, hasUnmoderatedChats: false },
+  { id: 'no-legacy-keys-at-all', settings: { id: 's' }, hasUnmoderatedChats: false },
+]
+for (const c of withSettingsCases) {
+  const out = withConciergeSettingsFromLegacy(c.settings as any, c.hasUnmoderatedChats)
+  process.stdout.write(
+    JSON.stringify({ kind: 'withSettingsLegacy', id: c.id, settings: c.settings, hasUnmoderatedChats: c.hasUnmoderatedChats, out, identical: out === c.settings }) + '\n'
   )
 }
 

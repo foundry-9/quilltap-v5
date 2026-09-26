@@ -70,6 +70,8 @@ interface Spec {
   /** P4.106 item 2: pending `chat_informs` rows for the two inform calls. */
   informs?: InformSpec[];
   userId: string;
+  /** P4.D227: the user's `chat_settings` row (the on-duty re-read). */
+  conciergeSettingsRowId: string;
   profile: ProfileSpec;
   understudyProfile: ProfileSpec;
   tierSpareProfile: ProfileSpec;
@@ -219,6 +221,17 @@ async function main(): Promise<void> {
         tags: [],
       } as never,
       { id: p.id, createdAt: spec.sentinel, updatedAt: spec.sentinel } as never,
+    );
+  }
+
+  // P4.D227 (v4 `3b463d6b1`, #76): the user's settings row, so the failover's
+  // refusal-time on-duty re-read (`readCurrentConciergeOnDuty`) reads a real
+  // `conciergeSettings` — on duty; the `offDutyNow` cases flip it raw.
+  {
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    await getRepositories().chatSettings.create(
+      { userId: spec.userId, conciergeSettings: { enabled: true } } as never,
+      { id: spec.conciergeSettingsRowId, createdAt: spec.sentinel, updatedAt: spec.sentinel } as never,
     );
   }
 

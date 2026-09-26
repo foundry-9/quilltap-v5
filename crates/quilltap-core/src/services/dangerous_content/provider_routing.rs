@@ -15,9 +15,9 @@ use serde_json::Value;
 
 use crate::db::runtime::Db;
 use crate::services::primary_stream::EffectiveProfile;
-use crate::services::provider_failover::{
-    DangerSettings, DangerousContentRouter, RouteResult, TextUnderstudy,
-};
+
+use super::resolver::ResolvedConciergePolicy;
+use crate::services::provider_failover::{DangerousContentRouter, RouteResult, TextUnderstudy};
 
 /// The profile-identity subset the routing decision, reason strings, and the
 /// downstream failover all consume (a byte-diffable projection of v4's returned
@@ -155,8 +155,10 @@ fn str_field(v: &Value, key: &str) -> String {
 }
 
 /// v4 `resolveProviderForDangerousContent` — the pre-flight TEXT wrapper, thin
-/// since `8bd080267` (#73): the `AUTO_ROUTE` gate lives here ("the policy lives
-/// here, in the wrapper; the resolver never reads the mode"), and the choice is
+/// since `8bd080267` (#73): the policy gate lives here ("the policy lives here,
+/// in the wrapper; the understudy resolver never reads it" — since `3b463d6b1`
+/// the gate is the Concierge policy's `route_direct || failover_allowed`), and
+/// the choice is
 /// [`resolve_uncensored_text_understudy`] with the ORIGINAL profile excluded.
 /// One merged INFO line (`configured` says which of v4's two old lines it would
 /// have been); the unchanged WARN when nothing is available.
@@ -176,20 +178,29 @@ pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
     api_keys: &A,
     original_profile: &RouteProfile,
     original_api_key: &str,
-    mode: &str,
-    uncensored_text_profile_id: Option<&str>,
+    concierge_policy: &ResolvedConciergePolicy,
     user_id: &str,
     turn_attachment_mime_types: &[String],
 ) -> DangerousProviderRouteResult {
-    if mode != "AUTO_ROUTE" {
+    if !concierge_policy.route_direct && !concierge_policy.failover_allowed {
+        tracing::debug!(
+            target: "quilltap::dangerous_content_routing",
+            concierge_source = concierge_policy.source.as_str(),
+            concierge_state = concierge_policy.state.as_str(),
+            "[DangerousContent] Rerouting not permitted by Concierge policy"
+        );
         return DangerousProviderRouteResult {
             rerouted: false,
             connection_profile: original_profile.clone(),
             api_key: original_api_key.to_string(),
-            reason: format!("Mode is {mode}, no rerouting"),
+            reason: format!(
+                "Concierge policy ({}) does not permit rerouting",
+                concierge_policy.source.as_str()
+            ),
             profile_row: None,
         };
     }
+    let uncensored_text_profile_id = concierge_policy.desk.text_profile_id.as_deref();
 
     let exclude = [original_profile.id.clone()];
     let understudy = super::understudy::resolve_uncensored_text_understudy(
@@ -251,7 +262,8 @@ pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
 }
 
 /// v4 `resolveImageProviderForDangerousContent` — the pre-flight IMAGE wrapper
-/// (`8bd080267`): the `AUTO_ROUTE` gate, then
+/// (`8bd080267`): the policy gate (`route_direct || failover_allowed`,
+/// `3b463d6b1`), then
 /// [`resolve_uncensored_image_understudy`] with the original excluded — "same
 /// order as the post-hoc failover, because both ask" it.
 pub fn resolve_image_provider_for_dangerous_content<A: ApiKeyResolver>(
@@ -259,18 +271,27 @@ pub fn resolve_image_provider_for_dangerous_content<A: ApiKeyResolver>(
     api_keys: &A,
     original_profile: &RouteProfile,
     original_api_key: &str,
-    mode: &str,
-    uncensored_image_profile_id: Option<&str>,
+    concierge_policy: &ResolvedConciergePolicy,
     user_id: &str,
 ) -> DangerousImageProviderRouteResult {
-    if mode != "AUTO_ROUTE" {
+    if !concierge_policy.route_direct && !concierge_policy.failover_allowed {
+        tracing::debug!(
+            target: "quilltap::dangerous_content_routing",
+            concierge_source = concierge_policy.source.as_str(),
+            concierge_state = concierge_policy.state.as_str(),
+            "[DangerousContent] Image rerouting not permitted by Concierge policy"
+        );
         return DangerousImageProviderRouteResult {
             rerouted: false,
             image_profile: original_profile.clone(),
             api_key: original_api_key.to_string(),
-            reason: format!("Mode is {mode}, no rerouting"),
+            reason: format!(
+                "Concierge policy ({}) does not permit rerouting",
+                concierge_policy.source.as_str()
+            ),
         };
     }
+    let uncensored_image_profile_id = concierge_policy.desk.image_profile_id.as_deref();
 
     let exclude = [original_profile.id.clone()];
     let understudy = super::understudy::resolve_uncensored_image_understudy(
@@ -355,11 +376,15 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
         super::current_state::read_current_concierge_state(&self.db, Some(chat_id), snapshot)
     }
 
+    fn read_current_concierge_on_duty(&self, user_id: &str, snapshot: bool) -> bool {
+        super::current_state::read_current_concierge_on_duty(&self.db, Some(user_id), snapshot)
+    }
+
     async fn resolve(
         &self,
         original_profile: &EffectiveProfile,
         original_api_key: &str,
-        settings: &DangerSettings,
+        concierge_policy: &ResolvedConciergePolicy,
         user_id: &str,
         turn_attachment_mime_types: &[String],
     ) -> RouteResult {
@@ -381,8 +406,7 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
                     &self.api_keys,
                     &original,
                     original_api_key,
-                    &settings.mode,
-                    settings.uncensored_text_profile_id.as_deref(),
+                    concierge_policy,
                     user_id,
                     turn_attachment_mime_types,
                 ))
@@ -406,13 +430,14 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
             },
             api_key: result.api_key,
             profile_row: result.profile_row,
+            reason: result.reason,
         }
     }
 
     async fn resolve_understudy(
         &self,
         user_id: &str,
-        settings: &DangerSettings,
+        concierge_policy: &ResolvedConciergePolicy,
         exclude: &[String],
         turn_attachment_mime_types: &[String],
     ) -> Option<TextUnderstudy> {
@@ -426,7 +451,10 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
                     &self.api_keys,
                     super::understudy::TextUnderstudyLookup {
                         user_id,
-                        uncensored_text_profile_id: settings.uncensored_text_profile_id.as_deref(),
+                        uncensored_text_profile_id: concierge_policy
+                            .desk
+                            .text_profile_id
+                            .as_deref(),
                         exclude,
                         turn_attachment_mime_types,
                         filter: None,

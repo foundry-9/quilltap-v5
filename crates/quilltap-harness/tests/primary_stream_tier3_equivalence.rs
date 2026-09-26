@@ -140,8 +140,8 @@ use quilltap_core::services::primary_stream::{
     RunPrimaryStreamOptions, StreamingState,
 };
 use quilltap_core::services::provider_failover::{
-    self, AttemptEmptyResponseRecoveryOptions, ConciergeFailoverSeam, DangerSettings,
-    DangerousContentRouter, FailoverLogCtx, RouteResult, TextUnderstudy,
+    self, AttemptEmptyResponseRecoveryOptions, ConciergeFailoverSeam, DangerousContentRouter,
+    FailoverLogCtx, RouteResult, TextUnderstudy,
 };
 use quilltap_core::services::recovery::{self, RecoveryContext};
 use serde::Deserialize;
@@ -251,8 +251,14 @@ struct CallW {
     error_message: Option<String>,
     #[serde(default)]
     content_was_flagged_dangerous: bool,
+    /// v4 `3b463d6b1` (#76): the stored `conciergeSettings` the call's policy
+    /// resolves from, WITH the turn's chat snapshot. Absent = no policy.
     #[serde(default)]
-    danger_mode: Option<String>,
+    concierge: Option<Value>,
+    /// P4.D227: the operator sends the Concierge off duty before the call
+    /// (restored after) — the refusal-time on-duty re-read's arm.
+    #[serde(default)]
+    off_duty_now: bool,
     #[serde(default)]
     provider: Option<String>,
     #[serde(default)]
@@ -281,10 +287,6 @@ struct CallW {
     /// for this call (the `refusal-no-understudy` arm).
     #[serde(default)]
     no_understudy: bool,
-    /// P4.D225 — hand the failover no `uncensoredTextProfileId` under
-    /// Auto-Route (the dropped gate conjunct).
-    #[serde(default)]
-    omit_uncensored_id: bool,
     /// P4.D226 (v4 `4d370a90f`): the turn's Concierge snapshot — the
     /// recovery's `conciergeState`, or the primary stream's chat's
     /// `conciergeMode` (absent = Moderated, v4's `getConciergeState(chat)`).
@@ -593,7 +595,7 @@ impl DangerousContentRouter for CannedRouter {
         &self,
         _original_profile: &EffectiveProfile,
         _original_api_key: &str,
-        _settings: &DangerSettings,
+        _settings: &quilltap_core::services::dangerous_content::resolver::ResolvedConciergePolicy,
         _user_id: &str,
         _turn_attachment_mime_types: &[String],
     ) -> RouteResult {
@@ -603,13 +605,13 @@ impl DangerousContentRouter for CannedRouter {
     async fn resolve_understudy(
         &self,
         _user_id: &str,
-        settings: &DangerSettings,
+        settings: &quilltap_core::services::dangerous_content::resolver::ResolvedConciergePolicy,
         exclude: &[String],
         turn_attachment_mime_types: &[String],
     ) -> Option<TextUnderstudy> {
         self.lookups.lock().unwrap().push(json!({
             "exclude": exclude,
-            "uncensoredTextProfileId": settings.uncensored_text_profile_id,
+            "uncensoredTextProfileId": settings.desk.text_profile_id,
             "turnAttachmentMimeTypes": turn_attachment_mime_types,
         }));
         if self.no_understudy.load(std::sync::atomic::Ordering::SeqCst)
@@ -656,6 +658,16 @@ impl DangerousContentRouter for CannedRouter {
         quilltap_core::services::dangerous_content::current_state::read_current_concierge_state(
             &self.db,
             Some(chat_id),
+            snapshot,
+        )
+    }
+
+    /// v4's `readCurrentConciergeOnDuty` runs REAL in the oracle too (the
+    /// fixture carries the user's settings row; `offDutyNow` flips it).
+    fn read_current_concierge_on_duty(&self, user_id: &str, snapshot: bool) -> bool {
+        quilltap_core::services::dangerous_content::current_state::read_current_concierge_on_duty(
+            &self.db,
+            Some(user_id),
             snapshot,
         )
     }
@@ -1009,6 +1021,12 @@ async fn primary_stream_tier3_matches_oracle() {
         let name = call.name.clone();
         let sink = RecordingSink::new();
         router.begin_call(call);
+        if call.off_duty_now {
+            set_on_duty(&db, &spec.user_id, false).await;
+        }
+        // P4.D227 (v4 `3b463d6b1`, #76): the call's Concierge policy, resolved
+        // from its stored settings WITH the turn's chat snapshot.
+        let call_policy = policy_for(call);
 
         let got_result: Value = match call.kind.as_str() {
             "findPrevResponseId" => {
@@ -1087,11 +1105,11 @@ async fn primary_stream_tier3_matches_oracle() {
                     &sink,
                     &mut preserve,
                     Some(&fallback_repos),
-                    // v4's `primary` cases pass no `dangerSettings`.
+                    // v4's `primary` cases pass no `conciergePolicy`.
                     ConciergeFailoverSeam::<_, CannedCompletionProvider> {
                         router: &router,
                         concierge_state: Some(turn_snapshot(call)),
-                        danger_settings: None,
+                        concierge_policy: None,
                         adapter: None,
                     },
                     opts,
@@ -1147,20 +1165,11 @@ async fn primary_stream_tier3_matches_oracle() {
                     effective_api_key: "primary-key".into(),
                     ..Default::default()
                 };
-                let danger_mode = call.danger_mode.clone().unwrap_or_else(|| "OFF".into());
-                let uncensored_id = if danger_mode == "AUTO_ROUTE" && !call.omit_uncensored_id {
-                    Some(spec.uncensored_profile.id.clone())
-                } else {
-                    None
-                };
                 let opts = AttemptEmptyResponseRecoveryOptions {
                     state: &mut state,
                     tool_messages_length: 0,
                     content_was_flagged_dangerous: call.content_was_flagged_dangerous,
-                    danger_settings: DangerSettings {
-                        mode: danger_mode,
-                        uncensored_text_profile_id: uncensored_id,
-                    },
+                    concierge_policy: call_policy.clone(),
                     // v4 passes `conciergeState` only when the case names one.
                     concierge_state: call
                         .concierge_snapshot
@@ -1312,13 +1321,9 @@ async fn primary_stream_tier3_matches_oracle() {
                     fallback_profile: fallback_primary.clone(),
                     state: &mut state,
                 };
-                // P4.D225 (v4 `8bd080267`): the chat's Concierge settings, when
-                // the call names a mode.
-                let hard_settings = call.danger_mode.clone().map(|mode| DangerSettings {
-                    mode,
-                    uncensored_text_profile_id: (!call.omit_uncensored_id)
-                        .then(|| spec.uncensored_profile.id.clone()),
-                });
+                // P4.D225 (v4 `8bd080267`) → P4.D227 (`3b463d6b1`): the chat's
+                // Concierge policy, when the call names settings.
+                let hard_policy = call.concierge.is_some().then(|| call_policy.clone());
                 match primary_stream::run_primary_stream(
                     &db,
                     &provider,
@@ -1328,7 +1333,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     ConciergeFailoverSeam::<_, CannedCompletionProvider> {
                         router: &router,
                         concierge_state: Some(turn_snapshot(call)),
-                        danger_settings: hard_settings.as_ref(),
+                        concierge_policy: hard_policy.as_ref(),
                         // As in the empty-body arm: no array here carries an
                         // attachment, so the adapter would answer "unchanged".
                         adapter: None,
@@ -1378,6 +1383,9 @@ async fn primary_stream_tier3_matches_oracle() {
             .remove(&name)
             .unwrap_or_else(|| panic!("oracle missing events for {name}"));
         event_pairs.push((name.clone(), got_events, want_events));
+        if call.off_duty_now {
+            set_on_duty(&db, &spec.user_id, true).await;
+        }
         result_pairs.push((name, got_result, oracle_result));
     }
 
@@ -1869,6 +1877,40 @@ async fn openai_chaining_fallback_tier3_matches_oracle() {
 /// v4 `runPrimaryStream`'s `getConciergeState(chat)` over the case's chat
 /// object (`{ isPaused: false, conciergeMode? }`) — Moderated unless the case
 /// names a snapshot (P4.D226).
+/// P4.D227 (v4 `3b463d6b1`, #76): the call's Concierge policy — the oracle's
+/// `policyFor` (absent settings read as on duty; the snapshot chat when named).
+fn policy_for(
+    call: &CallW,
+) -> quilltap_core::services::dangerous_content::resolver::ResolvedConciergePolicy {
+    let stored = call
+        .concierge
+        .clone()
+        .unwrap_or_else(|| json!({ "enabled": true }));
+    let chat = call
+        .concierge_snapshot
+        .as_deref()
+        .map(|mode| json!({ "conciergeMode": mode }));
+    quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings(
+        Some(&stored),
+        chat.as_ref(),
+    )
+}
+
+/// The operator's switch, flipped raw around an `offDutyNow` call (the
+/// oracle's `setOnDuty`, byte for byte).
+async fn set_on_duty(db: &Db, user_id: &str, enabled: bool) {
+    let user_id = user_id.to_string();
+    db.write(move |ws| {
+        ws.main().connection().execute(
+            "UPDATE chat_settings SET \"conciergeSettings\" = ?1 WHERE \"userId\" = ?2",
+            rusqlite::params![json!({ "enabled": enabled }).to_string(), user_id],
+        )?;
+        Ok(())
+    })
+    .await
+    .expect("flip the Concierge on-duty switch");
+}
+
 fn turn_snapshot(call: &CallW) -> ConciergeState {
     call.concierge_snapshot
         .as_deref()

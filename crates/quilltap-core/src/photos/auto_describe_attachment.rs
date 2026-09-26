@@ -249,6 +249,9 @@ pub async fn auto_describe_chat_image_attachment(
     side_effects: &(dyn SaveImageSideEffects + Sync),
     describe: Option<&dyn ImageDescribeDriver>,
     file_entry_id: &str,
+    // v4 `AutoDescribeInput.chatId` (`3b463d6b1`, #76) — the chat the image
+    // arrived in, whose Concierge state decides the uncensored vision fallback.
+    chat_id: Option<&str>,
 ) -> Result<AutoDescribeOutput, String> {
     // Arms 1–4 (cheap reads, no bytes).
     let id = file_entry_id.to_string();
@@ -288,7 +291,7 @@ pub async fn auto_describe_chat_image_attachment(
     // `generate_image_description` whole — profile resolution, refusals, the
     // uncensored retry, `logLLMCall`).
     let result = match describe {
-        Some(driver) => Some(driver.describe(file).await),
+        Some(driver) => Some(driver.describe(file, chat_id).await),
         None => None,
     };
     // v4: `result.type !== 'image_description' || !result.imageDescription`
@@ -442,6 +445,7 @@ mod tests {
         fn describe<'a>(
             &'a self,
             _file: FallbackFile,
+            _chat_id: Option<&'a str>,
         ) -> Pin<Box<dyn Future<Output = FallbackResult> + Send + 'a>> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             let r = self.result.clone();
@@ -562,6 +566,7 @@ mod tests {
             &effects,
             Some(&driver),
             "99999999-9999-4999-8999-999999999999",
+            None,
         )
         .await
         .unwrap();
@@ -569,18 +574,30 @@ mod tests {
 
         // not-image.
         seed(&db, "f-text", SHA_A, "text/plain", None, false).await;
-        let out =
-            auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&driver), "f-text")
-                .await
-                .unwrap();
+        let out = auto_describe_chat_image_attachment(
+            &db,
+            &bytes,
+            &effects,
+            Some(&driver),
+            "f-text",
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(out.skip_reason, Some(AutoDescribeSkipReason::NotImage));
 
         // no-sha (an empty sha256 — v4's `!entry.sha256` falsy check).
         seed(&db, "f-nosha", "", "image/webp", None, false).await;
-        let out =
-            auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&driver), "f-nosha")
-                .await
-                .unwrap();
+        let out = auto_describe_chat_image_attachment(
+            &db,
+            &bytes,
+            &effects,
+            Some(&driver),
+            "f-nosha",
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(out.skip_reason, Some(AutoDescribeSkipReason::NoSha));
 
         // already-described (a whitespace-only description does NOT count —
@@ -594,10 +611,16 @@ mod tests {
             false,
         )
         .await;
-        let out =
-            auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&driver), "f-done")
-                .await
-                .unwrap();
+        let out = auto_describe_chat_image_attachment(
+            &db,
+            &bytes,
+            &effects,
+            Some(&driver),
+            "f-done",
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(
             out.skip_reason,
             Some(AutoDescribeSkipReason::AlreadyDescribed)
@@ -618,16 +641,22 @@ mod tests {
         // A bytes read failure → no-bytes (v4's downloadFile catch).
         let failing = CannedBytes(None);
         let driver = CannedDescribe::description("never used");
-        let out =
-            auto_describe_chat_image_attachment(&db, &failing, &effects, Some(&driver), "f-img")
-                .await
-                .unwrap();
+        let out = auto_describe_chat_image_attachment(
+            &db,
+            &failing,
+            &effects,
+            Some(&driver),
+            "f-img",
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(out.skip_reason, Some(AutoDescribeSkipReason::NoBytes));
         assert_eq!(driver.calls.load(Ordering::SeqCst), 0);
 
         // No driver assembled → describe-failed (v4's non-description result).
         let bytes = CannedBytes(Some(vec![1, 2, 3]));
-        let out = auto_describe_chat_image_attachment(&db, &bytes, &effects, None, "f-img")
+        let out = auto_describe_chat_image_attachment(&db, &bytes, &effects, None, "f-img", None)
             .await
             .unwrap();
         assert_eq!(
@@ -637,10 +666,16 @@ mod tests {
 
         // A driver answering a non-description result → describe-failed.
         let refusing = CannedDescribe::unsupported();
-        let out =
-            auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&refusing), "f-img")
-                .await
-                .unwrap();
+        let out = auto_describe_chat_image_attachment(
+            &db,
+            &bytes,
+            &effects,
+            Some(&refusing),
+            "f-img",
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(
             out.skip_reason,
             Some(AutoDescribeSkipReason::DescribeFailed)
@@ -658,10 +693,16 @@ mod tests {
         // Surrounding whitespace pins the v4 trim before persist.
         let driver = CannedDescribe::description("  A copper kettle steams on a windowsill.  ");
 
-        let out =
-            auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&driver), "f-img")
-                .await
-                .unwrap();
+        let out = auto_describe_chat_image_attachment(
+            &db,
+            &bytes,
+            &effects,
+            Some(&driver),
+            "f-img",
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(out.skip_reason, None);
         assert!(out.described_file_entry);
         assert_eq!(out.links_updated, 1);
@@ -702,10 +743,16 @@ mod tests {
         assert!(chunk_count > 0, "the chunk pass must write rows");
 
         // A second run now short-circuits: already-described, no vision call.
-        let out2 =
-            auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&driver), "f-img")
-                .await
-                .unwrap();
+        let out2 = auto_describe_chat_image_attachment(
+            &db,
+            &bytes,
+            &effects,
+            Some(&driver),
+            "f-img",
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(
             out2.skip_reason,
             Some(AutoDescribeSkipReason::AlreadyDescribed)
@@ -733,10 +780,16 @@ mod tests {
         let bytes = CannedBytes(Some(vec![1, 2, 3]));
         let effects = RecordingSideEffects::default();
         let driver = CannedDescribe::description("A description.");
-        let out =
-            auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&driver), "f-img")
-                .await
-                .unwrap();
+        let out = auto_describe_chat_image_attachment(
+            &db,
+            &bytes,
+            &effects,
+            Some(&driver),
+            "f-img",
+            None,
+        )
+        .await
+        .unwrap();
         // The files row is described, but the kept link is skipped whole.
         assert!(out.described_file_entry);
         assert_eq!(out.links_updated, 0);

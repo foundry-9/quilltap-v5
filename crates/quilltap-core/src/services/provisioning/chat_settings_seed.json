@@ -5,7 +5,6 @@
     "tagStyles",
     "cheapLLMSettings",
     "imageDescriptionProfileId",
-    "uncensoredImageDescriptionProfileId",
     "defaultRoleplayTemplateId",
     "themePreference",
     "sidebarWidth",
@@ -32,7 +31,7 @@
     "answerConfirmationSettings",
     "smartTypographySettings",
     "storyBackgroundsSettings",
-    "dangerousContentSettings",
+    "conciergeSettings",
     "autoLockSettings",
     "timezone"
   ],
@@ -42,7 +41,6 @@
     "tagStyles": "{}",
     "cheapLLMSettings": "{\"strategy\":\"PROVIDER_CHEAPEST\",\"fallbackToLocal\":true,\"embeddingProvider\":\"OPENAI\",\"allowCheapFallback\":false}",
     "imageDescriptionProfileId": null,
-    "uncensoredImageDescriptionProfileId": null,
     "defaultRoleplayTemplateId": null,
     "themePreference": "{\"activeThemeId\":null,\"colorMode\":\"system\",\"showNavThemeSelector\":false}",
     "sidebarWidth": 256,
@@ -69,7 +67,7 @@
     "answerConfirmationSettings": "{\"enabled\":false}",
     "smartTypographySettings": "{\"displayQuotes\":false,\"dashes\":true,\"ellipsis\":true}",
     "storyBackgroundsSettings": "{\"enabled\":false,\"defaultImageProfileId\":null}",
-    "dangerousContentSettings": "{\"mode\":\"OFF\",\"threshold\":0.7,\"scanTextChat\":true,\"scanImagePrompts\":true,\"scanImageGeneration\":false,\"displayMode\":\"SHOW\",\"showWarningBadges\":true,\"autoSwitchAfterRefusals\":2}",
+    "conciergeSettings": "{\"enabled\":true,\"uncensoredTextProfileId\":null,\"uncensoredImageProfileId\":null,\"uncensoredVisionProfileId\":null,\"imagePromptProfileId\":null,\"autoSwitchAfterRefusals\":2,\"newChatsStartAs\":\"moderated\",\"display\":{\"mode\":\"SHOW\",\"showWarningBadges\":true},\"preScreen\":{\"enabled\":false,\"threshold\":0.7,\"scanTextChat\":true,\"scanImagePrompts\":true,\"scanImageGeneration\":false,\"customClassificationPrompt\":null,\"summaryClassification\":false}}",
     "autoLockSettings": "{\"enabled\":false,\"idleMinutes\":15}",
     "timezone": null
   }

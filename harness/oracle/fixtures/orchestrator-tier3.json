@@ -103,7 +103,9 @@
   "compressionEnabled": false,
   "autoDetectRng": true,
   "answerConfirmationEnabled": false,
-  "dangerMode": "AUTO_ROUTE",
+  "concierge": {
+   "enabled": true
+  },
   "agentModeSettings": {
    "maxTurns": 1,
    "defaultEnabled": false
@@ -1012,7 +1014,6 @@
    "conciergeModeReason": "migration",
    "chatType": "salon",
    "contextSummary": "A prior summary exists for this chat.",
-   "conciergeOverride": "OFF",
    "participants": [
     {
      "id": "da0000a1-0000-4000-8000-0000000000a1",
@@ -1060,7 +1061,6 @@
    "conciergeModeReason": "migration",
    "chatType": "salon",
    "contextSummary": "A prior summary exists for this chat.",
-   "conciergeOverride": "UNCENSORED",
    "isDangerousChat": false,
    "participants": [
     {

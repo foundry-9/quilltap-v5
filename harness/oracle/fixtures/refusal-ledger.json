@@ -6,31 +6,31 @@
     {
       "id": "5e0000d1-0000-4000-8000-0000000000f0",
       "userId": "aa000001-0000-4000-8000-0000000000aa",
-      "dangerousContentSettings": {
-        "mode": "AUTO_ROUTE"
+      "conciergeSettings": {
+        "enabled": true
       }
     },
     {
       "id": "5e0000d2-0000-4000-8000-0000000000f0",
       "userId": "aa000002-0000-4000-8000-0000000000aa",
-      "dangerousContentSettings": {
-        "mode": "DETECT_ONLY",
+      "conciergeSettings": {
+        "enabled": true,
         "autoSwitchAfterRefusals": 0
       }
     },
     {
       "id": "5e0000d3-0000-4000-8000-0000000000f0",
       "userId": "aa000003-0000-4000-8000-0000000000aa",
-      "dangerousContentSettings": {
-        "mode": "DETECT_ONLY",
+      "conciergeSettings": {
+        "enabled": false,
         "autoSwitchAfterRefusals": 2
       }
     },
     {
       "id": "5e0000d4-0000-4000-8000-0000000000f0",
       "userId": "aa000004-0000-4000-8000-0000000000aa",
-      "dangerousContentSettings": {
-        "mode": "AUTO_ROUTE",
+      "conciergeSettings": {
+        "enabled": true,
         "autoSwitchAfterRefusals": 3
       }
     }
@@ -42,7 +42,6 @@
       "title": "below the threshold",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 11
     },
     {
@@ -51,7 +50,6 @@
       "title": "at the threshold",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 12
     },
     {
@@ -60,25 +58,22 @@
       "title": "over the threshold",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 13
     },
     {
       "id": "c0000d04-0000-4000-8000-000000000001",
       "userId": "aa000002-0000-4000-8000-0000000000aa",
-      "title": "threshold 0 under DETECT_ONLY",
+      "title": "the auto-switch off",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 14
     },
     {
       "id": "c0000d05-0000-4000-8000-000000000001",
       "userId": "aa000003-0000-4000-8000-0000000000aa",
-      "title": "DETECT_ONLY",
+      "title": "off duty",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 15
     },
     {
@@ -87,7 +82,6 @@
       "title": "threshold 3",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 16
     },
     {
@@ -96,7 +90,6 @@
       "title": "vouched",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": "OFF",
       "messageCount": 17,
       "conciergeMode": "locked",
       "conciergeModeSetBy": "operator",
@@ -108,7 +101,6 @@
       "title": "the re-read race",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 18
     },
     {
@@ -117,7 +109,6 @@
       "title": "inferred",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 19
     },
     {
@@ -126,7 +117,6 @@
       "title": "a direct check with no last refusal",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 20
     },
     {
@@ -135,7 +125,6 @@
       "title": "two checks landing together",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 21
     },
     {
@@ -144,7 +133,6 @@
       "title": "no chat settings",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 22
     },
     {
@@ -153,7 +141,6 @@
       "title": "already flagged",
       "chatType": "salon",
       "isDangerousChat": true,
-      "conciergeOverride": null,
       "messageCount": 23,
       "dangerScore": 0.9,
       "dangerCategories": [
@@ -591,5 +578,5 @@
     }
   ],
   "raceMode": "locked",
-  "$comment": "P4.D226 (v4 `4d370a90f`, #75): re-keyed for the three states \u2014 chat d07 is LOCKED by its column (its planted legacy OFF is ignored), the race plant writes `conciergeMode = raceMode`, the dangerous-labelled Moderated chat d13 still switches on its second refusal, and `operatorFlip` returns d02 to Moderated so the next refusal starts afresh."
+  "$comment": "P4.D226 (v4 `4d370a90f`, #75): re-keyed for the three states \u2014 chat d07 is LOCKED by its column (its planted legacy OFF is ignored), the race plant writes `conciergeMode = raceMode`, the dangerous-labelled Moderated chat d13 still switches on its second refusal, and `operatorFlip` returns d02 to Moderated so the next refusal starts afresh. P4.D227 (v4 `3b463d6b1`, #76): the settings rows carry `conciergeSettings` \u2014 the retired DETECT_ONLY user with the auto-switch at 0 is now on duty with the auto-switch off, the DETECT_ONLY user at 2 is now OFF DUTY (the ledger counts, the Concierge never switches); the user with no settings row reads the defaults (on duty, threshold 2); chat d07's planted legacy override is gone with its column."
 }

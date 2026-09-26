@@ -40,7 +40,7 @@ use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::cost_estimation::MessageCostEstimator;
 use crate::services::cost_events::{create_memory_extraction_event, TokenUsage};
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
-use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
+use crate::services::dangerous_content::resolver::resolve_concierge_settings;
 use crate::services::memory_processor::{
     process_turn_for_memory, CheapLlmSettings, MemoryExtractionLimits, TurnMemoryExtractionContext,
 };
@@ -199,16 +199,8 @@ where
         .read_main(move |c| connection_profiles::find_by_user_id(c, &uid))
         .unwrap_or_default();
 
-    // v4 `resolveDangerousContentSettings(chatSettings, chat).settings`, then
-    // narrowed to the slim `cheap_llm` shape the memory processor consumes.
-    let global_danger = chat_settings
-        .get("dangerousContentSettings")
-        .and_then(|d| serde_json::from_value(d.clone()).ok());
-    let resolved_danger = resolve_dangerous_content_settings(global_danger, Some(&chat)).settings;
-    let danger_settings = crate::cheap_llm::DangerousContentSettings {
-        mode: resolved_danger.mode,
-        uncensored_text_profile_id: resolved_danger.uncensored_text_profile_id,
-    };
+    // v4 `3b463d6b1`: `resolveConciergeSettings(chatSettings, chat)`.
+    let concierge_policy = resolve_concierge_settings(Some(&chat_settings), Some(&chat));
 
     // Orienting context (background only, never a memory source): the
     // project's description lets the extractor judge a memory's scope; the
@@ -290,7 +282,7 @@ where
                 .map(crate::services::image_job_common::cheap_llm_profile_from_value)
                 .collect(),
         ),
-        danger_settings: Some(danger_settings),
+        concierge_policy: Some(concierge_policy),
         is_dangerous_chat: should_use_uncensored_route(Some(&chat)),
         memory_extraction_limits,
         source_message_timestamp,

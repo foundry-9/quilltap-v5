@@ -9,7 +9,7 @@
     "",
     "What this repo banks: two UUID TEXT (id, userId); one enum TEXT",
     "(avatarDisplayMode) + one plain-string TEXT (avatarDisplayStyle); a record/map",
-    "JSON column (tagStyles \u2014 the create op exercises a MULTI-KEY non-sorted outer",
+    "JSON column (tagStyles — the create op exercises a MULTI-KEY non-sorted outer",
     "map, proving the open-JSON key-order seam is CLOSED); ~15",
     "nested typed-struct JSON-object columns reproduced in schema field order;",
     "five nullable UUID/string TEXT columns (imageDescriptionProfileId,",
@@ -17,7 +17,7 @@
     "nested *ProfileId); five boolean columns (autoDetectRng, compositionModeDefault,",
     "composerSpellcheck, textReplacementsEnabled, autoScrollOnResponseComplete); and",
     "the FIRST INTEGER-affinity number column (sidebarWidth: z.number().min(256)",
-    ".max(512) \u2014 both bounds integer, so mapToSQLiteType assigns INTEGER, unlike the",
+    ".max(512) — both bounds integer, so mapToSQLiteType assigns INTEGER, unlike the",
     "prior min-only/bare REAL number columns).",
     "",
     "KEY-ORDER DISCIPLINE: v4's _create runs validate() (Zod .parse), which re-emits",
@@ -30,13 +30,13 @@
     "omitted by Zod too; the ones supplied as explicit null (cheapLLMSettings",
     "*ProfileId, storyBackgrounds defaultImageProfileId) stay present as null.",
     "",
-    "OPEN-JSON KEY-ORDER (seam \u2014 now CLOSED for tagStyles): v4's z.record keeps the",
+    "OPEN-JSON KEY-ORDER (seam — now CLOSED for tagStyles): v4's z.record keeps the",
     "outer tagId keys in JSON.stringify INSERTION order; the Rust port stores",
     "tagStyles as a raw serde_json::Value serialized under the `preserve_order`",
     "feature (enabled workspace-wide), which ALSO preserves insertion order. The",
     "create op below supplies TWO tagId entries in DELIBERATELY NON-SORTED order",
     "(zz111111... before aa111111...) so sorted order (aa before zz) differs from",
-    "insertion order \u2014 the green diff PROVES the port emits insertion order. Each",
+    "insertion order — the green diff PROVES the port emits insertion order. Each",
     "inner TagVisualStyle value is supplied FULLY in schema field order (emoji,",
     "foregroundColor, backgroundColor, emojiOnly, bold, italic, strikethrough) with",
     "all defaults materialized, matching v4's post-Zod-parse bytes exactly. The",
@@ -46,7 +46,8 @@
     "tags/connection-profiles fixtures use. NOT the real Friday pepper; safe to commit.",
     "",
     "DETERMINISM: every id and timestamp is pinned, so both sides produce",
-    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+    "byte-identical post-op state and the canonical dump needs ZERO normalization.",
+    "P4.D227 (v4 `3b463d6b1`, #76): `dangerousContentSettings` is REPLACED by `conciergeSettings` (the Zod shape, parsed by `_create`/`_update` with every default materialized and unknown keys stripped). Seed row A omits it (the `.default()` literal, no desk ids, no prompt); seed row B stores the migration's full shape. Op 0 creates a PARTIAL object (defaults filled, an integral threshold `1` kept as `1`) and still carries the retired `dangerousContentSettings` + `uncensoredImageDescriptionProfileId` + `cheapLLMSettings.imagePromptProfileId` as STRIP PROBES (v4's schema drops them; v5's typed create never binds them). Op 1 replaces the object with a partial one carrying an unknown key (stripped). Op 3 creates the full object."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seed": [
@@ -146,15 +147,6 @@
       "storyBackgroundsSettings": {
         "enabled": false,
         "defaultImageProfileId": null
-      },
-      "dangerousContentSettings": {
-        "mode": "OFF",
-        "threshold": 0.7,
-        "scanTextChat": true,
-        "scanImagePrompts": true,
-        "scanImageGeneration": false,
-        "displayMode": "SHOW",
-        "showWarningBadges": true
       },
       "autoLockSettings": {
         "enabled": false,
@@ -267,14 +259,13 @@
           "enabled": true,
           "defaultImageProfileId": "44444444-0000-4000-8000-000000000001"
         },
-        "dangerousContentSettings": {
-          "mode": "AUTO_ROUTE",
-          "threshold": 0.55,
-          "scanTextChat": false,
-          "scanImagePrompts": false,
-          "scanImageGeneration": true,
-          "displayMode": "BLUR",
-          "showWarningBadges": false
+        "conciergeSettings": {
+          "preScreen": {
+            "enabled": true,
+            "threshold": 1
+          },
+          "enabled": false,
+          "uncensoredTextProfileId": "11111111-0000-4000-8000-000000000004"
         },
         "autoLockSettings": {
           "enabled": true,
@@ -288,6 +279,15 @@
           "displayQuotes": true,
           "dashes": false,
           "ellipsis": false
+        },
+        "dangerousContentSettings": {
+          "mode": "AUTO_ROUTE",
+          "threshold": 0.55,
+          "scanTextChat": false,
+          "scanImagePrompts": false,
+          "scanImageGeneration": true,
+          "displayMode": "BLUR",
+          "showWarningBadges": false
         }
       },
       "options": {
@@ -305,7 +305,7 @@
         "avatarDisplayStyle": "ROUNDED",
         "tagStyles": {
           "zz111111-0000-4000-8000-000000000001": {
-            "emoji": "\ud83c\udfa9",
+            "emoji": "🎩",
             "foregroundColor": "#1f2937",
             "backgroundColor": "#e5e7eb",
             "emojiOnly": false,
@@ -348,14 +348,14 @@
           "colorMode": "light",
           "showNavThemeSelector": false
         },
-        "dangerousContentSettings": {
-          "mode": "DETECT_ONLY",
-          "threshold": 0.65,
-          "scanTextChat": true,
-          "scanImagePrompts": true,
-          "scanImageGeneration": false,
-          "displayMode": "COLLAPSE",
-          "showWarningBadges": true
+        "conciergeSettings": {
+          "display": {
+            "mode": "BLUR"
+          },
+          "autoSwitchAfterRefusals": 0,
+          "newChatsStartAs": "unmoderated",
+          "imagePromptProfileId": "11111111-0000-4000-8000-000000000003",
+          "bogusKey": 1
         },
         "autoLockSettings": {
           "enabled": true,
@@ -478,14 +478,27 @@
           "enabled": true,
           "defaultImageProfileId": "44444444-0000-4000-8000-000000000001"
         },
-        "dangerousContentSettings": {
-          "mode": "AUTO_ROUTE",
-          "threshold": 0.55,
-          "scanTextChat": false,
-          "scanImagePrompts": false,
-          "scanImageGeneration": true,
-          "displayMode": "BLUR",
-          "showWarningBadges": false
+        "conciergeSettings": {
+          "enabled": true,
+          "uncensoredTextProfileId": "11111111-0000-4000-8000-000000000004",
+          "uncensoredImageProfileId": "11111111-0000-4000-8000-000000000005",
+          "uncensoredVisionProfileId": "22222222-0000-4000-8000-000000000002",
+          "imagePromptProfileId": null,
+          "autoSwitchAfterRefusals": 5,
+          "newChatsStartAs": "unmoderated",
+          "display": {
+            "mode": "COLLAPSE",
+            "showWarningBadges": false
+          },
+          "preScreen": {
+            "enabled": true,
+            "threshold": 0.55,
+            "scanTextChat": false,
+            "scanImagePrompts": false,
+            "scanImageGeneration": true,
+            "customClassificationPrompt": "Be strict about gore.",
+            "summaryClassification": true
+          }
         },
         "autoLockSettings": {
           "enabled": true,

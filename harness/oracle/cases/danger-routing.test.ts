@@ -43,7 +43,7 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
-interface Case { id: string; user: 'A' | 'B'; originalProfileId?: string; currentProfileId?: string; originalApiKey?: string; mode: string; uncensoredTextProfileId?: string | null; uncensoredImageProfileId?: string | null; turnAttachmentMimeTypes?: string[] }
+interface Case { id: string; user: 'A' | 'B'; originalProfileId?: string; currentProfileId?: string; originalApiKey?: string; /** v4 `3b463d6b1` (#76): the stored `conciergeSettings` + the chat the policy resolves WITH. */ concierge: Record<string, unknown>; chat?: { conciergeMode: string }; turnAttachmentMimeTypes?: string[] }
 interface UnderstudyCase { id: string; user: 'A' | 'B'; uncensoredTextProfileId?: string | null; uncensoredImageProfileId?: string | null; exclude: string[]; turnAttachmentMimeTypes?: string[]; filterProviders?: string[]; failLookup?: boolean }
 interface Spec {
   testPepperBase64: string;
@@ -146,6 +146,7 @@ async function main(): Promise<void> {
 
   const routing = await import('@/lib/services/dangerous-content/provider-routing.service');
   const understudy = await import('@/lib/services/dangerous-content/understudy');
+  const { resolveConciergeSettings } = await import('@/lib/services/dangerous-content/resolver.service');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -167,12 +168,12 @@ async function main(): Promise<void> {
   for (const c of spec.textCases) {
     const original = await repos.connections.findById(c.originalProfileId!);
     if (!original) throw new Error(`text case ${c.id}: original ${c.originalProfileId} not found`);
-    const settings = { mode: c.mode, uncensoredTextProfileId: c.uncensoredTextProfileId ?? undefined } as any;
+    const policy = resolveConciergeSettings({ conciergeSettings: c.concierge as never }, (c.chat ?? null) as never);
     // `turnAttachmentMimeTypes` is v4's fifth parameter (`a1d88aa3a`, bug 106).
     // A case that omits it takes v4's `[]` default, so every pre-existing row
     // is byte-identical.
     const r = await routing.resolveProviderForDangerousContent(
-      original as any, c.originalApiKey!, settings, uid(c.user), c.turnAttachmentMimeTypes ?? []
+      original as any, c.originalApiKey!, policy, uid(c.user), c.turnAttachmentMimeTypes ?? []
     );
     lines.push(JSON.stringify({ kind: 'text', id: c.id, rerouted: r.rerouted, profile: profileSubset(r.connectionProfile), apiKey: r.apiKey, reason: r.reason, logs: takeLogs() }));
   }
@@ -181,8 +182,8 @@ async function main(): Promise<void> {
   for (const c of spec.imageCases) {
     const original = await repos.imageProfiles.findById(c.originalProfileId!);
     if (!original) throw new Error(`image case ${c.id}: original ${c.originalProfileId} not found`);
-    const settings = { mode: c.mode, uncensoredImageProfileId: c.uncensoredImageProfileId ?? undefined } as any;
-    const r = await routing.resolveImageProviderForDangerousContent(original as any, c.originalApiKey!, settings, uid(c.user));
+    const policy = resolveConciergeSettings({ conciergeSettings: c.concierge as never }, (c.chat ?? null) as never);
+    const r = await routing.resolveImageProviderForDangerousContent(original as any, c.originalApiKey!, policy, uid(c.user));
     lines.push(JSON.stringify({ kind: 'image', id: c.id, rerouted: r.rerouted, profile: profileSubset(r.imageProfile), apiKey: r.apiKey, reason: r.reason, logs: takeLogs() }));
   }
 
@@ -200,19 +201,20 @@ async function main(): Promise<void> {
   };
   takeLogs();
   for (const c of spec.textUnderstudyCases) {
-    const settings = { mode: 'AUTO_ROUTE', uncensoredTextProfileId: c.uncensoredTextProfileId ?? undefined } as any;
+    // The understudy reads only the policy's desk (v4 `3b463d6b1`, #76).
+    const conciergePolicy = resolveConciergeSettings({ conciergeSettings: { enabled: true, uncensoredTextProfileId: c.uncensoredTextProfileId ?? undefined } as never });
     const filter = c.filterProviders ? (p: any) => c.filterProviders!.includes(p.provider) : undefined;
     const r = await withFailingLookup(c.failLookup, 'connections', () =>
       understudy.resolveUncensoredTextUnderstudy({
-        userId: uid(c.user), settings, exclude: c.exclude,
+        userId: uid(c.user), conciergePolicy, exclude: c.exclude,
         turnAttachmentMimeTypes: c.turnAttachmentMimeTypes ?? [], filter,
       }));
     lines.push(JSON.stringify({ kind: 'textUnderstudy', id: c.id, result: r ? { profile: profileSubset(r.profile), apiKey: r.apiKey } : null, logs: takeLogs() }));
   }
   for (const c of spec.imageUnderstudyCases) {
-    const settings = { mode: 'AUTO_ROUTE', uncensoredImageProfileId: c.uncensoredImageProfileId ?? undefined } as any;
+    const conciergePolicy = resolveConciergeSettings({ conciergeSettings: { enabled: true, uncensoredImageProfileId: c.uncensoredImageProfileId ?? undefined } as never });
     const r = await withFailingLookup(c.failLookup, 'imageProfiles', () =>
-      understudy.resolveUncensoredImageUnderstudy({ userId: uid(c.user), settings, exclude: c.exclude }));
+      understudy.resolveUncensoredImageUnderstudy({ userId: uid(c.user), conciergePolicy, exclude: c.exclude }));
     lines.push(JSON.stringify({ kind: 'imageUnderstudy', id: c.id, result: r ? { profile: profileSubset(r.profile), apiKey: r.apiKey } : null, logs: takeLogs() }));
   }
 

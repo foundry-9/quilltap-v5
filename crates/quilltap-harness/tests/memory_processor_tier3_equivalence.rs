@@ -46,7 +46,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use quilltap_core::cheap_llm::{CheapLlmProfile, DangerousContentSettings};
+use quilltap_core::cheap_llm::CheapLlmProfile;
 use quilltap_core::db::characters_read;
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
@@ -58,6 +58,7 @@ use quilltap_core::model::completion::{
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
+use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
 use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::memory_processor::{
     process_turn_for_memory, CheapLlmSettings, MemoryExtractionLimits, TurnMemoryExtractionContext,
@@ -189,14 +190,6 @@ impl ProfileW {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DangerW {
-    mode: String,
-    #[serde(default)]
-    uncensored_text_profile_id: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct LimitsW {
     enabled: bool,
     max_per_hour: f64,
@@ -226,8 +219,12 @@ struct CallW {
     chat_context_summary: Option<String>,
     #[serde(rename = "cheapLLMSettings")]
     cheap_llm_settings: SettingsW,
+    /// v4 `3b463d6b1` (#76): the stored `conciergeSettings` the policy
+    /// resolves from WITH a chat in `concierge_mode`; null = no policy.
     #[serde(default)]
-    danger_settings: Option<DangerW>,
+    concierge: Option<serde_json::Value>,
+    #[serde(default)]
+    concierge_mode: Option<String>,
     is_dangerous_chat: bool,
     #[serde(default)]
     memory_extraction_limits: Option<LimitsW>,
@@ -607,9 +604,11 @@ async fn memory_processor_tier3_matches_oracle() {
                 fallback_to_local: call.cheap_llm_settings.fallback_to_local,
             },
             available_profiles: Some(profiles.clone()),
-            danger_settings: call.danger_settings.map(|d| DangerousContentSettings {
-                mode: d.mode,
-                uncensored_text_profile_id: d.uncensored_text_profile_id,
+            concierge_policy: call.concierge.as_ref().map(|stored| {
+                let chat = serde_json::json!({
+                    "conciergeMode": call.concierge_mode.as_deref().unwrap_or("moderated")
+                });
+                resolve_stored_concierge_settings(Some(stored), Some(&chat))
             }),
             is_dangerous_chat: call.is_dangerous_chat,
             memory_extraction_limits: call.memory_extraction_limits.map(|l| {

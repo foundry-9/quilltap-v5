@@ -1148,7 +1148,12 @@ fn assert_fallback_coverage(failed: &mut Failures, d: &AlmanackReportData) {
     );
     check(
         "featureConfig",
-        d.feature_config.dangerous_content.mode == "DETECT_ONLY"
+        // The committed pair carries the settings v4's `add-concierge-settings`
+        // migration translated from the retired DETECT_ONLY bag (threshold
+        // 0.55); a builder re-run at the pin writes `conciergeSettings`
+        // directly with the same threshold.
+        d.feature_config.concierge.pre_screen.threshold == 0.55
+            && d.feature_config.concierge.pre_screen.enabled
             && d.feature_config.text_replacements.rules > 0.0,
     );
     check(

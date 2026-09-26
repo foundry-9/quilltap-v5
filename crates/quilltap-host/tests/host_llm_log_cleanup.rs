@@ -41,7 +41,7 @@ const INSTANCE_SETTINGS_DDL: &str = "CREATE TABLE instance_settings (\
 
 const CHAT_SETTINGS_DDL: &str = "CREATE TABLE chat_settings (\
     id TEXT PRIMARY KEY, userId TEXT NOT NULL, autoHousekeepingSettings TEXT, \
-    llmLoggingSettings TEXT, dangerousContentSettings TEXT, \
+    llmLoggingSettings TEXT, conciergeSettings TEXT, \
     createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);";
 
 const LLM_LOGS_DDL: &str = "CREATE TABLE llm_logs (\

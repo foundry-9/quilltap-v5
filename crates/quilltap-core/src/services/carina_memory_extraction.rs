@@ -26,7 +26,6 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
-use crate::cheap_llm::DangerousContentSettings;
 use crate::db::runtime::Db;
 use crate::db::{chat_settings, chats_read, connection_profiles};
 use crate::memory_format::Pronouns;
@@ -37,7 +36,7 @@ use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::cost_estimation::MessageCostEstimator;
 use crate::services::cost_events::{create_memory_extraction_event, TokenUsage};
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
-use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
+use crate::services::dangerous_content::resolver::resolve_concierge_settings;
 use crate::services::memory_processor::{
     process_turn_for_memory, CheapLlmSettings, MemoryExtractionLimits, TurnMemoryExtractionContext,
 };
@@ -198,15 +197,9 @@ where
         .read_main(move |c| connection_profiles::find_by_user_id(c, &uid))
         .unwrap_or_default();
 
-    // Global dangerous-content settings live on chat settings; resolve against the
-    // chat (v4 `resolveDangerousContentSettings(chatSettings, chat).settings`), then
-    // narrow to the slim `cheap_llm` shape the memory processor consumes.
-    let global_danger = global_danger_from_settings(&chat_settings);
-    let resolved_danger = resolve_dangerous_content_settings(global_danger, Some(&chat)).settings;
-    let danger_settings = DangerousContentSettings {
-        mode: resolved_danger.mode,
-        uncensored_text_profile_id: resolved_danger.uncensored_text_profile_id,
-    };
+    // The Concierge policy, resolved against the chat (v4 `3b463d6b1`:
+    // `resolveConciergeSettings(chatSettings, chat)`).
+    let concierge_policy = resolve_concierge_settings(Some(&chat_settings), Some(&chat));
 
     // Anchor derived memories to the carina message's own timestamp (v4).
     let source_message_timestamp = carina_message
@@ -233,7 +226,7 @@ where
                 .map(crate::services::image_job_common::cheap_llm_profile_from_value)
                 .collect(),
         ),
-        danger_settings: Some(danger_settings),
+        concierge_policy: Some(concierge_policy),
         is_dangerous_chat: should_use_uncensored_route(Some(&chat)),
         memory_extraction_limits,
         source_message_timestamp,
@@ -389,15 +382,4 @@ fn cheap_settings_from(chat_settings: &Value) -> CheapLlmSettings {
             .and_then(Value::as_bool)
             .unwrap_or(false),
     }
-}
-
-/// Extract the global `dangerousContentSettings` sub-object from chat settings for
-/// [`resolve_dangerous_content_settings`]. `None` when absent or malformed (the
-/// resolver then falls back to its default/off-duty branches per the chat).
-fn global_danger_from_settings(
-    chat_settings: &Value,
-) -> Option<crate::db::chat_settings::DangerousContentSettings> {
-    chat_settings
-        .get("dangerousContentSettings")
-        .and_then(|d| serde_json::from_value(d.clone()).ok())
 }

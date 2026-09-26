@@ -6,15 +6,22 @@
     {
       "id": "5e0000f1-0000-4000-8000-0000000000f0",
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
-      "dangerousContentSettings": {
-        "mode": "AUTO_ROUTE"
+      "conciergeSettings": {
+        "enabled": true
       }
     },
     {
       "id": "5e0000f2-0000-4000-8000-0000000000f0",
       "userId": "aa0000f2-0000-4000-8000-0000000000aa",
-      "dangerousContentSettings": {
-        "mode": "AUTO_ROUTE"
+      "conciergeSettings": {
+        "enabled": true
+      }
+    },
+    {
+      "id": "5e0000f3-0000-4000-8000-0000000000f0",
+      "userId": "aa0000f3-0000-4000-8000-0000000000aa",
+      "conciergeSettings": {
+        "enabled": false
       }
     }
   ],
@@ -100,7 +107,6 @@
       "title": "image failover 1",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 11
     },
     {
@@ -109,7 +115,6 @@
       "title": "image failover 2",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 12
     },
     {
@@ -118,7 +123,6 @@
       "title": "image failover 3",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 13
     },
     {
@@ -127,7 +131,6 @@
       "title": "image failover 4",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 14
     },
     {
@@ -136,7 +139,6 @@
       "title": "image failover 5",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 15
     },
     {
@@ -145,7 +147,6 @@
       "title": "image failover 6",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 16
     },
     {
@@ -154,7 +155,6 @@
       "title": "image failover 7",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 17
     },
     {
@@ -163,7 +163,6 @@
       "title": "image failover 8",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 18
     },
     {
@@ -172,7 +171,6 @@
       "title": "image failover 9",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 19
     },
     {
@@ -181,7 +179,6 @@
       "title": "image failover 10",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 20
     },
     {
@@ -190,8 +187,10 @@
       "title": "image failover 11",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
-      "messageCount": 21
+      "messageCount": 21,
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual"
     },
     {
       "id": "c0000f12-0000-4000-8000-000000000001",
@@ -199,8 +198,10 @@
       "title": "image failover 12",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
-      "messageCount": 22
+      "messageCount": 22,
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual"
     },
     {
       "id": "c0000f13-0000-4000-8000-000000000001",
@@ -208,7 +209,6 @@
       "title": "image failover 13",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 23
     },
     {
@@ -217,7 +217,6 @@
       "title": "image failover 14",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 24,
       "conciergeMode": "locked",
       "conciergeModeSetBy": "operator",
@@ -229,7 +228,6 @@
       "title": "image failover 15",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 25,
       "conciergeMode": "moderated"
     },
@@ -239,11 +237,26 @@
       "title": "image failover 16",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 26,
       "conciergeMode": "unmoderated",
       "conciergeModeSetBy": "operator",
       "conciergeModeReason": "manual"
+    },
+    {
+      "id": "c0000f17-0000-4000-8000-000000000001",
+      "userId": "aa0000f3-0000-4000-8000-0000000000aa",
+      "title": "image failover 17",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "messageCount": 27
+    },
+    {
+      "id": "c0000f18-0000-4000-8000-000000000001",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "title": "image failover 18",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "messageCount": 28
     }
   ],
   "ledgerPlants": [
@@ -259,8 +272,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f01-0000-4000-8000-000000000001",
       "purpose": "tool",
-      "settings": {
-        "mode": "AUTO_ROUTE"
+      "concierge": {
+        "enabled": true
       },
       "primary": "e10000f1-0000-4000-8000-000000000001",
       "script": {
@@ -276,8 +289,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f02-0000-4000-8000-000000000001",
       "purpose": "tool",
-      "settings": {
-        "mode": "AUTO_ROUTE"
+      "concierge": {
+        "enabled": true
       },
       "primary": "e10000f1-0000-4000-8000-000000000001",
       "script": {
@@ -291,12 +304,12 @@
       }
     },
     {
-      "name": "refused-detect-only",
+      "name": "refused-off-duty",
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f03-0000-4000-8000-000000000001",
       "purpose": "lantern",
-      "settings": {
-        "mode": "DETECT_ONLY"
+      "concierge": {
+        "enabled": false
       },
       "primary": "e10000f1-0000-4000-8000-000000000001",
       "script": {
@@ -317,8 +330,8 @@
       "userId": "aa0000f2-0000-4000-8000-0000000000aa",
       "chatId": "c0000f04-0000-4000-8000-000000000001",
       "purpose": "avatar",
-      "settings": {
-        "mode": "AUTO_ROUTE"
+      "concierge": {
+        "enabled": true
       },
       "primary": "e10000f5-0000-4000-8000-000000000001",
       "script": {
@@ -339,8 +352,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f05-0000-4000-8000-000000000001",
       "purpose": "tool",
-      "settings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
       },
       "primary": "e10000f1-0000-4000-8000-000000000001",
@@ -367,8 +380,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f06-0000-4000-8000-000000000001",
       "purpose": "lantern",
-      "settings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
       },
       "primary": "e10000f1-0000-4000-8000-000000000001",
@@ -398,8 +411,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f07-0000-4000-8000-000000000001",
       "purpose": "avatar",
-      "settings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
       },
       "primary": "e10000f1-0000-4000-8000-000000000001",
@@ -428,8 +441,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f08-0000-4000-8000-000000000001",
       "purpose": "tool",
-      "settings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
       },
       "primary": "e10000f1-0000-4000-8000-000000000001",
@@ -458,8 +471,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": null,
       "purpose": "dialog",
-      "settings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
       },
       "primary": "e10000f1-0000-4000-8000-000000000001",
@@ -486,8 +499,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": null,
       "purpose": "dialog",
-      "settings": {
-        "mode": "OFF"
+      "concierge": {
+        "enabled": false
       },
       "primary": "e10000f1-0000-4000-8000-000000000001",
       "script": {
@@ -508,8 +521,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": null,
       "purpose": "dialog",
-      "settings": {
-        "mode": "AUTO_ROUTE"
+      "concierge": {
+        "enabled": true
       },
       "primary": "c10000f1-0000-4000-8000-000000000001",
       "script": {
@@ -534,8 +547,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": null,
       "purpose": "dialog",
-      "settings": {
-        "mode": "AUTO_ROUTE"
+      "concierge": {
+        "enabled": true
       },
       "primary": "c10000f1-0000-4000-8000-000000000001",
       "script": {
@@ -559,8 +572,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f09-0000-4000-8000-000000000001",
       "purpose": "tool",
-      "settings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
       },
       "primary": "e10000f3-0000-4000-8000-000000000001",
@@ -588,8 +601,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f10-0000-4000-8000-000000000001",
       "purpose": "tool",
-      "settings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
       },
       "primary": "e10000f2-0000-4000-8000-000000000001",
@@ -614,8 +627,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f11-0000-4000-8000-000000000001",
       "purpose": "tool",
-      "settings": {
-        "mode": "DETECT_ONLY"
+      "concierge": {
+        "enabled": true
       },
       "primary": "e10000f2-0000-4000-8000-000000000001",
       "script": {
@@ -626,6 +639,9 @@
             }
           }
         ]
+      },
+      "chat": {
+        "conciergeMode": "locked"
       }
     },
     {
@@ -633,8 +649,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f12-0000-4000-8000-000000000001",
       "purpose": "tool",
-      "settings": {
-        "mode": "DETECT_ONLY"
+      "concierge": {
+        "enabled": true
       },
       "primary": "e10000f1-0000-4000-8000-000000000001",
       "script": {
@@ -648,6 +664,9 @@
             }
           }
         ]
+      },
+      "chat": {
+        "conciergeMode": "locked"
       }
     },
     {
@@ -655,8 +674,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f13-0000-4000-8000-000000000001",
       "purpose": "tool",
-      "settings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
       },
       "primary": "e10000f1-0000-4000-8000-000000000001",
@@ -683,8 +702,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f14-0000-4000-8000-000000000001",
       "purpose": "tool",
-      "settings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
       },
       "chat": {
@@ -709,8 +728,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f15-0000-4000-8000-000000000001",
       "purpose": "lantern",
-      "settings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
       },
       "chat": {
@@ -736,8 +755,8 @@
       "userId": "aa0000f1-0000-4000-8000-0000000000aa",
       "chatId": "c0000f16-0000-4000-8000-000000000001",
       "purpose": "avatar",
-      "settings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
       },
       "chat": {
@@ -758,6 +777,60 @@
         "e10000f3-0000-4000-8000-000000000001": [
           {
             "answers": "image-from-the-frank-desk"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sent-off-duty-while-the-provider-was-thinking",
+      "userId": "aa0000f3-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f17-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "concierge": {
+        "enabled": true,
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "unlocked-while-the-provider-was-thinking",
+      "userId": "aa0000f1-0000-4000-8000-0000000000aa",
+      "chatId": "c0000f18-0000-4000-8000-000000000001",
+      "purpose": "tool",
+      "concierge": {
+        "enabled": true,
+        "uncensoredImageProfileId": "e10000f3-0000-4000-8000-000000000001"
+      },
+      "chat": {
+        "conciergeMode": "locked"
+      },
+      "primary": "e10000f1-0000-4000-8000-000000000001",
+      "script": {
+        "e10000f1-0000-4000-8000-000000000001": [
+          {
+            "throws": {
+              "typed": true,
+              "message": "Gemini image blocked",
+              "status": 400,
+              "providerReason": "IMAGE_SAFETY"
+            }
+          }
+        ],
+        "e10000f3-0000-4000-8000-000000000001": [
+          {
+            "answers": "image-after-the-unlock"
           }
         ]
       }

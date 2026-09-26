@@ -7,10 +7,9 @@
  *     ids, full vault provisioning in the mount-index DB — the finalizer's
  *     `calculateNextSpeaker` reads each active character's `talkativeness` through
  *     the vault-overlaid `findById`);
- *   - one `chat_settings` row (danger mode DETECT_ONLY so the danger-classification
- *     enqueue is reachable — the Rust port defers the danger-resolver OFF
- *     short-circuit, so the corpus keeps mode non-OFF for agreement; cheapLLM +
- *     autoDetectRng false + answer-confirmation off);
+ *   - one `chat_settings` row (the Concierge on duty with the summary classifier
+ *     opted in — v4 `3b463d6b1`, #76 — so the danger-classification enqueue is
+ *     reachable; cheapLLM + autoDetectRng false + answer-confirmation off);
  *   - the corpus chats via `repos.chats.create` (pinned ids/timestamps, CHARACTER
  *     participants only — v4's `ParticipantTypeEnum` is CHARACTER-only; the user
  *     is a `userParticipantId`, never a participant row), each with its seed
@@ -65,7 +64,6 @@ interface ChatSpec {
   /** P4.D143 (v4 `c43d3b1b4`): the operator's Concierge override, so the
    * danger-classification trigger's new `isClassifierOnDuty` gate has states
    * to bail on. Absent = the classifier decides. */
-  conciergeOverride?: 'OFF' | 'UNCENSORED';
   /** The preserved classification label underneath an override. Kept `false`
    * on the operator chats: the sticky check would otherwise catch them and the
    * new gate would prove nothing. */
@@ -87,7 +85,8 @@ interface Spec {
     cheapLLMSettings: { strategy: string; fallbackToLocal: boolean };
     autoDetectRng: boolean;
     answerConfirmationEnabled: boolean;
-    dangerMode: string;
+    /** v4 `3b463d6b1` (#76): the stored `conciergeSettings`. */
+    concierge: Record<string, unknown>;
   };
   chats: ChatSpec[];
 }
@@ -190,14 +189,14 @@ async function main(): Promise<void> {
     );
   }
 
-  // Chat settings (danger DETECT_ONLY, cheapLLM, no autoDetectRng, confirmation off).
+  // Chat settings (the summary classifier on duty, cheapLLM, no autoDetectRng, confirmation off).
   await repos.chatSettings.create(
     {
       userId: spec.userId,
       cheapLLMSettings: spec.chatSettings.cheapLLMSettings,
       autoDetectRng: spec.chatSettings.autoDetectRng,
       answerConfirmationSettings: { enabled: spec.chatSettings.answerConfirmationEnabled },
-      dangerousContentSettings: { mode: spec.chatSettings.dangerMode },
+      conciergeSettings: spec.chatSettings.concierge,
     } as never,
     { id: spec.chatSettings.id }
   );
@@ -242,9 +241,6 @@ async function main(): Promise<void> {
         chatType: chat.chatType,
         contextSummary: chat.contextSummary,
         impersonatingParticipantIds: chat.impersonatingParticipantIds ?? [],
-        ...(chat.conciergeOverride !== undefined
-          ? { conciergeOverride: chat.conciergeOverride }
-          : {}),
         ...(chat.isDangerousChat !== undefined
           ? { isDangerousChat: chat.isDangerousChat }
           : {}),

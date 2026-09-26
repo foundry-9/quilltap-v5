@@ -43,7 +43,6 @@ use serde_json::Value;
 
 use crate::cheap_llm::{
     resolve_uncensored_cheap_llm_selection, CheapLlmProfile, CheapLlmSelection,
-    DangerousContentSettings,
 };
 use crate::db::runtime::Db;
 use crate::model::completion::CompletionProvider;
@@ -52,6 +51,7 @@ use crate::recall_tags::ScopePolicy;
 use crate::services::build_context::read_memory_recall_settings;
 use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskOptions};
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
+use crate::services::dangerous_content::resolver::ResolvedConciergePolicy;
 use crate::services::memory_recap::distill::{
     distill_memory_search, DistillMessage, DistilledSearch, ExtractionClock,
 };
@@ -88,7 +88,7 @@ pub struct ProactiveRecallInput<'a> {
     /// does).
     pub cheap_llm_selection: Option<&'a CheapLlmSelection>,
     /// v4 `dangerSettings` — the uncensored reroute for actively-dangerous chats.
-    pub danger_settings: &'a DangerousContentSettings,
+    pub concierge_policy: &'a ResolvedConciergePolicy,
     /// v4 `allProfiles` — the reroute's candidate pool.
     pub available_profiles: &'a [CheapLlmProfile],
     /// v4 `userId`.
@@ -237,7 +237,7 @@ where
         resolve_uncensored_cheap_llm_selection(
             selection.clone(),
             true,
-            Some(input.danger_settings),
+            Some(input.concierge_policy),
             input.available_profiles,
         )
     } else {

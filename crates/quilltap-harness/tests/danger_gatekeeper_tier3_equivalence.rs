@@ -208,7 +208,7 @@ impl ModerationProvider for WireModeration {
         &self,
         content: &str,
         user_id: &str,
-        settings: &quilltap_core::db::chat_settings::DangerousContentSettings,
+        concierge_policy: &quilltap_core::services::dangerous_content::resolver::ResolvedConciergePolicy,
         chat_id: Option<&str>,
     ) -> impl std::future::Future<Output = ModerationOutcome> + Send {
         let token = content
@@ -219,7 +219,7 @@ impl ModerationProvider for WireModeration {
         async move {
             if available {
                 self.real
-                    .moderate(content, user_id, settings, chat_id)
+                    .moderate(content, user_id, concierge_policy, chat_id)
                     .await
             } else {
                 ModerationOutcome::NotAvailable

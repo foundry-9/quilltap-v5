@@ -25,13 +25,13 @@ use quilltap_core::api::images::{
     ErasedImagePromptClassifier, ImagePromptClassifier, ImagesGenerateSeams,
 };
 use quilltap_core::cheap_llm::CheapLlmSelection;
-use quilltap_core::db::chat_settings::DangerousContentSettings;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::model::image::ErasedImageGenerate;
 use quilltap_core::services::dangerous_content::gatekeeper::{
     classify_content, DangerClassificationResult,
 };
 use quilltap_core::services::dangerous_content::provider_routing::DbApiKeys;
+use quilltap_core::services::dangerous_content::resolver::ResolvedConciergePolicy;
 
 use crate::providers::ProviderIo;
 use crate::spine::{DbProviderKeys, WireCompletionProvider};
@@ -52,7 +52,7 @@ impl ImagePromptClassifier for HostImagePromptClassifier {
         content: &'a str,
         selection: &'a CheapLlmSelection,
         user_id: &'a str,
-        settings: &'a DangerousContentSettings,
+        concierge_policy: &'a ResolvedConciergePolicy,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = DangerClassificationResult> + Send + 'a>>
     {
         Box::pin(async move {
@@ -75,9 +75,9 @@ impl ImagePromptClassifier for HostImagePromptClassifier {
                 content,
                 selection,
                 user_id,
-                settings,
+                concierge_policy,
                 // v4's route has no chat — `classifyContent(prompt, selection,
-                // user.id, dangerSettings)`, four arguments, no fifth.
+                // user.id, conciergePolicy)`, four arguments, no fifth.
                 None,
             )
             .await

@@ -39,13 +39,14 @@ use serde_json::Value;
 use crate::chat_predicates::participant_status_from_str;
 use crate::cheap_llm::{
     resolve_uncensored_cheap_llm_selection, CheapLlmProfile, CheapLlmSelection,
-    DangerousContentSettings, UncensoredFallbackOptions,
+    UncensoredFallbackOptions,
 };
 use crate::jsstr::{js_trim, utf16_len, utf16_slice_from};
 use crate::message_attribution::{get_participant_name, AttributionParticipant};
 use crate::model::completion::{CompletionMessage, CompletionProvider};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::cheap_llm_exec::CheapLlmTaskOptions;
+use crate::services::dangerous_content::resolver::ResolvedConciergePolicy;
 use crate::services::tool_execution::ToolMessage;
 
 pub mod prompt_text;
@@ -657,17 +658,17 @@ pub async fn run_answer_confirmation<C: CompletionProvider>(
     };
 
     // Upgrade to the uncensored cheap profile iff the Concierge flagged this chat.
-    let (danger_settings, available_profiles): (
-        Option<&DangerousContentSettings>,
+    let (concierge_policy, available_profiles): (
+        Option<&ResolvedConciergePolicy>,
         &[CheapLlmProfile],
     ) = match opts.uncensored_fallback {
-        Some(uf) => (Some(uf.danger_settings), uf.available_profiles),
+        Some(uf) => (Some(uf.concierge_policy), uf.available_profiles),
         None => (None, &[]),
     };
     let selection = resolve_uncensored_cheap_llm_selection(
         cheap_selection.clone(),
         opts.is_dangerous_chat,
-        danger_settings,
+        concierge_policy,
         available_profiles,
     );
 

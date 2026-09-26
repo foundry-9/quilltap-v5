@@ -14,11 +14,11 @@
 //! injected model seams.
 
 use crate::cheap_llm::CheapLlmSelection;
-use crate::db::chat_settings::DangerousContentSettings;
 use crate::db::runtime::Db;
 use crate::model::completion::CompletionProvider;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::dangerous_content::gatekeeper::{classify_content, ModerationProvider};
+use crate::services::dangerous_content::resolver::ResolvedConciergePolicy;
 use crate::services::image_scene_tasks::{
     resolve_appearance, sanitize_appearance, AppearanceText, CharacterAppearanceInput, ChatMessage,
     EquippedWardrobeItem, PhysicalDescriptionInput,
@@ -340,7 +340,7 @@ pub async fn resolve_character_appearances<C: CompletionProvider>(
 /// questions, and only some callers route on the appearance classification:
 ///
 /// - The image-generation tool classifies each prompt and reroutes on the spot
-///   under AUTO_ROUTE, so a dangerous appearance there really is bound for the
+///   where failover is allowed, so a dangerous appearance there really is bound for the
 ///   uncensored provider.
 /// - Story backgrounds never route up front; a moderated chat's background goes
 ///   to the moderated provider regardless. Passing mere existence there let raw
@@ -353,7 +353,7 @@ pub async fn sanitize_appearances_if_needed<M, C>(
     moderation: &M,
     completion: &C,
     appearances: Vec<ResolvedCharacterAppearance>,
-    danger_settings: &DangerousContentSettings,
+    concierge_policy: &ResolvedConciergePolicy,
     is_dangerous_chat: bool,
     routes_dangerous_to_uncensored: bool,
     selection: &CheapLlmSelection,
@@ -364,8 +364,20 @@ where
     M: ModerationProvider,
     C: CompletionProvider,
 {
-    // 1. The Concierge off → pass through.
-    if danger_settings.mode == "OFF" {
+    // 1. The appearance check is a classifier scan: a Moderated chat pays for
+    // it only when the pre-screen is on. An Unmoderated chat is already known
+    // to be dangerous, so when its scene cannot reach the uncensored desk the
+    // sheet still goes on rather than handing the moderated provider a
+    // refusal. Off duty or Locked → the Concierge keeps his hands off (v4
+    // `3b463d6b1`, #76 — it used to ask the retired mode).
+    if !concierge_policy.pre_screen.enabled && !concierge_policy.route_direct {
+        tracing::debug!(
+            target: "quilltap::appearance_resolution",
+            context = "image-gen.appearance-resolution",
+            chat_id = chat_id,
+            concierge_source = concierge_policy.source.as_str(),
+            "[AppearanceResolution] Appearance sanitization not applicable under this Concierge policy"
+        );
         return appearances;
     }
 
@@ -389,7 +401,7 @@ where
         &combined_text,
         selection,
         user_id,
-        danger_settings,
+        concierge_policy,
         chat_id,
     )
     .await;

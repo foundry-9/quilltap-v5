@@ -944,24 +944,71 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
 
     push!("### Feature Configuration", "");
     let fc = &data.feature_config;
-    push!("#### The Concierge (Dangerous Content)", "");
-    push!(format!("- **Mode**: {}", fc.dangerous_content.mode));
+    // v4 `3b463d6b1` (#76): the Concierge's own block, line for line.
+    let cg = &fc.concierge;
+    let pinned = |set: bool| if set { "pinned" } else { "auto-detect" };
+    push!("#### The Concierge", "");
+    push!(format!("- **On Duty**: {}", yes_no(cg.enabled)));
     push!(format!(
-        "- **Threshold**: {}",
-        js_num(fc.dangerous_content.threshold)
+        "- **New Chats Start As**: {}",
+        cg.new_chats_start_as
+    ));
+    push!(format!(
+        "- **Auto-Switch After Refusals**: {}",
+        if cg.auto_switch_after_refusals == 0.0 {
+            "never".to_string()
+        } else {
+            js_num(cg.auto_switch_after_refusals)
+        }
+    ));
+    push!(format!(
+        "- **Display**: {} (warning badges: {})",
+        cg.display.mode,
+        yes_no(cg.display.show_warning_badges)
+    ));
+    push!(format!(
+        "- **Uncensored Desk**: text {}, image {}, vision {}, image-prompt crafter {}",
+        pinned(cg.desk.text_profile_set),
+        pinned(cg.desk.image_profile_set),
+        if cg.desk.vision_profile_set {
+            "pinned"
+        } else {
+            "none"
+        },
+        if cg.desk.image_prompt_profile_set {
+            "pinned"
+        } else {
+            "none"
+        },
+    ));
+    push!(format!(
+        "- **Pre-Screen**: {}",
+        yes_no(cg.pre_screen.enabled)
+    ));
+    push!(format!(
+        "- **Pre-Screen Threshold**: {}",
+        js_num(cg.pre_screen.threshold)
     ));
     push!(format!(
         "- **Scan Text Chat**: {}",
-        yes_no(fc.dangerous_content.scan_text_chat)
+        yes_no(cg.pre_screen.scan_text_chat)
     ));
     push!(format!(
         "- **Scan Image Prompts**: {}",
-        yes_no(fc.dangerous_content.scan_image_prompts)
+        yes_no(cg.pre_screen.scan_image_prompts)
+    ));
+    push!(format!(
+        "- **Scan Image Generation**: {}",
+        yes_no(cg.pre_screen.scan_image_generation)
+    ));
+    push!(format!(
+        "- **Custom Classification Prompt**: {}",
+        yes_no(cg.pre_screen.custom_classification_prompt)
     ));
     push!(
         format!(
-            "- **Scan Image Generation**: {}",
-            yes_no(fc.dangerous_content.scan_image_generation)
+            "- **Summary Classification**: {}",
+            yes_no(cg.summary_classification)
         ),
         ""
     );
@@ -1137,7 +1184,7 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
     push!(
         format!(
             "- **Uncensored fallback configured**: {}",
-            yes_no(fc.uncensored_image_description_profile_configured)
+            yes_no(fc.uncensored_vision_profile_configured)
         ),
         "",
     );

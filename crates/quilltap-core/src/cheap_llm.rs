@@ -12,6 +12,8 @@
 
 use serde_json::Value;
 
+use crate::services::dangerous_content::resolver::ResolvedConciergePolicy;
+
 use crate::cheap_model::get_cheapest_model;
 
 /// Major version of the cacheable prompt structure (v4
@@ -89,19 +91,13 @@ pub struct CheapLlmSelection {
     pub profile_parameters: Option<Value>,
 }
 
-/// The `DangerousContentSettings` subset the cheap-LLM paths consume.
-#[derive(Clone, Debug, Default)]
-pub struct DangerousContentSettings {
-    /// `OFF` / `AUTO_ROUTE` / … (the raw settings string).
-    pub mode: String,
-    pub uncensored_text_profile_id: Option<String>,
-}
-
 /// Options for the uncensored-provider fallback on empty responses (v4
-/// `UncensoredFallbackOptions`, `cheap-llm-tasks/types.ts`).
+/// `UncensoredFallbackOptions`, `cheap-llm-tasks/types.ts`). v4 `3b463d6b1`
+/// (#76): the chat's resolved Concierge policy replaces the retired settings
+/// bag — the fallback asks `failover_allowed` and `desk.text_profile_id`.
 #[derive(Clone, Debug)]
 pub struct UncensoredFallbackOptions<'a> {
-    pub danger_settings: &'a DangerousContentSettings,
+    pub concierge_policy: &'a ResolvedConciergePolicy,
     pub available_profiles: &'a [CheapLlmProfile],
     pub is_dangerous_chat: Option<bool>,
 }
@@ -340,34 +336,50 @@ pub fn get_cheap_llm_provider(
     }
 }
 
-/// v4 `resolveUncensoredCheapLLMSelection`: swap in an uncensored-compatible
-/// provider for dangerous chats so background tasks avoid content refusals —
-/// the configured uncensored text profile first, then any
+/// v4 `resolveUncensoredCheapLLMSelection` (`3b463d6b1`, #76): for a chat the
+/// Concierge policy routes direct to the uncensored desk (an Unmoderated chat,
+/// on duty), background tasks swap in an uncensored-compatible provider so they
+/// avoid content refusals — the desk's text profile first, then any
 /// `isDangerousCompatible` profile, else fail open with the standard selection.
 pub fn resolve_uncensored_cheap_llm_selection(
     standard_selection: CheapLlmSelection,
     is_dangerous_chat: bool,
-    danger_settings: Option<&DangerousContentSettings>,
+    concierge_policy: Option<&ResolvedConciergePolicy>,
     available_profiles: &[CheapLlmProfile],
 ) -> CheapLlmSelection {
-    let Some(danger) = danger_settings else {
-        return standard_selection;
+    // Not a dangerous chat, or the policy does not route direct — use the
+    // standard selection.
+    let policy = match concierge_policy {
+        Some(p) if is_dangerous_chat && p.route_direct => p,
+        _ => {
+            tracing::debug!(
+                target: "quilltap::cheap_llm",
+                is_dangerous_chat,
+                concierge_source = concierge_policy.map(|p| p.source.as_str()),
+                route_direct = concierge_policy.is_some_and(|p| p.route_direct),
+                "[CheapLLM] Uncensored cheap LLM selection not applicable; using standard selection"
+            );
+            return standard_selection;
+        }
     };
-    if !is_dangerous_chat || danger.mode == "OFF" {
-        return standard_selection;
-    }
 
     // v4's two uncensored picks are `selectionFromProfile(p, { localBaseUrlFallback: true })`.
     fn uncensored_selection(p: &CheapLlmProfile) -> CheapLlmSelection {
         selection_from_profile(p, true)
     }
 
-    if let Some(profile_id) = danger
-        .uncensored_text_profile_id
+    if let Some(profile_id) = policy
+        .desk
+        .text_profile_id
         .as_deref()
         .filter(|s| !s.is_empty())
     {
         if let Some(p) = available_profiles.iter().find(|p| p.id == profile_id) {
+            tracing::debug!(
+                target: "quilltap::cheap_llm",
+                profile_id = %p.id,
+                "[CheapLLM] Using configured uncensored text profile for cheap LLM"
+            );
             return uncensored_selection(p);
         }
     }
@@ -501,20 +513,122 @@ mod tests {
             is_local: false,
             profile_parameters: None,
         };
-        let danger = DangerousContentSettings {
-            mode: "AUTO_ROUTE".into(),
-            uncensored_text_profile_id: Some("u1".into()),
-        };
+        // v4 `3b463d6b1`: the swap is the policy's `routeDirect` — an
+        // Unmoderated chat with the Concierge on duty.
+        use crate::services::dangerous_content::resolver::resolve_stored_concierge_settings;
+        let stored = serde_json::json!({ "uncensoredTextProfileId": "u1" });
+        let unmoderated = resolve_stored_concierge_settings(
+            Some(&stored),
+            Some(&serde_json::json!({ "conciergeMode": "unmoderated" })),
+        );
         let sel = resolve_uncensored_cheap_llm_selection(
             standard.clone(),
             true,
-            Some(&danger),
+            Some(&unmoderated),
             std::slice::from_ref(&unc),
         );
         assert_eq!(sel.model_name, "dolphin");
         // Not dangerous → untouched.
-        let sel2 =
-            resolve_uncensored_cheap_llm_selection(standard.clone(), false, Some(&danger), &[unc]);
+        let sel2 = resolve_uncensored_cheap_llm_selection(
+            standard.clone(),
+            false,
+            Some(&unmoderated),
+            std::slice::from_ref(&unc),
+        );
         assert_eq!(sel2, standard);
+        // A Moderated chat (failover allowed, but not routed direct) → untouched.
+        let moderated = resolve_stored_concierge_settings(Some(&stored), None);
+        let sel3 = resolve_uncensored_cheap_llm_selection(
+            standard.clone(),
+            true,
+            Some(&moderated),
+            std::slice::from_ref(&unc),
+        );
+        assert_eq!(sel3, standard);
+        // Off duty, even Unmoderated → untouched.
+        let off = resolve_stored_concierge_settings(
+            Some(&serde_json::json!({ "enabled": false, "uncensoredTextProfileId": "u1" })),
+            Some(&serde_json::json!({ "conciergeMode": "unmoderated" })),
+        );
+        let sel4 =
+            resolve_uncensored_cheap_llm_selection(standard.clone(), true, Some(&off), &[unc]);
+        assert_eq!(sel4, standard);
+    }
+
+    /// P4.D227 (v4 `3b463d6b1`, #76): the two DEBUG lines of the uncensored
+    /// cheap-LLM swap — the "not applicable" line on every standard exit (no
+    /// policy, a Moderated chat, not dangerous) with v4's three fields, and the
+    /// configured-desk line only when the desk's text profile is taken.
+    #[test]
+    fn the_uncensored_cheap_selection_logs_v4s_two_lines() {
+        use crate::services::dangerous_content::resolver::resolve_stored_concierge_settings;
+        use crate::test_support::captured_with;
+        let standard = selection_from_profile(&profile("std", "OPENAI", "gpt-4o-mini"), false);
+        let desk = profile("desk", "OLLAMA", "dolphin");
+        let settings = serde_json::json!({ "enabled": true, "uncensoredTextProfileId": "desk" });
+        let unmoderated = resolve_stored_concierge_settings(
+            Some(&settings),
+            Some(&serde_json::json!({ "conciergeMode": "unmoderated" })),
+        );
+        let moderated = resolve_stored_concierge_settings(Some(&settings), None);
+        let not_applicable =
+            "[CheapLLM] Uncensored cheap LLM selection not applicable; using standard selection";
+        let configured = "[CheapLLM] Using configured uncensored text profile for cheap LLM";
+
+        // No policy at all.
+        let (_, lines) = captured_with(|| {
+            resolve_uncensored_cheap_llm_selection(
+                standard.clone(),
+                true,
+                None,
+                std::slice::from_ref(&desk),
+            )
+        });
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(
+            lines[0].starts_with("DEBUG quilltap::cheap_llm"),
+            "{}",
+            lines[0]
+        );
+        assert!(
+            lines[0].contains(not_applicable) && lines[0].contains("route_direct=false"),
+            "{}",
+            lines[0]
+        );
+        // A Moderated chat (failover, never a direct route).
+        let (out, lines) = captured_with(|| {
+            resolve_uncensored_cheap_llm_selection(
+                standard.clone(),
+                true,
+                Some(&moderated),
+                std::slice::from_ref(&desk),
+            )
+        });
+        assert_eq!(out.model_name, "gpt-4o-mini");
+        assert!(
+            lines[0].contains(not_applicable) && lines[0].contains("concierge_source=global"),
+            "{lines:#?}"
+        );
+        // The direct route takes the desk — the configured line, and no other.
+        let (out, lines) = captured_with(|| {
+            resolve_uncensored_cheap_llm_selection(
+                standard.clone(),
+                true,
+                Some(&unmoderated),
+                std::slice::from_ref(&desk),
+            )
+        });
+        assert_eq!(out.model_name, "dolphin");
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(
+            lines[0].contains(configured) && lines[0].contains("profile_id=desk"),
+            "{}",
+            lines[0]
+        );
+        // A desk id the user no longer has: the scan answers, silently.
+        let (_, lines) = captured_with(|| {
+            resolve_uncensored_cheap_llm_selection(standard.clone(), true, Some(&unmoderated), &[])
+        });
+        assert!(lines.is_empty(), "{lines:#?}");
     }
 }

@@ -283,7 +283,8 @@ pub struct CompressionTriggerArgs {
     /// v4 hardcodes `'User'` here (unlike buildContext, which prefers the persona name).
     pub user_name: String,
     /// The resolved danger settings (v4 `dangerSettings`) — feeds the uncensored fallback.
-    pub danger_settings: Option<crate::cheap_llm::DangerousContentSettings>,
+    pub concierge_policy:
+        Option<crate::services::dangerous_content::resolver::ResolvedConciergePolicy>,
     /// Every connection profile (v4 `allProfiles`) — the uncensored fallback lookup.
     pub available_profiles: Vec<crate::cheap_llm::CheapLlmProfile>,
     /// The injected wall clock (v4 `Date.now()` inside `triggerAsyncCompression`).
@@ -315,10 +316,10 @@ impl<C: crate::model::completion::CompletionProvider + Sync> AsyncCompressionTri
         // v4's finalizer always passes `dangerSettings` + `availableProfiles` into
         // the compression options; the ported `uncensored_fallback` is present only
         // when both are supplied (v4's `dangerSettings && availableProfiles` gate).
-        let uncensored = match &args.danger_settings {
+        let uncensored = match &args.concierge_policy {
             Some(ds) if !args.available_profiles.is_empty() => {
                 Some(crate::cheap_llm::UncensoredFallbackOptions {
-                    danger_settings: ds,
+                    concierge_policy: ds,
                     available_profiles: &args.available_profiles,
                     is_dangerous_chat: None,
                 })
@@ -523,14 +524,6 @@ pub struct FinalizerChatSettings {
     /// `answerConfirmationSettings.enabled === true` — the global confirmation
     /// gate leg.
     pub answer_confirmation_global_enabled: bool,
-    /// W4.2u: the resolved danger mode is `"OFF"` (v4
-    /// `resolveDangerousContentSettings(chatSettings, chat).settings.mode ===
-    /// 'OFF'`) — collapses to OFF when the chat is off-duty OR a moderation-exempt
-    /// type. The danger-classification enqueue bails when this is true (v4
-    /// `triggerChatDangerClassification`'s first gate), so an OFF chat never
-    /// enqueues a `CHAT_DANGER_CLASSIFICATION` job. Resolved above the seam at the
-    /// orchestrator composition point.
-    pub danger_mode_off: bool,
 }
 
 /// The async-compression gate + trigger inputs (v4 `compression` context). When
@@ -560,7 +553,8 @@ pub struct FinalizerCompression {
     /// — the async compression target, pre-computed at the composition point.
     pub compression_target_tokens: i64,
     /// v4 `dangerSettings` (forwarded to the compression options).
-    pub danger_settings: Option<crate::cheap_llm::DangerousContentSettings>,
+    pub concierge_policy:
+        Option<crate::services::dangerous_content::resolver::ResolvedConciergePolicy>,
     /// v4 `allProfiles` (the uncensored-fallback lookup).
     pub available_profiles: Vec<crate::cheap_llm::CheapLlmProfile>,
     /// The injected wall clock for the cache `createdAt` (v4 `Date.now()`).
@@ -660,7 +654,8 @@ pub struct FinalizerConfirmationInputs {
     pub connection_profile: ReaffirmationProfile,
     /// v4 `uncensoredFallback.dangerSettings` — the resolved danger settings for
     /// the uncensored escalation of the check's cheap selection.
-    pub danger_settings: Option<crate::cheap_llm::DangerousContentSettings>,
+    pub concierge_policy:
+        Option<crate::services::dangerous_content::resolver::ResolvedConciergePolicy>,
     /// v4 `uncensoredFallback.availableProfiles` — every connection profile (for
     /// the uncensored escalation lookup).
     pub available_profiles: Vec<crate::cheap_llm::CheapLlmProfile>,
@@ -884,9 +879,9 @@ where
                     // v4 `uncensoredFallback` — assembled from the resolved danger
                     // settings + available profiles.
                     let uncensored_fallback =
-                        confirmation_inputs.danger_settings.as_ref().map(|ds| {
+                        confirmation_inputs.concierge_policy.as_ref().map(|ds| {
                             UncensoredFallbackOptions {
-                                danger_settings: ds,
+                                concierge_policy: ds,
                                 available_profiles: &confirmation_inputs.available_profiles,
                                 is_dangerous_chat: Some(is_dangerous_chat),
                             }
@@ -1167,7 +1162,7 @@ where
                 character_name: character.name.clone(),
                 // v4 hardcodes `userName: 'User'` in the finalizer trigger.
                 user_name: "User".to_string(),
-                danger_settings: compression.danger_settings.clone(),
+                concierge_policy: compression.concierge_policy.clone(),
                 available_profiles: compression.available_profiles.clone(),
                 now_ms: compression.now_ms,
             })
@@ -1414,17 +1409,13 @@ where
         // if !is_autonomous && settings.cheap_llm_settings_present { … }
 
         // Chat danger classification — the gate + enqueue (its own sub-gates
-        // inside). W4.2u: the danger-mode-OFF / Off-duty / moderation-exempt
-        // resolver short-circuit is now wired (v4 `triggerChatDangerClassification`
-        // bails first when the resolved mode is OFF); `danger_mode_off` is resolved
-        // above the seam.
+        // inside, the Concierge policy's `summary_classification` among them).
         trigger_chat_danger_classification(
             db,
             &chat_id,
             &user_id,
             // v4 enqueues with `connectionProfile.id` (the ORIGINAL), W4.2u.
             &connection_profile_id,
-            settings.danger_mode_off,
         )
         .await?;
     }
@@ -1560,19 +1551,19 @@ pub(crate) async fn trigger_turn_memory_extraction(
 // `findTurnOpenerMessageId` + the JS-truthy cell reads moved to
 // `services::turn_transcript` (P4.6bj) — the turn machinery has one home.
 
-/// v4 `triggerChatDangerClassification` gate + enqueue: read the fresh chat; bail
-/// on danger-mode-OFF (W4.2u) / operator-off-duty (v4 `c43d3b1b4`) /
+/// v4 `triggerChatDangerClassification` gate + enqueue: read the fresh chat;
+/// bail when the chat is not Moderated (the classifier is off the case, v4
+/// `4d370a90f`), then when the chat's Concierge policy has the summary
+/// classifier off (v4 `3b463d6b1`, #76 — off duty, not opted in, or a
+/// moderation-exempt chat type; resolved WITH the chat), then on
 /// sticky-dangerous / already-classified-at-this-count / no-summary, else
-/// enqueue. The `danger_mode_off` flag is the resolved
-/// `resolveDangerousContentSettings(...).settings.mode === 'OFF'` (v4 bails first
-/// on it — an off-duty / moderation-exempt / globally-OFF chat is never enqueued).
+/// enqueue.
 ///
-/// **Shape divergence, recorded:** v4 computes the resolved mode INSIDE this
-/// function, after the chat read, so its own test can assert that an operator
-/// override bails "before any setting lookup at all". v5's `danger_mode_off`
-/// is computed by the two producers (`orchestrator`, `courier_transport`)
-/// BEFORE the call, so that assertion has no v5 counterpart — the observable
-/// this port pins is the enqueue itself.
+/// The policy is resolved INSIDE, after the chat read and the Moderated check,
+/// in v4's order — so an operator's Locked / Unmoderated chat bails "before
+/// any setting lookup at all", as v4's own test asserts. (Until #76 v5 took a
+/// pre-resolved `danger_mode_off` flag from its two producers, a recorded shape
+/// divergence the move retires.)
 ///
 /// The enqueue's own `findPendingForChat` dedupe is in [`super::queue_service`].
 ///
@@ -1584,25 +1575,40 @@ pub async fn trigger_chat_danger_classification(
     chat_id: &str,
     user_id: &str,
     connection_profile_id: &str,
-    danger_mode_off: bool,
 ) -> Result<(), DbError> {
-    // Resolved danger mode OFF (or off-duty / moderation-exempt) → bail before any
-    // lookups (v4 `triggerChatDangerClassification`'s first gate).
-    if danger_mode_off {
-        return Ok(());
-    }
-
     let chat_id_owned = chat_id.to_string();
     let Some(chat) = db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned))? else {
         return Ok(());
     };
 
-    // Once the operator has spoken — Vouched Safe or Uncensored — the classifier
-    // is off the case, and the handler would discard the job at its own guard.
-    // Bail here so an Uncensored chat stops enqueueing a doomed job on every
-    // turn (v4 `c43d3b1b4`). Vouched Safe was fine by accident — the resolver
-    // collapses it to OFF — but Uncensored resolves to AUTO_ROUTE on purpose.
+    // Only a Moderated chat is the classifier's to move — Unmoderated has
+    // nowhere further to go and Locked is the operator's — and the handler
+    // would discard the job at its own guard. Bail here so an Unmoderated chat
+    // stops enqueueing a doomed job on every turn (v4 `c43d3b1b4`, the three
+    // states since `4d370a90f`).
     if !is_classifier_on_duty(Some(&chat)) {
+        return Ok(());
+    }
+
+    // Resolve the Concierge policy — bail unless the summary classifier is on
+    // duty for this chat (Concierge enabled, chat Moderated, operator opted
+    // in). Passing `chat` rules out a moderation-exempt chat type (Help Chat,
+    // Brahma Console), so those surfaces are never enqueued either.
+    let uid = user_id.to_string();
+    let chat_settings =
+        db.read_main(move |conn| crate::db::chat_settings::find_by_user_id(conn, &uid))?;
+    let concierge_policy = super::dangerous_content::resolver::resolve_concierge_settings(
+        chat_settings.as_ref(),
+        Some(&chat),
+    );
+    if !concierge_policy.summary_classification {
+        tracing::debug!(
+            target: "quilltap::memory_trigger_service",
+            chat_id = %chat_id,
+            concierge_source = concierge_policy.source.as_str(),
+            concierge_state = concierge_policy.state.as_str(),
+            "[DangerClassification] Summary classifier not on duty; skipping enqueue"
+        );
         return Ok(());
     }
 

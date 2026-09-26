@@ -312,7 +312,7 @@ impl quilltap_core::services::carina_runner::RunCarinaQuery for NoCarina {
 
 /// The orchestrator seams mirroring the fixture's single u1 `chat_settings` row
 /// (cheapLLM PROVIDER_CHEAPEST / compression off / RNG off / confirmation off /
-/// danger DETECT_ONLY with the Zod defaults / agent-mode defaults).
+/// the Concierge on duty with the pre-screen on / agent-mode defaults).
 struct HarnessOrchestratorSeams;
 impl quilltap_core::services::orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
     fn chat_settings(&self, _user_id: &str) -> Option<OrchestratorChatSettings> {
@@ -326,21 +326,14 @@ impl quilltap_core::services::orchestrator::OrchestratorSeams for HarnessOrchest
             autonomous_destructive_policy: "opt_in_per_room".to_string(),
             agent_mode_default_enabled: false,
             agent_mode_max_turns: 10,
-            danger_settings: Some(quilltap_core::db::chat_settings::DangerousContentSettings {
-                mode: "DETECT_ONLY".to_string(),
-                threshold: 0.7,
-                scan_text_chat: true,
-                scan_image_prompts: true,
-                scan_image_generation: false,
-                uncensored_text_profile_id: None,
-                uncensored_image_profile_id: None,
-                display_mode: "SHOW".to_string(),
-                show_warning_badges: true,
-                custom_classification_prompt: None,
-                // P4.D225 OUT-OF-MANDATE (a required field on a shared struct):
-                // v4 `49059fb14`'s schema default.
-                auto_switch_after_refusals: 2,
-            }),
+            // The stored `conciergeSettings` as the builder writes them (v4
+            // `3b463d6b1`, #76): on duty, the pre-screen + summary
+            // classification on — the resolver fills the rest from the
+            // defaults, as v4's `readConciergeSettings` does.
+            concierge_settings: Some(serde_json::json!({
+                "enabled": true,
+                "preScreen": { "enabled": true, "summaryClassification": true }
+            })),
             cheap_llm_strategy: "PROVIDER_CHEAPEST".to_string(),
             cheap_llm_user_defined_profile_id: None,
             cheap_llm_default_cheap_profile_id: None,

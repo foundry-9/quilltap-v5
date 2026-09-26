@@ -411,6 +411,51 @@ function edgeCases(): Case[] {
         ],
       }),
     },
+    // P4.D227 (v4 `3b463d6b1`, #76): the Concierge's own settings. A 4.10
+    // archive carries `conciergeSettings` — the four desk ids remap in place;
+    // the legacy-shaped rows above now TRANSLATE (add-concierge-settings-v1's
+    // mapping) and the retired keys are left for the schema to strip.
+    {
+      name: 'chat_settings_concierge_desk_ids',
+      note: 'a 4.10 archive: conciergeSettings present, its four desk ids remapped in place, every other key kept',
+      targetUserId: t,
+      data: bag({
+        chatSettings: [
+          {
+            id: 'cs-5',
+            userId: 'old-user',
+            conciergeSettings: {
+              enabled: true,
+              uncensoredTextProfileId: 'desk-text',
+              uncensoredImageProfileId: 'desk-image',
+              uncensoredVisionProfileId: 'desk-vision',
+              imagePromptProfileId: 'desk-crafter',
+              autoSwitchAfterRefusals: 3,
+              newChatsStartAs: 'unmoderated',
+              display: { mode: 'BLUR', showWarningBadges: false },
+              preScreen: { enabled: true, threshold: 0.4, summaryClassification: true },
+            },
+          },
+        ],
+      }),
+    },
+    {
+      name: 'chat_settings_legacy_with_unmoderated_chat',
+      note: 'a pre-4.10 archive with the Concierge OFF but an Unmoderated chat in the same backup: the translation keeps him on duty (pre-screen off)',
+      targetUserId: t,
+      data: bag({
+        chats: [{ id: 'chat-u', userId: 'old-user', title: 'frank', conciergeOverride: 'UNCENSORED', participants: [], messages: [] }],
+        chatSettings: [
+          {
+            id: 'cs-6',
+            userId: 'old-user',
+            uncensoredImageDescriptionProfileId: 'uidp-6',
+            cheapLLMSettings: { imagePromptProfileId: 'cheap-6' },
+            dangerousContentSettings: { mode: 'OFF', uncensoredTextProfileId: 'danger-6', threshold: 0.3 },
+          },
+        ],
+      }),
+    },
     {
       name: 'instance_settings',
       note: 'all three MOUNT_POINT_SETTING_KEYS remap and are REBUILT as exactly {key,value} (dropping any other column, and fixing the key order); a non-mount key passes through byte-identical; a mount key with an EMPTY value passes through unchanged',

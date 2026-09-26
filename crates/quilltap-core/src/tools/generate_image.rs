@@ -4,9 +4,10 @@
 //!
 //!   1. validate input + load/validate the image profile (API key via the
 //!      [`ApiKeyResolver`] seam),
-//!   2. resolve the Concierge (dangerous-content) settings + build the cheap-LLM
+//!   2. resolve the Concierge policy (v4 `3b463d6b1`, #76) + build the cheap-LLM
 //!      selection,
-//!   3. classify the user prompt (scanImagePrompts) + AUTO_ROUTE reroute,
+//!   3. an Unmoderated chat's direct route (5a); else classify the user prompt
+//!      (the pre-screen's `scanImagePrompts`) + the failover reroute,
 //!   4. resolve character appearances (sceneState fast path / cheap-LLM /
 //!      defaults) + the sanitize gate,
 //!   5. expand the prompt (`{{placeholder}}` → craftImagePrompt, with the
@@ -55,9 +56,8 @@ use serde_json::{Map, Value};
 
 use crate::cheap_llm::{
     get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, CheapLlmConfig,
-    CheapLlmProfile, CheapLlmSelection, DangerousContentSettings as CheapDangerSettings,
+    CheapLlmProfile, CheapLlmSelection,
 };
-use crate::db::chat_settings::DangerousContentSettings;
 use crate::db::doc_mount_file_links::{DocMountFileLinksRepository, LinkBlobInput};
 use crate::db::runtime::Db;
 use crate::db::DbError;
@@ -85,7 +85,9 @@ use crate::services::dangerous_content::image_failover::{
 use crate::services::dangerous_content::provider_routing::{
     resolve_image_provider_for_dangerous_content, ApiKeyResolver, RouteProfile,
 };
-use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
+use crate::services::dangerous_content::resolver::{
+    resolve_concierge_settings, ResolvedConciergePolicy,
+};
 use crate::services::image_scene_tasks::ChatMessage;
 use crate::services::image_scene_tasks::{
     craft_image_prompt, DepictionGuideline, ExpansionClothing, ExpansionPlaceholder,
@@ -1885,31 +1887,91 @@ where
         }
     };
 
-    let global_danger = db_ctx
-        .chat_settings
-        .as_ref()
-        .and_then(|cs| cs.get("dangerousContentSettings"))
-        .and_then(|d| serde_json::from_value::<DangerousContentSettings>(d.clone()).ok());
-    let resolved = resolve_dangerous_content_settings(global_danger, db_ctx.chat.as_ref());
-    let danger_settings = resolved.settings;
+    // 4b. Resolve the Concierge policy (the chat's Concierge state applies —
+    // v4 `3b463d6b1`, #76).
+    let concierge_policy =
+        resolve_concierge_settings(db_ctx.chat_settings.as_ref(), db_ctx.chat.as_ref());
+    tracing::debug!(
+        target: "quilltap::image_generation",
+        concierge_source = concierge_policy.source.as_str(),
+        concierge_state = concierge_policy.state.as_str(),
+        pre_screen = concierge_policy.pre_screen.enabled,
+        failover_allowed = concierge_policy.failover_allowed,
+        route_direct = concierge_policy.route_direct,
+        "[Image Generation] Concierge policy resolved"
+    );
 
     let cheap_settings = db_ctx
         .chat_settings
         .as_ref()
         .and_then(|cs| cs.get("cheapLLMSettings"));
 
-    // 4c. Build the cheap-LLM selection for danger classification.
-    let cheap_llm_selection = if danger_settings.mode != "OFF"
-        && (danger_settings.scan_image_prompts || danger_settings.scan_image_generation)
+    // 4c. Build the cheap-LLM selection for the pre-screen classifier.
+    let cheap_llm_selection = if concierge_policy.pre_screen.enabled
+        && (concierge_policy.pre_screen.scan_image_prompts
+            || concierge_policy.pre_screen.scan_image_generation)
     {
         build_cheap_llm_selection(&db_ctx.all_profiles, cheap_settings)
     } else {
         None
     };
 
-    // 5-5b. Classify the user prompt (scanImagePrompts) + AUTO_ROUTE reroute.
+    // 5a. An Unmoderated chat goes straight to the uncensored desk: the
+    // verdict is already in, so there is no pre-screen to wait on
+    // (`route_direct`, v4 `3b463d6b1`).
     let mut image_prompt_dangerous = false;
-    if danger_settings.mode != "OFF" && danger_settings.scan_image_prompts {
+    if concierge_policy.route_direct {
+        image_prompt_dangerous = true;
+        match route_image_profile(
+            db,
+            deps.api_keys,
+            &image_profile,
+            &concierge_policy,
+            &ctx.user_id,
+        ) {
+            Ok(route) if route.rerouted => {
+                let original_name = image_profile.name.clone();
+                // v4 `{ ...routeResult.imageProfile, apiKey }`, then the reload.
+                if let Ok(Ok(p)) = load_and_validate_profile(
+                    db,
+                    deps.api_keys,
+                    &route.image_profile.id,
+                    &ctx.user_id,
+                ) {
+                    image_profile = p;
+                }
+                tracing::info!(
+                    target: "quilltap::image_generation",
+                    chat_id = ctx.chat_id.as_deref(),
+                    original_profile = %original_name,
+                    uncensored_profile = %route.image_profile.name,
+                    reason = %route.reason,
+                    "[Image Generation] Unmoderated chat routed direct to uncensored image provider"
+                );
+            }
+            Ok(route) => {
+                tracing::debug!(
+                    target: "quilltap::image_generation",
+                    chat_id = ctx.chat_id.as_deref(),
+                    reason = %route.reason,
+                    "[Image Generation] Unmoderated chat has no uncensored image provider; using original"
+                );
+            }
+            Err(error) => {
+                // Fail safe — the post-hoc failover still stands behind the call.
+                tracing::error!(
+                    target: "quilltap::image_generation",
+                    chat_id = ctx.chat_id.as_deref(),
+                    error = %error,
+                    "[Image Generation] Direct uncensored routing failed, continuing on the original profile"
+                );
+            }
+        }
+    }
+
+    // 5-5b. Classify the user prompt (scanImagePrompts) + reroute where
+    // failover is allowed.
+    if concierge_policy.pre_screen.enabled && concierge_policy.pre_screen.scan_image_prompts {
         if let Some(selection) = &cheap_llm_selection {
             let classification = classify_content(
                 db,
@@ -1918,18 +1980,18 @@ where
                 &input.prompt,
                 selection,
                 &ctx.user_id,
-                &danger_settings,
+                &concierge_policy,
                 ctx.chat_id.as_deref(),
             )
             .await;
             if classification.is_dangerous {
                 image_prompt_dangerous = true;
-                if danger_settings.mode == "AUTO_ROUTE" {
+                if concierge_policy.failover_allowed {
                     if let Some(rerouted) = reroute_image_profile(
                         db,
                         deps.api_keys,
                         &image_profile,
-                        &danger_settings,
+                        &concierge_policy,
                         &ctx.user_id,
                     ) {
                         image_profile = rerouted;
@@ -1963,14 +2025,10 @@ where
                     .iter()
                     .map(cheap_llm_profile_from_value)
                     .collect();
-                let cheap_danger = CheapDangerSettings {
-                    mode: danger_settings.mode.clone(),
-                    uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
-                };
                 appearance_selection = Some(resolve_uncensored_cheap_llm_selection(
                     sel,
                     true,
-                    Some(&cheap_danger),
+                    Some(&concierge_policy),
                     &profiles,
                 ));
             }
@@ -1992,7 +2050,7 @@ where
             .await;
 
             let routes_dangerous_to_uncensored =
-                tool_routes_dangerous_to_uncensored(&danger_settings);
+                tool_routes_dangerous_to_uncensored(&concierge_policy);
 
             let sanitized = sanitize_appearances_if_needed(
                 db,
@@ -2000,7 +2058,7 @@ where
                 deps.moderation,
                 deps.completion,
                 resolution.appearances,
-                &danger_settings,
+                &concierge_policy,
                 db_ctx.is_dangerous_chat,
                 routes_dangerous_to_uncensored,
                 selection,
@@ -2019,7 +2077,7 @@ where
         input,
         &image_profile,
         effective_profile,
-        &danger_settings,
+        &concierge_policy,
         cheap_llm_selection.as_ref(),
         image_prompt_dangerous,
         resolved_appearances.as_deref(),
@@ -2039,7 +2097,7 @@ where
         &final_input,
         &final_profile,
         input,
-        &danger_settings,
+        &concierge_policy,
         &db_ctx,
         ctx,
         if final_profile.id != image_profile.id {
@@ -2113,17 +2171,18 @@ async fn gather_db_context_via_db(
 // The reroute + expand + generate helpers
 // ===========================================================================
 
-/// v4's AUTO_ROUTE image-provider reroute. Runs
-/// `resolveImageProviderForDangerousContent`, then reloads the rerouted profile
-/// with its API key. Returns `Some(profile)` for the rerouted profile, or `None`
-/// when there is no reroute (or the reload failed) so the caller keeps the original.
-fn reroute_image_profile<A: ApiKeyResolver>(
+/// v4 `resolveImageProviderForDangerousContent` over a loaded profile — the
+/// routing read alone (its `Err` is v4's throw).
+fn route_image_profile<A: ApiKeyResolver>(
     db: &Db,
     api_keys: &A,
     image_profile: &LoadedProfile,
-    danger_settings: &DangerousContentSettings,
+    concierge_policy: &ResolvedConciergePolicy,
     user_id: &str,
-) -> Option<LoadedProfile> {
+) -> Result<
+    crate::services::dangerous_content::provider_routing::DangerousImageProviderRouteResult,
+    crate::db::DbError,
+> {
     let original = RouteProfile {
         id: image_profile.id.clone(),
         name: image_profile.name.clone(),
@@ -2132,22 +2191,27 @@ fn reroute_image_profile<A: ApiKeyResolver>(
         base_url: None,
     };
     let uid = user_id.to_string();
-    let mode = danger_settings.mode.clone();
-    let uncensored = danger_settings.uncensored_image_profile_id.clone();
+    let policy = concierge_policy.clone();
     let api_key = image_profile.api_key.clone();
-    let route = db
-        .read_main(move |conn| {
-            Ok(resolve_image_provider_for_dangerous_content(
-                conn,
-                api_keys,
-                &original,
-                &api_key,
-                &mode,
-                uncensored.as_deref(),
-                &uid,
-            ))
-        })
-        .ok()?;
+    db.read_main(move |conn| {
+        Ok(resolve_image_provider_for_dangerous_content(
+            conn, api_keys, &original, &api_key, &policy, &uid,
+        ))
+    })
+}
+
+/// v4's classifier reroute (where failover is allowed). Runs
+/// `resolveImageProviderForDangerousContent`, then reloads the rerouted profile
+/// with its API key. Returns `Some(profile)` for the rerouted profile, or `None`
+/// when there is no reroute (or the reload failed) so the caller keeps the original.
+fn reroute_image_profile<A: ApiKeyResolver>(
+    db: &Db,
+    api_keys: &A,
+    image_profile: &LoadedProfile,
+    concierge_policy: &ResolvedConciergePolicy,
+    user_id: &str,
+) -> Option<LoadedProfile> {
+    let route = route_image_profile(db, api_keys, image_profile, concierge_policy, user_id).ok()?;
     if !route.rerouted {
         return None;
     }
@@ -2168,7 +2232,7 @@ async fn expand_prompt_with_context<I, C, M, A, T, L>(
     input: &ImageGenerationToolInput,
     image_profile: &LoadedProfile,
     effective_profile: LoadedProfile,
-    danger_settings: &DangerousContentSettings,
+    concierge_policy: &ResolvedConciergePolicy,
     cheap_llm_selection: Option<&CheapLlmSelection>,
     image_prompt_dangerous: bool,
     resolved_appearances: Option<&[ResolvedCharacterAppearance]>,
@@ -2235,6 +2299,7 @@ where
         image_prompt_dangerous,
         style_trigger_phrase.as_deref(),
         resolved_appearances,
+        concierge_policy.desk.image_prompt_profile_id.as_deref(),
         db_ctx,
         ctx,
     )
@@ -2243,8 +2308,8 @@ where
     let mut effective_profile = effective_profile;
 
     // 6b. Classify the expanded prompt (only when it differs from the original).
-    if danger_settings.mode != "OFF"
-        && danger_settings.scan_image_generation
+    if concierge_policy.pre_screen.enabled
+        && concierge_policy.pre_screen.scan_image_generation
         && cheap_llm_selection.is_some()
         && expanded_prompt != input.prompt
     {
@@ -2256,20 +2321,20 @@ where
                 &expanded_prompt,
                 selection,
                 &ctx.user_id,
-                danger_settings,
+                concierge_policy,
                 ctx.chat_id.as_deref(),
             )
             .await;
             if classification.is_dangerous
                 && !image_prompt_dangerous
-                && danger_settings.mode == "AUTO_ROUTE"
+                && concierge_policy.failover_allowed
                 && effective_profile.id == image_profile.id
             {
                 if let Some(rerouted) = reroute_image_profile(
                     db,
                     deps.api_keys,
                     image_profile,
-                    danger_settings,
+                    concierge_policy,
                     &ctx.user_id,
                 ) {
                     effective_profile = rerouted;
@@ -2297,6 +2362,9 @@ async fn expand_prompt_with_descriptions<I, C, M, A, T, L>(
     // profile's joined LoRA trigger phrases (step 5c).
     style_trigger_phrase: Option<&str>,
     resolved_appearances: Option<&[ResolvedCharacterAppearance]>,
+    // v4 `3b463d6b1`: the Concierge desk's image prompt crafter (it moved out
+    // of `cheapLLMSettings`), fed `conciergePolicy.desk.imagePromptProfileId`.
+    image_prompt_profile_id: Option<&str>,
     db_ctx: &DbContext,
     ctx: &ImageToolExecutionContext,
 ) -> String
@@ -2328,16 +2396,10 @@ where
         resolved_appearances,
     );
 
-    // Select the crafting cheap-LLM: the uncensored image-prompt profile on
-    // dangerous content, else the standard cheap-LLM logic.
-    let cheap_settings = db_ctx
-        .chat_settings
-        .as_ref()
-        .and_then(|cs| cs.get("cheapLLMSettings"));
-    let image_prompt_profile_id = cheap_settings
-        .and_then(|c| c.get("imagePromptProfileId"))
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty());
+    // Select the crafting cheap-LLM: the Concierge desk's image prompt crafter
+    // on dangerous content (or when the chat routes direct), else the standard
+    // cheap-LLM logic.
+    let image_prompt_profile_id = image_prompt_profile_id.filter(|s| !s.is_empty());
 
     let mut selection: Option<CheapLlmSelection> = None;
     if is_dangerous {
@@ -2385,6 +2447,10 @@ where
         if db_ctx.all_profiles.is_empty() {
             return original_prompt.to_string();
         }
+        let cheap_settings = db_ctx
+            .chat_settings
+            .as_ref()
+            .and_then(|cs| cs.get("cheapLLMSettings"));
         selection = build_cheap_llm_selection(&db_ctx.all_profiles, cheap_settings);
     }
     let Some(selection) = selection else {
@@ -2557,7 +2623,7 @@ async fn generate_images_with_provider<I, C, M, A, T, L>(
     tool_input: &ImageGenerationToolInput,
     image_profile: &LoadedProfile,
     original_input: &ImageGenerationToolInput,
-    danger_settings: &DangerousContentSettings,
+    concierge_policy: &ResolvedConciergePolicy,
     db_ctx: &DbContext,
     ctx: &ImageToolExecutionContext,
     // v4 `8bd080267`: `'concierge'` when a pre-flight classifier reroute
@@ -2643,7 +2709,7 @@ where
         db,
         api_keys: deps.api_keys,
         user_id: &ctx.user_id,
-        uncensored_image_profile_id: danger_settings.uncensored_image_profile_id.as_deref(),
+        uncensored_image_profile_id: concierge_policy.desk.image_profile_id.as_deref(),
     };
     let outcome = match generate_image_with_concierge_failover(
         (
@@ -2659,12 +2725,13 @@ where
         attempt,
         &ImageFailoverContext {
             db,
+            user_id: &ctx.user_id,
             chat_id: ctx.chat_id.as_deref(),
             // v4 `chatForOverride` (`4d370a90f`): the snapshot the chokepoint
             // falls back on if its refusal-time re-read fails.
             chat: db_ctx.chat.as_ref(),
             purpose: ImagePurpose::Tool,
-            settings: danger_settings,
+            concierge_policy,
             understudy: &understudy,
             profile_kind: RouteProfileKind::Image,
             primary_via,
@@ -2853,20 +2920,23 @@ fn load_profile_parameters(db: &Db, profile_id: &str) -> Value {
 /// hands [`sanitize_appearances_if_needed`].
 ///
 /// [cc65d6bfc] The tool classifies each prompt and reroutes on the spot, but
-/// only under AUTO_ROUTE — under DETECT_ONLY a dangerous appearance stays on
-/// the moderated provider and must be sanitized (bug 133). v4's
-/// `Boolean(dangerSettings.uncensoredImageProfileId)` is the non-empty check
-/// (`Boolean('')` is false), which v5 already spelled that way.
+/// only an Unmoderated chat with an uncensored image profile goes straight to
+/// the uncensored desk (step 5a — v4 `3b463d6b1`: `routeDirect &&
+/// Boolean(desk.imageProfileId)`; it was `AUTO_ROUTE && …` before #76);
+/// anywhere else a dangerous appearance may stay on the moderated provider and
+/// must be sanitized (bug 133). `Boolean('')` is false, so an empty id does
+/// not route.
 ///
 /// Extracted so it has a home a test can reach. It was corpus-blind when the
 /// P4.D178 lane opened — the tier-3 image-generation corpus kept the Concierge
 /// OFF throughout — so the unit test below was its only proof. The corpus now
 /// carries `detect_only_sanitizes_appearance`, which measures this line through
 /// the production call site; both proofs stand.
-fn tool_routes_dangerous_to_uncensored(danger_settings: &DangerousContentSettings) -> bool {
-    danger_settings.mode == "AUTO_ROUTE"
-        && danger_settings
-            .uncensored_image_profile_id
+fn tool_routes_dangerous_to_uncensored(concierge_policy: &ResolvedConciergePolicy) -> bool {
+    concierge_policy.route_direct
+        && concierge_policy
+            .desk
+            .image_profile_id
             .as_deref()
             .map(|s| !s.is_empty())
             .unwrap_or(false)
@@ -2877,54 +2947,62 @@ mod bug_133_tests {
     use super::*;
 
     /// [cc65d6bfc] bug 133's tool half: "an uncensored profile is configured"
-    /// is not "this scene routes there". Under DETECT_ONLY nothing reroutes, so
-    /// a dangerous appearance must be sanitized. This pinned the derivation
-    /// while it was corpus-blind; `detect_only_sanitizes_appearance` now
-    /// measures it end-to-end too, and these five arms still cover the shapes a
-    /// corpus case cannot cheaply carry (the empty-string profile id).
+    /// is not "this scene routes there". Only an Unmoderated chat routes direct
+    /// (v4 `3b463d6b1`), so a Moderated chat's dangerous appearance must be
+    /// sanitized. This pinned the derivation while it was corpus-blind;
+    /// `detect_only_sanitizes_appearance` now measures it end-to-end too, and
+    /// these arms still cover the shapes a corpus case cannot cheaply carry
+    /// (the empty-string profile id).
     #[test]
-    fn tool_routes_dangerous_to_uncensored_needs_auto_route_and_a_profile() {
-        fn settings(mode: &str, uncensored: Option<&str>) -> DangerousContentSettings {
-            DangerousContentSettings {
-                mode: mode.to_string(),
-                threshold: 0.7,
-                scan_text_chat: true,
-                scan_image_prompts: false,
-                scan_image_generation: false,
-                uncensored_text_profile_id: None,
-                uncensored_image_profile_id: uncensored.map(str::to_string),
-                display_mode: "SHOW".to_string(),
-                show_warning_badges: true,
-                custom_classification_prompt: None,
-                auto_switch_after_refusals: 2,
+    fn tool_routes_dangerous_to_uncensored_needs_route_direct_and_a_profile() {
+        use crate::services::dangerous_content::resolver::resolve_stored_concierge_settings;
+        fn policy(enabled: bool, state: &str, image: Option<&str>) -> ResolvedConciergePolicy {
+            let mut stored = serde_json::json!({ "enabled": enabled });
+            if let Some(id) = image {
+                stored["uncensoredImageProfileId"] = serde_json::json!(id);
             }
+            resolve_stored_concierge_settings(
+                Some(&stored),
+                Some(&serde_json::json!({ "conciergeMode": state })),
+            )
         }
+        const DESK: &str = "e5000000-0000-4000-8000-000000000004";
 
-        // DETECT_ONLY with a profile configured → does NOT route (the bug).
-        assert!(!tool_routes_dangerous_to_uncensored(&settings(
-            "DETECT_ONLY",
-            Some("e5000000-0000-4000-8000-000000000004")
+        // A Moderated chat with a desk profile → does NOT route (the bug).
+        assert!(!tool_routes_dangerous_to_uncensored(&policy(
+            true,
+            "moderated",
+            Some(DESK)
         )));
-        // AUTO_ROUTE with a profile → routes.
-        assert!(tool_routes_dangerous_to_uncensored(&settings(
-            "AUTO_ROUTE",
-            Some("e5000000-0000-4000-8000-000000000004")
+        // An Unmoderated chat with a desk profile → routes.
+        assert!(tool_routes_dangerous_to_uncensored(&policy(
+            true,
+            "unmoderated",
+            Some(DESK)
         )));
-        // AUTO_ROUTE with an EMPTY-string profile id → v4's `Boolean('')` is
-        // false, so it does not route.
-        assert!(!tool_routes_dangerous_to_uncensored(&settings(
-            "AUTO_ROUTE",
+        // An EMPTY-string profile id → v4's `Boolean('')` is false.
+        assert!(!tool_routes_dangerous_to_uncensored(&policy(
+            true,
+            "unmoderated",
             Some("")
         )));
-        // AUTO_ROUTE with no profile at all → does not route.
-        assert!(!tool_routes_dangerous_to_uncensored(&settings(
-            "AUTO_ROUTE",
+        // No profile at all → does not route.
+        assert!(!tool_routes_dangerous_to_uncensored(&policy(
+            true,
+            "unmoderated",
             None
         )));
-        // OFF short-circuits at rule 1 anyway, but the predicate is false too.
-        assert!(!tool_routes_dangerous_to_uncensored(&settings(
-            "OFF",
-            Some("e5000000-0000-4000-8000-000000000004")
+        // Off duty, even Unmoderated → the policy routes nothing.
+        assert!(!tool_routes_dangerous_to_uncensored(&policy(
+            false,
+            "unmoderated",
+            Some(DESK)
+        )));
+        // Locked → the desk is empty.
+        assert!(!tool_routes_dangerous_to_uncensored(&policy(
+            true,
+            "locked",
+            Some(DESK)
         )));
     }
 }
@@ -3034,19 +3112,8 @@ mod duration_tests {
             parameters: serde_json::json!({}),
             api_key: "sk-test".to_string(),
         };
-        let danger_settings = DangerousContentSettings {
-            mode: "OFF".to_string(),
-            threshold: 0.7,
-            scan_text_chat: false,
-            scan_image_prompts: false,
-            scan_image_generation: false,
-            uncensored_text_profile_id: None,
-            uncensored_image_profile_id: None,
-            display_mode: "BLUR".to_string(),
-            show_warning_badges: false,
-            custom_classification_prompt: None,
-            auto_switch_after_refusals: 2,
-        };
+        let danger_settings =
+            crate::services::dangerous_content::resolver::test_policy("OFF", None);
         let db_ctx = DbContext {
             chat: None,
             is_dangerous_chat: false,

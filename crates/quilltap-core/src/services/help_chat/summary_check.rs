@@ -91,19 +91,13 @@ where
             .iter()
             .map(crate::services::orchestrator::cheap_llm_profile_from_value)
             .collect();
-        let global_danger: Option<crate::db::chat_settings::DangerousContentSettings> =
-            chat_settings
-                .get("dangerousContentSettings")
-                .and_then(|v| serde_json::from_value(v.clone()).ok());
-        let resolved =
-            crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
-                global_danger,
-                Some(chat),
-            );
-        let danger = crate::cheap_llm::DangerousContentSettings {
-            mode: resolved.settings.mode.clone(),
-            uncensored_text_profile_id: resolved.settings.uncensored_text_profile_id.clone(),
-        };
+        // The help chat is a moderation-exempt chat type, so this policy is
+        // always the inert `chat-type-exempt` one (v4 `3b463d6b1` — the resolver
+        // the context-summary check reads WITH the chat).
+        let danger = crate::services::dangerous_content::resolver::resolve_concierge_settings(
+            Some(chat_settings),
+            Some(chat),
+        );
         let seams = crate::services::context_summary::FoldEpisodePassSeams {
             db,
             embedding: self.embedding,

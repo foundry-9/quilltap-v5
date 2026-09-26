@@ -271,6 +271,7 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
+  const { resolveConciergeSettings } = await import('@/lib/services/dangerous-content/resolver.service');
   const { finalizeMessageResponse } = await import(
     '@/lib/services/chat-message/message-finalizer.service'
   );
@@ -376,10 +377,12 @@ async function main(): Promise<void> {
     };
 
     const triggers = {
-      dangerSettings: {
-        mode: 'AUTO_ROUTE',
-        uncensoredTextProfileId: spec.uncensoredProfile.id,
-      },
+      // v4 `3b463d6b1` (#76): the policy resolved WITH the chat, the desk's
+      // text pick the uncensored profile (the retired AUTO_ROUTE bag).
+      conciergePolicy: resolveConciergeSettings(
+        { conciergeSettings: { enabled: true, uncensoredTextProfileId: spec.uncensoredProfile.id } as never },
+        chat as never,
+      ),
       chatSettings: perCaseSettings,
       // a7b1398d: the responder resolves in buildRecentConversationContext's
       // name attribution (an assistant dialogue row renders `Aurora: …`; an

@@ -151,7 +151,13 @@ interface CallSpec {
   originalMessage?: string;
   errorMessage?: string;
   contentWasFlaggedDangerous?: boolean;
-  dangerMode?: string;
+  /**
+   * v4 `3b463d6b1` (#76): the stored `conciergeSettings` the call's policy
+   * resolves from, WITH the turn's chat snapshot. Absent = no policy.
+   */
+  concierge?: Record<string, unknown>;
+  /** P4.D227: the operator sends the Concierge off duty before the call (restored after). */
+  offDutyNow?: boolean;
   provider?: string;
   existingMessages?: Array<Record<string, unknown>>;
   expectThrow?: boolean;
@@ -162,12 +168,6 @@ interface CallSpec {
    * the Concierge's `refusal-no-understudy` bubble.
    */
   noUnderstudy?: boolean;
-  /**
-   * P4.D225 — hand the failover NO `uncensoredTextProfileId` under Auto-Route.
-   * v4 used to gate the empty-body reroute on the id; since #73 the resolver's
-   * scan is the answer, so the reroute still runs.
-   */
-  omitUncensoredId?: boolean;
   /** P4.D226: the turn's Concierge snapshot (`conciergeState` / the chat's `conciergeMode`). */
   conciergeSnapshot?: string;
   /**
@@ -521,14 +521,14 @@ async function main(): Promise<void> {
       __esModule: true,
       ...actual,
       resolveUncensoredTextUnderstudy: async (lookup: {
-        settings: { uncensoredTextProfileId?: string };
+        conciergePolicy: { desk: { textProfileId: string | null } };
         exclude?: string[];
         turnAttachmentMimeTypes?: string[];
       }) => {
         const exclude = lookup.exclude ?? [];
         understudyLookups.push({
           exclude,
-          uncensoredTextProfileId: lookup.settings?.uncensoredTextProfileId ?? null,
+          uncensoredTextProfileId: lookup.conciergePolicy?.desk?.textProfileId ?? null,
           turnAttachmentMimeTypes: lookup.turnAttachmentMimeTypes ?? [],
         });
         if (currentCall?.noUnderstudy || exclude.includes(spec.uncensoredProfile.id)) return null;
@@ -562,6 +562,22 @@ async function main(): Promise<void> {
   Date.now = () => Date.parse('2020-01-01T00:00:00.000Z');
 
   const lines: string[] = [];
+
+  // P4.D227 (v4 `3b463d6b1`, #76): the call's Concierge policy, resolved from
+  // its stored settings WITH the turn's chat snapshot (the orchestrator
+  // resolves WITH the chat).
+  const { resolveConciergeSettings } = await import('@/lib/services/dangerous-content/resolver.service');
+  const policyFor = (call: CallSpec) =>
+    resolveConciergeSettings(
+      { conciergeSettings: (call.concierge ?? { enabled: true }) as never },
+      (call.conciergeSnapshot ? { conciergeMode: call.conciergeSnapshot } : null) as never,
+    );
+  // …and the operator's switch, flipped raw around an `offDutyNow` call.
+  const setOnDuty = async (enabled: boolean) =>
+    rawQuery('UPDATE chat_settings SET "conciergeSettings" = ? WHERE "userId" = ?', [
+      JSON.stringify({ enabled }),
+      spec.userId,
+    ]);
 
   const freshStreamingState = (primary: ProfileSpec) => ({
     fullResponse: '',
@@ -597,6 +613,7 @@ async function main(): Promise<void> {
   for (const call of spec.calls) {
     currentCall = call;
     understudyLookups = [];
+    if (call.offDutyNow) await setOnDuty(false);
     const events: unknown[] = [];
     const { controller, encoder } = makeRecordingController(events);
     let result: unknown = null;
@@ -686,13 +703,7 @@ async function main(): Promise<void> {
         state: streaming as never,
         toolMessagesLength: 0,
         contentWasFlaggedDangerous: !!call.contentWasFlaggedDangerous,
-        dangerSettings: {
-          mode: call.dangerMode,
-          uncensoredTextProfileId:
-            call.dangerMode === 'AUTO_ROUTE' && !call.omitUncensoredId
-              ? spec.uncensoredProfile.id
-              : undefined,
-        } as never,
+        conciergePolicy: policyFor(call) as never,
         connectionProfile: toConnectionProfile(primaryOf(spec, call)) as never,
         formattedMessages: userMessages(call.originalMessage as string, call.messageAttachments as unknown[] | undefined) as never,
         modelParams: { temperature: 1.0, maxTokens: 4096 },
@@ -792,17 +803,10 @@ async function main(): Promise<void> {
           originalMessage: call.originalMessage,
           connectionProfile: toConnectionProfile(primaryOf(spec, call)) as never,
           isDangerousRouted: !!call.isDangerousRouted,
-          // P4.D225 (v4 `8bd080267`): the chat's Concierge settings, which
-          // send a thrown refusal to the understudy under Auto-Route. Absent
-          // on every pre-existing case (no `dangerMode`).
-          dangerSettings: call.dangerMode
-            ? ({
-                mode: call.dangerMode,
-                uncensoredTextProfileId: call.omitUncensoredId
-                  ? undefined
-                  : spec.uncensoredProfile.id,
-              } as never)
-            : undefined,
+          // P4.D225 (v4 `8bd080267`) → P4.D227 (`3b463d6b1`): the chat's
+          // Concierge policy, which sends a thrown refusal to the understudy
+          // when it allows failover. Absent on every case without `concierge`.
+          conciergePolicy: call.concierge ? (policyFor(call) as never) : undefined,
           streaming: streaming as never,
           controller: controller as never,
           encoder,
@@ -835,6 +839,7 @@ async function main(): Promise<void> {
       }
     }
 
+    if (call.offDutyNow) await setOnDuty(true);
     lines.push(JSON.stringify({ kind: 'result', call: call.name, result }));
     lines.push(JSON.stringify({ kind: 'events', call: call.name, events }));
   }

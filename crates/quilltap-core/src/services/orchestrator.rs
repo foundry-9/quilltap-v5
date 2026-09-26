@@ -58,8 +58,9 @@
 //!   the agent-turn-count reset, the `submit_final_response` slate addition, and
 //!   the agent-mode instruction injection all fire and are banked; every other
 //!   chat resolves off.
-//! * **Danger / courier**: the corpus keeps danger mode `DETECT_ONLY` (no
-//!   reroute) and the transport non-courier — so the danger reroute and the
+//! * **Danger / courier**: the corpus keeps the Concierge on duty with every
+//!   salon chat Moderated (no direct route; v4 `3b463d6b1`'s policy) and the
+//!   transport non-courier — so the danger reroute and the
 //!   courier short-circuit never fire. Their gates are reproduced (`is_courier`)
 //!   and banked off.
 //! * **Prospero cadence re-injection**: gated on
@@ -121,7 +122,9 @@ use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::dangerous_content::chat_override::{
     get_concierge_state, should_use_uncensored_route,
 };
-use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
+use crate::services::dangerous_content::resolver::{
+    resolve_stored_concierge_settings, ResolvedConciergePolicy,
+};
 use crate::services::llm_logging::LogContext;
 use crate::services::message_context;
 use crate::services::message_finalizer::{
@@ -139,7 +142,7 @@ use crate::services::primary_stream::{
     StreamingState,
 };
 use crate::services::provider_failover::{
-    self, AttemptEmptyResponseRecoveryOptions, DangerSettings, DangerousContentRouter,
+    self, AttemptEmptyResponseRecoveryOptions, DangerousContentRouter,
 };
 use crate::services::pseudo_tool::{
     build_native_tool_system_instructions, build_simple_json_system_instructions,
@@ -309,13 +312,13 @@ pub struct OrchestratorChatSettings {
     /// `agentModeSettings.maxTurns` — the agent-mode iteration cap (Zod
     /// `.min(1).max(25).default(10)`). Not overridden by any cascade level.
     pub agent_mode_max_turns: i64,
-    /// `dangerousContentSettings` — the GLOBAL danger settings sub-object (v4
-    /// `chatSettings?.dangerousContentSettings`). The orchestrator resolves the
-    /// EFFECTIVE settings from this + the chat's `conciergeOverride` / `chatType`
-    /// via [`resolve_dangerous_content_settings`] (W4.2u). `None` = the settings
-    /// row / sub-object is absent (the resolver then falls back to its default,
-    /// mode `OFF`).
-    pub danger_settings: Option<crate::db::chat_settings::DangerousContentSettings>,
+    /// `conciergeSettings` — the GLOBAL Concierge settings object (v4
+    /// `chatSettings?.conciergeSettings`, `3b463d6b1`). The orchestrator resolves
+    /// the chat's POLICY from this + the chat's state / `chatType` via
+    /// [`resolve_stored_concierge_settings`]. `None` = the settings row /
+    /// object is absent (the resolver then answers the defaults, source
+    /// `default`).
+    pub concierge_settings: Option<Value>,
     /// The `cheapLLMSettings.strategy` (v4 `chatSettings?.cheapLLMSettings ||
     /// DEFAULT_CHEAP_LLM_CONFIG`) — feeds the cheap-LLM selection the spine
     /// resolves for the compression / danger / proactive-recall paths (Round-3
@@ -345,7 +348,7 @@ impl OrchestratorChatSettings {
             autonomous_destructive_policy: "opt_in_per_room".to_string(),
             agent_mode_default_enabled: false,
             agent_mode_max_turns: 10,
-            danger_settings: None,
+            concierge_settings: None,
             // v4 `DEFAULT_CHEAP_LLM_CONFIG` = { PROVIDER_CHEAPEST, fallbackToLocal: true }.
             cheap_llm_strategy: "PROVIDER_CHEAPEST".to_string(),
             cheap_llm_user_defined_profile_id: None,
@@ -1309,31 +1312,39 @@ where
 
     // --- Danger state (orchestrator.service.ts:420–441 →
     //     danger-orchestrator.service.ts `resolveMessageDangerState`) ---
-    // W4.2u: the real resolution replaces the wave-4 stub. Resolve the EFFECTIVE
-    // danger settings from the global `dangerousContentSettings` sub-object + the
-    // chat's `conciergeOverride`/`chatType` (off-duty / moderation-exempt collapse
-    // to OFF). Then reproduce v4's FIRST branch of `resolveMessageDangerState`: a
-    // permanently-dangerous chat (`isChatActiveDangerous`) whose mode is not OFF,
-    // on a non-continue turn with content, synthesizes danger flags and — under
-    // AUTO_ROUTE with a non-`isDangerousCompatible` profile — reroutes to an
-    // uncensored provider via the REAL [`DangerousContentRouter`] BEFORE the
-    // stream (mutating `effective_profile` / `effective_api_key`).
+    // W4.2u, re-keyed at v4 `3b463d6b1` (#76): resolve the chat's Concierge
+    // POLICY from the global `conciergeSettings` + the chat's state and
+    // `chatType`, then reproduce v4's FIRST branch of `resolveMessageDangerState`:
+    // a chat the policy routes direct (on duty and Unmoderated), on a
+    // non-continue turn with content, synthesizes danger flags and — with a
+    // non-`isDangerousCompatible` profile — reroutes to the uncensored desk via
+    // the REAL [`DangerousContentRouter`] BEFORE the stream (mutating
+    // `effective_profile` / `effective_api_key`).
     //
-    // The classify branch (`resolveMessageDangerState` L109 — the cheap-LLM /
-    // moderation classification of the current user message) stays the injected
-    // gatekeeper seam: its `classifying` status is outside the diffed status
-    // vocabulary and, on a not-dangerous result, it writes no system event and
-    // performs no reroute — so it is a behavioral no-op on the diffed tables /
-    // trace. The gatekeeper JOB (the finalizer's danger-classification enqueue)
-    // is the persistence path and stays reachable (its own OFF short-circuit is
-    // now wired via `finalizer_danger_off`, below).
-    let danger_resolved = resolve_dangerous_content_settings(
+    // The classify branch (`resolveMessageDangerState`'s pre-screen — the
+    // cheap-LLM / moderation classification of the current user message) stays
+    // the injected gatekeeper seam: its `classifying` status is outside the
+    // diffed status vocabulary and, on a not-dangerous result, it writes no
+    // system event and performs no reroute — so it is a behavioral no-op on the
+    // diffed tables / trace. The gatekeeper JOB (the finalizer's
+    // danger-classification enqueue) is the persistence path and stays
+    // reachable (gated on the policy's `summary_classification`).
+    let concierge_policy = resolve_stored_concierge_settings(
         chat_settings
             .as_ref()
-            .and_then(|s| s.danger_settings.clone()),
+            .and_then(|s| s.concierge_settings.as_ref()),
         Some(&chat),
     );
-    let danger_settings = danger_resolved.settings;
+    tracing::debug!(
+        target: "quilltap::chat_danger_orchestrator",
+        chat_id = %chat_id,
+        concierge_source = concierge_policy.source.as_str(),
+        concierge_state = concierge_policy.state.as_str(),
+        route_direct = concierge_policy.route_direct,
+        pre_screen = concierge_policy.pre_screen.enabled,
+        scan_text_chat = concierge_policy.pre_screen.scan_text_chat,
+        "[DangerousContent] Resolved Concierge policy for message send"
+    );
     let is_dangerous_chat = should_use_uncensored_route(Some(&chat));
 
     // --- Cheap-LLM selection (orchestrator.service.ts:390–415; Round-3 Group 8) ---
@@ -1393,11 +1404,8 @@ where
     // The synthesized flags (v4 attaches them to the saved USER message below).
     let mut danger_flags: Option<Vec<Value>> = None;
 
-    if is_dangerous_chat
-        && danger_settings.mode != "OFF"
-        && !is_continue_mode
-        && !input.options.content.is_empty()
-    {
+    // Unmoderated chat: straight to the uncensored desk, no pre-screen needed.
+    if concierge_policy.route_direct && !is_continue_mode && !input.options.content.is_empty() {
         content_was_flagged_dangerous = true;
         // v4: `categories = chat.dangerCategories?.length ? chat.dangerCategories
         //      : ['unspecified']`; each → a flag { category, score:1, ... }.
@@ -1428,18 +1436,13 @@ where
             .get("isDangerousCompatible")
             .and_then(Value::as_bool)
             == Some(true);
-        if danger_settings.mode == "AUTO_ROUTE" && !profile_is_dangerous_compatible {
+        if !profile_is_dangerous_compatible {
             let route = deps
                 .danger_router
                 .resolve(
                     &effective_profile,
                     &effective_api_key,
-                    &DangerSettings {
-                        mode: danger_settings.mode.clone(),
-                        uncensored_text_profile_id: danger_settings
-                            .uncensored_text_profile_id
-                            .clone(),
-                    },
+                    &concierge_policy,
                     &user_id,
                     // v4's danger-orchestrator sites take the parameter's `[]`
                     // default: the pre-classification reroute happens BEFORE the
@@ -1464,10 +1467,31 @@ where
                         );
                     }
                 }
+                tracing::info!(
+                    target: "quilltap::chat_danger_orchestrator",
+                    chat_id = %chat_id,
+                    original_profile = %json_str(&connection_profile, "name").unwrap_or_default(),
+                    uncensored_profile = %route.connection_profile.name,
+                    "[DangerousContent] Rerouted to uncensored provider (Unmoderated chat)"
+                );
                 effective_profile = route.connection_profile;
                 effective_api_key = route.api_key;
                 did_reroute = true;
+            } else {
+                tracing::debug!(
+                    target: "quilltap::chat_danger_orchestrator",
+                    chat_id = %chat_id,
+                    reason = %route.reason,
+                    "[DangerousContent] Unmoderated chat not rerouted"
+                );
             }
+        } else {
+            tracing::debug!(
+                target: "quilltap::chat_danger_orchestrator",
+                chat_id = %chat_id,
+                profile = %json_str(&connection_profile, "name").unwrap_or_default(),
+                "[DangerousContent] Unmoderated chat already on an uncensored-compatible profile"
+            );
         }
         danger_flags = Some(flags);
     }
@@ -1650,6 +1674,7 @@ where
             completion: deps.completion,
             user_id: &user_id,
             now_ms: input.clock.now_ms,
+            chat_id: Some(&chat_id),
         };
         crate::services::chat_files::load_and_process_files(
             &process_files_deps,
@@ -2317,11 +2342,6 @@ where
         }
         out
     };
-    // v4 `dangerSettings` in the cheap-LLM subset the reroute reads.
-    let danger_for_recall = crate::cheap_llm::DangerousContentSettings {
-        mode: danger_settings.mode.clone(),
-        uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
-    };
     let (pre_searched_memories, recall_signals, pre_searched_query_embedding) = {
         // The two status frames (`recalling_keywords`, `recalling_memories`) v4 emits
         // from inside `proactiveRecallTask`; the closure stamps the character name/id.
@@ -2344,7 +2364,7 @@ where
             content: &content,
             existing_messages: &existing_messages,
             cheap_llm_selection: cheap_llm_selection.as_ref(),
-            danger_settings: &danger_for_recall,
+            concierge_policy: &concierge_policy,
             available_profiles: &available_cheap_profiles,
             user_id: &user_id,
             chat_id: &chat_id,
@@ -2418,16 +2438,15 @@ where
         cached_compression_result,
         cached_compression_message_count,
         cheap_llm_selection: cheap_llm_selection.clone(),
-        // v4 `uncensoredFallbackOptions: (isChatActiveDangerous && dangerSettings &&
-        // cheapLLMSelection) ? { dangerSettings, availableProfiles: allProfiles,
-        // isDangerousChat: true } : undefined`. The corpus salons are not dangerous,
-        // so this is `None` there; wired faithfully for the dangerous path.
-        uncensored_fallback: if is_dangerous_chat && cheap_llm_selection.is_some() {
+        // v4 `uncensoredFallbackOptions: (conciergePolicy?.routeDirect &&
+        // cheapLLMSelection) ? { conciergePolicy, availableProfiles: allProfiles,
+        // isDangerousChat: true } : undefined` (`3b463d6b1`, #76 — it asked
+        // `shouldUseUncensoredRoute(chat) && dangerSettings` before: the policy
+        // folds in "on duty"). The corpus salons are not Unmoderated, so this is
+        // `None` there; wired faithfully for the Unmoderated path.
+        uncensored_fallback: if concierge_policy.route_direct && cheap_llm_selection.is_some() {
             Some(build_context::OwnedUncensoredFallback {
-                danger_settings: crate::cheap_llm::DangerousContentSettings {
-                    mode: danger_settings.mode.clone(),
-                    uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
-                },
+                concierge_policy: concierge_policy.clone(),
                 available_profiles: available_cheap_profiles.clone(),
             })
         } else {
@@ -2538,6 +2557,7 @@ where
             completion: deps.completion,
             user_id: &user_id,
             now_ms: input.clock.now_ms,
+            chat_id: Some(&chat_id),
         },
         connection_profile: &connection_profile,
     };
@@ -2885,10 +2905,9 @@ where
         transcoder: deps.image_transcoder,
         user_id: &user_id,
         now_ms: input.clock.now_ms,
-    };
-    let failover_danger_settings = DangerSettings {
-        mode: danger_settings.mode.clone(),
-        uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
+        // v4 `3b463d6b1`: the reroute's attachment re-decide describes FOR
+        // this chat (`adaptMessagesForProfile(…, { chatId })`).
+        chat_id: Some(&chat_id),
     };
     let primary = primary_stream::run_primary_stream(
         db,
@@ -2897,13 +2916,14 @@ where
         &mut preserve,
         Some(&fallback_repos),
         // v4 `8bd080267` (#73): the orchestrator hands `runPrimaryStream` its
-        // `dangerSettings`, so a thrown refusal reaches the understudy.
+        // Concierge policy (`dangerSettings` until `3b463d6b1`), so a thrown
+        // refusal reaches the understudy.
         provider_failover::ConciergeFailoverSeam {
             router: deps.danger_router,
             // v4 `4d370a90f` (`primary-stream.service.ts:400`): the turn's
             // snapshot, re-read by the failover at refusal time.
             concierge_state: Some(get_concierge_state(Some(&chat))),
-            danger_settings: Some(&failover_danger_settings),
+            concierge_policy: Some(&concierge_policy),
             adapter: Some(&adapter_deps),
         },
         RunPrimaryStreamOptions {
@@ -3303,7 +3323,7 @@ where
             state: &mut streaming_state,
             tool_messages_length: tool_messages_len,
             content_was_flagged_dangerous,
-            danger_settings: failover_danger_settings.clone(),
+            concierge_policy: concierge_policy.clone(),
             // v4 `4d370a90f` (`orchestrator.service.ts:1629`).
             concierge_state: Some(get_concierge_state(Some(&chat))),
             connection_profile: effective_profile.clone(),
@@ -3467,10 +3487,7 @@ where
             is_continue_mode,
             window_size: 10,
             compression_target_tokens: 0,
-            danger_settings: Some(crate::cheap_llm::DangerousContentSettings {
-                mode: danger_settings.mode.clone(),
-                uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
-            }),
+            concierge_policy: Some(concierge_policy.clone()),
             available_profiles: available_cheap_profiles.clone(),
             now_ms: input.clock.now_ms,
         };
@@ -3482,9 +3499,6 @@ where
             cheap_llm_settings_present: s.cheap_llm_settings_present,
             auto_detect_rng: Some(s.auto_detect_rng),
             answer_confirmation_global_enabled: s.answer_confirmation_global_enabled,
-            // W4.2u: the resolved danger mode (off-duty / exempt / global-OFF all
-            // collapse to `"OFF"`) gates the danger-classification enqueue.
-            danger_mode_off: danger_settings.mode == "OFF",
         });
 
         let result = message_finalizer::finalize_message_response(
@@ -3564,10 +3578,6 @@ where
                 // internally (only consulted on an active-dangerous chat); the ported
                 // service takes them injected. Pass the already-resolved effective
                 // settings so a dangerous room does the uncensored swap on both sides.
-                let summary_danger = crate::cheap_llm::DangerousContentSettings {
-                    mode: danger_settings.mode.clone(),
-                    uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
-                };
                 run_summary_check(
                     deps,
                     &chat_id,
@@ -3575,7 +3585,7 @@ where
                     &original_profile,
                     &cheap_settings,
                     &available_cheap_profiles,
-                    Some(&summary_danger),
+                    Some(&concierge_policy),
                 )
                 .await?;
             }
@@ -3661,17 +3671,16 @@ where
             Some(&effective_profile.model_name),
         );
         // v4 `logger.warn('Empty response for chat …', {…})` — the payload
-        // gains `finishReason` + `moderationRefusal` (bug 93). `danger_mode` is
-        // v4's `dangerMode: dangerSettings.mode` (the a14a1811 §3 review — a
-        // moderation refusal is exactly when the operator wants to see whether
-        // Auto-Route was OFF); `finish_reason` logs "" where v4 logs null
+        // gains `finishReason` + `moderationRefusal` (bug 93). The Concierge pair
+        // is v4's `conciergeSource` / `conciergeState` (`3b463d6b1` — `dangerMode`
+        // before; a moderation refusal is exactly when the operator wants to see
+        // what the Concierge's policy was); `finish_reason` logs "" where v4 logs null
         // (tracing has no null — the empty field plays that part).
         tracing::warn!(
             chat_id = %chat_id,
             uncensored_retry_attempted = recovery_flags.uncensored_retry_attempted,
             same_provider_retry_attempted = recovery_flags.same_provider_retry_attempted,
             content_was_flagged_dangerous,
-            danger_mode = %danger_settings.mode,
             finish_reason = empty_finish_reason.as_deref().unwrap_or(""),
             moderation_refusal = crate::moderation_finish_reason::is_moderation_finish_reason(
                 empty_finish_reason.as_deref()
@@ -3684,7 +3693,8 @@ where
                 .iter()
                 .map(|a| (a.profile_name.as_str(), a.provider.as_str(), a.trigger.as_str()))
                 .collect::<Vec<_>>(),
-            danger_mode_for_chain = %danger_settings.mode,
+            concierge_source = concierge_policy.source.as_str(),
+            concierge_state = concierge_policy.state.as_str(),
             provider = %effective_profile.provider,
             model = %effective_profile.model_name,
             "Empty response"
@@ -3982,7 +3992,7 @@ async fn run_summary_check<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST,
     profile: &EffectiveProfile,
     cheap_settings: &crate::services::context_summary::CheapLlmSettings,
     available_profiles: &[crate::cheap_llm::CheapLlmProfile],
-    danger: Option<&crate::cheap_llm::DangerousContentSettings>,
+    danger: Option<&ResolvedConciergePolicy>,
 ) -> Result<(), DbError>
 where
     EMB: EmbeddingProvider + Sync,
@@ -4860,11 +4870,15 @@ mod tests {
                 crate::services::dangerous_content::chat_override::ConciergeState::Moderated,
             )
         }
+
+        fn read_current_concierge_on_duty(&self, _user_id: &str, snapshot: bool) -> bool {
+            snapshot
+        }
         fn resolve(
             &self,
             p: &EffectiveProfile,
             k: &str,
-            _s: &crate::services::provider_failover::DangerSettings,
+            _s: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             _u: &str,
             _mimes: &[String],
         ) -> impl std::future::Future<Output = crate::services::provider_failover::RouteResult> + Send
@@ -4877,13 +4891,14 @@ mod tests {
                     connection_profile: profile,
                     api_key: key,
                     profile_row: None,
+                    reason: String::new(),
                 }
             }
         }
         async fn resolve_understudy(
             &self,
             _user_id: &str,
-            _settings: &crate::services::provider_failover::DangerSettings,
+            _settings: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             _exclude: &[String],
             _mimes: &[String],
         ) -> Option<crate::services::provider_failover::TextUnderstudy> {
@@ -4973,6 +4988,7 @@ mod tests {
             fn describe<'a>(
                 &'a self,
                 _file: crate::services::file_fallback::FallbackFile,
+                _chat_id: Option<&'a str>,
             ) -> std::pin::Pin<
                 Box<
                     dyn std::future::Future<Output = crate::services::file_fallback::FallbackResult>

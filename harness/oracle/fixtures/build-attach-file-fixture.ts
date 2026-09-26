@@ -351,7 +351,8 @@ async function main(): Promise<void> {
     {
       userId: spec.userId,
       imageDescriptionProfileId: CONN_VISION,
-      uncensoredImageDescriptionProfileId: CONN_UNCENSORED,
+      // v4 `3b463d6b1` (#76): the vision fallback is the Concierge desk's.
+      conciergeSettings: { enabled: true, uncensoredVisionProfileId: CONN_UNCENSORED },
     } as never,
     { id: CS_MAIN, createdAt: TS, updatedAt: TS } as never,
   );

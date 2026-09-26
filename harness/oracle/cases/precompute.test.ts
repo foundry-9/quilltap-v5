@@ -57,7 +57,11 @@ interface CaseSpec {
   isContinueMode: boolean;
   content: string;
   chat: Record<string, unknown>;
-  dangerSettings?: Record<string, unknown>;
+  /**
+   * v4 `3b463d6b1` (#76): the stored `conciergeSettings` the policy resolves
+   * from WITH `chat`; absent = off duty (the retired `mode: 'OFF'` default).
+   */
+  concierge?: Record<string, unknown>;
   existingMessages: Array<Record<string, unknown>>;
   distill: DistillSpec;
   /** The candidate cheap-LLM pool `runPreContextPreCompute` is handed (P4.68 —
@@ -210,6 +214,9 @@ async function main(): Promise<void> {
     const { runPreContextPreCompute } = await import(
       '@/lib/services/chat-message/pre-compute.service'
     );
+    const { resolveConciergeSettings } = await import(
+      '@/lib/services/dangerous-content/resolver.service'
+    );
 
     const controller = { enqueue: () => undefined } as never;
     const encoder = new TextEncoder();
@@ -228,7 +235,10 @@ async function main(): Promise<void> {
       compressionEnabled: false,
       bypassCompression: false,
       cheapLLMSelection: spec.cheapSelection as never,
-      dangerSettings: (c.dangerSettings ?? { mode: 'OFF' }) as never,
+      conciergePolicy: resolveConciergeSettings(
+        { conciergeSettings: (c.concierge ?? { enabled: false }) as never },
+        c.chat as never,
+      ),
       allProfiles: (c.allProfiles ?? []) as never,
       controller,
       encoder,

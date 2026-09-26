@@ -46,7 +46,7 @@
 
 use std::collections::HashMap;
 
-use quilltap_core::cheap_llm::{CheapLlmProfile, CheapLlmSelection, DangerousContentSettings};
+use quilltap_core::cheap_llm::{CheapLlmProfile, CheapLlmSelection};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::{characters_read, chats_read};
 use quilltap_core::model::completion::{
@@ -56,6 +56,8 @@ use quilltap_core::model::completion::{
 use quilltap_core::services::answer_confirmation::ReaffirmationProfile;
 use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
+use quilltap_core::services::dangerous_content::chat_override::should_use_uncensored_route;
+use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
 use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::message_finalizer::{
     finalize_message_response, ClosureProspero, FinalizeOptions, FinalizerCharacter, FinalizerChat,
@@ -541,6 +543,15 @@ fn answer_confirmation_tier3_matches_oracle() {
         // override is `ON`.
         let project_override = call.project_id.as_deref().map(|_| "ON");
         let chat = to_finalizer_chat(&chat_row, project_override);
+        // P4.D226's handoff guard: a case the spec calls dangerous must be one
+        // the SEEDED STATE routes uncensored — the legacy label alone silently
+        // stopped counting at v4 #75, which is how this family drifted.
+        assert_eq!(
+            should_use_uncensored_route(Some(&chat_row)),
+            call.dangerous,
+            "{}: the builder's seeded Concierge state disagrees with the spec's `dangerous`",
+            call.name
+        );
 
         let participant = chat_row
             .get("participants")
@@ -610,7 +621,6 @@ fn answer_confirmation_tier3_matches_oracle() {
             cheap_llm_settings_present: true,
             auto_detect_rng: Some(false),
             answer_confirmation_global_enabled: call.global_enabled,
-            danger_mode_off: false,
         });
 
         // W4.3 confirmation inputs (feature ON).
@@ -637,10 +647,15 @@ fn answer_confirmation_tier3_matches_oracle() {
         let confirmation_inputs = FinalizerConfirmationInputs {
             cheap_llm_selection: Some(cheap_selection),
             connection_profile: reaff_profile,
-            danger_settings: Some(DangerousContentSettings {
-                mode: "AUTO_ROUTE".into(),
-                uncensored_text_profile_id: Some(spec.uncensored_profile.id.clone()),
-            }),
+            // v4 `3b463d6b1` (#76): the policy resolved WITH the chat, the
+            // desk's text pick the uncensored profile.
+            concierge_policy: Some(resolve_stored_concierge_settings(
+                Some(&serde_json::json!({
+                    "enabled": true,
+                    "uncensoredTextProfileId": spec.uncensored_profile.id
+                })),
+                Some(&chat_row),
+            )),
             available_profiles: available_profiles.clone(),
         };
 
@@ -686,7 +701,9 @@ fn answer_confirmation_tier3_matches_oracle() {
             compression: FinalizerCompression::default(),
             participant_characters,
             chat_settings,
-            is_dangerous_chat: call.dangerous,
+            // P4.D226's handoff: v4's orchestrator derives the flag from the
+            // chat's state (`shouldUseUncensoredRoute(chat)`), never a label.
+            is_dangerous_chat: should_use_uncensored_route(Some(&chat_row)),
             connection_profile_id: spec.connection_profile.id.clone(),
             confirmation: confirmation_inputs,
             // P4.D172: `[0]` reproduces the frozen 0.0 this family always pinned.

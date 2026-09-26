@@ -61,7 +61,6 @@ interface CaseSpec {
    * UPDATEs on the `chats` rows (both differential sides mirror them). */
   setConcierge?: Array<{
     chatId: string;
-    conciergeOverride: 'OFF' | 'UNCENSORED' | null;
     isDangerousChat: boolean | null;
     dangerCategories: string[] | null;
     /** P4.D226 (v4 `4d370a90f`): the three-state columns the payloads derive
@@ -213,10 +212,10 @@ async function runCase(
     ]);
   }
 
+  // P4.D227 (v4 `3b463d6b1`, #76): `conciergeOverride` is DROPPED at this pin — the legacy half is gone from the plant.
   // P4.D143: paint the Concierge states the committed fixture cannot express.
   for (const set of c.setConcierge ?? []) {
-    rawQuery('UPDATE "chats" SET "conciergeOverride" = ?, "isDangerousChat" = ?, "dangerCategories" = ? WHERE "id" = ?', [
-      set.conciergeOverride,
+    rawQuery('UPDATE "chats" SET "isDangerousChat" = ?, "dangerCategories" = ? WHERE "id" = ?', [
       set.isDangerousChat === null ? null : set.isDangerousChat ? 1 : 0,
       set.dangerCategories === null ? null : JSON.stringify(set.dangerCategories),
       set.chatId,
@@ -373,11 +372,11 @@ async function main(): Promise<void> {
       kind: 'list',
       url: 'http://localhost/api/v1/chats',
       setConcierge: [
-        { chatId: soloId, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: null,
+        { chatId: soloId, isDangerousChat: true, dangerCategories: null,
           conciergeMode: 'locked', conciergeModeSetBy: 'operator', conciergeModeReason: 'migration' },
-        { chatId: groupId, conciergeOverride: 'UNCENSORED', isDangerousChat: false, dangerCategories: null,
+        { chatId: groupId, isDangerousChat: false, dangerCategories: null,
           conciergeMode: 'unmoderated', conciergeModeSetBy: 'operator', conciergeModeReason: 'manual' },
-        { chatId: thirdId, conciergeOverride: null, isDangerousChat: true, dangerCategories: ['Violence', 'Substance Use'],
+        { chatId: thirdId, isDangerousChat: true, dangerCategories: ['Violence', 'Substance Use'],
           conciergeMode: 'unmoderated', conciergeModeSetBy: 'concierge', conciergeModeReason: 'classifier' },
       ],
     },
@@ -392,7 +391,7 @@ async function main(): Promise<void> {
       url: `http://localhost/api/v1/chats/${soloId}`,
       chatId: soloId,
       setConcierge: [
-        { chatId: soloId, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: ['Violence'],
+        { chatId: soloId, isDangerousChat: true, dangerCategories: ['Violence'],
           conciergeMode: 'unmoderated', conciergeModeSetBy: 'concierge', conciergeModeReason: 'refusals',
           moderationRefusalCount: 2 },
       ],

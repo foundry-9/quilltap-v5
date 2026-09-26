@@ -98,6 +98,7 @@ use std::sync::Arc;
 #[serde(rename_all = "camelCase")]
 struct Spec {
     test_pepper_base64: String,
+    user_id: String,
     cases: Vec<CaseSpec>,
 }
 
@@ -111,6 +112,11 @@ struct CaseSpec {
     now_ms: i64,
     random01: f64,
     request: Value,
+    /// P4.D227 (v4 `3b463d6b1`, #76): the case's own stored
+    /// `conciergeSettings`, written raw onto this copy's settings row before
+    /// the create (the `newChatsStartAs` arms) — the oracle's bytes.
+    #[serde(default)]
+    concierge_settings: Option<Value>,
     #[serde(default)]
     greeting_content: Option<String>,
     #[serde(default)]
@@ -689,6 +695,15 @@ fn chat_create_capstone_matches_oracle() {
             w
         };
         let main_w = open_w(&main_work);
+        if let Some(settings) = &c.concierge_settings {
+            main_w
+                .connection()
+                .execute(
+                    "UPDATE chat_settings SET \"conciergeSettings\" = ?1 WHERE \"userId\" = ?2",
+                    rusqlite::params![settings.to_string(), spec.user_id],
+                )
+                .expect("plant the case's Concierge settings");
+        }
         let mount_w = open_w(&mount_work);
         let llm_w = open_w(&llm_work);
 
@@ -1005,7 +1020,36 @@ fn chat_create_capstone_matches_oracle() {
         // whole-DTO diff below, because the null seam drops a NULL key on both
         // sides and a missing re-read would otherwise read as "absent" (the
         // order's M8).
-        if let Some(asked) = c.request.get("conciergeState").and_then(Value::as_str) {
+        // P4.D227 (v4 `3b463d6b1`, #76): what the create APPLIES — the request's
+        // state, else the operator's `newChatsStartAs` default; NOTHING while
+        // the Concierge is off duty (a stale form's ask, or the default, is
+        // ignored), so the INSERT's NULL columns stand and are dropped by the
+        // null seam on both sides.
+        let settings = c.concierge_settings.as_ref();
+        let on_duty = settings
+            .and_then(|s| s.get("enabled"))
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let applied = c
+            .request
+            .get("conciergeState")
+            .and_then(Value::as_str)
+            .or_else(|| {
+                settings
+                    .and_then(|s| s.get("newChatsStartAs"))
+                    .and_then(Value::as_str)
+            })
+            .filter(|_| on_duty);
+        if !on_duty {
+            for key in ["conciergeMode", "conciergeModeSetBy", "conciergeModeReason"] {
+                assert!(
+                    got_dto["chat"].get(key).is_none_or(Value::is_null),
+                    "case {}: off duty, the create applies no `{key}`",
+                    c.name
+                );
+            }
+        }
+        if let Some(asked) = applied {
             if asked != "moderated" {
                 assert_eq!(
                     got_dto["chat"]["conciergeMode"].as_str(),

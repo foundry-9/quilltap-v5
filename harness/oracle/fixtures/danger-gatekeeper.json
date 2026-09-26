@@ -27,14 +27,11 @@
     {
       "id": "5e000000-0000-4000-8000-0000000000a1",
       "user": "A",
-      "dangerousContentSettings": {
-        "mode": "AUTO_ROUTE",
-        "threshold": 0.7,
-        "scanTextChat": true,
-        "scanImagePrompts": true,
-        "scanImageGeneration": false,
-        "displayMode": "SHOW",
-        "showWarningBadges": true
+      "conciergeSettings": {
+        "enabled": true,
+        "preScreen": {
+          "summaryClassification": true
+        }
       },
       "cheapLLMSettings": {
         "strategy": "PROVIDER_CHEAPEST",
@@ -44,14 +41,8 @@
     {
       "id": "5e000000-0000-4000-8000-0000000000b1",
       "user": "B",
-      "dangerousContentSettings": {
-        "mode": "OFF",
-        "threshold": 0.7,
-        "scanTextChat": true,
-        "scanImagePrompts": true,
-        "scanImageGeneration": false,
-        "displayMode": "SHOW",
-        "showWarningBadges": true
+      "conciergeSettings": {
+        "enabled": true
       },
       "cheapLLMSettings": {
         "strategy": "PROVIDER_CHEAPEST",

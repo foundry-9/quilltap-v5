@@ -49,6 +49,7 @@ use crate::services::dangerous_content::image_failover::{FailoverProfile, ImageP
 use crate::services::dangerous_content::provider_routing::{
     resolve_image_provider_for_dangerous_content, ApiKeyResolver, RouteProfile,
 };
+use crate::services::dangerous_content::resolver::resolve_concierge_settings;
 use crate::services::image_job_common as common;
 use crate::services::image_job_storage::write_character_avatar_to_vault;
 use crate::services::lantern_notifications::{
@@ -415,11 +416,22 @@ where
         }
     }
 
-    // 8. Concierge pre-scan (chatSettings → danger settings; classify + reroute).
+    // 8. Concierge check — classify the prompt for dangerous content when the
+    // chat's pre-screen is on (off duty, Locked and Unmoderated chats skip it;
+    // an Unmoderated chat routes direct instead — v4 `3b463d6b1`, #76).
     let chat_settings = db
         .read_main(move |conn| crate::db::chat_settings::find_by_user_id(conn, user_id))
         .map_err(|e| e.to_string())?;
-    let danger_settings = common::resolve_danger_settings_for_chat(chat_settings.as_ref(), &chat);
+    let concierge_policy = resolve_concierge_settings(chat_settings.as_ref(), Some(&chat));
+    tracing::debug!(
+        target: LOG_TARGET,
+        context = CONTEXT,
+        job_id = job_id,
+        concierge_source = concierge_policy.source.as_str(),
+        pre_screen = concierge_policy.pre_screen.enabled,
+        scan_image_prompts = concierge_policy.pre_screen.scan_image_prompts,
+        "[CharacterAvatar] Concierge policy resolved"
+    );
 
     // Effective profile (may be rerouted). Track id/provider/model/params/key.
     let mut eff_id = common::str_field(&image_profile, "id")
@@ -436,7 +448,44 @@ where
         .to_string();
     let mut eff_api_key = api_key.clone();
 
-    if danger_settings.mode != "OFF" && danger_settings.scan_image_prompts {
+    if concierge_policy.route_direct {
+        // An Unmoderated chat goes straight to the uncensored desk: the verdict
+        // is already in, so there is no pre-screen to wait on.
+        let original = RouteProfile {
+            id: eff_id.clone(),
+            name: eff_name.clone(),
+            provider: eff_provider.clone(),
+            model_name: eff_model.clone(),
+            base_url: common::owned_field(&image_profile, "baseUrl"),
+        };
+        let orig_key = api_key.clone();
+        let policy = concierge_policy.clone();
+        let uid = user_id.to_string();
+        let api_keys = deps.api_keys;
+        let route = db
+            .read_main(move |conn| {
+                Ok(resolve_image_provider_for_dangerous_content(
+                    conn, api_keys, &original, &orig_key, &policy, &uid,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        if route.rerouted {
+            eff_id = route.image_profile.id.clone();
+            eff_provider = route.image_profile.provider.clone();
+            eff_model = route.image_profile.model_name.clone();
+            eff_name = route.image_profile.name.clone();
+            eff_api_key = route.api_key.clone();
+        }
+        tracing::info!(
+            target: LOG_TARGET,
+            context = CONTEXT,
+            job_id = job_id,
+            rerouted = route.rerouted,
+            profile = %eff_name,
+            "[CharacterAvatar] Unmoderated chat: routed direct to the uncensored desk"
+        );
+    } else if concierge_policy.pre_screen.enabled && concierge_policy.pre_screen.scan_image_prompts
+    {
         // Build the cheap-LLM selection for classification. v4 wraps
         // `resolveCheapLLMSelectionForUser` in a try/catch and WARNS on a throw
         // (`:237`), leaving `cheapLLMSelection` null so the classification is
@@ -471,12 +520,12 @@ where
                 &prompt,
                 &selection,
                 user_id,
-                &danger_settings,
+                &concierge_policy,
                 Some(&payload.chat_id),
             )
             .await;
             // v4 logs the verdict on `isDangerous` ALONE (`:255`) and only then
-            // asks about the mode (`:274`/`:282` live inside the AUTO_ROUTE
+            // asks about the policy (`:274`/`:282` live inside the failover
             // arm). v5 had collapsed the two into one conjunction, which is
             // routing-equivalent but silent in DETECT_ONLY — where the verdict
             // is the only thing the operator gets.
@@ -496,11 +545,11 @@ where
                     job_id = job_id,
                     score = classification.score,
                     categoriesJson = %categories_json,
-                    mode = %danger_settings.mode,
+                    concierge_source = concierge_policy.source.as_str(),
                     "[CharacterAvatar] Avatar prompt classified as dangerous"
                 );
             }
-            if classification.is_dangerous && danger_settings.mode == "AUTO_ROUTE" {
+            if classification.is_dangerous && concierge_policy.failover_allowed {
                 let original = RouteProfile {
                     id: eff_id.clone(),
                     name: common::str_field(&image_profile, "name")
@@ -511,19 +560,12 @@ where
                     base_url: common::owned_field(&image_profile, "baseUrl"),
                 };
                 let orig_key = api_key.clone();
-                let mode = danger_settings.mode.clone();
-                let uncensored = danger_settings.uncensored_image_profile_id.clone();
+                let policy = concierge_policy.clone();
                 let uid = user_id.to_string();
                 let api_keys = deps.api_keys;
                 let route = match db.read_main(move |conn| {
                     Ok(resolve_image_provider_for_dangerous_content(
-                        conn,
-                        api_keys,
-                        &original,
-                        &orig_key,
-                        &mode,
-                        uncensored.as_deref(),
-                        &uid,
+                        conn, api_keys, &original, &orig_key, &policy, &uid,
                     ))
                 }) {
                     Ok(route) => Some(route),
@@ -622,7 +664,7 @@ where
         deps.declarations_for,
         "background-jobs.character-avatar",
         "background-jobs.character-avatar.concierge-route",
-        &danger_settings,
+        &concierge_policy,
         user_id,
         Some(&payload.chat_id),
         Some(&chat),
@@ -1247,7 +1289,7 @@ mod log_line_tests {
             &self,
             _content: &str,
             _user_id: &str,
-            _settings: &crate::db::chat_settings::DangerousContentSettings,
+            _concierge_policy: &crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
             _chat_id: Option<&str>,
         ) -> crate::services::dangerous_content::gatekeeper::ModerationOutcome {
             use crate::services::dangerous_content::gatekeeper::{
@@ -1436,9 +1478,19 @@ mod log_line_tests {
                     settings["uncensoredImageProfileId"] =
                         serde_json::Value::String(UNCENSORED_PROFILE.to_string());
                 }
+                // The retired bag, translated as v4's migration translates it
+                // (v4 `3b463d6b1`: `conciergeSettings` is the only home now).
+                let concierge = crate::services::dangerous_content::legacy_concierge_settings::map_legacy_concierge_settings(
+                    &crate::services::dangerous_content::legacy_concierge_settings::LegacyConciergeSources {
+                        dangerous_content_settings: Some(&settings),
+                        uncensored_image_description_profile_id: None,
+                        cheap_llm_settings: None,
+                        has_unmoderated_chats: false,
+                    },
+                );
                 let updated = main.execute(
-                    "UPDATE chat_settings SET dangerousContentSettings = ?1 WHERE userId = ?2",
-                    rusqlite::params![settings.to_string(), USER],
+                    "UPDATE chat_settings SET conciergeSettings = ?1 WHERE userId = ?2",
+                    rusqlite::params![concierge.to_value().to_string(), USER],
                 )?;
                 assert_eq!(updated, 1, "the provisioned chat_settings row");
             }
@@ -1860,12 +1912,14 @@ mod log_line_tests {
 
     // --- v4 `:255` / `:274` / `:282` — the Concierge pre-scan's three lines ---
 
-    /// v4 logs the VERDICT on `isDangerous` alone and asks about the mode only
-    /// afterwards, so DETECT_ONLY — where nothing is rerouted — is exactly the
-    /// arm where the verdict is the operator's only signal. v5 had collapsed the
-    /// two conditions into one, which routes identically and says nothing here.
+    /// v4 logs the VERDICT on `isDangerous` alone and asks the failover
+    /// question only afterwards. Since `3b463d6b1` (#76) a retired
+    /// DETECT_ONLY translates to "on duty, pre-screen on" — which GAINS
+    /// failover (the behaviour change of record) — so the verdict carries the
+    /// policy's source and the desk IS asked; with no uncensored image
+    /// profile it answers v4's `:282` sentence and the portrait still lands.
     #[test]
-    fn a_dangerous_verdict_is_logged_in_detect_only_where_nothing_reroutes() {
+    fn a_dangerous_verdict_carries_the_policy_source_and_asks_the_desk() {
         let (out, lines) = run_with_moderation(
             Arrangement {
                 danger_mode: "DETECT_ONLY",
@@ -1874,7 +1928,7 @@ mod log_line_tests {
             one_png(),
             &FlagsEverything,
         );
-        assert!(out.is_ok(), "DETECT_ONLY still draws the portrait: {out:?}");
+        assert!(out.is_ok(), "the portrait still draws: {out:?}");
 
         let line = one(
             &lines,
@@ -1893,15 +1947,10 @@ mod log_line_tests {
             line.contains("categoriesJson=[\"violence\"]"),
             "v4 maps to the category NAMES, as an array (the `…Json` convention): {line}"
         );
-        assert!(line.contains("mode=DETECT_ONLY"), "{line}");
+        assert!(line.contains("concierge_source=global"), "{line}");
         // The routing read succeeded, so v4's `:292` catch stayed silent.
         none(&lines, CLASSIFICATION_FAILED);
-        // DETECT_ONLY asks no routing question at all.
-        none(
-            &lines,
-            "[CharacterAvatar] Rerouted to uncensored image provider",
-        );
-        none(
+        one(
             &lines,
             "[CharacterAvatar] No uncensored image provider available, using original",
         );
@@ -1927,7 +1976,7 @@ mod log_line_tests {
             &lines,
             "[CharacterAvatar] Avatar prompt classified as dangerous",
         );
-        assert!(verdict.contains("mode=AUTO_ROUTE"), "{verdict}");
+        assert!(verdict.contains("concierge_source=global"), "{verdict}");
 
         let line = one(
             &lines,

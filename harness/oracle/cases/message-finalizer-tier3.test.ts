@@ -279,6 +279,7 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
+  const { resolveConciergeSettings } = await import('@/lib/services/dangerous-content/resolver.service');
   const { finalizeMessageResponse } = await import(
     '@/lib/services/chat-message/message-finalizer.service'
   );
@@ -408,7 +409,11 @@ async function main(): Promise<void> {
     };
 
     const triggers = {
-      dangerSettings: { mode: 'DETECT_ONLY' },
+      // v4 `3b463d6b1` (#76): the policy the orchestrator resolves WITH the chat.
+      conciergePolicy: resolveConciergeSettings(
+        (call.chatSettings ? chatSettings : null) as never,
+        chat as never,
+      ),
       chatSettings: call.chatSettings ? chatSettings : null,
       participantCharacters,
       resolvedIdentity: { name: character.name, description: '', characterId: character.id },

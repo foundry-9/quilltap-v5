@@ -641,7 +641,7 @@ pub fn build_turn_skip_instruction(character_name: &str, recently_addressed: boo
 /// compression call).
 #[derive(Clone, Debug)]
 pub struct OwnedUncensoredFallback {
-    pub danger_settings: crate::cheap_llm::DangerousContentSettings,
+    pub concierge_policy: crate::services::dangerous_content::resolver::ResolvedConciergePolicy,
     pub available_profiles: Vec<crate::cheap_llm::CheapLlmProfile>,
 }
 
@@ -2210,7 +2210,7 @@ where
                         .uncensored_fallback
                         .as_ref()
                         .map(|u| UncensoredFallbackOptions {
-                            danger_settings: &u.danger_settings,
+                            concierge_policy: &u.concierge_policy,
                             available_profiles: &u.available_profiles,
                             is_dangerous_chat: None,
                         });
@@ -2333,7 +2333,7 @@ where
             .uncensored_fallback
             .as_ref()
             .map(|u| UncensoredFallbackOptions {
-                danger_settings: &u.danger_settings,
+                concierge_policy: &u.concierge_policy,
                 available_profiles: &u.available_profiles,
                 is_dangerous_chat: None,
             });
@@ -4496,7 +4496,7 @@ mod distill_latency_tests {
         let (_interactive, background) = expected_budgets();
 
         let sel = selection();
-        let danger = crate::cheap_llm::DangerousContentSettings::default();
+        let danger = crate::services::dangerous_content::resolver::test_policy("OFF", None);
         let chat = json!({ "id": "chat-1", "timelineMode": "realtime" });
         let existing = vec![
             json!({ "type": "message", "role": "ASSISTANT", "content": "Greetings",
@@ -4520,7 +4520,7 @@ mod distill_latency_tests {
                 content: "No, no. I mean the mission today.",
                 existing_messages: &existing,
                 cheap_llm_selection: Some(&sel),
-                danger_settings: &danger,
+                concierge_policy: &danger,
                 available_profiles: &[],
                 user_id: "user",
                 chat_id: "chat-1",

@@ -108,7 +108,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use quilltap_core::cheap_llm::{CheapLlmSelection, DangerousContentSettings};
+use quilltap_core::cheap_llm::CheapLlmSelection;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{
     CompletionError, CompletionParams, CompletionProvider, CompletionResponse, CompletionUsage,
@@ -116,6 +116,7 @@ use quilltap_core::model::completion::{
 use quilltap_core::model::embedding::ErasedEmbeddingProvider;
 use quilltap_core::model::wire::CannedWireTransport;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
 use quilltap_core::services::embedding_provider::ApiEmbeddingProvider;
 use quilltap_core::services::memory_service::SemanticSearchResult;
 use quilltap_core::services::pre_compute::{proactive_recall_task, ProactiveRecallInput};
@@ -142,8 +143,10 @@ struct CaseSpec {
     is_continue_mode: bool,
     content: String,
     chat: Value,
+    /// v4 `3b463d6b1` (#76): the stored `conciergeSettings` the policy
+    /// resolves from WITH `chat`; absent = off duty.
     #[serde(default)]
-    danger_settings: Option<Value>,
+    concierge: Option<Value>,
     /// P4.68: the connection profiles `resolveUncensoredCheapLLMSelection` may
     /// swap to. v4 takes these as a PARAMETER (`allProfiles`), not a DB read, so
     /// the corpus carries them and no fixture DB needs widening.
@@ -357,26 +360,6 @@ fn profiles_from(rows: &[Value]) -> Vec<quilltap_core::cheap_llm::CheapLlmProfil
         .collect()
 }
 
-fn danger_from(v: Option<&Value>) -> DangerousContentSettings {
-    match v {
-        Some(d) => DangerousContentSettings {
-            mode: d
-                .get("mode")
-                .and_then(Value::as_str)
-                .unwrap_or("OFF")
-                .to_string(),
-            uncensored_text_profile_id: d
-                .get("uncensoredTextProfileId")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-        },
-        None => DangerousContentSettings {
-            mode: "OFF".to_string(),
-            uncensored_text_profile_id: None,
-        },
-    }
-}
-
 #[tokio::test]
 async fn precompute_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_PRECOMPUTE") else {
@@ -449,7 +432,11 @@ async fn precompute_matches_oracle() {
         ));
 
         let selection = selection_from(&spec.cheap_selection);
-        let danger = danger_from(case.danger_settings.as_ref());
+        let off_duty = serde_json::json!({ "enabled": false });
+        let policy = resolve_stored_concierge_settings(
+            Some(case.concierge.as_ref().unwrap_or(&off_duty)),
+            Some(&case.chat),
+        );
         let profiles = profiles_from(&case.all_profiles);
         let input = ProactiveRecallInput {
             chat: &case.chat,
@@ -461,7 +448,7 @@ async fn precompute_matches_oracle() {
             content: &case.content,
             existing_messages: &case.existing_messages,
             cheap_llm_selection: Some(&selection),
-            danger_settings: &danger,
+            concierge_policy: &policy,
             available_profiles: &profiles,
             user_id: &spec.user_id,
             chat_id: case

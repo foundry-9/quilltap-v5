@@ -249,9 +249,15 @@ pub fn remap_backup_data(
         fields_owned(r, c, &["id"], target_user_id)
     });
 
-    // Remap chat settings
+    // Remap chat settings. A backup from before 4.10 carries the retired
+    // Concierge settings (dangerousContentSettings, the top-level vision
+    // fallback, the crafter under cheapLLMSettings) and no conciergeSettings;
+    // translate them here, exactly as add-concierge-settings-v1 does, before
+    // the repository's schema strips the old keys (v4 `3b463d6b1`, #76). The
+    // Unmoderated flag reads the BACKUP's chats.
+    let backup_has_unmoderated_chats = backup_has_unmoderated_chats(&data.chats);
     let chat_settings = each(&data.chat_settings, |s| {
-        remap_chat_settings(r, s, target_user_id)
+        remap_chat_settings(r, s, target_user_id, backup_has_unmoderated_chats)
     });
 
     // Remap folders
@@ -622,14 +628,36 @@ fn remap_chat(r: &mut UuidRemapper, chat: &Value, target_user_id: &str) -> Value
 /// written **only when truthy** (v4 uses conditional spreads), so a `null` or
 /// absent nested id stays exactly as it was rather than being overwritten with
 /// `null`.
-fn remap_chat_settings(r: &mut UuidRemapper, settings: &Value, target_user_id: &str) -> Value {
+/// v4 `(data.chats || []).some(chat =>
+/// getConciergeState(withConciergeModeFromLegacy(chat)) === 'unmoderated')` —
+/// whether the BACKUP (not the target instance) holds an Unmoderated chat,
+/// deriving a pre-4.10 chat's state from its legacy pair first.
+pub fn backup_has_unmoderated_chats(chats: &[Value]) -> bool {
+    use crate::services::dangerous_content::chat_override::{
+        get_concierge_state, with_concierge_mode_from_legacy, ConciergeState,
+    };
+    chats.iter().any(|chat| {
+        get_concierge_state(Some(&with_concierge_mode_from_legacy(chat.clone())))
+            == ConciergeState::Unmoderated
+    })
+}
+
+fn remap_chat_settings(
+    r: &mut UuidRemapper,
+    settings: &Value,
+    target_user_id: &str,
+    backup_has_unmoderated_chats: bool,
+) -> Value {
+    // v4 `3b463d6b1`: `uncensoredImageDescriptionProfileId` is off the scalar
+    // list (it moved into `conciergeSettings`); the mint ORDER follows v4's
+    // statements — the scalars, then the four desk ids, then the cheap-LLM
+    // pair, then the story background.
     let mut remapped = fields_owned(
         r,
         settings,
         &[
             "id",
             "imageDescriptionProfileId",
-            "uncensoredImageDescriptionProfileId",
             "defaultRoleplayTemplateId",
         ],
         target_user_id,
@@ -639,22 +667,37 @@ fn remap_chat_settings(r: &mut UuidRemapper, settings: &Value, target_user_id: &
     }
     let obj = remapped.as_object_mut().expect("checked above");
 
+    // `remapped.conciergeSettings = { ...concierge, ...each desk id remapped
+    // when truthy }`, where `concierge` is the ORIGINAL row translated from
+    // its legacy keys when it carries no truthy `conciergeSettings` — the
+    // stored object otherwise, wholesale.
+    let translated = crate::services::dangerous_content::legacy_concierge_settings::with_concierge_settings_from_legacy(
+        settings,
+        backup_has_unmoderated_chats,
+    );
+    let mut concierge = translated
+        .get("conciergeSettings")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    for f in [
+        "uncensoredTextProfileId",
+        "uncensoredImageProfileId",
+        "uncensoredVisionProfileId",
+        "imagePromptProfileId",
+    ] {
+        if is_truthy(concierge.get(f)) {
+            let old = concierge[f].clone();
+            concierge.insert(f.to_string(), Value::String(r.remap(&old)));
+        }
+    }
+    obj.insert("conciergeSettings".to_string(), Value::Object(concierge));
+
     remap_nested_bag(
         r,
         obj,
         "cheapLLMSettings",
-        &[
-            "userDefinedProfileId",
-            "defaultCheapProfileId",
-            "imagePromptProfileId",
-        ],
-        false,
-    );
-    remap_nested_bag(
-        r,
-        obj,
-        "dangerousContentSettings",
-        &["uncensoredTextProfileId", "uncensoredImageProfileId"],
+        &["userDefinedProfileId", "defaultCheapProfileId"],
         false,
     );
     // storyBackgroundsSettings is guarded on the ONE id

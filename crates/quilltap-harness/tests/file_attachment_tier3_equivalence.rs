@@ -109,6 +109,14 @@ use serde_json::{json, Value};
 // ===========================================================================
 
 #[derive(Deserialize)]
+struct ConciergeChats {
+    #[serde(rename = "lockedChatId")]
+    locked_chat_id: String,
+    #[serde(rename = "helpChatId")]
+    help_chat_id: String,
+}
+
+#[derive(Deserialize)]
 struct Spec {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
@@ -116,6 +124,13 @@ struct Spec {
     user_id: String,
     #[serde(rename = "chatId")]
     chat_id: String,
+    #[serde(rename = "descProfileId")]
+    desc_profile_id: String,
+    #[serde(rename = "uncensoredProfileId")]
+    uncensored_profile_id: String,
+    /// P4.D227 (v4 `3b463d6b1`, #76): section G's Locked + exempt chats.
+    #[serde(rename = "conciergeChats")]
+    concierge_chats: ConciergeChats,
     #[serde(rename = "respProfiles")]
     resp_profiles: HashMap<String, Value>,
     files: Vec<FileSpec>,
@@ -578,6 +593,8 @@ fn file_attachment_matches_oracle() {
         completion: &provider,
         user_id: &spec.user_id,
         now_ms: 0,
+        // v4 `3b463d6b1` (#76): `loadAndProcessFiles` describes WITH the chat.
+        chat_id: Some(&spec.chat_id),
     };
 
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
@@ -662,6 +679,8 @@ fn file_attachment_matches_oracle() {
         transcoder: &transcoder,
         user_id: &spec.user_id,
         now_ms: 0,
+        // v4's case calls `processFileAttachmentFallback` with no options.
+        chat_id: None,
     };
     for (label, profile_key, file_key) in fb_cases {
         let profile = &spec.resp_profiles[*profile_key];
@@ -785,6 +804,8 @@ fn file_attachment_matches_oracle() {
             transcoder: &transcoder,
             user_id: &spec.user_id,
             now_ms: 0,
+            // v4 `3b463d6b1` (#76): the adapter's `options.chatId`.
+            chat_id: Some(&spec.chat_id),
         };
         for c in &spec.adapt_cases {
             let messages = build_messages(&c.messages);
@@ -1021,6 +1042,105 @@ fn file_attachment_matches_oracle() {
         );
     }
 
+    // ---- (G) the uncensored vision fallback under the Concierge policy ----
+    // P4.D227 (v4 `3b463d6b1`, #76): the fallback is the desk's
+    // `uncensoredVisionProfileId`, read through the policy resolved WITH the
+    // chat the image is described for. The primary describer's own chain
+    // (naming the same Z_AI profile) is cut for the section, so on a refusal
+    // the desk is the only possible stand-in: a Moderated chat gets it; a
+    // Locked chat, an exempt help chat, and an off-duty Concierge do not. The
+    // same raw SQL as the oracle, restored afterwards.
+    {
+        let raw = |sql: &'static str, params: Vec<String>| {
+            db.write_blocking(move |ws| {
+                ws.main()
+                    .connection()
+                    .execute(sql, rusqlite::params_from_iter(params.iter()))?;
+                Ok(())
+            })
+            .expect("section G raw write");
+        };
+        raw(
+            "UPDATE connection_profiles SET \"fallbackProfileId\" = NULL WHERE id = ?1",
+            vec![spec.desc_profile_id.clone()],
+        );
+        let arms: [(&str, &str, &str, bool); 4] = [
+            (
+                "fb_concierge_moderated_desk_answers",
+                "conciergeModerated",
+                &spec.chat_id,
+                false,
+            ),
+            (
+                "fb_concierge_locked_no_desk",
+                "conciergeLocked",
+                &spec.concierge_chats.locked_chat_id,
+                false,
+            ),
+            (
+                "fb_concierge_exempt_no_desk",
+                "conciergeHelp",
+                &spec.concierge_chats.help_chat_id,
+                false,
+            ),
+            (
+                "fb_concierge_off_duty_no_desk",
+                "conciergeOffDuty",
+                &spec.chat_id,
+                true,
+            ),
+        ];
+        for (label, file_key, chat_id, off_duty) in arms {
+            if off_duty {
+                raw(
+                    "UPDATE chat_settings SET \"conciergeSettings\" = ?1 WHERE \"userId\" = ?2",
+                    vec![
+                        json!({ "enabled": false, "uncensoredVisionProfileId": spec.uncensored_profile_id })
+                            .to_string(),
+                        spec.user_id.clone(),
+                    ],
+                );
+            }
+            let arm_deps = FallbackDeps {
+                db: &db,
+                completion: &provider,
+                transcoder: &transcoder,
+                user_id: &spec.user_id,
+                now_ms: 0,
+                chat_id: Some(chat_id),
+            };
+            let f = &file_by_key[file_key];
+            let file = FallbackFile {
+                id: f.id.clone(),
+                filename: f.original_filename.clone(),
+                mime_type: f.mime_type.clone(),
+                data: Some(f.data_base64()),
+            };
+            let profile = &spec.resp_profiles["noImg"];
+            let result = rt.block_on(process_file_attachment_fallback(&arm_deps, &file, profile));
+            let got = serde_json::to_value(&result).expect("serialize FallbackResult");
+            let (_family, want) = cases
+                .get(label)
+                .unwrap_or_else(|| panic!("oracle missing case {label}"));
+            assert_eq!(&got, want, "fb case {label} diverged");
+        }
+        raw(
+            "UPDATE chat_settings SET \"conciergeSettings\" = ?1 WHERE \"userId\" = ?2",
+            vec![
+                json!({ "enabled": true, "uncensoredVisionProfileId": spec.uncensored_profile_id })
+                    .to_string(),
+                spec.user_id.clone(),
+            ],
+        );
+        raw(
+            "UPDATE connection_profiles SET \"fallbackProfileId\" = ?1 WHERE id = ?2",
+            vec![
+                spec.uncensored_profile_id.clone(),
+                spec.desc_profile_id.clone(),
+            ],
+        );
+    }
+
     // ---- (D) the describer transport guard (bug 91, a14a1811) ----
     // Mirrors the oracle's section order: patch the settings LAST (no restore —
     // nothing reads them afterwards), point the configured describer at the
@@ -1029,7 +1149,8 @@ fn file_attachment_matches_oracle() {
     // canned provider has no OLLAMA entry, so a send here panics (the
     // mock-level "sendMessage never called" assert, mirrored from v4's test).
     // The uncensored id is cleared too: any primary failure cascades to the
-    // uncensored describer, which would swallow the guard sentence.
+    // uncensored describer, which would swallow the guard sentence (since v4
+    // `3b463d6b1`, #76, the desk's `uncensoredVisionProfileId`).
     // Release the `&db` borrows before the writable reopen (the two deps
     // structs hold only references — `let _` ends them without the
     // drop-non-Drop lint; `db` itself has real drop glue).
@@ -1043,8 +1164,18 @@ fn file_attachment_matches_oracle() {
             .connection()
             .execute(
                 "UPDATE chat_settings SET imageDescriptionProfileId = ?1, \
-                 uncensoredImageDescriptionProfileId = NULL WHERE userId = ?2",
-                rusqlite::params!["30000000-0000-4000-8000-0000000000d3", spec.user_id],
+                 conciergeSettings = ?3 WHERE userId = ?2",
+                rusqlite::params![
+                    "30000000-0000-4000-8000-0000000000d3",
+                    spec.user_id,
+                    // v4's `updateForUser` stores the schema-parsed object
+                    // (v4 `3b463d6b1`, #76: the vision desk cleared).
+                    quilltap_core::db::chat_settings::zod_parse_concierge_settings(
+                        &json!({ "enabled": true })
+                    )
+                    .0
+                    .to_string()
+                ],
             )
             .expect("patch settings for the guard op");
     }
@@ -1064,6 +1195,7 @@ fn file_attachment_matches_oracle() {
             transcoder: &transcoder,
             user_id: &spec.user_id,
             now_ms: 0,
+            chat_id: None,
         };
         let f = &file_by_key["descImage"];
         let file = FallbackFile {
@@ -1125,6 +1257,7 @@ fn file_attachment_matches_oracle() {
             transcoder: &transcoder,
             user_id: &spec.user_id,
             now_ms: 0,
+            chat_id: None,
         };
         let f = &file_by_key["descImage"];
         let file = FallbackFile {

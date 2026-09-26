@@ -19,7 +19,6 @@ use serde_json::Value;
 use crate::cheap_llm::{
     get_cheap_llm_provider, CheapLlmConfig, CheapLlmProfile, CheapLlmSelection,
 };
-use crate::db::chat_settings::DangerousContentSettings;
 use crate::db::runtime::Db;
 use crate::image_gen::params_builder::{
     build_image_gen_params, ImageDeclarations, ImageGenOverrides, ImageParamsLogContext,
@@ -32,6 +31,7 @@ use crate::services::dangerous_content::image_failover::{
     ImageFailoverError, ImageFailoverOutcome, ImagePurpose, ImageUnderstudySource,
 };
 use crate::services::dangerous_content::provider_routing::ApiKeyResolver;
+use crate::services::dangerous_content::resolver::ResolvedConciergePolicy;
 use crate::services::llm_logging::{
     log_llm_call, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage,
     LogResponse,
@@ -339,7 +339,7 @@ pub(crate) async fn generate_job_image<I: ImageProvider, A: ApiKeyResolver>(
     declarations_for: &ImageDeclarationsFn,
     requested_log_context: &'static str,
     other_log_context: &'static str,
-    danger_settings: &DangerousContentSettings,
+    concierge_policy: &ResolvedConciergePolicy,
     user_id: &str,
     chat_id: Option<&str>,
     // v4 `4d370a90f`: the chat, for the chokepoint's Concierge-state snapshot.
@@ -406,17 +406,18 @@ pub(crate) async fn generate_job_image<I: ImageProvider, A: ApiKeyResolver>(
         db,
         api_keys,
         user_id,
-        uncensored_image_profile_id: danger_settings.uncensored_image_profile_id.as_deref(),
+        uncensored_image_profile_id: concierge_policy.desk.image_profile_id.as_deref(),
     };
     generate_image_with_concierge_failover(
         (primary, primary_key),
         attempt,
         &ImageFailoverContext {
             db,
+            user_id,
             chat_id,
             chat,
             purpose,
-            settings: danger_settings,
+            concierge_policy,
             understudy: &understudy,
             profile_kind: RouteProfileKind::Image,
             primary_via,
@@ -455,26 +456,6 @@ pub(crate) fn job_failure_message(prefix: &str, error: &ImageFailoverError) -> S
         }
         _ => format!("{prefix}: {}", error.error.message),
     }
-}
-
-/// v4 `resolveDangerousContentSettings` on a chat + global settings — a thin
-/// wrapper that pulls the global `dangerousContentSettings` off a chat-settings
-/// `Value` and resolves against the chat. Shared by both handlers.
-pub(crate) fn resolve_danger_settings_for_chat(
-    chat_settings: Option<&Value>,
-    chat: &Value,
-) -> crate::db::chat_settings::DangerousContentSettings {
-    let global = chat_settings
-        .and_then(|cs| cs.get("dangerousContentSettings"))
-        .and_then(|d| {
-            serde_json::from_value::<crate::db::chat_settings::DangerousContentSettings>(d.clone())
-                .ok()
-        });
-    crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
-        global,
-        Some(chat),
-    )
-    .settings
 }
 
 /// The project-store `fileStorageManager.uploadFile` seam (the host FsSeam). The
@@ -711,11 +692,13 @@ mod tests {
     ) -> Result<ImageFailoverOutcome<ImageGenResponse>, ImageFailoverError> {
         let declarations: Box<ImageDeclarationsFn> =
             Box::new(|_p: &str| ImageDeclarations::default());
-        let settings: DangerousContentSettings = serde_json::from_value(serde_json::json!({
-            "mode": mode, "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": true,
-            "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true,
-        }))
-        .unwrap();
+        // The retired mode, mapped as v4's migration maps it: `OFF` goes off
+        // duty (no failover), anything else is on duty (failover allowed).
+        let settings =
+            crate::services::dangerous_content::resolver::resolve_stored_concierge_settings(
+                Some(&serde_json::json!({ "enabled": mode != "OFF" })),
+                None,
+            );
         generate_job_image(
             db,
             provider,

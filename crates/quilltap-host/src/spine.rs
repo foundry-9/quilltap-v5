@@ -463,9 +463,9 @@ pub fn orchestrator_chat_settings_from_value(row: &Value) -> OrchestratorChatSet
             .and_then(Value::as_f64)
             .map(|v| v as i64)
             .unwrap_or(10),
-        danger_settings: row
-            .get("dangerousContentSettings")
-            .and_then(|v| serde_json::from_value(v.clone()).ok()),
+        // v4 `3b463d6b1` (#76): the Concierge's own settings object (the
+        // hydrated read already parsed it through the schema twin).
+        concierge_settings: row.get("conciergeSettings").cloned(),
         cheap_llm_strategy: s(cheap, "strategy").unwrap_or_else(|| "PROVIDER_CHEAPEST".to_string()),
         cheap_llm_user_defined_profile_id: s(cheap, "userDefinedProfileId"),
         cheap_llm_default_cheap_profile_id: s(cheap, "defaultCheapProfileId"),
@@ -895,6 +895,7 @@ where
     fn describe<'a>(
         &'a self,
         file: quilltap_core::services::file_fallback::FallbackFile,
+        chat_id: Option<&'a str>,
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<Output = quilltap_core::services::file_fallback::FallbackResult>
@@ -910,6 +911,7 @@ where
                 transcoder: &transcoder,
                 user_id: &self.user_id,
                 now_ms: now_unix_ms(),
+                chat_id,
             };
             quilltap_core::services::file_fallback::generate_image_description(&deps, &file).await
         })
@@ -4070,7 +4072,7 @@ mod tests {
         assert_eq!(s.autonomous_destructive_policy, "opt_in_per_room");
         assert!(!s.agent_mode_default_enabled);
         assert_eq!(s.agent_mode_max_turns, 10);
-        assert!(s.danger_settings.is_none());
+        assert!(s.concierge_settings.is_none());
         assert_eq!(s.cheap_llm_strategy, "PROVIDER_CHEAPEST");
         assert!(s.cheap_llm_fallback_to_local);
     }
@@ -4091,15 +4093,10 @@ mod tests {
             "answerConfirmationSettings": { "enabled": true },
             "agentModeSettings": { "maxTurns": 15, "defaultEnabled": true },
             "autonomousRoomSettings": { "destructiveToolPolicy": "always_allow" },
-            "dangerousContentSettings": {
-                "mode": "AUTO_ROUTE",
-                "threshold": 0.7,
-                "scanTextChat": true,
-                "scanImagePrompts": true,
-                "scanImageGeneration": false,
-                "displayMode": "SHOW",
-                "showWarningBadges": true
-            }
+            "conciergeSettings": { "enabled": false, "newChatsStartAs": "unmoderated" },
+            // The retired bag is ignored (v4 `3b463d6b1` reads only
+            // `conciergeSettings`).
+            "dangerousContentSettings": { "mode": "AUTO_ROUTE" }
         });
         let s = orchestrator_chat_settings_from_value(&row);
         assert!(s.cheap_llm_settings_present);
@@ -4110,7 +4107,10 @@ mod tests {
         assert_eq!(s.autonomous_destructive_policy, "always_allow");
         assert!(s.agent_mode_default_enabled);
         assert_eq!(s.agent_mode_max_turns, 15);
-        assert_eq!(s.danger_settings.as_ref().unwrap().mode, "AUTO_ROUTE");
+        assert_eq!(
+            s.concierge_settings,
+            Some(json!({ "enabled": false, "newChatsStartAs": "unmoderated" }))
+        );
         assert_eq!(s.cheap_llm_strategy, "USER_DEFINED");
         assert_eq!(s.cheap_llm_user_defined_profile_id.as_deref(), Some("p1"));
         assert!(!s.cheap_llm_fallback_to_local);

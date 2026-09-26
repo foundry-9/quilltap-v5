@@ -761,8 +761,8 @@ pub async fn chat_impersonation_voice_preview(
         "[Chats v1] Impersonation voice preview: profile resolved"
     );
 
-    // A chat the Concierge has flagged already runs its turns on the uncensored
-    // route; the rehearsal follows the turn rather than asking a moderated
+    // An Unmoderated chat already runs its turns on the uncensored route; the
+    // rehearsal follows the turn rather than asking a moderated
     // provider to restate what it would refuse. A refusal here is an ordinary
     // preview failure and never escalates on its own (bug 133's principle).
     if crate::services::dangerous_content::chat_override::should_use_uncensored_route(Some(&chat)) {
@@ -772,19 +772,21 @@ pub async fn chat_impersonation_voice_preview(
                 Ok(s) => s,
                 Err(e) => return internal(e),
             };
-        let global = chat_settings
-            .as_ref()
-            .and_then(|s| s.get("dangerousContentSettings"))
-            .and_then(|v| serde_json::from_value(v.clone()).ok());
-        let danger =
-            crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
-                global,
+        // v4 `3b463d6b1` (#76): the chat's Concierge policy, asked `routeDirect`.
+        let concierge_policy =
+            crate::services::dangerous_content::resolver::resolve_concierge_settings(
+                chat_settings.as_ref(),
                 Some(&chat),
-            )
-            .settings;
+            );
+        tracing::debug!(
+            chatId = %chat_id,
+            conciergeSource = concierge_policy.source.as_str(),
+            routeDirect = concierge_policy.route_direct,
+            "[Chats v1] Impersonation voice preview: Unmoderated chat, checking uncensored route"
+        );
         let is_dangerous_compatible =
             profile.get("isDangerousCompatible") == Some(&Value::Bool(true));
-        if danger.mode == "AUTO_ROUTE" && !is_dangerous_compatible {
+        if concierge_policy.route_direct && !is_dangerous_compatible {
             // The api key the helper hands back is discarded —
             // `executeCheapLLMTask` resolves its own from the profile. Only the
             // profile CHOICE is wanted, which is why v4 passes `''` in.
@@ -814,8 +816,7 @@ pub async fn chat_impersonation_voice_preview(
                         &resolver,
                         &original,
                         "",
-                        "AUTO_ROUTE",
-                        danger.uncensored_text_profile_id.as_deref(),
+                        &concierge_policy,
                         user_id,
                         // A rehearsal carries no turn attachments (v4's route
                         // passes nothing, so the `[]` default — v4 `a1d88aa3a`).

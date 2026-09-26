@@ -679,28 +679,13 @@ pub async fn resolve_external_turn<C: CompletionProvider + Sync, E: EmbeddingPro
             .await?;
         }
 
-        // Danger classification — resolve mode OFF from the global settings + chat.
-        let danger_mode_off = {
-            let global = chat_settings
-                .as_ref()
-                .and_then(|s| s.get("dangerousContentSettings").cloned())
-                .and_then(|v| {
-                    serde_json::from_value::<crate::db::chat_settings::DangerousContentSettings>(v)
-                        .ok()
-                });
-            let resolved =
-                crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
-                    global,
-                    Some(&chat),
-                );
-            resolved.settings.mode == "OFF"
-        };
+        // Danger classification — the trigger resolves the chat's Concierge
+        // policy itself (v4 `3b463d6b1`: the summary classifier's gate).
         crate::services::message_finalizer::trigger_chat_danger_classification(
             db,
             chat_id,
             user_id,
             &profile_id,
-            danger_mode_off,
         )
         .await?;
 
@@ -854,22 +839,16 @@ async fn run_summary_check<C: CompletionProvider + Sync, E: EmbeddingProvider + 
         .map(crate::services::orchestrator::cheap_llm_profile_from_value)
         .collect();
 
-    // v4's `generateContextSummary` resolves the user's danger settings internally
-    // (only consulted on an active-dangerous chat); the ported service takes them
-    // injected. Mirror the enclave step (`enclave/step.rs`): resolve from the global
-    // sub-object + the chat, so a dangerous room does the uncensored swap on both
-    // sides. A non-dangerous chat resolves to mode OFF (no swap).
-    let global_danger: Option<crate::db::chat_settings::DangerousContentSettings> = settings
-        .and_then(|s| s.get("dangerousContentSettings"))
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-    let resolved = crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
-        global_danger,
+    // v4's `generateContextSummary` resolves the Concierge policy internally
+    // (only consulted on an active-dangerous chat); the ported service takes it
+    // injected. Mirror the enclave step (`enclave/step.rs`): resolve from the
+    // global settings + the chat (`resolveConciergeSettings(chatSettings, chat)`,
+    // v4 `3b463d6b1`), so an Unmoderated room does the uncensored swap on both
+    // sides.
+    let danger = crate::services::dangerous_content::resolver::resolve_concierge_settings(
+        settings,
         Some(chat),
     );
-    let danger = crate::cheap_llm::DangerousContentSettings {
-        mode: resolved.settings.mode.clone(),
-        uncensored_text_profile_id: resolved.settings.uncensored_text_profile_id.clone(),
-    };
 
     // The seams carry the same executor as the fold itself (the route path has
     // no autonomous-run scope, so both stay UNtagged).

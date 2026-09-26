@@ -52,21 +52,22 @@
   "seedTimestamp": "2020-01-01T00:00:00.000Z",
   "frozenNowMs": 1735732800000,
   "userId": "aa000000-0000-4000-8000-0000000000aa",
-  "user": { "username": "imggen-tester", "name": "Test User", "email": "test@example.com" },
-
+  "user": {
+    "username": "imggen-tester",
+    "name": "Test User",
+    "email": "test@example.com"
+  },
   "charAId": "cccc1111-1111-4111-8111-111111111111",
-  "charA": { "name": "Aurora" },
-
+  "charA": {
+    "name": "Aurora"
+  },
   "lanternMountPointId": "1a4e0000-0000-4000-8000-00000000fee1",
-
   "profileId": "e0000000-0000-4000-8000-0000000000a1",
   "callingParticipantId": "fbaa0000-0000-4000-8000-000000000001",
-
   "apiKeys": {
     "a0000000-0000-4000-8000-0000000000c1": "IMGKEY_ORIG",
     "a0000000-0000-4000-8000-0000000000d1": "CHEAPKEY"
   },
-
   "imageProfiles": [
     {
       "id": "e0000000-0000-4000-8000-0000000000a1",
@@ -84,9 +85,18 @@
         "responseFormat": "b64_json",
         "num_inference_steps": 20,
         "loras": [
-          { "source": "owner/portrait-lora", "scale": 0.8, "triggerPhrase": "shou_xin" },
-          { "source": "https://example.test/second.safetensors" },
-          { "source": "owner/third-lora", "triggerPhrase": "dropped_phrase" }
+          {
+            "source": "owner/portrait-lora",
+            "scale": 0.8,
+            "triggerPhrase": "shou_xin"
+          },
+          {
+            "source": "https://example.test/second.safetensors"
+          },
+          {
+            "source": "owner/third-lora",
+            "triggerPhrase": "dropped_phrase"
+          }
         ]
       },
       "isDefault": true,
@@ -100,13 +110,14 @@
       "modelName": "gpt-image-1",
       "apiKeyId": "a0000000-0000-4000-8000-0000000000c1",
       "baseUrl": null,
-      "parameters": { "output_format": "webp" },
+      "parameters": {
+        "output_format": "webp"
+      },
       "isDefault": false,
       "isDangerousCompatible": false,
       "tags": []
     }
   ],
-
   "connectionProfiles": [
     {
       "id": "c0000000-0000-4000-8000-0000000000d1",
@@ -118,21 +129,35 @@
       "apiKeyId": "a0000000-0000-4000-8000-0000000000d1"
     }
   ],
-
   "chatSettingsOff": {
     "id": "5e000000-0000-4000-8000-0000000000f0",
-    "dangerousContentSettings": {
-      "mode": "OFF",
-      "threshold": 0.7,
-      "scanTextChat": true,
-      "scanImagePrompts": true,
-      "scanImageGeneration": false,
-      "displayMode": "SHOW",
-      "showWarningBadges": true
+    "conciergeSettings": {
+      "enabled": false,
+      "uncensoredTextProfileId": null,
+      "uncensoredImageProfileId": null,
+      "uncensoredVisionProfileId": null,
+      "imagePromptProfileId": null,
+      "autoSwitchAfterRefusals": 2,
+      "newChatsStartAs": "moderated",
+      "display": {
+        "mode": "SHOW",
+        "showWarningBadges": true
+      },
+      "preScreen": {
+        "enabled": false,
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": true,
+        "scanImageGeneration": false,
+        "customClassificationPrompt": null,
+        "summaryClassification": false
+      }
     },
-    "cheapLLMSettings": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false }
+    "cheapLLMSettings": {
+      "strategy": "PROVIDER_CHEAPEST",
+      "fallbackToLocal": false
+    }
   },
-
   "auroraPhysicalDescription": {
     "name": "Casual",
     "usageContext": "everyday",
@@ -141,7 +166,6 @@
     "longPrompt": "a tall woman with long silver hair and grey eyes",
     "completePrompt": "a tall elegant woman with flowing silver hair, sharp grey eyes, and a poised bearing"
   },
-
   "$schemaComment": [
     "P4.70 — the WHOLE tool-input schema (v4 imageGenerationToolInputSchema, a Zod",
     "safeParse over the RAW arguments). `toolInput` is handed to the handler verbatim,",
@@ -175,124 +199,200 @@
     "schema_defaults_only": {
       "id": "aaaa0010-0000-4000-8000-000000000010",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water"}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water"
+      }
     },
     "schema_count_quoted": {
       "id": "aaaa0011-0000-4000-8000-000000000011",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "orientation": "square", "count": "2"}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "orientation": "square",
+        "count": "2"
+      }
     },
     "schema_full_enums": {
       "id": "aaaa0012-0000-4000-8000-000000000012",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "orientation": "landscape", "size": "1792x1024", "style": "natural", "quality": "hd", "negativePrompt": "blurry, low quality, watermark", "count": 3}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "orientation": "landscape",
+        "size": "1792x1024",
+        "style": "natural",
+        "quality": "hd",
+        "negativePrompt": "blurry, low quality, watermark",
+        "count": 3
+      }
     },
     "bug149_size_without_orientation_survives": {
       "id": "aaaa0014-0000-4000-8000-000000000014",
       "op": "generate",
-      "toolInput": {"prompt": "A brass zeppelin moored above a canyon at dusk", "size": "1792x1024"},
+      "toolInput": {
+        "prompt": "A brass zeppelin moored above a canyon at dusk",
+        "size": "1792x1024"
+      },
       "$comment": "d8d2890ee / bug 149: a size with NO orientation. Before the fix the handler passed `orientation ?? 'square'`, so square's 1024x1024 overwrote it and the tool's `size` could never do anything. The other three `requestedOrientation` arms are already covered — neither (schema_defaults_only), orientation only (bug149_orientation_only_landscape) and both (schema_full_enums). The prompt is DELIBERATELY unique: with the bug restored this case's built body collapses onto `schema_defaults_only`'s (same prompt, same profile, square's 1024x1024) and the canned wire answers it happily, so the row measures nothing. A prompt no sibling shares turns the overwrite into a loud canned MISS — measured, not assumed."
     },
     "bug149_orientation_only_landscape": {
       "id": "aaaa0015-0000-4000-8000-000000000015",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "orientation": "landscape"}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "orientation": "landscape"
+      }
     },
     "bug148_quality_max_reaches_the_provider": {
       "id": "aaaa0016-0000-4000-8000-000000000016",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "quality": "max"},
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "quality": "max"
+      },
       "$comment": "d8d2890ee: the widened tool enum end to end. `max` used to be a schema REFUSAL; it now parses, and the dall-e-3 profile's own dialect is what declines it back to `standard`."
     },
     "schema_unknown_key_stripped": {
       "id": "aaaa0013-0000-4000-8000-000000000013",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "orientation": "square", "count": 1, "bogusKey": "zzz"}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "orientation": "square",
+        "count": 1,
+        "bogusKey": "zzz"
+      }
     },
     "schema_refuse_count_over_max": {
       "id": "aaaa0020-0000-4000-8000-000000000020",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": 20}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "count": 20
+      }
     },
     "schema_refuse_count_zero": {
       "id": "aaaa0021-0000-4000-8000-000000000021",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": 0}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "count": 0
+      }
     },
     "schema_refuse_count_fractional": {
       "id": "aaaa0022-0000-4000-8000-000000000022",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": 1.5}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "count": 1.5
+      }
     },
     "schema_refuse_count_quoted_frac": {
       "id": "aaaa0023-0000-4000-8000-000000000023",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": "6.5"}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "count": "6.5"
+      }
     },
     "schema_refuse_count_empty_string": {
       "id": "aaaa0024-0000-4000-8000-000000000024",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": ""}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "count": ""
+      }
     },
     "schema_refuse_count_boolean": {
       "id": "aaaa0025-0000-4000-8000-000000000025",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": true}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "count": true
+      }
     },
     "schema_refuse_count_null": {
       "id": "aaaa0026-0000-4000-8000-000000000026",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": null}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "count": null
+      }
     },
     "schema_refuse_style": {
       "id": "aaaa0027-0000-4000-8000-000000000027",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "style": "bogus"}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "style": "bogus"
+      }
     },
     "schema_refuse_style_null": {
       "id": "aaaa0028-0000-4000-8000-000000000028",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "style": null}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "style": null
+      }
     },
     "schema_refuse_quality": {
       "id": "aaaa0029-0000-4000-8000-000000000029",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "quality": "ultra"}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "quality": "ultra"
+      }
     },
     "schema_refuse_orientation": {
       "id": "aaaa002a-0000-4000-8000-00000000002a",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "orientation": "wide"}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "orientation": "wide"
+      }
     },
     "schema_refuse_aspect_ratio": {
       "id": "aaaa002b-0000-4000-8000-00000000002b",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "aspectRatio": "2:3"}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "aspectRatio": "2:3"
+      }
     },
     "schema_refuse_size": {
       "id": "aaaa002c-0000-4000-8000-00000000002c",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "size": "512x512"}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "size": "512x512"
+      }
     },
     "schema_refuse_negative_prompt_long": {
       "id": "aaaa002d-0000-4000-8000-00000000002d",
       "op": "generate",
-      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "negativePrompt": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+      "toolInput": {
+        "prompt": "A serene mountain lake at dawn, mist over the water",
+        "negativePrompt": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
     },
     "schema_refuse_prompt_too_long": {
       "id": "aaaa002e-0000-4000-8000-00000000002e",
       "op": "generate",
-      "toolInput": {"prompt": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+      "toolInput": {
+        "prompt": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
     },
     "schema_refuse_prompt_empty": {
       "id": "aaaa002f-0000-4000-8000-00000000002f",
       "op": "generate",
-      "toolInput": {"prompt": ""}
+      "toolInput": {
+        "prompt": ""
+      }
     },
     "schema_refuse_prompt_non_string": {
       "id": "aaaa0030-0000-4000-8000-000000000030",
       "op": "generate",
-      "toolInput": {"prompt": 123}
+      "toolInput": {
+        "prompt": 123
+      }
     },
     "schema_refuse_not_an_object": {
       "id": "aaaa0031-0000-4000-8000-000000000031",
@@ -334,20 +434,32 @@
       "avatarGenerationEnabled": false
     },
     "detect_only_sanitizes_appearance": {
-      "$comment": "[cc65d6bfc / bug 133] The image tool's half. Under DETECT_ONLY nothing reroutes on the spot, so a dangerous appearance stays on the moderated provider and must be sanitized — even with an uncensored image profile configured. This case exists because the family's own header said the corpus keeps the Concierge OFF throughout, which made the tool's `routesDangerousToUncensored` derivation structurally invisible while a live divergence sat behind it. The prompt carries a `{{Aurora}}` placeholder, which is what makes `resolveAppearances` run (v4 gates it on `parsePlaceholders(prompt).length > 0`, not on messages), so the classify + sanitize pair fires and the sanitized text reaches the craft prompt, the image key and every llm_logs projection. Pre-fix v5 read mere existence and returned unchanged at rule 4. The uncensored id points at the fixture's one image profile deliberately: nothing on this path dereferences it (the post-hoc reroute is never reached — the generation succeeds), and what the pre-fix trap needed was only that it be NON-EMPTY.",
+      "$comment": "[cc65d6bfc / bug 133] The image tool's half. Under DETECT_ONLY nothing reroutes on the spot, so a dangerous appearance stays on the moderated provider and must be sanitized — even with an uncensored image profile configured. This case exists because the family's own header said the corpus keeps the Concierge OFF throughout, which made the tool's `routesDangerousToUncensored` derivation structurally invisible while a live divergence sat behind it. The prompt carries a `{{Aurora}}` placeholder, which is what makes `resolveAppearances` run (v4 gates it on `parsePlaceholders(prompt).length > 0`, not on messages), so the classify + sanitize pair fires and the sanitized text reaches the craft prompt, the image key and every llm_logs projection. Pre-fix v5 read mere existence and returned unchanged at rule 4. The uncensored id points at the fixture's one image profile deliberately: nothing on this path dereferences it (the post-hoc reroute is never reached — the generation succeeds), and what the pre-fix trap needed was only that it be NON-EMPTY. P4.D227 (v4 `3b463d6b1`, #76): the settings are v4's migration of that DETECT_ONLY bag — on duty with the pre-screen on — so the label is historical; the oracle decides what the policy does.",
       "id": "aaaa001e-0000-4000-8000-00000000001e",
       "op": "generate",
       "prompt": "{{Aurora}} on a moonlit terrace",
       "orientation": "portrait",
-      "dangerousContentSettings": {
-        "mode": "DETECT_ONLY",
-        "threshold": 0.7,
-        "scanTextChat": true,
-        "scanImagePrompts": true,
-        "scanImageGeneration": false,
-        "displayMode": "SHOW",
-        "showWarningBadges": true,
-        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a1"
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a1",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": null,
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": true,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
       }
     },
     "refused_rerouted_to_the_understudy": {
@@ -356,35 +468,63 @@
       "op": "generate",
       "prompt": "a lighthouse keeper's cottage in a gale",
       "orientation": "square",
-      "refuseModels": ["dall-e-3"],
+      "refuseModels": [
+        "dall-e-3"
+      ],
       "imageSeed": "photo-lossless.webp",
-      "dangerousContentSettings": {
-        "mode": "AUTO_ROUTE",
-        "threshold": 0.7,
-        "scanTextChat": true,
-        "scanImagePrompts": false,
-        "scanImageGeneration": false,
-        "displayMode": "SHOW",
-        "showWarningBadges": true,
-        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2"
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": null,
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
       }
     },
     "refused_not_permitted_keeps_its_trail": {
-      "$comment": "P4.D225: the same refusal under Detect Only - not rerouted; the error response still carries the one-row routeTrail (v4's getConciergeTrail on the error), and the message has no 'after Concierge reroute' prefix.",
+      "$comment": "P4.D225: the same refusal under Detect Only - not rerouted; the error response still carries the one-row routeTrail (v4's getConciergeTrail on the error), and the message has no 'after Concierge reroute' prefix. P4.D227 (v4 `3b463d6b1`, #76): DETECT_ONLY has no successor (the migration would put it ON duty, where the refusal fails over), so the not-permitted arm is now the Concierge OFF DUTY: no reroute, no announcement, the trail kept.",
       "id": "aaaa0042-0000-4000-8000-000000000042",
       "op": "generate",
       "prompt": "a lighthouse keeper's cottage in a squall",
       "orientation": "square",
-      "refuseModels": ["dall-e-3"],
-      "dangerousContentSettings": {
-        "mode": "DETECT_ONLY",
-        "threshold": 0.7,
-        "scanTextChat": true,
-        "scanImagePrompts": false,
-        "scanImageGeneration": false,
-        "displayMode": "SHOW",
-        "showWarningBadges": true,
-        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2"
+      "refuseModels": [
+        "dall-e-3"
+      ],
+      "conciergeSettings": {
+        "enabled": false,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": null,
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": false,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": false
+        }
       }
     }
   }

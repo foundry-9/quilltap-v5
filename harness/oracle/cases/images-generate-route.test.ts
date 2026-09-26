@@ -97,6 +97,11 @@ const THEME_TAG = 'ee000000-0000-4000-8000-000000000001';
 // than one of the fixture's, and the `Set` fold is measured by passing the SAME
 // id as a CHAT tag.
 const CHAT_ID = 'c7000000-0000-4000-8000-0000000000c7';
+/**
+ * A REAL chat of the fixture's (v4 `3b463d6b1`, #76): the Concierge arms that
+ * need a chat's state set its `conciergeMode` raw and name it in the body.
+ */
+const CONCIERGE_CHAT_ID = 'cc000000-0000-4000-8000-000000000001';
 
 /** A real 1x1 PNG — sharp must decode it for the transcode arm to mean anything. */
 const PNG_1X1 = Buffer.from(
@@ -118,8 +123,16 @@ interface CannedClassification {
 interface CaseSpec {
   name: string;
   body: unknown;
-  /** Merged over the stored `dangerousContentSettings` before the case runs. */
-  danger?: Record<string, unknown>;
+  /**
+   * v4 `3b463d6b1` (#76): merged over the stored `conciergeSettings` before
+   * the case runs (top-level keys, with `display` / `preScreen` merged one
+   * level). The committed pair stores what `add-concierge-settings` translated
+   * from the retired `mode: 'OFF'` bag — off duty — so every case that wants
+   * the Concierge says `enabled: true`.
+   */
+  concierge?: Record<string, unknown>;
+  /** The fixture chat's `conciergeMode`, written raw before the case runs. */
+  chatMode?: string;
   classify?: CannedClassification;
   provider?: ProviderMode;
   /** Remove the Lantern Backgrounds pointer, so the store write throws. */
@@ -422,88 +435,112 @@ function buildCases(): CaseSpec[] {
       provider: 'lossless',
     },
 
-    // ── the Concierge gate ──────────────────────────────────────────────────
-    // DETECT_ONLY + dangerous: classified, logged, but NOT rerouted.
+    // ── the Concierge gate (v4 `3b463d6b1`, #76: the policy) ──────────────
+    // A Locked chat: the pre-screen is off whatever the settings say — NO
+    // classification call.
     //
-    // ⚠ The mode must be one of v4's THREE (`OFF` / `DETECT_ONLY` /
-    // `AUTO_ROUTE`) and every other field in range. MEASURED while writing this
-    // corpus: a `chat_settings` row that fails `ChatSettingsSchema` is DROPPED
-    // WHOLE by v4's `findByFilter` re-validation (`base.repository.ts:277-285`),
-    // so `findByUserId` answers null and the Concierge silently falls back to
-    // `DEFAULT_DANGEROUS_CONTENT_SETTINGS` (mode OFF, no scan) — proven with a
-    // VALID `mode: 'AUTO_ROUTE'` and an out-of-range `threshold: 5`, which also
-    // produced zero classification calls. v5's
+    // ⚠ Every stored field must stay in range. MEASURED while writing this
+    // corpus (P4.76): a `chat_settings` row that fails `ChatSettingsSchema` is
+    // DROPPED WHOLE by v4's `findByFilter` re-validation
+    // (`base.repository.ts:277-285`), so `findByUserId` answers null and the
+    // Concierge silently falls back to the defaults. v5's
     // `db::chat_settings::find_by_user_id` runs no such validation and would
     // read the bad row through. That divergence is REAL and PRE-EXISTING; it
     // belongs to the chat-settings repository, not to this route, and is
     // recorded in the P4.76 lane record rather than pinned here.
     {
-      name: 'generate_danger_detect_only',
-      body: { prompt, profileId: PROFILE_MAIN },
-      danger: { mode: 'DETECT_ONLY' },
+      name: 'generate_danger_locked',
+      body: { prompt, profileId: PROFILE_MAIN, chatId: CONCIERGE_CHAT_ID },
+      concierge: { enabled: true, preScreen: { enabled: true, scanImagePrompts: true } },
+      chatMode: 'locked',
       classify: DANGEROUS,
     },
-    // AUTO_ROUTE + dangerous: rerouted to the FIRST `isDangerousCompatible`
-    // profile — which is NOT the Concierge desk's `uncensoredImageProfileId`
-    // (deliberately pointed elsewhere here, so a port that read the desk fails).
+    // The pre-screen on + dangerous: rerouted to the FIRST
+    // `isDangerousCompatible` profile — which is NOT the Concierge desk's
+    // `uncensoredImageProfileId` (deliberately pointed elsewhere here, so a
+    // port that read the desk fails).
     {
-      name: 'generate_danger_autoroute',
+      name: 'generate_danger_prescreen_reroute',
       body: { prompt, profileId: PROFILE_MAIN },
-      danger: {
-        mode: 'AUTO_ROUTE',
+      concierge: {
+        enabled: true,
         uncensoredImageProfileId: PROFILE_NOIMAGE,
+        preScreen: { enabled: true, scanImagePrompts: true },
       },
       classify: DANGEROUS,
     },
-    // AUTO_ROUTE + dangerous, but the REQUESTED profile is the only compatible
-    // one — `p.id !== profile.id` excludes it, so the warn arm runs and the
-    // original is kept.
+    // …but the REQUESTED profile is the only compatible one — `p.id !==
+    // profile.id` excludes it, so the warn arm runs and the original is kept.
     {
-      name: 'generate_danger_autoroute_no_target',
+      name: 'generate_danger_prescreen_no_target',
       body: { prompt, profileId: PROFILE_UNCENSORED },
-      danger: { mode: 'AUTO_ROUTE' },
+      concierge: { enabled: true, preScreen: { enabled: true, scanImagePrompts: true } },
       classify: DANGEROUS,
     },
-    // AUTO_ROUTE but NOT dangerous: classified, no reroute.
+    // The pre-screen on but NOT dangerous: classified, no reroute.
     {
-      name: 'generate_danger_autoroute_safe',
+      name: 'generate_danger_prescreen_safe',
       body: { prompt, profileId: PROFILE_MAIN },
-      danger: { mode: 'AUTO_ROUTE' },
+      concierge: { enabled: true, preScreen: { enabled: true, scanImagePrompts: true } },
       classify: SAFE,
     },
-    // mode OFF: NO classification call at all (the recordings prove it).
+    // Off duty: NO classification call at all (the recordings prove it).
     {
-      name: 'generate_danger_off',
+      name: 'generate_danger_off_duty',
       body: { prompt, profileId: PROFILE_MAIN },
-      danger: { mode: 'OFF' },
+      concierge: { enabled: false, preScreen: { enabled: true, scanImagePrompts: true } },
+      classify: DANGEROUS,
+    },
+    // On duty with the pre-screen at its default (off): no call either.
+    {
+      name: 'generate_danger_prescreen_off',
+      body: { prompt, profileId: PROFILE_MAIN },
+      concierge: { enabled: true },
       classify: DANGEROUS,
     },
     // scanImagePrompts false: the second conjunct — also no call.
     {
       name: 'generate_scan_disabled',
       body: { prompt, profileId: PROFILE_MAIN },
-      danger: { mode: 'AUTO_ROUTE', scanImagePrompts: false },
+      concierge: { enabled: true, preScreen: { enabled: true, scanImagePrompts: false } },
       classify: DANGEROUS,
+    },
+    // An Unmoderated chat routes DIRECT (#76's new block): the text-understudy
+    // resolver with the image filter, the requested profile excluded — the
+    // desk's text pick (OLLAMA) cannot draw, so the compatible GROK profile.
+    {
+      name: 'generate_unmoderated_routes_direct',
+      body: { prompt, profileId: PROFILE_MAIN, chatId: CONCIERGE_CHAT_ID },
+      concierge: { enabled: true, uncensoredTextProfileId: PROFILE_NOIMAGE },
+      chatMode: 'unmoderated',
+    },
+    // …and when the only image-capable compatible profile IS the requested
+    // one: the DEBUG arm, the original kept.
+    {
+      name: 'generate_unmoderated_no_direct_target',
+      body: { prompt, profileId: PROFILE_UNCENSORED, chatId: CONCIERGE_CHAT_ID },
+      concierge: { enabled: true },
+      chatMode: 'unmoderated',
     },
 
     // ── P4.D225: the image-failover chokepoint (v4 `8bd080267`) ─────────────
-    // The primary refuses; under Auto-Route the dialog's CONNECTION-profile
-    // understudy answers. The desk's `uncensoredTextProfileId` names the OLLAMA
-    // profile, which cannot draw: v4's `filter: supportsImageGeneration`
-    // applies to the EXPLICIT pick too, so the resolver falls through to the
-    // compatible GROK profile. No classify (`scanImagePrompts` off).
+    // The primary refuses; on duty the dialog's CONNECTION-profile understudy
+    // answers. The desk's `uncensoredTextProfileId` names the OLLAMA profile,
+    // which cannot draw: v4's `filter: supportsImageGeneration` applies to the
+    // EXPLICIT pick too, so the resolver falls through to the compatible GROK
+    // profile. No classify (the pre-screen off).
     {
       name: 'generate_refused_rerouted',
       body: { prompt, profileId: PROFILE_MAIN },
-      danger: { mode: 'AUTO_ROUTE', scanImagePrompts: false, uncensoredTextProfileId: PROFILE_NOIMAGE },
+      concierge: { enabled: true, uncensoredTextProfileId: PROFILE_NOIMAGE },
       provider: 'refuseFirst',
     },
-    // The same refusal under Detect Only: not rerouted; the throw escapes to
-    // the middleware's flat 500, nothing written.
+    // The same refusal off duty: not rerouted, no announcement; the throw
+    // escapes to the middleware's flat 500, nothing written.
     {
-      name: 'generate_refused_not_permitted',
+      name: 'generate_refused_off_duty',
       body: { prompt, profileId: PROFILE_MAIN },
-      danger: { mode: 'DETECT_ONLY', scanImagePrompts: false },
+      concierge: { enabled: false, uncensoredTextProfileId: PROFILE_NOIMAGE },
       provider: 'refuseFirst',
     },
 
@@ -628,19 +665,26 @@ async function runCase(
 
   await initializeDatabase();
 
-  if (c.danger) {
-    // The stored bag merged with this case's overrides, written back raw. The
-    // fixture stores v4's `mode: 'OFF'` default, and the resolver reads
-    // `chatSettings.dangerousContentSettings`.
+  if (c.concierge) {
+    // The stored settings merged with this case's overrides, written back raw
+    // (v4 `3b463d6b1`, #76: the resolver reads `chatSettings.conciergeSettings`).
     const rows = (await rawQuery(
-      'SELECT dangerousContentSettings FROM chat_settings WHERE userId = ?',
+      'SELECT conciergeSettings FROM chat_settings WHERE userId = ?',
       [spec.userId],
-    )) as Array<{ dangerousContentSettings: string }>;
-    const current = JSON.parse(rows[0].dangerousContentSettings) as Record<string, unknown>;
-    await rawQuery('UPDATE chat_settings SET dangerousContentSettings = ? WHERE userId = ?', [
-      JSON.stringify({ ...current, ...c.danger }),
+    )) as Array<{ conciergeSettings: string }>;
+    const current = JSON.parse(rows[0].conciergeSettings) as Record<string, any>;
+    const patch = c.concierge as Record<string, any>;
+    const merged: Record<string, unknown> = { ...current, ...patch };
+    for (const nested of ['display', 'preScreen']) {
+      if (patch[nested]) merged[nested] = { ...(current[nested] ?? {}), ...patch[nested] };
+    }
+    await rawQuery('UPDATE chat_settings SET conciergeSettings = ? WHERE userId = ?', [
+      JSON.stringify(merged),
       spec.userId,
     ]);
+  }
+  if (c.chatMode) {
+    await rawQuery('UPDATE chats SET conciergeMode = ? WHERE id = ?', [c.chatMode, CONCIERGE_CHAT_ID]);
   }
   if (c.dropLantern) {
     await rawQuery('DELETE FROM instance_settings WHERE key = ?', [

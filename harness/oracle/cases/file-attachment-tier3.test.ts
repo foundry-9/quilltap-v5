@@ -125,6 +125,10 @@ interface Spec {
   testPepperBase64: string;
   userId: string;
   chatId: string;
+  descProfileId: string;
+  uncensoredProfileId: string;
+  /** P4.D227 (v4 `3b463d6b1`, #76): section G's Locked + exempt chats. */
+  conciergeChats: { lockedChatId: string; helpChatId: string };
   respProfiles: Record<string, Record<string, unknown>>;
   files: FileSpec[];
   vision: VisionSpec[];
@@ -485,6 +489,9 @@ async function main(): Promise<void> {
         repos,
         spec.userId,
         { chatId: spec.chatId },
+        // v4 `3b463d6b1` (#76): the describe options — the chat decides the
+        // uncensored vision fallback.
+        { chatId: spec.chatId },
       );
       lines.push(
         JSON.stringify({
@@ -592,6 +599,61 @@ async function main(): Promise<void> {
     );
   }
 
+  // ---- (G) the uncensored vision fallback under the Concierge policy --------
+  //
+  // P4.D227 (v4 `3b463d6b1`, #76): the fallback is the desk's
+  // `uncensoredVisionProfileId`, read through the policy resolved WITH the
+  // chat the image is described for. The primary describer's own chain (which
+  // names the same Z_AI profile) is cut for the section, so on a refusal the
+  // desk is the only possible stand-in: a Moderated chat gets it; a Locked
+  // chat, an exempt help chat, and an off-duty Concierge do not. Raw SQL on
+  // both sides, restored afterwards.
+  {
+    const { rawQuery } = await import('@/lib/database/manager');
+    await rawQuery('UPDATE connection_profiles SET "fallbackProfileId" = NULL WHERE id = ?', [spec.descProfileId]);
+    const arms: Array<{ label: string; fileKey: string; chatId: string; offDuty?: boolean }> = [
+      { label: 'fb_concierge_moderated_desk_answers', fileKey: 'conciergeModerated', chatId: spec.chatId },
+      { label: 'fb_concierge_locked_no_desk', fileKey: 'conciergeLocked', chatId: spec.conciergeChats.lockedChatId },
+      { label: 'fb_concierge_exempt_no_desk', fileKey: 'conciergeHelp', chatId: spec.conciergeChats.helpChatId },
+      { label: 'fb_concierge_off_duty_no_desk', fileKey: 'conciergeOffDuty', chatId: spec.chatId, offDuty: true },
+    ];
+    for (const arm of arms) {
+      if (arm.offDuty) {
+        await rawQuery('UPDATE chat_settings SET "conciergeSettings" = ? WHERE "userId" = ?', [
+          JSON.stringify({ enabled: false, uncensoredVisionProfileId: spec.uncensoredProfileId }),
+          spec.userId,
+        ]);
+      }
+      const profile = spec.respProfiles['noImg'];
+      const f = fileByKey[arm.fileKey];
+      const fileMetadata = {
+        id: f.id,
+        filepath: `/api/v1/files/${f.id}`,
+        filename: f.originalFilename,
+        mimeType: f.mimeType,
+        size: dataByKey[arm.fileKey].length,
+      };
+      const fileAttachment = { ...fileMetadata, data: dataByKey[arm.fileKey] };
+      const result = await processFileAttachmentFallback(
+        fileMetadata,
+        fileAttachment as never,
+        profile as never,
+        repos,
+        spec.userId,
+        { chatId: arm.chatId },
+      );
+      lines.push(JSON.stringify({ kind: 'case', family: 'fb', label: arm.label, result }));
+    }
+    await rawQuery('UPDATE chat_settings SET "conciergeSettings" = ? WHERE "userId" = ?', [
+      JSON.stringify({ enabled: true, uncensoredVisionProfileId: spec.uncensoredProfileId }),
+      spec.userId,
+    ]);
+    await rawQuery('UPDATE connection_profiles SET "fallbackProfileId" = ? WHERE id = ?', [
+      spec.uncensoredProfileId,
+      spec.descProfileId,
+    ]);
+  }
+
   // ---- (D) the describer transport guard (bug 91, a14a1811) -----------------
   // Point the user's Image Description Profile at the OLLAMA describer — a
   // profile whose plugin cannot transport images. `describeImageWithProfile`
@@ -607,7 +669,8 @@ async function main(): Promise<void> {
     // successful Z.AI description.
     await repos.chatSettings.updateForUser(spec.userId, {
       imageDescriptionProfileId: '30000000-0000-4000-8000-0000000000d3',
-      uncensoredImageDescriptionProfileId: null,
+      // v4 `3b463d6b1` (#76): the vision desk lives in `conciergeSettings`.
+      conciergeSettings: { enabled: true },
     } as never);
     const profile = spec.respProfiles['noImg'];
     const f = fileByKey['descImage'];

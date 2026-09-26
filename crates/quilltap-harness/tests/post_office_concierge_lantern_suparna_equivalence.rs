@@ -294,13 +294,41 @@ fn post_office_concierge_lantern_suparna_matches_oracle() {
     // P4.D225 floor: 3 kinds × 5 purposes × 2 × 2 refusal rows + 2 + 4 × 7 × 2
     // auto-flag rows — present only at a pin carrying `8bd080267`/`49059fb14`.
     // P4.D226 (v4 `4d370a90f`): + 3 kinds × 5 purposes × 2 reasons × 2 = 60
-    // `reason` rows (120 refusal rows) — the Locked sentences.
+    // `reason` rows — the Locked sentences. P4.D227 (v4 `3b463d6b1`, #76): the
+    // `'mode'` reason is gone with its sentences: 3 × 5 × 1 × 2 = 30, so 90.
     let refusal_rows = text.matches("\"kind\":\"refusal_").count();
     let autoflag_rows = text.matches("\"kind\":\"autoflag_").count();
     eprintln!("  refusal rows {refusal_rows}, auto-flag rows {autoflag_rows}");
     assert!(
-        refusal_rows == 120 && autoflag_rows == 58,
+        refusal_rows == 90 && autoflag_rows == 58,
         "the refusal/auto-flag corpus is incomplete: {refusal_rows} / {autoflag_rows}"
     );
+    // P4.D227: the divergence VANISHED — the retired Concierge-mode sentences
+    // ("were he set to Auto-Route", "The Concierge mode does not permit
+    // rerouting") appear in NO v4 row and NO v5 leaf, so a writer that kept
+    // them for a reason-less `refusal-not-permitted` cannot pass.
+    for gone in ["Auto-Route", "Concierge mode does not permit"] {
+        assert!(
+            !text.contains(gone),
+            "v4 still emits the retired {gone:?} sentence"
+        );
+    }
+    let details = |reason: Option<ConciergeRefusalBar>| ConciergeRefusalDetails {
+        refusing_provider: "OPENAI".into(),
+        refusing_model: "gpt-image-2".into(),
+        answering_profile_name: None,
+        purpose: ConciergeRefusalPurpose::from_wire("tool").unwrap(),
+        reason,
+    };
+    for reason in [None, Some(ConciergeRefusalBar::Locked)] {
+        let d = details(reason);
+        for v in [
+            build_refusal_content(ConciergeRefusalKind::RefusalNotPermitted, &d),
+            build_refusal_opaque_content(ConciergeRefusalKind::RefusalNotPermitted, &d),
+        ] {
+            assert!(v.contains("Locked"), "{reason:?}: {v}");
+            assert!(!v.contains("Auto-Route"), "{reason:?}: {v}");
+        }
+    }
     eprintln!("post-office-concierge-lantern-suparna: {count} rows matched");
 }

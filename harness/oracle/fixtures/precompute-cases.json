@@ -123,8 +123,8 @@
         "conciergeModeSetBy": "concierge",
         "conciergeModeReason": "classifier"
       },
-      "dangerSettings": {
-        "mode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
         "uncensoredTextProfileId": "ac000001-0000-4000-8000-0000000000a1"
       },
       "existingMessages": [

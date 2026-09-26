@@ -38,7 +38,7 @@ use crate::services::context_summary::{
     generate_context_summary_with_seams, CheapLlmSettings, GenerateSummaryOptions,
     RealContextSummarySeams, SummaryGenerationResult,
 };
-use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
+use crate::services::dangerous_content::resolver::resolve_concierge_settings;
 use crate::services::queue_service::enqueue_chat_danger_classification_with_priority;
 
 /// The `CONTEXT_SUMMARY` job payload (v4 `ContextSummaryPayload`).
@@ -115,14 +115,12 @@ where
         .map(crate::services::image_job_common::cheap_llm_profile_from_value)
         .collect();
 
-    // v4's `generateContextSummary` resolves danger settings internally when
-    // the chat is active-dangerous (`resolveDangerousContentSettings(
-    // chatSettings, chat)`); v5 lifts that resolution to the caller (the
-    // GenerateSummaryOptions seam) — resolve it here the same way.
-    let global_danger = chat_settings
-        .get("dangerousContentSettings")
-        .and_then(|d| serde_json::from_value(d.clone()).ok());
-    let resolved_danger = resolve_dangerous_content_settings(global_danger, Some(&chat)).settings;
+    // v4's `generateContextSummary` resolves the Concierge policy internally
+    // when the chat is active-dangerous (`resolveConciergeSettings(chatSettings,
+    // chat)`, `3b463d6b1`); v5 lifts that resolution to the caller (the
+    // GenerateSummaryOptions seam) — resolve it here the same way. The chain
+    // below asks the SAME policy (v4 resolves it WITH the chat there too).
+    let concierge_policy = resolve_concierge_settings(Some(&chat_settings), Some(&chat));
 
     let options = GenerateSummaryOptions {
         user_id: user_id.to_string(),
@@ -133,10 +131,7 @@ where
         cheap_llm_settings: cheap_settings_from(&chat_settings),
         available_profiles,
         force_regenerate: payload.force_regenerate,
-        danger_settings: Some(crate::cheap_llm::DangerousContentSettings {
-            mode: resolved_danger.mode.clone(),
-            uncensored_text_profile_id: resolved_danger.uncensored_text_profile_id.clone(),
-        }),
+        concierge_policy: Some(concierge_policy.clone()),
         registry_cheapest_for_current: None,
         // v4 reads `connectionProfile.maxContext ?? null` for the refresh list
         // size; the CheapLlmProfile subset drops it, so thread it separately.
@@ -184,14 +179,19 @@ where
         return Ok(Some(result));
     }
 
-    // Chain: enqueue danger classification after a successful summary update
-    // (v4 resolves WITHOUT the chat here — the user's global settings only —
-    // and swallows any chain failure).
-    let global_danger = chat_settings
-        .get("dangerousContentSettings")
-        .and_then(|d| serde_json::from_value(d.clone()).ok());
-    let chain_settings = resolve_dangerous_content_settings(global_danger, None).settings;
-    if chain_settings.mode != "OFF" {
+    // Chain: enqueue danger classification after a successful summary update —
+    // only when the chat's Concierge policy has the summary classifier on (on
+    // duty, Moderated, and opted in; v4 `3b463d6b1` resolves WITH the chat now,
+    // where it used to ask the global mode alone). Any chain failure is
+    // swallowed. (v4's DEBUG also carries `jobId`, which v5's core handler has
+    // no source for — the `Summary update did not run` precedent above.)
+    if !concierge_policy.summary_classification {
+        tracing::debug!(
+            chat_id = %payload.chat_id,
+            concierge_source = concierge_policy.source.as_str(),
+            "[ContextSummary] Summary classification off for this chat; not chaining"
+        );
+    } else {
         let _ = enqueue_chat_danger_classification_with_priority(
             db,
             user_id,

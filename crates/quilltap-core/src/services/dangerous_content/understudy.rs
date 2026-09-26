@@ -11,10 +11,11 @@
 //! a refused call); a caller's `filter` applies to the explicit pick as well as
 //! to the scan.
 //!
-//! **These resolvers never read the mode.** The policy lives with the callers:
-//! the two pre-flight wrappers in [`super::provider_routing`] keep v4's
-//! `AUTO_ROUTE` gate, the image failover chokepoint and the text failover gate
-//! their own. A lookup that fails is swallowed (logged, `None`) — v4's catch.
+//! **These resolvers never read the policy's gates** — only its desk (v4
+//! `3b463d6b1`, #76). The policy lives with the callers: the two pre-flight
+//! wrappers in [`super::provider_routing`] keep v4's `route_direct ||
+//! failover_allowed` gate, the image failover chokepoint and the text failover
+//! gate their own. A lookup that fails is swallowed (logged, `None`) — v4's catch.
 //!
 //! Deltas from v5's pre-#73 inline order (`provider_routing.rs`, recorded for
 //! the review): the original profile is now EXCLUDED (the old "rerouted to the

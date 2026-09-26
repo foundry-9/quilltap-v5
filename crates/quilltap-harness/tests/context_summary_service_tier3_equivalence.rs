@@ -815,7 +815,7 @@ async fn context_summary_service_tier3_matches_oracle() {
                     cheap_llm_settings: settings.clone(),
                     available_profiles: profiles.clone(),
                     force_regenerate: op.force_regenerate,
-                    danger_settings: None,
+                    concierge_policy: None,
                     registry_cheapest_for_current: None,
                     // v4 `connectionProfile.maxContext ?? null` — the oracle's profile
                     // carries no maxContext, so the refresh list size is the max.
@@ -1167,7 +1167,7 @@ async fn context_summary_service_tier3_matches_oracle() {
             cheap_llm_settings: settings.clone(),
             available_profiles: profiles.clone(),
             force_regenerate: false,
-            danger_settings: None,
+            concierge_policy: None,
             registry_cheapest_for_current: None,
             connection_max_context: None,
         };

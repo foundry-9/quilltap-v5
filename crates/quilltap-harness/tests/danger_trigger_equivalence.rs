@@ -18,13 +18,13 @@
 //! Both are reduced to the same `{userId, chatId, connectionProfileId}` list.
 //!
 //! **Two of v4's observables have NO v5 counterpart, and the corpus says so.**
-//! v4 resolves the danger mode INSIDE the function, so it can assert that an
-//! operator override bails "before any setting lookup at all"; v5's
-//! `danger_mode_off` is computed by the two producers (`orchestrator`,
-//! `courier_transport`) BEFORE the call. So `chatSettingsLookedUp` is recorded
-//! in the NDJSON and never compared, and `settings_lookup_throws` is skipped by
-//! name — there is no settings lookup in the v5 function to throw. The
-//! observable this port pins is the enqueue itself.
+//! Since v4 `3b463d6b1` (#76) both sides resolve the Concierge POLICY inside
+//! the function, after the chat read and its Moderated check (the pre-resolved
+//! `danger_mode_off` flag is retired); each case seeds the user's stored
+//! `conciergeSettings` on both sides. `chatSettingsLookedUp` is still recorded
+//! and never compared (v5 has no probe on its read), and
+//! `settings_lookup_throws` is skipped by name — the fixture read cannot be
+//! made to throw. The observable this port pins is the enqueue itself.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — cp to a /tmp mirror;
 //! jest ignores .claude/ paths):
@@ -63,7 +63,8 @@ struct OracleCase {
     name: String,
     /// The `chats.findById` answer v4 was handed — `null` = chat not found.
     chat: Option<Value>,
-    mode: String,
+    /// The stored `conciergeSettings` (`null` = a settings row without one).
+    concierge: Option<Value>,
     enqueued: Vec<EnqueueCall>,
 }
 
@@ -170,10 +171,11 @@ fn danger_trigger_gate_chain_matches_oracle() {
                  INSERT INTO \"chats\" (\"id\", \"userId\", \"title\", \"createdAt\", \"updatedAt\", \
                  \"contextSummary\", \"scenarioText\", \"messageCount\", \"isDangerousChat\", \
                  \"dangerClassifiedAt\", \
-                 \"dangerClassifiedAtMessageCount\", \"conciergeOverride\", \
+                 \"dangerClassifiedAtMessageCount\", \"chatType\", \
                  \"conciergeMode\", \"conciergeModeSetBy\") VALUES \
                  ('{CHAT_ID}', '{USER_ID}', 'Trigger corpus', '2026-01-01T00:00:00.000Z', \
-                 '2026-01-01T00:00:00.000Z', {}, {}, {}, {}, {}, {}, {}, {}, {});",
+                 '2026-01-01T00:00:00.000Z', {}, {}, {}, {}, {}, {}, {}, {}, {}); \
+                 UPDATE \"chat_settings\" SET \"userId\" = '{USER_ID}', \"conciergeSettings\" = {};",
                 lit(chat.get("contextSummary")),
                 // P4.D208: the gate reads BOTH columns since v4 bug 158. Before
                 // this the column was never seeded, so the two `skips_when_*`
@@ -184,10 +186,16 @@ fn danger_trigger_gate_chain_matches_oracle() {
                 lit(chat.get("isDangerousChat")),
                 lit(chat.get("dangerClassifiedAt")),
                 lit(chat.get("dangerClassifiedAtMessageCount")),
-                lit(chat.get("conciergeOverride")),
+                // `chatType` NOT NULL DEFAULT 'salon' — the exempt arm names it.
+                chat.get("chatType")
+                    .map(|v| lit(Some(v)))
+                    .unwrap_or_else(|| "'salon'".into()),
                 // P4.D226 (v4 `4d370a90f`): the state the on-duty guard reads.
                 lit(chat.get("conciergeMode")),
                 lit(chat.get("conciergeModeSetBy")),
+                // v4 `3b463d6b1`: the user's stored `conciergeSettings` the
+                // trigger now reads WITH the chat (`NULL` = none stored).
+                lit(case.concierge.as_ref()),
             ),
         };
         rt.block_on(db.write(move |w| {
@@ -196,14 +204,8 @@ fn danger_trigger_gate_chain_matches_oracle() {
         }))
         .expect("seed the corpus chat");
 
-        // v5's `danger_mode_off` is the resolved mode, computed by the callers.
-        let danger_mode_off = case.mode == "OFF";
         rt.block_on(trigger_chat_danger_classification(
-            &db,
-            CHAT_ID,
-            USER_ID,
-            PROFILE_ID,
-            danger_mode_off,
+            &db, CHAT_ID, USER_ID, PROFILE_ID,
         ))
         .expect("trigger");
 
@@ -257,6 +259,12 @@ fn danger_trigger_gate_chain_matches_oracle() {
     assert!(
         cases.iter().any(|c| c.name == "skips_when_unmoderated"),
         "the oracle predates 4d370a90f's three-state arms — regenerate it"
+    );
+    assert!(
+        cases
+            .iter()
+            .any(|c| c.name == "skips_when_not_opted_into_summary_classifier"),
+        "the oracle predates 3b463d6b1's summary-classifier arms — regenerate it"
     );
     assert!(
         cases.iter().any(|c| !c.enqueued.is_empty()),

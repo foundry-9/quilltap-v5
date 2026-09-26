@@ -9,7 +9,9 @@
  *     speaker selection's talkativeness + the run-start banner's names read
  *     through the vault overlay);
  *   - one `chat_settings` row for user 1 (cheapLLM present, compression off,
- *     danger DETECT_ONLY, `autonomousRoomSettings.dailyTokenBudget = 9000` —
+ *     the Concierge on duty with the pre-screen + summary classification on —
+ *     v4 `3b463d6b1`'s translation of the retired DETECT_ONLY —
+ *     `autonomousRoomSettings.dailyTokenBudget = 9000` —
  *     above the day-2 window's spend so the day-2 cases keep their own
  *     coverage, and BELOW the day-1 window's, which is what the
  *     `daily_budget_binds_pre_turn` case trips); user 2 (the tick user)
@@ -199,7 +201,10 @@ async function main(): Promise<void> {
       contextCompressionSettings: { enabled: false },
       autoDetectRng: false,
       answerConfirmationSettings: { enabled: false },
-      dangerousContentSettings: { mode: 'DETECT_ONLY' },
+      conciergeSettings: {
+        enabled: true,
+        preScreen: { enabled: true, summaryClassification: true },
+      },
       autonomousRoomSettings: {
         dailyTokenBudget: spec.chatSettings.dailyTokenBudget,
         defaultFreshnessWindowMs: 12 * 60 * 60 * 1000,

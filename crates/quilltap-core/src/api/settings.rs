@@ -338,7 +338,24 @@ pub async fn chat_settings_update(db: &Db, user_id: &str, bag: &Value) -> Respon
     // field is deserialized into the ported typed struct (schema-ordered
     // serialize == v4's final `ChatSettingsSchema.parse` output). The template
     // existence check needs a read, so it runs before the write.
-    let assignments = match build_settings_assignments(db, bag) {
+    // Settings the Concierge's own object replaced (v4 `3b463d6b1`, #76). A
+    // stale client must fail loudly rather than write a column nothing reads
+    // any more — checked BEFORE any other field.
+    let retired = find_retired_concierge_keys(bag);
+    if !retired.is_empty() {
+        tracing::warn!(
+            user_id = %user_id,
+            retired_json = %serde_json::to_string(&retired).unwrap_or_default(),
+            "[Settings v1] Rejected a PUT carrying retired Concierge settings"
+        );
+        return bad_request(format!(
+            "Invalid settings: {} {} replaced by conciergeSettings",
+            retired.join(", "),
+            if retired.len() == 1 { "was" } else { "were" }
+        ));
+    }
+
+    let assignments = match build_settings_assignments(db, user_id, bag) {
         Ok(a) => a,
         // v4's catch splits the status on the MESSAGE (`route.ts:391`:
         // `errorMessage.includes('Invalid') ? 400 : 500`) — so a validation
@@ -370,6 +387,31 @@ pub async fn chat_settings_update(db: &Db, user_id: &str, bag: &Value) -> Respon
     read_settings_response(db, user_id, created)
 }
 
+/// v4 `findRetiredConciergeKeys(body)` (`3b463d6b1`, #76) — the keys a PUT may
+/// no longer carry, in the three checks' order: `dangerousContentSettings`,
+/// `uncensoredImageDescriptionProfileId` and `cheapLLMSettings.imagePromptProfileId`
+/// all moved into `conciergeSettings`. v4 tests `typeof … !== 'undefined'`, so a
+/// PRESENT key trips it even when its value is `null`; the nested key only when
+/// `cheapLLMSettings` is a (truthy) object.
+fn find_retired_concierge_keys(body: &Value) -> Vec<&'static str> {
+    let Some(b) = body.as_object() else {
+        return Vec::new();
+    };
+    let mut retired = Vec::new();
+    if b.contains_key("dangerousContentSettings") {
+        retired.push("dangerousContentSettings");
+    }
+    if b.contains_key("uncensoredImageDescriptionProfileId") {
+        retired.push("uncensoredImageDescriptionProfileId");
+    }
+    if let Some(cheap) = b.get("cheapLLMSettings").and_then(Value::as_object) {
+        if cheap.contains_key("imagePromptProfileId") {
+            retired.push("cheapLLMSettings.imagePromptProfileId");
+        }
+    }
+    retired
+}
+
 /// Serialize a JSON-object settings field into schema-ordered compact JSON by
 /// round-tripping it through the ported typed struct `T` (the struct's field
 /// order == v4's schema order == v4's `ChatSettingsSchema.parse` output). A
@@ -398,8 +440,8 @@ where
 ///
 /// 1. Every issue `path` is PREFIXED with `cheapLLMSettings` (hence `PREFIX`).
 /// 2. It throws AFTER every route-level arm, so a request carrying both a bad
-///    cheap-LLM value and a bad `dangerousContentSettings` answers the
-///    dangerous-content error. The caller defers this call to the end of the
+///    cheap-LLM value and a bad `conciergeSettings` answers the Concierge
+///    error (v4 `3b463d6b1`; the retired `dangerousContentSettings` before). The caller defers this call to the end of the
 ///    assignment walk for exactly that reason.
 ///
 /// The two enum arms ARE modelled, and the reason is a trap: v4's manual guards
@@ -438,7 +480,8 @@ fn zod_cheap_llm_settings(v: &Value) -> Result<chat_settings::SettingsColVal, St
         &mut issues,
     );
     out.insert("embeddingProvider".into(), json!(embedding));
-    zod_opt_uuid(o, "imagePromptProfileId", PREFIX, &mut out, &mut issues);
+    // (v4 `3b463d6b1` moved `imagePromptProfileId` into `conciergeSettings`;
+    // it is no longer a schema key here — a PUT naming it is refused up front.)
     // v4 `65f5021c8` appended `allowCheapFallback` at the END of the schema,
     // so it lands last in the parsed key order too — which is what a fresh
     // instance's `cheapLLMSettings` DEFAULT and its seed row both carry.
@@ -659,149 +702,6 @@ fn zod_smart_typography_settings(v: &Value) -> Result<chat_settings::SettingsCol
     Ok(chat_settings::SettingsColVal::Text(text))
 }
 
-/// v4 `DangerousContentSettingsSchema.parse` over a PUT sub-bag (a route-level
-/// parse, `settings/chat/route.ts` L165 — NOT the repo's merge-then-validate, so
-/// the input bag stands alone and the Zod defaults materialize over whatever is
-/// absent): `mode` defaults `'OFF'`, `threshold` `0.7`, `scanTextChat` `true`,
-/// `scanImagePrompts` `true`, `scanImageGeneration` `false`, `displayMode`
-/// `'SHOW'`, `showWarningBadges` `true`, `autoSwitchAfterRefusals` `2` (LAST,
-/// v4 `49059fb14`); the three `.nullable().optional()`
-/// fields — `uncensoredTextProfileId`, `uncensoredImageProfileId`,
-/// `customClassificationPrompt` — KEEP a present `null` and are OMITTED when
-/// absent; unknown keys are stripped; output in schema field order.
-///
-/// `threshold` is stored as the INCOMING `Value` rather than round-tripped
-/// through `f64`: v4 stringifies the parsed JS number, so an integral `1`
-/// re-emits as `1` — a `f64` round-trip would write `1.0`.
-///
-/// P4.47 (A) closes the D73-banked Zod-collapse seam here: the failure legs no
-/// longer answer the invented `Invalid dangerous content settings` but v4's
-/// whole `ZodError.message`. This schema reaches four issue codes — enum misses
-/// (`invalid_value`), the `.min(0).max(1)` bound (`too_small` / `too_big`), the
-/// `.uuid()` format (`invalid_format`) and plain `invalid_type` — and Zod
-/// collects EVERY offending key before throwing, in declaration order, so the
-/// walk below never returns early.
-fn zod_dangerous_content_settings(v: &Value) -> Result<chat_settings::SettingsColVal, String> {
-    const MODES: &[&str] = &["OFF", "DETECT_ONLY", "AUTO_ROUTE"];
-    const DISPLAY_MODES: &[&str] = &["SHOW", "BLUR", "COLLAPSE"];
-    let o = zod_object_or_issue(v, &[])?;
-    let mut out = Map::new();
-    let mut issues: Vec<ZodIssue> = Vec::new();
-
-    out.insert(
-        "mode".into(),
-        json!(zod_enum(o, "mode", "OFF", MODES, &[], &mut issues)),
-    );
-    let threshold = match o.get("threshold") {
-        None => json!(0.7),
-        Some(n @ Value::Number(num)) => {
-            // `as_f64` is infallible for any JSON number serde parsed.
-            let f = num.as_f64().unwrap_or_default();
-            if f < 0.0 {
-                issues.push(ZodIssue::too_small_number(
-                    json!(0),
-                    vec!["threshold".into()],
-                ));
-            } else if f > 1.0 {
-                issues.push(ZodIssue::too_big_number(json!(1), vec!["threshold".into()]));
-            }
-            n.clone()
-        }
-        other => {
-            issues.push(ZodIssue::invalid_type(
-                "number",
-                vec!["threshold".into()],
-                other,
-            ));
-            json!(0.7)
-        }
-    };
-    out.insert("threshold".into(), threshold);
-    for (key, default) in [
-        ("scanTextChat", true),
-        ("scanImagePrompts", true),
-        ("scanImageGeneration", false),
-    ] {
-        let got = zod_bool(o, key, default, &[], &mut issues);
-        out.insert(key.into(), json!(got));
-    }
-    zod_opt_uuid(o, "uncensoredTextProfileId", &[], &mut out, &mut issues);
-    zod_opt_uuid(o, "uncensoredImageProfileId", &[], &mut out, &mut issues);
-    out.insert(
-        "displayMode".into(),
-        json!(zod_enum(
-            o,
-            "displayMode",
-            "SHOW",
-            DISPLAY_MODES,
-            &[],
-            &mut issues
-        )),
-    );
-    let badges = zod_bool(o, "showWarningBadges", true, &[], &mut issues);
-    out.insert("showWarningBadges".into(), json!(badges));
-    // `.nullable().optional()` plain string — no format check.
-    match o.get("customClassificationPrompt") {
-        None => {}
-        Some(Value::Null) => {
-            out.insert("customClassificationPrompt".into(), Value::Null);
-        }
-        Some(Value::String(s)) => {
-            out.insert("customClassificationPrompt".into(), json!(s));
-        }
-        other => issues.push(ZodIssue::invalid_type(
-            "string",
-            vec!["customClassificationPrompt".into()],
-            other,
-        )),
-    }
-    // v4 `49059fb14` (#74): `autoSwitchAfterRefusals:
-    // z.number().int().min(0).max(10).default(2)`, declared LAST — which fixes
-    // the stored key order. The three issue texts were MEASURED against the
-    // real zod 4.6.5 at the pin (the ONE-Zod-issue-home rule): a non-number →
-    // `Invalid input: expected number, received <type>`; a non-whole number →
-    // `Invalid input: expected int, received number` ALONE (the int check
-    // aborts: `-1.5` reports no bound); a whole number → the safe-integer
-    // issue past ±2^53 (which does NOT abort), then `Too small: expected number
-    // to be >=0` / `Too big: expected number to be <=10`.
-    let auto_path = || vec!["autoSwitchAfterRefusals".into()];
-    let auto = match o.get("autoSwitchAfterRefusals") {
-        None => json!(chat_settings::DEFAULT_AUTO_SWITCH_AFTER_REFUSALS),
-        Some(v) => match v.as_f64() {
-            None => {
-                issues.push(ZodIssue::invalid_type("number", auto_path(), Some(v)));
-                Value::Null
-            }
-            Some(n) if !n.is_finite() || n.fract() != 0.0 => {
-                issues.push(ZodIssue::invalid_int_type(auto_path(), Some(v)));
-                Value::Null
-            }
-            Some(n) => {
-                if n > crate::api::zod_issues::MAX_SAFE_INTEGER {
-                    issues.push(ZodIssue::too_big_int(auto_path()));
-                } else if n < -crate::api::zod_issues::MAX_SAFE_INTEGER {
-                    issues.push(ZodIssue::too_small_int(auto_path()));
-                }
-                if n < 0.0 {
-                    issues.push(ZodIssue::too_small_number(json!(0), auto_path()));
-                } else if n > 10.0 {
-                    issues.push(ZodIssue::too_big_number(json!(10), auto_path()));
-                }
-                // A whole JS number stringifies without a fraction.
-                json!(n as i64)
-            }
-        },
-    };
-    out.insert("autoSwitchAfterRefusals".into(), auto);
-
-    if !issues.is_empty() {
-        return Err(zod_error_message(&issues));
-    }
-    serde_json::to_string(&Value::Object(out))
-        .map(chat_settings::SettingsColVal::Text)
-        .map_err(|_| "Invalid dangerous content settings".to_string())
-}
-
 /// v4 `AnswerConfirmationSettingsSchema.parse` over a PUT sub-bag (a route-level
 /// parse, `settings/chat/route.ts` L270) — one `z.boolean().default(false)` key,
 /// so a partial or empty bag materializes `enabled: false`, unknown keys are
@@ -844,6 +744,7 @@ fn bool_field(v: &Value, err_msg: &str) -> Result<chat_settings::SettingsColVal,
 /// route through [`json_field`] (schema-ordered).
 fn build_settings_assignments(
     db: &Db,
+    user_id: &str,
     bag: &Value,
 ) -> Result<Vec<(&'static str, chat_settings::SettingsColVal)>, String> {
     use chat_settings::SettingsColVal as Col;
@@ -917,12 +818,6 @@ fn build_settings_assignments(
         out.push((
             "imageDescriptionProfileId",
             nullable_string("imageDescriptionProfileId", v)?,
-        ));
-    }
-    if let Some(v) = obj.get("uncensoredImageDescriptionProfileId") {
-        out.push((
-            "uncensoredImageDescriptionProfileId",
-            nullable_string("uncensoredImageDescriptionProfileId", v)?,
         ));
     }
     if let Some(v) = obj.get("themePreference") {
@@ -1035,11 +930,39 @@ fn build_settings_assignments(
             )?,
         ));
     }
-    if let Some(v) = obj.get("dangerousContentSettings") {
-        out.push((
-            "dangerousContentSettings",
-            zod_dangerous_content_settings(v)?,
-        ));
+    // v4 `3b463d6b1` (#76): `ConciergeSettingsSchema.safeParse` at its own
+    // slot (after `contextCompressionSettings`, before `autoLockSettings`) —
+    // defaults MATERIALIZED, so a partial object is stored whole. A failure is
+    // `Invalid conciergeSettings: <path.join('.')>: <message>; …`, a 400
+    // through the route's `includes('Invalid')` rule. An explicit `null` is
+    // present (`typeof !== 'undefined'`) and fails the object gate.
+    if let Some(v) = obj.get("conciergeSettings") {
+        let (parsed, issues) = chat_settings::zod_parse_concierge_settings(v);
+        if !issues.is_empty() {
+            return Err(format!(
+                "Invalid conciergeSettings: {}",
+                crate::api::zod_issues::zod_issue_lines(&issues, ": ").join("; ")
+            ));
+        }
+        // (Read OUT of the macro: inside it `Value` is tracing's trait.)
+        let flag = |v: Option<&Value>| v.and_then(Value::as_bool).unwrap_or(false);
+        let enabled = flag(parsed.get("enabled"));
+        let pre_screen = flag(parsed.get("preScreen").and_then(|p| p.get("enabled")));
+        let summary_classification = flag(
+            parsed
+                .get("preScreen")
+                .and_then(|p| p.get("summaryClassification")),
+        );
+        tracing::debug!(
+            user_id = %user_id,
+            enabled,
+            pre_screen,
+            summary_classification,
+            "[Settings v1] Updating Concierge settings"
+        );
+        let text =
+            serde_json::to_string(&parsed).map_err(|_| "Invalid conciergeSettings".to_string())?;
+        out.push(("conciergeSettings", Col::Text(text)));
     }
     if let Some(v) = obj.get("autoLockSettings") {
         out.push((
@@ -1149,8 +1072,9 @@ fn build_settings_assignments(
     //
     // NOTE (still open, and named rather than hidden): the same repo-level
     // validate also governs the fields v4's route stores raw with no check of
-    // its own — `imageDescriptionProfileId`,
-    // `uncensoredImageDescriptionProfileId` and the two manually-guarded bags
+    // its own — `imageDescriptionProfileId` (its retired sibling
+    // `uncensoredImageDescriptionProfileId` is refused outright since v4
+    // `3b463d6b1`) and the two manually-guarded bags
     // (`contextCompressionSettings`, `thinkingDisplay`) past their guards. Those
     // arms still answer v5's own sentences; no corpus case exercises them, and
     // closing them is a separate order (this one's mandate is the three D73
@@ -3288,5 +3212,89 @@ mod tests {
             r#"{"requiresApiKey":true,"requiresBaseUrl":false,"apiKeyLabel":"Serper API Key"}"#
         );
         assert_eq!(with["count"], json!(a.len()));
+    }
+
+    /// P4.D227 (v4 `3b463d6b1`, #76): the retired-key refusal. v4 tests
+    /// `typeof … !== 'undefined'`, so a PRESENT key trips it even when `null`
+    /// (the order's M2); the crafter only inside an object `cheapLLMSettings`.
+    #[test]
+    fn retired_concierge_keys_are_found_by_presence() {
+        use serde_json::json;
+        assert_eq!(
+            find_retired_concierge_keys(&json!({ "dangerousContentSettings": null })),
+            ["dangerousContentSettings"]
+        );
+        assert_eq!(
+            find_retired_concierge_keys(&json!({
+                "uncensoredImageDescriptionProfileId": null,
+                "cheapLLMSettings": { "imagePromptProfileId": null },
+                "dangerousContentSettings": {}
+            })),
+            [
+                "dangerousContentSettings",
+                "uncensoredImageDescriptionProfileId",
+                "cheapLLMSettings.imagePromptProfileId"
+            ]
+        );
+        assert!(find_retired_concierge_keys(&json!({ "cheapLLMSettings": null })).is_empty());
+        assert!(find_retired_concierge_keys(
+            &json!({ "cheapLLMSettings": { "strategy": "PROVIDER_CHEAPEST" } })
+        )
+        .is_empty());
+        assert!(find_retired_concierge_keys(&json!("not an object")).is_empty());
+    }
+
+    /// …and the refusal itself: v4's WARN (its `retired` array) and the 400,
+    /// before any field is read — the DB is never touched.
+    #[test]
+    fn a_retired_key_put_warns_and_answers_400() {
+        use crate::test_support::captured_with;
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open_main(
+            dir.path().join("main.db"),
+            "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+        )
+        .unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let body = serde_json::json!({
+            "avatarDisplayMode": "bogus",
+            "dangerousContentSettings": null,
+            "cheapLLMSettings": { "imagePromptProfileId": "x" }
+        });
+        let (resp, lines) = captured_with(|| rt.block_on(chat_settings_update(&db, "u1", &body)));
+        match resp {
+            Response::Error(e) => assert_eq!(
+                e.message,
+                "Invalid settings: dangerousContentSettings, cheapLLMSettings.imagePromptProfileId were replaced by conciergeSettings"
+            ),
+            other => panic!("expected the 400, got {other:?}"),
+        }
+        let warn = lines
+            .iter()
+            .find(|l| {
+                l.contains("[Settings v1] Rejected a PUT carrying retired Concierge settings")
+            })
+            .unwrap_or_else(|| panic!("the WARN: {lines:#?}"));
+        assert!(warn.starts_with("WARN"), "{warn}");
+        assert!(
+            warn.contains("user_id=u1")
+                && warn.contains("retired_json=[\"dangerousContentSettings\",\"cheapLLMSettings.imagePromptProfileId\"]"),
+            "{warn}"
+        );
+        // A clean body is silent on this line.
+        let (_, lines) = captured_with(|| {
+            rt.block_on(chat_settings_update(
+                &db,
+                "u1",
+                &serde_json::json!({ "avatarDisplayMode": "bogus" }),
+            ))
+        });
+        assert!(
+            lines.iter().all(|l| !l.contains("retired Concierge")),
+            "{lines:#?}"
+        );
     }
 }

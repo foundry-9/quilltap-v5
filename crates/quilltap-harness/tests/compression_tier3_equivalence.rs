@@ -35,15 +35,14 @@
 
 use std::path::{Path, PathBuf};
 
-use quilltap_core::cheap_llm::{
-    CheapLlmProfile, CheapLlmSelection, DangerousContentSettings, UncensoredFallbackOptions,
-};
+use quilltap_core::cheap_llm::{CheapLlmProfile, CheapLlmSelection, UncensoredFallbackOptions};
 use quilltap_core::context_compression::CompressibleMessage;
 use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
 };
 use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
 use quilltap_core::services::compression::{apply_context_compression, ContextCompressionOptions};
+use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
 use quilltap_core::services::llm_logging::LogContext;
 use serde::Deserialize;
 use serde_json::Value;
@@ -89,14 +88,6 @@ struct ProfileW {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DangerW {
-    mode: String,
-    #[serde(default)]
-    uncensored_text_profile_id: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct CallW {
     name: String,
     messages: Vec<MessageW>,
@@ -107,8 +98,10 @@ struct CallW {
     user_name: String,
     user_id: String,
     selection: SelectionW,
+    /// v4 `3b463d6b1` (#76): the stored `conciergeSettings` the policy
+    /// resolves from (no chat); null = no policy.
     #[serde(default)]
-    danger_settings: Option<DangerW>,
+    concierge: Option<serde_json::Value>,
     #[serde(default)]
     available_profiles: Option<Vec<ProfileW>>,
 }
@@ -284,13 +277,13 @@ async fn compression_tier3_matches_oracle() {
             profile_parameters: call.selection.profile_parameters,
         };
 
-        // v4 builds the uncensored fallback from `dangerSettings &&
+        // v4 builds the uncensored fallback from `conciergePolicy &&
         // availableProfiles`; `isDangerousChat` is not part of the options, so
         // it is always None on this path.
-        let danger = call.danger_settings.map(|d| DangerousContentSettings {
-            mode: d.mode,
-            uncensored_text_profile_id: d.uncensored_text_profile_id,
-        });
+        let policy = call
+            .concierge
+            .as_ref()
+            .map(|stored| resolve_stored_concierge_settings(Some(stored), None));
         let profiles: Option<Vec<CheapLlmProfile>> = call.available_profiles.map(|ps| {
             ps.into_iter()
                 .map(|p| CheapLlmProfile {
@@ -304,9 +297,9 @@ async fn compression_tier3_matches_oracle() {
                 })
                 .collect()
         });
-        let uncensored_fallback = match (&danger, &profiles) {
+        let uncensored_fallback = match (&policy, &profiles) {
             (Some(d), Some(ps)) => Some(UncensoredFallbackOptions {
-                danger_settings: d,
+                concierge_policy: d,
                 available_profiles: ps,
                 is_dangerous_chat: None,
             }),

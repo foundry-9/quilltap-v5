@@ -113,7 +113,12 @@ interface CallSpec {
   projectDescription: string | null;
   chatContextSummary: string | null;
   cheapLLMSettings: { strategy: string; fallbackToLocal: boolean };
-  dangerSettings: { mode: string; uncensoredTextProfileId?: string } | null;
+  /**
+   * v4 `3b463d6b1` (#76): the stored `conciergeSettings` the policy resolves
+   * from WITH a chat in `conciergeMode`; null = no policy (v4's `undefined`).
+   */
+  concierge: Record<string, unknown> | null;
+  conciergeMode?: string;
   isDangerousChat: boolean;
   memoryExtractionLimits: {
     enabled: boolean;
@@ -297,6 +302,7 @@ async function main(): Promise<void> {
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { processTurnForMemory } = await import('@/lib/memory/memory-processor');
+  const { resolveConciergeSettings } = await import('@/lib/services/dangerous-content/resolver.service');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -337,7 +343,12 @@ async function main(): Promise<void> {
       connectionProfile: currentProfile as never,
       cheapLLMSettings: call.cheapLLMSettings as never,
       availableProfiles: availableProfiles as never,
-      dangerSettings: (call.dangerSettings ?? undefined) as never,
+      conciergePolicy: call.concierge
+        ? resolveConciergeSettings(
+            { conciergeSettings: call.concierge as never },
+            { conciergeMode: call.conciergeMode ?? 'moderated' } as never,
+          )
+        : undefined,
       isDangerousChat: call.isDangerousChat,
       memoryExtractionLimits: (call.memoryExtractionLimits ?? undefined) as never,
       sourceMessageTimestamp: call.sourceMessageTimestamp ?? undefined,

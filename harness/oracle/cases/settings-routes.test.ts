@@ -432,43 +432,50 @@ describe('settings-routes oracle', () => {
       body: { themePreference: { colorMode: 'dark' } },
     },
     {
-      // P4.6an — the Dangerous Content card's exact "Auto-detect" payload: the
-      // client spread-merges the whole bag and sends the three
-      // `.nullable().optional()` fields as EXPLICIT null. Zod keeps a present
-      // null, so the stored bytes carry the keys.
-      name: 's_put_danger_nulls',
+      // P4.D227 (v4 `3b463d6b1`, #76) — the Concierge tab's whole-object PUT
+      // with the four desk ids and the prompt as EXPLICIT null (the SPA's
+      // "Auto-detect" / "none"). Zod keeps a present null, so the stored bytes
+      // carry the keys; every other key is supplied, so nothing materializes.
+      name: 's_put_concierge_nulls',
       family: 'settings_chat',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
       body: {
-        dangerousContentSettings: {
-          mode: 'AUTO_ROUTE',
-          threshold: 1,
-          scanTextChat: true,
-          scanImagePrompts: true,
-          scanImageGeneration: false,
+        conciergeSettings: {
+          enabled: true,
           uncensoredTextProfileId: null,
           uncensoredImageProfileId: null,
-          displayMode: 'BLUR',
-          showWarningBadges: false,
-          customClassificationPrompt: null,
+          uncensoredVisionProfileId: null,
+          imagePromptProfileId: null,
+          autoSwitchAfterRefusals: 3,
+          newChatsStartAs: 'unmoderated',
+          display: { mode: 'BLUR', showWarningBadges: false },
+          preScreen: {
+            enabled: true,
+            threshold: 1,
+            scanTextChat: true,
+            scanImagePrompts: false,
+            scanImageGeneration: true,
+            customClassificationPrompt: null,
+            summaryClassification: true,
+          },
         },
       },
     },
     {
-      // P4.6an — a PARTIAL dangerousContentSettings bag. This is a ROUTE-level
-      // `DangerousContentSettingsSchema.parse` (not the repo's merge-then-
-      // validate), so every absent key takes its Zod default and the three
-      // nullable-optionals stay ABSENT from the stored bytes.
-      name: 's_put_danger_partial',
+      // v4 `route.concierge.test.ts` "round-trips a conciergeSettings object,
+      // filling defaults": a PARTIAL object is stored WHOLE — every `.default()`
+      // materialized (the nested objects filled per key), the optional ids and
+      // prompt ABSENT, an unknown key stripped.
+      name: 's_put_concierge_partial',
       family: 'settings_chat',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { mode: 'DETECT_ONLY' } },
+      body: { conciergeSettings: { enabled: false, display: { mode: 'COLLAPSE' }, bogus: 1 } },
     },
     // ---- P4.D73 (v4 4.8.2): the three composer/typography settings keys ----
     {
@@ -734,22 +741,248 @@ describe('settings-routes oracle', () => {
       url: 'http://x/api/v1/settings/chat',
       body: { answerConfirmationSettings: null },
     },
-    // `dangerousContentSettings` — parsed at the route (L175). The richest of
-    // the three: enums (`invalid_value`), a `.min(0).max(1)` number
-    // (`too_small`/`too_big`), `.uuid()` (`invalid_format`) and plain
-    // `invalid_type`, each with its own issue key order.
+    // `conciergeSettings` — `ConciergeSettingsSchema.safeParse` at the route
+    // (v4 `3b463d6b1`, #76), replacing the retired `dangerousContentSettings`
+    // arms. A failure is v4's OWN sentence — `Invalid conciergeSettings:
+    // <path.join('.')>: <message>; …` — not the ZodError JSON, a 400 through
+    // the catch's `includes('Invalid')` rule. Nested paths join with `.`.
     {
-      name: 's_put_danger_not_object',
+      name: 's_put_concierge_not_object',
       family: 'settings_zod',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: 'on' },
+      body: { conciergeSettings: 'on' },
     },
     {
-      name: 's_put_danger_null',
+      // `typeof !== 'undefined'` — a present null is parsed, and fails the object gate (the empty path joins to '').
+      name: 's_put_concierge_null',
       family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: null },
+    },
+    {
+      name: 's_put_concierge_bad_enum',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { display: { mode: 'BOGUS' } } },
+    },
+    {
+      // `ConciergeNewChatStateEnum` is two values — Locked is never a starting state.
+      name: 's_put_concierge_new_chats_locked',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { newChatsStartAs: 'locked' } },
+    },
+    {
+      name: 's_put_concierge_threshold_too_big',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { preScreen: { threshold: 2 } } },
+    },
+    {
+      name: 's_put_concierge_threshold_too_small',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { preScreen: { threshold: -0.5 } } },
+    },
+    {
+      name: 's_put_concierge_threshold_wrong_type',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { preScreen: { threshold: 'high' } } },
+    },
+    {
+      name: 's_put_concierge_bad_uuid',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { uncensoredTextProfileId: 'not-a-uuid' } },
+    },
+    {
+      name: 's_put_concierge_uuid_wrong_type',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { uncensoredImageProfileId: 5 } },
+    },
+    {
+      name: 's_put_concierge_vision_bad_uuid',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { uncensoredVisionProfileId: 'nope' } },
+    },
+    {
+      name: 's_put_concierge_crafter_bad_uuid',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { imagePromptProfileId: 'nope' } },
+    },
+    {
+      name: 's_put_concierge_bad_string',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { preScreen: { customClassificationPrompt: 5 } } },
+    },
+    {
+      name: 's_put_concierge_display_not_object',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { display: 'x' } },
+    },
+    {
+      name: 's_put_concierge_prescreen_null',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { preScreen: null } },
+    },
+    {
+      name: 's_put_concierge_auto_switch_ok',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { autoSwitchAfterRefusals: 5 } },
+    },
+    {
+      name: 's_put_concierge_auto_switch_zero',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { autoSwitchAfterRefusals: 0 } },
+    },
+    {
+      name: 's_put_concierge_auto_switch_fraction',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { autoSwitchAfterRefusals: 1.5 } },
+    },
+    {
+      name: 's_put_concierge_auto_switch_negative_fraction',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { autoSwitchAfterRefusals: -1.5 } },
+    },
+    {
+      name: 's_put_concierge_auto_switch_negative',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { autoSwitchAfterRefusals: -1 } },
+    },
+    {
+      name: 's_put_concierge_auto_switch_too_big',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { autoSwitchAfterRefusals: 11 } },
+    },
+    {
+      name: 's_put_concierge_auto_switch_string',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { autoSwitchAfterRefusals: '2' } },
+    },
+    {
+      name: 's_put_concierge_auto_switch_null',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { autoSwitchAfterRefusals: null } },
+    },
+    {
+      name: 's_put_concierge_auto_switch_huge',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { autoSwitchAfterRefusals: 1e20 } },
+    },
+    {
+      // SEVERAL issues at once — Zod collects every key's failure in schema DECLARATION order (the nested objects in their own order), joined with '; '.
+      name: 's_put_concierge_multi',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { conciergeSettings: { display: { mode: 'X' }, preScreen: { scanTextChat: 1, threshold: 3 }, enabled: 'x', newChatsStartAs: 'nope' } },
+    },
+    // ---- P4.D227 (v4 `3b463d6b1`, #76): the retired Concierge keys ----
+    // v4 `route.concierge.test.ts` `it.each` — each retired key PRESENT (even
+    // as null: `typeof !== 'undefined'`) answers `Invalid settings: <keys> was|
+    // were replaced by conciergeSettings`, checked BEFORE any other field.
+    {
+      // rejects dangerousContentSettings with 400
+      name: 's_put_retired_dangerous',
+      family: 'concierge_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { mode: 'AUTO_ROUTE' } },
+    },
+    {
+      // a present null trips it
+      name: 's_put_retired_dangerous_null',
+      family: 'concierge_settings',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
@@ -757,188 +990,94 @@ describe('settings-routes oracle', () => {
       body: { dangerousContentSettings: null },
     },
     {
-      name: 's_put_danger_bad_enum',
-      family: 'settings_zod',
+      // rejects uncensoredImageDescriptionProfileId with 400
+      name: 's_put_retired_vision',
+      family: 'concierge_settings',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { mode: 'BOGUS' } },
+      body: { uncensoredImageDescriptionProfileId: null },
     },
     {
-      name: 's_put_danger_threshold_too_big',
-      family: 'settings_zod',
+      // rejects cheapLLMSettings.imagePromptProfileId with 400
+      name: 's_put_retired_crafter',
+      family: 'concierge_settings',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { threshold: 2 } },
+      body: { cheapLLMSettings: { strategy: 'USER_DEFINED', imagePromptProfileId: null } },
     },
     {
-      name: 's_put_danger_threshold_too_small',
-      family: 'settings_zod',
+      // all three, joined in the CHECK order (not the body's), 'were'
+      name: 's_put_retired_all_three',
+      family: 'concierge_settings',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { threshold: -0.5 } },
+      body: { cheapLLMSettings: { imagePromptProfileId: 'x' }, uncensoredImageDescriptionProfileId: 'y', dangerousContentSettings: {} },
     },
     {
-      name: 's_put_danger_threshold_wrong_type',
-      family: 'settings_zod',
+      // the retired-key 400 runs BEFORE every other field's validation
+      name: 's_put_retired_before_other_fields',
+      family: 'concierge_settings',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { threshold: 'high' } },
+      body: { avatarDisplayMode: 'BOGUS', uncensoredImageDescriptionProfileId: 'y' },
     },
     {
-      name: 's_put_danger_bad_uuid',
-      family: 'settings_zod',
+      // including a malformed conciergeSettings
+      name: 's_put_retired_before_concierge',
+      family: 'concierge_settings',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { uncensoredTextProfileId: 'not-a-uuid' } },
+      body: { conciergeSettings: { display: { mode: 'BOGUS' } }, dangerousContentSettings: {} },
     },
     {
-      // A `.nullable().optional()` uuid handed a NON-string: the type check
-      // fires before the format check, so this is `invalid_type`, not
-      // `invalid_format`.
-      name: 's_put_danger_uuid_wrong_type',
-      family: 'settings_zod',
+      // a malformed conciergeSettings is validated at ITS slot (after contextCompressionSettings), so an earlier field's error wins: the order's 'both 400s run first' holds for the retired keys only (measured)
+      name: 's_put_concierge_after_earlier_field',
+      family: 'concierge_settings',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { uncensoredImageProfileId: 5 } },
+      body: { avatarDisplayMode: 'BOGUS', conciergeSettings: { display: { mode: 'BOGUS' } } },
     },
     {
-      name: 's_put_danger_bad_string',
-      family: 'settings_zod',
+      // and it beats a LATER field's
+      name: 's_put_concierge_before_later_field',
+      family: 'concierge_settings',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { customClassificationPrompt: 5 } },
+      body: { conciergeSettings: { display: { mode: 'BOGUS' } }, autoLockSettings: { enabled: 'x' } },
     },
     {
-      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
-      // z.number().int().min(0).max(10).default(2)` — a valid tally is stored as given.
-      name: 's_put_danger_auto_switch_ok',
-      family: 'settings_zod',
+      // still accepts cheapLLMSettings without the crafter
+      name: 's_put_cheap_without_crafter',
+      family: 'concierge_settings',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { autoSwitchAfterRefusals: 5 } },
+      body: { cheapLLMSettings: { strategy: 'USER_DEFINED', fallbackToLocal: false } },
     },
     {
-      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
-      // z.number().int().min(0).max(10).default(2)` — 0 = never switch — the floor is inclusive.
-      name: 's_put_danger_auto_switch_zero',
-      family: 'settings_zod',
-      user: 'A',
+      // the CREATE branch (user B has no row): the seed's DEFAULT object is replaced WHOLE by the parsed request
+      name: 's_put_concierge_fresh_row',
+      family: 'concierge_settings',
+      user: 'B',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { autoSwitchAfterRefusals: 0 } },
-    },
-    {
-      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
-      // z.number().int().min(0).max(10).default(2)` — non-whole: ONLY the int issue (the int check aborts).
-      name: 's_put_danger_auto_switch_fraction',
-      family: 'settings_zod',
-      user: 'A',
-      route: 'settingsChat',
-      method: 'PUT',
-      url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { autoSwitchAfterRefusals: 1.5 } },
-    },
-    {
-      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
-      // z.number().int().min(0).max(10).default(2)` — non-whole AND below the floor: still ONLY the int issue.
-      name: 's_put_danger_auto_switch_negative_fraction',
-      family: 'settings_zod',
-      user: 'A',
-      route: 'settingsChat',
-      method: 'PUT',
-      url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { autoSwitchAfterRefusals: -1.5 } },
-    },
-    {
-      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
-      // z.number().int().min(0).max(10).default(2)` — the >=0 bound.
-      name: 's_put_danger_auto_switch_negative',
-      family: 'settings_zod',
-      user: 'A',
-      route: 'settingsChat',
-      method: 'PUT',
-      url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { autoSwitchAfterRefusals: -1 } },
-    },
-    {
-      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
-      // z.number().int().min(0).max(10).default(2)` — the <=10 bound.
-      name: 's_put_danger_auto_switch_too_big',
-      family: 'settings_zod',
-      user: 'A',
-      route: 'settingsChat',
-      method: 'PUT',
-      url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { autoSwitchAfterRefusals: 11 } },
-    },
-    {
-      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
-      // z.number().int().min(0).max(10).default(2)` — not a number at all.
-      name: 's_put_danger_auto_switch_string',
-      family: 'settings_zod',
-      user: 'A',
-      route: 'settingsChat',
-      method: 'PUT',
-      url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { autoSwitchAfterRefusals: '2' } },
-    },
-    {
-      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
-      // z.number().int().min(0).max(10).default(2)` — a present null is a type miss (no nullable).
-      name: 's_put_danger_auto_switch_null',
-      family: 'settings_zod',
-      user: 'A',
-      route: 'settingsChat',
-      method: 'PUT',
-      url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { autoSwitchAfterRefusals: null } },
-    },
-    {
-      // P4.D225 (v4 `49059fb14`): `autoSwitchAfterRefusals:
-      // z.number().int().min(0).max(10).default(2)` — past 2^53: the safe-int issue does NOT abort — the bound follows.
-      name: 's_put_danger_auto_switch_huge',
-      family: 'settings_zod',
-      user: 'A',
-      route: 'settingsChat',
-      method: 'PUT',
-      url: 'http://x/api/v1/settings/chat',
-      body: { dangerousContentSettings: { autoSwitchAfterRefusals: 1e20 } },
-    },
-    {
-      // FOUR issues at once — Zod collects every key's failure and emits them
-      // in schema DECLARATION order (not the order the bag lists them), which
-      // is the half a single-issue case cannot pin.
-      name: 's_put_danger_multi',
-      family: 'settings_zod',
-      user: 'A',
-      route: 'settingsChat',
-      method: 'PUT',
-      url: 'http://x/api/v1/settings/chat',
-      body: {
-        dangerousContentSettings: {
-          displayMode: 'X',
-          scanTextChat: 1,
-          threshold: 3,
-          mode: 'BOGUS',
-        },
-      },
+      body: { conciergeSettings: { newChatsStartAs: 'unmoderated' } },
     },
     // `cheapLLMSettings` — the odd one out. Its ROUTE arm (L76) is two manual
     // enum guards with their own fixed sentences; the bag then rides RAW into
@@ -1053,9 +1192,9 @@ describe('settings-routes oracle', () => {
     },
     {
       // THE ORDERING CASE. `cheapLLMSettings` is handled FIRST in the route's
-      // arm sequence and `dangerousContentSettings` ~100 lines later — but the
+      // arm sequence and `conciergeSettings` ~100 lines later — but the
       // cheap-LLM Zod check does not run at the route at all, so the
-      // dangerous-content throw wins. A port that validates cheap-LLM in place
+      // Concierge throw wins. A port that validates cheap-LLM in place
       // answers the wrong error here.
       name: 's_put_cheap_after_route_arms',
       family: 'settings_zod',
@@ -1065,12 +1204,12 @@ describe('settings-routes oracle', () => {
       url: 'http://x/api/v1/settings/chat',
       body: {
         cheapLLMSettings: { fallbackToLocal: 'yes' },
-        dangerousContentSettings: { mode: 'BOGUS' },
+        conciergeSettings: { display: { mode: 'BOGUS' } },
       },
     },
     {
       // The mirror: a MANUAL cheap-LLM guard DOES run at the route, and it
-      // sits before the dangerous-content arm — so this one answers the fixed
+      // sits before the Concierge arm — so this one answers the fixed
       // cheap-LLM sentence.
       name: 's_put_cheap_guard_before_route_arms',
       family: 'settings_zod',
@@ -1080,7 +1219,7 @@ describe('settings-routes oracle', () => {
       url: 'http://x/api/v1/settings/chat',
       body: {
         cheapLLMSettings: { strategy: 'BOGUS' },
-        dangerousContentSettings: { mode: 'BOGUS' },
+        conciergeSettings: { display: { mode: 'BOGUS' } },
       },
     },
     {

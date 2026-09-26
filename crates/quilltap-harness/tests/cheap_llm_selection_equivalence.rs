@@ -44,9 +44,10 @@ use std::path::PathBuf;
 
 use quilltap_core::cheap_llm::{
     get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, selection_from_profile,
-    CheapLlmConfig, CheapLlmProfile, CheapLlmSelection, DangerousContentSettings,
+    CheapLlmConfig, CheapLlmProfile, CheapLlmSelection,
 };
 use quilltap_core::services::cheap_llm_exec::{cheap_llm_deadline_for, CheapLlmLatencyClass};
+use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -111,19 +112,13 @@ struct LadderCase {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CorpusDanger {
-    mode: String,
-    #[serde(default)]
-    uncensored_text_profile_id: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct UncensoredCase {
     name: String,
     standard: String,
     is_dangerous_chat: bool,
-    danger_settings: CorpusDanger,
+    /// v4 `3b463d6b1` (#76): the stored `conciergeSettings`; null = no policy.
+    concierge: Option<serde_json::Value>,
+    chat: Option<serde_json::Value>,
     available: Vec<String>,
 }
 
@@ -238,14 +233,14 @@ fn cheap_llm_selection_matches_oracle() {
     for c in &corpus.uncensored {
         let available: Vec<CheapLlmProfile> = c.available.iter().map(|k| profile(k)).collect();
         let standard = selection_from_profile(&profile(&c.standard), false);
-        let danger = DangerousContentSettings {
-            mode: c.danger_settings.mode.clone(),
-            uncensored_text_profile_id: c.danger_settings.uncensored_text_profile_id.clone(),
-        };
+        let policy = c
+            .concierge
+            .as_ref()
+            .map(|stored| resolve_stored_concierge_settings(Some(stored), c.chat.as_ref()));
         let s = resolve_uncensored_cheap_llm_selection(
             standard,
             c.is_dangerous_chat,
-            Some(&danger),
+            policy.as_ref(),
             &available,
         );
         check(row(&c.name, "uncensored", &s));
@@ -257,7 +252,7 @@ fn cheap_llm_selection_matches_oracle() {
         oracle.len(),
         "corpus and oracle disagree on the row count — regenerate the oracle"
     );
-    assert!(ran >= 26, "coverage floor: {ran} rows");
+    assert!(ran >= 29, "coverage floor: {ran} rows");
     assert!(
         failed.is_empty(),
         "cheap-LLM selection mismatches:\n{}",

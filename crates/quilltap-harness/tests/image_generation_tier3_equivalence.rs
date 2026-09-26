@@ -269,11 +269,11 @@ struct ChatSpec {
     /// are the whole point of these rows.
     #[serde(default, rename = "toolInput")]
     tool_input: Option<Value>,
-    /// [cc65d6bfc / bug 133] The case's own `chat_settings.dangerousContentSettings`
+    /// [cc65d6bfc / bug 133] The case's own `chat_settings.conciergeSettings` (v4 `3b463d6b1`, #76)
     /// bag, patched onto the fresh copy before the handler runs — one
     /// chat-settings row, one user, so a per-case danger bag has to be fixture
     /// state applied identically on both sides (the story family's shape).
-    #[serde(default, rename = "dangerousContentSettings")]
+    #[serde(default, rename = "conciergeSettings")]
     danger_settings: Option<Value>,
     /// P4.104: the image profile this case generates through (default
     /// `spec.profileId`).
@@ -286,7 +286,7 @@ struct ChatSpec {
     image_seed: Option<String>,
 }
 
-/// [cc65d6bfc] The per-case `dangerousContentSettings` patch, mirroring the
+/// [cc65d6bfc] The per-case `conciergeSettings` patch, mirroring the
 /// oracle's `UPDATE chat_settings …` exactly.
 fn patch_danger_settings(
     main_work: &std::path::Path,
@@ -299,10 +299,10 @@ fn patch_danger_settings(
     writer
         .connection()
         .execute(
-            "UPDATE chat_settings SET dangerousContentSettings = ?1 WHERE userId = ?2",
+            "UPDATE chat_settings SET conciergeSettings = ?1 WHERE userId = ?2",
             rusqlite::params![settings.to_string(), user_id],
         )
-        .expect("patch chat_settings.dangerousContentSettings");
+        .expect("patch chat_settings.conciergeSettings");
 }
 
 #[derive(Deserialize)]

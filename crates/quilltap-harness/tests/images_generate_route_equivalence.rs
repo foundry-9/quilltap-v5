@@ -3,8 +3,8 @@
 //!
 //! Tier 3 (the image provider and the Concierge classifier are mocked BELOW
 //! v4's real route handler), over the committed images fixture — a FRESH copy
-//! per case, with this case's `dangerousContentSettings` patched in by raw SQL
-//! on BOTH sides.
+//! per case, with this case's `conciergeSettings` (v4 `3b463d6b1`, #76) and
+//! the chat's `conciergeMode` patched in by raw SQL on BOTH sides.
 //!
 //! ## What is actually compared
 //!
@@ -14,13 +14,13 @@
 //! * **the ordered provider calls** — `{provider, apiKey, params}`. The params
 //!   are the shared builder's output, so a `mergeParameters` divergence shows
 //!   as a diff rather than as a canned-key miss; the `apiKey` is what proves an
-//!   AUTO_ROUTE reroute switched PROFILES and not merely names;
+//!   Concierge reroute switched PROFILES and not merely names;
 //! * **the ordered classification calls** — `{content, selection, userId,
 //!   settings}`. The `CheapLLMSelection` is otherwise invisible: the route
 //!   builds it from `allProfiles` + `cheapLLMSettings` and hands it straight to
 //!   the classifier, so recording it is the only way to pin
 //!   `build_cheap_llm_selection` on this path. An EMPTY array is the comparand
-//!   of the two gate conjuncts (`mode != 'OFF'`, `scanImagePrompts`) — this
+//!   of the two gate conjuncts (`preScreen.enabled`, `scanImagePrompts`) — this
 //!   line must not START with a shell keyword: `recipe_sweep.py` read the
 //!   previous `for …` wording as a run line (the P4.34 SHELL_START class);
 //! * **the post-mutation `files` rows and Lantern mount links** — so a refusal
@@ -82,7 +82,6 @@ use quilltap_core::api::images::{
 };
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::cheap_llm::CheapLlmSelection;
-use quilltap_core::db::chat_settings::DangerousContentSettings;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::image::{
     ErasedImageGenerate, GeneratedImageData, ImageGenError, ImageGenParams, ImageGenResponse,
@@ -91,6 +90,7 @@ use quilltap_core::model::image::{
 use quilltap_core::services::dangerous_content::gatekeeper::{
     DangerCategory, DangerClassificationResult,
 };
+use quilltap_core::services::dangerous_content::resolver::ResolvedConciergePolicy;
 
 #[path = "blob_image_facts/mod.rs"]
 mod blob_image_facts;
@@ -107,6 +107,9 @@ const PROFILE_NOIMAGE: &str = "aaaa0000-0000-4000-8000-000000000003";
 const MISSING_PROFILE: &str = "aaaa0000-0000-4000-8000-0000000000ff";
 const CHAR_TAG: &str = "c1000000-0000-4000-8000-000000000003";
 const CHAT_ID: &str = "c7000000-0000-4000-8000-0000000000c7";
+/// A REAL chat of the fixture's (v4 `3b463d6b1`, #76): the Concierge arms that
+/// need a chat's state set its `conciergeMode` raw and name it in the body.
+const CONCIERGE_CHAT_ID: &str = "cc000000-0000-4000-8000-000000000001";
 const THEME_TAG: &str = "ee000000-0000-4000-8000-000000000001";
 const LANTERN_MP: &str = "80000000-0000-4000-8000-000000000002";
 
@@ -255,7 +258,7 @@ impl ImagePromptClassifier for RecordingClassifier {
         content: &'a str,
         selection: &'a CheapLlmSelection,
         user_id: &'a str,
-        settings: &'a DangerousContentSettings,
+        concierge_policy: &'a ResolvedConciergePolicy,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = DangerClassificationResult> + Send + 'a>>
     {
         // v4's `CheapLLMSelection` is a plain object serialized by
@@ -277,7 +280,7 @@ impl ImagePromptClassifier for RecordingClassifier {
             "content": content,
             "selection": Value::Object(sel),
             "userId": user_id,
-            "settings": serde_json::to_value(settings).expect("settings serialize"),
+            "settings": serde_json::to_value(concierge_policy).expect("policy serialize"),
             // v4's route calls the four-argument form — there is no chat here.
             "chatId": Value::Null,
         }));
@@ -575,7 +578,11 @@ struct Case {
     chat_id: Option<Value>,
     tags: Option<Value>,
     options: Option<Value>,
-    danger: Option<Value>,
+    /// v4 `3b463d6b1` (#76): merged over the stored `conciergeSettings`
+    /// (top-level keys; `display` / `preScreen` one level).
+    concierge: Option<Value>,
+    /// The fixture chat's `conciergeMode`, written raw before the case runs.
+    chat_mode: Option<&'static str>,
     classify: DangerClassificationResult,
     provider: ProviderMode,
     drop_lantern: bool,
@@ -590,7 +597,8 @@ impl Case {
             chat_id: None,
             tags: None,
             options: None,
-            danger: None,
+            concierge: None,
+            chat_mode: None,
             classify: safe(),
             provider: ProviderMode::Webp,
             drop_lantern: false,
@@ -660,62 +668,98 @@ fn cases() -> Vec<Case> {
             provider: ProviderMode::Lossless,
             ..ok("generate_lossless_webp_normalized")
         },
-        // ── the Concierge gate ──
-        // DETECT_ONLY + dangerous: classified and logged, never rerouted.
-        // ⚠ Only v4's three modes exist (`OFF` / `DETECT_ONLY` / `AUTO_ROUTE`)
-        // — see the oracle case's comment for what a schema-invalid
-        // `chat_settings` row does on v4's side and why that divergence is
-        // recorded in the lane record rather than pinned here.
+        // ── the Concierge gate (v4 `3b463d6b1`, #76: the policy) ──
+        // ⚠ Every stored field stays in range — see the oracle case's comment
+        // for what a schema-invalid `chat_settings` row does on v4's side and
+        // why that divergence is recorded in the lane record, not pinned here.
         Case {
-            danger: Some(json!({ "mode": "DETECT_ONLY" })),
+            chat_id: Some(json!(CONCIERGE_CHAT_ID)),
+            concierge: Some(json!({
+                "enabled": true,
+                "preScreen": { "enabled": true, "scanImagePrompts": true }
+            })),
+            chat_mode: Some("locked"),
             classify: dangerous(),
-            ..ok("generate_danger_detect_only")
+            ..ok("generate_danger_locked")
         },
         Case {
-            danger: Some(json!({
-                "mode": "AUTO_ROUTE",
-                "uncensoredImageProfileId": PROFILE_NOIMAGE
+            concierge: Some(json!({
+                "enabled": true,
+                "uncensoredImageProfileId": PROFILE_NOIMAGE,
+                "preScreen": { "enabled": true, "scanImagePrompts": true }
             })),
             classify: dangerous(),
-            ..ok("generate_danger_autoroute")
+            ..ok("generate_danger_prescreen_reroute")
         },
         Case {
-            danger: Some(json!({ "mode": "AUTO_ROUTE" })),
+            concierge: Some(json!({
+                "enabled": true,
+                "preScreen": { "enabled": true, "scanImagePrompts": true }
+            })),
             classify: dangerous(),
             ..Case::new(
-                "generate_danger_autoroute_no_target",
+                "generate_danger_prescreen_no_target",
                 Some(json!(PROMPT)),
                 Some(json!(PROFILE_UNCENSORED)),
             )
         },
         Case {
-            danger: Some(json!({ "mode": "AUTO_ROUTE" })),
-            ..ok("generate_danger_autoroute_safe")
+            concierge: Some(json!({
+                "enabled": true,
+                "preScreen": { "enabled": true, "scanImagePrompts": true }
+            })),
+            ..ok("generate_danger_prescreen_safe")
         },
         Case {
-            danger: Some(json!({ "mode": "OFF" })),
+            concierge: Some(json!({
+                "enabled": false,
+                "preScreen": { "enabled": true, "scanImagePrompts": true }
+            })),
             classify: dangerous(),
-            ..ok("generate_danger_off")
+            ..ok("generate_danger_off_duty")
         },
         Case {
-            danger: Some(json!({ "mode": "AUTO_ROUTE", "scanImagePrompts": false })),
+            concierge: Some(json!({ "enabled": true })),
+            classify: dangerous(),
+            ..ok("generate_danger_prescreen_off")
+        },
+        Case {
+            concierge: Some(json!({
+                "enabled": true,
+                "preScreen": { "enabled": true, "scanImagePrompts": false }
+            })),
             classify: dangerous(),
             ..ok("generate_scan_disabled")
         },
+        // #76's direct block: an Unmoderated chat routes direct.
+        Case {
+            chat_id: Some(json!(CONCIERGE_CHAT_ID)),
+            concierge: Some(json!({ "enabled": true, "uncensoredTextProfileId": PROFILE_NOIMAGE })),
+            chat_mode: Some("unmoderated"),
+            ..ok("generate_unmoderated_routes_direct")
+        },
+        Case {
+            chat_id: Some(json!(CONCIERGE_CHAT_ID)),
+            concierge: Some(json!({ "enabled": true })),
+            chat_mode: Some("unmoderated"),
+            ..Case::new(
+                "generate_unmoderated_no_direct_target",
+                Some(json!(PROMPT)),
+                Some(json!(PROFILE_UNCENSORED)),
+            )
+        },
         // ── P4.D225: the image-failover chokepoint ──
         Case {
-            danger: Some(json!({
-                "mode": "AUTO_ROUTE",
-                "scanImagePrompts": false,
-                "uncensoredTextProfileId": PROFILE_NOIMAGE
-            })),
+            concierge: Some(json!({ "enabled": true, "uncensoredTextProfileId": PROFILE_NOIMAGE })),
             provider: ProviderMode::RefuseFirst,
             ..ok("generate_refused_rerouted")
         },
         Case {
-            danger: Some(json!({ "mode": "DETECT_ONLY", "scanImagePrompts": false })),
+            concierge: Some(
+                json!({ "enabled": false, "uncensoredTextProfileId": PROFILE_NOIMAGE }),
+            ),
             provider: ProviderMode::RefuseFirst,
-            ..ok("generate_refused_not_permitted")
+            ..ok("generate_refused_off_duty")
         },
         // ── the refusals ──
         Case::new(
@@ -885,28 +929,46 @@ fn images_generate_matches_oracle() {
         driven.push(c.name.to_string());
         let db = fresh_db(&spec, c.name);
 
-        // This case's danger bag, merged over the stored one — the same raw
-        // UPDATE the oracle makes, on a fresh copy of the same fixture.
-        if let Some(patch) = &c.danger {
+        // This case's Concierge settings, merged over the stored ones — the
+        // same raw UPDATE the oracle makes, on a fresh copy of the same fixture.
+        if let Some(patch) = &c.concierge {
             let patch = patch.clone();
             db.write_blocking(move |ws| {
                 let conn = ws.main().connection();
                 let stored: String = conn.query_row(
-                    "SELECT dangerousContentSettings FROM chat_settings WHERE userId = ?1",
+                    "SELECT conciergeSettings FROM chat_settings WHERE userId = ?1",
                     [USER_A],
                     |r| r.get(0),
                 )?;
                 let mut bag: Value = serde_json::from_str(&stored).unwrap();
                 for (k, v) in patch.as_object().unwrap() {
-                    bag[k] = v.clone();
+                    if matches!(k.as_str(), "display" | "preScreen") {
+                        let mut inner = bag.get(k).cloned().unwrap_or_else(|| json!({}));
+                        for (ik, iv) in v.as_object().unwrap() {
+                            inner[ik] = iv.clone();
+                        }
+                        bag[k] = inner;
+                    } else {
+                        bag[k] = v.clone();
+                    }
                 }
                 conn.execute(
-                    "UPDATE chat_settings SET dangerousContentSettings = ?1 WHERE userId = ?2",
+                    "UPDATE chat_settings SET conciergeSettings = ?1 WHERE userId = ?2",
                     rusqlite::params![bag.to_string(), USER_A],
                 )?;
                 Ok(())
             })
-            .expect("patch the danger bag");
+            .expect("patch the Concierge settings");
+        }
+        if let Some(mode) = c.chat_mode {
+            db.write_blocking(move |ws| {
+                ws.main().connection().execute(
+                    "UPDATE chats SET conciergeMode = ?1 WHERE id = ?2",
+                    rusqlite::params![mode, CONCIERGE_CHAT_ID],
+                )?;
+                Ok(())
+            })
+            .expect("set the chat's Concierge state");
         }
         if c.drop_lantern {
             db.write_blocking(|ws| {

@@ -40,11 +40,9 @@
         "userDefinedProfileId": null,
         "defaultCheapProfileId": null,
         "fallbackToLocal": true,
-        "embeddingProvider": "OPENAI",
-        "imagePromptProfileId": null
+        "embeddingProvider": "OPENAI"
       },
       "imageDescriptionProfileId": null,
-      "uncensoredImageDescriptionProfileId": null,
       "defaultRoleplayTemplateId": "d1000000-0000-4000-8000-000000000001",
       "themePreference": {
         "activeThemeId": "midnight-brass",
@@ -127,14 +125,24 @@
         "enabled": true,
         "defaultImageProfileId": "44444444-0000-4000-8000-000000000001"
       },
-      "dangerousContentSettings": {
-        "mode": "OFF",
-        "threshold": 0.7,
-        "scanTextChat": true,
-        "scanImagePrompts": true,
-        "scanImageGeneration": false,
-        "displayMode": "SHOW",
-        "showWarningBadges": true
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": null,
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": null,
+        "autoSwitchAfterRefusals": 4,
+        "newChatsStartAs": "unmoderated",
+        "display": { "mode": "BLUR", "showWarningBadges": false },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.55,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": true,
+          "customClassificationPrompt": "Flag only what would trouble a Wodehouse aunt.",
+          "summaryClassification": true
+        }
       },
       "autoLockSettings": {
         "enabled": false,
@@ -356,6 +364,7 @@
     { "user": "A", "args": { "category": "appearance" } },
     { "user": "A", "args": { "category": "templates" } },
     { "user": "A", "args": { "category": "system" } },
+    { "$comment": "P4.D227 (v4 `3b463d6b1`, #76): the new `concierge` category (after `chat` in the enum), every Concierge setting non-default; the three legacy keys are gone from the row above.", "user": "A", "args": { "category": "concierge" } },
     { "$comment": "USER_B: no settings row / no profiles — the empty + null-fallback branches.", "user": "B", "args": { "category": "overview" } },
     { "user": "B", "args": { "category": "chat" } },
     { "user": "B", "args": { "category": "connections" } },
@@ -364,11 +373,13 @@
     { "user": "B", "args": { "category": "appearance" } },
     { "user": "B", "args": { "category": "templates" } },
     { "user": "B", "args": { "category": "system" } },
+    { "user": "B", "args": { "category": "concierge" } },
     { "$comment": "Invalid inputs — the exact Zod failure.", "user": "A", "args": { "category": "bogus" } },
     { "user": "A", "args": {} },
     { "user": "A", "args": { "category": 42 } }
   ],
   "navigateOps": [
+    { "$comment": "P4.D227: #76's Concierge settings URL (the helpNavigate description's new bytes).", "args": { "url": "/settings?tab=concierge&section=uncensored-desk" } },
     { "$comment": "valid — /settings with query.", "args": { "url": "/settings?tab=chat&section=dangerous-content" } },
     { "$comment": "valid — bare /aurora.", "args": { "url": "/aurora" } },
     { "$comment": "valid — /salon.", "args": { "url": "/salon" } },

@@ -77,9 +77,8 @@ use std::sync::Mutex;
 mod common;
 
 use quilltap_core::cheap_llm::CheapLlmSelection;
-use quilltap_core::cheap_llm::{
-    CheapLlmProfile, DangerousContentSettings as CheapDangerSettings, UncensoredFallbackOptions,
-};
+use quilltap_core::cheap_llm::{CheapLlmProfile, UncensoredFallbackOptions};
+use quilltap_core::db::chat_settings::zod_parse_concierge_settings;
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::Writer;
@@ -92,6 +91,7 @@ use quilltap_core::services::cheap_llm_exec::{
 use quilltap_core::services::cheap_llm_fallback::{
     build_cheap_fallback_selections, CheapFallbackRequest,
 };
+use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
 use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::test_support::captured_with;
 use serde_json::{json, Value};
@@ -450,18 +450,20 @@ fn cheap_llm_refusal_matches_oracle() {
     assert_eq!(
         oracle.len(),
         cases.len() + 3,
-        "settings + one row per case + two dumps"
+        "the policy + one row per case + two dumps"
     );
 
-    // v4's Zod-parsed danger settings, as the case recorded them (the two
-    // fields the cheap path reads).
-    let recorded = &oracle[0]["dangerSettings"];
-    let danger = CheapDangerSettings {
-        mode: recorded["mode"].as_str().unwrap().into(),
-        uncensored_text_profile_id: recorded["uncensoredTextProfileId"]
-            .as_str()
-            .map(str::to_string),
-    };
+    // v4 `3b463d6b1` (#76): the fallback's Concierge policy, resolved from the
+    // spec's stored `conciergeSettings` (no chat, as the task executor is
+    // handed it) — the whole policy compared against v4's recorded bytes.
+    let (stored, issues) = zod_parse_concierge_settings(&spec["concierge"]);
+    assert!(issues.is_empty(), "concierge settings parse");
+    let policy = resolve_stored_concierge_settings(Some(&stored), None);
+    assert_eq!(
+        serde_json::to_value(&policy).unwrap(),
+        oracle[0]["conciergePolicy"],
+        "the resolved Concierge policy"
+    );
     let profiles: Vec<CheapLlmProfile> = spec["connectionProfiles"]
         .as_array()
         .unwrap()
@@ -549,7 +551,7 @@ fn cheap_llm_refusal_matches_oracle() {
             ctx: LogContext::none(),
         });
         let uncensored = UncensoredFallbackOptions {
-            danger_settings: &danger,
+            concierge_policy: &policy,
             available_profiles: &profiles,
             is_dangerous_chat: Some(false),
         };

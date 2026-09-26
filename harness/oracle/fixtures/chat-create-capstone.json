@@ -3245,19 +3245,187 @@
         ]
       },
       "comment": "P4.D226 (v4 `does try the uncensored desk for a Moderated chat whose greeting hits a content filter`): a Moderated chat (no requested state), the own profile's greeting comes back empty with completion tokens (a content filter) on both rungs, and attempt 3's `mayFailOver(chatRow)` lets the Concierge desk answer."
+    },
+    {
+      "name": "ncsa_default_unmoderated_applies",
+      "progressId": "e0000000-0000-4000-8000-0000000003a1",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "conciergeSettings": {
+        "enabled": true,
+        "newChatsStartAs": "unmoderated"
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000003a1",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      },
+      "comment": "P4.D227 (v4 `3b463d6b1`, #76; route.concierge-state.test.ts `newChatsStartAs`): applies the operator default when the request names no state (E.8: apply_concierge_flip with no options -> operator/manual)."
+    },
+    {
+      "name": "ncsa_explicit_moderated_beats_default",
+      "progressId": "e0000000-0000-4000-8000-0000000003a2",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "conciergeSettings": {
+        "enabled": true,
+        "newChatsStartAs": "unmoderated"
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000003a2",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "moderated"
+      },
+      "comment": "P4.D227 (v4 `3b463d6b1`, #76; route.concierge-state.test.ts `newChatsStartAs`): lets an explicit Moderated request beat an Unmoderated default."
+    },
+    {
+      "name": "ncsa_explicit_locked_beats_default",
+      "progressId": "e0000000-0000-4000-8000-0000000003a3",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "conciergeSettings": {
+        "enabled": true,
+        "newChatsStartAs": "unmoderated"
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000003a3",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "locked"
+      },
+      "comment": "P4.D227 (v4 `3b463d6b1`, #76; route.concierge-state.test.ts `newChatsStartAs`): lets an explicit Locked request beat an Unmoderated default."
+    },
+    {
+      "name": "ncsa_moderated_default_noop",
+      "progressId": "e0000000-0000-4000-8000-0000000003a4",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "conciergeSettings": {
+        "enabled": true,
+        "newChatsStartAs": "moderated"
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000003a4",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      },
+      "comment": "P4.D227 (v4 `3b463d6b1`, #76; route.concierge-state.test.ts `newChatsStartAs`): does nothing with a Moderated default."
+    },
+    {
+      "name": "ncsa_off_duty_ignores_default",
+      "progressId": "e0000000-0000-4000-8000-0000000003a5",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "conciergeSettings": {
+        "enabled": false,
+        "newChatsStartAs": "unmoderated"
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000003a5",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      },
+      "comment": "P4.D227 (v4 `3b463d6b1`, #76; route.concierge-state.test.ts `newChatsStartAs`): ignores the default while the Concierge is off duty."
+    },
+    {
+      "name": "ncsa_off_duty_ignores_explicit_unmoderated",
+      "progressId": "e0000000-0000-4000-8000-0000000003a6",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "conciergeSettings": {
+        "enabled": false,
+        "newChatsStartAs": "moderated"
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000003a6",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "unmoderated"
+      },
+      "comment": "P4.D227 (v4 `3b463d6b1`, #76; route.concierge-state.test.ts `newChatsStartAs`): ignores an explicit unmoderated request while the Concierge is off duty (a stale form)."
+    },
+    {
+      "name": "ncsa_off_duty_ignores_explicit_locked",
+      "progressId": "e0000000-0000-4000-8000-0000000003a7",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "conciergeSettings": {
+        "enabled": false,
+        "newChatsStartAs": "moderated"
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000003a7",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "locked"
+      },
+      "comment": "P4.D227 (v4 `3b463d6b1`, #76; route.concierge-state.test.ts `newChatsStartAs`): ignores an explicit locked request while the Concierge is off duty (a stale form)."
     }
   ],
-  "dangerousContentSettings": {
-    "mode": "AUTO_ROUTE",
-    "threshold": 0.7,
-    "scanTextChat": true,
-    "scanImagePrompts": true,
-    "scanImageGeneration": false,
+  "conciergeSettings": {
+    "enabled": true,
     "uncensoredTextProfileId": "b3000000-0000-4000-8000-000000000003",
     "uncensoredImageProfileId": null,
-    "displayMode": "SHOW",
-    "showWarningBadges": true,
-    "customClassificationPrompt": null
+    "uncensoredVisionProfileId": null,
+    "imagePromptProfileId": null,
+    "autoSwitchAfterRefusals": 2,
+    "newChatsStartAs": "moderated",
+    "display": {
+      "mode": "SHOW",
+      "showWarningBadges": true
+    },
+    "preScreen": {
+      "enabled": true,
+      "threshold": 0.7,
+      "scanTextChat": true,
+      "scanImagePrompts": true,
+      "scanImageGeneration": false,
+      "customClassificationPrompt": null,
+      "summaryClassification": true
+    }
   },
   "participantMemories": [
     {

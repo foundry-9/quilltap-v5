@@ -578,13 +578,7 @@ pub fn collect_character_breakdown(
 /// what an unconfigured instance genuinely looks like.
 pub fn default_feature_config() -> FeatureConfigInfo {
     FeatureConfigInfo {
-        dangerous_content: DangerousContentConfig {
-            mode: "OFF".into(),
-            threshold: 0.7,
-            scan_text_chat: true,
-            scan_image_prompts: true,
-            scan_image_generation: false,
-        },
+        concierge: concierge_feature_config(None),
         context_compression: ContextCompressionConfig {
             enabled: true,
             window_size: 5.0,
@@ -644,7 +638,39 @@ pub fn default_feature_config() -> FeatureConfigInfo {
         impersonation_voice_rewrite: false,
         auto_scroll_on_response_complete: false,
         image_description_profile_configured: false,
-        uncensored_image_description_profile_configured: false,
+        uncensored_vision_profile_configured: false,
+    }
+}
+
+/// v4 `conciergeFeatureConfig(chatSettings)` (`3b463d6b1`, #76) — the
+/// Concierge's settings as the report prints them, read through
+/// `readConciergeSettings`, so a missing row or field reads as its default.
+fn concierge_feature_config(chat_settings: Option<&Value>) -> ConciergeConfig {
+    let cs = crate::services::dangerous_content::resolver::read_concierge_settings(chat_settings);
+    let set = |id: &Option<String>| id.as_deref().is_some_and(|s| !s.is_empty());
+    ConciergeConfig {
+        enabled: cs.enabled,
+        new_chats_start_as: cs.new_chats_start_as.clone(),
+        auto_switch_after_refusals: cs.auto_switch_after_refusals as f64,
+        display: ConciergeDisplayConfig {
+            mode: cs.display.mode.clone(),
+            show_warning_badges: cs.display.show_warning_badges,
+        },
+        desk: ConciergeDeskConfig {
+            text_profile_set: set(&cs.uncensored_text_profile_id),
+            image_profile_set: set(&cs.uncensored_image_profile_id),
+            vision_profile_set: set(&cs.uncensored_vision_profile_id),
+            image_prompt_profile_set: set(&cs.image_prompt_profile_id),
+        },
+        pre_screen: ConciergePreScreenConfig {
+            enabled: cs.pre_screen.enabled,
+            threshold: cs.pre_screen.threshold,
+            scan_text_chat: cs.pre_screen.scan_text_chat,
+            scan_image_prompts: cs.pre_screen.scan_image_prompts,
+            scan_image_generation: cs.pre_screen.scan_image_generation,
+            custom_classification_prompt: set(&cs.pre_screen.custom_classification_prompt),
+        },
+        summary_classification: cs.pre_screen.summary_classification,
     }
 }
 
@@ -673,17 +699,7 @@ pub fn collect_feature_config(db: &Db, user_id: &str) -> Result<FeatureConfigInf
     let (rules, enabled_rules) = rule_row.unwrap_or((0.0, 0.0));
 
     Ok(FeatureConfigInfo {
-        dangerous_content: DangerousContentConfig {
-            mode: jstr(s, &["dangerousContentSettings", "mode"], "OFF"),
-            threshold: jnum(s, &["dangerousContentSettings", "threshold"], 0.7),
-            scan_text_chat: jbool(s, &["dangerousContentSettings", "scanTextChat"], true),
-            scan_image_prompts: jbool(s, &["dangerousContentSettings", "scanImagePrompts"], true),
-            scan_image_generation: jbool(
-                s,
-                &["dangerousContentSettings", "scanImageGeneration"],
-                false,
-            ),
-        },
+        concierge: concierge_feature_config(Some(s)),
         context_compression: ContextCompressionConfig {
             enabled: jbool(s, &["contextCompressionSettings", "enabled"], true),
             window_size: jnum(s, &["contextCompressionSettings", "windowSize"], 5.0),
@@ -768,10 +784,10 @@ pub fn collect_feature_config(db: &Db, user_id: &str) -> Result<FeatureConfigInf
         impersonation_voice_rewrite: jbool(s, &["impersonationVoiceRewrite"], false),
         auto_scroll_on_response_complete: jbool(s, &["autoScrollOnResponseComplete"], false),
         image_description_profile_configured: jtruthy(s, &["imageDescriptionProfileId"]),
-        uncensored_image_description_profile_configured: jtruthy(
-            s,
-            &["uncensoredImageDescriptionProfileId"],
-        ),
+        uncensored_vision_profile_configured:
+            crate::services::dangerous_content::resolver::read_concierge_settings(Some(s))
+                .uncensored_vision_profile_id
+                .is_some_and(|id| !id.is_empty()),
     })
 }
 

@@ -184,7 +184,8 @@ async function main(): Promise<void> {
       cheapLLMSettings: { strategy: 'PROVIDER_CHEAPEST', fallbackToLocal: false },
       autoDetectRng: false,
       answerConfirmationSettings: { enabled: false },
-      dangerousContentSettings: { mode: 'AUTO_ROUTE' },
+      // v4 `3b463d6b1` (#76): the Concierge on duty (the retired AUTO_ROUTE).
+      conciergeSettings: { enabled: true },
     } as never,
     { id: spec.chatSettingsId }
   );
@@ -224,6 +225,13 @@ async function main(): Promise<void> {
         answerConfirmationOverride: call.chatOverride ?? undefined,
         impersonatingParticipantIds: call.impersonated ? [call.participantId] : [],
         isDangerousChat: call.dangerous === true ? true : undefined,
+        // P4.D226's handoff (v4 `4d370a90f`, #75): the escalation reads the
+        // chat's STATE (`shouldUseUncensoredRoute` → `conciergeMode`), so a
+        // dangerous case seeds an Unmoderated chat — the legacy label alone
+        // silently stopped being dangerous at #75.
+        ...(call.dangerous === true
+          ? { conciergeMode: 'unmoderated', conciergeModeSetBy: 'concierge', conciergeModeReason: 'classifier' }
+          : {}),
       } as never,
       { id: call.chatId, createdAt: TS, updatedAt: TS }
     );

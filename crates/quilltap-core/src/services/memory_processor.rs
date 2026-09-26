@@ -31,6 +31,7 @@
 //!     (`maybeEnqueueHousekeeping`, `applyNamePresenceCheck`'s lookup branch,
 //!     the 500 ms retry delay).
 
+use crate::services::dangerous_content::resolver::ResolvedConciergePolicy;
 use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
@@ -42,7 +43,7 @@ use crate::canon::{
 };
 use crate::cheap_llm::{
     get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, CheapLlmConfig,
-    CheapLlmProfile, CheapLlmSelection, DangerousContentSettings, UncensoredFallbackOptions,
+    CheapLlmProfile, CheapLlmSelection, UncensoredFallbackOptions,
 };
 use crate::clock;
 use crate::context_budget::resolve_max_tokens;
@@ -306,7 +307,8 @@ pub struct TurnMemoryExtractionContext {
     /// `None` mirrors v4's absent `availableProfiles` (which also disables the
     /// uncensored fallback); `Some(vec![])` is a present-but-empty list.
     pub available_profiles: Option<Vec<CheapLlmProfile>>,
-    pub danger_settings: Option<DangerousContentSettings>,
+    /// v4 `conciergePolicy?` (`3b463d6b1`, #76 — replaces `dangerSettings`).
+    pub concierge_policy: Option<ResolvedConciergePolicy>,
     pub is_dangerous_chat: bool,
     pub memory_extraction_limits: Option<MemoryExtractionLimits>,
     /// Override the source-message timestamp on derived memories (batch
@@ -769,14 +771,14 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
     let selection = resolve_uncensored_cheap_llm_selection(
         selection,
         ctx.is_dangerous_chat,
-        ctx.danger_settings.as_ref(),
+        ctx.concierge_policy.as_ref(),
         profiles,
     );
 
     let uncensored_fallback: Option<UncensoredFallbackOptions<'_>> =
-        match (&ctx.danger_settings, &ctx.available_profiles) {
-            (Some(danger), Some(available)) => Some(UncensoredFallbackOptions {
-                danger_settings: danger,
+        match (&ctx.concierge_policy, &ctx.available_profiles) {
+            (Some(policy), Some(available)) => Some(UncensoredFallbackOptions {
+                concierge_policy: policy,
                 available_profiles: available,
                 is_dangerous_chat: None,
             }),

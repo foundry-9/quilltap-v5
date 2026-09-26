@@ -293,8 +293,8 @@ pub fn collect_cheap_llm_info(db: &Db, user_id: &str) -> Result<DesignatedProfil
         .unwrap_or_default())
 }
 
-/// v4 `collectImagePromptLLMInfo` — the separate override used for expanding
-/// image prompts, if configured.
+/// v4 `collectImagePromptLLMInfo` — the Concierge desk's image prompt crafter,
+/// if configured.
 pub fn collect_image_prompt_llm_info(
     db: &Db,
     user_id: &str,
@@ -303,12 +303,13 @@ pub fn collect_image_prompt_llm_info(
         .read_main(|c| crate::db::chat_settings::find_by_user_id(c, user_id))
         .unwrap_or(None)
         .unwrap_or(Value::Null);
-    let profile_id = settings
-        .get("cheapLLMSettings")
-        .and_then(|v| v.get("imagePromptProfileId"))
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty());
-    let Some(profile_id) = profile_id else {
+    // v4 `3b463d6b1`: `readConciergeSettings(chatSettings).imagePromptProfileId`
+    // — the Concierge desk's image prompt crafter.
+    let profile_id =
+        crate::services::dangerous_content::resolver::read_concierge_settings(Some(&settings))
+            .image_prompt_profile_id
+            .filter(|s| !s.is_empty());
+    let Some(profile_id) = profile_id.as_deref() else {
         return Ok(DesignatedProfileInfo::default());
     };
     let profile = db

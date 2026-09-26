@@ -6,8 +6,12 @@
 //!     `conciergeMode` + provenance, the legacy pair ignored.
 //!   - [`current_state`] — the state re-read at refusal time (#75).
 //!   - [`classifier_switch`] — the classifier verdict's move to Unmoderated (#75).
-//!   - [`resolver`] — the effective [`crate::db::chat_settings::DangerousContentSettings`]
-//!     (global + per-chat off-duty / exempt short-circuits).
+//!   - [`resolver`] — the Concierge policy (`resolve_concierge_settings`,
+//!     v4 `3b463d6b1`, #76): global `conciergeSettings` + the chat's state →
+//!     the named questions (`failover_allowed`, `route_direct`, `pre_screen`,
+//!     …), exempt → off duty → Locked → Unmoderated → Moderated.
+//!   - [`legacy_concierge_settings`] — the retired settings translated into
+//!     `conciergeSettings` (restore + the backup remap; #76).
 //!   - [`gatekeeper`] — content classification (moderation-provider seam →
 //!     cheap-LLM), the pure parse/map leaves, and the classification cache.
 //!   - [`provider_routing`] — the uncensored-reroute resolution (the REAL
@@ -43,6 +47,7 @@ pub mod current_state;
 pub mod gatekeeper;
 pub mod gatekeeper_job;
 pub mod image_failover;
+pub mod legacy_concierge_settings;
 pub mod manual_flip;
 pub mod moderation_wire;
 mod prompt_text;

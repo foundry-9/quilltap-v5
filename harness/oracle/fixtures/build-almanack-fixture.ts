@@ -477,11 +477,30 @@ async function main(): Promise<void> {
       cheapLLMSettings: {
         strategy: 'PROVIDER_CHEAPEST',
         fallbackToLocal: false,
-        imagePromptProfileId: CONN_CHEAP,
       },
       llmLoggingSettings: { enabled: true, verboseMode: true, retentionDays: 45 },
       themePreference: { activeThemeId: 'madmans-box', colorMode: 'dark' },
-      dangerousContentSettings: { mode: 'DETECT_ONLY', threshold: 0.55 },
+      // v4 `3b463d6b1` (#76): the Concierge's own settings (the retired
+      // `dangerousContentSettings` bag + the cheap-LLM crafter moved here),
+      // non-default wherever the Almanack's block reads.
+      conciergeSettings: {
+        enabled: true,
+        uncensoredTextProfileId: CONN,
+        uncensoredVisionProfileId: CONN,
+        imagePromptProfileId: CONN_CHEAP,
+        autoSwitchAfterRefusals: 4,
+        newChatsStartAs: 'unmoderated',
+        display: { mode: 'BLUR', showWarningBadges: false },
+        preScreen: {
+          enabled: true,
+          threshold: 0.55,
+          scanTextChat: true,
+          scanImagePrompts: false,
+          scanImageGeneration: true,
+          customClassificationPrompt: 'Flag only what would trouble a Wodehouse aunt.',
+          summaryClassification: true,
+        },
+      },
       contextCompressionSettings: { enabled: true, windowSize: 7 },
       agentModeSettings: { maxTurns: 6, defaultEnabled: false },
       storyBackgroundsSettings: { enabled: true, defaultImageProfileId: IMG_PROFILE },

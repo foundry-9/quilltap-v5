@@ -481,6 +481,11 @@ pub struct FallbackDeps<'a, CMP: CompletionProvider> {
     /// The wall clock for `logLLMCall`'s `durationMs` (frozen in the
     /// differential; the dump normalizes it regardless).
     pub now_ms: i64,
+    /// v4 `ImageDescriptionOptions.chatId` (`3b463d6b1`, #76) — where the image
+    /// is being described: the chat's Concierge state decides whether the
+    /// uncensored vision fallback may stand in. `None` — a file described
+    /// outside any chat — leaves only the global on-duty switch to decide.
+    pub chat_id: Option<&'a str>,
 }
 
 /// v4 `getImageDescriptionProfile(repos, userId)`.
@@ -538,7 +543,11 @@ async fn get_image_description_profile<CMP: CompletionProvider>(
     Ok(Some(vision[0].clone()))
 }
 
-/// v4 `getUncensoredImageDescriptionProfile(repos, userId)` — never auto-picked.
+/// v4 `getUncensoredImageDescriptionProfile(repos, userId, chatId?)` — never
+/// auto-picked. v4 `3b463d6b1` (#76): the profile is the Concierge desk's
+/// `visionProfileId` in the policy resolved for THIS chat. With a chat in hand
+/// its state decides (Locked and exempt chats have an empty desk); without one
+/// — a file described outside any chat — only the global on-duty switch does.
 async fn get_uncensored_image_description_profile<CMP: CompletionProvider>(
     deps: &FallbackDeps<'_, CMP>,
 ) -> Result<Option<Value>, crate::db::DbError> {
@@ -546,13 +555,35 @@ async fn get_uncensored_image_description_profile<CMP: CompletionProvider>(
     let settings = deps
         .db
         .read_main(move |c| crate::db::chat_settings::find_by_user_id(c, &user_id))?;
-    let id = settings
-        .as_ref()
-        .and_then(|s| s.get("uncensoredImageDescriptionProfileId"))
-        .and_then(Value::as_str)
+    // v4 `repos.chats.findById(chatId).catch(() => null)` — a failed read is
+    // no chat.
+    let chat = match deps.chat_id.filter(|id| !id.is_empty()) {
+        Some(id) => {
+            let id = id.to_string();
+            deps.db
+                .read_main(move |c| crate::db::chats_read::find_by_id(c, &id))
+                .ok()
+                .flatten()
+        }
+        None => None,
+    };
+    let policy = crate::services::dangerous_content::resolver::resolve_concierge_settings(
+        settings.as_ref(),
+        chat.as_ref(),
+    );
+    let Some(id) = policy
+        .desk
+        .vision_profile_id
+        .clone()
         .filter(|s| !s.is_empty())
-        .map(str::to_string);
-    let Some(id) = id else {
+    else {
+        tracing::debug!(
+            target: "quilltap::image_fallback",
+            user_id = %deps.user_id,
+            chat_id = deps.chat_id.unwrap_or("null"),
+            concierge_source = policy.source.as_str(),
+            "Uncensored vision fallback unavailable for this chat"
+        );
         return Ok(None);
     };
     let profile = deps
@@ -1808,6 +1839,7 @@ mod log_context_tests {
             transcoder: &transcoder,
             user_id: "user-1",
             now_ms: 0,
+            chat_id: None,
         };
         let file = FallbackFile {
             id: "file-1".into(),
@@ -1847,5 +1879,65 @@ mod log_context_tests {
                 "error=the primary profile row could not be read as a fallback profile",
             ],
         );
+    }
+
+    /// P4.D227 (v4 `3b463d6b1`, #76): the uncensored vision fallback is the
+    /// Concierge desk's, read through the chat's policy — no desk vision
+    /// profile answers `None` with v4's DEBUG (the policy's source named), and
+    /// a configured-but-missing profile is a silent `None`.
+    #[test]
+    fn the_vision_fallback_logs_why_there_is_no_desk() {
+        use crate::test_support::captured_with;
+        let db = test_db();
+        // The re-dumped fresh `chat_settings` table with no row for the user:
+        // v4's `findByUserId` answers null, the policy reads the defaults (on
+        // duty, no desk) — so the source is `default`.
+        let schema: Value =
+            serde_json::from_str(include_str!("provisioning/fresh_schema.json")).unwrap();
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"chat_settings\" ("))
+            .unwrap()
+            .to_string();
+        db.write_blocking(move |w| {
+            w.main().connection().execute_batch(&ddl)?;
+            Ok(())
+        })
+        .unwrap();
+        let completion = UnusedProvider;
+        let transcoder = NotConfiguredTranscoder;
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        for chat_id in [None, Some("chat-1")] {
+            let deps = FallbackDeps {
+                db: &db,
+                completion: &completion,
+                transcoder: &transcoder,
+                user_id: "u1",
+                now_ms: 0,
+                chat_id,
+            };
+            let (got, lines) =
+                captured_with(|| rt.block_on(get_uncensored_image_description_profile(&deps)));
+            assert!(matches!(got, Ok(None)), "{got:?}");
+            let line = lines
+                .iter()
+                .find(|l| l.contains("Uncensored vision fallback unavailable for this chat"))
+                .unwrap_or_else(|| panic!("the DEBUG: {lines:#?}"));
+            assert!(line.starts_with("DEBUG quilltap::image_fallback"), "{line}");
+            assert!(
+                line.contains("user_id=u1") && line.contains("concierge_source=default"),
+                "{line}"
+            );
+            assert!(
+                line.contains(&format!("chat_id={}", chat_id.unwrap_or("null"))),
+                "{line}"
+            );
+        }
     }
 }

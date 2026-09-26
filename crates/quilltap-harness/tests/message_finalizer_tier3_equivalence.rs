@@ -814,7 +814,7 @@ fn message_finalizer_tier3_matches_oracle() {
             is_continue_mode: false,
             window_size: 10,
             compression_target_tokens: 1000,
-            danger_settings: None,
+            concierge_policy: None,
             available_profiles: Vec::new(),
             now_ms: 0,
         };
@@ -824,10 +824,6 @@ fn message_finalizer_tier3_matches_oracle() {
                 cheap_llm_settings_present: true,
                 auto_detect_rng: Some(spec.chat_settings.auto_detect_rng),
                 answer_confirmation_global_enabled: spec.chat_settings.answer_confirmation_enabled,
-                // W4.2u: the finalizer corpus keeps danger mode non-OFF (the enqueue
-                // gate runs; the OFF short-circuit is covered by the orchestrator
-                // corpus's `danger_off_short_circuit` case).
-                danger_mode_off: false,
             })
         } else {
             None

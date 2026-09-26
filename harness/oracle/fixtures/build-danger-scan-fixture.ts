@@ -3,8 +3,12 @@
  * `lib/background-jobs/scheduled-danger-scan.ts` `runScheduledDangerScan`).
  *
  * Seeds (main DB only, pinned ids/timestamps, through v4's REAL repos):
- *   - three users' `chat_settings`: userOn (mode DETECT_ONLY), userOff (OFF),
- *     userNoProfiles (DETECT_ONLY, but no connection profiles);
+ *   - four users' `chat_settings` (P4.D227, v4 `3b463d6b1` — `conciergeSettings`,
+ *     the scan's gate being "on duty AND opted into summary classification"):
+ *     userOn (opted in), userOff (OFF DUTY, the box still ticked — v4's "skips
+ *     users whose Concierge is off duty, even with summary classification
+ *     ticked"), userNoProfiles (opted in, but no connection profiles),
+ *     userNotOptedIn (on duty, summary classification at its default off);
  *   - two connection profiles for userOn (P1 inserted first = the fallback
  *     `availableProfiles[0]`, P2 the participant-referenced one);
  *   - the per-chat gate matrix under userOn:
@@ -26,6 +30,7 @@
  *       c8 safe but GROWN (classifiedAt 5 < count 10) + summary
  *                                                  → CLASSIFICATION
  *   - userOff: one never-classified chat → nothing (user skipped, not counted);
+ *   - userNotOptedIn: one never-classified chat → nothing (skipped, not counted);
  *   - userNoProfiles: one never-classified chat → skipped per-chat (no
  *     resolvable profile), user still counted as processed.
  *
@@ -49,11 +54,13 @@ interface Spec {
   userOn: string;
   userOff: string;
   userNoProfiles: string;
+  userNotOptedIn: string;
   characterId: string;
   profileP1: string;
   profileP2: string;
-  dangerOn: Record<string, unknown>;
-  dangerOff: Record<string, unknown>;
+  conciergeOn: Record<string, unknown>;
+  conciergeOff: Record<string, unknown>;
+  conciergeNotOptedIn: Record<string, unknown>;
 }
 
 async function main(): Promise<void> {
@@ -85,13 +92,14 @@ async function main(): Promise<void> {
 
   // chat_settings rows: insertion order = the sweep's user order.
   const settings: Array<[string, string, Record<string, unknown>]> = [
-    ['f0000000-0000-4000-8000-0000000000a1', spec.userOn, spec.dangerOn],
-    ['f0000000-0000-4000-8000-0000000000a2', spec.userOff, spec.dangerOff],
-    ['f0000000-0000-4000-8000-0000000000a3', spec.userNoProfiles, spec.dangerOn],
+    ['f0000000-0000-4000-8000-0000000000a1', spec.userOn, spec.conciergeOn],
+    ['f0000000-0000-4000-8000-0000000000a2', spec.userOff, spec.conciergeOff],
+    ['f0000000-0000-4000-8000-0000000000a3', spec.userNoProfiles, spec.conciergeOn],
+    ['f0000000-0000-4000-8000-0000000000a4', spec.userNotOptedIn, spec.conciergeNotOptedIn],
   ];
-  for (const [id, userId, dcs] of settings) {
+  for (const [id, userId, concierge] of settings) {
     await repos.chatSettings.create(
-      { userId, dangerousContentSettings: dcs } as never,
+      { userId, conciergeSettings: concierge } as never,
       { id, createdAt: ts, updatedAt: ts },
     );
   }
@@ -261,6 +269,11 @@ async function main(): Promise<void> {
       id: 'c0000000-0000-4000-8000-0000000000ca',
       user: spec.userNoProfiles,
       data: { chatType: 'salon', participants: [participant('llm')] },
+    },
+    {
+      id: 'c0000000-0000-4000-8000-0000000000cd',
+      user: spec.userNotOptedIn,
+      data: { chatType: 'salon', participants: [participant('llm', spec.profileP1)] },
     },
   ];
 

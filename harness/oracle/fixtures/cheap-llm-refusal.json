@@ -7,8 +7,8 @@
     {
       "id": "5e0000e1-0000-4000-8000-0000000000f0",
       "userId": "aa0000e1-0000-4000-8000-0000000000aa",
-      "dangerousContentSettings": {
-        "mode": "AUTO_ROUTE"
+      "conciergeSettings": {
+        "enabled": true
       }
     }
   ],
@@ -29,8 +29,8 @@
       "isDangerousCompatible": true
     }
   ],
-  "dangerSettings": {
-    "mode": "AUTO_ROUTE",
+  "concierge": {
+    "enabled": true,
     "uncensoredTextProfileId": "c90000e2-0000-4000-8000-000000000001"
   },
   "chats": [
@@ -40,7 +40,6 @@
       "title": "stated-empty-no-uncensored-fallback",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 11
     },
     {
@@ -49,7 +48,6 @@
       "title": "stated-empty-retry-answers",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 12
     },
     {
@@ -58,7 +56,6 @@
       "title": "stated-empty-retry-also-empty",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 13
     },
     {
@@ -67,7 +64,6 @@
       "title": "stated-empty-retry-throws",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 14
     },
     {
@@ -76,7 +72,6 @@
       "title": "unstated-empty-retry-answers",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 15
     },
     {
@@ -85,7 +80,6 @@
       "title": "non-empty-with-a-safety-reason",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 16
     },
     {
@@ -94,7 +88,6 @@
       "title": "stated-empty-no-profile-id",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 18
     },
     {
@@ -103,7 +96,6 @@
       "title": "stated-empty-earns-the-switch",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 19
     },
     {
@@ -112,7 +104,6 @@
       "title": "stated-empty-profile-not-listed",
       "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": null,
       "messageCount": 20
     }
   ],

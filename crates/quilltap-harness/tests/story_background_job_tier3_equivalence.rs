@@ -21,7 +21,7 @@
 //! intimacy guidance swaps on `uncensoredImageTarget`, and the post-hoc moderation
 //! reroute re-crafts the prompt candidly for its target. A chat-settings row is
 //! per-user and the corpus has one user, so those cases carry their own
-//! `dangerousContentSettings` bag, applied to each side's fresh copy before the
+//! `conciergeSettings` (v4 `3b463d6b1`, #76), applied to each side's fresh copy before the
 //! run (see `patch_danger_settings`; the oracle runs the identical `UPDATE`). The
 //! oracle's completion mock branches on the CANDID MARKER in the system message,
 //! so the selected variant reaches the image key and both `llm_logs` projections —
@@ -90,10 +90,10 @@ struct ChatSpec {
     image_profile_id: String,
     #[serde(default, rename = "projectId")]
     project_id: Option<String>,
-    /// [decd8ef9] The case's own `chat_settings.dangerousContentSettings` bag,
+    /// [decd8ef9] The case's own `chat_settings.conciergeSettings` (v4 `3b463d6b1`, #76) bag,
     /// patched onto this side's fresh copy before the handler runs (see
     /// [`patch_danger_settings`]).
-    #[serde(default, rename = "dangerousContentSettings")]
+    #[serde(default, rename = "conciergeSettings")]
     dangerous_content_settings: Option<Value>,
 }
 
@@ -301,7 +301,7 @@ fn fresh_copy(main_fixture: &str, mount_fixture: &str, tag: &str) -> (PathBuf, P
     (main_work, mount_work)
 }
 
-/// [decd8ef9] Apply the case's own `dangerousContentSettings` to the fresh copy
+/// [decd8ef9] Apply the case's own `conciergeSettings` to the fresh copy
 /// — the oracle runs the identical `UPDATE` on its copy. A chat-settings row is
 /// per-user and the corpus has one user, so a per-case danger bag (a dangerous
 /// chat WITH vs WITHOUT an uncensored image profile; AUTO_ROUTE for the post-hoc
@@ -313,10 +313,10 @@ fn patch_danger_settings(main_work: &Path, pepper: &str, user_id: &str, settings
     writer
         .connection()
         .execute(
-            "UPDATE chat_settings SET dangerousContentSettings = ?1 WHERE userId = ?2",
+            "UPDATE chat_settings SET conciergeSettings = ?1 WHERE userId = ?2",
             rusqlite::params![settings.to_string(), user_id],
         )
-        .expect("patch chat_settings.dangerousContentSettings");
+        .expect("patch chat_settings.conciergeSettings");
 }
 
 fn cleanup(main: &Path, mount: &Path) {

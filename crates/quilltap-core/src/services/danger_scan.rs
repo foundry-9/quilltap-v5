@@ -15,84 +15,112 @@
 //! host driver's (`quilltap-host`); this module holds the two portable
 //! decisions v4's scheduler makes:
 //!
-//! - [`any_user_danger_enabled`] — the "skip starting the scheduler entirely"
-//!   pre-check (v4 `scheduleDangerScan`'s all-users-OFF gate; a CHECK FAILURE
-//!   also skips — v4 warns and returns without starting, so the host treats
-//!   `Err` as "don't start").
+//! - [`any_user_wants_summary_classification`] — the "skip starting the
+//!   scheduler entirely" pre-check (v4 `scheduleDangerScan`'s gate — since
+//!   `3b463d6b1` (#76): does ANY user have the Concierge on duty with the
+//!   summary classifier opted in? A CHECK FAILURE also skips — v4 warns and
+//!   returns without starting).
 //! - [`run_scheduled_danger_scan`] — one sweep pass (v4
 //!   `runScheduledDangerScan`).
 //!
 //! ## The settings read
 //!
-//! v4 iterates `repos.chatSettings.findAll()` and resolves each row through
-//! `resolveDangerousContentSettings(settings)` (no chat — the global half
-//! only). The port reads a scoped two-column SELECT (`userId`,
-//! `dangerousContentSettings`) in the backend's default rowid order (matching
-//! v4 `findAll`'s insertion order — the order determines the enqueue order and
-//! so the minted job rows' natural order). A NULL cell parses to `None`
-//! (v4's Zod default sub-object and the resolver default are the same
-//! constants, so both sides resolve identically). Documented seam: a PARTIAL
-//! stored sub-object (never produced by a v4 write, which materializes every
-//! Zod default) would Zod-fill nested defaults in v4 but fall to the whole
-//! resolver default here; the corpus keeps rows v4-written.
+//! v4 iterates `repos.chatSettings.findAll()` and asks each row
+//! `wantsSummaryClassification` — `readConciergeSettings(settings).enabled &&
+//! …preScreen.summaryClassification` (v4 `3b463d6b1`, #76; it used to ask the
+//! retired mode). The port reads a scoped two-column SELECT (`userId`,
+//! `conciergeSettings`) in the backend's default rowid order (matching v4
+//! `findAll`'s insertion order — the order determines the enqueue order and so
+//! the minted job rows' natural order), each cell read through the schema twin
+//! exactly as the hydrated read does (a NULL / absent cell is the `.default()`
+//! literal — summary classification off). A table without the column (an
+//! instance from before `add-concierge-settings-v1`) reads every cell as NULL.
 
 use serde_json::Value;
 
 use crate::chat_predicates::is_moderation_exempt_chat_type;
-use crate::db::chat_settings::DangerousContentSettings;
 use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::services::dangerous_content::chat_override::is_classifier_on_duty;
-use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
+use crate::services::dangerous_content::resolver::read_stored_concierge_settings;
 use crate::services::queue_service::{
     enqueue_chat_danger_classification_with_priority, enqueue_context_summary,
 };
 
-/// One scoped `chat_settings` row: the user id + the parsed
-/// `dangerousContentSettings` sub-object (`None` when NULL/unparseable).
+/// One scoped `chat_settings` row: the user id + its `conciergeSettings`, read
+/// through the schema twin.
 pub struct DangerScanUserSettings {
     pub user_id: String,
-    pub dangerous_content_settings: Option<DangerousContentSettings>,
+    pub concierge_settings: Value,
 }
 
 /// The scoped read behind both the pre-check and the sweep: `userId` +
-/// `dangerousContentSettings` for every `chat_settings` row, in rowid
-/// (insertion) order — v4 `findAll`'s order.
+/// `conciergeSettings` for every `chat_settings` row, in rowid (insertion)
+/// order — v4 `findAll`'s order.
 pub fn find_all_danger_scan_settings(
     conn: &rusqlite::Connection,
 ) -> Result<Vec<DangerScanUserSettings>, DbError> {
-    let mut stmt = conn.prepare("SELECT userId, dangerousContentSettings FROM chat_settings")?;
+    let cols =
+        crate::db::tolerant_select_list(conn, "chat_settings", &["userId", "conciergeSettings"])?;
+    let mut stmt = conn.prepare(&format!("SELECT {cols} FROM chat_settings"))?;
     let rows = stmt
         .query_map([], |row| {
             let user_id: String = row.get(0)?;
-            let dcs: Option<String> = row.get(1)?;
-            Ok((user_id, dcs))
+            let cs: Option<String> = row.get(1)?;
+            Ok((user_id, cs))
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows
         .into_iter()
-        .map(|(user_id, dcs)| DangerScanUserSettings {
+        .map(|(user_id, cs)| DangerScanUserSettings {
             user_id,
-            dangerous_content_settings: dcs.and_then(|t| serde_json::from_str(&t).ok()),
+            concierge_settings: crate::db::chat_settings::read_concierge_settings_cell(cs),
         })
         .collect())
 }
 
-/// Resolve one settings row's effective danger mode (the global half only — no
-/// chat), v4's `resolveDangerousContentSettings(settings).settings.mode`.
-fn resolved_mode(settings: &DangerScanUserSettings) -> String {
-    resolve_dangerous_content_settings(settings.dangerous_content_settings.clone(), None)
-        .settings
-        .mode
+/// v4 `wantsSummaryClassification(settings)` — whether a user has asked for
+/// the summary classifier and its sweep: the Concierge on duty, and the
+/// summary classifier opted in. Per-chat state (Moderated only) is checked
+/// chat by chat.
+fn wants_summary_classification(settings: &DangerScanUserSettings) -> bool {
+    let concierge = read_stored_concierge_settings(Some(&settings.concierge_settings));
+    concierge.enabled && concierge.pre_screen.summary_classification
 }
 
-/// v4 `scheduleDangerScan`'s pre-check: is danger mode non-OFF for ANY user?
-/// When `false`, the host does not start the scan loop at all. A read failure
-/// propagates as `Err` — v4 warns and skips starting on a check failure, so the
-/// host maps `Err` to "don't start" too.
-pub async fn any_user_danger_enabled(db: &Db) -> Result<bool, DbError> {
-    let settings = db.read_main(find_all_danger_scan_settings)?;
-    Ok(settings.iter().any(|s| resolved_mode(s) != "OFF"))
+/// v4 `scheduleDangerScan`'s pre-check: does ANY user have the summary
+/// classifier on? When `false`, the host does not start the scan loop at all.
+/// A read failure is v4's catch: warn and do not start.
+pub async fn any_user_wants_summary_classification(db: &Db) -> bool {
+    let settings = match db.read_main(find_all_danger_scan_settings) {
+        Ok(settings) => settings,
+        Err(error) => {
+            tracing::warn!(
+                target: "quilltap::scheduled_danger_scan",
+                error = %error,
+                "Could not check Concierge settings, skipping danger scan scheduler"
+            );
+            return false;
+        }
+    };
+    let opted_in = settings
+        .iter()
+        .filter(|s| wants_summary_classification(s))
+        .count();
+    tracing::debug!(
+        target: "quilltap::scheduled_danger_scan",
+        users = settings.len(),
+        summary_classification_users = opted_in,
+        "Danger scan scheduler pre-check"
+    );
+    if opted_in == 0 {
+        tracing::info!(
+            target: "quilltap::scheduled_danger_scan",
+            "Danger scan scheduler not started — no user has the Concierge's summary classification on"
+        );
+        return false;
+    }
+    true
 }
 
 /// The per-chat classification gate (v4's `unclassified` filter, lifted out as
@@ -177,7 +205,7 @@ pub fn resolve_scan_connection_profile_id(
 /// One danger-scan pass (v4 `runScheduledDangerScan`). Returns
 /// `(users_processed, chats_enqueued)`.
 ///
-/// Per user with a non-OFF resolved mode: read the user's chats, filter through
+/// Per user who wants the summary classifier (v4 `3b463d6b1`): read the user's chats, filter through
 /// [`chat_needs_classification`], resolve each chat's profile, and enqueue per
 /// the decision tree at priority `-2`. A per-chat enqueue failure is swallowed
 /// (v4 warns and continues); a user with zero unclassified chats still counts
@@ -189,7 +217,13 @@ pub async fn run_scheduled_danger_scan(db: &Db) -> Result<(usize, usize), DbErro
     let mut chats_enqueued = 0usize;
 
     for settings in &all_settings {
-        if resolved_mode(settings) == "OFF" {
+        // Only users who opted in to the summary classifier are swept.
+        if !wants_summary_classification(settings) {
+            tracing::debug!(
+                target: "quilltap::scheduled_danger_scan",
+                user_id = %settings.user_id,
+                "Skipping user without summary classification"
+            );
             continue;
         }
 

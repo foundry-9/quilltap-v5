@@ -130,7 +130,6 @@ interface ChatSpec {
   /** W4.4: seeded agent turn count (the reset gate zeroes it on a new user turn). */
   agentTurnCount?: number;
   /** W4.2u: the operator Concierge flip (`'OFF'` = off-duty → danger resolves OFF). */
-  conciergeOverride?: string | null;
   /** W4.2u: the classification label (dangerous chat → the first-branch reroute). */
   isDangerousChat?: boolean;
   /** P4.D226: the three-state Concierge columns (v4 `4d370a90f`). */
@@ -218,7 +217,8 @@ interface Spec {
     compressionEnabled: boolean;
     autoDetectRng: boolean;
     answerConfirmationEnabled: boolean;
-    dangerMode: string;
+    /** v4 `3b463d6b1` (#76): the stored `conciergeSettings`. */
+    concierge: Record<string, unknown>;
     /** W4.4: the Global level of the agent-mode cascade. */
     agentModeSettings?: { maxTurns: number; defaultEnabled: boolean };
   };
@@ -413,7 +413,7 @@ async function main(): Promise<void> {
     );
   }
 
-  // Chat settings (danger DETECT_ONLY, cheapLLM, compression off, no autoDetectRng,
+  // Chat settings (the Concierge on duty, cheapLLM, compression off, no autoDetectRng,
   // confirmation off).
   await repos.chatSettings.create(
     {
@@ -422,7 +422,7 @@ async function main(): Promise<void> {
       contextCompressionSettings: { enabled: spec.chatSettings.compressionEnabled },
       autoDetectRng: spec.chatSettings.autoDetectRng,
       answerConfirmationSettings: { enabled: spec.chatSettings.answerConfirmationEnabled },
-      dangerousContentSettings: { mode: spec.chatSettings.dangerMode },
+      conciergeSettings: spec.chatSettings.concierge,
       ...(spec.chatSettings.agentModeSettings !== undefined
         ? { agentModeSettings: spec.chatSettings.agentModeSettings }
         : {}),
@@ -492,7 +492,6 @@ async function main(): Promise<void> {
           : {}),
         ...(chat.agentModeEnabled !== undefined ? { agentModeEnabled: chat.agentModeEnabled } : {}),
         ...(chat.agentTurnCount !== undefined ? { agentTurnCount: chat.agentTurnCount } : {}),
-        ...(chat.conciergeOverride !== undefined ? { conciergeOverride: chat.conciergeOverride } : {}),
         ...(chat.isDangerousChat !== undefined ? { isDangerousChat: chat.isDangerousChat } : {}),
         // P4.D226 (v4 `4d370a90f`): the state the legacy pair used to MEAN,
         // derived by v4's own table (`deriveConciergeModeFromLegacy`).

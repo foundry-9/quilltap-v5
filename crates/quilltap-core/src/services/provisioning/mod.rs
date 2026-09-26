@@ -107,6 +107,22 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// column, as P4.D225 also found at `49059fb14`. The seed is UNMOVED at this pin
 /// (`cmp`-identical). The ledger columns stay absent (schema-absent by design —
 /// P4.D225's boot ensure is their only source).
+///
+/// `3b463d6b1` (P4.D227 — #76, the Concierge's own settings; run FROM the
+/// pin): EXACTLY three lines move, all as measured. (1) `chats` LOSES
+/// `"conciergeOverride" TEXT` (v4 deleted it from both chat schemas; its
+/// migration `drop-chat-concierge-override-v1` drops the column on migrated
+/// instances — v5 never drops it, it simply stops binding it, so either shape
+/// opens). (2) `chat_settings` LOSES `"uncensoredImageDescriptionProfileId"
+/// TEXT`. (3) `"dangerousContentSettings" TEXT DEFAULT '…'` is REPLACED IN
+/// PLACE by `"conciergeSettings" TEXT DEFAULT '{"enabled":true,
+/// "autoSwitchAfterRefusals":2,"newChatsStartAs":"moderated","display":
+/// {"mode":"SHOW","showWarningBadges":true},"preScreen":{"enabled":false,
+/// "threshold":0.7,"scanTextChat":true,"scanImagePrompts":true,
+/// "scanImageGeneration":false,"summaryClassification":false}}'` — the Zod
+/// `.default()` literal, WITHOUT the four desk ids and the prompt. #76's own
+/// prose ("drops NO old column") holds for MIGRATED instances only: a fresh
+/// DDL has neither legacy column. The seed moved with it (below).
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted
@@ -119,6 +135,12 @@ static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 /// the same key — and was deliberately NOT taken: the D23 schema re-dump is
 /// P4.D226's this round, at its own pin. `provisioning_equivalence` is red at
 /// `49059fb14` on that one line until it lands.)
+/// `3b463d6b1` (P4.D227): the seed row loses `uncensoredImageDescriptionProfileId`
+/// and trades `dangerousContentSettings` for `conciergeSettings` =
+/// `DEFAULT_CONCIERGE_SETTINGS` serialized in its OWN key order — every desk id
+/// and `customClassificationPrompt` present as `null` (the repository's default
+/// row is the resolver's constant, not the schema's `.default()` literal, so the
+/// seeded bytes and the DDL DEFAULT genuinely differ). Measured, not predicted.
 static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 
 #[derive(Deserialize)]

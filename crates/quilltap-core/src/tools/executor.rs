@@ -1320,6 +1320,8 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
                 &*self.photo_side_effects,
                 self.image_describe.as_deref(),
                 &entry.id,
+                // v4 `chatId: context.chatId ?? null` (`3b463d6b1`).
+                Some(&ctx.chat_id),
             )
             .await
             {

@@ -364,8 +364,6 @@ pub struct ChatCreate {
     pub danger_classified_at: Option<String>,
     #[serde(default)]
     pub danger_classified_at_message_count: Option<f64>,
-    #[serde(default)]
-    pub concierge_override: Option<String>,
     /// The Concierge state (v4 `4d370a90f`, #75): `'moderated' | 'unmoderated'
     /// | 'locked'`, nullable-optional with NO default — a fresh chat writes
     /// NULL (which reads as Moderated), never a `'moderated'` literal: v4's
@@ -847,11 +845,14 @@ impl<'c> ChatsRepository<'c> {
         let commonplace_recall_json = opt_json_text(&data.commonplace_recall_history)?;
 
         // `?NNN` binds `params![]` by its LITERAL number wherever it sits in the SQL
-        // text: `?100` is `cycleOrderParticipantIds` (P4.D171), spliced mid-list at
-        // its column's position while its VALUE is appended 100th, so the ~74
-        // placeholders after it never had to renumber. `?101`–`?103` are the
-        // Concierge trio (P4.D226), spliced after `conciergeOverride` the same
-        // way; the next column append writes `?104` at the END of both lists. Never "tidy" this sequence — a
+        // text: `?99` is `cycleOrderParticipantIds` (P4.D171), spliced mid-list at
+        // its column's position while its VALUE is appended 99th, so the ~74
+        // placeholders after it never had to renumber. `?100`–`?102` are the
+        // Concierge trio (P4.D226), spliced after `dangerClassifiedAtMessageCount`
+        // the same way; the next column append writes `?103` at the END of both
+        // lists. (P4.D227, v4 `3b463d6b1`: `conciergeOverride` — once `?58` — LEFT
+        // the statement; every placeholder above 58 was renumbered down by one
+        // mechanically, and the create arm proved it.) Never "tidy" this sequence — a
         // renumbering pass mis-binds every later column with no compile error;
         // `chats_tier2_equivalence`'s create arm is what catches it.
         self.conn.execute(
@@ -871,7 +872,7 @@ impl<'c> ChatsRepository<'c> {
                state, compressionCache, agentModeEnabled, agentTurnCount, storyBackgroundImageId, \
                lastBackgroundGeneratedAt, imageProfileId, alertCharactersOfLanternImages, \
                isDangerousChat, dangerScore, dangerCategories, dangerClassifiedAt, \
-               dangerClassifiedAtMessageCount, conciergeOverride, conciergeMode, \
+               dangerClassifiedAtMessageCount, conciergeMode, \
                conciergeModeSetBy, conciergeModeReason, sceneState, renderedMarkdown, \
                equippedOutfit, characterAvatars, avatarGenerationEnabled, chatType, helpPageUrl, \
                consoleConnectionProfileId, compiledIdentityStacks, courierCheckpoints, \
@@ -886,13 +887,13 @@ impl<'c> ChatsRepository<'c> {
                turnSkippingEnabled) \
              VALUES (\
                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
-               ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?100, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
+               ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?99, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
                ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48, ?49, ?50, \
-               ?51, ?52, ?53, ?54, ?55, ?56, ?57, ?58, ?101, ?102, ?103, ?59, ?60, ?61, ?62, \
-               ?63, ?64, ?65, ?66, \
-               ?67, ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78, ?79, ?80, ?81, ?82, \
-               ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, ?97, ?98, \
-               ?99)",
+               ?51, ?52, ?53, ?54, ?55, ?56, ?57, ?100, ?101, ?102, ?58, ?59, ?60, ?61, \
+               ?62, ?63, ?64, ?65, \
+               ?66, ?67, ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78, ?79, ?80, ?81, \
+               ?82, ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, ?97, \
+               ?98)",
             params![
                 opts.id,
                 data.user_id,
@@ -951,7 +952,6 @@ impl<'c> ChatsRepository<'c> {
                 danger_categories_json,
                 data.danger_classified_at,
                 data.danger_classified_at_message_count,
-                data.concierge_override,
                 scene_state_json,
                 data.rendered_markdown,
                 equipped_outfit_json,

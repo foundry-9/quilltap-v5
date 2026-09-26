@@ -40,7 +40,7 @@ use super::classifier_switch::maybe_switch_after_classification;
 use super::gatekeeper::{classify_content, ModerationProvider};
 use super::manual_flip::ConciergeAnnouncer;
 use super::refusal_ledger::is_job_child;
-use super::resolver::resolve_dangerous_content_settings;
+use super::resolver::resolve_concierge_settings;
 
 /// The `CHAT_DANGER_CLASSIFICATION` job (v4 `BackgroundJob` +
 /// `ChatDangerClassificationPayload`, the fields the handler reads).
@@ -154,18 +154,23 @@ where
         },
     };
 
-    // User's chat settings for the danger mode + cheap-LLM config.
+    // User's chat settings for the Concierge policy + cheap-LLM config.
     let chat_settings = db.read_main(|c| chat_settings::find_by_user_id(c, &user_id))?;
 
-    // Resolve danger settings (no per-chat arg here — v4 checks the chat fields
-    // above directly) — bail if mode is OFF.
-    let global_settings = chat_settings
-        .as_ref()
-        .and_then(|s| s.get("dangerousContentSettings"))
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-    let resolved = resolve_dangerous_content_settings(global_settings, None);
-    let danger_settings = resolved.settings;
-    if danger_settings.mode == "OFF" {
+    // Resolve the Concierge policy for this chat — the summary classifier runs
+    // only when he is on duty, the chat is Moderated, and the user opted in
+    // (v4 `3b463d6b1`, #76: resolved WITH the chat, where it used to be
+    // resolved without one against the retired mode).
+    let concierge_policy = resolve_concierge_settings(chat_settings.as_ref(), Some(&chat));
+    if !concierge_policy.summary_classification {
+        tracing::debug!(
+            target: "quilltap::dangerous_content",
+            job_id = %job.id,
+            chat_id = %chat_id,
+            concierge_source = concierge_policy.source.as_str(),
+            concierge_state = concierge_policy.state.as_str(),
+            "[ChatDangerClassification] Summary classification is off for this chat, skipping"
+        );
         return Ok(());
     }
 
@@ -201,7 +206,7 @@ where
         &classification_input,
         &selection,
         &user_id,
-        &danger_settings,
+        &concierge_policy,
         Some(&chat_id),
     )
     .await;
@@ -268,7 +273,7 @@ where
     let now = now_iso();
     let verdict = result.is_dangerous.then(|| ConciergeDangerDetails {
         score: result.score,
-        threshold: danger_settings.threshold,
+        threshold: concierge_policy.pre_screen.threshold,
         categories: result
             .categories
             .iter()

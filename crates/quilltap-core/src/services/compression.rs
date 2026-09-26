@@ -372,7 +372,7 @@ pub async fn apply_context_compression<C: CompletionProvider>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cheap_llm::{CheapLlmProfile, DangerousContentSettings, UncensoredFallbackOptions};
+    use crate::cheap_llm::{CheapLlmProfile, UncensoredFallbackOptions};
     use crate::model::completion::{CannedCompletionProvider, CompletionMessage};
 
     fn selection() -> CheapLlmSelection {
@@ -674,10 +674,8 @@ mod tests {
             .with_response("OLLAMA", "dolphin", Some(0.3), &built, "summary text", None);
         let exec = CheapLlmTaskExecutor::new();
 
-        let danger = DangerousContentSettings {
-            mode: "AUTO_ROUTE".to_string(),
-            uncensored_text_profile_id: Some("u1".to_string()),
-        };
+        let danger =
+            crate::services::dangerous_content::resolver::test_policy("AUTO_ROUTE", Some("u1"));
         let profiles = vec![
             CheapLlmProfile {
                 id: "cur".to_string(),
@@ -699,7 +697,7 @@ mod tests {
             character_name: "Aurora".to_string(),
             user_name: "Charlie".to_string(),
             uncensored_fallback: Some(UncensoredFallbackOptions {
-                danger_settings: &danger,
+                concierge_policy: &danger,
                 available_profiles: &profiles,
                 is_dangerous_chat: None,
             }),

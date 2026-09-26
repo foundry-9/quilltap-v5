@@ -62,7 +62,7 @@ use super::chats::ChatParticipant;
 use super::js_number_to_json;
 use super::DbError;
 
-/// All 103 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT
+/// All 102 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT
 /// order). The count, the order and `marshal_row`'s index table are pinned
 /// against the D23 dump by this module's `alignment_census` tests.
 /// `timelineMode` (v4 8bf3cb5f, the episodic spine) sits between
@@ -70,6 +70,11 @@ use super::DbError;
 /// position. The Concierge trio (v4 `4d370a90f`, #75 — `conciergeMode`,
 /// `conciergeModeSetBy`, `conciergeModeReason`) sits right after
 /// `conciergeOverride`, its DDL position; every read after it shifted by 3.
+/// `conciergeOverride` itself LEFT the list at v4 `3b463d6b1` (#76 — deleted
+/// from both chat schemas, dropped by `drop-chat-concierge-override-v1`):
+/// every read after it shifted back by 1. An explicit list, so an instance
+/// that still HAS the column (migrated before `-dev.88`) opens exactly like
+/// one without it — v5 never drops the column itself.
 const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sillyTavernMetadata, \
      tags, roleplayTemplateId, timestampConfig, lastTurnParticipantId, messageCount, lastMessageAt, \
      lastRenameCheckInterchange, compactionGeneration, lastSummaryTurn, lastSummaryTokens, \
@@ -83,7 +88,7 @@ const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sill
      allowCrossCharacterVaultReads, pendingOutfitNotifications, state, compressionCache, \
      agentModeEnabled, agentTurnCount, storyBackgroundImageId, lastBackgroundGeneratedAt, \
      imageProfileId, alertCharactersOfLanternImages, isDangerousChat, dangerScore, dangerCategories, \
-     dangerClassifiedAt, dangerClassifiedAtMessageCount, conciergeOverride, conciergeMode, \
+     dangerClassifiedAt, dangerClassifiedAtMessageCount, conciergeMode, \
      conciergeModeSetBy, conciergeModeReason, sceneState, \
      renderedMarkdown, equippedOutfit, characterAvatars, avatarGenerationEnabled, chatType, \
      helpPageUrl, consoleConnectionProfileId, compiledIdentityStacks, courierCheckpoints, \
@@ -281,77 +286,73 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
     obj.insert("dangerCategories".into(), array_or_empty(row.get(55)?));
     put_opt_string(&mut obj, "dangerClassifiedAt", row.get(56)?);
     put_opt_number(&mut obj, "dangerClassifiedAtMessageCount", row.get(57)?);
-    put_opt_string(&mut obj, "conciergeOverride", row.get(58)?);
     // The Concierge state + provenance (v4 `4d370a90f`, #75): nullable
     // enums, NO DDL default on a fresh instance (v4's migration defaults
     // `conciergeMode` to `'moderated'` on a migrated one) — NULL → omitted,
     // which `get_concierge_state` reads as Moderated.
-    put_opt_string(&mut obj, "conciergeMode", row.get(59)?);
-    put_opt_string(&mut obj, "conciergeModeSetBy", row.get(60)?);
-    put_opt_string(&mut obj, "conciergeModeReason", row.get(61)?);
-    put_opt_json(&mut obj, "sceneState", row.get(62)?);
-    put_opt_string(&mut obj, "renderedMarkdown", row.get(63)?);
-    put_opt_json(&mut obj, "equippedOutfit", row.get(64)?);
-    put_opt_json(&mut obj, "characterAvatars", row.get(65)?);
-    put_opt_bool(&mut obj, "avatarGenerationEnabled", row.get(66)?);
+    put_opt_string(&mut obj, "conciergeMode", row.get(58)?);
+    put_opt_string(&mut obj, "conciergeModeSetBy", row.get(59)?);
+    put_opt_string(&mut obj, "conciergeModeReason", row.get(60)?);
+    put_opt_json(&mut obj, "sceneState", row.get(61)?);
+    put_opt_string(&mut obj, "renderedMarkdown", row.get(62)?);
+    put_opt_json(&mut obj, "equippedOutfit", row.get(63)?);
+    put_opt_json(&mut obj, "characterAvatars", row.get(64)?);
+    put_opt_bool(&mut obj, "avatarGenerationEnabled", row.get(65)?);
     obj.insert(
         "chatType".into(),
         Value::String(
-            row.get::<_, Option<String>>(67)?
+            row.get::<_, Option<String>>(66)?
                 .unwrap_or_else(|| "salon".into()),
         ),
     );
-    put_opt_string(&mut obj, "helpPageUrl", row.get(68)?);
-    put_opt_string(&mut obj, "consoleConnectionProfileId", row.get(69)?);
-    put_opt_json(&mut obj, "compiledIdentityStacks", row.get(70)?);
-    put_opt_json(&mut obj, "courierCheckpoints", row.get(71)?);
-    put_opt_json(&mut obj, "commonplaceSceneCache", row.get(72)?);
-    put_opt_json(&mut obj, "commonplaceRecallHistory", row.get(73)?);
+    put_opt_string(&mut obj, "helpPageUrl", row.get(67)?);
+    put_opt_string(&mut obj, "consoleConnectionProfileId", row.get(68)?);
+    put_opt_json(&mut obj, "compiledIdentityStacks", row.get(69)?);
+    put_opt_json(&mut obj, "courierCheckpoints", row.get(70)?);
+    put_opt_json(&mut obj, "commonplaceSceneCache", row.get(71)?);
+    put_opt_json(&mut obj, "commonplaceRecallHistory", row.get(72)?);
     // Episodic spine (v4 8bf3cb5f): 'realtime' | 'narrative'; NULL reads as
     // realtime and is omitted (v4's undefined dropped by JSON.stringify).
-    put_opt_string(&mut obj, "timelineMode", row.get(74)?);
-    put_opt_number(&mut obj, "budgetMaxTurns", row.get(75)?);
-    put_opt_number(&mut obj, "budgetMaxTokens", row.get(76)?);
-    put_opt_number(&mut obj, "budgetMaxWallClockMs", row.get(77)?);
-    put_opt_number(&mut obj, "budgetEstimatedSpendCapUSD", row.get(78)?);
-    put_opt_string(&mut obj, "scheduleCron", row.get(79)?);
-    put_opt_number(&mut obj, "scheduleFreshnessWindowMs", row.get(80)?);
-    put_opt_string(&mut obj, "scheduleNextRunAt", row.get(81)?);
-    put_opt_string(&mut obj, "scheduleLastRunAt", row.get(82)?);
-    put_opt_string(&mut obj, "runState", row.get(83)?);
-    put_opt_string(&mut obj, "currentRunId", row.get(84)?);
-    put_opt_string(&mut obj, "runStateMessage", row.get(85)?);
-    put_opt_string(&mut obj, "runStartedAt", row.get(86)?);
-    put_opt_string(&mut obj, "runEndedAt", row.get(87)?);
-    put_opt_string(&mut obj, "runPausedAt", row.get(88)?);
-    put_opt_number(&mut obj, "runPausedAccumMs", row.get(89)?);
-    put_opt_number(&mut obj, "runTurnsConsumed", row.get(90)?);
-    put_opt_number(&mut obj, "runTokensConsumed", row.get(91)?);
+    put_opt_string(&mut obj, "timelineMode", row.get(73)?);
+    put_opt_number(&mut obj, "budgetMaxTurns", row.get(74)?);
+    put_opt_number(&mut obj, "budgetMaxTokens", row.get(75)?);
+    put_opt_number(&mut obj, "budgetMaxWallClockMs", row.get(76)?);
+    put_opt_number(&mut obj, "budgetEstimatedSpendCapUSD", row.get(77)?);
+    put_opt_string(&mut obj, "scheduleCron", row.get(78)?);
+    put_opt_number(&mut obj, "scheduleFreshnessWindowMs", row.get(79)?);
+    put_opt_string(&mut obj, "scheduleNextRunAt", row.get(80)?);
+    put_opt_string(&mut obj, "scheduleLastRunAt", row.get(81)?);
+    put_opt_string(&mut obj, "runState", row.get(82)?);
+    put_opt_string(&mut obj, "currentRunId", row.get(83)?);
+    put_opt_string(&mut obj, "runStateMessage", row.get(84)?);
+    put_opt_string(&mut obj, "runStartedAt", row.get(85)?);
+    put_opt_string(&mut obj, "runEndedAt", row.get(86)?);
+    put_opt_string(&mut obj, "runPausedAt", row.get(87)?);
+    put_opt_number(&mut obj, "runPausedAccumMs", row.get(88)?);
+    put_opt_number(&mut obj, "runTurnsConsumed", row.get(89)?);
+    put_opt_number(&mut obj, "runTokensConsumed", row.get(90)?);
     obj.insert(
         "runMilestonesAnnounced".into(),
-        number_or(row.get(92)?, 0.0),
+        number_or(row.get(91)?, 0.0),
     );
     obj.insert(
         "runDestructiveToolsAllowed".into(),
-        number_or(row.get(93)?, 0.0),
+        number_or(row.get(92)?, 0.0),
     );
     obj.insert(
         "budgetExcludeCacheHits".into(),
-        number_or(row.get(94)?, 1.0),
+        number_or(row.get(93)?, 1.0),
     );
-    put_opt_string(&mut obj, "runVisibility", row.get(95)?);
-    put_opt_bool(&mut obj, "coreWhisperEnabled", row.get(96)?);
-    put_opt_number(&mut obj, "coreWhisperInterval", row.get(97)?);
-    put_opt_bool(&mut obj, "showThinking", row.get(98)?);
-    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(99)?));
-    obj.insert(
-        "updatedAt".into(),
-        Value::String(row.get::<_, String>(100)?),
-    );
-    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(101)?);
+    put_opt_string(&mut obj, "runVisibility", row.get(94)?);
+    put_opt_bool(&mut obj, "coreWhisperEnabled", row.get(95)?);
+    put_opt_number(&mut obj, "coreWhisperInterval", row.get(96)?);
+    put_opt_bool(&mut obj, "showThinking", row.get(97)?);
+    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(98)?));
+    obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(99)?));
+    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(100)?);
     // "Nothing to add" turn-skipping toggle (nullable boolean; NULL → omitted,
     // v4's `undefined` dropped by `JSON.stringify`). v4 b90cd1f5.
-    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(102)?);
+    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(101)?);
 
     Ok(Value::Object(obj))
 }
@@ -669,5 +670,56 @@ mod alignment_census {
                 cols[*index]
             );
         }
+    }
+
+    /// P4.D227 (v4 `3b463d6b1`, #76; E.2): v5 NEVER drops a column, so it reads
+    /// BOTH shapes of `chats` through the same SELECT — a fresh instance (the
+    /// re-dumped DDL, no `conciergeOverride`) and a migrated one whose table
+    /// still carries the dropped column (v4's `drop-chat-concierge-override`
+    /// runs on v4's side only). The row reads identically, the dropped column
+    /// never surfaces, and keeping it in `ALL_COLUMNS` (the order's M9) fails
+    /// the fresh read outright.
+    #[test]
+    fn a_chat_reads_the_same_with_or_without_the_dropped_override_column() {
+        let schema: serde_json::Value =
+            serde_json::from_str(FRESH_SCHEMA).expect("fresh_schema.json parses");
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"chats\" ("))
+            .unwrap();
+        assert!(!ddl.contains("conciergeOverride"), "the re-dump dropped it");
+        let read = |with_override: bool| {
+            let conn = rusqlite::Connection::open_in_memory().unwrap();
+            conn.execute_batch(ddl).unwrap();
+            if with_override {
+                conn.execute_batch("ALTER TABLE \"chats\" ADD COLUMN \"conciergeOverride\" TEXT")
+                    .unwrap();
+            }
+            conn.execute(
+                "INSERT INTO \"chats\" (id, userId, title, conciergeMode, createdAt, updatedAt) \
+                 VALUES ('c1', 'u1', 'both shapes', 'locked', '2026-09-26T00:00:00.000Z', \
+                 '2026-09-26T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+            if with_override {
+                conn.execute(
+                    "UPDATE \"chats\" SET \"conciergeOverride\" = 'UNCENSORED'",
+                    [],
+                )
+                .unwrap();
+            }
+            super::find_by_id(&conn, "c1")
+                .unwrap()
+                .expect("the chat reads")
+        };
+        let fresh = read(false);
+        let migrated = read(true);
+        assert_eq!(fresh, migrated);
+        assert!(migrated.get("conciergeOverride").is_none());
+        assert_eq!(migrated["conciergeMode"], "locked");
     }
 }

@@ -16,6 +16,12 @@
 //! seam on both sides — the spec's `apiKeys` map, plus `throwingApiKeys` whose
 //! lookup THROWS in v4 / answers `Err` through `try_resolve` in v5.
 //!
+//! Since v4 `3b463d6b1` (#76, P4.D227) the wrappers' gate is the Concierge
+//! POLICY (`route_direct || failover_allowed`), resolved per case from the
+//! stored `conciergeSettings` WITH the case's chat: off duty and a Locked chat
+//! refuse with the policy-source `reason` + a DEBUG; a Moderated chat reroutes
+//! (failover) and an Unmoderated one routes direct — text and image alike.
+//!
 //! RETIRED rows (P4.D225): v4 deleted `resolveUncensoredImageProfileForReroute`
 //! and `isImageModerationError` at `8bd080267` — the unchanged oracle case dies
 //! at the target pin with `TypeError: routing.resolveUncensoredImageProfileFor
@@ -51,6 +57,7 @@ use quilltap_core::services::dangerous_content::provider_routing::{
     resolve_image_provider_for_dangerous_content, resolve_provider_for_dangerous_content,
     ApiKeyResolver, RouteProfile,
 };
+use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
 use quilltap_core::services::dangerous_content::understudy::{
     resolve_uncensored_image_understudy, resolve_uncensored_text_understudy, ImageUnderstudyLookup,
     TextUnderstudyLookup,
@@ -126,11 +133,11 @@ struct CaseSpec {
     original_profile_id: Option<String>,
     #[serde(rename = "originalApiKey", default)]
     original_api_key: Option<String>,
-    mode: String,
-    #[serde(rename = "uncensoredTextProfileId", default)]
-    uncensored_text_profile_id: Option<String>,
-    #[serde(rename = "uncensoredImageProfileId", default)]
-    uncensored_image_profile_id: Option<String>,
+    /// v4 `3b463d6b1` (#76): the stored `conciergeSettings` the policy is
+    /// resolved from, WITH `chat` where the case names one.
+    concierge: Value,
+    #[serde(default)]
+    chat: Option<Value>,
     /// v4's fifth parameter since `a1d88aa3a` (bug 106) — the MIME types this
     /// turn's message array carries. Absent takes v4's `[]` default, which is
     /// why every pre-existing case's row is unchanged.
@@ -322,8 +329,7 @@ fn danger_routing_matches_oracle() {
                     &api_keys,
                     &original,
                     c.original_api_key.as_deref().unwrap(),
-                    &c.mode,
-                    c.uncensored_text_profile_id.as_deref(),
+                    &resolve_stored_concierge_settings(Some(&c.concierge), c.chat.as_ref()),
                     &user,
                     &c.turn_attachment_mime_types,
                 ))
@@ -379,8 +385,7 @@ fn danger_routing_matches_oracle() {
                     &api_keys,
                     &original,
                     c.original_api_key.as_deref().unwrap(),
-                    &c.mode,
-                    c.uncensored_image_profile_id.as_deref(),
+                    &resolve_stored_concierge_settings(Some(&c.concierge), c.chat.as_ref()),
                     &user,
                 ))
             })

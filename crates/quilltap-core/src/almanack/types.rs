@@ -381,12 +381,45 @@ pub struct CharacterBreakdownInfo {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DangerousContentConfig {
+/// v4 `FeatureConfigInfo['concierge']` (`3b463d6b1`, #76) — the Concierge's
+/// own settings (`conciergeSettings`), with profile ids reduced to "is one set?".
+pub struct ConciergeConfig {
+    pub enabled: bool,
+    pub new_chats_start_as: String,
+    /// 0 = never.
+    pub auto_switch_after_refusals: f64,
+    pub display: ConciergeDisplayConfig,
+    /// Whether each uncensored-desk profile is pinned (false = auto-detect / none).
+    pub desk: ConciergeDeskConfig,
+    pub pre_screen: ConciergePreScreenConfig,
+    pub summary_classification: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConciergeDisplayConfig {
     pub mode: String,
+    pub show_warning_badges: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConciergeDeskConfig {
+    pub text_profile_set: bool,
+    pub image_profile_set: bool,
+    pub vision_profile_set: bool,
+    pub image_prompt_profile_set: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConciergePreScreenConfig {
+    pub enabled: bool,
     pub threshold: f64,
     pub scan_text_chat: bool,
     pub scan_image_prompts: bool,
     pub scan_image_generation: bool,
+    pub custom_classification_prompt: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -483,7 +516,7 @@ pub struct TextReplacementsConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeatureConfigInfo {
-    pub dangerous_content: DangerousContentConfig,
+    pub concierge: ConciergeConfig,
     pub context_compression: ContextCompressionConfig,
     pub agent_mode: AgentModeConfig,
     pub story_backgrounds: StoryBackgroundsConfig,
@@ -505,7 +538,9 @@ pub struct FeatureConfigInfo {
     pub impersonation_voice_rewrite: bool,
     pub auto_scroll_on_response_complete: bool,
     pub image_description_profile_configured: bool,
-    pub uncensored_image_description_profile_configured: bool,
+    /// v4 `uncensoredVisionProfileConfigured` (`3b463d6b1` — was
+    /// `uncensoredImageDescriptionProfileConfigured`).
+    pub uncensored_vision_profile_configured: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

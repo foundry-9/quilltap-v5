@@ -256,7 +256,7 @@
         }
       ]
     },
-{
+    {
       "id": "dd000054-0000-4000-8000-000000000054",
       "userId": "bb000001-0000-4000-8000-000000000001",
       "title": "Locked all along",
@@ -753,8 +753,7 @@
           "error": "upstream connection reset"
         }
       ]
-    ]
-,
+    ],
     "empty_scan_understudy_ok": [
       [
         {
@@ -981,6 +980,47 @@
           "done": true
         }
       ]
+    ],
+    "off_duty_retry_then_chain": [
+      [
+        {
+          "done": true,
+          "rawResponse": {
+            "choices": [
+              {
+                "finish_reason": "content_filter"
+              }
+            ]
+          }
+        }
+      ],
+      [
+        {
+          "content": "The chain answers once the Concierge has gone off duty."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "hard_refusal_off_duty_then_chain": [
+      [
+        {
+          "typedRefusal": {
+            "message": "Anthropic declined the request on content grounds",
+            "statusCode": 400,
+            "providerReason": "refusal"
+          }
+        }
+      ],
+      [
+        {
+          "content": "The chain takes the refusal the off-duty Concierge left standing."
+        },
+        {
+          "done": true
+        }
+      ]
     ]
   },
   "calls": [
@@ -1018,7 +1058,10 @@
       "attachedFiles": [],
       "originalMessage": "please invoke a helper",
       "previousResponseId": "resp_p497_success",
-      "stop": ["</tool_call>", "STOP"]
+      "stop": [
+        "</tool_call>",
+        "STOP"
+      ]
     },
     {
       "name": "tool_unsupported_retry_failure",
@@ -1031,7 +1074,10 @@
       "attachedFiles": [],
       "originalMessage": "run a gadget and expire",
       "previousResponseId": "resp_p497_failure",
-      "stop": ["</tool_call>", "END"],
+      "stop": [
+        "</tool_call>",
+        "END"
+      ],
       "expectThrow": true
     },
     {
@@ -1062,9 +1108,11 @@
       "participantId": "ee000007-0000-4000-8000-000000000007",
       "preGeneratedMessageId": "ff000007-0000-4000-8000-000000000007",
       "contentWasFlaggedDangerous": false,
-      "dangerMode": "OFF",
       "streamLabel": "retry_ok",
-      "originalMessage": "say something"
+      "originalMessage": "say something",
+      "concierge": {
+        "enabled": false
+      }
     },
     {
       "name": "empty_uncensored_failover",
@@ -1073,9 +1121,12 @@
       "participantId": "ee000008-0000-4000-8000-000000000008",
       "preGeneratedMessageId": "ff000008-0000-4000-8000-000000000008",
       "contentWasFlaggedDangerous": true,
-      "dangerMode": "AUTO_ROUTE",
       "streamLabel": "uncensored_ok",
-      "originalMessage": "forbidden request"
+      "originalMessage": "forbidden request",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      }
     },
     {
       "name": "both_empty",
@@ -1084,9 +1135,12 @@
       "participantId": "ee000009-0000-4000-8000-000000000009",
       "preGeneratedMessageId": "ff000009-0000-4000-8000-000000000009",
       "contentWasFlaggedDangerous": false,
-      "dangerMode": "AUTO_ROUTE",
       "streamLabel": "retry_empty_uncensored_empty",
-      "originalMessage": "always filtered"
+      "originalMessage": "always filtered",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      }
     },
     {
       "name": "find_prev_response_openai_hit",
@@ -1198,9 +1252,11 @@
       "streamLabel": "empty_then_understudy_ok",
       "attachedFiles": [],
       "originalMessage": "an empty house three times over",
-      "dangerMode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
       "contentWasFlaggedDangerous": false,
-      "comment": "The THIRD recovery: same-provider retry empty, no Auto-Route, so the chain walks and the understudy answers."
+      "comment": "The THIRD recovery: same-provider retry empty, off duty, so the chain walks and the understudy answers."
     },
     {
       "name": "hard_error_resets_dirty_buffers",
@@ -1245,7 +1301,9 @@
       "streamLabel": "empty_walk_exhausts_on_empty",
       "attachedFiles": [],
       "originalMessage": "every understudy is as silent as the house",
-      "dangerMode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
       "contentWasFlaggedDangerous": false,
       "comment": "P4.68 \u2014 the chain walk EXHAUSTING from the empty-response path. Measured before adding it: every `chainAttempts` entry in this corpus carried trigger `empty-response` and no walk ever recorded all THREE candidates; `empty_chain_fallback` stops at two because the tier spare answers. This row drives v4 provider-failover.service.ts:637 for the last candidate too, and pins the exhausted outcome (empty `fullResponse`, effectiveProfile left on the primary)."
     },
@@ -1259,7 +1317,9 @@
       "streamLabel": "empty_walk_understudy_errors_then_tier_ok",
       "attachedFiles": [],
       "originalMessage": "the understudy drops the tray and the spare recovers it",
-      "dangerMode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
       "contentWasFlaggedDangerous": false,
       "comment": "P4.68 \u2014 fail-then-recover INSIDE the walk, and the only `provider-error` chain trigger in the corpus. A candidate THROWS (provider-failover.service.ts:622 records it under its trigger) and the walk continues to one that succeeds. Everything else here either goes empty the whole way down or fails the whole way down; nothing covered a throw followed by a recovery, so `recordAttempt`'s error branch and the post-error effectiveProfile swap were both unmeasured."
     },
@@ -1274,7 +1334,9 @@
       "streamLabel": "auth_chain_refused",
       "attachedFiles": [],
       "originalMessage": "every understudy refuses at the door",
-      "dangerMode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
       "contentWasFlaggedDangerous": false,
       "comment": "P4.74 \u2014 the credential-gate chain arm (v4 provider-failover.service.ts:583-591), the third blind spot P4.68 measured and deferred. Runs on its OWN primary (`profileKey`) so no existing case's tier pool moves: both candidates it offers are refused before a stream is ever opened, recording trigger `auth` with v4's two reason spellings \u2014 `no-api-key-configured` from the CONFIGURED understudy and `api-key-not-found` from the TIER PICK, whose dangling apiKeyId passes the picker's static credential check and only fails at the gate."
     },
@@ -1288,7 +1350,9 @@
       "streamLabel": "retry_throws_then_understudy_ok",
       "attachedFiles": [],
       "originalMessage": "the retry itself falls over",
-      "dangerMode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
       "contentWasFlaggedDangerous": false,
       "comment": "P4.D173: the retry arm that THREW. v4 records a `retry`/`failed` row from the thrown error's message (trigger from classifyFallbackTrigger, else provider-error) and logs '[EmptyResponse] Same-provider retry failed'; the port had discarded the error with `let _ = restream_into(...)`. The chain then walks and the understudy answers, so the trail reads opener \u2192 retry \u2192 understudy-answered."
     },
@@ -1302,7 +1366,10 @@
       "streamLabel": "reroute_throws_then_understudy_ok",
       "attachedFiles": [],
       "originalMessage": "the uncensored desk falls over",
-      "dangerMode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
       "contentWasFlaggedDangerous": true,
       "comment": "P4.D173: the uncensored reroute arm that THREW. Flagged content skips the same-profile retry, so the opener is recorded with the INFERRED moderation verdict; the reroute's own call falls over and is recorded against `route.connection_profile` (the swap only happens on success, so nothing else would name it); the chain then answers."
     },
@@ -1340,7 +1407,9 @@
       "streamLabel": "empty_walk_understudy_stalls_then_tier_ok",
       "attachedFiles": [],
       "originalMessage": "the understudy goes quiet and the spare recovers it",
-      "dangerMode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
       "contentWasFlaggedDangerous": false,
       "comment": "P4.D189: a stall INSIDE the walk. The understudy leg records `network` \u2014 not the `provider-error` its sibling empty_walk_understudy_errors_then_tier_ok records \u2014 and the walk continues to the tier spare."
     },
@@ -1354,7 +1423,9 @@
       "streamLabel": "retry_stalls_then_understudy_ok",
       "attachedFiles": [],
       "originalMessage": "the same-provider retry goes quiet",
-      "dangerMode": "OFF",
+      "concierge": {
+        "enabled": false
+      },
       "contentWasFlaggedDangerous": false,
       "comment": "P4.D189: the empty-response same-provider retry STALLS. The trail records retry/failed with the stalled message as its detail and `network` as its trigger; the chain then walks and the understudy answers. Its sibling empty_retry_throws_then_chain uses a network-PATTERNED message, so the trigger alone would not discriminate \u2014 this one's message matches nothing, and only the named arm makes it `network`."
     },
@@ -1368,7 +1439,10 @@
       "streamLabel": "reroute_stalls_then_understudy_ok",
       "attachedFiles": [],
       "originalMessage": "the uncensored desk goes quiet",
-      "dangerMode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
       "contentWasFlaggedDangerous": true,
       "comment": "P4.D189: the Concierge reroute STALLS. Flagged content skips the same-profile retry, so the opener carries the inferred moderation verdict; the reroute is recorded against route.connection_profile with `network`, and the chain then answers."
     },
@@ -1382,7 +1456,7 @@
       "streamLabel": "tool_unsupported_then_ok_bare",
       "attachedFiles": [],
       "originalMessage": "kindly summon a bare helper",
-      "comment": "P4.97: the retry's clears proven against a BARE primary too — no previousResponseId, no stop. The cache key is still set (runPrimaryStream passes `characterId` unconditionally, so the funnel always derives one), which is what makes this the one-key twin of tool_unsupported_retry_success rather than a no-key case. Appended LAST: the option-bag side-channel is an ORDERED per-call list, so a case inserted mid-array would shift every following index. Its marker deliberately shares no substring with any other: the mock resolves a label by FIRST containing marker, so `please invoke a helper, bare` would have resolved to tool_unsupported_then_ok and died on an exhausted cursor (measured)."
+      "comment": "P4.97: the retry's clears proven against a BARE primary too \u2014 no previousResponseId, no stop. The cache key is still set (runPrimaryStream passes `characterId` unconditionally, so the funnel always derives one), which is what makes this the one-key twin of tool_unsupported_retry_success rather than a no-key case. Appended LAST: the option-bag side-channel is an ORDERED per-call list, so a case inserted mid-array would shift every following index. Its marker deliberately shares no substring with any other: the mock resolves a label by FIRST containing marker, so `please invoke a helper, bare` would have resolved to tool_unsupported_then_ok and died on an exhausted cursor (measured)."
     },
     {
       "name": "inform_consumed_by_preserved_partial",
@@ -1425,10 +1499,11 @@
       "streamLabel": "empty_scan_understudy_ok",
       "attachedFiles": [],
       "originalMessage": "no configured desk, but the scan finds one",
-      "dangerMode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true
+      },
       "contentWasFlaggedDangerous": false,
-      "omitUncensoredId": true,
-      "comment": "P4.D225 (v4 8bd080267, #73): the empty-body reroute's gate dropped its `uncensoredTextProfileId` conjunct. Auto-Route with NO configured id still asks the understudy resolver (whose scan is the answer); pre-#73 this case skipped the reroute and walked the chain."
+      "comment": "P4.D225 (v4 8bd080267, #73): the empty-body reroute's gate dropped its `uncensoredTextProfileId` conjunct. On duty with NO desk text id (P4.D227: the retired Auto-Route) still asks the understudy resolver (whose scan is the answer); pre-#73 this case skipped the reroute and walked the chain."
     },
     {
       "name": "empty_flagged_nobody_to_ask",
@@ -1440,7 +1515,10 @@
       "streamLabel": "flagged_nobody_then_chain",
       "attachedFiles": [],
       "originalMessage": "flagged, and nobody uncensored to ask",
-      "dangerMode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
       "contentWasFlaggedDangerous": true,
       "noUnderstudy": true,
       "comment": "P4.D225: flagged content opens with the INFERRED refusal (refusalWasStated counts it), the resolver answers nobody, so the Concierge posts `refusal-no-understudy` (purpose text) and the chain walks. An inferred refusal is NOT recordable: the ledger stays at zero."
@@ -1455,7 +1533,10 @@
       "streamLabel": "retry_states_refusal_rerouted",
       "attachedFiles": [],
       "originalMessage": "the retry names content_filter and the desk answers",
-      "dangerMode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
       "contentWasFlaggedDangerous": false,
       "comment": "P4.D225: the opening is a plain empty body; the same-provider retry comes back empty with a STATED finish reason (content_filter), which becomes the turn's refusal. The understudy answers, so the ledger records it with rerouted=true (one per turn, on the way out)."
     },
@@ -1469,8 +1550,11 @@
       "streamLabel": "hard_refusal_rerouted",
       "attachedFiles": [],
       "originalMessage": "a thrown refusal the desk answers",
-      "dangerMode": "AUTO_ROUTE",
-      "comment": "P4.D225: a thrown TYPED refusal (the plugin contract's real ModerationRejectionError) classifies as moderation-refusal with evidence typed-error. Under Auto-Route the understudy is tried FIRST (substitute: true) and answers: recovered, trail refused -> answered via concierge, ledger +1 rerouted=true, no chain walk."
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
+      "comment": "P4.D225: a thrown TYPED refusal (the plugin contract's real ModerationRejectionError) classifies as moderation-refusal with evidence typed-error. On duty (P4.D227: the retired Auto-Route) the understudy is tried FIRST (substitute: true) and answers: recovered, trail refused -> answered via concierge, ledger +1 rerouted=true, no chain walk."
     },
     {
       "name": "hard_refusal_understudy_refuses_then_chain",
@@ -1482,11 +1566,14 @@
       "streamLabel": "hard_refusal_twice_then_chain",
       "attachedFiles": [],
       "originalMessage": "the desk refuses as well",
-      "dangerMode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
       "comment": "P4.D225: the understudy's own call throws a refusal too, recorded refused/moderation-refusal against the understudy (not failed). Ledger +1 rerouted=false, then the refusing profile's chain walks with dangerous: true and the understudy in alreadyTried. The named understudy then falls over (503), so whether the TIER PICK is offered is what shows the `dangerous: true` override: a pick must be cleared for the content."
     },
     {
-      "name": "hard_refusal_mode_not_permitted",
+      "name": "hard_refusal_off_duty_not_permitted",
       "kind": "hardFailover",
       "chatId": "dd000052-0000-4000-8000-000000000052",
       "participantId": "ee000052-0000-4000-8000-000000000052",
@@ -1495,8 +1582,10 @@
       "streamLabel": "hard_refusal_off_then_chain",
       "attachedFiles": [],
       "originalMessage": "the mode forbids the reroute",
-      "dangerMode": "DETECT_ONLY",
-      "comment": "P4.D225: a thrown refusal outside Auto-Route: the INFO line, the ledger (rerouted=false), and the chain with the context's own dangerous flag. No understudy lookup at all."
+      "concierge": {
+        "enabled": false
+      },
+      "comment": "P4.D225: a thrown refusal the Concierge may not reroute (P4.D227, v4 `3b463d6b1` #76: off duty \u2014 the retired DETECT_ONLY had no successor): the INFO line with the policy's source/state, the ledger (rerouted=false), and the chain with the context's own dangerous flag. No understudy lookup at all."
     },
     {
       "name": "hard_refusal_no_understudy",
@@ -1508,9 +1597,12 @@
       "streamLabel": "hard_refusal_nobody_then_chain",
       "attachedFiles": [],
       "originalMessage": "auto-route but no uncensored desk anywhere",
-      "dangerMode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
       "noUnderstudy": true,
-      "comment": "P4.D225: Auto-Route, but the resolver answers nobody: WARN, the `refusal-no-understudy` bubble (a thrown refusal is always stated), the ledger, then the chain cleared for the content."
+      "comment": "P4.D225: on duty, but the resolver answers nobody: WARN, the `refusal-no-understudy` bubble (a thrown refusal is always stated), the ledger, then the chain cleared for the content."
     },
     {
       "name": "hard_refusal_without_settings",
@@ -1522,7 +1614,7 @@
       "streamLabel": "hard_refusal_unset_then_chain",
       "attachedFiles": [],
       "originalMessage": "a refusal with no Concierge settings handed in",
-      "comment": "P4.D225: `dangerSettings` absent (v4's optional): the not-permitted INFO with mode undefined, the ledger, the chain."
+      "comment": "P4.D225: `conciergePolicy` absent (v4's optional; `dangerSettings` before P4.D227): the not-permitted INFO with the source/state undefined, the ledger, the chain."
     },
     {
       "name": "empty_locked_mid_turn_not_rerouted",
@@ -1534,11 +1626,14 @@
       "streamLabel": "locked_mid_turn_retry_states",
       "attachedFiles": [],
       "originalMessage": "the operator locks it while the provider thinks",
-      "dangerMode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
       "contentWasFlaggedDangerous": false,
       "comment": "P4.D226 (v4 `4d370a90f`, `reads the state at refusal time: a chat locked while the provider was thinking is not rerouted`): the turn began Moderated (no snapshot), the row is Locked; the same-provider retry STATES content_filter, the refusal-time re-read says Locked \u2014 the INFO line, `refusal-not-permitted` (reason locked), NO uncensored retry, the ledger records rerouted=false, and the chain walks."
     },
-{
+    {
       "name": "empty_plain_empty_on_a_locked_chat",
       "kind": "failover",
       "chatId": "dd000054-0000-4000-8000-000000000054",
@@ -1548,12 +1643,15 @@
       "streamLabel": "locked_plain_empty_then_chain",
       "attachedFiles": [],
       "originalMessage": "a plain empty body on a Locked chat",
-      "dangerMode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
       "contentWasFlaggedDangerous": false,
       "conciergeSnapshot": "locked",
       "comment": "P4.D226 (v4 `posts nothing for a plain empty body on a Locked chat`): no stated refusal anywhere, so no announcement; Locked still bars the uncensored retry; the chain walks."
     },
-{
+    {
       "name": "hard_refusal_on_a_locked_chat",
       "kind": "hardFailover",
       "chatId": "dd000054-0000-4000-8000-000000000054",
@@ -1563,11 +1661,14 @@
       "streamLabel": "hard_refusal_locked_then_chain",
       "attachedFiles": [],
       "originalMessage": "a thrown refusal on a Locked chat",
-      "dangerMode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
       "conciergeSnapshot": "locked",
-      "comment": "P4.D226 (v4 `never asks the uncensored understudy, and says the refusal stands`): Auto-Route, a thrown TYPED refusal, the chat Locked \u2014 the INFO line, `refusal-not-permitted` (reason locked), the ledger rerouted=false, no understudy lookup, and the chain walks with the context's own dangerous flag."
+      "comment": "P4.D226 (v4 `never asks the uncensored understudy, and says the refusal stands`): on duty, a thrown TYPED refusal, the chat Locked \u2014 the INFO line, `refusal-not-permitted` (reason locked), the ledger rerouted=false, no understudy lookup, and the chain walks with the context's own dangerous flag."
     },
-{
+    {
       "name": "hard_refusal_locked_mid_turn",
       "kind": "hardFailover",
       "chatId": "dd000053-0000-4000-8000-000000000053",
@@ -1577,8 +1678,46 @@
       "streamLabel": "hard_refusal_locked_mid_turn_then_chain",
       "attachedFiles": [],
       "originalMessage": "a thrown refusal on a chat locked mid-turn",
-      "dangerMode": "AUTO_ROUTE",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
       "comment": "P4.D226 (v4 `reads the state at refusal time: a chat locked mid-turn is not rerouted`): the turn's chat reads Moderated, the row is Locked \u2014 the re-read's INFO (state changed), then the Locked arm."
+    },
+    {
+      "name": "empty_sent_off_duty_mid_turn_not_rerouted",
+      "kind": "failover",
+      "chatId": "dd000051-0000-4000-8000-000000000051",
+      "participantId": "ee000051-0000-4000-8000-000000000051",
+      "preGeneratedMessageId": "ff000065-0000-4000-8000-000000000065",
+      "hasTools": false,
+      "streamLabel": "off_duty_retry_then_chain",
+      "attachedFiles": [],
+      "originalMessage": "an empty turn after the operator sent him off duty",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
+      "contentWasFlaggedDangerous": false,
+      "comment": "P4.D227 (v4 `3b463d6b1`, #76): the turn began on duty, but the operator sends the Concierge off duty while the provider thinks; `readCurrentConciergeOnDuty` is re-asked at refusal time (the on-duty INFO), so the stated refusal is not rerouted.",
+      "offDutyNow": true
+    },
+    {
+      "name": "hard_refusal_sent_off_duty_mid_call",
+      "kind": "hardFailover",
+      "chatId": "dd000052-0000-4000-8000-000000000052",
+      "participantId": "ee000052-0000-4000-8000-000000000052",
+      "preGeneratedMessageId": "ff000066-0000-4000-8000-000000000066",
+      "hasTools": false,
+      "streamLabel": "hard_refusal_off_duty_then_chain",
+      "attachedFiles": [],
+      "originalMessage": "a thrown refusal once he was off duty",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
+      "comment": "P4.D227 (v4 `3b463d6b1`, #76): the thrown refusal on a turn that began on duty, after the Concierge went off duty mid-call: the refusal-time re-read says no, the not-permitted INFO carries the policy source/state, the chain runs.",
+      "offDutyNow": true
     }
   ],
   "authPrimaryProfile": {
@@ -1664,5 +1803,6 @@
       "contentMarkdown": "The gate is open.",
       "createdAt": "2026-02-01T00:00:00.000Z"
     }
-  ]
+  ],
+  "conciergeSettingsRowId": "5e000001-0000-4000-8000-0000000000f0"
 }
