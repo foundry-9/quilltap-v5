@@ -45,8 +45,10 @@ interface RecordedLog {
 
 interface Op {
   id: string;
-  kind: 'record' | 'check' | 'concurrentChecks';
+  kind: 'record' | 'check' | 'concurrentChecks' | 'operatorFlip';
   record?: Record<string, unknown>;
+  /** `operatorFlip` (P4.D226): the state the operator asks for. */
+  requested?: string;
   racePlant?: boolean;
   chatId?: string;
   lastRefusal?: Record<string, unknown> | null;
@@ -55,7 +57,8 @@ interface Spec {
   testPepperBase64: string;
   ops: Op[];
   ledgerPlants: Array<{ chatId: string; count: number; lastAt: string }>;
-  raceOverride: string;
+  /** P4.D226: the `conciergeMode` the race plant writes (was `raceOverride`). */
+  raceMode: string;
 }
 
 async function main(): Promise<void> {
@@ -142,7 +145,8 @@ async function main(): Promise<void> {
     if (raceChat) {
       const id = raceChat;
       raceChat = null;
-      await rawQuery('UPDATE chats SET "conciergeOverride" = ? WHERE id = ?', [spec.raceOverride, id]);
+      // P4.D226 (v4 `4d370a90f`): the operator locks the chat mid-check.
+      await rawQuery('UPDATE chats SET "conciergeMode" = ? WHERE id = ?', [spec.raceMode, id]);
     }
     return found;
   };
@@ -162,6 +166,12 @@ async function main(): Promise<void> {
     if (op.kind === 'record') {
       if (op.racePlant) raceChat = String(op.record!.chatId);
       result = await recordModerationRefusal(op.record as never);
+    } else if (op.kind === 'operatorFlip') {
+      // P4.D226: the operator's own move through the real chokepoint.
+      const chat = await repos.chats.findById(op.chatId!);
+      if (!chat) throw new Error(`op ${op.id}: chat ${op.chatId} not found`);
+      const { applyConciergeFlip } = await import('@/lib/services/dangerous-content/manual-flip');
+      result = await applyConciergeFlip(op.chatId!, op.requested as never, chat);
     } else if (op.kind === 'check') {
       result = await maybeAutoSwitchAfterRefusal(op.chatId!, op.lastRefusal as never);
     } else {

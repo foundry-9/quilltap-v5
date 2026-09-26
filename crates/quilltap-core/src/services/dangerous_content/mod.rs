@@ -2,7 +2,10 @@
 //! `lib/services/dangerous-content/` + the `CHAT_DANGER_CLASSIFICATION` job
 //! runner). Ported leaf-to-root:
 //!
-//!   - [`chat_override`] — the two-field danger status derivation.
+//!   - [`chat_override`] — the three-state Concierge posture (v4 `4d370a90f`):
+//!     `conciergeMode` + provenance, the legacy pair ignored.
+//!   - [`current_state`] — the state re-read at refusal time (#75).
+//!   - [`classifier_switch`] — the classifier verdict's move to Unmoderated (#75).
 //!   - [`resolver`] — the effective [`crate::db::chat_settings::DangerousContentSettings`]
 //!     (global + per-chat off-duty / exempt short-circuits).
 //!   - [`gatekeeper`] — content classification (moderation-provider seam →
@@ -16,8 +19,8 @@
 //!   - [`image_failover`] — the ONE post-hoc image failover chokepoint every
 //!     image call site runs through (P4.D225, v4 `8bd080267`).
 //!   - [`refusal_ledger`] — the per-chat count of STATED refusals and the
-//!     Concierge's auto-switch to Flagged (P4.D225, v4 `49059fb14`).
-//!   - [`manual_flip`] — the operator's manual tri-state Concierge flip.
+//!     Concierge's auto-switch to Unmoderated (P4.D225, v4 `49059fb14`; #75).
+//!   - [`manual_flip`] — the ONE Concierge state-transition chokepoint.
 //!   - [`gatekeeper_job`] — the `CHAT_DANGER_CLASSIFICATION` job runner
 //!     (classify → persist the chat-level danger fields + system event).
 //!
@@ -35,6 +38,8 @@
 //!     infra** — see the per-module docs.
 
 pub mod chat_override;
+pub mod classifier_switch;
+pub mod current_state;
 pub mod gatekeeper;
 pub mod gatekeeper_job;
 pub mod image_failover;

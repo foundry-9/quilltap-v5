@@ -3,306 +3,511 @@
   "seedTimestamp": "2020-01-01T00:00:00.000Z",
   "userId": "11111111-1111-4111-8111-111111111111",
   "characterId": "bbbb2222-2222-4222-8222-222222222222",
+  "$comment": "P4.D226 (v4 `4d370a90f`, #75): the three-state corpus \u2014 v4 manual-flip.test.ts's cases as planted rows (the six transitions, the three operator no-ops, the NULL no-op, the provenance adoptions, the re-attribution skip, both Concierge switches, the three refused Concierge moves, a compare-and-set miss via `snapshot`, NULL-as-Moderated, the legacy pair ignored). `snapshot` (optional) is spread over the row read before the flip, both sides.",
   "chats": [
     {
       "id": "c0000010-0000-4000-8000-000000000001",
-      "title": "monitored -> flagged",
+      "title": "noop moderated",
       "chatType": "salon",
-      "isDangerousChat": false,
-      "conciergeOverride": null,
-      "messageCount": 11
+      "messageCount": 11,
+      "conciergeMode": "moderated",
+      "conciergeModeSetBy": null,
+      "conciergeModeReason": null
     },
     {
       "id": "c0000010-0000-4000-8000-000000000002",
-      "title": "monitored -> vouched",
+      "title": "noop unmoderated",
       "chatType": "salon",
-      "isDangerousChat": false,
-      "conciergeOverride": null,
-      "messageCount": 12
+      "messageCount": 11,
+      "conciergeMode": "unmoderated",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual"
     },
     {
       "id": "c0000010-0000-4000-8000-000000000003",
-      "title": "monitored -> uncensored",
+      "title": "noop locked",
       "chatType": "salon",
-      "isDangerousChat": false,
-      "conciergeOverride": null,
-      "messageCount": 13
+      "messageCount": 11,
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual"
     },
     {
       "id": "c0000010-0000-4000-8000-000000000004",
-      "title": "flagged -> monitored",
+      "title": "null column noop",
       "chatType": "salon",
-      "isDangerousChat": true,
-      "conciergeOverride": null,
-      "dangerScore": 0.9,
-      "dangerCategories": [
-        "nsfw"
-      ],
-      "messageCount": 14,
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 14
+      "messageCount": 11
     },
     {
       "id": "c0000010-0000-4000-8000-000000000005",
-      "title": "flagged -> vouched",
+      "title": "moderated -> unmoderated",
       "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "moderated",
+      "conciergeModeSetBy": null,
+      "conciergeModeReason": null,
       "isDangerousChat": true,
-      "conciergeOverride": null,
-      "dangerScore": 0.9,
+      "dangerScore": 0.91,
       "dangerCategories": [
-        "nsfw"
+        "sexual"
       ],
-      "messageCount": 15,
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 15
+      "dangerClassifiedAt": "2026-09-20T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 9,
+      "conciergeOverride": null
     },
     {
       "id": "c0000010-0000-4000-8000-000000000006",
-      "title": "flagged -> uncensored",
+      "title": "moderated -> locked",
       "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "moderated",
+      "conciergeModeSetBy": null,
+      "conciergeModeReason": null,
       "isDangerousChat": true,
-      "conciergeOverride": null,
-      "dangerScore": 0.9,
+      "dangerScore": 0.91,
       "dangerCategories": [
-        "nsfw"
+        "sexual"
       ],
-      "messageCount": 16,
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 16
+      "dangerClassifiedAt": "2026-09-20T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 9,
+      "conciergeOverride": null
     },
     {
       "id": "c0000010-0000-4000-8000-000000000007",
-      "title": "vouched -> monitored",
+      "title": "unmoderated -> moderated",
       "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "unmoderated",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual",
       "isDangerousChat": true,
-      "conciergeOverride": "OFF",
-      "dangerScore": 0.8,
+      "dangerScore": 0.91,
       "dangerCategories": [
-        "violence"
+        "sexual"
       ],
-      "messageCount": 17,
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 17
+      "dangerClassifiedAt": "2026-09-20T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 9,
+      "conciergeOverride": null
     },
     {
       "id": "c0000010-0000-4000-8000-000000000008",
-      "title": "vouched -> flagged",
+      "title": "unmoderated -> locked",
       "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "unmoderated",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual",
       "isDangerousChat": true,
-      "conciergeOverride": "OFF",
-      "dangerScore": 0.8,
+      "dangerScore": 0.91,
       "dangerCategories": [
-        "violence"
+        "sexual"
       ],
-      "messageCount": 18,
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 18
+      "dangerClassifiedAt": "2026-09-20T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 9,
+      "conciergeOverride": null
     },
     {
       "id": "c0000010-0000-4000-8000-000000000009",
-      "title": "vouched -> uncensored",
+      "title": "locked -> moderated",
       "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual",
       "isDangerousChat": true,
-      "conciergeOverride": "OFF",
-      "dangerScore": 0.8,
+      "dangerScore": 0.91,
       "dangerCategories": [
-        "violence"
+        "sexual"
       ],
-      "messageCount": 19,
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 19
+      "dangerClassifiedAt": "2026-09-20T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 9,
+      "conciergeOverride": null
     },
     {
       "id": "c0000010-0000-4000-8000-000000000010",
-      "title": "uncensored -> monitored",
+      "title": "locked -> unmoderated",
       "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual",
       "isDangerousChat": true,
-      "conciergeOverride": "UNCENSORED",
-      "dangerScore": 0.95,
+      "dangerScore": 0.91,
       "dangerCategories": [
-        "nsfw",
-        "violence"
+        "sexual"
       ],
-      "messageCount": 20,
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 20
+      "dangerClassifiedAt": "2026-09-20T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 9,
+      "conciergeOverride": null
     },
     {
       "id": "c0000010-0000-4000-8000-000000000011",
-      "title": "uncensored -> flagged",
+      "title": "adopt refusals",
       "chatType": "salon",
-      "isDangerousChat": true,
-      "conciergeOverride": "UNCENSORED",
-      "dangerScore": 0.95,
-      "dangerCategories": [
-        "nsfw",
-        "violence"
-      ],
-      "messageCount": 21,
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 21
+      "messageCount": 11,
+      "conciergeMode": "unmoderated",
+      "conciergeModeSetBy": "concierge",
+      "conciergeModeReason": "refusals"
     },
     {
       "id": "c0000010-0000-4000-8000-000000000012",
-      "title": "uncensored -> vouched",
+      "title": "adopt classifier",
       "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "unmoderated",
+      "conciergeModeSetBy": "concierge",
+      "conciergeModeReason": "classifier",
       "isDangerousChat": true,
-      "conciergeOverride": "UNCENSORED",
-      "dangerScore": 0.95,
+      "dangerScore": 0.91,
       "dangerCategories": [
-        "nsfw",
-        "violence"
+        "sexual"
       ],
-      "messageCount": 22,
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 22
+      "dangerClassifiedAt": "2026-09-20T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 9
     },
     {
       "id": "c0000010-0000-4000-8000-000000000013",
-      "title": "monitored -> monitored (no-op)",
+      "title": "adopt migration unmoderated",
       "chatType": "salon",
-      "isDangerousChat": false,
-      "conciergeOverride": null,
-      "messageCount": 23
+      "messageCount": 11,
+      "conciergeMode": "unmoderated",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "migration"
     },
     {
       "id": "c0000010-0000-4000-8000-000000000014",
-      "title": "flagged -> flagged (no-op)",
+      "title": "adopt migration locked",
       "chatType": "salon",
-      "isDangerousChat": true,
-      "conciergeOverride": null,
-      "dangerScore": 0.9,
-      "dangerCategories": [
-        "nsfw"
-      ],
-      "messageCount": 24,
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 24
+      "messageCount": 11,
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "migration"
     },
     {
       "id": "c0000010-0000-4000-8000-000000000015",
-      "title": "vouched -> vouched (no-op)",
+      "title": "locked no provenance",
       "chatType": "salon",
-      "isDangerousChat": true,
-      "conciergeOverride": "OFF",
-      "dangerScore": 0.8,
-      "dangerCategories": [
-        "violence"
-      ],
-      "messageCount": 25,
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 25
+      "messageCount": 11,
+      "conciergeMode": "locked"
     },
     {
       "id": "c0000010-0000-4000-8000-000000000016",
-      "title": "uncensored -> uncensored (no-op)",
+      "title": "concierge re-attribute",
       "chatType": "salon",
-      "isDangerousChat": true,
-      "conciergeOverride": "UNCENSORED",
-      "dangerScore": 0.95,
-      "dangerCategories": [
-        "nsfw",
-        "violence"
-      ],
-      "messageCount": 26,
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 26
+      "messageCount": 11,
+      "conciergeMode": "unmoderated",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual"
     },
-    {"id": "c0000010-0000-4000-8000-000000000017", "title": "monitored -> flagged by the Concierge (refusals)", "chatType": "salon", "isDangerousChat": false, "conciergeOverride": null, "messageCount": 17},
-    {"id": "c0000010-0000-4000-8000-000000000018", "title": "monitored -> flagged by the Concierge (classifier)", "chatType": "salon", "isDangerousChat": false, "conciergeOverride": null, "messageCount": 18},
-    {"id": "c0000010-0000-4000-8000-000000000019", "title": "flagged -> monitored resets the ledger", "chatType": "salon", "isDangerousChat": true, "conciergeOverride": null, "dangerScore": 0.8, "dangerCategories": ["moderation-refusals"], "messageCount": 19, "dangerClassifiedAt": "2020-01-01T00:00:00.000Z", "dangerClassifiedAtMessageCount": 19},
-    {"id": "c0000010-0000-4000-8000-000000000020", "title": "vouched -> monitored resets the ledger", "chatType": "salon", "isDangerousChat": false, "conciergeOverride": "OFF", "messageCount": 20}
+    {
+      "id": "c0000010-0000-4000-8000-000000000017",
+      "title": "concierge refusals",
+      "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "moderated",
+      "conciergeModeSetBy": null,
+      "conciergeModeReason": null,
+      "conciergeOverride": null
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000018",
+      "title": "concierge classifier",
+      "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "moderated",
+      "conciergeModeSetBy": null,
+      "conciergeModeReason": null,
+      "isDangerousChat": true,
+      "dangerScore": 0.88,
+      "dangerCategories": [
+        "violence"
+      ]
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000019",
+      "title": "concierge null column",
+      "chatType": "salon",
+      "messageCount": 11
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000020",
+      "title": "concierge cas miss",
+      "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual"
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000021",
+      "title": "concierge refused locked -> unmoderated",
+      "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual"
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000022",
+      "title": "concierge refused moderated -> locked",
+      "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "moderated",
+      "conciergeModeSetBy": null,
+      "conciergeModeReason": null
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000023",
+      "title": "concierge refused unmoderated -> moderated",
+      "chatType": "salon",
+      "messageCount": 11,
+      "conciergeMode": "unmoderated",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual"
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000024",
+      "title": "legacy off ignored",
+      "chatType": "salon",
+      "messageCount": 11,
+      "conciergeOverride": "OFF",
+      "isDangerousChat": true
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000025",
+      "title": "legacy uncensored ignored",
+      "chatType": "salon",
+      "messageCount": 11,
+      "conciergeOverride": "UNCENSORED"
+    }
   ],
   "ops": [
     {
-      "id": "monitored-to-flagged",
+      "id": "noop-moderated",
       "chatId": "c0000010-0000-4000-8000-000000000001",
-      "requested": "flagged"
+      "requested": "moderated"
     },
     {
-      "id": "monitored-to-vouched",
+      "id": "noop-unmoderated",
       "chatId": "c0000010-0000-4000-8000-000000000002",
-      "requested": "vouched"
+      "requested": "unmoderated"
     },
     {
-      "id": "monitored-to-uncensored",
+      "id": "noop-locked",
       "chatId": "c0000010-0000-4000-8000-000000000003",
-      "requested": "uncensored"
+      "requested": "locked"
     },
     {
-      "id": "flagged-to-monitored",
+      "id": "null-column-reads-moderated",
       "chatId": "c0000010-0000-4000-8000-000000000004",
-      "requested": "monitored"
+      "requested": "moderated"
     },
     {
-      "id": "flagged-to-vouched",
+      "id": "moderated-to-unmoderated",
       "chatId": "c0000010-0000-4000-8000-000000000005",
-      "requested": "vouched"
+      "requested": "unmoderated"
     },
     {
-      "id": "flagged-to-uncensored",
+      "id": "moderated-to-locked",
       "chatId": "c0000010-0000-4000-8000-000000000006",
-      "requested": "uncensored"
+      "requested": "locked"
     },
     {
-      "id": "vouched-to-monitored",
+      "id": "unmoderated-to-moderated",
       "chatId": "c0000010-0000-4000-8000-000000000007",
-      "requested": "monitored"
+      "requested": "moderated"
     },
     {
-      "id": "vouched-to-flagged",
+      "id": "unmoderated-to-locked",
       "chatId": "c0000010-0000-4000-8000-000000000008",
-      "requested": "flagged"
+      "requested": "locked"
     },
     {
-      "id": "vouched-to-uncensored",
+      "id": "locked-to-moderated",
       "chatId": "c0000010-0000-4000-8000-000000000009",
-      "requested": "uncensored"
+      "requested": "moderated"
     },
     {
-      "id": "uncensored-to-monitored",
+      "id": "locked-to-unmoderated",
       "chatId": "c0000010-0000-4000-8000-000000000010",
-      "requested": "monitored"
+      "requested": "unmoderated"
     },
     {
-      "id": "uncensored-to-flagged",
+      "id": "operator-adopts-refusals-switch",
       "chatId": "c0000010-0000-4000-8000-000000000011",
-      "requested": "flagged"
+      "requested": "unmoderated"
     },
     {
-      "id": "uncensored-to-vouched",
+      "id": "operator-adopts-classifier-switch",
       "chatId": "c0000010-0000-4000-8000-000000000012",
-      "requested": "vouched"
+      "requested": "unmoderated"
     },
     {
-      "id": "monitored-to-monitored-noop",
+      "id": "operator-adopts-migration-unmoderated",
       "chatId": "c0000010-0000-4000-8000-000000000013",
-      "requested": "monitored"
+      "requested": "unmoderated"
     },
     {
-      "id": "flagged-to-flagged-noop",
+      "id": "operator-adopts-migration-locked",
       "chatId": "c0000010-0000-4000-8000-000000000014",
-      "requested": "flagged"
+      "requested": "locked"
     },
     {
-      "id": "vouched-to-vouched-noop",
+      "id": "operator-locks-a-provenanceless-locked-row",
       "chatId": "c0000010-0000-4000-8000-000000000015",
-      "requested": "vouched"
+      "requested": "locked"
     },
     {
-      "id": "uncensored-to-uncensored-noop",
+      "id": "concierge-never-reattributes",
       "chatId": "c0000010-0000-4000-8000-000000000016",
-      "requested": "uncensored"
+      "requested": "unmoderated",
+      "options": {
+        "by": "concierge",
+        "reason": "refusals"
+      }
     },
-    {"id": "concierge-refusals-to-flagged", "chatId": "c0000010-0000-4000-8000-000000000017", "requested": "flagged", "options": {"by": "concierge", "reason": "refusals", "refusals": {"count": 2, "lastProvider": "GOOGLE", "lastModel": "gemini-3-pro"}}},
-    {"id": "concierge-classifier-to-flagged", "chatId": "c0000010-0000-4000-8000-000000000018", "requested": "flagged", "options": {"by": "concierge", "reason": "classifier"}},
-    {"id": "flagged-to-monitored-resets-ledger", "chatId": "c0000010-0000-4000-8000-000000000019", "requested": "monitored"},
-    {"id": "vouched-to-monitored-resets-ledger", "chatId": "c0000010-0000-4000-8000-000000000020", "requested": "monitored"}
+    {
+      "id": "concierge-refusals-to-unmoderated",
+      "chatId": "c0000010-0000-4000-8000-000000000017",
+      "requested": "unmoderated",
+      "options": {
+        "by": "concierge",
+        "reason": "refusals",
+        "refusals": {
+          "count": 2,
+          "lastProvider": "GOOGLE",
+          "lastModel": "gemini-3-pro"
+        }
+      }
+    },
+    {
+      "id": "concierge-classifier-to-unmoderated",
+      "chatId": "c0000010-0000-4000-8000-000000000018",
+      "requested": "unmoderated",
+      "options": {
+        "by": "concierge",
+        "reason": "classifier",
+        "classification": {
+          "score": 0.88,
+          "threshold": 0.7,
+          "categories": [
+            {
+              "category": "violence",
+              "score": 0.88
+            }
+          ],
+          "source": "moderation",
+          "providerName": "OPENAI"
+        }
+      }
+    },
+    {
+      "id": "concierge-cas-null-counts-as-moderated",
+      "chatId": "c0000010-0000-4000-8000-000000000019",
+      "requested": "unmoderated",
+      "options": {
+        "by": "concierge",
+        "reason": "refusals",
+        "refusals": {
+          "count": 3,
+          "lastProvider": "OPENAI",
+          "lastModel": null
+        }
+      }
+    },
+    {
+      "id": "concierge-cas-miss-announces-nothing",
+      "chatId": "c0000010-0000-4000-8000-000000000020",
+      "requested": "unmoderated",
+      "options": {
+        "by": "concierge",
+        "reason": "classifier",
+        "classification": {
+          "score": 0.9,
+          "threshold": 0.7,
+          "categories": []
+        }
+      },
+      "snapshot": {
+        "conciergeMode": "moderated",
+        "conciergeModeSetBy": null,
+        "conciergeModeReason": null
+      }
+    },
+    {
+      "id": "concierge-refuses-locked-to-unmoderated",
+      "chatId": "c0000010-0000-4000-8000-000000000021",
+      "requested": "unmoderated",
+      "options": {
+        "by": "concierge",
+        "reason": "refusals"
+      }
+    },
+    {
+      "id": "concierge-refuses-moderated-to-locked",
+      "chatId": "c0000010-0000-4000-8000-000000000022",
+      "requested": "locked",
+      "options": {
+        "by": "concierge",
+        "reason": "refusals"
+      }
+    },
+    {
+      "id": "concierge-refuses-unmoderated-to-moderated",
+      "chatId": "c0000010-0000-4000-8000-000000000023",
+      "requested": "moderated",
+      "options": {
+        "by": "concierge",
+        "reason": "refusals"
+      }
+    },
+    {
+      "id": "legacy-override-is-ignored",
+      "chatId": "c0000010-0000-4000-8000-000000000024",
+      "requested": "locked"
+    },
+    {
+      "id": "legacy-uncensored-is-not-unmoderated",
+      "chatId": "c0000010-0000-4000-8000-000000000025",
+      "requested": "unmoderated"
+    }
   ],
-  "$ledgerComment": "P4.D225 (v4 49059fb14): refusal-ledger values planted (both sides) before the ops run. 19/20 must come back empty (the monitored arm resets); 01 (an operator flip to Flagged) must keep its tally.",
+  "$ledgerComment": "Refusal-ledger values planted (both sides) before the ops run. P4.D226: only the flips that RETURN a chat to Moderated empty them (unmoderated-to-moderated, locked-to-moderated); the other four transitions and the Concierge refusals switch keep theirs (v4 \"empties the refusal ledger only on a return to Moderated\").",
   "ledgerPlants": [
-    { "chatId": "c0000010-0000-4000-8000-000000000001", "count": 1, "lastAt": "2026-09-24T00:00:00.000Z" },
-    { "chatId": "c0000010-0000-4000-8000-000000000019", "count": 3, "lastAt": "2026-09-24T01:00:00.000Z" },
-    { "chatId": "c0000010-0000-4000-8000-000000000020", "count": 2, "lastAt": "2026-09-24T02:00:00.000Z" }
+    {
+      "chatId": "c0000010-0000-4000-8000-000000000005",
+      "count": 2,
+      "lastAt": "2026-09-24T00:00:00.000Z"
+    },
+    {
+      "chatId": "c0000010-0000-4000-8000-000000000006",
+      "count": 2,
+      "lastAt": "2026-09-24T00:00:00.000Z"
+    },
+    {
+      "chatId": "c0000010-0000-4000-8000-000000000007",
+      "count": 2,
+      "lastAt": "2026-09-24T00:00:00.000Z"
+    },
+    {
+      "chatId": "c0000010-0000-4000-8000-000000000008",
+      "count": 2,
+      "lastAt": "2026-09-24T00:00:00.000Z"
+    },
+    {
+      "chatId": "c0000010-0000-4000-8000-000000000009",
+      "count": 2,
+      "lastAt": "2026-09-24T00:00:00.000Z"
+    },
+    {
+      "chatId": "c0000010-0000-4000-8000-000000000010",
+      "count": 2,
+      "lastAt": "2026-09-24T00:00:00.000Z"
+    },
+    {
+      "chatId": "c0000010-0000-4000-8000-000000000017",
+      "count": 2,
+      "lastAt": "2026-09-24T01:00:00.000Z"
+    }
   ]
 }

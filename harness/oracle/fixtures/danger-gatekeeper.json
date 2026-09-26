@@ -120,7 +120,9 @@
       "id": "d0000000-0000-4000-8000-000000000009",
       "user": "A",
       "chatType": "salon",
-      "conciergeOverride": "OFF",
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual",
       "messageCount": 3,
       "contextSummary": "Off duty chat. token=skip-offduty"
     },
@@ -128,7 +130,9 @@
       "id": "d0000000-0000-4000-8000-00000000000c",
       "user": "A",
       "chatType": "salon",
-      "conciergeOverride": "UNCENSORED",
+      "conciergeMode": "unmoderated",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual",
       "messageCount": 3,
       "contextSummary": "Uncensored by the operator's own hand. token=dangerous-llm"
     },

@@ -63,17 +63,19 @@ const TARGET: &str = "quilltap::concierge_refusal_ledger";
 /// same point: nothing between the two looks at the chat).
 struct RacePlant {
     chat_id: Mutex<Option<String>>,
-    override_value: String,
+    /// P4.D226 (v4 `4d370a90f`): the `conciergeMode` the operator's
+    /// mid-check move writes (was the legacy `conciergeOverride`).
+    mode_value: String,
 }
 
 impl AutoSwitchProbe for RacePlant {
     async fn before_reread(&self, db: &Db, _chat_id: &str) {
         let armed = self.chat_id.lock().unwrap().take();
         if let Some(id) = armed {
-            let value = self.override_value.clone();
+            let value = self.mode_value.clone();
             db.write(move |w| {
                 w.main().connection().execute(
-                    "UPDATE chats SET \"conciergeOverride\" = ?1 WHERE id = ?2",
+                    "UPDATE chats SET \"conciergeMode\" = ?1 WHERE id = ?2",
                     rusqlite::params![value, id],
                 )?;
                 Ok(())
@@ -278,7 +280,7 @@ fn refusal_ledger_matches_v4() {
 
     let race = RacePlant {
         chat_id: Mutex::new(None),
-        override_value: spec["raceOverride"].as_str().unwrap().to_string(),
+        mode_value: spec["raceMode"].as_str().unwrap().to_string(),
     };
     let ops = spec["ops"].as_array().unwrap();
     assert_eq!(oracle.len(), ops.len() + 2, "one row per op + two dumps");
@@ -327,6 +329,30 @@ fn refusal_ledger_matches_v4() {
                         );
                         json!([{ "switched": a }, { "switched": b }])
                     }
+                    // P4.D226 (v4 `4d370a90f`): the operator's own move through
+                    // the real chokepoint — a return to Moderated empties the
+                    // ledger, so the next refusal starts afresh.
+                    "operatorFlip" => {
+                        let chat_id = op["chatId"].as_str().unwrap();
+                        let chat = db
+                            .read_main(|c| quilltap_core::db::chats_read::find_by_id(c, chat_id))
+                            .unwrap()
+                            .unwrap();
+                        let requested = quilltap_core::services::dangerous_content::chat_override::ConciergeState::from_wire(
+                            op["requested"].as_str().unwrap(),
+                        )
+                        .unwrap();
+                        let r = quilltap_core::services::dangerous_content::manual_flip::apply_concierge_flip(
+                            &db,
+                            &quilltap_core::services::dangerous_content::manual_flip::RealConciergeAnnouncer { db: &db },
+                            chat_id,
+                            requested,
+                            &chat,
+                        )
+                        .await
+                        .unwrap();
+                        json!({ "newState": r.new_state.as_str(), "changed": r.changed })
+                    }
                     other => panic!("op kind {other}"),
                 }
             })
@@ -353,7 +379,7 @@ fn refusal_ledger_matches_v4() {
         );
         switches += want_lines
             .iter()
-            .filter(|l| l.contains("switched a chat to Flagged"))
+            .filter(|l| l.contains("switched a chat to Unmoderated"))
             .count();
     }
     assert!(
@@ -380,10 +406,14 @@ fn refusal_ledger_matches_v4() {
     normalize_message_rows(&mut got_msgs);
     let c = |rows: Vec<Value>| rows.into_iter().map(canon).collect::<Vec<_>>();
     assert_eq!(c(got_chats), c(want_chats), "chats rows diverge");
+    let operator_flips = ops
+        .iter()
+        .filter(|o| o["kind"].as_str() == Some("operatorFlip"))
+        .count();
     assert_eq!(
         want_msgs.len(),
-        switches,
-        "one Concierge bubble per switch on v4's side"
+        switches + operator_flips,
+        "one Concierge bubble per switch (and per operator flip) on v4's side"
     );
     assert_eq!(c(got_msgs), c(want_msgs), "chat_messages rows diverge");
 

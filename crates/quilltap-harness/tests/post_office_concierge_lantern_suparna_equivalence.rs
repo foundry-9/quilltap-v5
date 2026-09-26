@@ -32,8 +32,8 @@ use quilltap_core::post_office::mailbox::DeliveredLetterSummary;
 use quilltap_core::services::concierge_notifications::{
     build_auto_flag_content, build_auto_flag_opaque_content, build_danger_content,
     build_danger_opaque_content, build_refusal_content, build_refusal_opaque_content,
-    ConciergeAutoFlagDetails, ConciergeCategory, ConciergeDangerDetails, ConciergeRefusalDetails,
-    ConciergeRefusalKind, ConciergeRefusalPurpose,
+    ConciergeAutoFlagDetails, ConciergeCategory, ConciergeDangerDetails, ConciergeRefusalBar,
+    ConciergeRefusalDetails, ConciergeRefusalKind, ConciergeRefusalPurpose,
 };
 use quilltap_core::services::lantern_notifications::is_lantern_image_alert_enabled;
 use quilltap_core::services::suparna_notifications::build_suparna_mail_whisper;
@@ -209,6 +209,11 @@ fn refusal_input(input: &Value) -> (ConciergeRefusalKind, ConciergeRefusalDetail
                 .and_then(Value::as_str)
                 .map(str::to_string),
             purpose: ConciergeRefusalPurpose::from_wire(d["purpose"].as_str().unwrap()).unwrap(),
+            // P4.D226 (v4 `4d370a90f`): what barred the reroute.
+            reason: d
+                .get("reason")
+                .and_then(Value::as_str)
+                .map(|r| ConciergeRefusalBar::from_wire(r).unwrap()),
         },
     )
 }
@@ -288,11 +293,13 @@ fn post_office_concierge_lantern_suparna_matches_oracle() {
     assert!(count > 0, "oracle had no rows");
     // P4.D225 floor: 3 kinds × 5 purposes × 2 × 2 refusal rows + 2 + 4 × 7 × 2
     // auto-flag rows — present only at a pin carrying `8bd080267`/`49059fb14`.
+    // P4.D226 (v4 `4d370a90f`): + 3 kinds × 5 purposes × 2 reasons × 2 = 60
+    // `reason` rows (120 refusal rows) — the Locked sentences.
     let refusal_rows = text.matches("\"kind\":\"refusal_").count();
     let autoflag_rows = text.matches("\"kind\":\"autoflag_").count();
     eprintln!("  refusal rows {refusal_rows}, auto-flag rows {autoflag_rows}");
     assert!(
-        refusal_rows == 60 && autoflag_rows == 58,
+        refusal_rows == 120 && autoflag_rows == 58,
         "the refusal/auto-flag corpus is incomplete: {refusal_rows} / {autoflag_rows}"
     );
     eprintln!("post-office-concierge-lantern-suparna: {count} rows matched");

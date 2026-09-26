@@ -9,7 +9,7 @@
  *
  * v4's own `__tests__/unit/services/chat-danger-trigger.test.ts` is the corpus,
  * case for case, plus the two operator arms `c43d3b1b4` added
- * (`isClassifierOnDuty` — the missing guard that let an Uncensored chat
+ * (`isClassifierOnDuty` — the missing guard that let an Uncensored (now Unmoderated) chat
  * enqueue a doomed `CHAT_DANGER_CLASSIFICATION` on every turn).
  *
  * Two of v4's cases have NO v5 counterpart and are recorded, not compared:
@@ -92,25 +92,33 @@ const CASES: CaseSpec[] = [
     chat: { ...BASE_CHAT, contextSummary: null, scenarioText: '' },
     mode: 'DETECT_ONLY',
   },
-  // --- the two operator arms `c43d3b1b4` added. The label underneath is
-  //     FALSE on purpose: the chat was scanned and found safe before the
-  //     operator spoke, so no other guard would catch these.
+  // --- off the Moderated desk (v4 `4d370a90f`, #75 — the three states; the
+  //     arms `c43d3b1b4` added, re-keyed). The label underneath is FALSE on
+  //     purpose: the chat was scanned and found safe before the operator
+  //     spoke, so no other guard would catch these.
   {
-    name: 'skips_when_operator_vouched',
-    chat: { ...BASE_CHAT, conciergeOverride: 'OFF', isDangerousChat: false },
+    name: 'skips_when_locked',
+    chat: { ...BASE_CHAT, conciergeMode: 'locked', conciergeModeSetBy: 'operator', isDangerousChat: false },
     mode: 'AUTO_ROUTE',
   },
   {
-    name: 'skips_when_operator_uncensored',
-    chat: { ...BASE_CHAT, conciergeOverride: 'UNCENSORED', isDangerousChat: false },
+    name: 'skips_when_unmoderated',
+    chat: { ...BASE_CHAT, conciergeMode: 'unmoderated', conciergeModeSetBy: 'operator', isDangerousChat: false },
     mode: 'AUTO_ROUTE',
   },
-  // The Uncensored chat as production actually meets it: the resolver forces
+  // The Unmoderated chat as production actually meets it: the resolver forces
   // AUTO_ROUTE, so mode is emphatically not OFF, and the ONLY thing between the
-  // turn and the enqueue is the new on-duty guard.
+  // turn and the enqueue is the on-duty guard.
   {
-    name: 'skips_when_operator_uncensored_with_label',
-    chat: { ...BASE_CHAT, conciergeOverride: 'UNCENSORED', isDangerousChat: true },
+    name: 'skips_when_unmoderated_by_the_concierge_with_label',
+    chat: { ...BASE_CHAT, conciergeMode: 'unmoderated', conciergeModeSetBy: 'concierge', isDangerousChat: true },
+    mode: 'AUTO_ROUTE',
+  },
+  // The legacy pair no longer takes the classifier off the case: an `OFF`
+  // override on a Moderated (NULL) chat ENQUEUES.
+  {
+    name: 'legacy_override_is_ignored',
+    chat: { ...BASE_CHAT, conciergeOverride: 'OFF', isDangerousChat: false },
     mode: 'AUTO_ROUTE',
   },
   // NO v5 COUNTERPART (recorded, not compared).

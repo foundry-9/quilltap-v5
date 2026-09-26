@@ -730,6 +730,7 @@ where
                         refusing_model: seat.model_name.clone(),
                         answering_profile_name: None,
                         purpose: crate::services::concierge_notifications::ConciergeRefusalPurpose::Text,
+                        reason: None,
                     },
                 )
                 .await;

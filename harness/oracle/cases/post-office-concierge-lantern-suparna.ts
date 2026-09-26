@@ -211,6 +211,21 @@ function main(): void {
         }
       }
     }
+    // P4.D226 (v4 `4d370a90f`, #75): `details.reason` — `'locked'` names the
+    // Locked chat in `refusal-not-permitted`'s two sentences; `'mode'` (and
+    // absence) keeps the Concierge-mode sentences. Every kind carries it, so the
+    // other two kinds prove it is ignored there. (#76 narrows the domain to
+    // `'locked'` and deletes the mode sentences — P4.D227's.)
+    for (const kind of REFUSAL_KINDS) {
+      for (const purpose of REFUSAL_PURPOSES) {
+        for (const reason of ['locked', 'mode']) {
+          const details = { refusingProvider: 'GOOGLE', refusingModel: 'gemini-3-pro', purpose, answeringProfileName: 'Frank Desk', reason };
+          const id = `${kind}/${purpose}/reason-${reason}`;
+          emit('refusal_content', id, content(kind, details), { kind, details });
+          emit('refusal_opaque', id, opaque(kind, details), { kind, details });
+        }
+      }
+    }
   }
   if (typeof w.buildAutoFlagContent === 'function') {
     const content = w.buildAutoFlagContent as (d: unknown) => string;

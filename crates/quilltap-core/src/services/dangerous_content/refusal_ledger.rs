@@ -1,8 +1,9 @@
 //! The Concierge's refusal ledger (port of v4
 //! `lib/services/dangerous-content/refusal-ledger.ts`, NEW at `49059fb14`,
 //! #74): count the STATED moderation refusals a chat has earned, and — after
-//! `autoSwitchAfterRefusals` of them on a Monitored chat under Auto-Route —
-//! switch it to Flagged, announcing why.
+//! `autoSwitchAfterRefusals` of them on a Moderated chat under Auto-Route —
+//! switch it to Unmoderated, announcing why (the three states, v4 `4d370a90f`;
+//! Monitored → Flagged at `49059fb14`).
 //!
 //! [`record_moderation_refusal`] is the ledger's only writer of the increment;
 //! [`crate::services::dangerous_content::manual_flip::apply_concierge_flip_with`]
@@ -25,7 +26,7 @@
 //!
 //! v4 chains the checks per chat in a process-wide map, so two refusals landing
 //! together (a text turn and an image job, say) cannot both read the chat as
-//! Monitored before either flip lands and announce twice. v5 holds a per-chat
+//! Moderated before either flip lands and announce twice. v5 holds a per-chat
 //! async lock for the same span; with the single writer ordering the writes,
 //! the second check then reads the first one's outcome.
 
@@ -37,7 +38,7 @@ use serde_json::Value;
 use crate::db::chat_settings::DangerousContentSettings;
 use crate::db::runtime::Db;
 
-use super::chat_override::{get_concierge_state, ConciergeState};
+use super::chat_override::{get_concierge_state, is_classifier_on_duty, ConciergeState};
 use super::manual_flip::{
     apply_concierge_flip_with, ApplyConciergeFlipOptions, FlipBy, FlipReason,
     RealConciergeAnnouncer,
@@ -101,7 +102,7 @@ pub struct RefusalRecord {
 }
 
 /// v4 `RecordRefusalResult`: the chat's count after this refusal (`None` when
-/// nothing was recorded), and whether it switched the chat to Flagged.
+/// nothing was recorded), and whether it switched the chat to Unmoderated.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RecordRefusalResult {
     pub count: Option<i64>,
@@ -132,7 +133,7 @@ pub fn is_recordable_refusal_evidence(evidence: Option<RefusalEvidence>) -> bool
 }
 
 /// v4 `isJobChild()` — constantly `false` in v5 (see the module doc).
-fn is_job_child() -> bool {
+pub(super) fn is_job_child() -> bool {
     false
 }
 
@@ -252,8 +253,8 @@ pub async fn record_moderation_refusal_with<P: AutoSwitchProbe>(
     }
 }
 
-/// v4 `maybeAutoSwitchAfterRefusal` — switch a Monitored chat to Flagged if its
-/// ledger has reached the threshold. Idempotent (a chat that is not Monitored
+/// v4 `maybeAutoSwitchAfterRefusal` — switch a Moderated chat to Unmoderated if its
+/// ledger has reached the threshold. Idempotent (a chat that is not Moderated
 /// is left alone, and the flip is a no-op on a match); never fails.
 pub async fn maybe_auto_switch_after_refusal(
     db: &Db,
@@ -309,7 +310,7 @@ fn resolve_for_chat(
     resolve_dangerous_content_settings(global, Some(chat))
 }
 
-/// v4 `runAutoSwitchCheck`, in v4's order: chat → Monitored → settings →
+/// v4 `runAutoSwitchCheck`, in v4's order: chat → Moderated → settings →
 /// threshold → ledger; the threshold gate BEFORE the mode gate; the RE-READ
 /// only after `count >= threshold`; `switched = result.changed`.
 async fn run_auto_switch_check<P: AutoSwitchProbe>(
@@ -330,13 +331,15 @@ async fn run_auto_switch_check<P: AutoSwitchProbe>(
             return Ok::<bool, crate::db::DbError>(false);
         };
 
+        // v4 `4d370a90f` (#75): re-keyed on `isClassifierOnDuty` — only a
+        // Moderated chat is the Concierge's to move.
         let state = get_concierge_state(Some(&chat));
-        if state != ConciergeState::Monitored {
+        if !is_classifier_on_duty(Some(&chat)) {
             tracing::debug!(
                 target: "quilltap::concierge_refusal_ledger",
                 chat_id = %chat_id,
                 state = state.as_str(),
-                "Auto-switch check skipped: the chat is not Monitored"
+                "Auto-switch check skipped: the chat is not Moderated"
             );
             return Ok(false);
         }
@@ -392,17 +395,17 @@ async fn run_auto_switch_check<P: AutoSwitchProbe>(
 
         // The settings and ledger reads above awaited; the operator may have
         // moved the chat meanwhile. Re-read and re-check on the row the flip
-        // will actually compare against, so a newer operator choice (Vouched
-        // Safe, Uncensored) is never overwritten by a decision made on a stale
+        // will actually compare against, so a newer operator choice (Locked,
+        // Unmoderated) is never overwritten by a decision made on a stale
         // snapshot.
         probe.before_reread(db, chat_id).await;
         let id = chat_id.to_string();
         let fresh = db.read_main(move |c| crate::db::chats_read::find_by_id(c, &id))?;
         let fresh_state = fresh.as_ref().map(|f| get_concierge_state(Some(f)));
-        let Some(fresh) = fresh.filter(|_| fresh_state == Some(ConciergeState::Monitored)) else {
+        let Some(fresh) = fresh.filter(|f| is_classifier_on_duty(Some(f))) else {
             decision!(
                 info,
-                "Auto-switch abandoned: the chat left Monitored during the check",
+                "Auto-switch abandoned: the chat left Moderated during the check",
                 // v4 logs `state: null` for a vanished chat.
                 state = fresh_state.map_or("null", ConciergeState::as_str)
             );
@@ -415,7 +418,7 @@ async fn run_auto_switch_check<P: AutoSwitchProbe>(
             db,
             &RealConciergeAnnouncer { db },
             chat_id,
-            ConciergeState::Flagged,
+            ConciergeState::Unmoderated,
             &fresh,
             &ApplyConciergeFlipOptions {
                 by: FlipBy::Concierge,
@@ -427,13 +430,14 @@ async fn run_auto_switch_check<P: AutoSwitchProbe>(
                         last_model: last_model.clone(),
                     },
                 ),
+                classification: None,
             },
         )
         .await?;
 
         decision!(
             info,
-            "The Concierge switched a chat to Flagged after repeated refusals",
+            "The Concierge switched a chat to Unmoderated after repeated refusals",
             changed = result.changed,
             last_provider = last_refusal.map(|l| l.provider.as_str()),
             last_model = last_model.as_deref()

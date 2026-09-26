@@ -5,8 +5,14 @@
  * `lib/services/dangerous-content/manual-flip.ts`).
  *
  * Drives v4's REAL `applyConciergeFlip` over a baked `chats` fixture (one chat
- * per flip scenario — all 12 ordered four-state transitions plus the four
- * no-ops, P4.D141 / v4 `60e3c4a0a`), then dumps `chats` + `chat_messages`. The synthetic
+ * per flip scenario), then dumps `chats` + `chat_messages`. P4.D226 (v4
+ * `4d370a90f`, #75) REWROTE the corpus for the three states: v4's own
+ * `manual-flip.test.ts` cases as planted rows (the six transitions, the no-ops,
+ * the provenance adoptions, both Concierge switches, the refused Concierge
+ * moves, a compare-and-set miss via a stale `snapshot`), and every op now
+ * records its `ConciergeManualFlip` log lines plus the repository's two DEBUGs
+ * (`Concierge state write`, `Chat danger classification recorded`) through a
+ * `@/lib/logger` recorder. The synthetic
  * Concierge announcement (`postConciergeManualAnnouncement`) runs REAL now
  * (W4.6b): every changed flip posts the manual bubble into `chat_messages`
  * (bumping the chat's `updatedAt`/`lastMessageAt`/`messageCount` via
@@ -42,10 +48,20 @@ function canonValue(v: unknown): unknown {
 interface Op {
   id: string;
   chatId: string;
-  requested: 'monitored' | 'flagged' | 'vouched' | 'uncensored';
+  requested: 'moderated' | 'unmoderated' | 'locked';
   /** P4.D225 (v4 `49059fb14`): `applyConciergeFlip`'s fourth argument. */
   options?: Record<string, unknown>;
+  /** P4.D226: spread over the row read before the flip (a stale snapshot). */
+  snapshot?: Record<string, unknown>;
 }
+interface RecordedLog {
+  service: string | null;
+  level: string;
+  message: string;
+  bag: Record<string, unknown>;
+}
+/** The repository's own lines this family pins (root logger, no service). */
+const REPO_LINES = new Set(['Concierge state write', 'Chat danger classification recorded']);
 interface Spec {
   testPepperBase64: string;
   ops: Op[];
@@ -76,7 +92,29 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
+  const logs: RecordedLog[] = [];
   jest.resetModules();
+  jest.doMock('@/lib/logger', () => {
+    const recorder = (service: string | null) => {
+      const record = (level: string) => (message: string, bag?: Record<string, unknown>) =>
+        logs.push({ service, level, message, bag: JSON.parse(JSON.stringify(bag ?? {})) });
+      const self: Record<string, unknown> = {
+        debug: record('debug'),
+        info: record('info'),
+        warn: record('warn'),
+        error: record('error'),
+        trace: record('trace'),
+      };
+      self.child = (ctx: Record<string, unknown>) =>
+        recorder(typeof ctx?.service === 'string' ? ctx.service : service);
+      return self;
+    };
+    return {
+      __esModule: true,
+      LogLevel: { ERROR: 'error', WARN: 'warn', INFO: 'info', DEBUG: 'debug', TRACE: 'trace' },
+      logger: recorder(null),
+    };
+  });
   const cipherDriverPath = require('node:path').join(
     process.cwd(),
     'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'
@@ -112,11 +150,16 @@ async function main(): Promise<void> {
 
   const lines: string[] = [];
   for (const op of spec.ops) {
-    const chat = await repos.chats.findById(op.chatId);
-    if (!chat) throw new Error(`op ${op.id}: chat ${op.chatId} not found`);
-    const result = await applyConciergeFlip(op.chatId, op.requested, chat, (op.options ?? {}) as never);
+    const read = await repos.chats.findById(op.chatId);
+    if (!read) throw new Error(`op ${op.id}: chat ${op.chatId} not found`);
+    const chat = { ...read, ...(op.snapshot ?? {}) };
+    logs.length = 0;
+    const result = await applyConciergeFlip(op.chatId, op.requested, chat as never, (op.options ?? {}) as never);
+    const opLogs = logs
+      .filter((l) => l.service === 'ConciergeManualFlip' || (l.service === null && REPO_LINES.has(l.message)))
+      .map(({ service, level, message, bag }) => ({ service, level, message, bag }));
     lines.push(
-      JSON.stringify({ kind: 'op', id: op.id, newState: result.newState, changed: result.changed })
+      JSON.stringify({ kind: 'op', id: op.id, newState: result.newState, changed: result.changed, logs: opLogs })
     );
   }
 

@@ -6,26 +6,24 @@
 //!
 //!   1. `QT_ORACLE_DANGER_RESOLVER` — the pure NDJSON from
 //!      `harness/oracle/cases/danger-resolver.ts` (drives v4's REAL
-//!      `resolveDangerousContentSettings` + the `chat-override` predicates).
-//!      P4.D141 widened it to the four-state control (v4 `60e3c4a0a`): the
-//!      override rows carry v4's own `chat-override.test.ts` truth table and ask
-//!      all three purpose-named questions, and the resolve rows cover the new
-//!      `chat-uncensored` arm (incl. AUTO_ROUTE forced under a global OFF and
-//!      exempt-beats-uncensored). P4.D143 (v4 `c43d3b1b4`) adds the state-only
-//!      twin `conciergeStateUsesUncensoredRoute` — asserted per override row
-//!      (through `getConciergeState`, v4's `it.each(TABLE)` agreement claim) and
-//!      on each of the four literal states via the `stateRoute` rows.
+//!      `resolveDangerousContentSettings` + every `chat-override` export).
+//!      P4.D226 (v4 `4d370a90f`, #75 — the three states) rewrote it: the
+//!      resolver's per-chat arms are `chat-locked` / `chat-unmoderated` over
+//!      `conciergeMode` (the legacy pair proven IGNORED), and the override rows
+//!      ask all nine questions over v4's own 3x2 TABLE + the payload-key and
+//!      hydrated-row edges; `derive` / `withLegacy` / `states` rows pin the
+//!      legacy mapping, the spread's key order and `CONCIERGE_STATES`.
 //!   2. `QT_ORACLE_DANGER_MANUAL_FLIP` + `QT_FIXTURE_MANUAL_FLIP` — the tier-2
 //!      NDJSON from `harness/oracle/cases/danger-manual-flip.test.ts` (drives
-//!      v4's REAL `applyConciergeFlip`) + the baked seed fixture. The ported
-//!      `RealConciergeAnnouncer` posts the manual Concierge bubble (v4
-//!      `postConciergeManualAnnouncement`, un-mocked in the oracle) into
-//!      `chat_messages` on every **changed** flip, so both the `chats` row (its
-//!      `addMessage`-bumped `updatedAt`/`lastMessageAt`/`messageCount`) and the
-//!      `chat_messages` bubble are diffed.
+//!      v4's REAL `applyConciergeFlip`) + the baked seed fixture. P4.D226: v4's
+//!      `manual-flip.test.ts` cases as planted rows, the `chats` +
+//!      `chat_messages` dumps AND every op's `ConciergeManualFlip` lines
+//!      compared in order (v4's recorder also keeps the repository's
+//!      `Concierge state write` DEBUG, which v5 logs on the writer thread and
+//!      `db::chats`'s tests pin directly — filtered out here).
 //!
 //! Generate (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   TMPO=/tmp/qt-danger-manual-flip-oracle
 //!   rm -rf "$TMPO"; mkdir -p "$TMPO/harness/oracle/cases" "$TMPO/harness/oracle/fixtures"
 //!   cp "$V5W/harness/oracle/cases/danger-manual-flip.test.ts" "$TMPO/harness/oracle/cases/"
@@ -37,7 +35,7 @@
 //!   QT_FIXTURE_MANUAL_FLIP=/tmp/qt-danger-manual-flip.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-danger-manual-flip.ndjson \
 //!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/harness/oracle/cases" \
-//!       -- danger-manual-flip
+//!       -- "cases/danger-manual-flip\.test\.ts$"
 //! Run:
 //!   QT_ORACLE_DANGER_RESOLVER=/tmp/oracle-danger-resolver.ndjson \
 //!   QT_ORACLE_DANGER_MANUAL_FLIP=/tmp/oracle-danger-manual-flip.ndjson \
@@ -48,8 +46,10 @@ use quilltap_core::db::chat_settings::DangerousContentSettings;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::db::{chats_read, dump_table_json_conn};
 use quilltap_core::services::dangerous_content::chat_override::{
-    concierge_state_uses_uncensored_route, get_concierge_state, is_classifier_on_duty,
-    should_show_danger_styling, should_use_uncensored_route, ConciergeState,
+    concierge_state_may_fail_over, concierge_state_uses_uncensored_route,
+    derive_concierge_mode_from_legacy, get_concierge_provenance, get_concierge_reason,
+    get_concierge_state, is_classifier_on_duty, may_fail_over, should_show_danger_styling,
+    should_use_uncensored_route, with_concierge_mode_from_legacy, ConciergeState, CONCIERGE_STATES,
 };
 use quilltap_core::services::dangerous_content::manual_flip::{
     apply_concierge_flip_with, RealConciergeAnnouncer,
@@ -81,7 +81,7 @@ fn canon(mut v: Value) -> Value {
     v
 }
 
-// --- section 1: pure resolver + override matrix ---
+// --- section 1: pure resolver + the Concierge truth table ---
 
 #[derive(Deserialize)]
 #[serde(tag = "kind")]
@@ -94,30 +94,57 @@ enum PureRow {
         settings: Value,
         source: String,
     },
+    /// P4.D226 (v4 `4d370a90f`): every question `chat-override.ts` exports,
+    /// over v4's own 3x2 TABLE + the payload-key and hydrated-row edges.
     #[serde(rename = "override")]
     Override {
         id: String,
-        chat: Option<Value>,
+        /// `"<undefined>"` for v4's `undefined` chat (JSON has no undefined).
+        chat: Value,
         state: String,
+        provenance: Option<String>,
+        reason: Option<Value>,
         #[serde(rename = "uncensoredRoute")]
         uncensored_route: bool,
         #[serde(rename = "dangerStyling")]
         danger_styling: bool,
         #[serde(rename = "classifierOnDuty")]
         classifier_on_duty: bool,
-        /// P4.D143 (v4 `c43d3b1b4`): the state-only twin, driven through
-        /// `getConciergeState(chat)` — v4's own `it.each(TABLE)` agreement claim.
         #[serde(rename = "stateUsesUncensoredRoute")]
         state_uses_uncensored_route: bool,
+        #[serde(rename = "mayFailOver")]
+        may_fail_over: bool,
+        #[serde(rename = "stateMayFailOver")]
+        state_may_fail_over: bool,
     },
-    /// P4.D143: `conciergeStateUsesUncensoredRoute` on a literal state, with no
-    /// chat anywhere — the only rows that exercise its four-state domain alone.
+    /// Both state-only twins on a literal state, with no chat anywhere.
     #[serde(rename = "stateRoute")]
     StateRoute {
         id: String,
         state: String,
         #[serde(rename = "usesUncensoredRoute")]
         uses_uncensored_route: bool,
+        #[serde(rename = "mayFailOver")]
+        may_fail_over: bool,
+    },
+    /// `CONCIERGE_STATES`, in control order.
+    #[serde(rename = "states")]
+    States { id: String, states: Vec<String> },
+    /// `deriveConciergeModeFromLegacy`.
+    #[serde(rename = "derive")]
+    Derive {
+        id: String,
+        legacy: Value,
+        columns: Value,
+    },
+    /// `withConciergeModeFromLegacy` — the returned object's BYTES (key order)
+    /// and v4's `toBe(chat)` identity.
+    #[serde(rename = "withLegacy")]
+    WithLegacy {
+        id: String,
+        chat: Value,
+        out: Value,
+        identical: bool,
     },
 }
 
@@ -130,7 +157,7 @@ fn danger_resolver_pure_matches_oracle() {
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
 
     let mut count = 0usize;
-    let mut state_route_rows = 0usize;
+    let mut kinds: std::collections::BTreeMap<&'static str, usize> = Default::default();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: PureRow = serde_json::from_str(line).expect("parse pure row");
         match row {
@@ -147,89 +174,174 @@ fn danger_resolver_pure_matches_oracle() {
                 let got = serde_json::to_value(&resolved.settings).expect("serialize settings");
                 assert_eq!(canon(got), canon(settings), "resolve[{id}] settings");
                 assert_eq!(resolved.source.as_str(), source, "resolve[{id}] source");
+                *kinds.entry("resolve").or_default() += 1;
             }
             PureRow::Override {
                 id,
                 chat,
                 state,
+                provenance,
+                reason,
                 uncensored_route,
                 danger_styling,
                 classifier_on_duty,
                 state_uses_uncensored_route,
+                may_fail_over: want_may_fail_over,
+                state_may_fail_over,
             } => {
+                // v4's `null` and `undefined` chats are both "no chat" here.
+                let chat = match chat {
+                    Value::Null => None,
+                    Value::String(s) if s == "<undefined>" => None,
+                    other => Some(other),
+                };
+                let c = chat.as_ref();
+                let got_state = get_concierge_state(c);
+                assert_eq!(got_state.as_str(), state, "override[{id}] state");
                 assert_eq!(
-                    get_concierge_state(chat.as_ref()).as_str(),
-                    state,
-                    "override[{id}] state"
+                    get_concierge_provenance(c).map(|p| p.as_str().to_string()),
+                    provenance,
+                    "override[{id}] provenance"
                 );
+                assert_eq!(get_concierge_reason(c), reason, "override[{id}] reason");
                 assert_eq!(
-                    should_use_uncensored_route(chat.as_ref()),
+                    should_use_uncensored_route(c),
                     uncensored_route,
                     "override[{id}] uncensoredRoute"
                 );
                 assert_eq!(
-                    should_show_danger_styling(chat.as_ref()),
+                    should_show_danger_styling(c),
                     danger_styling,
                     "override[{id}] dangerStyling"
                 );
                 assert_eq!(
-                    is_classifier_on_duty(chat.as_ref()),
+                    is_classifier_on_duty(c),
                     classifier_on_duty,
                     "override[{id}] classifierOnDuty"
                 );
-                // The 2x2's diagonal: uncensored is the one state that routes
-                // uncensored yet is never painted as a hazard.
-                if state == "uncensored" {
-                    assert!(uncensored_route && !danger_styling, "override[{id}] corner");
-                }
-                // P4.D143: the state-only twin, asked exactly as v4 asks it —
-                // through the derived state — and pinned to agree with the
-                // chat-shaped predicate on this row.
                 assert_eq!(
-                    concierge_state_uses_uncensored_route(get_concierge_state(chat.as_ref())),
+                    may_fail_over(c),
+                    want_may_fail_over,
+                    "override[{id}] mayFailOver"
+                );
+                // The state-only twins, asked exactly as v4 asks them — through
+                // the derived state — and pinned to agree with the chat-shaped
+                // predicates on this row.
+                assert_eq!(
+                    concierge_state_uses_uncensored_route(got_state),
                     state_uses_uncensored_route,
                     "override[{id}] stateUsesUncensoredRoute"
                 );
                 assert_eq!(
-                    state_uses_uncensored_route, uncensored_route,
-                    "override[{id}] twin agrees with shouldUseUncensoredRoute"
+                    concierge_state_may_fail_over(got_state),
+                    state_may_fail_over,
+                    "override[{id}] stateMayFailOver"
                 );
+                assert_eq!(
+                    state_uses_uncensored_route, uncensored_route,
+                    "override[{id}] twin"
+                );
+                assert_eq!(
+                    state_may_fail_over, want_may_fail_over,
+                    "override[{id}] twin"
+                );
+                *kinds.entry("override").or_default() += 1;
             }
             PureRow::StateRoute {
                 id,
                 state,
                 uses_uncensored_route,
+                may_fail_over: want,
             } => {
                 let parsed = ConciergeState::from_wire(&state)
                     .unwrap_or_else(|| panic!("stateRoute[{id}] unknown state {state}"));
                 assert_eq!(
                     concierge_state_uses_uncensored_route(parsed),
                     uses_uncensored_route,
-                    "stateRoute[{id}]"
+                    "stateRoute[{id}] usesUncensoredRoute"
                 );
-                state_route_rows += 1;
+                assert_eq!(
+                    concierge_state_may_fail_over(parsed),
+                    want,
+                    "stateRoute[{id}] mayFailOver"
+                );
+                *kinds.entry("stateRoute").or_default() += 1;
+            }
+            PureRow::States { id, states } => {
+                let got: Vec<String> = CONCIERGE_STATES
+                    .iter()
+                    .map(|s| s.as_str().to_string())
+                    .collect();
+                assert_eq!(got, states, "states[{id}] CONCIERGE_STATES");
+                *kinds.entry("states").or_default() += 1;
+            }
+            PureRow::Derive {
+                id,
+                legacy,
+                columns,
+            } => {
+                let got = derive_concierge_mode_from_legacy(&legacy).to_json();
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap(),
+                    serde_json::to_string(&columns).unwrap(),
+                    "derive[{id}]"
+                );
+                *kinds.entry("derive").or_default() += 1;
+            }
+            PureRow::WithLegacy {
+                id,
+                chat,
+                out,
+                identical,
+            } => {
+                let got = with_concierge_mode_from_legacy(chat.clone());
+                // Byte comparison: v4's `{ ...chat, ...derived }` keeps a present
+                // key in place and appends a new one — `Value` equality would
+                // not see a moved key.
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap(),
+                    serde_json::to_string(&out).unwrap(),
+                    "withLegacy[{id}] bytes"
+                );
+                assert_eq!(got == chat, identical, "withLegacy[{id}] untouched");
+                *kinds.entry("withLegacy").or_default() += 1;
             }
         }
         count += 1;
     }
-    assert!(count > 0, "resolver oracle looks empty");
-    // Shape guard: a stale oracle (regenerated before P4.D143 widened the case)
-    // would carry ZERO `stateRoute` rows and the twin's own domain would go
-    // untested while everything stayed green.
-    assert_eq!(
-        state_route_rows, 4,
-        "expected the four literal-state rows for conciergeStateUsesUncensoredRoute"
-    );
-    eprintln!("OK: danger resolver/override matched oracle ({count} rows).");
+    // Shape guard: an oracle regenerated before `4d370a90f` cannot even load the
+    // case (the new exports are absent), and one from a narrower case would
+    // carry none of the new kinds and pass vacuously.
+    let want: [(&str, usize); 6] = [
+        ("resolve", 22),
+        ("override", 25),
+        ("stateRoute", 3),
+        ("states", 1),
+        ("derive", 11),
+        ("withLegacy", 5),
+    ];
+    for (kind, n) in want {
+        assert_eq!(
+            kinds.get(kind).copied().unwrap_or(0),
+            n,
+            "row count for kind {kind}"
+        );
+    }
+    eprintln!("OK: danger resolver/Concierge table matched oracle ({count} rows).");
 }
 
-// --- section 2: manual flip (tier-2 chat-row dump) ---
+// --- section 2: manual flip (tier-2 chat-row dump + log lines) ---
+//
+// P4.D226 (v4 `4d370a90f`, #75): the three-state corpus — v4's own
+// `manual-flip.test.ts` cases as planted rows — and every op's
+// `ConciergeManualFlip` lines plus the repository's two DEBUGs compared in
+// order against v4's recorded lines.
 
 #[derive(Deserialize)]
 struct FlipSpec {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
-    chats: Vec<FlipSeedChat>,
+    chats: Vec<Value>,
     ops: Vec<FlipOp>,
     /// P4.D225: refusal-ledger values planted before the ops (both sides).
     #[serde(rename = "ledgerPlants", default)]
@@ -245,14 +357,6 @@ struct LedgerPlant {
     last_at: String,
 }
 
-/// Only the two fields the preservation assert needs; the builder owns the rest.
-#[derive(Deserialize)]
-struct FlipSeedChat {
-    id: String,
-    #[serde(rename = "isDangerousChat")]
-    is_dangerous_chat: Option<bool>,
-}
-
 #[derive(Deserialize)]
 struct FlipOp {
     id: String,
@@ -262,12 +366,19 @@ struct FlipOp {
     /// P4.D225 (v4 `49059fb14`): `applyConciergeFlip`'s fourth argument.
     #[serde(default)]
     options: Option<Value>,
+    /// P4.D226: spread over the row read before the flip (a stale snapshot —
+    /// the compare-and-set miss).
+    #[serde(default)]
+    snapshot: Option<Value>,
 }
 
 /// v4 `ApplyConciergeFlipOptions` off the spec's JSON.
 fn flip_options(
     v: Option<&Value>,
 ) -> quilltap_core::services::dangerous_content::manual_flip::ApplyConciergeFlipOptions {
+    use quilltap_core::services::concierge_notifications::{
+        ConciergeAutoFlagDetails, ConciergeCategory, ConciergeDangerDetails,
+    };
     use quilltap_core::services::dangerous_content::manual_flip::{
         ApplyConciergeFlipOptions, FlipBy, FlipReason,
     };
@@ -280,19 +391,37 @@ fn flip_options(
             _ => FlipBy::Operator,
         },
         reason: match v.get("reason").and_then(Value::as_str) {
+            Some("manual") => Some(FlipReason::Manual),
             Some("refusals") => Some(FlipReason::Refusals),
             Some("classifier") => Some(FlipReason::Classifier),
             _ => None,
         },
-        refusals: v.get("refusals").map(|r| {
-            quilltap_core::services::concierge_notifications::ConciergeAutoFlagDetails {
-                count: r["count"].as_i64().unwrap_or(0),
-                last_provider: r["lastProvider"].as_str().unwrap_or("").to_string(),
-                last_model: r
-                    .get("lastModel")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-            }
+        refusals: v.get("refusals").map(|r| ConciergeAutoFlagDetails {
+            count: r["count"].as_i64().unwrap_or(0),
+            last_provider: r["lastProvider"].as_str().unwrap_or("").to_string(),
+            last_model: r
+                .get("lastModel")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+        }),
+        classification: v.get("classification").map(|c| ConciergeDangerDetails {
+            score: c["score"].as_f64().unwrap(),
+            threshold: c["threshold"].as_f64().unwrap(),
+            categories: c["categories"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|k| ConciergeCategory {
+                    category: k["category"].as_str().unwrap().to_string(),
+                    score: k["score"].as_f64().unwrap(),
+                    label: k.get("label").and_then(Value::as_str).map(str::to_string),
+                })
+                .collect(),
+            source: c.get("source").and_then(Value::as_str).map(str::to_string),
+            provider_name: c
+                .get("providerName")
+                .and_then(Value::as_str)
+                .map(str::to_string),
         }),
     }
 }
@@ -306,6 +435,7 @@ enum FlipOracleRow {
         #[serde(rename = "newState")]
         new_state: String,
         changed: bool,
+        logs: Vec<Value>,
     },
     #[serde(rename = "table")]
     Table { table: String, rows: Vec<Value> },
@@ -317,25 +447,63 @@ fn state_from_str(s: &str) -> ConciergeState {
 
 const FLIP_SEED_TS: &str = "2020-01-01T00:00:00.000Z";
 
-/// Placeholder the minted `dangerClassifiedAt` (present-non-null → `<ts>`) so the
-/// flagged-path mint compares. `updatedAt` is bumped by the Concierge
-/// manual-announcement's `addMessage` (v4 `repos.chats.addMessage`) on a
-/// **changed** flip — sentinel-aware, so a value equal to the `2020` seed stays
-/// (proving the noop path posted nothing) and a mint collapses to `<ts>`.
-/// `lastMessageAt` rides the same rule but is NOT expected to move: since bug
-/// 112 (v4 `735d9408c`, P4.D140) a Concierge bubble is system-authored, so both
-/// sides leave it at the seed — a mint here on either side is a real defect.
+fn snake(k: &str) -> String {
+    let mut out = String::new();
+    for c in k.chars() {
+        if c.is_ascii_uppercase() {
+            out.push('_');
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// v4's recorded line in the capture rig's rendering: the `ConciergeManualFlip`
+/// service logs under `quilltap::concierge_manual_flip`, the repository's root
+/// lines under `quilltap::db`; a JSON `null` renders as the literal `null`.
+fn render_v4(log: &Value) -> String {
+    let target = match log["service"].as_str() {
+        Some("ConciergeManualFlip") => "quilltap::concierge_manual_flip",
+        None => "quilltap::db",
+        Some(other) => panic!("unexpected service {other}"),
+    };
+    let level = log["level"].as_str().unwrap().to_uppercase();
+    let mut line = format!("{level} {target} {}", log["message"].as_str().unwrap());
+    for (k, v) in log["bag"].as_object().unwrap() {
+        let rendered = match v {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        line.push_str(&format!(" {}={rendered}", snake(k)));
+    }
+    line
+}
+
+/// The Rust lines this family compares: every `concierge_manual_flip` line.
+/// The repository's `Concierge state write` DEBUG (which v4's recorder also
+/// captures) runs on v5's single-writer thread, out of a thread-scoped
+/// capture's sight — it is pinned by `db::chats`'s own tests, calling the
+/// repository directly, and filtered out of v4's lines below.
+fn keep_rust_line(line: &str) -> bool {
+    line.contains(" quilltap::concierge_manual_flip ")
+}
+
+/// Placeholder the minted `dangerClassifiedAt` (present-non-null → `<ts>`) so
+/// a clear compares. `updatedAt` is bumped by the Concierge bubble's
+/// `addMessage` on a changed flip — sentinel-aware, so a value equal to the
+/// `2020` seed stays (proving a silent path posted nothing) and a mint
+/// collapses to `<ts>`. `lastMessageAt` rides the same rule but is NOT
+/// expected to move (bug 112 — a Concierge bubble is system-authored).
 fn normalize_chat_rows(rows: &mut [Value]) {
     for row in rows.iter_mut() {
         if let Some(obj) = row.as_object_mut() {
-            if obj.get("dangerClassifiedAt").map(|v| !v.is_null()) == Some(true) {
-                obj.insert("dangerClassifiedAt".into(), Value::String("<ts>".into()));
-            }
-            for col in ["updatedAt", "lastMessageAt"] {
+            for col in ["updatedAt", "lastMessageAt", "dangerClassifiedAt"] {
                 let minted = obj
                     .get(col)
                     .and_then(Value::as_str)
-                    .map(|s| s != FLIP_SEED_TS)
+                    .map(|s| s != FLIP_SEED_TS && !s.starts_with("2026-09-20"))
                     .unwrap_or(false);
                 if minted {
                     obj.insert(col.into(), Value::String("<ts>".into()));
@@ -345,10 +513,8 @@ fn normalize_chat_rows(rows: &mut [Value]) {
     }
 }
 
-/// The Concierge manual bubble's minted `id` + `createdAt` are placeholdered; every
-/// other column (content / opaqueContent / systemSender / systemKind / role /
-/// type / participantId / attachments …) is diffed exactly against v4's REAL
-/// writer.
+/// The Concierge bubble's minted `id` + `createdAt` are placeholdered; every
+/// other column is diffed exactly against v4's REAL writer.
 fn normalize_message_rows(rows: &mut [Value]) {
     for row in rows.iter_mut() {
         if let Some(obj) = row.as_object_mut() {
@@ -362,8 +528,8 @@ fn normalize_message_rows(rows: &mut [Value]) {
     }
 }
 
-#[tokio::test]
-async fn danger_manual_flip_matches_oracle() {
+#[test]
+fn danger_manual_flip_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_DANGER_MANUAL_FLIP") else {
         eprintln!("SKIP: set QT_ORACLE_DANGER_MANUAL_FLIP to the tier-2 NDJSON (see header).");
         return;
@@ -383,7 +549,8 @@ async fn danger_manual_flip_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
     // Parse oracle: op results (by id) + the chats + chat_messages table dumps.
-    let mut want_ops: std::collections::HashMap<String, (String, bool)> = Default::default();
+    let mut want_ops: std::collections::HashMap<String, (String, bool, Vec<Value>)> =
+        Default::default();
     let mut want_rows: Vec<Value> = Vec::new();
     let mut want_message_rows: Vec<Value> = Vec::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
@@ -392,8 +559,9 @@ async fn danger_manual_flip_matches_oracle() {
                 id,
                 new_state,
                 changed,
+                logs,
             } => {
-                want_ops.insert(id, (new_state, changed));
+                want_ops.insert(id, (new_state, changed, logs));
             }
             FlipOracleRow::Table { table, rows } => match table.as_str() {
                 "chats" => want_rows = rows,
@@ -402,6 +570,7 @@ async fn danger_manual_flip_matches_oracle() {
             },
         }
     }
+    assert_eq!(want_ops.len(), spec.ops.len(), "one oracle row per op");
 
     let work = std::env::temp_dir().join(format!(
         "qt-danger-manual-flip-rust-{}.db",
@@ -410,6 +579,10 @@ async fn danger_manual_flip_matches_oracle() {
     let _ = std::fs::remove_file(&work);
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let db = Db::open_main(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
 
@@ -420,7 +593,7 @@ async fn danger_manual_flip_matches_oracle() {
         .iter()
         .map(|p| (p.chat_id.clone(), p.count, p.last_at.clone()))
         .collect();
-    db.write(move |w| {
+    rt.block_on(db.write(move |w| {
         quilltap_core::test_support::ensure_p4d225_columns(w.main().connection());
         for (id, count, at) in &plants {
             w.main().connection().execute(
@@ -429,27 +602,35 @@ async fn danger_manual_flip_matches_oracle() {
             )?;
         }
         Ok(())
-    })
-    .await
+    }))
     .expect("plant the ledgers");
 
+    let mut lines_compared = 0usize;
     for op in &spec.ops {
-        let chat = db
+        let mut chat = db
             .read_main(|c| chats_read::find_by_id(c, &op.chat_id))
             .unwrap_or_else(|e| panic!("read chat {}: {e:?}", op.chat_id))
             .unwrap_or_else(|| panic!("op {}: chat {} missing", op.id, op.chat_id));
-        let result = apply_concierge_flip_with(
-            &db,
-            &RealConciergeAnnouncer { db: &db },
-            &op.chat_id,
-            state_from_str(&op.requested),
-            &chat,
-            &flip_options(op.options.as_ref()),
-        )
-        .await
-        .unwrap_or_else(|e| panic!("flip {}: {e:?}", op.id));
+        if let Some(snapshot) = op.snapshot.as_ref().and_then(Value::as_object) {
+            let obj = chat.as_object_mut().unwrap();
+            for (k, v) in snapshot {
+                obj.insert(k.clone(), v.clone());
+            }
+        }
+        let options = flip_options(op.options.as_ref());
+        let (result, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(apply_concierge_flip_with(
+                &db,
+                &RealConciergeAnnouncer { db: &db },
+                &op.chat_id,
+                state_from_str(&op.requested),
+                &chat,
+                &options,
+            ))
+        });
+        let result = result.unwrap_or_else(|e| panic!("flip {}: {e:?}", op.id));
 
-        let (want_state, want_changed) = want_ops
+        let (want_state, want_changed, want_logs) = want_ops
             .get(&op.id)
             .unwrap_or_else(|| panic!("oracle missing op {}", op.id));
         assert_eq!(
@@ -459,7 +640,19 @@ async fn danger_manual_flip_matches_oracle() {
             op.id
         );
         assert_eq!(result.changed, *want_changed, "op {} changed", op.id);
+        let got: Vec<String> = lines.into_iter().filter(|l| keep_rust_line(l)).collect();
+        let want: Vec<String> = want_logs
+            .iter()
+            .filter(|l| l["service"].as_str() == Some("ConciergeManualFlip"))
+            .map(render_v4)
+            .collect();
+        assert_eq!(got, want, "op {}: the flip's log lines", op.id);
+        lines_compared += want.len();
     }
+    assert!(
+        lines_compared >= 25,
+        "the log comparison ran vacuously ({lines_compared})"
+    );
 
     let mut got_dump = db
         .read_main(|c| dump_table_json_conn(c, "chats", "id"))
@@ -475,20 +668,12 @@ async fn danger_manual_flip_matches_oracle() {
         .and_then(Value::as_array_mut)
         .expect("dump rows")
         .clone();
-
-    // MEASURE the cross-lane divergence before the normalizer masks it.
-
     normalize_chat_rows(&mut got_rows);
     normalize_chat_rows(&mut want_rows);
-    // Numeric canonicalization so INTEGER/REAL rendering agrees across sides.
     let got_rows = got_rows.into_iter().map(canon).collect::<Vec<_>>();
     let want_rows = want_rows.into_iter().map(canon).collect::<Vec<_>>();
-
     assert_eq!(got_rows, want_rows, "chats rows diverge after manual flips");
 
-    // The Concierge manual bubble (v4 `postConciergeManualAnnouncement`, now real
-    // on both sides) lands in `chat_messages` — one per changed flip, none for the
-    // no-op. Diff those rows byte-for-byte (id/createdAt placeholdered).
     let mut got_msgs: Vec<Value> = got_message_dump
         .get_mut("rows")
         .and_then(Value::as_array_mut)
@@ -503,60 +688,40 @@ async fn danger_manual_flip_matches_oracle() {
         "chat_messages rows diverge after manual flips"
     );
 
-    // v4 pins "operator states preserve isDangerousChat (the update never
-    // touches the label)" by asserting the update object lacks the key. v5's
-    // standalone write has no update object to inspect, so the equivalent claim
-    // is made at COLUMN level over the dumped rows — and it is checked against
-    // BOTH sides, so it can never pass vacuously on a corpus that stopped
-    // carrying an operator target.
-    assert_operator_states_preserve_the_label(&spec, &got_rows);
-    assert_operator_states_preserve_the_label(&spec, &want_rows);
+    // v4 "the legacy column is never written": every chat's `conciergeOverride`
+    // is exactly as seeded, on BOTH sides — and the corpus must carry seeded
+    // legacy values for the claim to bite.
+    assert_legacy_override_untouched(&spec, &got_rows);
+    assert_legacy_override_untouched(&spec, &want_rows);
 
     eprintln!(
-        "OK: danger manual-flip chats + chat_messages dumps matched oracle ({} ops).",
+        "OK: danger manual-flip chats + chat_messages dumps + {lines_compared} log lines matched oracle ({} ops).",
         spec.ops.len()
     );
 }
 
-/// Every op that ASKED for an operator state (`vouched` / `uncensored`) must
-/// leave `isDangerousChat` exactly as the seed left it — the label is preserved
-/// underneath so returning to Monitored/Flagged picks up where the classifier
-/// left off. Fails loudly if the corpus carries no such op at all.
-fn assert_operator_states_preserve_the_label(spec: &FlipSpec, rows: &[Value]) {
-    let seeded: std::collections::HashMap<&str, Option<bool>> = spec
-        .chats
-        .iter()
-        .map(|c| (c.id.as_str(), c.is_dangerous_chat))
-        .collect();
-    let mut checked = 0usize;
-    for op in &spec.ops {
-        if op.requested != "vouched" && op.requested != "uncensored" {
-            continue;
+/// No flip writes `conciergeOverride` any more (v4 `4d370a90f`). Fails loudly
+/// if the corpus seeds no non-NULL legacy override at all.
+fn assert_legacy_override_untouched(spec: &FlipSpec, rows: &[Value]) {
+    let mut seeded_legacy = 0usize;
+    for chat in &spec.chats {
+        let id = chat["id"].as_str().unwrap();
+        let seeded = chat
+            .get("conciergeOverride")
+            .cloned()
+            .unwrap_or(Value::Null);
+        if !seeded.is_null() {
+            seeded_legacy += 1;
         }
-        let seed = *seeded
-            .get(op.chat_id.as_str())
-            .unwrap_or_else(|| panic!("op {} names an unseeded chat", op.id));
         let row = rows
             .iter()
-            .find(|r| r.get("id").and_then(Value::as_str) == Some(op.chat_id.as_str()))
-            .unwrap_or_else(|| panic!("op {}: chat row missing from the dump", op.id));
-        // The column is stored as 0/1; the seed spec speaks booleans.
-        let stored = match row.get("isDangerousChat") {
-            None | Some(Value::Null) => None,
-            Some(v) => Some(v.as_i64().map(|n| n != 0).unwrap_or_else(|| {
-                v.as_bool()
-                    .unwrap_or_else(|| panic!("op {}: odd isDangerousChat {v}", op.id))
-            })),
-        };
+            .find(|r| r.get("id").and_then(Value::as_str) == Some(id))
+            .unwrap_or_else(|| panic!("chat {id} missing from the dump"));
         assert_eq!(
-            stored, seed,
-            "op {} requested {} and must not touch isDangerousChat",
-            op.id, op.requested
+            row.get("conciergeOverride").cloned().unwrap_or(Value::Null),
+            seeded,
+            "chat {id}: conciergeOverride must never be written"
         );
-        checked += 1;
     }
-    assert!(
-        checked >= 2,
-        "the corpus must exercise BOTH operator states as flip targets (found {checked})"
-    );
+    assert!(seeded_legacy >= 2, "the corpus must seed legacy overrides");
 }

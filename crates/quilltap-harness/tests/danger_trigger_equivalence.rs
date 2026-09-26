@@ -170,9 +170,10 @@ fn danger_trigger_gate_chain_matches_oracle() {
                  INSERT INTO \"chats\" (\"id\", \"userId\", \"title\", \"createdAt\", \"updatedAt\", \
                  \"contextSummary\", \"scenarioText\", \"messageCount\", \"isDangerousChat\", \
                  \"dangerClassifiedAt\", \
-                 \"dangerClassifiedAtMessageCount\", \"conciergeOverride\") VALUES \
+                 \"dangerClassifiedAtMessageCount\", \"conciergeOverride\", \
+                 \"conciergeMode\", \"conciergeModeSetBy\") VALUES \
                  ('{CHAT_ID}', '{USER_ID}', 'Trigger corpus', '2026-01-01T00:00:00.000Z', \
-                 '2026-01-01T00:00:00.000Z', {}, {}, {}, {}, {}, {}, {});",
+                 '2026-01-01T00:00:00.000Z', {}, {}, {}, {}, {}, {}, {}, {}, {});",
                 lit(chat.get("contextSummary")),
                 // P4.D208: the gate reads BOTH columns since v4 bug 158. Before
                 // this the column was never seeded, so the two `skips_when_*`
@@ -184,6 +185,9 @@ fn danger_trigger_gate_chain_matches_oracle() {
                 lit(chat.get("dangerClassifiedAt")),
                 lit(chat.get("dangerClassifiedAtMessageCount")),
                 lit(chat.get("conciergeOverride")),
+                // P4.D226 (v4 `4d370a90f`): the state the on-duty guard reads.
+                lit(chat.get("conciergeMode")),
+                lit(chat.get("conciergeModeSetBy")),
             ),
         };
         rt.block_on(db.write(move |w| {
@@ -251,10 +255,8 @@ fn danger_trigger_gate_chain_matches_oracle() {
     // existed) would silently take the whole point of `c43d3b1b4` dark, and a
     // corpus in which nothing ever enqueues would pass on an always-bail port.
     assert!(
-        cases
-            .iter()
-            .any(|c| c.name == "skips_when_operator_uncensored"),
-        "the oracle predates c43d3b1b4's operator arms — regenerate it"
+        cases.iter().any(|c| c.name == "skips_when_unmoderated"),
+        "the oracle predates 4d370a90f's three-state arms — regenerate it"
     );
     assert!(
         cases.iter().any(|c| !c.enqueued.is_empty()),

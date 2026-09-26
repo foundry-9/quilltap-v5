@@ -73,6 +73,22 @@ enum Op {
     GetRefusalLedger { id: String },
     #[serde(rename = "resetRefusalLedger")]
     ResetRefusalLedger { id: String },
+    /// P4.D226 (v4 `4d370a90f`, #75): the Concierge state's ONE writer.
+    #[serde(rename = "setConciergeMode")]
+    SetConciergeMode {
+        id: String,
+        columns: Value,
+        #[serde(default)]
+        expected: Option<String>,
+    },
+    /// P4.D226: the classifier's telemetry write (the verdict never stored).
+    #[serde(rename = "setDangerClassification")]
+    SetDangerClassification {
+        id: String,
+        telemetry: Value,
+        #[serde(default)]
+        verdict: Option<Value>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -295,6 +311,69 @@ fn chats_tier2_matches_oracle() {
                     }));
                 }
                 Op::ResetRefusalLedger { id } => repo.reset_moderation_refusal_ledger(id),
+                Op::SetConciergeMode {
+                    id,
+                    columns,
+                    expected,
+                } => {
+                    use quilltap_core::services::dangerous_content::chat_override::{
+                        ConciergeModeColumns, ConciergeReason, ConciergeSetBy, ConciergeState,
+                    };
+                    let cols = ConciergeModeColumns {
+                        concierge_mode: ConciergeState::from_wire(
+                            columns["conciergeMode"].as_str().unwrap(),
+                        )
+                        .unwrap(),
+                        concierge_mode_set_by: columns["conciergeModeSetBy"]
+                            .as_str()
+                            .map(|s| ConciergeSetBy::from_wire(s).unwrap()),
+                        concierge_mode_reason: columns["conciergeModeReason"]
+                            .as_str()
+                            .map(|s| ConciergeReason::from_wire(s).unwrap()),
+                    };
+                    let written = repo.set_concierge_mode(
+                        id,
+                        &cols,
+                        expected
+                            .as_deref()
+                            .map(|e| ConciergeState::from_wire(e).unwrap()),
+                    );
+                    ledger.push(json!({ "op": "setConciergeMode", "id": id, "written": written }));
+                }
+                Op::SetDangerClassification {
+                    id,
+                    telemetry,
+                    verdict,
+                } => {
+                    let t = quilltap_core::db::chats::DangerClassificationTelemetry {
+                        is_dangerous_chat: telemetry["isDangerousChat"].as_bool().unwrap(),
+                        danger_score: telemetry["dangerScore"].as_f64(),
+                        danger_categories: telemetry["dangerCategories"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|c| c.as_str().unwrap().to_string())
+                            .collect(),
+                        danger_classified_at: telemetry["dangerClassifiedAt"]
+                            .as_str()
+                            .unwrap()
+                            .to_string(),
+                        danger_classified_at_message_count: telemetry
+                            ["dangerClassifiedAtMessageCount"]
+                            .as_f64()
+                            .unwrap(),
+                    };
+                    let updated = repo
+                        .set_danger_classification(
+                            id,
+                            &t,
+                            verdict.as_ref().is_some_and(|v| !v.is_null()),
+                        )
+                        .expect("setDangerClassification");
+                    ledger.push(
+                        json!({ "op": "setDangerClassification", "id": id, "updated": updated }),
+                    );
+                }
             }
         }
     }

@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — feat(concierge): the three Concierge states — Moderated, Unmoderated, Locked (P4.D226 unit 2)
+
+_Versions: core 0.0.1078, harness 0.0.997, host 0.0.160._
+
+A chat's Concierge state now lives in `chats.conciergeMode` with its
+provenance in `conciergeModeSetBy` / `conciergeModeReason`, as v4
+`4d370a90f` stores it; `conciergeOverride` is no longer written and the
+legacy pair is no longer read by any routing or display decision. The fresh
+schema is re-dumped from v4 (the three nullable columns, no default), a new
+chat writes NULL (read as Moderated), and `set_concierge_mode` is the one
+writer, a compare-and-set for the Concierge's own moves. The transition
+chokepoint follows v4's eight steps: the operator's provenance-only update,
+the Concierge allowed only Moderated to Unmoderated, the four new
+announcement kinds (the six retired ones still decode for old transcripts),
+and the return to Moderated clearing the classifier telemetry and the refusal
+ledger after the state lands. The resolver's per-chat sources become
+`chat-locked` / `chat-unmoderated`; the refusal ledger's auto-switch moves a
+Moderated chat to Unmoderated; the classifier job records telemetry only and
+its dangerous verdict moves the chat through the new classifier switch, which
+the write applier's commit hook also runs. A new census pins the state's one
+writer and that no retired kind is emitted.
+
 #### 2026-09-25 — test(fixtures): widen the 41 chats-bearing pairs through v4's real Concierge migrations; rebuild the migration-vintage trio (P4.D226 unit 1)
 
 _Versions: web 0.0.197._

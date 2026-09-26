@@ -58,6 +58,10 @@ struct Scenario {
     /// `mockRejectedValueOnce`).
     #[serde(default, rename = "ledgerCheckFails")]
     ledger_check_fails: Option<String>,
+    /// P4.D226 (v4 `4d370a90f`): the classifier switch rejects with this
+    /// message (v4's `mockRejectedValueOnce`).
+    #[serde(default, rename = "switchCheckFails")]
+    switch_check_fails: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -101,6 +105,9 @@ struct RecHost {
     // P4.D225: the post-commit refusal-ledger checks ({chatId, lastRefusal}).
     ledger_checks: Vec<Value>,
     ledger_check_fails: Option<String>,
+    // P4.D226: the post-commit classifier-switch calls ({chatId, verdict}).
+    switch_checks: Vec<Value>,
+    switch_check_fails: Option<String>,
 }
 
 impl RecHost {
@@ -133,6 +140,8 @@ impl RecHost {
             notifications: Vec::new(),
             ledger_checks: Vec::new(),
             ledger_check_fails: sc.ledger_check_fails.clone(),
+            switch_checks: Vec::new(),
+            switch_check_fails: sc.switch_check_fails.clone(),
         }
     }
 
@@ -250,9 +259,23 @@ impl ApplyHost for RecHost {
             None => Ok(()),
         }
     }
+
+    fn run_classifier_switch_check(
+        &mut self,
+        chat_id: &str,
+        verdict: Option<&Value>,
+    ) -> Result<(), ApplyError> {
+        self.switch_checks
+            .push(json!({ "chatId": chat_id, "verdict": verdict }));
+        match self.switch_check_fails.take() {
+            Some(message) => Err(ApplyError::msg(message)),
+            None => Ok(()),
+        }
+    }
 }
 
-/// v4's recorded dispatcher line (the two P4.D225 ledger lines only) in the
+/// v4's recorded dispatcher line (the two P4.D225 ledger lines and the two
+/// P4.D226 classifier-switch lines) in the
 /// capture rig's rendering. `chatIds` is v4's array — v5 logs it as
 /// `chatIdsJson` (the file layer's `…Json` convention).
 fn render_v4_ledger_log(log: &Value) -> String {
@@ -335,6 +358,7 @@ fn write_apply_matches_oracle() {
             "rms": host.rms,
             "notifications": host.notifications,
             "ledgerChecks": host.ledger_checks,
+            "switchChecks": host.switch_checks,
             "outcome": outcome,
         });
 

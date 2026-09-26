@@ -1,348 +1,585 @@
-//! Per-chat Concierge override helpers (v4
-//! `lib/services/dangerous-content/chat-override.ts`) — the single source of
-//! truth for a chat's danger status.
+//! Per-chat Concierge helpers (v4
+//! `lib/services/dangerous-content/chat-override.ts`, at `4d370a90f` — the
+//! phase-3 rewrite, #75) — the single source of truth for a chat's Concierge
+//! posture.
 //!
-//! Danger lives in two stored fields, `isDangerousChat` (the classification
-//! label) and `conciergeOverride` (`'OFF'` = the operator vouched the chat
-//! safe; `'UNCENSORED'` = the operator asserted it spicy and opened the
-//! uncensored door themselves). Neither field is meaningful on its own: both
-//! operator states *preserve* the label (so the user can return to Monitored
-//! or Flagged later) while taking the classifier off the case.
-//!
-//! The four states are a 2×2 — rows are the route, columns are the provenance:
+//! A chat is in one of three states, stored in `chats.conciergeMode`:
 //!
 //! ```text
-//!   |                    | Concierge decides | operator decides |
-//!   | ordinary route     | 'monitored'       | 'vouched'        |
-//!   | uncensored route   | 'flagged'         | 'uncensored'     |
+//!   | State         | Text / cheap LLM / images   | Failover on refusal | Concierge may move it |
+//!   | 'moderated'   | ordinary providers first    | yes                 | yes (to Unmoderated)  |
+//!   | 'unmoderated' | the uncensored desk only    | n/a (already there) | n/a                   |
+//!   | 'locked'      | ordinary providers only     | never               | never                 |
 //! ```
 //!
-//! Because the two fields must always be read together, NOTHING outside this
-//! module (and the handful of sanctioned writers/serializers) should read the
-//! raw fields. Derive everything from [`get_concierge_state`], or ask one of
-//! the purpose-named questions:
+//! Who put the chat in its state — the operator, or the Concierge after
+//! refusals or on the classifier's reading — is *provenance*
+//! (`conciergeModeSetBy` / `conciergeModeReason`). It is a note on the badge
+//! and in the helper text, never a separate state and never a colour.
+//!
+//! The legacy pair (`conciergeOverride`, `isDangerousChat`) is no longer read
+//! by any routing or display decision. `isDangerousChat` and its siblings are
+//! the classifier's telemetry; `conciergeOverride` is not written at all.
+//! [`derive_concierge_mode_from_legacy`] maps an old row or an old bundle onto
+//! the three states, and is used only where such data enters (the importer,
+//! the restore — v4's migration applies the same table in SQL).
+//!
+//! NOTHING outside this module (and the sanctioned writer,
+//! `apply_concierge_flip`) should read the stored columns. Derive everything
+//! from [`get_concierge_state`], or ask one of the purpose-named questions:
 //!
 //!   - "Take the uncensored routes right now?" → [`should_use_uncensored_route`]
 //!     (or [`concierge_state_uses_uncensored_route`], given a derived state)
 //!   - "Paint danger styling in the UI?"        → [`should_show_danger_styling`]
-//!   - "May the classifier run at all?"          → [`is_classifier_on_duty`]
-//!
-//! Reading a raw field on its own — or answering one question with another
-//! question's predicate — is how an override gets silently dropped. v4
-//! `60e3c4a0a` DELETED the two overloaded predicates (`isConciergeOffDuty`,
-//! `isChatActiveDangerous`) rather than re-pointing them, so every call site is
-//! forced to state which question it is asking; this port does the same.
+//!   - "May the Concierge move this chat?"      → [`is_classifier_on_duty`]
+//!   - "May a refusal be rerouted?"             → [`may_fail_over`]
+//!     (or [`concierge_state_may_fail_over`], given a derived state)
 //!
 //! The port operates on a `serde_json::Value` chat row (the shape every ported
-//! read yields), reading only `conciergeOverride` / `isDangerousChat`.
+//! read yields) or a server-derived payload: v4's `ChatLike` reads the columns
+//! FIRST, then the payload keys (`conciergeState` / `conciergeSetBy` /
+//! `conciergeReason`), so client and server ask the same functions.
 
-use serde_json::Value;
+use serde_json::{json, Map, Value};
 
-/// The stored `chats.conciergeOverride` domain (NULL = the classifier decides)
-/// — v4 `ConciergeOverrideValue`.
-pub const CONCIERGE_OVERRIDE_OFF: &str = "OFF";
-/// See [`CONCIERGE_OVERRIDE_OFF`].
-pub const CONCIERGE_OVERRIDE_UNCENSORED: &str = "UNCENSORED";
-
-/// The canonical four-state for a chat's Concierge status (v4
-/// `ConciergeState`). The string values are also the wire contract for the
-/// manual-flip control (`PUT /api/v1/chats/[id]` `conciergeState`), so they must
-/// stay `'monitored' | 'flagged' | 'vouched' | 'uncensored'`.
-///
-/// - `Monitored` — not classified dangerous; the classifier keeps watch and may
-///   auto-flip to `Flagged`.
-/// - `Flagged` — classified dangerous (auto or manual): uncensored routes,
-///   danger styling, the works.
-/// - `Vouched` — operator vouched the chat safe (`conciergeOverride === 'OFF'`).
-///   No classification, no uncensored routes; the label is preserved underneath.
-/// - `Uncensored` — operator asserted the chat spicy (`conciergeOverride ===
-///   'UNCENSORED'`). Every uncensored route, zero classification, zero danger
-///   styling; the label is preserved underneath.
-///
-/// Only the classifier moves a chat between `Monitored` and `Flagged`; only the
-/// operator can enter or leave `Vouched` / `Uncensored`.
+/// The canonical Concierge state of a chat (v4 `ConciergeState =
+/// ConciergeMode`). The string values are also the wire contract of
+/// `conciergeState` on the chat PUT and the create.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConciergeState {
-    Monitored,
-    Flagged,
-    Vouched,
-    Uncensored,
+    Moderated,
+    Unmoderated,
+    Locked,
 }
 
+/// Every state, in the order the controls list them (v4 `CONCIERGE_STATES`).
+pub const CONCIERGE_STATES: [ConciergeState; 3] = [
+    ConciergeState::Moderated,
+    ConciergeState::Unmoderated,
+    ConciergeState::Locked,
+];
+
 impl ConciergeState {
-    /// The v4 wire string (`'monitored' | 'flagged' | 'vouched' | 'uncensored'`).
+    /// The v4 wire string (`'moderated' | 'unmoderated' | 'locked'`).
     pub fn as_str(self) -> &'static str {
         match self {
-            ConciergeState::Monitored => "monitored",
-            ConciergeState::Flagged => "flagged",
-            ConciergeState::Vouched => "vouched",
-            ConciergeState::Uncensored => "uncensored",
+            ConciergeState::Moderated => "moderated",
+            ConciergeState::Unmoderated => "unmoderated",
+            ConciergeState::Locked => "locked",
         }
     }
 
-    /// The inverse of [`ConciergeState::as_str`] — the four wire strings the
-    /// `conciergeState` PUT arm accepts. Anything else is `None` (v4's
-    /// `z.enum([...])` refuses it with a 400).
+    /// The inverse of [`ConciergeState::as_str`] — v4 `ConciergeModeSchema`'s
+    /// three values. Anything else is `None`, which the PUT and the create
+    /// refuse with 400 — the retired four-state values (`monitored`, `flagged`,
+    /// `vouched`, `uncensored`) included (v4 `4d370a90f`).
     pub fn from_wire(s: &str) -> Option<Self> {
         match s {
-            "monitored" => Some(ConciergeState::Monitored),
-            "flagged" => Some(ConciergeState::Flagged),
-            "vouched" => Some(ConciergeState::Vouched),
-            "uncensored" => Some(ConciergeState::Uncensored),
+            "moderated" => Some(ConciergeState::Moderated),
+            "unmoderated" => Some(ConciergeState::Unmoderated),
+            "locked" => Some(ConciergeState::Locked),
             _ => None,
         }
     }
 }
 
-/// THE canonical derivation of a chat's Concierge status from its two stored
-/// fields (v4 `getConciergeState`). Every other helper — and every
-/// display/management read — should go through this so an operator override can
-/// never be silently dropped. Either override wins over the classification
-/// label.
-///
-/// A `None` chat is `Monitored` (v4's `chat?.` optional chaining falls through
-/// to the label test, and an absent label is not `=== true`).
+/// Who put the chat in its state (v4 `ConciergeModeSetBy`); the provenance
+/// ([`get_concierge_provenance`]) is `None` when the chat is Moderated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConciergeSetBy {
+    Operator,
+    Concierge,
+}
+
+impl ConciergeSetBy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ConciergeSetBy::Operator => "operator",
+            ConciergeSetBy::Concierge => "concierge",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match s {
+            "operator" => Some(ConciergeSetBy::Operator),
+            "concierge" => Some(ConciergeSetBy::Concierge),
+            _ => None,
+        }
+    }
+}
+
+/// Why the chat is in its state (v4 `ConciergeModeReason`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConciergeReason {
+    Manual,
+    Refusals,
+    Classifier,
+    Migration,
+}
+
+impl ConciergeReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ConciergeReason::Manual => "manual",
+            ConciergeReason::Refusals => "refusals",
+            ConciergeReason::Classifier => "classifier",
+            ConciergeReason::Migration => "migration",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match s {
+            "manual" => Some(ConciergeReason::Manual),
+            "refusals" => Some(ConciergeReason::Refusals),
+            "classifier" => Some(ConciergeReason::Classifier),
+            "migration" => Some(ConciergeReason::Migration),
+            _ => None,
+        }
+    }
+}
+
+/// v4's `chat?.column ?? chat?.payloadKey` — a string read, the column first.
+/// JS `??` falls through on `null`/`undefined` only, so a present non-null
+/// value of the wrong type stops the chain (and then fails the caller's own
+/// literal test, as v4's `===` does).
+fn column_or_payload<'a>(
+    chat: Option<&'a Value>,
+    column: &str,
+    payload: &str,
+) -> Option<&'a Value> {
+    let chat = chat?;
+    match chat.get(column) {
+        Some(v) if !v.is_null() => Some(v),
+        _ => chat.get(payload).filter(|v| !v.is_null()),
+    }
+}
+
+/// THE canonical derivation of a chat's Concierge state (v4
+/// `getConciergeState`): `mode = chat?.conciergeMode ?? chat?.conciergeState;
+/// mode === 'unmoderated' || mode === 'locked' ? mode : 'moderated'`. A
+/// missing, NULL or unknown value reads as Moderated; **the legacy pair is
+/// never read**.
 pub fn get_concierge_state(chat: Option<&Value>) -> ConciergeState {
-    let override_value = chat
-        .and_then(|c| c.get("conciergeOverride"))
-        .and_then(Value::as_str);
-    if override_value == Some(CONCIERGE_OVERRIDE_UNCENSORED) {
-        return ConciergeState::Uncensored;
-    }
-    if override_value == Some(CONCIERGE_OVERRIDE_OFF) {
-        return ConciergeState::Vouched;
-    }
-    let flagged = chat
-        .and_then(|c| c.get("isDangerousChat"))
-        .and_then(Value::as_bool)
-        == Some(true);
-    if flagged {
-        ConciergeState::Flagged
-    } else {
-        ConciergeState::Monitored
+    match column_or_payload(chat, "conciergeMode", "conciergeState").and_then(Value::as_str) {
+        Some("unmoderated") => ConciergeState::Unmoderated,
+        Some("locked") => ConciergeState::Locked,
+        _ => ConciergeState::Moderated,
     }
 }
 
-/// Is this state on the uncensored row of the 2×2 — `Flagged` (the classifier's
-/// verdict) or `Uncensored` (the operator's assertion)? (v4
-/// `conciergeStateUsesUncensoredRoute`, `c43d3b1b4`.)
-///
-/// The state-only twin of [`should_use_uncensored_route`], for callers that
-/// already hold a derived state (list payloads carry `conciergeState` rather
-/// than the raw pair) and would otherwise have to fabricate a chat-like to ask
-/// the question. This is THE one place that says which states take the
-/// uncensored route; [`should_use_uncensored_route`] delegates to it.
+/// Who put the chat in its current state (v4 `getConciergeProvenance`).
+/// Always `None` for a Moderated chat; otherwise the stored `setBy` when it is
+/// one of the two, else **`operator`** — an unknown or NULL `setBy` on a
+/// non-Moderated row is never `None`.
+pub fn get_concierge_provenance(chat: Option<&Value>) -> Option<ConciergeSetBy> {
+    if get_concierge_state(chat) == ConciergeState::Moderated {
+        return None;
+    }
+    match column_or_payload(chat, "conciergeModeSetBy", "conciergeSetBy").and_then(Value::as_str) {
+        Some("concierge") => Some(ConciergeSetBy::Concierge),
+        _ => Some(ConciergeSetBy::Operator),
+    }
+}
+
+/// Why the chat is in its current state (v4 `getConciergeReason`): `None` for
+/// Moderated; else `chat?.conciergeModeReason ?? chat?.conciergeReason ??
+/// null`. v4 returns the stored value UNCHECKED (its type says the enum; the
+/// code does not narrow), so the wire string is returned as stored.
+pub fn get_concierge_reason(chat: Option<&Value>) -> Option<Value> {
+    if get_concierge_state(chat) == ConciergeState::Moderated {
+        return None;
+    }
+    column_or_payload(chat, "conciergeModeReason", "conciergeReason").cloned()
+}
+
+/// Does this state take the uncensored route? (v4
+/// `conciergeStateUsesUncensoredRoute`.) THE one place that says which state
+/// takes it — Unmoderated only.
 pub fn concierge_state_uses_uncensored_route(state: ConciergeState) -> bool {
-    state == ConciergeState::Flagged || state == ConciergeState::Uncensored
+    state == ConciergeState::Unmoderated
 }
 
-/// Should this chat take the Concierge's uncensored routes right now? (v4
-/// `shouldUseUncensoredRoute`.)
-///
-/// True for `Flagged` (the classifier's verdict) and `Uncensored` (the
-/// operator's assertion) — the two states on the uncensored row of the 2×2. Use
-/// this everywhere the Concierge would reroute providers, pick candid over
-/// concealed prompt guidance, or select an uncensored cheap-LLM.
+/// Should this chat take the Concierge's uncensored routes right now (v4
+/// `shouldUseUncensoredRoute`)? True only for Unmoderated, whoever set it.
 pub fn should_use_uncensored_route(chat: Option<&Value>) -> bool {
     concierge_state_uses_uncensored_route(get_concierge_state(chat))
 }
 
-/// Should the UI paint this chat with danger styling (red rings, warning
-/// accents)? (v4 `shouldShowDangerStyling`.)
-///
-/// True only for `Flagged`: the styling announces the *Concierge's* verdict. An
-/// `Uncensored` chat takes the same routes by the operator's own hand and is
-/// deliberately not painted as a hazard.
+/// Should the UI paint this chat with danger styling (v4
+/// `shouldShowDangerStyling`)? True for Unmoderated regardless of provenance:
+/// the provenance goes in the tooltip and helper text, never in colour.
 pub fn should_show_danger_styling(chat: Option<&Value>) -> bool {
-    get_concierge_state(chat) == ConciergeState::Flagged
+    get_concierge_state(chat) == ConciergeState::Unmoderated
 }
 
-/// Is the classifier allowed to run on this chat at all? (v4
-/// `isClassifierOnDuty`.)
-///
-/// True for the two Concierge-decides states (`Monitored`, `Flagged`); false for
-/// both operator states — once the operator has spoken, nothing may reclassify
-/// the chat out from under them. **True for a `None` chat** (nothing has taken
-/// the classifier off the case), which v4 pins with its own test.
+/// May the Concierge act on this chat of his own accord — the classifier job,
+/// the scheduled scan, the per-turn trigger and the refusal ledger's
+/// auto-switch (v4 `isClassifierOnDuty`)? True only for Moderated. A `None`
+/// chat reads Moderated, so it is on duty.
 pub fn is_classifier_on_duty(chat: Option<&Value>) -> bool {
-    let s = get_concierge_state(chat);
-    s == ConciergeState::Monitored || s == ConciergeState::Flagged
+    get_concierge_state(chat) == ConciergeState::Moderated
+}
+
+/// May a refusal in this state be rerouted to an uncensored understudy (v4
+/// `conciergeStateMayFailOver`)? False only for Locked.
+pub fn concierge_state_may_fail_over(state: ConciergeState) -> bool {
+    state != ConciergeState::Locked
+}
+
+/// May a refusal on this chat be rerouted (v4 `mayFailOver`)? A chatless call
+/// reads as Moderated, so it may.
+pub fn may_fail_over(chat: Option<&Value>) -> bool {
+    concierge_state_may_fail_over(get_concierge_state(chat))
+}
+
+/// The three stored columns that make up a chat's Concierge posture (v4
+/// `ConciergeModeColumns`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConciergeModeColumns {
+    pub concierge_mode: ConciergeState,
+    pub concierge_mode_set_by: Option<ConciergeSetBy>,
+    pub concierge_mode_reason: Option<ConciergeReason>,
+}
+
+impl ConciergeModeColumns {
+    /// The three keys as v4 spreads them (`conciergeMode`,
+    /// `conciergeModeSetBy`, `conciergeModeReason`, NULLs kept).
+    pub fn to_json(self) -> Value {
+        json!({
+            "conciergeMode": self.concierge_mode.as_str(),
+            "conciergeModeSetBy": self.concierge_mode_set_by.map(ConciergeSetBy::as_str),
+            "conciergeModeReason": self.concierge_mode_reason.map(ConciergeReason::as_str),
+        })
+    }
+}
+
+/// Map the legacy pair onto the three states (v4
+/// `deriveConciergeModeFromLegacy`), first match wins:
+///
+/// ```text
+///   | conciergeOverride | isDangerousChat | → mode        | setBy     | reason     |
+///   | 'UNCENSORED'      | any             | 'unmoderated' | operator  | migration  |
+///   | 'OFF'             | any             | 'locked'      | operator  | migration  |
+///   | NULL              | true            | 'unmoderated' | concierge | classifier |
+///   | NULL              | else            | 'moderated'   | NULL      | NULL       |
+/// ```
+///
+/// `isDangerousChat` is v4's `=== true` over the HYDRATED value: v5's read
+/// OMITS a NULL nullable-optional, so absent == not `true`.
+pub fn derive_concierge_mode_from_legacy(legacy: &Value) -> ConciergeModeColumns {
+    match legacy.get("conciergeOverride").and_then(Value::as_str) {
+        Some("UNCENSORED") => ConciergeModeColumns {
+            concierge_mode: ConciergeState::Unmoderated,
+            concierge_mode_set_by: Some(ConciergeSetBy::Operator),
+            concierge_mode_reason: Some(ConciergeReason::Migration),
+        },
+        Some("OFF") => ConciergeModeColumns {
+            concierge_mode: ConciergeState::Locked,
+            concierge_mode_set_by: Some(ConciergeSetBy::Operator),
+            concierge_mode_reason: Some(ConciergeReason::Migration),
+        },
+        _ if legacy.get("isDangerousChat") == Some(&Value::Bool(true)) => ConciergeModeColumns {
+            concierge_mode: ConciergeState::Unmoderated,
+            concierge_mode_set_by: Some(ConciergeSetBy::Concierge),
+            concierge_mode_reason: Some(ConciergeReason::Classifier),
+        },
+        _ => ConciergeModeColumns {
+            concierge_mode: ConciergeState::Moderated,
+            concierge_mode_set_by: None,
+            concierge_mode_reason: None,
+        },
+    }
+}
+
+/// For data entering from outside (an import bundle, a backup) — v4
+/// `withConciergeModeFromLegacy`: a chat whose `conciergeMode` is `!= null`
+/// is returned unchanged; otherwise (absent, or a present `null`) the three
+/// columns are derived from the legacy pair and spread over it — v4's `{
+/// ...chat, ...derived }`, so an existing key keeps its place and a new one
+/// appends.
+pub fn with_concierge_mode_from_legacy(chat: Value) -> Value {
+    let Value::Object(mut obj) = chat else {
+        return chat;
+    };
+    if obj.get("conciergeMode").is_some_and(|v| !v.is_null()) {
+        return Value::Object(obj);
+    }
+    let derived = derive_concierge_mode_from_legacy(&Value::Object(obj.clone()));
+    if let Value::Object(cols) = derived.to_json() {
+        spread_into(&mut obj, cols);
+    }
+    Value::Object(obj)
+}
+
+/// JS object spread of `src` over `dst`: an existing key is overwritten in
+/// place, a new one is appended.
+fn spread_into(dst: &mut Map<String, Value>, src: Map<String, Value>) {
+    for (k, v) in src {
+        dst.insert(k, v);
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    //! v4 `chat-override.test.ts` at `4d370a90f`, mirrored by name. The
+    //! `danger_resolver_equivalence` family runs the same questions against v4's
+    //! real module over a wider corpus.
     use super::*;
     use serde_json::json;
 
-    /// v4's `chat-override.test.ts` TABLE, row for row: the full stored-field
-    /// truth table with the preserved `isDangerousChat` label in each operator
-    /// position (the label must not leak into any predicate).
-    /// `(conciergeOverride, isDangerousChat, state, uncensoredRoute,
-    /// dangerStyling, classifierOnDuty)`.
+    type SetByRow = Option<ConciergeSetBy>;
+    /// A TABLE row.
     type Row = (
+        &'static str,
         Option<&'static str>,
-        Option<bool>,
-        ConciergeState,
+        SetByRow,
+        bool,
         bool,
         bool,
         bool,
     );
-
+    /// `(mode, setBy, provenance, uncensoredRoute, dangerStyling,
+    /// classifierOnDuty, failOver)` — v4's TABLE, row for row.
     const TABLE: &[Row] = &[
+        ("moderated", None, None, false, false, true, true),
+        // A stray provenance on a Moderated row is never reported.
         (
+            "moderated",
+            Some("operator"),
             None,
-            Some(false),
-            ConciergeState::Monitored,
             false,
             false,
             true,
-        ),
-        (None, None, ConciergeState::Monitored, false, false, true),
-        (None, Some(true), ConciergeState::Flagged, true, true, true),
-        (
-            Some("OFF"),
-            Some(false),
-            ConciergeState::Vouched,
-            false,
-            false,
-            false,
+            true,
         ),
         (
-            Some("OFF"),
-            Some(true),
-            ConciergeState::Vouched,
-            false,
-            false,
-            false,
-        ),
-        (
-            Some("UNCENSORED"),
-            Some(false),
-            ConciergeState::Uncensored,
+            "unmoderated",
+            Some("operator"),
+            Some(ConciergeSetBy::Operator),
+            true,
             true,
             false,
-            false,
+            true,
         ),
         (
-            Some("UNCENSORED"),
-            Some(true),
-            ConciergeState::Uncensored,
+            "unmoderated",
+            Some("concierge"),
+            Some(ConciergeSetBy::Concierge),
             true,
+            true,
+            false,
+            true,
+        ),
+        (
+            "locked",
+            Some("operator"),
+            Some(ConciergeSetBy::Operator),
+            false,
+            false,
+            false,
+            false,
+        ),
+        // A locked row with no provenance still reads as the operator's.
+        (
+            "locked",
+            None,
+            Some(ConciergeSetBy::Operator),
+            false,
+            false,
             false,
             false,
         ),
     ];
 
-    fn chat_of(over: Option<&str>, danger: Option<bool>) -> Value {
-        json!({
-            "conciergeOverride": over.map(Value::from).unwrap_or(Value::Null),
-            "isDangerousChat": danger.map(Value::from).unwrap_or(Value::Null),
-        })
+    #[test]
+    fn lists_the_three_states_in_control_order() {
+        let got: Vec<&str> = CONCIERGE_STATES.iter().map(|s| s.as_str()).collect();
+        assert_eq!(got, ["moderated", "unmoderated", "locked"]);
     }
 
     #[test]
-    fn truth_table_matches_v4() {
-        for (over, danger, state, route, styling, on_duty) in TABLE {
-            let chat = chat_of(*over, *danger);
+    fn returns_moderated_for_a_null_or_undefined_chat_or_a_null_column() {
+        assert_eq!(get_concierge_state(None), ConciergeState::Moderated);
+        assert_eq!(
+            get_concierge_state(Some(&json!({}))),
+            ConciergeState::Moderated
+        );
+        assert_eq!(
+            get_concierge_state(Some(&json!({ "conciergeMode": null }))),
+            ConciergeState::Moderated
+        );
+    }
+
+    #[test]
+    fn ignores_the_legacy_pair_entirely() {
+        let legacy = json!({ "conciergeOverride": "UNCENSORED", "isDangerousChat": true });
+        assert_eq!(
+            get_concierge_state(Some(&legacy)),
+            ConciergeState::Moderated
+        );
+        assert!(!should_use_uncensored_route(Some(&legacy)));
+        assert!(!should_show_danger_styling(Some(&legacy)));
+    }
+
+    #[test]
+    fn reads_a_server_derived_payload_when_the_column_is_absent() {
+        assert_eq!(
+            get_concierge_state(Some(&json!({ "conciergeState": "locked" }))),
+            ConciergeState::Locked
+        );
+        assert_eq!(
+            get_concierge_provenance(Some(
+                &json!({ "conciergeState": "unmoderated", "conciergeSetBy": "concierge" })
+            )),
+            Some(ConciergeSetBy::Concierge)
+        );
+        assert_eq!(
+            get_concierge_reason(Some(
+                &json!({ "conciergeState": "unmoderated", "conciergeReason": "refusals" })
+            )),
+            Some(json!("refusals"))
+        );
+    }
+
+    #[test]
+    fn prefers_the_column_over_a_derived_payload_value() {
+        assert_eq!(
+            get_concierge_state(Some(
+                &json!({ "conciergeMode": "moderated", "conciergeState": "locked" })
+            )),
+            ConciergeState::Moderated
+        );
+    }
+
+    #[test]
+    fn the_truth_table_row_by_row() {
+        for (mode, set_by, provenance, route, styling, on_duty, fail_over) in TABLE {
+            let chat = json!({
+                "conciergeMode": mode,
+                "conciergeModeSetBy": set_by,
+                "conciergeModeReason": set_by.map(|_| "manual"),
+            });
             let c = Some(&chat);
+            let state = ConciergeState::from_wire(mode).unwrap();
+            // derives the state / the provenance
+            assert_eq!(get_concierge_state(c), state, "{mode}/{set_by:?}");
             assert_eq!(
-                get_concierge_state(c),
-                *state,
-                "state for {over:?}/{danger:?}"
+                get_concierge_provenance(c),
+                *provenance,
+                "{mode}/{set_by:?}"
             );
-            assert_eq!(
-                should_use_uncensored_route(c),
-                *route,
-                "route for {over:?}/{danger:?}"
-            );
-            assert_eq!(
-                should_show_danger_styling(c),
-                *styling,
-                "styling for {over:?}/{danger:?}"
-            );
-            assert_eq!(
-                is_classifier_on_duty(c),
-                *on_duty,
-                "onDuty for {over:?}/{danger:?}"
-            );
-        }
-    }
-
-    /// v4 `chat-override.test.ts` `describe('conciergeStateUsesUncensoredRoute')`
-    /// (`c43d3b1b4`): the bottom row of the 2×2 and nothing else, plus the
-    /// `it.each(TABLE)` agreement claim — the state-only twin answers exactly
-    /// what the chat-shaped predicate answers, row for row.
-    #[test]
-    fn state_only_twin_is_the_bottom_row_and_agrees_with_the_chat_predicate() {
-        assert!(!concierge_state_uses_uncensored_route(
-            ConciergeState::Monitored
-        ));
-        assert!(!concierge_state_uses_uncensored_route(
-            ConciergeState::Vouched
-        ));
-        assert!(concierge_state_uses_uncensored_route(
-            ConciergeState::Flagged
-        ));
-        assert!(concierge_state_uses_uncensored_route(
-            ConciergeState::Uncensored
-        ));
-
-        for (over, danger, state, route, _, _) in TABLE {
-            assert_eq!(
-                concierge_state_uses_uncensored_route(*state),
-                *route,
-                "state twin for {over:?}/{danger:?}"
-            );
-            let chat = chat_of(*over, *danger);
-            assert_eq!(
-                concierge_state_uses_uncensored_route(get_concierge_state(Some(&chat))),
-                should_use_uncensored_route(Some(&chat)),
-                "twin agrees with chat predicate for {over:?}/{danger:?}"
-            );
+            // shouldUseUncensoredRoute and its state-only twin
+            assert_eq!(should_use_uncensored_route(c), *route);
+            assert_eq!(concierge_state_uses_uncensored_route(state), *route);
+            // shouldShowDangerStyling (provenance never changes the colour)
+            assert_eq!(should_show_danger_styling(c), *styling);
+            assert_eq!(is_classifier_on_duty(c), *on_duty);
+            // mayFailOver and its state-only twin
+            assert_eq!(may_fail_over(c), *fail_over);
+            assert_eq!(concierge_state_may_fail_over(state), *fail_over);
         }
     }
 
     #[test]
-    fn uncensored_routes_but_is_never_painted_as_a_hazard() {
-        // The two predicates diverge exactly on 'uncensored'.
-        for (over, danger, state, _, _, _) in TABLE {
-            if *state != ConciergeState::Uncensored {
-                continue;
-            }
-            let chat = chat_of(*over, *danger);
-            assert!(should_use_uncensored_route(Some(&chat)));
-            assert!(!should_show_danger_styling(Some(&chat)));
+    fn get_concierge_reason_is_null_for_moderated_whatever_is_stored() {
+        let chat = json!({ "conciergeMode": "moderated", "conciergeModeReason": "refusals" });
+        assert_eq!(get_concierge_reason(Some(&chat)), None);
+    }
+
+    #[test]
+    fn get_concierge_reason_returns_the_stored_reason_otherwise() {
+        let chat = json!({ "conciergeMode": "unmoderated", "conciergeModeReason": "classifier" });
+        assert_eq!(get_concierge_reason(Some(&chat)), Some(json!("classifier")));
+    }
+
+    #[test]
+    fn may_fail_over_reads_a_chatless_call_as_moderated() {
+        assert!(may_fail_over(None));
+    }
+
+    #[test]
+    fn derive_concierge_mode_from_legacy_table() {
+        let unmod_op = "unmoderated/operator/migration";
+        let locked = "locked/operator/migration";
+        let classifier = "unmoderated/concierge/classifier";
+        let moderated = "moderated/null/null";
+        let cases = [
+            (
+                json!({ "conciergeOverride": "UNCENSORED", "isDangerousChat": false }),
+                unmod_op,
+            ),
+            (
+                json!({ "conciergeOverride": "UNCENSORED", "isDangerousChat": true }),
+                unmod_op,
+            ),
+            (
+                json!({ "conciergeOverride": "OFF", "isDangerousChat": true }),
+                locked,
+            ),
+            (
+                json!({ "conciergeOverride": "OFF", "isDangerousChat": null }),
+                locked,
+            ),
+            (
+                json!({ "conciergeOverride": null, "isDangerousChat": true }),
+                classifier,
+            ),
+            (
+                json!({ "conciergeOverride": null, "isDangerousChat": false }),
+                moderated,
+            ),
+            (
+                json!({ "conciergeOverride": null, "isDangerousChat": null }),
+                moderated,
+            ),
+            (json!({}), moderated),
+        ];
+        for (legacy, want) in cases {
+            let c = derive_concierge_mode_from_legacy(&legacy);
+            let got = format!(
+                "{}/{}/{}",
+                c.concierge_mode.as_str(),
+                c.concierge_mode_set_by
+                    .map_or("null", ConciergeSetBy::as_str),
+                c.concierge_mode_reason
+                    .map_or("null", ConciergeReason::as_str)
+            );
+            assert_eq!(got, want, "{legacy}");
         }
     }
 
     #[test]
-    fn none_chat_is_monitored_and_the_classifier_stays_on_the_case() {
-        assert_eq!(get_concierge_state(None), ConciergeState::Monitored);
-        assert!(!should_use_uncensored_route(None));
-        assert!(!should_show_danger_styling(None));
-        // v4: "nothing has taken the classifier off the case".
-        assert!(is_classifier_on_duty(None));
+    fn derives_the_state_for_a_chat_that_carries_none() {
+        let out = with_concierge_mode_from_legacy(
+            json!({ "id": "c", "conciergeOverride": "OFF", "isDangerousChat": false }),
+        );
+        assert_eq!(out["id"], "c");
+        assert_eq!(out["conciergeMode"], "locked");
+        assert_eq!(out["conciergeModeSetBy"], "operator");
     }
 
     #[test]
-    fn empty_chat_is_monitored() {
-        let chat = json!({});
-        assert_eq!(get_concierge_state(Some(&chat)), ConciergeState::Monitored);
-        assert!(is_classifier_on_duty(Some(&chat)));
+    fn leaves_a_chat_that_already_carries_a_state_untouched() {
+        let chat =
+            json!({ "id": "c", "conciergeMode": "moderated", "conciergeOverride": "UNCENSORED" });
+        assert_eq!(with_concierge_mode_from_legacy(chat.clone()), chat);
     }
 
     #[test]
-    fn wire_strings_round_trip() {
-        for s in [
-            ConciergeState::Monitored,
-            ConciergeState::Flagged,
-            ConciergeState::Vouched,
-            ConciergeState::Uncensored,
-        ] {
+    fn wire_strings_round_trip_and_the_retired_four_do_not_decode() {
+        for s in CONCIERGE_STATES {
             assert_eq!(ConciergeState::from_wire(s.as_str()), Some(s));
         }
-        // v4's z.enum refuses the retired tri-state spellings.
-        for s in ["safe", "off", "on", "", "MONITORED"] {
+        for s in [
+            "monitored",
+            "flagged",
+            "vouched",
+            "uncensored",
+            "OFF",
+            "UNCENSORED",
+            "",
+            "MODERATED",
+        ] {
             assert_eq!(ConciergeState::from_wire(s), None, "{s} must not decode");
         }
     }

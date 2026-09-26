@@ -1,14 +1,19 @@
 //! Dangerous-content settings resolver (v4
-//! `lib/services/dangerous-content/resolver.service.ts`).
+//! `lib/services/dangerous-content/resolver.service.ts`, at `4d370a90f` — #75).
 //!
 //! Resolves the effective [`DangerousContentSettings`] from the global chat
-//! settings plus an optional per-chat view. Three per-chat short-circuits win
-//! over the global setting: moderation-exempt chat types (Help / Brahma), the
-//! operator's Uncensored assertion, and the operator's Vouched Safe. Otherwise
-//! the global settings win, falling back to the default.
+//! settings plus an optional chat whose Concierge state shapes the result, so
+//! callers that gate behaviour on `settings.mode` pick the state up for free:
 //!
-//! The single decision point keeps the override cheap for callers: anything that
-//! already gates on `settings.mode` picks up the override for free.
+//!   - exempt chat type (help, brahma) → [`locked_dangerous_content_settings`]
+//!   - Locked      → [`locked_dangerous_content_settings`]
+//!   - Unmoderated → the *global* settings (so the configured uncensored
+//!     profile IDs ride through) with `mode: "AUTO_ROUTE"` forced and every
+//!     scan off — the verdict is already in, so there is nothing to classify.
+//!     Forcing AUTO_ROUTE even under a global `OFF` is deliberate: asking for
+//!     the uncensored desk on one chat should not first require flipping a
+//!     global switch.
+//!   - Moderated   → the global settings (or the defaults).
 
 use serde_json::Value;
 
@@ -23,8 +28,8 @@ use super::chat_override::{get_concierge_state, ConciergeState};
 pub enum DangerSource {
     Global,
     Default,
-    ChatVouched,
-    ChatUncensored,
+    ChatLocked,
+    ChatUnmoderated,
     ChatTypeExempt,
 }
 
@@ -34,8 +39,8 @@ impl DangerSource {
         match self {
             DangerSource::Global => "global",
             DangerSource::Default => "default",
-            DangerSource::ChatVouched => "chat-vouched",
-            DangerSource::ChatUncensored => "chat-uncensored",
+            DangerSource::ChatLocked => "chat-locked",
+            DangerSource::ChatUnmoderated => "chat-unmoderated",
             DangerSource::ChatTypeExempt => "chat-type-exempt",
         }
     }
@@ -66,12 +71,15 @@ pub fn default_dangerous_content_settings() -> DangerousContentSettings {
     }
 }
 
-/// v4 `VOUCHED_SAFE_DANGEROUS_CONTENT_SETTINGS` — the settings forced when the
-/// operator has vouched a chat safe (or the chat type is moderation-exempt).
-/// Everything the Concierge would normally do is disabled, while still returning
-/// a concrete shape so callers don't special-case it. Deliberately carries no
-/// uncensored profile IDs — a vouched-safe chat rides the ordinary providers.
-pub fn vouched_safe_dangerous_content_settings() -> DangerousContentSettings {
+/// v4 `LOCKED_DANGEROUS_CONTENT_SETTINGS` (renamed from
+/// `VOUCHED_SAFE_DANGEROUS_CONTENT_SETTINGS` at `4d370a90f`, same values) —
+/// the settings forced on a Locked chat, and on the chat types the Concierge
+/// has no standing on (Help Chat, Brahma Console). Everything the Concierge
+/// would normally do is disabled — no scans, no reroute, no auto-switch — while
+/// still returning a concrete shape so callers don't special-case it.
+/// Deliberately carries no uncensored profile IDs: a Locked chat rides the
+/// ordinary providers only.
+pub fn locked_dangerous_content_settings() -> DangerousContentSettings {
     DangerousContentSettings {
         mode: "OFF".to_string(),
         threshold: 1.0,
@@ -83,30 +91,21 @@ pub fn vouched_safe_dangerous_content_settings() -> DangerousContentSettings {
         display_mode: "SHOW".to_string(),
         show_warning_badges: false,
         custom_classification_prompt: None,
-        // v4 `49059fb14`: a vouched-safe chat never auto-switches.
+        // v4 `49059fb14`: a Locked (then vouched-safe) chat never auto-switches.
         auto_switch_after_refusals: 0,
     }
 }
 
-/// v4 `resolveDangerousContentSettings`.
-///
-/// When `chat` is supplied and carries an operator override, the returned
-/// settings reflect it regardless of the global setting:
-///
-///   - Vouched Safe collapses to `mode: "OFF"` with every scan disabled.
-///   - Uncensored spreads the *global* settings (so the configured uncensored
-///     profile IDs ride through) and forces `mode: "AUTO_ROUTE"` with every scan
-///     disabled — the operator has already returned the verdict, so there is
-///     nothing left to classify. Forcing AUTO_ROUTE even under a global `OFF` is
-///     deliberate: asking for uncensored routing on one chat should not first
-///     require flipping a global switch. (Flagged, by contrast, continues to
-///     obey the global mode.)
+/// v4 `resolveDangerousContentSettings(globalSettings, chat?)` at `4d370a90f`.
 ///
 /// `global_settings` is the global chat settings' `dangerousContentSettings`
 /// sub-object (v4 reads `globalSettings?.dangerousContentSettings`; the caller
 /// extracts it, passing `None` when the chat settings row or the sub-object is
-/// absent). `chat` is an optional per-chat view carrying `conciergeOverride` /
-/// `chatType`.
+/// absent). `chat` is an optional chat carrying `conciergeMode` (or the
+/// server-derived `conciergeState`) and `chatType`; the legacy pair is never
+/// read. Order: exempt → Locked → Unmoderated → global / default (v4's own
+/// test pins the first step: "moderation-exempt chat types win over the
+/// Unmoderated state").
 pub fn resolve_dangerous_content_settings(
     global_settings: Option<DangerousContentSettings>,
     chat: Option<&Value>,
@@ -117,16 +116,27 @@ pub fn resolve_dangerous_content_settings(
         let chat_type = chat.get("chatType").and_then(Value::as_str);
         if is_moderation_exempt_chat_type(chat_type) {
             return ResolvedDangerousContentSettings {
-                settings: vouched_safe_dangerous_content_settings(),
+                settings: locked_dangerous_content_settings(),
                 source: DangerSource::ChatTypeExempt,
             };
         }
     }
 
-    // The uncensored arm is checked BEFORE the vouched one and AFTER the
-    // exempt one — v4's branch order, which its own test pins ("moderation-exempt
-    // chat types win over the uncensored override").
-    if chat.is_some() && get_concierge_state(chat) == ConciergeState::Uncensored {
+    // v4 `const state = chat ? getConciergeState(chat) : 'moderated'`.
+    let state = if chat.is_some() {
+        get_concierge_state(chat)
+    } else {
+        ConciergeState::Moderated
+    };
+
+    if state == ConciergeState::Locked {
+        return ResolvedDangerousContentSettings {
+            settings: locked_dangerous_content_settings(),
+            source: DangerSource::ChatLocked,
+        };
+    }
+
+    if state == ConciergeState::Unmoderated {
         // v4 spreads `globalSettings?.dangerousContentSettings ??
         // DEFAULT_DANGEROUS_CONTENT_SETTINGS`; v5's narrower signature already
         // carries that sub-object, so the fallback is the default struct.
@@ -134,7 +144,7 @@ pub fn resolve_dangerous_content_settings(
         return ResolvedDangerousContentSettings {
             settings: DangerousContentSettings {
                 // ...global carries uncensoredImageProfileId / uncensoredTextProfileId
-                mode: "AUTO_ROUTE".to_string(), // the operator has already returned the verdict
+                mode: "AUTO_ROUTE".to_string(), // the verdict is already in
                 threshold: 1.0,                 // nothing left to classify
                 scan_text_chat: false,
                 scan_image_prompts: false,
@@ -142,14 +152,7 @@ pub fn resolve_dangerous_content_settings(
                 show_warning_badges: false,
                 ..global
             },
-            source: DangerSource::ChatUncensored,
-        };
-    }
-
-    if chat.is_some() && get_concierge_state(chat) == ConciergeState::Vouched {
-        return ResolvedDangerousContentSettings {
-            settings: vouched_safe_dangerous_content_settings(),
-            source: DangerSource::ChatVouched,
+            source: DangerSource::ChatUnmoderated,
         };
     }
 
@@ -168,40 +171,91 @@ pub fn resolve_dangerous_content_settings(
 
 #[cfg(test)]
 mod tests {
+    //! v4 `resolver.test.ts` at `4d370a90f`, mirrored by name where the case
+    //! is a pure resolver call (the `danger_resolver_equivalence` family runs
+    //! the whole matrix against v4's real function).
     use super::*;
     use serde_json::json;
 
+    fn global(mode: &str) -> DangerousContentSettings {
+        DangerousContentSettings {
+            mode: mode.to_string(),
+            ..default_dangerous_content_settings()
+        }
+    }
+
     #[test]
-    fn help_chat_is_exempt_before_vouched() {
-        // A help chat resolves to chat-type-exempt even with a global mode.
-        let global = default_dangerous_content_settings();
-        let chat = json!({ "chatType": "help", "conciergeOverride": "OFF" });
-        let r = resolve_dangerous_content_settings(Some(global), Some(&chat));
+    fn returns_locked_settings_and_source_chat_locked_for_a_locked_chat() {
+        let chat = json!({ "chatType": "salon", "conciergeMode": "locked" });
+        let r = resolve_dangerous_content_settings(Some(global("AUTO_ROUTE")), Some(&chat));
+        assert_eq!(r.source, DangerSource::ChatLocked);
+        assert_eq!(r.settings.mode, "OFF");
+    }
+
+    #[test]
+    fn respects_global_settings_for_a_moderated_chat() {
+        let chat = json!({ "chatType": "salon", "conciergeMode": "moderated" });
+        let r = resolve_dangerous_content_settings(Some(global("DETECT_ONLY")), Some(&chat));
+        assert_eq!(r.source, DangerSource::Global);
+        assert_eq!(r.settings.mode, "DETECT_ONLY");
+    }
+
+    #[test]
+    fn still_returns_locked_even_if_no_global_settings_were_configured() {
+        let chat = json!({ "conciergeMode": "locked" });
+        let r = resolve_dangerous_content_settings(None, Some(&chat));
+        assert_eq!(r.source, DangerSource::ChatLocked);
+    }
+
+    #[test]
+    fn locked_settings_have_mode_off_all_scans_disabled_and_the_auto_switch_off() {
+        let s = locked_dangerous_content_settings();
+        assert_eq!(s.mode, "OFF");
+        assert_eq!(s.threshold, 1.0);
+        assert!(!s.scan_text_chat && !s.scan_image_prompts && !s.scan_image_generation);
+        assert!(!s.show_warning_badges);
+        assert_eq!(s.auto_switch_after_refusals, 0);
+        assert!(s.uncensored_text_profile_id.is_none() && s.uncensored_image_profile_id.is_none());
+    }
+
+    #[test]
+    fn locked_wins_over_a_global_auto_route() {
+        let mut g = global("AUTO_ROUTE");
+        g.uncensored_text_profile_id = Some("prof-unc-1".into());
+        let chat = json!({ "conciergeMode": "locked" });
+        let r = resolve_dangerous_content_settings(Some(g), Some(&chat));
+        assert_eq!(r.source, DangerSource::ChatLocked);
+        assert!(r.settings.uncensored_text_profile_id.is_none());
+    }
+
+    #[test]
+    fn ignores_the_legacy_concierge_override_column() {
+        for over in ["OFF", "UNCENSORED"] {
+            let chat =
+                json!({ "chatType": "salon", "conciergeOverride": over, "isDangerousChat": true });
+            let r = resolve_dangerous_content_settings(Some(global("DETECT_ONLY")), Some(&chat));
+            assert_eq!(r.source, DangerSource::Global, "{over}");
+        }
+    }
+
+    #[test]
+    fn moderation_exempt_chat_types_win_over_the_unmoderated_state() {
+        let chat = json!({ "chatType": "brahma", "conciergeMode": "unmoderated" });
+        let r = resolve_dangerous_content_settings(Some(global("OFF")), Some(&chat));
         assert_eq!(r.source, DangerSource::ChatTypeExempt);
         assert_eq!(r.settings.mode, "OFF");
-        assert!(!r.settings.show_warning_badges);
+        assert_eq!(r.settings.threshold, 1.0);
     }
 
     #[test]
-    fn vouched_collapses() {
-        let mut global = default_dangerous_content_settings();
-        global.mode = "AUTO_ROUTE".to_string();
-        let chat = json!({ "chatType": "salon", "conciergeOverride": "OFF" });
-        let r = resolve_dangerous_content_settings(Some(global), Some(&chat));
-        assert_eq!(r.source, DangerSource::ChatVouched);
-        assert_eq!(r.settings.mode, "OFF");
-    }
-
-    #[test]
-    fn uncensored_forces_auto_route_under_a_global_off_and_carries_the_profile_ids() {
-        let mut global = default_dangerous_content_settings();
-        global.mode = "OFF".to_string();
-        global.scan_image_generation = true;
-        global.uncensored_text_profile_id = Some("11111111-1111-4111-8111-111111111111".into());
-        global.uncensored_image_profile_id = Some("22222222-2222-4222-8222-222222222222".into());
-        let chat = json!({ "chatType": "salon", "conciergeOverride": "UNCENSORED" });
-        let r = resolve_dangerous_content_settings(Some(global), Some(&chat));
-        assert_eq!(r.source, DangerSource::ChatUncensored);
+    fn unmoderated_forces_auto_route_under_a_global_off_and_carries_the_profile_ids() {
+        let mut g = global("OFF");
+        g.scan_image_generation = true;
+        g.uncensored_text_profile_id = Some("11111111-1111-4111-8111-111111111111".into());
+        g.uncensored_image_profile_id = Some("22222222-2222-4222-8222-222222222222".into());
+        let chat = json!({ "chatType": "salon", "conciergeMode": "unmoderated" });
+        let r = resolve_dangerous_content_settings(Some(g), Some(&chat));
+        assert_eq!(r.source, DangerSource::ChatUnmoderated);
         assert_eq!(r.settings.mode, "AUTO_ROUTE");
         assert_eq!(r.settings.threshold, 1.0);
         assert!(!r.settings.scan_text_chat);
@@ -216,36 +270,6 @@ mod tests {
             r.settings.uncensored_image_profile_id.as_deref(),
             Some("22222222-2222-4222-8222-222222222222")
         );
-    }
-
-    #[test]
-    fn uncensored_spreads_the_defaults_when_no_global_is_configured() {
-        let chat = json!({ "conciergeOverride": "UNCENSORED" });
-        let r = resolve_dangerous_content_settings(None, Some(&chat));
-        assert_eq!(r.source, DangerSource::ChatUncensored);
-        assert_eq!(r.settings.mode, "AUTO_ROUTE");
-        assert!(!r.settings.scan_text_chat);
-    }
-
-    #[test]
-    fn exempt_chat_types_win_over_the_uncensored_override() {
-        let mut global = default_dangerous_content_settings();
-        global.mode = "OFF".to_string();
-        let chat = json!({ "chatType": "brahma", "conciergeOverride": "UNCENSORED" });
-        let r = resolve_dangerous_content_settings(Some(global), Some(&chat));
-        assert_eq!(r.source, DangerSource::ChatTypeExempt);
-        assert_eq!(r.settings.mode, "OFF");
-        assert_eq!(r.settings.threshold, 1.0);
-    }
-
-    #[test]
-    fn global_wins_when_present() {
-        let mut global = default_dangerous_content_settings();
-        global.mode = "AUTO_ROUTE".to_string();
-        let chat = json!({ "chatType": "salon", "conciergeOverride": null });
-        let r = resolve_dangerous_content_settings(Some(global), Some(&chat));
-        assert_eq!(r.source, DangerSource::Global);
-        assert_eq!(r.settings.mode, "AUTO_ROUTE");
     }
 
     #[test]

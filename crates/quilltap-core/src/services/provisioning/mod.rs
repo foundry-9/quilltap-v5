@@ -91,6 +91,22 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// `files.generationKey` IS in v4's `FileEntrySchema`, so it lands here; its
 /// index `idx_files_generationKey` is NOT (plain indexes belong to v4's
 /// migration), so `db::files_generation_key_repair` creates both.
+///
+/// `4d370a90f` (P4.D226 — #75, the three Concierge states; `dump-fresh-schema.ts`
+/// run FROM the pin): EXACTLY two statements move. (1) `chats` gains
+/// `"conciergeMode" TEXT`, `"conciergeModeSetBy" TEXT`, `"conciergeModeReason"
+/// TEXT` right after `"conciergeOverride" TEXT` — nullable, NO DEFAULT (the
+/// Zod fields carry no `.default()`; the `TEXT DEFAULT 'moderated'` in v4's
+/// `add-chat-concierge-mode-v1` is the MIGRATION's, on migrated instances only).
+/// (2) `chat_settings."dangerousContentSettings"`'s DDL default gains
+/// `"autoSwitchAfterRefusals":2` — P4.D225's `49059fb14` handoff, which this
+/// pin carries too. `conciergeOverride` is STILL declared at this pin (#76
+/// deletes it — P4.D227's re-dump). The E.1 anomaly (a live
+/// `extractSchemaMetadata` probe omitting the declared `conciergeOverride`)
+/// MEASURED against the real dumper: it does not reproduce — the dump names the
+/// column, as P4.D225 also found at `49059fb14`. The seed is UNMOVED at this pin
+/// (`cmp`-identical). The ledger columns stay absent (schema-absent by design —
+/// P4.D225's boot ensure is their only source).
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted

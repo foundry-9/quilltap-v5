@@ -273,6 +273,7 @@ async fn announce<U: UnderstudySource>(
             refusing_model: refusing.model_name.clone(),
             answering_profile_name: answering_profile_name.map(str::to_string),
             purpose: ctx.purpose.announcement(),
+            reason: None,
         },
     )
     .await;

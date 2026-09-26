@@ -366,6 +366,19 @@ pub struct ChatCreate {
     pub danger_classified_at_message_count: Option<f64>,
     #[serde(default)]
     pub concierge_override: Option<String>,
+    /// The Concierge state (v4 `4d370a90f`, #75): `'moderated' | 'unmoderated'
+    /// | 'locked'`, nullable-optional with NO default — a fresh chat writes
+    /// NULL (which reads as Moderated), never a `'moderated'` literal: v4's
+    /// `_create` row carries none. Only restore / import (legacy-derived) and
+    /// a bundle that already carries it set this.
+    #[serde(default)]
+    pub concierge_mode: Option<String>,
+    /// `'operator' | 'concierge'`; NULL when Moderated.
+    #[serde(default)]
+    pub concierge_mode_set_by: Option<String>,
+    /// `'manual' | 'refusals' | 'classifier' | 'migration'`; NULL when Moderated.
+    #[serde(default)]
+    pub concierge_mode_reason: Option<String>,
     /// Per-chat answer-confirmation override: `z.enum(['ON','OFF']).nullable()
     /// .optional()`; `None` => SQL NULL. Added by v4
     /// `add-answer-confirmation-columns-v2`.
@@ -475,6 +488,17 @@ fn default_one() -> f64 {
 }
 fn default_empty_json_object() -> Value {
     Value::Object(serde_json::Map::new())
+}
+
+/// v4 `setDangerClassification`'s `telemetry` — the classifier's five danger
+/// columns (`4d370a90f`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct DangerClassificationTelemetry {
+    pub is_dangerous_chat: bool,
+    pub danger_score: Option<f64>,
+    pub danger_categories: Vec<String>,
+    pub danger_classified_at: String,
+    pub danger_classified_at_message_count: f64,
 }
 
 /// Pinned id + timestamps (v4's `CreateOptions`).
@@ -825,8 +849,9 @@ impl<'c> ChatsRepository<'c> {
         // `?NNN` binds `params![]` by its LITERAL number wherever it sits in the SQL
         // text: `?100` is `cycleOrderParticipantIds` (P4.D171), spliced mid-list at
         // its column's position while its VALUE is appended 100th, so the ~74
-        // placeholders after it never had to renumber. The next column append
-        // writes `?101` at the END of both lists. Never "tidy" this sequence — a
+        // placeholders after it never had to renumber. `?101`–`?103` are the
+        // Concierge trio (P4.D226), spliced after `conciergeOverride` the same
+        // way; the next column append writes `?104` at the END of both lists. Never "tidy" this sequence — a
         // renumbering pass mis-binds every later column with no compile error;
         // `chats_tier2_equivalence`'s create arm is what catches it.
         self.conn.execute(
@@ -846,7 +871,8 @@ impl<'c> ChatsRepository<'c> {
                state, compressionCache, agentModeEnabled, agentTurnCount, storyBackgroundImageId, \
                lastBackgroundGeneratedAt, imageProfileId, alertCharactersOfLanternImages, \
                isDangerousChat, dangerScore, dangerCategories, dangerClassifiedAt, \
-               dangerClassifiedAtMessageCount, conciergeOverride, sceneState, renderedMarkdown, \
+               dangerClassifiedAtMessageCount, conciergeOverride, conciergeMode, \
+               conciergeModeSetBy, conciergeModeReason, sceneState, renderedMarkdown, \
                equippedOutfit, characterAvatars, avatarGenerationEnabled, chatType, helpPageUrl, \
                consoleConnectionProfileId, compiledIdentityStacks, courierCheckpoints, \
                commonplaceSceneCache, commonplaceRecallHistory, timelineMode, budgetMaxTurns, \
@@ -862,7 +888,8 @@ impl<'c> ChatsRepository<'c> {
                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
                ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?100, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
                ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48, ?49, ?50, \
-               ?51, ?52, ?53, ?54, ?55, ?56, ?57, ?58, ?59, ?60, ?61, ?62, ?63, ?64, ?65, ?66, \
+               ?51, ?52, ?53, ?54, ?55, ?56, ?57, ?58, ?101, ?102, ?103, ?59, ?60, ?61, ?62, \
+               ?63, ?64, ?65, ?66, \
                ?67, ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78, ?79, ?80, ?81, ?82, \
                ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, ?97, ?98, \
                ?99)",
@@ -967,6 +994,9 @@ impl<'c> ChatsRepository<'c> {
                 data.answer_confirmation_override,
                 data.turn_skipping_enabled,
                 data.cycle_order_participant_ids,
+                data.concierge_mode,
+                data.concierge_mode_set_by,
+                data.concierge_mode_reason,
             ],
         )?;
         Ok(())
@@ -1604,6 +1634,119 @@ impl<'c> ChatsRepository<'c> {
         );
     }
 
+    // ========================================================================
+    // THE CONCIERGE STATE (v4 `4d370a90f`, #75)
+    // ========================================================================
+    //
+    // `conciergeMode` / `conciergeModeSetBy` / `conciergeModeReason` are v4's
+    // PATCH-ONLY fields: a whole-row `update` that does not name them leaves
+    // them alone, so a concurrent title or telemetry write cannot rewind a newer
+    // Concierge state from its stale snapshot. v5's `ChatUpdate` sets only the
+    // columns it names, so the hazard the hook closes cannot arise here — the
+    // RULE it carries is kept instead: `ChatUpdate` has no field for the trio,
+    // and this method is their ONE writer (`concierge_state_writers_census`
+    // pins it). The sanctioned caller is `apply_concierge_flip`.
+
+    /// v4 `setConciergeMode(chatId, columns, expected?)`. With `expected`, a
+    /// compare-and-set: the write lands only if the stored state is still
+    /// `expected` — **NULL counts as `'moderated'`** — so a decision made on a
+    /// snapshot can never overwrite a state that changed since. Returns whether
+    /// a row MATCHED (v4 `matchedCount > 0`: a write that matched but changed
+    /// nothing still counts). v4's raw `updateOne` `$set` — no `updatedAt`
+    /// mint, no validation. A failed write is v4's fallback `safeQuery`: the
+    /// ERROR, then `false`; the DEBUG fires either way.
+    pub fn set_concierge_mode(
+        &self,
+        chat_id: &str,
+        columns: &crate::services::dangerous_content::chat_override::ConciergeModeColumns,
+        expected: Option<crate::services::dangerous_content::chat_override::ConciergeState>,
+    ) -> bool {
+        use crate::services::dangerous_content::chat_override::ConciergeState;
+        let mode = columns.concierge_mode.as_str();
+        let set_by = columns.concierge_mode_set_by.map(|b| b.as_str());
+        let reason = columns.concierge_mode_reason.map(|r| r.as_str());
+        const SET: &str = "UPDATE chats SET \"conciergeMode\" = ?1, \"conciergeModeSetBy\" = ?2, \
+                           \"conciergeModeReason\" = ?3 WHERE id = ?4";
+        let result = match expected {
+            None => self
+                .conn
+                .execute(SET, params![mode, set_by, reason, chat_id]),
+            // v4 `$or: [{ conciergeMode: 'moderated' }, { conciergeMode: null }]`.
+            Some(ConciergeState::Moderated) => self.conn.execute(
+                &format!(
+                    "{SET} AND (\"conciergeMode\" = 'moderated' OR \"conciergeMode\" IS NULL)"
+                ),
+                params![mode, set_by, reason, chat_id],
+            ),
+            Some(other) => self.conn.execute(
+                &format!("{SET} AND \"conciergeMode\" = ?5"),
+                params![mode, set_by, reason, chat_id, other.as_str()],
+            ),
+        };
+        let written = match result {
+            Ok(n) => n > 0,
+            Err(e) => {
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "chats",
+                    chat_id,
+                    error = %e,
+                    "Failed to write the Concierge state"
+                );
+                false
+            }
+        };
+        tracing::debug!(
+            target: "quilltap::db",
+            chat_id,
+            concierge_mode = mode,
+            concierge_mode_set_by = set_by.unwrap_or("null"),
+            concierge_mode_reason = reason.unwrap_or("null"),
+            expected = expected.map(ConciergeState::as_str),
+            written,
+            "Concierge state write"
+        );
+        written
+    }
+
+    /// v4 `setDangerClassification(chatId, telemetry, verdict?)` — record the
+    /// chat-level danger classifier's TELEMETRY (the five danger columns, a
+    /// whole-row `update` that preserves `updatedAt` and, the Concierge columns
+    /// being patch-only, cannot touch the state). Telemetry only: it never
+    /// moves the chat's Concierge state. `has_verdict` is v4's `!!verdict` on
+    /// the DEBUG — the verdict itself is NOT stored (in v4 it rides the
+    /// buffered write to the parent's commit hook; v5's in-process job hands it
+    /// to the classifier switch directly). `Ok(false)` when no row matched.
+    pub fn set_danger_classification(
+        &self,
+        chat_id: &str,
+        telemetry: &DangerClassificationTelemetry,
+        has_verdict: bool,
+    ) -> Result<bool, DbError> {
+        let updated = self.update(
+            chat_id,
+            &ChatUpdate {
+                is_dangerous_chat: Some(Some(telemetry.is_dangerous_chat)),
+                danger_score: Some(telemetry.danger_score),
+                danger_categories: Some(telemetry.danger_categories.clone()),
+                danger_classified_at: Some(Some(telemetry.danger_classified_at.clone())),
+                danger_classified_at_message_count: Some(Some(
+                    telemetry.danger_classified_at_message_count,
+                )),
+                ..Default::default()
+            },
+        )?;
+        tracing::debug!(
+            target: "quilltap::db",
+            chat_id,
+            is_dangerous_chat = telemetry.is_dangerous_chat,
+            danger_score = telemetry.danger_score,
+            has_verdict,
+            "Chat danger classification recorded"
+        );
+        Ok(updated)
+    }
+
     fn row_exists(&self, id: &str) -> Result<bool, DbError> {
         let found: Option<i64> = self
             .conn
@@ -1820,6 +1963,205 @@ mod refusal_ledger_tests {
         assert_eq!(
             lines[1],
             "DEBUG quilltap::db Moderation refusal ledger reset chat_id=c1"
+        );
+    }
+}
+
+#[cfg(test)]
+mod concierge_state_tests {
+    //! P4.D226 (v4 `4d370a90f`, #75): `set_concierge_mode` /
+    //! `set_danger_classification` — what each arm SAYS (the DEBUGs), on the
+    //! caller's thread. `chats_tier2_equivalence` proves the row state and the
+    //! answers against v4's real repository; v4 `base-repository-patch-only.
+    //! test.ts`'s compare-and-set cases are mirrored by name here too.
+    use super::*;
+    use crate::services::dangerous_content::chat_override::{
+        ConciergeModeColumns, ConciergeReason, ConciergeSetBy, ConciergeState,
+    };
+
+    fn table(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TABLE chats (id TEXT PRIMARY KEY, title TEXT, updatedAt TEXT, \
+               isDangerousChat INTEGER, dangerScore INTEGER, dangerCategories TEXT DEFAULT '[]', \
+               dangerClassifiedAt TEXT, dangerClassifiedAtMessageCount REAL, \
+               conciergeMode TEXT, conciergeModeSetBy TEXT, conciergeModeReason TEXT);\
+             INSERT INTO chats (id, title, updatedAt) VALUES ('c1', 't', '2026-01-01T00:00:00.000Z');",
+        )
+        .unwrap();
+    }
+
+    fn cols(
+        mode: ConciergeState,
+        by: Option<ConciergeSetBy>,
+        reason: Option<ConciergeReason>,
+    ) -> ConciergeModeColumns {
+        ConciergeModeColumns {
+            concierge_mode: mode,
+            concierge_mode_set_by: by,
+            concierge_mode_reason: reason,
+        }
+    }
+
+    fn stored(conn: &Connection) -> (Option<String>, Option<String>, Option<String>, String) {
+        conn.query_row(
+            "SELECT conciergeMode, conciergeModeSetBy, conciergeModeReason, updatedAt FROM chats WHERE id = 'c1'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn writes_unconditionally_without_an_expected_state() {
+        let conn = Connection::open_in_memory().unwrap();
+        table(&conn);
+        let repo = ChatsRepository::new(&conn);
+        let (written, lines) = crate::test_support::captured_with(|| {
+            repo.set_concierge_mode(
+                "c1",
+                &cols(
+                    ConciergeState::Locked,
+                    Some(ConciergeSetBy::Operator),
+                    Some(ConciergeReason::Manual),
+                ),
+                None,
+            )
+        });
+        assert!(written);
+        assert_eq!(lines, ["DEBUG quilltap::db Concierge state write chat_id=c1 concierge_mode=locked concierge_mode_set_by=operator concierge_mode_reason=manual written=true"]);
+        // A raw `$set`: no `updatedAt` mint (E.7, measured at the pin).
+        assert_eq!(
+            stored(&conn),
+            (
+                Some("locked".into()),
+                Some("operator".into()),
+                Some("manual".into()),
+                "2026-01-01T00:00:00.000Z".into()
+            )
+        );
+    }
+
+    #[test]
+    fn treats_null_as_moderated_when_moderated_is_expected() {
+        let conn = Connection::open_in_memory().unwrap();
+        table(&conn);
+        let repo = ChatsRepository::new(&conn);
+        let (written, lines) = crate::test_support::captured_with(|| {
+            repo.set_concierge_mode(
+                "c1",
+                &cols(
+                    ConciergeState::Unmoderated,
+                    Some(ConciergeSetBy::Concierge),
+                    Some(ConciergeReason::Refusals),
+                ),
+                Some(ConciergeState::Moderated),
+            )
+        });
+        assert!(written, "a NULL column counts as Moderated");
+        assert_eq!(lines, ["DEBUG quilltap::db Concierge state write chat_id=c1 concierge_mode=unmoderated concierge_mode_set_by=concierge concierge_mode_reason=refusals expected=moderated written=true"]);
+    }
+
+    #[test]
+    fn reports_a_miss_when_the_stored_state_no_longer_matches() {
+        let conn = Connection::open_in_memory().unwrap();
+        table(&conn);
+        let repo = ChatsRepository::new(&conn);
+        assert!(repo.set_concierge_mode(
+            "c1",
+            &cols(
+                ConciergeState::Locked,
+                Some(ConciergeSetBy::Operator),
+                Some(ConciergeReason::Manual)
+            ),
+            None,
+        ));
+        let (written, lines) = crate::test_support::captured_with(|| {
+            repo.set_concierge_mode(
+                "c1",
+                &cols(
+                    ConciergeState::Unmoderated,
+                    Some(ConciergeSetBy::Concierge),
+                    Some(ConciergeReason::Classifier),
+                ),
+                Some(ConciergeState::Moderated),
+            )
+        });
+        assert!(!written);
+        assert_eq!(lines, ["DEBUG quilltap::db Concierge state write chat_id=c1 concierge_mode=unmoderated concierge_mode_set_by=concierge concierge_mode_reason=classifier expected=moderated written=false"]);
+        assert_eq!(
+            stored(&conn).0.as_deref(),
+            Some("locked"),
+            "the miss wrote nothing"
+        );
+        // A literal expected that matches, and matched-but-unchanged still counts.
+        for _ in 0..2 {
+            assert!(repo.set_concierge_mode(
+                "c1",
+                &cols(
+                    ConciergeState::Locked,
+                    Some(ConciergeSetBy::Operator),
+                    Some(ConciergeReason::Manual)
+                ),
+                Some(ConciergeState::Locked),
+            ));
+        }
+    }
+
+    /// Moderated writes the two NULLs as v4's `null`s.
+    #[test]
+    fn a_return_to_moderated_writes_and_logs_the_nulls() {
+        let conn = Connection::open_in_memory().unwrap();
+        table(&conn);
+        let repo = ChatsRepository::new(&conn);
+        let (_, lines) = crate::test_support::captured_with(|| {
+            repo.set_concierge_mode("c1", &cols(ConciergeState::Moderated, None, None), None)
+        });
+        assert_eq!(lines, ["DEBUG quilltap::db Concierge state write chat_id=c1 concierge_mode=moderated concierge_mode_set_by=null concierge_mode_reason=null written=true"]);
+        assert_eq!(stored(&conn).0.as_deref(), Some("moderated"));
+        assert_eq!(stored(&conn).1, None);
+    }
+
+    /// v4's fallback `safeQuery`: a failed write is the ERROR, then `false`,
+    /// and the DEBUG fires anyway.
+    #[test]
+    fn a_failed_write_errors_and_answers_false() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chats (id TEXT PRIMARY KEY); INSERT INTO chats VALUES ('c1');",
+        )
+        .unwrap();
+        let repo = ChatsRepository::new(&conn);
+        let (written, lines) = crate::test_support::captured_with(|| {
+            repo.set_concierge_mode("c1", &cols(ConciergeState::Moderated, None, None), None)
+        });
+        assert!(!written);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(lines[0].starts_with("ERROR quilltap::db Failed to write the Concierge state collection=chats chat_id=c1 error="));
+        assert_eq!(lines[1], "DEBUG quilltap::db Concierge state write chat_id=c1 concierge_mode=moderated concierge_mode_set_by=null concierge_mode_reason=null written=false");
+    }
+
+    #[test]
+    fn the_danger_classification_records_telemetry_only_and_says_so() {
+        let conn = Connection::open_in_memory().unwrap();
+        table(&conn);
+        let repo = ChatsRepository::new(&conn);
+        let telemetry = DangerClassificationTelemetry {
+            is_dangerous_chat: true,
+            danger_score: Some(0.93),
+            danger_categories: vec!["sexual".into()],
+            danger_classified_at: "2026-09-25T11:00:00.000Z".into(),
+            danger_classified_at_message_count: 14.0,
+        };
+        let (updated, lines) = crate::test_support::captured_with(|| {
+            repo.set_danger_classification("c1", &telemetry, true)
+                .unwrap()
+        });
+        assert!(updated);
+        assert_eq!(lines, ["DEBUG quilltap::db Chat danger classification recorded chat_id=c1 is_dangerous_chat=true danger_score=0.93 has_verdict=true"]);
+        // Telemetry never moves the state, and `updatedAt` is preserved.
+        assert_eq!(
+            stored(&conn),
+            (None, None, None, "2026-01-01T00:00:00.000Z".into())
         );
     }
 }

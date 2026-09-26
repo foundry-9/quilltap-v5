@@ -19,9 +19,10 @@
 //! surfaced to the caller as `None` (v4 logs + returns null).
 //!
 //! These close the W4.2 `postConciergeDangerAnnouncement` /
-//! `postConciergeManualAnnouncement` seams (`services::dangerous_content::{
-//! gatekeeper_job::DangerAnnouncer, manual_flip::ConciergeAnnouncer}`); the
-//! parent wires the seam impls. The category labels reuse
+//! `postConciergeManualAnnouncement` seams
+//! (`services::dangerous_content::manual_flip::ConciergeAnnouncer` — since v4
+//! `4d370a90f` the classifier's danger announcement is posted by the flip
+//! too); the parent wires the seam impls. The category labels reuse
 //! [`crate::services::dangerous_content::gatekeeper::category_label`] (v4's
 //! `CATEGORY_LABELS`), and `.toFixed(2)` uses [`crate::jsnum::to_fixed`].
 
@@ -265,34 +266,56 @@ pub fn build_danger_opaque_content(details: Option<&ConciergeDangerDetails>) -> 
     format!("{opener} {specifics} {closer}")
 }
 
-/// The five operator-driven Concierge transitions (v4 `ConciergeManualKind`,
-/// widened from four at v4 `60e3c4a0a` for the four-state control).
+/// The Concierge's state-transition announcements (v4 `ConciergeManualKind`,
+/// phase 3 — `4d370a90f`, #75): `set-moderated` / `set-unmoderated` /
+/// `set-locked` / `auto-unmoderated`.
+///
+/// The SIX retired kinds of the four-state control (`manual-flagged`,
+/// `manual-safe`, `manual-vouched`, `manual-resumed`, `manual-uncensored`,
+/// `auto-flagged-refusals`) are still DECODED ([`Self::from_wire`]) and still
+/// have their bodies: v4 — "Transcripts written before phase 3 carry bubbles of
+/// the retired kinds … they are plain messages and render as they always did".
+/// v5 must never EMIT one again: `apply_concierge_flip` names only the four
+/// live wire strings, and `concierge_retired_kinds_census` pins that no
+/// production file outside this one constructs a retired variant.
+/// (`set-unmoderated`'s persona text is byte-identical to the retired
+/// `manual-uncensored` — a corpus that diffs CONTENT cannot tell them apart;
+/// diff the kind.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConciergeManualKind {
-    /// → Flagged (the operator flipped the switch themselves).
+    /// → Moderated (the operator; resets the ledger).
+    SetModerated,
+    /// → Unmoderated (the operator opens the uncensored door themselves).
+    SetUnmoderated,
+    /// → Locked (the operator; ordinary providers only, refusals stand).
+    SetLocked,
+    /// Moderated → Unmoderated by the Concierge, after N stated moderation
+    /// refusals (the refusal ledger's auto-switch).
+    AutoUnmoderated,
+    /// RETIRED at `4d370a90f` (read-only). → Flagged by the operator.
     ManualFlagged,
-    /// Flagged → Monitored (the operator says all clear).
+    /// RETIRED at `4d370a90f` (read-only). Flagged → Monitored.
     ManualSafe,
-    /// anything → Vouched Safe (operator vouches; the Concierge stops watching).
+    /// RETIRED at `4d370a90f` (read-only). → Vouched Safe.
     ManualVouched,
-    /// Vouched/Uncensored → Monitored (operator calls the Concierge back).
+    /// RETIRED at `4d370a90f` (read-only). Vouched/Uncensored → Monitored.
     ManualResumed,
-    /// anything → Uncensored (operator opens the uncensored door themselves).
+    /// RETIRED at `4d370a90f` (read-only). → Uncensored.
     ManualUncensored,
-    /// Monitored → Flagged by the Concierge, after N stated moderation refusals
-    /// (v4 `49059fb14`, #74 — the refusal ledger's auto-switch). Not the
-    /// operator's, but it goes through the same transition chokepoint
-    /// (`apply_concierge_flip` with `by: concierge`), so it shares this writer.
+    /// RETIRED at `4d370a90f` (read-only). Monitored → Flagged by the
+    /// Concierge (`49059fb14`'s auto-switch, renamed `auto-unmoderated`).
     AutoFlaggedRefusals,
 }
 
 impl ConciergeManualKind {
-    /// Parse the wire form (`"manual-flagged"` / `"manual-safe"` /
-    /// `"manual-vouched"` / `"manual-resumed"` / `"manual-uncensored"`) the
-    /// `ConciergeAnnouncer` seam passes, for the parent's wiring. Unknown →
-    /// `None`.
+    /// Parse the wire form — the four live kinds AND the six retired ones (an
+    /// old transcript's kind must still decode). Unknown → `None`.
     pub fn from_wire(s: &str) -> Option<Self> {
         match s {
+            "set-moderated" => Some(Self::SetModerated),
+            "set-unmoderated" => Some(Self::SetUnmoderated),
+            "set-locked" => Some(Self::SetLocked),
+            "auto-unmoderated" => Some(Self::AutoUnmoderated),
             "manual-flagged" => Some(Self::ManualFlagged),
             "manual-safe" => Some(Self::ManualSafe),
             "manual-vouched" => Some(Self::ManualVouched),
@@ -306,6 +329,10 @@ impl ConciergeManualKind {
     /// The wire form.
     pub fn as_wire(self) -> &'static str {
         match self {
+            Self::SetModerated => "set-moderated",
+            Self::SetUnmoderated => "set-unmoderated",
+            Self::SetLocked => "set-locked",
+            Self::AutoUnmoderated => "auto-unmoderated",
             Self::ManualFlagged => "manual-flagged",
             Self::ManualSafe => "manual-safe",
             Self::ManualVouched => "manual-vouched",
@@ -314,10 +341,19 @@ impl ConciergeManualKind {
             Self::AutoFlaggedRefusals => "auto-flagged-refusals",
         }
     }
+
+    /// Is this one of the six kinds phase 3 retired (decoded, never emitted)?
+    pub fn is_retired(self) -> bool {
+        !matches!(
+            self,
+            Self::SetModerated | Self::SetUnmoderated | Self::SetLocked | Self::AutoUnmoderated
+        )
+    }
 }
 
 /// What the Concierge says about the refusals that earned an auto-switch (v4
-/// `ConciergeAutoFlagDetails`, `49059fb14`). `auto-flagged-refusals` only.
+/// `ConciergeAutoFlagDetails`, `49059fb14`). `auto-unmoderated` only (and the
+/// retired `auto-flagged-refusals` it renamed).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ConciergeAutoFlagDetails {
     /// Refusals on the ledger when the switch fired.
@@ -382,7 +418,7 @@ pub fn build_auto_flag_content(details: Option<&ConciergeAutoFlagDetails>) -> St
         )
     };
     format!(
-        "{declined} The Concierge has taken the liberty of moving the whole affair to the uncensored desk; you may move it back from the sidebar whenever you wish."
+        "{declined} The Concierge has taken the liberty of moving the whole affair to the uncensored desk; you may set it back to Moderated from the sidebar whenever you wish."
     )
 }
 
@@ -404,7 +440,7 @@ pub fn build_auto_flag_opaque_content(details: Option<&ConciergeAutoFlagDetails>
         .map(|w| format!(" (last: {w})"))
         .unwrap_or_default();
     format!(
-        "{counted} {noun}{last}. The Concierge switched this chat to Flagged; change it in the sidebar."
+        "{counted} {noun}{last}. The Concierge switched this chat to Unmoderated; change it in the sidebar."
     )
 }
 
@@ -421,6 +457,14 @@ pub fn build_manual_content_with_details(
     details: Option<&ConciergeAutoFlagDetails>,
 ) -> String {
     match kind {
+        ConciergeManualKind::SetModerated =>
+            "By the operator's own hand, the conversation is Moderated once more. The house's usual providers are asked first; should one of them decline a matter on grounds of propriety, the Concierge will quietly take it across the street. His ledger of refusals is wiped clean.",
+        ConciergeManualKind::SetUnmoderated =>
+            "By the operator's own hand, the Concierge has been sent away and the uncensored door stands open. Nothing is to be examined, nothing softened; the conversation and its errands go henceforth to the frank desk, entirely on the operator's own recognizance.",
+        ConciergeManualKind::SetLocked =>
+            "The operator has locked the present company to the house's usual desks. Should one of them decline a matter, the refusal stands: the Concierge will take nothing elsewhere, nor move the conversation of his own accord.",
+        ConciergeManualKind::AutoUnmoderated => return build_auto_flag_content(details),
+        // The retired kinds keep their pre-phase-3 bodies (read-only).
         ConciergeManualKind::ManualFlagged =>
             "By the operator's own hand, the Concierge has thrown the switch: the conversation is to be entrusted henceforth to a desk better appointed to subjects of its particular character. Pray continue at your leisure.",
         ConciergeManualKind::ManualSafe =>
@@ -448,6 +492,16 @@ pub fn build_manual_opaque_content_with_details(
     details: Option<&ConciergeAutoFlagDetails>,
 ) -> String {
     match kind {
+        ConciergeManualKind::SetModerated =>
+            "Operator advisory: this conversation is Moderated. Ordinary providers are asked first; a content refusal is retried on an uncensored provider.",
+        ConciergeManualKind::SetUnmoderated =>
+            "Operator advisory: this conversation has been manually set to Unmoderated. It goes to the uncensored providers only; no classification or scanning will run, and prompts go out unaltered.",
+        ConciergeManualKind::SetLocked =>
+            "Operator advisory: this conversation is Locked to the ordinary providers. A content refusal stands; nothing is rerouted and the Concierge will not switch the chat.",
+        ConciergeManualKind::AutoUnmoderated => {
+            return build_auto_flag_opaque_content(details)
+        }
+        // The retired kinds keep their pre-phase-3 bodies (read-only).
         ConciergeManualKind::ManualFlagged =>
             "Operator advisory: this conversation has been manually marked for handling by an uncensored provider. Subsequent traffic may be routed accordingly.",
         ConciergeManualKind::ManualSafe =>
@@ -546,6 +600,38 @@ pub struct ConciergeRefusalDetails {
     /// Name the user gave the answering profile — `refusal-rerouted` only.
     pub answering_profile_name: Option<String>,
     pub purpose: ConciergeRefusalPurpose,
+    /// `refusal-not-permitted` only: what barred the reroute (v4 `4d370a90f`,
+    /// #75). `None` reads as the Concierge mode.
+    pub reason: Option<ConciergeRefusalBar>,
+}
+
+/// What barred a reroute (v4 `ConciergeRefusalDetails.reason: 'locked' |
+/// 'mode'`, `4d370a90f`). #75 keeps the `'mode'` sentences (the #73 ones this
+/// writer already carried); #76 (`3b463d6b1`) narrows the domain to `'locked'`
+/// and DELETES them — P4.D227's, not this file's at this pin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConciergeRefusalBar {
+    /// The chat is Locked.
+    Locked,
+    /// The Concierge mode (Off / Detect Only).
+    Mode,
+}
+
+impl ConciergeRefusalBar {
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            Self::Locked => "locked",
+            Self::Mode => "mode",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match s {
+            "locked" => Some(Self::Locked),
+            "mode" => Some(Self::Mode),
+            _ => None,
+        }
+    }
 }
 
 /// v4 `buildRefusalContent` (`8bd080267`; the rerouted sentence LOST its last
@@ -573,6 +659,13 @@ pub fn build_refusal_content(
         ConciergeRefusalKind::RefusalNoUnderstudy => format!(
             "The Concierge regrets to report that {house} ({painter}) declined {voiced} on grounds of propriety, and he knows of no more obliging establishment to take it to. Should you care to name one, tick \"Uncensored-compatible\" on a suitable profile, or choose one in the Concierge's settings."
         ),
+        ConciergeRefusalKind::RefusalNotPermitted
+            if details.reason == Some(ConciergeRefusalBar::Locked) =>
+        {
+            format!(
+                "The Concierge observes that {house} ({painter}) declined {voiced} on grounds of propriety. This conversation is Locked to the usual desks, so the refusal stands; set it to Moderated should you wish him to take such things elsewhere."
+            )
+        }
         ConciergeRefusalKind::RefusalNotPermitted => format!(
             "The Concierge observes that {house} ({painter}) declined {voiced} on grounds of propriety. His present instructions forbid him from taking it elsewhere; were he set to Auto-Route, he would have done so."
         ),
@@ -597,6 +690,13 @@ pub fn build_refusal_opaque_content(
         ConciergeRefusalKind::RefusalNoUnderstudy => format!(
             "Provider {who} refused {plain} on content grounds. No uncensored profile is available to retry it; mark a profile \"Uncensored-compatible\" or choose one in the Concierge settings."
         ),
+        ConciergeRefusalKind::RefusalNotPermitted
+            if details.reason == Some(ConciergeRefusalBar::Locked) =>
+        {
+            format!(
+                "Provider {who} refused {plain} on content grounds. This chat is Locked, so it was not rerouted; set it to Moderated to allow an uncensored retry."
+            )
+        }
         ConciergeRefusalKind::RefusalNotPermitted => format!(
             "Provider {who} refused {plain} on content grounds. The Concierge mode does not permit rerouting; Auto-Route would have retried it on an uncensored profile."
         ),
@@ -761,6 +861,7 @@ pub async fn post_concierge_refusal_announcement(
                 refusing_provider = %details.refusing_provider,
                 refusing_model = %details.refusing_model,
                 answering_profile_name = details.answering_profile_name.as_deref(),
+                reason = details.reason.map(ConciergeRefusalBar::as_wire),
                 "[ConciergeNotification] Refusal announced"
             );
             Some(message)
@@ -840,6 +941,7 @@ mod tests {
             refusing_model: "gpt-image-2".into(),
             answering_profile_name: Some("Frank Desk".into()),
             purpose: ConciergeRefusalPurpose::Tool,
+            reason: None,
         }
     }
 

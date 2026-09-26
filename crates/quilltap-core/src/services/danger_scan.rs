@@ -99,8 +99,8 @@ pub async fn any_user_danger_enabled(db: &Db) -> Result<bool, DbError> {
 /// a pure function over the hydrated chat `Value`):
 ///
 /// 1. Moderation-exempt chat types (Help Chat, Brahma Console) → never.
-/// 2. Operator-decided chats (Vouched Safe or Uncensored) → never; nothing may
-///    reclassify a chat out from under the operator.
+/// 2. A chat that is not Moderated (Locked, or Unmoderated — v4 `4d370a90f`'s
+///    `isClassifierOnDuty`) → never; the Concierge only moves a Moderated chat.
 /// 3. Never classified (`isDangerousChat == null` — absent OR JSON null) → yes.
 /// 4. Classified SAFE but grown (`isDangerousChat === false` AND
 ///    `dangerClassifiedAtMessageCount != null` AND `(messageCount ?? 0) >
@@ -111,8 +111,8 @@ pub fn chat_needs_classification(chat: &Value) -> bool {
     if is_moderation_exempt_chat_type(chat_type) {
         return false;
     }
-    // Operator-decided chats (Vouched Safe or Uncensored) are always skipped —
-    // nothing may reclassify a chat out from under the operator.
+    // Only a Moderated chat is the Concierge's to move (Locked is the
+    // operator's; Unmoderated has nowhere further to go).
     if !is_classifier_on_duty(Some(chat)) {
         return false;
     }
@@ -303,8 +303,15 @@ mod tests {
         // Help / Brahma chats are never enqueued.
         assert!(!chat_needs_classification(&json!({ "chatType": "help" })));
         assert!(!chat_needs_classification(&json!({ "chatType": "brahma" })));
-        // Operator waved the Concierge off.
+        // Not Moderated (v4 `4d370a90f`): Locked and Unmoderated are skipped …
         assert!(!chat_needs_classification(
+            &json!({ "chatType": "salon", "conciergeMode": "locked" })
+        ));
+        assert!(!chat_needs_classification(
+            &json!({ "chatType": "salon", "conciergeMode": "unmoderated" })
+        ));
+        // … and the legacy pair no longer takes the Concierge off the case.
+        assert!(chat_needs_classification(
             &json!({ "chatType": "salon", "conciergeOverride": "OFF" })
         ));
         // Sticky dangerous — never re-checked, even grown.

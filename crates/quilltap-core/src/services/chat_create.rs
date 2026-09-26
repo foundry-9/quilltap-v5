@@ -1896,7 +1896,7 @@ async fn apply_requested_concierge_state(
     let Some(requested) = requested else {
         return Ok(());
     };
-    if requested == ConciergeState::Monitored {
+    if requested == ConciergeState::Moderated {
         return Ok(());
     }
     emitter.status("Briefing the Concierge\u{2026}");
@@ -3997,8 +3997,8 @@ mod tests {
         let (_d, db, w) = ladder_venue(true);
         w.connection()
             .execute(
-                "INSERT INTO chats (id, userId, title, conciergeOverride, createdAt, updatedAt) \
-                 VALUES (?1, ?2, 'T', 'UNCENSORED', '2026-02-01T00:00:00.000Z', \
+                "INSERT INTO chats (id, userId, title, conciergeMode, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'T', 'unmoderated', '2026-02-01T00:00:00.000Z', \
                  '2026-02-01T00:00:00.000Z')",
                 rusqlite::params![LADDER_CHAT, SINGLE_USER_ID],
             )
@@ -4046,8 +4046,8 @@ mod tests {
         let (_d, db, w) = ladder_venue(true);
         w.connection()
             .execute(
-                "INSERT INTO chats (id, userId, title, conciergeOverride, createdAt, updatedAt) \
-                 VALUES (?1, ?2, 'T', 'UNCENSORED', '2026-02-01T00:00:00.000Z', \
+                "INSERT INTO chats (id, userId, title, conciergeMode, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'T', 'unmoderated', '2026-02-01T00:00:00.000Z', \
                  '2026-02-01T00:00:00.000Z')",
                 rusqlite::params![LADDER_CHAT, SINGLE_USER_ID],
             )

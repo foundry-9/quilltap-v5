@@ -9,9 +9,10 @@
  *     `availableProfiles[0]`, P2 the participant-referenced one);
  *   - the per-chat gate matrix under userOn:
  *       c1 help (exempt)                          → skipped
- *       c2 conciergeOverride OFF (Vouched Safe)     → skipped
- *       cb conciergeOverride UNCENSORED             → skipped (P4.D141: the
- *          operator already returned the verdict; otherwise enqueueable)
+ *       c2 conciergeMode locked                    → skipped
+ *       cb conciergeMode unmoderated               → skipped (P4.D141, re-keyed
+ *          by P4.D226 / v4 `4d370a90f`: only a Moderated chat is the
+ *          Concierge's to move; otherwise enqueueable)
  *       c3 sticky dangerous                        → skipped
  *       c4 safe, not grown (count == classifiedAt) → skipped
  *       c5 never classified + summary; participants [user-controlled w/ P1,
@@ -140,7 +141,11 @@ async function main(): Promise<void> {
       user: spec.userOn,
       data: {
         chatType: 'salon',
-        conciergeOverride: 'OFF',
+        // P4.D226 (v4 `4d370a90f`): Locked by its column (was the legacy
+        // `conciergeOverride: 'OFF'`, which #75 no longer reads).
+        conciergeMode: 'locked',
+        conciergeModeSetBy: 'operator',
+        conciergeModeReason: 'manual',
         participants: [participant('llm', spec.profileP1)],
       },
     },
@@ -197,7 +202,11 @@ async function main(): Promise<void> {
       user: spec.userOn,
       data: {
         chatType: 'salon',
-        conciergeOverride: 'UNCENSORED',
+        // P4.D226: Unmoderated by its column (was `conciergeOverride:
+        // 'UNCENSORED'`).
+        conciergeMode: 'unmoderated',
+        conciergeModeSetBy: 'operator',
+        conciergeModeReason: 'manual',
         messageCount: 3,
         participants: [participant('llm', spec.profileP1)],
       },

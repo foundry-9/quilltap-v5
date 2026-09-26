@@ -4,13 +4,22 @@
 //! Classifies a chat's content (context summary, else concatenated raw messages
 //! truncated to 4000 chars) and persists the chat-level danger fields plus a
 //! `DANGER_CLASSIFICATION` system event. Sticky once classified; bails on
-//! moderation-exempt / off-duty / mode-OFF.
+//! moderation-exempt / not-Moderated / mode-OFF.
+//!
+//! v4 `4d370a90f` (#75): the job records TELEMETRY only
+//! (`ChatsRepository::set_danger_classification`, the verdict carried unstored)
+//! and a dangerous verdict moves the chat to Unmoderated through
+//! [`super::classifier_switch::maybe_switch_after_classification`] — in v4 from
+//! the parent (the dispatcher's commit hook, or directly when the job ran in
+//! the parent). v5's job runner is in-process, so the job always takes v4's
+//! parent branch and calls the switch itself; the Concierge's announcement
+//! comes from the flip, not from this handler.
 //!
 //! The job-processor infrastructure (`ensureProcessorRunning` / the runner loop)
 //! is the standing queue-service deferral — this ports the handler *function*,
-//! driven directly. `getApiKeyForCheapLLMSelection` / `logLLMCall` /
-//! `postConciergeDangerAnnouncement` are seams (see [`DangerAnnouncer`] +
-//! [`super::gatekeeper`]).
+//! driven directly. `getApiKeyForCheapLLMSelection` / `logLLMCall` are seams
+//! (see [`super::gatekeeper`]); the announcement is the flip's
+//! [`ConciergeAnnouncer`].
 
 use serde_json::Value;
 
@@ -23,8 +32,14 @@ use crate::db::{chat_settings, chats_messages_read, chats_read, connection_profi
 use crate::jsnum::to_fixed;
 use crate::model::completion::CompletionProvider;
 
+use crate::db::chats::DangerClassificationTelemetry;
+use crate::services::concierge_notifications::{ConciergeCategory, ConciergeDangerDetails};
+
 use super::chat_override::is_classifier_on_duty;
-use super::gatekeeper::{classify_content, DangerCategory, ModerationProvider};
+use super::classifier_switch::maybe_switch_after_classification;
+use super::gatekeeper::{classify_content, ModerationProvider};
+use super::manual_flip::ConciergeAnnouncer;
+use super::refusal_ledger::is_job_child;
 use super::resolver::resolve_dangerous_content_settings;
 
 /// The `CHAT_DANGER_CLASSIFICATION` job (v4 `BackgroundJob` +
@@ -37,71 +52,9 @@ pub struct ChatDangerClassificationJob {
     pub connection_profile_id: String,
 }
 
-/// Details for the Concierge danger announcement (v4
-/// `postConciergeDangerAnnouncement`'s `details`).
-#[derive(Clone, Debug, PartialEq)]
-pub struct DangerAnnouncementDetails {
-    pub score: f64,
-    pub threshold: f64,
-    pub categories: Vec<DangerCategory>,
-    pub source: Option<String>,
-    pub provider_name: Option<String>,
-}
-
-/// The danger announcement seam (v4 `postConciergeDangerAnnouncement`). Posts a
-/// synthetic Concierge bubble when a chat newly flips dangerous. Now closed by
-/// [`RealDangerAnnouncer`] (W4.6b — the ported `concierge_notifications` writer);
-/// [`NoDangerAnnouncer`] is the posts-nothing wiring the resolver-only path uses.
-/// Async (the writer awaits the single-writer channel); modeled on the
-/// `EmbeddingProvider` RPITIT precedent so the future is `Send` without boxing.
-pub trait DangerAnnouncer {
-    fn post_danger(
-        &self,
-        chat_id: &str,
-        details: &DangerAnnouncementDetails,
-    ) -> impl std::future::Future<Output = ()> + Send;
-}
-
-/// A [`DangerAnnouncer`] that posts nothing.
-pub struct NoDangerAnnouncer;
-impl DangerAnnouncer for NoDangerAnnouncer {
-    async fn post_danger(&self, _chat_id: &str, _details: &DangerAnnouncementDetails) {}
-}
-
-/// The real Concierge danger announcer (v4 `postConciergeDangerAnnouncement`) —
-/// posts the personified bubble through the ported
-/// [`crate::services::concierge_notifications`] writer. Best-effort (the writer
-/// swallows its own failure and returns `None`).
-pub struct RealDangerAnnouncer<'a> {
-    pub db: &'a Db,
-}
-impl DangerAnnouncer for RealDangerAnnouncer<'_> {
-    async fn post_danger(&self, chat_id: &str, details: &DangerAnnouncementDetails) {
-        use crate::services::concierge_notifications as cn;
-        let cd = cn::ConciergeDangerDetails {
-            score: details.score,
-            threshold: details.threshold,
-            categories: details
-                .categories
-                .iter()
-                .map(|c| cn::ConciergeCategory {
-                    category: c.category.clone(),
-                    score: c.score,
-                    // v4's DangerCategory carries a resolved label; the writer's
-                    // `resolve_label` treats it as the `providedLabel`.
-                    label: Some(c.label.clone()),
-                })
-                .collect(),
-            source: details.source.clone(),
-            provider_name: details.provider_name.clone(),
-        };
-        cn::post_concierge_danger_announcement(self.db, chat_id, Some(&cd)).await;
-    }
-}
-
 /// v4 `handleChatDangerClassification`. Drives the classification and persists
 /// the result. `moderation` / `completion` are the model boundaries;
-/// `announcer` is the Concierge post seam.
+/// `announcer` is the Concierge post seam the classifier switch's flip uses.
 pub async fn handle_chat_danger_classification<M, C, An>(
     db: &Db,
     moderation: &M,
@@ -112,7 +65,7 @@ pub async fn handle_chat_danger_classification<M, C, An>(
 where
     M: ModerationProvider,
     C: CompletionProvider,
-    An: DangerAnnouncer,
+    An: ConciergeAnnouncer,
 {
     let chat_id = job.chat_id.clone();
     let user_id = job.user_id.clone();
@@ -126,9 +79,9 @@ where
     if is_moderation_exempt_chat_type(chat.get("chatType").and_then(Value::as_str)) {
         return Ok(());
     }
-    // Vouched Safe / Uncensored: the operator has already returned the verdict
-    // for this chat. A job may already be in the queue from before that flip —
-    // bail.
+    // Only a Moderated chat is the Concierge's to move. Unmoderated has nowhere
+    // further to go and Locked is the operator's; a job may already be in the
+    // queue from before that flip — bail.
     if !is_classifier_on_duty(Some(&chat)) {
         return Ok(());
     }
@@ -307,58 +260,64 @@ where
         .and_then(|c| c.get("messageCount").and_then(Value::as_f64))
         .unwrap_or(message_count);
 
-    // Persist the classification result. v4's `chats.update` does not mint
-    // `updatedAt` (danger fields only), so this raw multi-column UPDATE — which
-    // sets no `updatedAt` — is byte-identical (the standalone-write pattern).
+    // Record the verdict as TELEMETRY (v4 `setDangerClassification`, a
+    // whole-row `update` that preserves `updatedAt` and cannot touch the
+    // patch-only Concierge columns). A dangerous verdict also moves the chat to
+    // Unmoderated — the decision made against the chat as it stands NOW (the
+    // operator may have locked it while the classifier was thinking).
     let now = now_iso();
-    let categories_json = serde_json::to_string(
-        &result
+    let verdict = result.is_dangerous.then(|| ConciergeDangerDetails {
+        score: result.score,
+        threshold: danger_settings.threshold,
+        categories: result
+            .categories
+            .iter()
+            .map(|c| ConciergeCategory {
+                category: c.category.clone(),
+                score: c.score,
+                // v4's DangerCategory carries a resolved label; the writer's
+                // `resolve_label` treats it as the `providedLabel`.
+                label: Some(c.label.clone()),
+            })
+            .collect(),
+        source: result.source.clone(),
+        provider_name: result.provider_name.clone(),
+    });
+    let telemetry = DangerClassificationTelemetry {
+        is_dangerous_chat: result.is_dangerous,
+        danger_score: Some(result.score),
+        danger_categories: result
             .categories
             .iter()
             .map(|c| c.category.clone())
-            .collect::<Vec<_>>(),
-    )
-    .expect("category list serializes infallibly");
-    let is_dangerous = result.is_dangerous;
-    let score = result.score;
+            .collect(),
+        danger_classified_at: now,
+        danger_classified_at_message_count: final_message_count,
+    };
+    let has_verdict = verdict.is_some();
     let up_chat_id = chat_id.clone();
     db.write(move |writers| {
-        writers.main().connection().execute(
-            "UPDATE chats SET \
-               \"isDangerousChat\" = ?1, \
-               \"dangerScore\" = ?2, \
-               \"dangerCategories\" = ?3, \
-               \"dangerClassifiedAt\" = ?4, \
-               \"dangerClassifiedAtMessageCount\" = ?5 \
-             WHERE id = ?6",
-            rusqlite::params![
-                is_dangerous,
-                score,
-                categories_json,
-                now,
-                final_message_count,
-                up_chat_id
-            ],
-        )?;
-        Ok(())
+        writers
+            .main()
+            .chats()
+            .set_danger_classification(&up_chat_id, &telemetry, has_verdict)
     })
     .await?;
 
-    // Sticky-true: reaching here means a NEW transition to dangerous, so the
-    // Concierge announces exactly once per chat.
-    if result.is_dangerous {
-        announcer
-            .post_danger(
-                &chat_id,
-                &DangerAnnouncementDetails {
-                    score: result.score,
-                    threshold: danger_settings.threshold,
-                    categories: result.categories.clone(),
-                    source: result.source.clone(),
-                    provider_name: result.provider_name.clone(),
-                },
-            )
-            .await;
+    // v4's `QUILLTAP_JOB_CHILD !== '1'` branch — always taken in v5 (an
+    // in-process runner has no child).
+    if let Some(verdict) = verdict.as_ref() {
+        if !is_job_child() {
+            let switched =
+                maybe_switch_after_classification(db, announcer, &chat_id, Some(verdict)).await;
+            tracing::debug!(
+                target: "quilltap::dangerous_content",
+                job_id = %job.id,
+                chat_id = %chat_id,
+                switched,
+                "[ChatDangerClassification] Dangerous verdict applied in the parent"
+            );
+        }
     }
 
     // v4 `chat-danger-classification.ts:232`, verbatim in fields and order. The

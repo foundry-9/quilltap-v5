@@ -210,6 +210,14 @@ impl ApplyHost for Recorder {
     ) -> Result<(), ApplyError> {
         panic!("the P4.D221 corpus carries no refusal increment (chat {chat_id})")
     }
+
+    fn run_classifier_switch_check(
+        &mut self,
+        chat_id: &str,
+        _verdict: Option<&serde_json::Value>,
+    ) -> Result<(), ApplyError> {
+        panic!("the P4.D221 corpus carries no danger classification (chat {chat_id})")
+    }
 }
 
 /// v4 `ad1c4c37f`: `MOUNT_INDEX_REPO_KEYS` gained `groupDocMountLinks` +

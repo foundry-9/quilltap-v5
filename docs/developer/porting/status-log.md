@@ -150967,3 +150967,153 @@ Result file: `/tmp/p4d226/first-act-4d370a90f.json` (kept in the lane's scratch)
   empty of user rows by design).
 - Readers: every chats-reading family — proven by the lane's full sweep (unit
   11 / the gate), not per-unit.
+
+### Unit 2 — the three states: columns, repository, override, flip, switch, current state, resolver, ledger, writer, gatekeeper, write-apply hook (Tier 1 items 2–5, 7)
+
+- **The D23 re-dump** (`dump-fresh-schema.ts` run FROM `/tmp/qt-v4-pin-p4d226-
+  4d370a90f`, `QT_SCHEMA_OUT` + `QT_SEED_OUT`): exactly TWO statements move —
+  `chats` gains `"conciergeMode" TEXT, "conciergeModeSetBy" TEXT,
+  "conciergeModeReason" TEXT` after `"conciergeOverride" TEXT` (NO DEFAULT), and
+  `chat_settings."dangerousContentSettings"`'s DDL default gains
+  `"autoSwitchAfterRefusals":2` (P4.D225's handoff, carried at this pin too).
+  `provisioning_equivalence` red at the pin before, GREEN after. **Seed UNMOVED**
+  (`cmp`-identical). **The E.1 anomaly measured: it does not reproduce** — the
+  real dumper names the declared `conciergeOverride` (P4.D225 found the same at
+  `49059fb14`); written into the register (`provisioning/mod.rs`).
+- **`db`:** `ALL_COLUMNS` 100 → 103 with the trio at its DDL position and every
+  later positional read shifted by 3 (the alignment census caught the three
+  turbofish reads the first shift missed — `chatType`, `createdAt`,
+  `updatedAt`); `ChatCreate` gains the trio (`None` → NULL: a fresh chat never
+  writes a `'moderated'` literal; restore/import carry a bundle's value);
+  `?101`–`?103` spliced at the column position. `ChatUpdate` gains NOTHING (v4
+  `patchOnlyFields`, pinned by the census below). NEW
+  `ChatsRepository::set_concierge_mode(chat_id, &ConciergeModeColumns,
+  expected)` — v4's raw `updateOne` `$set`: `expected = moderated` matches
+  `= 'moderated' OR IS NULL`, a literal otherwise, `matchedCount > 0` (a matched
+  no-change write counts); fallback-`safeQuery` ERROR `Failed to write the
+  Concierge state`; the DEBUG `Concierge state write` {chat_id, concierge_mode,
+  concierge_mode_set_by, concierge_mode_reason, expected?, written} — v4's
+  `null`s rendered `null`, its absent `expected` absent. **E.7 MEASURED: no
+  `updatedAt` mint** (v4's SQLite backend and translator never mention
+  `updatedAt`; the repository pin asserts the stored `updatedAt` unmoved). NEW
+  `set_danger_classification(chat_id, &DangerClassificationTelemetry,
+  has_verdict)` — the five danger columns through `update` (`updatedAt`
+  preserved), the DEBUG `Chat danger classification recorded`; the verdict is
+  never stored.
+- **`chat_override.rs` rewritten** — `ConciergeState {Moderated, Unmoderated,
+  Locked}` (`from_wire`: the three; the retired four and `OFF`/`UNCENSORED` →
+  `None`), `CONCIERGE_STATES`, `ConciergeSetBy`, `ConciergeReason`,
+  `ConciergeModeColumns`, v4's `ChatLike` read (column FIRST, then the payload
+  key, JS `??` over `null`), `get_concierge_state` / `_provenance` (a
+  non-Moderated row with an unknown/NULL setBy reads `operator`) / `_reason`
+  (returned as stored, unchecked — v4 does not narrow), the six predicates incl.
+  `may_fail_over` + `concierge_state_may_fail_over`,
+  `derive_concierge_mode_from_legacy` (`isDangerousChat === true` over the
+  hydrated value) and `with_concierge_mode_from_legacy` (v4's spread: a present
+  key keeps its place, a new one appends — pinned as BYTES).
+- **`manual_flip.rs` rewritten** to v4's eight steps (the `by`/`reason`
+  defaults, `nextBy`/`nextReason`, the no-op DEBUG vs the re-attribution-skip
+  DEBUG vs the operator's provenance-only write + INFO, the Concierge's
+  Moderated→Unmoderated-only WARN, the job-child WARN dead by construction on
+  P4.D225's constant-false `is_job_child()` (now `pub(super)`), the
+  compare-and-set miss INFO, `set_concierge_mode` FIRST then the `moderated`
+  arm's telemetry clear + ledger reset + `set-moderated`, `set-unmoderated` /
+  the DANGER announcement with `options.classification` / `auto-unmoderated`,
+  `set-locked`, the closing INFO). `ConciergeAnnouncer` grows `post_danger`
+  (required); `ApplyConciergeFlipOptions.classification`; `FlipReason::Manual`;
+  `MODERATION_REFUSALS_CATEGORY` gone with v4's. Every raw
+  `UPDATE … "conciergeOverride"` is gone.
+- **The writer** (`concierge_notifications.rs`): `ConciergeManualKind` gains
+  the four live kinds with v4's voiced + opaque texts verbatim; the SIX retired
+  kinds keep decoding and keep their bodies (v4: old transcripts' bubbles
+  "render as they always did") and are never emitted (census); the auto-flag
+  sentences moved; `ConciergeRefusalDetails.reason: Option<ConciergeRefusalBar
+  {Locked, Mode}>` with v4's Locked sentences for `refusal-not-permitted` —
+  **#75's `'mode'` sentences are the ones P4.D225 landed and stay at this pin;
+  #76 deletes them (P4.D227)**, said in the file; `reason` on the INFO bag.
+- NEW `current_state.rs` (`read_current_concierge_state(db, chat_id,
+  snapshot)`: the fallback chain, the three lines) and `classifier_switch.rs`
+  (`maybe_switch_after_classification`: the five steps, the four lines, the
+  job-child arm dead by construction).
+- **The resolver** at #75: `DangerSource::{ChatLocked, ChatUnmoderated}`,
+  `locked_dangerous_content_settings` (same values as vouched-safe, incl. the
+  auto-switch 0), exempt → locked → unmoderated → global/default; v4's
+  `resolver.test.ts` cases mirrored by name.
+- **The refusal ledger** re-keyed on `is_classifier_on_duty` with the Moderated
+  wording, the flip to `unmoderated`, `The Concierge switched a chat to
+  Unmoderated after repeated refusals`.
+- **The gatekeeper job** (v4's parent branch): telemetry through
+  `set_danger_classification`, then `maybe_switch_after_classification` +
+  `[ChatDangerClassification] Dangerous verdict applied in the parent`; the
+  handler no longer announces itself (the `DangerAnnouncer` seam retired — the
+  job takes the `ConciergeAnnouncer`; host spine rewired).
+- **The write applier's commit hook** (`write_apply.rs`):
+  `DANGER_CLASSIFICATION_WRITE`, `chats_with_danger_verdicts` (dangerous only,
+  first-write order, the LAST verdict wins, a non-object verdict `None`, a later
+  SAFE write does not remove a chat, a non-string/empty id skipped),
+  `run_classifier_switch_checks` AFTER the ledger checks; `ApplyHost` grows a
+  REQUIRED `run_classifier_switch_check`; the two dispatcher lines. A replayed
+  batch cannot switch twice (the switch's Moderated-only rule).
+- **Tests DDLs/seeds chased:** `enclave/{step,lifecycle}.rs`, `host_boot.rs`,
+  `host_cadence.rs` (the trio after `conciergeOverride`); the two greeting-ladder
+  seeds `UNCENSORED` → `conciergeMode = 'unmoderated'`; `danger_scan`'s gate test
+  re-keyed (Locked/Unmoderated skip; a legacy `OFF` no longer does).
+- **Log capture reach (measured):** the repository's two DEBUGs run on the
+  single-writer thread, which the thread-scoped rig (and `global_capture`, also
+  per-thread) cannot see through a `Db::write`. They are pinned by
+  `db::chats::concierge_state_tests`, calling the repository directly; the
+  flip's family and unit pins compare the `ConciergeManualFlip` lines only
+  (v4's recorder keeps the repository line too — filtered on the v4 side).
+- **Families re-recorded at `4d370a90f`** (the oracle cases/specs grown):
+  `danger_resolver` — the pure half rewritten over every export (67 rows:
+  resolve 22, override 25, stateRoute 3, states 1, derive 11, withLegacy 5, a
+  shape guard per kind), the manual-flip spec REWRITTEN to v4's
+  `manual-flip.test.ts` cases as 25 planted rows (six transitions, three
+  no-ops + the NULL no-op, four provenance adoptions, the re-attribution skip,
+  both Concierge switches, NULL-as-Moderated, the CAS miss via a stale
+  `snapshot`, three refused moves, the legacy pair ignored ×2) + every op's
+  log lines; `refusal_ledger_tier3` re-keyed (the Locked chat by its column,
+  `raceMode`, the labelled-dangerous Moderated chat switching, a NEW
+  `operatorFlip` op proving the return to Moderated empties the ledger — 6
+  switches); `post_office_concierge_lantern_suparna` +60 `reason` rows (120
+  refusal rows; the Locked sentences ×10); `chats_tier2` +16 ops (the trio on
+  create, seven `setConciergeMode` arms, a title update leaving the trio,
+  three `setDangerClassification`s); `write_apply` +4 scenarios mirroring v4's
+  `job-dispatcher-apply.test.ts` hook cases; `danger_trigger` re-keyed to v4's
+  #75 cases (+ the legacy pair now enqueueing); `danger_gatekeeper_tier3` and
+  `danger_scan_tier2` specs re-keyed to `conciergeMode`. Through the driver at
+  the target: **12/12 OK** (`danger_resolver`, `refusal_ledger_tier3`,
+  `post_office_concierge_lantern_suparna`, `chats_tier2`, `chats_read`,
+  `write_apply`, `write_partition`, `provisioning`, `cheap_llm_fallback`,
+  `danger_gatekeeper_tier3`, `danger_trigger`, `danger_scan_tier2`). Red-first:
+  the first act (unit 0) measured `danger_resolver`, `refusal_ledger`,
+  `suparna`, `cheap_llm_fallback`, `danger_trigger`, `provisioning` red at the
+  pin on P4.D225's tree; the new op kinds cannot run on P4.D225's Rust at all.
+  At the before-pin `49059fb14` the rewritten `danger-resolver.ts` cannot load
+  (the new exports are absent). Marker counts in the fresh NDJSON: `chat-locked`
+  ×3, `Unmoderated after` ×6, `is Locked` ×10, `switchChecks` ×22.
+- **NEW `concierge_state_writers_census`** (4 tests): one production SQL
+  `UPDATE`s the trio (`set_concierge_mode`'s), `ChatUpdate` names none of it,
+  nothing `UPDATE`s `conciergeOverride`, no production code outside the writer
+  emits a retired kind.
+- **Mutation proofs (file backup, `cmp`-verified restore), each reddening
+  exactly its target:** **M1** (a fresh `ChatCreate` writes `'moderated'`) →
+  `chats_tier2_matches_oracle`; **M2** (`ChatUpdate` gains `concierge_mode`) →
+  `chat_update_names_none_of_the_trio`; **M3** (the Moderated expectation on the
+  literal only) → `chats_tier2_matches_oracle` (the NULL c4 arm); **M4** (a
+  telemetry clear before the state write) → `the_state_lands_before_the_
+  telemetry_clear` (a NEW trigger-recorded order pin); **M5** (`set-unmoderated`
+  on a classifier flip) → `danger_manual_flip_matches_oracle`; **M7** (derive over
+  a present `conciergeMode`) → `danger_resolver_pure_matches_oracle`; **M9** (emit
+  `manual-vouched`) → `no_production_code_emits_a_retired_manual_kind`.
+- ⚠ **Fence (§R.10(g)), recorded for the unifier / P4.D233:**
+  `post_office_writers_tier3` (P4.D233's family this round) posts the FIVE retired
+  manual kinds through `ConciergeManualKind::from_wire` +
+  `post_concierge_manual_announcement`; v4 at `4d370a90f` (and at `acadcc7cd`) has
+  no builder for them — its writer's `switch` returns `undefined` and the post
+  fails Zod (`Failed to post manual announcement` ×5 in the first act). v5 keeps
+  decoding and rendering them (the order's "still ACCEPTED on read"), so the
+  family compiles; its five `concierge_manual_*` rows are red against any
+  post-#75 oracle and are P4.D233's to retire or re-key (the four live kinds).
+- Gate for this unit: fmt; clippy clean on both feature sets; `quilltap-core
+  --lib` 2653/0; the three host DDL-mirror binaries green.

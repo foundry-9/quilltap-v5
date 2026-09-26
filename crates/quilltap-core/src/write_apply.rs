@@ -153,6 +153,20 @@ pub trait ApplyHost {
         chat_id: &str,
         last_refusal: Option<&LastRefusal>,
     ) -> Result<(), ApplyError>;
+
+    /// Post-commit: the classifier switch for ONE chat the batch classified
+    /// dangerous (v4 `maybeSwitchAfterClassification(chatId, verdict)`,
+    /// `4d370a90f` — production wires
+    /// [`crate::services::dangerous_content::classifier_switch::maybe_switch_after_classification`]).
+    /// `verdict` is the write's third argument when it is an object. An `Err`
+    /// is v4's throw out of the loop: the engine logs it and switches no
+    /// further chat, and the committed batch still resolves. Required, not
+    /// defaulted, so no implementor can silently drop it.
+    fn run_classifier_switch_check(
+        &mut self,
+        chat_id: &str,
+        verdict: Option<&Value>,
+    ) -> Result<(), ApplyError>;
 }
 
 /// Apply a job's buffered writes, partitioned by target database. Mirrors v4's
@@ -193,7 +207,96 @@ pub fn apply_writes(
     // inside the apply chain, so the flip's own writes cannot land in another
     // job's open transaction.
     run_refusal_ledger_checks(host, writes, job_id);
+    // The classifier's switch (v4 `4d370a90f`): the job records telemetry only;
+    // whether a dangerous verdict moves the chat is decided here, after the
+    // batch committed, against the chat as it stands now. After the ledger
+    // checks, as v4 orders them.
+    run_classifier_switch_checks(host, writes, job_id);
     Ok(())
+}
+
+/// v4 `DANGER_CLASSIFICATION_WRITE` — the buffered write that records the
+/// chat-level danger classifier's verdict (`4d370a90f`).
+pub const DANGER_CLASSIFICATION_WRITE: &str = "chats.setDangerClassification";
+
+/// v4 `chatsWithDangerVerdicts` — every chat this batch classified DANGEROUS
+/// (`telemetry.isDangerousChat === true`), once each in first-write order (a JS
+/// `Map`'s `set` on an existing key keeps its place), with the verdict the
+/// write carried — its optional third argument when it is an object, else
+/// `None`; the LAST one wins. A later SAFE write for the same chat does not
+/// remove it (v4 `continue`s past it). A `chatId` that is not a non-empty
+/// string is skipped.
+pub fn chats_with_danger_verdicts(writes: &[ChildWritePayload]) -> Vec<(String, Option<Value>)> {
+    let mut out: Vec<(String, Option<Value>)> = Vec::new();
+    for w in writes {
+        if w.method != DANGER_CLASSIFICATION_WRITE {
+            continue;
+        }
+        let Some(chat_id) = w
+            .args
+            .first()
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        let dangerous = w
+            .args
+            .get(1)
+            .and_then(Value::as_object)
+            .and_then(|t| t.get("isDangerousChat"))
+            == Some(&Value::Bool(true));
+        if !dangerous {
+            continue;
+        }
+        let verdict = w.args.get(2).filter(|v| v.is_object()).cloned();
+        match out.iter_mut().find(|(id, _)| id == chat_id) {
+            Some((_, previous)) => *previous = verdict,
+            None => out.push((chat_id.to_string(), verdict)),
+        }
+    }
+    out
+}
+
+/// v4 `runClassifierSwitchChecks` — the classifier switch once per chat a
+/// committed batch classified dangerous. Best-effort like the refusal-ledger
+/// check: the batch is committed, so a failure is logged and never fails the
+/// job. A replayed batch cannot switch twice: the switch's own Moderated-only
+/// rule makes the second a no-op.
+fn run_classifier_switch_checks(
+    host: &mut dyn ApplyHost,
+    writes: &[ChildWritePayload],
+    job_id: &str,
+) {
+    let chats = chats_with_danger_verdicts(writes);
+    if chats.is_empty() {
+        return;
+    }
+    // v4 logs the id ARRAY; the file layer's `…Json` convention re-parses it.
+    let chat_ids = Value::Array(
+        chats
+            .iter()
+            .map(|(id, _)| Value::String(id.clone()))
+            .collect(),
+    )
+    .to_string();
+    tracing::debug!(
+        target: "quilltap::jobs_dispatcher",
+        job_id,
+        chatIdsJson = chat_ids.as_str(),
+        "Child batch recorded a dangerous classification; running the classifier switch"
+    );
+    for (chat_id, verdict) in &chats {
+        if let Err(e) = host.run_classifier_switch_check(chat_id, verdict.as_ref()) {
+            tracing::error!(
+                target: "quilltap::jobs_dispatcher",
+                job_id,
+                error = %e,
+                "Classifier switch failed after a committed batch"
+            );
+            return;
+        }
+    }
 }
 
 /// v4 `REFUSAL_LEDGER_INCREMENT` — the buffered write that records a
@@ -649,6 +752,8 @@ mod tests {
         invalidations: Vec<(String, String)>, // (kind, key)
         ledger_checks: Vec<(String, Option<LastRefusal>)>,
         ledger_check_fails: bool,
+        switch_checks: Vec<(String, Option<Value>)>,
+        switch_check_fails: bool,
     }
     impl ApplyHost for OkHost {
         fn conn_available(&self, _p: WriteDbTarget) -> bool {
@@ -705,6 +810,18 @@ mod tests {
                 .push((chat_id.to_string(), last_refusal.cloned()));
             if self.ledger_check_fails {
                 return Err(ApplyError::msg("flip failed"));
+            }
+            Ok(())
+        }
+        fn run_classifier_switch_check(
+            &mut self,
+            chat_id: &str,
+            verdict: Option<&Value>,
+        ) -> Result<(), ApplyError> {
+            self.switch_checks
+                .push((chat_id.to_string(), verdict.cloned()));
+            if self.switch_check_fails {
+                return Err(ApplyError::msg("switch failed"));
             }
             Ok(())
         }
@@ -1118,5 +1235,127 @@ mod tests {
         assert_eq!(host.ledger_checks.len(), 1, "the loop stops at the throw");
         assert!(lines.iter().any(|l| l
             == "ERROR quilltap::jobs_dispatcher Refusal-ledger auto-switch check failed after a committed batch job_id=job-flip-fails error=flip failed"));
+    }
+
+    // ---- P4.D226 (v4 `4d370a90f`): the classifier-switch commit hook ----
+
+    fn classification(
+        chat_id: Value,
+        dangerous: bool,
+        verdict: Option<Value>,
+    ) -> ChildWritePayload {
+        let mut args = vec![
+            chat_id,
+            json!({ "isDangerousChat": dangerous, "dangerScore": 0.9 }),
+        ];
+        if let Some(v) = verdict {
+            args.push(v);
+        }
+        ChildWritePayload {
+            method: DANGER_CLASSIFICATION_WRITE.into(),
+            args,
+        }
+    }
+
+    /// v4 `chatsWithDangerVerdicts`: dangerous only, first-write order, the
+    /// LAST verdict wins, a non-object verdict reads `None`, a later safe write
+    /// never removes a chat, a non-string or empty id is skipped.
+    #[test]
+    fn the_scan_keeps_first_order_and_the_last_verdict() {
+        let v1 = json!({ "score": 0.91 });
+        let v2 = json!({ "score": 0.95 });
+        let writes = vec![
+            classification(json!("c1"), true, Some(v1.clone())),
+            classification(json!("c2"), false, None),
+            classification(json!("c3"), true, None),
+            classification(json!("c1"), true, Some(v2.clone())),
+            classification(json!("c2"), true, Some(json!("not-an-object"))),
+            classification(json!(""), true, Some(v1.clone())),
+            classification(json!(42), true, Some(v1.clone())),
+            classification(json!("c3"), false, Some(v1)),
+        ];
+        assert_eq!(
+            chats_with_danger_verdicts(&writes),
+            vec![
+                ("c1".to_string(), Some(v2)),
+                ("c3".to_string(), None),
+                ("c2".to_string(), None),
+            ]
+        );
+    }
+
+    /// After every partition committed and after the ledger hook; the DEBUG
+    /// names the chats as the `…Json` array; silence on a batch with no
+    /// dangerous classification.
+    #[test]
+    fn the_switch_runs_after_commit_and_after_the_ledger_hook() {
+        let mut host = OkHost::default();
+        let writes = vec![
+            classification(json!("c1"), true, Some(json!({ "score": 0.9 }))),
+            increment(json!("c2"), None),
+        ];
+        let (_, lines) = crate::test_support::captured_with(|| {
+            apply_writes(
+                &mut host,
+                "job-switch",
+                &writes,
+                Some("CHAT_DANGER_CLASSIFICATION"),
+            )
+            .unwrap()
+        });
+        assert_eq!(host.switch_checks.len(), 1);
+        let dispatcher: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("quilltap::jobs_dispatcher"))
+            .collect();
+        assert_eq!(dispatcher, [
+            "DEBUG quilltap::jobs_dispatcher Child batch recorded moderation refusals; running the auto-switch check job_id=job-switch chatIdsJson=[\"c2\"]",
+            "DEBUG quilltap::jobs_dispatcher Child batch recorded a dangerous classification; running the classifier switch job_id=job-switch chatIdsJson=[\"c1\"]",
+        ]);
+
+        let mut quiet = OkHost::default();
+        let safe = vec![classification(json!("c1"), false, None)];
+        let (_, lines) = crate::test_support::captured_with(|| {
+            apply_writes(&mut quiet, "j", &safe, Some("CHAT_DANGER_CLASSIFICATION")).unwrap()
+        });
+        assert!(quiet.switch_checks.is_empty());
+        assert!(!lines.iter().any(|l| l.contains("classifier switch")));
+    }
+
+    #[test]
+    fn a_failed_partition_runs_no_switch() {
+        let mut host = OkHost {
+            fail_on: Some(DANGER_CLASSIFICATION_WRITE.into()),
+            ..OkHost::default()
+        };
+        let writes = vec![classification(json!("c1"), true, None)];
+        assert!(apply_writes(&mut host, "j", &writes, Some("CHAT_DANGER_CLASSIFICATION")).is_err());
+        assert!(host.switch_checks.is_empty());
+    }
+
+    /// v4: a failing switch is caught once — logged, no further chat, the
+    /// committed job still resolves.
+    #[test]
+    fn a_failing_switch_never_fails_the_committed_job() {
+        let mut host = OkHost {
+            switch_check_fails: true,
+            ..OkHost::default()
+        };
+        let writes = vec![
+            classification(json!("c1"), true, None),
+            classification(json!("c2"), true, None),
+        ];
+        let (result, lines) = crate::test_support::captured_with(|| {
+            apply_writes(
+                &mut host,
+                "job-switch-fails",
+                &writes,
+                Some("CHAT_DANGER_CLASSIFICATION"),
+            )
+        });
+        assert!(result.is_ok());
+        assert_eq!(host.switch_checks.len(), 1, "the loop stops at the throw");
+        assert!(lines.iter().any(|l| l
+            == "ERROR quilltap::jobs_dispatcher Classifier switch failed after a committed batch job_id=job-switch-fails error=switch failed"));
     }
 }

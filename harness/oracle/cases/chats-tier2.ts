@@ -34,7 +34,21 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'create' | 'update' | 'delete' | 'incrementRefusal' | 'getRefusalLedger' | 'resetRefusalLedger';
+  kind:
+    | 'create'
+    | 'update'
+    | 'delete'
+    | 'incrementRefusal'
+    | 'getRefusalLedger'
+    | 'resetRefusalLedger'
+    | 'setConciergeMode'
+    | 'setDangerClassification';
+  /** P4.D226 (v4 `4d370a90f`): `setConciergeMode`'s columns + compare-and-set state. */
+  columns?: Record<string, unknown>;
+  expected?: string;
+  /** P4.D226: `setDangerClassification`'s telemetry + (unstored) verdict. */
+  telemetry?: Record<string, unknown>;
+  verdict?: Record<string, unknown> | null;
   id?: string;
   /** P4.D225: the ledger ops' inputs (`at` stamps the refusal; `refusedBy` is logged, never stored). */
   at?: string;
@@ -106,6 +120,21 @@ async function main(): Promise<void> {
       ledger.push({ op: 'getRefusalLedger', id: op.id, ...(await repo.getModerationRefusalLedger(op.id as string)) });
     } else if (op.kind === 'resetRefusalLedger') {
       await repo.resetModerationRefusalLedger(op.id as string);
+    } else if (op.kind === 'setConciergeMode') {
+      // P4.D226 (v4 `4d370a90f`, #75): the Concierge state's ONE writer.
+      const written = await repo.setConciergeMode(
+        op.id as string,
+        op.columns as never,
+        (op.expected ?? undefined) as never,
+      );
+      ledger.push({ op: 'setConciergeMode', id: op.id, written });
+    } else if (op.kind === 'setDangerClassification') {
+      const updated = await repo.setDangerClassification(
+        op.id as string,
+        op.telemetry as never,
+        (op.verdict ?? undefined) as never,
+      );
+      ledger.push({ op: 'setDangerClassification', id: op.id, updated: !!updated });
     } else {
       // syncVaults defaults to true; the fixture has no provisioned vaults, so
       // the summary sweep is a no-op (and is deferred in the Rust port).

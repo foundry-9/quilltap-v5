@@ -97,7 +97,10 @@
       "chatType": "salon",
       "isDangerousChat": false,
       "conciergeOverride": "OFF",
-      "messageCount": 17
+      "messageCount": 17,
+      "conciergeMode": "locked",
+      "conciergeModeSetBy": "operator",
+      "conciergeModeReason": "manual"
     },
     {
       "id": "c0000d08-0000-4000-8000-000000000001",
@@ -182,7 +185,6 @@
       "lastAt": "2020-01-01T00:00:00.000Z"
     }
   ],
-  "raceOverride": "OFF",
   "ops": [
     {
       "id": "below-1",
@@ -231,6 +233,27 @@
     },
     {
       "id": "at-3-after-switch",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d02-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "message-pattern",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "operator-returns-to-moderated",
+      "kind": "operatorFlip",
+      "chatId": "c0000d02-0000-4000-8000-000000000001",
+      "requested": "moderated"
+    },
+    {
+      "id": "after-reset-1",
       "kind": "record",
       "record": {
         "chatId": "c0000d02-0000-4000-8000-000000000001",
@@ -379,7 +402,7 @@
       }
     },
     {
-      "id": "vouched-1",
+      "id": "locked-1",
       "kind": "record",
       "record": {
         "chatId": "c0000d07-0000-4000-8000-000000000001",
@@ -394,7 +417,7 @@
       }
     },
     {
-      "id": "vouched-2",
+      "id": "locked-2",
       "kind": "record",
       "record": {
         "chatId": "c0000d07-0000-4000-8000-000000000001",
@@ -537,7 +560,22 @@
       }
     },
     {
-      "id": "flagged-1",
+      "id": "labelled-dangerous-1",
+      "kind": "record",
+      "record": {
+        "chatId": "c0000d13-0000-4000-8000-000000000001",
+        "kind": "text",
+        "purpose": "chat",
+        "refusedProfileId": "pr0000d1-0000-4000-8000-000000000001",
+        "refusedProfileName": "Gemini Pro",
+        "provider": "GOOGLE",
+        "modelName": "gemini-2.5-pro",
+        "evidence": "typed-error",
+        "rerouted": false
+      }
+    },
+    {
+      "id": "labelled-dangerous-2",
       "kind": "record",
       "record": {
         "chatId": "c0000d13-0000-4000-8000-000000000001",
@@ -551,5 +589,7 @@
         "rerouted": false
       }
     }
-  ]
+  ],
+  "raceMode": "locked",
+  "$comment": "P4.D226 (v4 `4d370a90f`, #75): re-keyed for the three states \u2014 chat d07 is LOCKED by its column (its planted legacy OFF is ignored), the race plant writes `conciergeMode = raceMode`, the dangerous-labelled Moderated chat d13 still switches on its second refusal, and `operatorFlip` returns d02 to Moderated so the next refusal starts afresh."
 }

@@ -133,8 +133,9 @@ use quilltap_core::services::context_summary_job::{handle_context_summary, Conte
 use quilltap_core::services::cost_estimation::MessageCostEstimator;
 use quilltap_core::services::creation_progress::{CreationProgressBus, CreationProgressEmitter};
 use quilltap_core::services::dangerous_content::gatekeeper_job::{
-    handle_chat_danger_classification, ChatDangerClassificationJob, RealDangerAnnouncer,
+    handle_chat_danger_classification, ChatDangerClassificationJob,
 };
+use quilltap_core::services::dangerous_content::manual_flip::RealConciergeAnnouncer;
 use quilltap_core::services::dangerous_content::moderation_wire::RealModerationProvider;
 use quilltap_core::services::dangerous_content::provider_routing::{
     DangerContentRouter, DbApiKeys,
@@ -2969,7 +2970,8 @@ impl JobHandler for ChatDangerClassificationHandler {
                 ReqwestWireTransport::new(),
             );
             let completion = self.wire.completion(db);
-            let announcer = RealDangerAnnouncer { db };
+            // v4 `4d370a90f`: the classifier's switch posts through the flip.
+            let announcer = RealConciergeAnnouncer { db };
             match handle_chat_danger_classification(db, &moderation, &completion, &announcer, &cjob)
                 .await
             {

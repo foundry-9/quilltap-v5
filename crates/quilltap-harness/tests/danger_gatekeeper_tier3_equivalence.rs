@@ -52,8 +52,9 @@ use quilltap_core::services::dangerous_content::gatekeeper::{
     ModerationOutcome, ModerationProvider,
 };
 use quilltap_core::services::dangerous_content::gatekeeper_job::{
-    handle_chat_danger_classification, ChatDangerClassificationJob, RealDangerAnnouncer,
+    handle_chat_danger_classification, ChatDangerClassificationJob,
 };
+use quilltap_core::services::dangerous_content::manual_flip::RealConciergeAnnouncer;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -431,7 +432,7 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
                 &db,
                 &moderation,
                 &completion,
-                &RealDangerAnnouncer { db: &db },
+                &RealConciergeAnnouncer { db: &db },
                 &job,
             )
             .await
