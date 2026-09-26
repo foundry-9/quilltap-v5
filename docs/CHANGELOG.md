@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — test(concierge): pin the unprefixed deprioritising line and the both-empty seat (P4.D225 unit 10)
+
+_Versions: core 0.0.1076, harness 0.0.995._
+
+Two log pins from the order's second tier: `danger_routing` now asserts the
+retired `[DangerousContent] Deprioritising…` form never appears (with a
+floor proving the new line fires), and a unit test proves the "Both safe
+and uncensored providers returned empty" line names the seat installed by a
+pre-flight reroute rather than the turn's original profile. No behavior
+change.
+
 #### 2026-09-25 — feat(concierge): refused chat turns reroute to the uncensored understudy and go on the ledger (P4.D225 unit 9)
 
 _Versions: core 0.0.1075, harness 0.0.994._

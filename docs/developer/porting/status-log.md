@@ -150813,3 +150813,21 @@ Regen outputs staged under `/tmp/p4d225/`.
   details, the DEBUG's absent `understudy_id`, the ledger records'
   `rerouted`/evidence, the understudy's `refused` row.
 - Gate: fmt + clippy (workspace) clean; `quilltap-core --lib` 2631/0; `orchestrator_tier3`, `enclave_step_tier3`, `primary_stream_tier3` green through the driver at `49059fb14`.
+
+### Unit 10 — Tier 2 item 12's two pins (+ item 13 audited)
+
+- `danger_routing_equivalence`: the silence leg on the PREFIXED
+  `[DangerousContent] Deprioritising…` form over every text case, with a
+  floor proving the unprefixed line fires at all (the exact-bytes equality
+  against v4 already pinned the new form). 42 rows with lines, green through
+  the driver at `49059fb14`.
+- `provider_failover::tests::both_empty_names_the_seat_after_a_pre_flight_
+  reroute`: the `Both … returned empty` bag names `state.effective_profile`
+  (GROK, installed by a pre-flight reroute), not the turn's original
+  ANTHROPIC profile; exact key list; the seat is what the resolver excluded.
+  Mutation (seat := the original profile) → red; restored (cmp).
+- Item 13 (retired-path sha comments) audited, all present: the same-id
+  branch (unit 9), the bug-133 gate (`story_background_job.rs`, step 10), the
+  deleted helpers (`provider_routing.rs`, the RETIRED block), the retired
+  reroute tests (`image_job_common.rs`).
+- Gate: fmt + clippy (workspace) clean; the two pins green (above).

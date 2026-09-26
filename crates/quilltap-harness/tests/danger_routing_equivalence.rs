@@ -306,6 +306,7 @@ fn danger_routing_matches_oracle() {
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
 
     // --- text cases ---
+    let mut deprioritising_rows = 0usize;
     for c in &spec.text_cases {
         let original_id = c.original_profile_id.clone().unwrap();
         let original = db
@@ -342,7 +343,25 @@ fn danger_routing_matches_oracle() {
         assert_eq!(got["reason"], want["reason"], "text {} reason", c.id);
         assert_eq!(v5_lines(&lines), v4_lines(want), "text {} lines", c.id);
         log_rows += usize::from(!v4_lines(want).is_empty());
+        // P4.D225 Tier 2 item 12: v4 moved the deprioritising line into the
+        // resolver WITHOUT its `[DangerousContent]` prefix (`8bd080267`). The
+        // equality above already pins the bytes; this is the silence leg on
+        // the old form, and the floor below proves the line fires at all.
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("[DangerousContent] Deprioritising")),
+            "text {}: the prefixed deprioritising line is retired: {lines:#?}",
+            c.id
+        );
+        deprioritising_rows += usize::from(lines.iter().any(|l| {
+            l.contains("Deprioritising uncensored candidates that cannot carry this turn")
+        }));
     }
+    assert!(
+        deprioritising_rows >= 1,
+        "no text case fired the deprioritising line — the silence leg would be vacuous"
+    );
 
     // --- image cases ---
     for c in &spec.image_cases {

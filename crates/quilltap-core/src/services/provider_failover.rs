@@ -3504,4 +3504,90 @@ mod tests {
         assert_eq!(row.outcome, RouteAttemptOutcome::Refused);
         assert!(!router.records.lock().unwrap()[0].rerouted);
     }
+
+    /// Tier 2 item 12: v4's `Both … returned empty` bag names
+    /// `state.effectiveProfile` — the seat — where it used to name the turn's
+    /// ORIGINAL `connectionProfile`. The two differ only after the Concierge's
+    /// pre-flight reroute swapped the seat, so this arm poses exactly that.
+    #[tokio::test]
+    async fn both_empty_names_the_seat_after_a_pre_flight_reroute() {
+        let router = RecordingConcierge::new(Some(dolphin()));
+        let params = base_params();
+        let provider = CannedStreamingProvider::new().with_stream(
+            "OPENROUTER",
+            "dolphin",
+            Some(0.7),
+            &params.messages,
+            vec![Ok(StreamChunk::done(None))],
+        );
+        let sink = RecordingSink::new();
+        let mut state = StreamingState {
+            // The pre-flight reroute already installed GROK as the seat.
+            effective_profile: Some(profile("pf1", "GROK")),
+            effective_api_key: "k".into(),
+            route_via: RouteAttemptVia::Concierge,
+            ..Default::default()
+        };
+        let lines = captured_async(async {
+            attempt_empty_response_recovery::<
+                _,
+                _,
+                _,
+                crate::services::fallback_repos::DbFallbackRepos,
+                crate::model::completion::CannedCompletionProvider,
+            >(
+                &provider,
+                &sink,
+                &router,
+                None,
+                None,
+                AttemptEmptyResponseRecoveryOptions {
+                    state: &mut state,
+                    tool_messages_length: 0,
+                    // Flagged: the same-provider retry is skipped.
+                    content_was_flagged_dangerous: true,
+                    danger_settings: DangerSettings {
+                        mode: "AUTO_ROUTE".into(),
+                        uncensored_text_profile_id: None,
+                    },
+                    connection_profile: profile("p1", "ANTHROPIC"),
+                    params,
+                    user_id: "u".into(),
+                    chat_id: "c".into(),
+                    character_id: "ch".into(),
+                    character_name: "Friday".into(),
+                    fallback_context: None,
+                },
+                None,
+            )
+            .await;
+        })
+        .await;
+        let l = line(
+            &lines,
+            "[DangerousContent] Both safe and uncensored providers returned empty",
+        );
+        assert!(l.starts_with("ERROR quilltap::failover"), "{l}");
+        assert!(
+            l.contains("safe_provider=GROK"),
+            "the seat, not the original: {l}"
+        );
+        assert!(!l.contains("ANTHROPIC"), "{l}");
+        assert_eq!(
+            field_keys(l),
+            [
+                "chat_id",
+                "safe_provider",
+                "safe_model",
+                "uncensored_provider",
+                "uncensored_model",
+            ],
+            "{l}"
+        );
+        // The seat is what the resolver excluded.
+        assert_eq!(
+            *router.lookups.lock().unwrap(),
+            vec![vec!["pf1".to_string()]]
+        );
+    }
 }
