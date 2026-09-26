@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-26 — docs(porting): drift check at v4 `f7f3d7bf0` — three commits past the round target, waived for the round
+
+_Docs-only change._
+
+v4 main is at `f7f3d7bf0` (`4.10.0-dev.96`), three commits past the
+Concierge-overhaul round's `acadcc7cd` target. Adds three UNPROCESSED rows
+to the drift ledger:
+
+- `read_mail` and the `list_email` → `list_mail` rename;
+- `discard_mail`, a new destructive tool;
+- the conversation-chunk cold-tier reversed and `chats.renderedMarkdown`
+  dropped, a second `DROP COLUMN`.
+
+Records the human's waiver so the round's nine lanes proceed toward
+`acadcc7cd`. The probe passes on HEAD `f7f3d7bf0` with exactly those three
+commits past the target. Targets and pins are unchanged, and the three rows
+become the next catch-up's first.
+
 #### 2026-09-25 — docs(porting): re-order the Concierge-overhaul round to fold `acadcc7cd` in — target → `acadcc7cd`, P4.D233 added (bugs 171/172)
 
 _Docs-only change._
