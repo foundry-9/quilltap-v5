@@ -12,6 +12,13 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-25 — docs(porting): P4.D225 lane complete — the order's status header
+
+_Versions: none (docs only)._
+
+Marks work order P4.D225 lane-complete with what landed, what was handed to
+the unifier, and the premises the lane measured wrong.
+
 #### 2026-09-25 — test(harness): P4.D225's census rows and the avatar reroute anchor (P4.D225 unit 12)
 
 _Versions: harness 0.0.996._
