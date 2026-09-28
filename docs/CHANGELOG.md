@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — docs(porting): order the `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118)
+
+_Docs-only change._
+
+Seven work orders under `docs/developer/porting/work-orders/`, one per lane, all cut from `main` in parallel (no stacked chain): P4.D234 the Post Office mail tools (`read_mail`, `discard_mail`, the `list_email` → `list_mail` rename; pin `12c336fad`); P4.D235 the `f7f3d7bf0` server whole (the `chats.renderedMarkdown` drop as a tolerate-both-shapes column, the D23 re-dump, the 42-pair narrowing, the on-demand render, the chunk-derived Scriptorium status, the warm-embeddings reversal); P4.D236 its client half (the badge strings and tooltips); P4.D237 the `c3eefa752` built-in prompts re-vendor + the seeder's lazy refresh + the voice-direction constants; P4.D238 the `04d6c9d52` join-avatar refresh plus the round's riders (the whole `help/` tree at `97b25fc53`, the `9ff4bbd8e` NO-PORT evidence, Tier R at the target); P4.D239 the `97b25fc53` story-background drape; P4.118 the text-side structured refusal seam the previous unification escalated. The shared §R/§S/Ownership/Verification block is byte-identical across all seven (md5-checked). The eight planning surveys are committed under `work-orders/surveys/2026-09-28-97b25fc53/`.
+
+The drift ledger's seven §3 rows are marked ORDERED. `9ff4bbd8e` is re-classed at planning: v5 never ported wardrobe image analysis (the verb is a P4.9f1 refusal arm), so the row becomes a help byte-copy plus a NO-PORT ratification, with the vertical banked by pointer. `phase-4.md` gains the round's ORDERED section.
+
 #### 2026-09-28 — docs(porting): drift check — classify `97b25fc53` from its hunks; seven commits pending
 
 _Docs-only change._

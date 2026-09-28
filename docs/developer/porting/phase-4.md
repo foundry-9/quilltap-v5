@@ -6694,6 +6694,177 @@ corpus; four stale headers/comments. Gate + versions: the round record in
    `cl100k` tokenizer (the section bound is proved through the oracle), the
    `docs/v4/CHANGELOG.md` lag.
 
+## The `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118) — ORDERED 2026-09-28
+
+**Baseline `acadcc7cd`; v4 `main` HEAD `97b25fc53` (SEVEN non-merge commits
+past: `39bc98ffc` `read_mail` + the `list_email` → `list_mail` rename,
+`12c336fad` `discard_mail`, `f7f3d7bf0` the warm embeddings + the
+`chats.renderedMarkdown` DROP + the on-demand render, `9ff4bbd8e` the
+wardrobe outfit proposal, `c3eefa752` the 21 built-in prompts + the seeder
+refresh + the voice direction, `04d6c9d52` the join-avatar refresh,
+`97b25fc53` the story-background drape); `bugfix` `1a2b2164c` and `release`
+`8fbf2afe0` unmoved; the checkout on `main`, CLEAN at the planning probe
+(after a `git fetch`). PIN REQUIRED, PER LANE: P4.D234 → `12c336fad` (the
+LAST pin before the column drop), P4.D235/P4.D236 → `f7f3d7bf0`, P4.D237 →
+`c3eefa752`, P4.D238 → `04d6c9d52` (+ `97b25fc53` for its riders), P4.D239
+→ `97b25fc53`, P4.118 → `97b25fc53` (its paths unmoved since the baseline,
+measured). All seven §3 rows marked `ORDERED(…)`. Seven lanes, ALL from
+`main`, NO stacked chain (v4's commits touch disjoint v5 surfaces).**
+
+**Measured at planning and written into the orders (the eight surveys are
+committed under `work-orders/surveys/2026-09-28-97b25fc53/`):** THREE
+ledger premises were wrong and one row was mis-classed — `9ff4bbd8e`'s
+"PORT (small)" targets a surface v5 NEVER PORTED (`api/wardrobe.rs:1191`
+is the P4.9f1 refusal arm; no vision prompt anywhere in v5), so it becomes
+a help byte-copy + a NO-PORT ratification on P4.D238's evidence with the
+full vertical banked as a rider; `c3eefa752`'s refresh is a LAZY write
+inside the template reads (no boot write in v4 or v5, which already seeds
+at that site through the writer) and none of the 21 prompt files is
+append-only; `f7f3d7bf0`'s settings/route/component hunks are
+comment-only, `spine.rs` and `embedding_scheduler.rs` are false hits, and
+"the render must match the stored bytes" is a false premise (a wall-clock
+header line — the proof is a frozen-clock live-vs-live render). Two
+structural facts shape the round: (1) **the fixture rule** — a real-DB
+fixture built through v4's `generateDDL` at any pin ≥ `f7f3d7bf0` lacks
+the column v5 `main`'s strict chat read binds, so every lane but P4.D234
+builds fixtures from an `acadcc7cd` worktree and runs oracles from its own
+pin (v4's oracles run NO migrations, measured, so the cross-vintage open
+is expected to succeed and each lane confirms it once); (2) **the
+refusal-seam premise error** — v5 does NOT match v4's text HTTP error
+message bytes (no such family exists; the stream recorder hard-codes
+200), so P4.118 attaches v4's rendering as the refusal SIDE only and
+leaves every message byte alone.
+
+- **P4.D234 — the Post Office mail tools (Rust core + harness, from `main`,
+  pin `12c336fad`, a mid tier — Opus for the five judgment calls)**: ONE
+  `resolve_mail_path` parser (the load-bearing check ORDER) + `letter_file_
+  name` + `discard_letter` with a NEW tier-1 family; the rename with no
+  alias and no data migration; `read_mail` inside the both-connections
+  writer closure (the announced flag is a content rewrite); `discard_mail`
+  through the `delete_with_gc` chokepoint WITHOUT the protected-document
+  check or a Librarian announcement (v4's property, pinned) and added to
+  `DESTRUCTIVE_TOOL_NAMES`; the catalogue regenerated 59 → 61; the
+  inventory 41 → 43; letters by FILE NAME across the actions, the Suparṇā
+  context and `deliver.rs`'s `in_reply_to` storage (shared with the Salon
+  compose route); ~8 families re-recorded incl. `orchestrator_tier3` (the
+  ledger omitted it), the covenant-bypass + protected-link + GC-parity arms.
+  `docs/developer/porting/work-orders/p4.d234-post-office-mail-tools.md`.
+- **P4.D235 — `f7f3d7bf0` SERVER whole (Rust core + host + harness, from
+  `main`, pin `f7f3d7bf0`, the MOST CAPABLE tier)**: the SUBSTRATE commit
+  first — `renderedMarkdown` OUT of `ALL_COLUMNS` with the E.2 twin test,
+  the INSERT renumbered, the `.qtap` import strip, the two raw-SQL sites
+  co-landed; the D23 re-dump at the pin (ONE line) + the export key order
+  regenerated (it was still stale on `conciergeOverride`); the 42
+  chats-bearing pairs NARROWED through v4's REAL migration via the
+  migrator's `--module` arm + the vintage trio rebuilt + the full sweep;
+  ONE `render_chat_conversation` over `resolve_speaker_names` under the
+  injected clock; ONE `derive_scriptorium_status` (two edges invert); the
+  readers counting chunks over every chat; the two tools rendering LIVE
+  with v4's two new strings (`scriptorium_tools` + `tool_dispatch` reworked
+  with real message corpora and a frozen `Date` — the heaviest step); the
+  reconcile's arm A on chunk absence; the warm-embeddings reversal
+  (`clear_embeddings_for_chat` deleted, four stale counters/gates gone,
+  the dimension reconcile's stale NULLing deleted, the render reconcile's
+  gate + WARN gone — the first-boot re-embed, MEASURED free before any
+  boot); seven absent v4 log lines restored. `docs/developer/porting/
+  work-orders/p4.d235-rendered-markdown-drop-warm-embeddings-server.md`.
+- **P4.D236 — `f7f3d7bf0` CLIENT (SPA only, from `main`, pin `f7f3d7bf0`,
+  Sonnet-class)**: the shared Scriptorium badge's three strings REWORDED
+  (recorded from the pin, pinned by byte) and moved with every card
+  `title=` into `qt-tooltip` with aria-labels on BOTH cards; the
+  `m4-salon` e2e selector re-keyed off the vanished `title`; the DTO
+  UNCHANGED (§S.1) so no gate. `docs/developer/porting/work-orders/
+  p4.d236-scriptorium-badge-tooltips-spa.md`.
+- **P4.D237 — `c3eefa752` (Rust core + harness, from `main`, pin
+  `c3eefa752`, Opus)**: the 21 bodies re-vendored by the dump (the guard
+  is ALREADY RED on `main` against the live checkout); `needs_seeding`
+  widened from names-only to the four-field NULL-as-different `LIMIT 1`
+  comparison on the read pool with a raw `seed_update`-style UPDATE in the
+  writer pass (`now` once before the lookup) — at v4's LAZY site, NO boot
+  step; both seed INFO lines renamed (`source` for `promptId`) + the new
+  refresh INFO; the two constants at their SEVEN sites (two generated
+  modules regenerated; the two hand-kept export lists + DOC map grown so
+  `generators_leaf` can see them; `FIRST_MESSAGE_PROMPT` → a `fn`); the
+  routes family re-cased (its load-bearing never-updated case FLIPS).
+  `docs/developer/porting/work-orders/p4.d237-builtin-prompts-refresh-
+  voice-direction.md`.
+- **P4.D238 — `04d6c9d52` + the RIDERS (Rust core + harness, from `main`,
+  pins `04d6c9d52` + `97b25fc53`, Sonnet-class; Opus if the `caller_context`
+  rider is taken)**: the file-private refresh helper on the add path
+  (after the dress) and the reactivate path (gated on `characterId` alone
+  — whether or not an outfit was re-applied); `Err` → v4's fallback, the
+  WARN recorded mock-only; `chat_cast_routes` widened to dump `jobs` (it
+  is BLIND today) with in-case-planted arms (no pair rebuilt); the
+  `force`-less payload pin (the P4.D188 cache rebinds); `help/**` WHOLE at
+  `97b25fc53` (13 files, 129 stays 129, `help_tree_equivalence` at the
+  pin); the `9ff4bbd8e` NO-PORT evidence; Tier R at the target; the mirror
+  pre-list. Named for the NEXT round: v5's wardrobe TOOLS never call the
+  avatar trigger where v4's `notifyWardrobeChanged` does. `docs/developer/
+  porting/work-orders/p4.d238-join-avatar-refresh-riders-help-tree.md`.
+- **P4.D239 — `97b25fc53` (Rust core + harness, from `main`, pin
+  `97b25fc53`, Sonnet-class with the survey's generator diff)**: the
+  generator learns to inline exactly ONE named single-quoted constant
+  (count-checked) and emits `CONCEALMENT_MARKER` + `APPEARANCE_CONCEALMENT_
+  PROMPT` as their own consts (the block 1968 → 2505, the assembly 5114 →
+  5651, a Rust self-check pin); `AppearanceSanitizeMode` on both
+  functions; the mode-dependent `undressed` key (absent on the fallback in
+  both modes); the merge made THREE-WAY; the marker pushed LAST joined by
+  `". "` (no de-dup); the pre-call DEBUG + v4's three pre-existing absent
+  lines restored; `generate_image` passing `Redress` explicitly with the
+  imggen pair as the neutrality proof; the gate family grown ~8 rows, the
+  story family regenerated cross-vintage. `docs/developer/porting/
+  work-orders/p4.d239-story-background-drape.md`.
+- **P4.118 — the text-side structured refusal seam (Rust core + harness,
+  from `main`, pin `97b25fc53`, the MOST CAPABLE tier for the
+  reconstruction + recorder)**: `text_http_refusal(provider, status, body)`
+  keyed by `ProviderKind` reconstructing v4's thrown SDK error (the openai
+  SDK's `{error: body}` normalization + `makeMessage`; Anthropic's
+  whole-body `error`, no code; Google/OpenRouter/Ollama message-only; Grok's
+  string) as the refusal SIDE only — the message bytes UNCHANGED (§S.5);
+  attached at the six text HTTP sites; `CompletionError.refusal` for the
+  cheap path (the first production caller of `FallbackError::with_
+  refusal`); `primary_stream.rs:1608` keeping the side; a NEW wire family
+  recording v4's REAL plugins against posed 4xx bodies (red-first on
+  `main`), the `primary_stream_tier3` `sdkError` reroute arm + its uncoded
+  twin, a `cheap_llm_fallback` coded arm; Tier 2: the two OpenAI decoders'
+  dropped mid-stream error frames. Named for a ruling: v4 fails over an
+  OpenRouter SDK-path 403 as `provider-error` where v5's `HTTP 403:` does
+  not. `docs/developer/porting/work-orders/p4.118-text-side-structured-
+  refusal-seam.md`.
+
+**Shared contract (§S, byte-identical in all seven — md5-checked at
+commit):** §S.1 the chat card's Scriptorium fields (P4.D235 → P4.D236: the
+DTO unchanged; the derivation and the three strings); §S.2 the
+data-retention settings (nobody moves them); §S.3 the tool catalogue
+(P4.D234 alone: 59 → 61, the destructive list, 41 → 43); §S.4 the sanitize
+mode (P4.D239 alone); §S.5 the refusal side (P4.118 alone; the message
+bytes frozen); §S.6 STOP on anything else. **Fences:** `api/types.rs` +
+`engine.rs` FROZEN (census 451 unmoved by everyone); `tools/executor.rs`
+P4.D234's with AT MOST two marked `run_*` arms from P4.D235 for the tools'
+clock; `db/chats.rs` P4.D235's (the equipped read P4.D238 needs lives in
+`db/chats_outfits.rs`); `help/**` P4.D238's alone; `apps/web/**` P4.D236's
+alone with `core-contract.ts` frozen; `orchestrator_tier3` P4.D234's,
+`primary_stream_tier3` P4.118's; committed pairs narrowed by P4.D235
+ALONE, every other lane plants rows in-case. **Execution:** all seven in
+wave 1 (at most TWO Rust full gates at once, 133 GB free); cherry-pick
+order P4.D234 → P4.D237 → P4.D239 → P4.D238 → P4.118 → P4.D235 → P4.D236;
+the unifier runs the full sweep, Tier R, the workspace suite, the SPA gate
+and the full Playwright suite from the `97b25fc53` pin, ratifies
+`9ff4bbd8e` NO-PORT on P4.D238's evidence, refreshes the mirror
+(`API.md`, `DDL.md`, `db-size-reduction-spec.md`, the stale `docs/v4/
+CHANGELOG.md`), and writes the dogfood notes (the DROP's live consequence,
+the first-boot re-embed measurement + the "v4 may already have warmed
+Friday" probe, the badge inversion). **Left out:** the wardrobe
+image-analysis vertical (`9ff4bbd8e`'s code — M–L, a human ruling to
+un-refuse an LLM-backed verb, vision spend; banked by pointer); the
+wardrobe-tools avatar seam (P4.D238 found it; its own order); the smalls
+lane from the `acadcc7cd` round's review NITs (its file set brushes
+P4.D235's chat-read files — next round); the OpenRouter 403 ruling and the
+image helper's flat-body finding (P4.118 records both); the owed Host
+dogfood pass (AFTER this round — a Friday copy past `-dev.96` opens on v5
+only once P4.D235 lands, and the re-embed spend needs P4.D235's
+measurement recipe first).
+
 ## The `acadcc7cd` Concierge-overhaul drift catch-up round (P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233) — ORDERED 2026-09-25, UNIFIED 2026-09-28
 
 **UNIFIED on `main` (2026-09-28) — ALL NINE LANES; the oracle baseline MOVES
