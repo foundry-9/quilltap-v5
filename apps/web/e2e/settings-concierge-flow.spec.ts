@@ -16,23 +16,10 @@ import { E2E_PASSPHRASE } from './support/env';
  * following the On Duty switch across a reload.
  *
  * The two render beats read nothing stored — the tab draws the defaults over an
- * absent `conciergeSettings` — so they run today. The two WRITE beats are
- * GATED below.
+ * absent `conciergeSettings`. The two WRITE beats ride P4.D227's column, its
+ * whole-object replace and its retired-key 400; they went live at the
+ * chain's unification.
  */
-
-/**
- * ACTIVATE-AT-UNIFY (§R.11): the settings row stores `conciergeSettings` only
- * once the sibling server lane P4.D227 lands (its column, the whole-object
- * replace, the retired-key 400). Until then the PUT has nowhere to put the
- * object, so the round-trips cannot be walked. A NAMED CONSTANT, never a
- * capability probe — an unknown settings key reaches a DEFINED verb and is
- * dropped or refused, which a probe would read as "ready". The unifier flips
- * this to `true` after the pick; that run is the beats' first execution.
- */
-const P4D227_SERVER_LANDED = false;
-const GATE_REASON =
-  'awaits P4.D227 — chat_settings.conciergeSettings lands with the server chain (activates at unification)';
-
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {
   const passphrase = page.locator('#qt-passphrase');
@@ -124,7 +111,6 @@ test.describe('P4.D230 — the Concierge Settings tab', () => {
   test('a desk pick round-trips as the whole conciergeSettings object → reload → persisted', async ({
     page,
   }) => {
-    test.skip(!P4D227_SERVER_LANDED, GATE_REASON);
     await openConcierge(page, '&section=uncensored-desk');
 
     // The crafter lists every connection profile (no compatibility filter), so
@@ -171,7 +157,6 @@ test.describe('P4.D230 — the Concierge Settings tab', () => {
   });
 
   test('the off-duty banner follows the On Duty switch across a reload', async ({ page }) => {
-    test.skip(!P4D227_SERVER_LANDED, GATE_REASON);
     await openConcierge(page);
     const onDuty = page.locator('#on-duty input[type="checkbox"]');
     const banner = page.getByText(

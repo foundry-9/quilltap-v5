@@ -19,25 +19,18 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
  *
  * ## Two halves
  *
- * The PRESENCE beats are the client's alone, and run on `main` today: they
+ * The PRESENCE beats are the client's alone: they
  * plant the rows / the state by rewriting the `chatGet` dispatch's RESPONSE in
  * the browser (`page.route` → `route.fetch()` → edit → `fulfill`) — the real
  * server answers, the real SPA renders, only the planted rows are synthetic.
  * That is the honest way to reach a Locked chat, a refused picture's TOOL row
- * and a Lantern refusal on a fixture that can hold none of them yet (`main`'s
- * chats carry no `conciergeMode`; nothing on `main` writes an image trail or a
- * `background-refused` bubble).
+ * and a Lantern refusal on a fixture that holds none of them.
  *
  * The ROUND-TRIP beats — a 409 `no-understudy` worded as v4 words it, and a
  * live re-roll on the uncensored desk against the mock LLM — need the two §S.3
  * verbs (`messageRetryUncensored`, `chatRetryImageUncensored`), which are
- * P4.D228's. They are GATED behind {@link P4D228_SERVER_LANDED}; the unifier
- * flips it after the pick and runs them live for the first time.
+ * P4.D228's. They went live at the chain's unification.
  */
-const P4D228_SERVER_LANDED = false;
-const GATE_REASON =
-  'awaits the Concierge server chain (P4.D225→P4.D228: the two §S.3 retry verbs + conciergeSettings); flipped at unification';
-
 const CHAT_TITLE = 'Solo Voyage';
 
 type Json = Record<string, unknown>;
@@ -243,8 +236,6 @@ test.describe('P4.D229 — "Try uncensored": where the buttons are', () => {
 });
 
 test.describe('P4.D229 — "Try uncensored": the round trip', () => {
-  test.skip(!P4D228_SERVER_LANDED, GATE_REASON);
-
   test('a line retry with no uncensored desk is refused in the Concierge’s words', async ({
     page,
   }) => {

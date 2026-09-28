@@ -41,8 +41,8 @@ import {
  * through the CLI each time, which is what proves the ring followed the STATE
  * and not the classifier's `isDangerousChat` telemetry (untouched throughout).
  *
- * GATED on the server chain: `main`'s server 400s the three new values and
- * its chats carry no `conciergeMode` column (P4.D226 widens the fixture).
+ * Rides the server chain (P4.D225 → P4.D228; P4.D226 widens the fixture with
+ * the `conciergeMode` column).
  *
  * 'Solo Voyage' is the fixture's 2×USER + 2×ASSISTANT chat, so the counts are
  * exact: four avatars, two of which may ring.
@@ -57,15 +57,9 @@ const MAIN_FIXTURE = resolve(FIXTURES_DIR, 'salon-main.db');
 const MOUNT_FIXTURE = resolve(FIXTURES_DIR, 'salon-mount.db');
 const USER_TABLES = ['characters', 'chats', 'tags', 'groups', 'projects', 'files'];
 
-const P4D228_SERVER_LANDED = false;
-const GATE_REASON =
-  'awaits the Concierge server chain (P4.D225→P4.D228: the three states + the stored conciergeMode trio); flipped at unification';
-
 let server: ChildProcess | undefined;
 
 test.describe('P4.69 — the dangerous-chat avatar ring', () => {
-  test.skip(!P4D228_SERVER_LANDED, GATE_REASON);
-
   test.beforeAll(async () => {
     test.setTimeout(120_000);
     const web = webBinary();

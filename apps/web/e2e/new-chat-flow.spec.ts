@@ -206,9 +206,7 @@ test.describe('P4.6q — New-Chat vertical (list → /salon/new → create → l
    * `conciergeState` key at all under the (default) Moderated default, and the
    * picker is a FLAT three-option list whose first option says "(default)".
    *
-   * UNGATED: the SPA sends no key, so `main`'s server is indifferent — this
-   * beat runs today. The pick half (a three-state value on the wire) is its
-   * gated sibling below.
+   * The pick half (a three-state value on the wire) is its sibling below.
    */
   test('the create body omits conciergeState by default, under a flat three-state picker', async ({
     page,
@@ -253,8 +251,6 @@ test.describe('P4.6q — New-Chat vertical (list → /salon/new → create → l
   test('picking Unmoderated at creation lands an Unmoderated chat with the Concierge’s bubble', async ({
     page,
   }) => {
-    test.skip(!P4D228_SERVER_LANDED, GATE_REASON);
-
     const bodies: Record<string, unknown>[] = [];
     await page.route('**/api/dispatch', async (route) => {
       const data = route.request().postDataJSON() as Record<string, unknown> | null;
@@ -319,18 +315,6 @@ async function openChatDrawer(page: Page): Promise<void> {
     .first();
   await header.click();
 }
-
-/**
- * ACTIVATE-AT-UNIFY (P4.D229). The three-value `conciergeState` on the
- * `chatCreate` verb is the server chain's (P4.D226 serves it; the chain is
- * P4.D225 → P4.D228). On `main` the verb still takes the four retired values
- * and 400s `unmoderated`, so the pick beat above would fail for a reason that
- * says nothing about the client. The unifier flips this after the pick and
- * runs the beat live.
- */
-const P4D228_SERVER_LANDED = false;
-const GATE_REASON =
-  'awaits the Concierge server chain (P4.D225→P4.D228: the three-value conciergeState on chatCreate); flipped at unification';
 
 /**
  * The helper sentences this spec reads back, quoted from the ONE shared

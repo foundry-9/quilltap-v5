@@ -23,13 +23,9 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  *      Chats. Toggling it off brings them back.
  *   3. The header pill's bubble, which v4 places BELOW the toolbar.
  *
- * ## ACTIVATE-AT-UNIFY (P4.D229)
- *
- * Everything here waits on the Concierge server chain (P4.D225 → P4.D228):
- * `main`'s server 400s the three new values the seeding dispatches, and its
- * list payloads carry the retired four-state `conciergeState`. The whole file
- * is gated by ONE constant, so it activates in one flip and gets its first live
- * run under the unifier's eye (the gated-beat first-run rot class).
+ * Everything here rides the Concierge server chain (P4.D225 → P4.D228): the
+ * three states on the flip verb and the list payloads. The file was gated on
+ * that chain while the lanes ran and went live at their unification.
  *
  * ## Recorded coverage gap — the bubble's `Categories` line and the
  * Concierge's own sentence
@@ -40,11 +36,6 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * The unit specs pin both (`concierge-mark.spec.ts`, `conversation-header.spec
  * .ts`, `recent-chat-item.spec.ts`, the presentation oracle).
  */
-const P4D228_SERVER_LANDED = false;
-const GATE_REASON =
-  'awaits the Concierge server chain (P4.D225→P4.D228: the three states on the flip verb and the list payloads); flipped at unification';
-
-test.skip(!P4D228_SERVER_LANDED, GATE_REASON);
 
 /** The states this walk drives, and what each should wear. */
 const STATES = [

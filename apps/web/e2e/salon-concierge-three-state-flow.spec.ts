@@ -41,17 +41,10 @@ import {
  * the Concierge's line retry (§S.3's `messageRetryUncensored` answers the bare
  * token `locked`), which is why the UI offers no "Try uncensored" there.
  *
- * ## ACTIVATE-AT-UNIFY
- *
- * Everything here is the server chain's (P4.D225 → P4.D228): `main`'s server
- * takes the four retired values, and its chats carry no `conciergeMode` trio
- * (P4.D226 widens the fixture). The unifier flips
- * {@link P4D228_SERVER_LANDED} after the pick and runs the walk live.
+ * Everything here is the server chain's (P4.D225 → P4.D228; P4.D226 widens
+ * the fixture with the `conciergeMode` trio). The walk went live at the
+ * chain's unification.
  */
-const P4D228_SERVER_LANDED = false;
-const GATE_REASON =
-  'awaits the Concierge server chain (P4.D225→P4.D228: the three states, the stored trio, the retry verbs); flipped at unification';
-
 const CONCIERGE_PORT = 4331;
 const BASE = `http://127.0.0.1:${CONCIERGE_PORT}`;
 const INSTANCE_DIR = resolve(ARTIFACTS_DIR, 'concierge-instance');
@@ -114,8 +107,6 @@ async function dispatch(
 }
 
 test.describe('P4.D229 — the Concierge three-state per-chat control', () => {
-  test.skip(!P4D228_SERVER_LANDED, GATE_REASON);
-
   test.beforeAll(async () => {
     test.setTimeout(120_000);
     const web = webBinary();
