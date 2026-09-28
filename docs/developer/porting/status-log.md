@@ -149866,6 +149866,285 @@ Salon Images switch on a real transcript (a crafted-alt image included); the
 `@` menu over a real cast; the `:` typeahead after Shift+Enter; the
 corrupt-`.dbkey` 401 and the read-only-`.dbkey` 500 + line.
 
+## P4.D232 — the `6d0f88d65` SDK-bump regen event + the `83d0c969b` / `a8292547a` NO-PORT ratifications + Tier R at the round target (2026-09-28, branch `claude/p4-sdk-bump-regen-riders-b7076a`)
+
+Order: `work-orders/p4.d232-sdk-bump-regen-riders-bug-170-specs-ratified.md`.
+Cut from `main` `4345dbb5d`. Pin `/tmp/qt-v4-pin-p4d232-acadcc7cd`
+(`git -C "$PIN" rev-parse HEAD` = `acadcc7cd`, `ls -ld` of the literal path
+checked; `git show acadcc7cd:lib/chat/apply-chat-continuation.ts` names
+`findLeftBehindCharacters` twice), the three symlink classes (root,
+`packages/quilltap`, all 15 `plugins/dist/*/node_modules`). Node
+`$HOME/.nvm/versions/node/v24.13.1/bin` first on PATH (`node -v` =
+v24.13.1) for every regen.
+
+### §R.2 probe
+
+Run at lane start and before each regen batch: branch `main`, HEAD
+`04d6c9d52`, tree CLEAN, `acadcc7cd..main` = exactly the six waived commits
+(`04d6c9d52 c3eefa752 9ff4bbd8e f7f3d7bf0 12c336fad 39bc98ffc`),
+`1a2b2164c..bugfix` empty — PASS under the human's 2026-09-28 waiver
+extension (ledger §1). Every regen ran from the `acadcc7cd` pin, never HEAD.
+**The SDK stamps come from the CHECKOUT, not the pin** (the pin's
+`node_modules` are symlinks): openai 7.23.0, `@openrouter/sdk` 1.3.28,
+`@anthropic-ai/sdk` 0.115.0, `@google/genai` 1.52.0.
+
+### The "before" (the guard on the base commit)
+
+`cargo test -p quilltap-harness --test provider_sdk_version_guard` with the
+base constants: `every_installed_provider_sdk_matches_the_recorded_version`
+FAILED on exactly the nine locations the order named — root `openai` +
+root `@openrouter/sdk`; `openai` under deepseek / grok / nanogpt / openai /
+openai-compatible / z-ai; `@openrouter/sdk` under openrouter (all "recorded
+7.20.0 / 1.3.11, installed 7.23.0 / 1.3.28"). ⚠ That run's compile finished
+AFTER the `request-envelopes` re-record had landed in the tree, so its half
+2 is not the base's half 2: it failed with `request-envelopes: 216 openai
+stamp(s) are not the recorded 7.20.0` — which is the guard's "re-record
+without a constant bump" red, observed for real (the red-first leg for the
+constant move). The base's own half 2 was green (the order's measurement;
+the corpora read 7.20.0 / 1.3.11 at `4345dbb5d`).
+
+### Item 1 + 2 — constants moved; `request-envelopes` re-recorded, PROVEN stamp-only
+
+```
+cp harness/oracle/fixtures/request-envelopes/request-envelopes.recorded.ndjson /tmp/p4d232/re.before.ndjson
+rm -f harness/oracle/fixtures/request-envelopes/request-envelopes.recorded.ndjson
+PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH \
+  V4=/tmp/qt-v4-pin-p4d232-acadcc7cd V5=<worktree> \
+  bash harness/oracle/providers/regenerate-request-envelopes.sh
+```
+
+Builder's last line `done — …/request-envelopes.recorded.ndjson`, exit 0,
+367 rows (unchanged). Counts before → after: `7.20.0` 216 → 0; `7.23.0`
+0 → 216; `1.3.11` 14 → 0; `1.3.28` 0 → 14; `v24.13.1` 260 → 260; `0.115.0`
+44 → 44; `Quilltap/unknown` 366 → 366 (the order's "352" counted a
+narrower pattern — every occurrence is unchanged, which is the claim).
+Changed lines: **230** (= 216 + 14; one stamp per row). **The proof:**
+`gsed` the two substitutions (`"x-stainless-package-version":"7.20.0"` →
+`7.23.0`; `speakeasy-sdk/typescript 1.3.11 ` → `1.3.28 `) over the OLD file,
+then `cmp` against the NEW file — **identical**. No body key, header NAME,
+`x-stainless-timeout`, url, or row order moved. The OpenRouter UA is
+`speakeasy-sdk/typescript 1.3.28 2.914.0 1.0.0 @openrouter/sdk` — the
+generator (2.914.0) and OpenAPI (1.0.0) tokens unmoved across the 17-release
+1.3.11 → 1.3.28 jump. `RECORDED_OPENAI_SDK` → `"7.23.0"`,
+`RECORDED_OPENROUTER_SDK` → `"1.3.28"`; the stale "Measured 2026-09-22"
+paragraph rewritten with this measurement.
+
+After: `every_installed_provider_sdk_matches_the_recorded_version` **ok**;
+`the_recorded_corpora_carry_exactly_the_recorded_sdk_versions` **FAILED —
+the ONE designed red of this lane**: `image-dialects: 8 openai stamp(s) are
+not the recorded 7.23.0` (P4.D225's corpus, §S.4 — GREEN on the union once
+its re-record lands; not re-recorded here). `request_builder_equivalence`
+ok (1 test) and `tool_wire_call_site` ok (7) — they compare a header SUBSET
+that deliberately excludes `x-stainless-*` and normalizes the UA, so a
+stamp-only re-record cannot move them; measured green, as predicted.
+
+### Item 3 — the OpenRouter pricing oracle at 1.3.28
+
+```
+STAGE=/private/tmp/p4d232/pricing-stage; rm -rf $STAGE; mkdir -p $STAGE
+cp <worktree>/harness/oracle/cases/openrouter-sdk-pricing.test.ts $STAGE/
+cd /tmp/qt-v4-pin-p4d232-acadcc7cd
+PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH \
+QT_ORACLE_OUT=/tmp/p4d232/oracle-openrouter-sdk-pricing.ndjson \
+  npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE" \
+    --transformIgnorePatterns "node_modules/(?!(@openrouter/sdk|jose)/)" \
+    -- 'openrouter-sdk-pricing\.test\.ts$'
+```
+
+The root SDK resolved to 1.3.28 (`node -p require(...)`). 1 suite / 1 test
+passed; 5 scenarios (`single-page-real-models` 1 page / 3 models,
+`single-page-at-499` 1 / 499, `two-page-pagination` 2 / 503,
+`three-page-pagination` 3 / 1003, `empty-catalogue` 1 / 0) — every emitted
+model carries a non-null `contextLength`, so the real SDK's remap ran (not
+the `__mocks__` stub). `openrouter_sdk_pricing_equivalence` **ok**. No core
+change (the remap table + page rule unmoved, as measured). Header's "1.2.2"
+corrected. The oracle is not committed.
+
+### Item 4 — the neutrality set (each re-run at the pin and `cmp`'d)
+
+| leg | command | result |
+|---|---|---|
+| `google-wire` (genai 1.52.0) | `regenerate-google-wire.sh` with `V4=$PIN` into the committed path after `rm -f` | 22 rows, **`cmp` IDENTICAL** to the committed file |
+| `streams/chat_completions_sse/{deepseek,z-ai,openai-compatible,nanogpt}` | `record-stream-fixtures.mjs` per provider from `$PIN/plugins/dist/<plugin>`, `--out /tmp/p4d232/streams/<p>.recorded.ndjson` | 5 / 1 / 3 / 11 rows, **all four `cmp` IDENTICAL** |
+| provider manifests | `cd $PIN && node <worktree>/harness/oracle/providers/gen-provider-manifests.mjs /tmp/p4d232/manifests` | "generated 11 manifests"; **`diff -r` against `crates/quilltap-core/src/provider_manifest/manifests` EMPTY** |
+
+The order said "15 manifests" — there are **11** (ten LLM providers +
+`search_serper`); the generator emits 11, the directory holds 11. The
+recorders ARE deterministic across regens for these legs (a byte `cmp`
+sufficed). Families by name, all **ok**, zero `SKIP:`:
+`request_builder_google_wire_equivalence` (1), `stream_decoders_equivalence`
+(5), `provider_registry_equivalence` (1; oracle regenerated at the pin:
+`cd $PIN && npx tsx <worktree>/harness/oracle/cases/provider-registry.ts >
+/tmp/p4d232/oracle-provider-registry.ndjson`, 278 lines). NOT touched:
+`image-dialects`, `response-bodies`, the four #73-moved stream files.
+
+### Item 8 — the `RECORDED_NODE` arm (Tier 2, landed)
+
+A third test, `the_recorded_corpora_carry_the_recorded_node_runtime`, over
+the 290 runtime stamps (`x-stainless-runtime-version` 260 in
+`request-envelopes` + 8 in `image-dialects`; `gl-node/` 22 in
+`google-wire`), presence required in all three. Its own test so the
+designed `image-dialects` SDK red cannot mask it. GREEN on this branch.
+
+### Mutation proofs (reverts by file backup, `cmp`-verified)
+
+| proof | edit | result |
+|---|---|---|
+| **M1** | ONE `"x-stainless-package-version":"7.23.0"` → `7.20.0` in the re-recorded `request-envelopes` | `the_recorded_corpora_carry_exactly_the_recorded_sdk_versions` fails on **`request-envelopes: 1 openai stamp(s) are not the recorded 7.23.0: ["7.20.0"]`** (the first corpus asserted, so it pre-empts the designed image-dialects red); the other two tests pass |
+| **M2** | ONE `"x-stainless-runtime-version":"v24.13.1"` → `v24.18.0` | `the_recorded_corpora_carry_the_recorded_node_runtime` fails on **`request-envelopes…: 1 node runtime stamp(s) are not the recorded v24.13.1: ["v24.18.0"]`**; the SDK test's red is unchanged (the designed image-dialects one) |
+
+### Item 5 — the NO-PORT ratifications (the ledger rows retire at unification; the unifier writes the ledger)
+
+- **`83d0c969b`** (bug 170) — 9 files: `README.md`, NEW
+  `__tests__/unit/app/salon/hooks/useImpersonation.set-active-speaker.test.tsx`,
+  `app/salon/[id]/hooks/useImpersonation.ts` (the ONE code hunk: `method:
+  'PUT'` → `'POST'` on the `?action=set-active-speaker` fetch),
+  `docs/CHANGELOG.md`, `docs/developer/bugs.md`, NEW
+  `docs/developer/bugs/fixed/bug-170-speaker-switch-wrong-method.md`,
+  `package-lock.json`, `package.json`, `packages/quilltap/package.json`.
+  No `lib/`. **v5 NOT AFFECTED, measured:** the speaker pick is a dispatch
+  verb with no HTTP method — `salon-conversation.ts:454`
+  `(selectSpeaker)="onSelectSpeaker($event)"` → `:2583` `onSelectSpeaker` →
+  `:2590` `type: 'chatSetActiveSpeaker'` through `core-transport.ts:81`
+  (`POST /api/dispatch`; inside Tauri, IPC) → `api/types.rs:353`
+  `ChatSetActiveSpeaker` → `engine.rs:1924` → `salon.rs:1925`
+  `chat_set_active_speaker`. The REST edge lists `set-active-speaker` in
+  `CHAT_POST_ACTIONS` only (`wardrobe_routes.rs:425`); no PUT list names it.
+  v4's bug file says "v5 status: Unchecked" — the answer is **Not affected
+  (dispatch, no HTTP method)**; the upstream note is the human's.
+- **`a8292547a`** (#72, the overhaul specs) — 9 files, all prose:
+  `.claude/commands/update-documentation.md`, `docs/CHANGELOG.md`,
+  `docs/developer/features/ROADMAP.md`, `concierge-overhaul.md` + the five
+  `concierge-overhaul-phase-{1..5}-*.md`. No `lib/`, `app/`, `help/`,
+  `packages/`, DDL or version hunk. NO-PORT (the mirror copies them — below).
+- **`6d0f88d65`** (code half) — 51 files: root `package.json` +
+  `package-lock.json`, `README.md`, `docs/CHANGELOG.md`, `packages/
+  {plugin-types,plugin-utils,theme-storybook}` lockfiles,
+  `packages/plugin-utils/{package.json,src/version.generated.ts}` (2.6.3,
+  installed nowhere), `packages/quilltap/package.json`, and under
+  `plugins/dist/` 15 `manifest.json` + 15 `package.json` + 11 rebuilt
+  `index.js` (anthropic, curl, deepseek, default-system-prompts, google,
+  mcp, nanogpt, ollama, openai-compatible, openrouter, search-serper; NOT
+  grok/openai/z-ai — #73 `8bd080267` had already rebuilt those at 7.23.0,
+  so **the regen event began at #73**; no recorder reads a bundle for
+  request bytes and the manifest generator's output is byte-identical, so it
+  changes nothing). No `lib/`, `app/`, `help/`, DDL, `__tests__/` or `zod`
+  hunk. NO-PORT for code; the REGEN half is items 1–4 above.
+
+### Item 6 — the `docs/v4/` mirror pre-list (bytes at `acadcc7cd`; the unifier writes the mirror)
+
+| path under `docs/v4/developer/` | v4 @ `acadcc7cd` | mirror now | last mover in `b0b6656b5..acadcc7cd` |
+|---|---|---|---|
+| `bugs/fixed/bug-170-speaker-switch-wrong-method.md` | 3,214 | NEW | `83d0c969b` |
+| `bugs/fixed/bug-171-continuation-strands-absentees.md` | 4,899 | NEW | `acadcc7cd` — **P4.D233's** |
+| `bugs/fixed/bug-172-autonomous-persona-never-absent.md` | 4,185 | NEW | `acadcc7cd` — **P4.D233's** |
+| `bugs.md` | 314,007 | 311,817 | `acadcc7cd` |
+| `features/concierge-overhaul.md` | 8,232 | NEW | `ce2f1dabf` |
+| `features/concierge-overhaul-phase-1-refusal-failover.md` | 34,338 | NEW | `49059fb14` |
+| `features/concierge-overhaul-phase-2-refusal-ledger.md` | 19,938 | NEW | `49059fb14` |
+| `features/concierge-overhaul-phase-3-three-states.md` | 23,832 | NEW | `4d370a90f` |
+| `features/concierge-overhaul-phase-4-concierge-tab.md` | 27,195 | NEW | `3b463d6b1` |
+| `features/concierge-overhaul-phase-5-salon-polish.md` | 16,792 | NEW | `ce2f1dabf` |
+| `features/ROADMAP.md` | 6,289 | 6,134 | `a8292547a` |
+| `features/complete/concierge-default-at-creation.md` | 21,090 | 20,680 | `4d370a90f` |
+| `features/complete/concierge-four-state.md` | 20,514 | 20,104 | `4d370a90f` |
+| `features/complete/concierge-list-marks.md` | 25,177 | 24,767 | `4d370a90f` |
+| `features/complete/dangerous.md` | 8,565 | 7,961 | `3b463d6b1` |
+| `features/complete/message-route-trail.md` | 37,444 | 35,074 | `8bd080267` |
+| `features/scenario-builder.md` | 42,403 | 41,021 | `08c49319d` |
+
+`diff -rq` of both dirs against the pin lists exactly these (nothing else).
+**`bugs.md` differs in THREE hunks at `acadcc7cd`, not the order's two**:
+line 3 `**Last Updated**` 2026-09-24 → 2026-09-25; line 8 the Status
+sentence "1–169" → "1–172" (with the bug-171/172 prose); and the three
+rows 170, 171, 172 after line 1159 — the 170 row is this lane's, the 171
+and 172 rows and the Status prose are P4.D233's. The specs copy at
+`acadcc7cd`'s bytes, never `a8292547a`'s (each was edited after it — last
+movers above). `docs/v4/CHANGELOG.md`'s lag stays the standing housekeeping
+item (item 12).
+
+### Item 7 — Tier R at the round target
+
+```
+CARGO_INCREMENTAL=0 TZ=UTC QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d232-acadcc7cd \
+  QT_NODE=$HOME/.nvm/versions/node/v24.13.1/bin/node \
+  cargo test -p quilltap-cli --test cli_differential -- --nocapture
+```
+
+**`CLI differential: 266 cases, 0 failures`** (507.68 s). Neither
+`6d0f88d65` nor `83d0c969b` touches `packages/quilltap/{bin,lib}`, and Tier R
+has no `--version` case, so no cli bump.
+
+### Deferrals (loud, typed — Tier 3)
+
+- **Item 10, the KaTeX bump** — v5 `apps/web` pins `katex` 0.18.4; v4 is on
+  0.18.9. Fixture bytes are neutral (they come from `rehype-katex` 7.0.1's
+  nested `katex` 0.16.47 in both trees). A bump needs an `npm install` in
+  v5 — a human approval item. `capture-markdown-fixtures.mts:28-36` states
+  the pin, not a false fact, so it was left alone (item 9).
+- **Item 11, the MCP SDK** (1.30.1) — no v5 client, no family records it;
+  NO obligation.
+- **Item 12, `docs/v4/CHANGELOG.md`'s lag** — the standing housekeeping
+  item; not widened.
+
+### What the order got wrong (measured)
+
+- "the 15 manifests" → **11** (ten LLM + `search_serper`).
+- `bugs.md` mirror delta: **three** hunks at `acadcc7cd`, not two (the
+  `Last Updated` line moves too).
+- "352 × `user-agent: Quilltap/unknown`" — the substring occurs 366 times;
+  unchanged either way.
+
+### For the unifier
+
+- The guard's `the_recorded_corpora_carry_exactly_the_recorded_sdk_versions`
+  is RED on this branch alone (image-dialects' 7.20.0 ×8 / 1.3.11 ×3). After
+  P4.D225's `image-dialects` re-record lands on top, it must read 7.23.0 /
+  1.3.28 AND keep `v24.13.1` ×8 (the new Node arm reads it too). If
+  P4.D225's corpus gains or loses `x-stainless-runtime-version` rows, the
+  Node arm's presence assertion still holds as long as one remains.
+- `builtin_prompt_templates_guard` red against the default (live) checkout
+  is the waived `c3eefa752`'s (ledger §1), not this lane's; run with
+  `QT_V4_CHECKOUT=<acadcc7cd pin>` it is green.
+
+### Gate (committed tree `cc2b4deac`, `CARGO_INCREMENTAL=0 TZ=UTC`)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -D warnings` clean in BOTH feature sets; `cargo build --workspace
+  --release` clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture` with
+  `QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d232-acadcc7cd`, `QT_NODE=<24.13.1>`,
+  `QT_ORACLE_OPENROUTER_SDK_PRICING` + `QT_ORACLE_PROVIDER_REGISTRY` (the
+  lane's two fresh oracles; every other family's var withheld): **634 test
+  binaries / 3,738 passed / 2 failed / 3 ignored**, 528 `SKIP:` lines (the
+  withheld families; none of this lane's). The two reds, both DESIGNED and
+  neither this lane's doing:
+  1. `provider_sdk_version_guard::the_recorded_corpora_carry_exactly_the_recorded_sdk_versions`
+     — `image-dialects: 8 openai stamp(s) are not the recorded 7.23.0` (§S.4;
+     green on the union after P4.D225).
+  2. `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts`
+     — its locator is `QT_V4_ROOT` (default: the LIVE checkout), not
+     `QT_V4_CHECKOUT`, so it read HEAD's `public/schemas/qtap-export.schema.json`
+     (96,967 bytes vs 95,266 vendored). The schema moved in `8bd080267` (#73)
+     and `4d370a90f` (#75) — the P4.D225 / P4.D226 designed red §R.5 names
+     ("until the export schema is re-vendored"), red on `main` too. This lane
+     touches no schema.
+- Confirmed RUN by name (non-zero tests, ok): `openrouter_sdk_pricing_equivalence`
+  (1), `provider_registry_equivalence` (1), `request_builder_equivalence` (1),
+  `tool_wire_call_site` (7), `stream_decoders_equivalence` (5),
+  `request_builder_google_wire_equivalence` (1), `cli_differential` (266
+  cases, 486.73 s — the second Tier R run of the lane, also 0 failures),
+  `builtin_prompt_templates_guard` (2 — GREEN against the pin, as the ledger
+  predicted), and the guards UNMOVED: `zod_version_guard`, `spelling_guard`,
+  `dispatch_wrong_type_census` (14), `help_tree_embed_guard`,
+  `blob_write_sites_census`, `compressed_column_write_sites_census`.
+
+### Versions
+
+harness 0.0.977 → **0.0.980** (+3: the constants/re-record, the Node arm,
+the pricing header). core, host, web, cli, tauri, fixture-sanitizer, SPA
+unchanged.
+
 ## P4.D230 — the Concierge SPA, Settings side (lane record, 2026-09-25)
 
 Order: `work-orders/p4.d230-concierge-spa-settings-side.md`. Branch

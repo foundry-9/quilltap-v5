@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — docs(porting): P4.D232 lane record — the SDK-bump regen, the two NO-PORT ratifications, Tier R at `acadcc7cd`
+
+_Docs-only change._
+
+Appends the P4.D232 lane record to `status-log.md`: the neutrality legs
+(`google-wire`, the four untouched `chat_completions_sse` stream files, and
+the 11 provider manifests, all byte-identical when re-run at the
+`acadcc7cd` pin); the NO-PORT evidence for `83d0c969b` (bug 170: v5's
+speaker pick is a dispatch verb, so no HTTP method is involved) and
+`a8292547a` (docs only); the `docs/v4/` mirror pre-list with byte counts;
+Tier R 266/0; the gate. Marks the order LANE COMPLETE.
+
 #### 2026-09-28 — test(harness): P4.D232 — OpenRouter pricing family re-run at @openrouter/sdk 1.3.28
 
 _Versions: harness 0.0.980._
