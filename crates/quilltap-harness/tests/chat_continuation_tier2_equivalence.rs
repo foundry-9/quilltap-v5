@@ -490,6 +490,32 @@ fn chat_continuation_matches_oracle() {
                 "scan probe after {}: want {want:?} in {scan_lines:#?}",
                 c.name
             );
+            // Trap (e)'s other half (added at the round's unification): v4 logs
+            // `Boolean(userCharacterNameLower)`, so NO persona name and a name
+            // that trims EMPTY are both `false` in EVERY room — the flag follows
+            // the gated name, not the room alone.
+            for name in [None, Some("  ")] {
+                let (_, lines) = quilltap_core::test_support::captured_with(|| {
+                    scan_off_scene_newcomers(
+                        &db,
+                        &probe.chat_id,
+                        &spec.user_id,
+                        &spec.character_a,
+                        name,
+                        &participants,
+                    )
+                });
+                let want = format!(
+                    "[ContextManager] Off-scene persona exclusion chatId={} chatType={} excludesPersonaByName=false",
+                    probe.chat_id,
+                    chat["chatType"].as_str().unwrap_or_default(),
+                );
+                assert!(
+                    lines.iter().any(|l| l.contains(&want)),
+                    "scan probe after {} (name {name:?}): want {want:?} in {lines:#?}",
+                    c.name
+                );
+            }
         }
 
         let dump = |t: &'static str| -> Value {

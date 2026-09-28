@@ -30,9 +30,8 @@
  * vault (v4's WARN, skipped); a poisoned post (a planted trigger — the ids are
  * NOT stamped); nobody left behind in an autonomous room. v4's own unit tests
  * for this MOCK the repos; these are the same shapes as real-DB rows. The
- * case needs a pin at or after `acadcc7cd`; its FIXTURE, until the Concierge
- * chain's widen lands, a pin whose `chats` DDL v5 reads (the round baseline —
- * a target-built `chats` lacks `conciergeOverride`).
+ * case and its fixture both need a pin at or after `acadcc7cd` (one pin since
+ * the Concierge chain unified with P4.D233).
  *
  * `messageOrder` is the `rowid`-ordered projection: continuation's contract is
  * POSITIONAL (link bubble → replayed tail → tail bubble in the source), and a
