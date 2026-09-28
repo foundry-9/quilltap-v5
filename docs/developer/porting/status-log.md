@@ -149866,6 +149866,62 @@ Salon Images switch on a real transcript (a crafted-alt image included); the
 `@` menu over a real cast; the `:` typeahead after Shift+Enter; the
 corrupt-`.dbkey` 401 and the read-only-`.dbkey` 500 + line.
 
+
+## P4.D233 — bugs 171 + 172 (lane `claude/p4-d233-bugs-171-172-5855df`, from `main` `4345dbb5d`)
+
+**§R.2 probe at lane start (2026-09-28): PASS under the human's extended
+waiver** — v4 checkout on `main`, CLEAN, HEAD `04d6c9d52`, `acadcc7cd..main`
+lists exactly the six waived commits, `1a2b2164c..bugfix` empty. Pins (ledger
+§5.1, all three symlink classes): `/tmp/qt-v4-pin-p4d233-acadcc7cd` (the
+target; `findLeftBehindCharacters` ×2 in `lib/chat/apply-chat-continuation.ts`)
+and `/tmp/qt-v4-pin-p4d233-b0b6656b5` (the baseline; ×0).
+
+### Finding F1 — a fixture built at the target is unreadable by `main`
+
+v4 at `acadcc7cd` provisions `chats` WITHOUT `conciergeOverride` (#76's DROP)
+and with the Concierge trio; `main`'s strict `chats_read` still binds
+`conciergeOverride`, so a real-DB fixture built at the target pin fails every
+v5 chat read (`no such column: conciergeOverride`, measured on
+`user_identity_resolver_equivalence`). Until P4.D226/P4.D227's widen lands,
+this lane builds each real-DB FIXTURE at the BASELINE pin and runs each
+ORACLE at the TARGET pin over a copy of it (v4's target code reads the
+baseline-vintage DB without complaint — measured). The committed headers say
+so; a single-`--v4` sweep at the target reds these families BY DESIGN until
+the chain lands, and the unifier (or the chain's last lane) may rebuild both
+at the target once `main` reads the post-#76 shape.
+
+### Unit 1 — the two predicates (core 0.0.1059, harness 0.0.978)
+
+- `chat_predicates::operator_speaks_without_seat` (v4 `chat.types.ts:111-122`)
+  + a unit pin over seven values; `user_identity_resolver::is_user_persona_
+  in_room(chat_type, &identity)` + v4's DEBUG `Unseated persona presence
+  resolved {characterId, chatType, inRoom}` — four unit tests mirroring v4's
+  four `it`s, the two fallback arms byte-pinning the captured line, the
+  seated and persona-less arms pinning SILENCE (trap (f)).
+- `user_identity_resolver_equivalence`: every row gains `chatType` + `inRoom`
+  (v4's REAL `isUserPersonaInRoom`); two chats added (`…06` autonomous, no
+  seat → `single-user-character`, `inRoom: false`; `…07` autonomous, persona
+  seated → `chat-participant`, `inRoom: true`). **Red-first at the target:**
+  the unchanged family failed on op 0 (the two new keys). Green: 7 ops.
+- `context_feeders_leaves_equivalence`: a new `operator_speaks` kind — eight
+  rows over v4's real `operatorSpeaksWithoutSeat` (incl. `null`, `undefined`,
+  `''`, and a case-variant `'Autonomous'` → true). 40 rows matched (was 32).
+  Pre-port the kind could not compile (no Rust function) — red by
+  construction.
+- Regen AS RUN (lane-private staging under `/tmp/p4d233/`; Node
+  `~/.nvm/versions/node/v24.13.1/bin` first on `PATH`):
+  - user-identity: from `/tmp/qt-v4-pin-p4d233-b0b6656b5`, `QT_FIXTURE_OUT=
+    /tmp/p4d233/b/qt-useridentity-main.db QT_FIXTURE_MOUNT_OUT=/tmp/p4d233/b/
+    qt-useridentity-mount.db node --import tsx $V5W/harness/oracle/fixtures/
+    build-user-identity-fixture.ts`; then from `/tmp/qt-v4-pin-p4d233-
+    acadcc7cd`, `QT_FIXTURE_USERIDENTITY=… QT_FIXTURE_USERIDENTITY_MOUNT=…
+    node --import tsx $V5W/harness/oracle/cases/user-identity.ts >
+    /tmp/p4d233/t/oracle-useridentity.ndjson` (`grep -c inRoom` = 1 line,
+    7 rows).
+  - feeders: from the target pin, `TZ=UTC npx tsx $V5W/harness/oracle/cases/
+    context-feeders-leaves.ts > /tmp/p4d233/t/oracle-context-feeders-
+    leaves.ndjson` (`grep -c operator_speaks` = 8).
+
 ## P4.D232 — the `6d0f88d65` SDK-bump regen event + the `83d0c969b` / `a8292547a` NO-PORT ratifications + Tier R at the round target (2026-09-28, branch `claude/p4-sdk-bump-regen-riders-b7076a`)
 
 Order: `work-orders/p4.d232-sdk-bump-regen-riders-bug-170-specs-ratified.md`.

@@ -28,6 +28,8 @@ import {
 import { buildSuparnaMailLLMContext } from '@/lib/services/suparna-notifications/writer';
 import { renderRelevantConversationsBlock } from '@/lib/memory/conversation-summary-search';
 import { capClothingSummary } from '@/lib/memory/cheap-llm-tasks/image-scene-tasks';
+// P4.D233 (v4 `acadcc7cd`, bug 172) — REQUIRES a pin at or after `acadcc7cd`.
+import { operatorSpeaksWithoutSeat } from '@/lib/schemas/chat.types';
 
 interface OffCard {
   id: string;
@@ -209,6 +211,20 @@ const suparnaCases: Array<{ id: string; letters: Letter[] }> = [
   },
 ];
 
+// ---- operatorSpeaksWithoutSeat (P4.D233, bug 172) ----
+// `undefined` rides as the absent `chatType` key; JSON cannot carry it, so the
+// id names it and the emitter passes it through.
+const operatorSpeaksCases: Array<{ id: string; chatType: string | null | undefined }> = [
+  { id: 'autonomous', chatType: 'autonomous' },
+  { id: 'salon', chatType: 'salon' },
+  { id: 'help', chatType: 'help' },
+  { id: 'brahma', chatType: 'brahma' },
+  { id: 'empty', chatType: '' },
+  { id: 'null', chatType: null },
+  { id: 'undefined', chatType: undefined },
+  { id: 'Autonomous-cased', chatType: 'Autonomous' },
+];
+
 // ---- scene-state capClothingSummary ----
 const clothingCases: Array<{ id: string; value: unknown }> = [
   { id: 'trimmed', value: '  a shirt  ' },
@@ -246,6 +262,9 @@ async function main(): Promise<void> {
   }
   for (const c of clothingCases) {
     emit('clothing_cap', c.id, capClothingSummary(c.value));
+  }
+  for (const c of operatorSpeaksCases) {
+    emit('operator_speaks', c.id, operatorSpeaksWithoutSeat(c.chatType));
   }
 
   for (const line of out) process.stdout.write(line + '\n');

@@ -10,6 +10,10 @@
  * port runs the same ops on the same fixture and the identities are compared
  * exactly (no normalization — the resolver mints nothing).
  *
+ * P4.D233 (v4 `acadcc7cd`, bug 172): each row also carries the chat's
+ * `chatType` and v4's REAL `isUserPersonaInRoom(chat, identity)` — so the
+ * target pin is REQUIRED (the baseline has no such export).
+ *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -66,7 +70,7 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { resolveUserIdentity } = await import(
+  const { resolveUserIdentity, isUserPersonaInRoom } = await import(
     '@/lib/services/chat-message/user-identity-resolver.service'
   );
 
@@ -89,6 +93,10 @@ async function main(): Promise<void> {
       description: identity.description,
       characterId: identity.characterId ?? null,
       source: identity.source,
+      // P4.D233 (v4 `acadcc7cd`, bug 172): whether that persona is in the room
+      // — seated, or the unseated voice of the operator's messages.
+      chatType: chat.chatType ?? null,
+      inRoom: isUserPersonaInRoom(chat, identity),
     });
   }
 

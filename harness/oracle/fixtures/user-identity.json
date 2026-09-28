@@ -54,6 +54,25 @@
       "participants": [
         { "id": "40000000-0000-4000-8000-000000000040", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "active", "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
       ]
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000006",
+      "userId": "10000000-0000-4000-8000-000000000001",
+      "title": "Autonomous room, no seat (bug 172: the fallback persona is not in the room)",
+      "chatType": "autonomous",
+      "participants": [
+        { "id": "40000000-0000-4000-8000-000000000050", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "active", "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000007",
+      "userId": "10000000-0000-4000-8000-000000000001",
+      "title": "Autonomous room, persona seated (in the room by its seat)",
+      "chatType": "autonomous",
+      "participants": [
+        { "id": "40000000-0000-4000-8000-000000000060", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "active", "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" },
+        { "id": "40000000-0000-4000-8000-000000000061", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000a1", "controlledBy": "user", "status": "active", "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+      ]
     }
   ],
   "ops": [
@@ -61,6 +80,8 @@
     { "chatId": "30000000-0000-4000-8000-000000000002", "userId": "10000000-0000-4000-8000-000000000002", "activeTypingParticipantId": "40000000-0000-4000-8000-000000000011", "note": "chat-participant: prefers active-typing Bea over first Bo" },
     { "chatId": "30000000-0000-4000-8000-000000000003", "userId": "10000000-0000-4000-8000-000000000001", "activeTypingParticipantId": null, "note": "single-user-character: Ada auto-selected system-wide" },
     { "chatId": "30000000-0000-4000-8000-000000000004", "userId": "10000000-0000-4000-8000-000000000002", "activeTypingParticipantId": null, "note": "user-profile: Bob's name" },
-    { "chatId": "30000000-0000-4000-8000-000000000005", "userId": "10000000-0000-4000-8000-000000000003", "activeTypingParticipantId": null, "note": "default: no name -> 'User'" }
+    { "chatId": "30000000-0000-4000-8000-000000000005", "userId": "10000000-0000-4000-8000-000000000003", "activeTypingParticipantId": null, "note": "default: no name -> 'User'" },
+    { "chatId": "30000000-0000-4000-8000-000000000006", "userId": "10000000-0000-4000-8000-000000000001", "activeTypingParticipantId": null, "note": "bug 172: single-user-character fallback in an AUTONOMOUS room -> inRoom false" },
+    { "chatId": "30000000-0000-4000-8000-000000000007", "userId": "10000000-0000-4000-8000-000000000001", "activeTypingParticipantId": null, "note": "bug 172: a SEATED persona in an autonomous room -> inRoom true" }
   ]
 }

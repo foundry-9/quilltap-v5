@@ -35,6 +35,17 @@ pub fn is_moderation_exempt_chat_type(chat_type: Option<&str>) -> bool {
     matches!(chat_type, Some("help") | Some("brahma"))
 }
 
+/// Whether the operator speaks in a chat of this type even without a seat of
+/// their own (v4 `operatorSpeaksWithoutSeat`, `acadcc7cd`, bug 172) — in which
+/// case an unseated persona (the system-wide sole user-controlled character) is
+/// the voice of every USER message, and so is "in the room". False only for
+/// autonomous rooms: every seat there is a character, the operator watches, and
+/// an Inform is a record, never a voice. An unseated persona in an autonomous
+/// room is off the scene like anyone else.
+pub fn operator_speaks_without_seat(chat_type: Option<&str>) -> bool {
+    chat_type != Some("autonomous")
+}
+
 /// Whether a participant is present in the scene (active or silent) — both
 /// perceive and take turns.
 pub fn is_participant_present(status: ParticipantStatus) -> bool {
@@ -182,5 +193,19 @@ mod status_from_str_tests {
         assert!(!json_participant_is_present(&p("removed")));
         // No `status` key at all → the Zod default → present.
         assert!(json_participant_is_present(&serde_json::json!({})));
+    }
+
+    /// v4 `acadcc7cd` `operatorSpeaksWithoutSeat`: false ONLY for autonomous
+    /// rooms — an unknown type, a missing type and every help-like surface all
+    /// keep the operator's unseated voice.
+    #[test]
+    fn operator_speaks_without_seat_everywhere_but_autonomous() {
+        assert!(!operator_speaks_without_seat(Some("autonomous")));
+        assert!(operator_speaks_without_seat(Some("salon")));
+        assert!(operator_speaks_without_seat(Some("standard")));
+        assert!(operator_speaks_without_seat(Some("help")));
+        assert!(operator_speaks_without_seat(Some("brahma")));
+        assert!(operator_speaks_without_seat(Some("")));
+        assert!(operator_speaks_without_seat(None));
     }
 }

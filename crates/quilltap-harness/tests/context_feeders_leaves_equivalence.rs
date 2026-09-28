@@ -5,8 +5,10 @@
 //! Covers: the off-scene content/opaque builders + `findIntroducedOffScene-
 //! CharacterIds`, `resolveCoreWhisperConfig` + the three core-whisper content
 //! builders, `renderRelevantConversationsBlock`, `buildSuparnaMailLLMContext`,
-//! and `capClothingSummary`. The stateful reads (frozen-archive DB ranking, the
-//! recap's vault-summary search, the off-scene SCAN, the core-whisper packet
+//! `capClothingSummary`, and (P4.D233, v4 `acadcc7cd`) `operatorSpeaksWith-
+//! outSeat` — whose rows REQUIRE a pin at or after `acadcc7cd`. The stateful
+//! reads (frozen-archive DB ranking, the recap's vault-summary search, the
+//! off-scene SCAN, the core-whisper packet
 //! assembly, the recap composition end-to-end) are exercised by
 //! `build_context_tier3_equivalence`.
 //!
@@ -23,6 +25,8 @@
 //!     cargo test -p quilltap-harness --test context_feeders_leaves_equivalence
 
 use serde_json::{json, Value};
+
+use quilltap_core::chat_predicates::operator_speaks_without_seat;
 
 use quilltap_core::services::core_whisper::{
     build_core_whisper_content, build_core_whisper_llm_context, build_core_whisper_opaque_content,
@@ -79,6 +83,7 @@ fn rust_value(kind: &str, id: &str) -> Value {
         "relevant_block" => Value::String(relevant_block_case(id)),
         "suparna_llm" => Value::String(suparna_case(id)),
         "clothing_cap" => Value::String(clothing_case(id)),
+        "operator_speaks" => json!(operator_speaks_without_seat(operator_speaks_case(id))),
         other => panic!("unknown oracle kind {other}"),
     }
 }
@@ -296,6 +301,21 @@ fn clothing_case(id: &str) -> String {
         "over-200" => cap_clothing_summary(Some(&json!("x".repeat(250)))),
         "exactly-200" => cap_clothing_summary(Some(&json!("y".repeat(200)))),
         other => panic!("unknown clothing case {other}"),
+    }
+}
+
+/// P4.D233 (v4 `acadcc7cd`, bug 172): `operatorSpeaksWithoutSeat`'s chat
+/// types. `null` and `undefined` both land on Rust's `None`.
+fn operator_speaks_case(id: &str) -> Option<&'static str> {
+    match id {
+        "autonomous" => Some("autonomous"),
+        "salon" => Some("salon"),
+        "help" => Some("help"),
+        "brahma" => Some("brahma"),
+        "empty" => Some(""),
+        "null" | "undefined" => None,
+        "Autonomous-cased" => Some("Autonomous"),
+        other => panic!("unknown operator_speaks case {other}"),
     }
 }
 

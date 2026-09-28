@@ -46,6 +46,8 @@ interface ChatSeed {
   id: string;
   userId: string;
   title: string;
+  /** P4.D233: absent → the repository's default; `'autonomous'` for bug 172. */
+  chatType?: string;
   participants: Array<Record<string, unknown>>;
 }
 interface Spec {
@@ -173,7 +175,12 @@ async function main(): Promise<void> {
   const chatRepo = new ChatsRepository();
   for (const c of spec.chats) {
     await chatRepo.create(
-      { userId: c.userId, title: c.title, participants: c.participants } as never,
+      {
+        userId: c.userId,
+        title: c.title,
+        participants: c.participants,
+        ...(c.chatType ? { chatType: c.chatType } : {}),
+      } as never,
       { id: c.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
   }

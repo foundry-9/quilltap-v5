@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — feat(core): operator_speaks_without_seat + is_user_persona_in_room (P4.D233 unit 1, v4 bug 172)
+
+_Versions: core 0.0.1059, harness 0.0.978._
+
+Ports v4 `acadcc7cd`'s two presence predicates. `chat_predicates::
+operator_speaks_without_seat(chat_type)` is false only for autonomous rooms.
+`user_identity_resolver::is_user_persona_in_room(chat_type, identity)`
+answers false with no persona character, true for a seated persona, and
+otherwise defers to the predicate with v4's DEBUG `Unseated persona presence
+resolved` (fallback branch only; capture-pinned with silence legs).
+
+`user_identity_resolver_equivalence` rows now carry `chatType` + `inRoom`
+from v4's real `isUserPersonaInRoom`, with two new autonomous-room chats (the
+unseated fallback: not in the room; a seated persona: in the room).
+`context_feeders_leaves_equivalence` gains eight `operator_speaks` rows over
+v4's real export. The user-identity fixture must be built at a pin whose
+`chats` DDL `main` reads (the round baseline) while its oracle runs at
+`acadcc7cd`; the family headers say so.
+
 #### 2026-09-28 — docs(porting): P4.D232 lane record — the SDK-bump regen, the two NO-PORT ratifications, Tier R at `acadcc7cd`
 
 _Docs-only change._

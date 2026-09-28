@@ -25,7 +25,7 @@
 
 use serde_json::Value;
 
-use crate::chat_predicates::participant_status_from_str;
+use crate::chat_predicates::{operator_speaks_without_seat, participant_status_from_str};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, users, DbError};
 use crate::participant_filters::{find_active_user_participant, ParticipantView};
@@ -204,6 +204,38 @@ pub async fn resolve_user_identity(
     })
 }
 
+/// Whether the persona [`resolve_user_identity`] returned is in the room —
+/// seated, or the unseated voice of the operator's messages (v4
+/// `isUserPersonaInRoom`, `acadcc7cd`, bug 172). A persona reached through the
+/// system-wide fallback (step 2) in an autonomous room is neither: nobody types
+/// as them there, so they are as off the scene as any other absent character,
+/// even though `{{user}}` still names them.
+///
+/// Callers holding a resolved identity ask this rather than reading `source`
+/// (the continuation's left-behind notice). The per-turn off-scene scan holds
+/// only the persona's name, excludes seated characters by id, and so asks the
+/// underlying [`operator_speaks_without_seat`] directly.
+///
+/// v4 takes `Pick<ChatMetadataBase, 'chatType'>`; the chat type alone is the
+/// whole of what it reads. The DEBUG fires ONLY on the fallback branch — a
+/// seated persona and a persona-less identity both return before it.
+pub fn is_user_persona_in_room(chat_type: Option<&str>, identity: &ResolvedUserIdentity) -> bool {
+    let Some(character_id) = identity.character_id.as_deref() else {
+        return false;
+    };
+    if identity.source == IdentitySource::ChatParticipant {
+        return true;
+    }
+    let in_room = operator_speaks_without_seat(chat_type);
+    tracing::debug!(
+        characterId = character_id,
+        chatType = chat_type,
+        inRoom = in_room,
+        "Unseated persona presence resolved"
+    );
+    in_room
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,5 +264,86 @@ mod tests {
         let ch2 = serde_json::json!({ "id": "c2", "name": "Bo" });
         let r2 = identity_from_character(&ch2, IdentitySource::SingleUserCharacter);
         assert_eq!(r2.description, "");
+    }
+
+    fn fallback(source: IdentitySource) -> ResolvedUserIdentity {
+        ResolvedUserIdentity {
+            name: "Charlie".to_string(),
+            description: String::new(),
+            character_id: Some("char-charlie".to_string()),
+            source,
+        }
+    }
+
+    // v4 `user-identity-resolver.test.ts` (`acadcc7cd`), `isUserPersonaInRoom`.
+    #[test]
+    fn persona_in_room_is_true_for_a_seated_persona_whatever_the_chat_type() {
+        let seated = fallback(IdentitySource::ChatParticipant);
+        let (verdicts, lines) = crate::test_support::captured_with(|| {
+            (
+                is_user_persona_in_room(Some("autonomous"), &seated),
+                is_user_persona_in_room(Some("salon"), &seated),
+            )
+        });
+        assert_eq!(verdicts, (true, true));
+        // Silence leg: the seated branch returns before the DEBUG.
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Unseated persona presence resolved")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn persona_in_room_is_true_for_the_unseated_fallback_in_a_salon_chat() {
+        let (in_room, lines) = crate::test_support::captured_with(|| {
+            is_user_persona_in_room(
+                Some("salon"),
+                &fallback(IdentitySource::SingleUserCharacter),
+            )
+        });
+        assert!(in_room);
+        assert_eq!(
+            lines,
+            vec![
+                "DEBUG quilltap_core::services::user_identity_resolver Unseated persona \
+                 presence resolved characterId=char-charlie chatType=salon inRoom=true"
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn persona_in_room_is_false_for_the_unseated_fallback_in_an_autonomous_room() {
+        let (in_room, lines) = crate::test_support::captured_with(|| {
+            is_user_persona_in_room(
+                Some("autonomous"),
+                &fallback(IdentitySource::SingleUserCharacter),
+            )
+        });
+        assert!(!in_room);
+        assert_eq!(
+            lines,
+            vec![
+                "DEBUG quilltap_core::services::user_identity_resolver Unseated persona \
+                 presence resolved characterId=char-charlie chatType=autonomous inRoom=false"
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn persona_in_room_is_false_when_no_persona_character_was_resolved() {
+        let none = ResolvedUserIdentity {
+            name: "User".to_string(),
+            description: String::new(),
+            character_id: None,
+            source: IdentitySource::Default,
+        };
+        let (in_room, lines) =
+            crate::test_support::captured_with(|| is_user_persona_in_room(Some("salon"), &none));
+        assert!(!in_room);
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }

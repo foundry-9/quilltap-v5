@@ -14,10 +14,23 @@
 //!   3. user-profile — the user's profile name,
 //!   4. default — the `"User"` fallback (NULL profile name).
 //!
+//! P4.D233 (v4 `acadcc7cd`, bug 172): every row also carries the chat's
+//! `chatType` and `isUserPersonaInRoom(chat, identity)` — v4's three test
+//! shapes as real-DB ops: a seated persona (`…01`, and `…07` in an AUTONOMOUS
+//! room: still in the room by its seat), the unseated step-2 fallback in a
+//! Salon chat (`…03`, in the room) and in an autonomous room (`…06`, NOT in the
+//! room), plus the persona-less identities (`…04`/`…05`, false).
+//!
 //! NORMALIZATION: none. The resolver writes nothing and mints nothing, so each
 //! resolved identity object is compared exactly.
 //!
-//! Generate the oracle output + fixture (Node 24, from the v4 checkout):
+//! Generate the oracle output + fixture (Node 24, from the v4 checkout).
+//! ⚠ P4.D233: the FIXTURE is built at a pin whose `chats` DDL v5 reads (the
+//! round baseline `b0b6656b5` until the Concierge chain's widen lands — a
+//! fixture built at `acadcc7cd` lacks `conciergeOverride`, which `main`'s
+//! strict `chats_read` still binds), and the ORACLE runs at the round target
+//! (`isUserPersonaInRoom` exists nowhere earlier). Both are the checkout below
+//! when v4 HEAD is AT the baseline; otherwise pass pinned worktrees (ledger §5.1):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-useridentity-main.db \
@@ -34,7 +47,9 @@
 
 use quilltap_core::db::chats_read;
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::services::user_identity_resolver::resolve_user_identity;
+use quilltap_core::services::user_identity_resolver::{
+    is_user_persona_in_room, resolve_user_identity,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -141,6 +156,12 @@ async fn user_identity_resolver_matches_oracle() {
             "description": identity.description,
             "characterId": identity.character_id,
             "source": identity.source.as_str(),
+            // P4.D233 (v4 `acadcc7cd`, bug 172): the persona's presence.
+            "chatType": chat.get("chatType").cloned().unwrap_or(Value::Null),
+            "inRoom": is_user_persona_in_room(
+                chat.get("chatType").and_then(Value::as_str),
+                &identity,
+            ),
         }));
     }
 
