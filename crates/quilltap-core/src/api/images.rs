@@ -1532,7 +1532,7 @@ fn read_concierge_settings(db: &Db, user_id: &str, chat_id: Option<&str>) -> Con
     })();
     if let Err(e) = read {
         tracing::warn!(
-            chat_id = ?chat_id,
+            chat_id = chat_id.unwrap_or("null"),
             error = %e,
             "[Images v1] Could not load Concierge settings; using defaults"
         );
@@ -1542,7 +1542,7 @@ fn read_concierge_settings(db: &Db, user_id: &str, chat_id: Option<&str>) -> Con
         chat.as_ref(),
     );
     tracing::debug!(
-        chat_id = ?chat_id,
+        chat_id = chat_id.unwrap_or("null"),
         concierge_source = policy.source.as_str(),
         concierge_state = policy.state.as_str(),
         pre_screen = policy.pre_screen.enabled,
@@ -1729,7 +1729,7 @@ async fn run_images_generate(
                 tracing::info!(
                     context = "Images v1",
                     user_id = %user_id,
-                    chat_id = ?body.chat_id,
+                    chat_id = body.chat_id.as_deref().unwrap_or("null"),
                     original_profile_id = %original_profile_id,
                     uncensored_profile_id = %new_id,
                     uncensored_profile_name = %new_name,
@@ -1740,7 +1740,7 @@ async fn run_images_generate(
             None => tracing::debug!(
                 context = "Images v1",
                 user_id = %user_id,
-                chat_id = ?body.chat_id,
+                chat_id = body.chat_id.as_deref().unwrap_or("null"),
                 "[Images v1] Unmoderated chat has no uncensored image-capable profile; using original"
             ),
         }
@@ -2003,7 +2003,7 @@ async fn run_images_generate(
     }
     tracing::debug!(
         profile_id = %body.profile_id,
-        chat_id = ?body.chat_id,
+        chat_id = body.chat_id.as_deref().unwrap_or("null"),
         tag_count,
         linked_to_count = linked_to.len(),
         "[Images v1] Generate: resolved linkedTo"
@@ -2292,6 +2292,37 @@ mod log_context_tests {
             line.contains("userId=11111111-1111-4111-8111-111111111111"),
             "{line}"
         );
+    }
+
+    /// The legacy dialog's Concierge lines log v4's `chatId: chatId ?? null`
+    /// (trap 26 of P4.D225's order — never normalised): the id itself, or the
+    /// bare `null`; never Rust's `Some("…")` / `None` Debug rendering (the
+    /// round's unification review). Over a table-less partition the settings
+    /// read fails, so both the WARN and the DEBUG fire.
+    #[test]
+    fn the_dialog_concierge_lines_log_chat_id_as_v4_does() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = crate::db::runtime::Db::open_main(
+            dir.path().join("main.db"),
+            "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+        )
+        .unwrap();
+        for (chat_id, rendered) in [(None, "chat_id=null"), (Some("c1"), "chat_id=c1")] {
+            let (_, lines) = crate::test_support::captured_with(|| {
+                super::read_concierge_settings(&db, "u1", chat_id)
+            });
+            for sentence in [
+                "[Images v1] Could not load Concierge settings; using defaults",
+                "[Images v1] Generate: resolved Concierge policy",
+            ] {
+                let line = lines
+                    .iter()
+                    .find(|l| l.contains(sentence))
+                    .unwrap_or_else(|| panic!("no {sentence:?}: {lines:#?}"));
+                assert!(line.contains(rendered), "{line}");
+                assert!(!line.contains("Some(") && !line.contains("None"), "{line}");
+            }
+        }
     }
 
     /// The two sentences with v4's two fields around them, in v4's order.
