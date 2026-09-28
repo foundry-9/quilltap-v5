@@ -272,7 +272,14 @@ test.describe('P4.D229 — "Try uncensored": the round trip', () => {
           name: 'P4D229 Uncensored Desk',
           provider: 'OPENAI_COMPATIBLE',
           baseUrl: mock.url,
-          modelName: 'mock-model',
+          // A model of its own: the retry excludes every profile on the model
+          // that answered the original (v4's same-provider+model rule).
+          modelName: 'mock-uncensored-model',
+          // An understudy needs a usable API key (v4 `decryptKey`: no
+          // `apiKeyId` → null → nobody takes the retry, a 409 `no-understudy`).
+          // The fixture's own key row; the mock never reads it. Found by the
+          // beat's first live run at the round's unification.
+          apiKeyId: 'a0000001-0000-4000-8000-000000000001',
           isDangerousCompatible: true,
         },
       });
