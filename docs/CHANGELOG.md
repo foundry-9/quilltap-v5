@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — docs(porting): drift check — classify `97b25fc53` from its hunks; seven commits pending
+
+_Docs-only change._
+
+Runs `/driftcheck` after the `acadcc7cd` unification. The freshness probe
+passes: v4 `main` is still at `97b25fc53`, the checkout is clean on `main`,
+and `bugfix` has not moved. The only new work is `97b25fc53` (story
+backgrounds drape an undressed character instead of re-dressing it). The
+unification had recorded it by file list only. Its drift-ledger row now
+lists the hunks: a `redress`/`conceal` mode on the appearance sanitizer, a
+second sanitizer prompt, the concealment marker, the per-character
+requirement added to the moderated intimacy block, and two new DEBUG
+lines. It also names the v5 surfaces and families it hits. The row flags
+one trap for the port: the image-scene prompt generator refuses `${`
+interpolation, and the new block interpolates the marker. The verdict is
+unchanged: DRIFT PENDING, seven commits, with a pin required at
+`acadcc7cd`. There are no convergence rows.
+
 #### 2026-09-28 — docs(porting): unify the `acadcc7cd` Concierge-overhaul drift catch-up round (P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233) — baseline → `acadcc7cd`
 
 _Versions: core 0.0.1089, harness 0.0.1012, host 0.0.162, web 0.0.201, SPA 0.5.784._
