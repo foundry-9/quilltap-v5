@@ -186,7 +186,7 @@ pub(crate) async fn load_profile_parameters(db: &Db, profile_id: &str) -> Value 
         .unwrap_or(Value::Null)
 }
 
-/// The outcome of [`generate_with_reroute`]: the images + the profile that
+/// The outcome of an image-failover generation: the images + the profile that
 /// actually produced them (for the file `generationModel`).
 pub(crate) struct GenOutcome {
     pub images: Vec<crate::model::image::GeneratedImageData>,

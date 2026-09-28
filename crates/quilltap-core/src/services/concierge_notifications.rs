@@ -276,7 +276,8 @@ pub fn build_danger_opaque_content(details: Option<&ConciergeDangerDetails>) -> 
 /// have their bodies: v4 — "Transcripts written before phase 3 carry bubbles of
 /// the retired kinds … they are plain messages and render as they always did".
 /// v5 must never EMIT one again: `apply_concierge_flip` names only the four
-/// live wire strings, and `concierge_retired_kinds_census` pins that no
+/// live wire strings, and `concierge_state_writers_census`
+/// (`no_production_code_emits_a_retired_manual_kind`) pins that no
 /// production file outside this one constructs a retired variant.
 /// (`set-unmoderated`'s persona text is byte-identical to the retired
 /// `manual-uncensored` — a corpus that diffs CONTENT cannot tell them apart;

@@ -1610,23 +1610,15 @@ fn gather_db_context(
     tool_input: &ImageGenerationToolInput,
 ) -> DbContext {
     // v4 `chatForOverride`: fetched once so its Concierge state is honoured
-    // everywhere downstream; a failed read is v4's catch — the WARN (renamed
-    // at `4d370a90f`), and no chat.
-    let chat =
-        ctx.chat_id
-            .as_deref()
-            .and_then(|id| match crate::db::chats_read::find_by_id(main, id) {
-                Ok(found) => found,
-                Err(error) => {
-                    tracing::warn!(
-                        target: "quilltap::image_generation",
-                        chat_id = %id,
-                        error_message = %error,
-                        "[Image Generation] Could not load chat for its Concierge state"
-                    );
-                    None
-                }
-            });
+    // everywhere downstream. v4 reads through `repos.chats.findById`, a
+    // fallback `safeQuery` that logs `Error finding entity by ID` and answers
+    // `null` on a failed read — so v4's surrounding catch (its "Could not load
+    // chat for its Concierge state" WARN) is unreachable and is not ported
+    // (the unification review of the `acadcc7cd` round).
+    let chat = ctx
+        .chat_id
+        .as_deref()
+        .and_then(|id| crate::db::chats_read::find_by_id_or_none(main, id));
 
     let is_dangerous_chat = should_use_uncensored_route(chat.as_ref());
 

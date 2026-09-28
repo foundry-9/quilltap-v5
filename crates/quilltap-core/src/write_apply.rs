@@ -39,7 +39,8 @@
 //! - `runRefusalLedgerChecks` (P4.D225, v4 `49059fb14`) — post-commit, the
 //!   Concierge's auto-switch check once per chat whose refusal ledger the
 //!   batch incremented ([`chats_with_recorded_refusals`]); the host runs the
-//!   check (production: `refusal_ledger::maybe_auto_switch_after_refusal`).
+//!   check (`refusal_ledger::maybe_auto_switch_after_refusal`, once a production
+//!   host exists — none does today; see the hook's doc for the sync/async trap).
 //!   Like the realtime hook, dormant until a handler batches.
 
 use std::collections::{HashMap, HashSet};
@@ -144,8 +145,13 @@ pub trait ApplyHost {
 
     /// Post-commit: the Concierge's auto-switch check for ONE chat whose
     /// refusal ledger the batch incremented (v4 `maybeAutoSwitchAfterRefusal(
-    /// chatId, lastRefusal)` — production wires
-    /// [`crate::services::dangerous_content::refusal_ledger::maybe_auto_switch_after_refusal`]).
+    /// chatId, lastRefusal)`). DORMANT in v5: no production [`ApplyHost`]
+    /// exists yet (v5 has no forked job child, so every ledger write already
+    /// runs the check in-process at its own call site); only the test hosts
+    /// implement it. ⚠ For whoever wires one: this hook is SYNC while
+    /// [`crate::services::dangerous_content::refusal_ledger::maybe_auto_switch_after_refusal`]
+    /// is async and writes through `db.write` — a host running inside the
+    /// writer task must not `block_on` it (it would wait on itself).
     /// An `Err` is v4's throw out of the loop: the engine logs it and checks
     /// no further chat, and the committed batch still resolves.
     fn run_refusal_ledger_check(

@@ -386,6 +386,28 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<Value>, DbError>
     Ok(run(conn, "WHERE id = ?1", &[&id])?.pop())
 }
 
+/// v4 `repos.chats.findById` exactly as its callers see it: `_findById` is
+/// `safeQuery(…, 'Error finding entity by ID', { id }, null)`
+/// (`base.repository.ts:246-257`), so a FAILED read logs that ERROR and
+/// answers `null` — it never throws. Callers whose v4 twin reads a chat
+/// through the repository use this, so a read error takes v4's not-found arm
+/// rather than a catch v4 can never reach (the unification review of the
+/// `acadcc7cd` round).
+pub fn find_by_id_or_none(conn: &Connection, id: &str) -> Option<Value> {
+    match find_by_id(conn, id) {
+        Ok(found) => found,
+        Err(error) => {
+            tracing::error!(
+                collection = "chats",
+                id = %id,
+                error = %error,
+                "Error finding entity by ID"
+            );
+            None
+        }
+    }
+}
+
 /// Find all chats (v4 `findAll`).
 pub fn find_all(conn: &Connection) -> Result<Vec<Value>, DbError> {
     run(conn, "", &[])

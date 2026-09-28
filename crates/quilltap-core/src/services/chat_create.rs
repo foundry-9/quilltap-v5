@@ -1964,8 +1964,13 @@ async fn apply_requested_concierge_state(
     }
     // v4 `4d370a90f`: re-read, so the create response reports the state that
     // was actually applied, not the row as it was first inserted.
+    // `repos.chats.findById` is a fallback `safeQuery`: a failed re-read logs
+    // and answers `null`, and v4 reports `asCreated` — the create still
+    // answers 201 for the chat it has already committed.
     let cid = chat_id.to_string();
-    let fresh = db.read_main(move |c| chats_read::find_by_id(c, &cid))?;
+    let fresh = db
+        .read_main(move |c| Ok(chats_read::find_by_id_or_none(c, &cid)))
+        .unwrap_or(None);
     Ok(fresh
         .as_ref()
         .map(concierge_columns_of)
