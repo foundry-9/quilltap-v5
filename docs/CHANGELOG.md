@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — test(harness): P4.D232 — absorb the `6d0f88d65` SDK bump: guard → openai 7.23.0 / @openrouter/sdk 1.3.28, request-envelopes re-recorded (stamp-only)
+
+_Versions: harness 0.0.978._
+
+v4's `6d0f88d65` moved `openai` 7.20.0 → 7.23.0 and `@openrouter/sdk`
+1.3.11 → 1.3.28 in the checkout (root and every SDK-bundling plugin dir),
+turning `provider_sdk_version_guard` red on `main`. Moves
+`RECORDED_OPENAI_SDK` and `RECORDED_OPENROUTER_SDK`; anthropic 0.115.0 and
+google-genai 1.52.0 are unmoved.
+
+Re-records `request-envelopes.recorded.ndjson` at the `acadcc7cd` pin under
+Node 24.13.1. The diff is exactly 230 lines: 216 `x-stainless-package-version`
+7.20.0 → 7.23.0 and 14 OpenRouter user-agent `1.3.11` → `1.3.28` (the
+speakeasy generator token 2.914.0 unmoved). With those two substitutions
+applied to the old file, `cmp` against the new one is clean — no body, url,
+header name or row order moved. `request_builder_equivalence` and
+`tool_wire_call_site` stay green.
+
+The guard's second test stays red on this branch by design: `image-dialects`
+still carries 7.20.0 ×8 and the 1.3.11 UA ×3, and that corpus is P4.D225's
+to re-record. The union is green.
+
 #### 2026-09-25 — test(e2e): the Concierge Settings tab walked live; the Chat tab's Dangerous Content beat retired (P4.D230)
 
 _Versions: SPA 0.5.777._

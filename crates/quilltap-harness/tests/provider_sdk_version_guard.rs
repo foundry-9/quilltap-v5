@@ -26,16 +26,27 @@
 //!    re-record without a constant bump is a red, and a constant bump without
 //!    a re-record is a red too.
 //!
-//! Measured 2026-09-22 from the `f45a517a9` pin (P4.106): root `openai`
-//! 7.20.0 and `@openrouter/sdk` 1.3.11; `@anthropic-ai/sdk` and
+//! Re-measured 2026-09-28 by P4.D232 (the `6d0f88d65` SDK-bump regen event;
+//! the regen event actually BEGAN at `8bd080267` #73, which had already
+//! rebuilt the grok/openai/z-ai bundles at openai 7.23.0 — no recorder reads a
+//! bundle for request bytes, so that changes nothing here). Installed in the
+//! live checkout (the pinned worktree's `node_modules` are symlinks into it):
+//! root `openai` 7.23.0 and `@openrouter/sdk` 1.3.28; `@anthropic-ai/sdk` and
 //! `@google/genai` absent from the root; `qtap-plugin-anthropic` 0.115.0,
-//! `qtap-plugin-google` 1.52.0, `openai` 7.20.0 under the six SDK-bundling
-//! plugin dirs (`deepseek`, `grok`, `nanogpt`, `openai-compatible`, `openai`,
-//! `z-ai`), `@openrouter/sdk` 1.3.11 under `qtap-plugin-openrouter`. Corpus
-//! stamps: `request-envelopes.recorded.ndjson` 7.20.0 ×216 + 0.115.0 ×44 +
-//! the OpenRouter UA ×14; `image-dialects.recorded.ndjson` 7.20.0 ×8 + the
-//! UA ×3; `google-wire.recorded.ndjson` `google-genai-sdk/1.52.0` ×22.
-//! (`google_parts.rs` cites `@google/genai@1.52.0` too.)
+//! `qtap-plugin-google` 1.52.0 (both UNMOVED), `openai` 7.23.0 under the six
+//! SDK-bundling plugin dirs (`deepseek`, `grok`, `nanogpt`, `openai-compatible`,
+//! `openai`, `z-ai`), `@openrouter/sdk` 1.3.28 under `qtap-plugin-openrouter`.
+//! Corpus stamps after the re-record at the `acadcc7cd` pin:
+//! `request-envelopes.recorded.ndjson` (367 rows) 7.23.0 ×216 + 0.115.0 ×44 +
+//! the OpenRouter UA ×14 (`1.3.28 2.914.0 1.0.0`) — the diff against the
+//! 7.20.0 recording was those 230 stamp lines and nothing else;
+//! `google-wire.recorded.ndjson` `google-genai-sdk/1.52.0` ×22 (re-recorded
+//! byte-identical). `image-dialects.recorded.ndjson` still carries 7.20.0 ×8 +
+//! the 1.3.11 UA ×3 on this branch: it is P4.D225's corpus (#73 moves its
+//! plugin source), re-recorded there, so the second test below is RED on
+//! P4.D232's branch alone by design and GREEN on the union. Node runtime
+//! stamps: `v24.13.1` ×290 (260 + 8 `x-stainless-runtime-version`, 22
+//! `gl-node/`). (`google_parts.rs` cites `@google/genai@1.52.0` too.)
 //!
 //! Locator: `QT_V4_CHECKOUT` (default `$HOME/source/quilltap-server`). An
 //! absent checkout prints a loud `SKIP:`; a moved version is a FAIL.
@@ -50,13 +61,13 @@ use std::path::{Path, PathBuf};
 
 /// `openai` — the Stainless `x-stainless-package-version` on every
 /// non-anthropic OpenAI-shaped request.
-const RECORDED_OPENAI_SDK: &str = "7.20.0";
+const RECORDED_OPENAI_SDK: &str = "7.23.0";
 /// `@anthropic-ai/sdk` — the Stainless stamp on `api.anthropic.com` requests.
 const RECORDED_ANTHROPIC_SDK: &str = "0.115.0";
 /// `@google/genai` — the `x-goog-api-client` `google-genai-sdk/<ver>` token.
 const RECORDED_GOOGLE_GENAI_SDK: &str = "1.52.0";
 /// `@openrouter/sdk` — the speakeasy user-agent's first version token.
-const RECORDED_OPENROUTER_SDK: &str = "1.3.11";
+const RECORDED_OPENROUTER_SDK: &str = "1.3.28";
 
 /// (package, recorded version) — the four SDKs this guard pins.
 const SDKS: [(&str, &str); 4] = [
