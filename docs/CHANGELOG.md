@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — docs(porting): drift check at v4 `04d6c9d52` — six commits past the round target, waiver extended
+
+_Docs-only change._
+
+v4 main is at `04d6c9d52` (`4.10.0-dev.99`), sixteen commits past the
+baseline and six past the Concierge-overhaul round's `acadcc7cd` target.
+Adds three UNPROCESSED rows to the drift ledger:
+
+- the wardrobe image import's proposed outfit;
+- the 21 built-in prompts revised, with a seeder that now refreshes
+  built-in rows and shared voice direction for the character generators;
+- an avatar job for a character joining a running chat.
+
+Extends the human's waiver to all six commits past the target. The probe now
+passes on HEAD `04d6c9d52` with exactly those six commits. Targets and pins
+are unchanged. Records that `builtin_prompt_templates_guard` is now red
+against the live checkout (the prompts were edited) and green against any
+pin at or before the round target.
+
 #### 2026-09-26 — docs(porting): drift check at v4 `f7f3d7bf0` — three commits past the round target, waived for the round
 
 _Docs-only change._

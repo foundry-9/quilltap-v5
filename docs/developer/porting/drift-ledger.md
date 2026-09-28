@@ -24,62 +24,93 @@ probe verifies against._
   `4.10.0-dev.78`), adopted when the `b0b6656b5` ten-commit drift catch-up
   round was unified (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224,
   2026-09-25). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-26 (`/driftcheck`, main-checkout session, after
+- **Checked:** 2026-09-28 (`/driftcheck`, main-checkout session, after
   `git fetch` of the v4 checkout; local `main` equals `origin/main`). The
   round in flight is the Concierge-overhaul catch-up, re-ordered to target
   **`acadcc7cd`** (`446671a7d`: P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥
-  P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233).
-- **v4 `main` HEAD at check: `f7f3d7bf0`** ("Keep conversation embeddings
-  warm; render transcripts on demand", 2026-09-26 00:02, `4.10.0-dev.96`).
-  **THIRTEEN non-merge commits past the baseline** (§3):
+  P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233). Its lane branches are
+  live in the v5 repo at this check (seven `claude/*` branches), so this pass
+  writes only the ledger, on `main`.
+- **v4 `main` HEAD at check: `04d6c9d52`** ("Give characters joining a
+  running chat their outfit avatar", 2026-09-28 09:34, `4.10.0-dev.99`).
+  **SIXTEEN non-merge commits past the baseline** (§3):
   - the ten the round ORDERED, through `acadcc7cd` (**the round target**);
-  - **`39bc98ffc`** (`read_mail` + the `list_email` → `list_mail` rename,
-    `-dev.94`), **`12c336fad`** (`discard_mail`, `-dev.95`) and
-    **`f7f3d7bf0`** (warm conversation embeddings + `renderedMarkdown`
-    dropped, `-dev.96`): all three NEW, UNPROCESSED, and **WAIVED for the
-    round** (below).
+  - the three waived at the 2026-09-26 check: `39bc98ffc` (`read_mail` +
+    the rename), `12c336fad` (`discard_mail`), `f7f3d7bf0`
+    (`renderedMarkdown` dropped);
+  - **three NEW, UNPROCESSED, and WAIVED for the round (below):**
+    - `9ff4bbd8e`: the wardrobe image import proposes an outfit, `-dev.97`;
+    - `c3eefa752`: the 21 built-in prompts revised + the seeder refreshes
+      built-in rows + the shared voice direction, `-dev.98`;
+    - `04d6c9d52`: an avatar job for a character joining a running chat,
+      `-dev.99`.
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
   branch"), UNMOVED on both local and `origin/bugfix`; `1a2b2164c..bugfix` is
   empty.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2"), UNMOVED.
   There is still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**. §2's probe runs
-  against `f7f3d7bf0`. The three new commits change NO dependency (their
-  `package-lock.json` hunks are the version stamp only; no `plugins/` or
-  `packages/` path beyond `packages/quilltap/package.json`'s stamp), so the
-  installed-`node_modules` facts below still hold.
-- **WAIVER (the human, 2026-09-26): `39bc98ffc`, `12c336fad` and
-  `f7f3d7bf0` do NOT stop the Concierge-overhaul round's lanes (P4.D225,
-  P4.D226, P4.D227, P4.D228, P4.D229, P4.D230, P4.D231, P4.D232, P4.D233).**
-  Unlike the `83d0c969b` waiver, these three DO touch `lib/`, `app/api/`,
-  `help/` and `migrations/`. The waiver is safe only because every lane
-  regenerates from a LANE-UNIQUE detached worktree at its own per-lane pin
-  (§R.3: `49059fb14` / `4d370a90f` / `3b463d6b1` / `08c49319d` /
-  `acadcc7cd`), never the checkout, and a pin cannot see a later commit.
+  against `04d6c9d52`. The three new commits change NO dependency (their
+  `package-lock.json` hunks are the version stamp only). `c3eefa752`'s only
+  `plugins/` paths are the default-system-prompts plugin's `prompts/*.md`
+  and its version stamp, with no `node_modules`. So the installed-
+  `node_modules` facts below still hold.
+- **⚠ A SECOND live-checkout guard is now RED by design:
+  `builtin_prompt_templates_guard`** (P4.83). It re-derives v5's vendored
+  `services/builtin_prompt_templates.json` from the checkout's
+  `plugins/dist/qtap-plugin-default-system-prompts/prompts/*.md` via
+  `QT_V4_CHECKOUT` (default: the LIVE checkout), and `c3eefa752` rewrote all
+  21. Those `.md` files are unchanged from `b0b6656b5` through `f7f3d7bf0`
+  (measured), so the guard is green against any pin at or before the round
+  target. **For the round's gates:** a lane or the unifier running `cargo
+  test --workspace` against the default checkout will see this red (and
+  `provider_sdk_version_guard`'s, until P4.D232 lands) for reasons outside
+  the round. Either run the guard with `QT_V4_CHECKOUT=<the acadcc7cd pin>`,
+  or record it by name as the waived row's red. Neither is a lane defect.
+- **WAIVER (the human; first recorded 2026-09-26, EXTENDED 2026-09-28):
+  the SIX commits past the round target (`39bc98ffc`, `12c336fad`,
+  `f7f3d7bf0`, `9ff4bbd8e`, `c3eefa752`, `04d6c9d52`) do NOT stop the
+  Concierge-overhaul round's lanes (P4.D225, P4.D226, P4.D227, P4.D228,
+  P4.D229, P4.D230, P4.D231, P4.D232, P4.D233).**
+  - They touch `lib/`, `app/api/`, `help/`, `migrations/` and one plugin's
+    prompt files. The waiver is safe only because every lane regenerates
+    from a LANE-UNIQUE detached worktree at its own per-lane pin (§R.3:
+    `49059fb14` / `4d370a90f` / `3b463d6b1` / `08c49319d` / `acadcc7cd`),
+    never the checkout, and a pin cannot see a later commit.
   - **Scope, exactly:** for those nine lanes only, the §R.2 probe PASSES when
     ALL of these hold:
     - the branch is `main` and the tree is CLEAN;
-    - HEAD is `f7f3d7bf0`;
-    - `git log --oneline acadcc7cd..main` lists **exactly those three
-      commits** (`f7f3d7bf0`, `12c336fad`, `39bc98ffc`);
+    - HEAD is `04d6c9d52`;
+    - `git log --oneline acadcc7cd..main` lists **exactly those six
+      commits** (`04d6c9d52`, `c3eefa752`, `9ff4bbd8e`, `f7f3d7bf0`,
+      `12c336fad`, `39bc98ffc`);
     - `log 1a2b2164c..bugfix` is empty.
 
     Anything else is still a STOP: a further commit, ANY dirty path, the
-    checkout off `main`, a moved `bugfix`.
+    checkout off `main`, a moved `bugfix`. The 2026-09-26 scope (HEAD
+    `f7f3d7bf0`, three commits) is SUPERSEDED. A lane that passed the probe
+    under it and now sees these six commits resumes on this extension; it
+    does not re-run anything already done from its pin.
   - **The round's targets do NOT move.** The round target stays
     `acadcc7cd`, and every per-lane pin stands. No lane regenerates at HEAD,
-    reads HEAD's `lib/`/`help/`, or copies anything from the live checkout
-    (P4.D228's `help/` re-vendor comes from the `acadcc7cd` pin, not the
-    checkout, whose tree now differs in four more help files).
-  - **At unification** the baseline moves to `acadcc7cd`, not `f7f3d7bf0`.
-    The three rows stay in §3 as UNPROCESSED, to be the next catch-up's
-    first rows.
+    reads HEAD's `lib/`/`help/`/`plugins/`, or copies anything from the live
+    checkout. P4.D228's `help/` re-vendor comes from the `acadcc7cd` pin; the
+    live tree now differs from it in eight more help files.
+  - **At unification** the baseline moves to `acadcc7cd`, not `04d6c9d52`.
+    All six rows stay in §3 as UNPROCESSED, to be the next catch-up's first
+    rows.
   - The waiver does not order or ratify them.
   - **Collision watch for the unifier:**
     - `f7f3d7bf0` edits `lib/schemas/chat.types.ts`, the chat GET, the
-      character GET and `chat-enrichment.service.ts`, all P4.D226 surfaces.
+      character GET and `chat-enrichment.service.ts` (P4.D226 surfaces).
     - `39bc98ffc`/`12c336fad` move the tool-definition snapshot P4.D227
       also moves.
+    - `c3eefa752` edits the AI-import / wizard / optimizer prompt builders
+      (`lib/services/{ai-import,character-wizard,character-optimizer}.service.ts`
+      + `character-field-semantics.ts`), none of them round files.
+    - `04d6c9d52` edits `app/api/v1/chats/[id]/actions/participants.ts`,
+      the add/reactivate path. Check whether any round lane touched v5's
+      `api/chat_cast.rs`.
     - The next catch-up re-dumps `fresh_schema.json` ON TOP of the round's
       two re-dumps.
 
@@ -104,7 +135,7 @@ probe verifies against._
   stamps: `request-envelopes`, `image-dialects`, `openrouter_sdk_pricing`,
   and every stream/envelope recorder. This is the SDK-bump regen event the
   guard exists to announce (`6d0f88d65`'s row).
-- **Verdict: DRIFT PENDING — 13 commits: TEN ORDERED in the `acadcc7cd` round, THREE UNPROCESSED and WAIVED for it** (§3; the `08c49319d` round was RE-ORDERED the same day, `fe310e7d5` → the re-order commit, to fold `acadcc7cd` in: the round target MOVED to `acadcc7cd`, P4.D233 added, P4.D228's help tree re-vendors at `acadcc7cd`, P4.D231 pins its own commit):
+- **Verdict: DRIFT PENDING — 16 commits: TEN ORDERED in the `acadcc7cd` round, SIX UNPROCESSED and WAIVED for it** (§3; the `08c49319d` round was RE-ORDERED the same day, `fe310e7d5` → the re-order commit, to fold `acadcc7cd` in: the round target MOVED to `acadcc7cd`, P4.D233 added, P4.D228's help tree re-vendors at `acadcc7cd`, P4.D231 pins its own commit):
   - 2 NO-PORT? rows: `83d0c969b` and `a8292547a`, to be ratified on their
     file lists.
   - **The five Concierge-overhaul rows**, each a large PORT, in a strict
@@ -139,13 +170,21 @@ probe verifies against._
       `conversation_chunks::clear_embeddings`) and **DROPS
       `chats.renderedMarkdown`**: a second `DROP COLUMN` with the same
       live-instance consequence as `conciergeOverride`, see Schema state.
+    - `9ff4bbd8e` is a PORT, small: the wardrobe `analyze-image` response
+      gains `proposedOutfit`, and the SPA import dialog offers the outfit.
+    - `c3eefa752` is a PORT plus a RE-VENDOR: the 21 built-in prompts and
+      `builtin_prompt_templates.json`. The seeder now REFRESHES existing
+      built-in rows, and the generators share `CONVERSATIONAL_VOICE_DIRECTION`
+      / `EXAMPLE_DIALOGUE_COVERAGE`.
+    - `04d6c9d52` is a PORT, small: the add/reactivate participant paths
+      request an avatar job.
   - No CONVERGENCE rows. v4's `bugs.md` has gained bugs 170, 171 and 172
     since the baseline (none since `acadcc7cd`). All three are v4-found (170 and 171/172 on Friday),
     none filed by the port, and v4's "v5 status" column reads "Unchecked" for
     all three.
 
-- **Regen rule: PIN REQUIRED at `b0b6656b5`** because HEAD is thirteen
-  commits past the baseline and three past the round's target. A lane
+- **Regen rule: PIN REQUIRED at `b0b6656b5`** because HEAD is sixteen
+  commits past the baseline and six past the round's target. A lane
   regenerating "at the target" pins `acadcc7cd` (or its own per-lane pin,
   §R.3), never HEAD. Every regen runs from a detached `b0b6656b5` worktree
   per §5.1. **Caveat, new at this check:** the pin's symlinked
@@ -216,8 +255,11 @@ probe verifies against._
     `qtap_export/schema-key-order.json` and ~15 service/tool sites. **A Friday
     copy taken after v4 reaches `-dev.96` lacks it**, and v5's reads of it
     are expected to fail until the next catch-up ports the drop.
-- **`help/**` vs v4 HEAD `f7f3d7bf0`:** the count is still **129**, but the
-  tree DIFFERS in **24** files vs the baseline. The four new ones, past the
+- **`help/**` vs v4 HEAD `04d6c9d52`:** the count is still **129**, but the
+  tree DIFFERS in **28** files vs the baseline. The 2026-09-28 commits add
+  `character-optimizer.md`, `character-system-prompts.md`, `prompts.md` and
+  `wardrobe.md`, and re-touch `chat-settings-ai-services.md`. At
+  `f7f3d7bf0` it was 24. The four new ones, past the
   round target, are `data-retention.md`, `embedding-profiles.md`,
   `post-office.md` and `scriptorium.md`; the waived commits also re-touch
   `chat-settings.md` and `chats.md`. At the round target `acadcc7cd` it is
@@ -300,6 +342,9 @@ when absorbed/ratified.
 | `39bc98ffc` | 2026-09-25 | Add read_mail; rename list_email to list_mail | PORT-NEW (a tool) + PORT (a tool RENAME) | **Hunks** (29 files, `-dev.94`). **New tool `read_mail`** (`lib/tools/read-mail-tool.ts` + `handlers/read-mail-handler.ts`, module logger `read-mail-handler`). It takes a letter's bare file name, confines it to the caller's own `Mail/` folder, reads through `ensureCharacterVault` (so the P4.D200 opacity covenant never applies), and marks an unannounced letter announced. It returns `{success, text, path}`, and failures `{success:false, text, error}`. **The `list_email` → `list_mail` RENAME** covers the tool name, file, handler and test: a tool-NAME change on a ported surface. **`lib/post-office/mailbox.ts`:** new `letterFileName` + `resolveMailPath` (the one parser). It accepts a bare name, the `Mail/…` path or the `qtap://self/Mail/…` URI, makes `.md` optional, and turns any sub-path / a backslash / `.` / `..` into null. **Other changes:** `list_mail`, `read_mail` and Suparṇā's delivery notice name letters by FILE NAME. `send_mail`'s `in_reply_to` accepts the file name and stores the `Mail/` path. `instructions.ts` is rewritten (it had pointed at `doc_read_file` on `qtap://self/`). `deliver.ts` changes. `tool-executor.ts`, `lib/tools/index.ts` and `plugin-tool-builder.ts` register the tool. `app/api/v1/tools/route.ts` changes. The tool-definition snapshot moves (+35 lines). Plus `help/post-office.md` and `API.md`. **v5 surfaces hit:** `crates/quilltap-core/src/tools/list_email.rs` (to rename), `tools/{mod,executor}.rs`, `tools/definitions/data.rs`, `post_office/{mod,mailbox,deliver,instructions}.rs`, `services/suparna_notifications.rs` / `suparna_mail.rs`, `services/tools_inventory.rs`, `subprompts/storage.rs` (names the tool), `mail_carina_tools_equivalence`, the tool catalog (59 → 60) and the Brahma console's tool list. **Traps:** the rename moves every recorded tool-definition corpus and any stored tool-call row naming `list_email` (read old rows as data; v4 does no data migration, verify). `read_mail` bypasses transparency by design, which is a deliberate hole in the covenant P4.D200 ported: preserve it exactly, not "fix" it. | UNPROCESSED (WAIVED for the `acadcc7cd` round, §1) |
 | `12c336fad` | 2026-09-25 | Add discard_mail | PORT-NEW (a destructive tool; after `39bc98ffc`) | **Hunks** (26 files, `-dev.95`). **New tool `discard_mail`** (`lib/tools/discard-mail-tool.ts` + `handlers/discard-mail-handler.ts`, module logger `discard-mail-handler`, failures `{success:false, message, error}`, note `message`, not `text`). It takes a bare file name confined to the caller's `Mail/` folder and deletes through `discardLetter` → `deleteDatabaseDocumentIfExists`, the same `deleteWithGC` chokepoint `doc_delete_file` uses (hard-link groups + file-row GC identical; buffered and replayed on the parent from the job child). It is **added to `DESTRUCTIVE_TOOL_NAMES`** (`lib/tools/destructive-tools.ts`). `mailbox.ts` grows `discardLetter`. The letter actions in `list_mail`, `read_mail` and Suparṇā's notice now offer `discard_mail`. `instructions.ts`, `tool-executor.ts`, `index.ts`, `plugin-tool-builder.ts`, the tools route and the snapshot (+17) change. `help/post-office.md`. **v5 surfaces hit:** the same Post Office / tools family as `39bc98ffc`, plus v5's destructive-tools list, the doc-delete GC chokepoint (the Scriptorium `doc_delete_file` port) and the write applier's replay path. The tool catalog goes 60 → 61. **Traps:** the destructive list gates confirmation / autonomy behaviour, so the new name must land there in v4's order. The handler's failure key is `message`, where `read_mail`'s is `text`. | UNPROCESSED (WAIVED for the `acadcc7cd` round, §1) |
 | `f7f3d7bf0` | 2026-09-26 | Keep conversation embeddings warm; render transcripts on demand | PORT (a REVERSAL of the cold-tier + a column DROP) | **Hunks** (50 files, `-dev.96`). **Cold-tier removed:** `conversation-chunks.repository.ts` loses its embedding-clear method (−40), and `collapse-stale-chat-caches.ts` no longer clears chunk embeddings. `retention-constants.ts`, `settings.types.ts` and `scheduled-maintenance.ts` drop the cold-tier from the stale sweep (it keeps image + cache collapse; `dataRetention.staleChatDays` is unchanged). `cold-chunk-reembed.ts`, `reconcile-conversation-rendering.ts`, `reconcile-embedding-dimensions.ts` and `embedding-reindex.ts` now treat stale chats like any other, **so the first boot re-embeds the backlog** (85% of chunks on Friday). **Migration `drop-chat-rendered-markdown-v1`** (`dependsOn add-rendered-markdown-field-v1`, appended after `drop-chat-concierge-override-v1`) runs `ALTER TABLE chats DROP COLUMN renderedMarkdown`, and `chat.types` loses the field from both schemas. **New `lib/scriptorium/render-chat.ts` `renderChatConversation`** renders the transcript from messages, used by the render job, `read_conversation` and `upsert_annotation`. **New `lib/scriptorium/status.ts` `deriveScriptoriumStatus`** derives the badge from chunks alone. `chat-enrichment.service.ts`, the chat GET and the character GET stop reading the column. The data-retention route + `DataRetentionSettings` copy change. `ChatCard` tooltips move to the in-app Tooltip. `instrumentation.ts`, the prettify label, DDL.md and five help pages also change. **v5 surfaces hit:** `db/chats.rs` + `chats_read.rs`, `services/provisioning/fresh_schema.json`, `qtap_export/schema-key-order.json`, `db/conversation_chunks.rs` (`clear_embeddings`), `services/{cold_chunk_reembed,collapse_stale_chat_caches,conversation_render_reconcile,conversation_render_job,maintenance,chat_enrichment}.rs`, `services/mount_index/embedding_scheduler.rs`, `tools/{read_conversation,annotations}.rs`, `api/{characters,salon}.rs`, `enclave/{lifecycle,step}.rs`, `realtime/publish_sites.rs`, `quilltap-host/src/spine.rs`, the families `cold_chunk_reembed_tier2`, `conversation_chunks_tier2`, `collapse_stale_chat_caches_tier2`, `embedding_remainder` and `host_boot`/`host_cadence`, and the SPA chat card. **Traps:** a SECOND `DROP COLUMN` (§1 Schema state), so a post-upgrade Friday copy breaks v5 again. The first-boot re-embed is a real cost event, so the dogfood walk must budget the embed spend. The on-demand render must match the old stored bytes exactly, since every reader of `renderedMarkdown` now reads a render. A D23 re-dump + fixture widening lands ON TOP of the Concierge round's two re-dumps. The oracle pairs carrying `renderedMarkdown` need NARROWING (a column removed), the reverse of every heal so far. | UNPROCESSED (WAIVED for the `acadcc7cd` round, §1) |
+| `9ff4bbd8e` | 2026-09-28 | Offer an outfit when importing wardrobe items from an image | PORT (small) | **Hunks** (12 files, `-dev.97`). **`lib/wardrobe/image-analysis.ts`:** new exported `ProposedOutfit {title, description, appropriateness}`, and the result gains `proposedOutfit: ProposedOutfit \| null`. The vision prompt gains an outfit paragraph and an `"outfit": {…}` member in its JSON example, with the rules "fewer than two items → `outfit` null" and the empty case `{"items": [], "outfit": null}` (prompt BYTES move). `parseAnalysisResponse` now returns `{proposedItems, proposedOutfit}`. The new `parseProposedOutfit(raw, itemCount)` returns null when `itemCount < 2` or raw is falsy or not an object; an empty trimmed title logs DEBUG `[Wardrobe Image Analysis] Model returned an outfit without a title; dropping it` → null; other fields are trimmed strings or `''`. **Route** `app/api/v1/wardrobe/analyze-image/route.ts`: the response adds `proposedOutfit` and the log adds `hasOutfit`. **Client** `components/wardrobe/import-from-image-modal.tsx` (+197): it offers to bundle the imported pieces into a composite. The pieces are created FIRST, their returned ids become `componentItemIds`, types are the slot union, replace is on by default, and the pieces are kept if the outfit fails. `help/wardrobe.md`. **v5 surfaces hit:** the wardrobe analyze-image verb in `crates/quilltap-core/src/api/wardrobe.rs` + `api/types.rs` + `api/engine.rs`, its REST edge `crates/quilltap-web/src/wardrobe_routes.rs`, and the SPA import flow in `apps/web/src/app/wardrobe/wardrobe-control-dialog.ts`. Composite creation rides the ported composite-item path (`componentItemIds`, the .qtap import remap). **Traps:** the prompt is an LLM input, so its bytes are tier-1 / tier-3 comparable and must be byte-copied. The null rules are ordered (count first, then shape, then title). The client's create-pieces-then-outfit order is the SPA half's ordering proof. | UNPROCESSED (WAIVED for the `acadcc7cd` round, §1) |
+| `c3eefa752` | 2026-09-28 | Teach built-in character prompts to listen and match register | PORT + **RE-VENDOR** (`builtin_prompt_templates_guard` RED on the live checkout) | **Hunks** (38 files, `-dev.98`). **Built-in prompt text:** all 21 `plugins/dist/qtap-plugin-default-system-prompts/prompts/*.md` are revised, each ending in example exchanges (plugin 1.1.24). **Seeder** (`prompt-templates.repository.ts`): the two seed loops (plugin + filesystem) collapse into ONE private `upsertBuiltInPrompt(prompt, source)`. It inserts when absent (INFO `Sample prompt template seeded` `{templateId, name, …}`, the old "…from plugin" / "…from filesystem" lines REPLACED). **New:** when a built-in row exists but differs in `content`, `description`, `category` or `modelHint`, it runs `$set` on those four + `updatedAt` (INFO `Built-in prompt template refreshed from shipped text {templateId, name, source}`); an exact match is a no-op. **Generators:** `lib/services/character-field-semantics.ts` gains the exported `CONVERSATIONAL_VOICE_DIRECTION` and `EXAMPLE_DIALOGUE_COVERAGE` constants. They are appended into the AI-import prompt (`ai-import.service.ts`: the system-prompt instruction + `For exampleDialogues: …`), the wizard (`character-wizard.service.ts`) and the optimizer (`character-optimizer.service.ts`: two new "Do NOT codify repetition" bullets, the EXAMPLEDIALOGUES rule, "Never remove or weaken…"). So every generator's prompt BYTES move. Three help pages. **v5 surfaces hit:** `crates/quilltap-core/src/services/builtin_prompt_templates.rs` + its vendored `builtin_prompt_templates.json` (P4.83), guarded by `builtin_prompt_templates_guard` (it re-derives from the live checkout, so RED now) and `prompt_templates_routes_equivalence`. v5's seeder is "insert-if-absent, NEVER update", and **`needs_seeding` short-circuits on NAMES only**, so the refresh needs a content comparison in that read-pool check, not just in the write. The generators live in `crates/quilltap-core/src/generators/{mod,ai_import,optimizer,generated_items}.rs` + the character-field-semantics home, with the families `ai_import_assembly`, `ai_import_tier3`, `character_optimizer_prompts`, `character_optimizer_tier3`, `character_wizard_tier3`, `generators_leaf` and `generators_wizard_prompts`. **Traps:** the refresh WRITES on boot for every existing instance whose rows predate the text (Friday included), a real write at startup. Characters holding imported copies are never touched (they are not `isBuiltIn`). The INFO line's wording changes for BOTH seed sources. | UNPROCESSED (WAIVED for the `acadcc7cd` round, §1) |
+| `04d6c9d52` | 2026-09-28 | Give characters joining a running chat their outfit avatar | PORT (small) | **Hunks** (9 files, `-dev.99`). `app/api/v1/chats/[id]/actions/participants.ts` gains `refreshAvatarForArrivingCharacter(chatId, characterId, userId, repos)`. It reads `repos.chats.getEquippedOutfitForCharacter`; with no equipped slots it logs DEBUG `[Chats v1] No equipped outfit for arriving character, avatar left as-is` and returns. Otherwise it calls `triggerAvatarGenerationIfEnabled(repos, {userId, chatId, characterId, callerContext: '[Chats v1] participant-join'})` and logs DEBUG `[Chats v1] Avatar refresh requested for arriving character`. Any throw → WARN `[Chats v1] Failed to request avatar refresh for arriving character {chatId, characterId, error}`; the join never fails. It is called on the ADD path (after the add) and on the REACTIVATE path whenever `reactivatedParticipant?.characterId` ("whether or not the outfit was re-applied"). The trigger itself gates on `avatarGenerationEnabled` and skips autonomous rooms, and the job's configuration cache answers first (rebind, not regenerate). `help/chat-settings-ai-services.md`. **v5 surfaces hit:** `crates/quilltap-core/src/api/chat_cast.rs` (P4.9E1A: add participant + `reactivate_participant` at `:271`) over `services/chat_participants.rs`, and `services/avatar_generation.rs:151` `trigger_avatar_generation_if_enabled` (its `callerContext` threading), with the avatar configuration cache (P4.D188 Avatar Rolls). **Traps:** the reactivate arm fires even when the outfit was NOT re-applied. The cache hit means a tier-3 proof must show a REBIND with zero generations. A new enqueue on the add path moves any family counting jobs after an add (the cast families). | UNPROCESSED (WAIVED for the `acadcc7cd` round, §1) |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
