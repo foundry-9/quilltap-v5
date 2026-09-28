@@ -12,6 +12,51 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — docs(porting): unify the `acadcc7cd` Concierge-overhaul drift catch-up round (P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233) — baseline → `acadcc7cd`
+
+_Versions: core 0.0.1089, harness 0.0.1012, host 0.0.162, web 0.0.201, SPA 0.5.784._
+
+Unifies all nine lanes of the round onto `main` and moves the oracle
+baseline from `b0b6656b5` to `acadcc7cd`. The round covers v4's Concierge
+overhaul (#73–#77), the Scenario Builder on the scenario shelves, bugs
+170–172 and the SDK-bump regen event. The seven v4 commits past the target
+stay UNPROCESSED in the drift ledger. One of them, `97b25fc53`, landed
+during the gate. Every regen ran from the `acadcc7cd` pin, so it touched
+nothing gated.
+
+Review fixes landed with the unification:
+
+- Four Concierge chat reads now follow v4's fallback repository read. A
+  failed read is v4's not-found path, not a WARN, ERROR or 500. Chat create
+  no longer answers 500 for a chat it has already committed.
+- The classifier switch and the current-state re-read are tested: ten
+  arms mirroring v4's own tests.
+- The post-office writers family now drives v4's four live Concierge kinds
+  instead of the five retired ones.
+- The "Try uncensored" round trip e2e gives its desk profile a usable key
+  and a model of its own. The beat ran live for the first time and passes.
+- The legacy image dialog logs `chatId` as a string or `null`.
+- A rejected Concierge settings save no longer blocks later saves.
+- The off-scene persona flag is pinned on empty and absent names.
+- Stale doc comments are corrected.
+
+Wires: the seven e2e server-chain gates were removed and their beats run
+live. P4.D233's recipes run from one pin. The `docs/v4/developer/` mirror
+is refreshed (22 files at `acadcc7cd`).
+
+Escalated: the text-side structured refusal. A text provider's error
+`code` never reaches the refusal classifier; this is a follow-up order.
+
+Gate:
+
+- fmt and clippy (both feature sets) clean; release build clean.
+- Full sweep at `acadcc7cd`: 566 ok / 4 run_failed / 3 refused of 573.
+  Every red is pre-existing or designed. Tier R 266/0.
+- `cargo test --workspace`: 644 binaries / 3,858 passed / 0 failed.
+- SPA: 460 files green; build and lint clean.
+- Playwright: 347 passed / 7 failed / 6 skipped. All seven failures are
+  green when re-run alone.
+
 #### 2026-09-28 — docs(porting): P4.D233 lane complete — gate record and order status
 
 _Docs-only change._

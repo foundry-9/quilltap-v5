@@ -153141,3 +153141,171 @@ a census ROW, `V4::Query`); `get_messages_caller_census` 80 → **81** fallback
   committed `.db` pair changed.
 
 **P4.D228 LANE COMPLETE.**
+
+## The `acadcc7cd` Concierge-overhaul drift catch-up round — UNIFICATION record (2026-09-28)
+
+**All nine lanes unified on `main`; the oracle baseline moves `b0b6656b5` →
+`acadcc7cd`.** Order: the chain P4.D225 → P4.D226 → P4.D227 → P4.D228
+(cherry-picked as one stack), then P4.D231, P4.D229, P4.D230, then P4.D232
+and P4.D233. The union had no source conflict. Versions, CHANGELOG and
+status-log were reconciled as union. The §2 probe passed at the start and
+again before the docs commit. That re-probe FAILED: v4 `97b25fc53` (the
+story-background drape, `-dev.100`) had landed during the gate. It is
+recorded in the ledger as a seventh UNPROCESSED row past the new baseline.
+Every regen ran from the `acadcc7cd` pin, so it touched nothing gated.
+
+**How the round ran.** It began as a PARTIAL unification of the seven
+finished lanes. P4.D232 and P4.D233 had never been started, so the baseline
+could not honestly move, and the human's call was to land the seven first.
+The unification had reviewed, fixed and gated to Playwright when the human
+reported P4.D232 and P4.D233 done. Nothing had been fast-forwarded, so both
+lanes were folded into the same unify branch and the whole round was gated
+at `acadcc7cd`. The interim full sweep at `08c49319d` (507 ok of 518 run
+before it was superseded) is not the gate of record.
+
+### §3 review — what it found
+
+Seven parallel readers (one per lane or lane pair), plus the unifier's own
+reads of P4.D232 and every seam. **No lane shipped a correctness defect in
+production code the differentials could not see, but three of the round's
+claims were false, and one gate handoff had been taken by neither side:**
+
+1. **P4.D226's "Tier 1 whole" was FALSE for item 5 (fixed).**
+   - `classifier_switch.rs` and `current_state.rs` had no tests at all.
+     v4's `classifier-switch.test.ts` and `current-state.test.ts` were not
+     mirrored, and none of their log lines was capture-pinned. The
+     double-switch pin was asserted in the lane record but tested nowhere.
+   - Four read-error arms answered a WARN, an ERROR or a 500 that v4 can
+     never emit, because v4's `repos.chats.findById` is a fallback
+     `safeQuery`. The four arms: the current-state re-read, the classifier
+     switch, `generate_image`'s Concierge chat read, and chat create's
+     post-flip re-read. The last one **answered 500 for a chat already
+     committed with its flip applied, where v4 answers 201**.
+   - The fix is ONE helper, `chats_read::find_by_id_or_none`, plus ten
+     planted-row arms. The failed-read arms are red on the lane's code.
+2. **`post_office_writers_tier3`: the handoff nobody took (fixed).**
+   - The chain called this family "P4.D233's fence" in all four records.
+     P4.D233 called it "green atop the chain".
+   - On the union it was red, 25 rows vs 20. The spec still drove the five
+     Concierge manual kinds v4 #75 retired. v4's writer has no body for
+     them, so it writes nothing. v5 keeps their bodies so old transcripts
+     render, so it wrote five.
+   - The spec was re-keyed to v4's four live kinds, and the hand count moved
+     to 24. It is green at `acadcc7cd`.
+3. **The "Try uncensored" round trip's first LIVE run failed on its own
+   gesture (fixed in the spec).**
+   - This was the unification wire: P4.D229 had gated the beat on the chain,
+     so it had never run.
+   - The retry answered 409 `no-understudy`. The desk profile had no API key
+     (v4 `decryptKey` refuses exactly as v5 does) and shared the original
+     answer's model (the same-model exclusion).
+   - The spec now gives the desk the fixture's key and a model of its own.
+     The assertions are unchanged, and the beat is green: the line re-rolls
+     on the uncensored desk and the trail badge reads "sent by the
+     Concierge".
+4. **P4.D225's "structured refusal at every native site" OVERCLAIMED
+   (ESCALATED, not fixed).**
+   - `StreamError::with_refusal` has no production caller. So a text HTTP
+     error's provider `code`/`error.code` never reaches the classifier's
+     `provider-code` evidence.
+   - Failure case: OpenAI or Azure `content_filter` under benign wording
+     rerouted nowhere on v5. v4 reroutes it, because the SDK's `APIError`
+     carries the code.
+   - The order scoped only the image dialects and the finish reasons, so
+     this is a planning gap. It is a real order, named in `phase-4.md`'s
+     next list and in P4.D225's header.
+
+Also fixed at unification:
+- The legacy image dialog's five `[Images v1]` `chatId` fields rendered
+  `Some("…")`/`None` (the order's trap 26). They now log v4's string or
+  `null`, with a capture pin, red under Debug.
+- P4.D230's save chain stored the raw save promise, so one rejected save
+  would strand every later save. The stored link now never rejects, with a
+  spec arm, red when reverted.
+- P4.D233's `excludesPersonaByName` was pinned only with a non-empty name.
+  The absent and empty-name arms are now pinned, and an `is_some()`
+  mutation now goes red.
+- P4.D233's two-pin fixture recipes collapse to ONE `acadcc7cd` pin on the
+  union (proven green), and the three headers were re-worded.
+- `ai_import_tier3`'s `V4_APP_VERSION` moved to `-dev.93`.
+- Stale docs:
+  - `write_apply`'s refusal-ledger hook claimed a production wiring that
+    does not exist. It is now marked DORMANT, and the sync/async trap is
+    named for whoever wires it.
+  - A census was cited by a name that does not exist.
+  - The `GenOutcome` doc named a deleted function.
+
+**Rulings made at unification:**
+- P4.D228's picture-arm 502 riding `kind: internal` STANDS as a recorded
+  divergence. It matches the existing precedent (`api/chat_media.rs`'s other
+  v4 502), and v4's client reads only `res.ok` + the 409.
+- P4.D228's swipe override carrying the profile ROW is accepted: it is
+  core↔host only, with no wire change.
+
+**Verified, no finding:**
+- P4.D231 has no overlap with the chain.
+- P4.D229/P4.D230's contract matches the chain name for name: verbs, fields,
+  enum values, refusal tokens, trail keys, announcement kinds and the help
+  slug.
+- P4.D232's `request-envelopes` re-record is STAMP-ONLY, re-verified
+  mechanically: zero lines differ after normalizing the SDK versions.
+- P4.D233 matches v4 `acadcc7cd` hunk for hunk.
+
+**OPEN, by name** (each order's status header carries its own):
+- The text-side structured refusal (above).
+- P4.D231's group-links whole-read failure and the group exists-check
+  overclaim.
+- P4.D233's scan-gate oracle arm in `build_context_tier3`, `chat_type` on
+  `ContextChat`, and v4's continuation WARN/ERROR siblings.
+- The NITs of P4.D225/D226/D227/D228/D229/D230.
+
+### The unification wires
+- The seven `P4D22x_SERVER_LANDED` gates were REMOVED (six P4.D229 files,
+  one P4.D230 file, with their ACTIVATE-AT-UNIFY prose). Every beat ran live.
+- P4.D233 × the chain: the post-office spec, the one-pin recipes, the stamp.
+- The `docs/v4/developer/` mirror: all 22 `docs/developer/` files v4 moved
+  in `b0b6656b5..acadcc7cd`, at `acadcc7cd`'s bytes, byte-compared (the
+  lanes' §R.9 pre-lists).
+
+### Gate (tree `c0b24741a` + this docs commit)
+- `cargo fmt --all --check` is clean. `cargo clippy --workspace --all-targets
+  -- -D warnings` is clean both plain and with
+  `--features quilltap-core/native-transport`. The release build is clean.
+- **The full sweep from the `acadcc7cd` pin** (`--run-all`, a separate
+  worktree at `c0b24741a`):
+  - **566 ok / 4 run_failed / 3 refused of 573**. Artifact:
+    `harness/tools/sweep-results/2026-09-28-acadcc7cd-unify.json`.
+  - Every red is pre-existing or designed:
+    - `ariel_writers_tier3` and `memory_processor_tier3`: the standing
+      compressed-text byte parity, decoded text identical, the same status
+      in P4.D226's and P4.D227's committed sweeps.
+    - `search_replace`: the standing `missing_action_recorded`.
+    - `builtin_prompt_templates_guard`: reads the LIVE checkout, where the
+      waived `c3eefa752` rewrote the prompts. GREEN against the pin, below.
+  - Refused by design: `backup_uuid_remap` (a repo-write corpus),
+    `avatar_rolls_routes` and `generator_sse_wire` (non-extractable,
+    standing).
+  - Tier R (`cli_differential`): **266 cases, 0 failures** at the pin.
+- `QT_V4_CHECKOUT=<the acadcc7cd pin> cargo test --workspace
+  --no-fail-fast`: **644 binaries / 3,858 passed / 0 failed / 3 ignored**.
+- SPA:
+  - `npm test`: **460 files / 8,716 + the new save-chain arm**, green.
+  - `npm run build` and lint are clean. check-qt-classes: 956 classes, every
+    reference resolves.
+- Full Playwright on the final tree: **347 passed / 7 failed / 6 skipped
+  (12.5 m)**. The run shared the CPU with the sweep. The seven reds are the
+  standing Salon-streaming timing cluster across five files, each green
+  ALONE, one invocation at a time:
+  - `salon-regenerate-stream-flow` 3/3
+  - `salon-roleplay-template-flow` 2/2
+  - `salon-streaming-avatar-flow` 2/2 (incl. the newly ungated Unmoderated
+    beat)
+  - `salon-thinking-indicator` 1/1
+  - `salon-transcript-subscribed-read` 2/2
+
+  The earlier run on the seven-lane tree was 352 / 2 / 6. Its two reds were
+  the known `salon-regenerate-stream-flow` intermittent (green alone) and
+  the "Try uncensored" gesture above. The six skips are the standing parks.
+
+**Versions:** core 0.0.1089, harness 0.0.1012, host 0.0.162, web 0.0.201,
+SPA 0.5.784; cli 0.0.27 and tauri 0.0.7 unchanged.

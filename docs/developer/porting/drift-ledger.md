@@ -19,278 +19,88 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `b0b6656b5`**: "Fix bug 169: narrow-pane chat sidebar
-  no longer closes dialogs it opens (#71)" (v4 main, 2026-09-24,
-  `4.10.0-dev.78`), adopted when the `b0b6656b5` ten-commit drift catch-up
-  round was unified (P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥ P4.D224,
-  2026-09-25). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-28 (`/driftcheck`, main-checkout session, after
-  `git fetch` of the v4 checkout; local `main` equals `origin/main`). The
-  round in flight is the Concierge-overhaul catch-up, re-ordered to target
-  **`acadcc7cd`** (`446671a7d`: P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥
-  P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233). Its lane branches are
-  live in the v5 repo at this check (seven `claude/*` branches), so this pass
-  writes only the ledger, on `main`.
-- **v4 `main` HEAD at check: `04d6c9d52`** ("Give characters joining a
-  running chat their outfit avatar", 2026-09-28 09:34, `4.10.0-dev.99`).
-  **SIXTEEN non-merge commits past the baseline** (§3):
-  - the ten the round ORDERED, through `acadcc7cd` (**the round target**);
-  - the three waived at the 2026-09-26 check: `39bc98ffc` (`read_mail` +
-    the rename), `12c336fad` (`discard_mail`), `f7f3d7bf0`
-    (`renderedMarkdown` dropped);
-  - **three NEW, UNPROCESSED, and WAIVED for the round (below):**
-    - `9ff4bbd8e`: the wardrobe image import proposes an outfit, `-dev.97`;
-    - `c3eefa752`: the 21 built-in prompts revised + the seeder refreshes
-      built-in rows + the shared voice direction, `-dev.98`;
-    - `04d6c9d52`: an avatar job for a character joining a running chat,
-      `-dev.99`.
+- **Oracle baseline: `acadcc7cd`**: "Name who stayed behind on Continue
+  Elsewhere; persona absent in autonomous rooms (bugs 171, 172)" (v4 main,
+  2026-09-25, `4.10.0-dev.93`), adopted when the `acadcc7cd` Concierge-overhaul
+  drift catch-up round was unified — all nine lanes (P4.D225 → P4.D226 →
+  P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233,
+  2026-09-28). The ten rows `83d0c969b` … `acadcc7cd` are ABSORBED /
+  NO-PORT-RATIFIED (§6). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-09-28 (`/unify`, main-checkout session; the §2 probe run
+  at the unification's start AND again before the docs commit).
+- **v4 `main` HEAD at check: `97b25fc53`** ("Drape undressed characters in
+  story backgrounds instead of re-dressing them", 2026-09-28 12:31,
+  `4.10.0-dev.100` — landed DURING the unification's gate, found by the
+  pre-commit re-probe) — **SEVEN non-merge commits past the baseline**, all
+  UNPROCESSED in §3 (the first six were WAIVED for the round just unified,
+  never ordered; `97b25fc53` arrived after every regen, all of which ran from
+  the `acadcc7cd` pin, so it touched nothing gated): `39bc98ffc`
+  (`read_mail` + the `list_email` → `list_mail` rename), `12c336fad`
+  (`discard_mail`), `f7f3d7bf0` (conversation embeddings kept warm;
+  `chats.renderedMarkdown` DROPPED), `9ff4bbd8e` (the wardrobe image import
+  proposes an outfit), `c3eefa752` (the 21 built-in prompts revised; the
+  seeder refreshes built-in rows; the shared voice direction), `04d6c9d52`
+  (an avatar job for a character joining a running chat), `97b25fc53`
+  (story backgrounds drape an undressed character instead of re-dressing
+  them).
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch"), UNMOVED on both local and `origin/bugfix`; `1a2b2164c..bugfix` is
-  empty.
-- **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2"), UNMOVED.
-  There is still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**. §2's probe runs
-  against `04d6c9d52`. The three new commits change NO dependency (their
-  `package-lock.json` hunks are the version stamp only). `c3eefa752`'s only
-  `plugins/` paths are the default-system-prompts plugin's `prompts/*.md`
-  and its version stamp, with no `node_modules`. So the installed-
-  `node_modules` facts below still hold.
-- **⚠ A SECOND live-checkout guard is now RED by design:
-  `builtin_prompt_templates_guard`** (P4.83). It re-derives v5's vendored
-  `services/builtin_prompt_templates.json` from the checkout's
-  `plugins/dist/qtap-plugin-default-system-prompts/prompts/*.md` via
-  `QT_V4_CHECKOUT` (default: the LIVE checkout), and `c3eefa752` rewrote all
-  21. Those `.md` files are unchanged from `b0b6656b5` through `f7f3d7bf0`
-  (measured), so the guard is green against any pin at or before the round
-  target. **For the round's gates:** a lane or the unifier running `cargo
-  test --workspace` against the default checkout will see this red (and
-  `provider_sdk_version_guard`'s, until P4.D232 lands) for reasons outside
-  the round. Either run the guard with `QT_V4_CHECKOUT=<the acadcc7cd pin>`,
-  or record it by name as the waived row's red. Neither is a lane defect.
-- **WAIVER (the human; first recorded 2026-09-26, EXTENDED 2026-09-28):
-  the SIX commits past the round target (`39bc98ffc`, `12c336fad`,
-  `f7f3d7bf0`, `9ff4bbd8e`, `c3eefa752`, `04d6c9d52`) do NOT stop the
-  Concierge-overhaul round's lanes (P4.D225, P4.D226, P4.D227, P4.D228,
-  P4.D229, P4.D230, P4.D231, P4.D232, P4.D233).**
-  - They touch `lib/`, `app/api/`, `help/`, `migrations/` and one plugin's
-    prompt files. The waiver is safe only because every lane regenerates
-    from a LANE-UNIQUE detached worktree at its own per-lane pin (§R.3:
-    `49059fb14` / `4d370a90f` / `3b463d6b1` / `08c49319d` / `acadcc7cd`),
-    never the checkout, and a pin cannot see a later commit.
-  - **Scope, exactly:** for those nine lanes only, the §R.2 probe PASSES when
-    ALL of these hold:
-    - the branch is `main` and the tree is CLEAN;
-    - HEAD is `04d6c9d52`;
-    - `git log --oneline acadcc7cd..main` lists **exactly those six
-      commits** (`04d6c9d52`, `c3eefa752`, `9ff4bbd8e`, `f7f3d7bf0`,
-      `12c336fad`, `39bc98ffc`);
-    - `log 1a2b2164c..bugfix` is empty.
-
-    Anything else is still a STOP: a further commit, ANY dirty path, the
-    checkout off `main`, a moved `bugfix`. The 2026-09-26 scope (HEAD
-    `f7f3d7bf0`, three commits) is SUPERSEDED. A lane that passed the probe
-    under it and now sees these six commits resumes on this extension; it
-    does not re-run anything already done from its pin.
-  - **The round's targets do NOT move.** The round target stays
-    `acadcc7cd`, and every per-lane pin stands. No lane regenerates at HEAD,
-    reads HEAD's `lib/`/`help/`/`plugins/`, or copies anything from the live
-    checkout. P4.D228's `help/` re-vendor comes from the `acadcc7cd` pin; the
-    live tree now differs from it in eight more help files.
-  - **At unification** the baseline moves to `acadcc7cd`, not `04d6c9d52`.
-    All six rows stay in §3 as UNPROCESSED, to be the next catch-up's first
-    rows.
-  - The waiver does not order or ratify them.
-  - **Collision watch for the unifier:**
-    - `f7f3d7bf0` edits `lib/schemas/chat.types.ts`, the chat GET, the
-      character GET and `chat-enrichment.service.ts` (P4.D226 surfaces).
-    - `39bc98ffc`/`12c336fad` move the tool-definition snapshot P4.D227
-      also moves.
-    - `c3eefa752` edits the AI-import / wizard / optimizer prompt builders
-      (`lib/services/{ai-import,character-wizard,character-optimizer}.service.ts`
-      + `character-field-semantics.ts`), none of them round files.
-    - `04d6c9d52` edits `app/api/v1/chats/[id]/actions/participants.ts`,
-      the add/reactivate path. Check whether any round lane touched v5's
-      `api/chat_cast.rs`.
-    - The next catch-up re-dumps `fresh_schema.json` ON TOP of the round's
-      two re-dumps.
-
-- **v4's installed `node_modules` now match HEAD, so the morning's
-  plugin-types warning is RESOLVED.** The human ran `npm install`. Measured
-  at this check:
-  - root `@quilltap/plugin-types` **2.8.0**, `@quilltap/plugin-utils` 2.6.2,
-    `openai` **7.23.0**, `next` 16.3.6, `zod` 4.6.5 (unmoved);
-  - every `plugins/dist/*/node_modules/@quilltap/plugin-types` at 2.8.0;
-  - the six SDK-bundling plugin dirs at `openai` **7.23.0**,
-    `qtap-plugin-openrouter` at `@openrouter/sdk` **1.3.28**,
-    `@anthropic-ai/sdk` 0.115.0 and `@google/genai` 1.52.0 (both unmoved),
-    and `qtap-plugin-mcp` at `@modelcontextprotocol/sdk` 1.30.1.
-
-  ⚠ **The flip side: `provider_sdk_version_guard` is now RED by design.** It
-  records `openai` 7.20.0 and `@openrouter/sdk` 1.3.11, and asserts every
-  installed location. ⚠ **A baseline-pinned regen is no longer
-  SDK-faithful to the baseline**, because §5.1's recipe symlinks the live
-  checkout's `node_modules`, so a `b0b6656b5` pin now runs openai 7.23.0 /
-  openrouter 1.3.28 under baseline `lib/`. Any provider-wire family
-  regenerated before the catch-up absorbs `6d0f88d65` will carry the NEW
-  stamps: `request-envelopes`, `image-dialects`, `openrouter_sdk_pricing`,
-  and every stream/envelope recorder. This is the SDK-bump regen event the
-  guard exists to announce (`6d0f88d65`'s row).
-- **Verdict: DRIFT PENDING — 16 commits: TEN ORDERED in the `acadcc7cd` round, SIX UNPROCESSED and WAIVED for it** (§3; the `08c49319d` round was RE-ORDERED the same day, `fe310e7d5` → the re-order commit, to fold `acadcc7cd` in: the round target MOVED to `acadcc7cd`, P4.D233 added, P4.D228's help tree re-vendors at `acadcc7cd`, P4.D231 pins its own commit):
-  - 2 NO-PORT? rows: `83d0c969b` and `a8292547a`, to be ratified on their
-    file lists.
-  - **The five Concierge-overhaul rows**, each a large PORT, in a strict
-    chain #73 → #74 → #75 → #76 → #77.
-    - They **REPLACE v5's ported four-state Concierge** (P4.D141 /
-      P4.D143–D144 / P4.D148–D149) and its `dangerousContentSettings` policy
-      (P4.6a/6b, P4.6an, P4.71, P4.D37/38/48/201).
-    - They rewrite the image-moderation reroute (W4.2, P4.D178 / P4.88)
-      around a refusal classifier + understudy + image-failover chokepoint.
-    - They widen the `routeTrail` JSON (P4.D171/D173/D177).
-  - `6d0f88d65`: NO-PORT? for code, but a **REGEN EVENT** (the SDK bumps).
-    It must land with a re-record of every provider corpus and the guard's
-    constants moved.
-  - `08c49319d`: a small PORT on the P4.D216/D217 Scenario Builder surface,
-    independent of the Concierge chain.
-  - **`acadcc7cd` (bugs 171 + 172): PORT, ORDERED(P4.D233).** v5 has BOTH
-    bugs verbatim, measured:
-    - `services/off_scene.rs:284` excludes the persona by name
-      unconditionally (bug 172);
-    - `services/chat_continuation.rs` names no one left behind (bug 171).
-
-    It is small and independent of the Concierge chain. It touches
-    `lib/schemas/chat.types.ts`, a P4.D226 file, but only to ADD the pure
-    `operatorSpeaksWithoutSeat`.
-  - **The three waived rows (UNPROCESSED):**
-    - `39bc98ffc` is a PORT-NEW tool plus a tool RENAME: `list_email` →
-      `list_mail`, and v5's `tools/list_email.rs` + the catalog move.
-    - `12c336fad` is a PORT-NEW destructive tool (`discard_mail`). With
-      `read_mail`, the tool catalog goes 59 → 61.
-    - `f7f3d7bf0` is a PORT that REVERSES the conversation-chunk cold-tier
-      (v5's `cold_chunk_reembed.rs`, `collapse_stale_chat_caches.rs`,
-      `conversation_chunks::clear_embeddings`) and **DROPS
-      `chats.renderedMarkdown`**: a second `DROP COLUMN` with the same
-      live-instance consequence as `conciergeOverride`, see Schema state.
-    - `9ff4bbd8e` is a PORT, small: the wardrobe `analyze-image` response
-      gains `proposedOutfit`, and the SPA import dialog offers the outfit.
-    - `c3eefa752` is a PORT plus a RE-VENDOR: the 21 built-in prompts and
-      `builtin_prompt_templates.json`. The seeder now REFRESHES existing
-      built-in rows, and the generators share `CONVERSATIONAL_VOICE_DIRECTION`
-      / `EXAMPLE_DIALOGUE_COVERAGE`.
-    - `04d6c9d52` is a PORT, small: the add/reactivate participant paths
-      request an avatar job.
-  - No CONVERGENCE rows. v4's `bugs.md` has gained bugs 170, 171 and 172
-    since the baseline (none since `acadcc7cd`). All three are v4-found (170 and 171/172 on Friday),
-    none filed by the port, and v4's "v5 status" column reads "Unchecked" for
-    all three.
-
-- **Regen rule: PIN REQUIRED at `b0b6656b5`** because HEAD is sixteen
-  commits past the baseline and six past the round's target. A lane
-  regenerating "at the target" pins `acadcc7cd` (or its own per-lane pin,
-  §R.3), never HEAD. Every regen runs from a detached `b0b6656b5` worktree
-  per §5.1. **Caveat, new at this check:** the pin's symlinked
-  `node_modules` are HEAD's (the SDKs above), so a pinned provider-wire
-  regen is baseline `lib/` under TARGET SDKs. Don't regen a provider-wire
-  family at the baseline pin and call it baseline-faithful. Either the
-  catch-up absorbs `6d0f88d65` first, or the lane records the SDK stamps it
-  actually got.
-- **The workspace gate at the baseline** is unchanged since the unification:
-  the round record in `status-log.md` has the counts.
-  - GREEN: `qtap_schema_embed_guard`, `zod_version_guard` (4.6.5),
-    `provider_sdk_version_guard` and `public_schemas_vendor_guard`.
-  - `help_tree_embed_guard` is GREEN at **129** (`host_help_docs_boot`
-    agrees).
-  - `dispatch_wrong_type_census` is at **449**.
-  - The `web_edge_action_sites_census`, `blob_write_sites_census` (12 / 12 +
-    one EXEMPT), `compressed_column_write_sites_census` (14),
-    `get_messages_caller_census` (76, 7) and `web_edge_body_parse_guard`
-    readings are as recorded at unification.
-  - Tier R is 266/0 at the pin. The tool catalog is 59.
-  - **What the drift will move** (to measure in the catch-up, not predicted
-    here):
-    - the `helpSettings` / `helpNavigate` tool-definition bytes (#76; the
-      count stays 59);
-    - both action lists and every action census (#77's
-      `retry-image-uncensored` chat action + `retry-uncensored` message
-      action);
-    - `dispatch_wrong_type_census` (#75's three-value `conciergeState` enum;
-      #76's retired-key 400 on the settings PUT);
-    - the help tree's FILE SET, while the count stays 129;
-    - **`provider_sdk_version_guard` (RED now, from the installed
-      checkout; `6d0f88d65`).**
-- **Schema state: v4 MOVED DDL.** The D23 re-dump from `e7d77bb60` still
-  stands at the baseline. Past it, four new migrations are appended in this
-  order in `migrations/scripts/index.ts`:
-  1. `add-chat-refusal-ledger-v1` (#74) adds `chats.moderationRefusalCount
-     INTEGER NOT NULL DEFAULT 0` and `lastModerationRefusalAt`. Both are
-     deliberately absent from `ChatMetadataSchema`, like `transcriptVersion`.
-  2. `add-chat-concierge-mode-v1` (#75) adds `conciergeMode` (default
-     `'moderated'`), `conciergeModeSetBy` and `conciergeModeReason`,
-     backfilled from the legacy `conciergeOverride` / `isDangerousChat` pair.
-  3. `add-concierge-settings-v1` (#76) adds `chat_settings.conciergeSettings`
-     JSON, backfilled from `dangerousContentSettings` +
-     `uncensoredImageDescriptionProfileId` +
-     `cheapLLMSettings.imagePromptProfileId`. Those source columns STAY in
-     the DDL as deprecated and unread.
-  4. **`drop-chat-concierge-override-v1` (#76) runs `ALTER TABLE chats DROP
-     COLUMN conciergeOverride`.**
-
-  Two open questions for the catch-up:
-  - One classifier believes `generateDDL` walks the Zod schemas, so a D23
-    re-dump would NOT carry #74's two schema-absent columns. If so, they need
-    a boot ensure like `chats_transcript_version_repair.rs` (P4.D182). **This
-    is unmeasured; the catch-up measures it with v4's real `generateDDL`
-    before deciding.**
-  - ⚠ **Live-instance consequence:** once the human's v4 runs `4.10.0-dev.88`
-    or later against Friday, the drop migration removes a column v5 still
-    binds (`conciergeOverride` has 107 references across core / web / host /
-    harness / SPA, including `fresh_schema.json` and the export schema).
-    **A fresh Friday copy taken after that point can be expected to break
-    v5's chat reads/writes until #75/#76 are ported.** Dogfood on a copy
-    taken before v4's upgrade, or measure the copy's `chats` columns first.
-  - **Fifth migration, past the round target (`f7f3d7bf0`, waived):**
-    `drop-chat-rendered-markdown-v1` (`dependsOn: add-rendered-markdown-
-    field-v1`, appended after `drop-chat-concierge-override-v1`) runs `ALTER
-    TABLE chats DROP COLUMN renderedMarkdown`. v5 still binds that column in
-    `db/chats.rs`, `chats_read.rs`, `fresh_schema.json`,
-    `qtap_export/schema-key-order.json` and ~15 service/tool sites. **A Friday
-    copy taken after v4 reaches `-dev.96` lacks it**, and v5's reads of it
-    are expected to fail until the next catch-up ports the drop.
-- **`help/**` vs v4 HEAD `04d6c9d52`:** the count is still **129**, but the
-  tree DIFFERS in **28** files vs the baseline. The 2026-09-28 commits add
-  `character-optimizer.md`, `character-system-prompts.md`, `prompts.md` and
-  `wardrobe.md`, and re-touch `chat-settings-ai-services.md`. At
-  `f7f3d7bf0` it was 24. The four new ones, past the
-  round target, are `data-retention.md`, `embedding-profiles.md`,
-  `post-office.md` and `scriptorium.md`; the waived commits also re-touch
-  `chat-settings.md` and `chats.md`. At the round target `acadcc7cd` it is
-  20:
-  - `acadcc7cd` modifies `chats.md` (already among the overhaul's 13) and
-    `salon-host-introductions.md` (new to the list). So P4.D228's whole-tree
-    re-vendor "at `08c49319d`" is one commit short of HEAD: 19 files at the
-    round target, 20 at HEAD.
-  - The 19 at the round target are the 15 below from the Concierge overhaul
-    plus
-  four modified by `08c49319d` (`general-scenarios.md`, `groups.md`,
-  `project-scenarios.md`, `scenario-builder.md`). The overhaul's 15:
-  - `dangerous-content.md` DELETED (#76);
-  - `the-concierge.md` ADDED (#76, grown in #77);
-  - 13 pages modified across #73–#77.
-
-  The 129 literals therefore do not move. `help_tree_equivalence`, the
-  embedded tree and the SPA's `help-categories.ts` capture (a slug swap + a
-  `/settings?tab=concierge` URL entry, #76) all do.
+  branch"), UNMOVED; `1a2b2164c..bugfix` empty. **`release` tip:** `8fbf2afe0`
+  ("release: 4.9.2"), UNMOVED; still no `release: 4.10.0` squash.
+- **Checkout at check:** branch **`main`**, tree **CLEAN**; the §2 probe runs
+  against `97b25fc53`.
+- **Verdict: DRIFT PENDING — 7 commits, all UNPROCESSED** (§3; the next
+  catch-up's rows, never ordered). No CONVERGENCE rows; v4's `bugs.md` ends at
+  bug 172.
+- **Regen rule: PIN REQUIRED at `acadcc7cd`** — HEAD is seven commits past the
+  baseline. Every regen runs from a detached `acadcc7cd` worktree per §5.1.
+  The pin's symlinked `node_modules` are HEAD's, and HEAD's SDKs now EQUAL the
+  recorded ones (openai 7.23.0, `@openrouter/sdk` 1.3.28, anthropic 0.115.0,
+  genai 1.52.0 — P4.D232), so a pinned provider-wire regen IS
+  baseline-faithful again.
+- **Live-checkout guards at the baseline:** `builtin_prompt_templates_guard`
+  is RED against the LIVE checkout by design (`c3eefa752` rewrote the 21
+  prompts) and GREEN with `QT_V4_CHECKOUT=<an acadcc7cd pin>`; it goes green
+  on the live checkout when the next catch-up re-vendors them.
+  `provider_sdk_version_guard` is GREEN (P4.D232's constants + P4.D225's
+  `image-dialects` re-record, on the union).
+- **The workspace gate at the baseline:** the round record in
+  `status-log.md` has the counts (the full sweep at `acadcc7cd`, the workspace
+  suite, Tier R 266/0 at the pin, Playwright).
+- **Schema state:** `fresh_schema.json` is the round's SECOND D23 re-dump
+  (P4.D227, from v4's live `generateDDL` at `3b463d6b1`); #74's two ledger
+  columns (`chats.moderationRefusalCount`, `lastModerationRefusalAt`) are
+  schema-ABSENT in v4's Zod and live in v5 as a BOOT ENSURE (P4.D225, the
+  P4.D182 model). `conciergeOverride` is DROPPED by v4's migration and no
+  longer bound by v5's strict chat read; **v5 never drops it at boot** (E.2),
+  so it tolerates both shapes. ⚠ **Past the baseline:** `f7f3d7bf0`'s
+  `drop-chat-rendered-markdown-v1` drops `chats.renderedMarkdown`, which v5
+  still binds (`db/chats.rs`, `chats_read.rs` — right after the Concierge trio
+  in `ALL_COLUMNS` — `fresh_schema.json`, the export key order, ~15
+  service/tool sites). **A Friday copy taken after v4 reaches `-dev.96`
+  lacks it, and v5's chat reads are expected to fail on that copy until the
+  next catch-up ports the drop** (with the same tolerate-both-shapes
+  treatment as `conciergeOverride`). **Dogfood on a copy taken at `-dev.88`
+  … `-dev.95`, or measure the copy's `chats` columns first.**
+- **`help/**`:** re-vendored WHOLE at `acadcc7cd` (P4.D228; 129 files,
+  md5-identical to the pin). v4 HEAD differs from it in eight more files (the
+  waived commits: `character-optimizer.md`, `character-system-prompts.md`,
+  `prompts.md`, `wardrobe.md`, `data-retention.md`, `embedding-profiles.md`,
+  `post-office.md`, `scriptorium.md`, plus re-touches of
+  `chat-settings-ai-services.md`, `chat-settings.md`, `chats.md`; and
+  `97b25fc53` re-touches `story-backgrounds.md` and `the-concierge.md`) — the
+  next catch-up's re-vendor.
+- **`docs/v4/developer/`:** every `docs/developer/` file v4 moved in
+  `b0b6656b5..acadcc7cd` (22 — the six overhaul specs + the umbrella, the
+  bugs 170/171/172 files + `bugs.md`, `API.md`, `DDL.md`, `SYSTEM_FLOWCHARTS.md`,
+  `BACKGROUND_JOBS_CHILD.md`, `PROVIDER_PLUGIN_DEVELOPMENT.md`, the ROADMAP and
+  five completed-feature specs, `scenario-builder.md`) is mirrored at
+  `acadcc7cd`'s bytes (byte-compared at the unification).
+  `docs/v4/CHANGELOG.md`'s older lag stays a named housekeeping item.
 - **The three text-compression migrations and the image re-encode migration
   stay DEFERRED as reclamation** (named in `db/text_compression.rs`, the
   P4.D209 record, and P4.104's module doc). The animated-input ruling is
   LANDED (P4.108); the corrupt-second-frame ruling (2026-09-23) keeps v5's
   first-frame still.
-- **`docs/v4/developer/bugs/`** is identical to v4's at `b0b6656b5`. v4 has
-  since added `fixed/bug-170-*` + its `bugs.md` row (`83d0c969b`; "v5 status:
-  Unchecked", and the answer is **not affected**, see its row). The
-  `docs/v4/developer/features/` mirror owes the six overhaul specs from
-  `a8292547a`, as later edited by #73–#77. Both refreshes ride the catch-up's
-  unification. `docs/v4/CHANGELOG.md`'s older lag stays a named housekeeping
-  item.
 
 ## §2 The freshness probe
 
@@ -329,22 +139,13 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `83d0c969b` | 2026-09-24 | Fix bug 170: Salon speaker switch sends POST, not PUT | NO-PORT? (v5 never had it) | **Hunks:** ONE line in `app/salon/[id]/hooks/useImpersonation.ts:153` (`handleSetActiveSpeaker`'s `method: 'PUT'` → `'POST'`), a NEW jest test (`__tests__/unit/app/salon/hooks/useImpersonation.set-active-speaker.test.tsx`), `bugs.md` + NEW `bugs/fixed/bug-170-*.md`, the `4.10.0-dev.79` stamp (three `package*.json` + README), CHANGELOG. No `lib/`, `app/api/`, `help/`, DDL or oracle-import hunk. **v5 is NOT affected — measured, not assumed:** the SPA's speaker pick (`apps/web/src/app/screens/salon/salon-conversation.ts:2546` `onSelectSpeaker`) sends `chatSetActiveSpeaker` over the dispatch client — no HTTP method exists to get wrong — and the verb runs the real write (`api/salon.rs:1954`, `Request::ChatSetActiveSpeaker`; covered by `salon_mutations_equivalence` + `salon-conversation.spec.ts` / `salon-turn-controls.spec.ts`). v5's REST `/api/v1/chats/{id}` registers no PUT leg and its POST leg serves only `equip`/`regenerate-avatar` (`quilltap-web/src/lib.rs:436`), so neither v4's pre-`ad1c4c37f` silent no-op nor its post-dispatcher 400 toast is reachable on v5. v4's bug file asks "v5 status: Unchecked" — the answer is **not affected** (a candidate one-line upstream note). The bug-file mirror rides the catch-up round's unification with bugs 167–169. Ratify NO-PORT on this file list; it can fold into P4.D221's ratification list. **Newer fact (2026-09-24): the human WAIVED this commit for the P4.D220–P4.D224 lanes' §R.2 probe (§1); the row stays unordered and the round's target stays `b0b6656b5`.** | ORDERED(P4.D232 — NO-PORT ratification on the file list; v5 NOT AFFECTED, measured: the speaker pick is a dispatch verb with no HTTP method; the bug-file mirror pre-listed for the unifier) |
-| `a8292547a` | 2026-09-24 | Add Concierge overhaul feature specs (overview + five phases) (#72) | NO-PORT? | `origin/main` ONLY at the unification's closing probe (local `main` at `83d0c969b`). Nine files, +1,008, all docs: `docs/developer/features/concierge-overhaul.md` + five `concierge-overhaul-phase-{1..5}-*.md` (refusal failover, a refusal ledger, three states, a Concierge tab, Salon polish — a ROADMAP for future v4 work, nothing shipped), `docs/developer/features/ROADMAP.md` (+1), `.claude/commands/update-documentation.md` (+6), CHANGELOG. No `lib/`, `app/`, `help/`, `packages/`, `plugins/` path. Ratify NO-PORT on the file list; the `docs/v4/developer/features/` mirror takes the six specs + the ROADMAP line then. **Watch:** when the phases LAND as code they will be PORT rows of their own — the Concierge's four states, list marks and choice-at-creation are ported surfaces (the `dcd9440a`–`31436bae4` arc). **Newer fact (2026-09-25): the watch FIRED — all five phases landed as code the next day (#73–#77, rows below), and the six specs were edited in those PRs; the mirror takes their final text.** | ORDERED(P4.D232 — NO-PORT ratification on the file list; the six specs + the ROADMAP line pre-listed for the unifier's `docs/v4/developer/features/` mirror at the ROUND target's bytes) |
-| `8bd080267` | 2026-09-24 | Concierge overhaul phase 1: refusal-driven failover everywhere (#73) | PORT + PORT-NEW (the overhaul's substrate; ports FIRST) | **Hunks** (87 files, `4.10.0-dev.81`). **New modules:** `dangerous-content/refusal.ts` (`classifyRefusal`, `isModerationRefusal`, `MODERATION_REJECTION_CODE`, evidence ranked typed-error > provider-code > finish-reason > message-pattern > inferred), `understudy.ts` (`resolveUncensoredText/ImageUnderstudy`), `image-failover.ts` (`generateImageWithConciergeFailover`, `getConciergeTrail`). **Removed:** `provider-routing.service.ts` loses `isImageModerationError`, `resolveUncensoredImageProfileForReroute` and its key-decrypt helpers. **Changed:** `provider-failover.service.ts` gains `attemptUncensoredRetry` (a thrown refusal is retried on the understudy before the chain). `fallback/engine.ts` → `moderation-refusal` via `classifyRefusal`. `extract-finish-reason.ts` also reads camelCase `finishReason` + Google `promptFeedback.blockReason`. The Concierge writer gains `postConciergeRefusalAnnouncement` (rerouted / no-understudy / not-permitted). The avatar, story-background and image-tool handlers are rewritten round the chokepoint, and **the Lantern's bug-133 gate is REMOVED**. `app/api/v1/images/route.ts` generate goes through the chokepoint with a CONNECTION-profile understudy. **Wire:** the `routeTrail` JSON widens (`evidence` 2 → 5 values, `profileKind?`) in `chat.types`, the `chats-messages.ops` zod and `qtap-export.schema.json`, with no DDL column. TOOL rows and Lantern rows now carry trails. **SPA:** a `ToolMessage` "Tried:" badge and the `refusal` system label. **Plugins:** `@quilltap/plugin-types` 2.8.0 `ModerationRejectionError`. Five plugins' image providers throw it (OpenAI `moderation_blocked`, Z.AI 1301, Google `IMAGE_SAFETY`), and their text providers report the REAL finish reason (it had been hard-coded `'stop'`); every `index.js` bundle is regenerated. **v5 surfaces hit:** `services/route_trail.rs` (P4.D171/D173/D177: two-value evidence, no `profile_kind`), `llm_fallback/`, `services/provider_failover.rs` (P4.D135, P4.87/P4.90), `services/dangerous_content/provider_routing.rs` + its callers `tools/generate_image.rs`, `services/image_job_common.rs`, `model/image.rs`, `model/image_dialects.rs` (W4.2; bug 133 = P4.D178/P4.88), `character_avatar_job.rs`, `story_background_job.rs`, `concierge_notifications.rs`, the Lantern writer, `finish_reason.rs`, `quilltap-web/src/images_routes.rs` + `quilltap-host/src/images_generate.rs`, and the SPA's `tool-message.ts` / `route-trail-badge.ts` / `system-message-labels.ts`. **Traps:** v5's dialect layer is built on the keyword verdict v4 just deleted (`image_dialects.rs:35`, "never widen the keyword set"), so for v5 the typed error is a REDESIGN of the signal, not a rename. The plugin bundle regen moves the recorded stream corpora (the finish reasons). The export-schema enum widens, so import/restore validators must accept it. Needs v4's `npm install` (§1) before any target-pin regen. Two review fixes v4 deferred to phase 2's spec. | ORDERED(P4.D225 — the server whole at pin `49059fb14`; the client hunks P4.D229; the `help/` half P4.D228) |
-| `49059fb14` | 2026-09-25 | Implement Concierge refusal ledger and auto-switch (phase 2) (#74) | PORT (after #73) | **Hunks** (38 files, `-dev.83`). **Migration** `add-chat-refusal-ledger-v1`, appended last: `chats.moderationRefusalCount INTEGER NOT NULL DEFAULT 0` + `lastModerationRefusalAt`, no backfill, deliberately absent from `ChatMetadataSchema` and from `.qtap` exports. **`ChatsRepository`:** `incrementModerationRefusalCount` (atomic `$inc`, read-back count), `getModerationRefusalLedger`, `resetModerationRefusalLedger`. **New `refusal-ledger.ts`:** `recordModerationRefusal` counts STATED evidence only, never `inferred`; it never throws and only buffers in the job child. `maybeAutoSwitchAfterRefusal` is parent-only, chained per chat, re-reads before flipping, and has threshold 0 = off. **Other changes:** `manual-flip` gains options + `dangerCategories: ['moderation-refusals']` on a Concierge flip, and the ledger reset in the `monitored` arm. `job-dispatcher`'s post-commit `runRefusalLedgerChecks`. The writer's `auto-flagged-refusals` kind (count wording), and the refusal-rerouted text dropping "The result is attached above." Cheap-LLM `core-execution` carries `finishReason`. Text failover records once per turn, image failover on all four exits. **Settings:** `autoSwitchAfterRefusals` int 0–10, default 2. The SPA number input and `help/dangerous-content.md`. **v5 surfaces hit:** `db/chats.rs` (raw SQL, kept OUT of `chats_read.rs` `ALL_COLUMNS` and `ChatUpdate`), `db/chat_settings.rs`, `provisioning/chat_settings_seed.json` (re-dump), `services/dangerous_content/{resolver,manual_flip}.rs` (P4.d5/W4.2, P4.D141), `concierge_notifications.rs`, `write_apply.rs` (the post-commit hook; no production consumer yet), `cheap_llm_exec.rs`, `provider_failover.rs`, and the SPA's `dangerous-content-settings.ts`. **Nothing in v5 matches the ledger.** **To MEASURE, not assume:** whether v4's `generateDDL` emits the two schema-absent columns. If it does not, they need a boot ensure on the P4.D182 `chats_transcript_version_repair.rs` model and must NOT be hand-added to `fresh_schema.json`. **Largely SUPERSEDED in shape by #75/#76** (`flagged` → `unmoderated`, the settings move into `conciergeSettings`). Port its mechanism, not its intermediate vocabulary, unless the round deliberately lands per-phase. | ORDERED(P4.D225 — the server whole at pin `49059fb14`, incl. the ledger columns as a BOOT ENSURE (measured: `generateDDL` walks the Zod schema and cannot emit them); the settings input's client hunk is DEAD at #76 (P4.D230 records); the `help/` half P4.D228) |
-| `4d370a90f` | 2026-09-25 | Concierge overhaul phase 3: three states (Moderated, Unmoderated, Locked) (#75) | PORT (after #74; REPLACES v5's four-state Concierge) | **Hunks** (108 files, `-dev.86`). **Migration** `add-chat-concierge-mode-v1` (depends on the ledger): `chats.conciergeMode` (default `'moderated'`), `conciergeModeSetBy`, `conciergeModeReason`. The backfill maps `UNCENSORED` → unmoderated/operator/migration, `OFF` → locked/operator/migration, NULL+`isDangerousChat` → unmoderated/concierge/classifier, else moderated. `conciergeOverride` is kept but no longer written. **Schema:** `chat.types` gains the three enums on `ChatMetadataSchema`. **Repository:** `base.repository.patchOnlyFields()` (a whole-row `_update` omits them), `chats.setConciergeMode` (compare-and-set vs `expected`, NULL = moderated) and `setDangerClassification` (never moves state). **Services:** `chat-override` (`getConciergeState/Provenance/Reason`, `mayFailOver`, `withConciergeModeFromLegacy`), and `manual-flip` writing only the new columns (announcements `set-moderated/-unmoderated/-locked`, `auto-unmoderated`; the Concierge may only move Moderated → Unmoderated, never from the child). New `classifier-switch.ts` + `current-state.ts`. Resolver sources `chat-locked`/`chat-unmoderated`, `LOCKED` replacing `VOUCHED_SAFE`. The three-row presentation table. A refusal on Locked → `refusal-not-permitted`. The job-dispatcher's post-commit classifier switch. **Wire:** PUT/POST `conciergeState` takes `moderated\|unmoderated\|locked` (old values → 400). The chat GET drops `conciergeOverride` and adds `conciergeState/SetBy/Reason/RefusalCount`. The create response carries the post-flip columns. List payloads (enrichment, `chat-utils`, home-data) gain setBy/reason. The greeting's content-filter fallback is skipped on Locked. Restore + `.qtap` import run `withConciergeModeFromLegacy`, and the export schema marks `conciergeOverride` deprecated. **SPA:** three-option selects (sidebar, New Chat), `ConciergeMark`, `ChatCard`, quick-hide. Help rewritten. **v5 surfaces hit (all REPLACED):** P4.D141 four states, P4.D143/D144 list marks, P4.D148/D149 choice-at-creation. `services/dangerous_content/{chat_override,manual_flip,resolver,gatekeeper_job}.rs`, `services/{chat_create,chat_enrichment,concierge_notifications,danger_scan}.rs`, `db/chats.rs` + `chats_read.rs`, `api/{salon,types}.rs`, `services/backup/restore/orchestrator.rs`, `services/quilltap_import/entities.rs`, `generators/qtap-export.schema.json`, `qtap_export/schema-key-order.json`, and the SPA's `chat/concierge-state*.ts` / `concierge-mark.ts` / `chat-sidebar.ts` / `conversation-header.ts` / `new-chat.types.ts` / `recent-chat-item.ts` / `salon-list.ts` / `project-chats-section.ts` + `e2e/salon-concierge-four-state-flow.spec.ts`. **Fixtures/families to widen:** `danger_resolver`, `danger_trigger`, `chat_create_capstone`, `salon_mutations`/`salon_reads`, `projects_routes`, `characters_reads`, `system_restore_state`. The old enum → 400 moves `dispatch_wrong_type_census` and the P4.D141 refusal arms. Pre-phase-3 transcripts carry retired announcement kinds that must still render. | ORDERED(P4.D226 — the server whole at pin `4d370a90f`, stacked on P4.D225, incl. the D23 re-dump + the widening of all 42 chats-bearing pairs through v4's real migration modules; the client hunks P4.D229; the `help/` half P4.D228) |
-| `3b463d6b1` | 2026-09-25 | Concierge overhaul phase 4: the Concierge's own Settings tab (#76) | PORT (large; after #75) | **Hunks** (183 files, `-dev.88`). **Migrations:** `add-concierge-settings-v1` adds `chat_settings.conciergeSettings` JSON `{enabled, uncensoredText/Image/VisionProfileId, imagePromptProfileId, autoSwitchAfterRefusals, newChatsStartAs, display{}, preScreen{}}`. Its backfill (`mapLegacyConciergeSettings`): enabled = mode≠OFF OR the user has an Unmoderated chat; preScreen + summaryClassification = mode≠OFF. It drops NO old column; `dangerousContentSettings` / `uncensoredImageDescriptionProfileId` stay in the DDL, deprecated and unread. **`drop-chat-concierge-override-v1`: `ALTER TABLE chats DROP COLUMN conciergeOverride`** (§1's live-instance warning). **Schema:** `settings.types` removes `DangerousContentSettingsSchema` / `DangerousContentModeEnum` and adds `ConciergeSettingsSchema`. `ChatSettingsSchema` loses both legacy keys, `CheapLLMSettings` loses `imagePromptProfileId`, and `chat.types` loses `conciergeOverride`. **Services:** `resolveConciergeSettings`/`readConciergeSettings` (a named-question policy) replace mode checks in ~40 consumers: the background jobs, cheap-llm, memory, Pascal `llm-consult`, photos auto-describe, appearance resolution, `file-attachment-fallback`, the Almanack, image-gen, failover. New `legacy-concierge-settings.ts`. **Routes:** the settings/chat PUT answers **400 on any retired key**. Restore + `uuid-remap` translate the old settings and remap the four desk ids. **Tools:** `help_settings` gains a `concierge` category, so BOTH tool-definition snapshots move (the `helpSettings` enum + description, the `helpNavigate` example URL; the count stays 59). **Help:** `dangerous-content.md` DELETED, `the-concierge.md` ADDED (129 stays 129). `lib/help-guide/categories.ts` swaps the slug and adds `/settings?tab=concierge`. **SPA:** `ConciergeTabContent` + five cards, `DangerousContentSettings` deleted, the `qt-components` CSS drops the `-info` tone, `theme-storybook` 1.0.73. **v5 surfaces hit:** `services/dangerous_content/resolver.rs` (P4.6a/6b, P4.71, P4.D37/38/48/201), `db/chat_settings.rs` (P4.D73, P4.76, P4.82), `api/settings.rs` (`zod_dangerous_content_settings`; P4.57, P4.6an), `tools/help.rs` + `tools/definitions/data.rs`, `services/backup/uuid_remap.rs` (P4.9, P4.D49), `almanack/phase{2,3}_*.rs`, `danger_scan.rs`, `file_fallback.rs`, `generate_image.rs`, `story_background_job.rs`, `fresh_schema.json` + `chat_settings_seed.json`, the SPA's `settings/chat/dangerous-content-settings.ts` + `chat-tab.ts` (no Concierge tab exists), `help/help-categories.ts` (P4.9I2B) + its `help-guide-tables.json` / `label-from-url-vectors.json` fixtures. **Fixtures carrying `dangerousContentSettings`:** `chat_settings_tier2`, `settings_routes`, `danger_resolver`, `orchestrator_tier3`, `images_generate_route`, `image_generation_tier3`, `story_background_job_tier3`, `host_cadence`, `host_llm_log_cleanup`, and the SPA's `async-select-cards` / `connection-profiles-shared-entry` / `core-contract.ts`. | ORDERED(P4.D227 — the server whole at pin `3b463d6b1`, stacked on P4.D226, incl. the consumer sweep, both migrations, the second re-dump and the widening of the 42 + 23 pairs; the client hunks + `lib/help-guide/categories.ts` P4.D230; the `help/` half P4.D228) |
-| `ce2f1dabf` | 2026-09-25 | Concierge overhaul phase 5: Salon polish — "Try uncensored" (#77) | PORT-NEW (after #76) | **Hunks** (53 files, `-dev.90`). **New chat action `retry-image-uncensored`** (in `post.ts`'s map right after `regenerate-background`). Its body is `{toolMessageId}` or `{kind:'background'}` (else 400). It re-runs a `generate_image` TOOL message on the image understudy, filed +1 ms with a `via:'concierge'` trail, with `refusal-rerouted` (`purpose:'tool'`) when the original was refused → 200 `{toolMessageId, images, routeTrail}`. The error arms are 404 / 400 / 502, and 409 bare `{error:'locked'\|'no-understudy'}`. The background arm calls `handleRegenerateBackground(…,{forceUncensored:true})`. **New message action `retry-uncensored`** (5th in `chats/[id]/messages/[messageId]`'s `withActionDispatch`): a swipe regenerated on the text understudy → 201 `{message}` or SSE on `&stream=1`, plus 404/400/409. **Refactors and service changes:** `messages/[id]`'s SSE body is extracted to `regenerate-swipe-stream.ts` (a refactor, no wire change). `regenerate-swipe.service` gains `profileOverride` + `routeTrail`. New `retry-uncensored.ts`: Locked blocks, off-duty does not, it excludes trail profiles and same provider+model, and uses `resolveConfiguredConciergeDesk` + `composeRetryRouteTrail`. **danger-orchestrator:** Unmoderated chats no longer get synthesized `dangerFlags` (new `routedDirect`). **Smaller changes:** `saveToolMessages` `options.createdAt`, the queue payload's `forceUncensored`, `image-failover`'s `announceUnresolvedRefusal`. The Lantern writer's `postLanternRefusalNotification` (`systemKind:'background-refused'`). The story-background job now COMPLETES with a refusal bubble instead of failing. **SPA:** "Try uncensored" in MessageActionBar / ToolMessage / the refusal bubble (hidden on Locked), `useConciergeRetry` + `concierge-retry.ts`, MessageRow's "Not Dangerous" lifting blur/collapse, the `background-refused` label. Three help pages, API.md. **v5 surfaces hit:** `CHAT_POST_ACTIONS` (`quilltap-web/src/wardrobe_routes.rs`) and the P4.D220 action censuses. The message edge is RPC-only on v5 (`api/types.rs` `Message*` variants, P4.6ab), with no REST `chats/{id}/messages/{messageId}` leg in `quilltap-web/src/lib.rs`. `messages_swipe_routes.rs` + `services/regenerate_swipe.rs` (P4.D205/D207) and the SPA's `regeneration.state.ts` (P4.D206). `lantern_notifications.rs`, `story_background_job.rs` (P4.D92/D94/D178), `tool_execution.rs`, `queue_service.rs`, `services/orchestrator.rs` (the synthesized flags), the SPA's `message-row.ts` / `tool-message.ts` / `system-message-labels.ts`. **Traps:** the v4 order of the message edge's action list starts with `override-danger-flag`, which v5 never ported, so the list's order can't be matched without it. The "Not Dangerous" blur has no v5 counterpart. The orchestrator's `dangerFlags` change is the one independently portable hunk. | ORDERED(P4.D228 — the server whole at the round target, stacked on P4.D227, + the WHOLE `help/` tree re-vendored at `08c49319d`; the client hunks P4.D229) |
-| `6d0f88d65` | 2026-09-25 | chore(deps): update dependencies across app, packages and plugins | NO-PORT? (code) + **REGEN EVENT** (SDK bumps) | **Hunks** (51 files, `-dev.91`). Dependency manifests, lockfiles and rebuilt bundles only. **Root:** `openai` ^7.20.0 → **^7.23.0**, `@openrouter/sdk` ^1.3.11 → **^1.3.28**, `next`/`eslint-config-next` 16.3.5 → 16.3.6, `katex` 0.18.7 → 0.18.9, `@quilltap/plugin-utils` ^2.6.1 → ^2.6.2, `create-quilltap-theme` ^2.0.20. **`packages/plugin-utils`** 2.6.3 (`version.generated.ts`; its own dep on plugin-types moves to ^2.8.0). **All 15 plugins are patch-bumped** (manifest + package.json), and 12 `index.js` bundles are rebuilt (~3,067 lines each). The deps move to plugin-types ^2.8.0 / plugin-utils ^2.6.2, `openai` ^7.23.0 in the six SDK-bundling plugins, `@openrouter/sdk` ^1.3.28, and `@modelcontextprotocol/sdk` ^1.30.1. **No `lib/`, `app/`, `help/`, DDL or `zod` hunk.** **v5 surfaces hit:** no source. **`crates/quilltap-harness/tests/provider_sdk_version_guard.rs`** (P4.106 item 9) records `openai` 7.20.0 / `@openrouter/sdk` 1.3.11. The checkout now has 7.23.0 / 1.3.28 installed at the root and in every SDK-bundling plugin dir (measured at this check), so the guard is **RED by design**. Its two halves force the corpora (`request-envelopes.recorded.ndjson` ×216 openai stamps + ×14 OpenRouter UA, and `image-dialects.recorded.ndjson` ×8 + ×3) to be re-recorded together with the constants. Also moving: `openrouter_sdk_pricing_equivalence` (the SDK's own pricing tables at 1.3.28) and any stream-decoder/request-builder family whose bytes the new SDKs change. A re-record may show wire movement beyond the stamps; measure it, don't assume stamp-only. `zod` is untouched (guard stays green). The `@modelcontextprotocol/sdk` bump is unguarded; v5's MCP client (if any family records it) should be checked. **To do:** ratify NO-PORT for code, and ORDER the provider-corpus re-record + guard constant move as a row of its own (a pin-independent chore, since `node_modules` are shared by every pin, §1). | ORDERED(P4.D232 — the `request-envelopes` re-record + the guard constants; `image-dialects`/`response-bodies`/the four #73 stream files are P4.D225's; NO-PORT ratification for code) |
-| `08c49319d` | 2026-09-25 | Scenario Builder on the scenario shelves | PORT (small; independent of the Concierge chain) | **Hunks** (27 files, `-dev.92`). **Request:** the build request gains `groupIds: z.array(UUIDSchema).max(32).default([])` (`lib/scenario-builder/request-schema.ts`). **Route** (`app/api/v1/scenario-builder/route.ts` `handleBuild`): dedups `body.groupIds`, keeps only ids `repos.groups.findByIdRaw` finds, and on a throw logs WARN `Scenario Builder dropped an unreadable group id` `{groupId, error}`. It adds `groupCount` to the route's log fields and passes `groupIds` to the service. **Service:** the input gains `groupIds` and logs `namedGroupCount`. **Mount pool** (`lib/scenario-builder/mount-pool.ts`): named groups' stores join the group tier FIRST, then the cast's union, deduped, and it logs `namedGroupCount`. **`lib/mount-index/tiered-mount-pool.ts`:** new exported `resolveMountPointIdsForGroup` (official + linked stores, fails soft with `[]`). `resolveGroupMountPointIdsForCharacter` now calls it. **Its warn CHANGES:** `Group store lookup failed for membership {groupId, characterId, error}` → `Group store lookup failed {groupId, error}`. **Client:** `ScenariosManager` takes a `shelf` prop that renders the Host button, used on the General Scenarios page, the project Scenarios card and a NEW `GroupScenariosCard` on the group page. Launched from a shelf, the dialog has no "Use this scene"; Save offers every home with the shelf's home preselected; save-dialog target keys become `project:<id>` in every mode; the shelf refreshes after a save; `queryKeys.groups.list`. **Help:** four pages (`general-scenarios`, `groups`, `project-scenarios`, `scenario-builder`; count unchanged). **v5 surfaces hit:** the Scenario Builder ported whole at P4.D216 → P4.D217 (+ P4.113–P4.117 smalls): `crates/quilltap-core/src/api/scenario_builder.rs` + `api/types.rs` (the request's typed shape; a new field moves the `dispatch_wrong_type_census` if it is an `*_ids` array, memory `a-new-verb-moves-the-dispatch-wrong-type-census`), `services/scenario_builder/{mod,mount_pool}.rs`, `db/tiered_mount_pool.rs:213` `resolve_group_mount_point_ids_for_character`. That last one's per-membership closure is SILENT (`let _ = per_membership();`), so v5 lacks v4's warn in both its old and new wording, a pre-existing absent line to restore with a capture pin. The families are `scenario_builder_mount_pool_equivalence`, `tiered_mount_pool_equivalence`, `scenario_builder_tier3_equivalence` and `scenario_builder_capture`. SPA: `apps/web/src/app/scenario-builder/{scenario-builder-dialog,save-scenario-dialog,scenario-builder-run.state}.ts` + its oracle fixture, `screens/scenarios/shared/scenarios-manager.ts`, `screens/scenarios/scenarios-page.ts`, `screens/prospero/cards/`, `screens/groups/` (no group Scenarios card exists), `core-contract.ts`. **Traps:** the target-key change (`project:<id>` in every mode) is a save-dialog wire detail the recorded SPA oracle fixture will show. The dedup precedes the existence check, and an unreadable id is dropped with a WARN while an absent one is dropped silently. | ORDERED(P4.D231 — server + SPA at the round target; the `help/` half P4.D228; measured: the dispatch census does NOT move — the build body is a raw `Value`) |
-| `acadcc7cd` | 2026-09-25 | Name who stayed behind on Continue Elsewhere; persona absent in autonomous rooms (bugs 171, 172) | PORT (small; v5 HAS both bugs; independent of the Concierge chain) | **Hunks** (19 files, `-dev.93`). This is the dirty set the `/setupphase` probe recorded at ~14:20, now committed. **`lib/schemas/chat.types.ts`:** NEW pure `operatorSpeaksWithoutSeat(chatType)` = `chatType !== 'autonomous'`. That is its only hunk; nothing Concierge. **`user-identity-resolver.service.ts`:** NEW `isUserPersonaInRoom(chat, identity)`: no `characterId` → false, `source === 'chat-participant'` → true, else `operatorSpeaksWithoutSeat`, with DEBUG `Unseated persona presence resolved {characterId, chatType, inRoom}`. **`context-manager.ts` (bug 172):** the off-scene scan's persona-by-name exclusion is now GATED on `operatorSpeaksWithoutSeat(chat.chatType)` (a seated persona is still excluded by id), with a new DEBUG `[ContextManager] Off-scene persona exclusion {chatId, chatType, excludesPersonaByName}`. **`apply-chat-continuation.ts` (bug 171):** new step 2b after the replay. `findLeftBehindCharacters` takes the source chat's CHARACTER participants (not `removed`) who are not seated in the new chat, deduped, minus the persona when `isUserPersonaInRoom` (DEBUG `…Persona stays in the room unseated…`), `characters.findById` each (missing → skip; throw → WARN `[ChatContinuation] Could not load a left-behind character; not naming them`). It posts `postHostOffSceneCharactersAnnouncement({…, reason: 'left-behind'})`, stamps the ids only when the notice posted, logs DEBUG `Left-behind check complete`, and the whole step sits in a try with ERROR `Failed to name left-behind characters`. The result gains `leftBehindCharacterIds` on ALL three returns. **`host-notifications/writer.ts`:** `OffSceneCharacterCard` exported, new `OffSceneIntroductionReason = 'mentioned' \| 'left-behind'` param (default `'mentioned'`) on both the content and opaque builders, with FOUR new intro sentences (singular/plural × visible/opaque; the old two stay for `'mentioned'`). **Help:** `chats.md`, `salon-host-introductions.md`. Also `bugs.md` + two `bugs/fixed/` files. **v5 surfaces hit:** `crates/quilltap-core/src/services/chat_continuation.rs:271` `apply_chat_continuation` (Phase-3 sub-unit 6; `chat_continuation_tier2_equivalence`, `route_trail_continuation_guard`). `services/off_scene.rs:284` (the UNCONDITIONAL `user_name_lower` exclusion, so v5 has bug 172 verbatim) and its caller `services/build_context.rs:~1956` (the W4.6b off-scene seam; `context_feeders_leaves_equivalence`). `services/user_identity_resolver.rs` (`user_identity_resolver_equivalence`). `services/host_notifications.rs:1137` `post_host_off_scene_characters_announcement` (`post_office_writers_tier3_equivalence`). The chat-types home for the pure predicate. **Not a CONVERGENCE:** both bugs were v4-found on Friday; v4's "v5 status" reads Unchecked, and the answer is **affected, both**. **Traps:** the ids are stamped only on a POSTED notice, so a failed post must leave the per-turn scan free to introduce them. The persona check uses the NEW chat's identity. `removed` participants are skipped but other non-present statuses are not. The two new tests' fixtures need the continuation family's corpus widened with a left-behind arm and an autonomous-room arm. **Round fit:** it lands after the `08c49319d` target. Either waive it for the current round (the next catch-up's first row) or fold it into a lane touching none of the Concierge files, e.g. P4.D231/P4.D232's scale; see §1. | ORDERED(P4.D233 — the server whole from `main` (a NEW ninth lane added at the same-day re-order that moved the round target to `acadcc7cd`; ONE pre-declared hunk into `build_context.rs`); the two `help/` pages P4.D228; the bug-file mirror pre-listed for the unifier) |
-| `39bc98ffc` | 2026-09-25 | Add read_mail; rename list_email to list_mail | PORT-NEW (a tool) + PORT (a tool RENAME) | **Hunks** (29 files, `-dev.94`). **New tool `read_mail`** (`lib/tools/read-mail-tool.ts` + `handlers/read-mail-handler.ts`, module logger `read-mail-handler`). It takes a letter's bare file name, confines it to the caller's own `Mail/` folder, reads through `ensureCharacterVault` (so the P4.D200 opacity covenant never applies), and marks an unannounced letter announced. It returns `{success, text, path}`, and failures `{success:false, text, error}`. **The `list_email` → `list_mail` RENAME** covers the tool name, file, handler and test: a tool-NAME change on a ported surface. **`lib/post-office/mailbox.ts`:** new `letterFileName` + `resolveMailPath` (the one parser). It accepts a bare name, the `Mail/…` path or the `qtap://self/Mail/…` URI, makes `.md` optional, and turns any sub-path / a backslash / `.` / `..` into null. **Other changes:** `list_mail`, `read_mail` and Suparṇā's delivery notice name letters by FILE NAME. `send_mail`'s `in_reply_to` accepts the file name and stores the `Mail/` path. `instructions.ts` is rewritten (it had pointed at `doc_read_file` on `qtap://self/`). `deliver.ts` changes. `tool-executor.ts`, `lib/tools/index.ts` and `plugin-tool-builder.ts` register the tool. `app/api/v1/tools/route.ts` changes. The tool-definition snapshot moves (+35 lines). Plus `help/post-office.md` and `API.md`. **v5 surfaces hit:** `crates/quilltap-core/src/tools/list_email.rs` (to rename), `tools/{mod,executor}.rs`, `tools/definitions/data.rs`, `post_office/{mod,mailbox,deliver,instructions}.rs`, `services/suparna_notifications.rs` / `suparna_mail.rs`, `services/tools_inventory.rs`, `subprompts/storage.rs` (names the tool), `mail_carina_tools_equivalence`, the tool catalog (59 → 60) and the Brahma console's tool list. **Traps:** the rename moves every recorded tool-definition corpus and any stored tool-call row naming `list_email` (read old rows as data; v4 does no data migration, verify). `read_mail` bypasses transparency by design, which is a deliberate hole in the covenant P4.D200 ported: preserve it exactly, not "fix" it. | UNPROCESSED (WAIVED for the `acadcc7cd` round, §1) |
-| `12c336fad` | 2026-09-25 | Add discard_mail | PORT-NEW (a destructive tool; after `39bc98ffc`) | **Hunks** (26 files, `-dev.95`). **New tool `discard_mail`** (`lib/tools/discard-mail-tool.ts` + `handlers/discard-mail-handler.ts`, module logger `discard-mail-handler`, failures `{success:false, message, error}`, note `message`, not `text`). It takes a bare file name confined to the caller's `Mail/` folder and deletes through `discardLetter` → `deleteDatabaseDocumentIfExists`, the same `deleteWithGC` chokepoint `doc_delete_file` uses (hard-link groups + file-row GC identical; buffered and replayed on the parent from the job child). It is **added to `DESTRUCTIVE_TOOL_NAMES`** (`lib/tools/destructive-tools.ts`). `mailbox.ts` grows `discardLetter`. The letter actions in `list_mail`, `read_mail` and Suparṇā's notice now offer `discard_mail`. `instructions.ts`, `tool-executor.ts`, `index.ts`, `plugin-tool-builder.ts`, the tools route and the snapshot (+17) change. `help/post-office.md`. **v5 surfaces hit:** the same Post Office / tools family as `39bc98ffc`, plus v5's destructive-tools list, the doc-delete GC chokepoint (the Scriptorium `doc_delete_file` port) and the write applier's replay path. The tool catalog goes 60 → 61. **Traps:** the destructive list gates confirmation / autonomy behaviour, so the new name must land there in v4's order. The handler's failure key is `message`, where `read_mail`'s is `text`. | UNPROCESSED (WAIVED for the `acadcc7cd` round, §1) |
-| `f7f3d7bf0` | 2026-09-26 | Keep conversation embeddings warm; render transcripts on demand | PORT (a REVERSAL of the cold-tier + a column DROP) | **Hunks** (50 files, `-dev.96`). **Cold-tier removed:** `conversation-chunks.repository.ts` loses its embedding-clear method (−40), and `collapse-stale-chat-caches.ts` no longer clears chunk embeddings. `retention-constants.ts`, `settings.types.ts` and `scheduled-maintenance.ts` drop the cold-tier from the stale sweep (it keeps image + cache collapse; `dataRetention.staleChatDays` is unchanged). `cold-chunk-reembed.ts`, `reconcile-conversation-rendering.ts`, `reconcile-embedding-dimensions.ts` and `embedding-reindex.ts` now treat stale chats like any other, **so the first boot re-embeds the backlog** (85% of chunks on Friday). **Migration `drop-chat-rendered-markdown-v1`** (`dependsOn add-rendered-markdown-field-v1`, appended after `drop-chat-concierge-override-v1`) runs `ALTER TABLE chats DROP COLUMN renderedMarkdown`, and `chat.types` loses the field from both schemas. **New `lib/scriptorium/render-chat.ts` `renderChatConversation`** renders the transcript from messages, used by the render job, `read_conversation` and `upsert_annotation`. **New `lib/scriptorium/status.ts` `deriveScriptoriumStatus`** derives the badge from chunks alone. `chat-enrichment.service.ts`, the chat GET and the character GET stop reading the column. The data-retention route + `DataRetentionSettings` copy change. `ChatCard` tooltips move to the in-app Tooltip. `instrumentation.ts`, the prettify label, DDL.md and five help pages also change. **v5 surfaces hit:** `db/chats.rs` + `chats_read.rs`, `services/provisioning/fresh_schema.json`, `qtap_export/schema-key-order.json`, `db/conversation_chunks.rs` (`clear_embeddings`), `services/{cold_chunk_reembed,collapse_stale_chat_caches,conversation_render_reconcile,conversation_render_job,maintenance,chat_enrichment}.rs`, `services/mount_index/embedding_scheduler.rs`, `tools/{read_conversation,annotations}.rs`, `api/{characters,salon}.rs`, `enclave/{lifecycle,step}.rs`, `realtime/publish_sites.rs`, `quilltap-host/src/spine.rs`, the families `cold_chunk_reembed_tier2`, `conversation_chunks_tier2`, `collapse_stale_chat_caches_tier2`, `embedding_remainder` and `host_boot`/`host_cadence`, and the SPA chat card. **Traps:** a SECOND `DROP COLUMN` (§1 Schema state), so a post-upgrade Friday copy breaks v5 again. The first-boot re-embed is a real cost event, so the dogfood walk must budget the embed spend. The on-demand render must match the old stored bytes exactly, since every reader of `renderedMarkdown` now reads a render. A D23 re-dump + fixture widening lands ON TOP of the Concierge round's two re-dumps. The oracle pairs carrying `renderedMarkdown` need NARROWING (a column removed), the reverse of every heal so far. | UNPROCESSED (WAIVED for the `acadcc7cd` round, §1) |
-| `9ff4bbd8e` | 2026-09-28 | Offer an outfit when importing wardrobe items from an image | PORT (small) | **Hunks** (12 files, `-dev.97`). **`lib/wardrobe/image-analysis.ts`:** new exported `ProposedOutfit {title, description, appropriateness}`, and the result gains `proposedOutfit: ProposedOutfit \| null`. The vision prompt gains an outfit paragraph and an `"outfit": {…}` member in its JSON example, with the rules "fewer than two items → `outfit` null" and the empty case `{"items": [], "outfit": null}` (prompt BYTES move). `parseAnalysisResponse` now returns `{proposedItems, proposedOutfit}`. The new `parseProposedOutfit(raw, itemCount)` returns null when `itemCount < 2` or raw is falsy or not an object; an empty trimmed title logs DEBUG `[Wardrobe Image Analysis] Model returned an outfit without a title; dropping it` → null; other fields are trimmed strings or `''`. **Route** `app/api/v1/wardrobe/analyze-image/route.ts`: the response adds `proposedOutfit` and the log adds `hasOutfit`. **Client** `components/wardrobe/import-from-image-modal.tsx` (+197): it offers to bundle the imported pieces into a composite. The pieces are created FIRST, their returned ids become `componentItemIds`, types are the slot union, replace is on by default, and the pieces are kept if the outfit fails. `help/wardrobe.md`. **v5 surfaces hit:** the wardrobe analyze-image verb in `crates/quilltap-core/src/api/wardrobe.rs` + `api/types.rs` + `api/engine.rs`, its REST edge `crates/quilltap-web/src/wardrobe_routes.rs`, and the SPA import flow in `apps/web/src/app/wardrobe/wardrobe-control-dialog.ts`. Composite creation rides the ported composite-item path (`componentItemIds`, the .qtap import remap). **Traps:** the prompt is an LLM input, so its bytes are tier-1 / tier-3 comparable and must be byte-copied. The null rules are ordered (count first, then shape, then title). The client's create-pieces-then-outfit order is the SPA half's ordering proof. | UNPROCESSED (WAIVED for the `acadcc7cd` round, §1) |
-| `c3eefa752` | 2026-09-28 | Teach built-in character prompts to listen and match register | PORT + **RE-VENDOR** (`builtin_prompt_templates_guard` RED on the live checkout) | **Hunks** (38 files, `-dev.98`). **Built-in prompt text:** all 21 `plugins/dist/qtap-plugin-default-system-prompts/prompts/*.md` are revised, each ending in example exchanges (plugin 1.1.24). **Seeder** (`prompt-templates.repository.ts`): the two seed loops (plugin + filesystem) collapse into ONE private `upsertBuiltInPrompt(prompt, source)`. It inserts when absent (INFO `Sample prompt template seeded` `{templateId, name, …}`, the old "…from plugin" / "…from filesystem" lines REPLACED). **New:** when a built-in row exists but differs in `content`, `description`, `category` or `modelHint`, it runs `$set` on those four + `updatedAt` (INFO `Built-in prompt template refreshed from shipped text {templateId, name, source}`); an exact match is a no-op. **Generators:** `lib/services/character-field-semantics.ts` gains the exported `CONVERSATIONAL_VOICE_DIRECTION` and `EXAMPLE_DIALOGUE_COVERAGE` constants. They are appended into the AI-import prompt (`ai-import.service.ts`: the system-prompt instruction + `For exampleDialogues: …`), the wizard (`character-wizard.service.ts`) and the optimizer (`character-optimizer.service.ts`: two new "Do NOT codify repetition" bullets, the EXAMPLEDIALOGUES rule, "Never remove or weaken…"). So every generator's prompt BYTES move. Three help pages. **v5 surfaces hit:** `crates/quilltap-core/src/services/builtin_prompt_templates.rs` + its vendored `builtin_prompt_templates.json` (P4.83), guarded by `builtin_prompt_templates_guard` (it re-derives from the live checkout, so RED now) and `prompt_templates_routes_equivalence`. v5's seeder is "insert-if-absent, NEVER update", and **`needs_seeding` short-circuits on NAMES only**, so the refresh needs a content comparison in that read-pool check, not just in the write. The generators live in `crates/quilltap-core/src/generators/{mod,ai_import,optimizer,generated_items}.rs` + the character-field-semantics home, with the families `ai_import_assembly`, `ai_import_tier3`, `character_optimizer_prompts`, `character_optimizer_tier3`, `character_wizard_tier3`, `generators_leaf` and `generators_wizard_prompts`. **Traps:** the refresh WRITES on boot for every existing instance whose rows predate the text (Friday included), a real write at startup. Characters holding imported copies are never touched (they are not `isBuiltIn`). The INFO line's wording changes for BOTH seed sources. | UNPROCESSED (WAIVED for the `acadcc7cd` round, §1) |
-| `04d6c9d52` | 2026-09-28 | Give characters joining a running chat their outfit avatar | PORT (small) | **Hunks** (9 files, `-dev.99`). `app/api/v1/chats/[id]/actions/participants.ts` gains `refreshAvatarForArrivingCharacter(chatId, characterId, userId, repos)`. It reads `repos.chats.getEquippedOutfitForCharacter`; with no equipped slots it logs DEBUG `[Chats v1] No equipped outfit for arriving character, avatar left as-is` and returns. Otherwise it calls `triggerAvatarGenerationIfEnabled(repos, {userId, chatId, characterId, callerContext: '[Chats v1] participant-join'})` and logs DEBUG `[Chats v1] Avatar refresh requested for arriving character`. Any throw → WARN `[Chats v1] Failed to request avatar refresh for arriving character {chatId, characterId, error}`; the join never fails. It is called on the ADD path (after the add) and on the REACTIVATE path whenever `reactivatedParticipant?.characterId` ("whether or not the outfit was re-applied"). The trigger itself gates on `avatarGenerationEnabled` and skips autonomous rooms, and the job's configuration cache answers first (rebind, not regenerate). `help/chat-settings-ai-services.md`. **v5 surfaces hit:** `crates/quilltap-core/src/api/chat_cast.rs` (P4.9E1A: add participant + `reactivate_participant` at `:271`) over `services/chat_participants.rs`, and `services/avatar_generation.rs:151` `trigger_avatar_generation_if_enabled` (its `callerContext` threading), with the avatar configuration cache (P4.D188 Avatar Rolls). **Traps:** the reactivate arm fires even when the outfit was NOT re-applied. The cache hit means a tier-3 proof must show a REBIND with zero generations. A new enqueue on the add path moves any family counting jobs after an add (the cast families). | UNPROCESSED (WAIVED for the `acadcc7cd` round, §1) |
+| `39bc98ffc` | 2026-09-25 | Add read_mail; rename list_email to list_mail | PORT-NEW (a tool) + PORT (a tool RENAME) | **Hunks** (29 files, `-dev.94`). **New tool `read_mail`** (`lib/tools/read-mail-tool.ts` + `handlers/read-mail-handler.ts`, module logger `read-mail-handler`). It takes a letter's bare file name, confines it to the caller's own `Mail/` folder, reads through `ensureCharacterVault` (so the P4.D200 opacity covenant never applies), and marks an unannounced letter announced. It returns `{success, text, path}`, and failures `{success:false, text, error}`. **The `list_email` → `list_mail` RENAME** covers the tool name, file, handler and test: a tool-NAME change on a ported surface. **`lib/post-office/mailbox.ts`:** new `letterFileName` + `resolveMailPath` (the one parser). It accepts a bare name, the `Mail/…` path or the `qtap://self/Mail/…` URI, makes `.md` optional, and turns any sub-path / a backslash / `.` / `..` into null. **Other changes:** `list_mail`, `read_mail` and Suparṇā's delivery notice name letters by FILE NAME. `send_mail`'s `in_reply_to` accepts the file name and stores the `Mail/` path. `instructions.ts` is rewritten (it had pointed at `doc_read_file` on `qtap://self/`). `deliver.ts` changes. `tool-executor.ts`, `lib/tools/index.ts` and `plugin-tool-builder.ts` register the tool. `app/api/v1/tools/route.ts` changes. The tool-definition snapshot moves (+35 lines). Plus `help/post-office.md` and `API.md`. **v5 surfaces hit:** `crates/quilltap-core/src/tools/list_email.rs` (to rename), `tools/{mod,executor}.rs`, `tools/definitions/data.rs`, `post_office/{mod,mailbox,deliver,instructions}.rs`, `services/suparna_notifications.rs` / `suparna_mail.rs`, `services/tools_inventory.rs`, `subprompts/storage.rs` (names the tool), `mail_carina_tools_equivalence`, the tool catalog (59 → 60) and the Brahma console's tool list. **Traps:** the rename moves every recorded tool-definition corpus and any stored tool-call row naming `list_email` (read old rows as data; v4 does no data migration, verify). `read_mail` bypasses transparency by design, which is a deliberate hole in the covenant P4.D200 ported: preserve it exactly, not "fix" it. | UNPROCESSED (was WAIVED for the `acadcc7cd` round; the next catch-up's) |
+| `12c336fad` | 2026-09-25 | Add discard_mail | PORT-NEW (a destructive tool; after `39bc98ffc`) | **Hunks** (26 files, `-dev.95`). **New tool `discard_mail`** (`lib/tools/discard-mail-tool.ts` + `handlers/discard-mail-handler.ts`, module logger `discard-mail-handler`, failures `{success:false, message, error}`, note `message`, not `text`). It takes a bare file name confined to the caller's `Mail/` folder and deletes through `discardLetter` → `deleteDatabaseDocumentIfExists`, the same `deleteWithGC` chokepoint `doc_delete_file` uses (hard-link groups + file-row GC identical; buffered and replayed on the parent from the job child). It is **added to `DESTRUCTIVE_TOOL_NAMES`** (`lib/tools/destructive-tools.ts`). `mailbox.ts` grows `discardLetter`. The letter actions in `list_mail`, `read_mail` and Suparṇā's notice now offer `discard_mail`. `instructions.ts`, `tool-executor.ts`, `index.ts`, `plugin-tool-builder.ts`, the tools route and the snapshot (+17) change. `help/post-office.md`. **v5 surfaces hit:** the same Post Office / tools family as `39bc98ffc`, plus v5's destructive-tools list, the doc-delete GC chokepoint (the Scriptorium `doc_delete_file` port) and the write applier's replay path. The tool catalog goes 60 → 61. **Traps:** the destructive list gates confirmation / autonomy behaviour, so the new name must land there in v4's order. The handler's failure key is `message`, where `read_mail`'s is `text`. | UNPROCESSED (was WAIVED for the `acadcc7cd` round; the next catch-up's) |
+| `f7f3d7bf0` | 2026-09-26 | Keep conversation embeddings warm; render transcripts on demand | PORT (a REVERSAL of the cold-tier + a column DROP) | **Hunks** (50 files, `-dev.96`). **Cold-tier removed:** `conversation-chunks.repository.ts` loses its embedding-clear method (−40), and `collapse-stale-chat-caches.ts` no longer clears chunk embeddings. `retention-constants.ts`, `settings.types.ts` and `scheduled-maintenance.ts` drop the cold-tier from the stale sweep (it keeps image + cache collapse; `dataRetention.staleChatDays` is unchanged). `cold-chunk-reembed.ts`, `reconcile-conversation-rendering.ts`, `reconcile-embedding-dimensions.ts` and `embedding-reindex.ts` now treat stale chats like any other, **so the first boot re-embeds the backlog** (85% of chunks on Friday). **Migration `drop-chat-rendered-markdown-v1`** (`dependsOn add-rendered-markdown-field-v1`, appended after `drop-chat-concierge-override-v1`) runs `ALTER TABLE chats DROP COLUMN renderedMarkdown`, and `chat.types` loses the field from both schemas. **New `lib/scriptorium/render-chat.ts` `renderChatConversation`** renders the transcript from messages, used by the render job, `read_conversation` and `upsert_annotation`. **New `lib/scriptorium/status.ts` `deriveScriptoriumStatus`** derives the badge from chunks alone. `chat-enrichment.service.ts`, the chat GET and the character GET stop reading the column. The data-retention route + `DataRetentionSettings` copy change. `ChatCard` tooltips move to the in-app Tooltip. `instrumentation.ts`, the prettify label, DDL.md and five help pages also change. **v5 surfaces hit:** `db/chats.rs` + `chats_read.rs`, `services/provisioning/fresh_schema.json`, `qtap_export/schema-key-order.json`, `db/conversation_chunks.rs` (`clear_embeddings`), `services/{cold_chunk_reembed,collapse_stale_chat_caches,conversation_render_reconcile,conversation_render_job,maintenance,chat_enrichment}.rs`, `services/mount_index/embedding_scheduler.rs`, `tools/{read_conversation,annotations}.rs`, `api/{characters,salon}.rs`, `enclave/{lifecycle,step}.rs`, `realtime/publish_sites.rs`, `quilltap-host/src/spine.rs`, the families `cold_chunk_reembed_tier2`, `conversation_chunks_tier2`, `collapse_stale_chat_caches_tier2`, `embedding_remainder` and `host_boot`/`host_cadence`, and the SPA chat card. **Traps:** a SECOND `DROP COLUMN` (§1 Schema state), so a post-upgrade Friday copy breaks v5 again. The first-boot re-embed is a real cost event, so the dogfood walk must budget the embed spend. The on-demand render must match the old stored bytes exactly, since every reader of `renderedMarkdown` now reads a render. A D23 re-dump + fixture widening lands ON TOP of the Concierge round's two re-dumps. The oracle pairs carrying `renderedMarkdown` need NARROWING (a column removed), the reverse of every heal so far. | UNPROCESSED (was WAIVED for the `acadcc7cd` round; the next catch-up's) |
+| `9ff4bbd8e` | 2026-09-28 | Offer an outfit when importing wardrobe items from an image | PORT (small) | **Hunks** (12 files, `-dev.97`). **`lib/wardrobe/image-analysis.ts`:** new exported `ProposedOutfit {title, description, appropriateness}`, and the result gains `proposedOutfit: ProposedOutfit \| null`. The vision prompt gains an outfit paragraph and an `"outfit": {…}` member in its JSON example, with the rules "fewer than two items → `outfit` null" and the empty case `{"items": [], "outfit": null}` (prompt BYTES move). `parseAnalysisResponse` now returns `{proposedItems, proposedOutfit}`. The new `parseProposedOutfit(raw, itemCount)` returns null when `itemCount < 2` or raw is falsy or not an object; an empty trimmed title logs DEBUG `[Wardrobe Image Analysis] Model returned an outfit without a title; dropping it` → null; other fields are trimmed strings or `''`. **Route** `app/api/v1/wardrobe/analyze-image/route.ts`: the response adds `proposedOutfit` and the log adds `hasOutfit`. **Client** `components/wardrobe/import-from-image-modal.tsx` (+197): it offers to bundle the imported pieces into a composite. The pieces are created FIRST, their returned ids become `componentItemIds`, types are the slot union, replace is on by default, and the pieces are kept if the outfit fails. `help/wardrobe.md`. **v5 surfaces hit:** the wardrobe analyze-image verb in `crates/quilltap-core/src/api/wardrobe.rs` + `api/types.rs` + `api/engine.rs`, its REST edge `crates/quilltap-web/src/wardrobe_routes.rs`, and the SPA import flow in `apps/web/src/app/wardrobe/wardrobe-control-dialog.ts`. Composite creation rides the ported composite-item path (`componentItemIds`, the .qtap import remap). **Traps:** the prompt is an LLM input, so its bytes are tier-1 / tier-3 comparable and must be byte-copied. The null rules are ordered (count first, then shape, then title). The client's create-pieces-then-outfit order is the SPA half's ordering proof. | UNPROCESSED (was WAIVED for the `acadcc7cd` round; the next catch-up's) |
+| `c3eefa752` | 2026-09-28 | Teach built-in character prompts to listen and match register | PORT + **RE-VENDOR** (`builtin_prompt_templates_guard` RED on the live checkout) | **Hunks** (38 files, `-dev.98`). **Built-in prompt text:** all 21 `plugins/dist/qtap-plugin-default-system-prompts/prompts/*.md` are revised, each ending in example exchanges (plugin 1.1.24). **Seeder** (`prompt-templates.repository.ts`): the two seed loops (plugin + filesystem) collapse into ONE private `upsertBuiltInPrompt(prompt, source)`. It inserts when absent (INFO `Sample prompt template seeded` `{templateId, name, …}`, the old "…from plugin" / "…from filesystem" lines REPLACED). **New:** when a built-in row exists but differs in `content`, `description`, `category` or `modelHint`, it runs `$set` on those four + `updatedAt` (INFO `Built-in prompt template refreshed from shipped text {templateId, name, source}`); an exact match is a no-op. **Generators:** `lib/services/character-field-semantics.ts` gains the exported `CONVERSATIONAL_VOICE_DIRECTION` and `EXAMPLE_DIALOGUE_COVERAGE` constants. They are appended into the AI-import prompt (`ai-import.service.ts`: the system-prompt instruction + `For exampleDialogues: …`), the wizard (`character-wizard.service.ts`) and the optimizer (`character-optimizer.service.ts`: two new "Do NOT codify repetition" bullets, the EXAMPLEDIALOGUES rule, "Never remove or weaken…"). So every generator's prompt BYTES move. Three help pages. **v5 surfaces hit:** `crates/quilltap-core/src/services/builtin_prompt_templates.rs` + its vendored `builtin_prompt_templates.json` (P4.83), guarded by `builtin_prompt_templates_guard` (it re-derives from the live checkout, so RED now) and `prompt_templates_routes_equivalence`. v5's seeder is "insert-if-absent, NEVER update", and **`needs_seeding` short-circuits on NAMES only**, so the refresh needs a content comparison in that read-pool check, not just in the write. The generators live in `crates/quilltap-core/src/generators/{mod,ai_import,optimizer,generated_items}.rs` + the character-field-semantics home, with the families `ai_import_assembly`, `ai_import_tier3`, `character_optimizer_prompts`, `character_optimizer_tier3`, `character_wizard_tier3`, `generators_leaf` and `generators_wizard_prompts`. **Traps:** the refresh WRITES on boot for every existing instance whose rows predate the text (Friday included), a real write at startup. Characters holding imported copies are never touched (they are not `isBuiltIn`). The INFO line's wording changes for BOTH seed sources. | UNPROCESSED (was WAIVED for the `acadcc7cd` round; the next catch-up's) |
+| `04d6c9d52` | 2026-09-28 | Give characters joining a running chat their outfit avatar | PORT (small) | **Hunks** (9 files, `-dev.99`). `app/api/v1/chats/[id]/actions/participants.ts` gains `refreshAvatarForArrivingCharacter(chatId, characterId, userId, repos)`. It reads `repos.chats.getEquippedOutfitForCharacter`; with no equipped slots it logs DEBUG `[Chats v1] No equipped outfit for arriving character, avatar left as-is` and returns. Otherwise it calls `triggerAvatarGenerationIfEnabled(repos, {userId, chatId, characterId, callerContext: '[Chats v1] participant-join'})` and logs DEBUG `[Chats v1] Avatar refresh requested for arriving character`. Any throw → WARN `[Chats v1] Failed to request avatar refresh for arriving character {chatId, characterId, error}`; the join never fails. It is called on the ADD path (after the add) and on the REACTIVATE path whenever `reactivatedParticipant?.characterId` ("whether or not the outfit was re-applied"). The trigger itself gates on `avatarGenerationEnabled` and skips autonomous rooms, and the job's configuration cache answers first (rebind, not regenerate). `help/chat-settings-ai-services.md`. **v5 surfaces hit:** `crates/quilltap-core/src/api/chat_cast.rs` (P4.9E1A: add participant + `reactivate_participant` at `:271`) over `services/chat_participants.rs`, and `services/avatar_generation.rs:151` `trigger_avatar_generation_if_enabled` (its `callerContext` threading), with the avatar configuration cache (P4.D188 Avatar Rolls). **Traps:** the reactivate arm fires even when the outfit was NOT re-applied. The cache hit means a tier-3 proof must show a REBIND with zero generations. A new enqueue on the add path moves any family counting jobs after an add (the cast families). | UNPROCESSED (was WAIVED for the `acadcc7cd` round; the next catch-up's) |
+| `97b25fc53` | 2026-09-28 | Drape undressed characters in story backgrounds instead of re-dressing them | PORT | **17 files, `4.10.0-dev.100`.** `lib/background-jobs/handlers/story-background.ts` (+16/−2), `lib/image-gen/appearance-resolution.ts` (+41/−10), `lib/memory/cheap-llm-tasks/{image-scene-tasks,index,types}.ts` (a new concealment task + types), four `__tests__/`, `help/story-backgrounds.md` + `help/the-concierge.md`, the version stamp. **Intersects:** v5's story-background job (`services/image_job_common.rs` + the story handler — both moved THIS round by P4.D225's chokepoint and P4.D228's refusal bubble), the appearance-resolution port (`image_gen/`), the cheap-LLM image-scene tasks, and the `help/` tree P4.D228 just re-vendored (two pages move, 129 stays 129). Not yet read hunk by hunk — the next `/driftcheck` classifies it. | UNPROCESSED (landed during the `acadcc7cd` round's unification gate) |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -497,6 +298,31 @@ the disposable copy proves the mechanism but is a weaker claim — offer it,
 don't silently swap it in.
 
 ## §6 History
+
+- **The `acadcc7cd` Concierge-overhaul drift catch-up round (2026-09-28,
+  baseline `b0b6656b5` → `acadcc7cd`; P4.D225 → P4.D226 → P4.D227 → P4.D228
+  ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233):** `8bd080267` (#73,
+  refusal-driven failover) + `49059fb14` (#74, the refusal ledger +
+  auto-switch) ABSORBED(P4.D225 — the classifier, the understudies, the
+  image-failover chokepoint, the text failover's refusal branch, the ledger
+  as a boot ensure; ⚠ the TEXT-side structured refusal stays an unplugged
+  seam, named in the order's header; the client half P4.D229). `4d370a90f`
+  (#75, the three states) ABSORBED(P4.D226 — the trio, the flip, the
+  switches, the first D23 re-dump, 41 + 1 pairs widened through v4's real
+  migrations; the client half P4.D229). `3b463d6b1` (#76, the Concierge's
+  own settings + the `conciergeOverride` DROP) ABSORBED(P4.D227 — the policy
+  resolver + the consumer sweep, the second re-dump; the client half
+  P4.D230). `ce2f1dabf` (#77, "Try uncensored") ABSORBED(P4.D228 — the two
+  retry verbs, the Lantern's refusal bubble; the client half P4.D229).
+  `08c49319d` (the Scenario Builder on the shelves) ABSORBED(P4.D231).
+  `acadcc7cd` (bugs 171/172) ABSORBED(P4.D233 the server; P4.D228 the help
+  pages). `6d0f88d65` (the dependency sweep) NO-PORT-RATIFIED for code +
+  ABSORBED as a REGEN EVENT (P4.D232 — the guard's constants, `request-
+  envelopes` re-recorded stamp-only, re-verified at unification; P4.D225's
+  `image-dialects`). `83d0c969b` (bug 170) NO-PORT-RATIFIED(P4.D232 — v5 not
+  affected, measured: the speaker pick is a dispatch verb). `a8292547a` (the
+  overhaul specs) NO-PORT-RATIFIED(P4.D232 — docs; mirrored at `acadcc7cd`'s
+  bytes). Round record: `status-log.md`.
 
 - **The `b0b6656b5` ten-commit drift catch-up round (2026-09-25, baseline
   `d1c06cd9d` → `b0b6656b5`; P4.D220 ∥ P4.D221 ∥ P4.D222 ∥ P4.D223 ∥

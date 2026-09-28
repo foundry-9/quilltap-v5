@@ -1059,10 +1059,47 @@ records THERE. Update this summary only when a phase or round completes.
   `83d0c969b` ratification, the owed Host dogfood pass, a smalls lane
   (incl. the `text-replacement.ts` soft-break divergence P4.D224 found)** —
   `phase-4.md`. Round record: `status-log.md`.
-- **Oracle baseline: `b0b6656b5` (2026-09-24, v4 main — "Fix bug 169:
-  narrow-pane chat sidebar no longer closes dialogs it opens (#71)",
-  `4.10.0-dev.78`), adopted at the `b0b6656b5` ten-commit drift catch-up
-  round unification (2026-09-25).**
+- **The `acadcc7cd` Concierge-overhaul drift catch-up round (P4.D225 →
+  P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥
+  P4.D233): UNIFIED on main (2026-09-28) — ALL NINE LANDED; the oracle
+  baseline MOVES to `acadcc7cd`; the ledger's §3 keeps the SEVEN commits past
+  it (six waived for the round, never ordered — incl. ⚠ `f7f3d7bf0`'s
+  `chats.renderedMarkdown` DROP — and `97b25fc53`, which landed during the
+  gate), so the regen rule is PIN REQUIRED.** v4's
+  Concierge overhaul (#73–#77) REPLACED three ported verticals whole: the
+  refusal classifier + understudies + ONE image-failover chokepoint + the
+  text failover's refusal branch + the refusal ledger (a boot ensure) and
+  auto-switch (P4.D225); the three states Moderated/Unmoderated/Locked with
+  the first D23 re-dump and 42 pairs widened through v4's real migrations
+  (P4.D226); the Concierge's own settings, ONE policy resolver over ~40
+  consumers and the `conciergeOverride` drop, tolerated both ways (P4.D227);
+  "Try uncensored" + the whole `help/` tree at `acadcc7cd` (P4.D228); both
+  SPA sides (P4.D229/D230); plus the Scenario Builder on the shelves
+  (P4.D231), the SDK-bump regen (P4.D232, stamp-only, re-verified) and bugs
+  171/172 (P4.D233). It ran first as a PARTIAL unification (the human's
+  call) and folded P4.D232/D233 in before anything landed. **The §3 review
+  (seven readers) found no production defect a differential could not see,
+  but three false claims and one orphaned handoff, all fixed:** P4.D226's
+  classifier switch + current-state re-read had NO tests and four read-error
+  arms v4 can never reach (chat create answered 500 for a committed chat —
+  v4 201); `post_office_writers_tier3` was each side's "other lane's fence"
+  and red on the union (the spec drove the five retired Concierge kinds);
+  the "Try uncensored" round trip's first LIVE run failed on its own gesture
+  (a keyless desk sharing the original's model — v4 refuses both
+  identically). **ESCALATED:** P4.D225's text-side structured refusal is an
+  unplugged seam (a text provider's error `code` never reaches the
+  classifier — a real order). Gate: the full sweep at `acadcc7cd` 566 ok /
+  4 pre-existing-or-designed reds / 3 refused of 573; Tier R 266/0; 644
+  binaries / 3,858 / 0; SPA 460 files; Playwright 347/7/6 with all seven
+  green alone. Versions: core 0.0.1089, harness 0.0.1012, host 0.0.162, web
+  0.0.201, SPA 0.5.784. **Next: the seven-commit drift catch-up (the
+  `renderedMarkdown` drop blocks dogfooding a Friday copy past `-dev.96`),
+  the text-side refusal order, a smalls lane, then the owed Host dogfood
+  pass** — `phase-4.md`. Round record: `status-log.md`.
+- **Oracle baseline: `acadcc7cd` (2026-09-25, v4 main — "Name who stayed
+  behind on Continue Elsewhere; persona absent in autonomous rooms (bugs
+  171, 172)", `4.10.0-dev.93`), adopted at the `acadcc7cd` Concierge-overhaul
+  round unification (2026-09-28).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

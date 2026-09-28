@@ -20,12 +20,17 @@ API reference for Quilltap v4.3 and later.
 > - **New `systemSender` values** — `carina` (inline-query answers) and `suparna` (Post Office mail-delivery announcements).
 > - **Scriptorium per-document policy flags** — mounted markdown may carry `embed` / `character_read` / `character_write` frontmatter flags (stored on `doc_mount_file_links`), governing characters only.
 
+> **Freshness note (v4.10-dev):** Additions since v4.9:
+>
+> - **The Concierge's own settings** — `GET`/`PUT /api/v1/settings/chat` carry `conciergeSettings` (on-duty switch, the uncensored desk, the refusal auto-switch, `newChatsStartAs`, display, the opt-in pre-screen); `dangerousContentSettings`, `uncensoredImageDescriptionProfileId` and `cheapLLMSettings.imagePromptProfileId` are gone from the payload and a `PUT` carrying any of them is a `400`. `POST /api/v1/chats` without `conciergeState` starts the chat in `conciergeSettings.newChatsStartAs`. The `help_settings` tool gained a `concierge` category (its `chat` category no longer returns Concierge settings).
+> - **Three-state Concierge** — `conciergeState` on `POST /api/v1/chats` and `PUT /api/v1/chats/[id]` is now `'moderated' | 'unmoderated' | 'locked'`; the four retired values (`'monitored' | 'flagged' | 'vouched' | 'uncensored'`) are rejected with `400`. `GET /api/v1/chats/[id]` returns `conciergeState`, `conciergeSetBy` (`'operator' | 'concierge' | null`), `conciergeReason` and `conciergeRefusalCount`, and no longer returns `conciergeOverride`. List payloads (Salon list, homepage recent chats, project chats, character conversations) carry `conciergeState`, `conciergeSetBy`, `conciergeReason` and `dangerCategories`.
+>
 > **Freshness note (v4.9-dev):** Additions since v4.7:
 >
 > - **Realtime invalidation socket** — `GET /api/v1/system/realtime/stream` (WebSocket). Frames say *what* changed, never *what it changed to*; the client invalidates and re-reads through this API. See [System Realtime Stream](#system-realtime-stream).
 > - **Connection-profile fallback chains** — `fallbackProfileId` (the understudy) and `allowTierFallback` on connection profiles. Chains are capped at three attempts and never recurse. See [Connection Profiles](#connection-profiles).
 > - **Image-profile LoRA adapters and model options** — the reserved `loras` parameter key (validated by `ImageLoraSpecSchema`), the per-model `loraSupport` block on the models response, and `POST /api/v1/image-profiles?action=lora-metadata` for reading a LoRA source's public HuggingFace card.
-> - **Four-state Concierge** — `conciergeState` (`'monitored' | 'flagged' | 'vouched' | 'uncensored'`) on `POST /api/v1/chats` and `PUT /api/v1/chats/[id]`, applied through the one transition chokepoint `applyConciergeFlip`.
+> - **Four-state Concierge** — `conciergeState` (`'monitored' | 'flagged' | 'vouched' | 'uncensored'`) on `POST /api/v1/chats` and `PUT /api/v1/chats/[id]`, applied through the one transition chokepoint `applyConciergeFlip`. *Superseded in 4.10 by the three states; see below.*
 > - **Chat-action set (current)** — `accessible-stores`, `agent-mode`, `announcement`, `announcement-preview`, `avatars`, `bulk`, `cost`, `danger-classification`, `documents`, `export`, `export-markdown`, `group-stores`, `mailbox`, `memories`, `merge`, `outfit`, `outfit-summary`, `participants`, `photo-albums`, `recall-replay`, `regenerate-avatar`, `render-conversation`, `rng`, `run-tool`, `scenario`, `send-mail`, `state`, `story-background`, `tags`, `title`, `toggle-avatar-generation`, `tools`, `turn`. This supersedes the v4.3 list above.
 > - **Scenario changed mid-chat** — `POST /api/v1/chats/[id]?action=scenario`; the Host announces the change as a revision.
 > - **Archivable scenarios and wardrobe items** — archived rows drop out of every listing unless `includeArchived` is passed.
@@ -459,7 +464,26 @@ Get chat settings for the current user.
   "tokenDisplaySettings": {},
   "memoryCascadePreferences": {},
   "llmLoggingSettings": {},
-  "autoDetectRng": true
+  "autoDetectRng": true,
+  "conciergeSettings": {
+    "enabled": true,
+    "uncensoredTextProfileId": null,
+    "uncensoredImageProfileId": null,
+    "uncensoredVisionProfileId": null,
+    "imagePromptProfileId": null,
+    "autoSwitchAfterRefusals": 2,
+    "newChatsStartAs": "moderated",
+    "display": { "mode": "SHOW", "showWarningBadges": true },
+    "preScreen": {
+      "enabled": false,
+      "threshold": 0.7,
+      "scanTextChat": true,
+      "scanImagePrompts": true,
+      "scanImageGeneration": false,
+      "customClassificationPrompt": null,
+      "summaryClassification": false
+    }
+  }
 }
 ```
 
@@ -491,9 +515,12 @@ Update chat settings.
     "onSwipeRegenerate": "DELETE_MEMORIES" | "KEEP_MEMORIES" | "REGENERATE_MEMORIES"
   },
   "llmLoggingSettings": {},
-  "autoDetectRng": true
+  "autoDetectRng": true,
+  "conciergeSettings": { "enabled": true, "display": { "mode": "BLUR", "showWarningBadges": true }, "...": "the whole object, as in GET" }
 }
 ```
+
+`conciergeSettings` is validated with `ConciergeSettingsSchema` (a malformed object is a `400`). The retired Concierge settings — `dangerousContentSettings`, the top-level `uncensoredImageDescriptionProfileId`, and `cheapLLMSettings.imagePromptProfileId` — are rejected with `400` so a stale client fails loudly instead of writing a column nothing reads.
 
 #### `GET /api/v1/settings/data-retention`
 
@@ -2159,7 +2186,7 @@ Create a new chat.
 
 **Note**: `roleplayTemplateId` is optional and tri-state. Omit the key to fall back to the default chain (project default > user/global default > none). Send a template UUID to force that template, or send an explicit `null` for "no template" — both beat the defaults. A UUID that doesn't resolve returns `400 Roleplay template not found`.
 
-**Note**: `conciergeState` is optional — `'monitored' | 'flagged' | 'vouched' | 'uncensored'`, the same wire enum as the sidebar's `PUT /api/v1/chats/[id]`. Omitted or `'monitored'` leaves the chat Monitored exactly as before (no write, no announcement). Any other value is applied through the one transition chokepoint, `applyConciergeFlip`, *after* the system-prompt message and *before* any staff announcement or greeting — so the Concierge's bubble sits where the history says the state was set, and the opening greeting is generated under the chosen state (an Uncensored chat's greeting goes to the uncensored desk first; a Vouched Safe chat's is never rerouted). A value outside the four is a `400` validation error.
+**Note**: `conciergeState` is optional — `'moderated' | 'unmoderated' | 'locked'`, the same wire enum as the sidebar's `PUT /api/v1/chats/[id]`. Omitted, it defaults to the user's `conciergeSettings.newChatsStartAs`. `'moderated'` leaves the chat Moderated (no write, no announcement). Any other value is applied through the one transition chokepoint, `applyConciergeFlip`, *after* the system-prompt message and *before* any staff announcement or greeting — so the Concierge's bubble sits where the history says the state was set, and the opening greeting is generated under the chosen state (an Unmoderated chat's greeting goes to the uncensored desk first; a Locked chat's is never rerouted, even after a content filter). A value outside the three — including the retired `'monitored' | 'flagged' | 'vouched' | 'uncensored'` — is a `400` validation error. The `201` response's `chat` carries `conciergeMode` / `conciergeModeSetBy` / `conciergeModeReason` as they stand after the state is applied.
 
 **Note**: `progressId` is optional — a client-generated UUID. When present, the handler publishes creation progress (setup milestones and per-character LLM wardrobe choices) to an in-memory bus keyed by that id, which the "Green Room" status dialog subscribes to via `GET /api/v1/chats/creation-progress?id=…` (below). Omit it and creation behaves exactly as before, returning the same JSON.
 
@@ -2222,11 +2249,11 @@ Each SSE frame is `data: <json>\n\n` where the payload is one of:
 
 #### `GET /api/v1/chats/[id]`
 
-Get a chat with full message history. The response includes `chatType` (e.g. `"standard"`, `"autonomous"`).
+Get a chat with full message history. The response includes `chatType` (e.g. `"standard"`, `"autonomous"`), and the chat's Concierge posture, derived server-side: `conciergeState` (`'moderated' | 'unmoderated' | 'locked'`), `conciergeSetBy` (`'operator' | 'concierge' | null`), `conciergeReason` (`'manual' | 'refusals' | 'classifier' | 'migration' | null`) and `conciergeRefusalCount` (the refusal ledger's count). `isDangerousChat` and `dangerCategories` remain as the classifier's telemetry; the legacy `conciergeOverride` is not returned.
 
 #### `PUT /api/v1/chats/[id]`
 
-Update chat metadata.
+Update chat metadata. `conciergeState` (`'moderated' | 'unmoderated' | 'locked'`) changes the chat's Concierge posture through `applyConciergeFlip`, which writes the state and provenance and posts the Concierge's announcement; it is a no-op when nothing would change, and silently re-attributes an Unmoderated chat to the operator when the operator confirms the Concierge's switch. The retired four-state values are a `400`.
 
 #### `DELETE /api/v1/chats/[id]`
 
@@ -2890,6 +2917,38 @@ Queue a story background regeneration job.
   "jobId": "job-uuid"
 }
 ```
+
+#### `POST /api/v1/chats/[id]?action=retry-image-uncensored`
+
+"Try uncensored" on a picture (Concierge overhaul phase 5). Never changes the chat's Concierge state.
+
+**Request body**: either
+
+```json
+{ "toolMessageId": "uuid" }
+```
+
+— re-run a `generate_image` TOOL message's arguments on the Concierge's uncensored image understudy
+(`resolveUncensoredImageUnderstudy`, excluding the chat's image profile and every image profile on
+the message's trail). The result is saved as a new TOOL message filed 1 ms after the original, with
+the images attached and a `routeTrail` that keeps the original's refused/failed rows and ends on the
+understudy with `via: "concierge"`. When the original trail has a refused row the Concierge posts
+`refusal-rerouted` (`purpose: "tool"`). Response `200 OK`:
+`{ "toolMessageId": "uuid", "images": [...], "routeTrail": [...] }`. `404` for an unknown message,
+`400` for a TOOL message that is not `generate_image`, `502` when the understudy produced nothing.
+
+or
+
+```json
+{ "kind": "background" }
+```
+
+— queue a story background with `payload.forceUncensored: true` (same response as
+`regenerate-background`). The job paints on the understudy and abandons quietly if the chat became
+Locked or the understudy disappeared before it ran.
+
+**Errors**: `409 { "error": "locked" }` on a Locked chat; `409 { "error": "no-understudy" }` when no
+uncensored image profile is available. Off duty does not block it.
 
 ---
 
@@ -3757,6 +3816,24 @@ Send a message and receive the streaming LLM response. Returns `text/event-strea
 #### `POST /api/v1/chats/[id]/messages/[messageId]?action=override-danger-flag`
 
 Override the Concierge danger flags on a message.
+
+#### `POST /api/v1/chats/[id]/messages/[messageId]?action=retry-uncensored`
+
+"Try uncensored" on a text line (Concierge overhaul phase 5). Regenerates the assistant message as a
+new swipe (same semantics as `POST /api/v1/messages/[id]?action=swipe`: context strictly before the
+target, informs re-applied and never consumed) on the Concierge's uncensored text understudy
+(`resolveUncensoredTextUnderstudy`, excluding the responder's profile and every connection profile
+on the target's trail). The swipe's `routeTrail` keeps the original's refused/failed rows and ends
+on the understudy with `via: "concierge"`. Never changes the chat's Concierge state; off duty does
+not block it.
+
+- Without `stream=1`: `201 Created` with `{ "message": <swipe> }`.
+- With `&stream=1`: `text/event-stream`, the same narration as the swipe stream (`status`,
+  `content` deltas, cumulative `reasoning`, then `{ done: true, message }`, or an `error` event).
+
+**Errors**: `404` chat or message; `400` for a non-assistant or Staff message;
+`409 { "error": "locked" }` on a Locked chat; `409 { "error": "no-understudy" }` when no uncensored
+text profile is available.
 
 #### `POST /api/v1/chats/[id]/messages/[messageId]?action=resolve-external-turn`
 

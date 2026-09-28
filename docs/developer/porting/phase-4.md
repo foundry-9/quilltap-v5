@@ -6694,7 +6694,39 @@ corpus; four stale headers/comments. Gate + versions: the round record in
    `cl100k` tokenizer (the section bound is proved through the oracle), the
    `docs/v4/CHANGELOG.md` lag.
 
-## The `acadcc7cd` Concierge-overhaul drift catch-up round (P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233) — ORDERED 2026-09-25 (re-ordered the same day to fold `acadcc7cd` in)
+## The `acadcc7cd` Concierge-overhaul drift catch-up round (P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233) — ORDERED 2026-09-25, UNIFIED 2026-09-28
+
+**UNIFIED on `main` (2026-09-28) — ALL NINE LANES; the oracle baseline MOVES
+to `acadcc7cd`** (the ledger's §3 keeps the seven commits past it as
+UNPROCESSED — six waived for this round, never ordered, and `97b25fc53`,
+which landed during the unification's gate). Round record:
+`status-log.md`; every order's status header carries what its review found
+and what stays OPEN. **NEXT, in order:**
+1. **The next drift catch-up** over the seven UNPROCESSED rows (`39bc98ffc`
+   `read_mail` + the rename, `12c336fad` `discard_mail`, `f7f3d7bf0` the
+   warm embeddings + ⚠ the `chats.renderedMarkdown` DROP — the dogfood
+   blocker for any Friday copy past `-dev.96`, `9ff4bbd8e`, `c3eefa752` the
+   21 prompts, `04d6c9d52`, `97b25fc53` the story-background drape) — run
+   `/driftcheck` first.
+2. **The TEXT-side structured refusal** (P4.D225's named gap —
+   `StreamError::with_refusal` has no production caller, so a text HTTP
+   error's provider `code` never reaches the classifier's `provider-code`
+   evidence; a real order, not a small).
+3. **A smalls lane** from the round's review NITs (each order header lists
+   its own): the group-links whole-read + the group exists-check (P4.D231);
+   bug 172's scan gate as a `build_context_tier3` oracle arm + `chat_type` on
+   `ContextChat` + v4's continuation WARN/ERROR siblings (P4.D233); the
+   unknown-kind drop + restore's enum check (P4.D226); the retry trail /
+   understudy-error / error-kind items (P4.D228); the SPA's 409 gate, dead
+   export, duplicated duty type (P4.D229); the off-duty `finally` (P4.D230);
+   the P4.D225 log/lookup NITs; the `text-replacement.ts` soft-break
+   divergence and the five smalls headers' OPEN items carried from before.
+4. **The owed Host dogfood pass** — on a Friday copy between v4 `-dev.88`
+   and `-dev.95` (ledger §1's schema note), with the round's 💸 items (a real
+   refusal rerouted to the uncensored desk, the auto-switch after N refusals,
+   "Try uncensored" on a real refused line and picture, the three states from
+   the sidebar, the Concierge tab, the shelves' Host button, Continue
+   Elsewhere naming who stayed behind).
 
 **Baseline `b0b6656b5`; v4 `main` HEAD `acadcc7cd` (TEN non-merge commits
 past: bug 170, the six overhaul specs, the FIVE Concierge-overhaul PRs
