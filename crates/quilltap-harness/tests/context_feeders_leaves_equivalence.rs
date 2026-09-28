@@ -34,7 +34,7 @@ use quilltap_core::services::core_whisper::{
 };
 use quilltap_core::services::off_scene::{
     build_off_scene_characters_content, build_off_scene_characters_opaque_content,
-    find_introduced_off_scene_character_ids, OffSceneCharacterCard,
+    find_introduced_off_scene_character_ids, OffSceneCharacterCard, OffSceneIntroductionReason,
 };
 use quilltap_core::services::scene_state_tracking::cap_clothing_summary;
 use quilltap_core::services::suparna_mail::build_suparna_mail_llm_context;
@@ -43,11 +43,11 @@ use quilltap_core::services::suparna_mail::build_suparna_mail_llm_context;
 fn rust_value(kind: &str, id: &str) -> Value {
     match kind {
         "off_scene_content" | "off_scene_opaque" => {
-            let (chars, user) = off_scene_case(id);
+            let (chars, user, reason) = off_scene_case(id);
             let s = if kind == "off_scene_content" {
-                build_off_scene_characters_content(&chars, user.as_deref())
+                build_off_scene_characters_content(&chars, user.as_deref(), reason)
             } else {
-                build_off_scene_characters_opaque_content(&chars, user.as_deref())
+                build_off_scene_characters_opaque_content(&chars, user.as_deref(), reason)
             };
             Value::String(s)
         }
@@ -101,18 +101,27 @@ fn card(id: &str, name: &str) -> OffSceneCharacterCard {
     }
 }
 
-fn off_scene_case(id: &str) -> (Vec<OffSceneCharacterCard>, Option<String>) {
+/// The third member is v4's `reason` (P4.D233): the four original cases pass
+/// none, so the builders' default (`'mentioned'`) is what they prove.
+fn off_scene_case(
+    id: &str,
+) -> (
+    Vec<OffSceneCharacterCard>,
+    Option<String>,
+    OffSceneIntroductionReason,
+) {
+    use OffSceneIntroductionReason::{LeftBehind, Mentioned};
     match id {
         "single-identity" => {
             let mut c = card("c1", "Ada");
             c.identity = Some("A brilliant analyst named {{char}}.".into());
-            (vec![c], Some("Charlie".into()))
+            (vec![c], Some("Charlie".into()), Mentioned)
         }
         "single-description-fallback" => {
             let mut c = card("c1", "Bea");
             c.description = Some("A gentle beekeeper.".into());
             c.identity = Some("".into());
-            (vec![c], None)
+            (vec![c], None, Mentioned)
         }
         "plural-aliases-pronouns-sorted" => {
             let mut zed = card("c2", "Zed");
@@ -121,7 +130,7 @@ fn off_scene_case(id: &str) -> (Vec<OffSceneCharacterCard>, Option<String>) {
             zed.identity = Some("The last one.".into());
             let mut ada = card("c1", "Ada");
             ada.identity = Some("The first one, {{user}} knows her.".into());
-            (vec![zed, ada], Some("Charlie".into()))
+            (vec![zed, ada], Some("Charlie".into()), Mentioned)
         }
         "accented-name-sort" => {
             let mut zoe = card("c2", "Zoë");
@@ -130,7 +139,27 @@ fn off_scene_case(id: &str) -> (Vec<OffSceneCharacterCard>, Option<String>) {
             aegis.identity = Some("a".into());
             let mut ada = card("c3", "ada");
             ada.identity = Some("lowercase ada".into());
-            (vec![zoe, aegis, ada], None)
+            (vec![zoe, aegis, ada], None, Mentioned)
+        }
+        "left-behind-single" => {
+            let mut c = card("c1", "Ada");
+            c.identity = Some("A brilliant analyst named {{char}}.".into());
+            (vec![c], Some("Charlie".into()), LeftBehind)
+        }
+        "left-behind-plural" => {
+            let mut zed = card("c2", "Zed");
+            zed.aliases = vec!["Z".into(), "Zee".into()];
+            zed.pronouns = Some(("they".into(), "them".into(), "theirs".into()));
+            zed.identity = Some("The last one.".into());
+            let mut ada = card("c1", "Ada");
+            ada.identity = Some("The first one, {{user}} knows her.".into());
+            (vec![zed, ada], Some("Charlie".into()), LeftBehind)
+        }
+        "mentioned-explicit" => {
+            let mut c = card("c1", "Bea");
+            c.description = Some("A gentle beekeeper.".into());
+            c.identity = Some("".into());
+            (vec![c], None, Mentioned)
         }
         other => panic!("unknown off_scene case {other}"),
     }

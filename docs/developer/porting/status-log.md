@@ -149922,6 +149922,59 @@ at the target once `main` reads the post-#76 shape.
     context-feeders-leaves.ts > /tmp/p4d233/t/oracle-context-feeders-
     leaves.ndjson` (`grep -c operator_speaks` = 8).
 
+### Unit 2 — the writer's reason (core 0.0.1060, harness 0.0.979)
+
+- `off_scene::OffSceneIntroductionReason { Mentioned (default), LeftBehind }`
+  + `as_str`; both content builders take it as a third parameter (every
+  caller is this lane's). The four new sentences are byte-proven by the
+  feeders family, never transcribed from the order.
+- `host_notifications::post_host_off_scene_characters_announcement_with_
+  reason(db, params, reason)`; the old function delegates with `Mentioned`.
+  **Why a second function, not a `reason` field:** `HostOffSceneCharacters
+  Announcement` is built by struct literal in `build_context.rs:800`
+  (`RealBuildContextSeams`) — a required field would have been a second,
+  undeclared hunk in a chain-touched file (`a-required-field-on-a-shared-
+  struct-crosses-lane-ownership`). Same two call shapes as v4's `reason?`.
+- The post is now assembled locally (the chat read → build → one insert via a
+  new `insert_host_message_checked` that keeps the error) so the two v4 lines
+  can fire: INFO `[HostNotification] Off-scene introduction posted {context,
+  chatId, messageId, introducedCharacterIdsJson, characterCount, reason}`
+  (the `…Json` array convention) and WARN `… skipped (non-fatal) {context,
+  chatId, error}`. Both were ABSENT from v5 before this unit. **Recorded, not
+  restored (outside the hunk):** v5 still emits none of the writer's other
+  `[HostNotification]` lines (`Announcement posted` :247, `Whisper posted`
+  :591, `No-user-character whisper skipped` :1236 at `acadcc7cd`) — a
+  pre-existing absence for a later smalls lane.
+- `context_feeders_leaves_equivalence`: `left-behind-single`, `left-behind-
+  plural`, `mentioned-explicit` × {content, opaque} — **46 rows matched** at
+  the target (`grep -c` of the two new intro phrases = 4). The four original
+  cases pass no reason, so they prove the default (NEUTRAL).
+- `post_office_writers_tier3_equivalence`: `offSceneReason` on the spec
+  (absent → v4's no-reason call); `host_off_scene_left_behind_one`, `…_two`,
+  `…_mentioned_explicit`; row count 22 → 25; the INFO lines capture-pinned
+  (reasons in spec order `mentioned, left-behind, left-behind, mentioned`;
+  `characterCount=2` on the plural; the `skipped` WARN silent).
+- **Finding F2 — this family has NO green pin on a `main`-cut branch.**
+  Measured row by row with the minted id stripped (a throwaway dump patch,
+  reverted): at the TARGET the Rust side has 25 rows to v4's 20 and the ONLY
+  differences are the five Concierge manual rows (`set-*`/`manual-*` kinds v4
+  #75 retired — v4's writer now refuses them, `[ConciergeNotification] Failed
+  to post manual announcement` ×5 on stderr); every Host/Aurora/Librarian/
+  Commonplace row and all three new rows MATCH. At the BASELINE (fixture +
+  oracle at `b0b6656b5`) the ONLY differences are the two `left-behind` rows
+  (v4 ignores the unknown `reason` and writes the `mentioned` intro) — the
+  red-first "before". So the family is red at the target until P4.D226 ports
+  #75's writer; P4.D228 re-runs it at the same pin atop the chain and should
+  see it GREEN (the unifier confirms). The fixture's `transcriptVersion`
+  errors on v4's stderr (both pins, ×20/×25) are the standing fixture-vintage
+  noise, non-fatal on both sides.
+- Regen AS RUN: fixture from the BASELINE pin (`QT_FIXTURE_POW_MAIN=/tmp/
+  p4d233/b/qt-pow-main.db QT_FIXTURE_POW_MOUNT=/tmp/p4d233/b/qt-pow-mount.db
+  npx tsx $V5W/harness/oracle/fixtures/build-post-office-writers-fixture.ts`,
+  F1); the oracle from BOTH pins over it (`… npx tsx $V5W/harness/oracle/
+  cases/post-office-writers-tier3.ts > /tmp/p4d233/{b,t}/oracle-pow.ndjson`;
+  target `grep -o "did not make the journey"` = 2, baseline = 0).
+
 ## P4.D232 — the `6d0f88d65` SDK-bump regen event + the `83d0c969b` / `a8292547a` NO-PORT ratifications + Tier R at the round target (2026-09-28, branch `claude/p4-sdk-bump-regen-riders-b7076a`)
 
 Order: `work-orders/p4.d232-sdk-bump-regen-riders-bug-170-specs-ratified.md`.

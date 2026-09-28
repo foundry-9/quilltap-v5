@@ -56,10 +56,11 @@ use quilltap_core::services::cost_events::{
 };
 use quilltap_core::services::host_notifications::{
     post_host_add_announcement, post_host_off_scene_characters_announcement,
-    post_host_scenario_announcement, post_host_status_change_announcement,
-    post_host_turn_pass_announcement, HostAddAnnouncement, HostCharacter,
-    HostOffSceneCharactersAnnouncement, HostScenarioAnnouncement, HostStatusChangeAnnouncement,
-    HostTurnPassAnnouncement, OffSceneCharacterCard, TurnPassSource,
+    post_host_off_scene_characters_announcement_with_reason, post_host_scenario_announcement,
+    post_host_status_change_announcement, post_host_turn_pass_announcement, HostAddAnnouncement,
+    HostCharacter, HostOffSceneCharactersAnnouncement, HostScenarioAnnouncement,
+    HostStatusChangeAnnouncement, HostTurnPassAnnouncement, OffSceneCharacterCard,
+    OffSceneIntroductionReason, TurnPassSource,
 };
 use quilltap_core::services::librarian_notifications::{
     post_librarian_open_announcement, post_librarian_summary_announcement,
@@ -174,6 +175,9 @@ struct Case {
     initial_status: Option<String>,
     #[serde(default)]
     off_scene_characters: Option<Vec<OffSceneSpec>>,
+    /// P4.D233 (v4 `acadcc7cd`): absent → the writer's default `'mentioned'`.
+    #[serde(default)]
+    off_scene_reason: Option<String>,
     #[serde(default)]
     scenario_text: Option<String>,
     #[serde(default)]
@@ -432,14 +436,26 @@ async fn run_case(db: &Db, spec: &Spec, c: &Case) {
                     description: o.description.clone(),
                 })
                 .collect();
-            post_host_off_scene_characters_announcement(
-                db,
-                HostOffSceneCharactersAnnouncement {
-                    chat_id: chat_id.clone(),
-                    characters,
-                },
-            )
-            .await;
+            let params = HostOffSceneCharactersAnnouncement {
+                chat_id: chat_id.clone(),
+                characters,
+            };
+            // v4 spreads `reason` only when the spec names one; absent is the
+            // no-reason call shape (the default), not an explicit `mentioned`.
+            match c.off_scene_reason.as_deref() {
+                None => {
+                    post_host_off_scene_characters_announcement(db, params).await;
+                }
+                Some(r) => {
+                    let reason = match r {
+                        "left-behind" => OffSceneIntroductionReason::LeftBehind,
+                        "mentioned" => OffSceneIntroductionReason::Mentioned,
+                        other => panic!("unknown offSceneReason {other}"),
+                    };
+                    post_host_off_scene_characters_announcement_with_reason(db, params, reason)
+                        .await;
+                }
+            }
         }
         "hostTurnPass" => {
             post_host_turn_pass_announcement(
@@ -677,9 +693,61 @@ async fn post_office_writers_tier3_matches_oracle() {
     let db = Db::open(paths, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copies: {e}"));
 
-    for case in &spec.cases {
-        run_case(&db, &spec, case).await;
+    // P4.D233: the off-scene writer's INFO (v4 `acadcc7cd` adds `reason` to it;
+    // v5 emitted none of the writer's lines before). A thread-scoped capture
+    // held across the loop — the test runs on tokio's current-thread runtime,
+    // and the writer logs on this thread after its write returns.
+    let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        let subscriber = tracing_subscriber::registry()
+            .with(quilltap_core::test_support::CaptureLayer(logs.clone()));
+        let _guard = tracing::subscriber::set_default(subscriber);
+        for case in &spec.cases {
+            run_case(&db, &spec, case).await;
+        }
     }
+    let lines = logs.lock().unwrap().clone();
+    let posted: Vec<&String> = lines
+        .iter()
+        .filter(|l| l.contains("[HostNotification] Off-scene introduction posted"))
+        .collect();
+    // One line per `hostOffScene` case, in spec order: the no-reason default,
+    // the two `left-behind`s, the explicit `mentioned`.
+    let reasons: Vec<&str> = posted
+        .iter()
+        .map(|l| {
+            l.split(" reason=")
+                .nth(1)
+                .and_then(|r| r.split_whitespace().next())
+                .unwrap_or("<none>")
+        })
+        .collect();
+    assert_eq!(
+        reasons,
+        vec!["mentioned", "left-behind", "left-behind", "mentioned"],
+        "{posted:?}"
+    );
+    assert!(
+        posted.iter().all(|l| l.starts_with("INFO ")
+            && l.contains(" context=host-notifications ")
+            && l.contains(" chatId=")
+            && l.contains(" messageId=")
+            && l.contains(" introducedCharacterIdsJson=[\"")),
+        "{posted:?}"
+    );
+    assert!(
+        posted[2].contains(" characterCount=2 "),
+        "the plural left-behind post counts two: {:?}",
+        posted[2]
+    );
+    // Silence leg: nothing in this corpus fails to post.
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.contains("Off-scene introduction skipped")),
+        "{lines:?}"
+    );
 
     let mut got_messages = db
         .read_main(|conn| dump_table_json_conn(conn, "chat_messages", "content"))
@@ -710,7 +778,9 @@ async fn post_office_writers_tier3_matches_oracle() {
         .map(|a| a.len())
         .unwrap_or(0);
     // 20 persona rows since P4.D141 (the third Concierge manual kind,
-    // `manual-uncensored`, joined `manual-vouched` / `manual-resumed`).
-    assert_eq!(nm, 22, "expected 20 persona + 2 cost SYSTEM rows");
+    // `manual-uncensored`, joined `manual-vouched` / `manual-resumed`); 23 since
+    // P4.D233 (two `left-behind` off-scene introductions + an explicit
+    // `mentioned` one, v4 `acadcc7cd`).
+    assert_eq!(nm, 25, "expected 23 persona + 2 cost SYSTEM rows");
     eprintln!("OK: post-office-writers tier-3 matched oracle ({nm} rows, chats aggregate).");
 }

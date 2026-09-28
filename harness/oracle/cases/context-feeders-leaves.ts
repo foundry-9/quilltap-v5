@@ -41,7 +41,14 @@ interface OffCard {
 }
 
 // ---- off-scene content builders ----
-const offSceneCases: Array<{ id: string; chars: OffCard[]; user: string | null }> = [
+// P4.D233 (v4 `acadcc7cd`, bug 171): `reason` absent → the builders' default
+// (`'mentioned'`); the three trailing cases pass it explicitly.
+const offSceneCases: Array<{
+  id: string;
+  chars: OffCard[];
+  user: string | null;
+  reason?: 'mentioned' | 'left-behind';
+}> = [
   {
     id: 'single-identity',
     chars: [{ id: 'c1', name: 'Ada', identity: 'A brilliant analyst named {{char}}.' }],
@@ -74,6 +81,33 @@ const offSceneCases: Array<{ id: string; chars: OffCard[]; user: string | null }
       { id: 'c3', name: 'ada', identity: 'lowercase ada' },
     ],
     user: null,
+  },
+  {
+    id: 'left-behind-single',
+    chars: [{ id: 'c1', name: 'Ada', identity: 'A brilliant analyst named {{char}}.' }],
+    user: 'Charlie',
+    reason: 'left-behind',
+  },
+  {
+    id: 'left-behind-plural',
+    chars: [
+      {
+        id: 'c2',
+        name: 'Zed',
+        aliases: ['Z', 'Zee'],
+        pronouns: { subject: 'they', object: 'them', possessive: 'theirs' },
+        identity: 'The last one.',
+      },
+      { id: 'c1', name: 'Ada', identity: 'The first one, {{user}} knows her.' },
+    ],
+    user: 'Charlie',
+    reason: 'left-behind',
+  },
+  {
+    id: 'mentioned-explicit',
+    chars: [{ id: 'c1', name: 'Bea', description: 'A gentle beekeeper.', identity: '' }],
+    user: null,
+    reason: 'mentioned',
   },
 ];
 
@@ -240,8 +274,12 @@ async function main(): Promise<void> {
     out.push(JSON.stringify({ kind, id, value }));
 
   for (const c of offSceneCases) {
-    emit('off_scene_content', c.id, buildOffSceneCharactersContent(c.chars as never, c.user));
-    emit('off_scene_opaque', c.id, buildOffSceneCharactersOpaqueContent(c.chars as never, c.user));
+    emit('off_scene_content', c.id, buildOffSceneCharactersContent(c.chars as never, c.user, c.reason));
+    emit(
+      'off_scene_opaque',
+      c.id,
+      buildOffSceneCharactersOpaqueContent(c.chars as never, c.user, c.reason),
+    );
   }
   for (const c of introducedCases) {
     emit('introduced_ids', c.id, [...findIntroducedOffSceneCharacterIds(c.messages)].sort());

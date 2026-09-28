@@ -54,7 +54,7 @@ use crate::jsstr::{js_trim, js_trim_end};
 pub use crate::services::off_scene::{
     apply_host_templates, build_off_scene_characters_content,
     build_off_scene_characters_opaque_content, find_introduced_off_scene_character_ids,
-    OffSceneCharacterCard,
+    OffSceneCharacterCard, OffSceneIntroductionReason,
 };
 
 // ===========================================================================
@@ -637,23 +637,34 @@ async fn insert_host_message(
     message_id: String,
     message: Value,
 ) -> Option<PostedHostMessage> {
-    let event: ChatEventInput = serde_json::from_value(message.clone()).ok()?;
-    let chat_id_owned = chat_id.to_string();
-    match db
-        .write(move |writers| {
-            writers
-                .main()
-                .chat_messages()
-                .add_message(&chat_id_owned, &event)
-        })
+    insert_host_message_checked(db, chat_id, message_id, message)
         .await
-    {
-        Ok(()) => Some(PostedHostMessage {
-            id: message_id,
-            message,
-        }),
-        Err(_) => None,
-    }
+        .ok()
+}
+
+/// As [`insert_host_message`], but the failure's message comes back — for the
+/// one writer (the off-scene introduction) whose v4 twin logs it.
+async fn insert_host_message_checked(
+    db: &Db,
+    chat_id: &str,
+    message_id: String,
+    message: Value,
+) -> Result<PostedHostMessage, String> {
+    let event: ChatEventInput =
+        serde_json::from_value(message.clone()).map_err(|e| e.to_string())?;
+    let chat_id_owned = chat_id.to_string();
+    db.write(move |writers| {
+        writers
+            .main()
+            .chat_messages()
+            .add_message(&chat_id_owned, &event)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(PostedHostMessage {
+        id: message_id,
+        message,
+    })
 }
 
 // ===========================================================================
@@ -1131,12 +1142,39 @@ pub struct HostOffSceneCharactersAnnouncement {
     pub characters: Vec<OffSceneCharacterCard>,
 }
 
-/// v4 `postHostOffSceneCharactersAnnouncement`. Empty input → `None`. Stamps the
-/// introduced character ids into `hostEvent.introducedCharacterIds` (public,
-/// untargeted).
+/// v4 `postHostOffSceneCharactersAnnouncement` with no `reason` — the default
+/// `'mentioned'` (the per-turn scan's caller).
 pub async fn post_host_off_scene_characters_announcement(
     db: &Db,
     params: HostOffSceneCharactersAnnouncement,
+) -> Option<PostedHostMessage> {
+    post_host_off_scene_characters_announcement_with_reason(
+        db,
+        params,
+        OffSceneIntroductionReason::Mentioned,
+    )
+    .await
+}
+
+/// v4 `postHostOffSceneCharactersAnnouncement` (`acadcc7cd`). Empty input →
+/// `None`. Stamps the introduced character ids into
+/// `hostEvent.introducedCharacterIds` (public, untargeted) whatever the
+/// `reason`, so a left-behind notice also stops the per-turn scan from
+/// introducing the same people a second time.
+///
+/// v4 carries `reason?` on the params object; v5 keeps
+/// [`HostOffSceneCharactersAnnouncement`]'s two fields (its struct-literal
+/// callers include `build_context.rs`, not this lane's) and takes the reason
+/// as an argument instead — the same two call shapes.
+///
+/// A missing chat → `None` with no line (v4's bare `return null`); an insert
+/// failure → v4's WARN `Off-scene introduction skipped (non-fatal)`; success →
+/// v4's INFO `Off-scene introduction posted` (both absent from v5 before
+/// P4.D233).
+pub async fn post_host_off_scene_characters_announcement_with_reason(
+    db: &Db,
+    params: HostOffSceneCharactersAnnouncement,
+    reason: OffSceneIntroductionReason,
 ) -> Option<PostedHostMessage> {
     if params.characters.is_empty() {
         return None;
@@ -1149,24 +1187,62 @@ pub async fn post_host_off_scene_characters_announcement(
         Some(p) => resolve_user_character_name(db, p).await,
         None => None,
     };
-    let content =
-        build_off_scene_characters_content(&params.characters, user_character_name.as_deref());
+    let content = build_off_scene_characters_content(
+        &params.characters,
+        user_character_name.as_deref(),
+        reason,
+    );
     let opaque_content = build_off_scene_characters_opaque_content(
         &params.characters,
         user_character_name.as_deref(),
+        reason,
     );
+    let message_id = uuid::Uuid::new_v4().to_string();
+    let now = crate::clock::now_iso();
     let introduced_character_ids: Vec<String> =
         params.characters.iter().map(|c| c.id.clone()).collect();
-    let host_event = json!({ "introducedCharacterIds": introduced_character_ids });
-    post_host_message(
-        db,
-        &params.chat_id,
-        content,
-        Some(opaque_content),
-        "off-scene-characters",
-        Some(host_event),
-    )
-    .await
+
+    let message = json!({
+        "type": "message",
+        "id": message_id,
+        "role": "ASSISTANT",
+        "content": content,
+        "opaqueContent": opaque_content,
+        "attachments": [],
+        "createdAt": now,
+        "participantId": Value::Null,
+        "systemSender": "host",
+        "systemKind": "off-scene-characters",
+        "hostEvent": { "introducedCharacterIds": introduced_character_ids },
+    });
+
+    match insert_host_message_checked(db, &params.chat_id, message_id.clone(), message).await {
+        Ok(posted) => {
+            // `introducedCharacterIdsJson`: v4 logs the raw `string[]`; the file
+            // layer's `…Json` convention re-parses it under the unsuffixed name.
+            let ids_json =
+                serde_json::to_string(&introduced_character_ids).unwrap_or_else(|_| "[]".into());
+            tracing::info!(
+                context = "host-notifications",
+                chatId = params.chat_id.as_str(),
+                messageId = message_id.as_str(),
+                introducedCharacterIdsJson = ids_json.as_str(),
+                characterCount = params.characters.len(),
+                reason = reason.as_str(),
+                "[HostNotification] Off-scene introduction posted"
+            );
+            Some(posted)
+        }
+        Err(error) => {
+            tracing::warn!(
+                context = "host-notifications",
+                chatId = params.chat_id.as_str(),
+                error = error.as_str(),
+                "[HostNotification] Off-scene introduction skipped (non-fatal)"
+            );
+            None
+        }
+    }
 }
 
 /// v4 `HostContinuationFromAnnouncement`.

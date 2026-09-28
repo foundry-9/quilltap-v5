@@ -103,6 +103,35 @@ impl OffSceneCharacterCard {
     }
 }
 
+/// Why the Host is introducing these characters (v4 `OffSceneIntroductionReason`,
+/// `acadcc7cd`):
+///
+/// - [`Mentioned`](Self::Mentioned) — named in the conversation but never seated
+///   here (the per-turn scan in the context builder). The default.
+/// - [`LeftBehind`](Self::LeftBehind) — seated in the chat this one continues
+///   from, but not brought along. The carried-over transcript still has the cast
+///   talking to them, and their own lines were dropped in the replay, so without
+///   this they read as present and silent (bug 171).
+///
+/// Not on the wire: the posted row's `systemKind` is `off-scene-characters`
+/// either way; only the intro sentence (and the writer's INFO line) differ.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OffSceneIntroductionReason {
+    #[default]
+    Mentioned,
+    LeftBehind,
+}
+
+impl OffSceneIntroductionReason {
+    /// v4's string form (`'mentioned' | 'left-behind'`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OffSceneIntroductionReason::Mentioned => "mentioned",
+            OffSceneIntroductionReason::LeftBehind => "left-behind",
+        }
+    }
+}
+
 /// v4 `renderOffSceneCard`: `### <name>` + optional aliases/pronouns lines +
 /// (identity else description) body with `{{char}}`/`{{user}}` substitution.
 fn render_off_scene_card(c: &OffSceneCharacterCard, user_character_name: Option<&str>) -> String {
@@ -142,14 +171,16 @@ fn render_off_scene_card(c: &OffSceneCharacterCard, user_character_name: Option<
 pub fn build_off_scene_characters_content(
     characters: &[OffSceneCharacterCard],
     user_character_name: Option<&str>,
+    reason: OffSceneIntroductionReason,
 ) -> String {
     let mut sorted: Vec<&OffSceneCharacterCard> = characters.iter().collect();
     sorted.sort_by(|a, b| locale_compare(&a.name, &b.name));
 
-    let intro = if sorted.len() == 1 {
-        "The Host begs leave to introduce a person spoken of in this conversation but not presently in the Salon — for accurate reference only; not a summons to the scene."
-    } else {
-        "The Host begs leave to introduce certain persons spoken of in this conversation but not presently in the Salon — for accurate reference only; not a summons to the scene."
+    let intro = match (reason, sorted.len() == 1) {
+        (OffSceneIntroductionReason::LeftBehind, true) => "The Host observes that one member of the previous company did not make the journey. This person remained behind in the earlier scene: not in this room, unable to hear what is said here, and unable to answer. Mentioned for accurate reference only; not a summons to the scene.",
+        (OffSceneIntroductionReason::LeftBehind, false) => "The Host observes that certain members of the previous company did not make the journey. These persons remained behind in the earlier scene: not in this room, unable to hear what is said here, and unable to answer. Mentioned for accurate reference only; not a summons to the scene.",
+        (OffSceneIntroductionReason::Mentioned, true) => "The Host begs leave to introduce a person spoken of in this conversation but not presently in the Salon — for accurate reference only; not a summons to the scene.",
+        (OffSceneIntroductionReason::Mentioned, false) => "The Host begs leave to introduce certain persons spoken of in this conversation but not presently in the Salon — for accurate reference only; not a summons to the scene.",
     };
 
     let mut parts: Vec<String> = vec![intro.to_string(), String::new()];
@@ -166,14 +197,16 @@ pub fn build_off_scene_characters_content(
 pub fn build_off_scene_characters_opaque_content(
     characters: &[OffSceneCharacterCard],
     user_character_name: Option<&str>,
+    reason: OffSceneIntroductionReason,
 ) -> String {
     let mut sorted: Vec<&OffSceneCharacterCard> = characters.iter().collect();
     sorted.sort_by(|a, b| locale_compare(&a.name, &b.name));
 
-    let intro = if sorted.len() == 1 {
-        "A person spoken of in this conversation but not presently in the scene — for accurate reference only; not a summons to the scene:"
-    } else {
-        "Persons spoken of in this conversation but not presently in the scene — for accurate reference only; not a summons to the scene:"
+    let intro = match (reason, sorted.len() == 1) {
+        (OffSceneIntroductionReason::LeftBehind, true) => "A person from the previous scene who did not come along. They are not in this room, cannot hear what is said here, and cannot answer — for accurate reference only; not a summons to the scene:",
+        (OffSceneIntroductionReason::LeftBehind, false) => "Persons from the previous scene who did not come along. They are not in this room, cannot hear what is said here, and cannot answer — for accurate reference only; not a summons to the scene:",
+        (OffSceneIntroductionReason::Mentioned, true) => "A person spoken of in this conversation but not presently in the scene — for accurate reference only; not a summons to the scene:",
+        (OffSceneIntroductionReason::Mentioned, false) => "Persons spoken of in this conversation but not presently in the scene — for accurate reference only; not a summons to the scene:",
     };
 
     let mut parts: Vec<String> = vec![intro.to_string(), String::new()];
@@ -444,13 +477,19 @@ mod tests {
 
     #[test]
     fn build_content_single_vs_plural_and_sort() {
-        let single =
-            build_off_scene_characters_content(std::slice::from_ref(&card("i", "Zed")), None);
+        let single = build_off_scene_characters_content(
+            std::slice::from_ref(&card("i", "Zed")),
+            None,
+            OffSceneIntroductionReason::Mentioned,
+        );
         assert!(single.starts_with("The Host begs leave to introduce a person"));
         assert!(single.ends_with("### Zed"));
 
-        let plural =
-            build_off_scene_characters_content(&[card("i2", "Zed"), card("i1", "Ada")], None);
+        let plural = build_off_scene_characters_content(
+            &[card("i2", "Zed"), card("i1", "Ada")],
+            None,
+            OffSceneIntroductionReason::Mentioned,
+        );
         assert!(plural.starts_with("The Host begs leave to introduce certain persons"));
         // Alphabetical: Ada before Zed.
         let ada_pos = plural.find("### Ada").unwrap();

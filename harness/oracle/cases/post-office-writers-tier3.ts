@@ -71,6 +71,8 @@ interface Case {
   newStatus?: string;
   initialStatus?: string;
   offSceneCharacters?: OffSceneCard[];
+  /** P4.D233 (v4 `acadcc7cd`): absent → the writer's default `'mentioned'`. */
+  offSceneReason?: string;
   scenarioText?: string;
   targetRef?: string;
   content?: string;
@@ -202,6 +204,7 @@ async function main(): Promise<void> {
         await host.postHostOffSceneCharactersAnnouncement({
           chatId,
           characters: (c.offSceneCharacters ?? []) as never,
+          ...(c.offSceneReason ? { reason: c.offSceneReason as never } : {}),
         });
         break;
       case 'hostScenario':

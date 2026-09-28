@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — feat(core): the Host's left-behind off-scene introduction (P4.D233 unit 2, v4 bug 171 writer)
+
+_Versions: core 0.0.1060, harness 0.0.979._
+
+Ports v4 `acadcc7cd`'s writer half. `off_scene::OffSceneIntroductionReason
+{ Mentioned, LeftBehind }` (default `Mentioned`) is a third parameter on both
+off-scene content builders; `LeftBehind` carries v4's four new intro sentences
+(singular/plural x voiced/opaque). `host_notifications::post_host_off_scene_
+characters_announcement_with_reason` posts either; the old function keeps its
+signature and posts `Mentioned`. `systemKind` stays `off-scene-characters`.
+
+The post now logs v4's INFO `[HostNotification] Off-scene introduction posted`
+(with `reason`) and, on an insert failure, v4's WARN `... skipped
+(non-fatal)`. v5 emitted neither before.
+
+`context_feeders_leaves_equivalence` gains three rows per builder (46 rows,
+byte-exact at `acadcc7cd`); `post_office_writers_tier3_equivalence` gains two
+`left-behind` posts and an explicit `mentioned` one, with the INFO lines
+capture-pinned. At `acadcc7cd` that family is red on `main` only on the five
+Concierge manual rows v4 #75 retired (the chain's); all other rows match.
+
 #### 2026-09-28 — feat(core): operator_speaks_without_seat + is_user_persona_in_room (P4.D233 unit 1, v4 bug 172)
 
 _Versions: core 0.0.1059, harness 0.0.978._
