@@ -100,7 +100,13 @@ export abstract class ConciergeSettingsCard extends ChatSettingsCard {
         "Failed to update the Concierge's settings",
       );
     });
-    saveChains.set(qc, run);
+    // The STORED link never rejects: a failed save must not poison every later
+    // save on this query client (`.then` skips its callback on a rejection).
+    // The caller still sees this save's own outcome through `run`.
+    saveChains.set(
+      qc,
+      run.catch(() => undefined),
+    );
     return run;
   }
 }

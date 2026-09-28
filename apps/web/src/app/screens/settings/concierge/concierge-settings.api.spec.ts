@@ -1,8 +1,11 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { DEFAULT_CONCIERGE_SETTINGS, type ConciergeSettingsUpdate } from '../chat/chat-settings.types';
+import {
+  DEFAULT_CONCIERGE_SETTINGS,
+  type ConciergeSettingsUpdate,
+} from '../chat/chat-settings.types';
 import {
   configureConcierge,
   conciergeStub,
@@ -113,7 +116,10 @@ describe('Concierge settings — handleConciergeUpdate', () => {
     const stub = conciergeStub(settingsRow({ conciergeSettings: DEFAULT_CONCIERGE_SETTINGS }));
     const fixture = await mountConcierge(UpdateProbe, stub);
     await fixture.componentInstance.run({ display: { mode: 'BLUR' } });
-    await fixture.componentInstance.run({ preScreen: { enabled: true }, autoSwitchAfterRefusals: 5 });
+    await fixture.componentInstance.run({
+      preScreen: { enabled: true },
+      autoSwitchAfterRefusals: 5,
+    });
 
     const [first, second] = stub.updates.map(
       (u) => u['conciergeSettings'] as typeof DEFAULT_CONCIERGE_SETTINGS,
@@ -141,7 +147,7 @@ describe('Concierge settings — handleConciergeUpdate', () => {
     ).toBe(true);
   });
 
-  it('two cards saving one after the other: the second carries the first\'s change', async () => {
+  it("two cards saving one after the other: the second carries the first's change", async () => {
     const stub = conciergeStub(settingsRow({ conciergeSettings: DEFAULT_CONCIERGE_SETTINGS }));
     const fixture = await mountConcierge(TwoCards, stub);
     await change(fixture, el<HTMLSelectElement>(fixture, '#concierge-display-mode'), 'BLUR');
@@ -160,7 +166,7 @@ describe('Concierge settings — handleConciergeUpdate', () => {
     ]);
   });
 
-  it('two cards saving at once: the second merge sees the first\'s result (the race arm)', async () => {
+  it("two cards saving at once: the second merge sees the first's result (the race arm)", async () => {
     // v5's `saving` is per-card, so two cards CAN save concurrently (v4's one
     // provider-wide flag forbids it). Fire both before either settles.
     const stub = conciergeStub(settingsRow({ conciergeSettings: DEFAULT_CONCIERGE_SETTINGS }));
@@ -190,12 +196,34 @@ describe('Concierge settings — handleConciergeUpdate', () => {
     expect(stored.preScreen.summaryClassification).toBe(true);
   });
 
-  it('surfaces a failed save with v4\'s failure message', async () => {
+  it('a rejected save does not poison the next one (the stored chain link never rejects)', async () => {
+    // Added at the round's unification (review NIT): `ChatSettingsCard.save`
+    // swallows its own errors today, so the chain is safe only by that
+    // accident; a save that DOES reject must not strand every later save.
+    const stub = conciergeStub(settingsRow({ conciergeSettings: DEFAULT_CONCIERGE_SETTINGS }));
+    const fixture = await mountConcierge(UpdateProbe, stub);
+    const probe = fixture.componentInstance;
+    const save = vi
+      .spyOn(probe as unknown as { save: (...args: unknown[]) => Promise<void> }, 'save')
+      .mockRejectedValueOnce(new Error('boom'));
+    await expect(probe.run({ display: { mode: 'BLUR' } })).rejects.toThrow('boom');
+    save.mockRestore();
+    await probe.run({ autoSwitchAfterRefusals: 4 });
+    expect(stub.updates).toHaveLength(1);
+    expect(
+      (stub.updates[0]['conciergeSettings'] as typeof DEFAULT_CONCIERGE_SETTINGS)
+        .autoSwitchAfterRefusals,
+    ).toBe(4);
+  });
+
+  it("surfaces a failed save with v4's failure message", async () => {
     const stub = conciergeStub(settingsRow({ conciergeSettings: DEFAULT_CONCIERGE_SETTINGS }), {
       failUpdate: true,
     });
     const fixture = await mountConcierge(OnDutyCard, stub);
     await check(fixture, toggleByHeading(fixture, 'The Concierge is on duty'), false);
-    expect(text(el(fixture, 'qt-error-alert'))).toContain("Failed to update the Concierge's settings");
+    expect(text(el(fixture, 'qt-error-alert'))).toContain(
+      "Failed to update the Concierge's settings",
+    );
   });
 });
