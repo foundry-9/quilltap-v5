@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — docs(porting): P4.D233 lane complete — gate record and order status
+
+_Docs-only change._
+
+Records the P4.D233 lane gate (634 binaries, 3,741 passed, three classified
+reds none of them this lane's), and marks the work order LANE COMPLETE with
+its findings: fixtures built at the baseline pin for a `main` that cannot
+read the target's `chats`, the post-office writers family red at the target
+only on the Concierge chain's rows, and the bug-172 gate kept inside the
+off-scene scan so `build_context.rs` is untouched.
+
 #### 2026-09-28 — fix(core): name who stayed behind on Continue Elsewhere; no by-name persona exclusion in autonomous rooms (P4.D233 unit 3, v4 bugs 171 + 172)
 
 _Versions: core 0.0.1061, harness 0.0.980._

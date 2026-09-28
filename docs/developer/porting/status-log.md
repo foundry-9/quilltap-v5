@@ -150086,6 +150086,34 @@ at the target once `main` reads the post-#76 shape.
   re-vendor at `acadcc7cd` (not touched here).
 - The upstream "v5 status" note — the human's, after unification.
 
+### Lane gate (final tree `1d81cc0e6`, `CARGO_INCREMENTAL=0 TZ=UTC`, one logged script `/tmp/p4d233/gate.sh`)
+
+- §R.2 probe re-run before the gate: PASS under the waiver (HEAD `04d6c9d52`,
+  clean, six waived commits, `bugfix` empty).
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+  warnings` clean in BOTH feature sets; `cargo build --workspace --release`
+  clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's env
+  block (user-identity, feeders, writers, continuation, build-context — all
+  from `/tmp/p4d233/`; `QT_V4_CHECKOUT` = the target pin for the prompt-
+  templates guard): **634 test binaries / 3,741 passed / 3 failed / 3
+  ignored**, every lane family confirmed RUN by name (`OK: user-identity
+  resolver matched oracle (7 ops)`, `context-feeders-leaves: 46 rows
+  matched`, `chat_continuation_matches_oracle ... ok`, `build_context_tier3_
+  matches_oracle ... ok`). The three reds, each classified:
+  1. `post_office_writers_tier3_equivalence` — F2 (row count 25 vs 20: the
+     five Concierge manual rows v4 #75 retired; the chain's).
+  2. `provider_sdk_version_guard` — the standing §R.5 red (half 1 as on
+     `main`; P4.D232's constants).
+  3. `qtap_schema_embed_guard` — reads `QT_V4_ROOT` (default: the LIVE
+     checkout, whose export schema v4 moved past the baseline — the chain's
+     re-vendor); **green 2/2 with `QT_V4_ROOT=/tmp/qt-v4-pin-p4d233-
+     b0b6656b5`**. Not this lane's.
+  The four `panicked at` lines in core are panic-asserting tests that passed;
+  524 `SKIP` lines are families outside the block.
+- Versions: core 0.0.1058 → 0.0.1061 (+3), harness 0.0.977 → 0.0.980 (+3);
+  host/web/cli/tauri/fixture-sanitizer/SPA unchanged.
+
 ## P4.D232 — the `6d0f88d65` SDK-bump regen event + the `83d0c969b` / `a8292547a` NO-PORT ratifications + Tier R at the round target (2026-09-28, branch `claude/p4-sdk-bump-regen-riders-b7076a`)
 
 Order: `work-orders/p4.d232-sdk-bump-regen-riders-bug-170-specs-ratified.md`.
