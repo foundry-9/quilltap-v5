@@ -33,10 +33,24 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
+interface CharacterSpec {
+  id: string;
+  name: string;
+  controlledBy: 'llm' | 'user';
+  /** Absent → `spec.userId`. */
+  userId?: string;
+  /** A DANGLING vault pointer makes v4's overlaid `findById` throw. */
+  characterDocumentMountPointId?: string;
+}
 interface ChatSpec {
   id: string;
   title: string;
-  participants: Array<{ id: string; character: string }>;
+  participants: Array<{
+    id: string;
+    character: string;
+    controlledBy?: 'llm' | 'user';
+    status?: string;
+  }>;
   messages: Array<Record<string, unknown>>;
   columns: Record<string, unknown>;
 }
@@ -44,7 +58,11 @@ interface Spec {
   testPepperBase64: string;
   userId: string;
   seedTimestamp: string;
+  /** P4.D233: slim character rows (absent before — every seat dangled). */
+  characters?: CharacterSpec[];
   chats: ChatSpec[];
+  /** P4.D233: raw SQL run LAST (the poisoned-post trigger). */
+  triggers?: string[];
 }
 
 async function main(): Promise<void> {
@@ -75,7 +93,13 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery, ensureCollection } = await import(
+    '@/lib/database/manager'
+  );
+  const { CharactersRepository } = await import(
+    '@/lib/database/repositories/characters.repository'
+  );
+  const { CharacterSchema } = await import('@/lib/schemas/types');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
@@ -91,6 +115,35 @@ async function main(): Promise<void> {
   if (!midb) throw new Error('mount-index DB handle unavailable');
   midb.exec('CREATE TABLE IF NOT EXISTS "doc_mount_points" ("id" TEXT PRIMARY KEY)');
 
+  // P4.D233 (v4 `acadcc7cd`, bug 171): the left-behind notice reads each
+  // absentee through `characters.findById` and resolves the persona through
+  // `findUserControlled`, so the characters table and a few SLIM rows (null
+  // vault mount → the overlay passes them through) join the seed. Seeded via
+  // the real protected `_create`, as the user-identity builder does. The seats
+  // of the original four chats (`characterA`/`characterB`) stay row-less on
+  // purpose: a missing character is skipped silently.
+  await ensureCollection('characters', CharacterSchema);
+  class CharactersSqlRepo extends CharactersRepository {
+    async createSlim(data: unknown, options: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (this as any)._create(data, options);
+    }
+  }
+  const charRepo = new CharactersSqlRepo();
+  for (const c of spec.characters ?? []) {
+    await charRepo.createSlim(
+      {
+        userId: c.userId ?? spec.userId,
+        name: c.name,
+        controlledBy: c.controlledBy,
+        ...(c.characterDocumentMountPointId
+          ? { characterDocumentMountPointId: c.characterDocumentMountPointId }
+          : {}),
+      },
+      { id: c.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp },
+    );
+  }
+
   for (const chat of spec.chats) {
     await repos.chats.create(
       {
@@ -100,10 +153,10 @@ async function main(): Promise<void> {
           id: p.id,
           type: 'CHARACTER',
           characterId: p.character,
-          controlledBy: 'llm',
+          controlledBy: p.controlledBy ?? 'llm',
           displayOrder: 0,
-          isActive: true,
-          status: 'active',
+          isActive: (p.status ?? 'active') === 'active',
+          status: p.status ?? 'active',
           createdAt: spec.seedTimestamp,
           updatedAt: spec.seedTimestamp,
         })),
@@ -137,6 +190,10 @@ async function main(): Promise<void> {
       chat.id,
     ];
     await rawQuery(`UPDATE chats SET ${sets.join(', ')} WHERE id = ?`, vals);
+  }
+
+  for (const sql of spec.triggers ?? []) {
+    await rawQuery(sql);
   }
 
   await closeDatabase();

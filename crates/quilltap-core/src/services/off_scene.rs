@@ -61,7 +61,7 @@ pub struct OffSceneCharacterCard {
 impl OffSceneCharacterCard {
     /// Build a card from an overlaid character `Value` (v4
     /// `characters.findByUserId(...)` rows). Absent optional fields → `None`.
-    fn from_value(v: &Value) -> Option<Self> {
+    pub(crate) fn from_value(v: &Value) -> Option<Self> {
         let id = v.get("id").and_then(Value::as_str)?.to_string();
         let name = v
             .get("name")
@@ -255,12 +255,29 @@ pub struct OffSceneParticipant {
     pub status: String,
 }
 
+/// The chat's stored `chatType` (`None` for a missing row or a NULL cell — both
+/// read as "the operator speaks", the pre-bug-172 behaviour).
+fn read_chat_type(db: &Db, chat_id: &str) -> Result<Option<String>, DbError> {
+    use rusqlite::OptionalExtension;
+    let chat_id = chat_id.to_string();
+    let cell = db.read_main(move |conn| {
+        conn.query_row(
+            r#"SELECT "chatType" FROM chats WHERE id = ?1"#,
+            [&chat_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()
+        .map_err(DbError::from)
+    })?;
+    Ok(cell.flatten())
+}
+
 /// v4's off-scene SCAN block (`context-manager.ts`) — compute the pending Host
 /// announcement CONTENT for this turn, or `None`. The POST is W4.6b.
 ///
 /// Reads all of the user's characters (overlaid), excludes the responding
 /// character + every non-`removed` CHARACTER participant + the user persona by
-/// name, scans the tool-stripped chat corpus for mentions, diffs against
+/// name (only where the operator speaks without a seat — bug 172), scans the tool-stripped chat corpus for mentions, diffs against
 /// already-introduced ids, and returns the genuine-newcomer cards (the Host POST
 /// builds the announcement content + stamps `introducedCharacterIds` from these).
 /// Any failure / no newcomers → `None` (v4 wraps the block warn-only).
@@ -313,8 +330,34 @@ fn scan_off_scene_newcomers_inner(
         }
     }
 
-    // 3. The user persona, excluded by name (no id exposed via options).
-    let user_name_lower = user_character_name.map(|n| crate::jsstr::js_trim(n).to_lowercase());
+    // 3. Also exclude the user's persona by name (no id is exposed via options)
+    //    — but only where the operator speaks without a seat, so an unseated
+    //    persona is the voice of the USER messages. In an autonomous room nobody
+    //    types as them: `userCharacter` there is only the system-wide fallback
+    //    that `{{user}}` resolves to, and excluding it hid the one absent person
+    //    the cast most often talks to (v4 `acadcc7cd`, bug 172). A seated
+    //    persona is already excluded by characterId above.
+    //
+    //    v4 reads `chat.chatType` off the chat object `buildContext` was handed;
+    //    v5's `ContextChat` carries no chat type (and the orchestrator that
+    //    builds it is not this lane's), so the scan reads the one column itself.
+    //    The DEBUG sits where v4's does: after the characters read, before the
+    //    candidate filter — a failed characters read logs nothing on either side.
+    let chat_type = read_chat_type(db, chat_id)?;
+    let user_name_lower =
+        if crate::chat_predicates::operator_speaks_without_seat(chat_type.as_deref()) {
+            user_character_name.map(|n| crate::jsstr::js_trim(n).to_lowercase())
+        } else {
+            None
+        };
+    tracing::debug!(
+        chatId = chat_id,
+        chatType = chat_type.as_deref(),
+        // v4 `Boolean(userCharacterNameLower)`: the gated NAME's presence (an
+        // empty trimmed name is falsy), not the chat type alone.
+        excludesPersonaByName = user_name_lower.as_deref().is_some_and(|n| !n.is_empty()),
+        "[ContextManager] Off-scene persona exclusion"
+    );
 
     // 4. Candidates = user characters minus excluded (by id) minus user-persona
     //    name-match.

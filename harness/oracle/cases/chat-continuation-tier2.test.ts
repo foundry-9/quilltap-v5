@@ -19,7 +19,20 @@
  *
  * Emits one NDJSON line per case:
  *   { name, result: {replayedMessageCount, hadLibrarianSummary,
- *     postedSourceTailBubble}, tables: {chats, chatMessages}, messageOrder }
+ *     postedSourceTailBubble, leftBehindCharacterIds}, tables: {chats,
+ *     chatMessages}, messageOrder }
+ *
+ * P4.D233 (v4 `acadcc7cd`, bug 171): `leftBehindCharacterIds` joins the result
+ * (every case) and seven cases plant the left-behind arms — one left behind;
+ * two named with a `removed` seat skipped, an `absent` seat NAMED and a
+ * duplicate seat deduped; the persona seated in the source and unseated in a
+ * Salon destination (not named) or an autonomous one (named); an unreadable
+ * vault (v4's WARN, skipped); a poisoned post (a planted trigger — the ids are
+ * NOT stamped); nobody left behind in an autonomous room. v4's own unit tests
+ * for this MOCK the repos; these are the same shapes as real-DB rows. The
+ * case needs a pin at or after `acadcc7cd`; its FIXTURE, until the Concierge
+ * chain's widen lands, a pin whose `chats` DDL v5 reads (the round baseline —
+ * a target-built `chats` lacks `conciergeOverride`).
  *
  * `messageOrder` is the `rowid`-ordered projection: continuation's contract is
  * POSITIONAL (link bubble → replayed tail → tail bubble in the source), and a

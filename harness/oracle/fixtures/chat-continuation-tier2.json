@@ -296,6 +296,326 @@
    ],
    "messages": [],
    "columns": {}
+  },
+  {
+   "id": "71100000-0000-4000-8000-000000000011",
+   "title": "The departure",
+   "participants": [
+    {
+     "id": "711a0000-0000-4000-8000-000000000011",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "711c0000-0000-4000-8000-000000000011",
+     "character": "c1000000-0000-4000-8000-0000000000c1"
+    }
+   ],
+   "messages": [
+    {
+     "id": "711d0001-0000-4000-8000-000000001101",
+     "role": "ASSISTANT",
+     "content": "A remarks on Clementine before the journey.",
+     "participantId": "711a0000-0000-4000-8000-000000000011"
+    },
+    {
+     "id": "711d0002-0000-4000-8000-000000001102",
+     "role": "ASSISTANT",
+     "content": "A line of my own, seat 2.",
+     "participantId": "711c0000-0000-4000-8000-000000000011"
+    }
+   ],
+   "columns": {}
+  },
+  {
+   "id": "71200000-0000-4000-8000-000000000012",
+   "title": "The arrival",
+   "participants": [
+    {
+     "id": "712a0000-0000-4000-8000-000000000012",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    }
+   ],
+   "messages": [],
+   "columns": {}
+  },
+  {
+   "id": "72100000-0000-4000-8000-000000000021",
+   "title": "The larger company",
+   "participants": [
+    {
+     "id": "721a0000-0000-4000-8000-000000000021",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "721c0000-0000-4000-8000-000000000021",
+     "character": "c1000000-0000-4000-8000-0000000000c1"
+    },
+    {
+     "id": "721d0000-0000-4000-8000-000000000021",
+     "character": "c2000000-0000-4000-8000-0000000000c2",
+     "status": "absent"
+    },
+    {
+     "id": "721e0000-0000-4000-8000-000000000021",
+     "character": "c3000000-0000-4000-8000-0000000000c3",
+     "status": "removed"
+    },
+    {
+     "id": "721f0000-0000-4000-8000-000000000021",
+     "character": "c1000000-0000-4000-8000-0000000000c1",
+     "status": "silent"
+    }
+   ],
+   "messages": [
+    {
+     "id": "721d0001-0000-4000-8000-000000002101",
+     "role": "ASSISTANT",
+     "content": "A remarks on Clementine and Dashiell before the journey.",
+     "participantId": "721a0000-0000-4000-8000-000000000021"
+    },
+    {
+     "id": "721d0002-0000-4000-8000-000000002102",
+     "role": "ASSISTANT",
+     "content": "A line of my own, seat 2.",
+     "participantId": "721c0000-0000-4000-8000-000000000021"
+    },
+    {
+     "id": "721d0003-0000-4000-8000-000000002103",
+     "role": "ASSISTANT",
+     "content": "A line of my own, seat 3.",
+     "participantId": "721d0000-0000-4000-8000-000000000021"
+    },
+    {
+     "id": "721d0004-0000-4000-8000-000000002104",
+     "role": "ASSISTANT",
+     "content": "A line of my own, seat 4.",
+     "participantId": "721e0000-0000-4000-8000-000000000021"
+    },
+    {
+     "id": "721d0005-0000-4000-8000-000000002105",
+     "role": "ASSISTANT",
+     "content": "A line of my own, seat 5.",
+     "participantId": "721f0000-0000-4000-8000-000000000021"
+    }
+   ],
+   "columns": {}
+  },
+  {
+   "id": "72200000-0000-4000-8000-000000000022",
+   "title": "The smaller company",
+   "participants": [
+    {
+     "id": "722a0000-0000-4000-8000-000000000022",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    }
+   ],
+   "messages": [],
+   "columns": {}
+  },
+  {
+   "id": "73100000-0000-4000-8000-000000000031",
+   "title": "The salon with the persona",
+   "participants": [
+    {
+     "id": "731a0000-0000-4000-8000-000000000031",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "731b0000-0000-4000-8000-000000000031",
+     "character": "9e000000-0000-4000-8000-00000000009e",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": [
+    {
+     "id": "731d0001-0000-4000-8000-000000003101",
+     "role": "ASSISTANT",
+     "content": "A remarks on Percival before the journey.",
+     "participantId": "731a0000-0000-4000-8000-000000000031"
+    },
+    {
+     "id": "731d0002-0000-4000-8000-000000003102",
+     "role": "ASSISTANT",
+     "content": "A line of my own, seat 2.",
+     "participantId": "731b0000-0000-4000-8000-000000000031"
+    }
+   ],
+   "columns": {}
+  },
+  {
+   "id": "73200000-0000-4000-8000-000000000032",
+   "title": "The salon without a seat",
+   "participants": [
+    {
+     "id": "732a0000-0000-4000-8000-000000000032",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    }
+   ],
+   "messages": [],
+   "columns": {}
+  },
+  {
+   "id": "74100000-0000-4000-8000-000000000041",
+   "title": "The seated persona's chapter",
+   "participants": [
+    {
+     "id": "741a0000-0000-4000-8000-000000000041",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "741b0000-0000-4000-8000-000000000041",
+     "character": "9e000000-0000-4000-8000-00000000009e",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": [
+    {
+     "id": "741d0001-0000-4000-8000-000000004101",
+     "role": "ASSISTANT",
+     "content": "A remarks on Percival before the journey.",
+     "participantId": "741a0000-0000-4000-8000-000000000041"
+    },
+    {
+     "id": "741d0002-0000-4000-8000-000000004102",
+     "role": "ASSISTANT",
+     "content": "A line of my own, seat 2.",
+     "participantId": "741b0000-0000-4000-8000-000000000041"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous"
+   }
+  },
+  {
+   "id": "74200000-0000-4000-8000-000000000042",
+   "title": "The autonomous room",
+   "participants": [
+    {
+     "id": "742a0000-0000-4000-8000-000000000042",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    }
+   ],
+   "messages": [],
+   "columns": {
+    "chatType": "autonomous"
+   }
+  },
+  {
+   "id": "75100000-0000-4000-8000-000000000051",
+   "title": "The room with Vesper",
+   "participants": [
+    {
+     "id": "751a0000-0000-4000-8000-000000000051",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "75150000-0000-4000-8000-000000000051",
+     "character": "5e000000-0000-4000-8000-00000000005e"
+    }
+   ],
+   "messages": [
+    {
+     "id": "751d0001-0000-4000-8000-000000005101",
+     "role": "ASSISTANT",
+     "content": "A remarks on Vesper before the journey.",
+     "participantId": "751a0000-0000-4000-8000-000000000051"
+    },
+    {
+     "id": "751d0002-0000-4000-8000-000000005102",
+     "role": "ASSISTANT",
+     "content": "A line of my own, seat 2.",
+     "participantId": "75150000-0000-4000-8000-000000000051"
+    }
+   ],
+   "columns": {}
+  },
+  {
+   "id": "75200000-0000-4000-8000-000000000052",
+   "title": "The room after the fog",
+   "participants": [
+    {
+     "id": "752a0000-0000-4000-8000-000000000052",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    }
+   ],
+   "messages": [],
+   "columns": {}
+  },
+  {
+   "id": "76100000-0000-4000-8000-000000000061",
+   "title": "The poisoned departure",
+   "participants": [
+    {
+     "id": "761a0000-0000-4000-8000-000000000061",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "761c0000-0000-4000-8000-000000000061",
+     "character": "c1000000-0000-4000-8000-0000000000c1"
+    }
+   ],
+   "messages": [
+    {
+     "id": "761d0001-0000-4000-8000-000000006101",
+     "role": "ASSISTANT",
+     "content": "A remarks on Clementine before the journey.",
+     "participantId": "761a0000-0000-4000-8000-000000000061"
+    },
+    {
+     "id": "761d0002-0000-4000-8000-000000006102",
+     "role": "ASSISTANT",
+     "content": "A line of my own, seat 2.",
+     "participantId": "761c0000-0000-4000-8000-000000000061"
+    }
+   ],
+   "columns": {}
+  },
+  {
+   "id": "76200000-0000-4000-8000-000000000062",
+   "title": "The poisoned arrival",
+   "participants": [
+    {
+     "id": "762a0000-0000-4000-8000-000000000062",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    }
+   ],
+   "messages": [],
+   "columns": {}
+  },
+  {
+   "id": "77100000-0000-4000-8000-000000000071",
+   "title": "The autonomous chapter",
+   "participants": [
+    {
+     "id": "771a0000-0000-4000-8000-000000000071",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    }
+   ],
+   "messages": [
+    {
+     "id": "771d0001-0000-4000-8000-000000007101",
+     "role": "ASSISTANT",
+     "content": "A remarks on Percival before the journey.",
+     "participantId": "771a0000-0000-4000-8000-000000000071"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous"
+   }
+  },
+  {
+   "id": "77200000-0000-4000-8000-000000000072",
+   "title": "The autonomous sequel",
+   "participants": [
+    {
+     "id": "772a0000-0000-4000-8000-000000000072",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    }
+   ],
+   "messages": [],
+   "columns": {
+    "chatType": "autonomous"
+   }
   }
  ],
  "cases": [
@@ -328,6 +648,110 @@
    "name": "missing_destination",
    "source": "51000001-0000-4000-8000-000000000001",
    "destination": "69999999-0000-4000-8000-000000009999"
+  },
+  {
+   "name": "left_behind_one",
+   "source": "71100000-0000-4000-8000-000000000011",
+   "destination": "71200000-0000-4000-8000-000000000012"
+  },
+  {
+   "name": "left_behind_two_removed_skipped",
+   "source": "72100000-0000-4000-8000-000000000021",
+   "destination": "72200000-0000-4000-8000-000000000022"
+  },
+  {
+   "name": "persona_stays_unseated",
+   "source": "73100000-0000-4000-8000-000000000031",
+   "destination": "73200000-0000-4000-8000-000000000032"
+  },
+  {
+   "name": "persona_named_in_autonomous_room",
+   "source": "74100000-0000-4000-8000-000000000041",
+   "destination": "74200000-0000-4000-8000-000000000042"
+  },
+  {
+   "name": "left_behind_vault_unreadable",
+   "source": "75100000-0000-4000-8000-000000000051",
+   "destination": "75200000-0000-4000-8000-000000000052"
+  },
+  {
+   "name": "left_behind_post_poisoned",
+   "source": "76100000-0000-4000-8000-000000000061",
+   "destination": "76200000-0000-4000-8000-000000000062"
+  },
+  {
+   "name": "nobody_left_behind_autonomous",
+   "source": "77100000-0000-4000-8000-000000000071",
+   "destination": "77200000-0000-4000-8000-000000000072"
+  }
+ ],
+ "characters": [
+  {
+   "id": "c1000000-0000-4000-8000-0000000000c1",
+   "name": "Clementine",
+   "controlledBy": "llm"
+  },
+  {
+   "id": "c2000000-0000-4000-8000-0000000000c2",
+   "name": "Dashiell",
+   "controlledBy": "llm"
+  },
+  {
+   "id": "c3000000-0000-4000-8000-0000000000c3",
+   "name": "Edwina",
+   "controlledBy": "llm"
+  },
+  {
+   "id": "9e000000-0000-4000-8000-00000000009e",
+   "name": "Percival",
+   "controlledBy": "user"
+  },
+  {
+   "id": "5e000000-0000-4000-8000-00000000005e",
+   "name": "Vesper",
+   "controlledBy": "llm",
+   "userId": "0e000000-0000-4000-8000-0000000000e0",
+   "characterDocumentMountPointId": "5e5e5e5e-0000-4000-8000-00000000005e"
+  }
+ ],
+ "triggers": [
+  "CREATE TRIGGER \"p4d233_poison_left_behind\" BEFORE INSERT ON chat_messages WHEN NEW.\"chatId\" = '76200000-0000-4000-8000-000000000062' AND NEW.\"systemKind\" = 'off-scene-characters' BEGIN SELECT RAISE(ABORT, 'p4d233 poisoned off-scene post'); END"
+ ],
+ "scanProbeUserCharacterName": "Percival",
+ "scanProbes": [
+  {
+   "afterCase": "left_behind_one",
+   "chatId": "71200000-0000-4000-8000-000000000012",
+   "note": "stamped by the left-behind notice: the next turn's scan stays quiet",
+   "expect": null
+  },
+  {
+   "afterCase": "left_behind_post_poisoned",
+   "chatId": "76200000-0000-4000-8000-000000000062",
+   "note": "trap (a): the failed post stamped nothing, so the next turn's scan introduces her",
+   "expect": [
+    "c1000000-0000-4000-8000-0000000000c1"
+   ]
+  },
+  {
+   "afterCase": "persona_stays_unseated",
+   "chatId": "73200000-0000-4000-8000-000000000032",
+   "note": "a Salon room: the unseated persona is excluded by NAME",
+   "expect": null
+  },
+  {
+   "afterCase": "nobody_left_behind_autonomous",
+   "chatId": "77100000-0000-4000-8000-000000000071",
+   "note": "bug 172: an autonomous room does not exclude the unseated persona by name",
+   "expect": [
+    "9e000000-0000-4000-8000-00000000009e"
+   ]
+  },
+  {
+   "afterCase": "persona_named_in_autonomous_room",
+   "chatId": "74100000-0000-4000-8000-000000000041",
+   "note": "a SEATED persona in an autonomous room is still excluded by id",
+   "expect": null
   }
  ]
 }

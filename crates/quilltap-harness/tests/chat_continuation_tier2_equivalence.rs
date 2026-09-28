@@ -31,6 +31,23 @@
 //! relabelling can hide (the P4.D44 `chat_template_ids` trap). The keep-list is
 //! read out of the corpus itself, so a new pinned id needs no code change.
 //!
+//! # P4.D233 — bugs 171 + 172 (v4 `acadcc7cd`)
+//!
+//! The result gains `leftBehindCharacterIds` on every case, and seven planted
+//! arms mirror v4's (mocked) `apply-chat-continuation.test.ts` as real-DB rows:
+//! one left behind; two named with a `removed` seat skipped, an `absent` seat
+//! NAMED and a duplicate seat deduped; the persona seated in the source and
+//! unseated in a Salon destination (not named) or an autonomous one (named —
+//! the NEW chat's identity decides); an unreadable vault (v4's WARN, skipped);
+//! a poisoned post (a planted trigger — the ids are NOT stamped); nobody left
+//! behind in an autonomous room. Every `[ChatContinuation]`/`[HostNotification]`
+//! line is capture-pinned per case with its silence legs (`expected_lines`),
+//! and five v5-side SCAN PROBES run the per-turn off-scene scan on the case's
+//! copy afterwards: a stamped absentee stays quiet, an un-stamped one (the
+//! poisoned post) is introduced on the next turn, the unseated persona is
+//! excluded by name in a Salon room and NOT in an autonomous one (bug 172), and
+//! a seated persona is excluded by id in either.
+//!
 //! # What it does NOT cover
 //!
 //! The route that ships the feature (`POST /api/v1/chats` with
@@ -39,7 +56,11 @@
 //! `cs_continuation_bubble_before_replay`.
 //!
 //! Build the fixture + oracle (Node 24, from the v4 checkout; jest ignores
-//! `.claude/` paths, so the case is staged in a /tmp mirror):
+//! `.claude/` paths, so the case is staged in a /tmp mirror). ⚠ P4.D233: the
+//! oracle needs v4 at or after `acadcc7cd`; the FIXTURE needs a `chats` DDL v5
+//! reads — until the Concierge chain's widen lands, build it from the round
+//! baseline `b0b6656b5` (a target-built `chats` lacks `conciergeOverride`) and
+//! run the jest stage from the `acadcc7cd` pin (ledger §5.1 worktrees):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-continuation-main.db \
@@ -63,6 +84,7 @@
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::chat_continuation::apply_chat_continuation;
+use quilltap_core::services::off_scene::{scan_off_scene_newcomers, OffSceneParticipant};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
@@ -230,7 +252,109 @@ struct CaseW {
 struct SpecW {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
+    #[serde(rename = "userId")]
+    user_id: String,
+    #[serde(rename = "characterA")]
+    character_a: String,
     cases: Vec<CaseW>,
+    #[serde(rename = "scanProbeUserCharacterName")]
+    scan_probe_user_character_name: String,
+    #[serde(rename = "scanProbes")]
+    scan_probes: Vec<ScanProbeW>,
+}
+
+/// P4.D233: a per-turn off-scene scan run on the case's DB copy AFTER the
+/// continuation — v5-side (v4's scan is inline in `buildContext` and has no
+/// callable seam), the expectation written from v4's `acadcc7cd` semantics and
+/// held by the two mutation proofs M1/M2 (see the lane record).
+#[derive(serde::Deserialize)]
+struct ScanProbeW {
+    #[serde(rename = "afterCase")]
+    after_case: String,
+    #[serde(rename = "chatId")]
+    chat_id: String,
+    note: String,
+    expect: Option<Vec<String>>,
+}
+
+/// P4.D233: the log lines each case must (and must not) emit — v4's
+/// `[ChatContinuation]` / `[HostNotification]` / resolver lines, capture-pinned
+/// on the real service. A `must` entry is one or more ` && `-joined substrings
+/// that must all sit on ONE captured line (the rig renders `LEVEL target
+/// message field=value …`, string fields unquoted).
+fn expected_lines(case: &str) -> (Vec<&'static str>, Vec<&'static str>) {
+    const CHECK: &str = "[ChatContinuation] Left-behind check complete";
+    const PERSONA: &str = "[ChatContinuation] Persona stays in the room unseated";
+    const UNREADABLE: &str = "[ChatContinuation] Could not load a left-behind character";
+    const POSTED: &str = "[HostNotification] Off-scene introduction posted";
+    const SKIPPED: &str = "[HostNotification] Off-scene introduction skipped";
+    const RESOLVED: &str = "Unseated persona presence resolved";
+    const FAILED: &str = "[ChatContinuation] Failed to name left-behind characters";
+    const COMPLETE: &str = "[ChatContinuation] Continuation complete";
+    match case {
+        // Early returns: no step 2b, no completion line.
+        "missing_source" | "missing_destination" => {
+            (vec![], vec![CHECK, COMPLETE, POSTED, RESOLVED, FAILED])
+        }
+        // Nobody left behind (or a row-less absentee): the check line fires
+        // with an EMPTY list (trap (d)); nothing posts.
+        "basic_carryover" | "librarian_anchor" | "malformed_turn_state"
+        | "nobody_left_behind_autonomous" => (
+            vec!["Left-behind check complete && leftBehindCharacterIdsJson=[]", COMPLETE],
+            vec![POSTED, SKIPPED, PERSONA, UNREADABLE, RESOLVED, FAILED],
+        ),
+        // Seat B's character has no row: skipped SILENTLY; identity resolved
+        // (the one user-controlled character, in a Salon room → in the room).
+        "half_cast_drops" => (
+            vec!["leftBehindCharacterIdsJson=[]", RESOLVED, COMPLETE],
+            vec![POSTED, SKIPPED, PERSONA, UNREADABLE, FAILED],
+        ),
+        "left_behind_one" => (
+            vec![
+                "Off-scene introduction posted && reason=left-behind",
+                "leftBehindCharacterIdsJson=[\"c1000000-0000-4000-8000-0000000000c1\"]",
+                COMPLETE,
+            ],
+            vec![SKIPPED, PERSONA, UNREADABLE, FAILED],
+        ),
+        "left_behind_two_removed_skipped" => (
+            vec![
+                "characterCount=2 reason=left-behind",
+                "leftBehindCharacterIdsJson=[\"c1000000-0000-4000-8000-0000000000c1\",\"c2000000-0000-4000-8000-0000000000c2\"]",
+            ],
+            vec![SKIPPED, PERSONA, UNREADABLE, FAILED],
+        ),
+        "persona_stays_unseated" => (
+            vec![
+                "inRoom=true",
+                "Persona stays in the room unseated; not named as left behind && characterId=9e000000-0000-4000-8000-00000000009e",
+                "leftBehindCharacterIdsJson=[]",
+            ],
+            vec![POSTED, SKIPPED, UNREADABLE, FAILED],
+        ),
+        "persona_named_in_autonomous_room" => (
+            vec![
+                "chatType=autonomous inRoom=false",
+                "reason=left-behind",
+                "leftBehindCharacterIdsJson=[\"9e000000-0000-4000-8000-00000000009e\"]",
+            ],
+            vec![PERSONA, SKIPPED, UNREADABLE, FAILED],
+        ),
+        "left_behind_vault_unreadable" => (
+            vec![
+                                "WARN && Could not load a left-behind character; not naming them && characterId=5e000000-0000-4000-8000-00000000005e",
+                UNREADABLE,
+                "leftBehindCharacterIdsJson=[]",
+            ],
+            vec![POSTED, SKIPPED, FAILED],
+        ),
+        // Trap (a): the post fails, the ids are NOT stamped.
+        "left_behind_post_poisoned" => (
+            vec![SKIPPED, "p4d233 poisoned off-scene post", "leftBehindCharacterIdsJson=[]"],
+            vec![POSTED, PERSONA, UNREADABLE, FAILED],
+        ),
+        other => panic!("no expected log lines for case {other}"),
+    }
 }
 
 #[test]
@@ -291,9 +415,83 @@ fn chat_continuation_matches_oracle() {
         )
         .expect("open");
 
-        let result = rt
-            .block_on(apply_chat_continuation(&db, &c.destination, &c.source))
-            .expect("apply_chat_continuation");
+        let (result, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(apply_chat_continuation(&db, &c.destination, &c.source))
+                .expect("apply_chat_continuation")
+        });
+
+        // P4.D233: every line the case owes, and the silence legs.
+        let (must, must_not) = expected_lines(&c.name);
+        // `A && B` = both substrings on ONE line.
+        for needle in must {
+            assert!(
+                lines
+                    .iter()
+                    .any(|l| needle.split(" && ").all(|part| l.contains(part))),
+                "{}: no captured line contains {needle:?}\n{lines:#?}",
+                c.name
+            );
+        }
+        for needle in must_not {
+            assert!(
+                !lines.iter().any(|l| l.contains(needle)),
+                "{}: a captured line unexpectedly contains {needle:?}\n{lines:#?}",
+                c.name
+            );
+        }
+
+        // P4.D233: the per-turn off-scene scan on the NEXT turn (bug 172's gate,
+        // and trap (a)'s other half) — run on this case's DB copy.
+        for probe in spec.scan_probes.iter().filter(|p| p.after_case == c.name) {
+            let chat = {
+                let id = probe.chat_id.clone();
+                db.read_main(move |conn| quilltap_core::db::chats_read::find_by_id(conn, &id))
+            }
+            .expect("read probe chat")
+            .expect("probe chat exists");
+            let participants: Vec<OffSceneParticipant> = chat["participants"]
+                .as_array()
+                .expect("participants")
+                .iter()
+                .map(|p| OffSceneParticipant {
+                    participant_type: p["type"].as_str().unwrap_or_default().to_string(),
+                    character_id: p["characterId"].as_str().map(str::to_string),
+                    controlled_by: p["controlledBy"].as_str().unwrap_or("llm").to_string(),
+                    status: p["status"].as_str().unwrap_or("active").to_string(),
+                })
+                .collect();
+            let (newcomers, scan_lines) = quilltap_core::test_support::captured_with(|| {
+                scan_off_scene_newcomers(
+                    &db,
+                    &probe.chat_id,
+                    &spec.user_id,
+                    &spec.character_a,
+                    Some(spec.scan_probe_user_character_name.as_str()),
+                    &participants,
+                )
+            });
+            let got: Option<Vec<String>> =
+                newcomers.map(|cards| cards.into_iter().map(|c| c.id).collect());
+            assert_eq!(
+                got, probe.expect,
+                "scan probe after {}: {}",
+                c.name, probe.note
+            );
+            // The `[ContextManager]` DEBUG: `excludesPersonaByName` follows the
+            // room, not the chat type alone (trap (e)).
+            let autonomous = chat["chatType"].as_str() == Some("autonomous");
+            let want = format!(
+                "[ContextManager] Off-scene persona exclusion chatId={} chatType={} excludesPersonaByName={}",
+                probe.chat_id,
+                chat["chatType"].as_str().unwrap_or_default(),
+                !autonomous
+            );
+            assert!(
+                scan_lines.iter().any(|l| l.contains(&want)),
+                "scan probe after {}: want {want:?} in {scan_lines:#?}",
+                c.name
+            );
+        }
 
         let dump = |t: &'static str| -> Value {
             table_section(
@@ -366,6 +564,7 @@ fn chat_continuation_matches_oracle() {
                 "replayedMessageCount": result.replayed_message_count,
                 "hadLibrarianSummary": result.had_librarian_summary,
                 "postedSourceTailBubble": result.posted_source_tail_bubble,
+                "leftBehindCharacterIds": result.left_behind_character_ids,
             },
             "tables": {
                 "chats": dump("chats"),
@@ -392,8 +591,9 @@ fn chat_continuation_matches_oracle() {
     }
 
     // Shape guard: a corpus that silently loses an arm must not read as green.
+    assert_eq!(spec.scan_probes.len(), 5, "the P4.D233 scan probes");
     assert!(
-        spec.cases.len() >= 6,
+        spec.cases.len() >= 13,
         "corpus shrank: {} cases",
         spec.cases.len()
     );

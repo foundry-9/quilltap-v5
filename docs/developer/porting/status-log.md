@@ -149975,6 +149975,117 @@ at the target once `main` reads the post-#76 shape.
   cases/post-office-writers-tier3.ts > /tmp/p4d233/{b,t}/oracle-pow.ndjson`;
   target `grep -o "did not make the journey"` = 2, baseline = 0).
 
+### Unit 3 — bugs 171 + 172 (core 0.0.1061, harness 0.0.980)
+
+- **Bug 171** (`services/chat_continuation.rs`): `find_left_behind_characters`
+  (v4's filter verbatim — `type == CHARACTER`, truthy `characterId`, only
+  `removed` skipped, not seated in the new chat, first-seen dedupe) →
+  `resolve_user_identity(db, user_id, NEW chat, None)` → `is_user_persona_in_
+  room(new chat's chatType, …)` → per id: the persona DEBUG + skip; `Ok(None)`
+  silent skip; `Err` → WARN `Could not load a left-behind character; not naming
+  them`; else `OffSceneCharacterCard::from_value` (now `pub(crate)`). Step 2b
+  (`name_left_behind_characters`) between the replay and the turn-state
+  replication: post with `LeftBehind`, **ids only if the notice posted**, the
+  DEBUG `Left-behind check complete {newChatId, sourceChatId,
+  leftBehindCharacterIdsJson}` (empty list too), ERROR on any failure.
+  `ApplyChatContinuationResult.left_behind_character_ids` (the two early
+  returns keep `Default`'s `[]`). v4's INFO `Continuation complete` (the hunk
+  added `leftBehindCharacterIds` to it) restored — v5 had none of the
+  continuation's lines. **Recorded, not restored (outside the hunk, pre-
+  existing absences):** `Source chat not found…` WARN, `New chat not found…`
+  ERROR, `Failed to parse source <field>…` WARN, `Failed to replay carried
+  message` / `Failed to replicate turn state` / `Failed to post source-chat
+  tail bubble` ERRORs.
+- **The user id:** v4 takes `params.userId`; v5's `apply_chat_continuation`
+  has no user parameter and its only production caller is `chat_create.rs`
+  (the chain's). v4's create handler passes `user.id`, the same id it writes as
+  the new chat's `userId`, so v5 reads `userId` off the new chat row — the
+  same value by construction; no signature change crossed a lane.
+- **Bug 172** (`services/off_scene.rs`): the scan's by-name exclusion is gated
+  on `operator_speaks_without_seat(chatType)` with v4's DEBUG `[ContextManager]
+  Off-scene persona exclusion {chatId, chatType, excludesPersonaByName}`
+  placed where v4's sits (after the characters read, before the candidate
+  filter). **Deviation from the order's letter, recorded:** the order put the
+  gate + DEBUG at the `build_context.rs` call site (the ONE pre-declared
+  hunk). `ContextChat` carries no chat type and the struct's constructor is
+  `orchestrator.rs` (the chain's) + a harness test, so the scan reads the one
+  `chatType` column itself (`read_chat_type`; missing row / NULL → `None` →
+  the operator speaks, the pre-bug-172 behaviour). **`build_context.rs` is NOT
+  touched by this lane at all** — P4.D227's `:644` edit has nothing to merge
+  around.
+- `chat_continuation_tier2_equivalence` (13 cases, was 6): the spec gains
+  five slim `characters` (Clementine, Dashiell, Edwina, the persona Percival —
+  the only user-controlled one — and Vesper, whose `characterDocument
+  MountPointId` dangles and who belongs to ANOTHER user so the scan's
+  `find_by_user_id` never touches her), participant `controlledBy`/`status`
+  overrides, a `triggers` list (the poison: `BEFORE INSERT ON chat_messages
+  WHEN chatId = <762…> AND systemKind = 'off-scene-characters' … RAISE
+  (ABORT …)`), and seven cases: `left_behind_one`, `left_behind_two_removed_
+  skipped` (Clementine + Dashiell[`absent`] named, Edwina[`removed`] skipped,
+  a duplicate Clementine seat[`silent`] deduped), `persona_stays_unseated`,
+  `persona_named_in_autonomous_room`, `left_behind_vault_unreadable` (v4
+  measured to THROW `CharacterVaultUnavailableError … properties.json
+  missing`; v5's overlaid read also errs → both WARN, nothing posted),
+  `left_behind_post_poisoned`, `nobody_left_behind_autonomous`. The existing
+  `half_cast_drops` now reaches step 2b and skips its row-less seat silently.
+  Target results: `leftBehindCharacterIds` = `[C1]`, `[C1, C2]`, `[]`, `[P]`,
+  `[]`, `[]`, `[]` for the seven, `[]` on the six originals. **13/13 GREEN**.
+  Per-case capture pins (`expected_lines`) with silence legs; **five scan
+  probes** (v5-side — v4's scan is inline in `buildContext`): stamped →
+  quiet; poisoned → the next turn introduces Clementine; Salon persona →
+  excluded by name (`excludesPersonaByName=true`); autonomous unseated persona
+  → introduced (`false`); seated persona in an autonomous room → excluded by
+  id.
+- **Red-first:** the target oracle carries `leftBehindCharacterIds` on all 13
+  rows (`grep -c leftBehindCharacterIds` = 13); the baseline-pinned oracle
+  over the SAME fixture carries it on none (0) — the "before". M0 (step 2b
+  removed) reds the family.
+- **Mutation table** (each by file backup, reverted, `git status` clean after):
+
+  | | mutation | reds |
+  |---|---|---|
+  | M0 | no step 2b | continuation — `basic_carryover` loses the empty check line |
+  | M1 | drop the `operator_speaks_without_seat` gate | continuation — the autonomous scan probe's `excludesPersonaByName=false` |
+  | M2 | stamp the ids whether or not the notice posted | continuation — `left_behind_post_poisoned` |
+  | M3 | skip every non-`active` status | continuation — `left_behind_two_removed_skipped` (`characterCount=2`) |
+  | M4 | resolve the SOURCE chat's identity | continuation — `persona_stays_unseated` (`inRoom=true` never logs) |
+  | M5 | plural `left-behind` sentence on the singular | feeders — `off_scene_content/left-behind-single` |
+  | M6 | the resolver DEBUG on the seated branch | core unit — the seated arm's silence leg |
+
+- **Neutrality:** `route_trail_continuation_guard` 3/3; `get_messages_caller_
+  census` 2/2 (no new `get_messages` site); `build_context_tier3_equivalence`
+  regenerated at the BASELINE pin (fixture + jest, lane-private paths) GREEN
+  after the scan's new `chatType` read; `spelling_guard` green.
+- **Tier R (item 7): not run — measured unnecessary.** `quilltap-cli/src`
+  names neither `chat_continuation` nor `chat_create`.
+- Regen AS RUN: fixture from `/tmp/qt-v4-pin-p4d233-b0b6656b5` (`QT_FIXTURE_
+  OUT=/tmp/p4d233/b/qt-continuation-main.db QT_FIXTURE_MOUNT_OUT=/tmp/p4d233/
+  b/qt-continuation-mount.db npx tsx $V5W/harness/oracle/fixtures/build-chat-
+  continuation-fixture.ts`, "22 chats"); the jest stage staged per pin under
+  `/tmp/p4d233/{b,t}/cont-oracle` and run from each pin (`TZ=UTC QT_FIXTURE_
+  CONT_MAIN=… QT_FIXTURE_CONT_MOUNT=… QT_ORACLE_OUT=/tmp/p4d233/{b,t}/oracle-
+  chat-continuation.ndjson npx jest --silent --watchman=false --testTimeout=
+  120000 --roots "$PWD" --roots "$TMPO/cases" -- "chat-continuation-tier2\.
+  test\.ts$"`), both exit 0.
+
+### §R.9 mirror pre-list (bytes at `acadcc7cd`) — for the unifier
+
+- `docs/v4/developer/bugs/fixed/bug-171-continuation-strands-absentees.md` —
+  NEW, 4,899 bytes.
+- `docs/v4/developer/bugs/fixed/bug-172-autonomous-persona-never-absent.md` —
+  NEW, 4,185 bytes.
+- `docs/v4/developer/bugs.md` — 314,007 bytes at `acadcc7cd` (`acadcc7cd`'s
+  own hunk +4/−2: the Status sentence "1–172" + the two rows; P4.D232 pre-lists
+  bug 170's row in the same file). Both bug files say "v5 status: Unchecked" —
+  the answer is **affected, both — ported at P4.D233** (Tier 3 item 9, the
+  human's upstream note after unification).
+
+### Tier 3 deferrals (loud)
+
+- `help/chats.md` + `help/salon-host-introductions.md` — P4.D228's whole-tree
+  re-vendor at `acadcc7cd` (not touched here).
+- The upstream "v5 status" note — the human's, after unification.
+
 ## P4.D232 — the `6d0f88d65` SDK-bump regen event + the `83d0c969b` / `a8292547a` NO-PORT ratifications + Tier R at the round target (2026-09-28, branch `claude/p4-sdk-bump-regen-riders-b7076a`)
 
 Order: `work-orders/p4.d232-sdk-bump-regen-riders-bug-170-specs-ratified.md`.

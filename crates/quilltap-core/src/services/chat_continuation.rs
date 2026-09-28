@@ -5,7 +5,10 @@
 //!   1. posts a Host "continuation-from" bubble in the new chat,
 //!   2. replays the carryover window (the most recent Librarian summary plus
 //!      every later message) into the new chat, remapping participant ids by
-//!      shared `characterId` and stripping old-chat-lifecycle fields,
+//!      shared `characterId` and stripping old-chat-lifecycle fields; then
+//!      (2b, v4 `acadcc7cd`, bug 171) names anyone seated in the source chat
+//!      who did not come along — their own lines are dropped from the replay,
+//!      but the rest of the cast's lines to them are not,
 //!      3. replicates turn state (isPaused / turnQueue / lastTurnParticipantId /
 //!      activeTypingParticipantId / impersonatingParticipantIds /
 //!      allLLMPauseTurnCount / spokenThisCycle) with the same remap, and
@@ -26,8 +29,11 @@ use crate::db::runtime::Db;
 use crate::db::{chats_messages_read, chats_read, DbError};
 use crate::services::host_notifications::{
     post_host_continuation_from_announcement, post_host_continuation_to_announcement,
-    HostContinuationFromAnnouncement, HostContinuationToAnnouncement,
+    post_host_off_scene_characters_announcement_with_reason, HostContinuationFromAnnouncement,
+    HostContinuationToAnnouncement, HostOffSceneCharactersAnnouncement,
 };
+use crate::services::off_scene::{OffSceneCharacterCard, OffSceneIntroductionReason};
+use crate::services::user_identity_resolver::{is_user_persona_in_room, resolve_user_identity};
 
 /// v4 `ApplyChatContinuationResult`.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -35,6 +41,10 @@ pub struct ApplyChatContinuationResult {
     pub replayed_message_count: usize,
     pub had_librarian_summary: bool,
     pub posted_source_tail_bubble: bool,
+    /// Character ids the Host named as left behind in the source chat (v4
+    /// `acadcc7cd`). Empty on both early returns, when nobody was left behind,
+    /// and when the notice failed to post.
+    pub left_behind_character_ids: Vec<String>,
 }
 
 /// v4 `buildParticipantIdMap`: old participant id → new participant id, keyed by
@@ -70,6 +80,179 @@ fn build_participant_id_map(
         }
     }
     map
+}
+
+/// v4 `findLeftBehindCharacters` (`acadcc7cd`, bug 171): the characters seated
+/// in the source chat (any status but `removed`) who are not seated in the new
+/// one — the people the carried-over transcript is still talking to. The
+/// operator's persona is excluded when it is in the new room anyway, as the
+/// unseated voice of the operator's messages; in an autonomous room it is not,
+/// and is named like anyone else (bug 172). A character whose vault cannot be
+/// read is skipped with a warning: the notice is a courtesy and must never
+/// break the continuation.
+///
+/// Only `removed` is skipped — an `absent` or `silent` source seat is named
+/// (v4's exact filter). The persona check reads the NEW chat's identity, not
+/// the source's (a persona seated in the source is, in a Salon destination,
+/// the unseated voice of the operator there).
+async fn find_left_behind_characters(
+    db: &Db,
+    source_chat: &Value,
+    new_chat: &Value,
+    user_id: &str,
+) -> Result<Vec<OffSceneCharacterCard>, DbError> {
+    let participants = |chat: &Value| -> Vec<Value> {
+        chat.get("participants")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    // JS truthiness on `p.characterId`: an empty string is no character.
+    let character_id = |p: &Value| -> Option<String> {
+        p.get("characterId")
+            .and_then(Value::as_str)
+            .filter(|c| !c.is_empty())
+            .map(str::to_string)
+    };
+
+    let seated_in_new_chat: std::collections::HashSet<String> = participants(new_chat)
+        .iter()
+        .filter_map(character_id)
+        .collect();
+
+    let mut left_behind_ids: Vec<String> = Vec::new();
+    for p in participants(source_chat) {
+        if p.get("type").and_then(Value::as_str) != Some("CHARACTER") {
+            continue;
+        }
+        let Some(cid) = character_id(&p) else {
+            continue;
+        };
+        if p.get("status").and_then(Value::as_str) == Some("removed") {
+            continue;
+        }
+        if seated_in_new_chat.contains(&cid) {
+            continue;
+        }
+        if !left_behind_ids.contains(&cid) {
+            left_behind_ids.push(cid);
+        }
+    }
+    if left_behind_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // v4 `resolveUserIdentity(repos, userId, newChat)` — no Speaking-As hint.
+    let identity = resolve_user_identity(db, user_id, new_chat, None).await?;
+    let new_chat_type = new_chat.get("chatType").and_then(Value::as_str);
+    let persona_id = if is_user_persona_in_room(new_chat_type, &identity) {
+        identity.character_id.clone()
+    } else {
+        None
+    };
+    let new_chat_id = new_chat
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    let mut cards: Vec<OffSceneCharacterCard> = Vec::new();
+    for character_id in left_behind_ids {
+        if persona_id.as_deref() == Some(character_id.as_str()) {
+            tracing::debug!(
+                newChatId = new_chat_id,
+                characterId = character_id.as_str(),
+                "[ChatContinuation] Persona stays in the room unseated; not named as left behind"
+            );
+            continue;
+        }
+        let read = {
+            let id = character_id.clone();
+            db.read_main(|main| {
+                db.read_mount_index(|mount| {
+                    crate::db::characters_read::find_by_id(main, mount, &id)
+                })
+            })
+        };
+        match read {
+            // A missing character is skipped silently (v4 `if (!c) continue`).
+            Ok(None) => {}
+            Ok(Some(c)) => {
+                if let Some(card) = OffSceneCharacterCard::from_value(&c) {
+                    cards.push(card);
+                }
+            }
+            Err(e) => {
+                let error = e.to_string();
+                tracing::warn!(
+                    newChatId = new_chat_id,
+                    characterId = character_id.as_str(),
+                    error = error.as_str(),
+                    "[ChatContinuation] Could not load a left-behind character; not naming them"
+                );
+            }
+        }
+    }
+    Ok(cards)
+}
+
+/// v4 step 2b: name whoever stayed behind, at the tail of the carryover — the
+/// last word before the new scene, and stamped so the per-turn off-scene scan
+/// does not introduce them again. The ids come back ONLY when the notice
+/// posted (v4 `if (notice)`): a failed post leaves the per-turn scan free to
+/// introduce them later. Any failure is logged, never raised.
+async fn name_left_behind_characters(
+    db: &Db,
+    new_chat_id: &str,
+    source_chat_id: &str,
+    source_chat: &Value,
+    new_chat: &Value,
+) -> Vec<String> {
+    // v4 passes the creating user's id; the create handler writes that same id
+    // onto the new chat as `userId`, and v5's caller (`chat_create.rs`, not
+    // this lane's) passes no user id, so it is read back from the row.
+    let user_id = new_chat
+        .get("userId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let mut left_behind_character_ids: Vec<String> = Vec::new();
+    match find_left_behind_characters(db, source_chat, new_chat, &user_id).await {
+        Ok(left_behind) => {
+            if !left_behind.is_empty() {
+                let ids: Vec<String> = left_behind.iter().map(|c| c.id.clone()).collect();
+                let notice = post_host_off_scene_characters_announcement_with_reason(
+                    db,
+                    HostOffSceneCharactersAnnouncement {
+                        chat_id: new_chat_id.to_string(),
+                        characters: left_behind,
+                    },
+                    OffSceneIntroductionReason::LeftBehind,
+                )
+                .await;
+                if notice.is_some() {
+                    left_behind_character_ids = ids;
+                }
+            }
+            let ids_json =
+                serde_json::to_string(&left_behind_character_ids).unwrap_or_else(|_| "[]".into());
+            tracing::debug!(
+                newChatId = new_chat_id,
+                sourceChatId = source_chat_id,
+                leftBehindCharacterIdsJson = ids_json.as_str(),
+                "[ChatContinuation] Left-behind check complete"
+            );
+        }
+        Err(e) => {
+            let error = e.to_string();
+            tracing::error!(
+                newChatId = new_chat_id,
+                sourceChatId = source_chat_id,
+                error = error.as_str(),
+                "[ChatContinuation] Failed to name left-behind characters"
+            );
+        }
+    }
+    left_behind_character_ids
 }
 
 /// v4 `findLibrarianSummaryAnchorIndex`: the index of the most recent Librarian
@@ -331,6 +514,10 @@ pub async fn apply_chat_continuation(
         // v4 logs a failed replay and continues.
     }
 
+    // 2b. Name whoever stayed behind (v4 `acadcc7cd`, bug 171).
+    let left_behind_character_ids =
+        name_left_behind_characters(db, new_chat_id, source_chat_id, &source_chat, &new_chat).await;
+
     // 3. Replicate turn state (swallow errors — v4 logs and continues).
     let _ = replicate_turn_state(db, new_chat_id, &source_chat, &participant_map).await;
 
@@ -349,10 +536,23 @@ pub async fn apply_chat_continuation(
     .await
     .is_some();
 
+    let ids_json =
+        serde_json::to_string(&left_behind_character_ids).unwrap_or_else(|_| "[]".into());
+    tracing::info!(
+        newChatId = new_chat_id,
+        sourceChatId = source_chat_id,
+        replayedMessageCount = replayed_message_count,
+        hadLibrarianSummary = had_librarian_summary,
+        postedSourceTailBubble = posted_source_tail_bubble,
+        leftBehindCharacterIdsJson = ids_json.as_str(),
+        "[ChatContinuation] Continuation complete"
+    );
+
     Ok(ApplyChatContinuationResult {
         replayed_message_count,
         had_librarian_summary,
         posted_source_tail_bubble,
+        left_behind_character_ids,
     })
 }
 

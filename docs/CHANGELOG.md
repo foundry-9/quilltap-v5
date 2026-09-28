@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — fix(core): name who stayed behind on Continue Elsewhere; no by-name persona exclusion in autonomous rooms (P4.D233 unit 3, v4 bugs 171 + 172)
+
+_Versions: core 0.0.1061, harness 0.0.980._
+
+Bug 171: `apply_chat_continuation` gains v4 `acadcc7cd`'s step 2b. After the
+replay, the Host names every character seated in the source chat (any status
+but `removed`) who is not seated in the new one, deduped, minus the persona
+when it is in the new room unseated. The notice uses the `left-behind`
+introduction. The ids are stamped only when the notice posts, and the result
+gains `left_behind_character_ids`. An unreadable character is skipped with a
+WARN; any failure logs an ERROR and never breaks the continuation. v4's
+`Left-behind check complete` DEBUG and `Continuation complete` INFO are added.
+
+Bug 172: the off-scene scan excludes the persona by name only where
+`operator_speaks_without_seat(chatType)`. The scan reads the chat's
+`chatType` itself, so `build_context.rs` is untouched. It logs v4's
+`[ContextManager] Off-scene persona exclusion` DEBUG. A seated persona is
+still excluded by id.
+
+`chat_continuation_tier2_equivalence` gains seven planted cases, per-case log
+pins with silence legs, and five scan probes on the result. Mutation proofs
+M0–M6 all red.
+
 #### 2026-09-28 — feat(core): the Host's left-behind off-scene introduction (P4.D233 unit 2, v4 bug 171 writer)
 
 _Versions: core 0.0.1060, harness 0.0.979._
