@@ -1,7 +1,9 @@
 //! P4.D33 `openrouter_sdk_pricing_equivalence`: v4's REAL authenticated
-//! OpenRouter pricing path — `@openrouter/sdk` 1.2.2 in the loop, only the
-//! network mocked underneath it — against v5's reproduction of the two things
-//! that SDK does between the wire and the parse.
+//! OpenRouter pricing path — the real `@openrouter/sdk` in the loop (1.3.28,
+//! re-run green 2026-09-28 by P4.D232 from the `acadcc7cd` pin; the family was
+//! written against 1.2.2), only the network mocked underneath it — against
+//! v5's reproduction of the two things that SDK does between the wire and the
+//! parse.
 //!
 //! The W4.7e `pricing_fetcher_equivalence` oracle stubs `@openrouter/sdk` and
 //! feeds both sides the same hand-written **camelCase** body, so it can never

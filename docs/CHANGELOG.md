@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — test(harness): P4.D232 — OpenRouter pricing family re-run at @openrouter/sdk 1.3.28
+
+_Versions: harness 0.0.980._
+
+Re-ran the `openrouter_sdk_pricing_equivalence` jest oracle from the
+`acadcc7cd` pin with the real `@openrouter/sdk` 1.3.28 in the loop (five
+scenarios; 1, 1, 2, 3 and 1 pages). The family is green: the SDK's
+`Model$inboundSchema` remap and page rule still match v5's
+`OPENROUTER_MODEL_REMAP`, `OPENROUTER_PAGE_LIMIT` and
+`openrouter_next_page_offset`. No core change. Corrects the test header,
+which still named SDK 1.2.2.
+
 #### 2026-09-28 — test(harness): P4.D232 — `RECORDED_NODE` arm on the provider-SDK guard
 
 _Versions: harness 0.0.979._
