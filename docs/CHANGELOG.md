@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — test(harness): P4.D232 — `RECORDED_NODE` arm on the provider-SDK guard
+
+_Versions: harness 0.0.979._
+
+Adds a third test to `provider_sdk_version_guard` asserting every Node
+runtime stamp in the three recorded provider corpora is `v24.13.1`: the
+Stainless `x-stainless-runtime-version` (260 in `request-envelopes`, 8 in
+`image-dialects`) and the genai `gl-node/` token (22 in `google-wire`). A
+regen under another Node on the PATH (24.18, 24.19, Homebrew 26) now fails
+instead of rewriting 290 lines silently. Kept as its own test so the
+designed `image-dialects` SDK red on this branch cannot mask it. Mutation
+proof: one stamp edited to `v24.18.0` fails exactly this test.
+
 #### 2026-09-28 — test(harness): P4.D232 — absorb the `6d0f88d65` SDK bump: guard → openai 7.23.0 / @openrouter/sdk 1.3.28, request-envelopes re-recorded (stamp-only)
 
 _Versions: harness 0.0.978._

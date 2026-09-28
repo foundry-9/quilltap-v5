@@ -68,6 +68,12 @@ const RECORDED_ANTHROPIC_SDK: &str = "0.115.0";
 const RECORDED_GOOGLE_GENAI_SDK: &str = "1.52.0";
 /// `@openrouter/sdk` — the speakeasy user-agent's first version token.
 const RECORDED_OPENROUTER_SDK: &str = "1.3.28";
+/// The Node runtime every provider corpus is recorded under: the Stainless
+/// `x-stainless-runtime-version` and the genai `gl-node/<v>` token (P4.D232).
+/// The recipes pin `~/.nvm/versions/node/v24.13.1/bin`; the PATH also carries
+/// other Node 24s and Homebrew 26, and a regen under any of them would churn
+/// all 290 stamps silently — this constant turns that into a red.
+const RECORDED_NODE: &str = "v24.13.1";
 
 /// (package, recorded version) — the four SDKs this guard pins.
 const SDKS: [(&str, &str); 4] = [
@@ -205,6 +211,7 @@ struct Stamps {
     anthropic: Vec<String>,
     openrouter: Vec<String>,
     google: Vec<String>,
+    node: Vec<String>,
 }
 
 /// Walk a recorded row; every object carrying a `headers` object is one
@@ -224,6 +231,12 @@ fn collect(v: &serde_json::Value, stamps: &mut Stamps) {
                         stamps.openai.push(ver.to_string());
                     }
                 }
+                if let Some(rt) = h
+                    .get("x-stainless-runtime-version")
+                    .and_then(|x| x.as_str())
+                {
+                    stamps.node.push(rt.to_string());
+                }
                 if let Some(ua) = h.get("user-agent").and_then(|x| x.as_str()) {
                     if let Some(rest) = ua.strip_prefix("speakeasy-sdk/typescript ") {
                         if ua.ends_with("@openrouter/sdk") {
@@ -236,6 +249,9 @@ fn collect(v: &serde_json::Value, stamps: &mut Stamps) {
                     for tok in g.split(' ') {
                         if let Some(ver) = tok.strip_prefix("google-genai-sdk/") {
                             stamps.google.push(ver.to_string());
+                        }
+                        if let Some(ver) = tok.strip_prefix("gl-node/") {
+                            stamps.node.push(ver.to_string());
                         }
                     }
                 }
@@ -362,4 +378,18 @@ fn the_recorded_corpora_carry_exactly_the_recorded_sdk_versions() {
         RECORDED_OPENAI_SDK,
         false,
     );
+}
+
+/// Its own test so the designed `image-dialects` SDK red on P4.D232's branch
+/// (see the module header) cannot mask a Node-runtime drift.
+#[test]
+fn the_recorded_corpora_carry_the_recorded_node_runtime() {
+    for corpus in [
+        "request-envelopes/request-envelopes.recorded.ndjson",
+        "image-dialects/image-dialects.recorded.ndjson",
+        "request-envelopes/google-wire.recorded.ndjson",
+    ] {
+        let stamps = corpus_stamps(corpus);
+        assert_all(corpus, "node runtime", &stamps.node, RECORDED_NODE, true);
+    }
 }
