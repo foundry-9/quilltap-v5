@@ -56,11 +56,10 @@
 //! `cs_continuation_bubble_before_replay`.
 //!
 //! Build the fixture + oracle (Node 24, from the v4 checkout; jest ignores
-//! `.claude/` paths, so the case is staged in a /tmp mirror). ⚠ P4.D233: the
-//! oracle needs v4 at or after `acadcc7cd`; the FIXTURE needs a `chats` DDL v5
-//! reads — until the Concierge chain's widen lands, build it from the round
-//! baseline `b0b6656b5` (a target-built `chats` lacks `conciergeOverride`) and
-//! run the jest stage from the `acadcc7cd` pin (ledger §5.1 worktrees):
+//! `.claude/` paths, so the case is staged in a /tmp mirror). The fixture and
+//! the oracle both need v4 at or after `acadcc7cd` (since the Concierge chain
+//! unified with P4.D233, a target-built `chats` reads — the ONE-pin run was
+//! proven at that unification); pinned worktrees per ledger §5.1:
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-continuation-main.db \

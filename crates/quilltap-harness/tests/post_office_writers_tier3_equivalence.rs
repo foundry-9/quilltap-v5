@@ -780,7 +780,11 @@ async fn post_office_writers_tier3_matches_oracle() {
     // 20 persona rows since P4.D141 (the third Concierge manual kind,
     // `manual-uncensored`, joined `manual-vouched` / `manual-resumed`); 23 since
     // P4.D233 (two `left-behind` off-scene introductions + an explicit
-    // `mentioned` one, v4 `acadcc7cd`).
-    assert_eq!(nm, 25, "expected 23 persona + 2 cost SYSTEM rows");
+    // `mentioned` one, v4 `acadcc7cd`); 22 since the `acadcc7cd` round's
+    // unification, where the five retired Concierge manual kinds (#75,
+    // `4d370a90f`) gave way to v4's four live ones — v4's writer has no body for
+    // a retired kind, so it wrote nothing for them and v5 (which keeps their
+    // bodies for old transcripts) wrote five.
+    assert_eq!(nm, 24, "expected 22 persona + 2 cost SYSTEM rows");
     eprintln!("OK: post-office-writers tier-3 matched oracle ({nm} rows, chats aggregate).");
 }

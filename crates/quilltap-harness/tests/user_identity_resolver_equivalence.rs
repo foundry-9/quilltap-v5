@@ -25,12 +25,11 @@
 //! resolved identity object is compared exactly.
 //!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout).
-//! ⚠ P4.D233: the FIXTURE is built at a pin whose `chats` DDL v5 reads (the
-//! round baseline `b0b6656b5` until the Concierge chain's widen lands — a
-//! fixture built at `acadcc7cd` lacks `conciergeOverride`, which `main`'s
-//! strict `chats_read` still binds), and the ORACLE runs at the round target
-//! (`isUserPersonaInRoom` exists nowhere earlier). Both are the checkout below
-//! when v4 HEAD is AT the baseline; otherwise pass pinned worktrees (ledger §5.1):
+//! The fixture and the oracle both need v4 at or after `acadcc7cd`
+//! (`isUserPersonaInRoom` exists nowhere earlier; since the Concierge chain
+//! unified with P4.D233, v5's `chats_read` no longer binds the dropped
+//! `conciergeOverride`, so a target-built fixture reads). Pass a pinned worktree
+//! when v4 HEAD is past the baseline (ledger §5.1):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-useridentity-main.db \

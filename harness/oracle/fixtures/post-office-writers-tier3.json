@@ -43,29 +43,24 @@
       }
     },
     {
-      "name": "concierge_manual_flagged",
+      "name": "concierge_manual_set_moderated",
       "kind": "conciergeManual",
-      "manualKind": "manual-flagged"
+      "manualKind": "set-moderated"
     },
     {
-      "name": "concierge_manual_safe",
+      "name": "concierge_manual_set_unmoderated",
       "kind": "conciergeManual",
-      "manualKind": "manual-safe"
+      "manualKind": "set-unmoderated"
     },
     {
-      "name": "concierge_manual_vouched",
+      "name": "concierge_manual_set_locked",
       "kind": "conciergeManual",
-      "manualKind": "manual-vouched"
+      "manualKind": "set-locked"
     },
     {
-      "name": "concierge_manual_resumed",
+      "name": "concierge_manual_auto_unmoderated",
       "kind": "conciergeManual",
-      "manualKind": "manual-resumed"
-    },
-    {
-      "name": "concierge_manual_uncensored",
-      "kind": "conciergeManual",
-      "manualKind": "manual-uncensored"
+      "manualKind": "auto-unmoderated"
     },
     {
       "name": "prospero_conn_profile",
