@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 import { Icon } from './icon';
+import { Tooltip } from './tooltip';
 
 /** The three Scriptorium render states carried on every chat summary. */
 export type ScriptoriumStatus = 'none' | 'rendered' | 'embedded';
@@ -16,22 +17,29 @@ export type ScriptoriumStatus = 'none' | 'rendered' | 'embedded';
  * Presentational only — the click preventDefault/stopPropagations (the badge
  * lives inside the card's `<a>`) and emits `render`; the host card owns the
  * dispatch, toast, and queue nudge.
+ *
+ * The three strings are v4's `SCRIPTORIUM_TOOLTIPS` at `f7f3d7bf0`
+ * (`components/chat/ChatCard.tsx:98-103`, reworded there), carried through the
+ * in-app `qt-tooltip` and repeated as the `aria-label`; the button keeps no
+ * native `title` (it would double up on the bubble).
  */
 @Component({
   selector: 'qt-scriptorium-badge',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, Tooltip],
   template: `
-    <button
-      type="button"
-      class="chat-card__badge inline-flex items-center gap-1 rounded-full px-2 py-0.5 qt-body-sm font-semibold flex-shrink-0 transition-colors cursor-pointer"
-      [class]="badgeClass()"
-      [title]="badgeTitle()"
-      [disabled]="busy()"
-      (click)="onClick($event)"
-    >
-      <qt-icon name="file" class="w-3 h-3" />
-    </button>
+    <qt-tooltip [content]="badgeTitle()">
+      <button
+        type="button"
+        class="chat-card__badge inline-flex items-center gap-1 rounded-full px-2 py-0.5 qt-body-sm font-semibold flex-shrink-0 transition-colors cursor-pointer"
+        [class]="badgeClass()"
+        [attr.aria-label]="badgeTitle()"
+        [disabled]="busy()"
+        (click)="onClick($event)"
+      >
+        <qt-icon name="file" class="w-3 h-3" />
+      </button>
+    </qt-tooltip>
   `,
 })
 export class ScriptoriumBadge {
@@ -54,11 +62,11 @@ export class ScriptoriumBadge {
   protected readonly badgeTitle = computed(() => {
     switch (this.status()) {
       case 'embedded':
-        return 'Scriptorium: Rendered and embedded — click to re-render';
+        return 'Scriptorium: transcribed and indexed, every word findable — click to re-render';
       case 'rendered':
-        return 'Scriptorium: Rendered but not fully embedded — click to re-render';
+        return 'Scriptorium: transcribed, the indexing still under way — click to re-render';
       default:
-        return 'Scriptorium: Not yet rendered — click to render';
+        return 'Scriptorium: not yet transcribed — click to render and index';
     }
   });
 

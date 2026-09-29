@@ -12,8 +12,10 @@ const MAX_DAYS = 3650;
  * `components/settings/chat-settings/DataRetentionSettings.tsx`,
  * `instance_settings['dataRetention']`). Read daily by the maintenance sweep to
  * decide when a quiet conversation's regenerable working data (compression
- * caches, rendered markdown, model scratch-work, cold-tier chunk embeddings) is
- * tidied away. Global only — there is deliberately no per-chat control.
+ * caches, model scratch-work, cold-tier chunk embeddings) is tidied away; the
+ * Scriptorium's transcript is no longer stored (v4 `f7f3d7bf0` renders it on
+ * demand and keeps the chunk embeddings warm). Global only — there is
+ * deliberately no per-chat control.
  *
  * Autosaves — the number input commits on blur (v4's `commit`): an unusable
  * entry (non-finite / out of `[1, 3650]`) is reverted rather than nagged (the

@@ -17,6 +17,7 @@ import { DAY_GRANULARITY_MS, NowService } from '../../../../shared/now.service';
 import { normalizeAvatarSrc } from '../../../../ui/avatar-stack';
 import { Icon } from '../../../../ui/icon';
 import { ScriptoriumBadge } from '../../../../ui/scriptorium-badge';
+import { Tooltip } from '../../../../ui/tooltip';
 import { ToastService } from '../../../../ui/toast.service';
 import { chatActivityAt } from '../../../../chat/chat-activity';
 import { ConciergeMark } from '../../../../chat/concierge-mark';
@@ -53,7 +54,7 @@ function previewOf(messages: CharacterChatSummary['messages']): string | null {
 @Component({
   selector: 'qt-character-conversation-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, ScriptoriumBadge, ConciergeMark],
+  imports: [RouterLink, Icon, ScriptoriumBadge, ConciergeMark, Tooltip],
   template: `
     <a
       class="qt-entity-card chat-card relative block cursor-pointer transition-colors"
@@ -73,20 +74,22 @@ function previewOf(messages: CharacterChatSummary['messages']): string | null {
             <div class="flex items-center gap-2 mb-1 flex-wrap">
               <h3 class="qt-card-title truncate">{{ displayTitle() }}</h3>
 
-              <span
-                class="chat-card__badge inline-flex items-center gap-1 rounded-full qt-bg-primary/10 px-2.5 py-0.5 qt-body-sm font-semibold flex-shrink-0"
-                title="Messages"
-              >
-                <qt-icon name="chat" class="w-3 h-3" />{{ messageCount() }}
-              </span>
-
-              @if (memoryCount() > 0) {
+              <qt-tooltip content="Messages">
                 <span
                   class="chat-card__badge inline-flex items-center gap-1 rounded-full qt-bg-primary/10 px-2.5 py-0.5 qt-body-sm font-semibold flex-shrink-0"
-                  title="Memories"
                 >
-                  <qt-icon name="book" class="w-3 h-3" />{{ memoryCount() }}
+                  <qt-icon name="chat" class="w-3 h-3" />{{ messageCount() }}
                 </span>
+              </qt-tooltip>
+
+              @if (memoryCount() > 0) {
+                <qt-tooltip content="Memories">
+                  <span
+                    class="chat-card__badge inline-flex items-center gap-1 rounded-full qt-bg-primary/10 px-2.5 py-0.5 qt-body-sm font-semibold flex-shrink-0"
+                  >
+                    <qt-icon name="book" class="w-3 h-3" />{{ memoryCount() }}
+                  </span>
+                </qt-tooltip>
               }
 
               <qt-scriptorium-badge
@@ -136,15 +139,16 @@ function previewOf(messages: CharacterChatSummary['messages']): string | null {
                (No backticks in an inline-template comment: they terminate the
                TS literal.) -->
           <div class="flex items-center">
-            <button
-              type="button"
-              class="chat-card__action inline-flex h-10 w-10 items-center justify-center rounded-lg qt-bg-destructive qt-text-on-destructive shadow transition hover:qt-bg-destructive/90"
-              title="Delete chat"
-              aria-label="Delete chat"
-              (click)="onDelete($event)"
-            >
-              <qt-icon name="trash" class="w-5 h-5" />
-            </button>
+            <qt-tooltip content="Delete chat">
+              <button
+                type="button"
+                class="chat-card__action inline-flex h-10 w-10 items-center justify-center rounded-lg qt-bg-destructive qt-text-on-destructive shadow transition hover:qt-bg-destructive/90"
+                aria-label="Delete chat"
+                (click)="onDelete($event)"
+              >
+                <qt-icon name="trash" class="w-5 h-5" />
+              </button>
+            </qt-tooltip>
           </div>
         }
       </div>

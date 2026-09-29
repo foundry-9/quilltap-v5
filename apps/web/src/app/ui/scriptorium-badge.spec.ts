@@ -1,7 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ScriptoriumBadge, type ScriptoriumStatus } from './scriptorium-badge';
+import { Tooltip } from './tooltip';
 
 /**
  * The shared Scriptorium badge (p4.9o) — the three-state colour/title logic
@@ -21,11 +23,32 @@ async function mount(
   fixture.componentRef.setInput('status', status);
   fixture.componentRef.setInput('busy', busy);
   fixture.detectChanges();
-  return { fixture, get renders() { return counts.renders; } };
+  return {
+    fixture,
+    get renders() {
+      return counts.renders;
+    },
+  };
 }
 
 function button(fixture: ComponentFixture<ScriptoriumBadge>): HTMLButtonElement {
   return (fixture.nativeElement as HTMLElement).querySelector('button')!;
+}
+
+/**
+ * The tooltip string is v4's `SCRIPTORIUM_TOOLTIPS` at `f7f3d7bf0`
+ * (`components/chat/ChatCard.tsx:98-103`), dashes U+2014: carried by the
+ * `qt-tooltip` and repeated as the `aria-label`, with no native `title`.
+ */
+function expectTip(
+  fixture: ComponentFixture<ScriptoriumBadge>,
+  btn: HTMLButtonElement,
+  text: string,
+): void {
+  const tip = fixture.debugElement.query(By.directive(Tooltip)).componentInstance as Tooltip;
+  expect(tip.content()).toBe(text);
+  expect(btn.getAttribute('aria-label')).toBe(text);
+  expect(btn.hasAttribute('title')).toBe(false);
 }
 
 describe('ScriptoriumBadge', () => {
@@ -33,21 +56,29 @@ describe('ScriptoriumBadge', () => {
     const view = await mount('none');
     const btn = button(view.fixture);
     expect(btn.className).toContain('qt-text-destructive');
-    expect(btn.title).toBe('Scriptorium: Not yet rendered — click to render');
+    expectTip(view.fixture, btn, 'Scriptorium: not yet transcribed — click to render and index');
   });
 
   it('renders the rendered state (warning, re-render title)', async () => {
     const view = await mount('rendered');
     const btn = button(view.fixture);
     expect(btn.className).toContain('qt-text-warning');
-    expect(btn.title).toBe('Scriptorium: Rendered but not fully embedded — click to re-render');
+    expectTip(
+      view.fixture,
+      btn,
+      'Scriptorium: transcribed, the indexing still under way — click to re-render',
+    );
   });
 
   it('renders the embedded state (success, re-render title)', async () => {
     const view = await mount('embedded');
     const btn = button(view.fixture);
     expect(btn.className).toContain('qt-text-success');
-    expect(btn.title).toBe('Scriptorium: Rendered and embedded — click to re-render');
+    expectTip(
+      view.fixture,
+      btn,
+      'Scriptorium: transcribed and indexed, every word findable — click to re-render',
+    );
   });
 
   it('emits render and swallows the click (preventDefault/stopPropagation)', async () => {

@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +7,7 @@ import { CoreClient } from '../../../../core/core-client';
 import type { CharacterChatSummary } from '../../../../core/core-contract';
 import { __resetNowTickersForTests } from '../../../../shared/now.service';
 import { ToastService } from '../../../../ui/toast.service';
+import { Tooltip } from '../../../../ui/tooltip';
 import { CharacterConversationCard } from './character-conversation-card';
 
 /**
@@ -15,7 +17,10 @@ import { CharacterConversationCard } from './character-conversation-card';
  * re-render. v4's `ChatCard` takes exactly this tick for exactly this reason.
  */
 
-function chat(lastMessageAt: string | null, over: Record<string, unknown> = {}): CharacterChatSummary {
+function chat(
+  lastMessageAt: string | null,
+  over: Record<string, unknown> = {},
+): CharacterChatSummary {
   return {
     id: 'chat-1',
     title: 'A conversation',
@@ -120,5 +125,19 @@ describe('CharacterConversationCard — the activity date', () => {
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('2024');
     expect(text).not.toContain('Yesterday');
+  });
+});
+
+describe('CharacterConversationCard — the in-app tooltips (P4.D236)', () => {
+  it('carries the card tooltips as qt-tooltip contents and leaves no native title', () => {
+    const fixture = render('2026-01-01T12:00:00.000Z', {
+      _count: { messages: 3, memories: 2 },
+    });
+    const contents = fixture.debugElement
+      .queryAll(By.directive(Tooltip))
+      .map((d) => (d.componentInstance as Tooltip).content());
+    expect(contents).toContain('Messages');
+    expect(contents).toContain('Memories');
+    expect((fixture.nativeElement as HTMLElement).querySelector('[title]')).toBeNull();
   });
 });

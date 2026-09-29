@@ -1,10 +1,12 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import type { EnrichedChatSummary } from '../../core/core-contract';
 import { ToastService } from '../../ui/toast.service';
+import { Tooltip } from '../../ui/tooltip';
 import { ChatCard } from './chat-card';
 
 /**
@@ -54,6 +56,13 @@ function mount(c: EnrichedChatSummary, deletable = false) {
   return fixture;
 }
 
+/** The `content` of every `qt-tooltip` on the card (a spec cannot read source). */
+function tooltipContents(fixture: ComponentFixture<ChatCard>): string[] {
+  return fixture.debugElement
+    .queryAll(By.directive(Tooltip))
+    .map((d) => (d.componentInstance as Tooltip).content() ?? '');
+}
+
 function render(c: EnrichedChatSummary): HTMLElement {
   return mount(c).nativeElement as HTMLElement;
 }
@@ -84,16 +93,19 @@ describe('ChatCard — the activity date', () => {
 describe('ChatCard — the delete action', () => {
   it('renders nothing without the deletable flag (v4 gates on the callback)', () => {
     const el = render(chat({}));
-    expect(el.querySelector('button[title="Delete chat"]')).toBeNull();
+    expect(el.querySelector('button[aria-label="Delete chat"]')).toBeNull();
   });
 
-  it('renders v4’s destructive trash button with v4’s title', () => {
-    const el = mount(chat({}), true).nativeElement as HTMLElement;
-    const button = el.querySelector<HTMLButtonElement>('button[title="Delete chat"]');
+  it('renders v4’s destructive trash button with v4’s label and tooltip', () => {
+    const fixture = mount(chat({}), true);
+    const el = fixture.nativeElement as HTMLElement;
+    const button = el.querySelector<HTMLButtonElement>('button[aria-label="Delete chat"]');
     expect(button).not.toBeNull();
     expect(button!.className).toContain('qt-bg-destructive');
     expect(button!.className).toContain('qt-text-on-destructive');
     expect(button!.querySelector('qt-icon')).not.toBeNull();
+    expect(button!.hasAttribute('title')).toBe(false);
+    expect(tooltipContents(fixture)).toContain('Delete chat');
   });
 
   it('emits the chat id and suppresses the card’s own navigation', () => {
@@ -101,7 +113,7 @@ describe('ChatCard — the delete action', () => {
     const seen: string[] = [];
     fixture.componentInstance.delete.subscribe((id: string) => seen.push(id));
     const el = fixture.nativeElement as HTMLElement;
-    const button = el.querySelector<HTMLButtonElement>('button[title="Delete chat"]')!;
+    const button = el.querySelector<HTMLButtonElement>('button[aria-label="Delete chat"]')!;
     const event = new MouseEvent('click', { bubbles: true, cancelable: true });
     button.dispatchEvent(event);
     fixture.detectChanges();
@@ -151,7 +163,9 @@ describe('ChatCard — the Concierge mark', () => {
   }
 
   it("passes provenance through to the mark's tooltip", async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] });
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'],
+    });
     const fixture = mount(
       chat({
         conciergeState: 'unmoderated',
@@ -170,5 +184,20 @@ describe('ChatCard — the Concierge mark', () => {
     const bubble = document.body.querySelector('.qt-tooltip')!;
     expect(bubble.textContent).toMatch(/The Concierge moved this chat/);
     expect(bubble.textContent).toContain('NSFW');
+  });
+});
+
+/** `f7f3d7bf0` (P4.D236): every card `title=` moved into the in-app tooltip. */
+describe('ChatCard — the in-app tooltips', () => {
+  it('carries the card tooltips as qt-tooltip contents and leaves no native title', () => {
+    const fixture = mount(
+      chat({ _count: { messages: 3, memories: 2 } } as Partial<EnrichedChatSummary>),
+    );
+    const el = fixture.nativeElement as HTMLElement;
+    const contents = tooltipContents(fixture);
+    expect(contents).toContain('Messages');
+    expect(contents).toContain('Memories');
+    expect(contents).toContain('Copy link to this chat');
+    expect(el.querySelector('[title]')).toBeNull();
   });
 });

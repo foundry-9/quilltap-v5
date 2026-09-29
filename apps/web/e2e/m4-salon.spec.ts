@@ -89,7 +89,7 @@ test.describe('M4 — Salon vertical (list → open → read → send)', () => {
 
     const card = page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Group Expedition' });
     await expect(card).toBeVisible();
-    const badge = card.locator('button[title^="Scriptorium:"]');
+    const badge = card.locator('button[aria-label^="Scriptorium:"]');
     await expect(badge).toBeVisible();
 
     // Clicking the badge dispatches the render (and must NOT navigate into the

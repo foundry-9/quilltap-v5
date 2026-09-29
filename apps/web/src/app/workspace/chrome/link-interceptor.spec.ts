@@ -187,7 +187,11 @@ describe('interpretWorkspaceLinkClick', () => {
 function clickBound(fixture: ComponentFixture<unknown>): DebugElement[] {
   const out: DebugElement[] = [];
   const walk = (de: DebugElement): void => {
-    if (de.listeners.some((l) => l.name === 'click')) out.push(de);
+    // A `qt-tooltip` host carries a host `(click)` (the pin toggle, inert unless
+    // `pinnable`); the control it wraps is the click target and is still judged.
+    // (P4.D236 — the cards' `title=`s moved into tooltips.)
+    const isTooltipAnchor = (de.nativeElement as HTMLElement | null)?.tagName === 'QT-TOOLTIP';
+    if (!isTooltipAnchor && de.listeners.some((l) => l.name === 'click')) out.push(de);
     for (const child of de.children) walk(child);
   };
   walk(fixture.debugElement);

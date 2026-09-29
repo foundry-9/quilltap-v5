@@ -155028,3 +155028,14 @@ spec.md` 25,842 → 26,300 (both `f7f3d7bf0` only).
   0.0.1015 (+3), host 0.0.162 → 0.0.164 (+2); web/cli/tauri/SPA unchanged.
 
 **P4.D235 LANE COMPLETE.**
+
+### P4.D236 — the Scriptorium badge + chat-card tooltips, client half of v4 `f7f3d7bf0` (lane record, 2026-09-28)
+
+Branch `claude/scriptorium-badge-tooltips-spa-c611d2`. SPA-only; no crate, `core-contract.ts` or `help/**` touched. §R.2 probe PASSED at lane start (v4 `main`, HEAD `97b25fc53`, tree clean, both logs empty). The three strings were read from `git show f7f3d7bf0:components/chat/ChatCard.tsx` lines 98-103 and pinned by byte (U+2014) in `ui/scriptorium-badge.spec.ts`.
+
+- Landed (Tier 1): badge through `qt-tooltip` + `aria-label`, no `title`; all six Salon-card and three character-card `title=`s moved to `qt-tooltip` (contents unchanged); `m4-salon.spec.ts` selector re-keyed; JSDoc reword; specs assert tooltip contents by `DebugElement`.
+- Out-of-ownership spills (one-line each, for the unifier): `conversations-tab.spec.ts:110` selector `[title^="Scriptorium"]` -> `[aria-label^=...]`; `workspace/chrome/link-interceptor.spec.ts` `clickBound` skips `QT-TOOLTIP` hosts (the tooltip host carries a host `(click)` pin toggle, so the nested-button census tripped; the wrapped `<button>`s are still judged).
+- Mutation proofs (revert by file backup): M1 old string restored -> badge spec red (1 test); M2 `[title]` added beside the tooltip -> red (3); M3 `aria-label` dropped -> red (3). M3's e2e leg (selector) not separately run — the selector is the aria-label by construction.
+- Gate: `npm test` 460 files / 8,719 passed; `npm run lint` clean (956 qt-* classes, none added); `npm run build` clean; `m4-salon.spec.ts` alone on 4319: 2/2 passed. Rust gates N/A (no crate changed); a debug `quilltap-web`/`quilltap` build was made in this worktree only to run Playwright.
+- Deferred (named): the memory badge as a click-to-reextract button + its aria-label (recorded deferral at `chat-card.ts` stands); P4.D235's server derivation; P4.D238's help pages.
+- Fixtures/oracles: none consumed or changed. Mirror pre-list: none. Versions: SPA 0.5.784 -> 0.5.785.

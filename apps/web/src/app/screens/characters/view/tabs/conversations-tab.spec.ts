@@ -107,7 +107,7 @@ describe('CharacterConversationsTab', () => {
     expect(text).toContain('7');
     // memory badge
     expect(text).toContain('2');
-    const scriptorium = fixture.nativeElement.querySelector('[title^="Scriptorium"]');
+    const scriptorium = fixture.nativeElement.querySelector('[aria-label^="Scriptorium"]');
     expect(scriptorium).toBeTruthy();
   });
 
