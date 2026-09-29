@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — feat(post-office): read_mail and discard_mail; list_email renamed list_mail; letters named by file name (P4.D234 unit 2)
+
+_Versions: core 0.0.1091, harness 0.0.1014._
+
+Ports v4 `39bc98ffc` + `12c336fad`. Two new tools, `read_mail` and `discard_mail`, work on the caller's own `Mail/` folder by a letter's file name. They reach the vault through `ensure_character_vault`, not the doc-tool resolver, so an opaque character (no `systemTransparency`) can still read and discard its own post, as in v4. `read_mail` marks an unannounced letter announced (a content rewrite). `discard_mail` deletes through `delete_database_document` (the GC chokepoint) with no protected-document check and no Librarian announcement, as in v4. `list_email` is renamed `list_mail` with no alias and no data migration. The letter actions, the listing heading, and Suparṇā's whisper and LLM context now name letters by file name and point at `read_mail` / `discard_mail`. `send_mail`'s `in_reply_to` (and the Salon Compose Mail route) accepts a file name and stores the resolved `Mail/…` path. `discard_mail` joins `DESTRUCTIVE_TOOL_NAMES`; the autonomous-room filter moves into `tool_build::apply_autonomous_destructive_filter` and logs v4's missing `destructive tools filtered` INFO (one-line call-site change in `services/orchestrator.rs`, marked). The tool catalogue is regenerated (59 → 61) and the tools inventory grows 41 → 43 rows / 37 → 39 schemas.
+
+Restored v4 log lines that v5 never had: the three handler catch ERRORs (`list_mail`/`read_mail`/`discard_mail handler threw unexpectedly`), `read_mail: letter read` / `no such letter`, `discard_mail: letter discarded` (INFO) / `no such letter`, and `Reply target not in sender mailbox`. The executor's letter-tool `result` now omits `path` on failure instead of writing `null` (a latent `send_mail` divergence visible through the run-tool route's stored result).
+
+Families regenerated at the `12c336fad` pin: `mail_carina_tools` (grown to 54 mail scenarios, incl. a fifth character's postbox, the covenant contrast, mixed-case, hard-linked and protected letters), `tool_definitions`, `tools_inventory`, `tool_build` (+1 row), `orchestrator_tier3`, `context_feeders_leaves`, `post_office_concierge_lantern_suparna`, `post_office_routes` (+2 arms). Nine neutrality families re-run green.
+
 #### 2026-09-28 — feat(post-office): resolve_mail_path, letter_file_name and discard_letter (P4.D234 unit 1)
 
 _Versions: core 0.0.1090, harness 0.0.1013._

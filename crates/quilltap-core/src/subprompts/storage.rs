@@ -142,7 +142,7 @@ fn resolve_vault_for_read(
 /// vault for a live character that lacks one (v4 `ensureCharacterVault(
 /// character)` over the RAW row — the `CharacterVaultWriteInput` is the row
 /// through serde with every managed field at its default, the
-/// `post_office::deliver` / `tools::list_email` idiom), warning as v4 does.
+/// `post_office::deliver` / `tools::list_mail` idiom), warning as v4 does.
 fn resolve_vault_for_write(
     main: &Connection,
     mount: &Connection,

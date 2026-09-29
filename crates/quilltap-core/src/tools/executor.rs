@@ -59,10 +59,11 @@ use super::doc_edit::{
     PendingLibrarianAnnouncement,
 };
 use super::{
-    annotations, ask_carina, doc_edit, help, help_search, list_email, photo, project_info,
-    read_conversation, request_full_context, rng, run_custom, run_sql, search, self_inventory,
-    send_mail, state, terminal, wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read,
-    wardrobe_take_off, wardrobe_update, wardrobe_wear, web_search, whisper,
+    annotations, ask_carina, discard_mail, doc_edit, help, help_search, list_mail, photo,
+    project_info, read_conversation, read_mail, request_full_context, rng, run_custom, run_sql,
+    search, self_inventory, send_mail, state, terminal, wardrobe_archive, wardrobe_create,
+    wardrobe_list, wardrobe_read, wardrobe_take_off, wardrobe_update, wardrobe_wear, web_search,
+    whisper,
 };
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
@@ -146,9 +147,13 @@ pub const BUILT_IN_TOOLS: &[&str] = &[
     "terminal_list",
     // Carina
     "ask_carina",
-    // Post Office
+    // Post Office — inter-character mail (v4 `39bc98ffc`/`12c336fad`: the
+    // `list_email` → `list_mail` rename has NO alias arm; an LLM still calling
+    // `list_email` takes the unknown-tool path)
     "send_mail",
-    "list_email",
+    "list_mail",
+    "read_mail",
+    "discard_mail",
 ];
 
 /// The built-in tools [`BuiltInToolRunner`] dispatches to a real handler as of
@@ -211,7 +216,10 @@ pub const PORTED_TOOLS: &[&str] = &[
     "state",
     "run_sql",
     "send_mail",
-    "list_email",
+    "list_mail",
+    // P4.D234: the Post Office's own letter tools (v4 `39bc98ffc`/`12c336fad`).
+    "read_mail",
+    "discard_mail",
     // W4.10a: `ask_carina` dispatches through the injected `ErasedAskCarina` seam
     // (default: not-available → v4's recognized-but-unavailable failure; production
     // + the differential wire the real Carina query engine — `run_carina_query` —
@@ -582,7 +590,9 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "state" => self.run_state(tc, ctx).await,
             "run_sql" => self.run_run_sql(tc, ctx).await,
             "send_mail" => self.run_send_mail(tc, ctx).await,
-            "list_email" => self.run_list_email(tc, ctx).await,
+            "list_mail" => self.run_list_mail(tc, ctx).await,
+            "read_mail" => self.run_read_mail(tc, ctx).await,
+            "discard_mail" => self.run_discard_mail(tc, ctx).await,
             "ask_carina" => self.run_ask_carina(tc, ctx).await,
             "search_web" => self.run_web_search(tc, ctx),
             // W4.9b: photo trio.
@@ -1441,14 +1451,15 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             );
             let formatted = send_mail::format_send_mail_results(&out);
             // v4 returns `result: { formattedText, path }` even on failure; error
-            // set only when !success. `path` (undefined on failure) is dropped.
-            let mut result = Map::new();
-            result.insert("formattedText".into(), json!(formatted));
-            result.insert("path".into(), json!(out.path));
+            // set only when !success. `path` is `undefined` on failure, so the
+            // KEY is absent from every serialization (P4.D234: this inserted
+            // `json!(out.path)` = `null`, visible in the run-tool route's stored
+            // TOOL message and response, which keep the structured result).
+            let result = mail_result(formatted, out.path);
             ToolResult {
                 tool_name: "send_mail".into(),
                 success: out.success,
-                result: Value::Object(result),
+                result,
                 error: if out.success { None } else { out.error },
                 message: None,
                 metadata: None,
@@ -1457,19 +1468,70 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         .await
     }
 
-    // -- list_email (Post Office; tool-executor.ts:1131) ---------------------
-    async fn run_list_email(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+    // -- list_mail (Post Office; tool-executor.ts:1217) ----------------------
+    async fn run_list_mail(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
         let args = tc.arguments.clone();
+        let chat_id = ctx.chat_id.clone();
         let character_id = ctx.character_id.clone();
         self.wardrobe_write(self.db.clone(), move |main, mount| {
-            let out = list_email::execute_list_email(main, mount, character_id.as_deref(), &args);
-            let formatted = list_email::format_list_email_results(&out);
+            let out =
+                list_mail::execute_list_mail(main, mount, &chat_id, character_id.as_deref(), &args);
+            let formatted = list_mail::format_list_mail_results(&out);
             // v4 returns `result: { formattedText, count }`; error when !success.
             let result = json!({ "formattedText": formatted, "count": out.count });
             ToolResult {
-                tool_name: "list_email".into(),
+                tool_name: "list_mail".into(),
                 success: out.success,
                 result,
+                error: if out.success { None } else { out.error },
+                message: None,
+                metadata: None,
+            }
+        })
+        .await
+    }
+
+    // -- read_mail (Post Office; tool-executor.ts:1233) ----------------------
+    async fn run_read_mail(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let args = tc.arguments.clone();
+        let chat_id = ctx.chat_id.clone();
+        let character_id = ctx.character_id.clone();
+        // Both writer connections: an unannounced letter's `alerted` flag is a
+        // mount-store content rewrite.
+        self.wardrobe_write(self.db.clone(), move |main, mount| {
+            let out =
+                read_mail::execute_read_mail(main, mount, &chat_id, character_id.as_deref(), &args);
+            let formatted = read_mail::format_read_mail_results(&out);
+            ToolResult {
+                tool_name: "read_mail".into(),
+                success: out.success,
+                result: mail_result(formatted, out.path),
+                error: if out.success { None } else { out.error },
+                message: None,
+                metadata: None,
+            }
+        })
+        .await
+    }
+
+    // -- discard_mail (Post Office; tool-executor.ts:1249) -------------------
+    async fn run_discard_mail(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let args = tc.arguments.clone();
+        let chat_id = ctx.chat_id.clone();
+        let character_id = ctx.character_id.clone();
+        self.wardrobe_write(self.db.clone(), move |main, mount| {
+            let out = discard_mail::execute_discard_mail(
+                main,
+                mount,
+                &chat_id,
+                character_id.as_deref(),
+                &args,
+            );
+            let formatted = discard_mail::format_discard_mail_results(&out);
+            ToolResult {
+                tool_name: "discard_mail".into(),
+                success: out.success,
+                result: mail_result(formatted, out.path),
                 error: if out.success { None } else { out.error },
                 message: None,
                 metadata: None,
@@ -1996,6 +2058,18 @@ fn generated_image_to_value(img: &generate_image::GeneratedImageResult) -> Value
     Value::Object(m)
 }
 
+/// The Post Office letter tools' `result` object (v4 `{ formattedText, path:
+/// out.path }`): `path` is `undefined` on failure, so the key is ABSENT — never
+/// `null` — in the stored run-tool message and the route response (P4.D234).
+fn mail_result(formatted: String, path: Option<String>) -> Value {
+    let mut result = Map::new();
+    result.insert("formattedText".into(), json!(formatted));
+    if let Some(p) = path {
+        result.insert("path".into(), json!(p));
+    }
+    Value::Object(result)
+}
+
 /// A failure [`ToolResult`] (`result: null`, `error` set) — v4's `result:
 /// result.success ? {…} : null, error: result.success ? undefined : result.error`.
 fn fail(tool_name: &str, error: impl Into<String>) -> ToolResult {
@@ -2086,6 +2160,36 @@ fn wear_take_off_result(
 mod tests {
     use super::*;
     use crate::services::tool_execution::create_tool_context;
+
+    /// P4.D234 (§D.3): the letter tools' `result.path` is v4's `out.path` —
+    /// `undefined` on failure, so the KEY is absent (never `null`) wherever the
+    /// structured result is stored (the run-tool route keeps it whole).
+    #[test]
+    fn mail_result_omits_path_on_failure() {
+        let failed = mail_result("No letter.".to_string(), None);
+        assert_eq!(
+            serde_json::to_string(&failed).unwrap(),
+            r#"{"formattedText":"No letter."}"#
+        );
+        let ok = mail_result("Read.".to_string(), Some("Mail/x.md".to_string()));
+        assert_eq!(
+            serde_json::to_string(&ok).unwrap(),
+            r#"{"formattedText":"Read.","path":"Mail/x.md"}"#
+        );
+    }
+
+    /// The rename carries NO alias: `list_email` is neither built in nor
+    /// ported, so a model echoing it takes the unknown-tool path (v4
+    /// `39bc98ffc`).
+    #[test]
+    fn list_email_is_not_aliased() {
+        for n in ["list_mail", "read_mail", "discard_mail"] {
+            assert!(BUILT_IN_TOOLS.contains(&n), "{n} not built in");
+            assert!(PORTED_TOOLS.contains(&n), "{n} not ported");
+        }
+        assert!(!BUILT_IN_TOOLS.contains(&"list_email"));
+        assert!(!PORTED_TOOLS.contains(&"list_email"));
+    }
 
     fn ctx() -> ToolExecutionContext {
         create_tool_context(

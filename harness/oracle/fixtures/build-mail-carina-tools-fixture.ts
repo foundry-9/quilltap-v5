@@ -1,5 +1,7 @@
 /**
- * Fixture builder for the W4.1d5 `send_mail` / `list_email` tool differential
+ * Fixture builder for the W4.1d5 `send_mail` / `list_mail` tool differential
+ * (grown at P4.D234 for `read_mail` / `discard_mail` — v4 `39bc98ffc` /
+ * `12c336fad`)
  * (mail_carina_tools_equivalence — the mail half; ask_carina is DB-free).
  *
  * Bakes a shared state across main + mount-index so BOTH v4 and the Rust port read
@@ -10,6 +12,13 @@
  *   - One letter in the SENDER's (Friday's) mailbox (for the in_reply_to test).
  *   - One older letter in the RECIPIENT's (Aurora's) mailbox (so a send-then-list
  *     shows two letters, newest first).
+ *   - P4.D234: a FIFTH character, Bertie (the reader), whose postbox holds one
+ *     letter per read/discard shape (`readerLetters` in the spec): unalerted,
+ *     already-alerted, blank, a mixed-case file name, a protected link, and a
+ *     letter hard-linked (a bound group) to a second path in his vault.
+ *
+ * Build it at a v4 tree at or after `12c336fad` and BELOW `f7f3d7bf0` (the
+ * `chats.renderedMarkdown` drop) — the P4.D234 pin.
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
@@ -32,8 +41,19 @@ interface SeedLetter {
   sentAt: string;
   body: string;
 }
+interface ReaderLetter {
+  path?: string;
+  fromName: string;
+  fromCharacterId: string;
+  sentAt: string;
+  body: string;
+  linkTo?: string;
+}
 interface Spec {
   testPepperBase64: string;
+  readerId: string;
+  reader: Record<string, unknown>;
+  readerLetters: Record<string, ReaderLetter | string>;
   senderId: string;
   recipientId: string;
   emptyId: string;
@@ -92,7 +112,11 @@ async function main(): Promise<void> {
     DocMountFileLinkSchema,
     DocMountChunkSchema,
   } = await import('@/lib/schemas/mount-index.types');
-  const { deliverLetter } = await import('@/lib/post-office/mailbox');
+  const { deliverLetter, markAlerted, composeLetterContent } = await import(
+    '@/lib/post-office/mailbox'
+  );
+  const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+  const { linkFile } = await import('@/lib/mount-index/file-ops');
 
   await initializeDatabase();
   await ensureCollection('characters', CharacterSchema);
@@ -188,10 +212,69 @@ async function main(): Promise<void> {
     inReplyTo: null,
   } as never);
 
+  // P4.D234: Bertie and his postbox — one letter per read/discard shape.
+  const readerVault = await create(spec.readerId, spec.reader);
+  const letter = (key: string): ReaderLetter => spec.readerLetters[key] as ReaderLetter;
+  const deliver = async (key: string): Promise<string> => {
+    const l = letter(key);
+    const { path } = await deliverLetter({
+      recipientVaultId: readerVault,
+      fromName: l.fromName,
+      fromCharacterId: l.fromCharacterId,
+      sentAt: l.sentAt,
+      body: l.body,
+      inReplyTo: null,
+    } as never);
+    return path;
+  };
+  const readerPaths: Record<string, string> = {};
+  readerPaths.unalerted = await deliver('unalerted');
+  readerPaths.alerted = await deliver('alerted');
+  await markAlerted(readerVault, readerPaths.alerted);
+  readerPaths.blank = await deliver('blank');
+  // Written directly (not deliverLetter, whose slug is lower-case) so the file
+  // name keeps its capitals — the read/discard-by-lower-case-name measurement.
+  const mixed = letter('mixedCase');
+  await writeDatabaseDocument(
+    readerVault,
+    mixed.path as string,
+    composeLetterContent(
+      {
+        from: mixed.fromName,
+        fromCharacterId: mixed.fromCharacterId,
+        sentAt: mixed.sentAt,
+        alerted: false,
+        inReplyTo: null,
+      } as never,
+      mixed.body,
+    ),
+  );
+  readerPaths.mixedCase = mixed.path as string;
+  readerPaths.protected = await deliver('protected');
+  // A protected letter: the operator has closed its link to characters. The
+  // Post Office tools never consult these flags (v4's property).
+  midb
+    .prepare(
+      'UPDATE doc_mount_file_links SET allowCharacterRead = 0, allowCharacterWrite = 0 WHERE mountPointId = ? AND relativePath = ?',
+    )
+    .run(readerVault, readerPaths.protected);
+  readerPaths.hardLinked = await deliver('hardLinked');
+  const hard = letter('hardLinked');
+  await linkFile({
+    sourceMountPointId: readerVault,
+    sourcePath: readerPaths.hardLinked,
+    destMountPointId: readerVault,
+    destPath: hard.linkTo as string,
+  });
+  readerPaths.hardLinkedTo = hard.linkTo as string;
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
-  writeFileSync(mainOut + '.meta.json', JSON.stringify({ senderVault, recipientVault }));
+  writeFileSync(
+    mainOut + '.meta.json',
+    JSON.stringify({ senderVault, recipientVault, readerVault, readerPaths }),
+  );
   process.stderr.write(
     `built mail-carina fixtures: main=${mainOut} mount=${mountOut} senderVault=${senderVault} recipientVault=${recipientVault}\n`,
   );

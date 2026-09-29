@@ -1097,7 +1097,7 @@ pub async fn chat_mailbox_list(db: &Db, chat_id: &str, character_id: &str) -> Re
         Ok(None) => return not_found("Character"),
         Err(e) => return internal(e),
     };
-    // The chat-action twin of the list-email tool's refusal (v4 `d553f72a`,
+    // The chat-action twin of the list-mail tool's refusal (v4 `d553f72a`,
     // `actions/mailbox.ts:43`) — a 400, not the tool's soft `fail`.
     if crate::api::characters::is_archived(&character) {
         return bad_request("That character is archived; rehydrate it to continue.");

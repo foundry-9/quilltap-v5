@@ -54,8 +54,9 @@ fn quote_body(body: &str) -> String {
 }
 
 /// Persona-voiced whisper for the Salon transcript / UI (and `opaqueContent`).
-/// Reads each new letter aloud and appends the read/answer/discard reminders
-/// (v4 `buildSuparnaMailWhisper`). `""` for an empty list.
+/// Reads each new letter aloud and appends the read/answer/discard reminders,
+/// naming each letter by its file name — the handle `read_mail` takes (v4
+/// `buildSuparnaMailWhisper`). `""` for an empty list.
 pub fn build_suparna_mail_whisper(letters: &[DeliveredLetterSummary]) -> String {
     if letters.is_empty() {
         return String::new();
@@ -77,7 +78,7 @@ pub fn build_suparna_mail_whisper(letters: &[DeliveredLetterSummary]) -> String 
             format!(
                 "{head}\n\n{}\n\n{}",
                 quote_body(&letter.body),
-                format_letter_actions(&letter.path, &letter.from)
+                format_letter_actions(&letter.path, &letter.from, true)
             )
         })
         .collect::<Vec<_>>()
@@ -301,7 +302,8 @@ mod tests {
         ));
         assert!(out.contains("**A letter from Friday**, posted "));
         assert!(out.contains("> Hello there."));
-        assert!(out.contains("Read it again: doc_read_file"));
+        assert!(out.contains("Read it again: read_mail({ letter: \"friday-2026-02-01.md\" })"));
+        assert!(out.contains("Discard it: discard_mail({ letter: \"friday-2026-02-01.md\" })"));
     }
 
     #[test]

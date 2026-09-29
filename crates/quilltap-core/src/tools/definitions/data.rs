@@ -9,7 +9,7 @@
 
 use super::ToolDef;
 
-/// Every tool definition, in v4 `ALL_TOOLS` order. 59 entries.
+/// Every tool definition, in v4 `ALL_TOOLS` order. 61 entries.
 pub static TOOL_DEFINITIONS: &[ToolDef] = &[
     ToolDef {
         key: "askCarina",
@@ -172,9 +172,19 @@ pub static TOOL_DEFINITIONS: &[ToolDef] = &[
         json: r#"{"name":"keep_image","description":"File an image away in your photo album (a `photos/` folder in your character vault) so it survives chat garbage collection and becomes searchable from your memory. This is filing, not looking — to find out what an image depicts, call describe_image instead. Pass the UUID of an image that was generated in this chat, or the catalogue handle the Librarian announced when someone attached a photo from a gallery. Caption and tags are optional freeform labels for retrieval — they are not the platform's global Tag system. Returns the path the image now lives at in your vault. If you've already kept this image, the call fails — delete the existing copy first if you want to amend the caption or tags.","parameters":{"type":"object","properties":{"uuid":{"type":"string","minLength":1,"description":"UUID of the image to keep. Use the id returned by generate_image, list_images, or the catalogue handle from a Librarian \"Image attached\" announcement."},"caption":{"type":"string","description":"Optional short caption describing what you wanted to remember about this image."},"tags":{"type":"array","items":{"type":"string"},"description":"Optional freeform retrieval labels. Indexed alongside the prompt for semantic search."}},"required":["uuid"],"additionalProperties":false}}"#,
     },
     ToolDef {
-        key: "listEmail",
-        name: "list_email",
-        json: r#"{"name":"list_email","description":"List the letters waiting in your own mailbox, newest first, with the exact way to read, answer, or discard each. Takes no arguments — it always lists your postbox and no one else’s.","parameters":{"type":"object","properties":{},"additionalProperties":false}}"#,
+        key: "listMail",
+        name: "list_mail",
+        json: r#"{"name":"list_mail","description":"List the letters waiting in your own mailbox, newest first, with the exact way to read, answer, or discard each. Takes no arguments — it always lists your postbox and no one else’s.","parameters":{"type":"object","properties":{},"additionalProperties":false}}"#,
+    },
+    ToolDef {
+        key: "readMail",
+        name: "read_mail",
+        json: r#"{"name":"read_mail","description":"Read a letter from your own mailbox, by its file name. Only ever reads your own postbox; use list_mail to see what is waiting.","parameters":{"type":"object","properties":{"letter":{"type":"string","minLength":1,"description":"The letter's file name, exactly as list_mail or Suparṇā named it (e.g. \"1718370000000-from-ariadne.md\"). Just the name — no folder or path; the Post Office knows where your postbox is."}},"required":["letter"],"additionalProperties":false}}"#,
+    },
+    ToolDef {
+        key: "discardMail",
+        name: "discard_mail",
+        json: r#"{"name":"discard_mail","description":"Throw away a letter from your own mailbox, by its file name. This cannot be undone. Only ever touches your own postbox; use list_mail to see what is there.","parameters":{"type":"object","properties":{"letter":{"type":"string","minLength":1,"description":"The letter's file name, exactly as list_mail or Suparṇā named it (e.g. \"1718370000000-from-ariadne.md\"). Just the name — no folder or path; the Post Office knows where your postbox is."}},"required":["letter"],"additionalProperties":false}}"#,
     },
     ToolDef {
         key: "listImages",
@@ -184,7 +194,7 @@ pub static TOOL_DEFINITIONS: &[ToolDef] = &[
     ToolDef {
         key: "sendMail",
         name: "send_mail",
-        json: r#"{"name":"send_mail","description":"Post a letter to another character. Suparṇā of the Post Office delivers it into the recipient's mailbox, where it will be announced to them the next time they take the floor. Write the body only — the envelope (sender, date, and such) is stamped for you. Any character may write to any other; reading and answering are done with doc_read_file and send_mail's in_reply_to.","parameters":{"type":"object","properties":{"character":{"type":"string","minLength":1,"description":"The name (or id) of the character you are writing to. Suparṇā will find them by their nameplate; any soul with a postbox may be written to."},"message":{"type":"string","minLength":1,"description":"Your letter, written in Markdown — the body only. Do not pen any frontmatter or envelope; the Post Office stamps all of that for you."},"in_reply_to":{"description":"Optional. The message id (the Mail/… path) of a letter in YOUR OWN postbox that you are answering. When supplied, your reply is prefaced with a quoted copy of that original letter.","type":"string","minLength":1}},"required":["character","message"],"additionalProperties":false}}"#,
+        json: r#"{"name":"send_mail","description":"Post a letter to another character. Suparṇā of the Post Office delivers it into the recipient's mailbox, where it will be announced to them the next time they take the floor. Write the body only — the envelope (sender, date, and such) is stamped for you. Any character may write to any other; read your own letters with read_mail and answer them with send_mail's in_reply_to.","parameters":{"type":"object","properties":{"character":{"type":"string","minLength":1,"description":"The name (or id) of the character you are writing to. Suparṇā will find them by their nameplate; any soul with a postbox may be written to."},"message":{"type":"string","minLength":1,"description":"Your letter, written in Markdown — the body only. Do not pen any frontmatter or envelope; the Post Office stamps all of that for you."},"in_reply_to":{"description":"Optional. The file name of a letter in YOUR OWN postbox that you are answering (as list_mail or Suparṇā names it, e.g. \"1718370000000-from-ariadne.md\"). When supplied, your reply is prefaced with a quoted copy of that original letter.","type":"string","minLength":1}},"required":["character","message"],"additionalProperties":false}}"#,
     },
     ToolDef {
         key: "projectInfo",

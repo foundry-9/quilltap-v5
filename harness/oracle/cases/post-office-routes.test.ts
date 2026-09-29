@@ -716,6 +716,54 @@ async function main(): Promise<void> {
         };
       },
     },
+    // P4.D234 (v4 `39bc98ffc`): the compose route shares `composeAndDeliverLetter`
+    // with the `send_mail` tool, so `inReplyToPath` now takes the letter's bare
+    // FILE NAME (`.md` optional) and a leading slash, and the reply STORES the
+    // resolved `Mail/…` path in its `inReplyTo` frontmatter either way.
+    {
+      name: 'send_mail_reply_bare_name',
+      freezeClock: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'send-mail', {
+            fromCharacterId: ARIA,
+            toCharacterId: BEA,
+            bodyMarkdown: 'Bea — answering yours by its name alone.',
+            inReplyToPath: meta.seededLetterPath.replace(/^Mail\//, '').replace(/\.md$/, ''),
+          }),
+        );
+        return {
+          status,
+          body,
+          tables: {
+            recipientMail: await readVaultMail(meta.beaVault),
+            recipientShape: await readVaultShape(meta.beaVault),
+          },
+        };
+      },
+    },
+    {
+      name: 'send_mail_reply_leading_slash',
+      freezeClock: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'send-mail', {
+            fromCharacterId: ARIA,
+            toCharacterId: BEA,
+            bodyMarkdown: 'Bea — answering yours, slash and all.',
+            inReplyToPath: '/' + meta.seededLetterPath,
+          }),
+        );
+        return {
+          status,
+          body,
+          tables: {
+            recipientMail: await readVaultMail(meta.beaVault),
+            recipientShape: await readVaultShape(meta.beaVault),
+          },
+        };
+      },
+    },
     {
       name: 'send_mail_reply_not_found',
       freezeClock: true,

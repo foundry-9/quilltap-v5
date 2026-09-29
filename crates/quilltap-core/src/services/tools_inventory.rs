@@ -1,5 +1,5 @@
 //! The tool inventory (P4.9E3B) — v4 `GET /api/v1/tools`
-//! (`app/api/v1/tools/route.ts`, 727 LOC): the 41-entry `BUILT_IN_TOOLS`
+//! (`app/api/v1/tools/route.ts`, 727 LOC): the 43-entry `BUILT_IN_TOOLS`
 //! display table, the `BUILT_IN_TOOL_SCHEMAS` map (consulted only when
 //! `includeSchemas=true`, resolved against the byte-pinned
 //! [`crate::tools::definitions`] catalog), and the per-chat availability
@@ -48,7 +48,9 @@ struct BuiltInTool {
 const BUILT_IN_TOOLS: &[BuiltInTool] = &[
     BuiltInTool { id: "ask_carina", name: "Ask Carina", description: "Ask a designated answerer character a quick standalone question without joining the conversation", category: "utility" },
     BuiltInTool { id: "send_mail", name: "Send Mail", description: "Post a Markdown letter to another character, delivered by Suparṇā into their vault mailbox", category: "utility" },
-    BuiltInTool { id: "list_email", name: "List Email", description: "List the letters in your own mailbox, with the exact way to read, answer, or discard each", category: "utility" },
+    BuiltInTool { id: "list_mail", name: "List Mail", description: "List the letters in your own mailbox, with the exact way to read, answer, or discard each", category: "utility" },
+    BuiltInTool { id: "read_mail", name: "Read Mail", description: "Read a letter from your own mailbox by its file name", category: "utility" },
+    BuiltInTool { id: "discard_mail", name: "Discard Mail", description: "Throw away a letter from your own mailbox by its file name", category: "utility" },
     BuiltInTool { id: "generate_image", name: "Generate Image", description: "Generate images using AI image generation providers", category: "media" },
     BuiltInTool { id: "search", name: "Search", description: "Search through the Scriptorium (character memories, past conversations, and story backgrounds)", category: "search" },
     BuiltInTool { id: "search_web", name: "Search Web", description: "Search the web for current information", category: "search" },
@@ -89,14 +91,16 @@ const BUILT_IN_TOOLS: &[BuiltInTool] = &[
     BuiltInTool { id: "describe_image", name: "Describe Image", description: "Look at an image and report what it depicts", category: "photos" },
 ];
 
-/// v4 `BUILT_IN_TOOL_SCHEMAS` (route.ts:70–108): the 37 ids carrying an
+/// v4 `BUILT_IN_TOOL_SCHEMAS` (route.ts:70–108): the 39 ids carrying an
 /// OpenAI-format definition, mapped to their [`crate::tools::definitions`]
 /// catalog keys (the byte-pinned parameters source). The four photo tools are
 /// deliberately absent (module header).
 const SCHEMA_KEYS: &[(&str, &str)] = &[
     ("ask_carina", "askCarina"),
     ("send_mail", "sendMail"),
-    ("list_email", "listEmail"),
+    ("list_mail", "listMail"),
+    ("read_mail", "readMail"),
+    ("discard_mail", "discardMail"),
     ("generate_image", "imageGeneration"),
     ("search", "searchScriptorium"),
     ("search_web", "webSearch"),
@@ -389,10 +393,13 @@ mod tests {
                 "schema-map id {id} did not resolve in the definitions catalog"
             );
         }
-        assert_eq!(SCHEMA_KEYS.len(), 37);
+        // 39 / 43 since P4.D234 (v4 `39bc98ffc` + `12c336fad`): `list_email`
+        // renamed `list_mail`, `read_mail` + `discard_mail` added (37 + 2,
+        // 41 + 2).
+        assert_eq!(SCHEMA_KEYS.len(), 39);
         // 41 since P4.D108 added the describe_image row (v4 a14a1811, bug 92);
         // like the other photo tools it has NO schema-map entry, so
         // SCHEMA_KEYS stays at 37.
-        assert_eq!(BUILT_IN_TOOLS.len(), 41);
+        assert_eq!(BUILT_IN_TOOLS.len(), 43);
     }
 }

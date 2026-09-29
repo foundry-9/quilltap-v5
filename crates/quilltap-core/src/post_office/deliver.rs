@@ -1,6 +1,7 @@
 //! The Post Office — shared letter-delivery service (v4 `lib/post-office/deliver.ts`).
 //!
-//! The single composition + delivery path used by the `send_mail` tool handler.
+//! The single composition + delivery path used by the `send_mail` tool handler
+//! and the Salon "Compose Mail" action.
 //! Both vaults are ensured (idempotent), the reply-quoting rules applied when
 //! `inReplyTo` is given, and the letter delivered into the recipient's `Mail/`
 //! folder. No "Sent" copy is written into the sender's vault (a character replies
@@ -14,12 +15,16 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 use super::mailbox::{
-    build_reply_preface, deliver_letter, read_letter, DeliverLetterParams, ParsedLetter,
-    MAIL_FOLDER,
+    build_reply_preface, deliver_letter, read_letter, resolve_mail_path, DeliverLetterParams,
+    ParsedLetter,
 };
 use crate::db::character_vault::ensure_character_vault;
 use crate::db::vault_character_write::CharacterVaultWriteInput;
 use crate::db::DbError;
+
+/// The tracing target for the module's own lines (v4
+/// `createServiceLogger('PostOffice:Deliver')`).
+pub const LOG_TARGET: &str = "quilltap::post_office::deliver";
 
 /// The result of [`compose_and_deliver_letter`] (v4 `ComposeAndDeliverResult`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +70,16 @@ pub fn compose_and_deliver_letter(
     in_reply_to: Option<&str>,
     now_iso: &str,
 ) -> Result<ComposeAndDeliverResult, DbError> {
+    // Store the canonical `Mail/…` path whichever form the caller named it by
+    // (v4 `39bc98ffc`: `params.inReplyTo ? (resolveMailPath(…) ?? raw) : null`).
+    // An unresolvable reference stays raw, but then fails the lookup below, so a
+    // raw value never lands in a letter. Shared by `send_mail` AND the Salon
+    // "Compose Mail" action (`api/chat_post_office.rs`), which both move.
+    let resolved_reply: Option<String> = in_reply_to
+        .filter(|r| !r.is_empty())
+        .map(|r| resolve_mail_path(r).unwrap_or_else(|| r.to_string()));
+    let in_reply_to = resolved_reply.as_deref();
+
     let sender_vault_id = ensure_vault(main, mount, sender)?;
     let recipient_vault_id = ensure_vault(main, mount, recipient)?;
 
@@ -72,6 +87,12 @@ pub fn compose_and_deliver_letter(
     if let Some(reply) = in_reply_to {
         let Some(original) = resolve_reply_in_sender_mailbox(mount, &sender_vault_id, reply)?
         else {
+            tracing::debug!(
+                target: LOG_TARGET,
+                senderVaultId = sender_vault_id.as_str(),
+                inReplyTo = reply,
+                "Reply target not in sender mailbox"
+            );
             return Ok(ComposeAndDeliverResult::ReplyNotFound);
         };
         let preface = build_reply_preface(&original.body, &original.frontmatter.sent_at);
@@ -97,21 +118,19 @@ pub fn compose_and_deliver_letter(
     Ok(ComposeAndDeliverResult::Ok(path))
 }
 
-/// v4 `resolveReplyInSenderMailbox`: the `inReplyTo` reference must be a `Mail/…`
-/// path in the SENDER's own mailbox. Strips leading slashes; a non-`Mail/` path
-/// (case-insensitive) → `None`.
+/// v4 `resolveReplyInSenderMailbox`: resolve an `in_reply_to` reference — a
+/// letter's file name (or its `Mail/…` path) — to a letter that exists in the
+/// SENDER's own mailbox. `None` when the reference escapes `Mail/` or no such
+/// letter exists (v4 `39bc98ffc`; it had required a raw `Mail/…` prefix and read
+/// the slash-stripped reference as given, so a bare name was `reply-not-found`
+/// and `Mail/sub/x.md` was read).
 pub fn resolve_reply_in_sender_mailbox(
     mount: &Connection,
     sender_vault_id: &str,
     in_reply_to: &str,
 ) -> Result<Option<ParsedLetter>, DbError> {
-    let normalized = in_reply_to.trim_start_matches('/');
-    let prefix = format!("{MAIL_FOLDER}/");
-    if !normalized
-        .to_lowercase()
-        .starts_with(&prefix.to_lowercase())
-    {
+    let Some(path) = resolve_mail_path(in_reply_to) else {
         return Ok(None);
-    }
-    read_letter(mount, sender_vault_id, normalized)
+    };
+    read_letter(mount, sender_vault_id, &path)
 }

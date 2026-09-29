@@ -298,8 +298,14 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
         push_key(&mut universal, "rng");
         push_key(&mut universal, "state");
         push_key(&mut universal, "selfInventory");
+        // Post Office tools are always available — mail is ungated (any character
+        // may write to any character, and a character may always list, read and
+        // discard its own post, whatever its systemTransparency). v4's order:
+        // send, list, read, discard (`39bc98ffc`/`12c336fad`).
         push_key(&mut universal, "sendMail");
-        push_key(&mut universal, "listEmail");
+        push_key(&mut universal, "listMail");
+        push_key(&mut universal, "readMail");
+        push_key(&mut universal, "discardMail");
         push_key(&mut universal, "readConversation");
         push_key(&mut universal, "upsertAnnotation");
         push_key(&mut universal, "deleteAnnotation");
@@ -673,7 +679,12 @@ fn tool_name(tool: &Value) -> Option<&str> {
 
 /// v4 `DESTRUCTIVE_TOOL_NAMES` — vault/file-mutating tools removed from an
 /// autonomous room's per-turn slate unless the owner pre-authorized them.
-pub const DESTRUCTIVE_TOOL_NAMES: &[&str] = &["doc_delete_file", "doc_delete_folder"];
+pub const DESTRUCTIVE_TOOL_NAMES: &[&str] = &[
+    "doc_delete_file",
+    "doc_delete_folder",
+    // Post Office — deletes a letter through the same GC chokepoint as doc_delete_file.
+    "discard_mail",
+];
 
 /// Whether destructive tools are allowed this turn (v4's ceiling logic): the
 /// user-level `destructiveToolPolicy` is a CEILING (`'always_refuse'` overrides
@@ -690,6 +701,35 @@ pub fn filter_destructive_tools(tools: &mut Vec<Value>) {
         None => true,
         Some(name) => !DESTRUCTIVE_TOOL_NAMES.contains(&name),
     });
+}
+
+/// v4's whole autonomous-room ceiling (`orchestrator.service.ts:1041-1061`):
+/// when destructive tools are NOT allowed, filter them from the per-turn slate
+/// and — when anything was removed — log INFO `Autonomous room: destructive
+/// tools filtered from per-turn list {chatId, policy, allowedAtRoom, removed}`.
+/// The caller has already established `chatType === 'autonomous'`. The INFO was
+/// absent in v5 until P4.D234; `discard_mail` makes it fire on EVERY autonomous
+/// workspace slate, since that tool is always present there.
+pub fn apply_autonomous_destructive_filter(
+    chat_id: &str,
+    policy: &str,
+    allowed_at_room: bool,
+    tools: &mut Vec<Value>,
+) {
+    if destructive_allowed(policy, allowed_at_room) {
+        return;
+    }
+    let before = tools.len();
+    filter_destructive_tools(tools);
+    if before != tools.len() {
+        tracing::info!(
+            chatId = chat_id,
+            policy = policy,
+            allowedAtRoom = allowed_at_room,
+            removed = before - tools.len(),
+            "Autonomous room: destructive tools filtered from per-turn list"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -897,6 +937,88 @@ mod tests {
         assert!(!names(&tools).contains(&"doc_delete_file".to_string()));
         assert!(!names(&tools).contains(&"doc_delete_folder".to_string()));
         assert!(names(&tools).contains(&"doc_read_file".to_string()));
+    }
+
+    /// v4 `12c336fad`: `discard_mail` is destructive, so an autonomous room's
+    /// workspace slate loses it while its two harmless siblings stay.
+    #[test]
+    fn destructive_filter_drops_discard_mail_keeps_list_and_read() {
+        let opts = BuildToolsForProviderOptions {
+            include_workspace_tools: true,
+            ..Default::default()
+        };
+        let mut tools = build_tools_for_provider(&opts);
+        let before = names(&tools);
+        for n in ["send_mail", "list_mail", "read_mail", "discard_mail"] {
+            assert!(
+                before.contains(&n.to_string()),
+                "{n} missing from the slate"
+            );
+        }
+        assert!(!before.contains(&"list_email".to_string()));
+        filter_destructive_tools(&mut tools);
+        let after = names(&tools);
+        assert!(!after.contains(&"discard_mail".to_string()));
+        for n in ["send_mail", "list_mail", "read_mail"] {
+            assert!(after.contains(&n.to_string()), "{n} filtered");
+        }
+    }
+
+    /// The restored v4 INFO fires with v4's fields when the ceiling removes
+    /// anything, and stays silent when the room allows destructive tools or the
+    /// slate had none to remove.
+    #[test]
+    fn autonomous_filter_logs_what_it_removed() {
+        let workspace = BuildToolsForProviderOptions {
+            include_workspace_tools: true,
+            ..Default::default()
+        };
+        let (_, lines) = crate::test_support::captured_with(|| {
+            let mut tools = build_tools_for_provider(&workspace);
+            apply_autonomous_destructive_filter("chat-1", "opt_in_per_room", false, &mut tools);
+            tools
+        });
+        let hits: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("destructive tools filtered"))
+            .collect();
+        assert_eq!(hits.len(), 1, "{lines:?}");
+        assert!(hits[0].starts_with("INFO "), "{}", hits[0]);
+        assert!(
+            hits[0].contains(" chatId=chat-1 policy=opt_in_per_room allowedAtRoom=false removed="),
+            "{}",
+            hits[0]
+        );
+
+        // Silence: the room allows destructive tools…
+        let (kept, lines) = crate::test_support::captured_with(|| {
+            let mut tools = build_tools_for_provider(&workspace);
+            apply_autonomous_destructive_filter("chat-1", "opt_in_per_room", true, &mut tools);
+            tools
+        });
+        assert!(names(&kept).contains(&"discard_mail".to_string()));
+        assert!(!lines.iter().any(|l| l.contains("destructive tools")));
+        // …or nothing destructive was on the slate.
+        let (_, lines) = crate::test_support::captured_with(|| {
+            let mut tools = vec![serde_json::json!({"function": {"name": "rng"}})];
+            apply_autonomous_destructive_filter("chat-1", "always_refuse", true, &mut tools);
+            tools
+        });
+        assert!(!lines.iter().any(|l| l.contains("destructive tools")));
+    }
+
+    /// The Brahma surface (`include_workspace_tools: false`) carries none of the
+    /// four Post Office tools (v4 `brahma-console.test.ts`'s `not.toContain`s).
+    #[test]
+    fn brahma_slate_has_no_mail_tools() {
+        let opts = BuildToolsForProviderOptions {
+            include_workspace_tools: false,
+            ..Default::default()
+        };
+        let got = names(&build_tools_for_provider(&opts));
+        for n in ["send_mail", "list_mail", "read_mail", "discard_mail"] {
+            assert!(!got.contains(&n.to_string()), "{n} on the Brahma slate");
+        }
     }
 
     #[test]

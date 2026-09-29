@@ -61,5 +61,57 @@
     "fromCharacterId": "e0917000-0000-4000-8000-000000000003",
     "sentAt": "2020-09-13T12:26:40.000Z",
     "body": "Madam,\n\nThe tea is served.\n\n\u2014 Jeeves"
+  },
+  "readerId": "7eade700-0000-4000-8000-000000000005",
+  "readerName": "Bertie",
+  "reader": {
+    "name": "Bertie",
+    "userId": "44444444-4444-4444-8444-444444444444",
+    "identity": "An amiable correspondent with a crowded postbox.",
+    "description": "Round-faced, forever misplacing his spectacles.",
+    "personality": "Cheerful and a trifle scattered.",
+    "title": "The Correspondent",
+    "controlledBy": "llm"
+  },
+  "readerLetters": {
+    "$note": "P4.D234: Bertie's postbox holds one letter per read_mail/discard_mail shape. Every one is delivered through v4's real deliverLetter except mixedCase (written directly so its file name keeps capitals). alerted is then marked through markAlerted; protected has its link's allowCharacterRead/allowCharacterWrite set to 0 by raw UPDATE; hardLinked is linked (linkFile \u2014 a bound hard-link group) to linkTo in the same vault. Every character in this fixture is OPAQUE (no systemTransparency), so every read/discard arm is also the covenant-bypass proof.",
+    "unalerted": {
+      "fromName": "Aurora",
+      "fromCharacterId": "4ec191e0-0000-4000-8000-000000000002",
+      "sentAt": "2024-03-09T16:00:00.000Z",
+      "body": "Dear Bertie,\n\nThe kettle is on and the crumpets are warm.\n\n\u2014 Aurora"
+    },
+    "alerted": {
+      "fromName": "Jeeves",
+      "fromCharacterId": "e0917000-0000-4000-8000-000000000003",
+      "sentAt": "2024-05-01T08:00:00.000Z",
+      "body": "Sir,\n\nYour spectacles are on your forehead.\n\n\u2014 Jeeves"
+    },
+    "blank": {
+      "fromName": "Jeeves",
+      "fromCharacterId": "e0917000-0000-4000-8000-000000000003",
+      "sentAt": "2024-06-01T08:00:00.000Z",
+      "body": "   \n  "
+    },
+    "mixedCase": {
+      "path": "Mail/1730000000000-From-Friday.md",
+      "fromName": "Friday",
+      "fromCharacterId": "5e11de00-0000-4000-8000-000000000001",
+      "sentAt": "2024-10-27T03:33:20.000Z",
+      "body": "Bertie,\n\nMind the capitals.\n\n\u2014 F."
+    },
+    "protected": {
+      "fromName": "Prospero",
+      "fromCharacterId": "a2c41ed0-0000-4000-8000-000000000004",
+      "sentAt": "2025-02-01T00:00:00.000Z",
+      "body": "Burn this after reading.\n\n\u2014 P."
+    },
+    "hardLinked": {
+      "fromName": "Friday",
+      "fromCharacterId": "5e11de00-0000-4000-8000-000000000001",
+      "sentAt": "2025-06-01T00:00:00.000Z",
+      "body": "A keepsake, if you like.\n\n\u2014 F.",
+      "linkTo": "Keepsakes/from-friday.md"
+    }
   }
 }

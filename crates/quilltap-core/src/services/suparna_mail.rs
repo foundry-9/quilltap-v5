@@ -13,7 +13,9 @@
 
 use crate::db::runtime::Db;
 use crate::post_office::instructions::format_letter_date;
-use crate::post_office::mailbox::{collect_unalerted_mail, mark_alerted, DeliveredLetterSummary};
+use crate::post_office::mailbox::{
+    collect_unalerted_mail, letter_file_name, mark_alerted, DeliveredLetterSummary,
+};
 
 /// v4 `buildSuparnaMailLLMContext`: plain second-person framing for the LLM
 /// context, so the model reliably acts on its mail. `''` for an empty list.
@@ -34,10 +36,10 @@ pub fn build_suparna_mail_llm_context(letters: &[DeliveredLetterSummary]) -> Str
         .iter()
         .map(|letter| {
             let head = format!(
-                "Letter from {}, delivered {} ({}):",
+                "Letter from {}, delivered {} (letter: {}):",
                 letter.from,
                 format_letter_date(&letter.sent_at),
-                crate::doc_edit::qtap_uri::format_self_uri(&letter.path, None, None)
+                letter_file_name(&letter.path)
             );
             let body = {
                 let trimmed = crate::jsstr::js_trim(&letter.body);
@@ -51,7 +53,9 @@ pub fn build_suparna_mail_llm_context(letters: &[DeliveredLetterSummary]) -> Str
         })
         .collect::<Vec<_>>()
         .join("\n\n");
-    let howto = "You can read any letter again with doc_read_file({ uri: \"qtap://self/<its path>\" }), answer it with send_mail (set in_reply_to to its id — its path), or discard it with doc_delete_file({ uri: \"qtap://self/<its path>\" }).";
+    // v4 `39bc98ffc`/`12c336fad`: letters are named by FILE NAME, handed to the
+    // Post Office's own tools (before them: the `qtap://self/…` URI and `doc_*`).
+    let howto = "You can read any letter again with read_mail({ letter: \"<its file name>\" }), answer it with send_mail (set in_reply_to to its file name), or discard it with discard_mail({ letter: \"<its file name>\" }).";
     format!("{intro}\n\n{parts}\n\n{howto}")
 }
 
@@ -128,9 +132,9 @@ mod tests {
             "Suparṇā of the Post Office has delivered new mail to you. Each letter is below."
         ));
         assert!(out.contains("Letter from Friday, delivered "));
-        assert!(out.contains("(qtap://self/Mail/friday-2026-02-01.md):"));
+        assert!(out.contains("(letter: friday-2026-02-01.md):"));
         assert!(out.contains("\nHello there.\n"));
-        assert!(out.contains("You can read any letter again with doc_read_file"));
+        assert!(out.contains("You can read any letter again with read_mail"));
     }
 
     #[test]

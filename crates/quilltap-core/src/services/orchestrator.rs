@@ -2080,9 +2080,14 @@ where
             .get("runDestructiveToolsAllowed")
             .and_then(Value::as_i64)
             == Some(1);
-        if !tool_build::destructive_allowed(&policy, allowed_at_room) {
-            tool_build::filter_destructive_tools(&mut tools);
-        }
+        // P4.D234 OUT-OF-MANDATE (a NOBODY file this round; the unifier
+        // preserves): the ceiling + v4's absent `destructive tools filtered` INFO.
+        tool_build::apply_autonomous_destructive_filter(
+            &chat_id,
+            &policy,
+            allowed_at_room,
+            &mut tools,
+        );
     }
 
     // Resolve the pseudo-tool mode + the actual slate (orchestrator.service.ts:863–899).

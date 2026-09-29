@@ -21,6 +21,14 @@
 //! there the 27 pre-existing cases are byte-identical to the target's, and
 //! exactly the six moved cases differ (measured).
 //!
+//! P4.D234 (v4 `39bc98ffc` + `12c336fad`): every workspace slate trades
+//! `list_email` for `list_mail` + `read_mail` + `discard_mail` (34 of 40 cases
+//! move between the `acadcc7cd` and `12c336fad` pins; the six without the
+//! workspace bundle stay byte-identical), `discard_mail` joins the replicated
+//! destructive filter through v4's REAL `DESTRUCTIVE_TOOL_NAMES`, and
+//! `p4d234_destructive_autonomous_mail_only` is the row where it is the ONLY
+//! destructive tool on the slate.
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //! (The worktree path is under `/.claude/`, in v4 jest's
 //! `testPathIgnorePatterns`, so the oracle `.test.ts` + spec are copied to a temp

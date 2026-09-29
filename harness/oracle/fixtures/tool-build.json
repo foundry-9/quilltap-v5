@@ -31,6 +31,7 @@
     { "name": "destructive_autonomous_allowed", "documentEditingEnabled": true, "chatType": "autonomous", "destructiveToolPolicy": "opt_in_per_room", "runDestructiveToolsAllowed": 1 },
     { "name": "destructive_autonomous_not_permitted", "documentEditingEnabled": true, "chatType": "autonomous", "destructiveToolPolicy": "opt_in_per_room", "runDestructiveToolsAllowed": 0 },
     { "name": "destructive_non_autonomous_kept", "documentEditingEnabled": true, "chatType": "chat", "runDestructiveToolsAllowed": 0 },
+    { "name": "p4d234_destructive_autonomous_mail_only", "chatType": "autonomous", "destructiveToolPolicy": "opt_in_per_room", "runDestructiveToolsAllowed": 0 },
     { "name": "p4d216_doc_tools_read", "docToolsMode": "read" },
     { "name": "p4d216_doc_tools_full_explicit", "docToolsMode": "full" },
     { "name": "p4d216_doc_tools_off_explicit", "docToolsMode": "off" },

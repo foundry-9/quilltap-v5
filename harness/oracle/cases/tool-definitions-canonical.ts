@@ -48,7 +48,9 @@ import { helpSearchToolDefinition } from '@/lib/tools/help-search-tool';
 import { helpSettingsToolDefinition } from '@/lib/tools/help-settings-tool';
 import { imageGenerationToolDefinition } from '@/lib/tools/image-generation-tool';
 import { keepImageToolDefinition } from '@/lib/tools/keep-image-tool';
-import { listEmailToolDefinition } from '@/lib/tools/list-email-tool';
+import { listMailToolDefinition } from '@/lib/tools/list-mail-tool';
+import { readMailToolDefinition } from '@/lib/tools/read-mail-tool';
+import { discardMailToolDefinition } from '@/lib/tools/discard-mail-tool';
 import { listImagesToolDefinition } from '@/lib/tools/list-images-tool';
 import { sendMailToolDefinition } from '@/lib/tools/send-mail-tool';
 import { projectInfoToolDefinition } from '@/lib/tools/project-info-tool';
@@ -116,7 +118,9 @@ const ALL: UniversalTool[] = [
   helpSettingsToolDefinition,
   imageGenerationToolDefinition,
   keepImageToolDefinition,
-  listEmailToolDefinition,
+  listMailToolDefinition,
+  readMailToolDefinition,
+  discardMailToolDefinition,
   listImagesToolDefinition,
   sendMailToolDefinition,
   projectInfoToolDefinition,

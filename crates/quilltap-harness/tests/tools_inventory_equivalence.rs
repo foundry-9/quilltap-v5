@@ -3,7 +3,7 @@
 //! `chat-dialogs-{main,mount}.db` fixture per case.
 //!
 //! The compare is the RAW serialization (no sorting, no normalization): the
-//! 40-entry table's order, every description byte, and the per-tool key order
+//! 43-entry table's order, every description byte, and the per-tool key order
 //! (`id, name, description, source, category, userInvocable, parameters?,
 //! available?, unavailableReason?`) are all pinned. A plugin row appearing on
 //! the v4 side fails loudly (the standing no-plugin-runtime deferral must stay

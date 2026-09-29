@@ -102,6 +102,8 @@ const V4_CREATED_CASES: &[&str] = &[
     "announcement_whisper_custom_sender",
     "send_mail_ok",
     "send_mail_reply",
+    "send_mail_reply_bare_name",
+    "send_mail_reply_leading_slash",
 ];
 
 /// Cases whose 400 body carries v4's Zod `details` array, which v5's envelope
@@ -797,6 +799,44 @@ fn post_office_routes_match_oracle() {
             "recipientShape": dump_vault_shape(&db, &meta.bea_vault),
         });
         check("send_mail_reply", &r, Some(tables));
+    }
+    // P4.D234 (v4 `39bc98ffc`): the file-name forms of `inReplyToPath`, both
+    // storing the resolved `Mail/…` path (the compose route shares the delivery
+    // path with the `send_mail` tool).
+    for (tag, name, body, reply) in [
+        (
+            "sm2b",
+            "send_mail_reply_bare_name",
+            "Bea — answering yours by its name alone.",
+            meta.seeded_letter_path
+                .strip_prefix("Mail/")
+                .unwrap_or(&meta.seeded_letter_path)
+                .strip_suffix(".md")
+                .unwrap_or(&meta.seeded_letter_path)
+                .to_string(),
+        ),
+        (
+            "sm2c",
+            "send_mail_reply_leading_slash",
+            "Bea — answering yours, slash and all.",
+            format!("/{}", meta.seeded_letter_path),
+        ),
+    ] {
+        let db = fresh_db(&spec, tag);
+        let r = rt.block_on(chat_post_office::chat_send_mail(
+            &db,
+            CHAT,
+            ARIA,
+            BEA,
+            body,
+            Some(&reply),
+            &now_iso,
+        ));
+        let tables = json!({
+            "recipientMail": dump_vault_mail(&db, &meta.bea_vault),
+            "recipientShape": dump_vault_shape(&db, &meta.bea_vault),
+        });
+        check(name, &r, Some(tables));
     }
     {
         let db = fresh_db(&spec, "sm3");

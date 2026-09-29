@@ -153341,3 +153341,106 @@ empty). Node 24.13.1 for every regen. Regen outputs staged under `/tmp/p4d234/`.
 - Per-commit gate for this unit: `cargo fmt --all`, `cargo clippy -p
   quilltap-core -p quilltap-harness --all-targets -D warnings` clean, the
   family green. The full workspace gate runs once at lane close.
+
+### Unit 2 — the tools, the rename, letters by file name
+- **Core:** `tools/list_email.rs` → `tools/list_mail.rs` (NO alias; `list_email`
+  is in neither `BUILT_IN_TOOLS` nor `PORTED_TOOLS` — unit-pinned); NEW
+  `tools/read_mail.rs` + `tools/discard_mail.rs` (v4's gate order: parse → no
+  character → `resolve_mail_path` → character lookup → archived → vault; every
+  string verbatim; each handler's body is an inner `Result` whose `Err` is v4's
+  catch, logging v4's ERROR); `ensure_own_vault` shared by the three mailbox
+  tools; the executor's four sites + `mail_result` (path OMITTED on failure);
+  `post_office/{instructions,deliver,mod}.rs`; `services/{suparna_mail,
+  suparna_notifications,tool_build,tools_inventory}.rs`; the catalogue
+  regenerated through `gen-tool-catalog.mjs` from the pin (59 → 61, the count
+  literal + history comment); comment-only renames in `subprompts/storage.rs`
+  and `api/chat_post_office.rs`.
+- **⚠ OUT-OF-MANDATE (a NOBODY file this round):** `services/orchestrator.rs`
+  — ONE marked hunk swapping the destructive-filter call for
+  `tool_build::apply_autonomous_destructive_filter`, which carries v4's absent
+  INFO `Autonomous room: destructive tools filtered from per-turn list {chatId,
+  policy, allowedAtRoom, removed}` (the order names the line; its only site is
+  the orchestrator). Unifier: preserve (`git diff main --
+  crates/quilltap-core/src/services/orchestrator.rs` is that hunk alone).
+- **Red-first at the BASELINE (`acadcc7cd`) vs green at `12c336fad`**, each
+  oracle regenerated from BOTH lane-private pins (`/tmp/qt-v4-pin-p4d234-
+  {acadcc7cd,12c336fad}`; scripts under `/tmp/p4d234/regen-*.sh`):
+  `tool_definitions` catalog 59 ≠ 61 (then byte-exact 61 + canonical);
+  `tools_inventory` red / 8 of 8 bodies OK; `tool_build` 34 of 40 cases move
+  (the 6 without the workspace bundle identical) / green; `orchestrator_tier3`
+  172 of 410 NDJSON rows move / green (the fixture BUILT at each pin — both
+  below the `renderedMarkdown` drop, readable by v5); `context_feeders_leaves`
+  2 of 46 rows move / green; `post_office_concierge_lantern_suparna` 2 of 196 /
+  green; `post_office_routes` (+2 arms `send_mail_reply_bare_name`,
+  `send_mail_reply_leading_slash`): at the baseline EXACTLY those two fail (v4
+  400 on the bare name; the slash stored raw), every pre-existing arm green at
+  both pins (the other oracle deltas are minted announcement ids, blanked).
+  `mail_carina_tools`: the case cannot run at the baseline (the handlers do not
+  exist) — its red-first is the mutation table.
+- **`mail_carina_tools` grown** (the oracle rewritten as ordered OPS: send /
+  list / read / discard / content / mount / docRead): 54 mail scenarios + 9
+  Carina, 0 divergences. A fifth character (Bertie) whose postbox holds an
+  unalerted, an already-alerted, a blank, a mixed-case, a protected and a
+  hard-linked letter (`mail-carina-tools.json` `readerLetters`; the builder
+  plants them through v4's real `deliverLetter` / `markAlerted` /
+  `writeDatabaseDocument` / `linkFile`). v5-side capture pins (fire + silence)
+  for `read_mail: letter read` (markedAlerted true/false), `read_mail: no such
+  letter`, `discardLetter` (deleted true/false), `discard_mail: letter
+  discarded` (INFO, after `discardLetter`), `discard_mail: no such letter`,
+  `Reply target not in sender mailbox` (the RESOLVED ref; a raw one when
+  unresolvable), 16 silence legs; plus a v5-ONLY plant (a dropped
+  `doc_mount_file_links`) for the three handler ERRORs and `markAlerted`'s WARN
+  — ⚠ not a differential: v4's mount-index reads are fallback `withRawDb` /
+  `safeQuery` calls answering null, so the same plant reads as empty/absent on
+  v4 and never reaches its catch; v5's store reads propagate (pre-existing).
+- **Measurements:** §D.3 — `run_send_mail` inserted `path: null`; the
+  success-only `to_string_pretty` tool message hides it, but the run-tool route
+  (`services/chat_run_tool.rs`) stores and returns the STRUCTURED result on
+  failure too, so it was observable there — fixed via `mail_result` +
+  unit-pinned (`mail_result_omits_path_on_failure`). §D.5 — every fixture
+  character is OPAQUE, so every read/discard arm is the covenant bypass;
+  `covenant_contrast` shows `doc_read_file qtap://self/Mail/…` refused ("No
+  document stores accessible in this context") on the same character while
+  `read_mail` reads. §D.6 — `discard_protected` deletes a letter whose link has
+  `allowCharacterRead = allowCharacterWrite = 0`; ⚠ NEW: `read_protected` shows
+  `markAlerted`'s content rewrite RESETS the protected link's two flags to 1 on
+  BOTH sides (v4's `linkDocumentContent` upsert) — an unannounced protected
+  letter loses its protection when read (v4's property; candidate upstream
+  filing with §D.6, the human's call). §D.7 — v4's delete AND read lookups are
+  `LOWER(relativePath) = LOWER(?)`; a lower-case name reads, marks and discards
+  the `…-From-Friday.md` letter with NO second link, the original-case link
+  surviving the rewrite — both sides. Hard-link: discarding one member
+  dissolves the bound group (the survivor's `linkGroupId` → NULL), the file
+  row survives (31 → 31); a plain discard collects it (31 → 30). §D.9 — the
+  tools-at-wire order (send, list, read, discard, then readConversation) is
+  byte-green in `orchestrator_tier3`. §D.12 — the mail fixture's main DB holds
+  ONLY `characters` (+ sqlite_stat tables): no `chats` table. §D.13 — the
+  enclave `step()` runs the ordinary `process_message` spine, so autonomous
+  turns pass the same filter (`orchestrator.rs:2085`) and lose `discard_mail`
+  unless the room allows destructive tools.
+- **Neutrality, all green at the `12c336fad` pin, zero SKIP** (recipes rewritten
+  into `/tmp/p4d234/n-12c336fad/`): `post_office_writers_tier3`,
+  `brahma_console_tier3`, `brahma_orchestrator_tier3`, `brahma_console_routes`,
+  `scenario_builder_tier3`, `help_chat_orchestrator_tier3` (5/5),
+  `enclave_step_tier3`, `carina_query_tier3`, `primary_stream_tier3` (2/2, RE-RUN
+  only — P4.118's family).
+- **Mutations** (file-backup revert, `cmp`-verified): **M4** drop
+  `discard_mail` from the destructive list → `tool_build` red on exactly the
+  three filtering autonomous rows + the two unit pins; **M5** `path: null` on a
+  `read_mail` failure → `mail_carina_tools` red (`read_not_found`); **M6**
+  character lookup before `resolve_mail_path` → red
+  (`read_rummage_before_lookup`); **M7** `name` computed before the delete →
+  SURVIVES (v4-identical either way; the order is a fidelity nicety, recorded);
+  **M8** the `markAlerted` write dropped → red (`read_unalerted` content).
+- **§D.1 (recorded, not ported):** no alias, no remap — a stored
+  `disabledTools` naming `list_email` goes inert (the user's `list_mail` is then
+  ENABLED), historic TOOL / `llm_logs` rows keep `list_email` as data, a model
+  echoing it takes the unknown-tool path. v4-faithful; a filing is the human's
+  call.
+- **Gate for this commit:** `cargo fmt --all --check`; `cargo clippy
+  --workspace --all-targets -D warnings` clean; `cargo test -p quilltap-core
+  --lib` 2,698 / 0; every family above by name.
+- **Help / mirror (not this lane's to copy):** `help/post-office.md` md5 at
+  `12c336fad` = `8ef482446e867d3bfc3bcf7ee8495418` (= v4 HEAD's); v5's vendored
+  copy = `4320d67ebeb1b7bd32dbbc4a2c8b904f` (= `acadcc7cd`'s) — P4.D238's
+  re-vendor.
