@@ -154266,3 +154266,111 @@ keep the line; a union merge carries it. Nothing else outside §R.10(c).
 **Versions:** core 0.0.1089 → 0.0.1090, harness 0.0.1012 → 0.0.1013 (one bump
 each, in `6295f8536`); host/web/cli/tauri NOT bumped (the help tree is repo
 root; both 129 literals unmoved).
+## P4.118 — the TEXT-side structured refusal seam (P4.D225's named gap) — lane record
+
+Lane branch `claude/p4-118-text-refusal-seam-ec4c83`, cut from `main`
+`e361879d3`. Pins (ledger §5.1, the three symlink classes each):
+target `/tmp/qt-v4-pin-p4118-97b25fc53` (`git -C … rev-parse HEAD` →
+`97b25fc53ac3…`), fixture pin `/tmp/qt-v4-fix-p4118-acadcc7cd`
+(`acadcc7cd0174…`; `git show acadcc7cd:lib/schemas/chat.types.ts` names
+`renderedMarkdown` twice, `97b25fc53`'s zero). §R.2 probe at lane start and
+before every regen batch: PASS (`main`, `97b25fc53`, clean, both logs empty).
+Node 24.13.1. Regen outputs staged under `/tmp/p4118/`.
+
+### Unit 1 — the reconstruction + the six HTTP sites + the NEW wire family
+
+- **NEW `model/provider_error.rs`:** `text_http_refusal(provider, status,
+  body) -> Option<RefusalError>` keyed by `ProviderKind::of`, plus
+  `transport_error_refusal(provider, &TransportError)` and
+  `TransportError::http_body()` (option (a) — an inherent impl in the new
+  module, so `model/transport.rs` is untouched; the prefix format pinned by
+  `http_body_strips_the_transport_prefix`). Per provider: the six openai-SDK
+  kinds get `makeStatusError`'s `{error: body}` wrap (an array wraps too; a
+  truthy primitive does not and yields `status code (no body)`), `code =
+  nested_code = code_string(inner.code)`, `makeMessage`'s three-way message
+  (`JSON.stringify` through `pascal::js_value::json_stringify` for JS number
+  rendering), `name "Error"`, `status`; ANTHROPIC the WHOLE body as `error`,
+  no `code`, `nested_code = body.code` (never `error.type`); GOOGLE
+  `JSON.stringify(parsed)` or the synthesized `{error:{message, code,
+  status: statusText}}` with an RFC 9110 reason-phrase table, `name
+  "ApiError"`, `status`; OPENROUTER the FETCH path's `OpenRouter API error:
+  {s} - {text}`; OLLAMA `Ollama API error: {s} {text}` (both `name "Error"`,
+  no status). 17 unit pins.
+- **The sites:** `streaming_provider.rs` `single_error_from(provider, e)` at
+  the plain pre-stream failure, the think-retry's second failure and the
+  chained-fallback retry's failure (the two prepare errors keep
+  `single_error` — not HTTP); `completion_provider.rs` `completion_error_from`
+  at the plain failure and the think-retry's second failure;
+  `CompletionError.refusal` + `with_refusal` (defaulted in `new`; ZERO struct
+  literals existed). Message bytes UNCHANGED everywhere (§S.5).
+- **NEW family `text_http_errors_equivalence`** + recorder
+  `harness/oracle/providers/record-text-errors.mjs` (the stream recorder's
+  fetch mock taking `{status, body, contentType, statusText}`, the image
+  recorder's `thrownFields` widened with `name`, v4's REAL `classifyRefusal`
+  and `classifyFallbackTrigger` imported by path from the pin) +
+  `regenerate-text-errors.sh` + the COMMITTED corpus
+  `harness/oracle/fixtures/text-http-errors/{cases.json,
+  text-http-errors.recorded.ndjson}`: 33 posed bodies × the TEN real plugins
+  × `stream`/`send` (+ OPENROUTER `stream_tools`/`send_vision`, its fetch
+  paths) = 726 rows. The Rust side poses `HTTP {s}: {body}` through the REAL
+  `WireStreamingProvider::stream_message` / `execute_completion` and diffs the
+  side field by field, `classify_refusal` over it, `classify_fallback_trigger`
+  as the Salon (`from_stream_error`) and the cheap path (message + side) hand
+  it over, the unchanged bytes, and the request count (v4 `fetchCalls` = 1 on
+  every row).
+  - Regen AS RUN: `V4="/tmp/qt-v4-pin-p4118-97b25fc53" bash
+    harness/oracle/providers/regenerate-text-errors.sh` (from the lane
+    worktree; PATH Node 24.13.1) → 726 rows; a second regen `cmp`-IDENTICAL.
+  - **RED-FIRST (the module present, the sites unwired — `main`'s
+    behaviour):** v4 refuses 162 rows; v5 matched **0**. Breakdown: 142
+    `provider-code` rows unrefused on v5; 12 `provider-code` rows
+    (`content_policy_violation` through the six SDK kinds) misattributed to
+    `message-pattern` over the raw JSON with the raw-body detail — the
+    survey's predicted mis-evidence; 8 `message-pattern` rows with v5's
+    raw-body detail bytes; 2 OpenRouter SDK-path rows where v5 refused and v4
+    did not; 248 trigger mismatches; 1,138 divergences in all.
+  - **GREEN after wiring:** v5 matches 160 of v4's 162 refusals; the 320
+    residual divergences are EXACTLY two classes, pinned BOTH WAYS in
+    `EXPECTED_DIVERGENCES`: (a) v4's `@openrouter/sdk` rows (`stream`/`send`,
+    which v5 never runs): message/name/status on all 33 cases, `nested_code`
+    on 4 (the SDK copies the body's NUMERIC code — so a numeric `1301` IS a
+    provider-code on v4's SDK path, the 2 unmatched refusals), a
+    `content_policy_violation` body that is NOT a pattern hit there (v4's
+    SDK message is its schema-validation text), 30 triggers; (b) GOOGLE's
+    24×2 triggers (v4's `JSON.stringify(body)` has no status digits, v5's
+    `HTTP 400:` meets the 4xx rule — message bytes, §S.5) and the one
+    content-type row `google_json_as_text_plain`.
+- **Neutrality:** `refusal_classify` (74 rows), `fallback_engine` (202),
+  `ollama_think_retry_tier3` (6) regenerated at BOTH pins — each NDJSON
+  `cmp`-IDENTICAL across `acadcc7cd` and `97b25fc53` — and green;
+  `stream_decoders` (5 tests) + `tool_wire_call_site` (7) committed corpora
+  green; the `streaming_provider` / `completion_provider` unit pins
+  unmoved (41 green with the new ones).
+- **Mutations (file backup):** **M1** (the flat-body wrap removed) → the
+  family's non-vacuity pin reds, matched 160 → 136 (exactly the 24
+  flat-body rows: `flat_content_filter` + `error_null_flat` × 6 × 2);
+  **M2** (Anthropic `code` read from `error.type`) → 16 unexpected
+  Anthropic `code` divergences; **M4** (the stream message switched to v4's
+  rendering) → **the order's named `:1046` pin
+  (`pre_stream_failure_is_a_single_error`) SURVIVED** — its fake transport
+  sets `status: None`, so it never reaches the side path. A finding, fixed:
+  NEW status-carrying unit pins at every site
+  (`a_coded_http_failure_keeps_its_bytes_and_carries_the_side`,
+  `the_chained_retry_failure_carries_the_second_errors_side`,
+  `the_think_retry_failure_carries_ollamas_rendering`,
+  `a_statusless_failure_carries_no_side`, and the completion twins); M4 now
+  reds 4 stream tests (incl. the pre-existing
+  `think_rejection_twice_is_a_single_error`), the completion variant 3.
+- **Trap 6 measured (the IMAGE helper `image_dialects.rs:1404
+  openai_sdk_error`, NOT touched):** through `parse_models_page("OPENAI",
+  …)` against `text_http_refusal("OPENAI", …)` (the reconstruction the wire
+  family proves against the real SDK), 5 of 9 body shapes diverge: a FLAT
+  `{"code":"content_filter","message":…}` → image `400 {…raw…}` with NO code
+  (v4: `400 Flat body.` + `content_filter` — **an image refusal the image
+  failover misses**); `{"error":null,…,"code":"safety"}` → `400 null`, no
+  code (v4 wraps: the code survives); an empty body → `400 ` (v4 `400 status
+  code (no body)`); an empty `error.message` → `400 ""` (v4
+  `JSON.stringify(error)`); a bare `42` → `400 42` (v4 `status code (no
+  body)`). The nested, non-JSON, string-`error`, `null` rows agree. **For an
+  image-dialects order** — the fix is `provider_error`'s `openai_sdk_error`
+  shape (the wrap + `make_message`).

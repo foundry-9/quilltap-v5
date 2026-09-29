@@ -313,9 +313,31 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
 /// A receiver pre-loaded with a single error item (a failure before the first
 /// chunk — v4's generator throwing before any yield).
 fn single_error(message: String) -> tokio::sync::mpsc::Receiver<StreamChunkResult> {
+    single_stream_error(StreamError::new(message))
+}
+
+/// [`single_error`] for a TRANSPORT failure (P4.118): the message is the
+/// transport's bytes, unchanged, and a non-2xx also carries the refusal side —
+/// the value v4's plugin threw, rebuilt per provider
+/// ([`provider_error`](crate::model::provider_error)) — so a coded 400
+/// (`content_filter`, Z.AI's `1301`) reaches the classifier's `provider-code`
+/// evidence as it does on v4.
+fn single_error_from(
+    provider: &str,
+    error: crate::model::transport::TransportError,
+) -> tokio::sync::mpsc::Receiver<StreamChunkResult> {
+    let refusal = crate::model::provider_error::transport_error_refusal(provider, &error);
+    let mut e = StreamError::new(error.message);
+    if let Some(r) = refusal {
+        e = e.with_refusal(r);
+    }
+    single_stream_error(e)
+}
+
+fn single_stream_error(error: StreamError) -> tokio::sync::mpsc::Receiver<StreamChunkResult> {
     let (tx, rx) = tokio::sync::mpsc::channel(1);
     // The receiver is live (just created); try_send cannot fail on capacity 1.
-    let _ = tx.try_send(Err(StreamError::new(message)));
+    let _ = tx.try_send(Err(error));
     rx
 }
 
@@ -400,7 +422,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
                         match self.transport.execute_stream(&retry, &policy).await {
                             Ok(rx) => rx,
                             // v4 surfaces the SECOND failure (the retry's error).
-                            Err(retry_err) => return single_error(retry_err.message),
+                            Err(retry_err) => return single_error_from(provider, retry_err),
                         }
                     } else {
                         // Pre-stream failure. If this was a chained request, retry once
@@ -409,7 +431,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
                         // byte-for-byte.
                         let fallback = match fallback_prepared {
                             Some(fb) => fb,
-                            None => return single_error(e.message),
+                            None => return single_error_from(provider, e),
                         };
                         let (fallback_request, fallback_decoder, fallback_attachment_results) =
                             match fallback {
@@ -437,7 +459,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
                                 rx
                             }
                             // v4 surfaces the SECOND failure (the retry's error).
-                            Err(retry_err) => return single_error(retry_err.message),
+                            Err(retry_err) => return single_error_from(provider, retry_err),
                         }
                     }
                 }
@@ -1425,6 +1447,121 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert!(items[0].as_ref().unwrap_err().message.contains("404"));
         assert_eq!(p.transport.seen.lock().unwrap().len(), 1);
+    }
+
+    // --- P4.118: the refusal side on a pre-stream HTTP failure --------------
+    //
+    // The message stays the transport's bytes (§S.5 of the order); the side
+    // carries the value v4's plugin threw. `pre_stream_failure_is_a_single_error`
+    // above cannot see the side — its fake failure has no status — so these
+    // pin each of the three HTTP sites with a status-carrying failure.
+
+    fn coded_400() -> TransportError {
+        TransportError {
+            message: r#"HTTP 400: {"error":{"message":"Filtered.","code":"content_filter"}}"#
+                .to_string(),
+            status: Some(400),
+        }
+    }
+
+    /// The plain pre-stream failure (the main site).
+    #[tokio::test]
+    async fn a_coded_http_failure_keeps_its_bytes_and_carries_the_side() {
+        let t = ScriptedStreamTransport::typed(vec![Err(coded_400())]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let items = drain(
+            p.stream_message("OPENAI_COMPATIBLE", None, &params("m"))
+                .await,
+        )
+        .await;
+        assert_eq!(items.len(), 1);
+        let err = items[0].as_ref().unwrap_err();
+        assert_eq!(err.message, coded_400().message);
+        let side = err.refusal.as_deref().expect("a non-2xx carries the side");
+        assert_eq!(side.message, "400 Filtered.");
+        assert_eq!(side.code.as_deref(), Some("content_filter"));
+        assert_eq!(side.status, Some(400));
+    }
+
+    /// A network failure (no status) carries no side.
+    #[tokio::test]
+    async fn a_statusless_failure_carries_no_side() {
+        let t = ScriptedStreamTransport::new(vec![Err("connection refused".to_string())]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let items = drain(
+            p.stream_message("OPENAI_COMPATIBLE", None, &params("m"))
+                .await,
+        )
+        .await;
+        let err = items[0].as_ref().unwrap_err();
+        assert_eq!(err.message, "connection refused");
+        assert!(err.refusal.is_none());
+    }
+
+    /// The chaining fallback's retry failure: the SECOND error, bytes and side.
+    #[tokio::test]
+    async fn the_chained_retry_failure_carries_the_second_errors_side() {
+        let first = TransportError {
+            message:
+                r#"HTTP 400: {"error":{"message":"gone","code":"previous_response_not_found"}}"#
+                    .to_string(),
+            status: Some(400),
+        };
+        let t = ScriptedStreamTransport::typed(vec![Err(first), Err(coded_400())]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let items = drain(
+            p.stream_message("OPENAI", None, &openai_params_with_prev(Some("resp_dead")))
+                .await,
+        )
+        .await;
+        assert_eq!(items.len(), 1);
+        let err = items[0].as_ref().unwrap_err();
+        assert_eq!(err.message, coded_400().message);
+        let side = err.refusal.as_deref().expect("side");
+        assert_eq!(side.code.as_deref(), Some("content_filter"));
+        assert_eq!(p.transport.seen.lock().unwrap().len(), 2);
+    }
+
+    /// The Ollama think-retry's second failure: Ollama's own rendering.
+    #[tokio::test]
+    async fn the_think_retry_failure_carries_ollamas_rendering() {
+        let t = ScriptedStreamTransport::typed(vec![
+            Err(think_rejection()),
+            Err(TransportError {
+                message: "HTTP 500: still thinking about it".to_string(),
+                status: Some(500),
+            }),
+        ]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let items = drain(p.stream_message("OLLAMA", None, &ollama_params()).await).await;
+        let err = items[0].as_ref().unwrap_err();
+        assert_eq!(err.message, "HTTP 500: still thinking about it");
+        let side = err.refusal.as_deref().expect("side");
+        assert_eq!(
+            side.message,
+            "Ollama API error: 500 still thinking about it"
+        );
+        assert_eq!(side.code, None);
     }
 
     /// Arm 4 — the salvage is Ollama-only. A think-mentioning failure on another

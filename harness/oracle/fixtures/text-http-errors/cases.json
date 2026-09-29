@@ -1,0 +1,629 @@
+[
+  {
+    "case": "oai_content_filter",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":\"Filtered.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"content_filter\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "azure_content_filter",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":\"The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=2198766\",\"type\":null,\"param\":\"prompt\",\"code\":\"content_filter\",\"status\":400,\"innererror\":{\"code\":\"ResponsibleAIPolicyViolation\",\"content_filter_result\":{\"hate\":{\"filtered\":false,\"severity\":\"safe\"},\"sexual\":{\"filtered\":true,\"severity\":\"medium\"},\"violence\":{\"filtered\":false,\"severity\":\"safe\"},\"self_harm\":{\"filtered\":false,\"severity\":\"safe\"}}}}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "zai_1301_string",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"code\":\"1301\",\"message\":\"系统检测到输入或生成内容可能包含不安全或敏感内容，请您避免输入易产生敏感内容的提示语，感谢您的配合。\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "zai_1301_numeric",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"code\":1301,\"message\":\"系统检测到输入或生成内容可能包含不安全或敏感内容，请您避免输入易产生敏感内容的提示语，感谢您的配合。\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "zai_1301_long_message",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"code\":\"1301\",\"message\":\"系统检测到输入或生成内容可能包含不安全或敏感内容，请您避免输入易产生敏感内容的提示语，感谢您的配合。系统检测到输入或生成内容可能包含不安全或敏感内容，请您避免输入易产生敏感内容的提示语，感谢您的配合。系统检测到输入或生成内容可能包含不安全或敏感内容，请您避免输入易产生敏感内容的提示语，感谢您的配合。系统检测到输入或生成内容可能包含不安全或敏感内容，请您避免输入易产生敏感内容的提示语，感谢您的配合。\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "flat_content_filter",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"code\":\"content_filter\",\"message\":\"Flat body, benign words.\"}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "content_policy_violation",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":\"Your request was rejected as a result of our safety system.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"content_policy_violation\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "mixed_case_code",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":\"Mixed case.\",\"code\":\"Content_Filter\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "message_not_a_string",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":{\"detail\":\"structured\"},\"code\":\"content_filter\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "error_without_message",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"code\":\"content_filter\",\"param\":null}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "error_empty_message",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":\"\",\"code\":\"safety\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "error_is_string",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"code\":\"Client specified an invalid argument\",\"error\":\"Content violates usage guidelines. Failed check: SAFETY_CHECK_TYPE_BIO\"}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "error_null_flat",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":null,\"message\":\"Null error, flat code.\",\"code\":\"safety\"}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "error_is_false",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":false,\"code\":\"content_filter\"}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "anthropic_typed_body",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Output blocked by content filtering policy\"},\"request_id\":\"req_011\"}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "anthropic_top_level_code",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"type\":\"error\",\"code\":\"content_filter\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"prompt is too long\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "google_invalid_argument",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"code\":400,\"message\":\"Request contains an invalid argument.\",\"status\":\"INVALID_ARGUMENT\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "openrouter_moderation_403",
+    "status": 403,
+    "statusText": "Forbidden",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"code\":403,\"message\":\"Input was flagged for 'violence/graphic'\",\"metadata\":{\"reasons\":[\"violence/graphic\"],\"flagged_input\":\"…\",\"provider_name\":\"OpenAI\",\"model_slug\":\"openai/gpt-4o\"}}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "ollama_error_string",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":\"invalid options: bogus\"}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "benign_null_code",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":\"Invalid value for 'temperature': must be at most 2.\",\"type\":\"invalid_request_error\",\"param\":\"temperature\",\"code\":null}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "invalid_prompt",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":\"Invalid prompt: your prompt was flagged as potentially violating our usage policy.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"invalid_prompt\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "invalid_api_key_401",
+    "status": 401,
+    "statusText": "Unauthorized",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":\"Incorrect API key provided: sk-test.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"invalid_api_key\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "model_not_found_404",
+    "status": 404,
+    "statusText": "Not Found",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":\"The model `gpt-9` does not exist or you do not have access to it.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"model_not_found\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "code_is_number_zero",
+    "status": 422,
+    "statusText": "Unprocessable Entity",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":\"Zero code.\",\"code\":0}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "code_is_bool",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":\"Bool code.\",\"code\":true}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "non_json_text",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "text/plain",
+    "body": "Bad Request: upstream refused",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "empty_body",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "text/plain",
+    "body": "",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "json_array",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "[{\"code\":\"content_filter\"}]",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "json_string",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "\"oops\"",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "json_null",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "null",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "json_number",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "42",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "float_in_body",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "{\"error\":{\"message\":\"n\",\"code\":\"x\",\"n\":1.50,\"big\":1e21,\"tiny\":0.0000001}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "google_json_as_text_plain",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "text/plain",
+    "body": "{\"error\":{\"code\":400,\"message\":\"served as text\",\"status\":\"INVALID_ARGUMENT\"}}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  }
+]

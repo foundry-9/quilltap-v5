@@ -123,6 +123,22 @@ pub(crate) fn request_input_from_params(
     }
 }
 
+/// A transport failure as a [`CompletionError`] (P4.118): the transport's
+/// message, byte for byte, plus — for a non-2xx — the refusal side v4's plugin
+/// threw, rebuilt per provider ([`provider_error`](crate::model::provider_error)).
+/// The cheap path hands the side to its stand-in chain's classification.
+fn completion_error_from(
+    provider: &str,
+    error: crate::model::transport::TransportError,
+) -> CompletionError {
+    let refusal = crate::model::provider_error::transport_error_refusal(provider, &error);
+    let e = CompletionError::new(error.message);
+    match refusal {
+        Some(r) => e.with_refusal(r),
+        None => e,
+    }
+}
+
 /// Compose a full non-streaming completion: build → transport → parse → map to
 /// the [`CompletionResponse`] the cheap-LLM path consumes. `user_agent` /
 /// `base_url_env` feed [`transport_headers`] (the host injects the version +
@@ -232,9 +248,9 @@ pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
                             .execute(&retry, policy)
                             .await
                             // v4 surfaces the SECOND failure's text.
-                            .map_err(|retry_err| CompletionError::new(retry_err.message))?
+                            .map_err(|retry_err| completion_error_from(provider, retry_err))?
                     }
-                    None => return Err(CompletionError::new(e.message)),
+                    None => return Err(completion_error_from(provider, e)),
                 }
             }
         };
@@ -964,6 +980,57 @@ mod tests {
             .expect_err("404 surfaces");
         assert!(err.message.contains("404"));
         assert_eq!(t.seen.lock().unwrap().len(), 1);
+    }
+
+    // --- P4.118: the refusal side on a non-2xx -------------------------------
+
+    /// The plain failure: the transport's bytes, and v4's thrown value beside.
+    #[tokio::test]
+    async fn a_coded_http_failure_keeps_its_bytes_and_carries_the_side() {
+        let bytes = r#"HTTP 400: {"error":{"code":"1301","message":"blocked"}}"#;
+        let t = ScriptedTransport::new(vec![Err(TransportError {
+            message: bytes.to_string(),
+            status: Some(400),
+        })]);
+        let err = run_ollama(&t, "Z_AI", "glm-4.6")
+            .await
+            .expect_err("400 surfaces");
+        assert_eq!(err.message, bytes);
+        let side = err.refusal.as_deref().expect("a non-2xx carries the side");
+        assert_eq!(side.message, "400 blocked");
+        assert_eq!(side.code.as_deref(), Some("1301"));
+        assert_eq!(side.nested_code.as_deref(), Some("1301"));
+    }
+
+    /// The think-retry's second failure carries ITS side.
+    #[tokio::test]
+    async fn the_think_retry_failure_carries_the_second_errors_side() {
+        let t = ScriptedTransport::new(vec![
+            Err(think_rejection()),
+            Err(TransportError {
+                message: "HTTP 500: still thinking about it".to_string(),
+                status: Some(500),
+            }),
+        ]);
+        let err = run_ollama(&t, "OLLAMA", "qwen3:8b")
+            .await
+            .expect_err("both attempts fail");
+        assert_eq!(err.message, "HTTP 500: still thinking about it");
+        assert_eq!(
+            err.refusal.as_deref().map(|r| r.message.as_str()),
+            Some("Ollama API error: 500 still thinking about it")
+        );
+    }
+
+    /// A failure with no status (the network) carries no side.
+    #[tokio::test]
+    async fn a_statusless_failure_carries_no_side() {
+        let t = ScriptedTransport::new(vec![Err(TransportError {
+            message: "connection refused".to_string(),
+            status: None,
+        })]);
+        let err = run_ollama(&t, "OPENAI", "gpt-4o").await.expect_err("fails");
+        assert!(err.refusal.is_none());
     }
 
     /// Arm 4 — the salvage is Ollama-only.

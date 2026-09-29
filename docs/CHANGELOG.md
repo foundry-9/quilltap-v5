@@ -124,6 +124,15 @@ The rider adds `caller_context: &'static str` to `AvatarGenerationParams`, with 
 _No crate versions bumped._
 
 Copies v4's `help/` tree at `97b25fc53` over v5's. Thirteen pages change, none added or removed, so the count stays 129: `chat-settings-ai-services.md` (`04d6c9d52`); `character-optimizer.md`, `character-system-prompts.md`, `prompts.md` (`c3eefa752`); `chat-settings.md`, `chats.md`, `data-retention.md`, `embedding-profiles.md`, `scriptorium.md` (`f7f3d7bf0`); `post-office.md` (`39bc98ffc` + `12c336fad`); `wardrobe.md` (`9ff4bbd8e`); `story-backgrounds.md`, `the-concierge.md` (`97b25fc53`). `diff -rq` against the pin is empty. `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, pass; the embed guard and both host help-boot tests pass unmoved. Reverting `wardrobe.md` to its old bytes turns both oracle families red while the embed guard stays green.
+#### 2026-09-29 — feat(model): P4.118 unit 1 — the text-side structured refusal seam at the six HTTP sites + the text_http_errors wire family
+
+_Versions: core 0.0.1090, harness 0.0.1013._
+
+A text provider's HTTP error now carries a refusal side: the value v4's plugin threw on the same response, rebuilt per provider in the new `model/provider_error.rs` (`text_http_refusal`). The openai-SDK providers (OpenAI, OpenAI-compatible/Azure, DeepSeek, NanoGPT, Z.AI, Grok) get the SDK's `{error: body}` wrap, its `code` in both classifier slots and its `makeMessage` rendering; Anthropic's whole-body error with no code; Google's `ApiError`; OpenRouter's and Ollama's fetch-path errors. It is attached at the three pre-stream failure sites in `streaming_provider.rs` and the two in `completion_provider.rs`; `CompletionError` gains a `refusal` field. The error messages themselves do not change (`HTTP {status}: {body}`).
+
+So a benign-worded coded 400 (Azure's `content_filter`, Z.AI's `1301`) now reaches the classifier's `provider-code` evidence, as on v4. Before this, v5 answered "not fallback-eligible".
+
+Proven by a new wire family, `text_http_errors_equivalence`: 33 posed error bodies through v4's ten real text plugins in both call modes (726 rows, committed corpus), recorded by the new `record-text-errors.mjs`. Red-first: v5 matched 0 of v4's 162 refusals; now 160, with the two remaining (OpenRouter's SDK path, which v5 never runs) and the message-byte trigger differences pinned both ways. New unit pins at every site; the old pre-stream pin could not see the side (its fake failure has no status).
 
 #### 2026-09-28 — docs(porting): order the `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118)
 

@@ -36,6 +36,7 @@ pub mod ollama_think_retry;
 pub mod openai_image_models;
 pub mod openai_image_options;
 pub(crate) mod provider_auth;
+pub mod provider_error;
 pub mod provider_io;
 pub mod provider_models_api;
 pub mod request_builder;

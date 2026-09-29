@@ -205,13 +205,30 @@ pub struct CompletionResponse {
 #[derive(Clone, Debug)]
 pub struct CompletionError {
     pub message: String,
+    /// The structured refusal side (P4.118) — the value v4's plugin THREW on a
+    /// non-2xx, rebuilt by [`provider_error`](crate::model::provider_error),
+    /// so the cheap path's stand-in chain classifies the code v4's SDK
+    /// `APIError` carries. `message` is untouched by it (the order's §S.5).
+    /// `None` wherever the failure had no HTTP body. Boxed like
+    /// `StreamError::refusal`.
+    pub refusal: Option<Box<crate::services::dangerous_content::refusal::RefusalError>>,
 }
 
 impl CompletionError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            refusal: None,
         }
+    }
+
+    /// Attach the structured refusal side (see [`Self::refusal`]).
+    pub fn with_refusal(
+        mut self,
+        refusal: crate::services::dangerous_content::refusal::RefusalError,
+    ) -> Self {
+        self.refusal = Some(Box::new(refusal));
+        self
     }
 }
 
