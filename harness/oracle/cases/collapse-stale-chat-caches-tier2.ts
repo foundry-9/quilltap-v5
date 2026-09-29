@@ -13,16 +13,15 @@
  *     — the stale chat's laden message goes all-NULL keeping content; the active
  *     chat's message survives);
  *   - a `chunks` projection (id/chatId/content + `embeddingNull` + the raw
- *     `updatedAt` — the stale chat's OLD embedded chunk is cold-tiered (NULL,
- *     stamp minted); its already-cold chunk is skipped by the `IS NOT NULL`
- *     guard; its two WARM chunks (one stamped EXACTLY at the retention cutoff,
- *     one inside the window) are spared by v4 f7cc887b's `updatedAt < cutoff`
- *     age guard and keep their seeded stamps; the active chat's chunk survives).
+ *     `updatedAt`). P4.D235 (v4 `f7f3d7bf0`, "keep conversation embeddings
+ *     warm"): the sweep never touches chunk embeddings any more, so EVERY chunk
+ *     keeps its vector and its seeded stamp — the stale chat's OLD embedded
+ *     chunk, cold-tiered before that commit, included. The Rust harness still
+ *     placeholders any stamp that is not the row's own seeded value, so a
+ *     port that cold-tiered anything would show a `<ts>` byte-level.
  *
- * The chunk `updatedAt` value on a CLEARED row is minted (v4 stamps
- * `new Date()`, the Rust sweep injects `nowMs`), so the Rust harness
- * placeholders any stamp that is not the row's own seeded value — which makes
- * "spared" and "cleared" a byte-level distinction rather than a boolean.
+ * The `chats` projection no longer names `renderedMarkdown` (DROPPED at the
+ * target pin; the sweep no longer clears it).
  *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
@@ -77,7 +76,7 @@ async function main(): Promise<void> {
   const summary = await collapseStaleChatCaches(nowMs);
 
   const chats = await rawQuery<Array<Record<string, unknown>>>(
-    `SELECT id, compressionCache, renderedMarkdown, compiledIdentityStacks, updatedAt
+    `SELECT id, compressionCache, compiledIdentityStacks, updatedAt
        FROM chats ORDER BY id ASC`,
     [],
   );

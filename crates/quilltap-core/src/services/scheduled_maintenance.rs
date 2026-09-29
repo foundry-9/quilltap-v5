@@ -8,10 +8,12 @@
 //! 2. superseded generated story-backgrounds & wardrobe avatars of *stale*
 //!    chats — the ported [`crate::services::maintenance::collapse_stale_chat_assets`]
 //!    (its storage-bytes half is the standing host FsSeam);
-//! 3. regenerable caches of *stale* chats (compression cache, rendered
-//!    markdown/HTML, raw provider payloads, thinking traces, memory-gate debug
-//!    logs) plus cold-tiering of their conversation-chunk embeddings — the ported
-//!    [`crate::services::collapse_stale_chat_caches::collapse_stale_chat_caches`];
+//! 3. regenerable caches of *stale* chats (compression cache, compiled identity
+//!    stacks, rendered HTML, raw provider payloads, thinking traces, memory-gate
+//!    debug logs) — the ported
+//!    [`crate::services::collapse_stale_chat_caches::collapse_stale_chat_caches`].
+//!    Conversation-chunk embeddings are NEVER cold-tiered any more (v4
+//!    `f7f3d7bf0`, "keep conversation embeddings warm");
 //! 4. orphaned store children — mount-index rows whose STORE is gone (v4 bug 9,
 //!    `3bb664f0`) — [`crate::db::doc_mount_file_links::sweep_orphaned_store_children`].
 //!    Runs BEFORE the orphaned-files sweep so a reaped link can drop its file
@@ -90,7 +92,6 @@ pub struct MaintenanceSweepSummary {
     pub caches_chats_collapsed: usize,
     pub caches_chat_rows_cleared: usize,
     pub caches_message_rows_cleared: usize,
-    pub caches_chunk_embeddings_cleared: usize,
     /// v4 `orphanedStoreChildrenSwept` (bug 9, `3bb664f0`): links / folders /
     /// documents reaped because their mount point vanished. Runs BEFORE the
     /// orphaned-files sweep so a reaped link can drop its file too.
@@ -194,7 +195,6 @@ pub async fn run_scheduled_maintenance(
         caches_chats_collapsed: 0,
         caches_chat_rows_cleared: 0,
         caches_message_rows_cleared: 0,
-        caches_chunk_embeddings_cleared: 0,
         orphaned_store_children_swept: OrphanedStoreChildrenSwept::default(),
         orphaned_files_swept: 0,
         orphaned_thumbnails_swept: Default::default(),
@@ -236,14 +236,13 @@ pub async fn run_scheduled_maintenance(
         }
     }
 
-    // 3. Stale-chat cache collapse + conversation-chunk cold-tiering.
+    // 3. Stale-chat cache collapse.
     match collapse_stale_chat_caches(db, now_ms).await {
         Ok(r) => {
             summary.caches_stale_chats = r.stale_chats;
             summary.caches_chats_collapsed = r.chats_collapsed;
             summary.caches_chat_rows_cleared = r.chat_rows_cleared;
             summary.caches_message_rows_cleared = r.message_rows_cleared;
-            summary.caches_chunk_embeddings_cleared = r.chunk_embeddings_cleared;
         }
         Err(e) => {
             tracing::warn!(
@@ -395,7 +394,6 @@ pub async fn run_scheduled_maintenance(
         caches_chats_collapsed = summary.caches_chats_collapsed,
         caches_chat_rows_cleared = summary.caches_chat_rows_cleared,
         caches_message_rows_cleared = summary.caches_message_rows_cleared,
-        caches_chunk_embeddings_cleared = summary.caches_chunk_embeddings_cleared,
         orphaned_store_children_links = summary.orphaned_store_children_swept.links,
         orphaned_store_children_folders = summary.orphaned_store_children_swept.folders,
         orphaned_store_children_documents = summary.orphaned_store_children_swept.documents,

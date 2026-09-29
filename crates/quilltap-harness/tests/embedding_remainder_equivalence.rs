@@ -9,21 +9,30 @@
 //! `embedding_status`, `memories`, `help_docs`, `vector_entries` and
 //! `vector_indices`.
 //!
-//! ## P4.D25 — the reconcile's staleness gate + FAILED-status exclusion
+//! ## P4.D25 — the reconcile's FAILED-status exclusion (+ its retired stale gate)
 //!
-//! Phase 1 now exercises v4 `a0243abd`/`a5d6cee5`: the scan carries a
-//! `NOT EXISTS … embedding_status … FAILED` clause bound to the resolved default
-//! profile, and every selected row goes through the shared `isStale` gate. The
-//! corpus grew FOUR chats whose activity sits INSIDE the retention window
-//! (everything older was, by design, stale relative to `renderNowIso`): a fresh
-//! arm-(A) chat (enqueued), a fresh arm-(A) chat with a PENDING render already
-//! seeded (reused), a fresh chat whose only un-embedded chunk is FAILED for the
-//! DEFAULT profile — now inflated OVER the per-chunk budget so v4 Bug 17's arm
-//! (C) reclaims it (a re-render sub-chunks it); with no played messages, so it
-//! exercises the gate's `chats.updatedAt` fallback — and its twin whose FAILED
-//! row names the OTHER profile (arm (B), still selected). The oracle reports
-//! `{incompleteChats: 5, enqueued: 3, reused: 1, skippedStale: 1}` — arm (C) is
-//! the +1 over the pre-Bug-17 corpus.
+//! Phase 1 exercises v4 `a5d6cee5`: the scan carries a `NOT EXISTS …
+//! embedding_status … FAILED` clause bound to the resolved default profile. The
+//! corpus grew FOUR chats whose activity sits INSIDE the retention window: a
+//! fresh arm-(A) chat (enqueued), a fresh arm-(A) chat with a PENDING render
+//! already seeded (reused), a fresh chat whose only un-embedded chunk is FAILED
+//! for the DEFAULT profile — inflated OVER the per-chunk budget so v4 Bug 17's
+//! arm (C) reclaims it — and its twin whose FAILED row names the OTHER profile
+//! (arm (B), still selected).
+//!
+//! ## P4.D235 — v4 `f7f3d7bf0` (warm embeddings; `renderedMarkdown` dropped)
+//!
+//! The reconcile's staleness gate (v4 `a0243abd`) is GONE with its
+//! `skippedStale` counter: every selected chat is enqueued, stale ones included
+//! — the first-boot re-embed of the old cold tier. Arm (A) is keyed on chunk
+//! ABSENCE, not a NULL `renderedMarkdown` (the committed pair is NARROWED — the
+//! column is gone). The dimension reconcile's stale NULLing and its
+//! `staleChunkEmbeddingsCleared` are gone too, so a stale chat's non-conforming
+//! chunk is now COUNTED. The render job no longer writes the chat row, so the
+//! `chats` diff carries no stored transcript any more (it still proves the job
+//! never touches `updatedAt`). The two pre-drop guards that asserted those
+//! counters non-zero somewhere are retired; the reconcile outcome is MEASURED at
+//! the pin (see the P4.D235 lane record), never predicted.
 //!
 //! Two fail-soft arms are NOT reachable from this corpus and are covered by the
 //! module's own unit tests instead: the no-profile sentinel (`''`, which matches
@@ -36,8 +45,9 @@
 //! stubbed (in-process it forks v4's job child, which would claim the very jobs
 //! under measurement). The one non-determinism, the wall clock, is frozen on the
 //! oracle side (`globalThis.Date`) and injected on this side, which is what lets
-//! `chats.renderedMarkdown` — a string carrying a `Current time:` line — compare
-//! **byte-exact**.
+//! the chunk rows the render writes compare **byte-exact** (before P4.D235 it
+//! also covered the stored `chats.renderedMarkdown`, whose `Current time:` line
+//! is the render's own clock).
 //!
 //! ## P4.d27 — the reindex catch-up (v4 `7391404e`)
 //!
@@ -447,8 +457,11 @@ async fn embedding_remainder_matches_oracle() {
                     enqueued: v["enqueued"].as_u64().unwrap() as usize,
                     reused: v["reused"].as_u64().unwrap() as usize,
                     failed: v["failed"].as_u64().unwrap() as usize,
-                    skipped_stale: v["skippedStale"].as_u64().unwrap() as usize,
-                })
+                });
+                assert!(
+                    v.get("skippedStale").is_none(),
+                    "a pre-P4.D235 oracle (the stale gate is gone) — regenerate at the pin"
+                );
             }
             Some("render") => oracle_renders.push((
                 v["name"].as_str().unwrap().to_string(),
@@ -477,10 +490,6 @@ async fn embedding_remainder_matches_oracle() {
                         vector_entries_deleted: v["vectorEntriesDeleted"].as_u64().unwrap()
                             as usize,
                         vector_index_meta_fixed: v["vectorIndexMetaFixed"].as_u64().unwrap()
-                            as usize,
-                        stale_chunk_embeddings_cleared: v["staleChunkEmbeddingsCleared"]
-                            .as_u64()
-                            .unwrap()
                             as usize,
                         mismatched: MismatchedCounts {
                             memories: m["memories"].as_u64().unwrap() as usize,
@@ -651,8 +660,8 @@ async fn embedding_remainder_matches_oracle() {
     // ── Phase 1: the startup reconcile, over the pristine fixture copy.
     let want_reconcile = oracle_reconcile.expect("oracle emitted no reconcile row — regenerate");
     // A reconcile that found nothing would agree with a port that did nothing,
-    // so pin the corpus's own shape: BOTH arms fire, the dedupe reuses, and
-    // (P4.D25) the staleness gate actually SKIPS cold-tiered chats.
+    // so pin the corpus's own shape: the arms fire and the dedupe reuses.
+    // (P4.D235 retired the stale-skip half of this guard with the gate.)
     // `>= 5` is load-bearing for arm (C): the pre-bug-17 corpus produced
     // exactly 4 incomplete chats from arms (A)+(B), so a fixture edit that
     // stopped seeding the in-window over-budget chunk would fall back to 4 and
@@ -660,23 +669,17 @@ async fn embedding_remainder_matches_oracle() {
     assert!(
         want_reconcile.incomplete_chats >= 5
             && want_reconcile.enqueued >= 1
-            && want_reconcile.reused >= 1
-            && want_reconcile.skipped_stale >= 1,
-        "the corpus stopped exercising the reconcile arms (incl. arm C's in-window chunk) + the dedupe + the stale skip: {want_reconcile:?}"
+            && want_reconcile.reused >= 1,
+        "the corpus stopped exercising the reconcile arms (incl. arm C's in-window chunk) + the dedupe: {want_reconcile:?}"
     );
     // The reconcile is a BOOT pass: synchronous, on the writer connection. Under
     // the async test runtime that needs a blocking thread (`write_blocking`
     // panics if called on a runtime thread).
     let got_reconcile = {
         let db = db.clone();
-        let now_ms =
-            quilltap_core::clock::iso_to_ms(&spec.render_now_iso).expect("parse renderNow");
         tokio::task::spawn_blocking(move || {
             db.write_blocking(move |ws| {
-                Ok(reconcile_conversation_rendering(
-                    ws.main().connection(),
-                    now_ms,
-                ))
+                Ok(reconcile_conversation_rendering(ws.main().connection()))
             })
         })
         .await
@@ -736,7 +739,6 @@ async fn embedding_remainder_matches_oracle() {
         assert!(
             any(|r| r.vector_entries_deleted > 0)
                 && any(|r| r.vector_index_meta_fixed > 0)
-                && any(|r| r.stale_chunk_embeddings_cleared > 0)
                 && any(|r| r.mismatched.memories > 0)
                 && any(|r| r.mismatched.conversation_chunks > 0)
                 && any(|r| r.mismatched.help_docs > 0)

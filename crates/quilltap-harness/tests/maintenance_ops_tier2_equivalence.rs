@@ -185,7 +185,9 @@ fn maintenance_ops_match_oracle() {
             "chatsCollapsed": summary.caches_chats_collapsed,
             "chatRowsCleared": summary.caches_chat_rows_cleared,
             "messageRowsCleared": summary.caches_message_rows_cleared,
-            "chunkEmbeddingsCleared": summary.caches_chunk_embeddings_cleared,
+            // P4.D235 (v4 `f7f3d7bf0`): `chunkEmbeddingsCleared` LEFT the
+            // summary with the cold tier — the regenerated oracle has no such
+            // key (measured: 1 hit at the `acadcc7cd` pin, 0 at `f7f3d7bf0`).
         },
         // [bug 9] v4 now emits `orphanedStoreChildrenSwept` too (`3bb664f0`),
         // run BEFORE the files sweep. It is {0,0,0} on this fixture (no orphaned

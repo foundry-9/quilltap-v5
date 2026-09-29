@@ -154775,3 +154775,103 @@ chat.types.ts` has 0 `renderedMarkdown` hits) and FIXTURE
   `blob_write_sites_census`, `chat_settings_column_sites_guard`,
   `qtap_schema_embed_guard`, `public_schemas_vendor_guard`, `spelling_guard`,
   `dispatch_wrong_type_census` (quilltap-web) all green, unmoved.
+
+### Unit 4 — the warm-embeddings reversal + the render reconcile (Tier 1 items 7–9)
+
+- **The collapse** (`services/collapse_stale_chat_caches.rs`): step 3 + the
+  summary's `chunk_embeddings_cleared` + the `cutoff_iso`/`now_iso` plumbing
+  DELETED; `collapse_one_chat(db, chat_id)` → `(chat_rows, message_rows)`; the
+  UPDATE is v4's (Unit 1). **v4's three lines restored** (v5 had none): INFO
+  `Collapsed stale chat caches {chat_id, chat_rows, message_rows}` gated on
+  either count, WARN `Failed to collapse stale chat caches — continuing
+  {chat_id, error}`, INFO `Stale-chat cache collapse complete` with the
+  summary's five fields; target `quilltap::maintenance`. The per-chat INFO is
+  logged on the calling thread after the chat's write returns (v4 logs it
+  inside; no field or order moves). Pins: collapsed / idempotent-second-pass
+  silence / a trigger-refused UPDATE → one WARN per stale chat, pass continues.
+- **`clear_embeddings_for_chat` DELETED** from `db/conversation_chunks.rs`
+  (module doc updated); `find_cold_chunk_ids_by_chat_id` STAYS (the Salon
+  reopen path).
+- **`scheduled_maintenance`:** `caches_chunk_embeddings_cleared` out of the
+  summary, the initializer, the mapper and `Scheduled maintenance pass
+  complete`; the doc bullet rewritten.
+- **The dimension reconcile:** `clear_stale_chat_nonconforming_chunks` +
+  `stale_chunk_embeddings_cleared` (struct, `touched_anything`, the INFO field)
+  DELETED; `count_nonconforming_live_chunks` → `count_nonconforming_chunks`,
+  SQL byte-identical; the unit INVERTED to v4's new shape
+  (`counts_stale_and_live_chunks_alike_excluding_only_orphans`: the stale chunk
+  keeps its vector, `conversationChunks == 2`, reindex enqueued). **§E.9
+  decided:** `now_ms` is now DEAD here, but one caller is
+  `services/backup/restore/orchestrator.rs` — OUTSIDE this lane's ownership —
+  so the signature KEEPS an unused `_now_ms` (documented) rather than spill;
+  **for the unifier: a one-line follow-up to drop it with that caller.**
+- **The reindex job:** the phase-3 stale skip, its cutoff resolve and
+  `stale_chats_skipped` (and the log field) DELETED; the `is_stale(...)?` error
+  propagation goes with it; every chat is walked.
+- **The render reconcile:** the stale block, its WARN `Staleness check failed
+  during reconciliation; skipping chat`, and `skipped_stale` DELETED; v4's
+  pre-loop INFO `Conversation render reconciliation: found incomplete
+  conversations {count}` RESTORED (rows > 0 only; pinned with its silence leg
+  and the absent stale WARN); `IncompleteChat.updated_at` dropped while the
+  SELECT keeps `updatedAt` (v4's statement byte for byte — vestigial, not
+  read); **`now_ms` removed** from `reconcile_conversation_rendering` (callers:
+  `host.rs`, the family, the units — all this lane's). Units:
+  `stale_chats_are_healed_too` (inverted: `(2, 2, 0, 0)`), NEW
+  `arm_a_keys_on_chunk_absence_not_the_column` (chunked + no column → healthy;
+  column + no chunks → enqueued; the test table KEEPS the column to prove
+  nothing reads it).
+- **`host.rs`:** the dim reconcile's `stale_chunk_embeddings_cleared` and the
+  render reconcile's `skipped_stale` log fields gone; both comments rewritten
+  (the render reconcile's comment names the first-boot re-embed).
+- **Comment-only (§C):** `maintenance.rs` (the gate's doc + one comment),
+  `queue_service.rs`, `cold_chunk_reembed.rs` (v4's retitle — CODE UNCHANGED),
+  `api/salon.rs`, `db/instance_settings.rs`, `realtime/publish_sites.rs`. ⚠
+  **`quilltap-host/src/spine.rs:1678`** still says the per-turn render "keeps
+  `renderedMarkdown` … current" — the file is NOT in this lane's §R.10(c) list
+  (only the order's §C table names it), so it is left for the unifier: a
+  one-word comment fix, no behaviour.
+- **`conversation_chunks_tier2`:** red-first FREE, measured — the unchanged
+  case at the target pin dies `TypeError: repo.clearEmbeddingsForChat is not a
+  function` (empty oracle). ⚠ **Order count corrected: THREE `clearEmbeddings`
+  ops, not five** (on / idempotent / off). Removed from the spec (`\u` escapes
+  preserved), the case (+ its `clearResults` line) and the Rust side (+
+  `CLEAR_NOW_ISO` and the count asserts; a guard now refuses a pre-P4.D235
+  oracle). Fixture + oracle at the TARGET pin; 12 rows GREEN.
+- **`maintenance_ops_tier2`:** measured over ONE baseline-built fixture, oracle
+  at each pin: `chunkEmbeddingsCleared` 1 hit at `acadcc7cd`, 0 at `f7f3d7bf0`;
+  the projection line removed; GREEN against the target oracle.
+- **`collapse_stale_chat_caches_tier2`:** measured with the UNCHANGED
+  builder/case over one baseline-built fixture: `acadcc7cd` NULLs `cc000001`
+  (minted stamp) with `chunkEmbeddingsCleared: 1`; `f7f3d7bf0` spares it
+  (seeded stamp) and emits no key. **The builder decision (§Preamble):** the
+  raw `renderedMarkdown` UPDATE DROPPED from the builder, so it builds at
+  either pin — this family's fixture is now built at the TARGET pin; the case
+  and Rust projections drop the column; the corpus-shape guard INVERTED (all
+  three embedded stale-chat chunks spared, no row re-stamped). GREEN.
+- **`embedding_remainder`** (over copies of the NARROWED committed pair, via
+  the driver at the TARGET pin): the two panicking parses retired (a guard now
+  refuses a pre-P4.D235 oracle), the two non-zero stale guards retired, the
+  reconcile call's clock gone. **MEASURED, baseline → target** (baseline = the
+  UN-narrowed pair + main's case at `acadcc7cd`; target = the narrowed pair +
+  the lane's case at `f7f3d7bf0`): reconcile `{incompleteChats 5, enqueued 3,
+  reused 1, failed 0, skippedStale 1}` → `{7, 6, 1, 0}`; the dimension
+  reconcile's `enforces-target-dim` case `conversationChunks` 1 → 2 (the stale
+  chat's non-conforming chunk counted), `staleChunkEmbeddingsCleared` 1 → key
+  gone. ⚠ **A spec shape guard encoded the retired reindex stale skip**
+  (`neverEnqueued` CONVERSATION_CHUNK `…0020`, "its chat is STALE") and fired
+  at the target — measured: it is now enqueued under BOTH the mismatched-dim
+  and the full-scope runs; MOVED to `mustEnqueue` with the new why. GREEN: 6
+  render / 6 dim-reconcile / 4 reindex / 6 queue-memories cases, 9 tables.
+  ⚠ **The order's "add a `controlledBy:'user'` seat with no character" — v4's
+  participant schema REQUIRES `characterId`** (measured: the create fails Zod
+  `participants[1].characterId expected string`), so the reachable shape is a
+  user seat whose character does NOT resolve. Added to `scriptorium_tools`
+  (chat d007 + a read op), not this family: the job and the tools share the
+  ONE render, and that corpus is the byte-exact frozen-clock one. The fresh
+  oracle renders `### Message 0 (User)` and `### Message 1 (Assistant)` for
+  that seat (the old job said `User` for both); v5 GREEN. (A first attempt with
+  NO `characterId` left a partially built fixture whose new op read "not
+  found" on BOTH sides — green, meaningless; caught by grepping the fresh
+  NDJSON for the changed bytes. The silent-stale-pass trap, verbatim.)
+- `cargo clippy --workspace --all-targets -D warnings` clean; `cargo test -p
+  quilltap-core --lib` 2,714 / 0.

@@ -1099,8 +1099,9 @@ fn reconcile_embedding_dimensions_at_boot(db: &Db) -> Result<(), String> {
             // v4's PHASE 3.7 — since P4.D222 its own writer closure, run after
             // the help reconcile (3.66). One embedding standard per instance:
             // delete non-conforming vector-index entries, snap the index meta,
-            // converge stale chats to the cold tier, and enqueue ONE deduped
-            // `mismatched-dim` reindex for whatever still needs re-embedding.
+            // and enqueue ONE deduped `mismatched-dim` reindex for whatever
+            // still needs re-embedding — stale chats included (v4 `f7f3d7bf0`:
+            // conversation embeddings are kept warm, never cold-tiered).
             // COUNT-only (nothing hydrated) on a conforming corpus, and the
             // repair is enqueued rather than run inline, so a big backlog cannot
             // block the loading screen. Never fails the boot.
@@ -1123,7 +1124,6 @@ fn reconcile_embedding_dimensions_at_boot(db: &Db) -> Result<(), String> {
                     target_dimensions = target,
                     vector_entries_deleted = dim_reconcile.vector_entries_deleted,
                     vector_index_meta_fixed = dim_reconcile.vector_index_meta_fixed,
-                    stale_chunk_embeddings_cleared = dim_reconcile.stale_chunk_embeddings_cleared,
                     mismatched_memories = dim_reconcile.mismatched.memories,
                     mismatched_conversation_chunks = dim_reconcile.mismatched.conversation_chunks,
                     mismatched_help_docs = dim_reconcile.mismatched.help_docs,
@@ -1415,14 +1415,16 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             // === P4.6BM (replaces the P4.6BL stand-in) ===
             // v4's startup reconcile (`instrumentation.ts` PHASE 3.6): scan for
             // chats the Scriptorium pipeline left half-finished — arm (A) real
-            // messages but no rendered Markdown, arm (B) recoverable
-            // un-embedded interchange chunks — and re-enqueue a
-            // CONVERSATION_RENDER for each. The handler re-chunks (preserving
-            // existing embeddings) and re-enqueues the missing embeds, so both
-            // arms heal. STALE chats are excluded (P4.D25 / v4 a0243abd): the
-            // cache collapse cold-tiers quiet chats into exactly the state this
-            // scan reads as damage, so healing them here re-embedded the whole
-            // cold tier on every boot at real cost. This REPLACES the P4.6BL v5-only direct-embed repair,
+            // messages but no conversation chunks, arm (B) recoverable
+            // un-embedded interchange chunks, arm (C) sub-chunkable oversize
+            // chunks — and re-enqueue a CONVERSATION_RENDER for each. The
+            // handler re-chunks (preserving existing embeddings) and
+            // re-enqueues the missing embeds, so every arm heals. Stale chats
+            // are healed too since v4 `f7f3d7bf0` (the stale gate and its
+            // `skippedStale` are gone): on an instance the old sweep
+            // cold-tiered, THIS is the one-time first-boot re-embed of the
+            // backlog — a real provider cost, measured by the recipe in the
+            // P4.D235 lane record before any copy boots. This REPLACES the P4.6BL v5-only direct-embed repair,
             // which existed only because that handler was unported; the
             // coverage argument is in the reconcile's module doc. No-op on a
             // healthy instance; returns zeros (never fails the boot) when a
@@ -1430,16 +1432,14 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             let reconcile =
                 quilltap_core::services::conversation_render_reconcile::reconcile_conversation_rendering(
                     main,
-                    quilltap_core::clock::now_unix_ms(),
                 );
             // The gate is `incomplete_chats > 0`, NOT `enqueued > 0` (dogfood
-            // finding, `dogfood-findings.md`): the healthy P4.D25 outcome is
-            // `enqueued` ≈ 0 with `skipped_stale` large, and the old gate printed
-            // nothing at all for it — so the whole signature of the stale-skip fix
-            // was invisible in the field. v4 logs its "found incomplete
-            // conversations" line before the loop and its completion line
-            // unconditionally, so this is also the nearer shape. Log output sits
-            // outside the differential contract (P4.18).
+            // finding, `dogfood-findings.md`: a reuse-only pass must still say
+            // so). v4 logs its "found incomplete conversations" line before the
+            // loop (restored inside the reconcile by P4.D235) and its completion
+            // line unconditionally after an early return on zero rows, so this
+            // is v4's shape. Log output sits outside the differential contract
+            // (P4.18).
             if reconcile.incomplete_chats > 0 {
                 tracing::info!(
                     target: "quilltap::boot",
@@ -1447,7 +1447,6 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                     enqueued = reconcile.enqueued,
                     reused = reconcile.reused,
                     failed = reconcile.failed,
-                    skipped_stale = reconcile.skipped_stale,
                     "Conversation render reconciliation complete",
                 );
             }

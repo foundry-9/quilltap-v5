@@ -155,6 +155,14 @@ A text provider's HTTP error now carries a refusal side: the value v4's plugin t
 So a benign-worded coded 400 (Azure's `content_filter`, Z.AI's `1301`) now reaches the classifier's `provider-code` evidence, as on v4. Before this, v5 answered "not fallback-eligible".
 
 Proven by a new wire family, `text_http_errors_equivalence`: 33 posed error bodies through v4's ten real text plugins in both call modes (726 rows, committed corpus), recorded by the new `record-text-errors.mjs`. Red-first: v5 matched 0 of v4's 162 refusals; now 160, with the two remaining (OpenRouter's SDK path, which v5 never runs) and the message-byte trigger differences pinned both ways. New unit pins at every site; the old pre-stream pin could not see the side (its fake failure has no status).
+#### 2026-09-28 — feat(embeddings): keep conversation embeddings warm; stale chats are embedded like any other (P4.D235)
+
+_Versions: core 0.0.1092, harness 0.0.1014, host 0.0.164._
+
+Ports the warm-embeddings half of v4 `f7f3d7bf0`. The stale-chat cache collapse no longer NULLs conversation-chunk embeddings: its step 3 and `ConversationChunksRepository::clear_embeddings_for_chat` are deleted, and `chunk_embeddings_cleared` leaves both the collapse summary and the scheduled-maintenance summary and log. The collapse now logs v4's three lines, which v5 never had (the per-chat INFO, the per-chat WARN, the pass INFO). The render reconcile loses its staleness gate, its WARN and `skipped_stale`, and gains v4's `found incomplete conversations` INFO; on an instance the old sweep cold-tiered, the first boot re-embeds that backlog (a real provider cost). The dimension reconcile no longer NULLs stale chats' non-conforming chunks, so they are counted and reindexed (`count_nonconforming_live_chunks` renamed `count_nonconforming_chunks`, SQL unchanged); the reindex job walks every chat. `host.rs` drops the two retired log fields. `reconcile_conversation_rendering` no longer takes a clock; `reconcile_embedding_dimensions` keeps an unused `_now_ms` so the restore orchestrator (another owner) does not have to move this round.
+
+The `collapse_stale_chat_caches_tier2`, `conversation_chunks_tier2`, `maintenance_ops_tier2` and `embedding_remainder` differentials are regenerated at the pin; `scriptorium_tools` gains a user seat whose character does not resolve (it renders `User`/`Assistant`, not the old job's `User`).
+
 #### 2026-09-28 — feat(scriptorium): render transcripts on demand; derive the badge from chunks alone (P4.D235)
 
 _Versions: core 0.0.1091, harness 0.0.1013._

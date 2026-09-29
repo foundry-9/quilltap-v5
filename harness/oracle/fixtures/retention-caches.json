@@ -28,7 +28,7 @@
       "chat": "stale",
       "embedded": true,
       "updatedAt": "2026-01-01T00:00:00.000Z",
-      "comment": "Older than the staleness cutoff -> cold-tiered (embedding NULLed, updatedAt minted)."
+      "comment": "Older than the staleness cutoff. Cold-tiered (embedding NULLed, updatedAt minted) until v4 f7f3d7bf0 ('keep conversation embeddings warm'); SPARED since \u2014 the sweep never touches embeddings, so it keeps its vector and its seeded stamp."
     },
     {
       "id": "cc000002-0000-4000-8000-000000000002",
@@ -42,14 +42,14 @@
       "chat": "stale",
       "embedded": true,
       "updatedAt": "2026-05-02T00:00:00.000Z",
-      "comment": "P4.D25 boundary: stamped EXACTLY at the cutoff. `updatedAt < cutoff` is strict, so it SURVIVES."
+      "comment": "P4.D25 boundary (stamped EXACTLY at the cutoff): spared by the old `updatedAt < cutoff` guard; since v4 f7f3d7bf0 spared because nothing is cold-tiered at all."
     },
     {
       "id": "cc000005-0000-4000-8000-000000000005",
       "chat": "stale",
       "embedded": true,
       "updatedAt": "2026-05-20T00:00:00.000Z",
-      "comment": "P4.D25 warmth: re-embedded by a reopen INSIDE the retention window. The chat is still stale (reading never counts as played activity), but the vectors must SURVIVE \u2014 before f7cc887b this was one paid re-embed per read/sweep cycle."
+      "comment": "P4.D25 warmth (re-embedded inside the window): spared before and after v4 f7f3d7bf0 \u2014 the three embedded stale-chat chunks are now indistinguishable to the sweep."
     },
     {
       "id": "cc000003-0000-4000-8000-000000000003",

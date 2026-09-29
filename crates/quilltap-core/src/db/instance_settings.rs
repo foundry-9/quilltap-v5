@@ -42,8 +42,9 @@ const KEY_LANTERN_BACKGROUNDS_MOUNT_POINT_ID: &str = "lanternBackgroundsMountPoi
 const KEY_MEMORY_RECALL: &str = "memoryRecall";
 
 /// v4 `KEY_DATA_RETENTION` — the per-instance data-retention settings (the
-/// stale-chat window that governs the daily maintenance sweep's cache collapse,
-/// image collapse, and conversation-chunk cold-tiering).
+/// stale-chat window that governs the daily maintenance sweep's cache collapse
+/// and image collapse; conversation embeddings are always kept warm regardless
+/// of it — v4 `f7f3d7bf0`).
 const KEY_DATA_RETENTION: &str = "dataRetention";
 
 /// v4 `DEFAULT_DATA_RETENTION_SETTINGS.staleChatDays` — the documented default.

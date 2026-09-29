@@ -8,17 +8,17 @@
  * injects the same `nowIso` on both sides — no wall-clock skew):
  *
  *   - `chat-stale` (last played message 40 d before `nowIso` → stale under the
- *     default 30-day window): compressionCache + renderedMarkdown set; a played
+ *     default 30-day window): compressionCache + compiledIdentityStacks set; a played
  *     message (`type:'message'`, `systemSender:null`) carrying every discardable
  *     column (rawResponse / reasoningContent / reasoningSegments / renderedHtml /
  *     debugMemoryLogs); a SECOND played message with NONE of them set (the
  *     `IS NOT NULL` guard must skip it → messageRowsCleared stays 1); an EMBEDDED
  *     conversation-chunk older than the cutoff and an already-COLD one (embedding
- *     NULL — the guard must skip it); plus, since P4.D25 (v4 `f7cc887b`), TWO
- *     WARM embedded chunks — one stamped EXACTLY at the retention cutoff, one
- *     inside the window. `updatedAt < cutoff` is strict, so both survive and
- *     chunkEmbeddingsCleared stays 1; before that fix all three went, which cost
- *     one paid re-embed per read/sweep cycle on a chat the user merely reads.
+ *     NULL); plus, since P4.D25 (v4 `f7cc887b`), TWO WARM embedded chunks — one
+ *     stamped EXACTLY at the retention cutoff, one inside the window. P4.D235
+ *     (v4 `f7f3d7bf0`, "keep conversation embeddings warm"): the sweep no longer
+ *     touches chunk embeddings at all, so ALL THREE embedded stale-chat chunks
+ *     keep their vectors and stamps (the old one used to be cold-tiered).
  *     `chats.updatedAt` is pinned to
  *     `seedTs` so the "collapse never bumps updatedAt" invariant is checkable.
  *   - `chat-active` (last played message 1 d before `nowIso` → NOT stale):
@@ -107,10 +107,10 @@ async function main(): Promise<void> {
 
   // --- create all three chats (pinned ids + seed timestamps) ---------------
   // The THIRD chat (P4.D203, v4 bug 160) is stale and carries ONLY
-  // `compiledIdentityStacks` — no compressionCache, no renderedMarkdown. It is
+  // `compiledIdentityStacks` — no compressionCache. It is
   // the one row that distinguishes the guard's new disjunct from its SET: with
   // the disjunct absent the WHERE excludes this chat and the stack survives,
-  // even though the SET names the column. The other two chats carry all three,
+  // even though the SET names the column. The other two chats carry both,
   // so they stay green under that mutation — which is exactly why a
   // stack-ONLY row had to be added rather than a column added to an existing
   // one (`a-guard-whose-other-conjuncts-are-false-is-untested`).
@@ -175,12 +175,14 @@ async function main(): Promise<void> {
   const dressChat = async (chatId: string, lastMessageAt: string) => {
     await rawQuery(
       `UPDATE chats
-          SET compressionCache = ?, renderedMarkdown = ?, compiledIdentityStacks = ?,
+          SET compressionCache = ?, compiledIdentityStacks = ?,
               updatedAt = ?, lastMessageAt = ?
         WHERE id = ?`,
       [
+        // P4.D235 (v4 `f7f3d7bf0`): no `renderedMarkdown` — the column is
+        // DROPPED at the target pin (this raw UPDATE would fail there), and
+        // the sweep no longer names it. The builder now runs at either pin.
         'COMPRESSION-CACHE-JSON',
-        '# rendered markdown',
         '{"v":1,"stacks":{"cccccccc-0000-4000-8000-000000000001":"compiled"}}',
         spec.seedTs,
         lastMessageAt,

@@ -181,9 +181,11 @@ pub async fn chat_get(
         .cloned()
         .unwrap_or_default();
     suparna_notifications::surface_operator_mail_for_chat(db, chat_id, &participants).await;
-    // Cold-tier re-warm (v4 `maybeEnqueueColdChunkReembed`): if the maintenance
-    // sweep cold-tiered this chat's conversation-chunk embeddings, opening it
-    // re-enqueues them through the standard embedding pipeline. Best-effort
+    // Un-embedded chunk re-warm (v4 `maybeEnqueueColdChunkReembed`): if this
+    // chat's conversation chunks lack embeddings (a leftover from before chunk
+    // embeddings were kept warm unconditionally — v4 `f7f3d7bf0` — or a failed
+    // embed), opening it re-enqueues them through the standard embedding
+    // pipeline. Best-effort
     // (debounced + per-entity-deduped inside) and enqueue-only — the GET response
     // body is unchanged. v4 fires-and-forgets with `.catch`; v5 awaits it like
     // the two side effects above (identical effect; a failure is swallowed). The

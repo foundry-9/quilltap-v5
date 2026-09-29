@@ -2,22 +2,21 @@
 //!
 //! Structural DB diff. Both sides start from the SAME seed fixture (built by
 //! harness/oracle/fixtures/build-conversation-chunks-fixture.ts), run the SAME
-//! create / update / delete / clearEmbeddings op sequence from the committed
+//! create / update / upsert / delete op sequence from the committed
 //! spec, dump the `conversation_chunks` table canonically, and assert the
 //! post-op state is identical.
 //!
-//! P4.D25 — `clearEmbeddingsForChat`'s `olderThan` age guard (v4 `f7cc887b`).
-//! Three `clearEmbeddings` ops close its arms: the guard ON (only rows STRICTLY
-//! older than the cutoff go — the row stamped exactly at it and the row after it
-//! are both spared), a second identical pass (0 rows), and the guard OFF. The
-//! per-op row COUNTS are diffed first, because they are the direct observable of
-//! the guard; a corpus-shape assertion pins them at `[1, 0, 2]` so a corpus that
-//! stopped sparing anything cannot pass silently.
+//! P4.D235 (v4 `f7f3d7bf0`, "keep conversation embeddings warm"): v4 REMOVED
+//! `clearEmbeddingsForChat` (the stale-chat cold-tier, whose only caller was
+//! the cache collapse), and this port deleted `clear_embeddings_for_chat` with
+//! it — so P4.D25's three `clearEmbeddings` ops (the `olderThan` age guard on /
+//! idempotent / off), the `clearResults` line and `CLEAR_NOW_ISO` are gone. The
+//! red-first was free: at the target pin the old case died with `TypeError:
+//! repo.clearEmbeddingsForChat is not a function`.
 //!
-//! A cold-tiered row's `updatedAt` is MINTED (v4 stamps `new Date()`; this side
-//! injects `CLEAR_NOW_ISO`), so a timestamp absent from the committed spec is
-//! placeholdered on both sides. Every pinned id and timestamp still compares
-//! exactly — which is what makes "the guard SPARED this row" an assertion.
+//! An `upsert`'s minted `updatedAt` (v4 stamps `new Date()`; this side injects
+//! `UPSERT_NOW_ISO`) is absent from the committed spec, so it is placeholdered
+//! on both sides; every pinned id and timestamp still compares exactly.
 //!
 //! P4.44 — the `upsert` CREATE arm. The earlier upserts all hit an EXISTING
 //! `(chatId, interchangeIndex)` row, so only the update arm was ever exercised.
@@ -97,15 +96,6 @@ enum Op {
     Upsert { data: CreateData },
     #[serde(rename = "delete")]
     Delete { id: String },
-    /// P4.D25 — v4 `clearEmbeddingsForChat` with its new optional `olderThan`
-    /// age guard. `older_than: None` in the spec means "call it with no cutoff".
-    #[serde(rename = "clearEmbeddings")]
-    ClearEmbeddings {
-        #[serde(rename = "chatId")]
-        chat_id: String,
-        #[serde(rename = "olderThan")]
-        older_than: Option<String>,
-    },
 }
 
 #[derive(Deserialize)]
@@ -156,14 +146,9 @@ fn spec_path() -> PathBuf {
         .join("../../harness/oracle/fixtures/conversation-chunks-tier2.json")
 }
 
-/// The `now` stamp the Rust port injects into `clear_embeddings_for_chat`.
-/// Deliberately NOT in the committed spec: v4 mints its own `new Date()` there,
-/// so this value is v5-side only and must normalize to `<ts>` like the oracle's.
-const CLEAR_NOW_ISO: &str = "2026-06-06T06:06:06.606Z";
-
 /// The `now` the Rust port injects into `upsert` (Bug 17), for BOTH arms: the
 /// update arm's `updatedAt` and the create arm's id-less create (id/createdAt/
-/// updatedAt). Like `CLEAR_NOW_ISO`, deliberately NOT in the committed spec — v4
+/// updatedAt). Deliberately NOT in the committed spec — v4
 /// mints `new Date()` there — so every minted timestamp normalizes to `<ts>`.
 const UPSERT_NOW_ISO: &str = "2026-06-07T07:07:07.707Z";
 
@@ -270,36 +255,26 @@ fn conversation_chunks_tier2_matches_oracle() {
         .unwrap_or_else(|e| panic!("cannot read fixture spec: {e}"));
     let spec: Spec = serde_json::from_str(&spec_text).expect("parse fixture spec");
 
-    // Every timestamp the corpus PINS. A row cold-tiered by
-    // `clearEmbeddingsForChat` carries a minted `updatedAt` instead (v4 stamps
-    // `new Date()`; this side injects CLEAR_NOW_ISO), so anything not in this
-    // set is placeholdered on both dumps — and every pinned stamp still
-    // compares exactly, which is what proves the age guard SPARED a row.
+    // Every timestamp the corpus PINS. An upsert carries a minted `updatedAt`
+    // instead (v4 stamps `new Date()`; this side injects UPSERT_NOW_ISO), so
+    // anything not in this set is placeholdered on both dumps — and every
+    // pinned stamp still compares exactly.
     let spec_json: Value = serde_json::from_str(&spec_text).expect("parse fixture spec json");
     let pinned = pinned_literals(&spec_json);
 
-    // Parse the oracle's NDJSON: a `clearResults` line then the `dump` line.
+    // Parse the oracle's NDJSON: the one `dump` line.
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("cannot read oracle: {e}"));
-    let mut want_cleared: Option<Vec<u64>> = None;
     let mut oracle: Option<Value> = None;
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let v: Value = serde_json::from_str(line).expect("parse oracle line");
-        match v.get("kind").and_then(Value::as_str) {
-            Some("clearResults") => {
-                want_cleared = Some(
-                    v["cleared"]
-                        .as_array()
-                        .expect("cleared array")
-                        .iter()
-                        .map(|n| n.as_u64().expect("cleared count"))
-                        .collect(),
-                )
-            }
-            _ => oracle = Some(v),
-        }
+        assert_ne!(
+            v.get("kind").and_then(Value::as_str),
+            Some("clearResults"),
+            "a pre-P4.D235 oracle (clearEmbeddings is gone) — regenerate at the pin"
+        );
+        oracle = Some(v);
     }
-    let want_cleared = want_cleared.expect("oracle emitted no clearResults line — regenerate");
     let mut oracle = oracle.expect("oracle emitted no dump line — regenerate");
 
     // Work on a fresh copy of the seed fixture so the shared file stays pristine.
@@ -310,7 +285,6 @@ fn conversation_chunks_tier2_matches_oracle() {
     // Run the SAME op sequence through the Rust port.
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
-    let mut got_cleared: Vec<u64> = Vec::new();
     let mut upsert_seq: u8 = 0;
     {
         let repo = writer.conversation_chunks();
@@ -375,17 +349,6 @@ fn conversation_chunks_tier2_matches_oracle() {
                         .unwrap_or_else(|e| panic!("conversation_chunks.delete {id}: {e}"));
                     assert!(found, "delete target {id} not found in fixture");
                 }
-                Op::ClearEmbeddings {
-                    chat_id,
-                    older_than,
-                } => {
-                    let cleared = repo
-                        .clear_embeddings_for_chat(chat_id, CLEAR_NOW_ISO, older_than.as_deref())
-                        .unwrap_or_else(|e| {
-                            panic!("conversation_chunks.clear_embeddings_for_chat {chat_id}: {e}")
-                        });
-                    got_cleared.push(cleared as u64);
-                }
             }
         }
     }
@@ -395,27 +358,6 @@ fn conversation_chunks_tier2_matches_oracle() {
         .expect("dump conversation_chunks");
 
     let _ = std::fs::remove_file(&work);
-
-    // The counts each `clearEmbeddings` returned are the DIRECT observable of
-    // v4 f7cc887b's age guard — assert them before the state diff, so a guard
-    // that cleared the wrong set names itself.
-    assert_eq!(
-        got_cleared, want_cleared,
-        "clearEmbeddingsForChat row counts diverged"
-    );
-    // And pin the corpus's own shape: the guard must have SPARED something
-    // (a first pass that cleared everything would agree with an unguarded port).
-    //
-    // The "off" arm moved 2 → 3 at P4.D203: the compressed-content seed row
-    // (`b1000000-…-00b1`, chat `aaaa`, interchange 7) carries an embedding and a
-    // 2026-01-01 `updatedAt`, so the unguarded third pass clears it too. v5 and
-    // v4 AGREED on 3 before this constant moved — the assert above is the
-    // equivalence, this one is only the corpus's shape.
-    assert_eq!(
-        want_cleared,
-        vec![1, 0, 3],
-        "the corpus stopped exercising the olderThan guard (on / idempotent / off)"
-    );
 
     normalize(&mut got, "rust", &pinned);
     normalize(&mut oracle, "oracle", &pinned);

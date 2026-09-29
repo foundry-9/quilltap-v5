@@ -960,6 +960,11 @@
         "why": "non-conforming on a FRESH chat \u2014 the stale skip must not swallow live chats"
       },
       {
+        "entityType": "CONVERSATION_CHUNK",
+        "entityId": "f0000000-0000-4000-8000-000000000020",
+        "why": "its chat is STALE \u2014 P4.D235 (v4 f7f3d7bf0) removed the reindex stale skip, so it is enqueued like any other chat's chunk (it was the never-enqueued stale arm before)"
+      },
+      {
         "entityType": "MOUNT_CHUNK",
         "entityId": "d2000000-0000-4000-8000-000000000002",
         "why": "phase 4 exists at all: a NULL-embedding chunk on an enabled mount"
@@ -998,11 +1003,6 @@
       }
     ],
     "neverEnqueued": [
-      {
-        "entityType": "CONVERSATION_CHUNK",
-        "entityId": "f0000000-0000-4000-8000-000000000020",
-        "why": "its chat is STALE, and the skip is not scope-gated \u2014 neither run may reach it"
-      },
       {
         "entityType": "CONVERSATION_CHUNK",
         "entityId": "f0000000-0000-4000-8000-000000000022",

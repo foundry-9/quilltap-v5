@@ -248,6 +248,55 @@
       ],
       "createdAt": "2026-01-01T00:00:00.000Z",
       "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "$comment": "P4.D235 — the speaker-map change (v4 f7f3d7bf0; `conversation-render.test.ts:140`): a `controlledBy: user` seat whose character does NOT resolve (v4's participant schema requires a `characterId`, so a dangling one is the reachable shape). The old render job named such a seat `User` for every line; bug 161's shared resolver leaves it unnamed, so the renderer labels its USER line `User` and its ASSISTANT line `Assistant`. Alice (a named seat) sits beside it.",
+      "id": "d0000000-0000-4000-8000-00000000d007",
+      "userId": "a0000000-0000-4000-8000-00000000aaaa",
+      "title": "A Nameless Hand",
+      "participants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000a7",
+          "type": "CHARACTER",
+          "characterId": "c1111111-1111-4111-8111-111111111111",
+          "controlledBy": "llm",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000f7",
+          "type": "CHARACTER",
+          "characterId": "c9999999-9999-4999-8999-999999999999",
+          "controlledBy": "user",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "b0000000-0000-4000-8000-000000000701",
+          "role": "USER",
+          "participantId": "e0000000-0000-4000-8000-0000000000f7",
+          "content": "Who is there?",
+          "createdAt": "2026-01-01T00:01:00.000Z"
+        },
+        {
+          "id": "b0000000-0000-4000-8000-000000000702",
+          "role": "ASSISTANT",
+          "participantId": "e0000000-0000-4000-8000-0000000000f7",
+          "content": "A line voiced for the nameless seat.",
+          "createdAt": "2026-01-01T00:02:00.000Z"
+        },
+        {
+          "id": "b0000000-0000-4000-8000-000000000703",
+          "role": "ASSISTANT",
+          "participantId": "e0000000-0000-4000-8000-0000000000a7",
+          "content": "Only Alice.",
+          "createdAt": "2026-01-01T00:03:00.000Z"
+        }
+      ],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
     }
   ],
   "seedAnnotations": [
@@ -311,6 +360,13 @@
       "tool": "read_conversation",
       "$comment": "P4.D235 moved gate — header-only render (zero interchanges) → the no-messages error.",
       "chatId": "d0000000-0000-4000-8000-00000000d006",
+      "characterId": "c1111111-1111-4111-8111-111111111111",
+      "args": {}
+    },
+    {
+      "tool": "read_conversation",
+      "$comment": "P4.D235 speaker map — the character-less user seat renders `User` on its USER line and `Assistant` on its ASSISTANT line; Alice renders by name.",
+      "chatId": "d0000000-0000-4000-8000-00000000d007",
       "characterId": "c1111111-1111-4111-8111-111111111111",
       "args": {}
     },

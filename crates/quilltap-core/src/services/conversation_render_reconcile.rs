@@ -5,9 +5,12 @@
 //! Re-enqueues a `CONVERSATION_RENDER` job for every chat the Scriptorium
 //! pipeline left half-finished — carrying v4's own arms and its *why*:
 //!
-//!   (A) a chat with real USER/ASSISTANT messages but no rendered Markdown — the
-//!       per-turn render trigger never fired or the render job died (e.g. an
-//!       interrupted shutdown), so `renderedMarkdown` is still NULL; or
+//!   (A) a chat with real USER/ASSISTANT messages but NO `conversation_chunks`
+//!       rows at all — never chunked: the per-turn render trigger never fired or
+//!       the render job died (e.g. an interrupted shutdown). (v4 `f7f3d7bf0`
+//!       re-keyed this arm from `renderedMarkdown IS NULL` when it dropped the
+//!       column: a chat with chunks but no stored Markdown no longer matches,
+//!       and a chat with a stored column but no chunks now does.) Or
 //!   (B) a chat whose interchange chunks were never embedded — the embedding
 //!       provider was down when the turn fired, or the render job died before
 //!       enqueuing the embeds, leaving chunks with a NULL `embedding` and no
@@ -35,15 +38,15 @@
 //! middle band (over the budget, under the cap): re-rendering there is progress,
 //! not a doomed re-embed.
 //!
-//! **STALE chats are EXCLUDED too** (v4 `a0243abd`), via the same shared
-//! [`is_stale_conn`] gate the maintenance sweeps use. The stale-chat cache
-//! collapse deliberately cold-tiers quiet chats into exactly the state this scan
-//! reads as damage — NULL `renderedMarkdown`, NULL chunk embeddings — and
-//! expects the Salon reopen path (`cold_chunk_reembed`) to re-embed on demand.
-//! Before this exclusion the two subsystems fought: every boot re-rendered and
-//! re-embedded the entire cold tier (thousands of paid embedding calls), and the
-//! next sweep cleared it all again. A stale chat is healed when it is actually
-//! reopened or played, not at startup.
+//! **Stale chats are healed too** (v4 `f7f3d7bf0`, "keep conversation
+//! embeddings warm"). v4 `a0243abd` had excluded them, because the stale-chat
+//! cache collapse cold-tiered quiet chats into exactly the state this scan
+//! reads as damage; that collapse no longer touches embeddings, so the gate,
+//! its `skippedStale` counter and its WARN are gone. ⚠ **This is the FIRST-BOOT
+//! re-embed:** on an instance the old sweep cold-tiered, arm (B) now selects
+//! every previously cold-tiered chat and enqueues a one-time render → one
+//! `EMBEDDING_GENERATE` per un-embedded, non-FAILED, in-cap chunk (a real,
+//! measurable provider cost — the P4.D235 lane record carries the recipe).
 //!
 //! ## This REPLACES the P4.6BL boot repair
 //!
@@ -68,21 +71,18 @@
 //! lazily (the P4.9G3 lesson). v4's own guard is a try/catch around the scan.
 
 use rusqlite::{params, Connection};
-use serde_json::json;
 
 use super::conversation_markdown::CHUNK_CHAR_BUDGET;
 use super::embedding_generate_job::EMBEDDING_MAX_CHARS;
-use super::maintenance::is_stale_conn;
-use super::queue_service::{resolve_stale_chat_days_conn, retention_cutoff_iso};
-use crate::clock::iso_to_ms;
 use crate::db::DbError;
 
 /// v4's `SELECT_INCOMPLETE_CHATS`, verbatim. `?1` binds [`EMBEDDING_MAX_CHARS`];
 /// `?2` binds the current default embedding profile's id (or a sentinel matching
 /// nothing when no profile exists); `?3` binds [`CHUNK_CHAR_BUDGET`] (arm C's
 /// lower bound) and `?4` binds [`EMBEDDING_MAX_CHARS`] again (arm C's upper
-/// bound). `updatedAt` rides along for the staleness gate's no-played-messages
-/// fallback.
+/// bound). `updatedAt` still rides in the SELECT, as in v4 — vestigial since
+/// `f7f3d7bf0` deleted the staleness gate that read it; kept so the statement
+/// stays v4's byte for byte, and simply not read.
 ///
 /// The length guard alone is not enough: a chunk can sit under the
 /// 131,072-char transport cap yet exceed the embedding model's token context
@@ -160,17 +160,12 @@ pub struct ReconcileResult {
     pub reused: usize,
     /// Chats whose enqueue failed (logged, sweep continues).
     pub failed: usize,
-    /// Incomplete-looking chats skipped because they are stale (cold-tiered).
-    pub skipped_stale: usize,
 }
 
 /// One incomplete-chat row.
 struct IncompleteChat {
     chat_id: String,
     user_id: String,
-    /// v4's `updatedAt: string | null` — the staleness gate's fallback when the
-    /// chat has no played messages.
-    updated_at: Option<String>,
 }
 
 /// Scan for half-rendered / un-embedded conversations and re-enqueue a render for
@@ -183,7 +178,7 @@ struct IncompleteChat {
 ///
 /// The enqueue's dedupe (an in-flight `CONVERSATION_RENDER` for the same chat is
 /// reused) is delegated entirely to the enqueue helper, exactly as in v4.
-pub fn reconcile_conversation_rendering(main: &Connection, now_ms: i64) -> ReconcileResult {
+pub fn reconcile_conversation_rendering(main: &Connection) -> ReconcileResult {
     let mut result = ReconcileResult::default();
 
     // Resolve the profile a re-embed would actually use — the same selection the
@@ -221,44 +216,13 @@ pub fn reconcile_conversation_rendering(main: &Connection, now_ms: i64) -> Recon
     if rows.is_empty() {
         return result;
     }
-
-    // Staleness gate — the same shared predicate and window as the maintenance
-    // sweeps, so a chat the cache collapse cold-tiered is never "healed" here.
-    let cutoff_ms = iso_to_ms(&retention_cutoff_iso(
-        resolve_stale_chat_days_conn(main),
-        now_ms,
-    ))
-    .unwrap_or(now_ms);
+    tracing::info!(
+        target: "quilltap::boot",
+        count = rows.len(),
+        "Conversation render reconciliation: found incomplete conversations",
+    );
 
     for row in rows {
-        // v4 narrows `isStale` to `Pick<ChatMetadata, 'id' | 'updatedAt'>`, so
-        // the raw scan row is passed straight through — `updatedAt ?? ''`.
-        let chat = json!({
-            "id": row.chat_id,
-            "updatedAt": row.updated_at.clone().unwrap_or_default(),
-        });
-        match is_stale_conn(main, &chat, cutoff_ms) {
-            Ok(true) => {
-                result.skipped_stale += 1;
-                continue;
-            }
-            Ok(false) => {}
-            Err(e) => {
-                // Unknown staleness → skip, don't heal. Healing a chat that is
-                // actually cold-tiered re-enters the boot-time mass re-embed
-                // loop, while a skipped chat still has a recovery path: the
-                // Salon open path re-embeds any visited chat regardless of
-                // staleness.
-                result.skipped_stale += 1;
-                tracing::warn!(
-                    target: "quilltap::boot",
-                    chat_id = %row.chat_id,
-                    error = %e,
-                    "Staleness check failed during reconciliation; skipping chat",
-                );
-                continue;
-            }
-        }
         match crate::services::queue_service::enqueue_conversation_render_blocking(
             main,
             &row.user_id,
@@ -297,7 +261,6 @@ fn scan(main: &Connection, default_profile_id: &str) -> Result<Vec<IncompleteCha
             Ok(IncompleteChat {
                 chat_id: r.get(0)?,
                 user_id: r.get(1)?,
-                updated_at: r.get(2)?,
             })
         },
     )?;
@@ -308,23 +271,18 @@ fn scan(main: &Connection, default_profile_id: &str) -> Result<Vec<IncompleteCha
 mod tests {
     use super::*;
 
-    /// A `now` far past every seeded timestamp, so a chat's staleness is decided
-    /// purely by the stamps the case gives it.
-    const NOW_MS: i64 = 1_780_000_000_000; // 2026-06-08T…Z
-    /// Inside the default 30-day window relative to [`NOW_MS`].
+    /// A recent stamp and a months-old one — "stale" by the 30-day window the
+    /// deleted gate used; since v4 `f7f3d7bf0` the scan treats them alike.
     const FRESH_ISO: &str = "2026-06-07T00:00:00.000Z";
-    /// Well outside it.
     const OLD_ISO: &str = "2026-01-01T00:00:00.000Z";
 
-    /// The schema subset the scan + the staleness gate read. Deliberately
+    /// The schema subset the scan reads. Deliberately
     /// hand-rolled rather than provisioned: the point is to exercise the SQL,
     /// and a missing table is one of the cases under test.
     ///
-    /// ⚠ `chat_messages.customAnnouncer` is load-bearing here even though nothing
-    /// in this module names it: the staleness gate calls
-    /// `get_last_played_message_at`, whose predicate reads it since P4.D140 (v4
-    /// `735d9408c`). A reduced DDL that omits the column makes that query error
-    /// and the gate misjudge every chat.
+    /// (`chat_messages.customAnnouncer` was load-bearing while the staleness
+    /// gate lived here; v4 `f7f3d7bf0` deleted the gate, and the column stays
+    /// only as a faithful slice of the table.)
     fn test_conn() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         // The scan's three `LENGTH(qt_text(cc."content"))` need the UDF, just
@@ -443,10 +401,10 @@ mod tests {
         chat(&conn, "healthy", Some("rendered"));
         chunk(&conn, "c3", "healthy", "done", true);
 
-        let r = reconcile_conversation_rendering(&conn, NOW_MS);
+        let r = reconcile_conversation_rendering(&conn);
         assert_eq!(r.incomplete_chats, 2);
         assert_eq!(r.enqueued, 2);
-        assert_eq!((r.reused, r.failed, r.skipped_stale), (0, 0, 0));
+        assert_eq!((r.reused, r.failed), (0, 0));
         let mut ids = enqueued_chat_ids(&conn);
         ids.sort();
         assert_eq!(ids, vec!["arm-a", "arm-b"]);
@@ -460,9 +418,9 @@ mod tests {
         chat(&conn, "arm-a", None);
         message(&conn, "m1", "arm-a", "message", "ASSISTANT");
 
-        let first = reconcile_conversation_rendering(&conn, NOW_MS);
+        let first = reconcile_conversation_rendering(&conn);
         assert_eq!((first.enqueued, first.reused), (1, 0));
-        let second = reconcile_conversation_rendering(&conn, NOW_MS);
+        let second = reconcile_conversation_rendering(&conn);
         assert_eq!((second.enqueued, second.reused), (0, 1));
         assert_eq!(enqueued_chat_ids(&conn).len(), 1);
     }
@@ -473,20 +431,19 @@ mod tests {
     fn missing_tables_return_zeros() {
         let conn = Connection::open_in_memory().unwrap();
         assert_eq!(
-            reconcile_conversation_rendering(&conn, NOW_MS),
+            reconcile_conversation_rendering(&conn),
             ReconcileResult::default()
         );
     }
 
-    /// v4 `a0243abd`: a chat the cache collapse cold-tiered looks exactly like
-    /// arm (A) damage, and must be SKIPPED rather than healed. The staleness is
-    /// decided by the last PLAYED message, so a chat whose only activity is old
-    /// is stale even though the scan still selects it.
+    /// v4 `f7f3d7bf0` INVERTED v4 `a0243abd` ("enqueues a render for a stale
+    /// chat too"): the cache collapse no longer cold-tiers, so a stale chat is
+    /// healed like any other — the first-boot re-embed of the old cold tier.
     #[test]
-    fn stale_chats_are_skipped_not_healed() {
+    fn stale_chats_are_healed_too() {
         let conn = test_conn();
-        chat_at(&conn, "cold-tiered", None, OLD_ISO);
-        message(&conn, "m-old", "cold-tiered", "message", "USER");
+        chat_at(&conn, "quiet", None, OLD_ISO);
+        message(&conn, "m-old", "quiet", "message", "USER");
         conn.execute(
             "UPDATE chat_messages SET createdAt = ?1 WHERE id = 'm-old'",
             params![OLD_ISO],
@@ -495,11 +452,72 @@ mod tests {
         chat(&conn, "fresh", None);
         message(&conn, "m-new", "fresh", "message", "USER");
 
-        let r = reconcile_conversation_rendering(&conn, NOW_MS);
-        assert_eq!(r.incomplete_chats, 2, "both are still SELECTed");
-        assert_eq!(r.skipped_stale, 1);
-        assert_eq!(r.enqueued, 1);
-        assert_eq!(enqueued_chat_ids(&conn), vec!["fresh"]);
+        let r = reconcile_conversation_rendering(&conn);
+        assert_eq!(
+            (r.incomplete_chats, r.enqueued, r.reused, r.failed),
+            (2, 2, 0, 0)
+        );
+        let mut ids = enqueued_chat_ids(&conn);
+        ids.sort();
+        assert_eq!(ids, vec!["fresh", "quiet"]);
+    }
+
+    /// v4 `f7f3d7bf0` re-keyed arm (A) on chunk ABSENCE ("keys arm (A) on
+    /// messages with no conversation_chunks rows at all"): a chat with real
+    /// messages and fully embedded chunks but NO stored Markdown is healthy now
+    /// (it matched arm A before), and a chat with a stored transcript but no
+    /// chunks at all needs work (it matched nothing before). The test table
+    /// keeps the column — a migrated instance — to prove nothing reads it.
+    #[test]
+    fn arm_a_keys_on_chunk_absence_not_the_column() {
+        let conn = test_conn();
+        chat(&conn, "chunked-no-column", None);
+        message(&conn, "m1", "chunked-no-column", "message", "USER");
+        chunk(&conn, "c1", "chunked-no-column", "embedded", true);
+        chat(&conn, "column-no-chunks", Some("# a stored transcript"));
+        message(&conn, "m2", "column-no-chunks", "message", "ASSISTANT");
+
+        let r = reconcile_conversation_rendering(&conn);
+        assert_eq!((r.incomplete_chats, r.enqueued), (1, 1));
+        assert_eq!(enqueued_chat_ids(&conn), vec!["column-no-chunks"]);
+    }
+
+    /// v4's pre-loop INFO (restored — v5 had never emitted it) fires only when
+    /// the scan found work, with v4's single `count` field.
+    #[test]
+    fn the_found_line_fires_only_when_there_is_work() {
+        crate::test_support::global_capture::install();
+        let conn = test_conn();
+        let (_, quiet) = crate::test_support::global_capture::capture(|| {
+            reconcile_conversation_rendering(&conn)
+        });
+        assert!(
+            !quiet
+                .iter()
+                .any(|l| l.contains("found incomplete conversations")),
+            "{quiet:?}"
+        );
+        chat(&conn, "arm-a", None);
+        message(&conn, "m1", "arm-a", "message", "USER");
+        let (_, lines) = crate::test_support::global_capture::capture(|| {
+            reconcile_conversation_rendering(&conn)
+        });
+        let found: Vec<&String> = lines
+            .iter()
+            .filter(|l| {
+                l.contains("Conversation render reconciliation: found incomplete conversations")
+            })
+            .collect();
+        assert_eq!(found.len(), 1, "{lines:?}");
+        assert!(
+            found[0].starts_with("INFO quilltap::boot") && found[0].contains("count=1"),
+            "{}",
+            found[0]
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("Staleness check failed")),
+            "the stale WARN is gone: {lines:?}"
+        );
     }
 
     /// v4 `a5d6cee5`: a chunk already FAILED for the profile a re-embed would
@@ -527,7 +545,7 @@ mod tests {
         chunk(&conn, "c-other", "failed-under-other", "recoverable", false);
         failed_status(&conn, "c-other", "p-other");
 
-        let r = reconcile_conversation_rendering(&conn, NOW_MS);
+        let r = reconcile_conversation_rendering(&conn);
         assert_eq!(r.incomplete_chats, 1);
         assert_eq!(enqueued_chat_ids(&conn), vec!["failed-under-other"]);
     }
@@ -564,7 +582,7 @@ mod tests {
         );
         failed_status(&conn, "c-huge", "p-default");
 
-        let r = reconcile_conversation_rendering(&conn, NOW_MS);
+        let r = reconcile_conversation_rendering(&conn);
         assert_eq!(r.incomplete_chats, 1);
         assert_eq!(enqueued_chat_ids(&conn), vec!["sub-chunkable"]);
     }
@@ -586,7 +604,7 @@ mod tests {
         );
         failed_status(&conn, "c-fail", "p-default");
 
-        let r = reconcile_conversation_rendering(&conn, NOW_MS);
+        let r = reconcile_conversation_rendering(&conn);
         assert_eq!(r.incomplete_chats, 1);
         assert_eq!(enqueued_chat_ids(&conn), vec!["failed-but-no-profile"]);
     }

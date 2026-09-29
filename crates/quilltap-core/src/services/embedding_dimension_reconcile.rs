@@ -12,10 +12,11 @@
 //!                            derived data, already invisible to vector search,
 //!                            and the memory re-embed recreates them)
 //!   - `vector_indices`      (main — meta `dimensions` snapped to target)
-//!   - `conversation_chunks` (main — live chats re-embedded; STALE chats'
-//!                            non-conforming embeddings NULLed to the cold-tier
-//!                            state the stale sweep produces, so the Salon reopen
-//!                            path re-embeds on demand)
+//!   - `conversation_chunks` (main — re-embedded via reindex; stale chats are
+//!                            treated like any other chat since v4 `f7f3d7bf0`,
+//!                            "keep conversation embeddings warm" — their
+//!                            non-conforming chunks are COUNTED, no longer
+//!                            NULLed to a cold tier first)
 //!   - `help_docs`           (main — re-embedded via reindex)
 //!   - `doc_mount_chunks`    (the mount-index partition — see the ⚠ below)
 //!
@@ -76,9 +77,6 @@
 use rusqlite::{params, Connection};
 use serde_json::json;
 
-use super::maintenance::is_stale_conn;
-use super::queue_service::{resolve_stale_chat_days_conn, retention_cutoff_iso};
-use crate::clock::iso_to_ms;
 use crate::db::background_jobs::CreateOptions;
 use crate::db::background_jobs::{BackgroundJobsRepository, BjCreate};
 use crate::db::DbError;
@@ -137,8 +135,6 @@ pub struct DimensionReconcileResult {
     pub vector_entries_deleted: usize,
     /// `vector_indices` meta rows whose dimensions were snapped to target.
     pub vector_index_meta_fixed: usize,
-    /// Stale-chat conversation chunks whose non-conforming embeddings were NULLed.
-    pub stale_chunk_embeddings_cleared: usize,
     pub mismatched: MismatchedCounts,
     /// Whether a `mismatched-dim` reindex was enqueued.
     pub reindex_enqueued: bool,
@@ -186,9 +182,11 @@ fn table_exists(conn: &Connection, name: &str) -> bool {
 
 /// v4's `countNonconforming` — one COUNT with the FAILED exclusion. For memories
 /// and help docs a NULL embedding is ALSO non-conforming (nothing else re-embeds
-/// it); conversation chunks are NOT counted when NULL (that is the deliberate
-/// cold-tier state, healed on reopen), and mount chunks' NULLs belong to the
-/// mount scan pipeline.
+/// it); conversation chunks are NOT counted when NULL — that is simply "not
+/// embedded yet" (a fresh chunk, or one the embedder hasn't reached), and the
+/// conversation-render reconcile owns healing that gap (v4 `f7f3d7bf0`'s
+/// rewording; the cold tier it used to name is gone). Mount chunks' NULLs
+/// belong to the mount scan pipeline.
 fn count_nonconforming(
     conn: &Connection,
     table: &str,
@@ -254,14 +252,19 @@ fn find_default_profile(conn: &Connection) -> Result<Option<DefaultProfile>, DbE
 /// as v4's outer try/catch does.
 ///
 /// `main` is the writer's main connection; `mount` is the mount-index connection
-/// when the instance has that partition. `now_ms` is the injected clock (the
-/// staleness window's origin).
+/// when the instance has that partition.
+///
+/// `_now_ms` is UNUSED since v4 `f7f3d7bf0` (it was the staleness window's
+/// origin for the deleted stale-chat NULLing). It stays in the signature so the
+/// restore orchestrator (`services/backup/restore/orchestrator.rs`, outside
+/// P4.D235's ownership) did not have to move this round — recorded for the
+/// unifier as a follow-up.
 pub fn reconcile_embedding_dimensions(
     main: &Connection,
     mount: Option<&Connection>,
-    now_ms: i64,
+    _now_ms: i64,
 ) -> DimensionReconcileResult {
-    match run_reconcile(main, mount, now_ms) {
+    match run_reconcile(main, mount) {
         Ok(result) => result,
         Err(e) => {
             tracing::error!(
@@ -277,7 +280,6 @@ pub fn reconcile_embedding_dimensions(
 fn run_reconcile(
     main: &Connection,
     mount: Option<&Connection>,
-    now_ms: i64,
 ) -> Result<DimensionReconcileResult, DbError> {
     // v4's `db-unavailable` arm is `getRawDatabase()` returning null. v5 is handed
     // a live connection, so the analogous "the corpus is not there" condition is a
@@ -337,13 +339,6 @@ fn run_reconcile(
     // v4 drops its cached in-memory stores here when either changed. v5 has no
     // store cache — a documented no-op (see the module doc).
 
-    // ---- conversation_chunks on STALE chats: converge to the cold-tier state
-    // (NULL embedding) instead of paying to re-embed chats nobody is reading.
-    if table_exists(main, "conversation_chunks") && table_exists(main, "chats") {
-        result.stale_chunk_embeddings_cleared =
-            clear_stale_chat_nonconforming_chunks(main, target_dim, now_ms)?;
-    }
-
     // ---- Count what still needs re-embedding (recoverable rows only).
     if table_exists(main, "memories") {
         // The `characterId IS NOT NULL` guard mirrors the reindex fan-out (which
@@ -366,7 +361,7 @@ fn run_reconcile(
     }
     if table_exists(main, "conversation_chunks") && table_exists(main, "chats") {
         result.mismatched.conversation_chunks =
-            count_nonconforming_live_chunks(main, target_dim, &profile.id)?;
+            count_nonconforming_chunks(main, target_dim, &profile.id)?;
     }
     if table_exists(main, "help_docs") {
         result.mismatched.help_docs =
@@ -381,8 +376,7 @@ fn run_reconcile(
 
     let touched_anything = result.mismatched.total() > 0
         || result.vector_entries_deleted > 0
-        || result.vector_index_meta_fixed > 0
-        || result.stale_chunk_embeddings_cleared > 0;
+        || result.vector_index_meta_fixed > 0;
 
     // v4's two-arm log shape: a full INFO line when anything was touched, a DEBUG
     // line otherwise. (The healthy outcome must still say something at debug —
@@ -394,7 +388,6 @@ fn run_reconcile(
             target_dimensions = target_dim,
             vector_entries_deleted = result.vector_entries_deleted,
             vector_index_meta_fixed = result.vector_index_meta_fixed,
-            stale_chunk_embeddings_cleared = result.stale_chunk_embeddings_cleared,
             memories = result.mismatched.memories,
             conversation_chunks = result.mismatched.conversation_chunks,
             help_docs = result.mismatched.help_docs,
@@ -414,12 +407,14 @@ fn run_reconcile(
     Ok(result)
 }
 
-/// v4's `countNonconformingLiveChunks` — non-conforming chunks the reindex
-/// handler can actually reach: the chat must still exist (an orphaned chunk would
-/// otherwise re-trigger a futile reindex on every boot). Stale chats'
-/// non-conforming chunks were already NULLed by
-/// [`clear_stale_chat_nonconforming_chunks`], so they no longer match.
-fn count_nonconforming_live_chunks(
+/// v4's `countNonconformingChunks` (renamed from `countNonconformingLiveChunks`
+/// by `f7f3d7bf0`, SQL byte-identical) — non-conforming chunks the reindex
+/// handler can actually reach: the chat must still exist (an orphaned chunk
+/// would otherwise re-trigger a futile reindex on every boot). Stale chats'
+/// non-conforming chunks are no longer NULLed first, so they are COUNTED here
+/// and re-embedded like any other chat's. NULL chunks are still not counted —
+/// the render reconcile owns that gap.
+fn count_nonconforming_chunks(
     conn: &Connection,
     target_dim: usize,
     profile_id: &str,
@@ -438,76 +433,6 @@ fn count_nonconforming_live_chunks(
         |r| r.get(0),
     )?;
     Ok(n as usize)
-}
-
-/// v4's `clearStaleChatNonconformingChunks` — NULL non-conforming chunk
-/// embeddings on stale chats. Staleness is decided by the same shared gate the
-/// maintenance sweeps use, evaluated per CANDIDATE chat — only chats that
-/// actually hold a non-conforming chunk are examined, so this is a no-op scan on
-/// a conforming corpus.
-fn clear_stale_chat_nonconforming_chunks(
-    conn: &Connection,
-    target_dim: usize,
-    now_ms: i64,
-) -> Result<usize, DbError> {
-    let candidate_ids: Vec<String> = {
-        let sql = format!(
-            "SELECT DISTINCT \"chatId\" AS chatId FROM \"conversation_chunks\"\n         \
-             WHERE \"chatId\" IS NOT NULL AND {}",
-            nonconforming()
-        );
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(params![target_dim as i64], |r| r.get::<_, String>(0))?;
-        rows.collect::<Result<Vec<_>, _>>()?
-    };
-    if candidate_ids.is_empty() {
-        return Ok(0);
-    }
-
-    // v4 hydrates each candidate's `{id, updatedAt}` and drops the ones whose
-    // chat row is gone (an orphan chunk's chat can never be stale — there is
-    // nothing to date it by).
-    let mut candidates: Vec<(String, Option<String>)> = Vec::new();
-    {
-        let mut stmt = conn.prepare(
-            "SELECT \"id\" AS id, \"updatedAt\" AS updatedAt FROM \"chats\" WHERE \"id\" = ?",
-        )?;
-        for id in &candidate_ids {
-            let found = stmt
-                .query_row(params![id], |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
-                })
-                .map(Some)
-                .or_else(|e| match e {
-                    rusqlite::Error::QueryReturnedNoRows => Ok(None),
-                    other => Err(other),
-                })?;
-            if let Some(row) = found {
-                candidates.push(row);
-            }
-        }
-    }
-
-    let cutoff_ms = iso_to_ms(&retention_cutoff_iso(
-        resolve_stale_chat_days_conn(conn),
-        now_ms,
-    ))
-    .unwrap_or(now_ms);
-
-    let clear_sql = format!(
-        "UPDATE \"conversation_chunks\" SET embedding = NULL WHERE \"chatId\" = ? AND {}",
-        nonconforming()
-    );
-    let mut cleared = 0usize;
-    for (chat_id, updated_at) in candidates {
-        // v4 narrows `isStale` to `Pick<ChatMetadata,'id'|'updatedAt'>` and passes
-        // `updatedAt ?? ''`.
-        let chat = json!({ "id": chat_id, "updatedAt": updated_at.unwrap_or_default() });
-        if is_stale_conn(conn, &chat, cutoff_ms)? {
-            cleared += conn.execute(&clear_sql, params![chat_id, target_dim as i64])?;
-        }
-    }
-    Ok(cleared)
 }
 
 /// v4's `countNonconformingMountChunks`, operation-for-operation (v4 `7bcd8515`,
@@ -828,10 +753,14 @@ mod tests {
         assert_eq!(payload["scope"], "mismatched-dim");
     }
 
-    /// v4's third test: stale chats' non-conforming chunks are NULLed; only
-    /// live-chat chunks are counted, and an orphan chunk is counted by neither.
+    /// v4's third test, INVERTED by `f7f3d7bf0` ("counts non-conforming chunks
+    /// on stale AND live chats alike, excluding only orphans"): conversation
+    /// chunk embeddings are never cold-tiered any more, so the stale chat's
+    /// non-conforming chunk keeps its vector and is COUNTED (and reindexed)
+    /// exactly like the live chat's; the orphan and the already-good chunk are
+    /// not.
     #[test]
-    fn nulls_stale_chunks_and_counts_only_live_ones() {
+    fn counts_stale_and_live_chunks_alike_excluding_only_orphans() {
         let conn = main_conn();
         default_profile(&conn, "OPENAI");
         conn.execute(
@@ -854,7 +783,6 @@ mod tests {
 
         let r = reconcile_embedding_dimensions(&conn, None, NOW_MS);
 
-        assert_eq!(r.stale_chunk_embeddings_cleared, 1);
         let stale: Option<Vec<u8>> = conn
             .query_row(
                 "SELECT embedding FROM conversation_chunks WHERE id = 'cc-stale'",
@@ -862,8 +790,9 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert!(stale.is_none(), "the stale chunk must be NULLed");
-        assert_eq!(r.mismatched.conversation_chunks, 1, "cc-live only");
+        assert!(stale.is_some(), "the stale chunk keeps its vector");
+        assert_eq!(r.mismatched.conversation_chunks, 2, "cc-stale + cc-live");
+        assert!(r.reindex_enqueued);
     }
 
     /// v4's fourth test — the mount-chunk COUNT (v4 `7bcd8515`, Bug 16), reading

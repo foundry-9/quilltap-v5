@@ -964,7 +964,7 @@ pub fn retention_cutoff_iso(days: i64, now_ms: i64) -> String {
 /// v4 `resolveStaleChatDays()` — the effective stale-chat window: the
 /// user-configured `dataRetention.staleChatDays` instance setting, falling back
 /// to [`STALE_CHAT_RETENTION_DAYS`] when unset or unreadable. Every stale-gated
-/// sweep (image collapse, cache collapse, chunk cold-tier) computes its cutoff
+/// sweep (image collapse, cache collapse) computes its cutoff
 /// from this one value so they always agree on "stale". A read error resolves to
 /// the fallback (v4's `try/catch → default`).
 pub fn resolve_stale_chat_days(db: &Db) -> i64 {

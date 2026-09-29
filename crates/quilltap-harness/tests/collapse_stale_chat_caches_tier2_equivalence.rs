@@ -7,27 +7,29 @@
 //! `collapse_stale_chat_caches(db, nowMs)` with the SAME fixed `nowMs`, and diff:
 //!
 //!   - the summary (chatsScanned / staleChats / chatsCollapsed / chatRowsCleared
-//!     / messageRowsCleared / chunkEmbeddingsCleared),
+//!     / messageRowsCleared — `chunkEmbeddingsCleared` left it, v4 `f7f3d7bf0`),
 //!   - a `chats` projection (the two cleared columns + `updatedAt` — proving the
 //!     stale chat's caches NULL, the active chat's survive, neither updatedAt
 //!     bumped),
 //!   - a `messages` projection (the five discardable columns + content — the
 //!     stale chat's laden message all-NULL keeping content; the guard skips the
 //!     bare second message; the active chat's message survives),
-//!   - a `chunks` projection (embeddingNull + the raw `updatedAt` — the stale
-//!     chat's OLD embedded chunk cold-tiered with a minted updatedAt; the
-//!     already-cold chunk skipped by the `IS NOT NULL` guard; its two WARM
-//!     chunks spared; the active chunk survives).
+//!   - a `chunks` projection (embeddingNull + the raw `updatedAt`).
 //!
-//! P4.D25 — the warmth window (v4 `f7cc887b`). The sweep now clears only
-//! embeddings whose own `updatedAt` predates the staleness cutoff, so a chat the
-//! user merely READS keeps the vectors its reopen re-embedded. The fixture
-//! carries two extra embedded chunks on the STALE chat — one stamped EXACTLY at
-//! the cutoff (`<` is strict, so it survives) and one inside the window — and
-//! `chunkEmbeddingsCleared` stays 1 where the pre-fix sweep cleared 3. A
-//! cleared row's `updatedAt` is minted on both sides, so a stamp is
-//! placeholdered exactly when it differs from that row's SEEDED value; a stamp
-//! that survives byte-identical is the proof the guard spared it.
+//! P4.D235 (v4 `f7f3d7bf0`, "keep conversation embeddings warm"): the sweep no
+//! longer cold-tiers ANY chunk. P4.D25's warmth window (v4 `f7cc887b` — clear
+//! only embeddings older than the cutoff) is moot: the stale chat's OLD
+//! embedded chunk, which the old sweep NULLed with a minted `updatedAt`, is now
+//! SPARED like its two warm siblings. A stamp is still placeholdered exactly
+//! when it differs from the row's SEEDED value, so a port that cold-tiered
+//! anything shows up byte-level; the corpus-shape guard below pins that all
+//! three embedded stale-chat chunks survive and nothing was re-stamped.
+//! Measured at both pins over one baseline-built fixture: `acadcc7cd` NULLs
+//! `cc000001` (`chunkEmbeddingsCleared: 1`), `f7f3d7bf0` spares it (no key).
+//!
+//! The `chats` projection no longer names `renderedMarkdown`: the column is
+//! DROPPED at the target pin and the builder no longer writes it, so the
+//! fixture builds at either pin (it is built at the TARGET pin).
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
@@ -161,7 +163,6 @@ fn collapse_stale_chat_caches_matches_oracle() {
         "chatsCollapsed": summary.chats_collapsed,
         "chatRowsCleared": summary.chat_rows_cleared,
         "messageRowsCleared": summary.message_rows_cleared,
-        "chunkEmbeddingsCleared": summary.chunk_embeddings_cleared,
     });
     assert_eq!(
         &got_summary,
@@ -173,7 +174,7 @@ fn collapse_stale_chat_caches_matches_oracle() {
     let got_chats = db
         .read_main(|c| {
             let mut stmt = c.prepare(
-                "SELECT id, compressionCache, renderedMarkdown, compiledIdentityStacks, \
+                "SELECT id, compressionCache, compiledIdentityStacks, \
                         updatedAt FROM chats ORDER BY id ASC",
             )?;
             let rows = stmt
@@ -181,13 +182,12 @@ fn collapse_stale_chat_caches_matches_oracle() {
                     Ok(json!({
                         "id": r.get::<_, String>(0)?,
                         "compressionCache": r.get::<_, Option<String>>(1)?,
-                        "renderedMarkdown": r.get::<_, Option<String>>(2)?,
-                        // v4 bug 160 (`186eb09cb`): the third discardable
+                        // v4 bug 160 (`186eb09cb`): the second discardable
                         // `chats` cache column. The fixture's THIRD chat
                         // carries ONLY this one, so it is the row that
                         // distinguishes the guard's new disjunct from the SET.
-                        "compiledIdentityStacks": r.get::<_, Option<String>>(3)?,
-                        "updatedAt": r.get::<_, String>(4)?,
+                        "compiledIdentityStacks": r.get::<_, Option<String>>(2)?,
+                        "updatedAt": r.get::<_, String>(3)?,
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -265,9 +265,10 @@ fn collapse_stale_chat_caches_matches_oracle() {
     normalize_chunks(&mut got_chunks, &seeded);
     normalize_chunks(&mut want_chunks, &seeded);
 
-    // Corpus shape: the warmth window must actually SPARE embedded rows on the
-    // stale chat, or an unguarded port (v4's pre-f7cc887b behavior, which v5
-    // reproduced) would agree with the oracle.
+    // Corpus shape (P4.D235): ALL THREE embedded stale-chat chunks survive —
+    // the old one included, which the pre-`f7f3d7bf0` sweep cold-tiered — and
+    // no row was re-stamped, or a port still cold-tiering the old chunk could
+    // not be told apart by the count alone.
     let spared = want_chunks
         .iter()
         .filter(|r| {
@@ -276,8 +277,12 @@ fn collapse_stale_chat_caches_matches_oracle() {
         })
         .count();
     assert_eq!(
-        spared, 2,
-        "the corpus stopped exercising the warmth window (boundary + inside-window)"
+        spared, 3,
+        "every embedded stale-chat chunk keeps its vector (nothing is cold-tiered)"
+    );
+    assert!(
+        want_chunks.iter().all(|r| r["updatedAt"] != "<ts>"),
+        "no chunk was re-stamped: {want_chunks:?}"
     );
 
     assert_eq!(

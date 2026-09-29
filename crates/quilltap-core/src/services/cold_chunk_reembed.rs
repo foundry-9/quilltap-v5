@@ -1,11 +1,13 @@
-//! Cold-tier conversation-chunk re-embedding (re-index on demand) — v4
+//! Un-embedded conversation-chunk re-embedding (re-index on demand) — v4
 //! `lib/scriptorium/cold-chunk-reembed.ts`.
 //!
-//! The stale-chat maintenance sweep cold-tiers quiet chats by NULLing their
-//! `conversation_chunks.embedding` BLOBs (content kept — see
-//! [`super::collapse_stale_chat_caches`]). While cold, a chat stays fully
+//! A chat's `conversation_chunks` can be left without embeddings — the
+//! provider was down when the turn fired, a render died before enqueuing the
+//! embeds, or they are leftovers from before chunk embeddings were kept warm
+//! unconditionally (v4 `f7f3d7bf0` retired the stale sweep's cold tier; the
+//! code here did not change, only its prose). While un-embedded, a chat stays
 //! readable and keyword-searchable, but semantic retrieval won't surface it.
-//! This module restores warmth transparently: when a cold chat is opened, it
+//! This module restores warmth transparently: when such a chat is opened, it
 //! detects chunks with content but no embedding and enqueues per-chunk
 //! `EMBEDDING_GENERATE` jobs through the exact pipeline the normal chunk indexer
 //! uses (same default profile, same per-entity dedup in

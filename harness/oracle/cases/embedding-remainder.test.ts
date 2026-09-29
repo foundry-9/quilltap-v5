@@ -25,11 +25,12 @@
  *   1. RECONCILE — v4's `reconcileConversationRendering()` over the PRISTINE
  *      fixture, recorded as `{kind:'reconcile', ...counters}`. It runs first
  *      because that is where boot runs it, and because both later phases mutate
- *      exactly what its scan reads. Since P4.D25 those counters include
- *      `skippedStale`, and the scan excludes chunks already FAILED for the
- *      resolved default profile — both read the frozen clock, so the corpus's
- *      pre-P4.D25 chats are all stale by construction and the four chats added
- *      for this round are the ones that get through.
+ *      exactly what its scan reads. The scan excludes chunks already FAILED
+ *      for the resolved default profile (P4.D25). P4.D235 (v4 `f7f3d7bf0`):
+ *      the staleness gate and its `skippedStale` counter are GONE — every
+ *      selected chat is enqueued, the corpus's stale pre-P4.D25 chats included
+ *      — and arm (A) is keyed on chunk ABSENCE (the committed pair is
+ *      narrowed: `chats.renderedMarkdown` is dropped).
  *   2. RENDER — each corpus `renderCases` entry through `handleConversationRender`
  *      with a synthesized job row, recorded as `{kind:'render', name, outcome,
  *      error}`.

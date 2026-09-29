@@ -215,13 +215,11 @@ fn chats_read_count_override(conn: &rusqlite::Connection, image_id: &str) -> Res
 /// timestamp is never stale ("unknown activity — never touch").
 ///
 /// Exported (crate-internal) as THE shared staleness gate for every stale-gated
-/// maintenance sweep (asset collapse, cache collapse, chunk cold-tiering) **AND
-/// for the startup render/embed reconcile**, so they can never disagree on what
-/// "stale" means (v4 exports `isStale`). The reconcile MUST use this gate:
-/// cold-tiering deliberately leaves stale chats with NULL `renderedMarkdown` and
-/// NULL chunk embeddings, and a reconcile that can't tell "cold-tiered" from
-/// "broken" re-embeds the entire cold tier on every boot just for the next sweep
-/// to clear it again (v4 `a0243abd`).
+/// maintenance sweep (asset collapse, cache collapse), so they can never
+/// disagree on what "stale" means (v4 exports `isStale`). Since v4 `f7f3d7bf0`
+/// ("keep conversation embeddings warm") chunk embeddings are never
+/// cold-tiered, so the startup render reconcile, the dimension reconcile and
+/// the embedding reindex no longer consult this gate at all.
 ///
 /// Reads only `id` and `updatedAt` off `chat`, which is v4's narrowing to
 /// `Pick<ChatMetadata, 'id' | 'updatedAt'>` — so a caller scanning with raw SQL
@@ -312,7 +310,7 @@ pub async fn collapse_stale_chat_assets(
 ) -> Result<StaleChatCollapseSummary, DbError> {
     // v4 now resolves the window through `resolveStaleChatDays()` (the
     // user-configurable `dataRetention.staleChatDays`, default 30) so the image
-    // collapse, cache collapse, and cold-tier always agree on "stale".
+    // collapse and the cache collapse always agree on "stale".
     let cutoff = retention_cutoff_iso(resolve_stale_chat_days(db), now_ms);
     let cutoff_ms = iso_to_ms(&cutoff).unwrap_or(now_ms);
 

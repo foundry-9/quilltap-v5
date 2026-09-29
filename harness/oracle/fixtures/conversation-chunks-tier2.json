@@ -53,7 +53,8 @@
     "so the harness placeholders every id/createdAt/updatedAt it does not pin; the",
     "dump is then re-sorted by (chatId, interchangeIndex) so the row ordering is",
     "independent of the minted id (v4's is random).",
-    "P4.D203 (v4 186eb09cb/f45a517a9): `conversation_chunks.content` is a REGISTERED COMPRESSED COLUMN (v4 manager.ts:125). Seed row 3 carries 1,600 bytes of compressible prose, so at the target pin v4 stores it as a brotli BLOB and every marshal of it is a codec read. `marshal_cc_row` is reached from INSIDE `upsert` via `find_by_interchange_index`, so before the codec a render WRITE failed on its own read \u2014 which the two ops below exercise: an `update` that REPLACES the long content (the patch arm must re-compress, or an upsert launders the cell back to plaintext) and an `upsert` over the same (chatId, interchangeIndex) that has to READ it first."
+    "P4.D203 (v4 186eb09cb/f45a517a9): `conversation_chunks.content` is a REGISTERED COMPRESSED COLUMN (v4 manager.ts:125). Seed row 3 carries 1,600 bytes of compressible prose, so at the target pin v4 stores it as a brotli BLOB and every marshal of it is a codec read. `marshal_cc_row` is reached from INSIDE `upsert` via `find_by_interchange_index`, so before the codec a render WRITE failed on its own read \u2014 which the two ops below exercise: an `update` that REPLACES the long content (the patch arm must re-compress, or an upsert launders the cell back to plaintext) and an `upsert` over the same (chatId, interchangeIndex) that has to READ it first.",
+    "P4.D235 (v4 f7f3d7bf0): the three clearEmbeddings ops (P4.D25's olderThan age-guard arms: on / idempotent / off) are REMOVED with v4's `clearEmbeddingsForChat` \u2014 conversation embeddings are never cold-tiered any more."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seed": [
@@ -259,24 +260,6 @@
         "createdAt": "2026-04-01T00:00:00.000Z",
         "updatedAt": "2026-05-01T00:00:00.000Z"
       }
-    },
-    {
-      "kind": "clearEmbeddings",
-      "comment": "Guard ON at 2026-04-15: only the 2026-04-01 row is strictly older, so exactly ONE row is cold-tiered. The row stamped EXACTLY at the cutoff is SPARED (`updatedAt < ?`), and so is the 2026-05-01 row \u2014 that is the reopen warmth the sweep must not discard.",
-      "chatId": "c0000000-0000-4000-8000-00000000dddd",
-      "olderThan": "2026-04-15T00:00:00.000Z"
-    },
-    {
-      "kind": "clearEmbeddings",
-      "comment": "The identical pass again: 0 rows. The `embedding IS NOT NULL` guard makes it idempotent AND the age guard still spares the two warm rows.",
-      "chatId": "c0000000-0000-4000-8000-00000000dddd",
-      "olderThan": "2026-04-15T00:00:00.000Z"
-    },
-    {
-      "kind": "clearEmbeddings",
-      "comment": "Guard OFF (no olderThan) on chat aaaa: both embedded rows go regardless of age; the already-NULL row is skipped by the IS NOT NULL guard, so the count is 2, not 3.",
-      "chatId": "c0000000-0000-4000-8000-00000000aaaa",
-      "olderThan": null
     },
     {
       "kind": "create",

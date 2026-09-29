@@ -1432,7 +1432,8 @@ mod transcript_publish_sites {
     }
 
     /// The daily maintenance sweep collapses stale caches — `compressionCache`,
-    /// `renderedMarkdown`, and five discardable `chat_messages` columns — and
+    /// `compiledIdentityStacks`, and five discardable `chat_messages` columns
+    /// (`renderedMarkdown` left the list with the column, v4 `f7f3d7bf0`) — and
     /// announces NOTHING.
     ///
     /// MEASURED on v4 at `31436bae4`: `lib/background-jobs/maintenance/

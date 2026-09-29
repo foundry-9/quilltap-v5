@@ -55,13 +55,13 @@
 //!     limit).
 //!   - The payload is a bare cast, not Zod — both fields decode leniently.
 //!
-//! ## The three exclusions (P4.d27 / v4 `7391404e`)
+//! ## The exclusions (P4.d27 / v4 `7391404e`)
 //!
-//!   - **STALE (cold-tiered) chats are skipped in phase 3.** The stale-chat sweep
-//!     deliberately clears their chunk embeddings and the Salon reopen path
-//!     re-embeds on demand with the then-current profile; re-embedding them here
-//!     would pay provider calls for chats nobody is reading, and the next sweep
-//!     would clear the result anyway. Same shared `isStale` gate as the sweeps.
+//!   - **Stale chats are NOT skipped** (v4 `f7f3d7bf0`, "keep conversation
+//!     embeddings warm"): phase 3 walks EVERY chat. Before that commit the
+//!     stale-chat sweep cold-tiered their chunk embeddings and this phase
+//!     skipped them; the sweep no longer touches embeddings, so a stale chat is
+//!     an ordinary chat here. (Its `staleChatsSkipped` log field went with it.)
 //!   - **FAILED entities are skipped in `mismatched-dim` scope**, per entity type,
 //!     via [`crate::db::embedding_status::EmbeddingStatusRepository::list_failed_entity_ids`].
 //!     Those are deterministic failures (oversize, over-context, NaN inputs), and
@@ -172,8 +172,6 @@ struct Counts {
     dim_matched: usize,
     /// Rows skipped because they are FAILED for this profile.
     failed_skipped: usize,
-    /// Chats skipped whole because they are stale (phase 3 only).
-    stale_chats_skipped: usize,
 }
 
 /// Build the `EMBEDDING_GENERATE` record v4's `buildJobRecord` builds: PENDING,
@@ -401,7 +399,6 @@ pub async fn handle_embedding_reindex_all(
         memories_skipped = mem.dim_matched,
         chunks_skipped = chunk.dim_matched,
         mount_chunks_skipped = mount.dim_matched,
-        stale_chats_skipped = chunk.stale_chats_skipped,
         failed_skipped = help.failed_skipped + mem.failed_skipped
             + chunk.failed_skipped + mount.failed_skipped,
         total_enqueued = job_records.len(),
@@ -496,15 +493,6 @@ async fn phase_conversation_chunks(
 ) -> Result<(Vec<BjCreate>, Counts), DbError> {
     let uid = user_id.to_string();
     let chats = db.read_main(move |conn| chats_read::find_by_user_id(conn, &uid))?;
-    // v4 resolves the stale window ONCE for the whole phase. This handler runs on
-    // the async job runner with a live `&Db`, so the `&Db`-flavored `is_stale` is
-    // the right twin here — the `_conn` twins exist for the BOOT path, which is
-    // already inside a write closure (P4.D25).
-    let stale_cutoff_ms = crate::clock::iso_to_ms(&super::queue_service::retention_cutoff_iso(
-        super::queue_service::resolve_stale_chat_days(db),
-        crate::clock::iso_to_ms(now_iso).unwrap_or(0),
-    ))
-    .unwrap_or(0);
     let failed = failed_ids_for(db, partial, "CONVERSATION_CHUNK", &payload.profile_id);
     let mut out = Vec::new();
     let mut counts = Counts::default();
@@ -512,14 +500,6 @@ async fn phase_conversation_chunks(
         let Some(chat_id) = chat.get("id").and_then(Value::as_str) else {
             continue;
         };
-        // Cold-tiered chats are healed on reopen, not here — see the module doc.
-        // v4 passes the whole chat row through to the shared gate; an error
-        // resolves to "not stale" inside it (v5's port keeps that), so a chat is
-        // never dropped for an unreadable message history.
-        if super::maintenance::is_stale(db, chat, stale_cutoff_ms)? {
-            counts.stale_chats_skipped += 1;
-            continue;
-        }
         let cid = chat_id.to_string();
         let chunks = db.read_main(move |conn| {
             crate::db::conversation_chunks::ConversationChunksRepository::new(conn)
