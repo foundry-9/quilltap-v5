@@ -6746,7 +6746,14 @@ format human-readable dates in the host's zone as v4 does, with the
 `TZ=UTC` pin kept for both sides. **#124**: the instance's WaveSpeed image
 desk is an npm plugin v5 cannot load — the human is repointing the live
 desk to a native provider in v4 (a NanoGPT `flux-2-dev` desk proven on v5),
-so no order. **NEXT, in order:** P4.119 (single lane); then items 2–4 above
+so no order. **The same-day owed-rows sweep** (walk doc §5) FIXED #127 and
+ORDERED two more: **P4.120** (`work-orders/p4.120-chat-upload-auto-describe.md`,
+#128 — chat image uploads described in the background as v4 does, plus the
+production `SaveImageSideEffects` every photo path lacks) and **P4.121**
+(`work-orders/p4.121-salon-tool-loop-leg-logging.md`, #129 — every Salon
+tool-loop leg logs its own `llm_logs` row; today an autonomous run's budget
+misses them). The three are independent single lanes and can run in
+parallel. **NEXT, in order:** P4.119 ∥ P4.120 ∥ P4.121; then items 2–4 above
 unchanged; still owed from the walk: the conceal-marker arm (P4.D239) and
 the standing 💸 queue.
 

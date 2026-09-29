@@ -1166,7 +1166,12 @@ records THERE. Update this summary only when a phase or round completes.
   auto-switch at 3 in v4's bytes — **P4.118's owed coded-4xx proof**. Try
   uncensored proven on both arms. Also live: the whole Post Office, FTS5 +
   the compressed-text write, Inform + the streamed re-roll, Rebuild Summary,
-  a Scenario Builder run, the Salon Images switch, the `@` menu. **Still
+  a Scenario Builder run, the Salon Images switch, the `@` menu. **A same-day owed-rows sweep** (a posed provider per model name) passed
+  P4.99, P4.97, bug 116's positive arm and P4.90's greeting/failover rows,
+  FIXED #127 (the turn-chain decision's eight absent v4 log lines, core
+  0.0.1106) and ORDERED **P4.120** (#128, background auto-describe on chat
+  upload + the production photo side effects) and **P4.121** (#129, every
+  Salon tool-loop leg logs its own row). **Still
   owed:** the conceal-marker arm (needs an appearance scoring ≥ 0.1 with the
   pre-screen on), and the standing queue (Lantern budget, a real token-limit
   turn, the four planted proofs, dedup/summaries, the Brahma deep query, #101,

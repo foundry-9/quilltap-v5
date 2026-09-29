@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — docs(porting): order P4.120 and P4.121 (dogfood #128, #129)
+
+_Docs-only change._
+
+P4.120 wires the background describe that v4 runs on every new chat image
+upload. It fires after the upload's write commits, through a new injected
+spawner, and passes no chat id, as v4 does. The order also adds a production
+`SaveImageSideEffects`, because the mount invalidation and embedding enqueue
+are no-ops on every photo path today. P4.121 gives the native re-stream, the
+native force-final and the text-tool continuation their own `CHAT_MESSAGE`
+log rows. Each row is logged under the post-failover profile with v4's
+per-leg character-id rule, proven by moving the two loop oracles beneath v4's
+real streaming funnel. Recorded both on their findings, in `phase-4.md` and
+in the CLAUDE.md status bullet.
+
 #### 2026-09-29 — fix(chat): log v4's turn-chain decisions (dogfood #127); the owed-rows sweep
 
 core 0.0.1105 → 0.0.1106.
