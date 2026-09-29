@@ -630,6 +630,7 @@ fn mail_lines(lines: Vec<String>) -> Vec<String> {
             l.contains("quilltap_core::tools::read_mail")
                 || l.contains("quilltap_core::tools::discard_mail")
                 || l.contains("quilltap_core::tools::list_mail")
+                || l.contains("quilltap_core::tools::send_mail")
                 || l.contains("quilltap::post_office::")
         })
         .collect()

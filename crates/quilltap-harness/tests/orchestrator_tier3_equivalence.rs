@@ -340,6 +340,121 @@ struct CannedCompletionW {
     usage: Option<UsageW>,
 }
 
+/// v4 `f7f3d7bf0` (P4.D235) renders `read_conversation`'s transcript LIVE, and
+/// its `Current time: <now>. You are reading history…` line is the executor's
+/// WALL clock (`crate::clock::now_iso()` — no harness seam, the executor
+/// idiom) where v4's oracle freezes `Date`. The rendered text reaches the NEXT
+/// canned stream key (the tool result is a message of the follow-up call),
+/// the `toolResult` event frame and the stored TOOL row, so the span is
+/// blanked on BOTH sides everywhere a comparand carries it — the
+/// `tool_dispatch_equivalence` idiom, widened to a whole-string scan because
+/// here the line sits inside a JSON-escaped tool message (the `97b25fc53`
+/// unification: this P4.D234-fenced family met P4.D235's live render on the
+/// union, red on five tool-loop cases).
+fn blank_current_time(text: &str) -> String {
+    // Three renderer shapes (v4 `markdown-renderer.ts` `formatDateTime` + the
+    // same-day span): `Current time: <dt>. `, `<Month> <d>, <yyyy>[ at <h>:<mm>
+    // <AM|PM>]` (created / last-updated / each message's timestamp / the
+    // cross-day span), and the bare `<h>:<mm> <AM|PM>` of the same-day span.
+    // The chat's `Last Updated` and the span's end are the assistant message
+    // v5 mints with the WALL clock mid-turn (the `normalize_messages` comment:
+    // v4's frozen `Date` collapses every minted `createdAt`; the Rust clock
+    // does not) — the dumps placeholder that `createdAt`, the render carries
+    // it as text.
+    static DT: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}(?: at \d{1,2}:\d{2} [AP]M)?",
+        )
+        .unwrap()
+    });
+    static T: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"\b\d{1,2}:\d{2} [AP]M\b").unwrap());
+    // The span's SHAPE also follows the minted clock: v4's frozen `Date` keeps
+    // first/last on one day (`on <date> from <time> to <time>`), v5's wall
+    // clock crosses days (`on <dt> to <dt>`) — one placeholder for the phrase.
+    static SPAN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"This conversation occurred on [^\n]*?\.").unwrap()
+    });
+    let text = SPAN.replace_all(text, "This conversation occurred on <SPAN>.");
+    let text = DT.replace_all(&text, "<DATE>");
+    let text = T.replace_all(&text, "<TIME>");
+    text.into_owned()
+}
+
+/// A dumped `chat_messages` row whose compressed `content` (the `qt_text`
+/// column, hex in the dump) decodes to a LIVE render (it carries the
+/// `Current time:` line) has its content replaced by the blanked PLAINTEXT on
+/// both sides — the render's minted dates sit inside the brotli bytes, where
+/// no string blanking can reach. Every other row keeps its compressed bytes,
+/// so the codec's byte parity stays a comparand for the rest of the table.
+fn decode_live_renders(dump: &mut Value) {
+    let Some(rows) = dump.get_mut("rows").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for row in rows {
+        let Some(Value::String(content)) = row.get("content") else {
+            continue;
+        };
+        let Ok(bytes) = hex::decode(content) else {
+            continue;
+        };
+        if !quilltap_core::db::text_compression::is_compressed_text_blob(&bytes) {
+            continue;
+        }
+        let text = quilltap_core::db::text_compression::decode_blob(&bytes);
+        if text.contains("Current time: ") {
+            row["content"] = Value::String(blank_current_time(&text));
+        }
+    }
+}
+
+/// Blank the span in every string of a JSON value (event frames, table dumps).
+fn blank_current_time_in(v: &mut Value) {
+    match v {
+        Value::String(s) => {
+            if s.contains(", 20") || s.contains(" AM") || s.contains(" PM") {
+                *s = blank_current_time(s);
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(blank_current_time_in),
+        Value::Object(o) => o.values_mut().for_each(blank_current_time_in),
+        _ => {}
+    }
+}
+
+/// A canned-key message with its `Current time:` span blanked.
+struct KeyMsg {
+    role: String,
+    content: String,
+}
+impl quilltap_core::model::completion::CannedKeyMessage for KeyMsg {
+    fn key_role(&self) -> &str {
+        &self.role
+    }
+    fn key_content(&self) -> &str {
+        &self.content
+    }
+}
+
+/// [`canned_stream_key`] over messages whose `Current time:` span is blanked —
+/// used for the oracle's recorded requests AND v5's live ones, so the live
+/// render's clock never decides a canned hit.
+fn keyed_stream<M: quilltap_core::model::completion::CannedKeyMessage>(
+    provider: &str,
+    model: &str,
+    temperature: Option<f64>,
+    messages: &[M],
+) -> String {
+    let ms: Vec<KeyMsg> = messages
+        .iter()
+        .map(|m| KeyMsg {
+            role: m.key_role().to_string(),
+            content: blank_current_time(m.key_content()),
+        })
+        .collect();
+    canned_stream_key(provider, model, temperature, &ms)
+}
+
 fn to_completion_messages(m: &[CannedMsgW]) -> Vec<CompletionMessage> {
     m.iter()
         .map(|m| CompletionMessage {
@@ -446,7 +561,7 @@ impl QueuedStreamingProvider {
         let mut expected_cache_key: HashMap<String, Option<String>> = HashMap::new();
         for row in rows {
             let messages = to_completion_messages(&row.messages);
-            let key = canned_stream_key(&row.provider, &row.model, row.temperature, &messages);
+            let key = keyed_stream(&row.provider, &row.model, row.temperature, &messages);
             let q = queues.entry(key.clone()).or_default();
             for seq in &row.sequences {
                 q.push_back(seq.iter().map(chunk_to_result).collect());
@@ -511,7 +626,7 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
         _base_url: Option<&str>,
         params: &StreamParams,
     ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
-        let key = canned_stream_key(
+        let key = keyed_stream(
             provider,
             &params.model,
             params.temperature,
@@ -2014,6 +2129,12 @@ fn orchestrator_tier3_matches_oracle() {
     let ctx = Normalizer::new();
     ctx.normalize_chats(&mut got_chats);
     ctx.normalize_chats(&mut want_chats);
+    // The live render's clock in a stored TOOL row (see `blank_current_time`
+    // and `decode_live_renders`).
+    decode_live_renders(&mut got_msgs);
+    decode_live_renders(&mut want_msgs);
+    blank_current_time_in(&mut got_msgs);
+    blank_current_time_in(&mut want_msgs);
     ctx.normalize_messages(&mut got_msgs, &mut idmap);
     let mut idmap2: HashMap<String, String> = HashMap::new();
     ctx.normalize_messages(&mut want_msgs, &mut idmap2);
@@ -2462,6 +2583,10 @@ fn wire_tool_names(tools: &Value) -> Vec<String> {
 /// comparand of its own now that both stacked lanes are on one branch (the
 /// P4.D172-era subtraction and its run-scoped tripwire retired at unification).
 fn assert_events_eq(name: &str, got: &[Value], want: &[Value]) {
+    let (mut got, mut want) = (got.to_vec(), want.to_vec());
+    got.iter_mut().for_each(blank_current_time_in);
+    want.iter_mut().for_each(blank_current_time_in);
+    let (got, want) = (&got[..], &want[..]);
     if got != want {
         let g = serde_json::to_string_pretty(got).unwrap();
         let w = serde_json::to_string_pretty(want).unwrap();
