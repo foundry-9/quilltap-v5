@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — feat(post-office): resolve_mail_path, letter_file_name and discard_letter (P4.D234 unit 1)
+
+_Versions: core 0.0.1090, harness 0.0.1013._
+
+Ports v4 `39bc98ffc`/`12c336fad`'s mailbox helpers. `resolve_mail_path` turns a letter reference (bare file name, `Mail/…` path, or `qtap://self/Mail/…` URI) into a `Mail/…` path, in v4's order: JS trim, one case-insensitive `qtap://self/` strip, leading slashes, one `Mail/` strip, then refuse empty names, sub-paths, backslashes, `.` and `..`, then append `.md` unless it is already there in any case. `letter_file_name` strips one leading `Mail/`. `discard_letter` deletes through `delete_database_document` (the GC chokepoint) and logs v4's `discardLetter` debug line. `mark_alerted` now logs v4's `markAlerted: letter no longer present` warning on a missing letter (it was silent).
+
+New tier-1 family `mail_path_equivalence` over v4's real functions: 58 rows, 0 divergences at `12c336fad`. Mutation proofs: moving the slash strip before the URI strip, stripping `Mail/` twice, and a case-sensitive `.md` test each fail the family.
+
 #### 2026-09-28 — docs(porting): order the `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118)
 
 _Docs-only change._

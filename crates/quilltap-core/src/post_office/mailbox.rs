@@ -3,17 +3,23 @@
 //! A character's mailbox is the root-level `Mail/` folder in that character's
 //! database-backed vault; one Markdown file per letter, delivery metadata in the
 //! frontmatter. These helpers call the document-store service functions directly
-//! (not the `doc_*` tool handlers) — every operation is a content read/write or a
-//! folder ensure.
+//! (not the `doc_*` tool handlers) — every operation but [`discard_letter`] is a
+//! content read/write or a folder ensure. `discard_letter` goes through
+//! [`delete_database_document`], the same chokepoint `doc_delete_file` uses, whose
+//! `delete_with_gc` handles hard-link groups and file-row collection. (v4's module
+//! doc adds that the delete is "buffered whole in the forked child and replayed on
+//! the parent" — v4 `12c336fad`; that is v4's Node IPC path, not a hunk: here the
+//! delete simply runs on the mount writer.)
 //!
 //! All functions operate on a **mount-index** `&Connection` (the vault store).
 //!
-//! Scope: the two mail tool handlers (`send_mail` / `list_email`) use
+//! Scope: the four mail tool handlers (`send_mail` / `list_mail` / `read_mail` /
+//! `discard_mail`) use `resolve_mail_path` / `letter_file_name` /
 //! `slugify_sender_name` / `compose_letter_content` / `parse_letter` /
-//! `build_reply_preface` / `deliver_letter` / `read_letter` / `list_mailbox`. The
-//! Suparṇā mail-check helpers (`collect_unalerted_mail` / `mark_alerted`) drive the
-//! Commonplace-time mail whisper — the READ half of the Suparṇā feeder (W4.6a);
-//! the whisper POST is W4.6b.
+//! `build_reply_preface` / `deliver_letter` / `read_letter` / `list_mailbox` /
+//! `mark_alerted` / `discard_letter`. The Suparṇā mail-check helpers
+//! (`collect_unalerted_mail` / `mark_alerted`) drive the Commonplace-time mail
+//! whisper.
 
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
@@ -21,8 +27,8 @@ use serde_json::{json, Map, Value};
 use crate::clock::iso_to_ms;
 use crate::collation::locale_compare;
 use crate::db::database_store::{
-    list_database_files, read_database_document, write_database_document, DbStoreErrorCode,
-    StoreError,
+    delete_database_document, list_database_files, read_database_document, write_database_document,
+    DbStoreErrorCode, StoreError,
 };
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::DbError;
@@ -32,6 +38,74 @@ use crate::markdown::{body_after, parse_frontmatter};
 
 /// Root-level folder, in every character's vault, where letters are delivered.
 pub const MAIL_FOLDER: &str = "Mail";
+
+/// The tracing target for the module's own lines (v4
+/// `createServiceLogger('PostOffice:Mailbox')`, which renders
+/// `{ service: 'PostOffice:Mailbox', module: 'service' }`).
+pub const LOG_TARGET: &str = "quilltap::post_office::mailbox";
+
+/// Whether `s` starts with `prefix`, ASCII case-insensitively. v4 compares
+/// `s.toLowerCase().startsWith(prefix.toLowerCase())` against an ASCII prefix;
+/// no non-ASCII character lowercases into an ASCII one here (`İ` → `i̇`, two
+/// code points), so the byte compare is exact — and `prefix.len()` is then a
+/// char boundary in `s`.
+fn starts_with_ascii_ci(s: &str, prefix: &str) -> bool {
+    s.len() >= prefix.len() && s.as_bytes()[..prefix.len()].eq_ignore_ascii_case(prefix.as_bytes())
+}
+
+/// Whether `s` ends with `suffix`, ASCII case-insensitively (the mirror of
+/// [`starts_with_ascii_ci`] for v4's `toLowerCase().endsWith('.md')`).
+fn ends_with_ascii_ci(s: &str, suffix: &str) -> bool {
+    s.len() >= suffix.len()
+        && s.as_bytes()[s.len() - suffix.len()..].eq_ignore_ascii_case(suffix.as_bytes())
+}
+
+/// v4 `letterFileName`: a letter's bare file name (`1718370000000-from-ariadne.md`)
+/// from its vault-relative `Mail/…` path — the handle characters are given. Strips
+/// ONE leading `Mail/` (case-insensitively); anything else comes back unchanged.
+pub fn letter_file_name(path: &str) -> &str {
+    let prefix = "Mail/";
+    if starts_with_ascii_ci(path, prefix) {
+        &path[prefix.len()..]
+    } else {
+        path
+    }
+}
+
+/// v4 `resolveMailPath`: resolve a character-supplied letter reference to its
+/// vault-relative `Mail/…` path. Accepts the bare file name (the canonical
+/// handle) and — so a model echoing an older instruction still lands — the
+/// `Mail/…` path or its `qtap://self/Mail/…` URI. `.md` is optional. Anything
+/// that would escape the `Mail/` folder (sub-paths, a backslash, `.`, `..`)
+/// resolves to `None`.
+///
+/// The ORDER is v4's and load-bearing: JS `trim` → ONE anchored
+/// case-insensitive `qtap://self/` strip → leading slashes stripped AFTER the
+/// URI strip (so `/qtap://self/Mail/x` keeps its URI and is refused, while
+/// `qtap://self//Mail/x` resolves) → ONE `Mail/` strip (so `Mail/Mail/x` still
+/// holds a `/` and is refused) → the refusals → `.md` appended unless the name
+/// already ends in it case-insensitively (`x.MD` stays).
+pub fn resolve_mail_path(reference: &str) -> Option<String> {
+    let mut name = crate::jsstr::js_trim(reference);
+    // `.replace(/^qtap:\/\/self\//i, '')`
+    if starts_with_ascii_ci(name, "qtap://self/") {
+        name = &name["qtap://self/".len()..];
+    }
+    // `.replace(/^\/+/, '')`
+    name = name.trim_start_matches('/');
+    let prefix = format!("{MAIL_FOLDER}/");
+    if starts_with_ascii_ci(name, &prefix) {
+        name = &name[prefix.len()..];
+    }
+    if name.is_empty() || name.contains('/') || name.contains('\\') || name == "." || name == ".." {
+        return None;
+    }
+    if ends_with_ascii_ci(name, ".md") {
+        Some(format!("{MAIL_FOLDER}/{name}"))
+    } else {
+        Some(format!("{MAIL_FOLDER}/{name}.md"))
+    }
+}
 
 /// The frontmatter stamped on every delivered letter (v4 `MailFrontmatter`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -294,13 +368,22 @@ pub fn collect_unalerted_mail(
 }
 
 /// v4 `markAlerted`: flip a letter's `alerted` flag to true (a content update; no
-/// link/folder GC). A missing letter is a no-op (v4 warns + returns). Runs on a
-/// **mount-index writer** connection (it writes).
+/// link/folder GC). A missing letter is a no-op that warns `markAlerted: letter no
+/// longer present` (v4's NOT_FOUND arm). Runs on a **mount-index writer**
+/// connection (it writes).
 pub fn mark_alerted(mount: &Connection, vault_id: &str, path: &str) -> Result<(), DbError> {
-    // v4 reads then updates; a NOT_FOUND read is a no-op.
+    // v4 reads then updates; a NOT_FOUND read is a warned no-op.
     let content = match read_database_document(mount, vault_id, path) {
         Ok(doc) => doc.content,
-        Err(StoreError::Store(e)) if e.code == DbStoreErrorCode::NotFound => return Ok(()),
+        Err(StoreError::Store(e)) if e.code == DbStoreErrorCode::NotFound => {
+            tracing::warn!(
+                target: LOG_TARGET,
+                vaultId = vault_id,
+                path = path,
+                "markAlerted: letter no longer present"
+            );
+            return Ok(());
+        }
         Err(e) => return Err(store_to_db(e)),
     };
     let mut updates = Map::new();
@@ -309,6 +392,29 @@ pub fn mark_alerted(mount: &Connection, vault_id: &str, path: &str) -> Result<()
         crate::doc_edit::markdown_parser::update_frontmatter_in_content(&content, &updates, false);
     write_database_document(mount, vault_id, path, &updated).map_err(store_to_db)?;
     Ok(())
+}
+
+/// v4 `discardLetter`: discard a letter from a vault. Deletes through
+/// [`delete_database_document`] — never a raw link delete — so a hard-linked
+/// letter loses only this link, a group of one is dissolved, and the file row
+/// and its content are collected once no link remains. `false` when there was
+/// no such letter.
+///
+/// v4 calls `deleteDatabaseDocumentIfExists`, whose NOT_FOUND catch is
+/// unreachable from here: `deleteDatabaseDocument` never throws NOT_FOUND
+/// (an absent link is its `false` return), and a path [`resolve_mail_path`]
+/// produces never trips `normaliseRelativePath`'s `..` refusal. So the plain
+/// chokepoint is the whole behaviour.
+pub fn discard_letter(mount: &Connection, vault_id: &str, path: &str) -> Result<bool, DbError> {
+    let deleted = delete_database_document(mount, vault_id, path)?;
+    tracing::debug!(
+        target: LOG_TARGET,
+        vaultId = vault_id,
+        path = path,
+        deleted = deleted,
+        "discardLetter"
+    );
+    Ok(deleted)
 }
 
 /// v4 `sortNewestFirst`: newest `sentAt` first; ties (or unparseable dates) fall

@@ -153309,3 +153309,35 @@ Also fixed at unification:
 
 **Versions:** core 0.0.1089, harness 0.0.1012, host 0.0.162, web 0.0.201,
 SPA 0.5.784; cli 0.0.27 and tauri 0.0.7 unchanged.
+
+## P4.D234 — the Post Office mail tools (`39bc98ffc` + `12c336fad`) — lane record
+
+Lane branch `claude/post-office-mail-tools-port-15fc7f`, cut from `main`
+`e361879d3`. Pin `/tmp/qt-v4-pin-p4d234-12c336fad` (verified: `rev-parse` =
+`12c336fad9c8…`, `discard-mail-tool.ts` present, `list-email-tool.ts` absent).
+The §R.2 probe PASSED at lane start (v4 `main` at `97b25fc53`, clean, both logs
+empty). Node 24.13.1 for every regen. Regen outputs staged under `/tmp/p4d234/`.
+
+### Unit 1 — the parser (`resolve_mail_path`, `letter_file_name`, `discard_letter`)
+- `post_office/mailbox.rs`: the three functions + `LOG_TARGET`
+  (`quilltap::post_office::mailbox`, v4's `createServiceLogger(
+  'PostOffice:Mailbox')`); `mark_alerted`'s absent v4 WARN `markAlerted: letter
+  no longer present {vaultId, path}` restored (capture-pinned with the
+  handlers, unit 3). `discard_letter` over `delete_database_document` — v4's
+  `deleteDatabaseDocumentIfExists` NOT_FOUND arm is unreachable from discard
+  (survey §A.1), so no `…IfExists` twin.
+- NEW tier-1 family `mail_path_equivalence` over v4's REAL `resolveMailPath` /
+  `letterFileName` (`harness/oracle/cases/mail-path.ts`): **58 rows / 0
+  divergences** at `12c336fad`. Regen (from the pin):
+  `PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx
+  <v5>/harness/oracle/cases/mail-path.ts > /tmp/p4d234/oracle-mail-path.ndjson`;
+  `QT_ORACLE_MAIL_PATH=… cargo test -p quilltap-harness --test
+  mail_path_equivalence`. At the baseline the import fails outright (the
+  functions do not exist) — no stale pass is possible.
+- Mutations (file-backup revert): **M1** slash strip before the URI strip →
+  2 divergences (`uri_double_slash`, `uri_after_slash`); **M2** `Mail/`
+  stripped twice → 1 (`mail_mail`); **M3** case-sensitive `.md` → 3
+  (`mail_lower`, `ext_upper`, `ext_mixed`). All reverted, `cmp`-verified.
+- Per-commit gate for this unit: `cargo fmt --all`, `cargo clippy -p
+  quilltap-core -p quilltap-harness --all-targets -D warnings` clean, the
+  family green. The full workspace gate runs once at lane close.
