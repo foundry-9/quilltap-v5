@@ -85,6 +85,12 @@ use quilltap_core::db::Writer;
 use quilltap_core::model::completion::{
     CompletionError, CompletionMessage, CompletionParams, CompletionProvider, CompletionResponse,
 };
+use quilltap_core::model::completion_provider::execute_completion;
+use quilltap_core::model::provider_error::text_http_refusal;
+use quilltap_core::model::transport::{
+    BoxFuture, ProviderTransport, StreamBytes, TransportError, TransportPolicy, TransportRequest,
+    TransportResponse,
+};
 use quilltap_core::services::cheap_llm_exec::{
     CheapLlmLogConfig, CheapLlmTaskExecutor, CheapLlmTaskOptions,
 };
@@ -327,24 +333,90 @@ fn set_allow_cheap_fallback(main: &std::path::Path, user_id: &str, value: bool) 
 
 const REFUSAL_SEED_TS: &str = "2020-01-01T00:00:00.000Z";
 
+/// P4.118: the cases whose task FAILS on a `throwsHttp` step, so v4's and v5's
+/// error strings differ by the §S.5 message bytes (see the loop).
+const MESSAGE_BYTES_CASES: &[&str] = &["uncoded-400-not-fallback-eligible"];
+
 /// The case's script, one step per provider call — v4's canned
 /// `createLLMProvider` twin.
 struct ScriptedProvider {
     steps: Mutex<Vec<Value>>,
 }
 
+/// P4.118: a transport answering one posed non-2xx exactly as
+/// `ReqwestTransport` renders it — so a `throwsHttp` step's error is built by
+/// the REAL `execute_completion` composition (the refusal side included), not
+/// by the test.
+struct PosedHttpFailure {
+    status: u16,
+    body: String,
+}
+
+impl PosedHttpFailure {
+    fn error(&self) -> TransportError {
+        TransportError {
+            message: format!("HTTP {}: {}", self.status, self.body),
+            status: Some(self.status),
+        }
+    }
+}
+
+impl ProviderTransport for PosedHttpFailure {
+    fn execute<'a>(
+        &'a self,
+        _request: &'a TransportRequest,
+        _policy: &'a TransportPolicy,
+    ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
+        let e = self.error();
+        Box::pin(async move { Err(e) })
+    }
+
+    fn execute_stream<'a>(
+        &'a self,
+        _request: &'a TransportRequest,
+        _policy: &'a TransportPolicy,
+    ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>> {
+        let e = self.error();
+        Box::pin(async move { Err(e) })
+    }
+}
+
 impl CompletionProvider for ScriptedProvider {
     async fn send_message(
         &self,
-        _provider: &str,
+        provider: &str,
         _base_url: Option<&str>,
-        _params: &CompletionParams,
+        params: &CompletionParams,
     ) -> Result<CompletionResponse, CompletionError> {
-        let mut steps = self.steps.lock().unwrap();
-        assert!(!steps.is_empty(), "the case script ran out");
-        let step = steps.remove(0);
+        let step = {
+            let mut steps = self.steps.lock().unwrap();
+            assert!(!steps.is_empty(), "the case script ran out");
+            steps.remove(0)
+        };
         if let Some(msg) = step.get("throws").and_then(Value::as_str) {
             return Err(CompletionError::new(msg));
+        }
+        if let Some(http) = step.get("throwsHttp") {
+            let transport = PosedHttpFailure {
+                status: http["status"].as_u64().unwrap() as u16,
+                body: http["body"].as_str().unwrap().to_string(),
+            };
+            return match execute_completion(
+                &transport,
+                provider,
+                None,
+                "canned-test-key",
+                params,
+                &TransportPolicy::default(),
+                "Quilltap/test",
+                None,
+                None,
+            )
+            .await
+            {
+                Ok(_) => panic!("a posed non-2xx must fail"),
+                Err(e) => Err(e),
+            };
         }
         Ok(CompletionResponse {
             content: step["content"].as_str().unwrap().to_string(),
@@ -572,11 +644,37 @@ fn cheap_llm_refusal_matches_oracle() {
             provider.steps.lock().unwrap().is_empty(),
             "{name}: scripted step(s) unused"
         );
-        let got_result = json!({
+        let mut got_result = json!({
             "success": result.success,
             "result": result.result,
             "error": result.error,
         });
+        // P4.118 (§S.5): a failed `throwsHttp` task surfaces v5's transport
+        // bytes (`HTTP {status}: {body}`) where v4 surfaces its SDK error's
+        // rendering — the one message the order leaves unchanged. The refusal
+        // SIDE carries v4's rendering, so v4's string must be exactly the side's
+        // message; pinned both ways by case name.
+        let first_http = case["script"][0].get("throwsHttp");
+        let bytes_diverge = MESSAGE_BYTES_CASES.contains(&name);
+        if let Some(http) = first_http.filter(|_| bytes_diverge) {
+            let status = http["status"].as_u64().unwrap() as u16;
+            let body = http["body"].as_str().unwrap();
+            let v5_bytes = format!("HTTP {status}: {body}");
+            let v4_rendering = text_http_refusal(&selection.provider, status, body)
+                .expect("known provider")
+                .message;
+            assert_eq!(
+                got_result["error"],
+                json!(v5_bytes),
+                "{name}: v5's task error is the transport's bytes"
+            );
+            assert_eq!(
+                want["result"]["error"],
+                json!(v4_rendering),
+                "{name}: v4's task error is the side's rendering"
+            );
+            got_result["error"] = want["result"]["error"].clone();
+        }
         let got_lines: Vec<String> = lines
             .into_iter()
             .filter(|l| {

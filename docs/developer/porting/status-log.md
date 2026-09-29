@@ -154374,3 +154374,44 @@ Node 24.13.1. Regen outputs staged under `/tmp/p4118/`.
   body)`). The nested, non-JSON, string-`error`, `null` rows agree. **For an
   image-dialects order** — the fix is `provider_error`'s `openai_sdk_error`
   shape (the wrap + `make_message`).
+
+### Unit 2 — the cheap path's carrier (`cheap_llm_exec.rs`) + the `cheap_llm_fallback` coded arm
+
+- `attempt_cheap_fallback_chain` hands `classify_fallback_trigger` the
+  message PLUS `error.refusal` (`FallbackError::with_refusal` — its FIRST
+  production caller). The host's completion provider passes the
+  `CompletionError` through untouched (`quilltap-host/src/spine.rs`), and no
+  cheap-path rebuild of the error sits between the provider and the chain.
+- **Arm:** `cheap-llm-refusal.json` gains two profiles (`Azure Desk`,
+  OPENAI_COMPATIBLE, `fallbackProfileId` → `Plain Understudy`, OPENAI —
+  neither dangerous-compatible, so no existing case's chain moves), two chats
+  and two cases: `coded-400-stand-in-answers` (a `throwsHttp` step: Azure's
+  `content_filter` body; then the stand-in's answer) and
+  `uncoded-400-not-fallback-eligible` (the same body, `code: null`). The jest
+  case throws the REAL openai 7.23.0 `APIError` built by the client's own
+  non-2xx path (`openaiStatusError`: `safeJSON`, the `{error}` wrap,
+  `APIError.generate`); the Rust `ScriptedProvider` builds its error through
+  the REAL `execute_completion` over a posed transport (`PosedHttpFailure`) —
+  the side is never hand-built. The twin's task `error` differs by the §S.5
+  bytes (v4 `400 The response was filtered…`, v5 `HTTP 400: {…}`), pinned
+  both ways by case name (`MESSAGE_BYTES_CASES`). v4 recorded exactly the
+  prediction: the coded case opens the stand-in chain and succeeds with the
+  refusal's DEBUG + INFO lines (`provider-code`, detail `code content_filter:
+  400 The response was filtered …`); the twin fails, DEBUG `refused: false`
+  only. The log lines and the chats/messages dumps compare equal.
+- Regen AS RUN (`/tmp/p4118/cheap-regen.sh`): the settings fixture and the
+  refusal-ledger fixture BUILT at `/tmp/qt-v4-fix-p4118-acadcc7cd`
+  (`build-settings-fixture.ts`; `QT_REFUSAL_LEDGER_SPEC=cheap-llm-refusal.json
+  … build-refusal-ledger-fixture.ts`), the two jest oracles RUN at
+  `/tmp/qt-v4-pin-p4118-97b25fc53` against COPIES, cases staged in
+  `/tmp/p4118/cheap/mirror`. **Cross-vintage confirmation (§R.3, recorded
+  once for the lane):** `PRAGMA table_info(chats)` on the oracle's copy AFTER
+  the pin run — 104 columns, `renderedMarkdown` PRESENT: the open succeeded
+  and no migration ran.
+- Baseline (the spec before the arm): 7 + 10 cases green. After: 7 + 12
+  green, at BOTH oracle pins (`ORACLE_PIN=…acadcc7cd` re-run: the fallback
+  NDJSON `cmp`-identical, the refusal NDJSON identical after uuid/timestamp
+  normalization).
+- **M5 (the carrier dropped, by file backup) = the red-first:** the coded
+  case fails (`scripted step(s) unused` — the stand-in never ran); the twin
+  stays green.

@@ -32,7 +32,37 @@ function canonValue(v: unknown): unknown {
   return v;
 }
 
-type Step = { content: string; finishReason?: string } | { throws: string };
+type Step =
+  | { content: string; finishReason?: string }
+  | { throws: string }
+  | { throwsHttp: { status: number; body: string } };
+
+/**
+ * P4.118: what an openai-SDK provider plugin (OPENAI_COMPATIBLE here) throws on
+ * a non-2xx — the REAL `APIError` class from the checkout's `openai` 7.23.0,
+ * built exactly as the client's own non-2xx path builds it (`client.js`
+ * `makeRequest`: `safeJSON(errText)`, `errJSON ? undefined : errText`, then
+ * `makeStatusError`'s `{error: body}` wrap when `.error == null`, then
+ * `APIError.generate`). The plugins rethrow it untouched (survey §A.3), so this
+ * is the value `executeCheapLLMTask` catches. The wire family
+ * (`text_http_errors_equivalence`) proves v5's production reconstruction of it
+ * row by row; this arm proves the cheap chain acts on it.
+ */
+function openaiStatusError(status: number, text: string): Error {
+  const { APIError } = require(require('node:path').join(process.cwd(), 'node_modules/openai'));
+  let errJSON: unknown;
+  try {
+    errJSON = JSON.parse(text);
+  } catch {
+    errJSON = undefined;
+  }
+  const errMessage = errJSON ? undefined : text;
+  const normalized =
+    errJSON && typeof errJSON === 'object' && (errJSON as { error?: unknown }).error == null
+      ? { error: errJSON }
+      : errJSON;
+  return APIError.generate(status, normalized, errMessage, new Headers());
+}
 interface Case {
   name: string;
   chatId: string | null;
@@ -123,6 +153,7 @@ async function main(): Promise<void> {
           const step = script.shift();
           if (!step) throw new Error('the case script ran out');
           if ('throws' in step) throw new Error(step.throws);
+          if ('throwsHttp' in step) throw openaiStatusError(step.throwsHttp.status, step.throwsHttp.body);
           return { content: step.content, finishReason: step.finishReason ?? null };
         },
       }),

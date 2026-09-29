@@ -124,6 +124,14 @@ The rider adds `caller_context: &'static str` to `AvatarGenerationParams`, with 
 _No crate versions bumped._
 
 Copies v4's `help/` tree at `97b25fc53` over v5's. Thirteen pages change, none added or removed, so the count stays 129: `chat-settings-ai-services.md` (`04d6c9d52`); `character-optimizer.md`, `character-system-prompts.md`, `prompts.md` (`c3eefa752`); `chat-settings.md`, `chats.md`, `data-retention.md`, `embedding-profiles.md`, `scriptorium.md` (`f7f3d7bf0`); `post-office.md` (`39bc98ffc` + `12c336fad`); `wardrobe.md` (`9ff4bbd8e`); `story-backgrounds.md`, `the-concierge.md` (`97b25fc53`). `diff -rq` against the pin is empty. `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, pass; the embed guard and both host help-boot tests pass unmoved. Reverting `wardrobe.md` to its old bytes turns both oracle families red while the embed guard stays green.
+#### 2026-09-29 — feat(cheap-llm): P4.118 unit 2 — carry the refusal side into the cheap path's stand-in chain
+
+_Versions: core 0.0.1091, harness 0.0.1014._
+
+`cheap_llm_exec.rs` now hands the completion error's refusal side to `classify_fallback_trigger` with the message, the first production caller of `FallbackError::with_refusal`. A cheap task whose provider answers a coded 400 (`content_filter` under benign wording) opens v4's `moderation-refusal` stand-in chain instead of failing as a malformed request.
+
+`cheap_llm_fallback_equivalence` gains two cases driven through v4's real `executeCheapLLMTask`: a coded Azure 400 (the real openai `APIError`) that a configured understudy answers, and its uncoded twin, which is not fallback-eligible on either side. The v5 error is built by the real `execute_completion` over a posed transport. The twin's task-error string differs by the unchanged message bytes and is pinned both ways. Removing the carrier reds the coded case.
+
 #### 2026-09-29 — feat(model): P4.118 unit 1 — the text-side structured refusal seam at the six HTTP sites + the text_http_errors wire family
 
 _Versions: core 0.0.1090, harness 0.0.1013._

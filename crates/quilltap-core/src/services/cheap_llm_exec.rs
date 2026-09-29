@@ -1337,6 +1337,14 @@ impl CheapLlmTaskExecutor {
         } else {
             crate::llm_fallback::FallbackError::message(&error.message)
         };
+        // P4.118: a non-2xx also carries the refusal side — the value v4's
+        // plugin threw, rebuilt per provider — so a coded 400 (`content_filter`,
+        // Z.AI's `1301`) opens v4's `moderation-refusal` stand-in chain here,
+        // where the message alone (`HTTP 400: …`) is a malformed request.
+        let fe = match error.refusal.as_deref() {
+            Some(refusal) => fe.with_refusal(refusal),
+            None => fe,
+        };
         let Some(trigger) = crate::llm_fallback::classify_fallback_trigger(fe) else {
             tracing::debug!(
                 target: "quilltap::cheap_llm",

@@ -27,6 +27,21 @@
       "provider": "OPENROUTER",
       "modelName": "venice/uncensored",
       "isDangerousCompatible": true
+    },
+    {
+      "id": "c90000e3-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "name": "Azure Desk",
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "gpt-4o-azure",
+      "fallbackProfileId": "c90000e4-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "c90000e4-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "name": "Plain Understudy",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini"
     }
   ],
   "concierge": {
@@ -105,6 +120,22 @@
       "chatType": "salon",
       "isDangerousChat": false,
       "messageCount": 20
+    },
+    {
+      "id": "c0000e11-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "title": "coded-400-stand-in-answers",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "messageCount": 21
+    },
+    {
+      "id": "c0000e12-0000-4000-8000-000000000001",
+      "userId": "aa0000e1-0000-4000-8000-0000000000aa",
+      "title": "uncoded-400-not-fallback-eligible",
+      "chatType": "salon",
+      "isDangerousChat": false,
+      "messageCount": 22
     }
   ],
   "ledgerPlants": [
@@ -291,6 +322,45 @@
         },
         {
           "content": "ok"
+        }
+      ]
+    },
+    {
+      "name": "coded-400-stand-in-answers",
+      "chatId": "c0000e11-0000-4000-8000-000000000001",
+      "selection": {
+        "provider": "OPENAI_COMPATIBLE",
+        "modelName": "gpt-4o-azure",
+        "connectionProfileId": "c90000e3-0000-4000-8000-000000000001"
+      },
+      "uncensored": false,
+      "script": [
+        {
+          "throwsHttp": {
+            "status": 400,
+            "body": "{\"error\":{\"message\":\"The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry.\",\"type\":null,\"param\":\"prompt\",\"code\":\"content_filter\",\"status\":400,\"innererror\":{\"code\":\"ResponsibleAIPolicyViolation\"}}}"
+          }
+        },
+        {
+          "content": "the stand-in's answer"
+        }
+      ]
+    },
+    {
+      "name": "uncoded-400-not-fallback-eligible",
+      "chatId": "c0000e12-0000-4000-8000-000000000001",
+      "selection": {
+        "provider": "OPENAI_COMPATIBLE",
+        "modelName": "gpt-4o-azure",
+        "connectionProfileId": "c90000e3-0000-4000-8000-000000000001"
+      },
+      "uncensored": false,
+      "script": [
+        {
+          "throwsHttp": {
+            "status": 400,
+            "body": "{\"error\":{\"message\":\"The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry.\",\"type\":null,\"param\":\"prompt\",\"code\":null,\"status\":400}}"
+          }
         }
       ]
     }
