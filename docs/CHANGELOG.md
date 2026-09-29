@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(db): open every connection with v4's 64 MB page cache (dogfood #123)
+
+_Versions: core 0.0.1105._
+
+The chat GET for the largest real chat (2,028 projected messages) took 13.1 s.
+Decoding compressed text was not the cause (~40 ms for the whole chat). A
+`sample` of the server put nearly all the time in one statement: the
+per-message `files` × `json_each(linkedTo)` attachment probe, which matches
+v4's `findByLinkedTo`. The CPU was in ChaCha20 page decryption. v4 sets
+`cache_size = -64000` and `temp_store = MEMORY` on every connection it opens.
+v5 set neither, so SQLite's ~2 MB default cache re-read and re-decrypted the
+same `files` pages for every message.
+
+Both pragmas are now applied on the pooled read-only connections and on the
+writer. On the read-only open they come after a trivial first read, so `key`
+is still the only pragma issued before the first read. On the writer they come
+after `journal_mode`, where v4 sets them. v4's `mmap_size` is not carried over:
+SQLite3MC cannot memory-map an encrypted database, so it has no effect there.
+The same request now takes 1.1 s and returns a byte-identical length.
+
+A new runtime test asserts both pragmas on a pooled read connection and on the
+writer connection. Removing the read-path call turns it red.
+
 #### 2026-09-29 — docs(porting): unify the `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118) — baseline → `97b25fc53`
 
 _Versions: core 0.0.1104, harness 0.0.1026, host 0.0.165, web 0.0.201, cli 0.0.27, tauri 0.0.7, SPA 0.5.786 (this commit is docs-only; the lanes and the two unification commits carried the bumps)._

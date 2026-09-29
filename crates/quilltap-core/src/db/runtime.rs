@@ -336,7 +336,29 @@ fn open_readonly(path: &Path, key_hex: &str) -> Result<Connection, DbError> {
     // not a warn, because a missing UDF fails loudly ("no such function:
     // qt_text") where a silent absence would let the index drift.
     text_compression::register_qt_text(&conn)?;
+    // v4's page cache (`cache_size = -64000`, 64 MB) and in-memory temp store,
+    // set on every connection v4 opens (`backends/sqlite/client.ts`
+    // `applyPragmas`). Without them SQLite's ~2 MB default cache re-reads — and
+    // re-DECRYPTS — the same pages on every repeated scan: the chat GET's
+    // per-message `files.linkedTo` probe took 13 s over a 2,028-message chat
+    // (dogfood #123). Both are connection-local and never touch the file, but
+    // the read-path rule keeps `key` the only pragma before the first read, so
+    // they follow one. (v4's `mmap_size` is not carried: SQLite3MC cannot
+    // memory-map an encrypted database, so it is inert there too.)
+    apply_cache_pragmas(&conn, true)?;
     Ok(conn)
+}
+
+/// v4's per-connection cache pragmas (see [`open_readonly`]). `first_read`
+/// performs a trivial read first, for a read-only open where `key` must stay
+/// the only pragma issued before the first read.
+pub(crate) fn apply_cache_pragmas(conn: &Connection, first_read: bool) -> Result<(), DbError> {
+    if first_read {
+        let _: i64 = conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get(0))?;
+    }
+    conn.pragma_update(None, "cache_size", -64000)?;
+    conn.pragma_update(None, "temp_store", "MEMORY")?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -435,6 +457,32 @@ mod tests {
             err,
             DbError::PartitionUnavailable(WriteDbTarget::MountIndex)
         ));
+    }
+
+    /// Dogfood #123: every connection carries v4's page cache (`cache_size =
+    /// -64000`) and in-memory temp store (`temp_store = MEMORY` → 2) — the
+    /// pooled READ connection and the WRITER alike. Without them the chat GET's
+    /// per-message `files` probe re-decrypted the same pages 2,028 times (13 s).
+    #[test]
+    fn every_connection_carries_v4s_cache_pragmas() {
+        let (_dir, db) = make_db();
+        let read = db
+            .read_main(|conn| {
+                let cache: i64 = conn.query_row("PRAGMA cache_size", [], |r| r.get(0))?;
+                let temp: i64 = conn.query_row("PRAGMA temp_store", [], |r| r.get(0))?;
+                Ok((cache, temp))
+            })
+            .unwrap();
+        assert_eq!(read, (-64000, 2), "the pooled read connection");
+        let write = db
+            .write_blocking(|ws| {
+                let conn = ws.main().connection();
+                let cache: i64 = conn.query_row("PRAGMA cache_size", [], |r| r.get(0))?;
+                let temp: i64 = conn.query_row("PRAGMA temp_store", [], |r| r.get(0))?;
+                Ok::<_, DbError>((cache, temp))
+            })
+            .unwrap();
+        assert_eq!(write, (-64000, 2), "the writer connection");
     }
 
     /// The blocking write API works off the runtime (the harness's `#[test]`

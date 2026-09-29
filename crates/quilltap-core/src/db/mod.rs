@@ -263,6 +263,10 @@ impl Writer {
         // registration EVERY `chat_messages` INSERT fails, including the rows
         // the `_au` WHEN clause would have excluded. An open ERROR, not a warn.
         text_compression::register_qt_text(&conn)?;
+        // v4 sets its page cache after `journal_mode` on the writable open too
+        // (dogfood #123; see `runtime::apply_cache_pragmas`). `journal_mode`
+        // above has already read the header, so no extra read is needed.
+        runtime::apply_cache_pragmas(&conn, false)?;
 
         Ok(Self { conn })
     }
