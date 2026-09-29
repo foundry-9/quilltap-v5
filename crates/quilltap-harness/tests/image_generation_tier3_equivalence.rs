@@ -1142,6 +1142,10 @@ fn image_generation_matches_oracle() {
                 user_id: spec.user_id.clone(),
                 chat_id: chat_id.clone(),
                 character_id: spec.char_a_id.clone(),
+                // P4.D238 OUT-OF-MANDATE — P4.D239 preserves: the required
+                // `caller_context` field (the oracle's `'oracle-test'`,
+                // `image-generation.test.ts:538`); log-only, no dump moves.
+                caller_context: "oracle-test",
                 image_profile_id_override: None,
                 equipped_slots_override: None,
                 // P4.D184: the AUTOMATIC trigger never forces, so the enqueued

@@ -2384,6 +2384,9 @@ async fn post_opening_outfit_and_avatar(
             user_id: SINGLE_USER_ID.to_string(),
             chat_id: chat_id.to_string(),
             character_id: character_id.to_string(),
+            // P4.D238 MARKED HUNK (the `caller_context` rider) — v4
+            // `app/api/v1/chats/route.ts:617`.
+            caller_context: "[Chats v1] chat-open",
             image_profile_id_override: None,
             equipped_slots_override: None,
             // Automatic (the opening outfit): cache-served like every other

@@ -49,6 +49,20 @@
 //! `add` pair is compared with `equippedOutfit` dropped: the action verb dresses
 //! the newcomer and `processChatUpdates` deliberately does not.
 //!
+//! ## P4.D238 — the arriving character's avatar (v4 `04d6c9d52`)
+//!
+//! Every participant dump now carries `jobs` (the family was BLIND to the new
+//! enqueue: its add cases dumped `chat` + `messages` only). Red-first on
+//! unported main against the `04d6c9d52` oracle: exactly TEN `tables` reds —
+//! the eight `CHAT_QUIET` adds (generation on, a default image profile) and the
+//! two job-bearing planted reactivates. The six planted arms (`plantedAddCase`
+//! on the oracle side, [`plant`] here) mirror the oracle's repository writes on
+//! a fresh copy of the committed pair — the pair is consumed, never rebuilt.
+//! The control regen at the baseline `acadcc7cd` and at `04d6c9d52`, before
+//! the case grew, were BOTH green on unported main: `f7f3d7bf0` (in between)
+//! does not move this family. The arrival's log lines are pinned below by the
+//! unconditional `captured_add` tests (they need no oracle file).
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-chat-cast.ndjson npx jest -- chat-cast-routes
 //! Run:
@@ -81,6 +95,10 @@ const V4_CREATED_CASES: &[&str] = &[
     "add_stale_profile_falls_back",
     "add_outfit_default_empty_vault_wears_shared",
     "add_outfit_default_layers_shared_under_own",
+    // P4.D238's planted fresh adds.
+    "add_autonomous_room_no_job",
+    "add_dedup_pending_job",
+    "add_gen_on_no_image_profile_no_job",
 ];
 
 /// Cases whose 400 body carries v4's Zod `details` array.
@@ -430,6 +448,102 @@ fn update_data(v: Value) -> ParticipantUpdateData {
     })
 }
 
+// ---------------------------------------------------------------------------
+// P4.D238 — the in-case plants (mirrors of the oracle's `plantedAddCase`
+// repository writes; the committed pair is consumed, never rebuilt)
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+enum Plant {
+    /// `repos.chats.update(chatMain, {avatarGenerationEnabled: true})` — v4's
+    /// `update` preserves `updatedAt` when the caller names none, and so does
+    /// this raw write (the same write `toggle_avatar_generation` makes).
+    GenerationOnMain,
+    /// `repos.chats.setEquippedOutfit(chatMain, eris, {top: [wErisCoat], …})` —
+    /// an equipped entry that SURVIVES her removal.
+    ErisPriorOutfit,
+    /// `repos.chats.update(chatQuiet, {chatType: 'autonomous'})`.
+    AutonomousQuiet,
+    /// `enqueueCharacterAvatarGeneration(userId, {chatId: chatQuiet,
+    /// characterId: dora, imageProfileId})` — a PENDING job the join must reuse.
+    PendingDoraJobQuiet,
+    /// `repos.imageProfiles.update(imageProfile, {isDefault: false})` — no image
+    /// profile resolves (the chats carry no `imageProfileId`).
+    NoDefaultImageProfile,
+}
+
+async fn plant(db: &Db, spec: &Spec, p: Plant) {
+    let id = |k: &str| spec.ids.get(k).expect("spec id").clone();
+    let exec = |sql: &'static str, a: String| async move {
+        db.write(move |w| {
+            w.main()
+                .connection()
+                .execute(sql, rusqlite::params![a])
+                .map_err(quilltap_core::db::DbError::from)
+        })
+        .await
+        .expect("plant write");
+    };
+    match p {
+        Plant::GenerationOnMain => {
+            exec(
+                "UPDATE chats SET avatarGenerationEnabled = 1 WHERE id = ?1",
+                id("chatMain"),
+            )
+            .await
+        }
+        Plant::AutonomousQuiet => {
+            exec(
+                "UPDATE chats SET chatType = 'autonomous' WHERE id = ?1",
+                id("chatQuiet"),
+            )
+            .await
+        }
+        Plant::NoDefaultImageProfile => {
+            exec(
+                "UPDATE image_profiles SET isDefault = 0 WHERE id = ?1",
+                id("imageProfile"),
+            )
+            .await
+        }
+        Plant::ErisPriorOutfit => {
+            let (cid, chid) = (id("chatMain"), id("eris"));
+            let slots = json!({
+                "top": [id("wErisCoat")],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": [],
+            });
+            let written = db
+                .write(move |w| {
+                    quilltap_core::db::chats_outfits::ChatOutfitsRepository::new(
+                        w.main().connection(),
+                    )
+                    .set_equipped_outfit(&cid, &chid, &slots)
+                })
+                .await
+                .expect("plant outfit");
+            assert!(written, "the prior-outfit plant must land");
+        }
+        Plant::PendingDoraJobQuiet => {
+            let (_, is_new) =
+                quilltap_core::services::queue_service::enqueue_character_avatar_generation(
+                    db,
+                    &spec.user_id,
+                    &id("chatQuiet"),
+                    &id("dora"),
+                    &id("imageProfile"),
+                    None,
+                    false,
+                )
+                .await
+                .expect("plant job");
+            assert!(is_new, "the pending-job plant must mint a row");
+        }
+    }
+}
+
 #[test]
 fn chat_cast_routes_match_oracle() {
     let Some(oracle_path) = env_or_skip("QT_ORACLE_CHAT_CAST") else {
@@ -556,10 +670,15 @@ fn chat_cast_routes_match_oracle() {
         let (chat_main, chat_quiet, chat_solo) = (id("chatMain"), id("chatQuiet"), id("chatSolo"));
         let missing = id("missing");
 
+        // P4.D238 (v4 `04d6c9d52`): `jobs` joins the dump — an arriving
+        // character now requests an avatar job, which the family could not see
+        // before (it was BLIND). `ENTRANCE_PAIRS` compares the `chat` dump only,
+        // so `jobs` never enters the pair comparison.
         let cast_tables = |db: &Db, chat: &str| {
             json!({
                 "chat": dump_chat_row(db, chat),
                 "messages": dump_messages(db, chat),
+                "jobs": dump_jobs(db),
             })
         };
 
@@ -729,6 +848,72 @@ fn chat_cast_routes_match_oracle() {
             &missing,
             json!({ "type": "CHARACTER", "characterId": id("dora") }),
             false,
+        );
+
+        // ── P4.D238 / v4 `04d6c9d52`: the arriving character's avatar ─────
+        // The planted arms (the oracle's `plantedAddCase` — each plant mirrors
+        // the oracle's repository write; see `plant`).
+        let mut planted = |tag: &str, name: &str, chat: &str, plants: &[Plant], bag: Value| {
+            let db = fresh_db(&spec, tag);
+            for p in plants {
+                rt.block_on(plant(&db, &spec, *p));
+            }
+            let data = add_data(bag);
+            let r = rt.block_on(chat_cast::chat_add_participant(
+                &db,
+                &spec.user_id,
+                chat,
+                &data,
+                None,
+            ));
+            let tables = Some(cast_tables(&db, chat));
+            check(name, &r, tables);
+        };
+        planted(
+            "p1",
+            "add_reactivate_gen_on_prior_outfit_no_selection",
+            &chat_main,
+            &[Plant::GenerationOnMain, Plant::ErisPriorOutfit],
+            json!({ "type": "CHARACTER", "characterId": id("eris") }),
+        );
+        planted(
+            "p2",
+            "add_reactivate_gen_on_no_prior_outfit",
+            &chat_main,
+            &[Plant::GenerationOnMain],
+            json!({ "type": "CHARACTER", "characterId": id("eris") }),
+        );
+        planted(
+            "p3",
+            "add_reactivate_gen_on_with_outfit",
+            &chat_main,
+            &[Plant::GenerationOnMain],
+            json!({
+                "type": "CHARACTER",
+                "characterId": id("eris"),
+                "outfitSelection": { "characterId": id("eris"), "mode": "default" },
+            }),
+        );
+        planted(
+            "p4",
+            "add_autonomous_room_no_job",
+            &chat_quiet,
+            &[Plant::AutonomousQuiet],
+            json!({ "type": "CHARACTER", "characterId": id("dora") }),
+        );
+        planted(
+            "p5",
+            "add_dedup_pending_job",
+            &chat_quiet,
+            &[Plant::PendingDoraJobQuiet],
+            json!({ "type": "CHARACTER", "characterId": id("dora") }),
+        );
+        planted(
+            "p6",
+            "add_gen_on_no_image_profile_no_job",
+            &chat_quiet,
+            &[Plant::NoDefaultImageProfile],
+            json!({ "type": "CHARACTER", "characterId": id("dora") }),
         );
 
         // ── ?action=update-participant ────────────────────────────────────
@@ -1262,6 +1447,18 @@ fn chat_cast_routes_match_oracle() {
             None,
             true,
         );
+        // P4.D238: the bag's add is UNTOUCHED by `04d6c9d52` — no dress, and
+        // no avatar job even in a generation-on chat.
+        bag(
+            "g2b",
+            "bag_add_participant_generation_on_no_job",
+            &chat_quiet,
+            json!({}),
+            None,
+            Some(json!({ "type": "CHARACTER", "characterId": id("dora") })),
+            None,
+            true,
+        );
         bag(
             "g3",
             "bag_remove_participant",
@@ -1404,4 +1601,268 @@ fn enriched_participant_key_order_matches_v4() {
     // The frozen clock the oracle uses, kept referenced so a change to one side
     // is a compile-visible change to both.
     assert_eq!(NOW_MS, 1_777_939_200_000);
+}
+
+// ---------------------------------------------------------------------------
+// P4.D238 — the arrival's log lines, capture-pinned (v5-side; the oracle runs
+// at LOG_LEVEL=error, so the bytes come from v4's source: `participants.ts:
+// 251-284` + the two INFOs, `avatar-generation.ts`, `queue-service.ts:1185`).
+// These need no oracle file — they run on the committed fixture every time.
+// ---------------------------------------------------------------------------
+
+fn load_spec() -> Spec {
+    serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap()
+}
+
+/// Run one add-participant call (after `plants`) under the thread-scoped
+/// capture rig; hand back the response, the log lines, and the jobs dump.
+fn captured_add(
+    tag: &str,
+    chat_key: &str,
+    plants: &[Plant],
+    bag: Value,
+) -> (Response, Vec<String>, Value) {
+    let spec = load_spec();
+    let db = fresh_db(&spec, tag);
+    let chat = spec.ids[chat_key].clone();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    for p in plants {
+        rt.block_on(plant(&db, &spec, *p));
+    }
+    let data = add_data(bag);
+    let (r, lines) = quilltap_core::test_support::captured_with(|| {
+        rt.block_on(chat_cast::chat_add_participant(
+            &db,
+            &spec.user_id,
+            &chat,
+            &data,
+            None,
+        ))
+    });
+    let jobs = dump_jobs(&db);
+    (r, lines, jobs)
+}
+
+fn has(lines: &[String], needle: &str) -> bool {
+    lines.iter().any(|l| l.contains(needle))
+}
+fn line<'a>(lines: &'a [String], needle: &str) -> &'a str {
+    lines
+        .iter()
+        .find(|l| l.contains(needle))
+        .unwrap_or_else(|| panic!("no line containing {needle:?} in {lines:#?}"))
+}
+
+const REQUESTED: &str = "[Chats v1] Avatar refresh requested for arriving character";
+const SKIPPED: &str = "[Chats v1] No equipped outfit for arriving character, avatar left as-is";
+const ENQUEUED: &str = "[CharacterAvatar] Avatar generation job enqueued";
+const REUSED: &str = "[CharacterAvatar] Reusing existing pending job";
+
+#[test]
+fn arrival_in_a_generation_on_chat_requests_and_enqueues_a_force_less_job() {
+    let spec = load_spec();
+    let (r, lines, jobs) = captured_add(
+        "log1",
+        "chatQuiet",
+        &[],
+        json!({ "type": "CHARACTER", "characterId": spec.ids["dora"] }),
+    );
+    assert!(matches!(r, Response::ChatCast(_)), "the join must succeed");
+    let dora = &spec.ids["dora"];
+    let requested = line(&lines, REQUESTED);
+    assert!(requested.starts_with("DEBUG "), "{requested}");
+    assert!(
+        requested.contains(&format!("character_id={dora}")),
+        "{requested}"
+    );
+    let enqueued = line(&lines, ENQUEUED);
+    assert!(enqueued.starts_with("INFO "), "{enqueued}");
+    assert!(
+        enqueued.contains("context=background-jobs.queue"),
+        "{enqueued}"
+    );
+    // The dress ran FIRST (v4 pins it by `invocationCallOrder`): a fresh
+    // arrival has NO equipped entry until the dress writes one, so a refresh
+    // run before it would take the skip and queue nothing. The skip's absence
+    // and the job's presence are the order proof (mutation M3).
+    assert!(
+        !has(&lines, SKIPPED),
+        "silence leg: an equipped entry was written by the dress"
+    );
+    // v4's two INFOs (Tier 2 item 7).
+    let added = line(&lines, "[Chats v1] Participant added");
+    assert!(added.starts_with("INFO "), "{added}");
+    assert!(added.contains("character_name=Dora"), "{added}");
+    assert!(added.contains("controlled_by=llm"), "{added}");
+    // The cache-rebind premise: the payload carries NO `force` key (v4
+    // `...(force ? { force: true } : {})`), so the configuration cache serves it.
+    let jobs = jobs.as_array().unwrap();
+    assert_eq!(jobs.len(), 1, "{jobs:#?}");
+    assert!(jobs[0]["payload"].get("force").is_none(), "{:#?}", jobs[0]);
+}
+
+#[test]
+fn requested_fires_on_a_generation_off_chat_where_nothing_is_queued() {
+    // v4's "requested" DEBUG is logged whenever the equipped read is non-null,
+    // even when the trigger then skips — "requested" is not "queued".
+    let spec = load_spec();
+    let (r, lines, jobs) = captured_add(
+        "log2",
+        "chatMain",
+        &[],
+        json!({ "type": "CHARACTER", "characterId": spec.ids["dora"] }),
+    );
+    assert!(matches!(r, Response::ChatCast(_)));
+    assert!(has(&lines, REQUESTED), "{lines:#?}");
+    assert!(!has(&lines, ENQUEUED), "silence leg: generation is off");
+    assert_eq!(jobs, json!([]));
+}
+
+#[test]
+fn a_reactivation_with_no_surviving_outfit_logs_the_skip() {
+    let spec = load_spec();
+    let (r, lines, jobs) = captured_add(
+        "log3",
+        "chatMain",
+        &[Plant::GenerationOnMain],
+        json!({ "type": "CHARACTER", "characterId": spec.ids["eris"] }),
+    );
+    assert!(matches!(r, Response::ChatCast(_)));
+    let skipped = line(&lines, SKIPPED);
+    assert!(skipped.starts_with("DEBUG "), "{skipped}");
+    assert!(
+        !has(&lines, REQUESTED),
+        "silence leg: the skip returns before the trigger"
+    );
+    let reactivated = line(&lines, "[Chats v1] Participant reactivated");
+    assert!(reactivated.starts_with("INFO "), "{reactivated}");
+    assert!(
+        reactivated.contains(&format!("participant_id={}", spec.ids["pEris"])),
+        "{reactivated}"
+    );
+    assert!(reactivated.contains("character_name=Eris"), "{reactivated}");
+    assert!(reactivated.contains("controlled_by=llm"), "{reactivated}");
+    assert!(!has(&lines, "[Chats v1] Participant added"));
+    assert_eq!(jobs, json!([]));
+}
+
+#[test]
+fn a_pending_job_is_reused_not_duplicated() {
+    let spec = load_spec();
+    let (_, lines, jobs) = captured_add(
+        "log4",
+        "chatQuiet",
+        &[Plant::PendingDoraJobQuiet],
+        json!({ "type": "CHARACTER", "characterId": spec.ids["dora"] }),
+    );
+    let reused = line(&lines, REUSED);
+    assert!(reused.starts_with("INFO "), "{reused}");
+    assert!(reused.contains("existing_job_id="), "{reused}");
+    assert!(!has(&lines, ENQUEUED), "silence leg: no second row");
+    assert!(has(&lines, REQUESTED));
+    assert_eq!(jobs.as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn a_poisoned_trigger_cannot_fail_the_join() {
+    // The trigger's only fallible leg in v5 is the enqueue; with the jobs table
+    // gone it errors, the trigger WARNs with the caller's context (v4
+    // `Failed to enqueue avatar generation`), and the join still answers
+    // success. v4's own join WARN is unreachable outside a mock and is not
+    // ported (see `refresh_avatar_for_arriving_character`).
+    let spec = load_spec();
+    let db = fresh_db(&spec, "log5");
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(db.write(|w| {
+        w.main()
+            .connection()
+            .execute_batch("DROP TABLE background_jobs")
+            .map_err(quilltap_core::db::DbError::from)
+    }))
+    .expect("poison");
+    let data = add_data(json!({ "type": "CHARACTER", "characterId": spec.ids["dora"] }));
+    let chat = spec.ids["chatQuiet"].clone();
+    let (r, lines) = quilltap_core::test_support::captured_with(|| {
+        rt.block_on(chat_cast::chat_add_participant(
+            &db,
+            &spec.user_id,
+            &chat,
+            &data,
+            None,
+        ))
+    });
+    assert!(
+        matches!(r, Response::ChatCast(_)),
+        "the join must not fail on the avatar leg: {r:?}"
+    );
+    let warn = line(&lines, "Failed to enqueue avatar generation");
+    assert!(warn.starts_with("WARN "), "{warn}");
+    assert!(
+        warn.contains("context=[Chats v1] participant-join"),
+        "{warn}"
+    );
+    assert!(has(&lines, REQUESTED), "the helper still completes");
+}
+
+#[test]
+fn an_override_profile_that_is_gone_warns_and_falls_back() {
+    // The `caller_context` rider's override WARN (v4 `avatar-generation.ts:79`).
+    use quilltap_core::services::avatar_generation::{
+        trigger_avatar_generation, AvatarGenerationParams, AvatarGenerationResult,
+    };
+    let spec = load_spec();
+    let db = fresh_db(&spec, "log6");
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let params = AvatarGenerationParams {
+        user_id: spec.user_id.clone(),
+        chat_id: spec.ids["chatQuiet"].clone(),
+        character_id: spec.ids["bram"].clone(),
+        caller_context: "[Chats v1] regenerate-avatar",
+        image_profile_id_override: Some(spec.ids["missing"].clone()),
+        equipped_slots_override: None,
+        force: true,
+    };
+    let (result, lines) = quilltap_core::test_support::captured_with(|| {
+        rt.block_on(trigger_avatar_generation(&db, &params))
+    });
+    assert_eq!(
+        result,
+        AvatarGenerationResult::Queued,
+        "falls back to the default"
+    );
+    let warn = line(
+        &lines,
+        "Avatar generation override profile not found, falling back",
+    );
+    assert!(warn.starts_with("WARN "), "{warn}");
+    assert!(
+        warn.contains("context=[Chats v1] regenerate-avatar"),
+        "{warn}"
+    );
+    assert!(
+        warn.contains(&format!(
+            "image_profile_id_override={}",
+            spec.ids["missing"]
+        )),
+        "{warn}"
+    );
+    // Silence leg: a present override never warns.
+    let ok_params = AvatarGenerationParams {
+        image_profile_id_override: Some(spec.ids["imageProfile"].clone()),
+        character_id: spec.ids["cleo"].clone(),
+        ..params
+    };
+    let (_, quiet) = quilltap_core::test_support::captured_with(|| {
+        rt.block_on(trigger_avatar_generation(&db, &ok_params))
+    });
+    assert!(!has(&quiet, "override profile not found"), "{quiet:#?}");
 }

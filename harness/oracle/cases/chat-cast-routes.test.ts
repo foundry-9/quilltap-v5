@@ -314,10 +314,15 @@ async function main(): Promise<void> {
       params: Promise.resolve({ id: chatId }),
     });
 
-  /** The standard post-mutation dump for a participant case. */
+  /**
+   * The standard post-mutation dump for a participant case. P4.D238 (v4
+   * `04d6c9d52`): `jobs` joins it — an arriving character now requests an
+   * avatar job, and before this the family could not see one (it was BLIND).
+   */
   const castTables = async (chatId: string) => ({
     chat: await readChatRow(chatId),
     messages: await readMessages(chatId),
+    jobs: await readJobs(),
   });
 
   const addCase = (name: string, chatId: string, body: unknown, dump = true): CaseSpec => ({
@@ -358,6 +363,40 @@ async function main(): Promise<void> {
       return dump ? { status, body: out, tables: await castTables(chatId) } : { status, body: out };
     },
   });
+  /**
+   * P4.D238 (v4 `04d6c9d52`): an add-participant case whose world is FIRST
+   * given a state through the REPOSITORIES (the `seededUpdateCase` precedent),
+   * so the committed pair is consumed, never rebuilt. `chats.update` preserves
+   * `updatedAt` (no caller key), so a plant moves no timestamp.
+   */
+  type Repos = Awaited<ReturnType<typeof import('@/lib/repositories/factory')['getRepositories']>>;
+  const plantedAddCase = (
+    name: string,
+    chatId: string,
+    plant: (repos: Repos) => Promise<void>,
+    body: unknown,
+  ): CaseSpec => ({
+    name,
+    run: async () => {
+      const { getRepositories } = await import('@/lib/repositories/factory');
+      await plant(getRepositories());
+      const { status, body: out } = await respond(await post(chatId, 'add-participant', body));
+      return { status, body: out, tables: await castTables(chatId) };
+    },
+  });
+  const generationOn = (chatId: string) => async (repos: Repos) => {
+    await repos.chats.update(chatId, { avatarGenerationEnabled: true } as never);
+  };
+  // ERIS's pre-removal outfit — an equipped entry that SURVIVES her removal.
+  const erisPriorOutfit = async (repos: Repos) => {
+    await repos.chats.setEquippedOutfit(I.chatMain, I.eris, {
+      top: [I.wErisCoat],
+      bottom: [],
+      footwear: [],
+      accessories: [],
+      hair: [],
+    } as never);
+  };
   const removeCase = (name: string, chatId: string, body: unknown, dump = true): CaseSpec => ({
     name,
     run: async () => {
@@ -453,6 +492,76 @@ async function main(): Promise<void> {
       controlledBy: 'user',
       outfitSelection: { characterId: I.eris, mode: 'default' },
     }),
+    // ── P4.D238 / v4 `04d6c9d52`: the arriving character's avatar ─────────
+    // Every CHAT_QUIET add above (generation on, a default image profile) now
+    // queues one `CHARACTER_AVATAR_GENERATION` job with NO `force` key — incl.
+    // `add_outfit_none` (an all-empty entry is truthy) and `add_user_controlled`
+    // (the trigger ignores `controlledBy`). CHAT_MAIN (generation off) queues
+    // none. The planted arms:
+    // (a) reactivate, generation on, NO outfitSelection, an entry that survived
+    //     the removal → a job (the arm that fires without a re-dress).
+    plantedAddCase(
+      'add_reactivate_gen_on_prior_outfit_no_selection',
+      I.chatMain,
+      async (repos) => {
+        await generationOn(I.chatMain)(repos);
+        await erisPriorOutfit(repos);
+      },
+      { type: 'CHARACTER', characterId: I.eris },
+    ),
+    // (b) reactivate, generation on, no entry → the DEBUG skip, no job.
+    plantedAddCase(
+      'add_reactivate_gen_on_no_prior_outfit',
+      I.chatMain,
+      generationOn(I.chatMain),
+      { type: 'CHARACTER', characterId: I.eris },
+    ),
+    // (a2) reactivate, generation on, an explicit outfit → re-dressed, then a job.
+    plantedAddCase(
+      'add_reactivate_gen_on_with_outfit',
+      I.chatMain,
+      generationOn(I.chatMain),
+      {
+        type: 'CHARACTER',
+        characterId: I.eris,
+        outfitSelection: { characterId: I.eris, mode: 'default' },
+      },
+    ),
+    // (c) an autonomous room: dressed, but the trigger skips — no job.
+    plantedAddCase(
+      'add_autonomous_room_no_job',
+      I.chatQuiet,
+      async (repos) => {
+        await repos.chats.update(I.chatQuiet, { chatType: 'autonomous' } as never);
+      },
+      { type: 'CHARACTER', characterId: I.dora },
+    ),
+    // (d) a PENDING job for the same chat + character already exists → reused,
+    //     no second row.
+    plantedAddCase(
+      'add_dedup_pending_job',
+      I.chatQuiet,
+      async () => {
+        const { enqueueCharacterAvatarGeneration } = await import(
+          '@/lib/background-jobs/queue-service'
+        );
+        await enqueueCharacterAvatarGeneration(spec.userId, {
+          chatId: I.chatQuiet,
+          characterId: I.dora,
+          imageProfileId: I.imageProfile,
+        });
+      },
+      { type: 'CHARACTER', characterId: I.dora },
+    ),
+    // (e) generation on but no image profile resolves → no job.
+    plantedAddCase(
+      'add_gen_on_no_image_profile_no_job',
+      I.chatQuiet,
+      async (repos) => {
+        await repos.imageProfiles.update(I.imageProfile, { isDefault: false } as never);
+      },
+      { type: 'CHARACTER', characterId: I.dora },
+    ),
     addCase(
       'add_already_present',
       I.chatMain,
@@ -783,6 +892,11 @@ async function main(): Promise<void> {
       updateParticipant: { participantId: I.pBram, displayOrder: 5 },
     }),
     bagCase('bag_add_participant', I.chatMain, {
+      addParticipant: { type: 'CHARACTER', characterId: I.dora },
+    }),
+    // P4.D238: the bag's add is UNTOUCHED by `04d6c9d52` — no dress, and no
+    // avatar job even in a generation-on chat.
+    bagCase('bag_add_participant_generation_on_no_job', I.chatQuiet, {
       addParticipant: { type: 'CHARACTER', characterId: I.dora },
     }),
     bagCase('bag_remove_participant', I.chatMain, { removeParticipantId: I.pCleo }),

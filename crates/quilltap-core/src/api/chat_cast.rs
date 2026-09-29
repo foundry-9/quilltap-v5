@@ -37,6 +37,9 @@ use serde_json::{json, Value};
 use crate::db::chats::{ChatUpdate, ChatsRepository};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
+use crate::services::avatar_generation::{
+    trigger_avatar_generation_if_enabled, AvatarGenerationParams,
+};
 use crate::services::chat_avatars;
 use crate::services::chat_participants::{
     apply_outfit_for_added_participant, enrich_participant, handle_add_participant,
@@ -91,6 +94,14 @@ fn from_avatar_error(e: chat_avatars::AvatarError) -> Response {
     }
 }
 
+/// v4 `character?.name || 'Unknown'` (an empty name is falsy too).
+fn character_name_or_unknown(character: Option<&Value>) -> String {
+    character
+        .and_then(|c| s(c, "name"))
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "Unknown".to_string())
+}
+
 fn s(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
 }
@@ -124,6 +135,102 @@ fn enrich(db: &Db, participant: &Value) -> Result<Value, DbError> {
     let p = participant.clone();
     let enriched = read_main_mount(db, |main, mount| enrich_participant(main, mount, &p))?;
     serde_json::to_value(enriched).map_err(|e| DbError::Internal(e.to_string()))
+}
+
+// ===========================================================================
+// The arriving character's avatar (v4 `04d6c9d52`)
+// ===========================================================================
+
+/// v4 `repos.chats.getEquippedOutfitForCharacter` is a FALLBACK-mode
+/// `safeQuery` over the equally-fallback `getEquippedOutfit`, so a failed read
+/// logs ERROR and answers `null` — it never throws. The line that fires is the
+/// INNER one (`Failed to get equipped outfit`, `{collection, chatId, context}`):
+/// the outer `…for character` arm can only see a throw, and the inner never
+/// throws outside a strict scope. v5's read returns a `Result`, so this maps
+/// its `Err` onto that arm — the "no outfit" skip — and never onto the join's
+/// WARN (P4.D238; the survey's "`Failed to get equipped outfit for character`"
+/// names the unreachable outer line).
+fn equipped_outfit_or_fallback(
+    read: Result<Option<Value>, DbError>,
+    chat_id: &str,
+) -> Option<Value> {
+    match read {
+        Ok(found) => found,
+        Err(error) => {
+            tracing::error!(
+                collection = "chats",
+                chat_id = %chat_id,
+                context = "wardrobe",
+                error = %error,
+                "Failed to get equipped outfit"
+            );
+            None
+        }
+    }
+}
+
+/// v4 `refreshAvatarForArrivingCharacter` (`participants.ts:251-284`, v4
+/// `04d6c9d52`) — bring an arriving character's per-chat avatar in line with
+/// what they are wearing, the same way chat-open does for the opening cast.
+/// Without it a character added (or re-added) mid-chat keeps their default
+/// avatar even in a chat that auto-updates avatars on wardrobe changes.
+///
+/// It goes through the ordinary avatar job with no `force`, so the
+/// configuration cache answers first: an outfit already drawn is simply
+/// rebound, and only a new configuration costs a generation. The gates
+/// (`avatarGenerationEnabled`, autonomous rooms, an image profile, the pending-
+/// job dedup) all live in [`trigger_avatar_generation_if_enabled`] and are NOT
+/// re-checked here — v4 does not, and its "requested" DEBUG fires whether or
+/// not the trigger then queued anything.
+///
+/// "No equipped outfit" is v4's `!equippedSlots`: an absent entry ONLY. An
+/// entry whose slots are all empty (mode `none`, or `default` over an empty
+/// wardrobe) is an object, so it is truthy and the trigger fires.
+///
+/// v4's WARN (`Failed to request avatar refresh for arriving character`) is
+/// not ported: it sits behind a fallback read and a trigger that catches
+/// everything itself, so only v4's MOCKED test reaches it. Here both legs
+/// return without an error to catch — the join cannot fail on this path.
+async fn refresh_avatar_for_arriving_character(
+    db: &Db,
+    chat_id: &str,
+    character_id: &str,
+    user_id: &str,
+) {
+    let (cid, chid) = (chat_id.to_string(), character_id.to_string());
+    let read = db.read_main(move |c| {
+        crate::db::chats_outfits::ChatOutfitsRepository::new(c)
+            .get_equipped_outfit_for_character(&cid, &chid)
+    });
+    if equipped_outfit_or_fallback(read, chat_id).is_none() {
+        tracing::debug!(
+            chat_id = %chat_id,
+            character_id = %character_id,
+            "[Chats v1] No equipped outfit for arriving character, avatar left as-is"
+        );
+        return;
+    }
+
+    trigger_avatar_generation_if_enabled(
+        db,
+        &AvatarGenerationParams {
+            user_id: user_id.to_string(),
+            chat_id: chat_id.to_string(),
+            character_id: character_id.to_string(),
+            caller_context: "[Chats v1] participant-join",
+            image_profile_id_override: None,
+            equipped_slots_override: None,
+            // Automatic: cache-served, so the job payload carries no `force`
+            // key at all (v4 passes none).
+            force: false,
+        },
+    )
+    .await;
+    tracing::debug!(
+        chat_id = %chat_id,
+        character_id = %character_id,
+        "[Chats v1] Avatar refresh requested for arriving character"
+    );
 }
 
 // ===========================================================================
@@ -208,6 +315,21 @@ pub async fn chat_add_participant(
         Ok(c) => c,
         Err(e) => return internal(e),
     };
+    // v4 `participants.ts` — absent from v5 until P4.D238 (Tier 2 item 7).
+    // `participantId` is `newParticipant?.id` (an absent id is omitted);
+    // `characterName` is `addedCharacter?.name || 'Unknown'`.
+    let new_participant_id = new_participant.as_ref().and_then(|p| s(p, "id"));
+    tracing::info!(
+        chat_id = %chat_id,
+        participant_id = new_participant_id.as_deref(),
+        character_name = %character_name_or_unknown(added_character.as_ref()),
+        controlled_by = %data
+            .controlled_by
+            .clone()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "llm".to_string()),
+        "[Chats v1] Participant added"
+    );
 
     if let (Some(character), Some(participant)) = (&added_character, &new_participant) {
         let participant_id = s(participant, "id").unwrap_or_default();
@@ -262,6 +384,9 @@ pub async fn chat_add_participant(
         outfit_runner,
     )
     .await;
+    // v4 `04d6c9d52`: STRICTLY after the dress — the refresh reads the
+    // equipped entry the dress just wrote (a fresh arrival has none before).
+    refresh_avatar_for_arriving_character(db, chat_id, &data.character_id, user_id).await;
 
     ok(json!({ "participant": enriched, "chat": result_chat }))
 }
@@ -344,6 +469,14 @@ async fn reactivate_participant(
         },
         None => None,
     };
+    // v4 `participants.ts` — absent from v5 until P4.D238 (Tier 2 item 7).
+    tracing::info!(
+        chat_id = %chat_id,
+        participant_id = %removed_id,
+        character_name = %character_name_or_unknown(character.as_ref()),
+        controlled_by = %controlled_by,
+        "[Chats v1] Participant reactivated"
+    );
 
     if let (Some(character), Some(participant)) = (&character, &reactivated) {
         post_host_add_announcement(
@@ -378,6 +511,14 @@ async fn reactivate_participant(
             )
             .await;
         }
+    }
+
+    // v4 `04d6c9d52`: whether or not the outfit was re-applied, the returning
+    // character's avatar should match what they now have on. Gated ONLY on the
+    // seat's `characterId` — not on `outfitSelection`, and not on the character
+    // row existing.
+    if let Some(character_id) = reactivated.as_ref().and_then(|p| s(p, "characterId")) {
+        refresh_avatar_for_arriving_character(db, chat_id, &character_id, user_id).await;
     }
 
     ok(json!({ "participant": enriched, "chat": updated_chat }))
@@ -657,5 +798,51 @@ pub async fn chat_toggle_avatar_generation(db: &Db, user_id: &str, chat_id: &str
     match chat_avatars::toggle_avatar_generation(db, user_id, chat_id).await {
         Ok(body) => ok(body),
         Err(e) => from_avatar_error(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// v4's equipped read is a FALLBACK `safeQuery`: a failure logs the INNER
+    /// `Failed to get equipped outfit` ERROR and answers `null`, which the
+    /// arrival helper then treats as "no outfit" — never as its WARN.
+    #[test]
+    fn a_failed_equipped_read_takes_v4s_fallback_arm() {
+        let (out, lines) = crate::test_support::captured_with(|| {
+            equipped_outfit_or_fallback(Err(DbError::Internal("disk on fire".into())), "chat-1")
+        });
+        assert_eq!(out, None);
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        let l = &lines[0];
+        assert!(l.starts_with("ERROR "), "{l}");
+        assert!(l.contains("collection=chats"), "{l}");
+        assert!(l.contains("chat_id=chat-1"), "{l}");
+        assert!(l.contains("context=wardrobe"), "{l}");
+        assert!(l.contains("disk on fire"), "{l}");
+        // The inner line, NOT the outer `…for character` (unreachable in v4).
+        assert!(
+            l.contains("chat_cast Failed to get equipped outfit collection="),
+            "{l}"
+        );
+    }
+
+    #[test]
+    fn a_successful_equipped_read_is_silent_and_passes_through() {
+        let entry =
+            json!({ "top": [], "bottom": [], "footwear": [], "accessories": [], "hair": [] });
+        let (out, lines) = crate::test_support::captured_with(|| {
+            equipped_outfit_or_fallback(Ok(Some(entry.clone())), "chat-1")
+        });
+        // An all-empty entry is v4-truthy: it passes through (the trigger fires).
+        assert_eq!(out, Some(entry));
+        let (none, quiet) =
+            crate::test_support::captured_with(|| equipped_outfit_or_fallback(Ok(None), "chat-1"));
+        assert_eq!(none, None);
+        assert!(
+            lines.is_empty() && quiet.is_empty(),
+            "{lines:#?} {quiet:#?}"
+        );
     }
 }

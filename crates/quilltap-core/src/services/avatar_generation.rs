@@ -27,6 +27,11 @@ pub struct AvatarGenerationParams {
     pub user_id: String,
     pub chat_id: String,
     pub character_id: String,
+    /// v4 `callerContext` — who asked (`'[Chats v1] chat-open'`,
+    /// `'[Chats v1] participant-join'`, …). It is NEVER written into the job:
+    /// v4 reads it only as the `context` field of the trigger's WARN lines
+    /// (P4.D238).
+    pub caller_context: &'static str,
     /// One-shot override: use this profile instead of the chat's default. The
     /// chat's stored `imageProfileId` is NOT mutated.
     pub image_profile_id_override: Option<String>,
@@ -63,11 +68,20 @@ pub async fn trigger_avatar_generation(
 ) -> AvatarGenerationResult {
     match trigger_avatar_generation_inner(db, params).await {
         Ok(result) => result,
-        // v4's catch → structured error result with the message.
-        Err(e) => AvatarGenerationResult::NotQueued {
-            reason: "error".to_string(),
-            message: e.to_string(),
-        },
+        // v4's catch → WARN, then the structured error result with the message.
+        Err(e) => {
+            tracing::warn!(
+                context = params.caller_context,
+                chat_id = %params.chat_id,
+                character_id = %params.character_id,
+                error = %e,
+                "Failed to enqueue avatar generation"
+            );
+            AvatarGenerationResult::NotQueued {
+                reason: "error".to_string(),
+                message: e.to_string(),
+            }
+        }
     }
 }
 
@@ -93,12 +107,20 @@ async fn trigger_avatar_generation_inner(
         .filter(|s| !s.is_empty())
     {
         let over = over.to_string();
+        let lookup = over.clone();
         let profile =
-            db.read_main(move |conn| crate::db::image_profiles::find_by_id(conn, &over))?;
-        if let Some(p) = profile {
-            image_profile_id = p.get("id").and_then(Value::as_str).map(str::to_string);
+            db.read_main(move |conn| crate::db::image_profiles::find_by_id(conn, &lookup))?;
+        match profile {
+            Some(p) => {
+                image_profile_id = p.get("id").and_then(Value::as_str).map(str::to_string);
+            }
+            None => tracing::warn!(
+                context = params.caller_context,
+                chat_id = %params.chat_id,
+                image_profile_id_override = %over,
+                "Avatar generation override profile not found, falling back"
+            ),
         }
-        // else: v4 warns + falls back.
     }
 
     if image_profile_id.is_none() {
@@ -148,12 +170,19 @@ async fn trigger_avatar_generation_inner(
 /// chat has `avatarGenerationEnabled` and is NOT an autonomous room. Used by
 /// automatic triggers (wardrobe changes). Failures are swallowed — automatic
 /// paths must never affect the caller's result.
+///
+/// v4's own catch here (WARN `Failed to enqueue avatar generation after outfit
+/// change`) is UNREACHABLE in real v4 and is not ported: its only reads are
+/// `repos.chats.findById` — a fallback-mode `safeQuery` that logs ERROR `Error
+/// finding entity by ID` and answers `null` — and `triggerAvatarGeneration`,
+/// which catches everything itself. v5 takes the same fallback read
+/// ([`crate::db::chats_read::find_by_id_or_none`]) and this function returns
+/// `()`, so there is nothing left for a catch to see (P4.D238).
 pub async fn trigger_avatar_generation_if_enabled(db: &Db, params: &AvatarGenerationParams) {
     let chat_id = params.chat_id.clone();
-    let chat = match db.read_main(move |conn| crate::db::chats_read::find_by_id(conn, &chat_id)) {
-        Ok(chat) => chat,
-        Err(_) => return, // v4's catch swallows.
-    };
+    let chat = db
+        .read_main(move |conn| Ok(crate::db::chats_read::find_by_id_or_none(conn, &chat_id)))
+        .unwrap_or(None);
     let Some(chat) = chat else {
         return;
     };

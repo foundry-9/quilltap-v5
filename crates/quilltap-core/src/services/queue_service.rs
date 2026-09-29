@@ -603,6 +603,15 @@ pub async fn enqueue_character_avatar_generation(
             == Some(character_id)
     });
     if let Some(existing) = existing {
+        // P4.D238 (the `caller_context` rider): v4's two INFO lines, absent
+        // until now.
+        tracing::info!(
+            context = "background-jobs.queue",
+            chat_id = %chat_id,
+            character_id = %character_id,
+            existing_job_id = %existing.id,
+            "[CharacterAvatar] Reusing existing pending job"
+        );
         return Ok((existing.id.clone(), false));
     }
 
@@ -634,6 +643,13 @@ pub async fn enqueue_character_avatar_generation(
         3.0,
     )
     .await?;
+    tracing::info!(
+        context = "background-jobs.queue",
+        chat_id = %chat_id,
+        character_id = %character_id,
+        job_id = %job_id,
+        "[CharacterAvatar] Avatar generation job enqueued"
+    );
     Ok((job_id, true))
 }
 

@@ -741,6 +741,8 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
         user_id: user_id.to_string(),
         chat_id: chat_id.to_string(),
         character_id: character_id.clone(),
+        // P4.D238 MARKED HUNK (the `caller_context` rider) — v4 `outfit.ts:324`.
+        caller_context: "[Chats v1] outfit-equip",
         image_profile_id_override: None,
         equipped_slots_override: None,
         // Automatic (a wardrobe change): the configuration cache is exactly what
@@ -881,6 +883,9 @@ pub async fn chat_regenerate_avatar(
             user_id: user_id.to_string(),
             chat_id: chat_id.to_string(),
             character_id: parsed.character_id.clone(),
+            // P4.D238 MARKED HUNK (the `caller_context` rider) — v4
+            // `regenerate-avatar.ts:62`.
+            caller_context: "[Chats v1] regenerate-avatar",
             image_profile_id_override: parsed.image_profile_id.clone(),
             equipped_slots_override: parsed.equipped_slots.clone(),
             // A manual click is a reroll: bypass the configuration cache and
