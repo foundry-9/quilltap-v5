@@ -103,6 +103,12 @@ Tests: `appearance_sanitize_gate_tier3` grows 30 → 40 rows (conceal changed/ec
 _Versions: core 0.0.1090._
 
 The first half of the story-background drape. v4 `97b25fc53` interpolates a single-quoted `CONCEALMENT_MARKER` into the moderated intimacy block, which the prompt generator refused (it throws on any `${`). `gen-image-scene-prompts.mjs` now resolves exactly one named single-quoted constant into exactly one template body, count-checked, and still throws on any other interpolation. It also emits the marker (59 UTF-16 units) and the new `APPEARANCE_CONCEALMENT_PROMPT` (1490) as their own consts. `prompt_text.rs` is regenerated against a `97b25fc53` pin: the moderated block grows 1968 → 2505 units and the assembled concealed story prompt 5114 → 5651. The redress sanitizer prompt stays at 999 and the candid block is unchanged. New unit pins: the inlined marker agrees with the const (exactly once, inside v4's quotes), and only the moderated crafter carries the requirement. The generator's exactly-once check was mutation-proven both ways (a doubled token and a doubled allow-list entry each throw). The story family stays red at the `97b25fc53` oracle until the sanitize mode lands in the next commit.
+#### 2026-09-28 — docs(porting): P4.D238 lane record + order header (LANE COMPLETE)
+
+_Docs-only change._
+
+Appends the P4.D238 lane record to `status-log.md`: the help re-vendor and its md5s, the join-avatar port's red-first count (ten), the planted arms, the M1–M5 mutation table, the neutrality runs at `04d6c9d52`, the cross-vintage confirmation, the `9ff4bbd8e` NO-PORT evidence, Tier R at `97b25fc53` (266/0), the `docs/v4/` mirror pre-list with byte counts, the deferrals, and the gate (644 binaries, 3,865 passed, one standing red). Marks the order LANE COMPLETE and records where its premises were wrong.
+
 #### 2026-09-28 — feat(core): request an avatar for a character joining a running chat (v4 `04d6c9d52`) + the `caller_context` rider (P4.D238)
 
 _Versions: core 0.0.1090, harness 0.0.1013._

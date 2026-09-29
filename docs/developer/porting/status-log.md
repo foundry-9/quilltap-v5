@@ -153915,3 +153915,354 @@ predates the lane and is outside its files.
     `public_schemas_vendor_guard`, `spelling_guard`.
   - `help_tree_equivalence` SKIPped (var withheld; P4.D238's family).
 - Tier R is not this lane's: no CLI-linked file was touched.
+## P4.D238 — the join-avatar refresh (v4 `04d6c9d52`) + the round's riders (`help/**` at `97b25fc53`, the `9ff4bbd8e` NO-PORT evidence, Tier R, the mirror pre-list) — lane record
+
+Branch `claude/p4-d238-join-avatar-refresh-78dfa1`, cut from `main`
+`e361879d3`. Pins (lane-unique, detached, the three symlink classes, each
+verified by `rev-parse` + `ls -ld` + a marker): `/tmp/qt-v4-pin-p4d238-04d6c9d52`
+(the port — `participants.ts` names `refreshAvatarForArrivingCharacter` ×3),
+`/tmp/qt-v4-pin-p4d238-97b25fc53` (the riders — `CONCEALMENT_MARKER` ×2),
+`/tmp/qt-v4-pin-p4d238-acadcc7cd` (the control + every BUILT fixture, §R.3).
+The §2 probe PASSED at lane start (branch `main`, HEAD `97b25fc53`, both logs
+empty, tree clean) and again before each regen batch.
+
+### Unit 1 — `help/**` whole at `97b25fc53` (commit `b5d8723f4`)
+
+`rsync -a --delete $PIN/help/ help/`; `diff -rq` against the pin EMPTY; 129
+files before and after (no adds, no deletes). Thirteen pages changed, every
+md5 equal to the survey's v4 column (md5 / bytes / owning commit):
+
+    38d7af422ef2dbdcd58afc5f6f673ba0 14776 help/character-optimizer.md
+    a2a612af3d2d3868f506be2ccf317aca 19790 help/character-system-prompts.md
+    e78239a84b1d1d31a3557d803c495679 20698 help/chat-settings-ai-services.md
+    ad920495d06a39c27d20176ad891e557 13449 help/chat-settings.md
+    64a08e8003f40064cea4bc67af2d8571 43952 help/chats.md
+    47f556da8bfc4607aed5abe46e14da9a 5765 help/data-retention.md
+    9101de913fd1536553e7efe5ea328495 19621 help/embedding-profiles.md
+    8ef482446e867d3bfc3bcf7ee8495418 8549 help/post-office.md
+    ac27eb0b91aa8bb7996541f8fe2fd734 13046 help/prompts.md
+    b72a0289229a1a39bbef482f0ef1250e 24561 help/scriptorium.md
+    6b6c25c1cb426f1f35b3d2c8006ecdb4 10643 help/story-backgrounds.md
+    6b2935820ba412aed5431d4680e6bf1b 28216 help/the-concierge.md
+    0cfac20487a3daa111118143eb4e50e4 47142 help/wardrobe.md
+
+Owners: `chat-settings-ai-services.md` ← `04d6c9d52`; `character-optimizer.md`,
+`character-system-prompts.md`, `prompts.md` ← `c3eefa752`; `chat-settings.md`,
+`chats.md`, `data-retention.md`, `embedding-profiles.md`, `scriptorium.md` ←
+`f7f3d7bf0`; `post-office.md` ← `39bc98ffc` + `12c336fad`; `wardrobe.md` ←
+`9ff4bbd8e` (gains ONE H4, `The Whole Look, Bundled`); `story-backgrounds.md`,
+`the-concierge.md` ← `97b25fc53`.
+
+Proof, from the `97b25fc53` pin into `/tmp/p4d238/`: `help_tree_equivalence`
+(1/1) and `help_section_size_equivalence` (1/1 — the wardrobe page's new
+section row included) GREEN; `help_tree_embed_guard` (1/1), `host_help_docs_boot`
+(2/2) and `host_help_boot_order` (1/1) GREEN with both 129 literals UNMOVED —
+`host` NOT bumped. Pin markers in the fresh NDJSON: `sits for a portrait on
+arrival` ×1 (help-tree), `The Whole Look, Bundled` ×2 (section-size).
+**Mutation:** `wardrobe.md` reverted to main's bytes → `help_tree_equivalence`
+RED (`docs[127] differs`) AND `help_section_size_equivalence` RED (`the (file,
+section) set differs`), while `help_tree_embed_guard` stays GREEN (the memory
+note's class, re-measured); restored by file backup, md5 re-checked.
+
+**Measured, order premise corrected:** "the other 2 of 16 `help_*` families
+that read the tree content" are `help_section_size_equivalence` (P4.D222 —
+newer than the `help-embed-guard-cannot-see-a-stale-revendor` note, which
+still says only two families read the tree) and `help_tree_embed_guard`;
+`help_tree_equivalence` is the third. The other thirteen walk synthetic roots
+or never touch the tree.
+
+Regen recipes AS RUN (from the pin; lane-private outputs):
+
+    cd /tmp/qt-v4-pin-p4d238-97b25fc53
+    TMPO=/tmp/p4d238/help-tree-oracle; rm -rf $TMPO; mkdir -p $TMPO/cases
+    cp $V5W/harness/oracle/cases/help-tree-sync.test.ts $TMPO/cases/
+    QT_ORACLE_OUT=/tmp/p4d238/oracle-help-tree.ndjson \
+      npx jest --silent --watchman=false --testTimeout=300000 \
+        --roots "$PWD" --roots $TMPO/cases -- 'help-tree-sync\.test\.ts$'
+    npx tsx $V5W/harness/oracle/cases/help-section-size.ts \
+      > /tmp/p4d238/oracle-help-section-size.ndjson
+
+### Unit 2 — the join-avatar refresh + the `caller_context` rider (Tier 1 items 1–3, Tier 2 items 5–7)
+
+One commit (the rider's field is required by the helper, and the rider's
+capture pins live in the cast family beside the port's — splitting them would
+land lines without pins).
+
+**The port (`api/chat_cast.rs`).** File-private
+`refresh_avatar_for_arriving_character(db, chat_id, character_id, user_id)`:
+the equipped read (`ChatOutfitsRepository::get_equipped_outfit_for_character`,
+read over `db/chats_outfits.rs:124`, NOT edited) → `None` → DEBUG `[Chats v1]
+No equipped outfit for arriving character, avatar left as-is` and return; else
+`trigger_avatar_generation_if_enabled` with `caller_context: "[Chats v1]
+participant-join"`, no override, no slots override, `force: false` → DEBUG
+`[Chats v1] Avatar refresh requested for arriving character`. Called on the ADD
+path immediately after `apply_outfit_for_added_participant` (the dress
+strictly first) and on the REACTIVATE path after the optional re-dress, gated
+ONLY on the reactivated seat's `characterId` (not on `outfit_selection`, not on
+the character row). `user_id` threaded from the verb (no new constant; no
+boundary change — `api/types.rs` / `engine.rs` untouched). The chat-PUT bag's
+add (`api::salon::chat_update`) is UNTOUCHED, pinned by a new bag case.
+
+**Premises measured against the hunks (§R.4(e) re-verified):**
+
+1. **The reachable ERROR on a read failure is the INNER one.** The survey and
+   the order name `Failed to get equipped outfit for character`; that is v4's
+   OUTER `safeQuery`, which only sees a throw — and its inner
+   (`getEquippedOutfit`) is itself fallback-mode, so it never throws outside a
+   strict scope. The line that actually fires is `Failed to get equipped
+   outfit` `{collection: 'chats', chatId, context: 'wardrobe', error}`
+   (`safe-query.ts:64`). v5's `equipped_outfit_or_fallback` logs THAT, then the
+   skip. Core unit pins: the fallback arm (one ERROR line, the inner message,
+   all four fields) and the silence leg (an `Ok` read — including an all-empty
+   entry — passes through without a line).
+2. **v4's join WARN is not ported** — unreachable in real v4 (a fallback read +
+   a trigger that catches everything itself); in v5 both legs return without
+   an error, so there is nothing to catch. Recorded here as the mock-only arm.
+   Its stand-in proof is `a_poisoned_trigger_cannot_fail_the_join` (below).
+3. **"No equipped outfit" = an absent entry only** — `add_outfit_none` (mode
+   `none`, five empty arrays) queues a job in v4 and in v5; M2 proves it.
+4. **"Requested" ≠ "queued"** — pinned on the generation-OFF `CHAT_MAIN` add:
+   the DEBUG fires, no enqueue line, zero jobs.
+5. **The reactivate arm fires with no re-dress** — only when an entry survived
+   the removal (v4's remove and v5's remove both leave `equippedOutfit`;
+   measured by arm (a): the planted pre-removal entry is still read).
+6. **M3 is OBSERVABLE through the dump** (the order predicted "unobservable —
+   pin it with a counter"): a fresh arrival has NO equipped entry until the
+   dress writes one, so a refresh moved before the dress takes the skip and
+   queues nothing — M3 reddens all eight `CHAT_QUIET` adds. No counter needed;
+   the capture test's comment records the argument.
+
+**The rider (Tier 2 item 5, taken — Opus lane).** `caller_context: &'static
+str` on `AvatarGenerationParams` (`services/avatar_generation.rs`); v4's
+strings at the three existing sites as MARKED hunks — `api/chat_outfits.rs`
+outfit-equip (`[Chats v1] outfit-equip`, v4 `outfit.ts:324`) and
+regenerate-avatar (`[Chats v1] regenerate-avatar`, `regenerate-avatar.ts:62`),
+`services/chat_create.rs` chat-open (`[Chats v1] chat-open`, `route.ts:617`) —
+and the harness `image_generation_tier3_equivalence.rs` site (`"oracle-test"`,
+the oracle's own value at `image-generation.test.ts:538`) as a `// P4.D238
+OUT-OF-MANDATE — P4.D239 preserves` line (log-only; no dump moves — measured
+below). Lines restored: WARN `Avatar generation override profile not found,
+falling back` `{context, chatId, imageProfileIdOverride}`; WARN `Failed to
+enqueue avatar generation` `{context, chatId, characterId, error}`; INFO
+`[CharacterAvatar] Reusing existing pending job` `{context:
+'background-jobs.queue', chatId, characterId, existingJobId}`; INFO
+`[CharacterAvatar] Avatar generation job enqueued` `{…, jobId}`
+(`services/queue_service.rs`, a MARKED hunk). **Four, not five:** v4's
+`triggerAvatarGenerationIfEnabled` catch (WARN `…after outfit change`) is
+UNREACHABLE in real v4 — its only reads are the fallback `chats.findById`
+(ERROR `Error finding entity by ID` → `null`) and a trigger that never throws.
+v5's if-enabled trigger now reads through `chats_read::find_by_id_or_none` (that
+exact ERROR; it had swallowed a read error silently) and returns `()`; the
+WARN is recorded, not ported.
+
+**Tier 2 item 7.** v4's INFO `[Chats v1] Participant added` `{chatId,
+participantId: newParticipant?.id, characterName: addedCharacter?.name ||
+'Unknown', controlledBy: validatedData.controlledBy || 'llm'}` and INFO
+`[Chats v1] Participant reactivated` `{chatId, participantId, characterName,
+controlledBy}` restored at v4's positions (after the character read, before
+the announcement); an absent `participantId` is omitted (tracing's `Option`
+field), as v4's logger drops an `undefined`.
+
+**The differential — `chat_cast_routes_equivalence`** (`QT_ORACLE_CHAT_CAST`).
+`castTables` (oracle) / `cast_tables` (Rust) gain `jobs` for EVERY participant
+dump (the add-only widening would have left the bag trap unpinned).
+`ENTRANCE_PAIRS` compares the `chat` dump only, so `jobs` never enters it (trap
+7 — moot, measured). New arms, planted in-case through v4's repositories
+(`plantedAddCase`, the `seededUpdateCase` precedent) and mirrored by `plant`
+(raw writes identical to v5's own toggle write, `set_equipped_outfit`, the real
+enqueue): (a) `add_reactivate_gen_on_prior_outfit_no_selection` → a job; (b)
+`add_reactivate_gen_on_no_prior_outfit` → none; (a2)
+`add_reactivate_gen_on_with_outfit` → re-dressed, a job; (c)
+`add_autonomous_room_no_job` → dressed, none; (d) `add_dedup_pending_job` →
+the planted row reused, ONE row; (e) `add_gen_on_no_image_profile_no_job` →
+none; plus `bag_add_participant_generation_on_no_job` (trap 8). v4 at the pin:
+201 on the three planted fresh adds (added to `V4_CREATED_CASES`), 200 on the
+reactivates; every job payload `{chatId, characterId, imageProfileId}` — NO
+`force` key anywhere (the cache-rebind premise; `avatar_job_tier3` already
+proves the rebind itself). 86 → 93 cases.
+
+- **Control (§R.5), BEFORE the case grew:** the unmodified case regenerated at
+  `acadcc7cd` AND at `04d6c9d52` — BOTH green on unported main (86 cases, 142
+  OK lines each). `f7f3d7bf0` does NOT move this family's `messages` dump;
+  there is no cross-lane delta to attribute.
+- **Red-first** (the two call sites removed by file backup, the fresh
+  `04d6c9d52` oracle): EXACTLY TEN `tables` reds — `add_explicit_fields`,
+  `add_history_access_suppresses_scenario`, `add_outfit_none`,
+  `add_outfit_manual`, `add_user_controlled`, `add_stale_profile_falls_back`,
+  `add_outfit_default_empty_vault_wears_shared`,
+  `add_outfit_default_layers_shared_under_own`,
+  `add_reactivate_gen_on_prior_outfit_no_selection`,
+  `add_reactivate_gen_on_with_outfit`. The dedup arm is green unported by
+  construction (the planted row exists either way; its discriminator is the
+  ported side's no-second-row). Ported: 93/93.
+- **Capture pins (unconditional — the committed pair, no oracle file):**
+  `arrival_in_a_generation_on_chat_requests_and_enqueues_a_force_less_job`
+  (DEBUG requested + INFO enqueued + INFO Participant added; silence: no skip;
+  the payload has no `force`); `requested_fires_on_a_generation_off_chat_
+  where_nothing_is_queued` (silence: no enqueue, zero jobs);
+  `a_reactivation_with_no_surviving_outfit_logs_the_skip` (DEBUG skip + INFO
+  Participant reactivated with `pEris`/`Eris`/`llm`; silence: no requested, no
+  "added"); `a_pending_job_is_reused_not_duplicated` (INFO Reusing with
+  `existing_job_id`; silence: no enqueue; one row);
+  `a_poisoned_trigger_cannot_fail_the_join` (`background_jobs` DROPPED → the
+  join still answers `ChatCast`, WARN `Failed to enqueue avatar generation`
+  with `context=[Chats v1] participant-join`, the helper still logs
+  requested); `an_override_profile_that_is_gone_warns_and_falls_back` (the
+  override WARN with context + id, falls back to the default and queues;
+  silence: a present override never warns).
+
+**Mutation table** (each by file backup of `chat_cast.rs`, restored and
+`cmp`-verified; logs `/tmp/p4d238/mut-M*.log`):
+
+| # | mutation | reddened |
+|---|---|---|
+| M1 | reactivate gate ALSO requires `outfit_selection` | arm (a) `tables` + `a_reactivation_with_no_surviving_outfit_logs_the_skip` (the mutated gate never reaches the helper) |
+| M2 | "no equipped" = no non-empty slot | `add_outfit_none tables` only |
+| M3 | add-path call moved BEFORE the dress | all 8 `CHAT_QUIET` add `tables` + 4 capture tests — OBSERVABLE (premise 6) |
+| M4 | `force: true` in the helper | the 10 job-bearing `tables` + the force-less payload pin |
+| M5 | the helper calls the ungated `trigger_avatar_generation` and panics on a `NotQueued{reason:"error"}` (propagation) | `a_poisoned_trigger_cannot_fail_the_join` (+ the generation-off arms, since the mutation also drops the gate) |
+
+Regen recipe AS RUN (the committed pair consumed; no fixture built):
+
+    TMPO=/tmp/p4d238/cast-oracle-04d6c9d52 (the .ts + chat-cast.json staged)
+    cd /tmp/qt-v4-pin-p4d238-04d6c9d52
+    QT_FIXTURE_CAST_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-cast-main.db \
+    QT_FIXTURE_CAST_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/chat-cast-mount.db \
+    QT_ORACLE_OUT=/tmp/p4d238/oracle-chat-cast.ndjson TZ=UTC \
+      npx jest --silent --watchman=false --testTimeout=300000 \
+        --roots "$PWD" --roots "$TMPO/cases" -- 'chat-cast-routes\.test\.ts$'
+
+(`/tmp/p4d238/regen-cast.sh <sha> <out>` wraps it; the committed header
+recipe stays canonical.)
+
+**Neutrality at the `04d6c9d52` pin (fixtures BUILT at `acadcc7cd`, §R.3's
+two-step; lane-private paths because the committed recipes write fixed
+`/tmp/qt-avatar-*` / `/tmp/oracle-chatsparts.ndjson`):**
+`outfit_llm_choose_tier3` 1/1 (the committed `chat-dialogs` pair; generation
+off → the trigger's first gate); `avatar_job_tier3` 2/2 (UNMOVED — the 8
+`cache_*` cases still the rebind proof); `chats_participants_tier2` 1/1.
+`image_generation_tier3` (P4.D239's family; my one-line spill) at the
+BASELINE `acadcc7cd`: 1/1 GREEN (fixture built and oracle run at `acadcc7cd` into `/tmp/p4d238/imggen-*`; its `background_jobs` dump unmoved by the log-only field). ⚠ the v4 jest process hung at 100% CPU AFTER writing the whole NDJSON (the case writes once, at the end — `image-generation.test.ts:605`, 58 lines); killed after ~14 min, file verified complete.
+**Cross-vintage confirmation (§R.3, once per lane):** after the `04d6c9d52`
+avatar-job oracle ran against its `acadcc7cd`-built copy, `PRAGMA
+table_info(chats)` still lists `renderedMarkdown` (count 1) — v4's jest
+oracles run no migrations; the cross-vintage open succeeds as predicted.
+
+### The riders' records
+
+**`9ff4bbd8e` NO-PORT ratification evidence** (for the unifier to mark
+`NO-PORT-RATIFIED(P4.D238)`). File list (`git show --stat 9ff4bbd8e`, 12 files,
++468/−30): `README.md`, `__tests__/…/import-from-image-modal.outfit.test.tsx`
+(+134), `__tests__/unit/lib/wardrobe/image-analysis.test.ts` (+56),
+`__tests__/unit/wardrobe-image-analysis-api.test.ts` (+2),
+`app/api/v1/wardrobe/analyze-image/route.ts` (+5/−), `components/wardrobe/
+import-from-image-modal.tsx` (+197), `docs/CHANGELOG.md`, `help/wardrobe.md`
+(+14 — byte-copied in Unit 1), `lib/wardrobe/image-analysis.ts` (+67),
+`package-lock.json`, `package.json`, `packages/quilltap/package.json`. Every
+code hunk lands on a surface v5 never ported, re-verified on this branch:
+`api/wardrobe.rs:1191-1205` is the P4.9f1 refusal arm (`ErrorKind::Internal`,
+"wardrobeAnalyzeImage is not available in this build … a P4.9f1 tier-3
+deferral"), dispatched at `engine.rs:5441`, typed at `types.rs:2771`, REST at
+`wardrobe_routes.rs:269`; the SPA ships no "Import from image" button
+(`wardrobe-control-dialog.ts:105-106`); `costume analyst` → ZERO hits across
+`crates/` + `apps/web/src`; no parse, family or oracle;
+`activity_span_sites_guard.rs:128-132` holds the refusal-arm row (run in the
+gate, UNMOVED); recorded by name at `m6-screen-parity.md:746`. The BANKED
+RIDER for a future image-analysis port is by POINTER, not re-transcribed:
+`work-orders/surveys/2026-09-28-97b25fc53/survey-wardrobe-9ff4bbd8e-no-port.md`
+§A (the full `SYSTEM_PROMPT` bytes, the three ordered null rules, `hasOutfit`,
+the route's always-present `proposedOutfit`, the client's create-pieces-then-
+outfit flow + three toasts + the third POST's body).
+
+**Tier R** (`cli_differential`, `QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d238-97b25fc53`):
+**266 cases, 0 failures** (505 s) — run, recorded, not asserted.
+
+**The `docs/v4/` mirror pre-list (§R.9 — the unifier copies):**
+
+| mirror path | v4 at `97b25fc53` | mirror now | moved by |
+|---|---|---|---|
+| `docs/v4/developer/API.md` | 230,050 B `95995a56…` | 229,906 B `49b4db60…` (= `acadcc7cd`) | `39bc98ffc`, `12c336fad`, `f7f3d7bf0` |
+| `docs/v4/developer/DDL.md` | 129,668 B `060f28c2…` | 129,221 B `e16a79ba…` (= `acadcc7cd`) | `f7f3d7bf0` |
+| `docs/v4/developer/features/complete/db-size-reduction-spec.md` | 26,300 B `979e0ae5…` | 25,842 B `a7f8804d…` (= `acadcc7cd`) | `f7f3d7bf0` |
+| `docs/v4/CHANGELOG.md` | 164,278 B `d922c562…` | 83,228 B `d63e3772…` (matches NEITHER `acadcc7cd` `1ec9af3e…` nor HEAD) | all seven + the standing lag |
+
+(`git diff --stat acadcc7cd 97b25fc53 -- docs/` = exactly these four files.)
+
+### Measured, recorded — outside the mandate
+
+- **`apps/web/e2e/salon-cast-flow.spec.ts` is INERT.** Every chat in the e2e
+  fixture (`chat-send-main.db`, opened read-only on a copy with the synthetic
+  test pepper) has `avatarGenerationEnabled` NULL, so the trigger's first gate
+  returns — no job row appears. No spec change needed (P4.D236 owns
+  `apps/web`).
+- **Pre-existing, recorded (Tier 3 item 10):** `chat_participants.rs:1397`
+  (`apply_outfit_for_added_participant`'s failure line) is `warn!` where v4
+  logs `logger.error` with the same text.
+- **Pre-existing, a NEXT-ROUND order (Tier 3 item 8): the wardrobe-tools avatar
+  seam.** v5's wardrobe TOOLS never call the trigger
+  (`tools/wardrobe_create.rs:369` "image subsystem seam (out of scope)"),
+  where v4 does at FOUR sites: `lib/tools/handlers/wardrobe-create-handler.ts:
+  286` (`callerContext: 'wardrobe-create-handler'`) and
+  `lib/tools/handlers/wardrobe-handler-shared.ts:382` `notifyWardrobeChanged`
+  (`callerContext: sourceContext` — reached by the wear / take_off / archive
+  handlers). A character's own mid-chat wardrobe change never refreshes its
+  avatar in v5. Its order will now pass a `caller_context` (the field exists).
+- **Pre-existing, recorded:** `trigger_avatar_generation_inner`'s reads
+  (`chats_read::find_by_id`, `image_profiles::find_by_id` / `find_all`) still
+  PROPAGATE a read error into the `Failed to enqueue avatar generation` WARN and
+  a `reason: "error"` result, where v4's fallback reads would log ERROR and fall
+  through to `chat-not-found` / the next profile tier. Only a DB error reaches
+  either; no differential can plant one. Left for a smalls order (it moves the
+  manual regenerate button's surfaced reason).
+- **Memory-note staleness:** `help-embed-guard-cannot-see-a-stale-revendor`
+  says only two families read the tree; `help_section_size_equivalence`
+  (P4.D222) is a third.
+
+### The gate
+
+All on the committed tree `6295f8536`, `CARGO_INCREMENTAL=0`, `TZ=UTC`:
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+  warnings` clean in BOTH feature sets (default; `--features
+  quilltap-core/native-transport`).
+- `cargo build --workspace --release` clean (4 m 38 s).
+- `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's env
+  block (`QT_ORACLE_CHAT_CAST`, `QT_ORACLE_LLM_CHOOSE`, `QT_ORACLE_AVATAR` +
+  the two `QT_FIXTURE_AVATAR_*`, `QT_ORACLE_CHATSPARTS` +
+  `QT_FIXTURE_CHATSPARTS`, `QT_ORACLE_HELP_TREE`,
+  `QT_ORACLE_HELP_SECTION_SIZE`, all under `/tmp/p4d238/`; every other
+  family's var withheld): **644 test binaries / 3,865 passed / 1 failed / 3
+  ignored.** The one red is `builtin_prompt_templates_guard`
+  (`the_vendored_catalogue_equals_v4s_shipped_prompts`) — §R.5's standing red,
+  it reads the LIVE checkout (at `97b25fc53`, past `c3eefa752`); P4.D237's to
+  close. Every lane family confirmed RUN by duration: `chat_cast_routes` 8/8
+  (0.59 s), `outfit_llm_choose_tier3` 1/1, `avatar_job_tier3` 2/2,
+  `chats_participants_tier2` 1/1, `help_tree` 1/1 (1.21 s), `help_section_size`
+  1/1; zero `SKIP:` lines for the lane's vars (the only `QT_ORACLE_AVATAR…`
+  SKIPs are OTHER families' `_CACHE_KEY`/`_COLLAPSE`/`_ROLLS`/`_WRITE`).
+- Censuses/guards run UNMOVED: `help_tree_embed_guard` + `host_help_docs_boot`
+  (129), `dispatch_wrong_type_census` (14/14 — 451 unmoved),
+  `web_edge_action_sites_census`, `activity_span_sites_guard` (the wardrobe
+  refusal-arm row — the NO-PORT evidence), `zod_version_guard`,
+  `provider_sdk_version_guard`, `blob_write_sites_census`,
+  `compressed_column_write_sites_census`, `spelling_guard` — all green.
+- Tier R: see the riders.
+
+**Fixtures changed: NONE.** No committed pair rebuilt; the oracle case grew
+in-case plants only. No other lane's oracle is invalidated. The cast oracle
+now dumps `jobs` for every participant case — a sibling that regenerates
+`chat-cast-routes` at a pin below `04d6c9d52` would see the ten job reds (by
+design).
+
+**Out-of-mandate audit** (`git diff main -- <path>`): `api/chat_outfits.rs`
+(two `caller_context` lines), `services/chat_create.rs` (one), and
+`services/queue_service.rs` (the two INFOs) are the order's pre-declared
+MARKED rider hunks; `crates/quilltap-harness/tests/image_generation_tier3_
+equivalence.rs` (ONE field, marked `P4.D238 OUT-OF-MANDATE — P4.D239
+preserves`) is the one spill the order did not pre-declare (§B listed the
+site; §R.10(c) did not) — P4.D239 re-runs that family as neutrality and must
+keep the line; a union merge carries it. Nothing else outside §R.10(c).
+
+**Versions:** core 0.0.1089 → 0.0.1090, harness 0.0.1012 → 0.0.1013 (one bump
+each, in `6295f8536`); host/web/cli/tauri NOT bumped (the help tree is repo
+root; both 129 literals unmoved).
