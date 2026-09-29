@@ -82,6 +82,12 @@ Red first at the pin on the unported code: `character_optimizer_prompts`,
 `generators_wizard_prompts`, `generators_leaf` (only after the hand lists
 grew — with the old list it stays green unported, measured), and
 `ai_import_tier3`. All green at `c3eefa752` after the port.
+#### 2026-09-29 — docs(porting): close lane P4.D239 (the story-background drape)
+
+_Docs-only change._
+
+Updates the P4.D239 work order's status header: what landed (all of Tier 1 and Tier 2), the three Tier-3 deferrals, and where the order's predictions were off (the story corpus needed per-chat clothing to keep sanitize keys distinct; M7 does not redden the success-path pin; M4 reddens only the gate family).
+
 #### 2026-09-29 — feat(story-background): drape an undressed character instead of re-dressing them — the sanitize mode, the three-way merge, the concealment marker (P4.D239)
 
 _Versions: core 0.0.1091, harness 0.0.1013._
