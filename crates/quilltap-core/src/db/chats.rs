@@ -385,8 +385,6 @@ pub struct ChatCreate {
     #[serde(default)]
     pub scene_state: Option<Value>,
     #[serde(default)]
-    pub rendered_markdown: Option<String>,
-    #[serde(default)]
     pub equipped_outfit: Option<Value>,
     #[serde(default)]
     pub character_avatars: Option<Value>,
@@ -784,14 +782,6 @@ pub struct ChatUpdate {
     /// handler.
     pub danger_classified_at_message_count: Option<Option<f64>>,
     // === end P4.9E3A ===
-    // === P4.6BM ===
-    /// `renderedMarkdown` (TEXT) — the Scriptorium render. Written ONLY by the
-    /// `CONVERSATION_RENDER` handler, which deliberately leaves `updated_at`
-    /// `None` so a background render does not reorder every recents list
-    /// (v4 `conversation-render.ts:63-66`, and the same reason v4's
-    /// `chats.update` preserves `updatedAt` unless the caller names it).
-    pub rendered_markdown: Option<String>,
-    // === end P4.6BM ===
     pub updated_at: Option<String>,
 }
 
@@ -845,14 +835,16 @@ impl<'c> ChatsRepository<'c> {
         let commonplace_recall_json = opt_json_text(&data.commonplace_recall_history)?;
 
         // `?NNN` binds `params![]` by its LITERAL number wherever it sits in the SQL
-        // text: `?99` is `cycleOrderParticipantIds` (P4.D171), spliced mid-list at
-        // its column's position while its VALUE is appended 99th, so the ~74
-        // placeholders after it never had to renumber. `?100`–`?102` are the
+        // text: `?98` is `cycleOrderParticipantIds` (P4.D171), spliced mid-list at
+        // its column's position while its VALUE is appended 98th, so the ~74
+        // placeholders after it never had to renumber. `?99`–`?101` are the
         // Concierge trio (P4.D226), spliced after `dangerClassifiedAtMessageCount`
-        // the same way; the next column append writes `?103` at the END of both
+        // the same way; the next column append writes `?102` at the END of both
         // lists. (P4.D227, v4 `3b463d6b1`: `conciergeOverride` — once `?58` — LEFT
         // the statement; every placeholder above 58 was renumbered down by one
-        // mechanically, and the create arm proved it.) Never "tidy" this sequence — a
+        // mechanically, and the create arm proved it. P4.D235, v4 `f7f3d7bf0`: the
+        // same again for `renderedMarkdown` — once `?59` — so every placeholder
+        // above 59, the spliced four included, moved down by one.) Never "tidy" this sequence — a
         // renumbering pass mis-binds every later column with no compile error;
         // `chats_tier2_equivalence`'s create arm is what catches it.
         self.conn.execute(
@@ -873,7 +865,7 @@ impl<'c> ChatsRepository<'c> {
                lastBackgroundGeneratedAt, imageProfileId, alertCharactersOfLanternImages, \
                isDangerousChat, dangerScore, dangerCategories, dangerClassifiedAt, \
                dangerClassifiedAtMessageCount, conciergeMode, \
-               conciergeModeSetBy, conciergeModeReason, sceneState, renderedMarkdown, \
+               conciergeModeSetBy, conciergeModeReason, sceneState, \
                equippedOutfit, characterAvatars, avatarGenerationEnabled, chatType, helpPageUrl, \
                consoleConnectionProfileId, compiledIdentityStacks, courierCheckpoints, \
                commonplaceSceneCache, commonplaceRecallHistory, timelineMode, budgetMaxTurns, \
@@ -887,13 +879,13 @@ impl<'c> ChatsRepository<'c> {
                turnSkippingEnabled) \
              VALUES (\
                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
-               ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?99, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
+               ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?98, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
                ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48, ?49, ?50, \
-               ?51, ?52, ?53, ?54, ?55, ?56, ?57, ?100, ?101, ?102, ?58, ?59, ?60, ?61, \
-               ?62, ?63, ?64, ?65, \
-               ?66, ?67, ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78, ?79, ?80, ?81, \
-               ?82, ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, ?97, \
-               ?98)",
+               ?51, ?52, ?53, ?54, ?55, ?56, ?57, ?99, ?100, ?101, ?58, ?59, ?60, \
+               ?61, ?62, ?63, ?64, \
+               ?65, ?66, ?67, ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78, ?79, ?80, \
+               ?81, ?82, ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, \
+               ?97)",
             params![
                 opts.id,
                 data.user_id,
@@ -953,7 +945,6 @@ impl<'c> ChatsRepository<'c> {
                 data.danger_classified_at,
                 data.danger_classified_at_message_count,
                 scene_state_json,
-                data.rendered_markdown,
                 equipped_outfit_json,
                 character_avatars_json,
                 data.avatar_generation_enabled,
@@ -1357,11 +1348,6 @@ impl<'c> ChatsRepository<'c> {
             set_col!("dangerClassifiedAtMessageCount", Box::new(v));
         }
         // === end P4.9E3A ===
-        // === P4.6BM ===
-        if let Some(v) = &patch.rendered_markdown {
-            set_col!("renderedMarkdown", Box::new(v.clone()));
-        }
-        // === end P4.6BM ===
         set_col!("updatedAt", Box::new(resolved_updated_at));
 
         let id_idx = values.len() + 1;

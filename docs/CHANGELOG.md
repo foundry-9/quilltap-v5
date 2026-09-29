@@ -155,6 +155,11 @@ A text provider's HTTP error now carries a refusal side: the value v4's plugin t
 So a benign-worded coded 400 (Azure's `content_filter`, Z.AI's `1301`) now reaches the classifier's `provider-code` evidence, as on v4. Before this, v5 answered "not fallback-eligible".
 
 Proven by a new wire family, `text_http_errors_equivalence`: 33 posed error bodies through v4's ten real text plugins in both call modes (726 rows, committed corpus), recorded by the new `record-text-errors.mjs`. Red-first: v5 matched 0 of v4's 162 refusals; now 160, with the two remaining (OpenRouter's SDK path, which v5 never runs) and the message-byte trigger differences pinned both ways. New unit pins at every site; the old pre-stream pin could not see the side (its fake failure has no status).
+#### 2026-09-28 — feat(chats): read and write chats without renderedMarkdown; D23 re-dump at f7f3d7bf0 (P4.D235 substrate)
+
+_Versions: core 0.0.1090._
+
+v4 `f7f3d7bf0` drops `chats.renderedMarkdown` (transcripts are now rendered on demand). v5 stops binding the column: it leaves the strict chat read (`ALL_COLUMNS`, 102 → 101; every later read index shifts down by one), `ChatCreate` / `ChatUpdate` and the chat INSERT (`?59` removed; every placeholder above it, including the four spliced ones, renumbered down by one). v5 still never drops a column at boot, so a migrated instance that keeps it opens exactly like a fresh one; a new unit test reads both shapes and pins the two DDL neighbours. `fresh_schema.json` is re-dumped from the pin (exactly one line: `chats` loses the column; the seed is unchanged) and `schema-key-order.json` is regenerated (it loses `renderedMarkdown` and the stale `conciergeOverride` P4.D227 never removed). The two raw-SQL sites that named the column land in the same commit: the stale-chat cache collapse's `UPDATE` and the render reconcile's arm A, now keyed on the chat having no `conversation_chunks` rows. The render job no longer writes the column. A `.qtap` chat carrying the key imports without it (pinned on the migrated table shape).
 
 #### 2026-09-28 — docs(porting): order the `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118)
 

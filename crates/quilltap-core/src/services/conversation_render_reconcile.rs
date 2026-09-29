@@ -104,8 +104,10 @@ const SELECT_INCOMPLETE_CHATS: &str = "\
   SELECT c.\"id\" AS chatId, c.\"userId\" AS userId, c.\"updatedAt\" AS updatedAt
   FROM \"chats\" c
   WHERE (
-    -- (A) Real messages but never rendered to Markdown.
-    c.\"renderedMarkdown\" IS NULL
+    -- (A) Real messages but no conversation_chunks rows at all — never chunked.
+    NOT EXISTS (
+      SELECT 1 FROM \"conversation_chunks\" cc0 WHERE cc0.\"chatId\" = c.\"id\"
+    )
     AND EXISTS (
       SELECT 1 FROM \"chat_messages\" m
       WHERE m.\"chatId\" = c.\"id\"

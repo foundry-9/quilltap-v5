@@ -154572,3 +154572,64 @@ Node 24.13.1. Regen outputs staged under `/tmp/p4118/`.
   workspace suite ran ONCE, on the final tree above.
 
 **LANE COMPLETE.**
+## P4.D235 — v4 `f7f3d7bf0` SERVER whole (the `renderedMarkdown` DROP + the on-demand render + warm embeddings) — lane record
+
+Lane branch `claude/p4-d235-markdown-embeddings-c68c6a` (the harness-made
+worktree name), cut from `main` `e361879d3`. §R.2 probe at lane start: PASS
+(`main`, `97b25fc53`, tree clean, both logs empty). Pins (ledger §5.1, three
+symlink classes each, verified by `rev-parse` + `ls -ld` + the markers):
+TARGET `/tmp/qt-v4-pin-p4d235-f7f3d7bf0` (`git show f7f3d7bf0:lib/schemas/
+chat.types.ts` has 0 `renderedMarkdown` hits) and FIXTURE
+`/tmp/qt-v4-fix-p4d235-acadcc7cd` (2 hits). Node 24.13.1. Staging under
+`/tmp/p4d235/`.
+
+### Unit 1 — the substrate (Tier 1 items 1–2): the E.2 tolerant read, the INSERT, the D23 re-dump, the key order
+
+- `db/chats_read.rs`: `renderedMarkdown` OUT of `ALL_COLUMNS` (102 → 101);
+  `marshal_row`'s indices ≥ 63 shifted down by one (the alignment census
+  green). NEW `a_chat_reads_the_same_with_or_without_the_dropped_rendered_
+  markdown_column` — the P4.D227 twin, with `sceneState` / `equippedOutfit`
+  and `createdAt` pinned as the neighbours.
+- `db/chats.rs`: `ChatCreate.rendered_markdown` and `ChatUpdate.rendered_
+  markdown` gone; the INSERT's `?59` removed and every placeholder above it
+  renumbered down by one — INCLUDING the four spliced ones (`cycleOrder…`
+  `?99` → `?98`, the Concierge trio `?100`–`?102` → `?99`–`?101`); the
+  comment updated; the `set_col!` arm gone.
+- Co-landing (§E.8): the collapse's chats `UPDATE` narrowed to v4's exact
+  statement (`SET compressionCache = NULL, compiledIdentityStacks = NULL …
+  AND (compressionCache IS NOT NULL OR compiledIdentityStacks IS NOT NULL)`);
+  the render reconcile's arm A re-keyed on `NOT EXISTS (SELECT 1 FROM
+  "conversation_chunks" cc0 WHERE cc0."chatId" = c."id")` (v4's SQL + comment
+  verbatim); the render job's step 5 (the only writer) deleted. The rest of
+  those three files is Units 3–4.
+- `.qtap` import (§E.7): NEW `a_bundle_chat_carrying_rendered_markdown_
+  imports_without_it` — on a MIGRATED table (the column present), a bundle
+  carrying the key creates a row whose column is NULL (serde ignores the key
+  now that `ChatCreate` has no field; v4 strips it through Zod).
+- **D23 re-dump** from the pin (`QT_SCHEMA_OUT=/tmp/p4d235/fresh_schema.json
+  QT_SEED_OUT=/tmp/p4d235/seed.json npx tsx $W/harness/oracle/provision/
+  dump-fresh-schema.ts`, cwd the TARGET pin): 83/30/3 statements, EXACTLY one
+  line moves (`chats` loses `"renderedMarkdown" TEXT`); the seed `cmp`-identical.
+  The dated note added to `provisioning/mod.rs`.
+- **Export key order** regenerated from the pin (`node --import tsx $W/harness/
+  oracle/fixtures/dump-export-key-order.ts`): exactly two lines leave `/chat` —
+  `renderedMarkdown` AND the stale `conciergeOverride` (§E.10 confirmed). The
+  table is non-lossy (`key_order.rs`), so no export family moved; the guards
+  reading it are re-run at the gate.
+- **Red-first, measured with `main`'s `chats_read.rs` / `chats.rs` /
+  `fresh_schema.json` / `entities.rs` restored from backup** (fixtures built at
+  the FIXTURE pin, oracles at the TARGET pin — `/tmp/p4d235/bin/regen-
+  substrate.sh`): `chats_read_equivalence` RED (`findById` emits
+  `renderedMarkdown: "# Title"`, the target oracle strips it);
+  `provisioning_equivalence` RED (`schema mismatch in partition main`);
+  `chats_tier2_equivalence` GREEN on the baseline-built fixture (no case sets
+  the field, and the old INSERT succeeds on a table that has the column) — so
+  the INSERT's red-first was taken on a TARGET-built fixture: RED with `table
+  chats has no column named renderedMarkdown`. After the port: all three green,
+  `chats_tier2` on BOTH fixture vintages; the provisioning recipe's two v4-side
+  verifiers at the pin both `OK`.
+- **The cross-vintage open (§R.3), confirmed once:** after the target oracle
+  ran over the baseline-built `chats-read` fixture, `PRAGMA table_info(chats)`
+  reads 102 columns with `renderedMarkdown` present — v4's oracles run no
+  migrations and strip the key through Zod on read, as predicted.
+- `cargo test -p quilltap-core --lib`: 2,695 passed / 0 failed.

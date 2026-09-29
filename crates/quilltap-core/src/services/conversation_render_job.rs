@@ -198,20 +198,6 @@ async fn handle_inner(
     let result =
         render_conversation_markdown(&messages, &character_names, Some(&metadata), now_iso);
 
-    // 5. Persist the markdown WITHOUT bumping updatedAt (v4 :63-66).
-    let (cid, markdown) = (payload.chat_id.clone(), result.markdown.clone());
-    db.write(move |ws| {
-        ws.main().chats().update(
-            &cid,
-            &crate::db::chats::ChatUpdate {
-                rendered_markdown: Some(markdown),
-                updated_at: None,
-                ..Default::default()
-            },
-        )
-    })
-    .await?;
-
     // 6. Upsert one chunk per interchange (v4 :69-78). v4 reads `new Date()`
     //    once before the loop; every upsert in a run therefore shares one
     //    timestamp — though `_update`/`_create` mint their own anyway, which is

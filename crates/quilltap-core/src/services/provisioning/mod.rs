@@ -123,6 +123,17 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// `.default()` literal, WITHOUT the four desk ids and the prompt. #76's own
 /// prose ("drops NO old column") holds for MIGRATED instances only: a fresh
 /// DDL has neither legacy column. The seed moved with it (below).
+///
+/// `f7f3d7bf0` (P4.D235 — keep conversation embeddings warm; render
+/// transcripts on demand; run FROM the pin): EXACTLY one line moves, as
+/// measured. `chats` LOSES `"renderedMarkdown" TEXT` (v4 deleted it from both
+/// chat schemas; `drop-chat-rendered-markdown-v1` drops the column on migrated
+/// instances — v5 never drops it, it stops binding it, so either shape opens,
+/// exactly the `conciergeOverride` treatment). v4's hand-written
+/// `sqlite-initial-schema.ts` still CREATES the column, which is why a v4
+/// instance born from `SQLITE_TABLES` shows the drop in its migration log; the
+/// `generateDDL` surface this module is built from never has it. The seed is
+/// UNMOVED at this pin (`cmp`-identical).
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted

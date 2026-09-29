@@ -792,3 +792,61 @@ fn create_chat(
     .map_err(|e| e.to_string())?;
     Ok(id)
 }
+
+#[cfg(test)]
+mod rendered_markdown_strip_tests {
+    use super::*;
+
+    /// P4.D235 (v4 `f7f3d7bf0`): `renderedMarkdown` left the chat schema, so
+    /// an old `.qtap` carrying a stored transcript has it STRIPPED on import
+    /// (v4's `ChatMetadataSchema` no longer declares it; v5's `ChatCreate` no
+    /// longer has the field and serde ignores the key). Pinned on the MIGRATED
+    /// shape — a table that still has the column — where a surviving binder
+    /// would write the bundle's bytes: the created row's column stays NULL.
+    #[test]
+    fn a_bundle_chat_carrying_rendered_markdown_imports_without_it() {
+        let schema: Value =
+            serde_json::from_str(include_str!("../provisioning/fresh_schema.json")).unwrap();
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"chats\" ("))
+            .unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(ddl).unwrap();
+        conn.execute_batch("ALTER TABLE \"chats\" ADD COLUMN \"renderedMarkdown\" TEXT")
+            .unwrap();
+        let raw = json!({
+            "id": "src-chat",
+            "userId": "someone-else",
+            "title": "An old bundle",
+            "participants": [],
+            "renderedMarkdown": "# A transcript v4 no longer stores",
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-01-01T00:00:00.000Z",
+        });
+        let repo = ChatsRepository::new(&conn);
+        let id = create_chat(
+            &repo,
+            "u1",
+            &raw,
+            None,
+            &ImportOptions::seed_defaults(),
+            "src-chat",
+        )
+        .expect("the chat imports");
+        let stored: Option<String> = conn
+            .query_row(
+                "SELECT \"renderedMarkdown\" FROM \"chats\" WHERE id = ?1",
+                [&id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, None, "the bundle's transcript was stripped");
+        let read = chats_read::find_by_id(&conn, &id).unwrap().unwrap();
+        assert!(read.get("renderedMarkdown").is_none());
+        assert_eq!(read["title"], "An old bundle");
+    }
+}

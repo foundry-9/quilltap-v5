@@ -62,7 +62,7 @@ use super::chats::ChatParticipant;
 use super::js_number_to_json;
 use super::DbError;
 
-/// All 102 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT
+/// All 101 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT
 /// order). The count, the order and `marshal_row`'s index table are pinned
 /// against the D23 dump by this module's `alignment_census` tests.
 /// `timelineMode` (v4 8bf3cb5f, the episodic spine) sits between
@@ -90,7 +90,7 @@ const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sill
      imageProfileId, alertCharactersOfLanternImages, isDangerousChat, dangerScore, dangerCategories, \
      dangerClassifiedAt, dangerClassifiedAtMessageCount, conciergeMode, \
      conciergeModeSetBy, conciergeModeReason, sceneState, \
-     renderedMarkdown, equippedOutfit, characterAvatars, avatarGenerationEnabled, chatType, \
+     equippedOutfit, characterAvatars, avatarGenerationEnabled, chatType, \
      helpPageUrl, consoleConnectionProfileId, compiledIdentityStacks, courierCheckpoints, \
      commonplaceSceneCache, commonplaceRecallHistory, timelineMode, budgetMaxTurns, budgetMaxTokens, \
      budgetMaxWallClockMs, budgetEstimatedSpendCapUSD, scheduleCron, scheduleFreshnessWindowMs, \
@@ -294,65 +294,64 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_string(&mut obj, "conciergeModeSetBy", row.get(59)?);
     put_opt_string(&mut obj, "conciergeModeReason", row.get(60)?);
     put_opt_json(&mut obj, "sceneState", row.get(61)?);
-    put_opt_string(&mut obj, "renderedMarkdown", row.get(62)?);
-    put_opt_json(&mut obj, "equippedOutfit", row.get(63)?);
-    put_opt_json(&mut obj, "characterAvatars", row.get(64)?);
-    put_opt_bool(&mut obj, "avatarGenerationEnabled", row.get(65)?);
+    put_opt_json(&mut obj, "equippedOutfit", row.get(62)?);
+    put_opt_json(&mut obj, "characterAvatars", row.get(63)?);
+    put_opt_bool(&mut obj, "avatarGenerationEnabled", row.get(64)?);
     obj.insert(
         "chatType".into(),
         Value::String(
-            row.get::<_, Option<String>>(66)?
+            row.get::<_, Option<String>>(65)?
                 .unwrap_or_else(|| "salon".into()),
         ),
     );
-    put_opt_string(&mut obj, "helpPageUrl", row.get(67)?);
-    put_opt_string(&mut obj, "consoleConnectionProfileId", row.get(68)?);
-    put_opt_json(&mut obj, "compiledIdentityStacks", row.get(69)?);
-    put_opt_json(&mut obj, "courierCheckpoints", row.get(70)?);
-    put_opt_json(&mut obj, "commonplaceSceneCache", row.get(71)?);
-    put_opt_json(&mut obj, "commonplaceRecallHistory", row.get(72)?);
+    put_opt_string(&mut obj, "helpPageUrl", row.get(66)?);
+    put_opt_string(&mut obj, "consoleConnectionProfileId", row.get(67)?);
+    put_opt_json(&mut obj, "compiledIdentityStacks", row.get(68)?);
+    put_opt_json(&mut obj, "courierCheckpoints", row.get(69)?);
+    put_opt_json(&mut obj, "commonplaceSceneCache", row.get(70)?);
+    put_opt_json(&mut obj, "commonplaceRecallHistory", row.get(71)?);
     // Episodic spine (v4 8bf3cb5f): 'realtime' | 'narrative'; NULL reads as
     // realtime and is omitted (v4's undefined dropped by JSON.stringify).
-    put_opt_string(&mut obj, "timelineMode", row.get(73)?);
-    put_opt_number(&mut obj, "budgetMaxTurns", row.get(74)?);
-    put_opt_number(&mut obj, "budgetMaxTokens", row.get(75)?);
-    put_opt_number(&mut obj, "budgetMaxWallClockMs", row.get(76)?);
-    put_opt_number(&mut obj, "budgetEstimatedSpendCapUSD", row.get(77)?);
-    put_opt_string(&mut obj, "scheduleCron", row.get(78)?);
-    put_opt_number(&mut obj, "scheduleFreshnessWindowMs", row.get(79)?);
-    put_opt_string(&mut obj, "scheduleNextRunAt", row.get(80)?);
-    put_opt_string(&mut obj, "scheduleLastRunAt", row.get(81)?);
-    put_opt_string(&mut obj, "runState", row.get(82)?);
-    put_opt_string(&mut obj, "currentRunId", row.get(83)?);
-    put_opt_string(&mut obj, "runStateMessage", row.get(84)?);
-    put_opt_string(&mut obj, "runStartedAt", row.get(85)?);
-    put_opt_string(&mut obj, "runEndedAt", row.get(86)?);
-    put_opt_string(&mut obj, "runPausedAt", row.get(87)?);
-    put_opt_number(&mut obj, "runPausedAccumMs", row.get(88)?);
-    put_opt_number(&mut obj, "runTurnsConsumed", row.get(89)?);
-    put_opt_number(&mut obj, "runTokensConsumed", row.get(90)?);
+    put_opt_string(&mut obj, "timelineMode", row.get(72)?);
+    put_opt_number(&mut obj, "budgetMaxTurns", row.get(73)?);
+    put_opt_number(&mut obj, "budgetMaxTokens", row.get(74)?);
+    put_opt_number(&mut obj, "budgetMaxWallClockMs", row.get(75)?);
+    put_opt_number(&mut obj, "budgetEstimatedSpendCapUSD", row.get(76)?);
+    put_opt_string(&mut obj, "scheduleCron", row.get(77)?);
+    put_opt_number(&mut obj, "scheduleFreshnessWindowMs", row.get(78)?);
+    put_opt_string(&mut obj, "scheduleNextRunAt", row.get(79)?);
+    put_opt_string(&mut obj, "scheduleLastRunAt", row.get(80)?);
+    put_opt_string(&mut obj, "runState", row.get(81)?);
+    put_opt_string(&mut obj, "currentRunId", row.get(82)?);
+    put_opt_string(&mut obj, "runStateMessage", row.get(83)?);
+    put_opt_string(&mut obj, "runStartedAt", row.get(84)?);
+    put_opt_string(&mut obj, "runEndedAt", row.get(85)?);
+    put_opt_string(&mut obj, "runPausedAt", row.get(86)?);
+    put_opt_number(&mut obj, "runPausedAccumMs", row.get(87)?);
+    put_opt_number(&mut obj, "runTurnsConsumed", row.get(88)?);
+    put_opt_number(&mut obj, "runTokensConsumed", row.get(89)?);
     obj.insert(
         "runMilestonesAnnounced".into(),
-        number_or(row.get(91)?, 0.0),
+        number_or(row.get(90)?, 0.0),
     );
     obj.insert(
         "runDestructiveToolsAllowed".into(),
-        number_or(row.get(92)?, 0.0),
+        number_or(row.get(91)?, 0.0),
     );
     obj.insert(
         "budgetExcludeCacheHits".into(),
-        number_or(row.get(93)?, 1.0),
+        number_or(row.get(92)?, 1.0),
     );
-    put_opt_string(&mut obj, "runVisibility", row.get(94)?);
-    put_opt_bool(&mut obj, "coreWhisperEnabled", row.get(95)?);
-    put_opt_number(&mut obj, "coreWhisperInterval", row.get(96)?);
-    put_opt_bool(&mut obj, "showThinking", row.get(97)?);
-    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(98)?));
-    obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(99)?));
-    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(100)?);
+    put_opt_string(&mut obj, "runVisibility", row.get(93)?);
+    put_opt_bool(&mut obj, "coreWhisperEnabled", row.get(94)?);
+    put_opt_number(&mut obj, "coreWhisperInterval", row.get(95)?);
+    put_opt_bool(&mut obj, "showThinking", row.get(96)?);
+    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(97)?));
+    obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(98)?));
+    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(99)?);
     // "Nothing to add" turn-skipping toggle (nullable boolean; NULL → omitted,
     // v4's `undefined` dropped by `JSON.stringify`). v4 b90cd1f5.
-    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(101)?);
+    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(100)?);
 
     Ok(Value::Object(obj))
 }
@@ -743,5 +742,60 @@ mod alignment_census {
         assert_eq!(fresh, migrated);
         assert!(migrated.get("conciergeOverride").is_none());
         assert_eq!(migrated["conciergeMode"], "locked");
+    }
+
+    /// P4.D235 (v4 `f7f3d7bf0`; E.2 again): `renderedMarkdown` left both chat
+    /// schemas and `drop-chat-rendered-markdown-v1` drops it on v4's side
+    /// only. v5 reads BOTH shapes through the same SELECT — the re-dumped DDL
+    /// (no column) and a migrated table that still carries a stored transcript
+    /// — identically; the transcript never surfaces, and its two DDL
+    /// neighbours (`sceneState` before, `equippedOutfit` after) read from
+    /// their own columns, so the index table did not slip. Keeping the column
+    /// in `ALL_COLUMNS` (the order's M1) fails the fresh read outright.
+    #[test]
+    fn a_chat_reads_the_same_with_or_without_the_dropped_rendered_markdown_column() {
+        let schema: serde_json::Value =
+            serde_json::from_str(FRESH_SCHEMA).expect("fresh_schema.json parses");
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"chats\" ("))
+            .unwrap();
+        assert!(!ddl.contains("renderedMarkdown"), "the re-dump dropped it");
+        let read = |with_column: bool| {
+            let conn = rusqlite::Connection::open_in_memory().unwrap();
+            conn.execute_batch(ddl).unwrap();
+            if with_column {
+                conn.execute_batch("ALTER TABLE \"chats\" ADD COLUMN \"renderedMarkdown\" TEXT")
+                    .unwrap();
+            }
+            conn.execute(
+                "INSERT INTO \"chats\" (id, userId, title, sceneState, equippedOutfit, \
+                 createdAt, updatedAt) VALUES ('c1', 'u1', 'both shapes', \
+                 '{\"location\":\"the conservatory\"}', '{\"p1\":{\"top\":\"w1\"}}', \
+                 '2026-09-28T00:00:00.000Z', '2026-09-28T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+            if with_column {
+                conn.execute(
+                    "UPDATE \"chats\" SET \"renderedMarkdown\" = '# A stored transcript'",
+                    [],
+                )
+                .unwrap();
+            }
+            super::find_by_id(&conn, "c1")
+                .unwrap()
+                .expect("the chat reads")
+        };
+        let fresh = read(false);
+        let migrated = read(true);
+        assert_eq!(fresh, migrated);
+        assert!(migrated.get("renderedMarkdown").is_none());
+        assert_eq!(migrated["sceneState"]["location"], "the conservatory");
+        assert_eq!(migrated["equippedOutfit"]["p1"]["top"], "w1");
+        assert_eq!(migrated["createdAt"], "2026-09-28T00:00:00.000Z");
     }
 }

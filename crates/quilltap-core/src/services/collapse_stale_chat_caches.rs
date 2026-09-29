@@ -104,11 +104,9 @@ async fn collapse_one_chat(
         //    chat look freshly touched. (v4 also drops the in-memory compression
         //    cache here; v5 has no such Map — see the module doc.)
         let chat_rows = conn.execute(
-            "UPDATE chats SET compressionCache = NULL, renderedMarkdown = NULL, \
-                              compiledIdentityStacks = NULL \
+            "UPDATE chats SET compressionCache = NULL, compiledIdentityStacks = NULL \
                WHERE id = ?1 \
-                 AND (compressionCache IS NOT NULL OR renderedMarkdown IS NOT NULL \
-                   OR compiledIdentityStacks IS NOT NULL)",
+                 AND (compressionCache IS NOT NULL OR compiledIdentityStacks IS NOT NULL)",
             params![cid],
         )?;
 
