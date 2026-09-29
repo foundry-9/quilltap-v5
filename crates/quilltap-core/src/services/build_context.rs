@@ -1291,8 +1291,8 @@ fn resolve_live_clothing(
         // Read equipped outfit for the character.
         let equipped: Option<Value> = db
             .read_main(move |main| {
-                crate::db::chats_outfits::ChatOutfitsRepository::new(main)
-                    .get_equipped_outfit_for_character(&chat_id, &cid)
+                Ok(crate::db::chats_outfits::ChatOutfitsRepository::new(main)
+                    .get_equipped_outfit_for_character(&chat_id, &cid))
             })
             .unwrap_or(None);
         let slots = crate::wardrobe::Slots::from_value(equipped.as_ref());

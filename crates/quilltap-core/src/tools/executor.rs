@@ -1441,6 +1441,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
     // -- send_mail (Post Office; tool-executor.ts:1114) ----------------------
     async fn run_send_mail(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
         let args = tc.arguments.clone();
+        let chat_id = ctx.chat_id.clone();
         let user_id = ctx.user_id.clone();
         let character_id = ctx.character_id.clone();
         // v4 mints `sentAt = new Date().toISOString()` inside the delivery path;
@@ -1450,6 +1451,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             let out = send_mail::execute_send_mail(
                 main,
                 mount,
+                &chat_id,
                 &user_id,
                 character_id.as_deref(),
                 &args,

@@ -1358,8 +1358,9 @@ fn build_appearance_inputs(
             .unwrap_or("")
             .to_string();
         let mut equipped: Vec<WardrobeItemInput> = Vec::new();
-        // v4 catches per-character equipped-load failures (uses no items).
-        if let Ok(Some(state)) = crate::db::chats_outfits::ChatOutfitsRepository::new(main)
+        // v4 catches per-character equipped-load failures (uses no items); the
+        // read itself is v4's fallback `safeQuery`, so a failure reads `None`.
+        if let Some(state) = crate::db::chats_outfits::ChatOutfitsRepository::new(main)
             .get_equipped_outfit_for_character(chat_id, &char_id)
         {
             let slots = crate::wardrobe::Slots::from_value(Some(&state));

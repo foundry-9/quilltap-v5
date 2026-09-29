@@ -224,8 +224,11 @@ fn execute_inner(
 
     let target_chat_id = conversation_id.unwrap_or(chat_id);
 
-    // Load chat (no user scoping — matches v4's `repos.chats.findById`).
-    let chat = match db.read_main(|c| chats_read::find_by_id(c, target_chat_id))? {
+    // Load chat (no user scoping — matches v4's `repos.chats.findById`, the
+    // fallback `_findById`: a failed read logs the repository's ERROR and takes
+    // the not-found arm below, never the tool's catch — the `97b25fc53`
+    // unification review).
+    let chat = match db.read_main(|c| Ok(chats_read::find_by_id_or_none(c, target_chat_id)))? {
         Some(c) => c,
         None => {
             tracing::warn!(
@@ -530,8 +533,14 @@ mod log_tests {
         none_at(&lines, "INFO");
     }
 
+    /// v4's `repos.chats.findById` is the fallback `_findById`: a failed chat
+    /// read logs the repository's `Error finding entity by ID` and the tool
+    /// takes its NOT-FOUND arm (`Conversation not found.` + the chat-not-found
+    /// WARN) — never the execution-failed ERROR, which nothing on this path can
+    /// reach in v4 (the `97b25fc53` unification review; P4.D235 had pinned the
+    /// catch as v4's).
     #[test]
-    fn a_failed_read_logs_v4s_execution_failed_error() {
+    fn a_failed_chat_read_takes_v4s_not_found_arm() {
         let db = db();
         db.write_blocking(|w| {
             w.main().connection().execute_batch("DROP TABLE chats")?;
@@ -540,8 +549,25 @@ mod log_tests {
         .unwrap();
         let (out, lines) = read(&db, json!({}));
         assert!(!out.success);
-        let l = only(&lines, "ERROR", "Read conversation tool execution failed");
-        assert!(l.contains("error="), "{l}");
+        assert_eq!(
+            out.error.as_deref(),
+            Some("Conversation not found."),
+            "{out:?}"
+        );
+        // The repository line carries its module target (`quilltap_core::db::chats_read`).
+        let db_err: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR ") && l.contains("Error finding entity by ID"))
+            .collect();
+        assert_eq!(db_err.len(), 1, "{lines:?}");
+        assert!(
+            db_err[0].contains("Error finding entity by ID")
+                && db_err[0].contains("collection=chats"),
+            "{}",
+            db_err[0]
+        );
+        only(&lines, "WARN", "Read conversation tool: chat not found");
+        none_at(&lines, "ERROR");
         none_at(&lines, "INFO");
     }
 

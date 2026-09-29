@@ -52,10 +52,15 @@ import { ToastService } from '../../ui/toast.service';
       [routerLink]="['/salon', chat().id]"
     >
       @if (removable()) {
-        <qt-tooltip content="Remove from project">
+        <!-- The corner placement rides the tooltip HOST (v4's anchorClassName
+             idiom): an inline-flex host wrapping an absolutely-placed button
+             is a zero-size in-flow box that still opens a full line box, and
+             the card grew a blank strip above its content row (measured 82px
+             against 58px at unification). -->
+        <qt-tooltip content="Remove from project" class="absolute top-2 right-2 z-10">
           <button
             type="button"
-            class="absolute top-2 right-2 z-10 p-1.5 rounded-full qt-text-secondary hover:qt-text-destructive hover:qt-bg-destructive/10 transition-colors"
+            class="p-1.5 rounded-full qt-text-secondary hover:qt-text-destructive hover:qt-bg-destructive/10 transition-colors"
             aria-label="Remove from project"
             (click)="onRemove($event)"
           >

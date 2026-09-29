@@ -362,7 +362,7 @@ fn run(
         // the repository with v4's, so the coercion has ONE home.)
         current_state = Some(
             crate::db::chats_outfits::ChatOutfitsRepository::new(main)
-                .get_equipped_outfit_for_character(chat_id, &target_character_id)?
+                .get_equipped_outfit_for_character(chat_id, &target_character_id)
                 .unwrap_or_else(|| Slots::fresh().to_value()),
         );
 

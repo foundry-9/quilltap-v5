@@ -104,18 +104,27 @@ impl<'c> ChatOutfitsRepository<'c> {
     /// !chat.equippedOutfit`). The marshaler omits a NULL `equippedOutfit` cell, so
     /// "absent key" is the no-outfit case.
     ///
+    /// **A failed chat read answers `None`, never an error** — v4's method is a
+    /// fallback `safeQuery` whose only fallible step is `this.findById`, itself
+    /// the fallback `_findById` (`base.repository.ts:247-257`): a DB failure
+    /// logs `Error finding entity by ID` and yields `null`, so `getEquippedOutfit`
+    /// answers `null` with no line of its own (its `Failed to get equipped
+    /// outfit` arm can only see a throw, and nothing left inside it throws).
+    /// Every v4 caller — the wardrobe tools, the outfit routes, the arriving-
+    /// character refresh — therefore reads "no outfit" on a broken read, which
+    /// is what the `Option` (not `Result`) return type says (the `97b25fc53`
+    /// unification review; P4.D238 had pinned the unreachable inner line).
+    ///
     /// **The coercion point** (v4 `275cd7bc`, bug 78): the stored value is raw
     /// JSON, and a row written before a slot existed carries fewer keys than the
     /// slot list declares. Every character's entry is normalized on the way out
     /// ([`normalize_equipped_outfit_state`]), so no consumer — this repository's
     /// own `setEquippedOutfit` included — ever sees a short bag.
-    pub fn get_equipped_outfit(&self, chat_id: &str) -> Result<Option<Value>, DbError> {
-        let Some(chat) = chats_read::find_by_id(self.conn, chat_id)? else {
-            return Ok(None);
-        };
+    pub fn get_equipped_outfit(&self, chat_id: &str) -> Option<Value> {
+        let chat = chats_read::find_by_id_or_none(self.conn, chat_id)?;
         match chat.get("equippedOutfit") {
-            Some(v) if !v.is_null() => Ok(Some(normalize_equipped_outfit_state(v))),
-            _ => Ok(None),
+            Some(v) if !v.is_null() => Some(normalize_equipped_outfit_state(v)),
+            _ => None,
         }
     }
 
@@ -125,13 +134,11 @@ impl<'c> ChatOutfitsRepository<'c> {
         &self,
         chat_id: &str,
         character_id: &str,
-    ) -> Result<Option<Value>, DbError> {
-        let Some(state) = self.get_equipped_outfit(chat_id)? else {
-            return Ok(None);
-        };
+    ) -> Option<Value> {
+        let state = self.get_equipped_outfit(chat_id)?;
         match state.get(character_id) {
-            Some(v) if !v.is_null() => Ok(Some(v.clone())),
-            _ => Ok(None),
+            Some(v) if !v.is_null() => Some(v.clone()),
+            _ => None,
         }
     }
 
@@ -241,6 +248,34 @@ mod tests {
         assert!(!slots.contains_key("accessories"));
         // A second pass finds nothing → no change.
         assert!(!remove_item_from_slots(&mut slots, "item"));
+    }
+
+    /// v4's `getEquippedOutfit` is a fallback `safeQuery` whose only fallible
+    /// step is the fallback `_findById`: a broken chat read logs `Error finding
+    /// entity by ID` `{collection, id, error}` and the read answers "no outfit"
+    /// — no `Failed to get equipped outfit` line, no error (the `97b25fc53`
+    /// unification review).
+    #[test]
+    fn a_failed_chat_read_answers_no_outfit_with_v4s_repository_error_line() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        // No `chats` table at all: every read fails.
+        let repo = ChatOutfitsRepository::new(&conn);
+        let (whole, lines) =
+            crate::test_support::captured_with(|| repo.get_equipped_outfit("chat-1"));
+        assert_eq!(whole, None);
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        let l = &lines[0];
+        assert!(l.starts_with("ERROR "), "{l}");
+        assert!(l.contains("Error finding entity by ID"), "{l}");
+        assert!(l.contains("collection=chats"), "{l}");
+        assert!(l.contains("id=chat-1"), "{l}");
+        assert!(!l.contains("context="), "{l}");
+        assert!(!l.contains("Failed to get equipped outfit"), "{l}");
+        let (one, lines) = crate::test_support::captured_with(|| {
+            repo.get_equipped_outfit_for_character("chat-1", "char-1")
+        });
+        assert_eq!(one, None);
+        assert_eq!(lines.len(), 1, "{lines:#?}");
     }
 
     #[test]

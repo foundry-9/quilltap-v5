@@ -135,9 +135,9 @@ pub async fn restore(
     let codec = host.pixel_codec();
     let dirs = host.host_dirs();
     let user_id = target_user_id.to_string();
-    // Step 25's reconcile takes the injected wall clock (its staleness window's
-    // origin) — the host's, same as the boot caller.
-    let now_ms = host.now_ms();
+    // Step 25's reconcile takes no clock since v4 `f7f3d7bf0` (its staleness
+    // window is gone — P4.D235; the dead argument dropped at the `97b25fc53`
+    // unification).
     db.write(move |ws| {
         Ok(restore_on_writer(
             ws,
@@ -146,7 +146,6 @@ pub async fn restore(
             &user_id,
             codec,
             dirs,
-            now_ms,
         ))
     })
     .await
@@ -201,7 +200,6 @@ fn restore_on_writer(
     target_user_id: &str,
     codec: Arc<dyn PixelCodec>,
     dirs: HostDirs,
-    now_ms: i64,
 ) -> RestoreSummary {
     let backup_format = extracted.backup_format();
     let root_path = extracted.root_path.clone();
@@ -1347,9 +1345,8 @@ fn restore_on_writer(
     //    all-zero result), resolves the default profile itself and dedupes its
     //    own reindex enqueue — so in the ordinary conforming case this is a
     //    cheap no-op.
-    let reconcile = crate::services::embedding_dimension_reconcile::reconcile_embedding_dimensions(
-        main, mount, now_ms,
-    );
+    let reconcile =
+        crate::services::embedding_dimension_reconcile::reconcile_embedding_dimensions(main, mount);
     if let Some(reason) = reconcile.skipped_reason {
         w.push(format!(
             "Embedding reconcile was skipped after restore ({}); semantic search will be repaired on the next startup.",

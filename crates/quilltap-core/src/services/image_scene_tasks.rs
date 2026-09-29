@@ -633,6 +633,14 @@ fn parse_sanitize_result(
     let Some(arr) = parsed.as_array() else {
         return fallback();
     };
+    // v4 reads `item.characterId` on every element INSIDE its `try`: a `null`
+    // element throws (the one non-object JSON can pose that does), the catch
+    // returns the originals whole — no text change and no `undressed` for
+    // anyone. A primitive element merely reads `undefined` fields, as the
+    // `js_string_or_empty` arms below do (the `97b25fc53` unification review).
+    if arr.iter().any(serde_json::Value::is_null) {
+        return fallback();
+    }
     arr.iter()
         .map(|item| SanitizedAppearance {
             character_id: js_string_or_empty(item.get("characterId")),
@@ -1149,6 +1157,42 @@ mod tests {
             AppearanceSanitizeMode::Redress,
         );
         assert_eq!(out[0].appearance_text, "safe");
+    }
+
+    /// v4's `parsed.map` reads `item.characterId` inside the `try`, so ONE
+    /// `null` element throws and the catch answers the originals whole — the
+    /// sibling's changed text and its `undressed: true` never land, in either
+    /// mode. A primitive element does not throw (its fields read `undefined`
+    /// → `''`), and is kept (the `97b25fc53` unification review).
+    #[test]
+    fn sanitize_parse_falls_back_whole_on_a_null_element_but_keeps_primitives() {
+        let originals = vec![AppearanceText {
+            character_id: "a".into(),
+            appearance_text: "orig".into(),
+        }];
+        let fallback: Vec<SanitizedAppearance> = originals
+            .iter()
+            .map(SanitizedAppearance::from_original)
+            .collect();
+        let with_null = r#"[{"characterId":"a","appearanceText":"x","undressed":true},null]"#;
+        for mode in [
+            AppearanceSanitizeMode::Redress,
+            AppearanceSanitizeMode::Conceal,
+        ] {
+            assert_eq!(parse_sanitize_result(with_null, &originals, mode), fallback);
+        }
+        let with_primitive = r#"[{"characterId":"a","appearanceText":"x","undressed":true},5]"#;
+        let out =
+            parse_sanitize_result(with_primitive, &originals, AppearanceSanitizeMode::Conceal);
+        assert_eq!(out.len(), 2);
+        assert_eq!(
+            (out[0].appearance_text.as_str(), out[0].undressed),
+            ("x", Some(true))
+        );
+        assert_eq!(
+            (out[1].character_id.as_str(), out[1].undressed),
+            ("", Some(false))
+        );
     }
 
     /// v4 `image-scene-concealment.test.ts` cases 3 + 4, driven through the

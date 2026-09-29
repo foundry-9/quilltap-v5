@@ -164,8 +164,8 @@ fn run(
     let tiers = resolve_shared_wardrobe_tiers_for_chat(main, mount, chat_id, character_id);
     let all_items = find_wearable_pool_for_character(main, &docs, character_id, &tiers)?;
 
-    let equipped = ChatOutfitsRepository::new(main)
-        .get_equipped_outfit_for_character(chat_id, character_id)?;
+    let equipped =
+        ChatOutfitsRepository::new(main).get_equipped_outfit_for_character(chat_id, character_id);
 
     // Type filter.
     let type_lower: Option<Vec<String>> = input

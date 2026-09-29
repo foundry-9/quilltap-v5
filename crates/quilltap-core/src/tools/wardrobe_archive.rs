@@ -118,7 +118,7 @@ Only items in your own wardrobe can be archived."
     // Was the item equipped? (Archive doesn't clear slots, but an equipped-then-
     // archived item warrants a visible refresh.)
     let equipped = crate::db::chats_outfits::ChatOutfitsRepository::new(main)
-        .get_equipped_outfit_for_character(chat_id, character_id)?;
+        .get_equipped_outfit_for_character(chat_id, character_id);
     let was_equipped = equipped.as_ref().is_some_and(|eq| {
         WARDROBE_SLOT_TYPES.iter().any(|s| {
             eq.get(*s)

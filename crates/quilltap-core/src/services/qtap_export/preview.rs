@@ -228,6 +228,9 @@ pub fn preview_export(
             }
         }
         "prompt-templates" => {
+            // A raw read: v4's `promptTemplates.findAll()` seeds-and-refreshes
+            // the built-ins as a side effect of any template read; this does
+            // not (the standing divergence recorded at `records.rs`).
             let all_templates = crate::services::backup::marshal::query_all(
                 main,
                 "prompt_templates",

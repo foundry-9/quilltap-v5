@@ -123,8 +123,12 @@ async fn handle_inner(
     let started = std::time::Instant::now();
 
     // 1. Load the chat (v4 :24-31) — missing is a WARN and a completed job.
+    // v4's `repos.chats.findById` is the fallback `_findById`, so a FAILED read
+    // logs the repository's ERROR and takes this same not-found arm (the job
+    // completes; it does not fail and retry) — the `97b25fc53` unification
+    // review.
     let chat_id = payload.chat_id.clone();
-    let chat = db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id))?;
+    let chat = db.read_main(move |conn| Ok(chats_read::find_by_id_or_none(conn, &chat_id)))?;
     let Some(chat) = chat else {
         tracing::warn!(
             target: "quilltap::jobs",
@@ -387,6 +391,40 @@ mod log_tests {
             debug[0]
         );
         assert!(jobs(&lines, "INFO").is_empty(), "{lines:?}");
+    }
+
+    /// v4's `repos.chats.findById` is the fallback `_findById`: a FAILED read
+    /// logs the repository's ERROR and the job takes the same not-found arm —
+    /// it completes (no retry) with the WARN (the `97b25fc53` unification
+    /// review).
+    #[test]
+    fn a_failed_chat_read_warns_not_found_and_completes() {
+        let db = db();
+        db.write_blocking(|w| {
+            w.main().connection().execute_batch("DROP TABLE chats")?;
+            Ok(())
+        })
+        .unwrap();
+        let lines = run(&db, CHAT);
+        let warn = jobs(&lines, "WARN");
+        assert_eq!(warn.len(), 1, "{lines:?}");
+        assert!(
+            warn[0].contains("[ConversationRender] Chat not found, skipping"),
+            "{}",
+            warn[0]
+        );
+        // The repository line carries its module target (`quilltap_core::db::chats_read`).
+        let db_err: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR ") && l.contains("Error finding entity by ID"))
+            .collect();
+        assert_eq!(db_err.len(), 1, "{lines:?}");
+        assert!(
+            db_err[0].contains("Error finding entity by ID"),
+            "{}",
+            db_err[0]
+        );
+        assert!(jobs(&lines, "INFO").is_empty() && jobs(&lines, "DEBUG").is_empty());
     }
 
     #[test]

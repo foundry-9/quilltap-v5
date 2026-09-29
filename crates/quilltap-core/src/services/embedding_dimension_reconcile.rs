@@ -254,15 +254,13 @@ fn find_default_profile(conn: &Connection) -> Result<Option<DefaultProfile>, DbE
 /// `main` is the writer's main connection; `mount` is the mount-index connection
 /// when the instance has that partition.
 ///
-/// `_now_ms` is UNUSED since v4 `f7f3d7bf0` (it was the staleness window's
-/// origin for the deleted stale-chat NULLing). It stays in the signature so the
-/// restore orchestrator (`services/backup/restore/orchestrator.rs`, outside
-/// P4.D235's ownership) did not have to move this round — recorded for the
-/// unifier as a follow-up.
+/// Since v4 `f7f3d7bf0` the pass takes no clock: the staleness window (the
+/// deleted stale-chat NULLing's origin) is gone, so stale and live chunks are
+/// counted alike (P4.D235; the dead parameter dropped at the `97b25fc53`
+/// unification together with its restore-orchestrator caller).
 pub fn reconcile_embedding_dimensions(
     main: &Connection,
     mount: Option<&Connection>,
-    _now_ms: i64,
 ) -> DimensionReconcileResult {
     match run_reconcile(main, mount) {
         Ok(result) => result,
@@ -573,7 +571,6 @@ mod tests {
     const TARGET_DIM: usize = 1024;
     const OLD_DIM: usize = 258;
     /// A `now` far past every seeded timestamp.
-    const NOW_MS: i64 = 1_780_000_000_000; // 2026-06-08T…Z
     const FRESH_ISO: &str = "2026-06-07T00:00:00.000Z";
     const OLD_ISO: &str = "2026-01-01T00:00:00.000Z";
 
@@ -598,10 +595,10 @@ mod tests {
     /// this module's mount-chunk arm is exercised here and pinned at 0 in the
     /// differential.
     fn main_conn() -> Connection {
-        // ⚠ `chat_messages.customAnnouncer` is load-bearing: the staleness gate
-        // calls `get_last_played_message_at`, whose predicate reads it since
-        // P4.D140 (v4 `735d9408c`). See the same note in
-        // `conversation_render_reconcile`.
+        // `chat_messages.customAnnouncer` is kept in this DDL for parity with
+        // the sibling test tables (`conversation_render_reconcile`); since v4
+        // `f7f3d7bf0` this module has no staleness gate, so nothing here reads
+        // `get_last_played_message_at` any more.
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE embedding_profiles (\
@@ -699,7 +696,7 @@ mod tests {
         )
         .unwrap();
 
-        let r = reconcile_embedding_dimensions(&conn, None, NOW_MS);
+        let r = reconcile_embedding_dimensions(&conn, None);
 
         assert_eq!(r.skipped_reason, None);
         assert_eq!(r.target_dimensions, Some(TARGET_DIM));
@@ -741,7 +738,7 @@ mod tests {
             .unwrap();
         failed_status(&conn, "MEMORY", "m-failed");
 
-        let r = reconcile_embedding_dimensions(&conn, None, NOW_MS);
+        let r = reconcile_embedding_dimensions(&conn, None);
 
         assert_eq!(r.mismatched.memories, 2, "m-old + m-null only");
         assert!(r.reindex_enqueued);
@@ -781,7 +778,7 @@ mod tests {
         conn.execute(ins, params!["cc-orphan", "gone-chat", raw_blob(OLD_DIM)])
             .unwrap();
 
-        let r = reconcile_embedding_dimensions(&conn, None, NOW_MS);
+        let r = reconcile_embedding_dimensions(&conn, None);
 
         let stale: Option<Vec<u8>> = conn
             .query_row(
@@ -825,7 +822,7 @@ mod tests {
         // The FAILED-status exclusion set is the ONE thing still read from main.
         failed_status(&main, "MOUNT_CHUNK", "mc-on-failed");
 
-        let r = reconcile_embedding_dimensions(&main, Some(&mount), NOW_MS);
+        let r = reconcile_embedding_dimensions(&main, Some(&mount));
 
         assert_eq!(r.mismatched.mount_chunks, 1, "mc-on-old only");
         assert!(r.reindex_enqueued);
@@ -854,7 +851,7 @@ mod tests {
             )
             .unwrap();
 
-        let r = reconcile_embedding_dimensions(&main, Some(&mount), NOW_MS);
+        let r = reconcile_embedding_dimensions(&main, Some(&mount));
 
         assert_eq!(
             r.mismatched.mount_chunks, 0,
@@ -875,9 +872,9 @@ mod tests {
         )
         .unwrap();
 
-        let first = reconcile_embedding_dimensions(&conn, None, NOW_MS);
+        let first = reconcile_embedding_dimensions(&conn, None);
         assert!(first.reindex_enqueued);
-        let second = reconcile_embedding_dimensions(&conn, None, NOW_MS);
+        let second = reconcile_embedding_dimensions(&conn, None);
         assert_eq!(second.mismatched.memories, 1);
         assert!(!second.reindex_enqueued, "the dedupe must hold");
         assert_eq!(enqueued_jobs(&conn).len(), 1);
@@ -891,7 +888,7 @@ mod tests {
         default_profile(&conn, "BUILTIN");
         entry(&conn, "e-old", raw_blob(OLD_DIM));
 
-        let r = reconcile_embedding_dimensions(&conn, None, NOW_MS);
+        let r = reconcile_embedding_dimensions(&conn, None);
 
         assert_eq!(r.skipped_reason, Some(SkippedReason::BuiltinProfile));
         assert_eq!(r.target_dimensions, None);
@@ -916,7 +913,7 @@ mod tests {
         .unwrap();
         entry(&conn, "e-good", good_blob(TARGET_DIM));
 
-        let r = reconcile_embedding_dimensions(&conn, None, NOW_MS);
+        let r = reconcile_embedding_dimensions(&conn, None);
 
         assert_eq!(r.vector_entries_deleted, 0);
         assert_eq!(r.mismatched, MismatchedCounts::default());
@@ -931,7 +928,7 @@ mod tests {
         // No profile at all.
         let conn = main_conn();
         assert_eq!(
-            reconcile_embedding_dimensions(&conn, None, NOW_MS).skipped_reason,
+            reconcile_embedding_dimensions(&conn, None).skipped_reason,
             Some(SkippedReason::NoProfile)
         );
 
@@ -945,14 +942,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            reconcile_embedding_dimensions(&conn, None, NOW_MS).skipped_reason,
+            reconcile_embedding_dimensions(&conn, None).skipped_reason,
             Some(SkippedReason::NoFixedDim)
         );
 
         // v5's analog of v4's null database handle: no corpus at all.
         let conn = Connection::open_in_memory().unwrap();
         assert_eq!(
-            reconcile_embedding_dimensions(&conn, None, NOW_MS).skipped_reason,
+            reconcile_embedding_dimensions(&conn, None).skipped_reason,
             Some(SkippedReason::DbUnavailable)
         );
     }
@@ -971,7 +968,7 @@ mod tests {
         entry(&conn, "e-256", good_blob(256));
         entry(&conn, "e-1024", good_blob(TARGET_DIM));
 
-        let r = reconcile_embedding_dimensions(&conn, None, NOW_MS);
+        let r = reconcile_embedding_dimensions(&conn, None);
 
         assert_eq!(r.target_dimensions, Some(256));
         assert_eq!(r.vector_entries_deleted, 1, "the 1024-d entry goes");
@@ -1010,7 +1007,7 @@ mod tests {
         )
         .unwrap();
 
-        let r = reconcile_embedding_dimensions(&conn, None, NOW_MS);
+        let r = reconcile_embedding_dimensions(&conn, None);
 
         assert_eq!(
             r.mismatched.help_docs, 0,

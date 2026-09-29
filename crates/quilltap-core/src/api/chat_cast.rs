@@ -141,34 +141,6 @@ fn enrich(db: &Db, participant: &Value) -> Result<Value, DbError> {
 // The arriving character's avatar (v4 `04d6c9d52`)
 // ===========================================================================
 
-/// v4 `repos.chats.getEquippedOutfitForCharacter` is a FALLBACK-mode
-/// `safeQuery` over the equally-fallback `getEquippedOutfit`, so a failed read
-/// logs ERROR and answers `null` — it never throws. The line that fires is the
-/// INNER one (`Failed to get equipped outfit`, `{collection, chatId, context}`):
-/// the outer `…for character` arm can only see a throw, and the inner never
-/// throws outside a strict scope. v5's read returns a `Result`, so this maps
-/// its `Err` onto that arm — the "no outfit" skip — and never onto the join's
-/// WARN (P4.D238; the survey's "`Failed to get equipped outfit for character`"
-/// names the unreachable outer line).
-fn equipped_outfit_or_fallback(
-    read: Result<Option<Value>, DbError>,
-    chat_id: &str,
-) -> Option<Value> {
-    match read {
-        Ok(found) => found,
-        Err(error) => {
-            tracing::error!(
-                collection = "chats",
-                chat_id = %chat_id,
-                context = "wardrobe",
-                error = %error,
-                "Failed to get equipped outfit"
-            );
-            None
-        }
-    }
-}
-
 /// v4 `refreshAvatarForArrivingCharacter` (`participants.ts:251-284`, v4
 /// `04d6c9d52`) — bring an arriving character's per-chat avatar in line with
 /// what they are wearing, the same way chat-open does for the opening cast.
@@ -197,12 +169,18 @@ async fn refresh_avatar_for_arriving_character(
     character_id: &str,
     user_id: &str,
 ) {
+    // v4's `getEquippedOutfitForCharacter` is a fallback read all the way down
+    // (`chats_outfits.rs`): a failed read logs the repository's `Error finding
+    // entity by ID` and reads as "no outfit" — never as this join's WARN.
     let (cid, chid) = (chat_id.to_string(), character_id.to_string());
-    let read = db.read_main(move |c| {
-        crate::db::chats_outfits::ChatOutfitsRepository::new(c)
-            .get_equipped_outfit_for_character(&cid, &chid)
-    });
-    if equipped_outfit_or_fallback(read, chat_id).is_none() {
+    let read = db
+        .read_main(move |c| {
+            Ok(crate::db::chats_outfits::ChatOutfitsRepository::new(c)
+                .get_equipped_outfit_for_character(&cid, &chid))
+        })
+        .ok()
+        .flatten();
+    if read.is_none() {
         tracing::debug!(
             chat_id = %chat_id,
             character_id = %character_id,
@@ -517,7 +495,11 @@ async fn reactivate_participant(
     // character's avatar should match what they now have on. Gated ONLY on the
     // seat's `characterId` — not on `outfitSelection`, and not on the character
     // row existing.
-    if let Some(character_id) = reactivated.as_ref().and_then(|p| s(p, "characterId")) {
+    if let Some(character_id) = reactivated
+        .as_ref()
+        .and_then(|p| s(p, "characterId"))
+        .filter(|c| !c.is_empty())
+    {
         refresh_avatar_for_arriving_character(db, chat_id, &character_id, user_id).await;
     }
 
@@ -798,51 +780,5 @@ pub async fn chat_toggle_avatar_generation(db: &Db, user_id: &str, chat_id: &str
     match chat_avatars::toggle_avatar_generation(db, user_id, chat_id).await {
         Ok(body) => ok(body),
         Err(e) => from_avatar_error(e),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// v4's equipped read is a FALLBACK `safeQuery`: a failure logs the INNER
-    /// `Failed to get equipped outfit` ERROR and answers `null`, which the
-    /// arrival helper then treats as "no outfit" — never as its WARN.
-    #[test]
-    fn a_failed_equipped_read_takes_v4s_fallback_arm() {
-        let (out, lines) = crate::test_support::captured_with(|| {
-            equipped_outfit_or_fallback(Err(DbError::Internal("disk on fire".into())), "chat-1")
-        });
-        assert_eq!(out, None);
-        assert_eq!(lines.len(), 1, "{lines:#?}");
-        let l = &lines[0];
-        assert!(l.starts_with("ERROR "), "{l}");
-        assert!(l.contains("collection=chats"), "{l}");
-        assert!(l.contains("chat_id=chat-1"), "{l}");
-        assert!(l.contains("context=wardrobe"), "{l}");
-        assert!(l.contains("disk on fire"), "{l}");
-        // The inner line, NOT the outer `…for character` (unreachable in v4).
-        assert!(
-            l.contains("chat_cast Failed to get equipped outfit collection="),
-            "{l}"
-        );
-    }
-
-    #[test]
-    fn a_successful_equipped_read_is_silent_and_passes_through() {
-        let entry =
-            json!({ "top": [], "bottom": [], "footwear": [], "accessories": [], "hair": [] });
-        let (out, lines) = crate::test_support::captured_with(|| {
-            equipped_outfit_or_fallback(Ok(Some(entry.clone())), "chat-1")
-        });
-        // An all-empty entry is v4-truthy: it passes through (the trigger fires).
-        assert_eq!(out, Some(entry));
-        let (none, quiet) =
-            crate::test_support::captured_with(|| equipped_outfit_or_fallback(Ok(None), "chat-1"));
-        assert_eq!(none, None);
-        assert!(
-            lines.is_empty() && quiet.is_empty(),
-            "{lines:#?} {quiet:#?}"
-        );
     }
 }

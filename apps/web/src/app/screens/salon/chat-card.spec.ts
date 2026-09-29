@@ -189,6 +189,23 @@ describe('ChatCard — the Concierge mark', () => {
 
 /** `f7f3d7bf0` (P4.D236): every card `title=` moved into the in-app tooltip. */
 describe('ChatCard — the in-app tooltips', () => {
+  it('places the remove control by its tooltip HOST, not the button, so the card gains no blank line box', () => {
+    const fixture = mount(chat({}), false);
+    fixture.componentRef.setInput('removable', true);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const button = el.querySelector<HTMLButtonElement>('button[aria-label="Remove from project"]');
+    expect(button).not.toBeNull();
+    // An inline-flex tooltip host wrapping an `absolute` button still opens a
+    // full line box above the content row (82px against 58px, measured); the
+    // host carries the corner placement instead (v4's `anchorClassName`).
+    expect(button!.className).not.toContain('absolute');
+    const host = button!.closest('qt-tooltip') as HTMLElement;
+    expect(host.className).toContain('absolute');
+    expect(host.className).toContain('top-2');
+    expect(host.className).toContain('right-2');
+  });
+
   it('carries the card tooltips as qt-tooltip contents and leaves no native title', () => {
     const fixture = mount(
       chat({ _count: { messages: 3, memories: 2 } } as Partial<EnrichedChatSummary>),

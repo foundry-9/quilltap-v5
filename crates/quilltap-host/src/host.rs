@@ -1114,7 +1114,6 @@ fn reconcile_embedding_dimensions_at_boot(db: &Db) -> Result<(), String> {
                 quilltap_core::services::embedding_dimension_reconcile::reconcile_embedding_dimensions(
                     main,
                     ws.mount_index().map(|mi| mi.connection()),
-                    quilltap_core::clock::now_unix_ms(),
                 );
             // Same lesson as the gate above: report the pass whenever it had a
             // profile to enforce, so a healthy "corpus conforms" is visible too.

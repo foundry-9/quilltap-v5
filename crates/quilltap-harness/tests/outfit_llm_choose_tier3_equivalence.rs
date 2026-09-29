@@ -215,7 +215,6 @@ fn dump_tables_conn(c: &rusqlite::Connection, chat_id: &str) -> Value {
         .unwrap_or(Value::Null);
     let equipped = quilltap_core::db::chats_outfits::ChatOutfitsRepository::new(c)
         .get_equipped_outfit(chat_id)
-        .unwrap()
         .unwrap_or_else(|| json!({}));
     let participants: Vec<Value> = chat
         .get("participants")

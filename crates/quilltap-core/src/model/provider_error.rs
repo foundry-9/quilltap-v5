@@ -26,12 +26,20 @@
 //! | OPENROUTER | the raw Chat Completions `fetch` path: `new Error(\`OpenRouter API error: ${status} - ${text}\`)` |
 //! | OLLAMA | raw `fetch`: `new Error(\`Ollama API error: ${status} ${text}\`)` |
 //!
-//! Two recorded approximations (the transport keeps no headers — option (a) of
-//! the order's §B, the zero-churn one):
+//! Three recorded approximations (the transport keeps no headers — option (a)
+//! of the order's §B, the zero-churn one):
 //! - GOOGLE's content-type branch is decided by whether the body PARSES as
 //!   JSON, and its synthesized `statusText` is the canonical reason phrase.
 //!   A JSON body served as `text/plain` therefore renders differently (the
 //!   `google_json_as_text_plain` row, pinned both ways in the family).
+//! - GOOGLE's converse: a body that is NOT JSON served AS `application/json`.
+//!   `@google/genai` calls `response.json()` on the content type and throws a
+//!   bare `SyntaxError` (V8's parse message, no `status`, no `ApiError`) —
+//!   which has no status digits, so v4's trigger reads `provider-error` and
+//!   fails over; v5 sees a body that does not parse, synthesizes the
+//!   `ApiError` with `status`, and its `HTTP 4xx:` bytes meet the 4xx rule.
+//!   The `google_html_as_json` / `google_empty_body_as_json` rows, pinned
+//!   both ways (the `97b25fc53` unification review).
 //! - OPENROUTER is always the fetch path. v4 streams a no-tools request, and
 //!   sends a no-image request, through `@openrouter/sdk`, whose errors are its
 //!   own schema-validated classes; v5 never runs that SDK (the deliberate

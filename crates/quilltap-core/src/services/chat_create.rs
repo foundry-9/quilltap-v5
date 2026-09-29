@@ -2323,7 +2323,7 @@ async fn post_opening_outfit_and_avatar(
     let Some(character) = characters_read::find_by_id(main, mount, character_id)? else {
         return Ok(());
     };
-    let Some(equipped_slots) = outfits.get_equipped_outfit_for_character(chat_id, character_id)?
+    let Some(equipped_slots) = outfits.get_equipped_outfit_for_character(chat_id, character_id)
     else {
         return Ok(());
     };

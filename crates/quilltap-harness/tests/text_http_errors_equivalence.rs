@@ -131,7 +131,43 @@ struct Row {
 /// `HTTP {status}:` rule; `google_json_as_text_plain` is the content-type
 /// branch the transport cannot see (the module doc of `model::provider_error`).
 const EXPECTED_DIVERGENCES: &[(&str, &str, &str, &[&str])] = &[
-    ("GOOGLE", "send", "message", &["google_json_as_text_plain"]),
+    // A non-JSON body served AS `application/json`: `@google/genai` throws a
+    // bare `SyntaxError` (no `status`, V8's message); v5 synthesizes the
+    // `ApiError` (the third approximation in `model::provider_error`'s doc).
+    (
+        "GOOGLE",
+        "send",
+        "message",
+        &[
+            "google_json_as_text_plain",
+            "google_html_as_json",
+            "google_empty_body_as_json",
+        ],
+    ),
+    (
+        "GOOGLE",
+        "send",
+        "name",
+        &["google_html_as_json", "google_empty_body_as_json"],
+    ),
+    (
+        "GOOGLE",
+        "send",
+        "status",
+        &["google_html_as_json", "google_empty_body_as_json"],
+    ),
+    (
+        "GOOGLE",
+        "stream",
+        "name",
+        &["google_html_as_json", "google_empty_body_as_json"],
+    ),
+    (
+        "GOOGLE",
+        "stream",
+        "status",
+        &["google_html_as_json", "google_empty_body_as_json"],
+    ),
     (
         "GOOGLE",
         "send",
@@ -147,6 +183,8 @@ const EXPECTED_DIVERGENCES: &[(&str, &str, &str, &[&str])] = &[
             "error_null_flat",
             "error_without_message",
             "flat_content_filter",
+            "google_empty_body_as_json",
+            "google_html_as_json",
             "float_in_body",
             "invalid_api_key_401",
             "invalid_prompt",
@@ -167,7 +205,11 @@ const EXPECTED_DIVERGENCES: &[(&str, &str, &str, &[&str])] = &[
         "GOOGLE",
         "stream",
         "message",
-        &["google_json_as_text_plain"],
+        &[
+            "google_json_as_text_plain",
+            "google_html_as_json",
+            "google_empty_body_as_json",
+        ],
     ),
     (
         "GOOGLE",
@@ -184,6 +226,8 @@ const EXPECTED_DIVERGENCES: &[(&str, &str, &str, &[&str])] = &[
             "error_null_flat",
             "error_without_message",
             "flat_content_filter",
+            "google_empty_body_as_json",
+            "google_html_as_json",
             "float_in_body",
             "invalid_api_key_401",
             "invalid_prompt",
@@ -317,6 +361,12 @@ const EXPECTED_DIVERGENCES: &[(&str, &str, &str, &[&str])] = &[
 ];
 /// The [`EXPECTED_DIVERGENCES`] marker for "every case of the corpus".
 const EVERY_CASE: &[&str] = &["*"];
+
+/// v5's OWN trigger on each pinned GOOGLE trigger divergence (v4 reads the
+/// digit-free `JSON.stringify(body)` / `SyntaxError` message as
+/// `provider-error`; v5's `HTTP {status}:` bytes meet the 4xx rule → no
+/// trigger, except the 401's `auth`). Absent = `None`.
+const V5_GOOGLE_TRIGGER: &[(&str, Option<&str>)] = &[("invalid_api_key_401", Some("auth"))];
 
 fn expected(case: &str, provider: &str, mode: &str, field: &str) -> bool {
     EXPECTED_DIVERGENCES.iter().any(|(p, m, f, cases)| {
@@ -598,6 +648,23 @@ fn diff_row(row: &Row, v5: &V5Outcome) -> Vec<(&'static str, String)> {
         ));
     }
     if v5.trigger != row.trigger {
+        // A pinned GOOGLE trigger divergence also pins v5's OWN value: a
+        // regression from one wrong value to another must not hide inside
+        // the carve-out (the `97b25fc53` unification review).
+        if row.provider == "GOOGLE" {
+            let want_v5 = V5_GOOGLE_TRIGGER
+                .iter()
+                .find(|(c, _)| *c == row.case)
+                .map(|(_, t)| *t)
+                .unwrap_or(None);
+            assert_eq!(
+                v5.trigger.as_deref(),
+                want_v5,
+                "{}: v5's trigger on a pinned GOOGLE divergence moved (v4 {:?})",
+                label(row),
+                row.trigger
+            );
+        }
         out.push((
             "trigger",
             format!("v4 {:?} | v5 {:?}", row.trigger, v5.trigger),
@@ -614,10 +681,12 @@ fn text_http_errors_match_v4s_real_plugins() {
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str(l).expect("corpus row parses"))
         .collect();
-    // 33 cases × (9 providers × 2 modes + OPENROUTER × 4 modes).
+    // 33 cases × (9 providers × 2 modes + OPENROUTER × 4 modes), plus the two
+    // GOOGLE-only rows (`google_html_as_json`, `google_empty_body_as_json`:
+    // a body that is not JSON served AS `application/json`) × 2 modes.
     assert_eq!(
         rows.len(),
-        33 * 22,
+        33 * 22 + 2 * 2,
         "corpus row count; regenerate the corpus"
     );
 
@@ -676,11 +745,17 @@ fn text_http_errors_match_v4s_real_plugins() {
     // SDK-path `1301` rows pinned above. Before P4.118 wired the side, v5 matched NONE.
     assert_eq!(refused_v4, 162, "v4's refused rows");
     assert_eq!(refused_matched, 160, "v5's matching refusal verdicts");
-    let all_cases: BTreeSet<&str> = rows.iter().map(|r| r.case.as_str()).collect();
     let mut missing: Vec<String> = Vec::new();
     for (p, m, f, cases) in EXPECTED_DIVERGENCES {
+        // "Every case" = every case that HAS a row for that provider/mode
+        // (the GOOGLE-only rows have none elsewhere).
         let listed: Vec<&str> = if *cases == EVERY_CASE {
-            all_cases.iter().copied().collect()
+            let cases_here: BTreeSet<&str> = rows
+                .iter()
+                .filter(|r| r.provider == *p && r.mode == *m)
+                .map(|r| r.case.as_str())
+                .collect();
+            cases_here.into_iter().collect()
         } else {
             cases.to_vec()
         };

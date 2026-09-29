@@ -174,7 +174,7 @@ pub fn load_current_wardrobe_state(
     character_id: &str,
 ) -> Result<Slots, DbError> {
     let repo = ChatOutfitsRepository::new(main);
-    let stored = repo.get_equipped_outfit_for_character(chat_id, character_id)?;
+    let stored = repo.get_equipped_outfit_for_character(chat_id, character_id);
     Ok(Slots::from_value(stored.as_ref()))
 }
 

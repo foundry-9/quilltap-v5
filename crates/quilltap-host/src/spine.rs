@@ -1675,9 +1675,10 @@ where
         // === P4.6BM ===
         // v4's post-cycle Scriptorium trigger (`orchestrator.service.ts:236-247`)
         // — "runs on every turn with content", after the chain, swallowing every
-        // failure. This is what keeps `renderedMarkdown` and the interchange
-        // chunks current as a conversation grows; without it only the manual
-        // button and the boot reconcile ever render. (v4's sibling scene-state
+        // failure. This is what keeps the interchange chunks (and, since v4
+        // `f7f3d7bf0`, the on-demand transcript they are cut from — nothing is
+        // stored on the chat row any more) current as a conversation grows;
+        // without it only the manual button and the boot reconcile ever render. (v4's sibling scene-state
         // trigger stays unported — SCENE_STATE_TRACKING has no handler.)
         if initial_had_content {
             quilltap_core::services::conversation_render_job::trigger_conversation_render(

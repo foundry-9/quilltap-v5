@@ -86,11 +86,28 @@ fn validate(args: &Value) -> bool {
 pub fn execute_send_mail(
     main: &Connection,
     mount: &Connection,
+    chat_id: &str,
     user_id: &str,
     character_id: Option<&str>,
     args: &Value,
     now_iso: &str,
 ) -> SendMailOutput {
+    // v4's whole handler sits in one `try`; its catch logs
+    // `send_mail handler threw unexpectedly` `{chatId}` + the error and
+    // answers the "stumbled" refusal (`send-mail-handler.ts:107-114`). The
+    // three `Err` arms below are the throws that catch can see (the
+    // `97b25fc53` unification review restored the line P4.D234's §D.8 named).
+    let stumbled = |e: &dyn std::fmt::Display| {
+        tracing::error!(
+            module = "send-mail-handler",
+            chatId = chat_id,
+            error = %e,
+            "send_mail handler threw unexpectedly"
+        );
+        fail(&format!(
+            "The Post Office stumbled and the letter went unsent — {e}"
+        ))
+    };
     if !validate(args) {
         return fail(
             "A letter wants both a recipient and words; one or the other arrived missing.",
@@ -111,7 +128,7 @@ pub fn execute_send_mail(
                 "The Post Office cannot find your own postbox; your character seems to have gone astray.",
             )
         }
-        Err(e) => return fail(&format!("The Post Office stumbled and the letter went unsent — {e}")),
+        Err(e) => return stumbled(&e),
     };
     // An archived sender may not post (v4 `d553f72a`,
     // `send-mail-handler.ts:56`).
@@ -122,11 +139,7 @@ pub fn execute_send_mail(
     let recipient = match resolve_character_by_name_or_id(main, mount, user_id, recipient_token) {
         Ok(Some(r)) => r,
         Ok(None) => return fail("No soul by that name keeps a postbox here."),
-        Err(e) => {
-            return fail(&format!(
-                "The Post Office stumbled and the letter went unsent — {e}"
-            ))
-        }
+        Err(e) => return stumbled(&e),
     };
     // …nor may an archived recipient receive. An exact-id lookup still
     // RESOLVES a tombstone (the resolver's deliberate asymmetry), which is
@@ -149,11 +162,7 @@ pub fn execute_send_mail(
         Ok(ComposeAndDeliverResult::ReplyNotFound) => {
             return fail("That letter isn't in your own postbox, so there's nothing to reply to.")
         }
-        Err(e) => {
-            return fail(&format!(
-                "The Post Office stumbled and the letter went unsent — {e}"
-            ))
-        }
+        Err(e) => return stumbled(&e),
     };
 
     // The confirmation addresses the RECIPIENT's postbox with its qtap:// URI (its

@@ -127,8 +127,8 @@ pub fn build_read_output(
         Vec::new()
     };
 
-    let equipped_slots_val = ChatOutfitsRepository::new(main)
-        .get_equipped_outfit_for_character(chat_id, character_id)?;
+    let equipped_slots_val =
+        ChatOutfitsRepository::new(main).get_equipped_outfit_for_character(chat_id, character_id);
     let id = str_field(item, "id").unwrap_or_default();
     let equipped = find_equipped_slots(&id, equipped_slots_val.as_ref());
 

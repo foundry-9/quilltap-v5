@@ -727,9 +727,10 @@ fn resolve_non_llm_selection(
         "none" => Some(slots_to_value(&Slots::default())),
         "previous_chat" => {
             if let Some(source) = ctx.source_chat_id {
-                // v4 wraps the read in try/catch → fall back to default.
-                if let Ok(Some(prev)) =
-                    outfits.get_equipped_outfit_for_character(source, character_id)
+                // v4 wraps the read in try/catch → fall back to default (the
+                // read itself is v4's fallback `safeQuery`: a failure answers
+                // `None` here, never an error).
+                if let Some(prev) = outfits.get_equipped_outfit_for_character(source, character_id)
                 {
                     return Some(prev);
                 }

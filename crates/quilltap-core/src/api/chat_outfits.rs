@@ -82,7 +82,8 @@ fn not_found(resource: &str) -> Response {
 /// `?? {}` folds them together).
 pub fn chat_outfit_get(db: &Db, chat_id: &str) -> Response {
     let cid = chat_id.to_string();
-    let out = db.read_main(move |conn| ChatOutfitsRepository::new(conn).get_equipped_outfit(&cid));
+    let out =
+        db.read_main(move |conn| Ok(ChatOutfitsRepository::new(conn).get_equipped_outfit(&cid)));
     match out {
         Ok(state) => Response::ChatOutfit(json!({
             "equippedOutfit": state.unwrap_or_else(|| Value::Object(Map::new()))
@@ -114,7 +115,7 @@ pub fn chat_outfit_summary(db: &Db, chat_id: &str) -> Response {
                 return Ok(Err(not_found("Chat")));
             };
             let equipped = ChatOutfitsRepository::new(main)
-                .get_equipped_outfit(&cid)?
+                .get_equipped_outfit(&cid)
                 .unwrap_or_else(|| Value::Object(Map::new()));
             let equipped_obj = equipped.as_object().cloned().unwrap_or_default();
 

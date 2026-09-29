@@ -296,9 +296,7 @@ fn wardrobe_tools_match_oracle() {
         .expect("recipient items");
     let general_items =
         find_archetypes(main_c, &docs, true, &SharedWardrobeTiers::none()).expect("general items");
-    let equipped = ChatOutfitsRepository::new(main_c)
-        .get_equipped_outfit(&spec.chat_id)
-        .expect("equipped");
+    let equipped = ChatOutfitsRepository::new(main_c).get_equipped_outfit(&spec.chat_id);
     let mut ann: Vec<String> = announce.into_iter().collect();
     ann.sort();
 

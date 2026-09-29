@@ -625,5 +625,25 @@
       "openrouter",
       "ollama"
     ]
+  },
+  {
+    "case": "google_html_as_json",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "<html><body>upstream refused</body></html>",
+    "providers": [
+      "google"
+    ]
+  },
+  {
+    "case": "google_empty_body_as_json",
+    "status": 400,
+    "statusText": "Bad Request",
+    "contentType": "application/json",
+    "body": "",
+    "providers": [
+      "google"
+    ]
   }
 ]

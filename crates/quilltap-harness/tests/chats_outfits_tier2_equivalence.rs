@@ -154,15 +154,11 @@ fn chats_outfits_tier2_matches_oracle() {
 
         for r in &spec.reads {
             let got = match r {
-                Read::GetEquippedOutfit { chat_id } => repo
-                    .get_equipped_outfit(chat_id)
-                    .expect("get_equipped_outfit"),
+                Read::GetEquippedOutfit { chat_id } => repo.get_equipped_outfit(chat_id),
                 Read::GetEquippedOutfitForCharacter {
                     chat_id,
                     character_id,
-                } => repo
-                    .get_equipped_outfit_for_character(chat_id, character_id)
-                    .expect("get_equipped_outfit_for_character"),
+                } => repo.get_equipped_outfit_for_character(chat_id, character_id),
             };
             rust_reads.push(read_to_json(got));
         }

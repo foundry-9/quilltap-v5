@@ -233,7 +233,7 @@ pub fn seed_sample_prompts(
                     target: LOG_TARGET,
                     template_id = %id,
                     name = %entry.name,
-                    source = SEED_SOURCE,
+                    source = %SEED_SOURCE,
                     model_hint = %entry.model_hint,
                     category = %entry.category,
                     "Sample prompt template seeded"
@@ -255,7 +255,7 @@ pub fn seed_sample_prompts(
                     target: LOG_TARGET,
                     template_id = %row.id,
                     name = %entry.name,
-                    source = SEED_SOURCE,
+                    source = %SEED_SOURCE,
                     "Built-in prompt template refreshed from shipped text"
                 );
             }

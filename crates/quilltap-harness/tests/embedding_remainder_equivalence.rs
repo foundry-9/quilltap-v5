@@ -662,12 +662,16 @@ async fn embedding_remainder_matches_oracle() {
     // A reconcile that found nothing would agree with a port that did nothing,
     // so pin the corpus's own shape: the arms fire and the dedupe reuses.
     // (P4.D235 retired the stale-skip half of this guard with the gate.)
-    // `>= 5` is load-bearing for arm (C): the pre-bug-17 corpus produced
-    // exactly 4 incomplete chats from arms (A)+(B), so a fixture edit that
-    // stopped seeding the in-window over-budget chunk would fall back to 4 and
-    // fail here rather than letting arm (C) go silently unexercised.
+    // `>= 7` is load-bearing for arm (C): at the `f7f3d7bf0` target the corpus
+    // produces EXACTLY 7 incomplete chats (P4.D235's measurement — stale chats
+    // now count and arm (A) is re-keyed on chunk absence; the pre-bug-17 corpus
+    // gave 4 from arms (A)+(B) and the old `>= 5` bound no longer protected arm
+    // (C) once the count rose), so a fixture edit that stopped seeding the
+    // in-window over-budget chunk would fall to 6 and fail here rather than
+    // letting arm (C) go silently unexercised (the `97b25fc53` unification
+    // review).
     assert!(
-        want_reconcile.incomplete_chats >= 5
+        want_reconcile.incomplete_chats >= 7
             && want_reconcile.enqueued >= 1
             && want_reconcile.reused >= 1,
         "the corpus stopped exercising the reconcile arms (incl. arm C's in-window chunk) + the dedupe: {want_reconcile:?}"
@@ -766,8 +770,6 @@ async fn embedding_remainder_matches_oracle() {
         {
             let db2 = db.clone();
             let (clear, set) = (case.clear_default, case.set_default_profile_id.clone());
-            let now_ms =
-                quilltap_core::clock::iso_to_ms(&spec.render_now_iso).expect("parse renderNow");
             let got = tokio::task::spawn_blocking(move || {
                 db2.write_blocking(move |ws| {
                     let main = ws.main().connection();
@@ -783,7 +785,6 @@ async fn embedding_remainder_matches_oracle() {
                     Ok(reconcile_embedding_dimensions(
                         main,
                         ws.mount_index().map(|mi| mi.connection()),
-                        now_ms,
                     ))
                 })
             })

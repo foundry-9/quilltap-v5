@@ -1023,8 +1023,17 @@ pub(super) fn stream_prompt_templates(
         let Some(template) = rows.first() else {
             continue;
         };
-        // Built-ins are seeded from `prompts/` on every instance — they never
-        // travel, exactly as with roleplay templates.
+        // Built-ins never travel, exactly as with roleplay templates: every
+        // instance seeds them LAZILY from the plugin registry inside its own
+        // template reads (v4 `c3eefa752`'s `upsertBuiltInPrompt`, refreshing a
+        // stale row; `services/builtin_prompt_templates.rs`), never at boot —
+        // the shipped `prompts/` directory is only v4's no-registry fallback.
+        // ⚠ v4's export reads (`quilltap-export-service.ts`, `ndjson-writer.ts`,
+        // the system-tools `export-entities` route) go through
+        // `promptTemplates.findAll()`, which seeds-and-refreshes as a side
+        // effect; this raw read does not — output identical (built-ins are
+        // filtered out either way), DB state after an export not. The standing
+        // recorded divergence (P4.D237 Tier 3 item 14).
         if template
             .get("isBuiltIn")
             .and_then(Value::as_bool)

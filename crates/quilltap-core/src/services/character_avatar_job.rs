@@ -280,7 +280,7 @@ where
                     .get_equipped_outfit_for_character(
                         &chat_id_for_prompt,
                         &character_id_for_prompt,
-                    )?;
+                    );
                 stored.as_ref().map(|v| Slots::from_value(Some(v)))
             }
         };

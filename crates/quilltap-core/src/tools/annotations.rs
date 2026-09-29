@@ -316,8 +316,10 @@ fn upsert_plan(
     };
     let mi_num = Number::from(message_index);
 
-    // Load chat.
-    let chat = match db.read_main(|c| chats_read::find_by_id(c, chat_id))? {
+    // Load chat (v4's `repos.chats.findById` is the fallback `_findById`: a
+    // failed read logs the repository's ERROR and takes the not-found arm — the
+    // `97b25fc53` unification review).
+    let chat = match db.read_main(|c| Ok(chats_read::find_by_id_or_none(c, chat_id)))? {
         Some(c) => c,
         None => {
             tracing::warn!(
@@ -696,6 +698,40 @@ pub(crate) mod log_tests {
         none_at(&lines, "ERROR");
     }
 
+    /// v4's `repos.chats.findById` is the fallback `_findById`: a failed CHAT
+    /// read logs the repository's `Error finding entity by ID` and the tool
+    /// takes its not-found arm — never the execution-failed ERROR (the
+    /// `97b25fc53` unification review).
+    #[test]
+    fn a_failed_chat_read_takes_v4s_not_found_arm() {
+        let db = db();
+        db.write_blocking(|w| {
+            w.main().connection().execute_batch("DROP TABLE chats")?;
+            Ok(())
+        })
+        .unwrap();
+        let (out, lines) = upsert(&db, CHAT, json!({"message_index": 1, "content": "x"}));
+        assert!(!out.success);
+        assert_eq!(out.error.as_deref(), Some("Chat not found."), "{out:?}");
+        // The repository line carries its module target (`quilltap_core::db::chats_read`).
+        let db_err: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR ") && l.contains("Error finding entity by ID"))
+            .collect();
+        assert_eq!(db_err.len(), 1, "{lines:?}");
+        assert!(
+            db_err[0].contains("Error finding entity by ID")
+                && db_err[0].contains("collection=chats"),
+            "{}",
+            db_err[0]
+        );
+        only(&lines, "WARN", "chat not found");
+        none_at(&lines, "ERROR");
+        none_at(&lines, "INFO");
+    }
+
+    /// The ANNOTATIONS read's failure IS reachable by v4's catch:
+    /// `findByMessageIndex` falls back to `null` and the `upsert` then throws.
     #[test]
     fn a_failed_read_logs_v4s_execution_failed_error() {
         let db = db();

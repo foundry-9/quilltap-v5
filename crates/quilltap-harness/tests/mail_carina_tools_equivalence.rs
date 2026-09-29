@@ -677,6 +677,7 @@ async fn run_mail(
                                 let out = execute_send_mail(
                                     main_c,
                                     mount_c,
+                                    "chat-x",
                                     &user_id,
                                     cid.as_deref(),
                                     args,
@@ -901,6 +902,7 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
     let (main, mount) = fresh_copy(main_fx, mount_fx, "catch-plant");
     let db = open_two_db(&main, &mount, &spec.test_pepper_base64);
     let reader = spec.reader_id.clone();
+    let user_id = spec.user_id.clone();
     let reader_vault = meta.reader_vault.clone();
     let letter = meta.reader_paths["unalerted"].clone();
     let lines: Vec<(String, String, Vec<String>)> = db
@@ -947,6 +949,20 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
                 )
             });
             out.push(("discard".into(), o.message, mail_lines(l)));
+            // v4's `send_mail` catch (`send-mail-handler.ts:107-114`): the
+            // delivery's link write fails on the dropped table.
+            let (o, l) = quilltap_core::test_support::captured_with(|| {
+                execute_send_mail(
+                    main_c,
+                    mount_c,
+                    "chat-plant",
+                    &user_id,
+                    Some(&reader),
+                    &json!({ "character": reader.as_str(), "message": "to myself" }),
+                    "2026-09-29T00:00:00.000Z",
+                )
+            });
+            out.push(("send".into(), o.message, mail_lines(l)));
             Ok(out)
         })
         .await
@@ -974,6 +990,11 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
             "discard",
             "The Post Office stumbled and the letter stays where it was — ",
             "discard-mail-handler",
+        ),
+        (
+            "send",
+            "The Post Office stumbled and the letter went unsent — ",
+            "send-mail-handler",
         ),
     ] {
         let (_, text, l) = lines.iter().find(|(t, _, _)| t == tool).unwrap();
