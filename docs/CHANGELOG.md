@@ -124,6 +124,14 @@ The rider adds `caller_context: &'static str` to `AvatarGenerationParams`, with 
 _No crate versions bumped._
 
 Copies v4's `help/` tree at `97b25fc53` over v5's. Thirteen pages change, none added or removed, so the count stays 129: `chat-settings-ai-services.md` (`04d6c9d52`); `character-optimizer.md`, `character-system-prompts.md`, `prompts.md` (`c3eefa752`); `chat-settings.md`, `chats.md`, `data-retention.md`, `embedding-profiles.md`, `scriptorium.md` (`f7f3d7bf0`); `post-office.md` (`39bc98ffc` + `12c336fad`); `wardrobe.md` (`9ff4bbd8e`); `story-backgrounds.md`, `the-concierge.md` (`97b25fc53`). `diff -rq` against the pin is empty. `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, pass; the embed guard and both host help-boot tests pass unmoved. Reverting `wardrobe.md` to its old bytes turns both oracle families red while the embed guard stays green.
+#### 2026-09-29 — fix(primary-stream): P4.118 unit 3 — keep the refusal side through the understudy summary; the sdkError reroute arm
+
+_Versions: core 0.0.1092, harness 0.0.1015._
+
+When the chain fails and `run_primary_stream` appends the understudy summary to the error, it now edits the message in place instead of building a new `StreamError`, so the refusal side and the error kind survive. v4 mutates the same error object. The side's own message takes the suffix too, so a later classification reads what v4 would. New unit pin `the_understudy_summary_keeps_the_refusal_side`.
+
+`primary_stream_tier3_equivalence` gains an `sdkError` chunk key: the jest mock throws the real openai `APIError` for a posed status and body; the Rust side builds the transport bytes plus the production reconstruction. A coded Azure `content_filter` 400 on an OPENAI primary now reroutes as on v4: trail `refused / moderation-refusal / provider-code`, then the uncensored desk answers. The uncoded twin is not fallback-eligible on either side. Red-first: without the side, v5 rethrew. The harness driver now hands a `hardFailover` case its own primary's connection row when the case names a `profileKey` (v4's driver already did).
+
 #### 2026-09-29 — feat(cheap-llm): P4.118 unit 2 — carry the refusal side into the cheap path's stand-in chain
 
 _Versions: core 0.0.1091, harness 0.0.1014._

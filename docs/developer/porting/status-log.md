@@ -154415,3 +154415,45 @@ Node 24.13.1. Regen outputs staged under `/tmp/p4118/`.
 - **M5 (the carrier dropped, by file backup) = the red-first:** the coded
   case fails (`scripted step(s) unused` — the stand-in never ran); the twin
   stays green.
+
+### Unit 3 — `primary_stream.rs`'s summary rebuild + the `sdkError` arm
+
+- `with_understudy_summary(err, summary)` replaces `StreamError::new(format!(
+  "{} ({summary})", err.message))`: the message is edited in place (v4
+  mutates the thrown object), so `refusal` and `kind` survive; the side's
+  message takes the same suffix (it is v5's copy of that same v4 object).
+  Unit pin `the_understudy_summary_keeps_the_refusal_side` (re-classifies the
+  rebuilt error → `ModerationRefusal`). **M3** (the helper rebuilding from
+  the message) reds exactly that pin.
+- **Arm:** a `sdkError: {status, body}` chunk key on both sides — jest throws
+  the REAL openai `APIError` (`openaiStatusError`, the same client-path
+  reproduction as unit 2); `chunk_to_result` builds the transport's bytes plus
+  `provider_error::transport_error_refusal` (the production function
+  `single_error_from` calls). `profileKey: 'understudyProfile'` (both
+  `primaryOf` / `primary_of`) runs the arm on the fixture's keyed OPENAI
+  profile — no new profile rows; `Spec.understudy_profile` widened to the full
+  `ProfileW`. Two chats (`dd000061`, `dd000062`), two streams, two calls:
+  `hard_sdk_code_understudy_answers` (Azure `content_filter`, on duty with the
+  uncensored desk) and `hard_sdk_uncoded_not_eligible` (the twin).
+  - v4 recorded v4's trail: `[{Understudy, OPENAI, via primary, refused,
+    moderation-refusal, provider-code, detail "code content_filter: 400 The
+    response was filtered …"}]`, `routeVia concierge`, the desk's answer; the
+    twin `threw "400 The response was filtered …"`, no trail. v5 matches;
+    the twin's `threw` differs by the §S.5 bytes, pinned both ways
+    (`SDK_MESSAGE_BYTES_CALLS`).
+  - **A harness gap found and fixed:** the Rust `hardFailover` driver handed
+    `run_primary_stream` `spec.profile`'s connection row as the chain's
+    failed profile for EVERY case, where v4's driver passes
+    `toConnectionProfile(primaryOf(spec, call))` — P4.74's "resolve the
+    primary at every site" rule had one site unmet, latent until a
+    `hardFailover` case named a `profileKey`. The first run reported the
+    trail's failed seat as `Primary` (aa000001) against v4's `Understudy`.
+  - **RED-FIRST** (the chunk posed as `main`'s production produced it —
+    bytes, no side): `hard_sdk_code_understudy_answers` rethrows "not
+    fallback-eligible" where v4 reroutes. **M6** (a port inferring
+    `content_filter` from the word "filtered") reds exactly the twin.
+  - Regen AS RUN (`/tmp/p4118/ps-regen.sh`): fixture BUILT at the
+    `acadcc7cd` pin, both oracles RUN at the target pin → 185 + 1 rows; the
+    `ORACLE_PIN=…acadcc7cd` re-run green too (the `chat_messages` dump
+    differs only in row order by minted id — the multiset identical).
+  - 49 calls, 45 `llm_logs` rows, 86 streamed calls; both tests green.

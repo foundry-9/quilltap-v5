@@ -181,7 +181,13 @@ struct ChainProfileW {
 fn primary_of<'a>(spec: &'a Spec, call: &CallW) -> &'a ProfileW {
     match call.profile_key.as_deref() {
         Some("authPrimaryProfile") => &spec.auth_primary_profile,
-        Some(other) => panic!("unknown profileKey {other:?} — the oracle knows two"),
+        // P4.118: the keyed OPENAI understudy doubles as the `sdkError` arm's
+        // primary (the oracle's `primaryOf` names the same key).
+        Some("understudyProfile") => spec
+            .understudy_profile
+            .as_ref()
+            .expect("the fixture seeds the understudy"),
+        Some(other) => panic!("unknown profileKey {other:?} — the oracle knows three"),
         None => &spec.profile,
     }
 }
@@ -301,8 +307,10 @@ struct Spec {
     sentinel: String,
     profile: ProfileW,
     uncensored_profile: ProfileW,
+    /// Full `ProfileW` since P4.118: the `sdkError` arm runs on it as its
+    /// primary (`primary_of`); every other case only names its id.
     #[serde(default)]
-    understudy_profile: Option<ChainProfileW>,
+    understudy_profile: Option<ProfileW>,
     #[serde(default)]
     tier_spare_profile: Option<ChainProfileW>,
     /// P4.74 — the credential-gate arm's own company (see the module header).
@@ -351,6 +359,22 @@ struct ChunkW {
     /// P4.D225 — the typed refusal v4's plugins throw (`ModerationRejectionError`).
     #[serde(default)]
     typed_refusal: Option<TypedRefusalW>,
+    /// P4.118 — a non-2xx from an openai-SDK provider. The jest mock throws
+    /// the REAL `APIError` the SDK builds from `{status, body}`; this side
+    /// builds exactly what v5's production transport + reconstruction produce
+    /// for the same response (see `chunk_to_result`).
+    #[serde(default)]
+    sdk_error: Option<SdkErrorW>,
+}
+
+/// P4.118: the `sdkError` calls whose error is RETHROWN (not rerouted), so
+/// their `threw` differs by the §S.5 message bytes (see the result loop).
+const SDK_MESSAGE_BYTES_CALLS: &[&str] = &["hard_sdk_uncoded_not_eligible"];
+
+#[derive(Deserialize, Clone)]
+struct SdkErrorW {
+    status: u16,
+    body: String,
 }
 
 #[derive(Deserialize, Clone)]
@@ -504,6 +528,22 @@ fn chunk_to_result(c: &ChunkW, provider: &str, model: &str) -> StreamChunkResult
                 t.provider_reason.clone(),
             ),
         ));
+    }
+    if let Some(e) = &c.sdk_error {
+        // P4.118: the transport's bytes (`ReqwestTransport`'s `HTTP {status}:
+        // {body}`) plus the refusal side the production reconstruction attaches
+        // (`streaming_provider.rs`'s `single_error_from`, through the same public
+        // `transport_error_refusal`).
+        let te = TransportError {
+            message: format!("HTTP {}: {}", e.status, e.body),
+            status: Some(e.status),
+        };
+        let side = quilltap_core::model::provider_error::transport_error_refusal(provider, &te);
+        let err = StreamError::new(te.message);
+        return Err(match side {
+            Some(r) => err.with_refusal(r),
+            None => err,
+        });
     }
     if let Some(err) = &c.error {
         return Err(StreamError::new(err.clone()));
@@ -780,10 +820,12 @@ async fn primary_stream_tier3_matches_oracle() {
         }
     };
 
-    let spec: Spec = serde_json::from_str(
-        &std::fs::read_to_string(spec_path()).unwrap_or_else(|e| panic!("read spec: {e}")),
-    )
-    .expect("parse spec");
+    let spec_text =
+        std::fs::read_to_string(spec_path()).unwrap_or_else(|e| panic!("read spec: {e}"));
+    let spec: Spec = serde_json::from_str(&spec_text).expect("parse spec");
+    // P4.118: the raw stream table, for the `sdkError` rows' posed bytes.
+    let spec_streams: Value =
+        serde_json::from_str::<Value>(&spec_text).expect("parse spec")["streams"].clone();
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
@@ -1318,7 +1360,24 @@ async fn primary_stream_tier3_matches_oracle() {
                         .clone()
                         .unwrap(),
                     is_dangerous_routed: call.is_dangerous_routed,
-                    fallback_profile: fallback_primary.clone(),
+                    // P4.118: the call's OWN primary as the chain's failed row —
+                    // v4 hands `runPrimaryStream` `toConnectionProfile(primaryOf(
+                    // spec, call))`. Until a `hardFailover` case named a
+                    // `profileKey` this was always `spec.profile`'s row, so the
+                    // driver never had to resolve it (P4.74's rule, "at every site
+                    // that hands a service a profile", had one site unmet).
+                    fallback_profile: if call.profile_key.is_some() {
+                        let id = primary_of(&spec, call).id.clone();
+                        db.read_main(move |c| {
+                            quilltap_core::db::connection_profiles::find_by_id(c, &id)
+                        })
+                        .ok()
+                        .flatten()
+                        .as_ref()
+                        .and_then(quilltap_core::llm_fallback::FallbackProfile::from_value)
+                    } else {
+                        fallback_primary.clone()
+                    },
                     state: &mut state,
                 };
                 // P4.D225 (v4 `8bd080267`) → P4.D227 (`3b463d6b1`): the chat's
@@ -1385,6 +1444,35 @@ async fn primary_stream_tier3_matches_oracle() {
         event_pairs.push((name.clone(), got_events, want_events));
         if call.off_duty_now {
             set_on_duty(&db, &spec.user_id, true).await;
+        }
+        // P4.118 (the order's §S.5): a rethrown `sdkError` surfaces v5's
+        // transport bytes where v4 surfaces its `APIError`'s rendering — the
+        // one message the refusal seam leaves unchanged. The side carries v4's
+        // rendering, so v4's `threw` must be exactly the side's message and
+        // v5's exactly the bytes; pinned both ways, by call name.
+        let mut got_result = got_result;
+        if SDK_MESSAGE_BYTES_CALLS.contains(&name.as_str()) {
+            let label = call
+                .stream_label
+                .as_deref()
+                .expect("an sdkError call names its stream");
+            let posed = spec_streams[label][0][0]["sdkError"].clone();
+            let (status, body) = (
+                posed["status"].as_u64().unwrap() as u16,
+                posed["body"].as_str().unwrap().to_string(),
+            );
+            let provider = &primary_of(&spec, call).provider;
+            let rendering =
+                quilltap_core::model::provider_error::text_http_refusal(provider, status, &body)
+                    .expect("known provider")
+                    .message;
+            assert_eq!(
+                got_result["threw"],
+                json!(format!("HTTP {status}: {body}")),
+                "{name}: v5 threw"
+            );
+            assert_eq!(oracle_result["threw"], json!(rendering), "{name}: v4 threw");
+            got_result["threw"] = oracle_result["threw"].clone();
         }
         result_pairs.push((name, got_result, oracle_result));
     }

@@ -108,6 +108,39 @@ interface ChunkSpec {
    * (the typed refusal, evidence `typed-error`) instead of a plain `Error`.
    */
   typedRefusal?: { message: string; statusCode?: number; providerReason?: string };
+  /**
+   * P4.118 — throw what an openai-SDK provider plugin throws on a non-2xx: the
+   * REAL `APIError` from the checkout's `openai` 7.23.0, built exactly as the
+   * client's own non-2xx path builds it (`safeJSON`, `makeStatusError`'s
+   * `{error: body}` wrap, `APIError.generate` — see `openaiStatusError`). Its
+   * `code`/`error.code` is the `provider-code` evidence v5's refusal SIDE
+   * reconstructs (`model::provider_error`; the wire family
+   * `text_http_errors_equivalence` proves that reconstruction row by row).
+   */
+  sdkError?: { status: number; body: string };
+}
+
+/**
+ * P4.118 — the openai 7.23.0 client's non-2xx path (`client.js` `makeRequest`)
+ * over the REAL `APIError` class, resolved by path from the checkout's root
+ * `node_modules` (a bare `openai` resolves against THIS file's directory,
+ * outside the v4 tree). The classifier duck-types `code` / `error.code`, so no
+ * `instanceof` is at stake across `resetModules`.
+ */
+function openaiStatusError(status: number, text: string): Error {
+  const { APIError } = require(join(process.cwd(), 'node_modules/openai'));
+  let errJSON: unknown;
+  try {
+    errJSON = JSON.parse(text);
+  } catch {
+    errJSON = undefined;
+  }
+  const errMessage = errJSON ? undefined : text;
+  const normalized =
+    errJSON && typeof errJSON === 'object' && (errJSON as { error?: unknown }).error == null
+      ? { error: errJSON }
+      : errJSON;
+  return APIError.generate(status, normalized, errMessage, new Headers());
 }
 interface ApiKeySpec {
   id: string;
@@ -176,7 +209,7 @@ interface CallSpec {
    * case names its own primary, which is what keeps the three new profiles out
    * of every existing case's chain AND tier pool.
    */
-  profileKey?: 'authPrimaryProfile';
+  profileKey?: 'authPrimaryProfile' | 'understudyProfile';
   /**
    * P4.97 — the two option-bag keys v4's PRIMARY `streamMessage` call passes
    * and its tool-unsupported RETRY does not (`primary-stream.service.ts:207`
@@ -235,6 +268,9 @@ function toConnectionProfile(p: ProfileSpec): Record<string, unknown> {
  * follow-ups round 2).
  */
 function primaryOf(spec: Spec, call: CallSpec): ProfileSpec {
+  // P4.118: the keyed OPENAI `understudyProfile` doubles as the `sdkError`
+  // arm's primary — the one openai-SDK provider this fixture already seeds.
+  if (call.profileKey === 'understudyProfile') return spec.understudyProfile;
   return call.profileKey === 'authPrimaryProfile' ? spec.authPrimaryProfile : spec.profile;
 }
 
@@ -456,6 +492,7 @@ async function main(): Promise<void> {
                 providerName,
               );
             }
+            if (chunk.sdkError) throw openaiStatusError(chunk.sdkError.status, chunk.sdkError.body);
             if (chunk.error) throw new Error(chunk.error);
             if (chunk.reasoning) {
               yield { reasoningContent: chunk.reasoning };

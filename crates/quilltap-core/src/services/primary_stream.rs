@@ -1605,9 +1605,23 @@ where
             &failover.attempts,
             failover.tier_pick_was_offered,
         );
-        return Err(StreamError::new(format!("{} ({summary})", err.message)));
+        return Err(with_understudy_summary(err, &summary));
     }
     Err(err)
+}
+
+/// v4 appends the chain's summary to the thrown error's `message` IN PLACE and
+/// rethrows the same object — its `code`, `status` and class ride along. v5
+/// used to rebuild a fresh `StreamError` here, dropping the refusal side (and
+/// the error's `kind`); P4.118 carries both. The side is v5's reconstruction of
+/// that same v4 object, so its message takes the suffix too: whatever
+/// classifies the rethrown error next reads what v4 would.
+fn with_understudy_summary(mut err: StreamError, summary: &str) -> StreamError {
+    err.message = format!("{} ({summary})", err.message);
+    if let Some(side) = err.refusal.as_deref_mut() {
+        side.message = format!("{} ({summary})", side.message);
+    }
+    err
 }
 
 // ===========================================================================
@@ -1644,6 +1658,40 @@ pub fn find_previous_response_id(provider: &str, existing_messages: &[Value]) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P4.118: the understudy summary keeps the error v4 rethrows — the
+    /// refusal side and the kind ride along, and a classification AFTER the
+    /// summary still reads the provider's code (v4 mutates the one object).
+    #[test]
+    fn the_understudy_summary_keeps_the_refusal_side() {
+        let side = crate::model::provider_error::text_http_refusal(
+            "OPENAI_COMPATIBLE",
+            400,
+            r#"{"error":{"message":"Filtered.","code":"content_filter"}}"#,
+        )
+        .expect("known provider");
+        let err = StreamError::new(
+            r#"HTTP 400: {"error":{"message":"Filtered.","code":"content_filter"}}"#,
+        )
+        .with_refusal(side);
+        let summary = "also tried: Frank Desk (network)";
+        let out = with_understudy_summary(err, summary);
+        assert_eq!(
+            out.message,
+            format!(
+                r#"HTTP 400: {{"error":{{"message":"Filtered.","code":"content_filter"}}}} ({summary})"#
+            )
+        );
+        assert_eq!(out.kind, crate::model::stream::StreamErrorKind::Provider);
+        let side = out.refusal.as_deref().expect("the side survives");
+        assert_eq!(side.message, format!("400 Filtered. ({summary})"));
+        assert_eq!(
+            crate::llm_fallback::classify_fallback_trigger(
+                crate::llm_fallback::FallbackError::from_stream_error(&out)
+            ),
+            Some(crate::llm_fallback::FallbackTrigger::ModerationRefusal)
+        );
+    }
     use crate::model::stream::StreamChunkResult;
     use crate::services::chat_events::RecordingSink;
 

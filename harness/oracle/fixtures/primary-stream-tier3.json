@@ -270,6 +270,30 @@
           "characterId": "cc000001-0000-4000-8000-000000000001"
         }
       ]
+    },
+    {
+      "id": "dd000061-0000-4000-8000-000000000061",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "sdk error: a coded 400 the desk answers",
+      "participants": [
+        {
+          "id": "ee000061-0000-4000-8000-000000000061",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000062-0000-4000-8000-000000000062",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "sdk error: an uncoded 400",
+      "participants": [
+        {
+          "id": "ee000062-0000-4000-8000-000000000062",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
     }
   ],
   "character": {
@@ -1038,6 +1062,34 @@
           "error": "503 Service Unavailable"
         }
       ]
+    ],
+    "sdk_content_filter_rerouted": [
+      [
+        {
+          "sdkError": {
+            "status": 400,
+            "body": "{\"error\":{\"message\":\"The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry.\",\"type\":null,\"param\":\"prompt\",\"code\":\"content_filter\",\"status\":400}}"
+          }
+        }
+      ],
+      [
+        {
+          "content": "The uncensored desk answers the filtered turn."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "sdk_uncoded_400": [
+      [
+        {
+          "sdkError": {
+            "status": 400,
+            "body": "{\"error\":{\"message\":\"The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry.\",\"type\":null,\"param\":\"prompt\",\"code\":null,\"status\":400}}"
+          }
+        }
+      ]
     ]
   },
   "calls": [
@@ -1748,6 +1800,40 @@
       },
       "comment": "P4.D227 (v4 `3b463d6b1`, #76): the thrown refusal on a turn that began on duty, after the Concierge went off duty mid-call: the refusal-time re-read says no, the not-permitted INFO carries the policy source/state, the chain runs.",
       "offDutyNow": true
+    },
+    {
+      "name": "hard_sdk_code_understudy_answers",
+      "kind": "hardFailover",
+      "profileKey": "understudyProfile",
+      "chatId": "dd000061-0000-4000-8000-000000000061",
+      "participantId": "ee000061-0000-4000-8000-000000000061",
+      "preGeneratedMessageId": "ff000081-0000-4000-8000-000000000081",
+      "hasTools": false,
+      "streamLabel": "sdk_content_filter_rerouted",
+      "attachedFiles": [],
+      "originalMessage": "a coded 400 the desk answers",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
+      "comment": "P4.118: an openai-SDK 400 whose ONLY moderation evidence is its code (Azure's content_filter under benign wording, which matches no message pattern). v4's APIError carries code + error.code, so classifyFallbackTrigger answers moderation-refusal with evidence provider-code; on duty the uncensored desk is tried first and answers. v5 reaches the same only through the refusal SIDE its transport error now carries (model::provider_error). Before P4.118 v5's HTTP 400 message fell to the 4xx rule: not fallback-eligible."
+    },
+    {
+      "name": "hard_sdk_uncoded_not_eligible",
+      "kind": "hardFailover",
+      "profileKey": "understudyProfile",
+      "chatId": "dd000062-0000-4000-8000-000000000062",
+      "participantId": "ee000062-0000-4000-8000-000000000062",
+      "preGeneratedMessageId": "ff000082-0000-4000-8000-000000000082",
+      "hasTools": false,
+      "streamLabel": "sdk_uncoded_400",
+      "attachedFiles": [],
+      "originalMessage": "an uncoded 400 nobody reroutes",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
+      "comment": "P4.118: the twin with code null. No evidence at all (the wording matches no pattern), so the 4xx rule answers null on both sides: not fallback-eligible, no reroute, no trail, the error rethrown. The thrown message differs by the order's \u00a7S.5 bytes (v4 '400 \u2026', v5 'HTTP 400: \u2026'), pinned both ways in the harness."
     }
   ],
   "authPrimaryProfile": {
