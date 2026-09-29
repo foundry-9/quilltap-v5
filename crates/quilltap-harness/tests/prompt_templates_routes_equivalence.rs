@@ -9,13 +9,25 @@
 //! handler's module doc for the repository-level lines that have no v5
 //! counterpart), and the whole **`prompt_templates` table** afterwards. The
 //! table is what proves the two halves the body alone cannot: that a Zod-refused
-//! POST/PUT never seeded anything (`table` stays at 1 row), and that a sample
-//! prompt already on file is never overwritten.
+//! POST/PUT never seeded anything (`table` stays at 1 row), and — since v4
+//! `c3eefa752` (P4.D237) — that a built-in already on file is REFRESHED to the
+//! shipped text (content / description / category / modelHint, `updatedAt`
+//! moved, `createdAt` not) when it differs, and left byte-identical when it
+//! does not. (Before `c3eefa752` the same case pinned the opposite: v4 never
+//! overwrote a sample prompt already on file.)
 //!
 //! The fixture is a CLEAN PROVISIONED instance holding one user template — so
-//! the first list is the one that seeds, which is the whole point. The three
-//! other shapes (a stale built-in, a user template named like a built-in, and a
-//! schema-invalid plant) are PER-CASE seeds applied identically on both sides.
+//! the first list is the one that seeds, which is the whole point. The other
+//! shapes (a stale built-in, a user template named like a built-in, a
+//! schema-invalid plant, and P4.D237's per-field / NULL / exact / duplicate
+//! built-in plants) are PER-CASE seeds applied identically on both sides. The
+//! "shipped" values of those plants come from v5's vendored catalogue here and
+//! from v4's real registry in the oracle — the table comparand proves the two
+//! agree (and `builtin_prompt_templates_guard` proves it independently).
+//!
+//! The spec's pinned `ts` survives normalization (like the fixture's ids), so a
+//! refreshed row's `createdAt` reads back as that literal while its `updatedAt`
+//! reads `<ts>`, and an untouched row keeps both.
 //!
 //! **The capture layer is process-global on purpose.** The seed lines fire
 //! inside `db.write(...)`, i.e. on the writer THREAD, which a
@@ -23,6 +35,12 @@
 //! exactly ONE `#[test]`, runs its cases sequentially, and installs one global
 //! subscriber that appends every event to a shared buffer cleared per case.
 //! Adding a second test to this file would make the two race for that buffer.
+//!
+//! ⚠ P4.D237's fixture rule: the FIXTURE is built from a v4 worktree pinned at
+//! `acadcc7cd` (v5 cannot yet open a fixture built at or past `f7f3d7bf0`, which
+//! dropped `chats.renderedMarkdown`) and the ORACLE runs from a worktree pinned
+//! at `c3eefa752` — run the builder line below from the first and the jest line
+//! from the second (drift-ledger §5.1 for the worktree recipe).
 //!
 //! Regenerate + run (Node 24, from the v4 checkout — mirror to /tmp; jest
 //! ignores .claude/):
@@ -52,6 +70,7 @@ use quilltap_core::api::prompt_templates as pt;
 use quilltap_core::api::types::{ErrorKind, Request, Response};
 use quilltap_core::db::prompt_templates::{CreateOptions, PromptTemplatesRepository, PtCreate};
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::services::builtin_prompt_templates::{catalogue, seed_description};
 use regex::Regex;
 use serde_json::{json, Map, Value};
 
@@ -123,9 +142,14 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for GlobalCapture {
     }
 }
 
-/// The two families this port owns (the oracle filters identically).
+/// The families this port owns (the oracle filters identically): the seeder's
+/// two lines (both renamed / added at v4 `c3eefa752`) and the route's
+/// `[Prompt Templates v1]` lines. The pre-`c3eefa752` seed sentence stays in the
+/// filter so a side still emitting it shows up as a diff rather than vanishing.
 fn is_ported_line(message: &str) -> bool {
-    message == "Sample prompt template seeded from plugin"
+    message == "Sample prompt template seeded"
+        || message == "Built-in prompt template refreshed from shipped text"
+        || message == "Sample prompt template seeded from plugin"
         || message.starts_with("[Prompt Templates v1] ")
 }
 
@@ -161,13 +185,16 @@ fn rt() -> tokio::runtime::Runtime {
 }
 
 /// Normalize what both sides legitimately mint: UUIDs not in the fixture spec
-/// (the 21 seeded ids, plus a created template's id) and ISO timestamps.
+/// (the 21 seeded ids, plus a created template's id) and ISO timestamps other
+/// than the spec's own pinned `ts` (which `known` carries, so it stays literal).
 fn normalize(v: &mut Value, known: &HashSet<String>, uuid_re: &Regex, ts_re: &Regex) {
     match v {
         Value::String(s) => {
-            if ts_re.is_match(s) {
+            if known.contains(s.as_str()) {
+                // A pinned id or the pinned `ts` — keep it legible.
+            } else if ts_re.is_match(s) {
                 *s = "<ts>".to_string();
-            } else if uuid_re.is_match(s) && !known.contains(s.as_str()) {
+            } else if uuid_re.is_match(s) {
                 *s = "<newid>".to_string();
             }
         }
@@ -338,6 +365,60 @@ fn apply_seeds(rt: &tokio::runtime::Runtime, db: &Db, spec: &Value, seeds: &[Str
                         updated_at: ts,
                     },
                 ),
+                // P4.D237: built-in plants carrying the SHIPPED values (v5's
+                // vendored catalogue) with one compared field changed, or none.
+                "builtinContentOnly" => plant_builtin(conn, &spec, "contentOnly", |p| {
+                    p.content = spec["staleContent"].as_str().unwrap().to_string()
+                }),
+                "builtinDescriptionOnly" => plant_builtin(conn, &spec, "descriptionOnly", |p| {
+                    p.description = Some("A stale plant".to_string())
+                }),
+                "builtinCategoryOnly" => plant_builtin(conn, &spec, "categoryOnly", |p| {
+                    p.category = Some("COMPANION".to_string())
+                }),
+                "builtinModelHintOnly" => plant_builtin(conn, &spec, "modelHintOnly", |p| {
+                    p.model_hint = Some("CLAUDE".to_string())
+                }),
+                "builtinNullDescription" => {
+                    plant_builtin(conn, &spec, "nullDescription", |p| p.description = None)
+                }
+                "builtinExact" => plant_builtin(conn, &spec, "exact", |_| {}),
+                // Every OTHER catalogue entry on file as shipped, so the only
+                // thing left to find is the stale row beside it — the arm a
+                // names-only probe (v5's pre-P4.D237 `needs_seeding`) cannot see.
+                // Ids: the spec prefix + the catalogue position, two hex digits.
+                "catalogueCurrent" => {
+                    let colliding = spec["collidingName"].as_str().unwrap();
+                    let prefix = spec["catalogueIdPrefix"].as_str().unwrap();
+                    let repo = PromptTemplatesRepository::new(conn);
+                    for (i, e) in catalogue().expect("catalogue").iter().enumerate() {
+                        if e.name == colliding {
+                            continue;
+                        }
+                        repo.create(
+                            &PtCreate {
+                                user_id: None,
+                                name: e.name.clone(),
+                                content: e.content.clone(),
+                                description: Some(seed_description(&e.category, &e.model_hint)),
+                                is_built_in: true,
+                                category: Some(e.category.clone()),
+                                model_hint: Some(e.model_hint.clone()),
+                                tags: Vec::new(),
+                            },
+                            &CreateOptions {
+                                id: format!("{prefix}{i:02x}"),
+                                created_at: ts.clone(),
+                                updated_at: ts.clone(),
+                            },
+                        )?;
+                    }
+                    Ok(())
+                }
+                "builtinDuplicate" => plant_builtin(conn, &spec, "duplicate", |p| {
+                    p.content =
+                        format!("{} (the duplicate)", spec["staleContent"].as_str().unwrap())
+                }),
                 "invalidRow" => {
                     let name: String = "\u{1F600}".repeat(101);
                     conn.execute(
@@ -358,6 +439,43 @@ fn apply_seeds(rt: &tokio::runtime::Runtime, db: &Db, spec: &Value, seeds: &[Str
         }))
         .expect("apply seed");
     }
+}
+
+/// One P4.D237 built-in plant under `collidingName`: the catalogue's shipped
+/// content / description / category / modelHint, `over` applied, pinned id
+/// `builtinPlantIds[key]` and the spec's `ts` for both timestamps.
+fn plant_builtin(
+    conn: &rusqlite::Connection,
+    spec: &Value,
+    key: &str,
+    over: impl FnOnce(&mut PtCreate),
+) -> Result<(), quilltap_core::db::DbError> {
+    let name = spec["collidingName"].as_str().unwrap();
+    let shipped = catalogue()
+        .expect("the vendored catalogue parses")
+        .into_iter()
+        .find(|e| e.name == name)
+        .unwrap_or_else(|| panic!("the catalogue has no {name}"));
+    let mut plant = PtCreate {
+        user_id: None,
+        name: name.to_string(),
+        content: shipped.content.clone(),
+        description: Some(seed_description(&shipped.category, &shipped.model_hint)),
+        is_built_in: true,
+        category: Some(shipped.category.clone()),
+        model_hint: Some(shipped.model_hint.clone()),
+        tags: Vec::new(),
+    };
+    over(&mut plant);
+    let ts = spec["ts"].as_str().unwrap().to_string();
+    PromptTemplatesRepository::new(conn).create(
+        &plant,
+        &CreateOptions {
+            id: spec["builtinPlantIds"][key].as_str().unwrap().to_string(),
+            created_at: ts.clone(),
+            updated_at: ts,
+        },
+    )
 }
 
 /// Response → `(body, status)`, mapping v5's `ErrorKind` to v4's wire status.
@@ -433,9 +551,18 @@ fn prompt_templates_routes_match_v4() {
     ]
     .iter()
     .filter_map(|k| spec[*k].as_str().map(str::to_string))
+    .chain(
+        spec["builtinPlantIds"]
+            .as_object()
+            .expect("spec.builtinPlantIds — regenerate the fixture")
+            .values()
+            .filter_map(|v| v.as_str().map(str::to_string)),
+    )
     .chain(std::iter::once(
         "5e800000-0000-4000-8000-0000000000ff".to_string(),
     ))
+    // The pinned `ts` stays literal too (see `normalize`).
+    .chain(spec["ts"].as_str().map(str::to_string))
     .collect();
 
     let uuid_re = Regex::new(
@@ -634,15 +761,25 @@ fn prompt_templates_routes_match_v4() {
         missing.is_empty(),
         "oracle cases never driven by the Rust side: {missing:?}"
     );
-    // A floor that a stale oracle (predating the Tier-2 arms) cannot satisfy.
+    // A floor that a stale oracle (predating P4.D237's refresh arms) cannot
+    // satisfy: 31 through P4.83 + 9 refresh cases.
     assert!(
-        n >= 31,
-        "expected >= 31 cases, got {n} — regenerate the oracle"
+        n >= 40,
+        "expected >= 40 cases, got {n} — regenerate the oracle"
     );
     for want in [
         "list_first_seeds_21",
         "list_second_seeds_nothing",
-        "list_stale_builtin_never_updated",
+        "list_stale_builtin_refreshed",
+        "list_second_refreshes_nothing",
+        "list_all_on_file_one_stale_refreshed",
+        "list_builtin_content_only_refreshed",
+        "list_builtin_description_only_refreshed",
+        "list_builtin_category_only_refreshed",
+        "list_builtin_model_hint_only_refreshed",
+        "list_builtin_null_description_refreshed",
+        "list_builtin_exact_untouched",
+        "list_duplicate_builtins_first_refreshed",
         "list_user_named_like_builtin_still_seeds",
         "list_drops_schema_invalid_row",
         "create_minimal_201",

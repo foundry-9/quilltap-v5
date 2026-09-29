@@ -4,9 +4,11 @@
 //! `_create`/`_update`/`_delete` internals of `base.repository.ts`).
 //!
 //! Scope: `create`, `update`, `delete`, and (since P4.83) the two READS v4's
-//! routes call — [`find_all_for_user`] and [`find_by_id`] — plus
-//! [`built_in_name_exists`], the lookup v4's `seedSamplePrompts` uses to
-//! decide whether a sample prompt is already on file. (The seeding itself is
+//! routes call — [`find_all_for_user`] and [`find_by_id`] — plus the two
+//! halves of v4's `upsertBuiltInPrompt` (P4.D237, v4 `c3eefa752`):
+//! [`find_built_in_by_name`], the lookup that decides insert / refresh / no-op,
+//! and [`PromptTemplatesRepository::seed_refresh`], the raw column write that
+//! brings a built-in row up to the shipped text. (The seeding itself is
 //! [`crate::services::builtin_prompt_templates`]. The header used to say
 //! seeding "is a startup concern, not a CRUD op": that was wrong about v4 —
 //! v4 seeds LAZILY, from inside these very reads.) `findBuiltIn` — v4's own
@@ -119,6 +121,17 @@ pub struct PtUpdate {
     pub updated_at: String,
 }
 
+/// The `$set` of v4's built-in refresh — see
+/// [`PromptTemplatesRepository::seed_refresh`]. Every field is written.
+#[derive(Debug, Clone)]
+pub struct PtSeedRefresh {
+    pub content: String,
+    pub description: String,
+    pub category: String,
+    pub model_hint: String,
+    pub updated_at: String,
+}
+
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
 pub struct PromptTemplatesRepository<'c> {
     conn: &'c Connection,
@@ -221,6 +234,30 @@ impl<'c> PromptTemplatesRepository<'c> {
             .conn
             .execute("DELETE FROM prompt_templates WHERE id = ?1", params![id])?;
         Ok(affected > 0)
+    }
+
+    /// v4 `upsertBuiltInPrompt`'s refresh write (`c3eefa752`, `:130-141`) —
+    /// `collection.updateOne({id}, {$set: {content, description, category,
+    /// modelHint, updatedAt}})`. A RAW column write, deliberately NOT
+    /// [`Self::update`]: that one refuses built-in rows (v4's repo `update()`
+    /// does too), and refreshing a built-in is the whole point. `name`, `tags`,
+    /// `userId`, `createdAt` and `isBuiltIn` are untouched. The precedent is
+    /// [`crate::db::roleplay_templates::RoleplayTemplatesRepository::seed_update`].
+    pub fn seed_refresh(&self, id: &str, patch: &PtSeedRefresh) -> Result<(), DbError> {
+        self.conn.execute(
+            "UPDATE prompt_templates SET \
+               content = ?1, description = ?2, category = ?3, modelHint = ?4, updatedAt = ?5 \
+             WHERE id = ?6",
+            params![
+                patch.content,
+                patch.description,
+                patch.category,
+                patch.model_hint,
+                patch.updated_at,
+                id,
+            ],
+        )?;
+        Ok(())
     }
 
     /// True iff the row exists and is not a built-in template — v4's `findById`
@@ -495,23 +532,55 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<PromptTemplateRe
     Ok(raw.and_then(validate_safe))
 }
 
+/// The four columns v4's seeder compares, plus the row's identity — what
+/// [`find_built_in_by_name`] answers. Every compared column is an `Option`
+/// because v4 compares HYDRATED values: its SQLite backend turns a NULL cell
+/// into `undefined`, and `undefined === '<shipped text>'` is false, so a NULL
+/// in any of the four makes the row DIFFER and it is refreshed
+/// (`[[v4-turns-every-null-cell-into-undefined-on-read]]`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuiltInSeedRow {
+    pub id: String,
+    pub content: Option<String>,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub model_hint: Option<String>,
+}
+
 /// v4's seeding lookup — `collection.findOne({name, isBuiltIn: true})`
-/// (`prompt-templates.repository.ts:76-79`). The `isBuiltIn` half is
-/// load-bearing: a USER template that happens to share a sample prompt's name
-/// does NOT suppress the seed, so both rows end up on file.
-pub fn built_in_name_exists(conn: &Connection, name: &str) -> Result<bool, DbError> {
-    let found: Option<i64> = conn
-        .query_row(
-            "SELECT 1 FROM prompt_templates WHERE name = ?1 AND isBuiltIn = 1 LIMIT 1",
-            params![name],
-            |r| r.get::<_, i64>(0),
-        )
-        .map(Some)
-        .or_else(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => Ok(None),
-            other => Err(other),
-        })?;
-    Ok(found.is_some())
+/// (`prompt-templates.repository.ts:91-94` at `c3eefa752`). The `isBuiltIn`
+/// half is load-bearing: a USER template that happens to share a sample
+/// prompt's name is never matched — it neither suppresses the seed nor gets
+/// refreshed, so both rows end up on file.
+///
+/// ⚠ Row identity: v4's translator renders `findOne` as `LIMIT 1` with NO
+/// `ORDER BY`, so with duplicate built-in rows under one name (a real instance
+/// can hold them) the FIRST in rowid order is the one compared and refreshed,
+/// and the rest are left alone. This is that same query — not an `EXISTS`.
+pub fn find_built_in_by_name(
+    conn: &Connection,
+    name: &str,
+) -> Result<Option<BuiltInSeedRow>, DbError> {
+    conn.query_row(
+        "SELECT id, content, description, category, modelHint FROM prompt_templates \
+         WHERE name = ?1 AND isBuiltIn = 1 LIMIT 1",
+        params![name],
+        |r| {
+            Ok(BuiltInSeedRow {
+                id: r.get(0)?,
+                content: r.get(1)?,
+                description: r.get(2)?,
+                category: r.get(3)?,
+                model_hint: r.get(4)?,
+            })
+        },
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+    .map_err(DbError::from)
 }
 
 #[cfg(test)]

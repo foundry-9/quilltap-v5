@@ -9,5 +9,15 @@
   "userCloneId": "5e800000-0000-4000-8000-00000000b003",
   "invalidRowId": "5e800000-0000-4000-8000-00000000b004",
   "collidingName": "MODERN General",
-  "staleContent": "OLD CONTENT — v4 never overwrites a sample prompt already on file."
+  "staleContent": "OLD CONTENT — a sample prompt text that predates the shipped one.",
+  "builtinPlantIds": {
+    "contentOnly": "5e800000-0000-4000-8000-00000000b005",
+    "descriptionOnly": "5e800000-0000-4000-8000-00000000b006",
+    "categoryOnly": "5e800000-0000-4000-8000-00000000b007",
+    "modelHintOnly": "5e800000-0000-4000-8000-00000000b008",
+    "nullDescription": "5e800000-0000-4000-8000-00000000b009",
+    "exact": "5e800000-0000-4000-8000-00000000b00a",
+    "duplicate": "5e800000-0000-4000-8000-00000000b00b"
+  },
+  "catalogueIdPrefix": "5e800000-0000-4000-8000-0000000c00"
 }

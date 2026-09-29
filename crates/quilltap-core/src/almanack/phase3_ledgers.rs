@@ -19,6 +19,11 @@
 //! built-ins have already been seeded — which is every instance that has ever
 //! listed templates — reads identically on both sides, and the differential's
 //! fixture is built through v4's own path so the seeded rows exist.
+//!
+//! Since v4 `c3eefa752` (P4.D237) the same call can also REFRESH an existing
+//! built-in row to the shipped text (content / description / category /
+//! modelHint / `updatedAt`) — still count-neutral, so the report's numbers are
+//! unchanged; only v4's side effect grew.
 
 use std::collections::HashMap;
 

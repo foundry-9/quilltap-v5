@@ -35,6 +35,31 @@ _Versions: core 0.0.1090, harness 0.0.1013._
 Ports v4 `39bc98ffc`/`12c336fad`'s mailbox helpers. `resolve_mail_path` turns a letter reference (bare file name, `Mail/…` path, or `qtap://self/Mail/…` URI) into a `Mail/…` path, in v4's order: JS trim, one case-insensitive `qtap://self/` strip, leading slashes, one `Mail/` strip, then refuse empty names, sub-paths, backslashes, `.` and `..`, then append `.md` unless it is already there in any case. `letter_file_name` strips one leading `Mail/`. `discard_letter` deletes through `delete_database_document` (the GC chokepoint) and logs v4's `discardLetter` debug line. `mark_alerted` now logs v4's `markAlerted: letter no longer present` warning on a missing letter (it was silent).
 
 New tier-1 family `mail_path_equivalence` over v4's real functions: 58 rows, 0 divergences at `12c336fad`. Mutation proofs: moving the slash strip before the URI strip, stripping `Mail/` twice, and a case-sensitive `.md` test each fail the family.
+#### 2026-09-28 — feat(prompt-templates): re-vendor the 21 built-in prompts and refresh stale built-in rows on read (P4.D237 unit 2, v4 `c3eefa752`)
+
+_Versions: core 0.0.1091, harness 0.0.1014._
+
+`builtin_prompt_templates.json` is regenerated from v4 `c3eefa752` (all 21
+bodies changed; `builtin_prompt_templates_guard` is green again against the
+live checkout). The lazy seeder now ports v4's `upsertBuiltInPrompt`: per
+entry it takes `now` once, looks up the first built-in row with that name,
+inserts when absent, does nothing when content, description, category and
+modelHint all match (a NULL never matches), and otherwise rewrites those four
+columns plus `updatedAt` with a raw UPDATE (the repository's `update` refuses
+built-ins). The insert line is renamed `Sample prompt template seeded` with
+`source` in place of `promptId`; the refresh logs `Built-in prompt template
+refreshed from shipped text`. `needs_seeding` widens from names-only to the
+same four-field comparison, still on the read pool; the writer pass re-derives
+each entry. It still runs only from the template reads, never at boot.
+
+`prompt_templates_routes` is re-cased against v4's real repository: the old
+never-updated case flips to `list_stale_builtin_refreshed`, both log filters
+widen, and nine new planted cases cover each compared field, a NULL
+description, an exact match, the second read, duplicate built-ins, and a
+fully seeded table with one stale row (40 cases). Ten new core unit tests pin
+both log lines, their silence, the LIMIT 1 identity, and the probe/writer
+race.
+
 #### 2026-09-28 — feat(generators): the two voice-direction constants at their seven sites (P4.D237 unit 1, v4 `c3eefa752`)
 
 _Versions: core 0.0.1090, harness 0.0.1013._

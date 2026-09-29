@@ -11,6 +11,9 @@
 //! BOTH call `seedSamplePrompts()` first. So the 21 built-in "Sample Prompts"
 //! appear the first time anybody opens the Import-from-Template modal — and the
 //! first time anybody GETs a single template, or PUTs one, or DELETEs one.
+//! Since v4 `c3eefa752` (P4.D237) that same pass also REFRESHES a built-in row
+//! whose text has drifted from the shipped one, on the first such read after an
+//! upgrade — still here, never at boot.
 //! [`crate::services::builtin_prompt_templates`] is the seeder; every handler
 //! below that reaches a read calls [`seed_sample_prompts_if_needed`] first.
 //! `prompt_templates_routes_equivalence` measures the whole thing, including
@@ -345,9 +348,10 @@ struct UpdateInput {
 // ── The seeding site ────────────────────────────────────────────────────────
 
 /// v4 `seedSamplePrompts()`, at v4's site: before every read. The catalogue
-/// probe runs on the READ pool, so a list request on an already-seeded instance
-/// never takes the writer; the inserts re-run the same per-name lookup under the
-/// write lock, so the decision is never acted on stale.
+/// probe (insert OR refresh needed?) runs on the READ pool, so a list request on
+/// a current instance never takes the writer; the pass re-runs the same
+/// per-entry lookup under the write lock and decides insert / refresh / nothing
+/// there, so the probe's answer is never acted on stale.
 ///
 /// v4 wraps the whole seed in `safeQuery(..., 'Error seeding sample prompts',
 /// {}, undefined)` — a failure is logged and SWALLOWED, and the read proceeds.

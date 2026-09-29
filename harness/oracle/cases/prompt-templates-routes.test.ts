@@ -19,8 +19,27 @@
  * `list_first_seeds_21` is what refuses that silently-empty registry.
  *
  * Ids and timestamps minted by the seeding pass are normalized on the Rust side
- * (`<newid>` / `<ts>`), the `settings-routes` shape; the fixture's own ids stay
- * literal so the never-update and order pins stay legible.
+ * (`<newid>` / `<ts>`), the `settings-routes` shape; the fixture's own ids AND
+ * the spec's pinned `ts` stay literal, so the order pins and the refresh's
+ * "updatedAt moved, createdAt did not" stay legible.
+ *
+ * P4.D237 (v4 `c3eefa752`): the seeder now REFRESHES a built-in row whose
+ * content / description / category / modelHint differ from the shipped text
+ * (a NULL counts as different), comparing the `findOne` — `LIMIT 1`, rowid
+ * order — row only. v4's own test for it (`prompt-templates-seed-refresh.
+ * test.ts`) MOCKS the collection; this family mirrors its three shapes as
+ * PLANTED rows through the real repository instead, plus one plant per compared
+ * field, a NULL plant, and a two-row duplicate. The planted "shipped" values
+ * come from the REAL registry (`systemPromptRegistry`), which is why the
+ * plants run after `initializePlugins()`.
+ *
+ * ⚠ Fixture rule (P4.D237 §R.3): the fixture is BUILT at v4 `acadcc7cd` and
+ * this oracle RUNS at `c3eefa752`, so v5 can open the fixture (`f7f3d7bf0`
+ * dropped `chats.renderedMarkdown`). Two worktrees, two steps:
+ *   git -C ~/source/quilltap-server worktree add --detach /tmp/qt-v4-fix-<x>-acadcc7cd acadcc7cd
+ *   git -C ~/source/quilltap-server worktree add --detach /tmp/qt-v4-pin-<x>-c3eefa752 c3eefa752
+ *   (+ the three symlink classes, drift-ledger §5.1); build from the first,
+ *   run the jest step below from the second.
  *
  * Run (Node 24, from the v4 checkout — mirror to /tmp; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -56,10 +75,29 @@ interface Spec {
   invalidRowId: string;
   collidingName: string;
   staleContent: string;
+  builtinPlantIds: Record<string, string>;
+  catalogueIdPrefix: string;
 }
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
-type Seed = 'staleBuiltIn' | 'userClone' | 'invalidRow';
+type Seed =
+  | 'staleBuiltIn'
+  | 'userClone'
+  | 'invalidRow'
+  // P4.D237: built-in plants that differ from the shipped text in exactly one
+  // compared field (or none), a NULL description, and a second built-in row
+  // under the same name (the `LIMIT 1` identity pin).
+  | 'builtinContentOnly'
+  | 'builtinDescriptionOnly'
+  | 'builtinCategoryOnly'
+  | 'builtinModelHintOnly'
+  | 'builtinNullDescription'
+  | 'builtinExact'
+  | 'builtinDuplicate'
+  // Every OTHER catalogue entry on file, exactly as shipped — so the names-only
+  // question "is anything missing?" answers NO and only the four-field
+  // comparison can find the stale row planted beside it.
+  | 'catalogueCurrent';
 
 interface CaseSpec {
   name: string;
@@ -84,11 +122,68 @@ function buildCases(spec: Spec): CaseSpec[] {
     // ── GET /api/v1/prompt-templates ─────────────────────────────────────────
     { name: 'list_first_seeds_21', route: 'collection', method: 'GET' },
     { name: 'list_second_seeds_nothing', route: 'collection', method: 'GET', runTwice: true },
+    // v4 `c3eefa752` FLIPPED this case (it was `list_stale_builtin_never_updated`):
+    // a built-in already on file is now brought up to the shipped text.
     {
-      name: 'list_stale_builtin_never_updated',
+      name: 'list_stale_builtin_refreshed',
       route: 'collection',
       method: 'GET',
       seeds: ['staleBuiltIn'],
+    },
+    {
+      name: 'list_second_refreshes_nothing',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['staleBuiltIn'],
+      runTwice: true,
+    },
+    {
+      name: 'list_all_on_file_one_stale_refreshed',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['catalogueCurrent', 'staleBuiltIn'],
+    },
+    {
+      name: 'list_builtin_content_only_refreshed',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['builtinContentOnly'],
+    },
+    {
+      name: 'list_builtin_description_only_refreshed',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['builtinDescriptionOnly'],
+    },
+    {
+      name: 'list_builtin_category_only_refreshed',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['builtinCategoryOnly'],
+    },
+    {
+      name: 'list_builtin_model_hint_only_refreshed',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['builtinModelHintOnly'],
+    },
+    {
+      name: 'list_builtin_null_description_refreshed',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['builtinNullDescription'],
+    },
+    {
+      name: 'list_builtin_exact_untouched',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['builtinExact'],
+    },
+    {
+      name: 'list_duplicate_builtins_first_refreshed',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['staleBuiltIn', 'builtinDuplicate'],
     },
     {
       name: 'list_user_named_like_builtin_still_seeds',
@@ -298,11 +393,17 @@ function applyMocks(userId: string): void {
   });
 }
 
-/** The two ported log families: the seed line and the route's `[Prompt Templates v1]` lines. */
+/**
+ * The ported log families: the seeder's two lines and the route's `[Prompt
+ * Templates v1]` lines. The pre-`c3eefa752` seed sentence stays in the filter so
+ * a side still emitting it shows up as a diff rather than vanishing.
+ */
 function isPortedLine(message: unknown): boolean {
   return (
     typeof message === 'string' &&
-    (message === 'Sample prompt template seeded from plugin' ||
+    (message === 'Sample prompt template seeded' ||
+      message === 'Built-in prompt template refreshed from shipped text' ||
+      message === 'Sample prompt template seeded from plugin' ||
       message.startsWith('[Prompt Templates v1] '))
   );
 }
@@ -359,6 +460,30 @@ async function runCase(
   try {
     const { getRepositories } = await import('@/lib/repositories/factory');
     const repos = getRepositories();
+    const { systemPromptRegistry } = await import('@/lib/plugins/system-prompt-registry');
+    const shipped = systemPromptRegistry.getAll().find((p) => p.name === spec.collidingName);
+    if (!shipped) throw new Error(`the registry has no ${spec.collidingName}`);
+    const shippedDescription = `${shipped.category} prompt optimized for ${shipped.modelHint} models`;
+    /** A built-in plant: the shipped values, with `over` applied. */
+    const plantBuiltIn = async (
+      id: string,
+      over: Partial<{ content: string; description: string | null; category: string; modelHint: string }>,
+    ) =>
+      repos.promptTemplates.create(
+        {
+          userId: null,
+          name: spec.collidingName,
+          content: shipped.content,
+          description: shippedDescription,
+          isBuiltIn: true,
+          category: shipped.category,
+          modelHint: shipped.modelHint,
+          tags: [],
+          ...over,
+        } as never,
+        { id, createdAt: spec.ts, updatedAt: spec.ts } as never,
+      );
+    const ids = spec.builtinPlantIds;
 
     for (const seed of c.seeds ?? []) {
       if (seed === 'staleBuiltIn') {
@@ -389,6 +514,48 @@ async function runCase(
           } as never,
           { id: spec.userCloneId, createdAt: spec.ts, updatedAt: spec.ts } as never,
         );
+      } else if (seed === 'builtinContentOnly') {
+        await plantBuiltIn(ids.contentOnly, { content: spec.staleContent });
+      } else if (seed === 'builtinDescriptionOnly') {
+        await plantBuiltIn(ids.descriptionOnly, { description: 'A stale plant' });
+      } else if (seed === 'builtinCategoryOnly') {
+        await plantBuiltIn(ids.categoryOnly, { category: 'COMPANION' });
+      } else if (seed === 'builtinModelHintOnly') {
+        await plantBuiltIn(ids.modelHintOnly, { modelHint: 'CLAUDE' });
+      } else if (seed === 'builtinNullDescription') {
+        await plantBuiltIn(ids.nullDescription, { description: null });
+      } else if (seed === 'builtinExact') {
+        await plantBuiltIn(ids.exact, {});
+      } else if (seed === 'builtinDuplicate') {
+        // A SECOND built-in under the same name, inserted after `staleBuiltIn`:
+        // v4's `findOne` is `LIMIT 1` in rowid order, so only the first is ever
+        // compared or refreshed and this one keeps its stale text.
+        await plantBuiltIn(ids.duplicate, { content: `${spec.staleContent} (the duplicate)` });
+      } else if (seed === 'catalogueCurrent') {
+        // Pinned ids by catalogue position (two hex digits), so both sides
+        // plant byte-identical rows in the same rowid order.
+        const all = systemPromptRegistry.getAll();
+        for (let i = 0; i < all.length; i++) {
+          const p = all[i];
+          if (p.name === spec.collidingName) continue;
+          await repos.promptTemplates.create(
+            {
+              userId: null,
+              name: p.name,
+              content: p.content,
+              description: `${p.category} prompt optimized for ${p.modelHint} models`,
+              isBuiltIn: true,
+              category: p.category,
+              modelHint: p.modelHint,
+              tags: [],
+            } as never,
+            {
+              id: `${spec.catalogueIdPrefix}${i.toString(16).padStart(2, '0')}`,
+              createdAt: spec.ts,
+              updatedAt: spec.ts,
+            } as never,
+          );
+        }
       } else if (seed === 'invalidRow') {
         // Deliberately schema-INVALID (a 101-code-point name), so v4's repo
         // `create` cannot write it — the only shape that measures whether the

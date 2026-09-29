@@ -58,7 +58,29 @@ const SPEC = {
   invalidRowId: '5e800000-0000-4000-8000-00000000b004',
   /** The catalogue name the stale/clone plants use. */
   collidingName: 'MODERN General',
-  staleContent: 'OLD CONTENT — v4 never overwrites a sample prompt already on file.',
+  // Until v4 `c3eefa752` this read "v4 never overwrites a sample prompt already
+  // on file" — the seeder now refreshes it (P4.D237).
+  staleContent: 'OLD CONTENT — a sample prompt text that predates the shipped one.',
+  /**
+   * Per-case (P4.D237): built-in plants under `collidingName` carrying the
+   * SHIPPED values with exactly one compared field changed (or none — `exact`),
+   * a NULL description, and a second built-in row (`duplicate`) for the
+   * `LIMIT 1` identity pin.
+   */
+  builtinPlantIds: {
+    contentOnly: '5e800000-0000-4000-8000-00000000b005',
+    descriptionOnly: '5e800000-0000-4000-8000-00000000b006',
+    categoryOnly: '5e800000-0000-4000-8000-00000000b007',
+    modelHintOnly: '5e800000-0000-4000-8000-00000000b008',
+    nullDescription: '5e800000-0000-4000-8000-00000000b009',
+    exact: '5e800000-0000-4000-8000-00000000b00a',
+    duplicate: '5e800000-0000-4000-8000-00000000b00b',
+  },
+  /**
+   * Per-case (P4.D237): the `catalogueCurrent` plant's ids — this prefix + the
+   * catalogue position as two hex digits.
+   */
+  catalogueIdPrefix: '5e800000-0000-4000-8000-0000000c00',
 };
 
 async function main(): Promise<void> {
