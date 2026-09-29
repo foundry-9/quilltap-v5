@@ -124,6 +124,12 @@ The rider adds `caller_context: &'static str` to `AvatarGenerationParams`, with 
 _No crate versions bumped._
 
 Copies v4's `help/` tree at `97b25fc53` over v5's. Thirteen pages change, none added or removed, so the count stays 129: `chat-settings-ai-services.md` (`04d6c9d52`); `character-optimizer.md`, `character-system-prompts.md`, `prompts.md` (`c3eefa752`); `chat-settings.md`, `chats.md`, `data-retention.md`, `embedding-profiles.md`, `scriptorium.md` (`f7f3d7bf0`); `post-office.md` (`39bc98ffc` + `12c336fad`); `wardrobe.md` (`9ff4bbd8e`); `story-backgrounds.md`, `the-concierge.md` (`97b25fc53`). `diff -rq` against the pin is empty. `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, pass; the embed guard and both host help-boot tests pass unmoved. Reverting `wardrobe.md` to its old bytes turns both oracle families red while the embed guard stays green.
+#### 2026-09-29 — docs(porting): P4.118 lane record — the gate, the deferrals, LANE COMPLETE
+
+_Docs-only change._
+
+Closes the P4.118 lane record in `status-log.md` (the gate on the final tree, the named Tier-2 follow-up for mid-stream error frames, the OpenRouter SDK-path and Google content-type measurements, notes for the unifier) and updates the work order's status header.
+
 #### 2026-09-29 — fix(primary-stream): P4.118 unit 3 — keep the refusal side through the understudy summary; the sdkError reroute arm
 
 _Versions: core 0.0.1092, harness 0.0.1015._

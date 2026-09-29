@@ -154457,3 +154457,118 @@ Node 24.13.1. Regen outputs staged under `/tmp/p4118/`.
     `ORACLE_PIN=…acadcc7cd` re-run green too (the `chat_messages` dump
     differs only in row order by minted id — the multiset identical).
   - 49 calls, 45 `llm_logs` rows, 86 streamed calls; both tests green.
+
+### Deferrals and records (loud)
+
+- **Tier 2 item 7 — mid-stream error frames: NOT TAKEN, a NAMED follow-up.**
+  The failure case: an OpenAI Chat Completions stream that opens 200 and then
+  sends `data: {"error":{"code":"content_filter","message":"…"}}` (or a
+  Responses `event: error` / `response.failed` frame) BEFORE the first content
+  chunk. v4's SDK throws a coded `APIError(undefined, data.error, …)` (status
+  undefined, `code` still read), `hasStartedStreaming` is false, so
+  `attemptHardErrorFailover` reroutes on `provider-code`. v5's
+  `decoders/chat_completions_sse.rs:544-567` passes the frame to
+  `handle_chunk` with no `error` check and `decoders/responses_api_sse.rs:
+  106-132` has no `error`/`response.failed` arm: the frame is dropped, the
+  stream ends EMPTY, and the turn takes the empty-response path instead of the
+  hard-error failover. The fix: the two decoder arms raising a `DecodeError`
+  that carries the reconstructed side, `streaming_provider.rs:475/496` turning
+  it into a `StreamError` with the side, the stream recorder
+  (`record-stream-fixtures.mjs`, which records only `e.message`) widened to
+  `thrownFields`, and the stream wires with error frames re-recorded.
+  `record-stream-fixtures.mjs` and the stream corpora are UNTOUCHED by this
+  lane.
+- **Tier 3 item 10 — the OpenRouter SDK path (a ruling):** measured in the
+  wire family and pinned both ways. v4 streams a no-tools request and sends a
+  no-image request through `@openrouter/sdk`, whose errors are its own
+  classes (`ResponseValidationError` "Response validation failed" when the
+  body fails its schema, `ForbiddenResponseError` carrying the body's
+  message with NO status digits, `OpenRouterDefaultError` "API error
+  occurred: Status 400 Content-Type text/plain. Body: …" for a non-JSON body),
+  `status` set, and `error.code` = the body's numeric code. Consequences on
+  v4: the 403 moderation body classifies `provider-error` → FAILS OVER (v5's
+  `HTTP 403:` meets the 4xx rule → no failover — the order's recorded shape);
+  401/404 bodies classify `provider-error` where v5 says `auth` /
+  `model-missing`; a numeric `error.code: 1301` IS a provider-code refusal
+  there. v5 has no SDK path (the deliberate divergence
+  `streaming_provider.rs:49-53` documents) and reconstructs the FETCH path on
+  every OpenRouter call.
+- **Tier 3 item 11 — Google's content-type branch:** option (a) decides it by
+  whether the body parses; a JSON body served as `text/plain` is the one row
+  that differs (`google_json_as_text_plain`, pinned); the synthesized
+  `statusText` is the RFC 9110 reason phrase (v4 reads the server's). No code
+  is possible on Google either way.
+- **Tier 3 item 12 — the image helper's fix:** a separate order; the measured
+  five-row divergence is in unit 1's record (trap 6).
+- **Tier 3 item 13 — P4.D225's other NITs** (`load_profile_parameters`'s
+  silent `Null`, the understudy lookups' swallowed pool failure,
+  `record_cheap_refusal`'s log-config gate where v4 gates on `chatId`): the
+  smalls lane's, untouched.
+- **E.11 stands:** the tool loops still add no classify call; the side rides
+  their `StreamError`s inertly.
+
+### What the order got wrong (measured)
+
+- **M4's named pin cannot see the seam:** `streaming_provider.rs`'s
+  `pre_stream_failure_is_a_single_error` (the order's `:1046`) poses its
+  failure with `status: None`, so the side path never runs and M4 SURVIVED
+  against it. Fixed with status-carrying pins at every site (unit 1).
+- **The `primary_stream_tier3` arm could not run "on an OPENAI profile" as
+  the harness stood:** the family's primary is ANTHROPIC, and the Rust
+  `hardFailover` driver never resolved a `profileKey` for the chain's failed
+  row (v4's did). Fixed in the harness (unit 3), no production change.
+- The order's `sdkError` chunk shape `{message, status?, code?, error?}` became
+  `{status, body}`: both sides then build the error from the SAME response
+  (the jest side through the real SDK class, the Rust side through the
+  production reconstruction) instead of hand-copying fields.
+
+### For the unifier
+
+- Files touched outside the core/harness lists: the two committed fixture
+  SPECS `harness/oracle/fixtures/{cheap-llm-refusal,primary-stream-tier3}.json`
+  (additions only — new profiles/chats/streams/calls; no existing entry
+  moved) and their oracle cases. **Every family that reads those specs must
+  be regenerated from the new spec:** `cheap_llm_fallback_equivalence`
+  (`cheap_llm_refusal_matches_oracle`) and `primary_stream_tier3_equivalence`
+  — both this lane's, both regenerated. The refusal-ledger builder is also
+  read by `refusal_ledger_tier3_equivalence` and `image_failover_tier3_
+  equivalence`, but with THEIR specs (`refusal-ledger.json` / the image
+  spec), which this lane did not touch.
+- No committed `.db` pair changed. No `docs/v4/` mirror path moves (nothing
+  to pre-list). `api/types.rs` / `engine.rs` untouched;
+  `crates/quilltap-web`, `quilltap-host`, `apps/web` untouched.
+- `stream_watchdog_wrap_census` and `dispatch_wrong_type_census` (451):
+  UNMOVED (the gate below).
+- Versions: core 0.0.1089 → **0.0.1092** (+3), harness 0.0.1012 →
+  **0.0.1015** (+3). Nothing else bumped.
+
+### The gate (tree `8db6a7c67`, one logged run, `CARGO_INCREMENTAL=0 TZ=UTC`)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -D warnings` clean in both feature sets (default; `--features
+  quilltap-core/native-transport`); `cargo build --workspace --release` clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's
+  block (`QT_ORACLE_PRIMARY_STREAM` / `QT_FIXTURE_PRIMARY_STREAM` /
+  `QT_ORACLE_OPENAI_FALLBACK`, the four `CHEAP_*`, `QT_ORACLE_FALLBACK_ENGINE`,
+  `QT_ORACLE_REFUSAL_CLASSIFY`, `QT_ORACLE_OLLAMA_THINK_RETRY`, all under
+  `/tmp/p4118/`; every other family's var withheld): **645 test binaries /
+  3,880 passed / 1 failed / 3 ignored**. The one red is the standing
+  `builtin_prompt_templates_guard` against the LIVE checkout (§R.5 — v4's
+  `c3eefa752` rewrote the prompts; P4.D237 re-vendors), GREEN with
+  `QT_V4_CHECKOUT=/tmp/qt-v4-fix-p4118-acadcc7cd` (2/2). The lane's families
+  confirmed RUN by name: `text_http_errors` 1/1 (0.22 s), `cheap_llm_fallback`
+  2/2 (`OK cheap-llm refusal: 12 cases`), `primary_stream_tier3` 2/2 (49
+  calls), `fallback_engine` 1/1 (202 cases), `refusal_classify` 2/2,
+  `ollama_think_retry_tier3` 1/1, `stream_decoders` 5/5,
+  `tool_wire_call_site` 7/7. The 526 `SKIP:` lines are families outside the
+  block.
+- Censuses/guards UNMOVED and green: `dispatch_wrong_type_census` (14),
+  `stream_watchdog_wrap_census`, `web_edge_action_sites_census`,
+  `web_edge_body_parse_guard`, `blob_write_sites_census`,
+  `compressed_column_write_sites_census`, `qtap_schema_embed_guard`,
+  `public_schemas_vendor_guard`, `zod_version_guard`,
+  `provider_sdk_version_guard`, `help_tree_embed_guard`, `spelling_guard`.
+- The per-unit commits each ran their own families + fmt + clippy; the full
+  workspace suite ran ONCE, on the final tree above.
+
+**LANE COMPLETE.**
