@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — docs(porting): order the `97b25fc53` follow-ups round (P4.122–P4.126) and bind P4.119–P4.121 into it
+
+_Docs-only change._
+
+Five new work orders and a round-wide shared block appended to the three
+orders written earlier today, so all eight carry identical fences, an
+ownership table, and one verification gate. P4.122 closes the two
+provider-error follow-ups P4.118 named: a mid-stream error frame now
+carries the refusal side to the failover exactly where v4's SDK throws
+(and nowhere v4 does not), and the image dialect's flat-body refusal is
+read through the one wrap rule. P4.123 lands the four wardrobe-tool avatar
+triggers v5 never called, with the trigger's fallback reads. P4.124 and
+P4.125 bundle the Rust-core and SPA smalls left open by the last three
+rounds' reviews, on files no other lane owns. P4.126 takes the four smalls
+that live in P4.119's files and runs on P4.119's branch after it closes.
+Four fresh surveys are folded into the orders; they overturned five
+recorded descriptions before any lane started. The drift ledger is
+untouched: its §3 is empty and no row becomes ORDERED. Recorded in
+`phase-4.md`.
+
 #### 2026-09-29 — docs(porting): order P4.120 and P4.121 (dogfood #128, #129)
 
 _Docs-only change._

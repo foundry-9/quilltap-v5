@@ -6927,6 +6927,126 @@ dogfood pass (AFTER this round — a Friday copy past `-dev.96` opens on v5
 only once P4.D235 lands, and the re-embed spend needs P4.D235's
 measurement recipe first).
 
+
+## The `97b25fc53` follow-ups round (P4.119 → P4.126 ∥ P4.120 ∥ P4.121 ∥ P4.122 ∥ P4.123 ∥ P4.124 ∥ P4.125) — ORDERED 2026-09-29
+
+**Baseline `97b25fc53`; v4 AT the baseline at both planning probes (HEAD
+`97b25fc53`, tree CLEAN, `bugfix` `1a2b2164c` and `release` `8fbf2afe0`
+unmoved, `origin/main` agreeing after a fetch); the ledger's §3 is EMPTY —
+this round absorbs NO drift row and the baseline does not move at its
+unification.** The round is the three dogfood orders of 2026-09-29 (already
+written that day, now carrying the round's §R block) plus every named
+follow-up of the `97b25fc53` unification ("NEXT" items 3–4 above): the
+seven orders are single lanes with disjoint ownership, one of them STACKED.
+Four fresh surveys (2026-09-29, committed inside the orders' §Survey
+sections) overturned five recorded descriptions before any lane started —
+v4 does NOT throw on a Responses `response.failed` frame, OpenRouter's raw
+fetch path ignores error frames, the `streaming.service.ts` P4.118 named
+holds only the wrapper, v4's composer is Lexical (not ProseMirror), and the
+`image-dialects` corpus has 173 rows (not 150).
+
+- **P4.119 — host-zone display formatting (dogfood #121, ruled (a))**:
+  `work-orders/p4.119-host-zone-display-formatting.md` — unchanged in
+  scope; its status line now names the round and the rider stacked on it.
+- **P4.120 — chat-upload auto-describe + `SaveImageSideEffects` (dogfood
+  #128)**: `work-orders/p4.120-chat-upload-auto-describe.md` — unchanged in
+  scope; shares `tools/executor.rs` with P4.123 by HUNK (§R.10(b)) and the
+  host spine with P4.119 by HUNK (§R.10(i)).
+- **P4.121 — Salon tool-loop leg logging (dogfood #129)**:
+  `work-orders/p4.121-salon-tool-loop-leg-logging.md` — unchanged in
+  scope; `primary_stream_tier3` is P4.122's this round (P4.121 regenerates
+  it as a RECORD leg only).
+- **P4.122 — mid-stream error frames + the image helper's flat body**
+  (P4.118 Tier 2 item 7 + Tier 3 item 12): `work-orders/p4.122-midstream-
+  error-frames-image-flat-body.md` — a `DecodeError` that carries the
+  refusal side, raised by the chat-completions decoder for the SDK flavours
+  only and by the responses decoder on `event: error` only, attached at the
+  pump's two mid-stream arms through ONE new pub builder over a
+  `make_message` that learns the no-status branches; the stream recorder
+  widened to `thrownFields`, eight new wire cases per corpus (incl. the
+  OpenRouter-raw and `response.failed` no-throw pins), a `primary_stream_
+  tier3` arm red-first (frame before content → v4's `provider-code` trail
+  then the uncensored answer); the image helper and its raw-code sibling
+  repointed at `provider_error`'s wrap, five new `image-dialects` rows
+  red-first. Rust core + harness; the MOST CAPABLE tier for the seam.
+- **P4.123 — the wardrobe-tools avatar seam** (P4.D238 Tier 3 item 8 +
+  its (b)/(c) smalls): `work-orders/p4.123-wardrobe-tools-avatar-seam.md`
+  — the four v4 trigger sites (`wardrobe_create` on `equip_now` for the
+  RECIPIENT; wear/take_off via `notifyWardrobeChanged` on `appliedCount >
+  0`; archive on `wasEquipped`) run in the executor's async runners after
+  the writer closure resolves, over the existing trigger with v4's four
+  `caller_context` literals; a NEW executor-level differential over a
+  flag-ON fixture that dumps `background_jobs` (the committed `wardrobe_
+  tools` corpus is a verified no-op for the trigger and stays); the
+  trigger's inner reads as v4's fallback reads (two new `image_profiles`
+  twins — the round's one §S handoff); the two outfit-failure lines at
+  v4's ERROR level with `mode` on both arms. Rust core + harness;
+  Sonnet-class.
+- **P4.124 — the Rust smalls on unowned files** (P4.D225 / D226 / D228 /
+  D231 / D233 / D234 / D235 / D239 OPEN items): `work-orders/p4.124-rust-
+  smalls-fallback-reads-continuation-lines-group-checks.md` — the swallowed
+  pool failures in the understudy/routing/retry resolvers and `load_
+  profile_parameters`; `record_cheap_refusal` gated on `chatId`; the
+  harness driving `apply_autonomous_destructive_filter`; an executor-level
+  `list_email` pin; `ContextChat.chat_type` threaded (no raw SQL in
+  `off_scene.rs`), `chatType: null`, the `Some("")` truthiness, the five
+  unported continuation lines + the create path's ERROR, bug 172's scan
+  gate as a REAL `build_context_tier3` arm; `find_by_group_id` dropping
+  one bad row (the `LINK_ROW_DIVERGENCE` pin retired by VANISHING) and the
+  group exists-check carrying v4's Zod shape; `post_manual`'s unknown kind
+  and the restore/import `conciergeMode` enum; the retry-uncensored
+  409-vs-500 pair; the collapse logger's camelCase fields. Rust core +
+  harness; Sonnet-class with sub-agents, Opus for the oracle arm and the
+  continuation lines.
+- **P4.125 — the SPA smalls** (P4.D224 / D229 / D230 / D236 OPEN items):
+  `work-orders/p4.125-spa-smalls-soft-break-concierge-nits-memory-badge.md`
+  — the `text-replacement.ts` soft-break divergence fixed with the SAME
+  `triggerLeafText` seam the typeaheads use; the refusal wording gated on
+  `kind === 'conflict'` as v4 gates on 409; the dead settings-URL export;
+  `ConciergeDutyView` replaced by the landed DTO with ONE on-duty
+  derivation; the off-duty e2e restore in a `finally`; the memory badge as
+  v4's click-to-delete-and-re-extract button over the two dispatch verbs
+  that already exist (NO core change), on both cards, with a live beat.
+  Angular only, no cargo; Sonnet-class.
+- **P4.126 — the riders STACKED on P4.119** (P4.D234 OPEN (a) + NIT, P4.D235
+  NITs): `work-orders/p4.126-post-office-render-riders-stacked-on-p4119.md`
+  — runs on P4.119's branch after its close-out commit, by the same agent:
+  the four mail handlers' character read through a NEW `characters_read::
+  find_by_id_raw_or_none` (v4's "cannot find your postbox" arm, never the
+  stumbled catch) and their mount-store reads at v4's fallback layer (the
+  `assert_catch_lines` v5-only plant made UNREACHABLE — the divergence
+  VANISHED); `format_list_mail_results`' empty filter; `requestedConversation
+  Id` omitted as v4 omits it; the render / render-job lines' camelCase
+  fields. Stacked because every one of those files is P4.119's.
+
+**Fences:** no wire change (`api/types.rs` NOBODY; `api/engine.rs` P4.120
+only); `tools/executor.rs` P4.120's with P4.123's four marked `run_
+wardrobe_*` hunks; `primary_stream_tier3` P4.122's (P4.121 RECORD leg
+only), `orchestrator_tier3` P4.121's (P4.126 STOPs on any assert there);
+`services/dangerous_content/**` P4.124's (P4.122 reads the chokepoint
+only); `llm_fallback/**` NOBODY; `db/image_profiles.rs` P4.123's, `db/
+characters_read.rs` P4.126's, `db/chats_read.rs` NOBODY; `apps/web/**`
+P4.125's alone with `core-contract.ts` frozen; the committed pairs rebuilt
+by NOBODY (P4.123 delivers ONE new pair; P4.122 and P4.124 grow specs and
+corpora by addition). **Execution:** all seven branches in wave 1 (P4.126
+starts when P4.119 closes, on its branch); at most TWO Rust full gates at
+once (114 GB free at planning); cherry-pick order P4.124 → P4.123 → P4.122
+→ P4.121 → P4.120 → P4.119+P4.126 (whole) → P4.125; the unifier re-runs
+the full sweep, Tier R, the workspace suite, the two cross-lane families
+(`primary_stream_tier3`, `orchestrator_tier3`), the SPA gate and the full
+Playwright suite from the `97b25fc53` pin, and folds the §S handoff
+(P4.124's two `load_profile_parameters` lines onto P4.123's twins).
+**Left out, by name:** the OpenRouter SDK-path + Google 4xx trigger RULING
+(P4.118 Tier 3 items 10–11 — the human's; P4.122 pins nothing new about
+it); the picture arm's saved-trail typed-parse drop (`api/chat_media.rs`,
+P4.D228 — P4.120's file this round; next round); the sidebar memory-badge
+variant (P4.125 Tier 3); `9ff4bbd8e`'s wardrobe image-analysis vertical
+(banked by pointer); the reclamation migrations (the standing deferral
+class); the conceal-marker dogfood arm and the standing 💸 queue (the next
+dogfood pass, after this round). **NEXT after this round unifies:** the
+owed dogfood pass over the round's 💸 items (each order's Acceptance names
+its own), then a drift catch-up when v4 moves (`/driftcheck` first).
+
 ## The `acadcc7cd` Concierge-overhaul drift catch-up round (P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233) — ORDERED 2026-09-25, UNIFIED 2026-09-28
 
 **UNIFIED on `main` (2026-09-28) — ALL NINE LANES; the oracle baseline MOVES
