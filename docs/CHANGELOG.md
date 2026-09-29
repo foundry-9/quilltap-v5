@@ -103,6 +103,11 @@ Tests: `appearance_sanitize_gate_tier3` grows 30 → 40 rows (conceal changed/ec
 _Versions: core 0.0.1090._
 
 The first half of the story-background drape. v4 `97b25fc53` interpolates a single-quoted `CONCEALMENT_MARKER` into the moderated intimacy block, which the prompt generator refused (it throws on any `${`). `gen-image-scene-prompts.mjs` now resolves exactly one named single-quoted constant into exactly one template body, count-checked, and still throws on any other interpolation. It also emits the marker (59 UTF-16 units) and the new `APPEARANCE_CONCEALMENT_PROMPT` (1490) as their own consts. `prompt_text.rs` is regenerated against a `97b25fc53` pin: the moderated block grows 1968 → 2505 units and the assembled concealed story prompt 5114 → 5651. The redress sanitizer prompt stays at 999 and the candid block is unchanged. New unit pins: the inlined marker agrees with the const (exactly once, inside v4's quotes), and only the moderated crafter carries the requirement. The generator's exactly-once check was mutation-proven both ways (a doubled token and a doubled allow-list entry each throw). The story family stays red at the `97b25fc53` oracle until the sanitize mode lands in the next commit.
+#### 2026-09-28 — docs(help): re-vendor the whole help tree at v4 `97b25fc53` (P4.D238 rider)
+
+_No crate versions bumped._
+
+Copies v4's `help/` tree at `97b25fc53` over v5's. Thirteen pages change, none added or removed, so the count stays 129: `chat-settings-ai-services.md` (`04d6c9d52`); `character-optimizer.md`, `character-system-prompts.md`, `prompts.md` (`c3eefa752`); `chat-settings.md`, `chats.md`, `data-retention.md`, `embedding-profiles.md`, `scriptorium.md` (`f7f3d7bf0`); `post-office.md` (`39bc98ffc` + `12c336fad`); `wardrobe.md` (`9ff4bbd8e`); `story-backgrounds.md`, `the-concierge.md` (`97b25fc53`). `diff -rq` against the pin is empty. `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, pass; the embed guard and both host help-boot tests pass unmoved. Reverting `wardrobe.md` to its old bytes turns both oracle families red while the embed guard stays green.
 
 #### 2026-09-28 — docs(porting): order the `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118)
 
