@@ -153723,3 +153723,195 @@ from quoted literals.)
   inside v4's quotes; 59 / 2505 / 1490 / 999) and
   `only_the_moderated_crafter_carries_the_per_character_requirement` (v4
   `image-scene-concealment.test.ts` cases 1–2).
+
+### Unit 2 — the sanitize mode, the three-way merge, the drape (commit B)
+
+**Core** (`services/image_scene_tasks.rs`, `services/appearance_resolution.rs`,
+`services/story_background_job.rs`, ONE argument in `tools/generate_image.rs`):
+- `AppearanceSanitizeMode { Redress (default), Conceal }` with `as_str()`
+  (§S.4) and `SanitizedAppearance { …, undressed: Option<bool> }`.
+  `sanitize_appearance(…, mode)` picks the prompt by strict `Conceal`; the
+  parser gives `Some(v == Bool(true))` in conceal and `None` in redress; the
+  fallback gives `None` in both modes.
+- `[CheapLLM] Sanitizing appearances` DEBUG FIRST (target
+  `quilltap::cheap_llm`, the `[CheapLLM]` family's), with fields in v4's
+  order `context, chat_id, mode, count`.
+- `ResolvedCharacterAppearance.needs_concealment: bool`. v4 only ever writes
+  `true` or leaves it absent, so a plain bool suffices. Three struct literals
+  in core plus the gate test's one.
+- `sanitize_appearances_if_needed(…, mode)`. The merge was REWRITTEN
+  three-way (not extended).
+- v4's three absent lines restored: the rule-3 INFO with `categoriesJson`
+  per the P4.91 convention, the rule-5 INFO with `mode` LAST, and the
+  failure WARN.
+- **The classify-`catch` measurement (Tier 2 item 8): UNREACHABLE in v4.**
+  `classifyContent` is `trackActivity('danger', runClassification)`, and
+  `runClassification` is a total try/catch returning `safeFallback`. The
+  activity bookkeeping outside it (`beginActivity`/`end`) swallows its own
+  `process.send` errors. There is nothing to port; a code comment records
+  it.
+- Story job: `Conceal` + v4's why-comment. The marker is pushed LAST via the
+  imported `prompt_text::CONCEALMENT_MARKER`, and the DEBUG
+  `[StoryBackground] Character flagged for cinematic concealment {context,
+  job_id, character_id}` fires once per flagged character.
+- `generate_image.rs`: `AppearanceSanitizeMode::Redress`, fully qualified so
+  the diff is exactly one line.
+- Unit pins: the mode-dependent parse (strict, redress drops it, fallback
+  keyless in both modes), the two prompts' shared first sentence, and the
+  DEBUG on a successful conceal call AND on a canned-MISS failure (first
+  line, key dropped when `chatId` is absent). There is no silence leg: v4
+  logs on every call.
+
+**`appearance_sanitize_gate_tier3`** (DB-free oracle). The corpus grows
+30 → 40 (AGCASE31–40): conceal with changed text and one undressed;
+conceal with an unchanged ECHO and undressed; conceal with nobody
+undressed; conceal with `"true"`/`1`; conceal junk; redress with a stray
+`true`; conceal with rule 4 routing uncensored (no sanitize call); a text
+ending in `.`; a thrown sanitize in conceal AND in the default mode (closes
+the header's N3 half; the classify half is unreachable, above).
+
+The oracle gains `mode` (passed as `c.mode`, so an absent mode reaches v4's
+own default parameter), an `undressed` splice, `sanitizedTextOverride`,
+`sanitizeThrows`, a second-probe `concealPromptCalls` (`Do NOT invent
+clothing`), the `needsConcealment` projection, and `logLines` (a delegating
+spy on v4's REAL logger).
+
+The Rust side is now a plain `#[test]` with a current-thread runtime inside
+`captured_with` per case. It compares `needsConcealment` (asserting the
+oracle never writes `false`), the conceal-prompt count, and the log lines IN
+ORDER, v4 keys mapped to v5 fields (`FIELD_MAP`). The failure WARN's
+`error` VALUE is compared by presence only: v4's is the mock's thrown
+message, v5's the canned-miss text. New coverage floors: flagged ≥1;
+flagged-and-unsanitized ≥1; conceal prompt on ≥5 rows; the WARN arm; ≥60
+log lines. The run compares 64.
+- Regen AS RUN (DB-free, so no fixture-vintage rule):
+  `/tmp/p4d239/gate.sh /tmp/qt-v4-pin-p4d239-97b25fc53 /tmp/p4d239/oracle-gate-pin.ndjson`.
+  This is the committed header recipe, staged at `/tmp/p4d239/gate-stage-*`
+  and run from the pin. 79 lines. `grep -c 'Do NOT invent clothing'` = 6 at
+  the pin and 0 at the baseline, and `"mode"` = 0 at the baseline.
+- **Red-first:** v5 `main`'s UNPORTED gate test (a detached v5 worktree at
+  `e361879d3` with the grown corpus copied in) against the pin oracle is
+  RED at the first conceal row: `conceal_changed_text_one_undressed:
+  physicalDescription`. The old test ignores the mode, so the conceal key
+  misses and the originals come back. Green after the port.
+
+**`story_background_job_tier3`** (real-DB, cross-vintage):
+- Three chats cloned from `moderated_sanitize_profile_configured`:
+  `conceal_marks_undressed` (changed text → `…, unclothed. MARKER`),
+  `conceal_echo_keeps_clothing` (echo → `…. Wearing: a moss-green cloak and
+  nothing else. MARKER`), and `conceal_period_doubles` (`…wearing pearls..
+  MARKER`).
+- Each chat has its own `resolvedClothing`. ⚠ Without it, all four
+  sanitize-reaching chats sent byte-identical sanitize messages (the
+  message carries no STORYCASE marker), the FIRST recorded answer won the
+  shared canned key, and Rust's process-global classification cache would
+  have collided. It was caught on the first regen: one canned sanitize row
+  where four were expected.
+- The oracle's sanitize branch answers per chat (`sanitizeAnswer`).
+  `concealmentLogs` records v4's real DEBUG calls. The Rust side captures
+  the handler run and compares them, fields in order and `jobId` remapped
+  to `job-1`. A floor requires ≥3 flagged chats.
+- Regen AS RUN (the TWO-STEP recipe, §R.3):
+  `/tmp/p4d239/story.sh /tmp/qt-v4-pin-p4d239-97b25fc53 /tmp/p4d239/oracle-story-pin.ndjson`.
+  That script builds the fixture with
+  `cd /tmp/qt-v4-fix-p4d239-acadcc7cd && node --import tsx <WT>/harness/oracle/fixtures/build-story-background-job-fixture.ts`
+  (`QT_FIXTURE_STORY_MAIN/MOUNT=/tmp/p4d239/story-{main,mount}.db`), then
+  runs the committed jest line from `/tmp/qt-v4-pin-p4d239-97b25fc53`. 126
+  lines.
+- **Cross-vintage confirmation (recorded once):** the oracle's stderr line
+  `vintage: chats.renderedMarkdown present=true` is read from the first
+  case's copy AFTER the `97b25fc53` handler ran. The target-pin oracle opens
+  the `acadcc7cd`-vintage fixture and keeps the column; the open is
+  confirmed. The line is stderr only, never in the NDJSON.
+- **Red-first:** the same unported v5 `main` worktree is GREEN against a
+  BASELINE oracle (fixture + oracle both at `acadcc7cd`, all 26 chats
+  including the three new ones — at the baseline the 8th argument is
+  ignored), and RED against the pin oracle (fail-fast at the first sorted
+  chat, `appearance_retry`).
+- **Attribution, one fixture:** a baseline oracle re-run on the SAME
+  fixture copy as the pin oracle. Exactly 24 canned completion keys move
+  (20 concealed crafts + 4 sanitize), and 24 of 26 result rows differ (all
+  but `forced_abandoned_locked` / `forced_abandoned_no_understudy`, which
+  never craft). A first comparison across two separate fixture builds had
+  also moved 16 resolve-appearance keys. That was a builder-minted
+  physical-description id, not drift.
+- ⚠ The committed story oracle un-mocks `logLLMCall`, so it DOES write
+  `llm_logs` (the round's "every jest oracle writes zero rows" rule has this
+  standing exception, which predates the lane).
+
+**Neutrality (`image_generation_tier3` + `image_generate_route`, RE-RUN
+ONLY):**
+- Fixture built at `acadcc7cd`, oracles run at `97b25fc53`:
+  `/tmp/p4d239/imggen.sh /tmp/qt-v4-pin-p4d239-97b25fc53 pin`. The script
+  stopped after its first step because of the recorded jest non-exit, so
+  the route oracle was run by hand with the header's jest line.
+- The imggen oracle reaches the sanitizer 3× (all REDRESS, conceal = 0).
+- GREEN on unported v5 `main` AND on the port against the same pin oracles
+  (58 / 75 lines).
+- ⚠ The imggen jest wrote its complete NDJSON at once and then never exited,
+  even with `--forceExit` (the P4.D228 note). It was stopped by PID after
+  checking the file (37 results).
+- The fixture paths are lane-private (`/tmp/p4d239/imggen-pin-*`). The
+  shared `/tmp/qt-imggen-*` files were left untouched.
+
+**Mutation proofs** (file-backup reverts, each reddening exactly its target):
+
+| # | mutation | red |
+|---|---|---|
+| M1 | the marker doubled in the v4 source / the allow-list doubled | the generator throws (`found 2` / `found 0`) |
+| M2 | the marker re-typed with a trailing space in the builder | story: `conceal_echo_keeps_clothing` (craft canned MISS) |
+| M3 | `undressed` read JS-truthy | gate: `conceal_undressed_string_true_and_one_are_false: needsConcealment` |
+| M4 | the undressed arm also sets `was_sanitized` | gate: `conceal_unchanged_echo_undressed_keeps_clothing: wasSanitized` (story stays green — the builder never reads it, as in v4) |
+| M5 | `..` de-duplicated | story: `conceal_period_doubles` |
+| M6 | `generate_image` passes `Conceal` | `image_generation_tier3`: `detect_only_sanitizes_appearance` |
+| M7 | the sanitizer DEBUG moved after the call | core: `sanitize_logs_its_debug_even_when_the_call_fails`. The SUCCESS-path pin SURVIVES M7 (the executor logs nothing on success), so its "FIRST" comment was an overclaim and has been re-worded to put the order proof on the failure arm |
+| + | rule-5 INFO `mode` moved before `character_count` | gate: the log-line comparand (`prescreen_moderated_stays_dangerous`) — the field ORDER is compared |
+
+**Deferred (Tier 3, loud):**
+- `help/story-backgrounds.md` + `help/the-concierge.md` are P4.D238's tree
+  copy. Pin md5s: `6b6c25c1cb426f1f35b3d2c8006ecdb4` /
+  `6b2935820ba412aed5431d4680e6bf1b` (v5 today: `9399cf17…` / `0b728297…`).
+- v4's story-job catch WARN `Appearance sanitization failed, using
+  unsanitized` stays UNREACHABLE on v5's infallible gate (pre-existing).
+- The version stamps are NO-PORT.
+
+**§R.9 mirror pre-list:** `97b25fc53` touches no `docs/developer/` path
+(README, `docs/CHANGELOG.md`, two help pages, tests, `lib/`, the stamps), so
+this lane moves NO `docs/v4/` mirror path beyond the standing
+`docs/v4/CHANGELOG.md` housekeeping item.
+
+**For the unifier: one open question, not measured.** In the core unit pin,
+the executor's `Task failed` WARN renders `chat_id=` empty because that test
+builds `CheapLlmTaskExecutor::new()`. The story harness builds a per-case
+executor with `CheapLlmLogConfig { chat_id: Some(…) }`. The PRODUCTION
+`StoryBackgroundGenerationHandler` holds ONE registration-time executor
+(`story_background_job.rs:1166`). Whether the host gives it the job's chat
+id was NOT measured here. v4 threads `chatId` per call into
+`executeCheapLLMTask` for every cheap task, so this is worth a look. It
+predates the lane and is outside its files.
+
+**Gate (the commit-B tree, `CARGO_INCREMENTAL=0 TZ=UTC`, one logged chain):**
+- `cargo fmt --all --check` clean. `cargo clippy --workspace --all-targets
+  -- -D warnings` clean, plain AND with
+  `--features quilltap-core/native-transport`. `cargo build --workspace
+  --release` clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture`, env block =
+  exactly this lane's eight vars (`QT_ORACLE_APPEARANCE_GATE`,
+  `QT_ORACLE_STORY` + `QT_FIXTURE_STORY_MAIN/MOUNT`, `QT_ORACLE_IMGGEN`,
+  `QT_ORACLE_IMGGEN_ROUTE` + `QT_FIXTURE_IMGGEN_MAIN/MOUNT`, all under
+  `/tmp/p4d239/`). Result: **644 binaries / 3,863 passed / 1 failed / 3
+  ignored**.
+  - The one red is the standing `builtin_prompt_templates_guard`
+    (`the_vendored_catalogue_equals_v4s_shipped_prompts`). It reads the LIVE
+    checkout, where `c3eefa752` rewrote the prompts; that is P4.D237's, and
+    §R.5 names it.
+  - The four lane families RAN (0.04 s / 0.73 s / 2.05 s / 0.21 s; the gate
+    compared 40 cases and 64 log lines). The `SKIP:` lines are all families
+    outside the block.
+  - Guards and censuses unmoved: `dispatch_wrong_type_census`,
+    `help_tree_embed_guard`, `host_help_docs_boot`, the two web-edge
+    guards, `zod_version_guard`, `provider_sdk_version_guard`, both
+    write-site censuses, `qtap_schema_embed_guard`,
+    `public_schemas_vendor_guard`, `spelling_guard`.
+  - `help_tree_equivalence` SKIPped (var withheld; P4.D238's family).
+- Tier R is not this lane's: no CLI-linked file was touched.

@@ -32,7 +32,22 @@
     "but jest.setup no-ops the logging service and un-mocking it would need this",
     "family to provision a whole instance for a projection two other families",
     "(danger_gatekeeper_tier3, story_background_job_tier3) already diff. Recorded",
-    "here so the omission is a decision and not an oversight."
+    "here so the omission is a decision and not an oversight.",
+    "",
+    "[97b25fc53] P4.D239 — the drape. Rows AGCASE31..40 pose the sanitize MODE",
+    "(`mode`, the 8th argument; absent = v4's `redress` default) and the conceal",
+    "reply's `undressed` flag (`undressed`, spliced per character into the answer",
+    "whatever the mode). They pin: the three-way merge (changed + undressed; an",
+    "unchanged ECHO + undressed keeps its clothing with `wasSanitized` false; changed",
+    "+ not undressed); v4's STRICT `=== true` (`\"true\"` and `1` read false); the",
+    "junk fallback carrying no `undressed` in conceal; redress dropping a stray",
+    "`true`; rule 4 skipping the sanitize call in conceal too; a text ending in `.`",
+    "(the story builder's `..` is pinned in the story family — here the text rides",
+    "through unchanged); and `sanitizeThrows` — v4's `Sanitization failed` WARN arm",
+    "in BOTH modes (the N3 gap the Rust header recorded). Comparands gained:",
+    "`needsConcealment` (present only when true), `concealPromptCalls` (the mock's",
+    "second probe — which prompt the mode picked), and `logLines` (v4's REAL logger",
+    "calls for the gate + the sanitizer's pre-call DEBUG, keys in v4's order)."
   ],
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "userId": "a0000000-0000-4000-8000-0000000000a1",
@@ -608,6 +623,249 @@
       "isDangerousChat": false,
       "routesDangerousToUncensored": false,
       "classification": "dangerous"
+    },
+    {
+      "label": "conceal_changed_text_one_undressed",
+      "token": "AGCASE31",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous",
+      "mode": "conceal",
+      "undressed": {
+        "c0000000-0000-4000-8000-000000000001": true,
+        "c0000000-0000-4000-8000-000000000002": false
+      },
+      "sanitizedTextOverride": {
+        "c0000000-0000-4000-8000-000000000001": "a woman with copper hair, unclothed",
+        "c0000000-0000-4000-8000-000000000002": "a tall woman with dark braided hair, in a silk slip"
+      }
+    },
+    {
+      "label": "conceal_unchanged_echo_undressed_keeps_clothing",
+      "token": "AGCASE32",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous",
+      "mode": "conceal",
+      "sanitizeEchoes": true,
+      "undressed": {
+        "c0000000-0000-4000-8000-000000000001": true
+      }
+    },
+    {
+      "label": "conceal_changed_text_nobody_undressed",
+      "token": "AGCASE33",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous",
+      "mode": "conceal",
+      "undressed": {
+        "c0000000-0000-4000-8000-000000000001": false,
+        "c0000000-0000-4000-8000-000000000002": false
+      }
+    },
+    {
+      "label": "conceal_undressed_string_true_and_one_are_false",
+      "token": "AGCASE34",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous",
+      "mode": "conceal",
+      "sanitizeEchoes": true,
+      "undressed": {
+        "c0000000-0000-4000-8000-000000000001": "true",
+        "c0000000-0000-4000-8000-000000000002": 1
+      }
+    },
+    {
+      "label": "conceal_junk_answer_falls_back_without_the_key",
+      "token": "AGCASE35",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous",
+      "mode": "conceal",
+      "sanitizeJunk": true
+    },
+    {
+      "label": "redress_explicit_drops_a_stray_undressed",
+      "token": "AGCASE36",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous",
+      "mode": "redress",
+      "undressed": {
+        "c0000000-0000-4000-8000-000000000001": true,
+        "c0000000-0000-4000-8000-000000000002": true
+      }
+    },
+    {
+      "label": "conceal_dangerous_but_routes_uncensored_makes_no_sanitize_call",
+      "token": "AGCASE37",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": true,
+      "classification": "dangerous",
+      "mode": "conceal"
+    },
+    {
+      "label": "conceal_text_ending_in_a_period",
+      "token": "AGCASE38",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous",
+      "mode": "conceal",
+      "undressed": {
+        "c0000000-0000-4000-8000-000000000001": true
+      },
+      "sanitizedTextOverride": {
+        "c0000000-0000-4000-8000-000000000001": "unclothed, wearing pearls."
+      }
+    },
+    {
+      "label": "conceal_sanitize_throws_passes_through",
+      "token": "AGCASE39",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous",
+      "mode": "conceal",
+      "sanitizeThrows": true
+    },
+    {
+      "label": "redress_default_sanitize_throws_passes_through",
+      "token": "AGCASE40",
+      "concierge": {
+        "enabled": true,
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false
+        }
+      },
+      "chat": {
+        "conciergeMode": "moderated"
+      },
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous",
+      "sanitizeThrows": true
     }
   ]
 }

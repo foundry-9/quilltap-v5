@@ -496,16 +496,77 @@ pub struct AppearanceText {
     pub appearance_text: String,
 }
 
+/// How the Concierge's appearance pass treats an explicit appearance bound for
+/// a moderated image provider (v4 `AppearanceSanitizeMode`, `97b25fc53`).
+/// `Redress` swaps explicit states for neutral clothing — for callers with no
+/// concealment guidance downstream. `Conceal` keeps the character's state
+/// honest and flags an undressed one, for the story-background crafter, whose
+/// concealed guidance drapes them instead.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AppearanceSanitizeMode {
+    /// v4's default (`mode = 'redress'`).
+    #[default]
+    Redress,
+    Conceal,
+}
+
+impl AppearanceSanitizeMode {
+    /// v4's string literal (`'redress'` / `'conceal'`), as logged.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Redress => "redress",
+            Self::Conceal => "conceal",
+        }
+    }
+}
+
+/// One character's appearance after the Concierge's sanitization pass (v4
+/// `SanitizedAppearance`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct SanitizedAppearance {
+    pub character_id: String,
+    pub appearance_text: String,
+    /// v4 `undressed?` — present ONLY on a parsed `Conceal` reply (strict
+    /// `=== true`, so `"true"` / `1` / absent all give `Some(false)`); `None`
+    /// in `Redress` even when the model answered `true`, and `None` in BOTH
+    /// modes on the parse-failure fallback (v4 returns the input array).
+    pub undressed: Option<bool>,
+}
+
+impl SanitizedAppearance {
+    /// The fallback's shape: the input unchanged, no `undressed` key.
+    fn from_original(a: &AppearanceText) -> Self {
+        Self {
+            character_id: a.character_id.clone(),
+            appearance_text: a.appearance_text.clone(),
+            undressed: None,
+        }
+    }
+}
+
 /// v4 `sanitizeAppearance`: send the JSON array, parse the sanitized reply
-/// (returning the originals on any parse failure).
+/// (returning the originals on any parse failure). `mode` picks the system
+/// prompt (strict `=== 'conceal'`) and whether the reply's `undressed` is read.
 pub async fn sanitize_appearance<C: CompletionProvider>(
     executor: &CheapLlmTaskExecutor,
     completion: &C,
     appearances: &[AppearanceText],
     selection: &CheapLlmSelection,
     _user_id: &str,
-    _chat_id: Option<&str>,
-) -> CheapLlmTaskResult<Vec<AppearanceText>> {
+    chat_id: Option<&str>,
+    mode: AppearanceSanitizeMode,
+) -> CheapLlmTaskResult<Vec<SanitizedAppearance>> {
+    // v4 logs FIRST — before the messages are built and before the call — so
+    // the line fires on every call, including one whose LLM call then fails.
+    tracing::debug!(
+        target: "quilltap::cheap_llm",
+        context = "cheap-llm-tasks.sanitize-appearance",
+        chat_id = chat_id,
+        mode = mode.as_str(),
+        count = appearances.len(),
+        "[CheapLLM] Sanitizing appearances"
+    );
+
     // v4 `JSON.stringify(appearances)` — the compact serialization, in field
     // order `characterId, appearanceText` (a serde struct fixes key order).
     #[derive(serde::Serialize)]
@@ -524,8 +585,12 @@ pub async fn sanitize_appearance<C: CompletionProvider>(
         .collect();
     let user_content = serde_json::to_string(&wire).unwrap_or_else(|_| "[]".to_string());
 
+    let system = match mode {
+        AppearanceSanitizeMode::Conceal => prompt_text::APPEARANCE_CONCEALMENT_PROMPT,
+        AppearanceSanitizeMode::Redress => prompt_text::APPEARANCE_SANITIZATION_PROMPT,
+    };
     let messages = vec![
-        CompletionMessage::system(prompt_text::APPEARANCE_SANITIZATION_PROMPT),
+        CompletionMessage::system(system),
         CompletionMessage::user(user_content),
     ];
 
@@ -535,7 +600,7 @@ pub async fn sanitize_appearance<C: CompletionProvider>(
             completion,
             selection,
             messages,
-            move |content: &str| parse_sanitize_result(content, &originals),
+            move |content: &str| parse_sanitize_result(content, &originals, mode),
             None,
             None,
             None,
@@ -546,20 +611,38 @@ pub async fn sanitize_appearance<C: CompletionProvider>(
 }
 
 /// v4's sanitize parser: strip fences, parse the array, coerce; on any failure
-/// (non-array or JSON error) return the originals.
-fn parse_sanitize_result(content: &str, originals: &[AppearanceText]) -> Vec<AppearanceText> {
+/// (non-array or JSON error) return the originals — with NO `undressed` key in
+/// either mode. A parsed item carries `undressed` only in `Conceal`, and only
+/// a JSON `true` reads as true (v4 `item.undressed === true`).
+fn parse_sanitize_result(
+    content: &str,
+    originals: &[AppearanceText],
+    mode: AppearanceSanitizeMode,
+) -> Vec<SanitizedAppearance> {
+    let fallback = || {
+        originals
+            .iter()
+            .map(SanitizedAppearance::from_original)
+            .collect()
+    };
     let clean = strip_code_fences(content);
     let parsed: serde_json::Value = match serde_json::from_str(&clean) {
         Ok(v) => v,
-        Err(_) => return originals.to_vec(),
+        Err(_) => return fallback(),
     };
     let Some(arr) = parsed.as_array() else {
-        return originals.to_vec();
+        return fallback();
     };
     arr.iter()
-        .map(|item| AppearanceText {
+        .map(|item| SanitizedAppearance {
             character_id: js_string_or_empty(item.get("characterId")),
             appearance_text: js_string_or_empty(item.get("appearanceText")),
+            undressed: match mode {
+                AppearanceSanitizeMode::Conceal => {
+                    Some(item.get("undressed") == Some(&serde_json::Value::Bool(true)))
+                }
+                AppearanceSanitizeMode::Redress => None,
+            },
         })
         .collect()
 }
@@ -1040,16 +1123,189 @@ mod tests {
             character_id: "c1".into(),
             appearance_text: "orig".into(),
         }];
-        // Non-array → originals.
-        assert_eq!(parse_sanitize_result("{}", &originals), originals);
-        // Garbage → originals.
-        assert_eq!(parse_sanitize_result("not json", &originals), originals);
+        let fallback = vec![SanitizedAppearance {
+            character_id: "c1".into(),
+            appearance_text: "orig".into(),
+            undressed: None,
+        }];
+        // [97b25fc53] The fallback carries NO `undressed` key in EITHER mode
+        // (v4 returns the input array).
+        for mode in [
+            AppearanceSanitizeMode::Redress,
+            AppearanceSanitizeMode::Conceal,
+        ] {
+            // Non-array → originals.
+            assert_eq!(parse_sanitize_result("{}", &originals, mode), fallback);
+            // Garbage → originals.
+            assert_eq!(
+                parse_sanitize_result("not json", &originals, mode),
+                fallback
+            );
+        }
         // Valid array is parsed.
         let out = parse_sanitize_result(
             r#"[{"characterId":"c1","appearanceText":"safe"}]"#,
             &originals,
+            AppearanceSanitizeMode::Redress,
         );
         assert_eq!(out[0].appearance_text, "safe");
+    }
+
+    /// v4 `image-scene-concealment.test.ts` cases 3 + 4, driven through the
+    /// parser: redress drops a reply's `undressed: true`; conceal reads it
+    /// strictly (`=== true`), so a missing key, `"true"` and `1` are all
+    /// PRESENT and `false`.
+    #[test]
+    fn sanitize_parse_reads_undressed_only_in_conceal_and_strictly() {
+        let reply = r#"[{"characterId":"a","appearanceText":"unclothed","undressed":true},{"characterId":"b","appearanceText":"a coat"},{"characterId":"c","appearanceText":"x","undressed":"true"},{"characterId":"d","appearanceText":"y","undressed":1}]"#;
+        let redress = parse_sanitize_result(reply, &[], AppearanceSanitizeMode::Redress);
+        assert!(redress.iter().all(|s| s.undressed.is_none()));
+        let conceal = parse_sanitize_result(reply, &[], AppearanceSanitizeMode::Conceal);
+        assert_eq!(
+            conceal.iter().map(|s| s.undressed).collect::<Vec<_>>(),
+            vec![Some(true), Some(false), Some(false), Some(false)]
+        );
+    }
+
+    /// v4 `image-scene-concealment.test.ts` cases 3 + 4, the prompt half: the
+    /// default mode keeps the redress prompt; conceal swaps in the one that
+    /// forbids inventing clothing. Both open with the SAME sentence (the
+    /// reason every oracle mock needs a second probe to tell them apart).
+    #[test]
+    fn the_two_sanitizer_prompts_differ_past_a_shared_first_sentence() {
+        let first = "You are a content safety filter for image generation prompts.";
+        let redress = prompt_text::APPEARANCE_SANITIZATION_PROMPT;
+        let conceal = prompt_text::APPEARANCE_CONCEALMENT_PROMPT;
+        assert!(redress.starts_with(first) && conceal.starts_with(first));
+        assert!(redress.contains("\"wearing nothing\" → \"wearing casual clothes\""));
+        assert!(conceal.contains("Do NOT invent clothing"));
+        assert!(!conceal.contains("wearing casual clothes"));
+        assert_eq!(
+            AppearanceSanitizeMode::default(),
+            AppearanceSanitizeMode::Redress
+        );
+        assert_eq!(AppearanceSanitizeMode::Redress.as_str(), "redress");
+        assert_eq!(AppearanceSanitizeMode::Conceal.as_str(), "conceal");
+    }
+
+    fn sanitize_selection() -> CheapLlmSelection {
+        CheapLlmSelection {
+            provider: "ANTHROPIC".into(),
+            model_name: "cheap".into(),
+            base_url: None,
+            connection_profile_id: Some("cur".into()),
+            is_local: false,
+            profile_parameters: None,
+        }
+    }
+
+    /// Drive `sanitize_appearance` on a current-thread runtime INSIDE the
+    /// thread-scoped capture, returning the result and every line logged.
+    fn run_sanitize_captured(
+        provider: &crate::model::completion::CannedCompletionProvider,
+        appearances: &[AppearanceText],
+        chat_id: Option<&str>,
+        mode: AppearanceSanitizeMode,
+    ) -> (CheapLlmTaskResult<Vec<SanitizedAppearance>>, Vec<String>) {
+        // The executor starts an activity span; the registry is process-global
+        // (the P4.76 remedy — see `compression.rs`).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        crate::test_support::captured_with(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let exec = CheapLlmTaskExecutor::new();
+                    sanitize_appearance(
+                        &exec,
+                        provider,
+                        appearances,
+                        &sanitize_selection(),
+                        "u",
+                        chat_id,
+                        mode,
+                    )
+                    .await
+                })
+        })
+    }
+
+    const SANITIZE_DEBUG: &str = "DEBUG quilltap::cheap_llm [CheapLLM] Sanitizing appearances";
+
+    /// [97b25fc53] v4's pre-call DEBUG: on a SUCCESSFUL conceal call it carries
+    /// v4's four fields in v4's ORDER (`context, chatId, mode, count`), and the
+    /// conceal prompt is what reaches the wire (the canned key is exact).
+    #[test]
+    fn sanitize_logs_its_debug_first_on_success() {
+        let input = vec![AppearanceText {
+            character_id: "c1".into(),
+            appearance_text: "naked".into(),
+        }];
+        let messages = vec![
+            CompletionMessage::system(prompt_text::APPEARANCE_CONCEALMENT_PROMPT),
+            CompletionMessage::user(r#"[{"characterId":"c1","appearanceText":"naked"}]"#),
+        ];
+        let provider = crate::model::completion::CannedCompletionProvider::new().with_response(
+            "ANTHROPIC",
+            "cheap",
+            Some(0.3),
+            &messages,
+            r#"[{"characterId":"c1","appearanceText":"unclothed","undressed":true}]"#,
+            None,
+        );
+        let (res, lines) = run_sanitize_captured(
+            &provider,
+            &input,
+            Some("chat-1"),
+            AppearanceSanitizeMode::Conceal,
+        );
+        assert!(res.success, "{:?}", res.error);
+        assert_eq!(res.result.unwrap()[0].undressed, Some(true));
+        let debug: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.starts_with(SANITIZE_DEBUG))
+            .collect();
+        assert_eq!(debug.len(), 1, "{lines:#?}");
+        assert!(
+            debug[0].ends_with(
+                " context=cheap-llm-tasks.sanitize-appearance chat_id=chat-1 mode=conceal count=1"
+            ),
+            "{}",
+            debug[0]
+        );
+        // (The pre-call ORDER is proven on the failure arm below, where the
+        // executor logs after the call — a successful call logs nothing else
+        // here, so this test cannot see a DEBUG moved after the call; M7
+        // measured that.)
+    }
+
+    /// [97b25fc53] The DEBUG fires BEFORE the LLM call, so a call that then
+    /// fails (a canned MISS — the provider has no answer) still logs it, and
+    /// logs it first. An absent `chatId` drops the key (v4 `undefined`). There
+    /// is no silence leg: v4 logs it on every call.
+    #[test]
+    fn sanitize_logs_its_debug_even_when_the_call_fails() {
+        let input = vec![
+            AppearanceText {
+                character_id: "c1".into(),
+                appearance_text: "a".into(),
+            },
+            AppearanceText {
+                character_id: "c2".into(),
+                appearance_text: "b".into(),
+            },
+        ];
+        let provider = crate::model::completion::CannedCompletionProvider::new();
+        let (res, lines) =
+            run_sanitize_captured(&provider, &input, None, AppearanceSanitizeMode::Redress);
+        assert!(!res.success);
+        assert!(lines[0].starts_with(SANITIZE_DEBUG), "{lines:#?}");
+        assert!(
+            lines[0].ends_with(" context=cheap-llm-tasks.sanitize-appearance mode=redress count=2"),
+            "{}",
+            lines[0]
+        );
     }
 
     #[test]

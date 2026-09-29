@@ -48,8 +48,9 @@ use crate::services::dangerous_content::resolver::resolve_concierge_settings;
 use crate::services::image_job_common as common;
 use crate::services::image_job_storage::write_lantern_background_to_mount_store;
 use crate::services::image_scene_tasks::{
-    craft_story_background_prompt, derive_scene_context, ChatMessage, DeriveSceneContextInput,
-    StoryBackgroundCharacter, StoryBackgroundPromptContext,
+    craft_story_background_prompt, derive_scene_context, prompt_text::CONCEALMENT_MARKER,
+    AppearanceSanitizeMode, ChatMessage, DeriveSceneContextInput, StoryBackgroundCharacter,
+    StoryBackgroundPromptContext,
 };
 use crate::services::lantern_notifications::{
     post_lantern_image_notification, LanternNotificationKind, LanternPostParams,
@@ -545,6 +546,11 @@ where
                 &cheap_selection,
                 user_id,
                 Some(&payload.chat_id),
+                // [97b25fc53] This crafter carries the concealment guidance, so
+                // an undressed character is flagged for draping rather than
+                // re-dressed — the re-dressed text would hand the crafter a
+                // different scene.
+                AppearanceSanitizeMode::Conceal,
             )
             .await;
             resolved_appearances = Some(sanitized);
@@ -568,6 +574,20 @@ where
                     let mut parts = vec![format!("{gender_prefix}{}", r.physical_description)];
                     if !r.clothing_description.is_empty() {
                         parts.push(format!("Wearing: {}", r.clothing_description));
+                    }
+                    // [97b25fc53] The marker goes LAST so the crafter prompt's
+                    // "description ends with" claim is true. Joined by ". " with
+                    // NO trailing-period de-dup: a sanitized text ending in "."
+                    // yields ".." before the marker — v4's output, kept.
+                    if r.needs_concealment {
+                        parts.push(CONCEALMENT_MARKER.to_string());
+                        tracing::debug!(
+                            target: "quilltap::story_background",
+                            context = "background-jobs.story-background",
+                            job_id = job_id,
+                            character_id = char_id,
+                            "[StoryBackground] Character flagged for cinematic concealment"
+                        );
                     }
                     parts.join(". ")
                 }

@@ -30,7 +30,34 @@
  *
  * Emits one NDJSON line per RECORDED canned completion / canned image, and one per
  * case (kind:"result", { label, threw, dumps, storyImageId, lastBackgroundAt,
- * projectStoryImageId, lanternContent }).
+ * projectStoryImageId, lanternContent, …, concealmentLogs }).
+ *
+ * [97b25fc53] P4.D239 — the drape. The handler passes `'conceal'` to the
+ * sanitize gate, so the sanitize call carries the CONCEAL prompt (it still
+ * opens with the redress prompt's first sentence, so the `startsWith` branch
+ * below still catches it). A chat's `sanitizeAnswer` poses the reply —
+ * `appearanceText` (a rewrite) or `echo` (the input text back), with
+ * `undressed` spliced in — and the description builder then appends
+ * `CONCEALMENT_MARKER`, which reaches the craft call's USER message (so a v5
+ * builder divergence is a canned-key MISS). `concealmentLogs` records v4's
+ * REAL `[StoryBackground] Character flagged for cinematic concealment` DEBUG
+ * calls (a delegating logger spy), `jobId` included — the Rust side runs the
+ * job as `job-1` and remaps.
+ *
+ * ⚠ FIXTURE VINTAGE (the `97b25fc53` round's §R.3 rule): at a pin ≥ `f7f3d7bf0`
+ * the builder's `generateDDL` no longer carries `chats.renderedMarkdown`, which
+ * v5 binds until P4.D235's tolerant read lands. So BUILD the fixture from a
+ * worktree pinned at `acadcc7cd` and RUN this oracle from the round-target pin
+ * against it — a TWO-STEP recipe the sweep driver's `--run` cannot do in one
+ * invocation:
+ *   FIX=<a detached acadcc7cd worktree> ; PIN=<a detached 97b25fc53 worktree>
+ *   (cd "$FIX" && QT_FIXTURE_STORY_MAIN=… QT_FIXTURE_STORY_MOUNT=… \
+ *     $N/node --import tsx $WT/harness/oracle/fixtures/build-story-background-job-fixture.ts)
+ *   (cd "$PIN" && <the jest line below>)
+ * v4's jest oracles run NO migrations, so the target-pin oracle opens the
+ * older-vintage copy and keeps the column; each run prints ONE stderr line
+ * `vintage: chats.renderedMarkdown present=<bool>` read from the first case's
+ * copy AFTER the handler ran — the cross-vintage confirmation.
  *
  * Run (Node 24, from the v4 checkout; stage OUTSIDE any .claude path):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<this worktree>
@@ -93,6 +120,20 @@ interface ChatSpec {
   forceUncensored?: boolean;
   /** P4.D228 (E.8): a planted refusal ledger count on the chat. */
   ledgerPlant?: number;
+  /**
+   * [97b25fc53] P4.D239: the conceal-mode sanitize reply — a rewrite
+   * (`appearanceText`) or the input text back (`echo`), `undressed` spliced in.
+   */
+  sanitizeAnswer?: { appearanceText?: string; echo?: boolean; undressed?: unknown };
+  /**
+   * [97b25fc53] P4.D239: the resolve step's clothing for THIS chat. The
+   * sanitize key is `JSON.stringify([{characterId, appearanceText}])`, which
+   * carries no STORYCASE marker — without a per-chat clothing, every
+   * sanitize-reaching chat would send byte-identical sanitize messages, the
+   * FIRST recorded answer would win the shared canned key, and the
+   * process-global classification cache (Rust side) would collide too.
+   */
+  resolvedClothing?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -168,6 +209,7 @@ async function main(): Promise<void> {
   const recordedCompletions = new Map<string, unknown>();
   const recordedImages = new Map<string, unknown>();
   const recordedImageFailures = new Map<string, unknown>();
+  let vintageChecked = false;
 
   for (const [label, chat] of Object.entries(spec.chats)) {
     const scratch = mkdtempSync(join(tmpdir(), 'qt-story-oracle-'));
@@ -218,7 +260,7 @@ async function main(): Promise<void> {
               } else {
                 const ids = [...user.matchAll(/\(ID: ([0-9a-f-]{36})\)/g)].map((m) => m[1]);
                 response = JSON.stringify(
-                  ids.map((id) => ({ characterId: id, selectedDescriptionId: null, clothingDescription: 'a moss-green cloak', clothingSource: 'stored' })),
+                  ids.map((id) => ({ characterId: id, selectedDescriptionId: null, clothingDescription: chat.resolvedClothing ?? 'a moss-green cloak', clothingSource: 'stored' })),
                 );
               }
             } else if (user.endsWith('Create the atmospheric background prompt:')) {
@@ -269,11 +311,22 @@ async function main(): Promise<void> {
               // than echoing) is what makes the row discriminating: v4's merge
               // only sets `wasSanitized` when the text actually CHANGED.
               const items = JSON.parse(user) as Array<{ characterId: string; appearanceText: string }>;
+              // [97b25fc53] P4.D239: the sanitize user message carries no
+              // STORYCASE marker, so branch on the LOOP label (in closure).
+              const answer = chat.sanitizeAnswer;
               response = JSON.stringify(
-                items.map((it) => ({
-                  characterId: it.characterId,
-                  appearanceText: 'a woman with copper hair, in a high-necked woollen dress',
-                })),
+                items.map((it) =>
+                  answer
+                    ? {
+                        characterId: it.characterId,
+                        appearanceText: answer.echo ? it.appearanceText : answer.appearanceText,
+                        ...(answer.undressed !== undefined ? { undressed: answer.undressed } : {}),
+                      }
+                    : {
+                        characterId: it.characterId,
+                        appearanceText: 'a woman with copper hair, in a high-necked woollen dress',
+                      },
+                ),
               );
             } else {
               throw new Error(`unexpected completion task: ${user.slice(0, 80)}`);
@@ -406,6 +459,23 @@ async function main(): Promise<void> {
 
     try {
       const record: Record<string, unknown> = { kind: 'result', label };
+      // [97b25fc53] P4.D239: v4's REAL concealment DEBUG calls, recorded by a
+      // delegating spy on THIS registry generation's logger (the handler below
+      // imports the same instance).
+      const concealmentLogs: unknown[] = [];
+      const loggerModule = (await import('@/lib/logger')) as {
+        logger: Record<string, (...a: unknown[]) => unknown>;
+      };
+      const originalDebug = loggerModule.logger.debug;
+      jest.spyOn(loggerModule.logger as never, 'debug' as never).mockImplementation(((
+        message: string,
+        context?: unknown,
+      ) => {
+        if (message === '[StoryBackground] Character flagged for cinematic concealment') {
+          concealmentLogs.push(JSON.parse(JSON.stringify(context ?? null)));
+        }
+        return originalDebug.call(loggerModule.logger, message, context);
+      }) as never);
       const { handleStoryBackgroundGeneration } = await import('@/lib/background-jobs/handlers/story-background');
       const job = {
         id: `oracle-story-${label}`,
@@ -540,6 +610,16 @@ async function main(): Promise<void> {
           return { columns: [], rows: [] };
         }
       })();
+
+      record.concealmentLogs = concealmentLogs;
+
+      // The cross-vintage confirmation (§R.3): read ONCE, after the handler ran
+      // on this copy. stderr only — never part of the NDJSON comparand.
+      if (!vintageChecked) {
+        vintageChecked = true;
+        const cols = ((await rawQuery('PRAGMA table_info(chats)')) as Array<{ name: string }>).map((x) => x.name);
+        process.stderr.write(`vintage: chats.renderedMarkdown present=${cols.includes('renderedMarkdown')}\n`);
+      }
 
       lines.push(JSON.stringify(record));
     } finally {

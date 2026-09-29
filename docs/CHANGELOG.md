@@ -82,6 +82,16 @@ Red first at the pin on the unported code: `character_optimizer_prompts`,
 `generators_wizard_prompts`, `generators_leaf` (only after the hand lists
 grew — with the old list it stays green unported, measured), and
 `ai_import_tier3`. All green at `c3eefa752` after the port.
+#### 2026-09-29 — feat(story-background): drape an undressed character instead of re-dressing them — the sanitize mode, the three-way merge, the concealment marker (P4.D239)
+
+_Versions: core 0.0.1091, harness 0.0.1013._
+
+Ports the rest of v4 `97b25fc53`. The appearance sanitizer takes a mode, `AppearanceSanitizeMode { Redress (default), Conceal }`. `Conceal` sends the new conceal prompt and reads the reply's `undressed` strictly (`=== true`; `"true"` and `1` read false). `Redress` ignores `undressed`, and the parse-failure fallback carries no `undressed` in either mode. `sanitize_appearances_if_needed` takes the mode and its merge is now three-way. A changed text replaces physical + clothing as before. An undressed character gets `needs_concealment`, and an unchanged echo that is undressed keeps its clothing with `was_sanitized` false. Story backgrounds pass `Conceal`. The description builder appends the imported `CONCEALMENT_MARKER` last, joined by `". "` with no period de-duplication (v4 produces `..`), and logs a DEBUG per flagged character. `generate_image` passes `Redress` explicitly (a one-argument change) and stays byte-neutral.
+
+Logging: the sanitizer's new pre-call DEBUG fires before the call, including on failure. v4's three missing resolver lines are restored: the rule-3 "classified as dangerous" INFO, the rule-5 "Sanitizing" INFO with `mode` last, and the failure WARN. v4's classify-failure ERROR is unreachable in v4 itself (a total try/catch), so it has no arm.
+
+Tests: `appearance_sanitize_gate_tier3` grows 30 → 40 rows (conceal changed/echo/not-undressed/string-true/junk, redress with a stray `true`, rule 4 in conceal, a trailing period, and a thrown sanitize in both modes). It gains three comparands: `needsConcealment`, the conceal-prompt call count, and v4's real logger calls compared line by line with field order. `story_background_job_tier3` gains three conceal chats and per-case capture of the concealment DEBUG. The story fixture is built at `acadcc7cd` and the oracle run at `97b25fc53`. Red-first against unported `main` at the pin for both families; `image_generation_tier3` + `image_generate_route` green at the pin both before and after the port. Mutation proofs M2–M7 each redden their target.
+
 #### 2026-09-29 — feat(image-scene): regenerate the image-scene prompts at v4 `97b25fc53` — the concealment marker, the conceal-mode sanitizer prompt, the per-character requirement (P4.D239)
 
 _Versions: core 0.0.1090._

@@ -2062,6 +2062,7 @@ where
                 selection,
                 &ctx.user_id,
                 ctx.chat_id.as_deref(),
+                crate::services::image_scene_tasks::AppearanceSanitizeMode::Redress,
             )
             .await;
             resolved_appearances = Some(sanitized);

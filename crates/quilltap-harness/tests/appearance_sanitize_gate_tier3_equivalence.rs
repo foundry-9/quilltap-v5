@@ -35,7 +35,31 @@
 //! measuring nothing (the §3 unification review's N2). Two v4 error arms are
 //! deliberately NOT in the grid: a thrown classify (`appearance-resolution.ts`
 //! warn + return) and a failed sanitize task — both exist in v5, neither has a
-//! corpus row (N3, recorded, not ordered).
+//! corpus row (N3, recorded, not ordered). [97b25fc53] P4.D239 CLOSED the second
+//! half: `sanitizeThrows` rows (AGCASE39/40) throw on v4's side and MISS the
+//! canned key on v5's (no row is recorded), so both fail the task and take the
+//! `Sanitization failed` WARN arm. The first half is UNREACHABLE in v4 itself
+//! (measured at `97b25fc53`: `classifyContent` wraps `runClassification`, a
+//! total try/catch) — there is no row to write.
+//!
+//! [97b25fc53] P4.D239 — the drape. Rows AGCASE31..40 pass the sanitize MODE as
+//! the 8th argument (absent = `Redress`, v4's default) and pose the conceal
+//! reply's `undressed`. Three comparands joined the per-row diff:
+//!   - `needsConcealment` per appearance (the oracle key is present only when
+//!     `true` — asserted never `false`, the v4 invariant);
+//!   - `concealPromptCalls` — how many completion calls carried the CONCEAL
+//!     sanitizer prompt. Both prompts open with the same sentence, so the
+//!     oracle's mock needs a second probe (`Do NOT invent clothing`) and so does
+//!     this counter;
+//!   - `logLines` — v4's REAL logger calls for the gate's `[AppearanceResolution]`
+//!     lines and the sanitizer's pre-call `[CheapLLM] Sanitizing appearances`
+//!     DEBUG, recorded by a delegating spy, compared against this side's
+//!     thread-scoped capture IN ORDER (lines and fields). v4 camelCase keys map
+//!     to v5's snake_case fields (`FIELD_MAP`); v4's `categories` array rides the
+//!     file layer's `categoriesJson` convention. One field is compared by
+//!     PRESENCE only: the failure WARN's `error` (v4's is the mock's thrown
+//!     message, v5's the canned-miss text — the arm is the comparand, not the
+//!     provider's wording).
 //!
 //! The `Db` is a scratch instance carrying only `llm_logs` — this family does NOT
 //! compare that projection (see the corpus `$comment`); the handle exists because
@@ -46,13 +70,17 @@
 //! on BOTH sides, so two rows sharing text would make the second one's call-count
 //! comparand measure the cache instead of the gate.
 //!
-//! Generate the oracle (Node 24, from the v4 checkout; stage OUTSIDE any
-//! `.claude` path). See the oracle header. Run:
+//! Generate the oracle (Node 24, from the v4 checkout — PIN REQUIRED: from a
+//! detached worktree at the round target; stage OUTSIDE any `.claude` path).
+//! DB-free on the oracle side, so no fixture-vintage rule applies. See the
+//! oracle header. Run:
 //!   QT_ORACLE_APPEARANCE_GATE=/tmp/oracle-appearance-sanitize-gate.ndjson \
 //!     cargo test -p quilltap-harness --test appearance_sanitize_gate_tier3_equivalence
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+
+use quilltap_core::services::image_scene_tasks::AppearanceSanitizeMode;
 
 use quilltap_core::cheap_llm::CheapLlmSelection;
 use quilltap_core::db::runtime::{Db, DbPaths};
@@ -83,6 +111,9 @@ struct CaseSpec {
     chat: serde_json::Value,
     is_dangerous_chat: bool,
     routes_dangerous_to_uncensored: bool,
+    /// [97b25fc53] `"redress"` / `"conceal"`; absent = v4's default (`Redress`).
+    #[serde(default)]
+    mode: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -120,6 +151,17 @@ struct OracleAppearance {
     clothing_description: String,
     clothing_source: String,
     was_sanitized: bool,
+    /// [97b25fc53] present only when `true` (v4 never writes `false`).
+    #[serde(default)]
+    needs_concealment: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OracleLogLine {
+    level: String,
+    message: String,
+    context: Value,
 }
 
 #[derive(Deserialize)]
@@ -127,6 +169,8 @@ struct OracleAppearance {
 struct ResultRow {
     label: String,
     completion_calls: usize,
+    conceal_prompt_calls: usize,
+    log_lines: Vec<OracleLogLine>,
     appearances: Vec<OracleAppearance>,
 }
 
@@ -147,10 +191,12 @@ struct CannedMessage {
 }
 
 /// A [`CompletionProvider`] that counts the calls and delegates to the canned
-/// one. The count is the comparand that says WHICH rule fired.
+/// one. The count is the comparand that says WHICH rule fired; the second
+/// counter is the conceal-prompt probe (the oracle mock's twin).
 struct CountingCompletion {
     inner: CannedCompletionProvider,
     calls: Arc<AtomicUsize>,
+    conceal_calls: Arc<AtomicUsize>,
 }
 
 impl CompletionProvider for CountingCompletion {
@@ -161,6 +207,11 @@ impl CompletionProvider for CountingCompletion {
         params: &CompletionParams,
     ) -> Result<CompletionResponse, CompletionError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
+        if params.messages.iter().any(|m| {
+            m.role == CompletionRole::System && m.content.contains("Do NOT invent clothing")
+        }) {
+            self.conceal_calls.fetch_add(1, Ordering::SeqCst);
+        }
         self.inner.send_message(provider, base_url, params).await
     }
 }
@@ -221,12 +272,78 @@ fn appearances_for(spec: &Spec, token: &str) -> Vec<ResolvedCharacterAppearance>
             },
             clothing_source: "stored".to_string(),
             was_sanitized: false,
+            needs_concealment: false,
         })
         .collect()
 }
 
-#[tokio::test]
-async fn appearance_sanitize_gate_matches_oracle() {
+/// v4 context key → v5 tracing field name. Anything absent here is a key the
+/// port never carries — a loud panic, not a silent skip.
+const FIELD_MAP: &[(&str, &str)] = &[
+    ("context", "context"),
+    ("chatId", "chat_id"),
+    ("conciergeSource", "concierge_source"),
+    ("score", "score"),
+    ("categories", "categoriesJson"),
+    (
+        "routesDangerousToUncensored",
+        "routes_dangerous_to_uncensored",
+    ),
+    ("characterCount", "character_count"),
+    ("mode", "mode"),
+    ("count", "count"),
+    ("error", "error"),
+];
+
+/// Render one v4 logger call the way the thread-scoped capture renders v5's
+/// event: `LEVEL target message k=v k=v…`, keys in v4's order. The `error`
+/// value is elided on BOTH sides (compared by presence — see the header).
+fn render_v4_line(l: &OracleLogLine) -> String {
+    let target = if l.message.starts_with("[CheapLLM]") {
+        "quilltap::cheap_llm"
+    } else {
+        "quilltap::appearance_resolution"
+    };
+    let mut out = format!("{} {target} {}", l.level.to_uppercase(), l.message);
+    let Value::Object(ctx) = &l.context else {
+        panic!("v4 log context is not an object: {:?}", l.context);
+    };
+    for (k, v) in ctx {
+        let field = FIELD_MAP
+            .iter()
+            .find(|(v4, _)| v4 == k)
+            .unwrap_or_else(|| panic!("unmapped v4 log key {k:?} on {:?}", l.message))
+            .1;
+        let rendered = match v {
+            _ if field == "error" => "<elided>".to_string(),
+            Value::String(s) => s.clone(),
+            Value::Array(_) => serde_json::to_string(v).unwrap(),
+            other => other.to_string(),
+        };
+        out.push_str(&format!(" {field}={rendered}"));
+    }
+    out
+}
+
+/// The v5 side's lines of interest, with the `error` value elided.
+fn v5_lines(captured: &[String]) -> Vec<String> {
+    captured
+        .iter()
+        .filter(|l| {
+            l.contains(" [AppearanceResolution] ")
+                || l.contains(" [CheapLLM] Sanitizing appearances")
+        })
+        .map(|l| match l.find(" error=") {
+            Some(i) => format!("{} error=<elided>", &l[..i]),
+            None => l.clone(),
+        })
+        .collect()
+}
+
+/// A plain `#[test]` driving a current-thread runtime INSIDE the thread-scoped
+/// capture, per case (the `ai_import_tier3` shape).
+#[test]
+fn appearance_sanitize_gate_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_APPEARANCE_GATE") else {
         eprintln!("SKIP: QT_ORACLE_APPEARANCE_GATE unset");
         return;
@@ -286,13 +403,20 @@ async fn appearance_sanitize_gate_matches_oracle() {
 
     let dir = tempfile::tempdir().expect("scratch dir");
     let db = open_scratch_db(dir.path());
+    let mut log_lines_compared = 0usize;
     let moderation = NoModerationProvider;
     let executor = CheapLlmTaskExecutor::new();
     let calls = Arc::new(AtomicUsize::new(0));
+    let conceal_calls = Arc::new(AtomicUsize::new(0));
     let completion = CountingCompletion {
         inner: canned,
         calls: calls.clone(),
+        conceal_calls: conceal_calls.clone(),
     };
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let selection = CheapLlmSelection {
         provider: spec.cheap_llm_selection.provider.clone(),
         model_name: spec.cheap_llm_selection.model_name.clone(),
@@ -307,21 +431,30 @@ async fn appearance_sanitize_gate_matches_oracle() {
             .get(&case.label)
             .unwrap_or_else(|| panic!("no oracle result row for {}", case.label));
         calls.store(0, Ordering::SeqCst);
+        conceal_calls.store(0, Ordering::SeqCst);
         let chat_id = format!("chat-{}", case.token);
-        let got = sanitize_appearances_if_needed(
-            &db,
-            &executor,
-            &moderation,
-            &completion,
-            appearances_for(&spec, &case.token),
-            &resolve_stored_concierge_settings(Some(&case.concierge), Some(&case.chat)),
-            case.is_dangerous_chat,
-            case.routes_dangerous_to_uncensored,
-            &selection,
-            &spec.user_id,
-            Some(&chat_id),
-        )
-        .await;
+        let mode = match case.mode.as_deref() {
+            None => AppearanceSanitizeMode::default(),
+            Some("redress") => AppearanceSanitizeMode::Redress,
+            Some("conceal") => AppearanceSanitizeMode::Conceal,
+            Some(other) => panic!("{}: unknown mode {other:?}", case.label),
+        };
+        let (got, captured) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(sanitize_appearances_if_needed(
+                &db,
+                &executor,
+                &moderation,
+                &completion,
+                appearances_for(&spec, &case.token),
+                &resolve_stored_concierge_settings(Some(&case.concierge), Some(&case.chat)),
+                case.is_dangerous_chat,
+                case.routes_dangerous_to_uncensored,
+                &selection,
+                &spec.user_id,
+                Some(&chat_id),
+                mode,
+            ))
+        });
 
         assert_eq!(
             calls.load(Ordering::SeqCst),
@@ -329,6 +462,20 @@ async fn appearance_sanitize_gate_matches_oracle() {
             "{}: completion-call count diverged (which rule fired)",
             case.label
         );
+        assert_eq!(
+            conceal_calls.load(Ordering::SeqCst),
+            expected.conceal_prompt_calls,
+            "{}: conceal-prompt call count diverged (which prompt the mode picked)",
+            case.label
+        );
+        let want: Vec<String> = expected.log_lines.iter().map(render_v4_line).collect();
+        assert_eq!(
+            v5_lines(&captured),
+            want,
+            "{}: log lines diverged (order, level, message, fields)",
+            case.label
+        );
+        log_lines_compared += want.len();
         assert_eq!(
             got.len(),
             expected.appearances.len(),
@@ -371,6 +518,18 @@ async fn appearance_sanitize_gate_matches_oracle() {
                 "{}: wasSanitized",
                 case.label
             );
+            assert_ne!(
+                e.needs_concealment,
+                Some(false),
+                "{}: v4 never writes needsConcealment: false",
+                case.label
+            );
+            assert_eq!(
+                g.needs_concealment,
+                e.needs_concealment.unwrap_or(false),
+                "{}: needsConcealment",
+                case.label
+            );
         }
     }
 
@@ -400,9 +559,43 @@ async fn appearance_sanitize_gate_matches_oracle() {
             .any(|r| r.appearances.iter().any(|a| a.was_sanitized)),
         "at least one row must actually come back sanitized"
     );
+    // [97b25fc53] The drape's floors: a flagged character, one flagged WITHOUT
+    // a text change (the echo arm that keeps its clothing), the conceal prompt
+    // actually sent, the failure WARN actually logged, and the log comparand
+    // actually compared something.
+    let all_appearances = || results.values().flat_map(|r| r.appearances.iter());
+    assert!(
+        all_appearances().any(|a| a.needs_concealment == Some(true)),
+        "at least one appearance must come back needsConcealment"
+    );
+    assert!(
+        all_appearances().any(|a| a.needs_concealment == Some(true) && !a.was_sanitized),
+        "the unchanged-echo + undressed arm must be represented"
+    );
+    assert!(
+        results
+            .values()
+            .filter(|r| r.conceal_prompt_calls > 0)
+            .count()
+            >= 5,
+        "the conceal prompt must actually reach the wire"
+    );
+    assert!(
+        results.values().any(|r| r
+            .log_lines
+            .iter()
+            .any(|l| l.message
+                == "[AppearanceResolution] Sanitization failed, passing through original")),
+        "the sanitize-failure WARN arm must be represented"
+    );
+    assert!(
+        log_lines_compared >= 60,
+        "only {log_lines_compared} log lines compared"
+    );
 
     println!(
-        "OK: appearance sanitize gate matched the oracle across {} cases.",
-        spec.cases.len()
+        "OK: appearance sanitize gate matched the oracle across {} cases ({} log lines).",
+        spec.cases.len(),
+        log_lines_compared
     );
 }

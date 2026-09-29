@@ -28,6 +28,22 @@
 //! and `blocked-model` throws a moderation error (`cannedImageFailure`) to drive
 //! the reroute.
 //!
+//! [97b25fc53] P4.D239 — the drape. The handler passes `Conceal` to the sanitize
+//! gate: every sanitize-reaching chat now sends the conceal prompt, every
+//! concealed craft carries the PER-CHARACTER REQUIREMENT paragraph, and three
+//! chats (`conceal_*`) pose a conceal reply with `undressed: true` — so
+//! `CONCEALMENT_MARKER` is appended LAST to the description and reaches the
+//! craft call's user message (a builder divergence is a canned-key MISS; the
+//! `conceal_period_doubles` chat pins v4's `..`). Per case, the handler runs
+//! inside a thread-scoped capture and its `[StoryBackground] Character flagged
+//! for cinematic concealment` DEBUG lines are compared against v4's REAL calls
+//! (`concealmentLogs`, recorded by a logger spy) — fields in v4's order, `jobId`
+//! remapped to this side's `job-1`; every other chat is the silence leg.
+//!
+//! ⚠ FIXTURE VINTAGE: build the fixture from a worktree pinned at `acadcc7cd`
+//! and run the oracle from the round-target pin (a two-step recipe — see the
+//! oracle header; the sweep driver's `--run` cannot do it in one invocation).
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout). See the oracle
 //! header. Run:
 //!   QT_ORACLE_STORY=/tmp/oracle-story-background-job.ndjson \
@@ -169,6 +185,32 @@ struct ResultRow {
     /// refusal bubbles (see [`concierge_footprint`]).
     #[serde(default)]
     concierge: Option<Value>,
+    /// [97b25fc53] P4.D239: v4's `[StoryBackground] Character flagged for
+    /// cinematic concealment` DEBUG contexts, in call order.
+    #[serde(default, rename = "concealmentLogs")]
+    concealment_logs: Option<Vec<Value>>,
+}
+
+const CONCEALMENT_DEBUG: &str = "[StoryBackground] Character flagged for cinematic concealment";
+
+/// v4's concealment DEBUG context rendered as the thread-scoped capture renders
+/// v5's event, keys in v4's order (`context, jobId, characterId`), `jobId`
+/// remapped to the job id this side runs (`job-1`).
+fn render_v4_concealment(ctx: &Value) -> String {
+    let Value::Object(m) = ctx else {
+        panic!("v4 concealment context is not an object: {ctx:?}");
+    };
+    let mut out = format!("DEBUG quilltap::story_background {CONCEALMENT_DEBUG}");
+    for (k, v) in m {
+        let (field, val) = match k.as_str() {
+            "context" => ("context", v.as_str().unwrap().to_string()),
+            "jobId" => ("job_id", "job-1".to_string()),
+            "characterId" => ("character_id", v.as_str().unwrap().to_string()),
+            other => panic!("unmapped v4 concealment key {other:?}"),
+        };
+        out.push_str(&format!(" {field}={val}"));
+    }
+    out
 }
 
 // ===========================================================================
@@ -673,6 +715,7 @@ fn story_background_job_matches_oracle() {
 
     let mut chat_keys: Vec<&String> = spec.chats.keys().collect();
     chat_keys.sort();
+    let mut flagged_chats = 0usize;
 
     for label in chat_keys {
         let case = &spec.chats[label];
@@ -736,14 +779,36 @@ fn story_background_job_matches_oracle() {
             force_uncensored: case.force_uncensored,
         };
 
-        let outcome = rt.block_on(handle_story_background_generation(
-            &db,
-            &deps,
-            &spec.user_id,
-            &payload,
-            "job-1",
-        ));
+        let (outcome, captured) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(handle_story_background_generation(
+                &db,
+                &deps,
+                &spec.user_id,
+                &payload,
+                "job-1",
+            ))
+        });
         let got_threw: Option<String> = outcome.err();
+
+        // [97b25fc53] P4.D239: the concealment DEBUG, once per flagged
+        // character, fields in v4's order; every unflagged chat is the silence leg.
+        let got_conceal: Vec<&String> = captured
+            .iter()
+            .filter(|l| l.contains(CONCEALMENT_DEBUG))
+            .collect();
+        let want_conceal: Vec<String> = want
+            .concealment_logs
+            .as_ref()
+            .unwrap_or_else(|| panic!("oracle case {label} has no concealmentLogs"))
+            .iter()
+            .map(render_v4_concealment)
+            .collect();
+        assert_eq!(
+            got_conceal,
+            want_conceal.iter().collect::<Vec<_>>(),
+            "{label}: the concealment DEBUG diverged"
+        );
+        flagged_chats += usize::from(!want_conceal.is_empty());
         assert_eq!(
             got_threw, want.threw,
             "{}: threw diverged\n  rust:   {:?}\n  oracle: {:?}",
@@ -901,6 +966,13 @@ fn story_background_job_matches_oracle() {
         cleanup(&main_work, &mount_work);
         let _ = std::fs::remove_file(&ll_work);
     }
+
+    // [97b25fc53] The drape's floor: the three `conceal_*` chats flag their
+    // character, so a corpus trim that dropped them cannot leave this green.
+    assert!(
+        flagged_chats >= 3,
+        "only {flagged_chats} chats flagged a character for concealment"
+    );
 
     eprintln!("OK: story-background-job differential matched the oracle across all cases.");
 }

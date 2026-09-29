@@ -70,7 +70,9 @@
     "    the prompt is candid already, so the reroute does NOT re-craft (ONE",
     "    IMAGE_PROMPT_CRAFTING row in llm_logs, not two).",
     "",
-    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key. NOT the real Friday pepper."
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key. NOT the real Friday pepper.",
+    "",
+    "[97b25fc53] P4.D239 \u2014 the drape. Story backgrounds pass `'conceal'` to the sanitize gate, so every sanitize-reaching chat now sends the CONCEAL prompt and every concealed craft carries the PER-CHARACTER REQUIREMENT paragraph (both keys move at the pin \u2014 RED by design on an unported v5). Three chats pose the conceal reply's `undressed` via a per-chat `sanitizeAnswer` (`appearanceText` to rewrite, or `echo` to send the input text back; `undressed` spliced in): conceal_marks_undressed (changed text + the marker), conceal_echo_keeps_clothing (unchanged text keeps `Wearing:` + the marker), conceal_period_doubles (the `..`). The oracle also records v4's `[StoryBackground] Character flagged for cinematic concealment` DEBUG calls per chat (`concealmentLogs`). Each of the three carries its own `resolvedClothing` (the resolve step's answer) so its sanitize key is distinct \u2014 the sanitize user message carries no STORYCASE marker, and identical messages would share one recorded canned answer."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seedTimestamp": "2020-01-01T00:00:00.000Z",
@@ -920,6 +922,126 @@
       },
       "ledgerPlant": 1,
       "$comment": "P4.D228 E.8 (measured, not designed): the forced seat is the configured desk (Blocked Desk -- the explicit pick needs ownership only), which REFUSES; the chokepoint reroutes to the scan's compatible profile, which answers. The refusal reaches the ledger (primaryVia concierge) with one planted -- does the auto-switch flip a Moderated chat on a retry the route promised never changes the chat's state? The footprint's `state` pins what v4 does."
+    },
+    "conceal_marks_undressed": {
+      "$comment": "[97b25fc53] P4.D239 \u2014 the drape, CHANGED text. The moderated_sanitize_profile_configured shape (pre-screen on, a moderated chat, the scene not bound uncensored), so the sanitize gate runs \u2014 now in CONCEAL mode, with the conceal prompt. The posed answer rewrites the text AND flags the character undressed, so the description is `<prefix><sanitized text>. Undressed in this scene; depict with cinematic concealment.` \u2014 the marker LAST, no `Wearing:` (the merge blanked the clothing). The marker reaches the craft call's USER message, so a v5 description-builder divergence is a canned MISS (and both llm_logs projections carry it).",
+      "id": "5c000026-0000-4000-8000-000000000026",
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": [
+        "P4.D239: she had let the robe fall by the hearth."
+      ],
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002",
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "expectWrite": true,
+      "expectDerive": true,
+      "sanitizeAnswer": {
+        "appearanceText": "a woman with copper hair, unclothed",
+        "undressed": true
+      },
+      "resolvedClothing": "a loosened silk robe"
+    },
+    "conceal_echo_keeps_clothing": {
+      "$comment": "[97b25fc53] P4.D239 \u2014 the drape, UNCHANGED text. The posed answer ECHOES the input text and flags the character undressed: v4's three-way merge keeps the clothing (`wasSanitized` false) and sets `needsConcealment`, so the description is `<prefix><physical>. Wearing: <clothing>. Undressed in this scene; depict with cinematic concealment.` \u2014 the marker after `Wearing:`.",
+      "id": "5c000027-0000-4000-8000-000000000027",
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": [
+        "P4.D239: she lay very still beneath the green cloak and nothing else."
+      ],
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002",
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "expectWrite": true,
+      "expectDerive": true,
+      "sanitizeAnswer": {
+        "echo": true,
+        "undressed": true
+      },
+      "resolvedClothing": "a moss-green cloak and nothing else"
+    },
+    "conceal_period_doubles": {
+      "$comment": "[97b25fc53] P4.D239 \u2014 the drape, a sanitized text ENDING IN A PERIOD. v4 joins the parts by `'. '` with no trailing-period de-dup, so the description reads `\u2026wearing pearls.. Undressed in this scene; \u2026` \u2014 the `..` is v4's output, pinned here through the craft key.",
+      "id": "5c000028-0000-4000-8000-000000000028",
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": [
+        "P4.D239: pearls, and nothing but pearls."
+      ],
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002",
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "expectWrite": true,
+      "expectDerive": true,
+      "sanitizeAnswer": {
+        "appearanceText": "a woman with copper hair, unclothed, wearing pearls.",
+        "undressed": true
+      },
+      "resolvedClothing": "a single string of pearls"
     }
   }
 }
