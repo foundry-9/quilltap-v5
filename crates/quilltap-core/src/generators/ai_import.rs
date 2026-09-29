@@ -48,7 +48,8 @@ use crate::db::files::FilesRepository;
 use crate::db::runtime::Db;
 use crate::db::{api_keys, connection_profiles, DbError};
 use crate::generators::field_semantics::{
-    FULL_FIELD_SEMANTICS, PHYSICAL_DESCRIPTION_SEMANTICS, PROMPT_SEMANTICS, PROPERTIES_SEMANTICS,
+    CONVERSATIONAL_VOICE_DIRECTION, EXAMPLE_DIALOGUE_COVERAGE, FULL_FIELD_SEMANTICS,
+    PHYSICAL_DESCRIPTION_SEMANTICS, PROMPT_SEMANTICS, PROPERTIES_SEMANTICS,
 };
 use crate::generators::file_content::extract_file_content;
 use crate::generators::generated_items::{
@@ -179,9 +180,11 @@ If the source material clearly provides information for a field, extract and ada
     )
 }
 
-/// v4 `FIRST_MESSAGE_PROMPT` (byte-exact; the `\\n` sequences are literal
-/// backslash-n in the prompt, as v4's template literal escapes them).
-pub const FIRST_MESSAGE_PROMPT: &str = r#"Generate a first message and example dialogues for this character based on the source material.
+/// The JSON-example head of v4 `FIRST_MESSAGE_PROMPT` (byte-exact; the `\\n`
+/// sequences are literal backslash-n in the prompt, as v4's template literal
+/// escapes them). Kept as a raw string rather than a `format!` template so the
+/// JSON braces and the `{{char}}` / `{{user}}` placeholders need no escaping.
+const FIRST_MESSAGE_PROMPT_HEAD: &str = r#"Generate a first message and example dialogues for this character based on the source material.
 
 Respond with JSON:
 {
@@ -189,7 +192,15 @@ Respond with JSON:
   "exampleDialogues": "2-3 example dialogue exchanges showing the character's voice.\nFormat:\n{{char}}: [dialogue and *actions*]\n{{user}}: [response]\n{{char}}: [follow-up]\n\nSeparate exchanges with a blank line."
 }"#;
 
-/// v4 `SYSTEM_PROMPTS_PROMPT` (byte-exact).
+/// v4 `FIRST_MESSAGE_PROMPT` (byte-exact). Since v4 `c3eefa752` it is no longer
+/// a plain literal: the JSON example is followed by `\n\nFor exampleDialogues: `
+/// and [`EXAMPLE_DIALOGUE_COVERAGE`] (P4.D237).
+pub fn first_message_prompt() -> String {
+    format!("{FIRST_MESSAGE_PROMPT_HEAD}\n\nFor exampleDialogues: {EXAMPLE_DIALOGUE_COVERAGE}")
+}
+
+/// v4 `SYSTEM_PROMPTS_PROMPT` (byte-exact). Since v4 `c3eefa752` it ends with
+/// `\n\n` + [`CONVERSATIONAL_VOICE_DIRECTION`] (P4.D237).
 pub fn system_prompts_prompt() -> String {
     format!(
         r#"{PROMPT_SEMANTICS}
@@ -205,7 +216,9 @@ Respond with JSON array:
   }}
 ]
 
-The main prompt should capture the character's essence from the source material. Include specific details about speech patterns, mannerisms, and reactions that make the character unique. If the source material implies distinct interaction modes or model-specific needs, you may add 1-2 additional named prompts (isDefault false) tailored to them."#
+The main prompt should capture the character's essence from the source material. Include specific details about speech patterns, mannerisms, and reactions that make the character unique. If the source material implies distinct interaction modes or model-specific needs, you may add 1-2 additional named prompts (isDefault false) tailored to them.
+
+{CONVERSATIONAL_VOICE_DIRECTION}"#
     )
 }
 
@@ -1645,7 +1658,7 @@ async fn run_import_inner<CMP: CompletionProvider>(
             errors,
             "first_message",
             &char_context,
-            FIRST_MESSAGE_PROMPT,
+            &first_message_prompt(),
             0.8,
             1500,
             false,

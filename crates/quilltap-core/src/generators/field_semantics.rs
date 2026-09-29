@@ -30,6 +30,25 @@ pub const FIELD_SEMANTICS_PREAMBLE: &str = r#"Quilltap distinguishes four charac
 /// The system-prompt bucket ("Prompt"): named, sometimes model-specific instruction documents.
 pub const PROMPT_SEMANTICS: &str = r#"- SYSTEM PROMPTS ("Prompt") — named instruction documents, written in second person ("You are…", "You always…"), that tell the roleplaying model HOW to perform the character: voice, pacing, formatting, boundaries, interaction style. A character can carry several named prompts (e.g. tuned for different models or moods) with one marked default. Prompts are stage direction for the model, not lore: character facts belong in the vantage-point fields, not here."#;
 
+/// v4 `CONVERSATIONAL_VOICE_DIRECTION` (byte-exact).
+///
+/// How a generated system prompt must direct the character to LISTEN and TALK (v4 `c3eefa752`). NOT part of `FULL_FIELD_SEMANTICS`: it is interpolated only where a system prompt is written — the AI Wizard `systemPrompt` field, Summon From Lore's `system_prompts` step, and the optimizer's new-prompts pass.
+pub const CONVERSATIONAL_VOICE_DIRECTION: &str = r#"The prompt must also direct how the character LISTENS and TALKS, in terms fitted to this character rather than as a generic checklist:
+- Listen like a person: people speak in shorthand, joke, exaggerate, understate, and trail off. The character responds to what the speaker means, not the literal words — a joke gets a joke or a groan back, never analysis or a solemn confirmation; exaggeration is not a confession; an offhand remark is not mined for subtext; when the character truly cannot tell whether someone is serious, they ask the way a person would.
+- Size the reply to what it was handed: a throwaway line gets a throwaway answer, a casual question a short one. The character answers rather than restating the speaker's words first.
+- Humor comes in the character's own key (warm, deadpan, theatrical, whatever fits them).
+- Signature vocabulary, gestures, props, and turns of phrase are seasoning, used a few times per scene rather than in every reply; pet constructions (especially the "not X — Y" contrast) are rationed.
+- Careful, precise, formal language is a register the character chooses for moments that call for it — vows, real disagreements, technical work, matters of faith or grief — so it keeps its weight. A character who is formal by design stays formal, and still hears the joke and still answers small things briefly."#;
+
+/// v4 `EXAMPLE_DIALOGUE_COVERAGE` (byte-exact).
+///
+/// What a generated set of example dialogues must show (v4 `c3eefa752`) — a joke caught, a casual line answered briefly, a serious turn. Interpolated by the AI Wizard `exampleDialogues` field, Summon From Lore's `first_message` step, and the optimizer's general-fields pass.
+pub const EXAMPLE_DIALOGUE_COVERAGE: &str = r#"The exchanges together must show the character:
+- catching a joke or a bit of exaggeration and answering it in kind, in their own humor, without analysing it;
+- answering a casual, offhand line briefly — a line or two, no report, no restating what was said;
+- getting serious when something actually matters, with fuller and more careful language.
+Keep most replies roughly the size of the line they answer. Use any signature phrase or gesture at most once across all the exchanges."#;
+
 /// v4 `PROPERTIES_SEMANTICS` (byte-exact).
 ///
 /// The properties bucket: pronouns + aliases as data, never prose. The freeform metadata fact sheet is user-authored only and deliberately NOT part of this bucket.
@@ -68,6 +87,11 @@ Beyond the vantage-point fields, a character has these further buckets — route
 pub const ALL_EXPORTS: &[(&str, &str)] = &[
     ("FIELD_SEMANTICS_PREAMBLE", FIELD_SEMANTICS_PREAMBLE),
     ("PROMPT_SEMANTICS", PROMPT_SEMANTICS),
+    (
+        "CONVERSATIONAL_VOICE_DIRECTION",
+        CONVERSATIONAL_VOICE_DIRECTION,
+    ),
+    ("EXAMPLE_DIALOGUE_COVERAGE", EXAMPLE_DIALOGUE_COVERAGE),
     ("PROPERTIES_SEMANTICS", PROPERTIES_SEMANTICS),
     (
         "PHYSICAL_DESCRIPTION_SEMANTICS",

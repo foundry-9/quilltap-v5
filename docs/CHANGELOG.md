@@ -35,6 +35,28 @@ _Versions: core 0.0.1090, harness 0.0.1013._
 Ports v4 `39bc98ffc`/`12c336fad`'s mailbox helpers. `resolve_mail_path` turns a letter reference (bare file name, `Mail/…` path, or `qtap://self/Mail/…` URI) into a `Mail/…` path, in v4's order: JS trim, one case-insensitive `qtap://self/` strip, leading slashes, one `Mail/` strip, then refuse empty names, sub-paths, backslashes, `.` and `..`, then append `.md` unless it is already there in any case. `letter_file_name` strips one leading `Mail/`. `discard_letter` deletes through `delete_database_document` (the GC chokepoint) and logs v4's `discardLetter` debug line. `mark_alerted` now logs v4's `markAlerted: letter no longer present` warning on a missing letter (it was silent).
 
 New tier-1 family `mail_path_equivalence` over v4's real functions: 58 rows, 0 divergences at `12c336fad`. Mutation proofs: moving the slash strip before the URI strip, stripping `Mail/` twice, and a case-sensitive `.md` test each fail the family.
+#### 2026-09-28 — feat(generators): the two voice-direction constants at their seven sites (P4.D237 unit 1, v4 `c3eefa752`)
+
+_Versions: core 0.0.1090, harness 0.0.1013._
+
+Ports the generator half of v4 `c3eefa752`. `CONVERSATIONAL_VOICE_DIRECTION`
+and `EXAMPLE_DIALOGUE_COVERAGE` join `generators/field_semantics.rs` through
+the generator (`ALL_EXPORTS` 6 → 8; both oracle hand lists and the DOC map
+grown). `wizard_prompts.rs` is regenerated at the pin: the `exampleDialogues`
+field prompt ends with the coverage constant, and the `systemPrompt` field
+prompt carries the voice direction mid-string. AI import: `FIRST_MESSAGE_PROMPT`
+becomes `first_message_prompt()` (the raw JSON head plus `For
+exampleDialogues:` and the constant); `system_prompts_prompt()` ends with the
+voice direction. The optimizer gains v4's two new bullets in the general pass,
+two in the system-prompt pass (the shorter "codify repetition" wording), and
+the voice direction in the new-prompts pass. `ai_import_tier3`'s
+`V4_APP_VERSION` moves to `4.10.0-dev.98`.
+
+Red first at the pin on the unported code: `character_optimizer_prompts`,
+`character_optimizer_tier3` (18 cases), `character_wizard_tier3` (2),
+`generators_wizard_prompts`, `generators_leaf` (only after the hand lists
+grew — with the old list it stays green unported, measured), and
+`ai_import_tier3`. All green at `c3eefa752` after the port.
 
 #### 2026-09-28 — docs(porting): order the `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118)
 

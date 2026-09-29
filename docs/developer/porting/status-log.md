@@ -153476,3 +153476,36 @@ empty). Node 24.13.1 for every regen. Regen outputs staged under `/tmp/p4d234/`.
   un-aliased rename's `disabledTools` consequence (§D.1) — the human's call;
   `.claude/commands/update-documentation.md`, `README.md`, version stamps —
   NO-PORT.
+## P4.D237 — v4 `c3eefa752` built-in prompts refresh + voice direction — lane record (2026-09-28)
+
+Branch `claude/builtin-prompts-voice-direction-2c12ef`, cut from `main`
+`e361879d3`. Pin **`c3eefa752`** (`/tmp/qt-v4-pin-p4d237-c3eefa752`, plugin
+manifest `1.1.24` verified); real-DB fixtures BUILT at **`acadcc7cd`**
+(`/tmp/qt-v4-fix-p4d237-acadcc7cd`, manifest `1.1.23` verified), both with
+the three symlink classes (ledger §5.1). §R.2 probe PASSED at lane start and
+before every regen batch (branch `main`, HEAD `97b25fc53`, tree clean, both
+logs empty).
+
+### Unit 1 — the two voice-direction constants at their seven sites
+
+- `CONVERSATIONAL_VOICE_DIRECTION` + `EXAMPLE_DIALOGUE_COVERAGE` reach
+  `generators/field_semantics.rs` through the generator (`ALL_EXPORTS` 6 → 8,
+  v4 source order: between `PROMPT_SEMANTICS` and `PROPERTIES_SEMANTICS`).
+  Both hand lists grown (`generators-leaf.ts`, `generators-field-semantics.ts`)
+  and the generator's `DOC` map (two lines).
+- `generators/wizard_prompts.rs` regenerated at the pin
+  (`FIELD_PROMPT_EXAMPLE_DIALOGUES`, `FIELD_PROMPT_SYSTEM_PROMPT` — the latter
+  MID-string, `…lore.\n\n<VOICE>\n\nKeep it under 500 words…`).
+- `generators/ai_import.rs`: `FIRST_MESSAGE_PROMPT` became
+  `first_message_prompt()` = the unchanged raw head (now a private
+  `FIRST_MESSAGE_PROMPT_HEAD`) + `\n\nFor exampleDialogues: ` + the constant.
+  Concatenating onto the raw head instead of converting it to a `format!`
+  template means the JSON braces and the `{{char}}`/`{{user}}` placeholders
+  need no escaping and the literal `\n` sequences stay literal.
+  `system_prompts_prompt()` ends `\n\n{CONVERSATIONAL_VOICE_DIRECTION}`.
+- `generators/optimizer.rs`: the general pass's two bullets (the LONG
+  "codify repetition" wording + the EXAMPLEDIALOGUES bullet ending with the
+  constant), the system-prompt pass's two bullets (the SHORTER wording), the
+  new-prompts pass's `- {CONVERSATIONAL_VOICE_DIRECTION}`.
+- `ai_import_tier3_equivalence.rs` `V4_APP_VERSION` → `4.10.0-dev.98` (the
+  pin's; the unifier moves it to `-dev.100`).

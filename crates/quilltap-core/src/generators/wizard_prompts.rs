@@ -149,7 +149,13 @@ Format each exchange as:
 {{user}}: [User's response]
 {{char}}: [Character's follow-up]
 
-The {{char}}: / {{user}}: labels carry the shape — write each line in that speaker's own first-person voice, exactly as they would say it. Show variety in the character's emotional range and speech patterns. Include *actions* and *expressions* in asterisks."#;
+The {{char}}: / {{user}}: labels carry the shape — write each line in that speaker's own first-person voice, exactly as they would say it. Show variety in the character's emotional range and speech patterns. Include *actions* and *expressions* in asterisks.
+
+The exchanges together must show the character:
+- catching a joke or a bit of exaggeration and answering it in kind, in their own humor, without analysing it;
+- answering a casual, offhand line briefly — a line or two, no report, no restating what was said;
+- getting serious when something actually matters, with fuller and more careful language.
+Keep most replies roughly the size of the line they answer. Use any signature phrase or gesture at most once across all the exchanges."#;
 
 /// v4 `FIELD_PROMPTS.firstMessage` (byte-exact).
 pub const FIELD_PROMPT_FIRST_MESSAGE: &str = r#"Write an engaging opening message from this character that starts a brand-new conversation (1-3 paragraphs).
@@ -174,6 +180,14 @@ Include:
 
 Write as direct instructions to the AI, in second person ("You are...", "You always...").
 Character facts live in the identity/description/personality/manifesto fields — the prompt directs the performance rather than restating the lore.
+
+The prompt must also direct how the character LISTENS and TALKS, in terms fitted to this character rather than as a generic checklist:
+- Listen like a person: people speak in shorthand, joke, exaggerate, understate, and trail off. The character responds to what the speaker means, not the literal words — a joke gets a joke or a groan back, never analysis or a solemn confirmation; exaggeration is not a confession; an offhand remark is not mined for subtext; when the character truly cannot tell whether someone is serious, they ask the way a person would.
+- Size the reply to what it was handed: a throwaway line gets a throwaway answer, a casual question a short one. The character answers rather than restating the speaker's words first.
+- Humor comes in the character's own key (warm, deadpan, theatrical, whatever fits them).
+- Signature vocabulary, gestures, props, and turns of phrase are seasoning, used a few times per scene rather than in every reply; pet constructions (especially the "not X — Y" contrast) are rationed.
+- Careful, precise, formal language is a register the character chooses for moments that call for it — vows, real disagreements, technical work, matters of faith or grief — so it keeps its weight. A character who is formal by design stays formal, and still hears the joke and still answers small things briefly.
+
 Keep it under 500 words but comprehensive."#;
 
 /// v4 `FIELD_PROMPTS`, in v4's own insertion order — the order is recorded

@@ -48,6 +48,10 @@ const DOC = {
     'The four vantage points plus the manifesto — the preamble every generator opens with.',
   PROMPT_SEMANTICS:
     'The system-prompt bucket ("Prompt"): named, sometimes model-specific instruction documents.',
+  CONVERSATIONAL_VOICE_DIRECTION:
+    'How a generated system prompt must direct the character to LISTEN and TALK (v4 `c3eefa752`). NOT part of `FULL_FIELD_SEMANTICS`: it is interpolated only where a system prompt is written — the AI Wizard `systemPrompt` field, Summon From Lore\'s `system_prompts` step, and the optimizer\'s new-prompts pass.',
+  EXAMPLE_DIALOGUE_COVERAGE:
+    'What a generated set of example dialogues must show (v4 `c3eefa752`) — a joke caught, a casual line answered briefly, a serious turn. Interpolated by the AI Wizard `exampleDialogues` field, Summon From Lore\'s `first_message` step, and the optimizer\'s general-fields pass.',
   PROPERTIES_SEMANTICS:
     'The properties bucket: pronouns + aliases as data, never prose. The freeform metadata fact sheet is user-authored only and deliberately NOT part of this bucket.',
   PHYSICAL_DESCRIPTION_SEMANTICS:
