@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — docs(dogfood): the 2026-09-29 walk — the pane rows, the #124 NanoGPT Flux trial
+
+_Docs-only change._
+
+Recorded the three rows the hidden Browser pane had blocked: the wheel scroll
+through the largest chat, the Salon Images quick-hide switch, and the `@`
+mention menu plus the emoji typeahead after a soft break. All three pass.
+Recorded the #124 workaround: a native NanoGPT `flux-2-dev` image profile,
+set as the Concierge's uncensored image desk, generated the Lantern background
+on the first attempt (the image call took 101 s).
+
+#### 2026-09-29 — docs(dogfood): the 2026-09-29 eight-round walk — Claude's rows, findings #121/#122/#124/#125
+
+_Docs-only change._
+
+Added the walk doc and four findings rows. #121 (production times in UTC
+where v4 uses the host zone) is escalated for a ruling. #122 and #125 are
+v4-faithful and recorded as candidate v4 notes. #124 (the instance's WaveSpeed
+image desk is an npm plugin v5 cannot load) is recorded as a candidate order.
+This entry was added one commit late.
+
 #### 2026-09-29 — fix(db): open every connection with v4's 64 MB page cache (dogfood #123)
 
 _Versions: core 0.0.1105._
