@@ -155353,3 +155353,22 @@ on — the tab's slider floor; Friday's scored 0.0375), and the standing queue
 unchanged from 2026-09-18 (the Lantern budget, a real token-limit turn, the
 four planted proofs, dedup/summaries, the Brahma deep query, #101, the
 compression re-measure).
+
+### Addendum — the owed-rows sweep (2026-09-29, same session)
+
+After the pass closed, the posed-refusal endpoint grew into a general posed
+provider (a failure per model name: token limit, tools unsupported, a blind
+describer, an echo; request capture; Responses-API answers). Older rows that
+had been blocked only for want of a provider failing on demand ran on the
+copy: **P4.99's recovery INFO line, P4.97's tool-unsupported retry (the
+retry's wire body drops exactly `tools`/`tool_choice`/the cache key), bug
+116's positive arm (a describer billed 40 tokens against the 66-token
+instruction is discarded with v4's WARN), the dangling-key greeting WARN,
+five of P4.90's six greeting-ladder lines live, and a cross-provider failover
+with a tool call re-streaming on the understudy's model — all PASS.**
+Findings: **#127 FIXED** (the turn-chain decision had none of v4's eight log
+lines; core 0.0.1106), **#128 RECORDED** (chat image uploads are never
+auto-described; the P4.D108 deferral, now measured — proposed order),
+**#129 RECORDED** (no tool-loop re-stream on any turn writes an `llm_logs`
+row; invisible to the differential, which strips CHAT_MESSAGE rows — proposed
+order). Walk doc §5.

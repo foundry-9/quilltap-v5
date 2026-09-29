@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(chat): log v4's turn-chain decisions (dogfood #127); the owed-rows sweep
+
+core 0.0.1105 → 0.0.1106.
+
+The turn-chain decision (`should_chain_next`) now writes v4's log lines: chat
+not found, paused, max depth, max time, the all-LLM pause, next participant
+not found, and "chain decision: continue". Before, a chain that stopped at its
+depth cap left no trace of why. `persist_turn_participant_id` now logs and
+swallows a failed write, as v4's helper does. The two held-user-turn sites,
+which mirror v4's direct update, use a new strict
+`write_last_turn_participant_id`. Six new tests pin the exact log text.
+
+The posed-refusal test server (`harness/tools/refusal-server.py`) now poses a
+failure per model name (token limit, tools unsupported, a blind describer, a
+plain echo), captures every request body, and answers the Responses API. A
+same-day sweep of older owed dogfood rows used it to pass P4.99, P4.97, bug
+116's positive arm and P4.90's greeting and failover rows. It recorded #128
+(chat image uploads are never described in the background) and #129
+(tool-loop re-streams write no LLM log row).
+
 #### 2026-09-29 — docs(porting): order P4.119 — format display dates in the host zone (dogfood #121, ruled (a))
 
 _Docs-only change._

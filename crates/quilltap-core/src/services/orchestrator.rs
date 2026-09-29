@@ -751,7 +751,7 @@ where
 {
     // Nobody is on deck: the rotation resumes from wherever the user left it, and
     // a stale pending seat would have the Salon announce a turn that isn't coming.
-    turn_orchestrator::persist_turn_participant_id(db, chat_id, None).await?;
+    turn_orchestrator::write_last_turn_participant_id(db, chat_id, None).await?;
 
     sink.emit(ChatEvent::chain_complete(ChainCompletePayload {
         reason: "paused".to_string(),
@@ -944,7 +944,7 @@ where
 
     // Persist the pending turn and tell the client whose floor it is (the client's
     // own recompute lands on the same seat; the frame settles its streaming state).
-    super::turn_orchestrator::persist_turn_participant_id(db, chat_id, Some(&next_seat_id)).await?;
+    super::turn_orchestrator::write_last_turn_participant_id(db, chat_id, Some(&next_seat_id)).await?;
     sink.emit(ChatEvent::chain_complete(ChainCompletePayload {
         reason: "user_turn".to_string(),
         next_speaker_id: Some(next_seat_id),
@@ -4157,7 +4157,7 @@ where
             user_id = %opts.user_id,
             "[TurnOrchestrator] Chat paused, not chaining after initial turn",
         );
-        let _ = turn_orchestrator::persist_turn_participant_id(db, &opts.chat_id, None).await;
+        turn_orchestrator::persist_turn_participant_id(db, &opts.chat_id, None).await;
         deps.sink
             .emit(ChatEvent::chain_complete(ChainCompletePayload {
                 reason: "paused".to_string(),
@@ -4200,7 +4200,7 @@ where
         if !decision.chain || decision.participant_id.is_none() {
             let final_next_speaker = decision.participant_id.clone();
             // v4 persists the final next speaker (best-effort — errors logged).
-            let _ = turn_orchestrator::persist_turn_participant_id(
+            turn_orchestrator::persist_turn_participant_id(
                 db,
                 &opts.chat_id,
                 final_next_speaker.as_deref(),
@@ -4256,8 +4256,7 @@ where
                         user_id = %opts.user_id,
                         "[TurnOrchestrator] Chain stopped: empty response",
                     );
-                    let _ = turn_orchestrator::persist_turn_participant_id(db, &opts.chat_id, None)
-                        .await;
+                    turn_orchestrator::persist_turn_participant_id(db, &opts.chat_id, None).await;
                     deps.sink
                         .emit(ChatEvent::chain_complete(ChainCompletePayload {
                             reason: "error".to_string(),
@@ -4296,8 +4295,7 @@ where
                     )
                 })
                 .await?;
-                let _ =
-                    turn_orchestrator::persist_turn_participant_id(db, &opts.chat_id, None).await;
+                turn_orchestrator::persist_turn_participant_id(db, &opts.chat_id, None).await;
                 deps.sink
                     .emit(ChatEvent::chain_complete(ChainCompletePayload {
                         reason: "error".to_string(),

@@ -337,6 +337,10 @@ pub async fn should_chain_next(
     let fresh_chat = db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned))?;
     let Some(fresh_chat) = fresh_chat else {
         // v4 warns + returns { chain: false, reason: 'error' }.
+        tracing::warn!(
+            chat_id = %chat_id,
+            "[TurnOrchestrator] Chat not found during chain",
+        );
         return Ok(ChainDecision::stop(ChainReason::Error));
     };
 
@@ -346,17 +350,34 @@ pub async fn should_chain_next(
         .and_then(Value::as_bool)
         .unwrap_or(false)
     {
+        tracing::info!(
+            chat_id = %chat_id,
+            chain_depth,
+            "[TurnOrchestrator] Chat paused, stopping chain",
+        );
         return Ok(ChainDecision::stop(ChainReason::Paused));
     }
 
     // Check max depth.
     if chain_depth >= config.max_chain_depth {
+        tracing::info!(
+            chat_id = %chat_id,
+            chain_depth,
+            max_chain_depth = config.max_chain_depth,
+            "[TurnOrchestrator] Max chain depth reached",
+        );
         return Ok(ChainDecision::stop(ChainReason::MaxDepth));
     }
 
     // Check max time (injected wall clock).
     let elapsed = now_ms - chain_start_time_ms;
     if elapsed >= config.max_chain_time_ms {
+        tracing::info!(
+            chat_id = %chat_id,
+            chain_depth,
+            elapsed_ms = elapsed,
+            "[TurnOrchestrator] Max chain time reached",
+        );
         return Ok(ChainDecision::stop(ChainReason::MaxTime));
     }
 
@@ -408,6 +429,12 @@ pub async fn should_chain_next(
         }
 
         if should_pause_for_all_llm(turn_count) && turn_count > 0 && !guards.never_pause_for_user {
+            tracing::info!(
+                chat_id = %chat_id,
+                turn_count,
+                chain_depth,
+                "[TurnOrchestrator] All-LLM pause threshold reached",
+            );
             // Pause the chat (write happens even though we return "don't chain").
             let chat_id_owned = chat_id.to_string();
             db.write(move |writers| {
@@ -511,6 +538,11 @@ pub async fn should_chain_next(
         .find(|p| str_field(p, "id") == Some(next_participant_id.as_str()))
         .cloned();
     let Some(next_participant) = next_participant else {
+        tracing::warn!(
+            chat_id = %chat_id,
+            next_participant_id = %next_participant_id,
+            "[TurnOrchestrator] Next participant not found",
+        );
         return Ok(ChainDecision::stop(ChainReason::Error));
     };
 
@@ -547,6 +579,17 @@ pub async fn should_chain_next(
     .map(String::from)
     .unwrap_or_else(|| "Unknown".to_string());
 
+    // `selectionReason` here is the RAW value (`queue` or the selector's own
+    // reason), not the `queue`/`algorithm` pair the decision carries.
+    tracing::info!(
+        chat_id = %chat_id,
+        chain_depth,
+        next_participant_id = %next_participant_id,
+        character_name = %character_name,
+        selection_reason = %selection_reason,
+        "[TurnOrchestrator] Chain decision: continue",
+    );
+
     Ok(ChainDecision {
         chain: true,
         participant_id: Some(next_participant_id),
@@ -562,10 +605,24 @@ pub async fn should_chain_next(
 }
 
 /// Persist the last turn participant id for turn-state restoration on reload (v4
-/// `persistTurnParticipantId`). v4 swallows write errors (best-effort); here the
-/// error surfaces to the caller, which may choose to ignore it (the chain driver
-/// logs + continues).
-pub async fn persist_turn_participant_id(
+/// `persistTurnParticipantId`). Best-effort, as v4's is: a failed write is
+/// logged and swallowed, so the chain driver's call sites never branch on it.
+pub async fn persist_turn_participant_id(db: &Db, chat_id: &str, participant_id: Option<&str>) {
+    if let Err(error) = write_last_turn_participant_id(db, chat_id, participant_id).await {
+        tracing::warn!(
+            chat_id = %chat_id,
+            participant_id = ?participant_id,
+            error = %error,
+            "[TurnOrchestrator] Failed to persist turn participant ID",
+        );
+    }
+}
+
+/// The bare `lastTurnParticipantId` write, errors propagating — v4's direct
+/// `repos.chats.update(chatId, { lastTurnParticipantId })` (the held-user-turn
+/// paths, `orchestrator.service.ts:1865` / `:2006`, which do NOT go through the
+/// swallowing helper above).
+pub async fn write_last_turn_participant_id(
     db: &Db,
     chat_id: &str,
     participant_id: Option<&str>,
@@ -943,5 +1000,180 @@ mod tests {
         );
         assert_eq!(nonempty_character_id(&json!({ "characterId": "" })), None);
         assert_eq!(nonempty_character_id(&json!({})), None);
+    }
+
+    // -----------------------------------------------------------------------
+    // Dogfood #127 — v4's `shouldChainNext` log lines. The decision core had
+    // none of them, so a chain that stopped at `max_depth` (22 turns of one
+    // character in a seatless room, 2026-09-29) left no trace of WHY.
+    // -----------------------------------------------------------------------
+
+    use crate::db::runtime::DbPaths;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAT: &str = "c1000000-0000-4000-8000-000000000127";
+
+    fn provisioned() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("rs");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    /// One LLM seat with no character row (its name falls back to `Unknown`).
+    async fn seed_chat(db: &Db, is_paused: bool, turn_queue: &str) {
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "The Chain Room",
+            "participants": [{
+                "id": "p1", "type": "CHARACTER", "characterId": "",
+                "controlledBy": "llm", "displayOrder": 0, "isActive": true,
+                "status": "active",
+                "createdAt": "2026-09-29T00:00:00.000Z",
+                "updatedAt": "2026-09-29T00:00:00.000Z"
+            }],
+        }))
+        .expect("a ChatCreate");
+        let opts = crate::db::chats::CreateOptions {
+            id: CHAT.to_string(),
+            created_at: "2026-09-29T00:00:00.000Z".to_string(),
+            updated_at: "2026-09-29T00:00:00.000Z".to_string(),
+        };
+        let queue = turn_queue.to_string();
+        db.write(move |w| {
+            w.main().chats().create(&create, &opts)?;
+            w.main().chats().update(
+                CHAT,
+                &crate::db::chats::ChatUpdate {
+                    is_paused: Some(is_paused),
+                    turn_queue: Some(queue),
+                    ..Default::default()
+                },
+            )
+        })
+        .await
+        .unwrap();
+    }
+
+    /// Run one decision under a capture layer; return (reason, captured lines).
+    async fn decide(db: &Db, chat_id: &str, depth: i64, now_ms: i64) -> (&'static str, Vec<String>) {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let _g = tracing::subscriber::set_default(
+            tracing_subscriber::registry().with(crate::test_support::CaptureLayer(logs.clone())),
+        );
+        let decision = should_chain_next(
+            db,
+            chat_id,
+            None,
+            depth,
+            now_ms,
+            0,
+            &ChainConfig::default(),
+            ChainGuards::default(),
+            &DrawSource::constant(0.0),
+        )
+        .await
+        .expect("a decision");
+        let lines = logs
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.contains("[TurnOrchestrator]"))
+            .cloned()
+            .collect();
+        (decision.reason.as_str(), lines)
+    }
+
+    const T: &str = "quilltap_core::services::turn_orchestrator";
+
+    #[tokio::test]
+    async fn chain_not_found_warns() {
+        let (_d, db) = provisioned();
+        let (reason, lines) = decide(&db, "no-such-chat", 0, 0).await;
+        assert_eq!(reason, "error");
+        assert_eq!(
+            lines,
+            vec![format!("WARN {T} [TurnOrchestrator] Chat not found during chain chat_id=no-such-chat")]
+        );
+    }
+
+    #[tokio::test]
+    async fn chain_paused_logs_before_the_depth_guard() {
+        let (_d, db) = provisioned();
+        seed_chat(&db, true, "[]").await;
+        // Depth is ALSO over the cap: v4 checks the pause first, so only its line fires.
+        let (reason, lines) = decide(&db, CHAT, 25, 0).await;
+        assert_eq!(reason, "paused");
+        assert_eq!(
+            lines,
+            vec![format!("INFO {T} [TurnOrchestrator] Chat paused, stopping chain chat_id={CHAT} chain_depth=25")]
+        );
+    }
+
+    #[tokio::test]
+    async fn chain_max_depth_logs_the_cap() {
+        let (_d, db) = provisioned();
+        seed_chat(&db, false, "[]").await;
+        let (reason, lines) = decide(&db, CHAT, 20, 0).await;
+        assert_eq!(reason, "max_depth");
+        assert_eq!(
+            lines,
+            vec![format!(
+                "INFO {T} [TurnOrchestrator] Max chain depth reached chat_id={CHAT} chain_depth=20 max_chain_depth=20"
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn chain_max_time_logs_the_elapsed_ms() {
+        let (_d, db) = provisioned();
+        seed_chat(&db, false, "[]").await;
+        let (reason, lines) = decide(&db, CHAT, 3, 300_001).await;
+        assert_eq!(reason, "max_time");
+        assert_eq!(
+            lines,
+            vec![format!(
+                "INFO {T} [TurnOrchestrator] Max chain time reached chat_id={CHAT} chain_depth=3 elapsed_ms=300001"
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn chain_queue_naming_a_missing_seat_warns() {
+        let (_d, db) = provisioned();
+        seed_chat(&db, false, "[\"ghost\"]").await;
+        let (reason, lines) = decide(&db, CHAT, 1, 0).await;
+        assert_eq!(reason, "error");
+        assert_eq!(
+            lines,
+            vec![format!(
+                "WARN {T} [TurnOrchestrator] Next participant not found chat_id={CHAT} next_participant_id=ghost"
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn chain_continue_logs_the_raw_selection_reason() {
+        let (_d, db) = provisioned();
+        seed_chat(&db, false, "[\"p1\"]").await;
+        let (reason, lines) = decide(&db, CHAT, 2, 0).await;
+        assert_eq!(reason, "continue");
+        assert_eq!(
+            lines,
+            vec![format!(
+                "INFO {T} [TurnOrchestrator] Chain decision: continue chat_id={CHAT} chain_depth=2 next_participant_id=p1 character_name=Unknown selection_reason=queue"
+            )]
+        );
     }
 }

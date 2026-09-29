@@ -203,3 +203,33 @@ set as the chat's `storyBackgroundImageId` — three recognisable characters
 in a steampunk kitchen, periwinkle envelope and all (looked at, not
 described). **The image call took 101 s.** So #124 has a zero-code
 workaround: point the desk at a native NanoGPT image model.
+
+## §5 Addendum — the owed-rows sweep (same day, after close-out)
+
+The human asked what older owed rows could be run while the server was up.
+Several earlier walks had rows BLOCKED or DEFERRED only because no real
+provider would fail in the needed way on demand. The posed-refusal endpoint
+(`harness/tools/refusal-server.py`) grew into a general **posed provider**:
+the model name picks the failure (`refuse-code`, `refuse-finish`,
+`tokenlimit`, `notools`, `blind`, `echo`), one server serves them all, every
+request body is captured to NDJSON, and a POST to `…/responses` gets a
+Responses-API answer so an OPENAI-provider profile can be pointed at it with a
+dummy key. Four posed profiles (`POSED … (dogfood)`) and a dummy OPENAI key
+now live on the copy.
+
+| # | Owed row (origin) | Result |
+|---|---|---|
+| S1 | **P4.99 — the recovery INFO line** (2026-09-18 D8, deferred) | **PASS.** The `tokenlimit` pose answers OpenAI's `context_length_exceeded` 400 on the turn and a normal answer to the recovery's own `[system, user]` call. Server log: `Recoverable request error detected, attempting recovery … provider=OPENAI_COMPATIBLE model=tokenlimit attachment_count=0 error=HTTP 400: …`; the recovery's reply was saved as Amy's message. ⚠ The test chat had **no user seat**, so it was an all-LLM room and ran 22 turns to v4's `maxChainDepth` of 20 (v4-faithful). That run found **#127**. |
+| S2 | **P4.97 — the tool-unsupported retry** (2026-09-18 D9, deferred) | **PASS.** `notools` pose (400 `This model does not support tools` whenever `tools` is sent): WARN `Model does not support function calling, retrying without tools … tool_count=25`, then INFO `Tool-unsupported retry succeeded. … response_length=41`. From the captured wire bodies, the retry dropped exactly `tools`, `tool_choice` and the cache key (`user: quilltap:char:…:v4`), and kept `temperature` / `max_tokens` / `top_p` and the messages byte-identical. That is P4.97's clear-list on a live wire. |
+| S3 | **Bug 116 — the describer arrival verdict, positive arm** (2026-09-03 A5, blocked: "no misbehaving gateway") | **PASS.** Two refusals came first, both correct. An OPENAI_COMPATIBLE describer is refused at selection: the explicit-id path says `does not support image files` until `supportsImageUpload` is set, then bug 91's gate says `the OPENAI_COMPATIBLE plugin does not forward image attachments`. So the `blind` pose was re-posed as an **OPENAI**-provider profile on localhost with a dummy key. It answered a confident "Victorian conservatory" description billed at `input_tokens: 40`. v5 then logged WARN `[Image Fallback] Describer answered without the image; discarding its description … reason=the model was billed for 40 prompt tokens, which is no more than the 66 the instruction costs on its own …`, and the image went to the real uncensored desk (Z_AI `glm-4.6v`). The `IMAGE_DESCRIPTION` row for the blind call was written **before** the verdict, as v4 does. The describer setting was restored afterwards. |
+| S4 | **P4.90 — the greeting ladder on a dangling key** (2026-09-18 E2, planted) | **PASS.** A key was created, bound to a profile and deleted, which leaves `apiKeyId` dangling. A new chat on it logged WARN `[Chats v1] Connection profile is missing its API key context="autoGenerateFirstMessage"` and made no provider call. That is v4's `:647` arm, which returns NO_GREETING. |
+| S5 | **P4.90 — the other greeting lines** (free, from S6's setup) | **PASS.** A dead primary's greeting ran the whole ladder live, in order: `Greeting generation attempt failed attempt="full context"`, `Retrying greeting generation without memories original_memory_count=5`, `… attempt="without memories"`, `Final greeting generation retry failed`, and `All greeting generation attempts exhausted, falling back to static greeting content_filter_hit=false`. |
+| S6 | **P4.90 — a cross-provider failover with a tool call** (2026-09-18 E3, planted) | **PASS on the model; the missing log row is #129 (every turn, not just failovers).** Primary: OPENAI_COMPATIBLE `dead-model` on a closed port; understudy: NANOGPT DeepSeek V4 Flash Latest. The turn failed over (`[Failover] Primary call failed; walking the fallback chain`, then `Understudy answered … model=deepseek/deepseek-v4.1-flash`). The understudy called `list_mail`, and the re-stream answered with the tool's count (5), so the loop re-streamed on the understudy's model. A two-hop route trail was composed. But `llm_logs` holds ONE `CHAT_MESSAGE` row for the message; v4 writes one per stream. ⚠ This row first claimed v5's *ordinary* tool turns log every stream (2, 3 or 12 rows). **Wrong:** those rows are v4's, written on live Friday before the rsync. v5 first booted on this copy at 18:43Z, and no v5-written message has more than one row. rsync keeps the source's mtimes, so the copy's file times cannot date the copy; the first server-log line can. So the gap is not failover-specific. See **#129**. Separately, `trigger` read `provider-error` for a refused connection. Whether v4 calls the same case `network` depends on how its SDK words the connection error, so it is noted unresolved, not filed. |
+
+Findings from the sweep: **#127** (FIXED), **#128** (RECORDED, proposed
+order), **#129** (see the findings log).
+
+Still owed after the sweep: the conceal-marker arm, bug 145's planted
+collapse, the OPENAI Responses chained re-stream (P4.92 — the pose answers
+the Responses API non-streaming only), the Lantern per-turn budget, and the
+standing spend queue.
