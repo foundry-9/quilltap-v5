@@ -82,6 +82,11 @@ Red first at the pin on the unported code: `character_optimizer_prompts`,
 `generators_wizard_prompts`, `generators_leaf` (only after the hand lists
 grew — with the old list it stays green unported, measured), and
 `ai_import_tier3`. All green at `c3eefa752` after the port.
+#### 2026-09-29 — feat(image-scene): regenerate the image-scene prompts at v4 `97b25fc53` — the concealment marker, the conceal-mode sanitizer prompt, the per-character requirement (P4.D239)
+
+_Versions: core 0.0.1090._
+
+The first half of the story-background drape. v4 `97b25fc53` interpolates a single-quoted `CONCEALMENT_MARKER` into the moderated intimacy block, which the prompt generator refused (it throws on any `${`). `gen-image-scene-prompts.mjs` now resolves exactly one named single-quoted constant into exactly one template body, count-checked, and still throws on any other interpolation. It also emits the marker (59 UTF-16 units) and the new `APPEARANCE_CONCEALMENT_PROMPT` (1490) as their own consts. `prompt_text.rs` is regenerated against a `97b25fc53` pin: the moderated block grows 1968 → 2505 units and the assembled concealed story prompt 5114 → 5651. The redress sanitizer prompt stays at 999 and the candid block is unchanged. New unit pins: the inlined marker agrees with the const (exactly once, inside v4's quotes), and only the moderated crafter carries the requirement. The generator's exactly-once check was mutation-proven both ways (a doubled token and a doubled allow-list entry each throw). The story family stays red at the `97b25fc53` oracle until the sanitize mode lands in the next commit.
 
 #### 2026-09-28 — docs(porting): order the `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118)
 

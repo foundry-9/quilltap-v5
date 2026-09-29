@@ -884,14 +884,15 @@ mod tests {
     use super::*;
 
     /// [decd8ef9] The concealed (default) assembly is byte-identical to the
-    /// pre-split `STORY_BACKGROUND_PROMPT` constant. The length pin is the one
-    /// this file has always carried (5114 UTF-16 code units); the port ALSO
-    /// diffed the assembly against the previously generated constant's exact
-    /// bytes when the split landed.
+    /// pre-split `STORY_BACKGROUND_PROMPT` constant. The length pin was 5114
+    /// UTF-16 code units at the split; [97b25fc53] the moderated intimacy block
+    /// gained the PER-CHARACTER REQUIREMENT paragraph (1968 → 2505), so the
+    /// assembly is now 5114 + 537 = 5651 (the generator's own stderr summary
+    /// reports the same number from v4's source).
     #[test]
     fn concealed_assembly_matches_the_pre_split_constant_length() {
         let concealed = build_story_background_prompt(false);
-        assert_eq!(concealed.encode_utf16().count(), 5114);
+        assert_eq!(concealed.encode_utf16().count(), 5651);
         assert!(concealed.starts_with(
             "You are a skilled visual artist and prompt engineer specializing in atmospheric landscape scenes for story backgrounds."
         ));
@@ -910,6 +911,55 @@ mod tests {
             ]
             .join("\n\n")
         );
+    }
+
+    /// [97b25fc53] The generator resolves `${CONCEALMENT_MARKER}` inline into
+    /// the moderated intimacy block AND emits the marker as its own const; the
+    /// two must agree (Rust `concat!` cannot join `const &str`s, so this pin is
+    /// what keeps the inline copy and the const the story builder pushes in
+    /// lockstep). Exactly once, inside v4's ASCII double quotes.
+    #[test]
+    fn the_inlined_marker_agrees_with_the_marker_const() {
+        use prompt_text::{CONCEALMENT_MARKER, STORY_BACKGROUND_CONCEALED_INTIMACY};
+        assert_eq!(CONCEALMENT_MARKER.encode_utf16().count(), 59);
+        assert_eq!(
+            STORY_BACKGROUND_CONCEALED_INTIMACY
+                .matches(CONCEALMENT_MARKER)
+                .count(),
+            1
+        );
+        assert!(STORY_BACKGROUND_CONCEALED_INTIMACY
+            .contains(&format!("ends with \"{CONCEALMENT_MARKER}\", or when")));
+        assert_eq!(
+            STORY_BACKGROUND_CONCEALED_INTIMACY.encode_utf16().count(),
+            2505
+        );
+        assert_eq!(
+            prompt_text::APPEARANCE_CONCEALMENT_PROMPT
+                .encode_utf16()
+                .count(),
+            1490
+        );
+        // The redress prompt is untouched by the drape.
+        assert_eq!(
+            prompt_text::APPEARANCE_SANITIZATION_PROMPT
+                .encode_utf16()
+                .count(),
+            999
+        );
+    }
+
+    /// v4 `image-scene-concealment.test.ts` cases 1 + 2: the moderated crafter
+    /// carries the per-character requirement and the marker; the uncensored one
+    /// carries neither. Substrings are v4's, verbatim.
+    #[test]
+    fn only_the_moderated_crafter_carries_the_per_character_requirement() {
+        let moderated = build_story_background_prompt(false);
+        assert!(moderated.contains("PER-CHARACTER REQUIREMENT"));
+        assert!(moderated.contains(prompt_text::CONCEALMENT_MARKER));
+        let candid = build_story_background_prompt(true);
+        assert!(!candid.contains("PER-CHARACTER REQUIREMENT"));
+        assert!(!candid.contains(prompt_text::CONCEALMENT_MARKER));
     }
 
     /// v4 `story-background-intimacy.test.ts` case 1 + 2: the default and an

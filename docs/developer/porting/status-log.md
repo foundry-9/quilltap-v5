@@ -153679,3 +153679,47 @@ and the same for `gen-wizard-prompts.mjs` → `wizard_prompts.rs`.
 
 **Versions:** core 0.0.1089 → 0.0.1091, harness 0.0.1012 → 0.0.1014 (one
 bump each per commit); host / web / cli / tauri / SPA untouched.
+---
+
+## P4.D239 — v4 `97b25fc53`: the story-background drape (lane record, 2026-09-29)
+
+Lane branch `claude/p4-story-background-drape-935d6b`, from `main`
+`e361879d3`. Target pin `97b25fc53`; baseline `acadcc7cd`. The §R.2 probe
+PASSED at lane start and before every regen batch (branch `main`, HEAD
+`97b25fc53`, both logs empty, tree clean).
+
+**Worktrees (v4, both detached, lane-unique, the three symlink classes):**
+`/tmp/qt-v4-pin-p4d239-97b25fc53` (every oracle + the generator) and
+`/tmp/qt-v4-fix-p4d239-acadcc7cd` (every real-DB fixture build, §R.3).
+Verified by `rev-parse` and `ls -ld`; the pin marker `CONCEALMENT_MARKER`
+has two hits at the pin and zero at the baseline. (A first attempt built
+both from one unsplit zsh variable and landed two misnamed worktrees at
+`97b25fc53`. They were removed before any regen, and the pair was rebuilt
+from quoted literals.)
+
+### Unit 1 — the generator + the regenerated prompts (commit A)
+
+- `harness/oracle/cases/gen-image-scene-prompts.mjs` takes the survey's
+  §D.1 diff verbatim: `extractSingleQuoted`, a `NAMED` map, and
+  `extract(name, allow)` inlining each allowed `${K}` exactly once. The
+  concealed-intimacy entry carries `allow: ['CONCEALMENT_MARKER']`. It emits
+  `APPEARANCE_CONCEALMENT_PROMPT` and `CONCEALMENT_MARKER`. The stderr
+  summary gains `appcon=`/`marker=`, and the header's "no `${…}`" claim now
+  names the one exception.
+- Regen AS RUN:
+  `node harness/oracle/cases/gen-image-scene-prompts.mjs /tmp/qt-v4-pin-p4d239-97b25fc53 crates/quilltap-core/src/services/image_scene_tasks/prompt_text.rs`
+  (Node 24.13.1), then rustfmt. Summary: `appsan=999 appcon=1490 marker=59
+  STORY_BACKGROUND_CONCEALED_INTIMACY=2505 | assembled concealed=5651
+  candid=4255`. Every number matches the survey.
+- The pre-change generator against the BASELINE pin reproduced the committed
+  file byte-for-byte modulo rustfmt. The new generator against the baseline
+  THROWS ("CONCEALMENT_MARKER not found"), as it must.
+- **M1** (the exactly-once check): the v4 source copied to scratch with the
+  token doubled → `expected exactly one ${CONCEALMENT_MARKER}, found 2`. The
+  allow-list entry doubled → `…found 0`. Both throw.
+- Core pins: `concealed_assembly_matches_the_pre_split_constant_length` goes
+  5114 → 5651 (the arithmetic is in its comment). New:
+  `the_inlined_marker_agrees_with_the_marker_const` (the marker occurs once,
+  inside v4's quotes; 59 / 2505 / 1490 / 999) and
+  `only_the_moderated_crafter_carries_the_per_character_requirement` (v4
+  `image-scene-concealment.test.ts` cases 1–2).

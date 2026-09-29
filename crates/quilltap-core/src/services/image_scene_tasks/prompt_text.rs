@@ -106,6 +106,24 @@ Respond with the SAME JSON array but with sanitized appearanceText values.
 
 JSON only - no other text."##;
 
+/// v4 `APPEARANCE_CONCEALMENT_PROMPT` — the `conceal`-mode sanitizer prompt [97b25fc53] (1490 UTF-16 code units, no trailing newline).
+pub const APPEARANCE_CONCEALMENT_PROMPT: &str = r##"You are a content safety filter for image generation prompts. You will receive character appearance descriptions that have been flagged as potentially explicit or inappropriate for a standard image generation provider. A later step will compose the image and knows how to handle undressed figures tastefully — drapery, framing, shadow, pose.
+
+Your task is to rewrite ONLY the explicit parts, and to report whether each character is undressed.
+
+GUIDELINES:
+- Remove explicit anatomical or sexual detail. Keep hair color, eye color, body type, and other non-explicit physical traits unchanged
+- Do NOT invent clothing. If the character is nude, topless, partially undressed, or wearing only something minimal, say so in plain neutral words ("unclothed", "bare-shouldered", "wrapped only in a towel") — never substitute pajamas, casual clothes, loungewear, or any garment the input does not give them
+- Keep whatever clothing the character does have, described neutrally ("lingerie" → "a silk slip")
+- Set "undressed" to true when the character is nude, topless, partially undressed, or wearing only a towel, sheet, or similar covering; otherwise false
+- Keep descriptions concise and suitable for image generation
+- Do NOT add new details that weren't implied by the original
+
+You will receive a JSON array of objects with characterId and appearanceText.
+Respond with a JSON array of objects with characterId, the rewritten appearanceText, and undressed (boolean).
+
+JSON only - no other text."##;
+
 /// v4 `SCENE_CONTEXT_DERIVATION_PROMPT` (1375 UTF-16 code units, no trailing newline).
 pub const SCENE_CONTEXT_DERIVATION_PROMPT: &str = r##"You are a creative writer skilled at interpreting conversations and imagining vivid scenes.
 
@@ -132,6 +150,9 @@ Discussion about space exploration:
 
 Respond with ONLY the scene description - no explanations, no quotes, no formatting."##;
 
+/// v4 `CONCEALMENT_MARKER` — a single-quoted literal, resolved inline once into `STORY_BACKGROUND_CONCEALED_INTIMACY` [97b25fc53] (59 UTF-16 code units).
+pub const CONCEALMENT_MARKER: &str = r"Undressed in this scene; depict with cinematic concealment.";
+
 /// v4 `STORY_BACKGROUND_PROMPT_HEAD` — the shared opening (both variants) (1379 UTF-16 code units, no trailing newline).
 pub const STORY_BACKGROUND_PROMPT_HEAD: &str = r##"You are a skilled visual artist and prompt engineer specializing in atmospheric landscape scenes for story backgrounds.
 
@@ -156,7 +177,7 @@ CRITICAL GUIDELINES:
 - Avoid cluttered compositions - keep it visually calm for use as a background
 - Write in a flowing, descriptive style suitable for image generation"##;
 
-/// v4 `STORY_BACKGROUND_CONCEALED_INTIMACY` — the intimacy block for a MODERATED image provider (the default) (1968 UTF-16 code units, no trailing newline).
+/// v4 `STORY_BACKGROUND_CONCEALED_INTIMACY` — the intimacy block for a MODERATED image provider (the default); `${CONCEALMENT_MARKER}` resolved inline, exactly once (2505 UTF-16 code units, no trailing newline).
 pub const STORY_BACKGROUND_CONCEALED_INTIMACY: &str = r##"DEPICTING INTIMATE OR UNCLOTHED STATES:
 When the scene context or a character description implies someone is undressed, partially clothed, or in an intimate state, do NOT render explicit nudity. Instead, use cinematic concealment to preserve the narrative truth while keeping the image renderable. The figure is still nude in the story — the camera is just polite about it. Choose whichever technique fits the scene most naturally, and you may combine them:
 - Drapery: a sheet, blanket, towel, or robe carelessly arranged, falling just where it needs to fall; a quilt pulled up to the collarbone; a towel knotted at the chest
@@ -167,7 +188,10 @@ When the scene context or a character description implies someone is undressed, 
 - Environment: water (bath, pool, sea, hot spring) at a discreet level; tall grass; deep snow; a steamed-over mirror
 - Implied context: tousled bedding, discarded clothing on the floor, a robe thrown over a chair — let the surroundings tell the story while the figure itself is shown with tasteful concealment
 
-The intent of the scene MUST come through. Use evocative mood language — "intimate", "tender", "vulnerable", "private moment", "morning after", "candlelit", "bare-shouldered", "barefoot", "freshly bathed" — to preserve the meaning. Do NOT erase the narrative by substituting fully-clothed alternatives ("wearing pajamas", "in casual clothes"); that destroys the scene. The reader of the final image should understand exactly what is happening; only the explicit anatomy is held back."##;
+The intent of the scene MUST come through. Use evocative mood language — "intimate", "tender", "vulnerable", "private moment", "morning after", "candlelit", "bare-shouldered", "barefoot", "freshly bathed" — to preserve the meaning. Do NOT erase the narrative by substituting fully-clothed alternatives ("wearing pajamas", "in casual clothes"); that destroys the scene. The reader of the final image should understand exactly what is happening; only the explicit anatomy is held back.
+
+PER-CHARACTER REQUIREMENT:
+Apply this to EACH character on their own, not just the ones you notice. A character must be depicted with at least one concealment technique above when their description ends with "Undressed in this scene; depict with cinematic concealment.", or when it describes them as nude, naked, undressed, topless, bare-chested, partially undressed, or wearing nothing. Never pass a bare descriptor such as "topless" or "nude" through verbatim, and never dress such a character in clothes the story did not give them."##;
 
 /// v4 `STORY_BACKGROUND_CANDID_INTIMACY` — the intimacy block for a Concierge UNCENSORED image provider (1025 UTF-16 code units, no trailing newline).
 pub const STORY_BACKGROUND_CANDID_INTIMACY: &str = r##"DEPICTING INTIMATE OR UNCLOTHED STATES:
