@@ -155,6 +155,12 @@ A text provider's HTTP error now carries a refusal side: the value v4's plugin t
 So a benign-worded coded 400 (Azure's `content_filter`, Z.AI's `1301`) now reaches the classifier's `provider-code` evidence, as on v4. Before this, v5 answered "not fallback-eligible".
 
 Proven by a new wire family, `text_http_errors_equivalence`: 33 posed error bodies through v4's ten real text plugins in both call modes (726 rows, committed corpus), recorded by the new `record-text-errors.mjs`. Red-first: v5 matched 0 of v4's 162 refusals; now 160, with the two remaining (OpenRouter's SDK path, which v5 never runs) and the message-byte trigger differences pinned both ways. New unit pins at every site; the old pre-stream pin could not see the side (its fake failure has no status).
+#### 2026-09-28 — fix(scriptorium): annotation reads fall back like v4's safeQuery; P4.D235 lane close
+
+_Versions: core 0.0.1093, harness 0.0.1015._
+
+With `read_conversation` rendering live, its annotations read became reachable on instances without a `conversation_annotations` table. v4's `findByChatId` and `findByMessageIndex` are fallback `safeQuery`s (an empty list / `null` plus an error line); v5 propagated the error. Both tool paths now fall back and log v4's lines, pinned by a new test. Found by the lane's full sweep (`chat_admin_routes`); that family now also blanks the render's wall-clock `Current time:` span on both sides, as `tool_dispatch` does. Commits the lane's full-sweep result file, the lane record, and the `Cargo.lock` version sync the previous commit missed.
+
 #### 2026-09-28 — feat(embeddings): keep conversation embeddings warm; stale chats are embedded like any other (P4.D235)
 
 _Versions: core 0.0.1092, harness 0.0.1014, host 0.0.164._

@@ -386,12 +386,33 @@ fn execute_inner(
 }
 
 /// Small helper so the read closure stays a single expression.
+///
+/// v4's `conversationAnnotations.findByChatId` is a FALLBACK `safeQuery`: a
+/// failed read logs v4's ERROR and answers `[]` (the transcript is returned
+/// un-annotated). Unreachable before P4.D235 on an instance with no
+/// annotations table, because the stored-render gate stopped the tool first;
+/// the live render made it reachable (found by the lane's full sweep:
+/// `chat_admin_routes`' `run_tool_read_conversation` answered `no such table`
+/// where v4 renders).
 fn db_find_by_chat_id(
     conn: &rusqlite::Connection,
     chat_id: &str,
 ) -> Result<Vec<crate::scriptorium::Annotation>, DbError> {
-    crate::db::conversation_annotations::ConversationAnnotationsRepository::new(conn)
+    match crate::db::conversation_annotations::ConversationAnnotationsRepository::new(conn)
         .find_by_chat_id(chat_id)
+    {
+        Ok(rows) => Ok(rows),
+        Err(e) => {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "conversation_annotations",
+                chatId = chat_id,
+                error = %e,
+                "Error finding annotations by chat ID",
+            );
+            Ok(Vec::new())
+        }
+    }
 }
 
 /// Format the tool result for LLM context (v4 `formatReadConversationResults`).
@@ -512,11 +533,39 @@ mod log_tests {
     #[test]
     fn a_failed_read_logs_v4s_execution_failed_error() {
         let db = db();
-        drop_annotations(&db);
+        db.write_blocking(|w| {
+            w.main().connection().execute_batch("DROP TABLE chats")?;
+            Ok(())
+        })
+        .unwrap();
         let (out, lines) = read(&db, json!({}));
         assert!(!out.success);
         let l = only(&lines, "ERROR", "Read conversation tool execution failed");
         assert!(l.contains("error="), "{l}");
         none_at(&lines, "INFO");
+    }
+
+    /// v4's `findByChatId` is a fallback `safeQuery`: with no annotations table
+    /// the read still SUCCEEDS, un-annotated, and logs v4's db ERROR — never
+    /// the tool's execution-failed line.
+    #[test]
+    fn a_failed_annotations_read_falls_back_to_none() {
+        let db = db();
+        drop_annotations(&db);
+        let (out, lines) = read(&db, json!({}));
+        assert!(out.success, "{out:?}");
+        let db_err: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR quilltap::db"))
+            .collect();
+        assert_eq!(db_err.len(), 1, "{lines:?}");
+        assert!(
+            db_err[0].contains("Error finding annotations by chat ID")
+                && db_err[0].contains("collection=conversation_annotations"),
+            "{}",
+            db_err[0]
+        );
+        none_at(&lines, "ERROR");
+        only(&lines, "INFO", "Read conversation tool completed");
     }
 }

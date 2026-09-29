@@ -154875,3 +154875,156 @@ chat.types.ts` has 0 `renderedMarkdown` hits) and FIXTURE
   NDJSON for the changed bytes. The silent-stale-pass trap, verbatim.)
 - `cargo clippy --workspace --all-targets -D warnings` clean; `cargo test -p
   quilltap-core --lib` 2,714 / 0.
+
+### Unit 5 — mutation proofs, Tier R, the first-boot cost recipe, the pre-lists (Tier 2 items 11–13)
+
+**Mutation proofs** (each by file backup, the restore md5-checked; all RED
+against exactly the test named):
+
+| # | mutation | reddened |
+|---|---|---|
+| M1 | `renderedMarkdown` back in `ALL_COLUMNS` | `a_chat_reads_the_same_with_or_without_the_dropped_rendered_markdown_column` |
+| M2 | the column + a placeholder left in the INSERT | `chats_tier2` create arm on the TARGET-built fixture (`create:` panic) |
+| M3 | `embedded >= total` → `>` | `v4s_five_rows` (unit) AND `characters_reads` — exactly `chats_scriptorium_chunks_without_column_embedded` |
+| M4a | the chat-list batch restricted to chats with a stored transcript | `salon_reads` (its 4 `embedded` rows) |
+| M4b | the character GET gated on the column | `characters_reads` — both chunks-without-column rows |
+| M5 | `read_conversation`'s gate back to `!rendered` only | `scriptorium_tools` op 4 (the header-only chat) |
+| M6 | arm A back to `renderedMarkdown IS NULL` | the unit `arm_a_keys_on_chunk_absence_not_the_column` (wide test table: mis-selects) AND `embedding_remainder` (the narrowed pair: the scan ERRORS → `{0,0,0,0}` — the order's predicted proof) |
+| M7 | the stale gate restored in the render reconcile | the unit `stale_chats_are_healed_too`; ⚠ `embedding_remainder` SURVIVED the first mutant — it used the unit's fixed clock (2026-05-28), under which no corpus chat is stale: a mis-aimed mutant, not a coverage gap. Re-aimed at the family's own `renderNowIso` → RED (`enqueued` 3 vs v4's 6) |
+| M8 | the collapse's step 3 restored | `collapse_stale_chat_caches_tier2` (`chunks projection diverged`) |
+| M9 | the tool render on the real clock | `scriptorium_tools` op 0 (the `Current time:` line) |
+
+**Tier R** (`cli_differential`, `QT_V4_CHECKOUT=` the TARGET pin): **266
+cases / 0 failures** (440 s). `db/chats.rs` is linked by the CLI; nothing moved.
+
+**The first-boot re-embed cost — the recipe for the dogfood pass (§E.4; NO
+boot in this lane).** Run against a COPY (never live Friday), read-only, with
+either CLI (both register `qt_text()` on a raw-SQL open):
+
+```bash
+# 0. which vintage is the copy? 1 = migrated before -dev.96 (column kept), 0 = past it
+quilltap db --data-dir <COPY> "SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name = 'renderedMarkdown'"
+# 1. has v4 ALREADY warmed it? (v4 shipped -dev.96 on 2026-09-26)
+quilltap db --data-dir <COPY> "SELECT COUNT(*) AS chunks, SUM(embedding IS NULL) AS unembedded FROM conversation_chunks"
+# 2. the cost driver: the render reconcile's arm-(B) set under the default profile
+quilltap db --data-dir <COPY> "SELECT COUNT(*) AS chunks, COUNT(DISTINCT cc.chatId) AS chats, SUM(LENGTH(qt_text(cc.content))) AS chars FROM conversation_chunks cc WHERE cc.embedding IS NULL AND LENGTH(qt_text(cc.content)) BETWEEN 1 AND 131072 AND cc.chatId IN (SELECT id FROM chats) AND NOT EXISTS (SELECT 1 FROM embedding_status es WHERE es.entityType = 'CONVERSATION_CHUNK' AND es.entityId = cc.id AND es.profileId = (SELECT id FROM embedding_profiles WHERE isDefault = 1) AND es.status = 'FAILED')"
+# 3. the default profile the embeds would bill (provider/model)
+quilltap db --data-dir <COPY> "SELECT id, name, provider, modelName, isDefault FROM embedding_profiles WHERE isDefault = 1"
+```
+
+Step 2's `chunks` is the upper bound on `EMBEDDING_GENERATE` jobs the first
+boot enqueues (one per un-embedded, non-FAILED, in-cap chunk on a non-orphan
+chat), `chats` the renders, `chars / 4` a token estimate for pricing (last
+measured 2026-07-28: 9,652 of 11,357 chunks un-embedded, ≈ $2 on
+text-embedding-3-large). **If step 1 reads a small `unembedded`, v4 has
+already paid it on live Friday** (a copy taken after v4 ran `-dev.96`) and the
+v5 boot proof reduces to "enqueues ~nothing". **A zero-spend boot:** no
+`isDefault` embedding profile (the reconcile still logs `incomplete_chats` /
+`enqueued` and the renders still run, but the render job enqueues no embeds and
+the dimension reconcile skips `no-profile`) or a dead key
+(`a-bad-api-key-is-a-free-provider-wire-proof`). The boot lines to read: `INFO
+quilltap::boot "Conversation render reconciliation: found incomplete
+conversations" count=` then `"Conversation render reconciliation complete"`.
+**Dogfood-visible on that first boot (§E.3):** every chat the old sweep
+cold-tiered flips its Scriptorium badge red → amber (`rendered`) and then green
+as the embeds drain — the inverted status edge, working as designed.
+
+**§R.9 mirror pre-list** (byte counts; the unifier's): `docs/v4/developer/
+API.md` 229,906 (v5 mirror, = `acadcc7cd`) → 230,050 at `97b25fc53` (moved by
+`f7f3d7bf0` AND P4.D234's `39bc98ffc`/`12c336fad`); `docs/v4/developer/DDL.md`
+129,221 → 129,668; `docs/v4/developer/features/complete/db-size-reduction-
+spec.md` 25,842 → 26,300 (both `f7f3d7bf0` only).
+
+**Tier 3 item 14 — the five `help/` pages (P4.D238's tree copy), md5 at
+`f7f3d7bf0` (= `97b25fc53`) vs v5 now:** `chat-settings.md`
+`ad920495d06a39c27d20176ad891e557` (v5 `ff22cf1a…`), `chats.md`
+`64a08e8003f40064cea4bc67af2d8571` (v5 `cf743179…`), `data-retention.md`
+`47f556da8bfc4607aed5abe46e14da9a` (v5 `b4f80dbd…`), `embedding-profiles.md`
+`9101de913fd1536553e7efe5ea328495` (v5 `c92aeaaa…`), `scriptorium.md`
+`b72a0289229a1a39bbef482f0ef1250e` (v5 `76cca6ee…`). Copied NOTHING.
+
+### Unit 6 — the finding the full sweep made, and the gate
+
+- **The full sweep from the TARGET pin** (announced; one-shot check that no
+  other sweep or workspace gate was running; `--collisions` first: the
+  standing 27): **554 ok / 14 run_failed / 2 regen_failed / 3 refused of
+  573.** Result: `harness/tools/sweep-results/2026-09-28-f7f3d7bf0-p4d235-
+  full.json`. Every non-ok family classified:
+  - **P4.D235's own — FIXED:** `chat_admin_routes` (below).
+  - **P4.D234's (its commits sit below my pin, §R.3), NOT touched:**
+    `mail_carina_tools` + `tool_definitions` (regen_failed — the renamed v4
+    files), `tools_inventory`, `tool_build`, `orchestrator_tier3`,
+    `context_feeders_leaves` (Suparṇā's `read_mail` wording),
+    `post_office_concierge_lantern_suparna`, and ⚠ **`enclave_step_tier3`** —
+    measured: its ONLY diff is `llm_logs.requestHashes.toolsArrayHash`
+    (`bebf9b796e0de7e0` → `d88e759491ff3083`), the tool catalogue at the wire;
+    P4.D234's list named it NEUTRAL-by-prediction, so this is a finding FOR
+    P4.D234 / the unifier.
+  - **Standing (§R.5 / every prior sweep):** `ariel_writers_tier3`,
+    `memory_processor_tier3` (compressed-text byte parity), `search_replace`,
+    `builtin_prompt_templates_guard` (live checkout — P4.D237),
+    `help_tree` + `help_section_size` (the `help/` tree — P4.D238),
+    `ai_import_tier3` (`V4_APP_VERSION` — `-dev.96` at this pin vs
+    `-dev.93`; moves with the baseline); refused: `backup_uuid_remap`
+    (repo-write, by design), `avatar_rolls_routes` / `generator_sse_wire`
+    (non-extractable).
+- **The finding — `chat_admin_routes` (`run_tool_read_conversation`,
+  `run_tool_private`):** v5 answered `sqlite error: no such table:
+  conversation_annotations` where v4 renders. v4's `conversationAnnotations.
+  findByChatId` AND `findByMessageIndex` are FALLBACK `safeQuery`s (`[]` /
+  `null` + an ERROR line); v5 propagated the `Err`. Pre-existing, UNREACHABLE
+  until this lane: the old stored-render gate stopped the tool first. Both
+  fallbacks ported in the tools' own wrappers (`db/conversation_annotations.rs`
+  is not this lane's file; `read_conversation` is the only caller of
+  `find_by_chat_id`), with v4's messages (`Error finding annotations by chat
+  ID` / `Error finding annotation by message index`, target `quilltap::db`);
+  NEW pin `a_failed_annotations_read_falls_back_to_none` (success,
+  un-annotated, one db ERROR, no tool ERROR); the execution-failed pin
+  re-triggered by dropping `chats`. The family's remaining diff was the live
+  render's `Current time:` line (v4's ticking-frozen clock vs the route's real
+  one) — `blank_minted` now blanks exactly that span on both sides. ⚠
+  **`chat_admin_routes_equivalence.rs` is in NO lane's family list** — edited
+  here because this port is what moved it; named for the unifier. GREEN via
+  the driver at the pin; `scriptorium_tools` + `tool_dispatch` re-run GREEN.
+- **The gate** (tree = this commit's parent + the fix, `CARGO_INCREMENTAL=0`,
+  `TZ=UTC`): fmt clean; clippy clean in BOTH feature sets; `cargo build
+  --workspace --release` clean; `cargo test --workspace --no-fail-fast` with
+  the lane's env block (15 families' vars, lane-private copies under
+  `/tmp/p4d235/gate/`): **644 binaries / 3,879 passed / 1 failed / 3
+  ignored** — the one red `builtin_prompt_templates_guard`'s
+  `the_vendored_catalogue_equals_v4s_shipped_prompts`, the §R.5 standing red
+  (live checkout; P4.D237). Every lane family RAN (read by name — no `SKIP:`
+  from any of them); `get_messages_caller_census` 3/0, `dispatch_wrong_type_
+  census` 14/0 (UNMOVED at 451), `help_tree_embed_guard` + `host_help_docs_
+  boot` UNMOVED at 129, `spelling_guard`, `zod_version_guard`,
+  `provider_sdk_version_guard` green. Tier R 266/0 at the pin (Unit 5).
+
+### Deferrals (loud) and records for the unifier
+
+- **Tier 3, as ordered:** the five `help/` pages → P4.D238 (md5s above); the
+  client → P4.D236; the `docs/v4/` mirror → the unifier (pre-list above);
+  `prettify.ts`'s label, `instrumentation.ts`'s comment, the version stamps →
+  NO-PORT; the dogfood boot (the re-embed spend) → the owed dogfood pass,
+  with Unit 5's recipe; a reclamation migration for the stored column → the
+  standing deferral class (`db/text_compression.rs`) — v5 never drops.
+- **For the unifier:** (1) `reconcile_embedding_dimensions`' `_now_ms` is
+  dead — drop it together with its `services/backup/restore/orchestrator.rs`
+  caller (not this lane's file). (2) `quilltap-host/src/spine.rs:1678`'s
+  comment still says the per-turn render "keeps `renderedMarkdown` … current"
+  (not in this lane's list). (3) `chat_admin_routes_equivalence.rs` edited
+  out of any list (above). (4) `enclave_step_tier3` reddens on the
+  tool-catalogue hash at any pin ≥ `12c336fad` — P4.D234's to absorb.
+  (5) `dogfood-findings.md` notes (§R.9): a Friday copy past `-dev.96` opens
+  on v5 only after this lane; the first-boot re-embed cost + the "v4 may
+  already have warmed it" probe; the badge inversion visible on first boot.
+- **Order premises measured wrong:** 41 chats-bearing pairs, not 42; three
+  `clearEmbeddings` ops, not five; a `controlledBy:'user'` seat with NO
+  character cannot be created (v4 requires `characterId`) — the reachable
+  shape is a dangling one; `chats_tier2` is NOT red-first on a
+  baseline-built fixture (it is on a target-built one); the no-preload
+  enrichment fallback has no production caller on either side; the tools'
+  annotations reads were a latent `safeQuery` gap the order did not name.
+- **Versions this lane:** core 0.0.1089 → 0.0.1093 (+4), harness 0.0.1012 →
+  0.0.1015 (+3), host 0.0.162 → 0.0.164 (+2); web/cli/tauri/SPA unchanged.
+
+**P4.D235 LANE COMPLETE.**

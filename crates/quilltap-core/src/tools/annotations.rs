@@ -376,11 +376,26 @@ fn upsert_plan(
     }
 
     // Determine action (existing → updated, else created) BEFORE the upsert.
-    let existing =
-        db.read_main(|c| {
+    // v4's `findByMessageIndex` is a FALLBACK `safeQuery` (a failed read logs
+    // v4's ERROR and answers `null` → "created"); P4.D235 ported it with the
+    // live render, which made this read reachable on more instances.
+    let existing = db
+        .read_main(|c| {
             conversation_annotations::ConversationAnnotationsRepository::new(c)
                 .find_by_message_index(chat_id, message_index as f64, character_name)
-        })?;
+        })
+        .unwrap_or_else(|e| {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "conversation_annotations",
+                chatId = chat_id,
+                messageIndex = message_index,
+                characterName = character_name,
+                error = %e,
+                "Error finding annotation by message index",
+            );
+            None
+        });
     let action = if existing.is_some() {
         "updated"
     } else {

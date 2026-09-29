@@ -347,6 +347,30 @@ fn blank_minted(v: &mut Value) {
             o.iter_mut().for_each(|(_, x)| blank_minted(x));
         }
         Value::Array(a) => a.iter_mut().for_each(blank_minted),
+        // P4.D235 (v4 `f7f3d7bf0`): `read_conversation` now renders the
+        // transcript LIVE, and the render header carries the wall clock
+        // (`Current time: <when>. You are reading history…`). v4's clock is
+        // the case's ticking freeze; v5's route path passes the executor's
+        // real `now_iso()`. Blank exactly that span on both sides — the
+        // byte-exact frozen-clock render is `scriptorium_tools_equivalence`'s
+        // proof.
+        Value::String(s) => {
+            let mut out = String::with_capacity(s.len());
+            let mut rest = s.as_str();
+            while let Some(i) = rest.find("Current time: ") {
+                let after = &rest[i + "Current time: ".len()..];
+                match after.find(". ") {
+                    Some(dot) => {
+                        out.push_str(&rest[..i]);
+                        out.push_str("Current time: <NOW>");
+                        rest = &after[dot..];
+                    }
+                    None => break,
+                }
+            }
+            out.push_str(rest);
+            *s = out;
+        }
         _ => {}
     }
 }
