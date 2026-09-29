@@ -4,6 +4,1108 @@
 
 ### 4.10-dev
 
+#### Fixed: story backgrounds no longer re-dress characters the concealment prompt should drape
+
+- The Concierge's appearance sanitizer rewrote explicit appearances by substituting clothing
+  ("wearing nothing" → "wearing casual clothes") before the story-background prompt crafter ran.
+  The crafter's concealment guidance forbids exactly that substitution, so a sanitized character
+  reached it already dressed and was rendered as a different scene.
+- `sanitizeAppearancesIfNeeded` / `sanitizeAppearance` take a `mode`. Story backgrounds pass
+  `'conceal'`: the rewrite removes explicit wording but keeps the character's state, and reports
+  `undressed`, which sets `needsConcealment` on the appearance. The handler appends
+  `CONCEALMENT_MARKER` to that character's description.
+- The concealed crafter prompt gains a per-character requirement: every character carrying the
+  marker, or described as nude/naked/topless/undressed, must get at least one concealment
+  technique and must not be dressed. Previously the model applied concealment unevenly and could
+  pass a bare "topless" through.
+- The `generate_image` tool keeps the default `'redress'` mode; its prompt expander has no
+  concealment guidance to act on the marker.
+
+#### Fixed: characters added to a running chat keep their default avatar
+
+- Adding a character to an existing chat (or re-adding a removed one) now requests a per-chat
+  avatar for their current outfit, as chat creation already did for the opening cast. Previously
+  the joining character showed their default avatar until their next wardrobe change.
+- Gated on the chat's avatar-generation setting and skipped in autonomous rooms, like other
+  automatic triggers. The request runs through the normal avatar job, so an outfit that already
+  has a cached avatar is rebound without a new image generation.
+- `refreshAvatarForArrivingCharacter` in `app/api/v1/chats/[id]/actions/participants.ts`.
+
+#### Changed: built-in character prompts teach listening and register
+
+- All 21 sample system prompts (`qtap-plugin-default-system-prompts` 1.1.24) now tell the
+  character to respond to what the speaker means: jokes answered in kind, exaggeration not taken
+  literally, offhand remarks not mined for subtext, and a question when seriousness is unclear.
+  They also size replies to the input, skip paraphrasing, ration signature habits and the
+  "not X — Y" construction, and reserve formal language for moments that call for it.
+- Each prompt ends with short example exchanges (a joke caught, a casual line answered briefly,
+  a serious moment). Every file uses different lines, and the examples are marked as showing
+  shape only, not voice or shared history.
+- The prompt-template seeder now refreshes existing built-in rows when the shipped text changes.
+  It used to insert only missing rows, so revised samples never reached existing installs.
+  Prompts already imported into characters are copies and are not changed.
+- The AI Wizard and Summon From Lore add the same listening and register direction to generated
+  system prompts, and require generated example dialogues to cover a joke, a casual line, and a
+  serious moment (`CONVERSATIONAL_VOICE_DIRECTION` / `EXAMPLE_DIALOGUE_COVERAGE` in
+  `lib/services/character-field-semantics.ts`).
+- The Character Optimizer no longer writes a habit that appears in most replies into a field as a
+  trait, keeps a system prompt's listening and register direction when refining it, and applies
+  the same example-dialogue coverage.
+
+#### Added: Import from Image offers an outfit
+
+- The wardrobe image analysis now also asks the vision model to name the ensemble
+  (`outfit: { title, description, appropriateness }`). The analyze-image endpoint returns it as
+  `proposedOutfit`, or `null` when the model names none, returns it without a title, or finds
+  fewer than two items. A bad outfit block never fails the analysis.
+- The review screen has an "Also create an outfit from these pieces" card, on by default when the
+  model named one and available whenever two or more items are selected. After the pieces are
+  created, their returned ids become the composite's `componentItemIds` and its `types` are their
+  union (`unionTypes`). No ids are assigned up front. The outfit defaults to `replace: true`.
+- If fewer than two pieces are created, or the outfit post fails, the imported pieces are kept and
+  an error toast says the outfit was not made.
+
+#### Changed: old conversations keep their embeddings; transcripts rendered on demand
+
+- The stale-chat sweep no longer clears `conversation_chunks.embedding`. On `Friday` it had
+  cleared 85% of all chunks (every chat idle more than 30 days), which removed those chats from
+  semantic search, to save about 14 MB. Keeping every chunk embedded costs about 16 MB there.
+- The startup render reconcile, the embedding reindex and the dimension reconcile no longer skip
+  stale chats. On the first boot after this change the reconcile enqueues a render (and so a
+  re-embed) for every chat that had been cold-tiered. On `Friday` that is about 13k chunks.
+- `chats.renderedMarkdown` is dropped (`drop-chat-rendered-markdown-v1`). Chat rows are always
+  read whole, so every chat list carried every stored transcript (about 160 KB each). The
+  transcript is now rendered from the messages when needed (`renderChatConversation`,
+  `lib/scriptorium/render-chat.ts`), used by the render job, `read_conversation` and
+  `upsert_annotation`. `read_conversation` previously failed on any chat the sweep had collapsed.
+- The render job resolves speaker names through `resolveSpeakerNames`. A character with a broken
+  vault now costs a label instead of failing the render.
+- The Scriptorium badge status is derived from chunks alone (`deriveScriptoriumStatus`,
+  `lib/scriptorium/status.ts`), used by both chat-list endpoints. Before this, a collapsed chat
+  showed red "Not yet rendered" even after its embeddings were restored.
+- Chat card badges and the delete/remove button use the in-app `Tooltip` instead of the native
+  `title` attribute, which was unreliable under Electron.
+
+#### Added: `discard_mail`
+
+- `discard_mail({ letter })` deletes a letter from the caller's own `Mail/` folder by file name,
+  regardless of `systemTransparency`. It deletes through `discardLetter` →
+  `deleteDatabaseDocumentIfExists`, the same `deleteWithGC` chokepoint as `doc_delete_file`: a
+  hard-linked letter loses only its link, a one-member link group is dissolved, and the file row
+  is collected when no link remains. In the job child the delete is buffered and replayed on the
+  parent.
+- Added to `DESTRUCTIVE_TOOL_NAMES`, so autonomous rooms drop it unless destructive tools are
+  allowed.
+- The letter actions in `list_mail`, `read_mail` and Suparṇā's notice now offer `discard_mail`
+  instead of `doc_delete_file`. No Librarian delete announcement is posted.
+
+#### Added: `read_mail`; `list_email` renamed to `list_mail`
+
+- Characters without `systemTransparency` could list and send mail but not read it: the
+  instructions pointed at `doc_read_file({ uri: "qtap://self/Mail/…" })`, and the opacity covenant
+  refuses `self` for them. The new `read_mail({ letter })` tool takes a letter's bare file name,
+  confines it to the caller's own `Mail/` folder, and reads through `ensureCharacterVault` like
+  `list_mail` does, so transparency never applies. Reading an unannounced letter marks it announced.
+- `list_email` is now `list_mail`. The old name is not aliased.
+- `list_mail`, `read_mail` and Suparṇā's delivery notice name letters by file name. `send_mail`'s
+  `in_reply_to` accepts the file name as well as the `Mail/…` path and stores the path. The shared
+  parser is `resolveMailPath` in `lib/post-office/mailbox.ts`; it also accepts the
+  `qtap://self/Mail/…` form and rejects anything outside `Mail/`.
+
+#### Fixed: Continue Elsewhere left the cast talking to people who stayed behind (bug 171)
+
+- The carryover drops the lines of anyone not seated in the new chat but keeps everyone else's
+  lines to them, so the new cast read an absent character as present and silent. Found on
+  `Friday`: an autonomous room continued from a chat Charlie was in spent 16 turns addressing him.
+- `applyChatContinuation` now names every source-chat participant (any status but `removed`) who
+  is not seated in the new chat. It posts the notice after the replayed messages, through
+  `postHostOffSceneCharactersAnnouncement` with the new `reason: 'left-behind'`. The IDs are stamped
+  in `introducedCharacterIds`, so the per-turn off-scene scan does not introduce them again. The
+  operator's unseated persona is skipped where it is still in the room (see bug 172).
+- A character whose vault cannot be read is skipped with a warning; the continuation still
+  completes. The result gains `leftBehindCharacterIds`.
+
+#### Fixed: autonomous rooms never introduced the operator's persona as absent (bug 172)
+
+- The off-scene introduction excluded the user persona by name. In an autonomous room, that name
+  is the system-wide sole user-controlled character, the `resolveUserIdentity` step-2 fallback.
+  Nobody types as that character there, so it was the one absent person the Host could never flag.
+- New `operatorSpeaksWithoutSeat(chatType)` in `lib/schemas/chat.types.ts` (false only for
+  `'autonomous'`) gates that exclusion in `buildContext`. New `isUserPersonaInRoom(chat, identity)`
+  in `user-identity-resolver.service.ts` answers the same question for a resolved identity.
+- `{{user}}` still resolves to the fallback persona in autonomous rooms; templates are unchanged.
+
+#### Added: Scenario Builder on the scenario shelves
+
+- The **Ask the Host to set the scene** button now also appears on the General Scenarios page,
+  on a project's Scenarios card, and on a group's Scenarios card. Launched there, the dialog has
+  no "Use this scene"; "Save as scenario…" is the primary action.
+- From a shelf, the save dialog offers every home: General, every project, every group, and every
+  non-archived character. The shelf the builder was opened from is preselected. The shelf's list
+  refreshes after each save.
+- The builder's store pool follows the shelf: General only; the project's stores plus General; or
+  the group's official and linked stores plus General. New `groupIds` field on
+  `POST /api/v1/scenario-builder?action=build`; unknown group ids are dropped. New helper
+  `resolveMountPointIdsForGroup` in `lib/mount-index/tiered-mount-pool.ts`, now also used by
+  `resolveGroupMountPointIdsForCharacter`.
+- Groups get a Scenarios card on their page (`GroupScenariosCard`), using the shared
+  `ScenariosManager` over the existing `/api/v1/groups/[id]/scenarios` API. Previously the group
+  page had no scenarios UI.
+- Save-dialog target keys are now `project:<id>` rather than `project` in every mode.
+- New query key `queryKeys.groups.list()`.
+
+#### Changed: dependency update across the app, packages and plugins
+
+`npm update -S` was run on the root project, every package under `packages/`, and all 15 distributed
+plugins. No behavior changes are intended and no code changed.
+
+- Root: Next and `eslint-config-next` 16.3.5 to 16.3.6, `openai` 7.20 to 7.23, `@openrouter/sdk`
+  1.3.11 to 1.3.28, `katex` 0.18.7 to 0.18.9, `@quilltap/plugin-utils` ^2.6.2,
+  `create-quilltap-theme` ^2.0.20.
+- Packages published: `@quilltap/plugin-utils` 2.6.3 (`@quilltap/plugin-types` ^2.8.0, `openai`
+  ^7.23.0). `plugin-types` and `theme-storybook` changed only their lockfiles and were not bumped.
+- All 15 plugins took a patch bump in both `package.json` and `manifest.json`, mostly for
+  `@quilltap/plugin-types` ^2.8.0 and `@quilltap/plugin-utils` ^2.6.2 (plus `openai`,
+  `@openrouter/sdk` and `@modelcontextprotocol/sdk` 1.30.1 where used), and were rebuilt with
+  `npm run build:plugins`.
+
+#### Added: Salon polish for the Concierge (Concierge overhaul, phase 5)
+
+- **Try uncensored, text.** New action `POST /api/v1/chats/[id]/messages/[messageId]?action=retry-uncensored`
+  (`&stream=1` for the regeneration's SSE narration). Regenerates the assistant message as a new
+  swipe on the Concierge's uncensored understudy (`resolveUncensoredTextUnderstudy`, excluding the
+  responder's profile and every profile on the original's trail). Same inform semantics as a
+  swipe. The new swipe's `routeTrail` keeps the original's failed/refused rows and ends on the
+  understudy with `via: 'concierge'`. Returns `409 { error: 'locked' }` on a Locked chat and
+  `409 { error: 'no-understudy' }` when nobody can take it. Never changes the chat's state. Off
+  duty does not block it (it is the operator's request, not the Concierge's), and the configured
+  desk is used even off duty (`resolveConfiguredConciergeDesk`). Profiles on the provider and
+  model that answered the original are excluded too, so a profile reassigned since cannot hand
+  the retry back to the same model (text and pictures alike).
+- **Try uncensored, pictures.** New action `POST /api/v1/chats/[id]?action=retry-image-uncensored`.
+  Body `{ toolMessageId }` re-runs a `generate_image` call's arguments on the uncensored image
+  understudy and posts a new TOOL message 1 ms after the original (so it sits beside it) with the
+  images and a trail via `'concierge'`; the Concierge posts `refusal-rerouted` when the original
+  had a refused row. Body `{ kind: 'background' }` queues a story background with the new payload
+  field `forceUncensored`, which paints on the understudy (candid prompt) and abandons quietly if
+  the chat was Locked or the understudy vanished before the job ran. Same `409` codes.
+- `regenerateMessageAsSwipe` accepts `profileOverride` and `routeTrail`; the swipe SSE transport
+  moved to `streamSwipeRegeneration` (`lib/services/chat-message/regenerate-swipe-stream.ts`),
+  shared by both routes. `ImageToolExecutionContext.primaryVia` labels a pre-chosen profile.
+  Retry gate and lookups live in `lib/services/dangerous-content/retry-uncensored.ts`.
+- Salon: a shield icon ("Try uncensored") on character lines' action bars, a "Try uncensored"
+  button on `generate_image` tool blocks and on the Lantern's refused-backdrop bubble. All hidden
+  on Locked chats. A 409 toasts the reason.
+- **"Not Dangerous" clears the blur.** `MessageRow` blurs/collapses only while some flag is not
+  overridden; overridden chips stay, struck through. The row's memo now notices the override.
+- **The Lantern's refusals reach the chat.** When the painter refuses a story background and no
+  understudy answers (none, Locked, off duty, or the understudy failed too), the job posts a
+  Lantern bubble (`systemSender: 'lantern'`, `systemKind: 'background-refused'`, trail attached,
+  not gated by the image-alert setting) and **completes** instead of failing. The Concierge's own
+  `refusal-no-understudy` / `refusal-not-permitted` bubble is not posted for the Lantern (new
+  chokepoint option `announceUnresolvedRefusal: false`).
+- **No synthesised flags on Unmoderated chats.** The danger orchestrator no longer writes
+  `dangerFlags` (or the "Rerouted" chip) on every user message of an Unmoderated chat; the route
+  trail's `via: 'concierge'` carries the reroute. A new `routedDirect` flag on the orchestrator's
+  result keeps such turns treated as dangerous by the empty-body recovery and fallback chain, as
+  the flags used to. The spec's `resolvedDisplay` field on `GET /api/v1/chats/[id]` was not added:
+  phase 4 already resolves the chat's display on the client (`resolveConciergeSettings(...).display`).
+- The spec's `conciergeMeta` bubble field was not added (it would have needed a column): the
+  Lantern bubble is recognised by its `systemKind`, and the picture retry lives on the TOOL block,
+  which exists by the time the operator can press it (the Concierge's bubble is posted before it).
+
+#### Changed: the Concierge's own Settings tab (Concierge overhaul, phase 4)
+
+- New Settings tab **The Concierge** (`/settings?tab=concierge`) with five cards: On duty
+  (`on-duty`), The uncensored desk (`uncensored-desk`), When a provider refuses (`refusals`),
+  Display (`display`), and Pre-screening (`pre-screening`, collapsed). `/foundry/concierge` and the
+  Foundry card point at it.
+- New `chat_settings.conciergeSettings` (`ConciergeSettingsSchema`): `enabled`, the four desk
+  profiles (`uncensoredTextProfileId`, `uncensoredImageProfileId`, `uncensoredVisionProfileId`,
+  `imagePromptProfileId`), `autoSwitchAfterRefusals`, `newChatsStartAs`, `display { mode,
+  showWarningBadges }`, `preScreen { enabled, threshold, three scans, customClassificationPrompt,
+  summaryClassification }`. It replaces `dangerousContentSettings`, the top-level
+  `uncensoredImageDescriptionProfileId`, and `cheapLLMSettings.imagePromptProfileId`, which are no
+  longer read (columns kept; a later migration drops them).
+- The global mode (`OFF` / `DETECT_ONLY` / `AUTO_ROUTE`) is retired. Migration
+  `add-concierge-settings-v1`: `OFF` → off duty; `DETECT_ONLY` and `AUTO_ROUTE` → on duty with the
+  pre-screen and summary classification on. **Behaviour change:** a `DETECT_ONLY` user now gets
+  refusal failover. An `OFF` user with any Unmoderated chat is kept on duty (pre-screen off) so
+  those chats keep the uncensored desk. The same translation runs on restore of a pre-4.10 backup.
+- New installs: the Concierge is on duty with failover and no classifier. The per-message
+  pre-screen, the summary classifier and the 10-minute sweep run only when opted in; the sweep
+  does not start unless some user has `summaryClassification` on.
+- `resolveConciergeSettings(global, chat)` replaces `resolveDangerousContentSettings` and returns a
+  policy (`onDuty`, `failoverAllowed`, `routeDirect`, `preScreen`, `summaryClassification`,
+  `autoSwitchAfterRefusals`, `desk`, `display`, `source`). Every `mode` check now asks the named
+  question. Locked, exempt and off-duty chats get an empty desk, including the image-prompt crafter
+  and the vision fallback.
+- Off duty: no failover, no announcements, no auto-switch, no pre-screen; the per-chat Concierge
+  select in the Salon sidebar and New Chat form is disabled with a pointer to the tab, and the
+  Salon shows flagged content plainly.
+- `newChatsStartAs` sets a new chat's state when the request names none (only while on duty); the
+  New Chat form preselects it. Off duty, a requested non-Moderated state is ignored and the form's
+  default reads Moderated.
+- Refusal-time checks re-read the global on-duty switch as well as the chat's state
+  (`readCurrentConciergeOnDuty`), so turning the Concierge off mid-call stops the failover.
+- Unmoderated chats route Aurora avatars and Lantern backgrounds straight to the uncensored image
+  profile before the call, like the `generate_image` tool.
+- The uncensored vision fallback follows the chat's policy (not used in Locked or exempt chats);
+  callers pass the `chatId`.
+- The Salon's badge and blur settings come from the chat's resolved policy (no badges on an
+  Unmoderated chat, plain display off duty).
+- `PUT /api/v1/settings/chat` validates `conciergeSettings` and returns `400` for
+  `dangerousContentSettings`, `uncensoredImageDescriptionProfileId` or
+  `cheapLLMSettings.imagePromptProfileId`.
+- `help_settings` gains a `concierge` category; `chat` no longer returns Concierge settings.
+- Removed from the Chat tab: the Dangerous Content card, the uncensored vision fallback in Image
+  Description, and the Image Prompt Expansion LLM picker (all now on the desk card).
+- Help: `help/dangerous-content.md` renamed `help/the-concierge.md` and rewritten; every link
+  repointed; `help/settings.md` now lists eight tabs.
+- Phase 3 carry-overs: migration `drop-chat-concierge-override-v1` drops `chats.conciergeOverride`
+  and the field leaves `ChatMetadataSchema`; `.qtap` import and backup restore still derive
+  `conciergeMode` from it (tested), and the export schema keeps it as deprecated.
+- Phase 3 carry-over: the unused `-info` Concierge tone is removed (`.qt-danger-badge-info`,
+  `.qt-concierge-mark-info`, the `'info'` member of `ConciergeTone`), mirrored in
+  `@quilltap/theme-storybook` 1.0.73. No bundled theme or theme template hooked either class.
+
+#### Fixed: Concierge state races (PR #75 review)
+
+- `conciergeMode` / `conciergeModeSetBy` / `conciergeModeReason` are patch-only on `chats`: a
+  whole-row `update` that does not name them leaves them out of its `$set`, so a concurrent title
+  or telemetry write can no longer rewind a newer state. New `patchOnlyFields()` hook on
+  `AbstractBaseRepository`.
+- New `ChatsRepository.setConciergeMode(chatId, columns, expected?)`, the only writer of the state.
+  With `expected` it is a compare-and-set (NULL counts as moderated). `applyConciergeFlip` uses it
+  for every transition; the Concierge's own moves pass the state he read and announce nothing on a
+  miss, and are refused in the job child.
+- The classifier job no longer flips the chat. It records telemetry with
+  `chats.setDangerClassification` (verdict carried, not stored); the job dispatcher's new commit
+  hook calls `maybeSwitchAfterClassification` in the parent, which moves the chat only if it is
+  still Moderated.
+- The image failover chokepoint and both text failover paths re-read the chat's state when a
+  refusal arrives (`readCurrentConciergeState`), so a chat locked mid-request is never rerouted.
+- `POST /api/v1/chats` now returns the Concierge columns as they stand after the requested state
+  is applied; it used to return the row as first inserted, so a chat created Unmoderated or
+  Locked came back looking Moderated.
+
+#### Docs: phase 3 leftovers scheduled in phase 4
+
+- `concierge-overhaul-phase-4-concierge-tab.md` gains a "Carried over from phase 3" checklist:
+  drop `chats.conciergeOverride` (keeping the legacy derivation in import and restore, and the
+  deprecated export-schema field), and remove the unused `-info` Concierge tone CSS (with its
+  theme-storybook mirror and publish). Phase 3 spec and the overview index point to it.
+
+#### Changed: three Concierge states — Moderated, Unmoderated, Locked (Concierge overhaul, phase 3)
+
+- The four per-chat states (Monitored, Flagged, Vouched Safe, Uncensored) are now three:
+  **Moderated** (default; ordinary providers first, uncensored on refusal; the Concierge may switch
+  the chat), **Unmoderated** (uncensored desk only) and **Locked** (ordinary providers only; a
+  refusal stands). Who set Unmoderated (operator or Concierge) is provenance, shown in the tooltip
+  and helper text, not a separate state or colour.
+- Three new columns on `chats`: `conciergeMode` (TEXT, default 'moderated'; NULL reads as
+  moderated), `conciergeModeSetBy` ('operator' | 'concierge'), `conciergeModeReason` ('manual' |
+  'refusals' | 'classifier' | 'migration'). Migration `add-chat-concierge-mode-v1` backfills them:
+
+  | `conciergeOverride` | `isDangerousChat` | new state | set by | reason |
+  |---|---|---|---|---|
+  | `'UNCENSORED'` | any | unmoderated | operator | migration |
+  | `'OFF'` | any | locked | operator | migration |
+  | NULL | true | unmoderated | concierge | classifier |
+  | NULL | else | moderated | NULL | NULL |
+
+- `conciergeOverride` is no longer written (kept, marked deprecated in the export schema).
+  `isDangerousChat` and the other `danger*` fields are classifier telemetry only; no routing or
+  display decision reads them. `.qtap` import and backup restore derive `conciergeMode` from the
+  legacy pair when a chat carries none (`withConciergeModeFromLegacy`).
+- `chat-override.ts`: `ConciergeState` is the three values; new `getConciergeProvenance`,
+  `getConciergeReason`, `mayFailOver` / `conciergeStateMayFailOver` (false only for Locked),
+  `CONCIERGE_STATES`, `deriveConciergeModeFromLegacy`. `isClassifierOnDuty` now means Moderated.
+- Resolver sources: `chat-locked` and `chat-unmoderated` replace `chat-vouched` and
+  `chat-uncensored`. `VOUCHED_SAFE_DANGEROUS_CONTENT_SETTINGS` renamed
+  `LOCKED_DANGEROUS_CONTENT_SETTINGS`.
+- `applyConciergeFlip` writes only the three new columns (Moderated also clears the classifier
+  telemetry and the refusal ledger). Announcement kinds `set-moderated`, `set-unmoderated`,
+  `set-locked`, `auto-unmoderated` replace `manual-flagged`, `manual-safe`, `manual-resumed`,
+  `manual-vouched`, `manual-uncensored`, `auto-flagged-refusals`. An operator choosing Unmoderated
+  on a chat the Concierge moved there updates provenance silently. The Concierge may only move a
+  Moderated chat to Unmoderated.
+- The classifier job and the refusal-ledger auto-switch both move the chat through
+  `applyConciergeFlip(..., 'unmoderated', ..., { by: 'concierge', reason })`. The auto-switch no
+  longer stamps `dangerCategories: ['moderation-refusals']`.
+- Failover: the image chokepoint and the text empty-response / hard-error failover check
+  `mayFailOver` before the mode. A stated refusal on a Locked chat posts `refusal-not-permitted`
+  with `reason: 'locked'` and is never rerouted to an uncensored profile. The creation greeting's
+  content-filter fallback never runs for Locked.
+- Wire: `conciergeState` on `PUT /api/v1/chats/[id]` and `POST /api/v1/chats` is
+  `'moderated' | 'unmoderated' | 'locked'`; the old four values return 400. GET returns
+  `conciergeState`, `conciergeSetBy`, `conciergeReason`, `conciergeRefusalCount`, and no longer
+  `conciergeOverride`. List payloads add `conciergeSetBy` and `conciergeReason`.
+- UI: flat three-option selects on the New Chat form and the sidebar; header pill and list mark
+  are red for Unmoderated, grey for Locked (`shield` icon), nothing for Moderated. Quick-hide's
+  "Dangerous Chats" hides Unmoderated chats. The `-info` badge/mark CSS variants have no user now;
+  left in place for themes.
+- `scripts/concierge-four-state-test.sh` renamed `scripts/concierge-three-state-test.sh` and
+  rewritten for the three states (adds a check that a retired value is rejected).
+- Docs: `help/dangerous-content.md`, `chats.md`, `quick-hide.md`, `homepage.md`,
+  `autonomous-rooms.md`, `story-backgrounds.md`, `scene-state-tracker.md`,
+  `image-generation-profiles.md`; DDL, API, export schema, CLAUDE.md; the four-state, list-marks
+  and default-at-creation specs are marked superseded.
+
+#### Added: the Concierge's refusal ledger and auto-switch (Concierge overhaul, phase 2)
+
+- Two columns on `chats`: `moderationRefusalCount` (INTEGER NOT NULL DEFAULT 0) and
+  `lastModerationRefusalAt` (TEXT). Migration `add-chat-refusal-ledger-v1`. Both are kept out of
+  `ChatMetadataSchema` (same reason as `transcriptVersion`: a whole-row `update` could rewind the
+  counter), so they are not in `.qtap` exports. New `ChatsRepository` methods:
+  `incrementModerationRefusalCount` (atomic `+ 1`), `getModerationRefusalLedger`,
+  `resetModerationRefusalLedger`.
+- `recordModerationRefusal` (`lib/services/dangerous-content/refusal-ledger.ts`) is the only
+  writer. Called by `generateImageWithConciergeFailover` (primary refused, whatever the reroute's
+  outcome; nothing without a chat), by the text empty-response recovery and hard-error failover,
+  and by the cheap-LLM path when an empty body carries a moderation finish reason. Only
+  `typed-error`, `provider-code`, `finish-reason` and `message-pattern` evidence counts;
+  `inferred` never does.
+- Auto-switch: once the count reaches `autoSwitchAfterRefusals` on a Monitored chat under
+  Auto-Route, the Concierge switches it to Flagged via
+  `applyConciergeFlip(chatId, 'flagged', chat, { by: 'concierge', reason: 'refusals' })`, which
+  stamps `dangerCategories: ['moderation-refusals']` and posts the new `auto-flagged-refusals`
+  announcement (count and last refusing provider). Never on Flagged, Vouched Safe, Uncensored,
+  moderation-exempt chats, or under Detect Only / Off. Runs in the parent only: after an in-parent
+  increment, or from a new commit hook in `applyWritesUnsafe` for increments buffered by the job
+  child. Concurrent checks for one chat are serialized so the switch is announced once.
+- New setting `dangerousContentSettings.autoSwitchAfterRefusals` (0-10, default 2, 0 = never),
+  shown as a number field on the Dangerous Content card. Vouched Safe settings carry 0.
+- `applyConciergeFlip` gains an optional `{ by, reason, refusals }` argument (default: the
+  operator; existing transitions unchanged). Its `'monitored'` case now also resets the ledger.
+- Review fixes: the auto-switch re-reads the chat right before flipping and abandons the switch if
+  it left Monitored during the check, so it cannot overwrite an operator's newer choice; a
+  threshold of 1 no longer announces "More than once now"; a moderation stop stated by the
+  same-provider retry after a plain empty opening is now recorded (once per turn).
+- Phase-1 review carry-overs: the `refusal-rerouted` bubble no longer says the picture is
+  "attached above" (the note posts before the picture); `scripts/concierge-four-state-test.sh`
+  wraps `content` in `qt_text()` in `check_ann` and CT-4.
+
+#### Docs: phase 2 spec carries two deferred phase-1 review fixes
+
+- `concierge-overhaul-phase-2-refusal-ledger.md` gains a "Carried over from phase 1 review"
+  checklist: reword the `refusal-rerouted` bubble so it no longer says the picture is "attached
+  above", and decode `chat_messages.content` with `qt_text()` in `check_ann` and CT-4 of
+  `scripts/concierge-four-state-test.sh`.
+
+#### Changed: the Concierge reroutes every content refusal (Concierge overhaul, phase 1)
+
+- One refusal classifier: `classifyRefusal` (`lib/services/dangerous-content/refusal.ts`).
+  Evidence in order of trust: a typed plugin error (`code: 'MODERATION_REJECTED'`), a known
+  provider code (`moderation_blocked`, `content_policy_violation`, `content_filter`, `safety`,
+  Z.AI `1301`), a moderation finish reason, refusal wording in the error text (the old six image
+  substrings plus "responsible ai", "declined to generate", "blocked by safety", "prompt_blocked",
+  "image_safety"), and an empty body on content the Concierge had flagged. A bare 400, a rate
+  limit or an auth failure is never a refusal. `classifyEmptyBody` and `classifyFallbackTrigger`
+  delegate to it; `isImageModerationError` is removed.
+- One understudy resolver: `resolveUncensoredTextUnderstudy` / `resolveUncensoredImageUnderstudy`
+  (`understudy.ts`). The configured uncensored profile, then any profile ticked
+  "Uncensored-compatible", then nobody; courier profiles are skipped; the mode is never read.
+  Pre-flight and post-hoc now agree, so an image profile only needs the tick to be a candidate.
+  `resolveUncensoredImageProfileForReroute` is removed; the pre-flight
+  `resolve*ProviderForDangerousContent` functions are thin wrappers that keep the Auto-Route gate.
+- One image failover chokepoint: `generateImageWithConciergeFailover` (`image-failover.ts`), used
+  by the `generate_image` tool, the Lantern's story backgrounds, Aurora's avatar job and the
+  legacy image dialog (`POST /api/v1/images?action=generate`, which now also resolves Concierge
+  settings with the chat). It retries a refusal once on the understudy under Auto-Route, rethrows
+  anything that is not a refusal untouched, and attaches the route trail to a rethrown error.
+- The Lantern: the bug-133 gate that barred a reroute on a Monitored chat is removed; the prompt is
+  still never re-crafted on reroute. `uncensoredImageTarget` now also requires Auto-Route, so a
+  Flagged chat under Detect Only no longer gets a candid prompt sent to a moderated provider.
+- Text turns: a thrown content-policy error was classified as "not a fallback trigger" and nothing
+  happened. It is now `moderation-refusal`: recorded on the route trail as refused, retried on the
+  uncensored understudy under Auto-Route (new `attemptUncensoredRetry`, shared with the empty-body
+  path, which no longer requires an explicit `uncensoredTextProfileId`), then the profile's own
+  chain with `dangerous: true`. Cheap-LLM fallback chains also walk on a refusal now.
+- Route trails on image-bearing messages: `RouteAttempt` gains `profileKind: 'connection' | 'image'`
+  (absent = connection) and `evidence` gains `typed-error`, `provider-code`, `message-pattern`.
+  The TOOL message of a `generate_image` call and the Lantern / Aurora bubble carry the trail;
+  `ToolMessage` renders it; image rows are labelled by profile name. The tool result now names
+  the model that actually answered, not the one first asked.
+- The Concierge speaks: `postConciergeRefusalAnnouncement` posts `systemKind: 'refusal'` bubbles —
+  `refusal-rerouted`, `refusal-no-understudy`, `refusal-not-permitted` — for every image refusal,
+  and `refusal-no-understudy` for a text refusal with nobody to ask. Chip label "provider refusal".
+- `extractFinishReason` also reads Google's `promptFeedback.blockReason` and OpenRouter's camelCase
+  `finishReason`.
+- `@quilltap/plugin-types` 2.8.0: `ModerationRejectionError` (`code: 'MODERATION_REJECTED'`,
+  `providerReason`). Published; the root dependency is now `^2.8.0` and the five plugins below
+  are rebuilt against it.
+- Plugins (all require plugin-types `^2.8.0`):
+  - `qtap-plugin-openai` 1.0.65: image `moderation_blocked` / `content_policy_violation` /
+    "safety system" → typed; streamed and non-streamed raw responses carry the real finish reason
+    (`incomplete_details.reason`, `refusal`); `response.incomplete` ends the stream.
+  - `qtap-plugin-grok` 1.0.57: image "content moderation" → typed; same finish-reason fix.
+  - `qtap-plugin-google` 1.1.54: Gemini `IMAGE_SAFETY` / `SAFETY` / `PROHIBITED_CONTENT` or
+    `promptFeedback.blockReason`, Imagen filtered predictions, and Responsible-AI HTTP errors →
+    typed; a blocked text prompt reports its block reason as the finish reason on both paths.
+  - `qtap-plugin-openrouter` 1.0.65: image `refusal` / text-instead-of-image and refusal-worded HTTP
+    errors → typed; streamed raw responses write `finish_reason` (snake_case) with the real reason.
+  - `qtap-plugin-z-ai` 1.1.30: image code `1301` → typed.
+  - NanoGPT unchanged: its filtered-prompt 400 is generic and is not treated as a refusal.
+
+#### Docs: Concierge overhaul specs
+
+- Added `docs/developer/features/concierge-overhaul.md` and five self-contained phase specs
+  (refusal-driven failover at every call site, a per-chat refusal ledger with auto-switch, three
+  chat states Moderated / Unmoderated / Locked, the Concierge's own Settings tab with the global
+  mode retired, and Salon polish including "Try uncensored"). Proposal only; no code change.
+
+#### Fixed: switching the Salon's "speaking as" seat raised "Unknown action" (bug 170)
+
+- `useImpersonation.handleSetActiveSpeaker` sent `?action=set-active-speaker` as PUT; the chat
+  route serves it on POST only. Before the single `?action=` dispatcher the PUT fell through to a
+  no-op chat update, so the switch showed in the composer but never persisted server-side. After
+  it, the request was a 400. It now sends POST. Regression test added.
+
+#### Fixed: narrow-pane chat sidebar closed the Scenario Builder on first click (bug 169)
+
+- When the Salon pane is narrower than 640 px the chat sidebar is an overlay that collapses on
+  any click outside it. `BaseModal` portals to `<body>`, so clicks inside **Ask the Host to set
+  the scene** and **Save as scenario…** counted as outside; the sidebar collapsed, unmounted
+  `ChatScenarioControl`, closed the dialog, and aborted any running build.
+- New `shouldDismissSidebarOverlay` (`components/chat/sidebar-overlay-dismiss.ts`) ignores
+  targets inside a `.qt-dialog-overlay`. Escape still collapses the sidebar, as before.
+
+#### Changed: one base class for the mount-index and LLM-logs repositories
+
+- New `AbstractDedicatedDbRepository` (`lib/database/repositories/dedicated-db.repository.ts`)
+  replaces the ten private copies of `getCollection()` in the nine mount-index repositories and
+  `llm-logs.repository.ts`. It takes the connection guard in its constructor, runs the generated
+  DDL once per instance, runs an `onTableEnsured(db)` hook for extra indexes / inline
+  `ALTER TABLE` migrations / repair scans, runs `afterTableReady(db)` once the table counts as
+  ensured (the folder backfill, which re-enters the repository), caches the column
+  classification once instead of recomputing it on every call, and builds the collection.
+- New `withRawDb(fallback, fn, errorMessage, context, mode?)` replaces the 26 hand-rolled
+  `const db = getRawMountIndexDatabase(); if (!db) return …` preambles in the chunks, documents,
+  files and file-links repositories. Every raw-SQL site now applies the same degraded /
+  uninitialized guard and ensures the table first; previously most skipped one or both.
+  `ensureRawDb()` covers the writers that must throw instead.
+- New `requireLLMLogsDb()` (`lib/database/backends/sqlite/llm-logs-guard.ts`), the LLM-logs
+  twin of `requireMountIndexDb()`.
+- The base takes a `blobColumns` option, and `DocMountChunksRepository` passes `['embedding']`
+  as before, so a chunk's `Float32Array` embedding is still written as a Float32 BLOB. A new
+  test round-trips an embedding through the real repository on in-memory SQLite.
+- Every repository now declares `dbTarget` (`'main' | 'mountIndex' | 'llmLogs'`), and a new unit
+  test checks the background-job write partitioner's `MOUNT_INDEX_REPO_KEYS` /
+  `LLM_LOGS_REPO_KEYS` against those declarations, so the `groupDocMountLinks` /
+  `groupCharacterMembers` omission fixed below cannot recur.
+- No DDL changes.
+
+#### Changed: `GET /api/v1/chats/[id]` dispatches `?action=` through `dispatchAction`
+
+- The handler's hand-written `if (action === '…')` ladder is gone. Every GET action
+  (`export`, `export-markdown`, `get-avatars`, `get-state`, `outfit`, `outfit-summary`,
+  `photo-albums`, `informs`, `group-stores`, `mailbox`, `accessible-stores`, `get-background`,
+  `gallery`, `cost`) is a registered key; an unknown or empty `?action=` now returns 400 with
+  `availableActions` instead of falling through to the chat body. No action's response changed.
+- This is the follow-up the "one `?action=` dispatcher" entry below left open; the handler
+  now calls the same `dispatchAction` primitive as every other route.
+- `get-background` moved to `handleGetStoryBackground` in
+  `app/api/v1/chats/[id]/actions/story-background.ts`, beside `regenerate-background`.
+
+#### Changed: one `?action=` dispatcher for every API route
+
+- New `dispatchAction(req, thunks, fallback?)` in `lib/api/middleware/actions.ts`, and
+  `withActionDispatch` is now built on it. The rule is in one place: no `action` parameter
+  runs the fallback (the plain CRUD verb), a known action runs its handler, and anything
+  else — an unknown name or a bare `?action=` — is a 400 listing the available actions.
+- Every route that read `?action=` by hand (`getActionParam` + `isValidAction` + a
+  `Record<Action, () => …>` map, or an `if (action === …)` chain) now calls the primitive:
+  api-keys, brahma-console, characters, chats (collection, item POST/PUT/PATCH/DELETE, files),
+  connection-profiles, embedding-profiles, files, groups, help-chats, help-docs, images,
+  image-profiles, memories, messages, mount-points, plugins, projects, scenarios (general,
+  project and group tiers), settings/text-replacements, system/conversation-summaries,
+  system/jobs, system/restore, system/tools, system/unlock, themes and user/profile. The
+  per-route `*_ACTIONS` constants and hand-built "Unknown action" messages are gone.
+- **Fixed as a result:** an unknown action no longer falls through to a destructive
+  default. `DELETE /api/v1/projects/[id]?action=<anything unknown>` used to delete the
+  project, `DELETE /api/v1/groups/[id]?action=<unknown>` deleted the group, and an unknown
+  `POST /api/v1/system/restore?action=` ran a full restore. Unknown actions on
+  `POST /api/v1/api-keys`, `/characters`, `/connection-profiles`, `/image-profiles`,
+  `/memories`, `/images`, `/mount-points`, `/settings/text-replacements` and
+  `/chats/[id]/files` also no longer create or upload by accident. The project and group
+  route headers had advertised `get-mount-point` / `set-mount-point` / `clear-mount-point`
+  and `stores` / `linkStore` / `unlinkStore` actions that never existed; those lines are
+  removed (group stores live under `/api/v1/groups/[id]/mount-points`).
+- `GET /api/v1/chats/[id]` was left reading its actions inline here; the entry above
+  converts it.
+- `withActionDispatch` now treats a bare `?action=` as an unknown action (400) instead of
+  routing it to the default handler.
+- `POST /api/v1/chats/[id]/files` responses go through `successResponse` and one shared
+  payload builder; `handleLinkFile` takes the real `RepositoryContainer` type.
+- Tests: `dispatchAction` unit coverage, and regression tests for the project, group and
+  restore fall-throughs.
+
+#### Removed: dead code in `lib/database`
+
+- 33 repository methods with no callers (for example `CharactersRepository.getSystemPrompts`,
+  `MemoriesRepository.findByKeywords`, `UsersRepository.findByUsername`,
+  `FoldersRepository.createMany`, `EmbeddingStatusRepository.upsertByEntity`) and their
+  private helpers; unused backend/infra exports (`SQLiteBackend.addJsonColumn` /
+  `dropCollection` / prepared-statement cache, `json-columns.ts` `hydrateRow` /
+  `rowToDocument` / `detectJsonColumns` / `fromJson` / `jsonArrayLength`, manager
+  `healthCheck` / `listCollections` / `getBackendCapabilities` / `isDatabaseInitialized` /
+  `isDatabaseConnected` / `_setBackendForTesting`, child-client close/connected helpers) and
+  their barrel re-exports. About 980 lines. `jest.setup.ts` drops the matching stale mock keys.
+- `escapeLikePattern` (`fts-query.ts`) was a byte-identical copy of `escapeLikeLiteral`
+  (`like-escape.ts`); the copy is gone and both callers use the shared one.
+
+#### Fixed: data-layer consistency
+
+- `MOUNT_INDEX_REPO_KEYS` (`lib/background-jobs/host/write-partition.ts`) was missing
+  `groupDocMountLinks` and `groupCharacterMembers`, both backed by the mount-index database.
+  A buffered child write to either would have been committed inside the main database's
+  transaction. Added.
+- `MemoriesRepository` and `ConversationChunksRepository` cached "blob columns registered"
+  per instance, the pattern `HelpDocsRepository` documents as corrupting embeddings after a
+  backend reconnect. Both now re-assert the registration on every `getCollection()` (a no-op
+  when already registered), matching the help-doc repositories.
+- `DocMountBlobsRepository` used an inline copy of the mount-index degraded/uninitialized
+  guard; it now calls the shared `requireMountIndexDb()`.
+- Brahma's SQL prompt now tells the model that `chat_messages.content` (and the other
+  compressed text columns) must be read through `qt_text()` and never compared bare.
+
+#### Fixed: help docs failed to index
+
+- Bug 167: `EMBEDDING_REINDEX_ALL` synced help docs in the job child, where `upsertByPath`
+  returned a random synthetic id. Section chunks were keyed to that id, failed the
+  `help_doc_chunks` foreign key on replay, and rolled back the job's entire main-DB batch
+  (including every embedding job it queued). The job then went DEAD. `syncHelpDocs` now uses the
+  existing row's id or mints one and passes it to `create(fields, { id })`. `upsertByPath` is
+  removed.
+- Bug 168: the `HELP_DOC` job embedded each page in one call, so pages over the provider's input
+  limit (`chat-settings.md` over OpenAI's 8,192 tokens) failed and dropped out of `help_search`.
+  A doc's vector is now the normalised mean of its section vectors (`averageEmbeddings` in
+  `lib/embedding/embedding-service.ts`). A failed section is skipped; the job fails only if every
+  section fails. A doc with no chunk rows yet is sliced in memory.
+- New test `__tests__/unit/lib/help/help-doc-size.test.ts` counts `cl100k_base` tokens (new
+  devDependency `js-tiktoken`) of every help section's embedding text and fails above
+  `HELP_SECTION_EMBEDDING_MAX_TOKENS` (1,000).
+- `help/chat-settings.md` split into `chat-settings.md`, `chat-settings-composer.md` and
+  `chat-settings-ai-services.md`. Links in other help files and the help Guide categories
+  updated.
+- Help docs are reconciled at every startup (`reconcileHelpDocs`, instrumentation Phase 3.66),
+  not only when the set of help file names changes: every file is compared by content hash,
+  edited pages are rewritten and re-sliced, pages with no sections are sliced (per page, not
+  "any rows at all"), and a `HELP_DOC` job is queued for every page missing its own vector or
+  any section vector. `ensureHelpDocsSynced` now waits on the same once-per-process run.
+  `backfillHelpDocChunks`, `helpDocsDivergeFromDisk` and
+  `HelpDocsRepository.findAllNeedingEmbedding` removed; `HelpDocChunksRepository.countByDoc`
+  added. Only help docs are re-embedded; affected instances recover on the next restart.
+- A content change now also clears the doc's `embedding_status` row, so a stale FAILED status
+  no longer keeps it out of a mismatched-dim reindex.
+
+#### Removed: `GET /api/v1/chats?action=has-dangerous`
+
+- The action had no callers after the `useHasDangerousChats` hook was removed. `GET
+  /api/v1/chats` now only lists chats and returns 400 for any `?action=`.
+
+#### Added: `@` character typeahead in the Salon composer
+
+- Typing `@` at the start of a word opens a menu of characters (chat cast first, then all
+  non-archived characters from `/api/v1/characters`), filtered by name or word prefix.
+- Enter, Tab or click completes the highlighted name; Space completes it when at least one
+  query character was typed and keeps the space. A bare `@` plus Space is left alone.
+- The completed text is the plain name with the `@` removed, except at the start of a line
+  (top-level paragraph, or after a soft line break): there the `@` is kept only if the name is
+  followed by `:` or `?` and whitespace (a Carina / Brahma query); anything else removes it in
+  an update merged into the same undo step. Names the Carina parser cannot address (hyphen,
+  apostrophe, non-ASCII, single character) drop the `@` immediately; the parser's name grammar
+  is now exported as `isCarinaInvocableName` (`lib/chat/carina-parser.ts`) and shared.
+- At the start of a line the menu also offers Brahma (`BRAHMA_MENTION`), unless a character
+  named Brahma already exists.
+- While the character list is loading the menu shows a loading label (an error label if the
+  fetch fails) instead of "no match", and holds Enter/Tab so a half-typed `@name` is not sent.
+- An undo or redo that restores a line-start `@Name` to its undecided form re-arms the
+  keep-or-strip check.
+- New `MentionTypeaheadPlugin` and pure logic in `lib/mentions/mention-typeahead.ts`.
+  `$textBeforeCursor` / `$isGluedToPreviousRun` moved from `CharTypeaheadPlugin` into
+  `components/chat/lexical/typeahead/trigger-context.ts` so both typeaheads share them.
+
+#### Fixed: `update_version.sh` put the branch name in the version
+
+- Any branch other than `main`, `release` or `bugfix` got its branch name as the prerelease
+  channel (e.g. `4.10.0-claude-some-branch.50`), which also landed in the README badge.
+  Every non-`release`/non-`bugfix` branch now uses the `dev` channel. `bugfix` and
+  `bugfix/*` use `bugfix`; `release` and `release/*` still get no channel.
+
+#### Added: quick-hide toggle for Salon images
+
+- New **Salon Images** toggle in the quick-hide menu's Content Filters. When on, the Salon
+  hides the story background (and the workspace backdrop it reports), avatars in messages,
+  the participant sidebar, the speaking-as portrait and the header breadcrumb, attached and
+  tool-result image thumbnails, and images embedded in message markdown. Off by default;
+  persisted in localStorage (`quilltap.quickHide.hideSalonImages`) like the other toggles.
+- The Salon passes the flag down through a new `ImagesHiddenProvider`
+  (`components/quick-hide/images-hidden-context.tsx`); `Avatar`, `MessageContent`,
+  `ToolMessage`, `SpeakingAsAvatar` and `MessageRow` read it. Other pages are unaffected.
+- Also covered: server pre-rendered message HTML that contains an `<img>` (`LazyMessageContent`
+  takes the full `MessageContent` render while hidden), the Host icon on the scenario
+  control, and avatars in the Insert Announcement, Inform and Impersonation Voice dialogs.
+  Galleries, the file picker, the image viewer and the app-level wardrobe dialog still show
+  images.
+- The sidebar footer's quick-hide button is now always shown; the `useHasDangerousChats`
+  hook that gated it is removed.
+
+#### Fixed: creating a character scenario returned an id that was never stored (bug 165)
+
+- `CharactersRepository.addScenario` returned the id it minted, but a vault-backed character
+  re-keys scenarios from their file path on read, so `POST /api/v1/characters/[id]/scenarios`
+  returned an id nothing else would ever see. It now re-reads and returns the projected entry.
+
+#### Fixed: the workspace New Chat dialog never offered group scenarios (bug 166)
+
+- `NewChatModal` did not pass `groupScenarios` to `NewChatForm`; the `/salon/new` page did.
+
+#### Added: Scenario Builder — the Host researches and drafts a starting scene
+
+- New **Ask the Host to set the scene** button beside the scenario text on the New Chat form
+  (page and workspace dialog) and in the Salon sidebar's Scenario control. The dialog takes
+  mode (real / in-world), location, time and optional details, plus a connection profile
+  (the default is preselected; profiles with tool use off are listed but disabled).
+- `POST /api/v1/scenario-builder?action=build` runs an ephemeral tool loop in the parent
+  process and streams tool events, reasoning and a terminal `done` carrying the scene over SSE.
+  Closing the request aborts the loop. `GET ?action=capabilities` reports whether web search and
+  curl are configured. Nothing is persisted except LLM log rows, now typed `SCENARIO_BUILDER`.
+- Tool slate: `search` (documents and knowledge only — new builder variant), the five read-only
+  `doc_*` tools, and `submit_final_response`; real mode adds `search_web` (when the profile
+  allows it and a provider is configured) and `curl`. In-world mode never gets the web.
+- Tools are scoped to what the chat could see: the cast's vaults, the union of their groups'
+  stores, the project's stores and Quilltap General, via a new `mountPool` on the tool, search
+  and doc-edit contexts (`resolveScenarioBuilderMountPool`). `mountPool` and `operatorSurface`
+  are mutually exclusive. `doc_grep` / `doc_list_files` accept a `mountPool` in place of a
+  project.
+- The prompt requires a cast-agnostic scene (no names, no placeholders, present tense) of about
+  1,000 tokens or fewer. The review pane is an editable draft with Revise, **Use this scene**
+  (fills the custom text; in-chat, **Change scenario** still persists it and the Host announces
+  the revision) and **Save as scenario…** to General, the project, a cast member's group, or a
+  cast character's own scenarios; the picker then selects the saved preset when its re-read
+  tier lists it (`useNewChat().refetchScenarioTiers` returns the fresh tiers for that check).
+- Refactors: the Brahma one-shot loop moved to `runOneShotToolLoop`
+  (`lib/services/agent-loop/one-shot-loop.ts`), shared by `runBrahmaQuery` and the builder.
+  `buildTools` takes `docToolsMode: 'off' | 'read' | 'full'` in place of the document-editing
+  boolean and an extras argument (`pluginToolAllowlist`, `documentsOnlySearch`, `webSearch`);
+  `streamMessage` takes an optional `logType`. The Brahma Console's SSE parsing moved to
+  `components/agent-stream/parse-agent-stream.ts`, shared with the builder's hook.
+- `GET /api/v1/groups` accepts `?characterIds=` to list only those characters' groups.
+- `useConnectionProfiles` now maps `isDefault`, `allowToolUse` and `allowWebSearch`.
+- Help: new `help/scenario-builder.md`; pointers from chats, general scenarios and project
+  scenarios.
+
+#### Docs: plan for the Scenario Builder
+
+- Added `docs/developer/features/scenario-builder.md`, the handoff spec for a Host-run scenario
+  builder beside the custom scenario text on the New Chat form and the in-chat Change scenario
+  control: four inputs (real or in-world, location, time, details), a connection-profile
+  dropdown, an ephemeral tool loop generalised from the Brahma Console's one-shot service, web
+  research for a real place and store-only research for an in-world one, a cast-agnostic draft
+  of at most about 1,000 tokens with edit and revise, and saving to General, project, group or a
+  character's scenarios. Roadmap and documentation index updated.
+
+#### Fixed: story backgrounds follow every automatic retitle, and a hand-set title stays put (bugs 163, 164)
+
+- A story background was queued only when the checkpoint title check renamed a chat. The
+  context-summary fold also writes a new title after every pass, and so does ticking **Use automatic naming** in the rename dialog (the `regenerate-title` action),
+  but neither queued a background. Past turn 10, when most renames come from the fold, the
+  backdrop stayed on the first scene.
+- The fold also ignored `isManuallyRenamed` and overwrote a title the user had set by hand at
+  every fold. Named autonomous rooms were exposed the same way.
+- All three titlers now go through `applyAutoTitle` (`lib/chat/auto-title.ts`). It re-reads the
+  chat, keeps a hand-set title (only that checkbox overrules one), writes a title only
+  when it changed, and queues the story background when it does. `queueStoryBackgroundIfEnabled`
+  moved there from the `TITLE_UPDATE` handler.
+- The fold skips its title call entirely on a hand-renamed chat.
+
+#### Fixed: `quilltap db` raw SQL and `--repl` can read compressed columns again (bug 162)
+
+- The low-level `db` path — raw SQL, `--repl`, `--tables`, `--count` — opened its own database
+  connection instead of going through `openEncryptedDb`, so it never registered `qt_text()`.
+  `SELECT qt_text(content) FROM chat_messages` answered `no such function: qt_text`, and every
+  `--write` against `chat_messages` failed the same way, because the search-index triggers call
+  that function on the new row. The subcommands (`messages`, `log`, `logs`) were never affected.
+- That path now opens through `openEncryptedDb` like everything else the CLI opens. One opener, so
+  the next function registered there reaches the REPL too.
+- `packages/quilltap/README.md` notes under **Low-level options** that compressed text columns are
+  BLOBs and need `qt_text()` to read as text.
+
+#### Fixed: the running summary no longer invents a name for a character (bug 161)
+
+The context summary is built by folding batches of turns into a running five-section record. The
+transcript handed to that fold was labelled `USER:` and `ASSISTANT:`, while the prompt above it said
+to use character names. On a chat where nobody happens to say a character's name out loud — a
+two-seat chat between a character and your persona is the usual case, since the character addresses
+you by name and nobody addresses the character — the model was asked to name a speaker it had no
+name for, and supplied one. Every later fold then carried the invention forward, and read the
+character's real name as an alias when it finally appeared.
+
+- Transcript lines handed to the fold now carry a speaker name, resolved from the chat's seats.
+  Removed and silent seats resolve too, so a message from a character who has since left the chat
+  still gets their name.
+- The resolver is shared with the fold-time episode pass, which had a private copy of it and was
+  already getting this right. There is now one implementation instead of two.
+- A seat that cannot be resolved — a broken character vault, an unattributed message — gets `User`
+  or `Character`, and the prompt now says to keep such a label rather than invent a name for it.
+- **New: Rebuild Summary…** in the Chat Sidebar's Organize drawer, for a summary that is already
+  wrong. It discards the summary and lets the normal fold cadence rebuild it from the first turn,
+  a few turns at a time. The chat has no summary until that catches up; the transcript is never
+  touched. An autonomous room that is running refuses the request — pause it first.
+
+Existing summaries are not rewritten. A wrong name cannot be told apart mechanically from a correct
+one, so rebuilding is applied where you see the symptom rather than everywhere.
+
+#### Docs: plan to fix the summarizer inventing names, and two bugs filed
+
+- `docs/developer/features/context-summary-speaker-names.md` is the plan for bug 161. The
+  context-summary fold currently renders its transcript as `USER:` / `ASSISTANT:` while its prompt
+  says to use character names, so a character who is never named in the first ten turns gets a
+  name invented for them, and every later fold carries it forward. The plan shares the episode
+  pass's seat-to-name resolver with the fold, labels transcript lines by name, tells the prompt to
+  keep a role label rather than invent, and adds a `rebuild-summary` chat action and Salon menu
+  entry for summaries already poisoned. No migration: a wrong name is not mechanically detectable.
+- Bug 161 (open): the running summary of a `Friday` chat calls one of its two characters
+  "Vivienne", a name that appears in no message and belongs to no character.
+- Bug 162 (open): the CLI's raw-SQL, `--repl` and `--write` path opens its own connection without
+  `qt_text()`, so it cannot read a compressed column and every `--write` on `chat_messages` fails,
+  because the search-index triggers call that function. The subcommands are unaffected.
+
+#### Changed: message search is an index probe, and conversation text takes about a third less disk
+
+Two changes that only work together. Global message search used to be a `LIKE '%...%'` scan of every
+message in the instance — 355 MB read per query, about 55 ms — and that scan was the one thing
+keeping the largest text in the database from being stored compressed. Replacing it with an FTS5
+index makes the usual search a fraction of a millisecond and unblocks the compression. (A word that
+appears in most of your messages still costs tens of milliseconds, because every match has to be
+collected and sorted by date before the 100-result cap applies. The old path was worse there: it
+applied that cap in JavaScript after loading every matching message.)
+
+- **Search is indexed.** `create-chat-message-fts-v1` builds a contentless FTS5 index over the same
+  rows search always covered: your messages and your characters', not system events or Staff
+  announcements. The index is maintained by database triggers, so no write path can bypass it, and a
+  startup check rebuilds it if a future schema change ever drops those triggers.
+- **Queries with punctuation now work.** The old path escaped the query as a regular expression, then
+  translated it to `LIKE` without an escape clause, so a period became a wildcard: searching
+  `Mr. Smith` silently returned nothing. It now returns what you asked for.
+- **Search matches whole words and word beginnings** rather than any run of letters. `walk` still
+  finds *walking* and *walked*; it no longer finds *sidewalk*. Accents fold (`café` and `cafe` find
+  each other) and case folding now covers non-ASCII letters. A query that is only punctuation or
+  single letters, such as `C++`, falls back to the old exact scan. Results are still capped at 100
+  and still ordered newest first, not by relevance.
+- **Conversation text is compressed.** `compress-chat-message-text-v1` stores `content`,
+  `opaqueContent`, `description` and `context` brotli-compressed. Compression is lossless and
+  reversible; the text you read, export and back up is byte for byte what it always was. On the
+  reference instance `chat_messages` was 515 MB and is projected at about 332 MB after the index and
+  the compression together. Rewriting rows frees pages inside the file — run
+  `npx quilltap db optimize` afterward to shrink the file itself.
+
+#### Docs: plan for full-text message search and compressed message text, checked against the code
+
+- `docs/developer/features/chat-message-fts5-and-compression.md` now matches the repository it
+  describes. The FTS5 index is keyed through a small id-mapping table instead of the implicit rowid
+  of a TEXT-keyed table (VACUUM may renumber it and a table rebuild silently drops triggers), a
+  startup guard rebuilds a stale index, and the index and compression ship as two migrations so the
+  search change can be reverted alone. The plan also records what was already true: `qt_text()` is
+  registered on every connection, backup, restore, export and the job child all go through the
+  repository, today's search silently returns nothing for a query containing a period, the CLI's
+  message commands print the columns raw, transaction-scoped collections skip the codec, and the
+  size figures predate the 4.10 storage work.
+
+#### Changed: databases take about a quarter less disk
+
+Three storage changes, measured end-to-end on a 2.0 GB reference instance, which came out at
+1.48 GB afterward (492 MB, 24.9%). Every change is reversible, no conversation text or image is
+lost, and searching, reading and exporting behave exactly as before. Rewriting rows frees pages
+inside the files; run `npx quilltap db optimize` afterward to shrink the files themselves.
+
+- **Images in document stores are normalized on write.** Transcoding used to be optional at each
+  call site and eight write paths skipped it, so untranscoded PNGs and oversized lossless WebP
+  accumulated. It now happens in one place that no write path can bypass. The
+  `recompress-oversized-mount-blobs-v1` migration re-encodes what landed earlier: 149 images and
+  191.8 MB on the reference instance, with dimensions unchanged. A `.qtap` import and an archive
+  rehydrate still restore bytes exactly as archived.
+- **LLM log payloads are compressed.** `llm_logs.request` is the same prompt scaffolding
+  re-serialized on every call and was the single largest thing in the instance — 318 MB for seven
+  days of logs. Compressing it reclaimed 208 MB, and the logs viewer and `quilltap db log` read it
+  back unchanged.
+- **Rendered conversation transcripts are compressed.** `conversation_chunks.content` duplicates
+  the transcript for the Scriptorium; compressing it reclaimed 88.5 MB. It is regenerable either
+  way — a render job rebuilds it from the chat's messages.
+
+#### Fixed: stale chats kept one cache the maintenance sweep never cleared
+
+The daily sweep clears a quiet chat's regenerable caches, but `compiledIdentityStacks` was never on
+its list, so it accumulated on chats that had gone quiet — 13.5 MB across 841 stale chats on the
+reference instance. It is a version-stamped read-through cache that rebuilds on the chat's next
+turn, exactly like the other entries the sweep already cleared.
+
+#### Changed: dependency update across the app, packages and plugins
+
+`npm update -S` was run on the root project, every package under `packages/`, and all 15 distributed
+plugins. No behavior changes are intended; the one code change below was forced by a type-inference
+change in Zod.
+
+- Root, notable versions: Next 16.3.4 to 16.3.5, React and React DOM 19.2.8 to 19.3.0, Zod 4.5.4 to
+  4.6.5, `openai` 7.15 to 7.20, `@openrouter/sdk` 1.2.106 to 1.3.11, TanStack Query 5.102.8 to
+  5.103.2, Playwright 1.62.1 to 1.63.0, Jest 30.5.1 to 30.5.2, plus `katex`, `mammoth`, `yaml`,
+  `autoprefixer`, `tsx` and the `@types/*` packages.
+- Packages published: `create-quilltap-theme` 2.0.20, `@quilltap/plugin-types` 2.7.1,
+  `@quilltap/plugin-utils` 2.6.2, `theme-storybook` 1.0.72. `packages/quilltap` had nothing to
+  update and was not bumped.
+- All 15 plugins took a patch bump in both `package.json` and `manifest.json`, mostly for
+  `@quilltap/plugin-types` ^2.6.0 to ^2.7.0, and were rebuilt with `npm run build:plugins`.
+- Zod 4.6 changed what `.optional().prefault(x)` infers: it now yields `T | undefined` where 4.5
+  yielded `T`, which broke the typecheck in three routes. The `.optional()` was redundant —
+  `.prefault()` already accepts a missing key and substitutes the default — so it was dropped from
+  all five places it appeared, in the project, character-prompt, plugin-search and image-generate
+  schemas. Runtime parsing is unchanged.
+
+#### Docs: one comprehensive CLI reference, in the package README
+
+The CLI reference was split across `packages/quilltap/README.md` (what npm users get) and
+`docs/developer/CLI.md` (what the release checklist called canonical). The package README is now
+the single full reference, and `CLI.md` is a pointer plus the developer-only remainder.
+
+- Merged into the README: the `db characters archives|archive|rehydrate|export` commands, `qtap://`
+  URI addressing for the `docs` verbs (including `--uri` output and the `self`/`project`/`general`
+  CLI limitation), the camelCase-columns note, `memories validate`, a new Locking section covering
+  the five-minute heartbeat window and `--lock-status` / `--lock-clean` / `--lock-override`, the
+  `link`-vs-`copy` link-group semantics, the Docker bind planner's user-visible rules, the two sync
+  refusal cases that were missing (a second concurrent run; character-vault keystones report a
+  `conflict` rather than being deleted), and the caveat that `instances restore-key` does not
+  re-encrypt character archive bundles.
+- `docs/developer/CLI.md` now holds only what does not belong in a published package README: the
+  `scripts/start-quilltap-docker.ts` startup script and its bind planner, why the sync engine is
+  server-side plus its module map, and the shell-completion template internals.
+- Repointed `CLAUDE.md`, the release checklist's CLI item, the documentation catalogue, and
+  `DEVELOPMENT.md`. The in-app `help/cli-*.md` pages are a separate layer and are unchanged.
+- Design of record: `docs/developer/features/complete/cli-comprehensive-help.md`.
+
+#### New: `quilltap sync` mirrors a document store to a directory
+
+`npx quilltap sync <store> <path>` keeps a database-backed document store and a directory on disk
+in step, in both directions. Edit a file in your own editor and the next run carries it into the
+store; edit it in the Scriptorium and the next run carries it out.
+
+- Compares by SHA-256 first, modification time second. Equal bytes with unequal clocks are
+  re-stamped, not re-copied. After a content action both sides carry the winner's modified time and
+  the older of the two creation dates.
+- The side that changed wins. When both changed since the last run it is reported as a `conflict`
+  and nothing happens; `--prefer store` or `--prefer disk` resolves it.
+- Deletions propagate only when `.quilltap-sync.json` (a manifest the verb keeps in the directory)
+  shows the entry was there at the last run. On a first run, or with `--no-manifest`, an entry
+  present on one side is created on the other, never deleted. `--no-delete` suppresses propagation.
+- Files and folders whose names begin with a dot are invisible to the sync in both directions —
+  never copied, never deleted, on either side. `.quilltap-sync.json` is the one exception and never
+  enters the store.
+- A binary's description travels as `<file>.description.md` beside it. Editing the sidecar changes
+  the caption; deleting it clears the caption. Text documents' descriptions are not synced and are
+  reported once as a `skip`.
+- Byte-preserving: a `.png` pushed from disk is stored as a `.png` with the same sha, not converted
+  to WebP the way a Scriptorium upload would be.
+- Empty folders are real on both sides. Hard-linked paths converge in a single run.
+- Never reads or writes a chunk or an embedding vector. The store's existing post-write hooks
+  re-index, because the sync writes through the same chokepoints as every other writer.
+- Other flags: `--dry-run`, `--direction both|to-disk|to-store`, `--json`, `--port`. `--dry-run`
+  changes nothing on either side, including not creating the directory; it says a real run would.
+- Exit codes: 0 clean, 1 error or failed action, 2 unresolved conflict. `--dry-run` uses the same
+  codes, so a script can gate on a clean plan.
+- Refused for a filesystem or Obsidian store (it already is a directory), an archived character's
+  vault, a store mid-conversion or mid-scan, a second concurrent run, and a manifest belonging to
+  another store. A character vault's keystone files are never deleted from the store.
+- The server must be running, as it already must for `quilltap docs write` on a database store. The
+  path is resolved on the server: under Docker it must sit inside a bind mount.
+
+New API: `POST /api/v1/mount-points/[id]?action=sync`. Engine in `lib/mount-index/sync/`.
+Help: `help/cli-sync.md`.
+
+#### Fixed: a character could open a new chat in the wrong scenario (bug 158)
+
+Starting a new chat could produce a greeting set somewhere other than the scenario that was chosen
+— a character greeting you from a swimming hole when the chat was set in an office. The scenario
+shown in the UI was correct; the model was reading a different one.
+
+Creating a chat wrote the chosen scenario into two columns: `scenarioText`, where it belongs, and
+`contextSummary`, where a summary of what was actually said belongs. That second write is left over
+from before `scenarioText` existed. Everything that reads `contextSummary` therefore treated a
+brand-new chat as already summarized, and the greeting prompt's "Recent Conversations" section —
+which inlines that column whole — handed the character the full text of some other chat's scenario,
+positioned immediately before the instruction to greet. On one test instance 186 of 712 chats were
+in this state.
+
+- Chat creation no longer seeds `contextSummary`. Only the summarizer writes it.
+- The greeting's "Recent Conversations" entries are now length-capped and closed with the same
+  `read_conversation` note the per-turn recap uses, so an oversized or wrong entry cannot dominate
+  the prompt.
+- The Concierge's danger classification read the scenario through that seed without knowing it. It
+  now reads `scenarioText` deliberately when a chat has no summary yet — same behavior, and its log
+  reports `scenario` rather than claiming `summary`.
+- A migration clears `contextSummary` on existing chats where it is byte-identical to the chat's own
+  `scenarioText`. Real summaries are untouched: every chat that has been summarized at least once
+  has had that column overwritten, so none match.
+- `.qtap` import and backup restore apply the same rule to incoming chats, so a bundle made before
+  this fix can't bring the problem back into an instance the migration has already cleaned.
+
+#### Fixed: a file description saved at one path appeared at another (bug 157)
+
+Setting a description on an image in a document store could write it to a different file with
+identical bytes. A character vault keeps every avatar at both `photos/` and `images/history/`, and
+because the store is content-addressed those two paths share one content row. The repository method
+that saves a description takes a content id, and when the caller did not say which path it meant,
+it picked one with `LIMIT 1`. The request returned 200 and the description showed up on the other
+copy.
+
+The path is now required, not inferred. Three callers were affected: the Scriptorium's description
+field, the `.qtap` importer's extracted-text restore, and the cached caption the chat attach
+generates — that last one also read from the correct row and wrote to the wrong one, so attaching
+the same vault image ran the vision model again every time.
+
+#### Fixed: writing a binary's bytes no longer blanks its description (bug 155)
+
+Re-uploading an image over an existing path in the Scriptorium file manager, running
+`quilltap docs write --force` on one, or copying a described image between stores erased its
+description, its auto-generated caption, and its extraction status. `linkBlobContent` treated an
+omitted metadata field as "set this to blank" on the update branch as well as the insert, and every
+byte-preserving writer omits them.
+
+An omitted field now means "keep what is there". An explicit empty description still clears it, and
+a fresh insert still defaults to blank.
+
+#### Fixed: overwriting a document no longer leaves the old chunks answering searches (bug 156)
+
+A text document overwritten through the file manager's upload, `docs write --force`, a cross-store
+copy, or a `doc_write_file` from an autonomous turn kept the previous revision's chunks. Semantic
+search, `doc_grep`'s chunk fallback, and character document recall went on returning passages from
+text that was no longer there, and nothing healed it short of `docs reindex --force`.
+
+- Repointing a link at different content now deletes that link's chunks and sets `chunkCount` to 0,
+  so the write announces itself. Hard-link siblings whose content moved are treated the same way.
+- `rescanDatabaseMountPoint`'s predicate (`chunkCount === 0 || not converted`) therefore catches
+  every un-re-chunked overwrite, including the in-child writes that defer chunking to it by design.
+  Its docstring, which described a sha-drift check the code never performed, now describes what it
+  does.
+- The byte-preserving writer in `file-ops` now runs the same post-write re-chunk that
+  `writeDatabaseDocument` does, factored into one shared helper.
+
+#### Docs: plan for `quilltap sync`, and two bugs filed
+
+- `docs/developer/features/cli-document-store-sync.md` is the approved plan for a new CLI verb that
+  mirrors a database-backed document store to a directory in both directions: sha-256 plus
+  modification-time comparison, matching created/modified times on both sides, a
+  `.quilltap-sync.json` manifest for deletions and conflicts, a `<file>.description.md` sidecar for
+  a binary's description, dotfiles ignored on both sides, no WebP transcoding, and nothing done to
+  chunks or vectors. The engine runs in the server behind a new `?action=sync`.
+- Bug 155 (open): writing a binary's bytes over an existing path blanks its description and
+  extracted caption, because `linkBlobContent` treats an omitted field as "set to blank" on update.
+- Bug 156 (open): overwriting a database-store document through `write-file`, `docs write --force`,
+  or a job-child write leaves the old chunks in place, and `rescanDatabaseMountPoint` does not
+  perform the sha-drift check its docstring describes.
+
+#### Changed: Regenerating a message now shows what it is doing
+
+Pressing the refresh icon on a character's message used to do nothing visible until the new line
+appeared, sometimes half a minute later. It now reports itself:
+
+- The message being regenerated dims and shows a "Regenerating..." plate.
+- The plate is replaced by the new line as it streams in. The regeneration is now a streaming
+  provider call, so text arrives token by token instead of all at once at the end. A provider that
+  does not stream simply delivers the whole line when it is done.
+- The status strip above the composer carries the stage ("Regenerating — gathering <name>'s
+  memories and context...", "...sending to <name>...", "Regenerating <name>'s reply..."), the same
+  way it does for a first-time turn.
+- The composer is disabled and the message's action icons are greyed out for the duration, so a new
+  message or a second re-roll can't land on a turn in flight.
+- When the regeneration finishes, the swipe group selects the variant that was just generated. It
+  previously kept whatever variant was selected before, so you could watch a new line arrive and
+  then be shown a different one.
+
+New API: `POST /api/v1/messages/[id]?action=swipe&stream=1` returns `text/event-stream`
+(`status` / `content` delta / `reasoning` / `done` / `error` frames). Without `stream=1` the
+endpoint still returns `201 Created` with the new swipe as JSON.
+
+#### Fixed: `ChatComposer`'s `disabled` prop did nothing
+
+The prop was declared and destructured but never wired to any input. Every control was gated on
+`sending` alone. Both flags now shut the composer.
+
+#### Added: Inform — out-of-character information a character receives before their next turn
+
+The Salon composer has a new **Inform** button (the *i* in the left gutter, beside Pascal). It opens
+a dialog where you pick one, several, or every LLM-controlled character in the chat and write a
+short second-person passage — "You notice the clock has stopped." Each character you target
+receives that passage verbatim as its own system block immediately after their system prompt on
+their next generation, and then it is consumed for them.
+
+Nothing is added to what you type: no preamble, no Host voice, no instruction not to mention it.
+The passage is never spoken in the scene and it is not a standing instruction — once the character
+has taken a turn, it is gone.
+
+Details:
+
+- **Targets** are LLM-controlled character seats only. Silent and absent seats can be informed and
+  collect the passage whenever they next generate; impersonated seats are still LLM-controlled, so
+  delivery waits for their next LLM turn. Seats you play yourself are not offered.
+- **The transcript keeps a record** — a Host message carrying exactly what you typed, public when
+  every eligible seat was targeted and whispered to the targets otherwise. Its chip reads
+  "out of character". The record never reaches a model: it is stripped from every character's
+  history, from the summarizer and the other cheap-LLM tasks, and from the Courier transport. It is
+  not extracted as memory either.
+- **A pending chip** above the composer names who is still owed an inform, with the first line of
+  the body on hover and a × to cancel. Canceling before anyone has collected it also removes the
+  record; canceling after some have collected it keeps the record and drops only the remaining
+  targets.
+- **Stacking**: several pending passages for the same character are delivered together, in posting
+  order, separated by `---`.
+- **Consumption is tied to a saved assistant message.** A provider failure that saves nothing, or a
+  "nothing to add" turn pass, leaves the passage pending for the next attempt. Regenerating or
+  swiping a message re-applies whatever that generation saw and never consumes, so a new inform
+  posted since does not get spent on a re-roll.
+- **Autonomous rooms** deliver informs on their next chained turn. Carina does not — it builds its
+  own minimal call.
+- Rows survive `.qtap` export/import and backup/restore, consumed ones included, so swipes stay
+  honest after a round trip.
+
+Known limitation: pending informs do not travel through a chat merge or continuation.
+
+New table `chat_informs`, migration `add-chat-informs-table-v1`. Help: `help/inform.md`.
+
+#### Docs: plan for Inform, out-of-character information delivered before a character's next turn
+
+Added `docs/developer/features/salon-inform.md`, a plan for a Salon composer button that lets the
+operator write a short second-person passage and target one, several, or every LLM-controlled
+character with it. Each target receives the passage verbatim as a system block right after their
+system prompt on their next generation, then it is consumed; a Host transcript message records
+what was posted (public when everyone was targeted, whispered to the targets otherwise) but the
+record itself never reaches a model. Covers a new `chat_informs` table, the `POST ?action=inform` /
+`GET ?action=informs` / `POST ?action=cancel-inform` API, the `buildContext` insertion point between
+the identity reminder and the compressed-history block, consumption tied to a persisted assistant
+message so regenerate/swipe re-applies correctly, autonomous-room delivery, and export/import/backup.
+No code changes yet.
+
+#### Fixed: the star that sets a character's default system prompt did nothing (bug 154)
+
+On **Aurora → Edit character → System Prompts**, pressing the star beside a prompt reported
+"Default prompt updated" and left the **Default** badge where it was. The request it sent named an
+action the server does not have, fell through to a generic character update that discards the field,
+and came back successful. The checkbox in the **Edit Prompt** dialog was unaffected and is what
+people have been using instead.
+
+The star now sends the same request that dialog does, and the badge moves on the click rather than
+after a refetch.
+
+Underneath, a character's default prompt was recorded in two places — a flag on the prompt and a
+column on the character — and each way of changing it updated only one. So a change that appeared to
+work could still leave new chats opening with the old prompt. Both are now written together
+wherever prompts are added, edited, deleted or promoted, including from the picker on the Details
+tab. The order in which the two are consulted is stated in one place instead of five; two of those
+five used to seed a chat with no system prompt at all when the two disagreed.
+
+The **Edit Prompt** dialog is also wider. The formatting toolbar no longer runs off its right edge,
+where the last several buttons could not be reached.
+
 #### Fixed: document tools listed character vaults they would then refuse to open (bug 153)
 
 A character whose **System Transparency** is off — the default — was shown character vaults by
