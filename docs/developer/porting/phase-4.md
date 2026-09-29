@@ -6694,7 +6694,47 @@ corpus; four stale headers/comments. Gate + versions: the round record in
    `cl100k` tokenizer (the section bound is proved through the oracle), the
    `docs/v4/CHANGELOG.md` lag.
 
-## The `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118) — ORDERED 2026-09-28
+## The `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118) — UNIFIED 2026-09-29
+
+**UNIFIED on `main` (2026-09-29) — ALL SEVEN LANES; the oracle baseline MOVES
+to `97b25fc53` and the ledger's §3 is EMPTY (v4 AT the baseline at both
+probes).** Round record: `status-log.md`; every order's status header carries
+what its §3 review found and what stays OPEN. `9ff4bbd8e` NO-PORT-RATIFIED
+on P4.D238's evidence (ledger §6). **The §3 review (six parallel readers +
+the unifier's own reads) found NO blocking defect; nine should-fixes landed
+on the unify branch**, headline: a LAYOUT regression in P4.D236 (the project
+card's corner button wrapped in the tooltip host opened a blank line box —
+measured 82 px against 58) and the recurring "v4 fallback read ported as a
+propagating error" shape at FIVE sites across three lanes (the equipped-
+outfit repository read under the join and every wardrobe caller; the
+`read_conversation`, `upsert_annotation` and render-job chat reads), plus the
+absent `send_mail` catch ERROR, a `null` element in a sanitize reply, a third
+Google approximation in the wire family, and the dead `_now_ms`. **NEXT, in
+order:**
+1. **The owed Host dogfood pass** — at last on a Friday copy of ANY vintage
+   (the `-dev.96` blocker is closed): P4.D235's first-boot re-embed
+   measurement FIRST (the read-only recipe in its lane record — "v4 may
+   already have warmed Friday"), then the round's 💸 items: the badge
+   inversion on first boot, `read_mail`/`discard_mail` + the letters by
+   file name on a real postbox, a refreshed built-in prompt row (Friday's
+   rows predate `c3eefa752`), a joining character's avatar rebind, a real
+   conceal-mode story background, a text refusal rerouted on a REAL coded
+   4xx (`provider-code`), the in-app card tooltips.
+2. **A drift catch-up when v4 moves** — run `/driftcheck` first.
+3. **The named follow-up orders** (each order header lists its own): the
+   mid-stream error frames (P4.118 Tier 2 item 7); the image helper's
+   `openai_sdk_error` reuse (P4.118 item 12 — a FLAT-body image refusal is
+   missed by the image failover today); the wardrobe-tools avatar seam
+   (P4.D238's verified four v4 sites); the OpenRouter SDK-path + Google 4xx
+   trigger ruling (human).
+4. **A smalls lane**: the mail handlers' + `send_mail`'s character read and
+   the mount-store reads that propagate where v4 falls back (P4.D234 — needs
+   a characters `find_by_id_raw_or_none` twin); `trigger_avatar_generation`'s
+   inner reads + the `:1397` level (P4.D238); the `requestedConversationId`
+   empty-vs-omitted and the snake/camel log-field mix (P4.D235); the P4.D225
+   NITs (P4.118 item 13); the `text-replacement.ts` soft-break divergence and
+   the `acadcc7cd` round's review NITs carried from before; the P4.D234 NITs.
+
 
 **Baseline `acadcc7cd`; v4 `main` HEAD `97b25fc53` (SEVEN non-merge commits
 past: `39bc98ffc` `read_mail` + the `list_email` → `list_mail` rename,

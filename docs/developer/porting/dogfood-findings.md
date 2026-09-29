@@ -2775,6 +2775,53 @@ against real data the same way this one does.
 
 ---
 
+## The `97b25fc53` round's notes for the next walk (2026-09-29, written at unification)
+
+**The `chats.renderedMarkdown` DROP is live on v5 (P4.D235).** A Friday copy
+of ANY vintage from `-dev.88` on now opens: v5 binds neither
+`renderedMarkdown` nor `conciergeOverride`, tolerates a copy that still
+carries either column, and never drops them. Measure the copy's vintage first
+(`SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name =
+'renderedMarkdown'` — 1 = migrated before `-dev.96`, 0 = past it); both
+shapes are a PASS, and a 1 means the column is dead weight v5 will never
+reclaim (the standing reclamation deferral).
+
+**The first v5 boot re-embeds the cold backlog — a REAL cost event, budget it
+before booting.** v4 `f7f3d7bf0` keeps conversation embeddings warm, so the
+render reconcile's arm (B) enqueues one `EMBEDDING_GENERATE` per un-embedded,
+non-FAILED, in-cap chunk on a non-orphan chat. Run P4.D235's read-only recipe
+(its lane record in `status-log.md`, "The first-boot re-embed cost") against
+the COPY before the first boot: step 1 answers whether **v4 has already paid
+it on live Friday** (v4 shipped `-dev.96` on 2026-09-26; a small `unembedded`
+means the v5 proof reduces to "enqueues ~nothing"); step 2's `chunks` is the
+upper bound on jobs and `chars / 4` the token estimate (last measured
+2026-07-28: 9,652 of 11,357 chunks, ≈ $2 on text-embedding-3-large). A
+zero-spend boot: no `isDefault` embedding profile, or a dead key (the
+`a-bad-api-key-is-a-free-provider-wire-proof` note). The boot lines to read:
+`INFO quilltap::boot "Conversation render reconciliation: found incomplete
+conversations" count=` then `"Conversation render reconciliation complete"`.
+
+**The Scriptorium badge INVERTS on that first boot — working as designed.**
+The status is now derived from chunks alone (`derive_scriptorium_status`:
+none / rendered / embedded), so every chat the old cold-tier sweep had
+un-embedded flips red → amber (`rendered`) and then green as the embeds
+drain. The three tooltip strings are v4's reworded ones ("not yet transcribed
+— click to render and index" / "transcribed, the indexing still under way —
+click to re-render" / "transcribed and indexed, every word findable — click
+to re-render"), carried by the in-app `qt-tooltip` (no native `title` —
+the e2e selector is the `aria-label`).
+
+**The live transcript render hands the LLM a `Current time:` header on every
+`read_conversation` / `upsert_annotation`.** The render is on demand
+(nothing stored), and its header line is the executor's real clock in UTC
+(the standing UTC-vs-host-zone convention, `conversation_markdown.rs`) — v4
+renders in the host zone. Not new, but now on every tool read; one line in
+the walk if a transcript is read through a tool.
+
+**Project cards:** the "Remove from project" corner control moved onto its
+tooltip host at unification (the wrapped button had opened a blank line box
+above the card's content row); glance at a project's chat list once.
+
 ## ⚠ Superseded live proof — the 75 s compression budget (C4, 2026-08-29)
 
 **Recorded 2026-08-31 by P4.D136 (v4 `a1d88aa3a`, bug 107); the walk row itself

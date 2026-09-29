@@ -155039,3 +155039,238 @@ Branch `claude/scriptorium-badge-tooltips-spa-c611d2`. SPA-only; no crate, `core
 - Gate: `npm test` 460 files / 8,719 passed; `npm run lint` clean (956 qt-* classes, none added); `npm run build` clean; `m4-salon.spec.ts` alone on 4319: 2/2 passed. Rust gates N/A (no crate changed); a debug `quilltap-web`/`quilltap` build was made in this worktree only to run Playwright.
 - Deferred (named): the memory badge as a click-to-reextract button + its aria-label (recorded deferral at `chat-card.ts` stands); P4.D235's server derivation; P4.D238's help pages.
 - Fixtures/oracles: none consumed or changed. Mirror pre-list: none. Versions: SPA 0.5.784 -> 0.5.785.
+
+---
+
+## The `97b25fc53` seven-commit drift catch-up + refusal-seam round — UNIFICATION record (2026-09-29)
+
+**Unified on `main` — ALL SEVEN LANES (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237
+∥ P4.D238 ∥ P4.D239 ∥ P4.118); the oracle baseline MOVES `acadcc7cd` →
+`97b25fc53`; the drift ledger's §3 is EMPTY (v4 AT the baseline at the
+unification's start and at its docs commit).** Branch `unify/97b25fc53` from
+`main` `e361879d3`; the seven lanes cherry-picked in the order the plan set
+(P4.D234 → P4.D237 → P4.D239 → P4.D238 → P4.118 → P4.D235 → P4.D236 — every
+lane cut from the same `main`, no stacked chain). Main had not moved since the
+lanes were cut, so every conflict was lane-vs-lane: the version files (a
+resolver set each conflicted crate to the accumulated count — and clobbered
+one CLEAN host bump in the same commit, recounted afterwards as base + total
+bumps), `Cargo.lock`, and the two doc files under a temporary
+`merge=union` attribute (every lane's added line re-grepped present exactly
+once; one shared blank per lane boundary collapsed). No source-level conflict:
+`tools/executor.rs` carried P4.D234's four mail arms AND P4.D235's two marked
+`OUT-OF-MANDATE` clock hunks; `queue_service.rs` P4.D238's two INFOs beside
+P4.D235's comment.
+
+### §3 review — what it found
+
+Six parallel readers (one per Rust lane; the SPA lane read by the unifier)
+over every hunk of the union against v4 at `97b25fc53`, plus the unifier's own
+reads of the cross-lane seams. **NO blocking defect. Nine should-fixes landed
+on the unify branch (commit `a551ec307`), each red-first by the test named:**
+
+1. **P4.D236 — a LAYOUT regression (the one that would have shipped
+   visibly).** Wrapping the project card's corner "Remove from project"
+   button (`absolute top-2 right-2`) in the inline-flex `qt-tooltip` host left
+   a zero-size in-flow box that still opens a full line box: a served probe
+   page measured the card at **82 px with the content row at 41 px, against 58
+   / 17 for the bare button** (and 58 / 17 with the HOST positioned). The
+   corner placement now rides the tooltip host (v4's `anchorClassName` idiom);
+   pinned in `chat-card.spec.ts` (the button carries no `absolute`, the host
+   does). Noted for the walk in `dogfood-findings.md`.
+2. **P4.D238 — the lane's "measured" correction of the order was itself wrong
+   by one level.** v4's `getEquippedOutfit` is a fallback `safeQuery` whose
+   only fallible step is `this.findById` — the fallback `_findById`
+   (`base.repository.ts:247-257`) — so the REACHABLE line on a failed read is
+   the repository's `Error finding entity by ID` `{collection, id, error}`,
+   not the inner `Failed to get equipped outfit` the lane pinned (as
+   unreachable as the outer line the order had named). `ChatOutfitsRepository::
+   get_equipped_outfit*` now read through `chats_read::find_by_id_or_none` and
+   answer a plain `Option` — v4's shape for EVERY caller (the five wardrobe
+   tools, the two outfit routes, chat-open, the story job, `build_context`,
+   the avatar job, the join; 15 call sites, the first survey's `| head` had
+   shown ten); the join's `equipped_outfit_or_fallback` and its two tests
+   deleted; a repository pin added (`a_failed_chat_read_answers_no_outfit_with_
+   v4s_repository_error_line`); the reactivate gate filters an empty
+   `characterId` (v4's truthiness).
+3. **P4.D235 — two of its NEW chat reads were strict where v4 falls back**,
+   and the lane's new pin `a_failed_read_logs_v4s_execution_failed_error`
+   claimed v4 fidelity for the divergence: `read_conversation.rs` and
+   `annotations.rs` (`upsert_plan`) read the chat through `find_by_id(...)?`
+   where v4's `repos.chats.findById` is the fallback `_findById` (v4 answers
+   `Conversation not found.` / `Chat not found.` + the chat-not-found WARN +
+   the repository ERROR — never the tool catch). Both repointed at
+   `find_by_id_or_none`, the pin re-aimed (`a_failed_chat_read_takes_v4s_not_
+   found_arm`, both tools); the pre-existing sibling in
+   `conversation_render_job.rs` (v4 WARNs "Chat not found, skipping" and the
+   job COMPLETES; v5 failed it and retried) fixed with them and pinned
+   (`a_failed_chat_read_warns_not_found_and_completes`). **The same shape at
+   FIVE sites across THREE lanes in one round** — the recurring defect the
+   `acadcc7cd` review named; the mail handlers carry a sixth (below, recorded).
+4. **P4.D234 — v4's `send_mail handler threw unexpectedly` ERROR
+   (`send-mail-handler.ts:107-114`) was absent, neither done nor deferred**
+   (the order's §D.8 named it). Restored at the three reachable `Err` arms
+   with `chatId` (threaded from the executor); the catch-lines plant gains a
+   `send` op (the delivery's link write fails on the dropped table).
+5. **P4.D239 — a sanitize reply holding a `null` element parsed differently.**
+   v4 reads `item.characterId` on every element INSIDE its `try`, so one
+   `null` throws and the whole reply falls back to the originals (no text
+   change, no `undressed` for anyone); v5 read the null as empty fields and
+   kept the siblings' changes. Any `null` element now falls back whole, a
+   primitive is kept (the only non-object JSON can pose that throws);
+   unit-pinned in both modes.
+6. **P4.118 — a THIRD Google approximation, neither measured nor
+   documented.** A body that is NOT JSON served AS `application/json` makes
+   `@google/genai` call `response.json()` and throw a bare `SyntaxError` (V8's
+   parse message, no `status`, no `ApiError`) whose digit-free message reads
+   `provider-error` on v4 — so v4 FAILS OVER where v5's synthesized `ApiError`
+   with `status` and `HTTP 4xx:` bytes meet the 4xx rule. Two Google-only rows
+   (`google_html_as_json`, `google_empty_body_as_json`) added to the corpus
+   and re-recorded through v4's real plugins at the pin (the 726 committed
+   rows byte-identical; v4 threw `SyntaxError` / `provider-error` on all
+   four), pinned both ways; the module doc names the third approximation; the
+   Tier-3 ruling list gains the Google 4xx trigger by name. **And the pinned
+   GOOGLE trigger cells recorded only THAT they diverge**: v5's own value is
+   now asserted per cell (`V5_GOOGLE_TRIGGER` — `auth` on the 401, `None`
+   elsewhere), so a regression from one wrong value to another cannot hide;
+   `EVERY_CASE` scoped per provider/mode (the provider-only rows had made
+   every `*` entry report "no longer diverges" for rows that never existed).
+7. **P4.D235's follow-ups for the unifier, taken:** the dead `_now_ms`
+   dropped from `reconcile_embedding_dimensions` with its host,
+   restore-orchestrator and harness callers (the restore orchestrator's own
+   `now_ms` parameter had no other reader); the `embedding_remainder` arm-(C)
+   guard raised `>= 5` → `>= 7` (at the target the corpus produces exactly 7,
+   so the old bound no longer protected arm C); the stale `spine.rs:1678` and
+   dim-reconcile test-DDL comments; `V4_APP_VERSION` → `-dev.100`.
+8. **P4.D237 — three `qtap_export` prompt-template readers carried a stale
+   "seeded from `prompts/` on every instance" comment** (v4 seeds LAZILY from
+   the plugin registry inside its template reads; `prompts/` is its
+   no-registry fallback) and no note of the recorded divergence (v4's export
+   reads go through `findAll()`, which seeds-and-refreshes as a side effect;
+   v5's raw reads do not — output identical, DB state after an export not).
+   Replaced at all three; the two seed INFOs' `source` field rendered like
+   its neighbours (`%`, the `tracing-percent-field-renders-unquoted` note).
+9. **P4.D239's open question, CLOSED by reading:** the production story
+   handler does NOT hold one registration-time executor — the host wrapper
+   `StoryBackgroundJobHandler::handle` (`quilltap-host/src/spine.rs:3366-3404`)
+   builds a fresh core handler per job with `CheapLlmLogConfig { chat_id:
+   payload.chatId, user_id: job.user_id }`, so the `Task failed` WARN renders
+   the job's chat id (v4's per-call `chatId`). No code change.
+
+**Recorded, not fixed — the follow-up orders (each in its order's header):**
+- The mail handlers' character read (`find_by_id_raw(main, …)?` in
+  `list_mail` / `read_mail` / `discard_mail` / `send_mail`) PROPAGATES where
+  v4's `findByIdRaw` → `_findById` falls back to `null` ("cannot find your
+  postbox"), and their mount-store reads propagate where v4's fall back to "No
+  letter named …" — pinned as v5-only behaviour in `assert_catch_lines`,
+  inherited from `list_email`; needs a characters `find_by_id_raw_or_none`
+  twin (a smalls order).
+- `trigger_avatar_generation`'s inner reads (`avatar_generation.rs:92,111,
+  127,135`) still PROPAGATE into the restored `Failed to enqueue avatar
+  generation` WARN + `reason:"error"` where v4's fallback reads log ERROR and
+  take `chat-not-found` / the next profile tier — the WARN is reachable where
+  v4's is not (a smalls item; the lane had deferred it loudly).
+- P4.118 Tier 2 item 7 (the mid-stream error frames — an OpenAI stream that
+  opens 200 and sends an `error` frame before the first content chunk takes
+  the EMPTY-response path on v5 where v4 reroutes on `provider-code`), Tier 3
+  item 10 (the OpenRouter SDK-path ruling, now with the Google 4xx trigger
+  beside it) and item 12 (the IMAGE helper `image_dialects.rs:1404` diverges
+  on 5 of 9 body shapes — a FLAT `{"code":"content_filter",…}` image refusal
+  is MISSED by the image failover today; reuse `provider_error::
+  openai_sdk_error` + `make_message`).
+- The wardrobe-tools avatar seam (P4.D238, VERIFIED: v4 fires the trigger from
+  `wardrobe-create-handler.ts:282-287` and `wardrobe-handler-shared.ts:
+  254-265,371-392` via wear / take_off / archive; v5's four tools never do).
+- NITs by lane: P4.D234 (`tool_build_equivalence` re-composes the filter, pin
+  `removed=1`; the `mail_carina_tools` inputs hand-written twice; no
+  executor-level `list_email` unknown-tool pin; `format_list_mail_results`'s
+  missing empty filter); P4.D235 (`requestedConversationId=""` where v4 omits;
+  snake/camel log fields); P4.D238 (the oracle plant's `updatedAt`; the
+  `.unwrap_or(None)` pool error; the `:1397` level); P4.118 (the record's "17
+  unit pins" is 14; the jest `openaiStatusError` hand-transcribes the wrap;
+  the tier-3 arm copies `single_error_from`; `with_understudy_summary` keeps
+  `kind`, unpinned for a stalled multi-attempt; the regen script's `V4`
+  default and `rm -f`; no 429/5xx rows).
+
+### The unification wires
+- **§S.1 (P4.D235 → P4.D236):** `core-contract.ts` unmoved;
+  `EnrichedChatSummary.scriptoriumStatus: 'none' | 'rendered' | 'embedded'`
+  on both sides, the server's `derive_scriptorium_status(...).as_str()` the
+  same three strings.
+- **§S.3 (P4.D234 alone):** the catalogue 59 → 61 and the destructive list
+  land in ONE place; the union's `enclave_step_tier3` (P4.D235 had found it
+  reddening on the tool-catalogue hash at any pin ≥ `12c336fad`) regenerated
+  at the round target through the sweep.
+- **`9ff4bbd8e` NO-PORT-RATIFIED** on P4.D238's evidence (the 12 files; every
+  code hunk on the unported vision vertical; the refusal arm + its
+  `activity_span_sites_guard` row; `help/wardrobe.md` byte-copied; the
+  vertical banked by pointer).
+- **The `docs/v4/` mirror** (commit `ca21e05cc`): the four files
+  `git diff --stat acadcc7cd 97b25fc53 -- docs/` names, md5-equal to the
+  lanes' §R.9 pre-list (`API.md` 95995a56 / `DDL.md` 060f28c2 /
+  `db-size-reduction-spec.md` 979e0ae5 / `CHANGELOG.md` d922c562 — the
+  long-lagging one now at HEAD's bytes); `diff -rq` of the whole tree against
+  the pin reports no content difference.
+- **`help/**`:** `diff -rq` against the pin empty, 129 files.
+
+### Gate (tree `a551ec307` + this docs commit)
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+  -D warnings` clean plain AND with `--features quilltap-core/native-
+  transport`; `cargo build --workspace --release` clean.
+- **The full sweep from the `97b25fc53` pin** (`/tmp/qt-v4-pin-unify-
+  97b25fc53`, the three symlink classes; `--run-all`, run TWICE — the first
+  pass died with a session restart at 228 families, all ok bar the two
+  standing rows; the second pass is complete): **566 ok / 5 run_failed / 3
+  refused of 574** (20 `nothing_to_run`). Artifacts:
+  `harness/tools/sweep-results/2026-09-29-97b25fc53-unify-full.json` (the
+  partial first pass) and `…-unify-full-part2.json` (the gate of record).
+  Every red classified:
+  - **The sweep's own two catches — FIXED (commit `324e3e20d`), then green
+    through the driver by name:** `orchestrator_tier3_equivalence` (P4.D234's
+    fence, green at its `12c336fad` pin) met P4.D235's LIVE `read_conversation`
+    render on the union — the render bakes in the executor's wall clock
+    (`Current time:`) and the `createdAt` of the assistant message v5 mints
+    mid-turn with the real clock where v4's oracle freezes `Date` (`Last
+    Updated`, every message's timestamp, the archive span — whose SHAPE also
+    follows the clock, same-day vs cross-day), and that text reaches the next
+    canned stream key, the `toolResult` frame and the stored TOOL row
+    (compressed): five tool-loop cases RED with canned misses. A render-aware
+    normalizer on BOTH sides (keys hashed over blanked messages; frames and
+    dumps blanked; a TOOL row whose compressed content decodes to a live
+    render compared as blanked plaintext, every other row keeping its byte
+    parity). Neither lane could see it. And `mail_carina_tools_equivalence`:
+    the review fix's `send` op captured under a target the family's line
+    filter never listed.
+  - **Standing (every prior sweep):** `ariel_writers_tier3` and
+    `memory_processor_tier3` (the compressed-text byte parity, decoded text
+    identical), `search_replace` (`missing_action_recorded`).
+  - Refused by design: `backup_uuid_remap` (a repo-write corpus),
+    `avatar_rolls_routes` and `generator_sse_wire` (non-extractable).
+  - `builtin_prompt_templates_guard` is GREEN against the live checkout again
+    (P4.D237's re-vendor) — the standing red of the last five rounds' gates
+    closed.
+  - The driver's `--self-test` reports one pre-existing failure ("a header
+    defaults one checkout alias from another" for `doc_opacity`,
+    `instance_settings_json_warns` and the three `scenario_builder_*`
+    families — the `W=${V5W:-…}` spelling); the driver neutralizes the alias
+    at run time and every one of the five ran green. Not this round's; a
+    header-spelling item for the smalls lane.
+- **Tier R** (`cli_differential`, `QT_V4_CHECKOUT=` the pin): **266 cases / 0 failures** (422 s).
+- `QT_V4_CHECKOUT=<the pin> cargo test --workspace --no-fail-fast`:
+  **646 test binaries / 3,935 passed / 0 failed / 3 ignored**, zero `SKIP:` lines (Tier R and every guard inside).
+- SPA: `npm test` **460 files / 8,720 tests** (the new chat-card pin
+  included); lint clean (check-qt-classes 956, none added); `npm run build`
+  clean.
+- **Full Playwright** on the final tree: **354 passed / 0 failed / 6 skipped (11.3 m)** — the six skips the standing parks; zero reds, the first full-suite clean run since the `d1c06cd9d` round (run AFTER the sweep, not beside it).
+
+### Versions
+core 0.0.1089 → **0.0.1104** (+14 the lanes, +1 the review fixes), harness
+0.0.1012 → **0.0.1025** (+12, +1), host 0.0.162 → **0.0.165** (+2, +1), SPA
+0.5.784 → **0.5.786** (+1, +1); web / cli / tauri unchanged.
+
+### 💸 for the owed dogfood pass (in `dogfood-findings.md`, the round's notes)
+The first-boot re-embed measurement on a Friday copy (v4 may already have
+warmed it); the badge inversion; `read_mail` / `discard_mail` + letters by
+file name on a real postbox; a refreshed built-in prompt row; a joining
+character's avatar rebind; a conceal-mode story background; a text refusal
+rerouted on a real coded 4xx; the in-app card tooltips; the project card's
+corner control.

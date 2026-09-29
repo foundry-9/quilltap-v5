@@ -1096,10 +1096,59 @@ records THERE. Update this summary only when a phase or round completes.
   `renderedMarkdown` drop blocks dogfooding a Friday copy past `-dev.96`),
   the text-side refusal order, a smalls lane, then the owed Host dogfood
   pass** — `phase-4.md`. Round record: `status-log.md`.
-- **Oracle baseline: `acadcc7cd` (2026-09-25, v4 main — "Name who stayed
-  behind on Continue Elsewhere; persona absent in autonomous rooms (bugs
-  171, 172)", `4.10.0-dev.93`), adopted at the `acadcc7cd` Concierge-overhaul
-  round unification (2026-09-28).**
+- **The `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234
+  ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118): UNIFIED on main
+  (2026-09-29) — ALL SEVEN LANDED WHOLE; the oracle baseline MOVES to
+  `97b25fc53` and the ledger's §3 is EMPTY (v4 AT the baseline at both
+  probes).** v4's seven commits absorbed: the Post Office's `read_mail` +
+  `discard_mail` + the `list_email` → `list_mail` rename (ONE `resolve_mail_
+  path` parser under a NEW tier-1 family, the catalogue 59 → 61, letters by
+  file name) ∥ `f7f3d7bf0` whole — **the `chats.renderedMarkdown` column DROP
+  as a tolerate-both-shapes read** (the third D23 re-dump; 41 committed pairs
+  NARROWED through v4's real migration — the reverse of every heal so far),
+  the on-demand transcript render + the chunk-derived Scriptorium status +
+  the warm-embeddings reversal (a Friday copy of ANY vintage now opens on v5;
+  the first boot re-embeds the cold backlog — a budgeted 💸 with a read-only
+  recipe), the badge's three reworded strings in the in-app tooltip ∥ the 21
+  built-in prompts re-vendored + the seeder's LAZY refresh of a stale row +
+  the two voice-direction constants at seven sites ∥ the join-avatar refresh
+  + the `caller_context` rider + the whole `help/` tree ∥ the story-background
+  drape (the sanitize MODE, the three-way merge, the concealment marker; the
+  prompt generator inlines ONE named constant) ∥ P4.118 — the text-side
+  structured refusal seam the previous round escalated (v4's thrown SDK error
+  reconstructed per provider as the refusal SIDE with the message bytes
+  frozen, a NEW wire family recorded through v4's TEN real plugins, red-first
+  0/162 → 160/162 with the two divergence classes pinned both ways; the
+  cheap path's carrier; the understudy summary keeping the side); `9ff4bbd8e`
+  NO-PORT-RATIFIED (an unported vision vertical, banked by pointer). **The
+  §3 review (six parallel readers): NO blocking defect — the tenth such round;
+  nine should-fixes landed**, headline a P4.D236 LAYOUT regression (a corner
+  control wrapped in the tooltip host opened a blank line box, measured 82 px
+  against 58) and **the fallback-read-as-`Err` shape at FIVE sites across
+  THREE lanes** (the equipped-outfit read under every caller — the lane's
+  "measured" correction of the order was itself wrong by one level;
+  `read_conversation` / `upsert_annotation` / the render job), plus v4's
+  absent `send_mail` catch line, a `null` sanitize-reply element, a THIRD
+  Google approximation (two rows recorded through the real plugin) and
+  v5's own value pinned inside every Google carve-out cell. **The unified
+  sweep caught two more:** P4.D235's LIVE render reddened P4.D234's
+  `orchestrator_tier3` fence on the union (five tool-loop cases missing their
+  canned key on the render's wall clock + a mid-turn minted `createdAt`; a
+  render-aware normalizer on both sides, compressed TOOL rows decoded) and a
+  line filter blind to the new `send_mail` target. Gate: fmt/clippy both feature sets/release clean; the full sweep from the pin 566 ok / 5 run_failed (the two catches, fixed; three standing) / 3 refused of 574; Tier R (`cli_differential`, `QT_V4_CHECKOUT=` the pin) 266 cases / 0 failures; the pinned workspace suite 646 binaries / 3,935 / 0 / 3 ignored, zero SKIP; SPA 460 files / 8,720; full Playwright 354 / 0 / 6 (11.3 m). Versions:
+  core 0.0.1104, harness 0.0.1026, host 0.0.165, SPA 0.5.786; web/cli/tauri
+  unchanged. 💸 the dogfood queue gains the first-boot re-embed measurement
+  ("v4 may already have warmed Friday" first), the badge inversion, the mail
+  tools on a real postbox, a refreshed built-in row, a joining character's
+  rebind, a conceal-mode background, a real coded-4xx text reroute. **Next:
+  the owed Host dogfood pass (at last on a Friday copy of ANY vintage), then
+  the named follow-ups (the mid-stream error frames, the image helper's flat
+  body, the wardrobe-tools avatar seam, the OpenRouter/Google trigger
+  ruling) and a smalls lane** — `phase-4.md`. Round record: `status-log.md`.
+- **Oracle baseline: `97b25fc53` (2026-09-28, v4 main — "Drape undressed
+  characters in story backgrounds instead of re-dressing them",
+  `4.10.0-dev.100`), adopted at the `97b25fc53` seven-commit round
+  unification (2026-09-29).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

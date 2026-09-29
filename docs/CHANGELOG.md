@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — docs(porting): unify the `97b25fc53` seven-commit drift catch-up + refusal-seam round (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118) — baseline → `97b25fc53`
+
+_Versions: core 0.0.1104, harness 0.0.1026, host 0.0.165, web 0.0.201, cli 0.0.27, tauri 0.0.7, SPA 0.5.786 (this commit is docs-only; the lanes and the two unification commits carried the bumps)._
+
+Unifies all seven lanes onto `main` (cherry-picked P4.D234 → P4.D237 → P4.D239 → P4.D238 → P4.118 → P4.D235 → P4.D236 from the same `main`; version files recounted as base + total bumps, the two doc files unioned). The oracle baseline moves `acadcc7cd` → `97b25fc53`; the drift ledger's §3 is EMPTY (v4 AT the baseline at both probes); `9ff4bbd8e` NO-PORT-RATIFIED on P4.D238's evidence; the `docs/v4/` mirror and `help/**` match the pin whole.
+
+**The §3 review (six parallel readers) found NO blocking defect; nine should-fixes landed (`a551ec307`)** — headline: a P4.D236 LAYOUT regression (the project card's corner control wrapped in the tooltip host opened a blank line box, 82 px against 58, measured) and the recurring fallback-read-ported-as-error shape at five sites across three lanes (the equipped-outfit repository read under every caller; `read_conversation`, `upsert_annotation` and the render job's chat reads), plus v4's absent `send_mail` catch line, a `null` sanitize-reply element, a third Google approximation in the wire family (two rows recorded through the real plugin), the dead `_now_ms`, and comment/version follow-ups. **The unified sweep caught two more (`324e3e20d`):** P4.D235's live `read_conversation` render reddened P4.D234's `orchestrator_tier3` fence on the union (five tool-loop cases missing their canned key on the render's wall clock and a mid-turn minted `createdAt` — a render-aware normalizer on both sides), and the mail family's line filter lacked the new `send_mail` target.
+
+Gate: fmt + clippy (both feature sets) + release clean; the full sweep from the `97b25fc53` pin 566 ok / 5 run_failed (the two catches, fixed; three standing) / 3 refused of 574; Tier R (`cli_differential`, `QT_V4_CHECKOUT=` the pin) 266 cases / 0 failures; the pinned workspace suite 646 binaries / 3,935 / 0 / 3 ignored, zero SKIP; SPA 460 files / 8,720 tests, lint + build clean; full Playwright 354 / 0 / 6 (11.3 m). Round record: `status-log.md`; the next asks in `phase-4.md` (the owed Host dogfood pass on a Friday copy of any vintage first).
+
 #### 2026-09-28 — docs(porting): close the P4.D234 lane (gate record, order status header)
 
 _Docs-only change._
