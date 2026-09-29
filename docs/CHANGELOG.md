@@ -155,6 +155,12 @@ A text provider's HTTP error now carries a refusal side: the value v4's plugin t
 So a benign-worded coded 400 (Azure's `content_filter`, Z.AI's `1301`) now reaches the classifier's `provider-code` evidence, as on v4. Before this, v5 answered "not fallback-eligible".
 
 Proven by a new wire family, `text_http_errors_equivalence`: 33 posed error bodies through v4's ten real text plugins in both call modes (726 rows, committed corpus), recorded by the new `record-text-errors.mjs`. Red-first: v5 matched 0 of v4's 162 refusals; now 160, with the two remaining (OpenRouter's SDK path, which v5 never runs) and the message-byte trigger differences pinned both ways. New unit pins at every site; the old pre-stream pin could not see the side (its fake failure has no status).
+#### 2026-09-28 — test(fixtures): narrow the 41 chats-bearing pairs through v4's drop-chat-rendered-markdown-v1 (P4.D235)
+
+_Versions: host 0.0.163._
+
+The 41 committed `*-main.db` pairs that carry a `chats` table are narrowed through v4's real `drop-chat-rendered-markdown-v1` module (the fixture migrator's `--module` arm, run from the `f7f3d7bf0` pin). A dry run found exactly 41; the order's 42nd (`llm-log-cleanup-main`) has no `chats` table. Two pairs had stored transcripts (`embedding-remainder` 8, `salon` 1). A second dry run reports every pair "not needed", and no journal files are left. The migration-vintage trio is rebuilt at the pin (120 migrations run). The `host_boot` and `host_cadence` hand-written `chats` DDL drops the column as well.
+
 #### 2026-09-28 — feat(chats): read and write chats without renderedMarkdown; D23 re-dump at f7f3d7bf0 (P4.D235 substrate)
 
 _Versions: core 0.0.1090._

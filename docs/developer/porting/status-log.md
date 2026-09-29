@@ -154633,3 +154633,47 @@ chat.types.ts` has 0 `renderedMarkdown` hits) and FIXTURE
   reads 102 columns with `renderedMarkdown` present — v4's oracles run no
   migrations and strip the key through Zod on read, as predicted.
 - `cargo test -p quilltap-core --lib`: 2,695 passed / 0 failed.
+
+### Unit 2 — the committed-pair narrowing (Tier 1 item 3)
+
+- **Census** (`--report-only`, every one of the 106 top-level committed `.db`,
+  from the TARGET pin — the dry run measures a scratch copy): **41 × `WOULD
+  RUN drop-chat-rendered-markdown-v1`, 65 × `not needed`.** ⚠ **Order count
+  corrected: 41, not 42.** `llm-log-cleanup-main.db` has NO `chats` table
+  (`PRAGMA table_info(chats)` → 0 columns); P4.D227's 42nd was a
+  `chat_settings` pair, not a chats pair.
+- **Applied** from the TARGET pin:
+  ```
+  cd /tmp/qt-v4-pin-p4d235-f7f3d7bf0
+  $N/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+    --module migrations/scripts/drop-chat-rendered-markdown.ts#dropChatRenderedMarkdownMigration \
+    $F/<the 41 *-main.db>
+  ```
+  → 41 × `+RAN` with v4's own result message; stored transcripts dropped:
+  `embedding-remainder-main` 8, `salon-main` 1, every other pair 0. Every pair
+  moved logically (the column is gone), so no `git restore` was needed; zero
+  `-journal` / `-wal` / `-shm` residue; a second `--report-only` pass → 41 ×
+  `not needed`. The 41: almanack, attach-file, autonomous, avatar-rolls,
+  brahma, character-archive, character-generators, characters, chat-admin,
+  chat-cast, chat-compressed, chat-delete, chat-dialogs, chat-gallery,
+  chat-scenario, chat-send, conversation-summaries-regen, cost-background,
+  courier-images, documents, embedding-remainder, episodic-recall, files,
+  groups-projects, headshoulders, help-chat, home, images, in-scene-voiced,
+  inspector, inspector-nostore, memories, pascal-run-custom, photos,
+  post-office, salon-long, salon, subprompts, system-data, text-replacements,
+  wardrobe-routes (each `-main.db`).
+- No oracle case plants `ADD COLUMN "renderedMarkdown"` (grep over
+  `harness/`), so no duplicate-column hazard.
+- **The migration-vintage trio REBUILT** at the TARGET pin
+  (`QT_FIXTURE_MV_DIR=… node --import tsx build-migration-vintage-fixture.ts`):
+  120 migrations run, 88 skipped (P4.D227's 119 + the drop, which logs
+  `Dropped the stored renderedMarkdown column from chats {renderedChats: 0}`).
+- **Hand DDL mirrors:** `host_boot.rs` + `host_cadence.rs` DROP the column
+  (the P4.D227 precedent — they model the post-drop shape; the both-shapes read
+  is pinned by the core twin test); `host_llm_log_cleanup.rs` has no `chats`
+  table (unmoved). `cargo test -p quilltap-host --test host_boot --test
+  host_cadence --test host_llm_log_cleanup`: 3 / 4 / 1 passed. The core
+  enclave test DDLs (`enclave/lifecycle.rs:1019`, `enclave/step.rs:1527`) KEEP
+  the column — they model a migrated table and exercise the tolerant read.
+- Readers: every family over a narrowed pair is proven by the lane's full
+  sweep (the gate), not per unit.

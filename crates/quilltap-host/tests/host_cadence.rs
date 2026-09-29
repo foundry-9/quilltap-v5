@@ -113,7 +113,7 @@ fn chats_ddl() -> String {
         "conciergeModeSetBy TEXT",
         "conciergeModeReason TEXT",
         "sceneState TEXT",
-        "renderedMarkdown TEXT",
+        // P4.D235 (v4 `f7f3d7bf0`): `renderedMarkdown` DROPPED.
         "equippedOutfit TEXT",
         "characterAvatars TEXT",
         "avatarGenerationEnabled INTEGER",
