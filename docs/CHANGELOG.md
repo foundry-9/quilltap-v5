@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — docs(porting): order P4.119 — format display dates in the host zone (dogfood #121, ruled (a))
+
+_Docs-only change._
+
+The human ruled option (a) on dogfood finding #121: v5 will format
+human-readable dates in the host's time zone in production, as v4 does. The
+harness keeps `TZ=UTC` as the pin for both apps. The new order covers nine UTC
+helpers and every caller whose output reaches the model or is saved to disk.
+That includes the Post Office, the Scriptorium render and its chunks, web
+search dates, the Almanack, and the progressions fallbacks. The zone-less
+parse becomes local where v4's is, each instant uses its own daylight-saving
+offset, and every test passes an explicit zone. A second-zone differential
+arm will let the harness see the difference for the first time. Recorded the
+ruling on finding #121, in `phase-4.md` and in the CLAUDE.md status bullet.
+
 #### 2026-09-29 — docs(dogfood): close the 2026-09-29 eight-round pass — the posed-refusal instrument, H1–H3, #126
 
 _Docs-only change._

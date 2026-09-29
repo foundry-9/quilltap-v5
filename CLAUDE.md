@@ -1147,17 +1147,18 @@ records THERE. Update this summary only when a phase or round completes.
   ruling) and a smalls lane** — `phase-4.md`. Round record: `status-log.md`.
 - **The eight-round backlog dogfood pass RAN (2026-09-29, agent-driven, on the
   Friday copy) — 44 rows, 39 PASS, ONE v5 defect found and FIXED, one
-  convention ESCALATED.** Walk doc:
+  convention RULED and ORDERED.** Walk doc:
   `dogfood-walks/2026-09-29-eight-round-concierge-mail-pass.md`; record in
   `status-log.md`. **FIXED #123** (`0246202cd`, core 0.0.1105): the largest
   chat's GET took 13.1 s because v5 never set v4's per-connection
   `cache_size = -64000` / `temp_store = MEMORY`, so a per-message probe
-  re-decrypted the same pages; now 1.1 s. **ESCALATED #121 — the human's
-  ruling:** v5 renders transcript/letter times in UTC where v4 uses the host
+  re-decrypted the same pages; now 1.1 s. **#121 RULED (a) → ORDERED as
+  P4.119** (`work-orders/p4.119-host-zone-display-formatting.md`): v5 renders transcript/letter times in UTC where v4 uses the host
   zone, which re-embeds every chat v5 re-renders (and churns a shared v4↔v5
   instance) and persists wrong-zone times into v5-written letters. **#124**:
   the instance's uncensored IMAGE desk is an npm WaveSpeed plugin v5 cannot
-  load — a native NanoGPT `flux-2-dev` desk works today (proven). #122/#125/#126
+  load — a native NanoGPT `flux-2-dev` desk works today (proven); the human is
+  repointing the live desk in v4, so no order. #122/#125/#126
   v4-faithful (candidate v4 notes). ⭐ The Concierge's text refusal path ran end
   to end against a POSED primary (`harness/tools/refusal-server.py`, new —
   a live model will not refuse on demand, and the classifier never reads

@@ -6736,6 +6736,21 @@ order:**
    the `acadcc7cd` round's review NITs carried from before; the P4.D234 NITs.
 
 
+## The 2026-09-29 eight-round dogfood pass — RAN; P4.119 ORDERED
+
+The owed Host dogfood pass (NEXT item 1 above) ran 2026-09-29 — record in
+`status-log.md`, walk doc `dogfood-walks/2026-09-29-eight-round-concierge-mail-pass.md`.
+**#123 FIXED** (`0246202cd` — v4's per-connection page cache). **#121 RULED
+(a) by the human and ORDERED as P4.119** (`work-orders/p4.119-host-zone-display-formatting.md`):
+format human-readable dates in the host's zone as v4 does, with the
+`TZ=UTC` pin kept for both sides. **#124**: the instance's WaveSpeed image
+desk is an npm plugin v5 cannot load — the human is repointing the live
+desk to a native provider in v4 (a NanoGPT `flux-2-dev` desk proven on v5),
+so no order. **NEXT, in order:** P4.119 (single lane); then items 2–4 above
+unchanged; still owed from the walk: the conceal-marker arm (P4.D239) and
+the standing 💸 queue.
+
+
 **Baseline `acadcc7cd`; v4 `main` HEAD `97b25fc53` (SEVEN non-merge commits
 past: `39bc98ffc` `read_mail` + the `list_email` → `list_mail` rename,
 `12c336fad` `discard_mail`, `f7f3d7bf0` the warm embeddings + the
