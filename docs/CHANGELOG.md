@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — docs(dogfood): close the 2026-09-29 eight-round pass — the posed-refusal instrument, H1–H3, #126
+
+_Docs-only change._
+
+Added `harness/tools/refusal-server.py`, an OpenAI-compatible endpoint that
+refuses every completion the way Azure's content filter does (or with a bare
+`content_filter` stop reason). Pointed at it from a Moderated chat, it proved
+the Concierge's text refusal path end to end: three rerouted refusals with
+`provider-code` evidence, and the automatic switch at the instance's threshold
+of 3. It also proved both arms of "Try uncensored". The conceal-mode drape is
+partial: the pre-screen gate works, but the Concierge tab's 0.1 threshold floor
+is above the score Friday's real appearance got, so the drape marker could not
+be triggered. Added finding #126 (v4-faithful). Finalized the walk doc, the
+status-log record and the CLAUDE.md status bullet.
+
 #### 2026-09-29 — docs(dogfood): the 2026-09-29 walk — the pane rows, the #124 NanoGPT Flux trial
 
 _Docs-only change._

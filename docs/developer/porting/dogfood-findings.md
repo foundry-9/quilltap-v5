@@ -9,6 +9,7 @@ catch, since every fixture is built fresh.
 
 | # | Finding | Class | Status |
 |---|---|---|---|
+| 126 | **The operator's own private tool runs read "Prospero · tool run · to unknown" in the chip strip.** The expanded message row resolves the operator's own id to "you" (v4 bug 30), but the collapsed announcement chip names the audience from participant names alone. Found 2026-09-29 (walk, after the D-suite's private `chatRunTool` runs) | **v4-faithful** — v4's `AnnouncementChip.tsx:32` also writes `participantNames?.[id] \|\| 'unknown'`; its bug-30 fix (`resolveWhisperTargetLabel`) reached `MessageRow` only; v5's `announcement-group.ts` `whisperNames` mirrors the chip | **RECORDED — candidate v4 note, no v5 change.** |
 | 125 | **In an Unmoderated chat, chained follow-up turns bypass the uncensored desk.** The addressed reply is rerouted (`[DangerousContent] Rerouted to uncensored provider (Unmoderated chat)`), but the turn chain's next speaker (Amy, empty user content) went to her own Z.AI GLM 5.3 Flash with the same `route_direct=true` policy logged and no reroute line. Found 2026-09-29 (walk F1) | **v4-faithful** — v4 gates `routeDirect && !isContinueMode && content` (`danger-orchestrator.service.ts:83`); v5's `orchestrator.rs:1421` is the same predicate | **RECORDED — candidate v4 note, no v5 change.** In an Unmoderated chat a chained turn can land on a moderated provider; a refusal there takes the ordinary failover. |
 | 124 | **The instance's uncensored IMAGE desk fails on v5: `Unknown image provider: WAVESPEED`.** v4 configured `conciergeSettings.uncensoredImageProfileId` as "WaveSpeed Qwen" (`wavespeed-ai/qwen-image/text-to-image`); on v5 every Unmoderated-chat story background/Lantern, every image reroute and Try uncensored's picture arm fails with a clean ERROR + failed job (no spend). Found 2026-09-29 (walk E4) | **Unported surface** — WaveSpeed is an npm-installed third-party plugin (`<instance>/plugins/npm/@quilltap--qtap-plugin-wavespeed`), not in v4's tree; v5 has no npm-plugin loader (the P4.42 registry deferral) | **RECORDED — candidate order** (a native WaveSpeed image provider, or the npm-plugin loader). **Workaround PROVEN the same day**: a native NanoGPT `flux-2-dev` image profile, flagged uncensored-compatible and chosen as the desk, painted the Unmoderated walk chat's Lantern background first time (1248×832 WebP; the image call took 101 s) — so the desk works on v5 with no code once it points at a native provider. The human's call whether that makes the order unnecessary. Standing note below. |
 | 123 | **The largest real chat took 13 s to open.** "The Bridge of Ordinary Breathing" (4,460 rows, 2,028 projected messages, 9.0 MB) sat on *Loading chat…*; `chatGet` measured 13.1 s by curl, twice. Found on the 2026-09-29 walk (B2) | **Port divergence (performance) — the connection-open pragmas.** Decode was not the cost (`qt_text` over the chat: ~40 ms). `sample` put 4,737 of 4,745 request-thread samples under ONE `sqlite3_step` in `project_chat_transcript` → `resolve_message_attachments` — the per-message `files` × `json_each(linkedTo)` probe, v4's own `findByLinkedTo` shape — with the CPU in `chacha20_block` / `poly1305`: every probe re-read and re-DECRYPTED the `files` pages. v4 opens every connection with `cache_size = -64000` (64 MB) + `temp_store = MEMORY` (`backends/sqlite/client.ts` `applyPragmas`, `config.ts:65`); v5 issued neither, leaving SQLite's ~2 MB default | **FIXED** — `db::runtime::apply_cache_pragmas` on the pooled read-only open (AFTER a trivial first read, so `key` stays the only pragma before the first read) and on the writer (after `journal_mode`, v4's position); v4's `mmap_size` not carried (SQLite3MC cannot memory-map an encrypted file). `chatGet` 13.1 s → **1.1 s**, byte-identical length. Pin: `every_connection_carries_v4s_cache_pragmas` (read + writer; mutation-proven red on the read path). Gate: fmt, clippy, `cargo test --workspace` 646 binaries / 3,936 / 0 / 3 ignored. The per-message N+1 probe itself is v4's shape and stays. Found + fixed 2026-09-29 |
@@ -608,6 +609,17 @@ catch, since every fixture is built fresh.
 ## Standing notes for the next orders
 
 ### From the 2026-09-29 eight-round walk: two items for the next `/setupphase`
+
+- **A refusal can now be posed on demand.** `harness/tools/refusal-server.py`
+  (the stall server's sibling) answers every completion as Azure's content
+  filter (`QT_REFUSE_MODE=code`, evidence `provider-code`) or with a bare
+  `finish_reason: content_filter` stream (`QT_REFUSE_MODE=finish`). Seat an
+  `OPENAI_COMPATIBLE` profile at `http://127.0.0.1:8898/v1` in a Moderated
+  chat and the whole Concierge path runs against a real desk. It closed H1
+  and P4.118's owed coded-4xx proof on 2026-09-29.
+- **The conceal marker arm is still owed** (P4.D239): it needs an appearance
+  the moderation endpoint scores ≥ 0.1 (the Concierge tab's slider floor)
+  with the pre-screen on; Friday's `naked, barefoot` scored 0.0375.
 
 - **#121 needs a ruling before any order** — production times in UTC vs v4's
   host zone. If ruled (a), the order is small in code (a host-zone formatter

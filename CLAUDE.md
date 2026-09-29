@@ -1145,6 +1145,31 @@ records THERE. Update this summary only when a phase or round completes.
   the named follow-ups (the mid-stream error frames, the image helper's flat
   body, the wardrobe-tools avatar seam, the OpenRouter/Google trigger
   ruling) and a smalls lane** — `phase-4.md`. Round record: `status-log.md`.
+- **The eight-round backlog dogfood pass RAN (2026-09-29, agent-driven, on the
+  Friday copy) — 44 rows, 39 PASS, ONE v5 defect found and FIXED, one
+  convention ESCALATED.** Walk doc:
+  `dogfood-walks/2026-09-29-eight-round-concierge-mail-pass.md`; record in
+  `status-log.md`. **FIXED #123** (`0246202cd`, core 0.0.1105): the largest
+  chat's GET took 13.1 s because v5 never set v4's per-connection
+  `cache_size = -64000` / `temp_store = MEMORY`, so a per-message probe
+  re-decrypted the same pages; now 1.1 s. **ESCALATED #121 — the human's
+  ruling:** v5 renders transcript/letter times in UTC where v4 uses the host
+  zone, which re-embeds every chat v5 re-renders (and churns a shared v4↔v5
+  instance) and persists wrong-zone times into v5-written letters. **#124**:
+  the instance's uncensored IMAGE desk is an npm WaveSpeed plugin v5 cannot
+  load — a native NanoGPT `flux-2-dev` desk works today (proven). #122/#125/#126
+  v4-faithful (candidate v4 notes). ⭐ The Concierge's text refusal path ran end
+  to end against a POSED primary (`harness/tools/refusal-server.py`, new —
+  a live model will not refuse on demand, and the classifier never reads
+  prose): `provider-code` reroutes to the real desk, the ledger 1→2→3, the
+  auto-switch at 3 in v4's bytes — **P4.118's owed coded-4xx proof**. Try
+  uncensored proven on both arms. Also live: the whole Post Office, FTS5 +
+  the compressed-text write, Inform + the streamed re-roll, Rebuild Summary,
+  a Scenario Builder run, the Salon Images switch, the `@` menu. **Still
+  owed:** the conceal-marker arm (needs an appearance scoring ≥ 0.1 with the
+  pre-screen on), and the standing queue (Lantern budget, a real token-limit
+  turn, the four planted proofs, dedup/summaries, the Brahma deep query, #101,
+  the compression re-measure).
 - **Oracle baseline: `97b25fc53` (2026-09-28, v4 main — "Drape undressed
   characters in story backgrounds instead of re-dressing them",
   `4.10.0-dev.100`), adopted at the `97b25fc53` seven-commit round

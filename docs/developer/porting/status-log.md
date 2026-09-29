@@ -155274,3 +155274,82 @@ file name on a real postbox; a refreshed built-in prompt row; a joining
 character's avatar rebind; a conceal-mode story background; a text refusal
 rerouted on a real coded 4xx; the in-app card tooltips; the project card's
 corner control.
+
+## Dogfood pass — the eight-round backlog: compressed text, the Scenario Builder, the Concierge overhaul, the Post Office's letters (2026-09-29)
+
+**Walk doc:** `dogfood-walks/2026-09-29-eight-round-concierge-mail-pass.md`.
+**44 rows: 39 PASS (5 of them on the wire only, the pane hidden at the time),
+1 FAIL → FIXED (#123), 1 PARTIAL (H3), 1 FAIL recorded for a ruling (A2 → #121),
+H4 the standing queue.** Six findings: **#123 FIXED** (`0246202cd`), **#121
+ESCALATED** for the human's ruling, **#124** recorded with a proven zero-code
+workaround, **#122 / #125 / #126** v4-faithful (candidate v4 notes). One boot on
+the 1.4 GB instance, **zero panics**.
+
+The eight un-dogfooded rounds: `f45a517a9`, `a2db63da7`, `00c290c9a`,
+`d1c06cd9d` (+ its smalls), `b0b6656b5`, `acadcc7cd`, `97b25fc53`. The ledger's
+§2 probe **passed** at walk start (v4 AT `97b25fc53`, §3 EMPTY).
+
+### The pre-walk measurement
+v4 had already warmed live Friday (22 of 17,350 chunks unembedded; the
+render-reconcile arm-(B) set 5 chunks / 3 chats), dropped both
+`renderedMarkdown` and `conciergeOverride` (199 migrations), written all three
+Concierge states on 1,013 chats (8 with real refusal counts; one real v4
+auto-switch at 3), built the FTS5 index (82,369 rows), section-embedded all 129
+help docs (#120 closed on live data), and left 39 real letters in 9 vaults. The
+copy has no passphrase — the engine unlocked at boot.
+
+### Proven live
+The boot (stale-lock reclaim, FTS in step, help unchanged, 199 migrations
+untouched); compressed rows read AND written (`0x510101`); message search (84
+ms); the Scriptorium badge's reworded tooltips (910 indexed / 1 under way); the
+three Concierge states with their header bubble ("after three refusals") and
+the flat select; operator flips writing v4's announcement rows; New Chat's
+state; `routeDirect` for an Unmoderated chat; the Concierge tab's five cards;
+the retired-key and retired-state refusals; the lazy built-in-prompt refresh
+(21 rows once, then nothing); a bare `?action=` refusing a DELETE; the Post
+Office whole (`list_mail`, `read_mail` by name and by URI, the mark-alerted
+rewrite on a letter `send_mail` delivered, `discard_mail`, `list_email` gone);
+the edit path as one UPDATE under the FTS triggers (`ftsId` stable); the
+auto-title chokepoint; the join/reactivate INFO arms; the image seam (a still
+→ WebP at its OUTPUT size; an animated GIF stored original); Inform consumed
+into its own system block and re-applied on a streamed re-roll (295
+`swipeProgress` frames, v4's four beats); Rebuild Summary refolding a real
+chat with speakers by name; a Scenario Builder run (324 frames, three tool
+rounds); the Salon Images quick-hide; the `@` menu and the `:` typeahead after
+a soft break; the project card's corner control out of flow.
+
+**The Concierge's text refusal path, end to end, against a POSED primary**
+(`harness/tools/refusal-server.py`, new): three `content_filter` 400s rerouted
+to the real desk with `evidence: provider-code` in the trail, the ledger at 1 →
+2 → 3, the auto-switch at the instance's threshold of 3 with v4's announcement
+bytes — P4.118's owed coded-4xx proof. **Try uncensored, both arms**: the
+message retry as a new swipe the badge calls *sent by the Concierge*, and the
+background retry painted on the understudy with the original profile excluded.
+
+### Found
+- **#123 (FIXED, `0246202cd`, core 0.0.1105):** the largest chat's GET took
+  13.1 s — v5 never set v4's per-connection `cache_size = -64000` /
+  `temp_store = MEMORY`, so the per-message `files` probe re-decrypted the
+  same pages 2,028 times. Now 1.1 s; pinned + mutation-proven; workspace gate
+  646 binaries / 3,936 / 0.
+- **#121 (ESCALATED):** v5 renders transcript / letter times in UTC where v4
+  uses the host zone — so every chat v5 re-renders re-embeds whole (39 at
+  first boot where 5 were owed; a v4↔v5 shared instance churns), recalled
+  transcripts and v5-written letter prefaces carry a time five hours off, and
+  the Host's own time line is local, so v5 is internally inconsistent. The
+  P4.D235 cost recipe's "upper bound" is wrong for the same reason.
+- **#124:** the instance's uncensored IMAGE desk is WaveSpeed, an npm-installed
+  plugin v5 cannot load. **Workaround proven the same day** (the human's
+  suggestion): a native NanoGPT `flux-2-dev` profile as the desk painted first
+  time (101 s, then 19 s).
+- **#122 / #125 / #126 (v4-faithful):** a consumed Inform is hidden without
+  All Whispers; chained turns in an Unmoderated chat skip the desk (v4's
+  `&& content` gate); the chip strip says "to unknown" for the operator's own
+  private runs (v4's bug-30 fix reached `MessageRow` only).
+
+### Still owed
+The conceal-marker arm (needs an appearance scoring ≥ 0.1 with the pre-screen
+on — the tab's slider floor; Friday's scored 0.0375), and the standing queue
+unchanged from 2026-09-18 (the Lantern budget, a real token-limit turn, the
+four planted proofs, dedup/summaries, the Brahma deep query, #101, the
+compression re-measure).
