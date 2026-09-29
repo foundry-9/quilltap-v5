@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-28 — docs(porting): close the P4.D234 lane (gate record, order status header)
+
+_Docs-only change._
+
+Records the P4.D234 lane's verification gate (645 test binaries, 3,863 passed, the one red the standing live-checkout prompt guard, green at the baseline pin), the §R.9 mirror pre-list, the deferrals, and the order's LANE COMPLETE status header.
+
 #### 2026-09-28 — feat(post-office): read_mail and discard_mail; list_email renamed list_mail; letters named by file name (P4.D234 unit 2)
 
 _Versions: core 0.0.1091, harness 0.0.1014._

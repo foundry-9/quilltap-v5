@@ -153444,3 +153444,35 @@ empty). Node 24.13.1 for every regen. Regen outputs staged under `/tmp/p4d234/`.
   `12c336fad` = `8ef482446e867d3bfc3bcf7ee8495418` (= v4 HEAD's); v5's vendored
   copy = `4320d67ebeb1b7bd32dbbc4a2c8b904f` (= `acadcc7cd`'s) — P4.D238's
   re-vendor.
+
+### Lane close — the verification gate (tree `333317d63`)
+- §R.2 probe re-run at close: v4 `main` still `97b25fc53`, clean, both logs
+  empty.
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+  warnings` clean plain AND with `--features quilltap-core/native-transport`;
+  `cargo build --workspace --release` clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture` (`TZ=UTC`,
+  `CARGO_INCREMENTAL=0`, the lane env block = the 18 families above, every
+  other family's var withheld): **645 binaries / 3,863 passed / 1 failed / 3
+  ignored**. The one red is the STANDING `builtin_prompt_templates_guard`
+  against the LIVE checkout (§R.5 — `c3eefa752` rewrote the prompts; P4.D237's)
+  — GREEN (2/2) with `QT_V4_CHECKOUT=<the acadcc7cd pin>`. Every lane family
+  confirmed RUN by its `test result:` line; zero lane-family `SKIP:` lines
+  (508 SKIPs, all families outside the block). Censuses UNMOVED:
+  `dispatch_wrong_type_census` 14/14 (451), `help_tree_embed_guard`,
+  `spelling_guard`, and the rest of the suite green.
+- **Version stamp (§D.11):** no family re-run at `12c336fad` reads a
+  `V4_APP_VERSION` / `appVersion` constant — nothing moved on `-dev.95`.
+- **Cross-vintage (§R.3):** exempt (pin below `f7f3d7bf0`); every fixture this
+  lane built (mail, tool-build, orchestrator, the neutrality set) came from the
+  `12c336fad` pin and opened in v5 `main`'s strict chat read without a heal.
+- **§R.9 mirror pre-list (the unifier's):** `docs/v4/developer/API.md` — 230,050
+  bytes at `97b25fc53`; `39bc98ffc` + `12c336fad` together move 2 lines of it
+  (+2/−2 between `acadcc7cd` and `12c336fad`; P4.D235 pre-lists `f7f3d7bf0`'s
+  hunks).
+- **Deferred (loud):** `help/post-office.md` (P4.D238's re-vendor — md5s above);
+  the API.md mirror (the unifier's); upstream filings for the protected-letter
+  bypass (§D.6, incl. the flag-reset-on-read this lane found) and the
+  un-aliased rename's `disabledTools` consequence (§D.1) — the human's call;
+  `.claude/commands/update-documentation.md`, `README.md`, version stamps —
+  NO-PORT.
