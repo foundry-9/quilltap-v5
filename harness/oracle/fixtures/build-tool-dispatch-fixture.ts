@@ -6,9 +6,11 @@
  *     (pinned id, full vault provisioning) so the dispatcher's character-NAME
  *     resolution (callingParticipantId → participant.characterId → character.name)
  *     has a real character to resolve;
- *   - two chats via `repos.chats.create` (one with `renderedMarkdown` carrying
- *     `### Message N` headers, one without), each with a CHARACTER participant
- *     referencing Friday;
+ *   - two chats via `repos.chats.create`, each with a CHARACTER participant
+ *     referencing Friday — one carrying a three-message corpus
+ *     (`repos.chats.addMessage`), one with NO events. P4.D235 (v4 `f7f3d7bf0`):
+ *     the tools render the transcript LIVE from these messages; the stored
+ *     `renderedMarkdown` the spec used to seed is gone;
  *   - one seed annotation (so an upsert on that message is an UPDATE).
  *
  * The oracle then COPIES this seed and drives v4's REAL `executeToolCallWithContext`
@@ -19,7 +21,7 @@
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
- *   QT_FIXTURE_OUT=/tmp/qt-tooldispatch-main.db \
+ *   TZ=UTC QT_FIXTURE_OUT=/tmp/qt-tooldispatch-main.db \
  *   QT_FIXTURE_MOUNT_OUT=/tmp/qt-tooldispatch-mount.db \
  *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-tool-dispatch-fixture.ts
  */
@@ -42,8 +44,9 @@ interface ParticipantSpec {
 }
 interface ChatSpec {
   id: string;
-  renderedMarkdown: string | null;
   participants: ParticipantSpec[];
+  /** P4.D235: the corpus the live render reads (chats.renderedMarkdown is gone). */
+  messages: Array<Record<string, unknown>>;
 }
 interface AnnotationSpec {
   id: string;
@@ -207,11 +210,13 @@ async function main(): Promise<void> {
         title: `Fixture ${chat.id}`,
         participants,
         chatType: 'salon',
-        renderedMarkdown: chat.renderedMarkdown,
         contextSummary: null,
       } as never,
       { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
+    for (const m of chat.messages) {
+      await repos.chats.addMessage(chat.id, { type: 'message', attachments: [], ...m } as never);
+    }
   }
 
   const annRepo = repos.conversationAnnotations;

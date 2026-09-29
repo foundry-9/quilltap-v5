@@ -42,6 +42,7 @@ use crate::photos::resolve_character_avatar::{
 use crate::services::dangerous_content::chat_override::{
     get_concierge_provenance, get_concierge_reason, get_concierge_state,
 };
+use crate::services::scriptorium_status::derive_scriptorium_status;
 
 /// Pre-loaded data for batched list enrichment (v4 `ChatListPreloaded`,
 /// `chat-enrichment.service.ts:38-56`). Populated once by
@@ -69,8 +70,7 @@ pub struct ChatListPreloaded {
     /// Memory counts per chatId (zero when absent).
     pub memory_counts: HashMap<String, i64>,
     /// Conversation-chunk `(total, embedded)` per chatId (absent when no chunks
-    /// exist). Used together with `chat.renderedMarkdown` to derive
-    /// `scriptoriumStatus`.
+    /// exist). The SOLE input to `scriptoriumStatus` (v4 `f7f3d7bf0`).
     pub conversation_chunk_counts: HashMap<String, (i64, i64)>,
 }
 
@@ -720,30 +720,17 @@ pub fn enrich_chat_for_list(
         None => memories_read::count_by_chat_id(main, &chat_id)?,
     };
 
-    // scriptorium status. With preload the map is consulted for every chat but
-    // only holds rendered chats' rows (v4 reads it unconditionally too); the
-    // fallback queries only when renderedMarkdown is truthy, as v4's does.
-    let has_rendered = chat
-        .get("renderedMarkdown")
-        .and_then(Value::as_str)
-        .map(|s| !s.is_empty())
-        .unwrap_or(false);
+    // scriptorium status — from the chunk counts ALONE (v4 `f7f3d7bf0`,
+    // `:591-597`): the preloaded map, or, without a preload, ALWAYS one grouped
+    // count for this chat (the fallback no longer waits on a stored render).
     let chunk_stats: Option<(i64, i64)> = match preloaded {
         Some(p) => p.conversation_chunk_counts.get(&chat_id).copied(),
-        None if has_rendered => Some(
-            conversation_chunks::ConversationChunksRepository::new(main)
-                .count_stats_by_chat_id(&chat_id)?,
-        ),
-        None => None,
+        None => conversation_chunks::ConversationChunksRepository::new(main)
+            .count_by_chat_ids(std::slice::from_ref(&chat_id))?
+            .get(&chat_id)
+            .copied(),
     };
-    let scriptorium_status = if !has_rendered {
-        "none".to_string()
-    } else {
-        match chunk_stats {
-            Some((total, embedded)) if total > 0 && embedded >= total => "embedded".to_string(),
-            _ => "rendered".to_string(),
-        }
-    };
+    let scriptorium_status = derive_scriptorium_status(chunk_stats).as_str().to_string();
 
     // _allTagIds = chat.tags + every participant.character.tags
     let mut all_tag_ids = chat_tag_ids.clone();
@@ -873,21 +860,6 @@ pub fn enrich_chats_for_list(
         .collect();
 
     let chat_ids: Vec<String> = chats.iter().filter_map(|c| s(c, "id")).collect();
-    // Restrict the chunk-count query to chats that actually have rendered
-    // markdown — every other chat is unambiguously 'none' and querying for it
-    // is wasted work. Memory counts run over every chat ID since a chat can
-    // accrue memories without ever being rendered. (v4 `:655-661`.)
-    let rendered_chat_ids: Vec<String> = chats
-        .iter()
-        .filter(|c| {
-            c.get("renderedMarkdown")
-                .and_then(Value::as_str)
-                .map(|s| !s.is_empty())
-                .unwrap_or(false)
-        })
-        .filter_map(|c| s(c, "id"))
-        .collect();
-
     // The five remaining batched reads (v4's `Promise.all`, `:663-675`).
     // Story backgrounds still resolve through the legacy `files` table (they
     // live in the Lantern Backgrounds mount but `chat.storyBackgroundImageId`
@@ -900,7 +872,7 @@ pub fn enrich_chats_for_list(
         .map_err(|e| DbError::Internal(format!("project overlay: {e}")))?;
     let memory_counts_json = memories_read::count_by_chat_ids(main, &chat_ids)?;
     let conversation_chunk_counts = conversation_chunks::ConversationChunksRepository::new(main)
-        .count_by_chat_ids(&rendered_chat_ids)?;
+        .count_by_chat_ids(&chat_ids)?;
 
     let preloaded = ChatListPreloaded {
         characters: characters_map,

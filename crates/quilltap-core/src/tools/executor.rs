@@ -716,6 +716,9 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             &ctx.chat_id,
             ctx.character_id.as_deref(),
             &tc.arguments,
+            // P4.D235 OUT-OF-MANDATE — P4.D234 preserves: the live render's
+            // `Current time:` clock (v4 `f7f3d7bf0` renders on demand).
+            &crate::clock::now_iso(),
         )
         .await;
         let formatted = read_conversation::format_read_conversation(&out);
@@ -745,6 +748,9 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             &ctx.chat_id,
             &character_name,
             &tc.arguments,
+            // P4.D235 OUT-OF-MANDATE — P4.D234 preserves: the live render's
+            // `Current time:` clock (v4 `f7f3d7bf0` renders on demand).
+            &crate::clock::now_iso(),
         )
         .await;
         let formatted = annotations::format_upsert_annotation(&out);

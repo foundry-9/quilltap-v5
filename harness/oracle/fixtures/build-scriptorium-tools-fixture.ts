@@ -4,9 +4,15 @@
  *
  * Seeds, from the committed spec (`scriptorium-tools.json`), via v4's REAL repos
  * with ids + timestamps pinned:
- *   - chats (`ChatsRepository.create`) — the slim rows carrying `participants` +
- *     `renderedMarkdown` (with `### Message N` / `## Interchange N` headers) the
- *     tools read; one chat is left without rendered markdown.
+ *   - characters — the SLIM rows only (v4's protected vault-aware `_create`
+ *     through a thin subclass, the `build-characters-slim-fixture.ts` idiom): the
+ *     live render names each seat through `characters.findByIdRaw`, which reads
+ *     exactly this row, so no vault (and no mount index) is needed.
+ *   - chats (`ChatsRepository.create`) carrying `participants`, and each chat's
+ *     MESSAGES (`ChatsRepository.addMessage`). P4.D235 (v4 `f7f3d7bf0`): the
+ *     tools render the transcript LIVE from these messages — the stored
+ *     `renderedMarkdown` column the spec used to seed is gone. One chat has no
+ *     events at all; one has only a SYSTEM line (a header-only render).
  *   - conversation annotations (`ConversationAnnotationsRepository.create`).
  *
  * Both the oracle (cases/scriptorium-tools.ts) and the Rust port then run the SAME
@@ -18,7 +24,7 @@
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
- *   QT_FIXTURE_SCRIPTORIUM=/tmp/qt-scriptorium.db \
+ *   TZ=UTC QT_FIXTURE_SCRIPTORIUM=/tmp/qt-scriptorium.db \
  *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-scriptorium-tools-fixture.ts
  */
 
@@ -29,7 +35,16 @@ import { tmpdir } from 'node:os';
 
 interface Spec {
   testPepperBase64: string;
-  chats: Array<Record<string, unknown> & { id: string; createdAt: string; updatedAt: string }>;
+  userId: string;
+  characters: Array<{ id: string; name: string }>;
+  chats: Array<
+    Record<string, unknown> & {
+      id: string;
+      createdAt: string;
+      updatedAt: string;
+      messages?: Array<Record<string, unknown>>;
+    }
+  >;
   seedAnnotations: Array<{
     id: string;
     chatId: string;
@@ -80,6 +95,10 @@ async function main(): Promise<void> {
     '@/lib/database/manager'
   );
   const { ChatsRepository } = await import('@/lib/database/repositories/chats.repository');
+  const { CharactersRepository } = await import(
+    '@/lib/database/repositories/characters.repository'
+  );
+  const { CharacterSchema } = await import('@/lib/schemas/types');
   const { ConversationAnnotationsRepository } = await import(
     '@/lib/database/repositories/conversation-annotations.repository'
   );
@@ -89,10 +108,31 @@ async function main(): Promise<void> {
   // Ensure the annotations table exists (its schema-derived DDL) before seeding.
   await ensureCollection('conversation_annotations', ConversationAnnotationSchema);
 
+  // The slim character rows (no vault) — v4's public create orchestrates the
+  // vault, so drive the protected `_create` the way build-characters-slim does.
+  await ensureCollection('characters', CharacterSchema);
+  class CharactersSqlRepo extends CharactersRepository {
+    async createSlim(data: unknown, options: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (this as any)._create(data, options);
+    }
+  }
+  const charsRepo = new CharactersSqlRepo();
+  const seedStamp = '2026-01-01T00:00:00.000Z';
+  for (const ch of spec.characters) {
+    await charsRepo.createSlim(
+      { name: ch.name, userId: spec.userId },
+      { id: ch.id, createdAt: seedStamp, updatedAt: seedStamp }
+    );
+  }
+
   const chatsRepo = new ChatsRepository();
   for (const c of spec.chats) {
-    const { id, createdAt, updatedAt, ...rest } = stripComments(c);
+    const { id, createdAt, updatedAt, messages, ...rest } = stripComments(c);
     await chatsRepo.create(rest as never, { id, createdAt, updatedAt });
+    for (const m of messages ?? []) {
+      await chatsRepo.addMessage(id, { type: 'message', attachments: [], ...m } as never);
+    }
   }
 
   const annRepo = new ConversationAnnotationsRepository();
@@ -112,7 +152,10 @@ async function main(): Promise<void> {
 
   await closeDatabase();
   process.stderr.write(
-    `built scriptorium tools fixture: ${out} (${spec.chats.length} chats, ${spec.seedAnnotations.length} annotations)\n`
+    `built scriptorium tools fixture: ${out} (${spec.characters.length} characters, ` +
+      `${spec.chats.length} chats, ` +
+      `${spec.chats.reduce((n, c) => n + (c.messages?.length ?? 0), 0)} messages, ` +
+      `${spec.seedAnnotations.length} annotations)\n`
   );
   process.exit(0);
 }

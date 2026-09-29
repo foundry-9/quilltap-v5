@@ -496,6 +496,114 @@ fn characters_reads_match_oracle() {
     );
 
     drop(db);
+
+    // P4.D235 (v4 `f7f3d7bf0`): the two INVERTED Scriptorium edges — the status
+    // now derives from the `conversation_chunks` counts ALONE. Each plant reads
+    // a FRESH copy (the oracle copies per case; every case above mutated the
+    // shared Db). The committed pair has no chunks table, so every plain
+    // `chats_*` case above already reads through `count_by_chat_ids`' ported
+    // safeQuery fallback (an empty map → `none`; before P4.D235 v5 propagated
+    // the `Err`). The chunks table is created from the D23 dump's statement
+    // (generateDDL-identical to v4's `ensureCollection`).
+    let chunks_ddl: String = {
+        let schema: Value = serde_json::from_str(include_str!(
+            "../../quilltap-core/src/services/provisioning/fresh_schema.json"
+        ))
+        .unwrap();
+        schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"conversation_chunks\""))
+            .unwrap()
+            .to_string()
+    };
+    const PLANT_AT: &str = "2026-09-28T00:00:00.000Z";
+    /// `(id, interchangeIndex, embedded)` — one planted chunk.
+    type PlantedChunk<'a> = (&'a str, i64, bool);
+    /// `(case, chunks to plant, a stored transcript on a re-added column)`.
+    type Plant<'a> = (&'a str, Option<&'a [PlantedChunk<'a>]>, Option<&'a str>);
+    let plants: [Plant; 3] = [
+        (
+            "chats_scriptorium_chunks_without_column_rendered",
+            Some(&[
+                ("cc000000-0000-4000-8000-000000000001", 0, true),
+                ("cc000000-0000-4000-8000-000000000002", 1, false),
+            ]),
+            None,
+        ),
+        (
+            "chats_scriptorium_chunks_without_column_embedded",
+            Some(&[
+                ("cc000000-0000-4000-8000-000000000001", 0, true),
+                ("cc000000-0000-4000-8000-000000000002", 1, true),
+            ]),
+            None,
+        ),
+        (
+            "chats_scriptorium_column_without_chunks",
+            Some(&[]),
+            Some("# A stored transcript"),
+        ),
+    ];
+    for (name, chunks, rendered) in plants {
+        let dir = scratch.join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (pmain, pmount) = (dir.join("main.db"), dir.join("mount.db"));
+        std::fs::copy(fixtures_dir().join("characters-main.db"), &pmain).unwrap();
+        std::fs::copy(fixtures_dir().join("characters-mount.db"), &pmount).unwrap();
+        {
+            let w =
+                quilltap_core::db::Writer::open_writable(&pmain, &spec.test_pepper_base64).unwrap();
+            quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+            quilltap_core::test_support::ensure_p4d182_columns(w.connection());
+            let conn = w.connection();
+            if let Some(chunks) = chunks {
+                conn.execute_batch(&chunks_ddl).unwrap();
+                for (id, index, embedded) in chunks {
+                    conn.execute(
+                        "INSERT INTO \"conversation_chunks\" (\"id\",\"chatId\",\"interchangeIndex\",\
+                         \"content\",\"participantNames\",\"messageIds\",\"embedding\",\"createdAt\",\
+                         \"updatedAt\") VALUES (?1, ?2, ?3, ?4, '[]', '[]', ?5, ?6, ?6)",
+                        rusqlite::params![
+                            id,
+                            CHAT,
+                            *index as f64,
+                            format!("chunk {index}"),
+                            embedded.then_some("[0.5,0.25]"),
+                            PLANT_AT
+                        ],
+                    )
+                    .unwrap();
+                }
+            }
+            if let Some(md) = rendered {
+                conn.execute_batch("ALTER TABLE \"chats\" ADD COLUMN \"renderedMarkdown\" TEXT")
+                    .unwrap();
+                conn.execute(
+                    "UPDATE \"chats\" SET \"renderedMarkdown\" = ?1 WHERE \"id\" = ?2",
+                    rusqlite::params![md, CHAT],
+                )
+                .unwrap();
+            }
+        }
+        let pdb = Db::open(
+            DbPaths {
+                main: pmain,
+                mount_index: Some(pmount),
+                llm_logs: None,
+            },
+            &spec.test_pepper_base64,
+        )
+        .expect("open planted db");
+        push(
+            name,
+            response_data(&characters::character_chats(
+                &pdb, uid, ARIA, None, None, None,
+            )),
+        );
+    }
     let _ = std::fs::remove_dir_all(&scratch);
 
     // Normalize the read-time-minted physicalDescription timestamps on the detail.

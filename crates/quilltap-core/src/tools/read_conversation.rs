@@ -20,7 +20,12 @@
 //! - The cross-conversation participation guard fires only when `conversationId`
 //!   is truthy AND `!= context.chatId` AND a `characterId` is present; a
 //!   non-participant → `"Conversation not found."`.
-//! - No `renderedMarkdown` → `"Conversation has not been rendered yet."`.
+//! - The transcript is RENDERED LIVE from the stored messages (v4 `f7f3d7bf0`
+//!   dropped `chats.renderedMarkdown`) through the shared
+//!   [`crate::services::scriptorium_render::render_chat_conversation`], under
+//!   the executor's injected clock. No events, or a render with ZERO
+//!   interchanges → `"Conversation has no messages to read yet."` — both the
+//!   string and the gate moved: a header-only render used to be a success.
 //! - Any thrown error (e.g. a DB error) becomes `error: error.message` — here the
 //!   [`crate::db::DbError`] `Display` string.
 
@@ -30,6 +35,7 @@ use serde_json::Value;
 use crate::db::runtime::Db;
 use crate::db::{chats_read, DbError};
 use crate::scriptorium::{merge_annotations, strip_annotations};
+use crate::services::scriptorium_render::render_chat_conversation;
 
 /// v4 `ReadConversationToolOutput`. Fields serialize in v4's declared order with
 /// the optionals dropped when absent (`skip_serializing_if`), matching how the
@@ -145,27 +151,61 @@ fn fmt_js_int(n: f64) -> String {
 }
 
 /// Execute the `read_conversation` tool (v4 `executeReadConversationTool`).
+///
+/// `now_iso` is the wall clock the live render's `Current time:` header line
+/// carries (v4 reads `new Date()` inside the renderer); the executor passes
+/// [`crate::clock::now_iso`], a differential a frozen instant.
 pub async fn execute_read_conversation(
     db: &Db,
-    _user_id: &str,
+    user_id: &str,
     chat_id: &str,
     character_id: Option<&str>,
     args: &Value,
+    now_iso: &str,
 ) -> ReadConversationOutput {
-    match execute_inner(db, chat_id, character_id, args) {
+    match execute_inner(db, user_id, chat_id, character_id, args, now_iso) {
         Ok(out) => out,
         // v4's catch-all: `error instanceof Error ? error.message : 'Unknown error…'`.
-        Err(e) => ReadConversationOutput::error(e.to_string()),
+        Err(e) => {
+            // Hoisted: inside `tracing!` the name `Value` is the macro's own.
+            let requested = args
+                .get("conversationId")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            tracing::error!(
+                target: "quilltap::tools",
+                context = LOG_CONTEXT,
+                userId = user_id,
+                chatId = chat_id,
+                requestedConversationId = requested,
+                error = %e,
+                "Read conversation tool execution failed",
+            );
+            ReadConversationOutput::error(e.to_string())
+        }
     }
 }
 
+/// v4's `context` field on every line this handler logs.
+const LOG_CONTEXT: &str = "read-conversation-handler";
+
 fn execute_inner(
     db: &Db,
+    user_id: &str,
     chat_id: &str,
     character_id: Option<&str>,
     args: &Value,
+    now_iso: &str,
 ) -> Result<ReadConversationOutput, DbError> {
     if !validate_input(args) {
+        tracing::warn!(
+            target: "quilltap::tools",
+            context = LOG_CONTEXT,
+            userId = user_id,
+            chatId = chat_id,
+            input = %args,
+            "Read conversation tool validation failed",
+        );
         return Ok(ReadConversationOutput::error(
             "Invalid input: exclude_annotations must be a boolean if provided.",
         ));
@@ -187,7 +227,17 @@ fn execute_inner(
     // Load chat (no user scoping — matches v4's `repos.chats.findById`).
     let chat = match db.read_main(|c| chats_read::find_by_id(c, target_chat_id))? {
         Some(c) => c,
-        None => return Ok(ReadConversationOutput::error("Conversation not found.")),
+        None => {
+            tracing::warn!(
+                target: "quilltap::tools",
+                context = LOG_CONTEXT,
+                chatId = target_chat_id,
+                userId = user_id,
+                requestedConversationId = conversation_id.unwrap_or_default(),
+                "Read conversation tool: chat not found",
+            );
+            return Ok(ReadConversationOutput::error("Conversation not found."));
+        }
     };
 
     // Cross-conversation participation guard.
@@ -201,23 +251,30 @@ fn execute_inner(
                         .any(|p| p.get("characterId").and_then(Value::as_str) == Some(cid))
                 });
             if !participates {
+                tracing::warn!(
+                    target: "quilltap::tools",
+                    context = LOG_CONTEXT,
+                    chatId = target_chat_id,
+                    characterId = cid,
+                    "Read conversation tool: character does not participate in target chat",
+                );
                 return Ok(ReadConversationOutput::error("Conversation not found."));
             }
         }
     }
 
-    let rendered = chat
-        .get("renderedMarkdown")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty());
+    // Rendered live from the stored messages — never a stored copy, so every
+    // conversation is readable however long it has been quiet (v4 :99-107).
+    let rendered = db.read_main(|c| render_chat_conversation(c, &chat, now_iso))?;
     let rendered = match rendered {
-        Some(r) => r,
-        None => {
+        Some(r) if !r.interchanges.is_empty() => r.markdown,
+        _ => {
             return Ok(ReadConversationOutput::error(
-                "Conversation has not been rendered yet.",
+                "Conversation has no messages to read yet.",
             ))
         }
     };
+    let rendered = rendered.as_str();
 
     let mut markdown = if exclude_annotations {
         strip_annotations(rendered)
@@ -306,6 +363,19 @@ fn execute_inner(
     let message_count = count_message_headers(&markdown);
     let interchange_count = count_interchange_headers(&markdown);
 
+    tracing::info!(
+        target: "quilltap::tools",
+        context = LOG_CONTEXT,
+        userId = user_id,
+        chatId = target_chat_id,
+        messageCount = message_count,
+        interchangeCount = interchange_count,
+        // JS `string.length` — UTF-16 code units.
+        markdownLength = markdown.encode_utf16().count(),
+        excludeAnnotations = exclude_annotations,
+        "Read conversation tool completed",
+    );
+
     Ok(ReadConversationOutput {
         success: true,
         markdown: Some(markdown),
@@ -337,5 +407,116 @@ pub fn format_read_conversation(out: &ReadConversationOutput) -> String {
     match &out.markdown {
         Some(md) => md.clone(),
         None => "No conversation content available.".to_string(),
+    }
+}
+
+/// P4.D235 — v4's restored log lines, pinned with silence legs over the
+/// shared scriptorium-tool fixture.
+#[cfg(test)]
+mod log_tests {
+    use super::*;
+    use crate::test_support::global_capture::capture;
+    use crate::tools::annotations::log_tests::{
+        db, drop_annotations, CHAT, FRIDAY, NOW, OTHER_CHAT, USER,
+    };
+    use serde_json::json;
+
+    fn read(db: &Db, args: Value) -> (ReadConversationOutput, Vec<String>) {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        capture(|| {
+            rt.block_on(execute_read_conversation(
+                db,
+                USER,
+                CHAT,
+                Some(FRIDAY),
+                &args,
+                NOW,
+            ))
+        })
+    }
+
+    fn only(lines: &[String], level: &str, needle: &str) -> String {
+        let hits: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.starts_with(&format!("{level} quilltap::tools")))
+            .collect();
+        assert_eq!(hits.len(), 1, "exactly one {level} line: {lines:?}");
+        assert!(hits[0].contains(needle), "{needle} not in {}", hits[0]);
+        assert!(
+            hits[0].contains("context=read-conversation-handler"),
+            "{}",
+            hits[0]
+        );
+        hits[0].clone()
+    }
+
+    fn none_at(lines: &[String], level: &str) {
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.starts_with(&format!("{level} quilltap::tools"))),
+            "no {level} line expected: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn a_read_logs_v4s_completion_line_and_nothing_else() {
+        let db = db();
+        let (out, lines) = read(&db, json!({}));
+        assert!(out.success, "{out:?}");
+        let line = only(&lines, "INFO", "Read conversation tool completed");
+        let md = out.markdown.as_deref().unwrap();
+        for f in [
+            "userId=00000000-0000-4000-8000-00000000000a".to_string(),
+            "chatId=00000000-0000-4000-8000-0000000000c1".to_string(),
+            "messageCount=2".to_string(),
+            "interchangeCount=1".to_string(),
+            format!("markdownLength={}", md.encode_utf16().count()),
+            "excludeAnnotations=false".to_string(),
+        ] {
+            assert!(line.contains(&f), "{f} missing: {line}");
+        }
+        none_at(&lines, "WARN");
+        none_at(&lines, "ERROR");
+    }
+
+    #[test]
+    fn each_read_refusal_logs_its_own_warn() {
+        let db = db();
+        let (_, lines) = read(&db, json!({"exclude_annotations": "yes"}));
+        let l = only(&lines, "WARN", "Read conversation tool validation failed");
+        assert!(l.contains("input="), "{l}");
+        none_at(&lines, "INFO");
+
+        let missing = "00000000-0000-4000-8000-0000000000ff";
+        let (_, lines) = read(&db, json!({"conversationId": missing}));
+        let l = only(&lines, "WARN", "Read conversation tool: chat not found");
+        assert!(
+            l.contains(&format!("requestedConversationId={missing}")),
+            "{l}"
+        );
+
+        let (_, lines) = read(&db, json!({"conversationId": OTHER_CHAT}));
+        let l = only(
+            &lines,
+            "WARN",
+            "Read conversation tool: character does not participate in target chat",
+        );
+        assert!(l.contains(&format!("characterId={FRIDAY}")), "{l}");
+        none_at(&lines, "INFO");
+    }
+
+    #[test]
+    fn a_failed_read_logs_v4s_execution_failed_error() {
+        let db = db();
+        drop_annotations(&db);
+        let (out, lines) = read(&db, json!({}));
+        assert!(!out.success);
+        let l = only(&lines, "ERROR", "Read conversation tool execution failed");
+        assert!(l.contains("error="), "{l}");
+        none_at(&lines, "INFO");
     }
 }

@@ -42,6 +42,7 @@ use crate::services::dangerous_content::chat_override::{
     get_concierge_provenance, get_concierge_reason, get_concierge_state,
 };
 use crate::services::image_job_common::with_both_conns;
+use crate::services::scriptorium_status::derive_scriptorium_status;
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_instructions::{
     read_wardrobe_instructions_file, write_wardrobe_instructions_file,
@@ -586,7 +587,19 @@ pub fn character_chats(
             }
         }
 
-        let chunks_repo = ConversationChunksRepository::new(main);
+        // Scriptorium status for the whole page in ONE grouped count (v4
+        // `f7f3d7bf0`, `:161-164`), before the per-chat enrichment.
+        let page_chat_ids: Vec<String> = page
+            .iter()
+            .map(|(chat, _, _)| {
+                chat.get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .collect();
+        let chunk_counts =
+            ConversationChunksRepository::new(main).count_by_chat_ids(&page_chat_ids)?;
         let files_repo = FilesRepository::new(main);
         let mut enriched: Vec<Value> = Vec::with_capacity(page.len());
         for (chat, messages, last_message_at) in &page {
@@ -621,25 +634,9 @@ pub fn character_chats(
                 .count() as i64;
             let memory_count = crate::db::memories_read::count_by_chat_id(main, chat_id)?;
 
-            // Scriptorium status from renderedMarkdown + chunk embedding coverage.
-            let has_rendered = chat
-                .get("renderedMarkdown")
-                .map(|v| !v.is_null())
-                .unwrap_or(false);
-            let (total_chunks, embedded_chunks) = if has_rendered {
-                chunks_repo.count_stats_by_chat_id(chat_id)?
-            } else {
-                (0, 0)
-            };
-            let scriptorium_status = if has_rendered {
-                if embedded_chunks >= total_chunks && total_chunks > 0 {
-                    "embedded"
-                } else {
-                    "rendered"
-                }
-            } else {
-                "none"
-            };
+            // Scriptorium status from the page's grouped chunk counts ALONE.
+            let scriptorium_status =
+                derive_scriptorium_status(chunk_counts.get(chat_id).copied()).as_str();
 
             // 3 most-recent type==='message' messages (stable desc by createdAt).
             let mut msg_refs: Vec<&Value> = messages

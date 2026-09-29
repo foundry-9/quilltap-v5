@@ -692,8 +692,14 @@ async fn embedding_remainder_matches_oracle() {
             chat_id: rc.chat_id.clone(),
             full_reembed: rc.full_reembed,
         };
-        let outcome =
-            handle_conversation_render(&db, &spec.user_id, &payload, &spec.render_now_iso).await;
+        let outcome = handle_conversation_render(
+            &db,
+            &format!("render-{}", rc.name),
+            &spec.user_id,
+            &payload,
+            &spec.render_now_iso,
+        )
+        .await;
         got_renders.push(match outcome {
             Ok(()) => (rc.name.clone(), "ok".to_string(), None),
             Err(e) => (rc.name.clone(), "error".to_string(), Some(e)),

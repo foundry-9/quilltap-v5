@@ -257,7 +257,33 @@ impl<'c> ConversationChunksRepository<'c> {
     /// variables". Merging the chunks is safe without any per-key arithmetic
     /// because [`chunk_array`] partitions the input: **each chatId lands in
     /// exactly one chunk**, so no key can be produced twice.
+    ///
+    /// **A fallback `safeQuery`** (v4 `:81-107`): a failed read logs v4's
+    /// ERROR and answers the EMPTY map — every chat then derives `none` —
+    /// rather than failing the page. P4.D235 (v4 `f7f3d7bf0`) made this read
+    /// reachable on the character GET, which now counts every page through it;
+    /// v5 had propagated the `Err` (§E.6's decision: port the fallback).
     pub fn count_by_chat_ids(
+        &self,
+        chat_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, (i64, i64)>, DbError> {
+        match self.count_by_chat_ids_strict(chat_ids) {
+            Ok(out) => Ok(out),
+            Err(err) => {
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "conversation_chunks",
+                    chatIdCount = chat_ids.len(),
+                    error = %err,
+                    "Error counting conversation chunks for chats",
+                );
+                Ok(std::collections::HashMap::new())
+            }
+        }
+    }
+
+    /// [`Self::count_by_chat_ids`] without the fallback.
+    fn count_by_chat_ids_strict(
         &self,
         chat_ids: &[String],
     ) -> Result<std::collections::HashMap<String, (i64, i64)>, DbError> {
@@ -775,5 +801,55 @@ mod count_by_chat_ids_tests {
         assert_eq!(out.get("chatB"), Some(&(1, 0)));
         assert_eq!(out.get("chatC"), Some(&(2, 2)));
         assert_eq!(out.len(), 3);
+    }
+}
+
+/// P4.D235 (§E.6): `count_by_chat_ids` is v4's FALLBACK `safeQuery` — a
+/// failed read logs v4's ERROR and answers the empty map (every chat then
+/// derives `none`); a healthy read logs nothing.
+#[cfg(test)]
+mod count_by_chat_ids_fallback_tests {
+    use super::*;
+    use crate::test_support::global_capture::{capture, install};
+
+    fn ids() -> Vec<String> {
+        vec!["c1".to_string(), "c2".to_string()]
+    }
+
+    #[test]
+    fn a_failed_count_logs_v4s_error_and_answers_empty() {
+        install();
+        let conn = Connection::open_in_memory().unwrap();
+        let (out, lines) =
+            capture(|| ConversationChunksRepository::new(&conn).count_by_chat_ids(&ids()));
+        assert!(out.expect("the fallback answers Ok").is_empty());
+        let errors: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR quilltap::db"))
+            .collect();
+        assert_eq!(errors.len(), 1, "{lines:?}");
+        for f in [
+            "Error counting conversation chunks for chats",
+            "collection=conversation_chunks",
+            "chatIdCount=2",
+            "error=",
+        ] {
+            assert!(errors[0].contains(f), "{f} missing: {}", errors[0]);
+        }
+    }
+
+    #[test]
+    fn a_healthy_count_is_silent() {
+        install();
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE conversation_chunks (id TEXT PRIMARY KEY, chatId TEXT NOT NULL, \
+             embedding TEXT); INSERT INTO conversation_chunks VALUES ('k1', 'c1', '[1]');",
+        )
+        .unwrap();
+        let (out, lines) =
+            capture(|| ConversationChunksRepository::new(&conn).count_by_chat_ids(&ids()));
+        assert_eq!(out.unwrap().get("c1"), Some(&(1, 1)));
+        assert!(!lines.iter().any(|l| l.starts_with("ERROR")), "{lines:?}");
     }
 }

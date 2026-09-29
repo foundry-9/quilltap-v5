@@ -167,6 +167,8 @@ pub mod scenario_seeded_summary;
 pub mod scenario_selection;
 pub mod scene_state_tracking;
 pub mod scheduled_maintenance;
+pub mod scriptorium_render;
+pub mod scriptorium_status;
 pub mod sillytavern;
 pub mod speaker_names;
 pub mod story_background_job;

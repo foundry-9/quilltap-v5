@@ -2,12 +2,14 @@
 //! `lib/background-jobs/handlers/conversation-render.ts`
 //! (`handleConversationRender`).
 //!
-//! Deterministically renders a chat to Markdown (no LLM), stores it on
-//! `chats.renderedMarkdown`, upserts one `conversation_chunks` row per
-//! interchange, and re-enqueues `EMBEDDING_GENERATE` for the chunks that still
-//! lack an embedding. The rendering itself is
-//! [`super::conversation_markdown::render_conversation_markdown`] (tier-1
-//! exact); this module is the DB choreography around it.
+//! Deterministically renders a chat (no LLM) through the shared
+//! [`super::scriptorium_render::render_chat_conversation`], upserts one
+//! `conversation_chunks` row per interchange, and re-enqueues
+//! `EMBEDDING_GENERATE` for the chunks that still lack an embedding. **The
+//! Markdown itself is not persisted** (v4 `f7f3d7bf0` dropped
+//! `chats.renderedMarkdown`): it is re-rendered on demand wherever it is read,
+//! and only the chunks are stored. The job no longer writes the chat row at
+//! all (v4's test asserts `chats.update` is never called).
 //!
 //! ## Before this handler existed, its jobs died
 //!
@@ -20,20 +22,17 @@
 //! ## v4 details reproduced deliberately
 //!
 //!   - **A missing chat is a completed job, not a failure** (v4 warns and
-//!     `return`s), as is a chat with zero events.
-//!   - **`renderedMarkdown` is written WITHOUT touching `updatedAt`.** v4's
-//!     `chats.update` preserves `updatedAt` unless the caller names it, and this
-//!     caller deliberately does not: a background render must not reorder every
-//!     recents list.
+//!     `return`s), as is a chat with zero events (v4 `f7f3d7bf0` logs that at
+//!     DEBUG; it used to return silently).
 //!   - **The upsert preserves existing embeddings.** Only content /
 //!     participantNames / messageIds are rewritten, so a re-render of an already
 //!     embedded chunk keeps its vector and is NOT re-enqueued (unless
 //!     `fullReembed`).
 //!   - **The whole embedding-enqueue block is caught.** An enqueue failure warns
 //!     and the job still completes — the render is the valuable half.
-//!   - **The default profile is `isDefault` OR, failing that, the FIRST row** of
-//!     `embeddingProfiles.findAll()` — insertion order, not a sort. No profile at
-//!     all → nothing is enqueued and the job still completes.
+//!   - **The embedding profile is the `isDefault` one ONLY** (v4 `d553f72a`) — no
+//!     first-row fallback: with none marked, nothing is enqueued and the chunks
+//!     wait for the startup reconcile.
 //!   - **The payload is a bare cast, not Zod.** Both fields decode leniently,
 //!     exactly as [`super::embedding_generate_job::EmbeddingGeneratePayload`]
 //!     does.
@@ -41,13 +40,11 @@
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use super::conversation_markdown::{
-    render_conversation_markdown, ConversationMetadata, RenderEvent,
-};
 use super::queue_service::enqueue_embedding_generate;
+use super::scriptorium_render::render_chat_conversation;
 use crate::clock::now_iso;
 use crate::db::runtime::Db;
-use crate::db::{characters_read, chats_messages_read, chats_read, DbError};
+use crate::db::{chats_read, DbError};
 
 /// The decoded `CONVERSATION_RENDER` payload (v4 `ConversationRenderPayload`).
 /// v4 performs a bare `as` cast — no validation — so every field decodes
@@ -83,18 +80,19 @@ impl ConversationRenderPayload {
 /// `Ok(())` completes the job — including the missing-chat and no-messages arms
 /// (v4 `return`s there). `Err(message)` fails it, so the runner retries with the
 /// ported backoff to `maxAttempts` → DEAD.
-/// `now_iso` is the injected wall clock: it feeds the render header's
-/// `Current time:` line and the chunk upserts' timestamps (v4 reads
-/// `new Date()` for both). Production passes [`crate::clock::now_iso`]; the
-/// differential pins it, which is what makes `chats.renderedMarkdown` compare
-/// byte-exact rather than needing normalization.
+/// `job_id` is the row's id (v4 logs `jobId` on every line). `now_iso` is the
+/// injected wall clock: it feeds the render header's `Current time:` line and
+/// the chunk upserts' timestamps (v4 reads `new Date()` for both). Production
+/// passes [`crate::clock::now_iso`]; the differential pins it, which is what
+/// makes the chunk rows compare byte-exact rather than needing normalization.
 pub async fn handle_conversation_render(
     db: &Db,
+    job_id: &str,
     user_id: &str,
     payload: &ConversationRenderPayload,
     now_iso: &str,
 ) -> Result<(), String> {
-    handle_inner(db, user_id, payload, now_iso)
+    handle_inner(db, job_id, user_id, payload, now_iso)
         .await
         .map_err(|e| e.into())
 }
@@ -117,88 +115,40 @@ impl From<RenderError> for String {
 
 async fn handle_inner(
     db: &Db,
+    job_id: &str,
     user_id: &str,
     payload: &ConversationRenderPayload,
     now_iso: &str,
 ) -> Result<(), RenderError> {
+    let started = std::time::Instant::now();
+
     // 1. Load the chat (v4 :24-31) — missing is a WARN and a completed job.
     let chat_id = payload.chat_id.clone();
     let chat = db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id))?;
     let Some(chat) = chat else {
         tracing::warn!(
             target: "quilltap::jobs",
+            job_id = %job_id,
             chat_id = %payload.chat_id,
             "[ConversationRender] Chat not found, skipping",
         );
         return Ok(());
     };
 
-    // 2. participantId -> display name (v4 :34-46). A participant with a
-    //    character resolves to that character's name; a USER-controlled
-    //    participant with no resolvable character falls back to "User". Note the
-    //    ORDER of v4's two ifs: a user-controlled participant WITH a resolvable
-    //    character keeps the character's name.
-    let participants = chat
-        .get("participants")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let mut character_names: Vec<(String, String)> = Vec::new();
-    for participant in &participants {
-        let Some(pid) = participant.get("id").and_then(Value::as_str) else {
-            continue;
-        };
-        if let Some(character_id) = participant.get("characterId").and_then(Value::as_str) {
-            let cid = character_id.to_string();
-            let character = db.read_main(|main| {
-                db.read_mount_index(|mount| characters_read::find_by_id(main, mount, &cid))
-            })?;
-            if let Some(name) = character
-                .as_ref()
-                .and_then(|c| c.get("name"))
-                .and_then(Value::as_str)
-            {
-                character_names.push((pid.to_string(), name.to_string()));
-            }
-        }
-        if participant.get("controlledBy").and_then(Value::as_str) == Some("user")
-            && !character_names.iter().any(|(k, _)| k == pid)
-        {
-            character_names.push((pid.to_string(), "User".to_string()));
-        }
-    }
-
-    // 3. All events (v4 :49-53) — an empty chat renders nothing at all.
-    let chat_id = payload.chat_id.clone();
-    let events = db.read_main(move |conn| chats_messages_read::get_messages(conn, &chat_id))?;
-    if events.is_empty() {
+    // 2. Render from the stored messages (v4 :37-44). The Markdown itself is
+    //    not kept — only the interchange chunks are stored.
+    let result = db.read_main(|conn| render_chat_conversation(conn, &chat, now_iso))?;
+    let Some(result) = result else {
+        tracing::debug!(
+            target: "quilltap::jobs",
+            job_id = %job_id,
+            chat_id = %payload.chat_id,
+            "[ConversationRender] Chat has no events, nothing to render",
+        );
         return Ok(());
-    }
-    let messages: Vec<RenderEvent> = events.iter().map(event_from_json).collect();
-
-    // 4. Render (v4 :56-61).
-    let metadata = ConversationMetadata {
-        conversation_id: payload.chat_id.clone(),
-        title: chat
-            .get("title")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        created_at: chat
-            .get("createdAt")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        last_updated_at: chat
-            .get("updatedAt")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
     };
-    let result =
-        render_conversation_markdown(&messages, &character_names, Some(&metadata), now_iso);
 
-    // 6. Upsert one chunk per interchange (v4 :69-78). v4 reads `new Date()`
+    // 3. Upsert one chunk per interchange (v4 :46-56). v4 reads `new Date()`
     //    once before the loop; every upsert in a run therefore shares one
     //    timestamp — though `_update`/`_create` mint their own anyway, which is
     //    what actually lands. One `now` here matches both.
@@ -224,12 +174,13 @@ async fn handle_inner(
         .await?;
     }
 
-    // 7. Re-enqueue embeddings (v4 :82-117). The WHOLE block is caught: an
+    // 4. Re-enqueue embeddings (v4 :58-98). The WHOLE block is caught: an
     //    enqueue failure warns and the render job still completes.
     if !result.interchanges.is_empty() {
         if let Err(e) = enqueue_embeddings(db, user_id, payload, &result.interchanges).await {
             tracing::warn!(
                 target: "quilltap::jobs",
+                job_id = %job_id,
                 chat_id = %payload.chat_id,
                 error = %e,
                 "[ConversationRender] Failed to enqueue embedding, continuing",
@@ -237,10 +188,21 @@ async fn handle_inner(
         }
     }
 
+    tracing::info!(
+        target: "quilltap::jobs",
+        job_id = %job_id,
+        chat_id = %payload.chat_id,
+        interchange_count = result.interchanges.len(),
+        // JS `string.length` — UTF-16 code units.
+        markdown_length = result.markdown.encode_utf16().count(),
+        duration_ms = started.elapsed().as_millis() as u64,
+        "[ConversationRender] Conversation rendered successfully",
+    );
+
     Ok(())
 }
 
-/// v4's step-7 body (`:83-106`), lifted so its `try`/`catch` is one call site.
+/// v4's step-4 body (`:83-106`), lifted so its `try`/`catch` is one call site.
 async fn enqueue_embeddings(
     db: &Db,
     user_id: &str,
@@ -332,7 +294,7 @@ impl crate::services::job_runner::JobHandler for ConversationRenderHandler {
             let payload = ConversationRenderPayload::from_json(&payload_json);
             let now = self.now_iso.clone().unwrap_or_else(now_iso);
             // v4 passes `job.userId` — the row's own value.
-            match handle_conversation_render(db, &job.user_id, &payload, &now).await {
+            match handle_conversation_render(db, &job.id, &job.user_id, &payload, &now).await {
                 Ok(()) => crate::services::job_runner::JobOutcome::Completed(None),
                 Err(e) => crate::services::job_runner::JobOutcome::Failed(e),
             }
@@ -340,16 +302,105 @@ impl crate::services::job_runner::JobHandler for ConversationRenderHandler {
     }
 }
 
-/// Marshal one `getMessages` row into the renderer's input shape. The renderer
-/// reads only these six fields; everything else on the event is irrelevant to it.
-fn event_from_json(v: &Value) -> RenderEvent {
-    let s = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
-    RenderEvent {
-        id: s("id").unwrap_or_default(),
-        type_: s("type"),
-        role: s("role"),
-        content: s("content"),
-        participant_id: s("participantId"),
-        created_at: s("createdAt").unwrap_or_default(),
+/// P4.D235 (v4 `f7f3d7bf0`): the handler's three lines — the NEW no-events
+/// DEBUG, the restored success INFO (v4 had it before this commit; v5 never
+/// emitted it), and the not-found WARN now carrying `jobId` — each with its
+/// silence leg, over the shared scriptorium-tool fixture.
+#[cfg(test)]
+mod log_tests {
+    use super::*;
+    use crate::test_support::global_capture::capture;
+    use crate::tools::annotations::log_tests::{db, CHAT, NOW, OTHER_CHAT, USER};
+
+    const JOB: &str = "00000000-0000-4000-8000-0000000000f1";
+
+    fn run(db: &Db, chat_id: &str) -> Vec<String> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let payload = ConversationRenderPayload {
+            chat_id: chat_id.to_string(),
+            full_reembed: false,
+        };
+        let (out, lines) =
+            capture(|| rt.block_on(handle_conversation_render(db, JOB, USER, &payload, NOW)));
+        out.expect("the job completes");
+        lines
+    }
+
+    fn jobs(lines: &[String], level: &str) -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| l.starts_with(&format!("{level} quilltap::jobs")))
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn a_render_logs_v4s_success_line() {
+        let db = db();
+        let lines = run(&db, CHAT);
+        let info = jobs(&lines, "INFO");
+        assert_eq!(info.len(), 1, "{lines:?}");
+        for f in [
+            "[ConversationRender] Conversation rendered successfully",
+            "job_id=00000000-0000-4000-8000-0000000000f1",
+            "chat_id=00000000-0000-4000-8000-0000000000c1",
+            "interchange_count=1",
+            "markdown_length=",
+            "duration_ms=",
+        ] {
+            assert!(info[0].contains(f), "{f} missing: {}", info[0]);
+        }
+        assert!(jobs(&lines, "DEBUG").is_empty(), "{lines:?}");
+        assert!(jobs(&lines, "WARN").is_empty(), "{lines:?}");
+        // The chunk landed and the chat row was never written (v4's test
+        // asserts `chats.update` is not called).
+        let (chunks, updated): (i64, String) = db
+            .read_main(|c| {
+                let n = c.query_row(
+                    "SELECT COUNT(*) FROM conversation_chunks WHERE chatId = ?1",
+                    [CHAT],
+                    |r| r.get(0),
+                )?;
+                let u = c.query_row("SELECT updatedAt FROM chats WHERE id = ?1", [CHAT], |r| {
+                    r.get(0)
+                })?;
+                Ok((n, u))
+            })
+            .unwrap();
+        assert_eq!((chunks, updated.as_str()), (1, NOW));
+    }
+
+    #[test]
+    fn a_chat_with_no_events_debugs_and_logs_no_success() {
+        let db = db();
+        let lines = run(&db, OTHER_CHAT);
+        let debug = jobs(&lines, "DEBUG");
+        assert_eq!(debug.len(), 1, "{lines:?}");
+        assert!(
+            debug[0].contains("[ConversationRender] Chat has no events, nothing to render")
+                && debug[0].contains("job_id=00000000-0000-4000-8000-0000000000f1")
+                && debug[0].contains("chat_id=00000000-0000-4000-8000-0000000000c2"),
+            "{}",
+            debug[0]
+        );
+        assert!(jobs(&lines, "INFO").is_empty(), "{lines:?}");
+    }
+
+    #[test]
+    fn a_missing_chat_warns_with_its_job_id() {
+        let db = db();
+        let lines = run(&db, "00000000-0000-4000-8000-0000000000ff");
+        let warn = jobs(&lines, "WARN");
+        assert_eq!(warn.len(), 1, "{lines:?}");
+        assert!(
+            warn[0].contains("[ConversationRender] Chat not found, skipping")
+                && warn[0].contains("job_id=00000000-0000-4000-8000-0000000000f1"),
+            "{}",
+            warn[0]
+        );
+        assert!(jobs(&lines, "INFO").is_empty() && jobs(&lines, "DEBUG").is_empty());
     }
 }

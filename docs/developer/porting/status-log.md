@@ -154677,3 +154677,101 @@ chat.types.ts` has 0 `renderedMarkdown` hits) and FIXTURE
   the column — they model a migrated table and exercise the tolerant read.
 - Readers: every family over a narrowed pair is proven by the lane's full
   sweep (the gate), not per unit.
+
+### Unit 3 — the on-demand render, the status, the readers, the tools (Tier 1 items 4–6)
+
+- **`render_chat_conversation`** — ONE home, `services/scriptorium_render.rs`
+  (v4 `lib/scriptorium/render-chat.ts`): `get_messages` (the FALLBACK read —
+  v4 reads `repos.chats.getMessages`) → zero events → DEBUG `No events to
+  render {chat_id}` + `None`; `resolve_speaker_names` (bug 161's resolver,
+  raw reads, NO `'User'` fallback) → the unchanged `render_conversation_
+  markdown` under the injected clock → DEBUG `Rendered conversation {chat_id,
+  events, interchanges, markdown_length (UTF-16), duration_ms}`. Target
+  `quilltap::scriptorium`. Unit pins: both DEBUGs with their silence legs; the
+  speaker-map change (a character-less `controlledBy: user` seat renders its
+  USER line `User` and its ASSISTANT line `Assistant` — v4
+  `conversation-render.test.ts:140`).
+- **The render job** rewritten over it: step 5 (the chat write) and the
+  private name map + `'User'` fallback DELETED; v4's order (find → render →
+  chunks → enqueue); the NEW DEBUG `[ConversationRender] Chat has no events,
+  nothing to render {job_id, chat_id}` and the RESTORED INFO `[ConversationRender]
+  Conversation rendered successfully {job_id, chat_id, interchange_count,
+  markdown_length, duration_ms}` (v5 never emitted it, before or after this
+  commit); `job_id` added to the not-found WARN and the enqueue WARN (v4 logs
+  `jobId` on all). `handle_conversation_render` gains a `job_id` parameter (the
+  runner passes `job.id`). The stale docstring ("isDefault OR the FIRST row")
+  fixed to the default-only code (§E.11). Three capture pins (success / no
+  events / not found, each with silence), and the success pin reads back that
+  the chunk landed and `chats.updatedAt` never moved.
+- **`derive_scriptorium_status`** — ONE home, `services/scriptorium_status.rs`
+  (v4 `lib/scriptorium/status.ts`), v4's five test rows as a unit. The chat
+  list's batch now counts EVERY chat id (`rendered_chat_ids` deleted) and the
+  no-preload fallback ALWAYS counts (⚠ measured: neither v4 nor v5 has a
+  production caller of the no-preload path — v4's only call passes the
+  preload; the port keeps it faithful); the character GET makes ONE grouped
+  `count_by_chat_ids` over the page before the per-chat loop.
+- **§E.6 decided: PORT the fallback.** `count_by_chat_ids` is now v4's
+  fallback `safeQuery`: a failed read logs `ERROR quilltap::db "Error counting
+  conversation chunks for chats" {collection, chatIdCount, error}` and answers
+  the empty map (pinned both ways: the failing read and the healthy silence).
+  ⚠ **It is load-bearing, measured:** the committed `characters-main` pair has
+  NO `conversation_chunks` table, so after the always-count change every
+  `chats_*` case of `characters_reads` reads through the fallback — without it,
+  v5 would have failed the page where v4 answers `none`.
+- **The two tools** render LIVE under the executor's clock: `read_conversation`
+  → `!rendered || interchanges.is_empty()` → `Conversation has no messages to
+  read yet.`; `upsert_annotation` → the live `### Message` tally, `0` →
+  `Conversation has no messages to annotate yet.` (before the range check).
+  **§E.5 MEASURED:** `crate::clock::now_iso()` reads `SystemTime` directly — the
+  harness has NO freeze seam for a call inside the tool body — so both tools
+  take `now_iso` and the executor passes `crate::clock::now_iso()` from the two
+  `run_*` arms: the §R.10(d) spill, EXACTLY two hunks, each marked `// P4.D235
+  OUT-OF-MANDATE — P4.D234 preserves`.
+- **Ten absent v4 log lines restored** (§R.6 — found in this lane's own files,
+  pre-existing since W4.1d): `read_conversation`'s validation-failed /
+  chat-not-found / not-participating WARNs, completed INFO, execution-failed
+  ERROR; `upsert_annotation`'s validation-failed / chat-not-found /
+  out-of-range WARNs, completed INFO, execution-failed ERROR — v4's `context`
+  string and camelCase fields, target `quilltap::tools`. Six capture pins over
+  a shared fresh-schema fixture (`tools::annotations::log_tests`), each with
+  silence legs (the no-messages refusal logs NOTHING in v4 — pinned). The
+  process-global capture rig (`global_capture`) — these callsites are reached
+  by parallel executor tests (the `Interest` race).
+- **`scriptorium_tools` REWORKED** (spec + builder + case + Rust): slim
+  character rows (v4's protected `_create`, the `build-characters-slim` idiom
+  — `findByIdRaw` reads exactly that row), 13 messages across six chats
+  (`addMessage`), `renderedMarkdown` gone, `nowIso` frozen in the case
+  (`freezeDate` — a no-argument `Date`/`Date.now()` answers it) and injected on
+  the Rust side; a NEW header-only chat (a SYSTEM line only) pins both moved
+  gates; d004 is now the no-events chat. ⚠ **`TZ=UTC` is load-bearing** — the
+  first regen without it rendered `7:00 AM` (the host zone); every recipe line
+  now carries it. **Pre-port movement measured** (the OLD spec/builder/case
+  from HEAD, fixture at the FIXTURE pin, oracle at each pin): baseline 10 of
+  23 ops succeed; target 1 of 23 — 11 × `…no messages to read yet.` + 4 × `…to
+  annotate yet.` (the order's "every read fails at the target", confirmed).
+  Reworked: 25 ops, fixture + oracle both at the TARGET pin (post-substrate),
+  14 `Current time: September 28, 2026 at 12:00 PM` lines; GREEN first run.
+- **`tool_dispatch` REWORKED:** a three-message corpus on the rendered chat, the
+  failure chat now has NO events (v4's new string), `nowIso` frozen in the
+  case. The dispatcher path reads the real clock (the executor idiom), so the
+  Rust side normalizes the ONE `Current time:` line in `formattedText` on both
+  sides (`normalize_current_time`, with a guard that the corpus reaches a live
+  render); the frozen-clock byte proof is `scriptorium_tools`'. Fixture +
+  oracle at the TARGET pin; 13/13 GREEN.
+- **`characters_reads`** (+3 cases, both sides, each on a FRESH fixture copy —
+  the oracle copies per case): chunks-without-column → `rendered` and
+  `embedded`, column-without-chunks → `none` (the chunks table created by v4's
+  `ensureCollection` / the D23 statement; the column re-added on the copy).
+  The fresh oracle carries exactly `rendered` / `embedded` / `none` on the
+  three. 37/37 GREEN at the TARGET pin through the sweep driver.
+- **`salon_reads`** GREEN at the TARGET pin through the driver: its oracle
+  carries 4 `embedded` + 6 `none` rows — the `embedded` rows are the
+  chunks-without-column edge ON THE NARROWED PAIR (the old rendered-only batch
+  restriction would read them `none`).
+- **Censuses:** `get_messages_caller_census` MOVED as predicted
+  (`conversation_render_job.rs::handle_inner` → `scriptorium_render.rs::
+  render_chat_conversation`, F); `compressed_column_write_sites_census`
+  UNMOVED (`renderedMarkdown` was never a compressed column);
+  `blob_write_sites_census`, `chat_settings_column_sites_guard`,
+  `qtap_schema_embed_guard`, `public_schemas_vendor_guard`, `spelling_guard`,
+  `dispatch_wrong_type_census` (quilltap-web) all green, unmoved.

@@ -155,6 +155,16 @@ A text provider's HTTP error now carries a refusal side: the value v4's plugin t
 So a benign-worded coded 400 (Azure's `content_filter`, Z.AI's `1301`) now reaches the classifier's `provider-code` evidence, as on v4. Before this, v5 answered "not fallback-eligible".
 
 Proven by a new wire family, `text_http_errors_equivalence`: 33 posed error bodies through v4's ten real text plugins in both call modes (726 rows, committed corpus), recorded by the new `record-text-errors.mjs`. Red-first: v5 matched 0 of v4's 162 refusals; now 160, with the two remaining (OpenRouter's SDK path, which v5 never runs) and the message-byte trigger differences pinned both ways. New unit pins at every site; the old pre-stream pin could not see the side (its fake failure has no status).
+#### 2026-09-28 — feat(scriptorium): render transcripts on demand; derive the badge from chunks alone (P4.D235)
+
+_Versions: core 0.0.1091, harness 0.0.1013._
+
+Ports v4 `f7f3d7bf0`'s on-demand render. A new `services::scriptorium_render::render_chat_conversation` reads the chat's messages, names the seats through bug 161's shared resolver (raw reads, no `'User'` fallback), and renders with an injected clock; it returns nothing for a chat with no events. The render job, `read_conversation` and `upsert_annotation` all use it. The job no longer writes the chat row; it now logs v4's no-events DEBUG and the success INFO v5 never had. The two tools answer v4's new errors (`Conversation has no messages to read yet.` / `…to annotate yet.`), and both gates moved: a render with a header and no interchanges is now a read failure, and zero `### Message` headers is now the no-messages error instead of out-of-range. The executor passes the clock to both tools (the round's one declared spill in `tools/executor.rs`).
+
+A new `services::scriptorium_status::derive_scriptorium_status` derives the badge from chunk counts alone, used by the chat list and the character GET (which now makes one grouped count per page). Two edges invert: chunks without a stored transcript now read `rendered`/`embedded`, and a stored transcript without chunks reads `none`. `count_by_chat_ids` now falls back to an empty map with v4's error line, as v4's `safeQuery` does.
+
+v4's ten log lines in the two tool handlers, which v5 never emitted, are restored and pinned. The `scriptorium_tools` and `tool_dispatch` differentials are reworked with real message corpora and a frozen `Date`; `characters_reads` gains the two inverted edges; the `get_messages` caller census moves the read to the new render.
+
 #### 2026-09-28 — test(fixtures): narrow the 41 chats-bearing pairs through v4's drop-chat-rendered-markdown-v1 (P4.D235)
 
 _Versions: host 0.0.163._

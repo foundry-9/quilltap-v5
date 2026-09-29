@@ -72,12 +72,28 @@ interface CaseSpec {
    * one blob is the real shape), so no blob or `doc_mount_files` row is
    * invented. Mirrored verbatim on the Rust side. */
   plantHistoryLink?: boolean;
+  /** P4.D235 (v4 `f7f3d7bf0`): the Scriptorium status is derived from the
+   * chat's `conversation_chunks` counts ALONE (`deriveScriptoriumStatus`), and
+   * two edges INVERTED. The committed fixture has no chunks table (every
+   * plain `chats_*` case reads through `countByChatIds`' safeQuery fallback →
+   * `none`), so the edges are planted: `chunks` creates the table through v4's
+   * own `ensureCollection` and inserts the rows (`embedded` → a non-NULL
+   * vector); `renderedMarkdown` re-adds the DROPPED column on the copy (a
+   * migrated-before-`-dev.96` instance) and stores a transcript — which no
+   * reader may consult any more. Mirrored verbatim on the Rust side. */
+  plantScriptorium?: {
+    chatId: string;
+    chunks?: Array<{ id: string; interchangeIndex: number; embedded: boolean }>;
+    renderedMarkdown?: string;
+  };
 }
 
 /** P4.D185: the planted roll link's pinned id + timestamp, and the album link
  * whose `fileId`/`mountPointId`/`lastModified` it borrows (Aria's canonical
  * `images/avatar.webp` portrait). Pinned so both sides plant identical rows. */
 const ARIA_AVATAR_LINK_ID = 'd05443d6-16d0-4eed-88de-032dc2981b00';
+/** P4.D235: the planted chunks' pinned timestamp. */
+const PLANT_AT = '2026-09-28T00:00:00.000Z';
 const HISTORY_LINK_ID = 'd9000000-0000-4000-8000-0000000000a1';
 const HISTORY_LINK_AT = '2026-07-11T03:42:08.000Z';
 
@@ -175,6 +191,32 @@ async function runCase(
           c.setConcierge.chatId,
         ],
       );
+    }
+  }
+
+  // P4.D235: the chunk / column states the committed fixture cannot express.
+  if (c.plantScriptorium) {
+    const p = c.plantScriptorium;
+    if (p.chunks) {
+      const { ensureCollection } = await import('@/lib/database/manager');
+      const { ConversationChunkSchema } = await import('@/lib/schemas/scriptorium.types');
+      await ensureCollection('conversation_chunks', ConversationChunkSchema);
+      for (const k of p.chunks) {
+        await rawQuery(
+          'INSERT INTO "conversation_chunks" ("id","chatId","interchangeIndex","content",' +
+            '"participantNames","messageIds","embedding","createdAt","updatedAt") ' +
+            "VALUES (?, ?, ?, ?, '[]', '[]', ?, ?, ?)",
+          [k.id, p.chatId, k.interchangeIndex, `chunk ${k.interchangeIndex}`,
+            k.embedded ? '[0.5,0.25]' : null, PLANT_AT, PLANT_AT],
+        );
+      }
+    }
+    if (p.renderedMarkdown !== undefined) {
+      await rawQuery('ALTER TABLE "chats" ADD COLUMN "renderedMarkdown" TEXT');
+      await rawQuery('UPDATE "chats" SET "renderedMarkdown" = ? WHERE "id" = ?', [
+        p.renderedMarkdown,
+        p.chatId,
+      ]);
     }
   }
 
@@ -318,6 +360,37 @@ async function main(): Promise<void> {
       params: { id: aria },
       setConcierge: { chatId: CHAT, isDangerousChat: true, dangerCategories: ['Violence', 'Substance Use'],
         conciergeMode: 'unmoderated', conciergeModeSetBy: 'concierge', conciergeModeReason: 'classifier' },
+    },
+    // P4.D235 (v4 `f7f3d7bf0`): the two INVERTED Scriptorium edges, each on
+    // its own fresh copy. Chunks with no stored transcript were `none` and are
+    // now `rendered` / `embedded`; a stored transcript with no chunks was
+    // `rendered` and is now `none`.
+    {
+      name: 'chats_scriptorium_chunks_without_column_rendered',
+      module: '@/app/api/v1/characters/[id]/route',
+      url: `${B}/${aria}?action=chats`,
+      params: { id: aria },
+      plantScriptorium: { chatId: CHAT, chunks: [
+        { id: 'cc000000-0000-4000-8000-000000000001', interchangeIndex: 0, embedded: true },
+        { id: 'cc000000-0000-4000-8000-000000000002', interchangeIndex: 1, embedded: false },
+      ] },
+    },
+    {
+      name: 'chats_scriptorium_chunks_without_column_embedded',
+      module: '@/app/api/v1/characters/[id]/route',
+      url: `${B}/${aria}?action=chats`,
+      params: { id: aria },
+      plantScriptorium: { chatId: CHAT, chunks: [
+        { id: 'cc000000-0000-4000-8000-000000000001', interchangeIndex: 0, embedded: true },
+        { id: 'cc000000-0000-4000-8000-000000000002', interchangeIndex: 1, embedded: true },
+      ] },
+    },
+    {
+      name: 'chats_scriptorium_column_without_chunks',
+      module: '@/app/api/v1/characters/[id]/route',
+      url: `${B}/${aria}?action=chats`,
+      params: { id: aria },
+      plantScriptorium: { chatId: CHAT, chunks: [], renderedMarkdown: '# A stored transcript' },
     },
     // P4.6i: ST export (JSON leg) — the chara_card_v2 card. The handler returns a
     // raw `JSON.stringify(card)` NextResponse; `response.json()` reparses it.

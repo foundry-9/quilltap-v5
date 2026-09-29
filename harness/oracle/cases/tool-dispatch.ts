@@ -19,7 +19,7 @@
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
- *   QT_FIXTURE_TOOLDISPATCH=/tmp/qt-tooldispatch-main.db \
+ *   TZ=UTC QT_FIXTURE_TOOLDISPATCH=/tmp/qt-tooldispatch-main.db \
  *   QT_FIXTURE_TOOLDISPATCH_MOUNT=/tmp/qt-tooldispatch-mount.db \
  *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/tool-dispatch.ts \
  *     > /tmp/oracle-tooldispatch.ndjson
@@ -41,7 +41,28 @@ interface Op {
 interface Spec {
   testPepperBase64: string;
   userId: string;
+  nowIso: string;
   ops: Op[];
+}
+
+/**
+ * P4.D235 (v4 `f7f3d7bf0`): freeze the no-argument `Date` at `iso` — the live
+ * render's `Current time:` header line. Dated arguments parse normally.
+ */
+function freezeDate(iso: string): void {
+  const RealDate = Date;
+  const frozenMs = new RealDate(iso).getTime();
+  class FrozenDate extends RealDate {
+    constructor(...args: unknown[]) {
+      if (args.length === 0) super(frozenMs);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      else super(...(args as [any]));
+    }
+    static now(): number {
+      return frozenMs;
+    }
+  }
+  globalThis.Date = FrozenDate as unknown as DateConstructor;
 }
 
 async function main(): Promise<void> {
@@ -71,6 +92,7 @@ async function main(): Promise<void> {
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
+  freezeDate(spec.nowIso);
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(

@@ -12,6 +12,16 @@
 //! `ToolResult` (`{ toolName, success, result, error? }`) is compared, then the
 //! `conversation_annotations` table in the placeholdered natural-key form.
 //!
+//! P4.D235 (v4 `f7f3d7bf0`): `read_conversation` / `upsert_annotation` render
+//! the transcript LIVE from the chat's messages (the stored `renderedMarkdown`
+//! column is gone), so the seed carries a message corpus and the failure row
+//! reads a chat with NO events (v4's new `Conversation has no messages to read
+//! yet.`). The render header's `Current time:` line is the wall clock of the
+//! read: the oracle freezes `Date`, but this side's dispatcher passes
+//! `crate::clock::now_iso()` (the executor's idiom), so that ONE line is
+//! normalized on both sides ([`normalize_current_time`]) — the byte-exact
+//! frozen-clock render is `scriptorium_tools_equivalence`'s proof.
+//!
 //! This proves dispatch + handler + harness compose end-to-end. The unknown-tool
 //! LOUD fallback (`Unknown tool: <name>`) is unit-tested in
 //! `tools::executor::tests` instead of here: v4's genuine unknown path routes
@@ -21,15 +31,15 @@
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
-//!   QT_FIXTURE_OUT=/tmp/qt-tooldispatch-main.db \
+//!   TZ=UTC QT_FIXTURE_OUT=/tmp/qt-tooldispatch-main.db \
 //!   QT_FIXTURE_MOUNT_OUT=/tmp/qt-tooldispatch-mount.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-tool-dispatch-fixture.ts
-//!   QT_FIXTURE_TOOLDISPATCH=/tmp/qt-tooldispatch-main.db \
+//!   TZ=UTC QT_FIXTURE_TOOLDISPATCH=/tmp/qt-tooldispatch-main.db \
 //!   QT_FIXTURE_TOOLDISPATCH_MOUNT=/tmp/qt-tooldispatch-mount.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/tool-dispatch.ts \
 //!     > /tmp/oracle-tooldispatch.ndjson
 //! Run:
-//!   QT_ORACLE_TOOLDISPATCH=/tmp/oracle-tooldispatch.ndjson \
+//!   TZ=UTC QT_ORACLE_TOOLDISPATCH=/tmp/oracle-tooldispatch.ndjson \
 //!   QT_FIXTURE_TOOLDISPATCH=/tmp/qt-tooldispatch-main.db \
 //!   QT_FIXTURE_TOOLDISPATCH_MOUNT=/tmp/qt-tooldispatch-mount.db \
 //!     cargo test -p quilltap-harness --test tool_dispatch_equivalence
@@ -136,6 +146,26 @@ fn dummy_env() -> SelfInventoryEnv {
 }
 
 /// Placeholder the minted `id`/`createdAt`/`updatedAt`, sort by the natural key.
+/// P4.D235: blank the live render's wall-clock `Current time: <when>.` header
+/// line inside a `ToolResult`'s `formattedText` (the ONLY clock-dependent bytes
+/// the dispatcher emits for these tools — see the module doc).
+fn normalize_current_time(mut v: Value) -> Value {
+    if let Some(Value::String(text)) = v.pointer_mut("/result/formattedText") {
+        let out: Vec<String> = text
+            .split('\n')
+            .map(|line| match line.strip_prefix("Current time: ") {
+                Some(rest) => match rest.find(". ") {
+                    Some(dot) => format!("Current time: <NOW>{}", &rest[dot..]),
+                    None => line.to_string(),
+                },
+                None => line.to_string(),
+            })
+            .collect();
+        *text = out.join("\n");
+    }
+    v
+}
+
 fn normalize_dump(dump: &Value) -> Value {
     let mut rows: Vec<Value> = dump["rows"].as_array().cloned().unwrap_or_default();
     rows.sort_by(|a, b| {
@@ -257,19 +287,27 @@ async fn tool_dispatch_matches_oracle() {
             None,
         );
         let result = runner.run(&tc, &ctx).await;
-        let got = tool_result_value(&result);
+        let got = normalize_current_time(tool_result_value(&result));
 
         let oo = &oracle.ops[i];
         assert_eq!(oo.tool, op.tool, "op {i}: tool mismatch");
+        let want = normalize_current_time(oo.result.clone());
         assert_eq!(
             got,
-            oo.result,
+            want,
             "op {i} ({}): ToolResult diverged\n  rust:   {}\n  oracle: {}",
             op.tool,
             serde_json::to_string(&got).unwrap(),
-            serde_json::to_string(&oo.result).unwrap()
+            serde_json::to_string(&want).unwrap()
         );
     }
+    assert!(
+        oracle
+            .ops
+            .iter()
+            .any(|o| o.result.to_string().contains("Current time: ")),
+        "the corpus reaches a live render (a `Current time:` line to normalize)"
+    );
 
     // Diff the final annotations table in the normalized form.
     let got_dump = db

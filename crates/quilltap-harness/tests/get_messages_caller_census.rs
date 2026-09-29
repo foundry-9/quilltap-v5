@@ -234,7 +234,6 @@ const CENSUS: &[(&str, &str, Variant)] = &[
         "check_and_generate_summary_if_needed_with_seams",
         F,
     ),
-    ("services/conversation_render_job.rs", "handle_inner", F),
     (
         "services/conversation_summaries_regen.rs",
         "handle_regenerate_conversation_summaries",
@@ -305,6 +304,15 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     (
         "services/story_background_job.rs",
         "handle_story_background_generation",
+        F,
+    ),
+    // P4.D235 (v4 `f7f3d7bf0`): the render job's read moved into the ONE
+    // on-demand render, v4 `renderChatConversation` → `repos.chats.getMessages`
+    // (the render job, `read_conversation` and `upsert_annotation` all read
+    // through it now).
+    (
+        "services/scriptorium_render.rs",
+        "render_chat_conversation",
         F,
     ),
     ("services/title_update_job.rs", "handle_title_update", F),

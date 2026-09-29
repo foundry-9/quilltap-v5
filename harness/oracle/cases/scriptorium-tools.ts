@@ -10,6 +10,13 @@
  * table (raw, ordered by id — the Rust test re-normalizes both sides by natural
  * key and placeholders the minted id/timestamps).
  *
+ * **`Date` is FROZEN at the spec's `nowIso`** (P4.D235, v4 `f7f3d7bf0`): both
+ * `read_conversation` and `upsert_annotation` now render the transcript LIVE
+ * (`renderChatConversation`), and the renderer's header carries a wall-clock
+ * `Current time:` line (`markdown-renderer.ts:364,380`). A no-argument
+ * `new Date()` / `Date.now()` answers `nowIso`; every dated argument still
+ * parses normally. The Rust port injects the same instant.
+ *
  * The character NAME the annotation handlers need is passed via the op's
  * `characterName` field (v4's dispatcher resolves it from the calling participant;
  * here the spec supplies it directly, matching the handler's `context.characterName`).
@@ -17,7 +24,7 @@
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
- *   QT_FIXTURE_SCRIPTORIUM=/tmp/qt-scriptorium.db \
+ *   TZ=UTC QT_FIXTURE_SCRIPTORIUM=/tmp/qt-scriptorium.db \
  *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/scriptorium-tools.ts \
  *     > /tmp/oracle-scriptorium.ndjson
  */
@@ -39,7 +46,25 @@ interface Op {
 interface Spec {
   testPepperBase64: string;
   userId: string;
+  nowIso: string;
   ops: Op[];
+}
+
+/** Freeze the no-argument `Date` at `iso` (the render's `Current time:`). */
+function freezeDate(iso: string): void {
+  const RealDate = Date;
+  const frozenMs = new RealDate(iso).getTime();
+  class FrozenDate extends RealDate {
+    constructor(...args: unknown[]) {
+      if (args.length === 0) super(frozenMs);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      else super(...(args as [any]));
+    }
+    static now(): number {
+      return frozenMs;
+    }
+  }
+  globalThis.Date = FrozenDate as unknown as DateConstructor;
 }
 
 async function main(): Promise<void> {
@@ -53,6 +78,8 @@ async function main(): Promise<void> {
       'QT_FIXTURE_SCRIPTORIUM must point at the fixture from build-scriptorium-tools-fixture.ts'
     );
   }
+
+  freezeDate(spec.nowIso);
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-scriptorium-oracle-'));
   mkdirSync(join(scratch, 'data'), { recursive: true });

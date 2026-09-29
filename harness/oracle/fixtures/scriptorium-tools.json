@@ -1,16 +1,31 @@
 {
-  "$comment": "W4.1d batch 1 — the Project Scriptorium tool trio (read_conversation, upsert_annotation, delete_annotation). Shared spec: fixture builder seeds chats + annotations (pinned ids/timestamps); the oracle drives v4's REAL handlers + format* for each op; the Rust port drives execute_*/format_* over a copy of the SAME fixture. Outputs (JSON + formatted string) compare byte-exact; the write ops additionally diff the conversation_annotations table in the fully-placeholdered natural-key-sorted form.",
+  "$comment": "W4.1d batch 1 — the Project Scriptorium tool trio (read_conversation, upsert_annotation, delete_annotation). Shared spec: the fixture builder seeds characters (slim rows), chats, their MESSAGES and annotations (pinned ids/timestamps); the oracle drives v4's REAL handlers + format* for each op with `Date` FROZEN at `nowIso`; the Rust port drives execute_*/format_* over a copy of the SAME fixture with the same `nowIso` injected. P4.D235 (v4 f7f3d7bf0): the tools render the transcript LIVE from the messages (chats.renderedMarkdown is gone), so the expected outputs carry v4's real header and its `Current time:` line. Outputs (JSON + formatted string) compare byte-exact; the write ops additionally diff the conversation_annotations table in the fully-placeholdered natural-key-sorted form.",
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "userId": "a0000000-0000-4000-8000-00000000aaaa",
   "otherUserId": "a0000000-0000-4000-8000-00000000bbbb",
+  "nowIso": "2026-09-28T12:00:00.000Z",
   "chars": {
     "alice": "c1111111-1111-4111-8111-111111111111",
     "bob": "c2222222-2222-4222-8222-222222222222",
     "stranger": "c3333333-3333-4333-8333-333333333333"
   },
+  "characters": [
+    {
+      "id": "c1111111-1111-4111-8111-111111111111",
+      "name": "Alice"
+    },
+    {
+      "id": "c2222222-2222-4222-8222-222222222222",
+      "name": "Bob"
+    },
+    {
+      "id": "c3333333-3333-4333-8333-333333333333",
+      "name": "Stranger"
+    }
+  ],
   "chats": [
     {
-      "$comment": "Primary chat: 3 messages (0..2), 2 interchanges (0..1). Alice + Bob participate. Two seed annotations (Alice@0, Bob@1).",
+      "$comment": "Primary chat: 3 messages (0..2), 2 interchanges (0..1) — a USER line opens each interchange. Alice (user seat) + Bob (llm seat). Two seed annotations (Alice@0, Bob@1).",
       "id": "d0000000-0000-4000-8000-00000000d001",
       "userId": "a0000000-0000-4000-8000-00000000aaaa",
       "title": "Primary",
@@ -32,7 +47,29 @@
           "updatedAt": "2026-01-01T00:00:00.000Z"
         }
       ],
-      "renderedMarkdown": "# Conversation\n\n## Interchange 0\n\n### Message 0\nAlice: Hello there.\n\n### Message 1\nBob: General Kenobi.\n\n## Interchange 1\n\n### Message 2\nAlice: You are a bold one.\n",
+      "messages": [
+        {
+          "id": "b0000000-0000-4000-8000-000000000101",
+          "role": "USER",
+          "participantId": "e0000000-0000-4000-8000-0000000000a1",
+          "content": "Hello there.",
+          "createdAt": "2026-01-01T00:01:00.000Z"
+        },
+        {
+          "id": "b0000000-0000-4000-8000-000000000102",
+          "role": "ASSISTANT",
+          "participantId": "e0000000-0000-4000-8000-0000000000b1",
+          "content": "General Kenobi.",
+          "createdAt": "2026-01-01T00:02:00.000Z"
+        },
+        {
+          "id": "b0000000-0000-4000-8000-000000000103",
+          "role": "USER",
+          "participantId": "e0000000-0000-4000-8000-0000000000a1",
+          "content": "You are a bold one.",
+          "createdAt": "2026-01-01T00:03:00.000Z"
+        }
+      ],
       "createdAt": "2026-01-01T00:00:00.000Z",
       "updatedAt": "2026-01-01T00:00:00.000Z"
     },
@@ -51,12 +88,20 @@
           "updatedAt": "2026-01-01T00:00:00.000Z"
         }
       ],
-      "renderedMarkdown": "# Other\n\n### Message 0\nStranger: Who goes there.\n",
+      "messages": [
+        {
+          "id": "b0000000-0000-4000-8000-000000000201",
+          "role": "ASSISTANT",
+          "participantId": "e0000000-0000-4000-8000-0000000000c1",
+          "content": "Who goes there.",
+          "createdAt": "2026-01-01T00:01:00.000Z"
+        }
+      ],
       "createdAt": "2026-01-01T00:00:00.000Z",
       "updatedAt": "2026-01-01T00:00:00.000Z"
     },
     {
-      "$comment": "Third chat — Alice participates, so the cross-conversation read succeeds. 2 messages.",
+      "$comment": "Third chat — Alice participates, so the cross-conversation read succeeds. 2 USER messages, so 2 interchanges.",
       "id": "d0000000-0000-4000-8000-00000000d003",
       "userId": "a0000000-0000-4000-8000-00000000aaaa",
       "title": "Shared",
@@ -70,15 +115,30 @@
           "updatedAt": "2026-01-01T00:00:00.000Z"
         }
       ],
-      "renderedMarkdown": "# Shared\n\n### Message 0\nAlice: A message.\n\n### Message 1\nAlice: Another.\n",
+      "messages": [
+        {
+          "id": "b0000000-0000-4000-8000-000000000301",
+          "role": "USER",
+          "participantId": "e0000000-0000-4000-8000-0000000000a3",
+          "content": "A message.",
+          "createdAt": "2026-01-01T00:01:00.000Z"
+        },
+        {
+          "id": "b0000000-0000-4000-8000-000000000302",
+          "role": "USER",
+          "participantId": "e0000000-0000-4000-8000-0000000000a3",
+          "content": "Another.",
+          "createdAt": "2026-01-01T00:02:00.000Z"
+        }
+      ],
       "createdAt": "2026-01-01T00:00:00.000Z",
       "updatedAt": "2026-01-01T00:00:00.000Z"
     },
     {
-      "$comment": "Fourth chat — NO rendered markdown (empty string). Exercises the not-rendered path.",
+      "$comment": "Fourth chat — NO events at all: the live render answers null, so both tools answer their no-messages error (was: no stored renderedMarkdown).",
       "id": "d0000000-0000-4000-8000-00000000d004",
       "userId": "a0000000-0000-4000-8000-00000000aaaa",
-      "title": "Unrendered",
+      "title": "Empty",
       "participants": [
         {
           "id": "e0000000-0000-4000-8000-0000000000a4",
@@ -93,7 +153,7 @@
       "updatedAt": "2026-01-01T00:00:00.000Z"
     },
     {
-      "$comment": "P4.d13 slicing chat: 6 messages, 4 interchanges (1..4) with a preamble. Alice participates.",
+      "$comment": "P4.d13 slicing chat: 6 messages, 4 interchanges (0..3) behind the render header (the preamble). Alice (user seat) + Bob (llm seat).",
       "id": "d0000000-0000-4000-8000-00000000d005",
       "userId": "a0000000-0000-4000-8000-00000000aaaa",
       "title": "Long Voyage",
@@ -105,9 +165,87 @@
           "controlledBy": "user",
           "createdAt": "2026-01-01T00:00:00.000Z",
           "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000b5",
+          "type": "CHARACTER",
+          "characterId": "c2222222-2222-4222-8222-222222222222",
+          "controlledBy": "llm",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
         }
       ],
-      "renderedMarkdown": "# Long Voyage\n\nA preamble paragraph before the first interchange.\n\n## Interchange 1\n\n### Message 0\nAlice: Day one at sea.\n\n### Message 1\nBob: Calm waters.\n\n## Interchange 2\n\n### Message 2\nAlice: Day two, gulls overhead.\n\n## Interchange 3\n\n### Message 3\nBob: A storm brews.\n\n### Message 4\nAlice: Batten down.\n\n## Interchange 4\n\n### Message 5\nBob: Clear skies again.\n",
+      "messages": [
+        {
+          "id": "b0000000-0000-4000-8000-000000000501",
+          "role": "USER",
+          "participantId": "e0000000-0000-4000-8000-0000000000a5",
+          "content": "Day one at sea.",
+          "createdAt": "2026-01-01T00:01:00.000Z"
+        },
+        {
+          "id": "b0000000-0000-4000-8000-000000000502",
+          "role": "ASSISTANT",
+          "participantId": "e0000000-0000-4000-8000-0000000000b5",
+          "content": "Calm waters.",
+          "createdAt": "2026-01-01T00:02:00.000Z"
+        },
+        {
+          "id": "b0000000-0000-4000-8000-000000000503",
+          "role": "USER",
+          "participantId": "e0000000-0000-4000-8000-0000000000a5",
+          "content": "Day two, gulls overhead.",
+          "createdAt": "2026-01-01T00:03:00.000Z"
+        },
+        {
+          "id": "b0000000-0000-4000-8000-000000000504",
+          "role": "USER",
+          "participantId": "e0000000-0000-4000-8000-0000000000a5",
+          "content": "A storm brews.",
+          "createdAt": "2026-01-01T00:04:00.000Z"
+        },
+        {
+          "id": "b0000000-0000-4000-8000-000000000505",
+          "role": "ASSISTANT",
+          "participantId": "e0000000-0000-4000-8000-0000000000b5",
+          "content": "Batten down.",
+          "createdAt": "2026-01-01T00:05:00.000Z"
+        },
+        {
+          "id": "b0000000-0000-4000-8000-000000000506",
+          "role": "USER",
+          "participantId": "e0000000-0000-4000-8000-0000000000a5",
+          "content": "Clear skies again.",
+          "createdAt": "2026-01-01T00:06:00.000Z"
+        }
+      ],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "$comment": "P4.D235 — the MOVED gate: events but no visible dialogue (a SYSTEM line only). The live render is a header with ZERO interchanges and zero `### Message` headers: read_conversation fails (a header-only render used to be a success) and upsert_annotation answers the no-messages error (a stored column with no headers used to fall through to the out-of-range error).",
+      "id": "d0000000-0000-4000-8000-00000000d006",
+      "userId": "a0000000-0000-4000-8000-00000000aaaa",
+      "title": "Header Only",
+      "participants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000a6",
+          "type": "CHARACTER",
+          "characterId": "c1111111-1111-4111-8111-111111111111",
+          "controlledBy": "user",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "b0000000-0000-4000-8000-000000000601",
+          "role": "SYSTEM",
+          "participantId": "e0000000-0000-4000-8000-0000000000a6",
+          "content": "The scene is set.",
+          "createdAt": "2026-01-01T00:01:00.000Z"
+        }
+      ],
       "createdAt": "2026-01-01T00:00:00.000Z",
       "updatedAt": "2026-01-01T00:00:00.000Z"
     }
@@ -164,8 +302,15 @@
     },
     {
       "tool": "read_conversation",
-      "$comment": "Not rendered — chat d004 has no renderedMarkdown.",
+      "$comment": "No events — chat d004 has no messages at all (the new no-messages string).",
       "chatId": "d0000000-0000-4000-8000-00000000d004",
+      "characterId": "c1111111-1111-4111-8111-111111111111",
+      "args": {}
+    },
+    {
+      "tool": "read_conversation",
+      "$comment": "P4.D235 moved gate — header-only render (zero interchanges) → the no-messages error.",
+      "chatId": "d0000000-0000-4000-8000-00000000d006",
       "characterId": "c1111111-1111-4111-8111-111111111111",
       "args": {}
     },
@@ -180,7 +325,7 @@
     },
     {
       "tool": "read_conversation",
-      "$comment": "Cross-conversation success — Alice reads chat d003 (she participates). 2 messages, 0 interchanges.",
+      "$comment": "Cross-conversation success — Alice reads chat d003 (she participates). 2 messages, 2 interchanges.",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterId": "c1111111-1111-4111-8111-111111111111",
       "args": {
@@ -314,12 +459,22 @@
     },
     {
       "tool": "upsert_annotation",
-      "$comment": "Not rendered — chat d004 has no renderedMarkdown.",
+      "$comment": "No events — chat d004 has no messages at all (the new no-messages string).",
       "chatId": "d0000000-0000-4000-8000-00000000d004",
       "characterName": "Alice",
       "args": {
         "message_index": 0,
         "content": "No canvas here."
+      }
+    },
+    {
+      "tool": "upsert_annotation",
+      "$comment": "P4.D235 moved edge — zero `### Message` headers → the no-messages error (was the out-of-range error).",
+      "chatId": "d0000000-0000-4000-8000-00000000d006",
+      "characterName": "Alice",
+      "args": {
+        "message_index": 0,
+        "content": "Nothing to annotate."
       }
     },
     {

@@ -1,8 +1,8 @@
 //! Differential test — the Project Scriptorium tool trio (`read_conversation` /
 //! `upsert_annotation` / `delete_annotation`, W4.1d batch 1).
 //!
-//! Both sides open a COPY of one baked fixture (chats + seed annotations, ids +
-//! timestamps pinned), run the SAME op sequence (state accumulates), and compare
+//! Both sides open a COPY of one baked fixture (slim characters + chats + their
+//! messages + seed annotations, ids + timestamps pinned), run the SAME op sequence (state accumulates), and compare
 //! each op's Output JSON + formatted string **byte-exact**. After the sequence,
 //! the `conversation_annotations` table is diffed in the fully-placeholdered
 //! natural-key-sorted form — the write ops (upsert/delete) mint fresh
@@ -13,16 +13,25 @@
 //! The Rust port drives [`read_conversation`]/[`annotations`]'s `execute_*` +
 //! `format_*`; the oracle drives v4's REAL handlers + `format*Results`.
 //!
+//! P4.D235 (v4 `f7f3d7bf0`): both tools render the transcript LIVE from the
+//! stored messages (the `renderedMarkdown` column is gone), so the fixture
+//! carries real message corpora and named characters, the oracle FREEZES
+//! `Date` at the spec's `nowIso`, and this side injects the same instant — the
+//! render header's `Current time:` line then compares byte-exact. The corpus
+//! pins the two moved gates: a chat with no events, and a header-only chat
+//! (events, zero interchanges) that `read_conversation` now refuses and
+//! `upsert_annotation` answers with the no-messages error.
+//!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
-//!   QT_FIXTURE_SCRIPTORIUM=/tmp/qt-scriptorium.db \
+//!   TZ=UTC QT_FIXTURE_SCRIPTORIUM=/tmp/qt-scriptorium.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-scriptorium-tools-fixture.ts
-//!   QT_FIXTURE_SCRIPTORIUM=/tmp/qt-scriptorium.db \
+//!   TZ=UTC QT_FIXTURE_SCRIPTORIUM=/tmp/qt-scriptorium.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/scriptorium-tools.ts \
 //!     > /tmp/oracle-scriptorium.ndjson
 //! Run:
-//!   QT_ORACLE_SCRIPTORIUM=/tmp/oracle-scriptorium.ndjson \
+//!   TZ=UTC QT_ORACLE_SCRIPTORIUM=/tmp/oracle-scriptorium.ndjson \
 //!   QT_FIXTURE_SCRIPTORIUM=/tmp/qt-scriptorium.db \
 //!     cargo test -p quilltap-harness --test scriptorium_tools_equivalence
 
@@ -44,6 +53,10 @@ struct Spec {
     test_pepper_base64: String,
     #[serde(rename = "userId")]
     user_id: String,
+    /// The frozen instant both sides render under (P4.D235 — the live
+    /// render's `Current time:` header line).
+    #[serde(rename = "nowIso")]
+    now_iso: String,
     ops: Vec<Op>,
 }
 
@@ -164,6 +177,7 @@ async fn scriptorium_tools_matches_oracle() {
                     &op.chat_id,
                     op.character_id.as_deref(),
                     &op.args,
+                    &spec.now_iso,
                 )
                 .await;
                 let f = format_read_conversation(&out);
@@ -176,6 +190,7 @@ async fn scriptorium_tools_matches_oracle() {
                     &op.chat_id,
                     op.character_name.as_deref().expect("characterName"),
                     &op.args,
+                    &spec.now_iso,
                 )
                 .await;
                 let f = format_upsert_annotation(&out);
