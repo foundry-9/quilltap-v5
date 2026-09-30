@@ -156647,6 +156647,46 @@ Tier 1 item 5. §R.2 probe PASSED before the batch.
   oracle/providers/regenerate-stream-fixtures.sh` (Node 24 on PATH), twice
   (neutrality, then with the new cases).
 
+## P4.128 — lane close-out: gate + mutation table (2026-09-30)
+
+Branch `claude/p4-128-model-name-hash-slot-19feaa`; commits `1781c6b43`
+(unit A), `15bdaea77` (unit B1), `76170a221` (unit B3), + this docs commit.
+
+**Mutation proofs** (each by file backup, reverted and verified
+byte-identical; runner `/tmp/p4128/mut.py`):
+
+| # | mutation | reddened |
+|---|---|---|
+| M1 | hash projection back to `Tool`-only names | `native_tool_loop_tier3`, `text_tool_loop_tier3`, `primary_stream_tier3` (the named two-seat row) |
+| M2 | chat-completions builder emits the user's `name` | `a_participant_name_never_reaches_any_request_body` + `request_builder_equivalence` (`participant-names` bodies) |
+| M3 | attachment adapter resets `name` to `None` | `the_rebuild_carries_the_participant_name` |
+| M4 | pre-stream catch-line emit removed | `text_http_errors_equivalence` |
+| M4b | `sendMessage` catch-line emit removed | `text_http_errors_equivalence` |
+| M5 | chat decoder skips a malformed frame again | `stream_decoders` + `streaming_composer` (chat_completions) |
+| M5b | Responses decoder ignores `[DONE]` again | `stream_decoders` + `streaming_composer` (responses) |
+
+**Neutrality legs (sweep driver, `--v4` the pin):** `file_attachment_tier3`,
+`cheap_llm_fallback`, `ollama_think_retry_tier3` — each ran end to end, zero
+SKIP. Request envelopes: 367 pre-existing rows `cmp`-equal; stream corpora:
+all ten `cmp`-equal before the new rows, the old rows equal after.
+
+**Gate** (CARGO_INCREMENTAL=0, TZ=UTC; detached, sentinel): `cargo fmt
+--check` clean; clippy clean in both feature sets; `cargo build --workspace
+--release` clean; `cargo test --workspace --no-fail-fast` with the lane block
+(the loop + primary-stream oracles/fixtures under `/tmp/p4128/`) → **652
+binaries / 4,007 passed / 0 failed / 3 ignored**, the lane's families confirmed
+RUN by their OK lines (native/text loop, `primary_stream_tier3` 53 calls / 47
+llm_logs rows, `text_http_errors` 736 rows, stream decoders 87 + 37 cases);
+`stream_watchdog_wrap_census`, `dispatch_wrong_type_census`, `spelling_guard`
+green; the 539 `SKIP:` lines are families whose vars were withheld. **Tier R**
+(`QT_V4_CHECKOUT` = the pin): 266 cases / 0 failures.
+
+**For the unifier:** §S 2 — P4.129's `EXPECTED_DIVERGENCES` on
+`requestHashes.historyTailHash` (`textblock_mode`, `agent_force_final`) should
+trip VANISHED once this branch precedes it. The nine unported plugin ERROR
+lines (GOOGLE / OLLAMA / OpenRouter-raw) are a named follow-up. No file
+outside the ownership row was touched (the two shared-file hunks are marked).
+
 ## P4.130 — the Zod smalls + the read-side trail validation (lane record, 2026-09-30)
 
 Lane branch `claude/zod-work-orders-validation-cfc445`, cut from `main`

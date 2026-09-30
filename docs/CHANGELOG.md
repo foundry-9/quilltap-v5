@@ -12,6 +12,13 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — docs(porting): close P4.128 — the lane record and status headers
+
+_Docs-only change._
+
+Closes the P4.128 lane: the order's status header, one sentence each on the
+P4.121 and P4.122 headers, and the gate record with the mutation table.
+
 #### 2026-09-30 — feat(core): the openai SDK's SSE frame semantics for the SDK-flavoured decoders (P4.128 unit B3)
 
 _Versions: core 0.0.1118, harness 0.0.1037._
