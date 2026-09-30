@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — test(tools): drive the production destructive filter and pin the retired list_email name against v4
+
+_Versions: harness 0.0.1030._
+
+Harness-only. `tool_build_equivalence` now runs the autonomous-room
+destructive filter through the production `apply_autonomous_destructive_filter`
+instead of re-composing its two helpers inline, pins its INFO with
+`removed=1` on the mail-only row, and checks an allowed room stays silent.
+`tool_dispatch_equivalence` gains a `list_email` row: the tsx oracle's
+empty tool registry sends the retired name to v4's no-plugin `Unknown
+tool: list_email`, and v5's loud fallback answers the same bytes. P4.124
+items 4 and 5.
+
 #### 2026-09-29 — fix(continuation): log v4's four continuation failure lines and the create path's catch
 
 _Versions: core 0.0.1111, harness 0.0.1029._

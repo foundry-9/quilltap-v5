@@ -219,6 +219,7 @@ fn tool_build_matches_oracle() {
     .expect("open fixture");
 
     let mut failures: Vec<String> = Vec::new();
+    let (mut mail_only_rows, mut allowed_autonomous_rows) = (0, 0);
 
     for c in &spec.cases {
         let disabled_tools: Option<&[String]> = if c.disabled_tools_undefined {
@@ -273,13 +274,50 @@ fn tool_build_matches_oracle() {
 
         let mut tools = built.tools;
 
-        // Autonomous-room destructive filter (orchestrator post-step; replicated
-        // both sides).
+        // Autonomous-room destructive filter (orchestrator post-step). The v4
+        // side replicates the inline block over v4's REAL
+        // `DESTRUCTIVE_TOOL_NAMES`; the v5 side calls the PRODUCTION fn the
+        // orchestrator calls (P4.124 — it had re-composed the two helpers
+        // inline, so the fn's own gate and INFO were never exercised here).
+        let mut filter_lines = Vec::new();
         if c.chat_type == "autonomous" {
             let allowed_at_room = c.run_destructive_tools_allowed == 1;
-            if !tool_build::destructive_allowed(&c.destructive_tool_policy, allowed_at_room) {
-                tool_build::filter_destructive_tools(&mut tools);
-            }
+            let ((), lines) = quilltap_core::test_support::captured_with(|| {
+                tool_build::apply_autonomous_destructive_filter(
+                    &c.name,
+                    &c.destructive_tool_policy,
+                    allowed_at_room,
+                    &mut tools,
+                )
+            });
+            filter_lines = lines
+                .into_iter()
+                .filter(|l| l.contains("Autonomous room: destructive tools filtered"))
+                .collect();
+        }
+        // The mail-only row: `discard_mail` is the ONE destructive tool, so the
+        // INFO fires with `removed=1` (its fields in v4's order).
+        if c.name == "p4d234_destructive_autonomous_mail_only" {
+            assert_eq!(filter_lines.len(), 1, "{}: {filter_lines:?}", c.name);
+            assert!(
+                filter_lines[0].starts_with("INFO ")
+                    && filter_lines[0].ends_with(&format!(
+                        "chatId={} policy={} allowedAtRoom=false removed=1",
+                        c.name, c.destructive_tool_policy
+                    )),
+                "{}",
+                filter_lines[0]
+            );
+            mail_only_rows += 1;
+        } else if c.chat_type == "autonomous"
+            && tool_build::destructive_allowed(
+                &c.destructive_tool_policy,
+                c.run_destructive_tools_allowed == 1,
+            )
+        {
+            // Silence leg: an allowed room filters nothing and says nothing.
+            assert!(filter_lines.is_empty(), "{}: {filter_lines:?}", c.name);
+            allowed_autonomous_rows += 1;
         }
 
         let got_tools = Value::Array(tools);
@@ -313,6 +351,8 @@ fn tool_build_matches_oracle() {
     let _ = std::fs::remove_dir_all(&scratch);
 
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+    assert_eq!(mail_only_rows, 1, "the P4.124 INFO pin ran");
+    assert!(allowed_autonomous_rows > 0, "the P4.124 silence leg ran");
 }
 
 fn tool_names(tools: &Value) -> Vec<String> {

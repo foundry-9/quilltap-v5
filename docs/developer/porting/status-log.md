@@ -155517,3 +155517,20 @@ hunks, `services/orchestrator.rs:947` (P4.121's file) and
   `[Chats v1]` ERROR; a healthy pool with no chat → the WARN and no
   `[Chats v1]` line). Other readers of the spec: only this family's builder
   and case.
+- **Unit 6 (items 4 + 5), harness 0.0.1030 (tests only).** Item 4:
+  `tool_build_equivalence` calls `tool_build::apply_autonomous_destructive_
+  filter(case, policy, allowedAtRoom, &mut tools)` — the orchestrator's own
+  fn — and captures its INFO: the `p4d234_destructive_autonomous_mail_only`
+  row asserts ONE line ending `chatId=<case> policy=<p> allowedAtRoom=false
+  removed=1`; every autonomous row whose room allows destructive tools is the
+  silence leg (both counted, asserted to have run). The v4 side still
+  replicates the inline orchestrator block over v4's REAL
+  `DESTRUCTIVE_TOOL_NAMES` (the block is not exported). Item 5:
+  `tool_dispatch.json` grows ONE op (additive; indent-2 re-dump verified
+  byte-identical first) — `list_email` through `executeToolCallWithContext`.
+  Measured: the tsx oracle never initializes `toolRegistry`, so
+  `getAllPlugins()` is empty, the plugin branch is skipped, and v4 answers
+  its no-plugin `Unknown tool: list_email`; v5's `LoudFallbackRunner` agrees
+  byte-for-byte (so `list_email` is correctly NOT in v5's `BUILT_IN_TOOLS`).
+  Regenerated from the pin: 14 ops, the row present in the fresh NDJSON.
+  `executor.rs` untouched (P4.120's). Only this family reads the spec.

@@ -205,6 +205,14 @@
       "args": {
         "uuid": "99999999-9999-4999-8999-999999999999"
       }
+    },
+    {
+      "$comment": "P4.124 (P4.D234 NIT) \u2014 the retired `list_email` name (v4 `39bc98ffc` renamed it `list_mail`) reaches v4's unknown-tool return: the tsx oracle's tool registry is empty, so the plugin branch is skipped and v4 answers `Unknown tool: list_email`; v5's `LoudFallbackRunner` must answer the same bytes (not its 'recognized but not yet available' arm).",
+      "tool": "list_email",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "callingParticipantId": "55555555-5555-4555-8555-555555555555",
+      "args": {}
     }
   ]
 }

@@ -24,9 +24,14 @@
 //!
 //! This proves dispatch + handler + harness compose end-to-end. The unknown-tool
 //! LOUD fallback (`Unknown tool: <name>`) is unit-tested in
-//! `tools::executor::tests` instead of here: v4's genuine unknown path routes
-//! through the (unported) plugin registry, whose presence in the tsx env would
-//! change the failure shape — the documented plugin-routing deferral.
+//! `tools::executor::tests`, and since P4.124 ONE row here drives it against v4:
+//! the retired `list_email` name (P4.D234's rename). v4's genuine unknown path
+//! first asks the (unported) plugin registry, but the tsx oracle never
+//! initializes it, so `toolRegistry.getAllPlugins()` is empty, the plugin branch
+//! is skipped, and v4 answers its no-plugin `Unknown tool: list_email` — the
+//! bytes v5's `LoudFallbackRunner` must give (not its "recognized but not yet
+//! available" arm). A populated registry would change v4's shape — the
+//! documented plugin-routing deferral stands for every other unknown name.
 //!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
