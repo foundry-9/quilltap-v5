@@ -547,6 +547,85 @@
           }
         ]
       ]
+    },
+    {
+      "name": "c10_provider_named_history",
+      "chatId": "31000000-0000-4000-8000-000000000010",
+      "characterId": "21000000-0000-4000-8000-000000000010",
+      "characterName": "Petra",
+      "provider": "DEEPSEEK",
+      "model": "ds",
+      "temperature": 0.5,
+      "strategy": "provider",
+      "initialFullResponse": "Thinking. <tool_use>{\"name\":\"state\",\"input\":{\"k\":11}}</tool_use>",
+      "formattedMessages": [
+        {
+          "role": "user",
+          "content": "[Bob] hi c10",
+          "name": "Bob"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello again, Bob.",
+          "name": "Petra"
+        },
+        {
+          "role": "user",
+          "content": "[Bob] state please c10",
+          "name": "Bob"
+        }
+      ],
+      "cannedTools": [
+        {
+          "name": "state",
+          "arguments": {
+            "k": 11
+          },
+          "success": true,
+          "result": {
+            "v": "a"
+          }
+        },
+        {
+          "name": "state",
+          "arguments": {
+            "k": 12
+          },
+          "success": true,
+          "result": {
+            "v": "b"
+          }
+        }
+      ],
+      "streams": [
+        [
+          {
+            "content": "More. <tool_use>{\"name\":\"state\",\"input\":{\"k\":12}}</tool_use>"
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "marker": "m1"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Final answer."
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "marker": "m2"
+            },
+            "usage": {
+              "promptTokens": 9,
+              "completionTokens": 3,
+              "totalTokens": 12
+            }
+          }
+        ]
+      ]
     }
   ]
 }

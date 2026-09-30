@@ -213,15 +213,48 @@ fn with_content_and_attachments(
         StreamMessage::User {
             content,
             cache_control,
+            name,
             ..
         } => StreamMessage::User {
             content: format!("{prefix}{content}"),
             cache_control: cache_control.clone(),
             attachments: keep,
+            // Carried, never reset: the participant name is part of the
+            // request-prefix hash (P4.128).
+            name: name.clone(),
         },
         // No other variant can carry attachments (`StreamMessage::attachments`
         // answers `&[]`), so the loop above never reaches here with a non-empty
         // list — but the prefix still belongs on the content if it ever did.
         other => other.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// P4.128: the rebuild CARRIES the participant name (it rides the
+    /// request-prefix hash — v4 `cache-prefix-hashes.ts:80`), and every other
+    /// field it does not own.
+    #[test]
+    fn the_rebuild_carries_the_participant_name() {
+        let cache = serde_json::json!({ "type": "ephemeral" });
+        let original = StreamMessage::User {
+            content: "look".into(),
+            cache_control: Some(cache.clone()),
+            attachments: vec![serde_json::json!({ "id": "a" })],
+            name: Some("Bob".into()),
+        };
+        let rebuilt = with_content_and_attachments(&original, "[desc] ", Vec::new());
+        assert_eq!(
+            rebuilt,
+            StreamMessage::User {
+                content: "[desc] look".into(),
+                cache_control: Some(cache),
+                attachments: Vec::new(),
+                name: Some("Bob".into()),
+            }
+        );
     }
 }

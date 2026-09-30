@@ -766,11 +766,15 @@ where
                 reasoning_content: None,
                 thought_signature: m.thought_signature.clone(),
                 cache_control: None,
+                // v4 passes `name` to the plugin here (with no log, so no
+                // hash) — carried for uniformity; no oracle can see it.
+                name: m.name.clone(),
             },
             _ => StreamMessage::User {
                 content: m.content.clone(),
                 cache_control: None,
                 attachments: m.attachments.clone().unwrap_or_default(),
+                name: m.name.clone(),
             },
         })
         .collect();

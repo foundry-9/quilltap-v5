@@ -506,6 +506,87 @@
         ]
       ],
       "dumpChats": true
+    },
+    {
+      "name": "named-history-callid",
+      "chatId": "30000000-0000-4000-8000-000000000030",
+      "characterId": "20000000-0000-4000-8000-000000000002",
+      "characterName": "Ada",
+      "provider": "ANTHROPIC",
+      "model": "claude",
+      "temperature": 0.7,
+      "agentMode": {
+        "enabled": false,
+        "maxTurns": 10
+      },
+      "initialFullResponse": "Let me count. ",
+      "initialRawResponse": {
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "call-n1",
+            "name": "read_conversation",
+            "input": {
+              "limit": 5
+            }
+          }
+        ],
+        "stop_reason": "end_turn"
+      },
+      "formattedMessages": [
+        {
+          "role": "system",
+          "content": "You are Ada."
+        },
+        {
+          "role": "user",
+          "content": "[Bob] Evening, Ada.",
+          "name": "Bob"
+        },
+        {
+          "role": "assistant",
+          "content": "Good evening, Bob.",
+          "name": "Ada"
+        },
+        {
+          "role": "user",
+          "content": "[Bob] How many messages now?",
+          "name": "Bob"
+        }
+      ],
+      "cannedTools": [
+        {
+          "name": "read_conversation",
+          "arguments": {
+            "limit": 5
+          },
+          "callId": "call-n1",
+          "success": true,
+          "result": {
+            "formattedText": "5 messages"
+          }
+        }
+      ],
+      "streams": [
+        [
+          {
+            "content": "Five, by my count."
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 2,
+              "totalTokens": 12
+            }
+          }
+        ]
+      ],
+      "dumpChats": false
     }
   ]
 }

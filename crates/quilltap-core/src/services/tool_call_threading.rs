@@ -187,6 +187,7 @@ pub fn to_stream_message(m: &ThreadedMessage) -> StreamMessage {
             reasoning_content: m.reasoning_content.clone(),
             thought_signature: m.thought_signature.clone(),
             cache_control: m.cache_control.clone(),
+            name: m.name.clone(),
         },
         "tool" => match m.tool_call_id.as_deref().filter(|id| !id.is_empty()) {
             Some(call_id) => StreamMessage::Tool {
@@ -205,6 +206,7 @@ pub fn to_stream_message(m: &ThreadedMessage) -> StreamMessage {
             content: m.content.clone(),
             cache_control: m.cache_control.clone(),
             attachments: m.attachments.clone().unwrap_or_default(),
+            name: m.name.clone(),
         },
     }
 }

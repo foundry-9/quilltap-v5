@@ -102,6 +102,13 @@ pub enum StreamMessage {
         /// message the attachment stamper (`message_context`) didn't touch —
         /// v4 stamps the merged slate onto the LAST user message only.
         attachments: Vec<serde_json::Value>,
+        /// v4 `msg.name` — the participant's character name that
+        /// `formatMessagesForProvider` keeps on a multi-character turn for the
+        /// six name-supporting providers (`message-formatter.ts:179-210`). v4
+        /// HASHES it into `historyTailHash` (`cache-prefix-hashes.ts:80`) but
+        /// no v4 plugin sends it and the logged `request` omits it, so it is a
+        /// hash-only slot: every request builder ignores it (P4.128, pinned).
+        name: Option<String>,
     },
     Assistant {
         content: String,
@@ -117,6 +124,8 @@ pub enum StreamMessage {
         thought_signature: Option<String>,
         /// v4 `msg.cacheControl` — see [`StreamMessage::User`].
         cache_control: Option<serde_json::Value>,
+        /// v4 `msg.name` — hash-only; see [`StreamMessage::User`].
+        name: Option<String>,
     },
     /// A native tool result, paired to its call by `call_id` (required by
     /// construction — v4's providers either drop or mis-send an id-less tool
@@ -143,6 +152,7 @@ impl StreamMessage {
             content: content.into(),
             cache_control: None,
             attachments: Vec::new(),
+            name: None,
         }
     }
 
@@ -163,6 +173,7 @@ impl StreamMessage {
             reasoning_content: None,
             thought_signature: None,
             cache_control: None,
+            name: None,
         }
     }
 
@@ -185,6 +196,20 @@ impl StreamMessage {
             content: format!("[Tool Result: {name}]\n{content}"),
             cache_control: None,
             attachments: Vec::new(),
+            name: None,
+        }
+    }
+
+    /// The participant name riding a user/assistant turn (v4 `msg.name`;
+    /// `None` on every other role — the `Tool` variant's `name` is the
+    /// FUNCTION name, a different field). Read by the request-prefix hash
+    /// projection only; no request builder reads it.
+    pub fn participant_name(&self) -> Option<&str> {
+        match self {
+            StreamMessage::User { name, .. } | StreamMessage::Assistant { name, .. } => {
+                name.as_deref()
+            }
+            _ => None,
         }
     }
 

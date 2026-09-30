@@ -106,6 +106,8 @@ fn message_from_json(m: &Value) -> StreamMessage {
             reasoning_content: opt_str(m, "reasoningContent"),
             thought_signature: opt_str(m, "thoughtSignature"),
             cache_control: m.get("cacheControl").cloned(),
+            // v4 `msg.name` rides the corpus row; the builders must ignore it (P4.128).
+            name: m.get("name").and_then(Value::as_str).map(str::to_string),
         },
         // An id-less tool message is unrepresentable in v5 (the carrying enum
         // requires the call id); a corpus vector carrying one must FAIL the
@@ -119,6 +121,8 @@ fn message_from_json(m: &Value) -> StreamMessage {
         _ => StreamMessage::User {
             content,
             cache_control: m.get("cacheControl").cloned(),
+            // v4 `msg.name` rides the corpus row; the builders must ignore it (P4.128).
+            name: m.get("name").and_then(Value::as_str).map(str::to_string),
             attachments: m
                 .get("attachments")
                 .and_then(Value::as_array)

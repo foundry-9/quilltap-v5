@@ -1052,6 +1052,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     _ => StreamMessage::User {
                         content: m.content.clone(),
                         cache_control: None,
+                        name: None,
                         attachments: attachments.to_vec(),
                     },
                 })

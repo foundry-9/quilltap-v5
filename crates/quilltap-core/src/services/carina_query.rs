@@ -696,6 +696,10 @@ where
             reasoning_content: None,
             thought_signature: None,
             cache_control: None,
+            // === P4.128 ===
+            // v4's Carina turn carries no participant name.
+            name: None,
+            // === end P4.128 ===
         });
         for tm in &results.tool_messages {
             match tm.call_id.as_deref().filter(|id| !id.is_empty()) {

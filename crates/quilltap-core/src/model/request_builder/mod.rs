@@ -362,3 +362,112 @@ impl Body {
 pub(crate) fn num(n: f64) -> Value {
     crate::db::js_number_to_json(n)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A multi-character slate as the Salon builds it — every user/assistant
+    /// turn named (or not), the rest identical.
+    fn slate(named: bool) -> Vec<StreamMessage> {
+        let n = |s: &str| named.then(|| s.to_string());
+        vec![
+            StreamMessage::system("You are Ada."),
+            StreamMessage::User {
+                content: "[Bob] Evening.".into(),
+                cache_control: None,
+                attachments: Vec::new(),
+                name: n("Bob"),
+            },
+            StreamMessage::Assistant {
+                content: "Good evening.".into(),
+                tool_calls: Vec::new(),
+                reasoning_content: None,
+                thought_signature: None,
+                cache_control: None,
+                name: n("Ada"),
+            },
+            StreamMessage::Assistant {
+                content: "Let me look.".into(),
+                tool_calls: vec![ToolCallPayload {
+                    id: "call-1".into(),
+                    kind: "function",
+                    function: ToolCallFunction {
+                        name: "read_conversation".into(),
+                        arguments: "{\"limit\":5}".into(),
+                    },
+                }],
+                reasoning_content: None,
+                thought_signature: None,
+                cache_control: None,
+                name: n("Ada"),
+            },
+            StreamMessage::Tool {
+                call_id: "call-1".into(),
+                name: Some("read_conversation".into()),
+                content: "5 messages".into(),
+            },
+            StreamMessage::User {
+                content: "[Bob] And now?".into(),
+                cache_control: None,
+                attachments: Vec::new(),
+                name: n("Bob"),
+            },
+        ]
+    }
+
+    /// P4.128: the participant `name` is HASH-only. v4's funnel hands it to
+    /// `provider.streamMessage` but EVERY plugin's message mapper drops it and
+    /// the logged `request` omits it (openai Responses `provider.ts:108-113`,
+    /// grok `:118-125`, deepseek `:172`, nanogpt `:205`, z-ai `:198-202`, the
+    /// OpenAI-compatible base `plugin-utils dist providers/index.js:360-387`;
+    /// anthropic / google / ollama / openrouter never read it). So all four
+    /// builder families must serialize a named slate byte-identically to an
+    /// unnamed one, on both the streaming and the `sendMessage` paths.
+    #[test]
+    fn a_participant_name_never_reaches_any_request_body() {
+        for (family, provider) in [
+            ("responses_api", "OPENAI"),
+            ("responses_api", "GROK"),
+            ("anthropic", "ANTHROPIC"),
+            ("google", "GOOGLE"),
+            ("chat_completions", "OLLAMA"),
+            ("chat_completions", "OPENROUTER"),
+            ("chat_completions", "OPENAI_COMPATIBLE"),
+            ("chat_completions", "DEEPSEEK"),
+            ("chat_completions", "NANOGPT"),
+            ("chat_completions", "Z_AI"),
+        ] {
+            for stream in [true, false] {
+                // The body bytes, or the refusal text where v4's SDK refuses
+                // client-side (OPENROUTER's non-streaming tool role) — named and
+                // unnamed must agree either way.
+                let build = |named: bool| {
+                    build_request(
+                        provider,
+                        &RequestInput {
+                            model: "m".into(),
+                            messages: slate(named),
+                            temperature: Some(0.7),
+                            stream,
+                            ..Default::default()
+                        },
+                    )
+                    .map(|b| b.body_string())
+                    .map_err(|e| e.to_string())
+                };
+                let (named, plain) = (build(true), build(false));
+                assert_eq!(
+                    named, plain,
+                    "{family} builder for {provider} (stream={stream}) emitted the participant name"
+                );
+                if let Ok(body) = &named {
+                    assert!(
+                        !body.contains("\"Bob\""),
+                        "{family}/{provider}: a name byte reached the body"
+                    );
+                }
+            }
+        }
+    }
+}

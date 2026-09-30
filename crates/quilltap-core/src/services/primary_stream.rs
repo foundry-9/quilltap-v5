@@ -932,15 +932,16 @@ pub struct RunPrimaryStreamOptions<'a> {
 /// did not supply a `user_id` (v4 gates the log on `if (userId)`).
 ///
 /// `pub(crate)` + [`log_chat_message_call`] so the provider-failover retry legs
-/// reuse the SAME row construction (v4 logs per `streamMessage` call; the
-/// `restreamInto` call site passes no `characterId` → `None` here, W4.11b).
+/// reuse the SAME row construction (v4 logs per `streamMessage` call, W4.11b).
 pub(crate) struct StreamLogCtx<'a> {
     pub(crate) db: &'a Db,
     pub(crate) user_id: &'a str,
     pub(crate) chat_id: &'a str,
     pub(crate) message_id: &'a str,
-    /// v4's primary/tool-retry stream passes `characterId`; `restreamInto`
-    /// (failover) passes none → the log row's `characterId` is NULL there.
+    /// v4's `characterId` for the row. The primary stream, the tool-unsupported
+    /// retry AND the failover `restreamInto` all pass it (v4
+    /// `provider-failover.service.ts:675` passes `opts.character.id`); `None`
+    /// only where v4's caller has no character.
     pub(crate) character_id: Option<&'a str>,
     /// The explicit run-id context replacing v4's ambient `AsyncLocalStorage`
     /// (U4.4, spec decision #4): the autonomous turn wraps its whole generation
@@ -1042,17 +1043,16 @@ pub(crate) async fn log_stream_message_call(
         .filter(|a| !a.is_empty())
         .cloned();
 
-    // v4 hashes the SAME `llmMessages` it sends, `name` / `toolCallId` /
-    // `toolCalls` included (`cache-prefix-hashes.ts:80-81`). This stayed `None`
-    // everywhere until the tool-loop legs logged (dogfood #129): their tail
-    // holds the assistant's `toolCalls` turn and the `tool` results, and the
-    // history-tail hash read `undefined` for all three. ⚠ `name` is still
-    // `None` on the Salon primary's OWN history: v4's `formatMessagesForProvider`
-    // keeps `name` on multi-character turns for name-supporting providers
-    // (`message-formatter.ts:179-210`) and the funnel hashes AND sends it, where
-    // v5's `StreamMessage` has no `name` slot — a pre-existing wire divergence
-    // in `model/**`, recorded at the `97b25fc53` follow-ups unification as a
-    // follow-up order, not fixed here.
+    // v4 hashes the SAME `llmMessages` it hands the plugin, `name` / `toolCallId`
+    // / `toolCalls` included (`cache-prefix-hashes.ts:80-81`). These stayed
+    // `None` everywhere until the tool-loop legs logged (dogfood #129): their
+    // tail holds the assistant's `toolCalls` turn and the `tool` results. The
+    // participant `name` on a user/assistant turn followed at P4.128:
+    // `formatMessagesForProvider` keeps it on a multi-character turn for the six
+    // name-supporting providers (`message-formatter.ts:179-210`) and the funnel
+    // hashes it — though NO v4 plugin sends it and the logged `request` omits it,
+    // so it reaches the hash and nothing else. (A `Tool` message's `name` is the
+    // FUNCTION name, v4's same `msg.name` key.)
     let prefix_messages: Vec<PrefixMessage> = params
         .messages
         .iter()
@@ -1063,10 +1063,16 @@ pub(crate) async fn log_stream_message_call(
                     Some(Value::String(call_id.clone())),
                     None,
                 ),
-                StreamMessage::Assistant { tool_calls, .. } if !tool_calls.is_empty() => {
-                    (None, None, serde_json::to_value(tool_calls).ok())
-                }
-                _ => (None, None, None),
+                StreamMessage::Assistant { tool_calls, .. } if !tool_calls.is_empty() => (
+                    m.participant_name().map(|n| Value::String(n.to_string())),
+                    None,
+                    serde_json::to_value(tool_calls).ok(),
+                ),
+                _ => (
+                    m.participant_name().map(|n| Value::String(n.to_string())),
+                    None,
+                    None,
+                ),
             };
             PrefixMessage {
                 role: m.role_str().to_string(),
@@ -2031,6 +2037,7 @@ mod tests {
             StreamMessage::User {
                 content: "look".to_string(),
                 cache_control: None,
+                name: None,
                 attachments: vec![bag.clone()],
             },
         ];

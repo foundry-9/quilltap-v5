@@ -721,6 +721,29 @@ function casesFor(provider) {
     add('cache-key', { ...base, model: 'gemini-2.5-flash', cacheKey: 'char-1234' });
     add('cache-key-absent', { ...base, model: 'gemini-2.5-flash' });
   }
+  // P4.128 — the participant-name NEUTRALITY pin, on every provider. v4's
+  // `formatMessagesForProvider` keeps `name` on a multi-character turn for the
+  // six name-supporting providers and the funnel hands it to `streamMessage`
+  // (and hashes it), but NO plugin's message mapper sends it — so this row's
+  // body must carry no name byte, and v5's builders (which now SEE a `name` on
+  // `StreamMessage::{User,Assistant}`) must match it. `plain`'s params, named
+  // messages.
+  // OpenRouter has no `plain` row: every one of its rows carries tools, which
+  // keeps v4 on the raw-fetch path v5 models (a tool-less request takes the
+  // `@openrouter/sdk` Responses path — a separately ruled divergence).
+  const plainCase = cases.find((c) => c.name === 'plain');
+  const namedParams = plainCase ? plainCase.params : { ...base, model: 'openai/gpt-4o', tools: [TOOL] };
+  {
+    add('participant-names', {
+      ...namedParams,
+      messages: [
+        SYS,
+        { role: 'user', content: '[Bob] Evening, all.', name: 'Bob' },
+        { role: 'assistant', content: 'Good evening, Bob.', name: 'Ada' },
+        { role: 'user', content: '[Bob] What now?', name: 'Bob' },
+      ],
+    });
+  }
   return cases;
 }
 

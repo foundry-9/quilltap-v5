@@ -2748,6 +2748,10 @@ where
     // and the last user message's `attachments` ride with it (v4
     // `streaming.service.ts` maps `attachments: m.attachments`; P4.21 — this
     // conversion reading `content` alone was dogfood #37's drop site 1).
+    // === P4.128 ===
+    // The participant `name` rides too (v4 `streaming.service.ts:400` passes
+    // `name: m.name`; the funnel hashes it into `historyTailHash` though no
+    // plugin sends it — P4.128).
     let stream_messages: Vec<StreamMessage> = formatted_messages
         .iter()
         .map(|m| match m.role.as_str() {
@@ -2758,14 +2762,17 @@ where
                 reasoning_content: None,
                 thought_signature: m.thought_signature.clone(),
                 cache_control: None,
+                name: m.name.clone(),
             },
             _ => StreamMessage::User {
                 content: m.content.clone(),
                 cache_control: None,
                 attachments: m.attachments.clone().unwrap_or_default(),
+                name: m.name.clone(),
             },
         })
         .collect();
+    // === end P4.128 ===
     // v4 `orchestrator.service.ts:1034`:
     //   const modelParams = profileParams(streamingState.effectiveProfile) ?? {}
     // and `streaming.service.ts:395-400` reads the request's temperature /

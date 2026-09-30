@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — feat(core): the participant-name slot on StreamMessage, hashed and never sent (P4.128 unit A)
+
+_Versions: core 0.0.1116, harness 0.0.1035._
+
+Adds a `name` slot to `StreamMessage::User` and `::Assistant` and carries the
+participant name through the primary-stream conversion, the threaded-message
+conversion, the attachment adapter's rebuild and the swipe. The request-prefix
+hash now reads it, matching v4's `historyTailHash` on multi-character turns
+for the six name-supporting providers. No request builder reads the slot: v4
+hashes the name but no plugin sends it. Pinned by a unit test across all ten
+providers in both modes, 18 new `participant-names` request-envelope rows
+recorded from v4's real plugins (the 367 existing rows re-recorded
+byte-identical), and a named history case in both tool-loop tier-3 families
+(red before the hash fix, green after). Fixes a stale `StreamLogCtx` comment
+claiming the failover re-stream passes no `characterId`.
+
 #### 2026-09-30 — test(core): the route-trail round trip follows the strict read; P4.130 lane close
 
 _Versions: core 0.0.1120._

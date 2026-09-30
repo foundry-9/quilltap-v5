@@ -756,6 +756,7 @@ fn file_attachment_matches_oracle() {
                         Some(CompletionRole::User) => StreamMessage::User {
                             content: m.content.clone(),
                             cache_control: None,
+                            name: None,
                             attachments,
                         },
                         Some(CompletionRole::Tool) => panic!(
@@ -832,6 +833,7 @@ fn file_attachment_matches_oracle() {
             let messages = vec![StreamMessage::User {
                 content: "x".to_string(),
                 cache_control: None,
+                name: None,
                 attachments: c.attachments.iter().map(&build_attachment).collect(),
             }];
             let got = json!(collect_attachment_mime_types(&messages));

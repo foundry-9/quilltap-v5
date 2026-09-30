@@ -91,7 +91,7 @@ interface CaseSpec {
   strategy: 'simple-json' | 'text-block' | 'provider';
   stopSequences?: string[];
   initialFullResponse: string;
-  formattedMessages: Array<{ role: string; content: string }>;
+  formattedMessages: Array<{ role: string; content: string; name?: string }>;
   cannedTools: CannedTool[];
   streams: ChunkSpec[][];
   expectThrow?: boolean;

@@ -156482,6 +156482,55 @@ proofs, dedup/summaries, the Brahma deep query, #101, the compression
 re-measure, the conceal-marker arm), an autonomous room's budget charging the
 per-leg rows, and a real flat-body OpenAI image refusal.
 
+## P4.128 unit A — the participant-`name` hash slot (2026-09-30, lane `claude/p4-128-model-name-hash-slot-19feaa`)
+
+Order: `work-orders/p4.128-model-name-hash-slot-prestream-catch-line-sdk-frame-semantics.md`
+Tier 1 items 1–3 + Tier 2 item 9's request-envelope half. Baseline `97b25fc53`;
+§R.2 probe PASSED at lane start (HEAD `97b25fc53`, `bugfix` unmoved, tree
+clean); every regen from the lane pin `/tmp/qt-v4-pin-p4128-97b25fc53`
+(three symlink classes; `node_modules/openai` 7.23.0 verified).
+
+- **Survey A1 re-verified at the pin:** `cache-prefix-hashes.ts:73-82` hashes
+  `name`; `streaming.service.ts` (now `lib/services/chat-message/`, not
+  `lib/services/` as the order's path reads) passes `name: m.name` at `:400`
+  and logs role/content/attachments only at `:491-500`;
+  `provider-failover.service.ts:675` passes `characterId: opts.character.id`
+  (A5's stale-comment claim confirmed).
+- **Slot:** `name: Option<String>` on `User`/`Assistant` + a
+  `participant_name()` accessor; helpers default `None`. Carried at
+  `orchestrator.rs` (marked `// === P4.128 ===` block), `tool_call_threading::
+  to_stream_message` (both roles), `message_attachment_adapter::
+  with_content_and_attachments` (CARRIED, unit-pinned), `regenerate_swipe.rs`
+  (uniformity), `carina_query.rs` (`name: None`, marked). The hash projection
+  (`primary_stream.rs`) reads it for every user/assistant turn; the comment
+  rewritten; the `StreamLogCtx` doc's false "`restreamInto` passes no
+  `characterId`" removed (`grep 'passes no .characterId'` → no hits).
+- **Red-first:** a named case appended to both loop specs
+  (`native-tool-loop-tier3.json` `named-history-callid` — reusing chat
+  `…030`, distinct content so no canned-key collision; `text-tool-loop-
+  tier3.json` `c10_provider_named_history`, DEEPSEEK). Both families'
+  `WireMsg` gained `name` (serde default) fed into `ThreadedMessage.name`.
+  With the slot carried but the projection unchanged: native RED on exactly
+  ONE `llm_logs` row, column `requestHashes` only (`historyTailHash`
+  `689fbaa9…` vs v4 `8ffb7945…`); text RED (rows diverge, 17 vs 17). After the
+  projection fix: both green. Pre-existing cases unchanged (the families diff
+  every row).
+- **Neutrality:** `request-envelopes.recorded.ndjson` regenerated at the pin
+  with a `participant-names` case per provider (`plain`'s params; OpenRouter,
+  which has no `plain`, over `openai/gpt-4o` WITH tools — a tool-less
+  OpenRouter request takes v4's `@openrouter/sdk` path, the ruled
+  divergence; the first attempt without tools diverged on exactly that).
+  367 → 385 rows; `grep -v participant-names | cmp` against the pre-regen file
+  → EQUAL. The family asserts 18 named rows, three named inputs each, and no
+  `"name":"Bob"`/`"Ada"` in v4's body. A core unit test builds a named and an
+  unnamed slate (incl. a named tool-call assistant) through all ten providers
+  in both modes and requires identical bytes (or identical refusals —
+  OPENROUTER's non-streaming tool role).
+- Regen commands AS RUN: `/tmp/p4128/regen-loops.sh` (the two loop recipes'
+  commands with lane-private `/tmp/p4128/` outputs, cwd the pin);
+  `V4=/tmp/qt-v4-pin-p4128-97b25fc53 V5=$PWD bash harness/oracle/providers/
+  regenerate-request-envelopes.sh` (Node 24 on PATH).
+
 ## P4.130 — the Zod smalls + the read-side trail validation (lane record, 2026-09-30)
 
 Lane branch `claude/zod-work-orders-validation-cfc445`, cut from `main`

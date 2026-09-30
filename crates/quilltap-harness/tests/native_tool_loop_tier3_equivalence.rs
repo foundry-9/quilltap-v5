@@ -126,6 +126,10 @@ struct AgentModeSpec {
 struct WireMsg {
     role: String,
     content: String,
+    /// v4 `msg.name` — the participant name `formatMessagesForProvider` keeps
+    /// on a multi-character turn; hashed into `historyTailHash` (P4.128).
+    #[serde(default)]
+    name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -428,7 +432,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
             .map(|m| ThreadedMessage {
                 role: m.role.clone(),
                 content: m.content.clone(),
-                name: None,
+                name: m.name.clone(),
                 thought_signature: None,
                 reasoning_content: None,
                 tool_call_id: None,

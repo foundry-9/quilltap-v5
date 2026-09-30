@@ -854,6 +854,7 @@ mod disable_tools_log_tests {
             reasoning_content: None,
             thought_signature: thought_signature.map(str::to_string),
             cache_control: None,
+            name: None,
         }
     }
 

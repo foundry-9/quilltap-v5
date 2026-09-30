@@ -142,6 +142,8 @@ fn message_from_json(m: &Value) -> StreamMessage {
             reasoning_content: opt_str(m, "reasoningContent"),
             thought_signature: opt_str(m, "thoughtSignature"),
             cache_control: m.get("cacheControl").cloned(),
+            // v4 `msg.name` rides the corpus row; the builders must ignore it (P4.128).
+            name: m.get("name").and_then(Value::as_str).map(str::to_string),
         },
         // An id-less tool message is unrepresentable in v5 (the carrying enum
         // requires the call id); a corpus vector carrying one must FAIL the
@@ -155,6 +157,8 @@ fn message_from_json(m: &Value) -> StreamMessage {
         _ => StreamMessage::User {
             content,
             cache_control: m.get("cacheControl").cloned(),
+            // v4 `msg.name` rides the corpus row; the builders must ignore it (P4.128).
+            name: m.get("name").and_then(Value::as_str).map(str::to_string),
             attachments: m
                 .get("attachments")
                 .and_then(Value::as_array)
@@ -327,6 +331,8 @@ const CACHE_KEY_SPELLINGS: [&str; 3] = ["prompt_cache_key", "user", "user_id"];
 fn request_builder_matches_v4() {
     let text = std::fs::read_to_string(corpus_path()).expect("committed request-envelope NDJSON");
     let mut rows = 0usize;
+    // P4.128: the participant-name neutrality rows (one per provider per mode).
+    let mut named_rows = 0usize;
     let mut refusals = 0usize;
     let mut pairs = std::collections::HashSet::new();
     // P4.21 attachment-coverage shape (the pre-P4.21 corpus had ZERO attachment
@@ -654,6 +660,27 @@ fn request_builder_matches_v4() {
             got_body, want_body,
             "\n{provider}/{case}[{mode}] BODY diverged\n  got:  {got_body}\n  want: {want_body}\n"
         );
+        // P4.128: `name` is hash-only. The row's INPUT names every user and
+        // assistant turn (so v5's builder genuinely sees the slot), and v4's
+        // body — which the line above just matched byte for byte — carries no
+        // `name` key on any message.
+        if case == "participant-names" {
+            let named_inputs = row["input"]["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|m| m.get("name").is_some())
+                .count();
+            assert_eq!(
+                named_inputs, 3,
+                "{provider}/{case}[{mode}]: the named input moved"
+            );
+            assert!(
+                !want_body.contains("\"name\":\"Bob\"") && !want_body.contains("\"name\":\"Ada\""),
+                "{provider}/{case}[{mode}]: v4 SENT the participant name — the P4.128 premise moved"
+            );
+            named_rows += 1;
+        }
 
         // Method + url.
         assert_eq!(
@@ -738,10 +765,15 @@ fn request_builder_matches_v4() {
     }
 
     // The floor moved 25 -> 360 with P4.97. The old number said only "some rows
-    // exist"; the corpus is 367 rows, and the point of the cache-key tables
+    // exist"; the corpus is 385 rows (367 + P4.128's 18 `participant-names`
+    // rows, one per provider per mode), and the point of the cache-key tables
     // below is that a vanished vector must FAIL rather than shrink a count
     // nobody reads. A deliberate future removal moves this line with it.
     assert!(rows >= 360, "expected a substantial corpus, got {rows}");
+    assert_eq!(
+        named_rows, 18,
+        "P4.128: the `participant-names` neutrality rows (9 providers × 2 modes) must all run"
+    );
     assert_eq!(
         refusals,
         EXPECTED_REFUSALS.len(),

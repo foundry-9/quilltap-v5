@@ -1146,6 +1146,7 @@ mod tests {
         prms.messages = vec![crate::model::stream::StreamMessage::User {
             content: "What is in this image?".to_string(),
             cache_control: None,
+            name: None,
             attachments: vec![serde_json::json!({
                 "id": "att-1",
                 "filename": "photo.png",

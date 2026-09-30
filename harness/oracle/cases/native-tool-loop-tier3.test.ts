@@ -95,7 +95,7 @@ interface CaseSpec {
   initialFullResponse: string;
   // Real anthropic rawResponse: `content[]` tool_use blocks + `stop_reason`.
   initialRawResponse: unknown;
-  formattedMessages: Array<{ role: string; content: string }>;
+  formattedMessages: Array<{ role: string; content: string; name?: string }>;
   cannedTools: CannedTool[];
   streams: ChunkSpec[][];
   dumpChats: boolean;
