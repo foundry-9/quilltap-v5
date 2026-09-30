@@ -6928,6 +6928,144 @@ only once P4.D235 lands, and the re-embed spend needs P4.D235's
 measurement recipe first).
 
 
+## The `97b25fc53` smalls round (P4.127 ∥ P4.128 ∥ P4.129 ∥ P4.130 ∥ P4.131 ∥ P4.132) — ORDERED 2026-09-30
+
+**Baseline `97b25fc53`; v4 AT the baseline at both planning probes (HEAD
+`97b25fc53`, tree CLEAN on `main`, `bugfix` `1a2b2164c` and `release`
+`8fbf2afe0` unmoved, `origin/main` agreeing after a fetch); the ledger's §3
+is EMPTY — this round absorbs NO drift row and the baseline does not move
+at its unification.** The round is the follow-ups smalls round the
+`97b25fc53` follow-ups unification named (that section's NEXT item 2) plus
+the OPEN items of the P4.119–P4.126 and P4.D228 status headers, re-measured
+by six fresh surveys (2026-09-30, committed inside the orders' §Survey
+sections). **The surveys overturned SEVEN recorded descriptions before any
+lane started:** (a) the multi-character `name` is a HASH-only divergence —
+v4 hashes it but NO plugin sends it and the logged `request` omits it
+(P4.128); (b) the orchestrator oracle is ALREADY on the W4.11b shape bar
+ONE service-level mock — the enclave-step oracle is the model, and the new
+comparand's real problems are the live render inside `request`,
+`messageId` minting and the missing drain (P4.129); (c) two of P4.126's
+three mail ERROR lines are v4's UNREACHABLE outer lines (v4's `queryJoined`
+catches first), and the `send_mail` divergence has TWO v4 pre-catch lines
+and a different v5 throw site (P4.131); (d) P4.124 item 12 shipped a REAL
+defect — `zod_group_row_ok` counts UTF-16 units where zod 4.6.5 counts code
+points, so v4 accepts a row v5 refuses (P4.130); (e) P4.D228's saved-trail
+NIT has a false premise — v4's `getMessages` validates every `routeTrail`
+element and the route 404s (P4.130, fixed at the READ); (f) P4.125's
+"sidebar memory-badge variant" is not a badge — it is v4's Edit Content
+pair (queue-only re-extract + Delete Memories (n)) with different strings,
+deferred in v5 for reasons now stale since all three verbs exist (P4.132);
+(g) the zone NAME is already threaded almost everywhere (`server_tz`/`tz`),
+so only three carriers lack one (P4.127). Six single lanes, disjoint
+ownership, two pre-declared shared files split by named hunk
+(`services/orchestrator.rs`, `services/carina_query.rs` — P4.127 ∥ P4.128).
+
+- **P4.127 — the display zone threaded, the 13 ambient wrappers retired**
+  (P4.119 OPEN): `work-orders/p4.127-display-zone-threaded-ambient-
+  wrappers-retired.md` — RULED at planning: the zone NAME already threaded
+  resolves through ONE `host_zone::display_zone_named` helper at the Salon
+  turn / `build_context` / the greeting (a POSIX-`TZ` host displays UTC
+  there — a recorded divergence for the human), a `TimeZone` VALUE where no
+  name exists (the executor's `with_display_zone` builder defaulting to UTC,
+  `CoreConfig.display_zone`, the render handler), Carina through a default
+  `ToolRunner::display_zone()`; no literal in `orchestrator_tier3_
+  equivalence.rs` moves; the census collapses to `host_zone.rs`; the two
+  families pass with NO `TZ` set; the gate runs twice. Rust core + host +
+  harness; Sonnet-class with sub-agents per carrier.
+- **P4.128 — the model-layer pair** (P4.121 + P4.122 OPEN): `work-orders/
+  p4.128-model-name-hash-slot-prestream-catch-line-sdk-frame-semantics.md`
+  — `StreamMessage::{User,Assistant}` gain `name` (23 literal sites, two
+  marked hunks in P4.127's files), the hash projection reads it, the
+  builders emit NOTHING new (pinned three ways), red-first through a named
+  row in both tool-loop tier-3 families; the pre-stream catch line with
+  the SDK's `APIError` bytes through the `text-http-errors` recorder grown
+  with the plugin-logger bridge (730 rows); a posed transport failure
+  (`Connection error.`, RULED confined to the catch line's `error`); the
+  SDK's throw-and-stop frame semantics for the SDK-flavoured decoders via
+  synthetic `.wire` rows through the REAL SDK; the `sendMessage` siblings;
+  item 12 on the real path. Rust core + harness + recorders; the MOST
+  CAPABLE tier.
+- **P4.129 — the orchestrator oracle's W4.11b move** (P4.121 OPEN):
+  `work-orders/p4.129-orchestrator-oracle-w4-11b-chat-message-rows.md` —
+  the one `streamMessage` mock folded into the existing `createLLMProvider`
+  mock, `CHAT_MESSAGE` rows diffed on all 65 calls (`DANGER_CLASSIFICATION`
+  stays stripped), `messageId` remapped, the render inside `request`
+  decoded and blanked, a force-final `historyTailHash` placeholder, the
+  deterministic drain, the Lantern rows measured first; the P4.90 arm
+  proven by MUTATION (no red-first is possible — v5 already writes the
+  rows); the `name` hash divergence pinned both ways per MEASURED row for
+  P4.128 to retire by VANISHING. Harness + oracle case only, zero core;
+  Opus-class.
+- **P4.130 — the Zod smalls + the read-side trail validation** (P4.124 +
+  P4.D228 + P4.120 OPEN): `work-orders/p4.130-zod-smalls-code-points-
+  zoderror-bytes-manual-kind-trail-validation.md` — the code-point defect
+  red-first; `group_row_issues`/`group_doc_mount_link_issues` rendering
+  v4's `JSON.stringify(issues, null, 2)` bytes (the home grows
+  `InvalidUnion`, the datetime format with zod's JS-form pattern, a
+  Buffer-aware parsed type INSIDE `zod_parsed_type`); a shipped tier-1
+  oracle over v4's REAL `GroupSchema` / `GroupDocMountLinkSchema` /
+  `ChatMetadataBaseSchema` (P4.124 named the wrong schemas); the mount-pool
+  oracle's spy widened to the bytes; `ConciergeManualKind` to four; item
+  14's plants (a DERIVED restore archive + an import payload with the
+  mask's one exception, 41 → 42); the strict `RouteAttemptSchema` twin in
+  `get_messages` (v4's WARN, the route's 404); `dumpFileFacts` MEASURED
+  only. Rust core + harness + oracle cases; Sonnet-class with Opus for the
+  renderer.
+- **P4.131 — the document-store repository fallbacks** (P4.126 OPEN):
+  `work-orders/p4.131-document-store-repository-fallbacks-mail-lines-
+  corrected.md` — `db::fallback` grows one fn per v4 line shape (`Error
+  querying joined file links`, `Error finding entities by filter`, `Error
+  finding document by mount point and path`, `Error deleting file link with
+  GC`); repo twins beside the propagating fns (v4's strict-import scope —
+  bug 79 — means opt-in, never blanket); `database_store.rs` takes v4's
+  semantics (read → NOT_FOUND, list → empty, delete → `true` on a failed
+  GC, the unconditional write pre-read); the three mail lines corrected
+  red-first; `deliver.rs`'s vault shortcut so the send arm converges on
+  v4's TWO pre-catch lines; the two wrongly-aimed plants re-aimed; the
+  ~101 direct repo-caller sites CENSUSED, not converted; the sync applier
+  ESCALATED for a ruling. Rust core + harness; Sonnet-class.
+- **P4.132 — the SPA smalls** (P4.125 OPEN): `work-orders/p4.132-spa-
+  smalls-text-replacement-node-rule-memory-badge-edit-content-pair.md` —
+  the guard made v4's end-of-text-NODE rule (`teh world` + Space; the
+  image leaf refuses, RULED) and its formatted-run sibling, both pinned by
+  a committed jest capture of v4's REAL Lexical plugin inside the pin
+  (the `help-guide-capture` recipe) replayed by an oracle spec; ONE
+  `qt-memory-badge` over its two card hosts; the Edit Content memory pair
+  with v4's strings byte-for-byte and a live beat (no core change — the
+  three verbs exist); the Concierge on-duty derivation in a pure chat-tree
+  home. Angular only, no cargo; Sonnet-class.
+
+**Fences:** no wire change (`api/types.rs` NOBODY; `api/engine.rs` P4.127
+only); the two shared files split by named hunk (§R.10(b)); `orchestrator_
+tier3_equivalence.rs` + its oracle P4.129's with P4.127/P4.128 designed to
+need no literal there; `services/primary_stream.rs` + `model/**` P4.128's;
+`db/fallback.rs` + the doc-mount repos + `database_store.rs` + `post_office/
+**` P4.131's; `db/groups.rs` + `group_doc_mount_links.rs` + `chats_messages_
+read.rs` + `api/zod_issues.rs` + `api/chat_media.rs` + `dangerous_content/
+**` P4.130's; `tools/**` + `progressions/**` + the host crate P4.127's;
+`tests/common/mod.rs` NOBODY; `apps/web/**` P4.132's with `core-contract.ts`
+frozen; committed pairs rebuilt by NOBODY (two NEW fixtures: P4.130's
+derived archive, P4.132's oracle JSON). **§S:** P4.131 delivers `find_by_
+filter_or_empty` and P4.130 names it (the unifier folds); P4.129's `name`
+pins retire by VANISHING once P4.128 is picked ahead of it; P4.129's drain
+shape may be copied by P4.128. **Execution:** all six branches in wave 1
+from `main`; at most TWO Rust full gates at once (107 GB free at planning);
+cherry-pick order P4.131 → P4.130 → P4.128 → P4.129 → P4.127 → P4.132; the
+unifier re-runs the full sweep, Tier R, the workspace suite, the two
+cross-lane families, the SPA gate and the full Playwright suite from the
+`97b25fc53` pin, folds §S 1 and retires §S 2's VANISHED entries. **Left
+out, by name:** the OpenRouter SDK-path + Google 4xx trigger RULING (P4.118
+Tier 3 items 10–11 — the human's); the two core zone-NAME wrappers
+(`autonomous_rooms`, `markdown_transcript` — ~12 harness edits, a later
+smalls item); the per-caller conversion of the doc-mount repo sites (from
+P4.131's census, next round) and the sync applier's fallback RULING; the
+`dumpFileFacts` tier-3 upgrade (a planted vision profile); Anthropic's and
+Google's malformed-frame behaviours (measured, recorded by P4.128); the
+loop oracles' 300 ms drain retrofit; the reclamation migrations (the
+standing deferral class); dogfood #124's npm-plugin loader (the human
+repointed the desk); the standing 💸 queue and an autonomous room's
+per-leg budget (the next dogfood pass, after this round).
+
 ## The `97b25fc53` follow-ups round (P4.119 → P4.126 ∥ P4.120 ∥ P4.121 ∥ P4.122 ∥ P4.123 ∥ P4.124 ∥ P4.125) — UNIFIED 2026-09-30 (ordered 2026-09-29)
 
 **UNIFIED on main (2026-09-30) — ALL EIGHT LANES LANDED; the baseline STAYS

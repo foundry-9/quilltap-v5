@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — docs(porting): order the `97b25fc53` smalls round (P4.127–P4.132)
+
+_Docs-only change._
+
+Six new work orders for the follow-ups the `97b25fc53` follow-ups
+unification named: the display zone threaded from the composition root
+(P4.127), the multi-character `name` hash slot plus the pre-stream catch
+line and SDK frame semantics (P4.128), the orchestrator oracle's W4.11b
+move so CHAT_MESSAGE rows are diffed (P4.129), the Zod-fidelity smalls
+including a code-point length defect found by survey and the read-side
+route-trail validation (P4.130), the document-store repository fallbacks
+with P4.126's mail lines corrected (P4.131), and the SPA smalls with the
+Edit Content memory pair (P4.132). Fresh v4 surveys overturned seven
+recorded descriptions; the orders are written to the measured shapes. No
+drift row absorbed; the ledger's §3 stays empty. Phase plan section added.
+
 #### 2026-09-30 — docs(porting): dogfood pass over the `97b25fc53` follow-ups round
 
 _Docs-only change._
