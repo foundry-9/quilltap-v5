@@ -1,31 +1,38 @@
 //! The host-zone production-wiring census (P4.119, dogfood #121, ruled (a)
-//! 2026-09-29).
+//! 2026-09-29; rewritten at P4.127).
 //!
 //! Every display formatter takes its zone as an ARGUMENT, and every test and
 //! differential passes one explicitly — so no differential can see whether
-//! PRODUCTION passes the host zone. That wiring lives at the entry points the
-//! tool executor, the dispatch engine, `build_context`, the Salon load, the job
-//! runner and the Almanack pipeline call (files outside this lane's ownership,
-//! whose signatures therefore stayed put): each resolves
-//! `crate::host_zone::system_display_zone()` ONCE and delegates to an explicit-
-//! zone sibling. This census pins that, two ways:
+//! PRODUCTION passes the host zone. P4.119 left thirteen ambient wrappers
+//! (`system_display_zone()` read at each entry point); **P4.127 retired them**:
+//! the composition root (`quilltap-host`) reads the zone ONCE and injects it —
+//! a `TimeZone` VALUE on the tool executor (`with_display_zone`), `CoreConfig`
+//! and the render-job handler, and the already-threaded `server_tz` NAME through
+//! [`quilltap_core::host_zone::display_zone_named`] at the Salon turn,
+//! `build_context` and the greeting (Carina through `ToolRunner::display_zone`).
+//! This census pins that, three ways:
 //!
-//! 1. **One row per surface** ([`CENSUS`]): the exact number of production
-//!    `system_display_zone()` calls per file, and the list IS the set of files
-//!    that call it. A new production caller that forgets the zone (formats
-//!    through a sibling with a hard-coded zone) or a new surface that reads the
-//!    host zone somewhere unlisted fails here.
-//! 2. **Nothing else reads the system zone, and nothing hard-codes UTC for
-//!    display** ([`UTC_ALLOWED`]): `TimeZone::system()` / `try_system(` appear
-//!    in `host_zone.rs` alone, and `TimeZone::UTC` in production code only
-//!    where it is NOT a display zone (named per row).
+//! 1. **Zero ambient reads in core** ([`CENSUS`]): `system_display_zone()` is
+//!    called in `host_zone.rs` alone (the `fn` + `system_zone_name`), and the
+//!    list IS the set of calling files. A new production caller that formats
+//!    through a wrapper that reads the environment fails here.
+//! 2. **The host wiring** ([`HOST_SITES`]): the one environment read, and each
+//!    injection point the differentials cannot see (the `CoreConfig` fill, the
+//!    render handler, the spine's runner, the Almanack paths); plus the helper's
+//!    three core call sites ([`HELPER_SITES`]).
+//! 3. **Nothing hard-codes UTC for display** ([`UTC_ALLOWED`]).
 //!
 //! And behaviourally ([`production_entries_render_in_the_host_zone`]): this
 //! test binary re-runs itself with `TZ=America/Chicago` set on the CHILD's
 //! `Command` (never `std::env::set_var` — that races every test thread) and the
-//! child drives the DB-free production entries, asserting Chicago output. The
-//! DB-bound entries are held by the census rows (each is a one-line delegation
-//! to an `_in_zone` sibling that its family's differential drives).
+//! child drives the DB-free host wiring, asserting Chicago output AND that a
+//! `server_tz: "UTC"` input still renders UTC on that Chicago host.
+//!
+//! **Ruled divergence (P4.127, recorded for the human):** the three name-fed
+//! entries resolve their zone from an IANA NAME, so a host whose zone has no IANA
+//! name (a POSIX `TZ` string, a fixed offset) displays UTC there where v4
+//! displays the host zone. The VALUE-fed entries (executor, engine, render job,
+//! Almanack) keep the real offsets. See `host_zone.rs`'s [`display_zone_named`].
 //!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test host_zone_sites_census
@@ -35,90 +42,101 @@ mod source_census;
 use source_census::{code_only, core_src_root, production_zone, rust_sources};
 
 /// `(path under crates/quilltap-core/src, production system_display_zone()
-/// calls, the surfaces)`.
-const CENSUS: &[(&str, usize, &str)] = &[
+/// calls, the surfaces)`. One row: the home.
+const CENSUS: &[(&str, usize, &str)] = &[(
+    "host_zone.rs",
+    2,
+    "the home: the `fn` itself + `system_zone_name`, which reads the value \
+     through it (cron, the markdown-transcript export, the autonomous-room \
+     schedule)",
+)];
+
+/// `(path from the repo root, needle, production occurrences, what it pins)` —
+/// the host crate's injection points. A dropped fill is invisible to every
+/// differential (they all pass a zone explicitly), so each is pinned by source.
+const HOST_SITES: &[(&str, &str, usize, &str)] = &[
     (
-        "host_zone.rs",
-        2,
-        "the home: the `fn` itself + `system_zone_name`, which reads the value \
-         through it (cron, the markdown-transcript export, the autonomous-room \
-         schedule, the host)",
-    ),
-    (
-        "api/chat_post_office.rs",
+        "crates/quilltap-host/src/host.rs",
+        "quilltap_core::host_zone::system_display_zone()",
         1,
-        "`chat_send_mail` — the Salon Compose reply preface (PERSISTED)",
+        "the host's ONE environment read (`HostConfig::new`)",
     ),
     (
-        "tools/list_mail.rs",
+        "crates/quilltap-host/src/host.rs",
+        "display_zone: config.display_zone,",
         1,
-        "`execute_list_mail` — the listing's letter dates",
+        "the `CoreConfig` fill (the engine's reply preface + Salon-load whispers)",
     ),
     (
-        "tools/read_mail.rs",
+        "crates/quilltap-host/src/host.rs",
+        "display_zone: self.display_zone.clone(),",
         1,
-        "`execute_read_mail` — the letter's `posted` date",
+        "the `CONVERSATION_RENDER` handler's fill (the persisted chunk text)",
     ),
     (
-        "tools/send_mail.rs",
+        "crates/quilltap-host/src/almanack_services.rs",
+        "display_zone: self.display_zone.clone(),",
         1,
-        "`execute_send_mail` — the tool's reply preface (PERSISTED)",
+        "the Almanack's `AlmanackPaths` (`paths()`)",
     ),
     (
-        "tools/read_conversation.rs",
+        "crates/quilltap-host/src/spine.rs",
+        ".with_display_zone(",
         1,
-        "`execute_read_conversation` — the live transcript render",
-    ),
-    (
-        "tools/annotations.rs",
-        1,
-        "`execute_upsert_annotation` — the live render that numbers messages",
-    ),
-    (
-        "tools/web_search.rs",
-        1,
-        "`format_web_search_results` — the `Published:` dates",
-    ),
-    (
-        "services/conversation_render_job.rs",
-        1,
-        "`handle_conversation_render` — the PERSISTED + embedded chunk text \
-         (the #121 re-embed churn)",
-    ),
-    (
-        "services/suparna_mail.rs",
-        1,
-        "`resolve_suparna_mail_context` — the turn's mail context",
-    ),
-    (
-        "services/suparna_notifications.rs",
-        2,
-        "`build_suparna_mail_whisper` (build_context's seam) + \
-         `surface_operator_mail_for_chat` (the Salon load) — PERSISTED whispers",
-    ),
-    (
-        "progressions/engine.rs",
-        2,
-        "`render_progression_report` + `progression_placeholders` — the \
-         absent/unresolvable-zone fallback (the greeting, Carina, build_context)",
+        "`ChatSpine::tool_runner()` (carina / ask_carina / Brahma / Run Tool)",
     ),
 ];
 
-/// The Almanack takes its zone as an INPUT (`AlmanackPaths::display_zone` —
-/// the pipeline's machine-dependent values are all inputs, so its tier-2
-/// differential can pin them); the one production site that fills it is the
-/// host's `paths()`, held by [`host_almanack_paths_carry_the_host_zone`].
-const HOST_ALMANACK_SITE: (&str, &str) = (
-    "crates/quilltap-host/src/almanack_services.rs",
-    "display_zone: quilltap_core::host_zone::system_display_zone(),",
-);
+/// `(path under crates/quilltap-core/src, `display_zone_named(` call sites in
+/// production code, the entry)`. The helper resolves the already-threaded
+/// `server_tz` NAME; each entry is one call.
+const HELPER_SITES: &[(&str, usize, &str)] = &[
+    ("host_zone.rs", 1, "the helper's own definition"),
+    (
+        "services/orchestrator.rs",
+        1,
+        "`process_message` — the turn's tool runner (from `input.server_tz`)",
+    ),
+    (
+        "services/build_context.rs",
+        1,
+        "`build_context` — the mail context, the whisper seam and the progressions \
+         fallback (from `input.server_tz`, NOT the story `timezone`)",
+    ),
+    (
+        "services/chat_create.rs",
+        1,
+        "the greeting's `build_chat_context` (from `ChatCreateDeps.tz`)",
+    ),
+];
+
+/// Host-side crates that must NOT read the environment for a display zone
+/// themselves (the one read is `host.rs`, pinned above).
+const NO_AMBIENT_READ_DIRS: &[&str] = &[
+    "crates/quilltap-web/src",
+    "crates/quilltap-tauri/src",
+    "crates/quilltap-cli/src",
+];
 
 /// `(path, production TimeZone::UTC uses, why it is not a display zone)`.
 const UTC_ALLOWED: &[(&str, usize, &str)] = &[
     (
         "host_zone.rs",
+        2,
+        "the fallback when the platform zone cannot be read at all + \
+         `display_zone_named`'s unknown-or-absent-name fallback",
+    ),
+    (
+        "tools/executor.rs",
         1,
-        "the fallback when the platform zone cannot be read at all",
+        "`BuiltInToolRunner::new`'s default — a test/CLI default; production calls \
+         `with_display_zone`",
+    ),
+    (
+        "services/tool_execution.rs",
+        1,
+        "`ToolRunner::display_zone`'s default — canned runners; \
+         `BuiltInToolRunner` overrides it",
     ),
     (
         "format_time.rs",
@@ -217,6 +235,28 @@ fn host_zone_sites_census() {
          must be added here with its reason"
     );
 
+    // (1b) The name-fed entries each call the helper exactly as many times as
+    // the table says, and the list IS the set of calling files.
+    for (rel, want, why) in HELPER_SITES {
+        let got = count(&production_code(rel), "display_zone_named(");
+        assert_eq!(
+            got, *want,
+            "{rel}: {got} production display_zone_named() calls, the census says {want} ({why})"
+        );
+    }
+    let helper_callers: Vec<&str> = files
+        .iter()
+        .filter(|(_, code)| code.contains("display_zone_named("))
+        .map(|(rel, _)| rel.as_str())
+        .collect();
+    let mut helper_listed: Vec<&str> = HELPER_SITES.iter().map(|(rel, _, _)| *rel).collect();
+    helper_listed.sort();
+    assert_eq!(
+        helper_callers, helper_listed,
+        "the files resolving a display zone from a name differ from HELPER_SITES — a new \
+         entry must be added here with its reason"
+    );
+
     // (2) Only the home reads the system zone.
     for (rel, code) in &files {
         let reads = count(code, "TimeZone::system(") + count(code, "try_system(");
@@ -261,31 +301,90 @@ fn host_zone_sites_census() {
     }
 }
 
-#[test]
-fn host_almanack_paths_carry_the_host_zone() {
-    let root = core_src_root();
-    let repo = root
+fn repo_root() -> std::path::PathBuf {
+    core_src_root()
         .parent()
         .and_then(|p| p.parent())
         .and_then(|p| p.parent())
-        .unwrap();
-    let (rel, line) = HOST_ALMANACK_SITE;
-    let src = std::fs::read_to_string(repo.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
-    let code = code_only(&production_zone(&src));
-    assert_eq!(
-        code.matches(line).count(),
-        1,
-        "{rel}: the host's AlmanackPaths must carry the host display zone"
-    );
-    assert_eq!(
-        code.matches("display_zone:").count(),
-        1,
-        "{rel}: one AlmanackPaths site"
-    );
+        .unwrap()
+        .to_path_buf()
+}
+
+#[test]
+fn host_injection_points_carry_the_host_zone() {
+    let repo = repo_root();
+    for (rel, needle, want, why) in HOST_SITES {
+        let src =
+            std::fs::read_to_string(repo.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        let code = code_only(&production_zone(&src));
+        assert_eq!(
+            code.matches(needle).count(),
+            *want,
+            "{rel}: `{needle}` must appear {want}x in production code — {why}"
+        );
+    }
+    // No other host-side crate reads the environment for a display zone, and the
+    // host crate's only read is the one pinned above.
+    for dir in NO_AMBIENT_READ_DIRS
+        .iter()
+        .copied()
+        .chain(["crates/quilltap-host/src"])
+    {
+        let mut files = Vec::new();
+        rust_sources(&repo.join(dir), &mut files);
+        for f in files {
+            let src = std::fs::read_to_string(&f).unwrap();
+            let code = code_only(&production_zone(&src));
+            let n = code.matches("system_display_zone(").count();
+            let want = usize::from(f.ends_with("quilltap-host/src/host.rs"));
+            assert_eq!(
+                n,
+                want,
+                "{}: {n} production system_display_zone() calls, {want} allowed — the host reads \
+                 the zone once, in `HostConfig::new`",
+                f.display()
+            );
+        }
+    }
+}
+
+/// A throwaway main DB — the runner only needs a handle; no tool runs here.
+fn scratch_db() -> (tempfile::TempDir, quilltap_core::db::runtime::Db) {
+    use quilltap_core::db::runtime::{Db, DbPaths};
+    use quilltap_core::db::Writer;
+    const PEPPER: &str = "dGVzdC1wZXBwZXItZm9yLWZpeHR1cmVzLW9ubHktMzJieXRl";
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.db");
+    drop(Writer::open_writable(&main, PEPPER).expect("open main writer"));
+    let db = Db::open(
+        DbPaths {
+            main,
+            mount_index: None,
+            llm_logs: None,
+        },
+        PEPPER,
+    )
+    .expect("open db");
+    (dir, db)
+}
+
+fn scratch_env() -> quilltap_core::tools::self_inventory::SelfInventoryEnv {
+    use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
+    SelfInventoryEnv {
+        version: "0.0.0-census".to_string(),
+        runtime_mode: "desktop".to_string(),
+        client_shell: ClientShell::Unknown,
+        mount_index_degraded: false,
+        release_notes: None,
+        changelog: None,
+        model_info: Vec::new(),
+        fallback_pricing: Vec::new(),
+        registry_default_context: 8192,
+    }
 }
 
 /// The env marker the parent sets on the child `Command` only.
-const CHILD_MARKER: &str = "QT_P4119_HOST_ZONE_CHILD";
+const CHILD_MARKER: &str = "QT_P4127_HOST_ZONE_CHILD";
 
 #[test]
 fn production_entries_render_in_the_host_zone() {
@@ -302,16 +401,19 @@ fn production_entries_render_in_the_host_zone() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        out.status.success() && stdout.contains("CHILD OK: 3 production entries"),
+        out.status.success() && stdout.contains("CHILD OK: 5 host-wired entries"),
         "the TZ=America/Chicago child failed\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
 }
 
 /// Runs ONLY in the child (the parent sets [`CHILD_MARKER`] and `TZ`); a no-op
-/// in an ordinary run.
+/// in an ordinary run. Proves the HOST wiring — not the ambient wrappers P4.127
+/// retired — under a real Chicago process zone.
 #[test]
 fn child_production_entries() {
-    use quilltap_core::host_zone::{system_display_zone, TimeZone};
+    use quilltap_core::host_zone::{display_zone_named, system_display_zone, TimeZone};
+    use quilltap_core::services::tool_execution::ToolRunner;
+    use quilltap_core::tools::executor::BuiltInToolRunner;
 
     if std::env::var_os(CHILD_MARKER).is_none() {
         return;
@@ -320,17 +422,37 @@ fn child_production_entries() {
     // below would be vacuous.
     assert_eq!(system_display_zone().iana_name(), Some("America/Chicago"));
 
-    // 1. The web-search formatter (the executor's entry).
+    // 1. `HostConfig::new` — the ONE read — carries the value, and `tz` is the
+    //    name derived from it.
+    let scratch = std::env::temp_dir().join("qt-p4127-hostconfig");
+    let cfg = quilltap_host::HostConfig::new(&scratch);
+    assert_eq!(cfg.display_zone.iana_name(), Some("America/Chicago"));
+    assert_eq!(cfg.tz, "America/Chicago");
+
+    // 2. The executor, built as `ChatSpine::tool_runner()` builds it (the
+    //    already-threaded `tz` NAME through the helper): web-search dates render
+    //    in Chicago. A `BuiltInToolRunner::new` with no builder stays UTC.
     let results = vec![quilltap_core::tools::web_search::WebSearchResult {
         title: "Late edition".into(),
         url: "https://example.test/a".into(),
         snippet: "s".into(),
         published_date: Some("2026-06-15T03:00:00.000Z".into()),
     }];
-    let formatted = quilltap_core::tools::web_search::format_web_search_results(&results);
+    let zone = display_zone_named(Some(&cfg.tz));
+    let formatted =
+        quilltap_core::tools::web_search::format_web_search_results_in_zone(&results, &zone);
     assert!(formatted.contains("(Published: 6/14/2026)"), "{formatted}");
+    // Carina reads the zone off the runner it runs under (`ToolRunner::display_zone`).
+    let probe = quilltap_core::host_zone::Timestamp::from_second(1_787_000_000).unwrap(); // a CDT (UTC-5) instant
+    let ts = probe;
+    let runner_zone = |r: &dyn Fn() -> TimeZone| r().to_offset(ts).seconds();
+    let (_dir, db) = scratch_db();
+    let wired = BuiltInToolRunner::new(db.clone(), scratch_env()).with_display_zone(zone);
+    let bare = BuiltInToolRunner::new(db, scratch_env());
+    assert_eq!(runner_zone(&|| wired.display_zone()), -5 * 3600);
+    assert_eq!(runner_zone(&|| bare.display_zone()), 0);
 
-    // 2. The Suparṇā whisper (build_context's seam) — the walk's D2 instant.
+    // 3. The Suparṇā whisper (build_context's seam) — the walk's D2 instant.
     let letter = quilltap_core::post_office::mailbox::DeliveredLetterSummary {
         path: "Mail/1790710800000-from-bertie.md".into(),
         from: "Bertie".into(),
@@ -340,13 +462,22 @@ fn child_production_entries() {
         in_reply_to: None,
     };
     let whisper =
-        quilltap_core::services::suparna_notifications::build_suparna_mail_whisper(&[letter]);
+        quilltap_core::services::suparna_notifications::build_suparna_mail_whisper_in_zone(
+            &[letter],
+            &display_zone_named(Some(&cfg.tz)),
+        );
     assert!(
         whisper.contains("September 29, 2026 at 02:40 PM"),
         "{whisper}"
     );
 
-    // 3. The progressions fallback: an absent zone renders like the passed
+    // 4. The helper honours the NAME it is given, never the environment: a
+    //    `server_tz: "UTC"` input renders UTC on this Chicago host (M2's target).
+    let utc_zone = display_zone_named(Some("UTC"));
+    assert_eq!(utc_zone.to_offset(ts).seconds(), 0);
+    assert_eq!(display_zone_named(None).to_offset(ts).seconds(), 0);
+
+    // 5. The progressions fallback: an absent zone renders like the passed
     //    Chicago, not UTC — over a zone-sensitive corpus row.
     let corpus: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(concat!(
@@ -369,14 +500,22 @@ fn child_production_entries() {
             &p,
             c["nowMs"].as_i64().unwrap(),
         );
-        use quilltap_core::progressions::engine::{
-            render_progression_report, render_progression_report_in_zone,
-        };
+        use quilltap_core::progressions::engine::render_progression_report_in_zone;
         let utc = render_progression_report_in_zone(&p, &d, &opts, &TimeZone::UTC);
         let local = render_progression_report_in_zone(&p, &d, &opts, &chicago);
         if utc != local {
             sensitive += 1;
-            assert_eq!(render_progression_report(&p, &d, &opts), local);
+            // …and the zone the host hands `build_progressions_section` is the
+            // same Chicago the fallback resolves.
+            assert_eq!(
+                render_progression_report_in_zone(
+                    &p,
+                    &d,
+                    &opts,
+                    &display_zone_named(Some(&cfg.tz))
+                ),
+                local
+            );
         }
     }
     assert!(
@@ -384,5 +523,5 @@ fn child_production_entries() {
         "no zone-sensitive null-timezone progression row"
     );
 
-    println!("CHILD OK: 3 production entries rendered in America/Chicago");
+    println!("CHILD OK: 5 host-wired entries rendered in America/Chicago");
 }

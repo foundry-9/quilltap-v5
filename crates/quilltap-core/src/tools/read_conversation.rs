@@ -150,30 +150,6 @@ fn fmt_js_int(n: f64) -> String {
     }
 }
 
-/// Execute the `read_conversation` tool in the HOST's zone — the tool
-/// executor's entry. The live render's timestamps are v4's zone-less
-/// `toLocale*` renders, so they resolve the host zone (P4.119), read here
-/// once; tests and differentials call [`execute_read_conversation_in_zone`].
-pub async fn execute_read_conversation(
-    db: &Db,
-    user_id: &str,
-    chat_id: &str,
-    character_id: Option<&str>,
-    args: &Value,
-    now_iso: &str,
-) -> ReadConversationOutput {
-    execute_read_conversation_in_zone(
-        db,
-        user_id,
-        chat_id,
-        character_id,
-        args,
-        now_iso,
-        &crate::host_zone::system_display_zone(),
-    )
-    .await
-}
-
 /// Execute the `read_conversation` tool (v4 `executeReadConversationTool`).
 ///
 /// `now_iso` is the wall clock the live render's `Current time:` header line

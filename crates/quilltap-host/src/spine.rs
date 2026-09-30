@@ -1126,6 +1126,11 @@ where
             runner = runner.with_image_describe(Arc::clone(image_describe));
         }
         runner = runner.with_file_bytes(Arc::clone(&self.file_bytes) as _);
+        // P4.127: the tools' dates (and Carina's progressions section, through
+        // `ToolRunner::display_zone`) render in the zone the spine was built
+        // with — the already-threaded `tz` NAME through the one helper.
+        runner =
+            runner.with_display_zone(quilltap_core::host_zone::display_zone_named(Some(&self.tz)));
         runner
     }
 

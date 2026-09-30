@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — refactor(zone): thread the display zone from the composition root; retire the 13 ambient host-zone wrappers
+
+_Versions: core 0.0.1116, harness 0.0.1035, host 0.0.167._
+
+The host reads its zone once and injects it into the tool executor, the engine config, the render-job handler and the Almanack; the Salon turn, `build_context` and the greeting resolve the already-threaded zone name through one helper; Carina reads it off its tool runner. The 13 wrappers that read the environment at each entry point are deleted. No behaviour change on a host whose zone has an IANA name. The two families that passed only under `TZ=UTC` now pass with no `TZ`. The census pins zero ambient reads in core plus each host injection point.
+
 #### 2026-09-30 — docs(porting): P4.129 lane record — the gate
 
 _Docs-only change._

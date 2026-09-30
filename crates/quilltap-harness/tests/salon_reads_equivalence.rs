@@ -29,6 +29,7 @@ use std::path::PathBuf;
 use quilltap_core::api::salon;
 use quilltap_core::api::types::Response;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::host_zone::TimeZone;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
@@ -310,14 +311,16 @@ fn salon_reads_match_oracle() {
     // get_solo
     {
         // No probe: identical to the jest oracle's empty `ptyManager` map.
-        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None)));
+        let got =
+            response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None, &TimeZone::UTC)));
         let mut want = oracle["get_solo"]["body"].clone();
         strip_rendered_html(&mut want);
         cases.push(("get_solo".into(), got, want));
     }
     // get_group
     {
-        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, group, None)));
+        let got =
+            response_data(&rt.block_on(salon::chat_get(&db, uid, group, None, &TimeZone::UTC)));
         let mut want = oracle["get_group"]["body"].clone();
         strip_rendered_html(&mut want);
         cases.push(("get_group".into(), got, want));
@@ -336,7 +339,8 @@ fn salon_reads_match_oracle() {
             Ok(())
         }))
         .expect("inject impersonation");
-        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, group, None)));
+        let got =
+            response_data(&rt.block_on(salon::chat_get(&db, uid, group, None, &TimeZone::UTC)));
         let mut want = oracle["get_impersonated"]["body"].clone();
         strip_rendered_html(&mut want);
         cases.push(("get_impersonated".into(), got, want));
@@ -390,7 +394,8 @@ fn salon_reads_match_oracle() {
             Ok(())
         }))
         .expect("paint solo's Concierge projection");
-        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None)));
+        let got =
+            response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None, &TimeZone::UTC)));
         let mut want = oracle["get_concierge_projection"]["body"].clone();
         strip_rendered_html(&mut want);
         // The claim in its own right, so a normalizer change can never make it
@@ -468,7 +473,8 @@ fn salon_reads_match_oracle() {
             Ok(())
         }))
         .expect("plant route trail + cycle order");
-        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None)));
+        let got =
+            response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None, &TimeZone::UTC)));
         let mut want = oracle["get_route_trail_and_cycle_order"]["body"].clone();
         strip_rendered_html(&mut want);
         cases.push(("get_route_trail_and_cycle_order".into(), got, want));
@@ -501,7 +507,8 @@ fn salon_reads_match_oracle() {
             Ok(())
         }))
         .expect("plant empty-string cycle columns");
-        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None)));
+        let got =
+            response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None, &TimeZone::UTC)));
         let mut want = oracle["get_cycle_columns_empty_string"]["body"].clone();
         strip_rendered_html(&mut want);
         cases.push(("get_cycle_columns_empty_string".into(), got, want));
@@ -544,7 +551,8 @@ fn salon_reads_match_oracle() {
                 raw_row.get(key)
             );
         }
-        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None)));
+        let got =
+            response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None, &TimeZone::UTC)));
         let mut want = oracle["get_cycle_columns_null"]["body"].clone();
         strip_rendered_html(&mut want);
         cases.push(("get_cycle_columns_null".into(), got, want));

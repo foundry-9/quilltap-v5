@@ -120,6 +120,7 @@ fn build_system_prompt(
     selected_system_prompt_id: Option<&str>,
     subprompts: Option<&[crate::subprompts::SubpromptForPrompt]>,
     now_ms: i64,
+    host_zone: &crate::host_zone::TimeZone,
 ) -> String {
     let character_name = s(character, "name").unwrap_or_default();
     let system_prompt_content =
@@ -204,6 +205,7 @@ fn build_system_prompt(
             responding_participant_id: None,
             now_ms,
             timezone: None,
+            host_zone,
             force: true,
         },
     );
@@ -312,9 +314,10 @@ fn user_character_from_value(uc: &Value) -> UserCharacter {
 // v4's `buildChatContext` takes five positional parameters; v5 adds the two
 // connections it opens for itself and, at P4.D168, the wall clock the greeting's
 // forced progressions report reads (v4 calls `Date.now()` inside the builder,
-// which no differential could freeze). Eight, and the repo's rule for a
+// which no differential could freeze) and, at P4.127, the display zone that
+// report's `{{start}}`/`{{end}}` fall back to. Nine, and the repo's rule for a
 // signature that mirrors v4's is to keep the shape and say so.
-#[allow(clippy::too_many_arguments)] // mirrors v4 buildChatContext + the injected clock
+#[allow(clippy::too_many_arguments)] // mirrors v4 buildChatContext + the injected clock + zone
 pub fn build_chat_context(
     main: &Connection,
     mount: &Connection,
@@ -325,6 +328,8 @@ pub fn build_chat_context(
     subprompts: Option<&[crate::subprompts::SubpromptForPrompt]>,
     // The wall clock, injected — the greeting's FORCED progressions report.
     now_ms: i64,
+    // The display zone, injected (P4.127) — the same report's date fallback.
+    host_zone: &crate::host_zone::TimeZone,
 ) -> Result<ChatContext, DbError> {
     let character = characters_read::find_by_id(main, mount, character_id)?
         .ok_or_else(|| DbError::Internal("Character not found".to_string()))?;
@@ -355,6 +360,7 @@ pub fn build_chat_context(
         selected_system_prompt_id,
         subprompts,
         now_ms,
+        host_zone,
     );
 
     // First message: the processed character firstMessage (system prompt =
@@ -428,7 +434,15 @@ mod tests {
             "personality": "bold",
             "systemPrompts": [{"id": "a", "content": "Base.", "isDefault": true}]
         });
-        let prompt = build_system_prompt(&c, None, Some("A dark forest."), None, None, 0);
+        let prompt = build_system_prompt(
+            &c,
+            None,
+            Some("A dark forest."),
+            None,
+            None,
+            0,
+            &crate::host_zone::TimeZone::UTC,
+        );
         assert!(prompt.starts_with("Base.\n\nYou are roleplaying as Aria."));
         assert!(prompt.contains("\n\nCharacter Description:\nA brave knight"));
         assert!(prompt.contains("\n\nPersonality:\nbold"));
@@ -453,7 +467,15 @@ mod tests {
             manifesto: None,
             personality: Some("curious".into()),
         };
-        let prompt = build_system_prompt(&c, Some(&uc), None, None, None, 0);
+        let prompt = build_system_prompt(
+            &c,
+            Some(&uc),
+            None,
+            None,
+            None,
+            0,
+            &crate::host_zone::TimeZone::UTC,
+        );
         assert!(prompt.contains(
             "You are talking to Sam (also known as: Sammy, S) (pronouns: they/them/their)."
         ));

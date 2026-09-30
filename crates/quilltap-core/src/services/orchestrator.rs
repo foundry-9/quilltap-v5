@@ -233,9 +233,14 @@ fn build_turn_tool_runner(
     web_search: Option<std::sync::Arc<dyn crate::tools::web_search::WebSearchProvider>>,
     image_describe: Option<std::sync::Arc<dyn crate::api::chat_media::ImageDescribeDriver>>,
     photo_bytes: Option<std::sync::Arc<dyn crate::photos::save_image_to_album::FileBytesStore>>,
+    display_zone: crate::host_zone::TimeZone,
 ) -> BuiltInToolRunner {
-    let mut tool_runner =
-        BuiltInToolRunner::new(db, host_self_inventory_env()).with_ask_carina(ask_carina);
+    // P4.127: the tools' dates (letter dates, transcript renders, web-search
+    // `Published:` lines) render in the host zone the turn was handed, never an
+    // ambient read.
+    let mut tool_runner = BuiltInToolRunner::new(db, host_self_inventory_env())
+        .with_ask_carina(ask_carina)
+        .with_display_zone(display_zone);
     // P4.42: the in-chat `search_web` runs through the host's web-search provider
     // when one is wired (SERPER_API_KEY set); `None` leaves the not-configured
     // boundary, so the tool refuses exactly as it did before this lane.
@@ -3080,6 +3085,8 @@ where
         deps.web_search.clone(),
         deps.image_describe.clone(),
         deps.photo_bytes.clone(),
+        // The already-threaded `server_tz` NAME through the one helper.
+        crate::host_zone::display_zone_named(input.server_tz.as_deref()),
     );
     // Native tool-call detection (v4 `detectToolCallsInResponse` → the provider
     // plugin's `parseToolCalls`) is the real registry-backed detector (W4.7c):
@@ -4982,10 +4989,25 @@ mod tests {
             Some(std::sync::Arc::new(
                 crate::photos::save_image_to_album::NotConfiguredBytes,
             )),
+            crate::host_zone::display_zone_named(Some("America/Chicago")),
+        );
+        assert_eq!(
+            crate::services::tool_execution::ToolRunner::display_zone(&wired)
+                .to_offset(jiff::Timestamp::from_second(1_768_478_400).unwrap())
+                .seconds(),
+            -6 * 3600,
+            "the zone must be threaded"
         );
         assert!(wired.image_describe_wired(), "the driver must be threaded");
         assert!(wired.file_bytes_wired(), "the bytes store must be threaded");
-        let bare = build_turn_tool_runner(db, ErasedAskCarina::not_available(), None, None, None);
+        let bare = build_turn_tool_runner(
+            db,
+            ErasedAskCarina::not_available(),
+            None,
+            None,
+            None,
+            crate::host_zone::TimeZone::UTC,
+        );
         assert!(!bare.image_describe_wired(), "None stays the loud default");
         assert!(!bare.file_bytes_wired(), "None stays the loud default");
     }

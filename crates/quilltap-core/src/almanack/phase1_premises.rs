@@ -48,8 +48,8 @@ pub struct AlmanackPaths {
     pub backups_dir: PathBuf,
     /// The zone v4's zone-less date calls resolve — the Node process's, i.e.
     /// the HOST's (P4.119): the backup filenames' local `new Date(y, m, …)`
-    /// parse and every date the volume renders. The host passes
-    /// [`crate::host_zone::system_display_zone`]; a differential passes the
+    /// parse and every date the volume renders. The host passes the zone it read
+    /// ONCE at the composition root (P4.127); a differential passes the
     /// zone its oracle ran under, so the report never reads the machine's.
     pub display_zone: TimeZone,
 }

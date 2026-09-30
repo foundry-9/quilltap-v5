@@ -77,7 +77,8 @@
 //! `'en-US'` locale but no timezone, so the rendered timestamps follow the
 //! host's zone — and so does the port (P4.119, dogfood #121, ruled (a)
 //! 2026-09-29): the render job, `read_conversation` and `upsert_annotation`
-//! pass [`crate::host_zone::system_display_zone`] in production, so a chunk v5
+//! pass the host zone in production (threaded from the composition root,
+//! P4.127), so a chunk v5
 //! re-renders carries the same text v4 wrote and its embedding survives the
 //! upsert. Every instant renders with its OWN offset, and the same-day test
 //! compares dates IN the zone, so a span that straddles UTC midnight but not

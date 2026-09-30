@@ -478,6 +478,8 @@ where
             // `deps.now_ms` is v4's JS `Date.now()` — a float here, an integer there.
             now_ms: deps.now_ms as i64,
             timezone: None,
+            // P4.127: the zone rides on the runner Carina's tools run under.
+            host_zone: &deps.tool_runner.display_zone(),
             force: true,
         },
     );

@@ -37,8 +37,8 @@ use serde_json::{json, Value};
 use crate::core_whisper::{find_last_own_turn_ms, WhisperEvent};
 
 use super::engine::{
-    derive_progression, parse_progressions, render_progression_report, should_report_progression,
-    RenderProgressionOptions, ReportReason,
+    derive_progression, parse_progressions, render_progression_report_in_zone,
+    should_report_progression, RenderProgressionOptions, ReportReason,
 };
 
 /// v4's `CONTEXT` — the tracing target every line below carries.
@@ -75,6 +75,10 @@ pub struct BuildProgressionsSectionParams<'a> {
     pub now_ms: i64,
     /// The chat's resolved timezone, for `{{start}}` / `{{end}}`.
     pub timezone: Option<&'a str>,
+    /// The display zone an absent / unresolvable `timezone` falls back to — the
+    /// host's zone (v4's zone-less `Intl.DateTimeFormat`), threaded from the
+    /// composition root by each caller (P4.127).
+    pub host_zone: &'a crate::host_zone::TimeZone,
     /// Report everything, cadence notwithstanding — the greeting builder and
     /// Carina, both of which are one-shot prompts with no "last turn" to speak
     /// of. An opener should know she is pregnant.
@@ -95,6 +99,7 @@ pub fn build_progressions_section(params: BuildProgressionsSectionParams<'_>) ->
         responding_participant_id,
         now_ms,
         timezone,
+        host_zone,
         force,
     } = params;
 
@@ -175,7 +180,12 @@ pub fn build_progressions_section(params: BuildProgressionsSectionParams<'_>) ->
         if report {
             lines.push(format!(
                 "- {}",
-                render_progression_report(p, &derived, &RenderProgressionOptions { timezone })
+                render_progression_report_in_zone(
+                    p,
+                    &derived,
+                    &RenderProgressionOptions { timezone },
+                    host_zone
+                )
             ));
         }
     }
@@ -241,6 +251,7 @@ mod tests {
             responding_participant_id: None,
             now_ms,
             timezone: None,
+            host_zone: &crate::host_zone::TimeZone::UTC,
             force,
         })
     }
@@ -269,6 +280,7 @@ mod tests {
                 responding_participant_id: None,
                 now_ms: CANNON_MS,
                 timezone: None,
+                host_zone: &crate::host_zone::TimeZone::UTC,
                 force: false,
             }),
             ""
@@ -298,6 +310,7 @@ mod tests {
             responding_participant_id: Some("p-1"),
             now_ms: CANNON_MS + 12 * MIN,
             timezone: None,
+            host_zone: &crate::host_zone::TimeZone::UTC,
             force: false,
         });
         // `load_events` returns no rows, so `last_turn_ms` is `None` → rule 1
@@ -348,6 +361,7 @@ mod tests {
             // Complete, already announced — `once` would silence it on cadence.
             now_ms: CANNON_MS + 12 * MIN,
             timezone: None,
+            host_zone: &crate::host_zone::TimeZone::UTC,
             force: true,
         });
         assert!(out.contains("Cannon recharge: complete;"), "{out}");
@@ -371,6 +385,7 @@ mod tests {
             responding_participant_id: Some("p-1"),
             now_ms: CANNON_MS,
             timezone: None,
+            host_zone: &crate::host_zone::TimeZone::UTC,
             force: false,
         });
         assert_eq!(out, "");
@@ -461,6 +476,7 @@ mod tests {
                 responding_participant_id: Some("p-1"),
                 now_ms: CANNON_MS + 12 * MIN,
                 timezone: None,
+                host_zone: &crate::host_zone::TimeZone::UTC,
                 force: false,
             });
         });
@@ -487,6 +503,7 @@ mod tests {
                 responding_participant_id: Some("p-1"),
                 now_ms: CANNON_MS + MIN,
                 timezone: None,
+                host_zone: &crate::host_zone::TimeZone::UTC,
                 force: false,
             });
             assert_eq!(out, "", "the turn continues without the section");

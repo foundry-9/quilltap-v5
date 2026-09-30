@@ -67,6 +67,7 @@ use super::{
 };
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
+use crate::host_zone::TimeZone;
 use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider, ErasedEmbeddingProvider};
 use crate::pascal::custom_tools::LlmInvoker;
 use crate::pascal::llm_consult::{ConsultRunner, CustomToolConsultContext, SeamConsultInvoker};
@@ -413,6 +414,13 @@ pub struct BuiltInToolRunner<F: ToolRunner = LoudFallbackRunner> {
     /// turn, and a wedged tool call is worse than an author's `errorMessage`.
     /// Production wires the host's timeout-decorated wire runner.
     consult: Option<Arc<dyn ConsultRunner>>,
+    /// The zone every human-readable date the tools render resolves in (the
+    /// Post Office's letter dates and reply prefaces, the live transcript
+    /// renders, the web-search dates). v4 formats with the process zone; v5
+    /// takes the zone VALUE from the composition root (P4.127) instead of
+    /// reading the environment here. `new()` defaults to UTC (tests, the CLI's
+    /// direct mode); production calls [`Self::with_display_zone`].
+    display_zone: TimeZone,
     fallback: F,
 }
 
@@ -434,6 +442,8 @@ impl BuiltInToolRunner<LoudFallbackRunner> {
             ask_carina: ask_carina::ErasedAskCarina::not_available(),
             image_describe: None,
             consult: None,
+            // A test/CLI default; production calls `with_display_zone`.
+            display_zone: TimeZone::UTC,
             fallback: LoudFallbackRunner,
         }
     }
@@ -456,8 +466,16 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             ask_carina: self.ask_carina,
             image_describe: self.image_describe,
             consult: self.consult,
+            display_zone: self.display_zone,
             fallback,
         }
+    }
+
+    /// Set the zone the tools render dates in (P4.127 — the host's display
+    /// zone, injected once by the composition root).
+    pub fn with_display_zone(mut self, display_zone: TimeZone) -> Self {
+        self.display_zone = display_zone;
+        self
     }
 
     /// Inject the custom-tool consult runner the `run_custom` tool consults
@@ -714,7 +732,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
 
     // -- read_conversation (tool-executor.ts:836) ---------------------------
     async fn run_read_conversation(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
-        let out = read_conversation::execute_read_conversation(
+        let out = read_conversation::execute_read_conversation_in_zone(
             &self.db,
             &ctx.user_id,
             &ctx.chat_id,
@@ -723,6 +741,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             // P4.D235 OUT-OF-MANDATE — P4.D234 preserves: the live render's
             // `Current time:` clock (v4 `f7f3d7bf0` renders on demand).
             &crate::clock::now_iso(),
+            &self.display_zone,
         )
         .await;
         let formatted = read_conversation::format_read_conversation(&out);
@@ -746,7 +765,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             Ok(n) => n,
             Err(e) => return fail("upsert_annotation", e),
         };
-        let out = annotations::execute_upsert_annotation(
+        let out = annotations::execute_upsert_annotation_in_zone(
             &self.db,
             &ctx.user_id,
             &ctx.chat_id,
@@ -755,6 +774,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             // P4.D235 OUT-OF-MANDATE — P4.D234 preserves: the live render's
             // `Current time:` clock (v4 `f7f3d7bf0` renders on demand).
             &crate::clock::now_iso(),
+            &self.display_zone,
         )
         .await;
         let formatted = annotations::format_upsert_annotation(&out);
@@ -1177,8 +1197,10 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             web_search::execute_web_search(&*self.web_search_provider, &ctx.user_id, &tc.arguments);
         if out.success {
             // v4: `{ formattedText, results, totalFound, query }`.
-            let formatted =
-                web_search::format_web_search_results(out.results.as_deref().unwrap_or(&[]));
+            let formatted = web_search::format_web_search_results_in_zone(
+                out.results.as_deref().unwrap_or(&[]),
+                &self.display_zone,
+            );
             ok(
                 "search_web",
                 json!({
@@ -1451,8 +1473,9 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         // v4 mints `sentAt = new Date().toISOString()` inside the delivery path;
         // here it is injected so the handler stays clock-testable.
         let now_iso = crate::clock::now_iso();
+        let zone = self.display_zone.clone();
         self.wardrobe_write(self.db.clone(), move |main, mount| {
-            let out = send_mail::execute_send_mail(
+            let out = send_mail::execute_send_mail_in_zone(
                 main,
                 mount,
                 &chat_id,
@@ -1460,6 +1483,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
                 character_id.as_deref(),
                 &args,
                 &now_iso,
+                &zone,
             );
             let formatted = send_mail::format_send_mail_results(&out);
             // v4 returns `result: { formattedText, path }` even on failure; error
@@ -1485,9 +1509,16 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         let args = tc.arguments.clone();
         let chat_id = ctx.chat_id.clone();
         let character_id = ctx.character_id.clone();
+        let zone = self.display_zone.clone();
         self.wardrobe_write(self.db.clone(), move |main, mount| {
-            let out =
-                list_mail::execute_list_mail(main, mount, &chat_id, character_id.as_deref(), &args);
+            let out = list_mail::execute_list_mail_in_zone(
+                main,
+                mount,
+                &chat_id,
+                character_id.as_deref(),
+                &args,
+                &zone,
+            );
             let formatted = list_mail::format_list_mail_results(&out);
             // v4 returns `result: { formattedText, count }`; error when !success.
             let result = json!({ "formattedText": formatted, "count": out.count });
@@ -1510,9 +1541,16 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         let character_id = ctx.character_id.clone();
         // Both writer connections: an unannounced letter's `alerted` flag is a
         // mount-store content rewrite.
+        let zone = self.display_zone.clone();
         self.wardrobe_write(self.db.clone(), move |main, mount| {
-            let out =
-                read_mail::execute_read_mail(main, mount, &chat_id, character_id.as_deref(), &args);
+            let out = read_mail::execute_read_mail_in_zone(
+                main,
+                mount,
+                &chat_id,
+                character_id.as_deref(),
+                &args,
+                &zone,
+            );
             let formatted = read_mail::format_read_mail_results(&out);
             ToolResult {
                 tool_name: "read_mail".into(),
@@ -2103,6 +2141,10 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
 }
 
 impl<F: ToolRunner + Sync> ToolRunner for BuiltInToolRunner<F> {
+    fn display_zone(&self) -> TimeZone {
+        self.display_zone.clone()
+    }
+
     // Genuinely awaits `dispatch` inside, so the returned future is an `async
     // move` block (the trait forbids an `async fn` signature).
     #[allow(clippy::manual_async_fn)]

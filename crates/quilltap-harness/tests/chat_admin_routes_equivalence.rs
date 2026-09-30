@@ -44,11 +44,11 @@
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-chat-admin.ndjson npx jest -- chat-admin-routes
-//! Run (`TZ=UTC`: the `read_conversation` transcript this family embeds is
-//! rendered through the executor's AMBIENT host-zone wrapper — P4.119 — and the
-//! jest oracle is pinned to UTC by `jest.config.ts`, so the Rust side must be
-//! too until the zone is threaded through the executor):
-//!   TZ=UTC QT_ORACLE_CHAT_ADMIN=/tmp/oracle-chat-admin.ndjson \
+//! Run (no `TZ` needed since P4.127: the `read_conversation` transcript this
+//! family embeds is rendered in the zone the executor is BUILT with — this
+//! family's `BuiltInToolRunner::new` defaults to UTC, the zone `jest.config.ts`
+//! pins the oracle to — instead of the retired ambient host-zone wrapper):
+//!   QT_ORACLE_CHAT_ADMIN=/tmp/oracle-chat-admin.ndjson \
 //!     cargo test -p quilltap-harness --test chat_admin_routes_equivalence -- --nocapture
 
 use std::collections::{BTreeSet, HashMap};

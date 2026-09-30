@@ -59,15 +59,9 @@ fn quote_body(body: &str) -> String {
 /// naming each letter by its file name — the handle `read_mail` takes (v4
 /// `buildSuparnaMailWhisper`). `""` for an empty list.
 ///
-/// The production entry (build_context's whisper seam): v4's zone-less
-/// `formatDateTime` resolves the HOST's zone (P4.119), read here once. The
-/// whisper is PERSISTED, so a v5-written one now carries the same local time
-/// v4 writes. Tests and differentials call [`build_suparna_mail_whisper_in_zone`].
-pub fn build_suparna_mail_whisper(letters: &[DeliveredLetterSummary]) -> String {
-    build_suparna_mail_whisper_in_zone(letters, &crate::host_zone::system_display_zone())
-}
-
-/// [`build_suparna_mail_whisper`] with each letter's date rendered in `zone`.
+/// Each letter's date renders in `zone` (v4's zone-less `formatDateTime` — the
+/// host's zone). The whisper is PERSISTED, so a v5-written one carries the same
+/// local time v4 writes.
 pub fn build_suparna_mail_whisper_in_zone(
     letters: &[DeliveredLetterSummary],
     zone: &TimeZone,
@@ -107,7 +101,7 @@ pub struct PostSuparnaMailWhisperParams {
     /// Participant id this whisper is targeted at (multi-character chats), else
     /// `None`.
     pub target_participant_id: Option<String>,
-    /// Pre-built persona-voiced body (from [`build_suparna_mail_whisper`]).
+    /// Pre-built persona-voiced body (from [`build_suparna_mail_whisper_in_zone`]).
     pub content: String,
 }
 
@@ -186,26 +180,8 @@ pub async fn post_suparna_mail_whisper(
 /// failure never breaks chat load or a turn (each participant is best-effort).
 ///
 /// `participants` are the chat's participant objects (JSON). Returns the whispers
-/// actually posted (one per character with fresh mail).
-///
-/// The production entry (the Salon load's): the whisper's letter dates
-/// resolve the HOST's zone (P4.119), read here once; tests call
-/// [`surface_operator_mail_for_chat_in_zone`] explicitly.
-pub async fn surface_operator_mail_for_chat(
-    db: &Db,
-    chat_id: &str,
-    participants: &[Value],
-) -> Vec<Value> {
-    surface_operator_mail_for_chat_in_zone(
-        db,
-        chat_id,
-        participants,
-        &crate::host_zone::system_display_zone(),
-    )
-    .await
-}
-
-/// [`surface_operator_mail_for_chat`] with the letter dates rendered in `zone`.
+/// actually posted (one per character with fresh mail). The whisper's letter
+/// dates render in `zone`.
 pub async fn surface_operator_mail_for_chat_in_zone(
     db: &Db,
     chat_id: &str,

@@ -24,8 +24,8 @@ pub mod schema;
 pub use engine::{
     default_in_progress_template, derive_progression, flatten_progressions, format_span,
     format_span_whole, infer_increment, parse_progressions, parse_report_period_ms,
-    progression_placeholders, render_progression_report, should_report_progression, unit_ms,
-    DerivedProgression, ProgressPrimitive, ProgressionState, RenderProgressionOptions,
+    progression_placeholders_in_zone, render_progression_report_in_zone, should_report_progression,
+    unit_ms, DerivedProgression, ProgressPrimitive, ProgressionState, RenderProgressionOptions,
     ReportReason, ShouldReportResult, UNIT_MS,
 };
 pub use schema::{

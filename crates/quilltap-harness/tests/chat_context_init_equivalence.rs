@@ -291,6 +291,7 @@ fn chat_context_init_matches_oracle() {
             // P4.D168: the greeting's FORCED progressions report. The oracle
             // freezes `Date.now()` to this same instant.
             FIXED_NOW_MS,
+            &quilltap_core::host_zone::TimeZone::UTC,
         )
         .unwrap_or_else(|e| panic!("case {id}: build_chat_context: {e}"));
         if id.starts_with("sp_") {

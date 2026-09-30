@@ -82,8 +82,16 @@ pub struct HostConfig {
     pub version: String,
     /// The `ENCRYPTION_MASTER_PEPPER` env pepper, if set.
     pub env_pepper: Option<String>,
-    /// IANA timezone for enclave cron evaluation (v4 uses the process zone).
+    /// IANA timezone NAME for enclave cron evaluation and every already-threaded
+    /// `server_tz` (v4 uses the process zone). `new()` derives it from
+    /// [`Self::display_zone`]: the host's zone has ONE read.
     pub tz: String,
+    /// The host's display zone as a VALUE (P4.127) — what v4's zone-less
+    /// `toLocale*` renders resolve. Read ONCE, here, and injected into
+    /// `CoreConfig`, the render-job handler and the Almanack; a zone with no IANA
+    /// name (a POSIX `TZ` string) keeps its real offsets on those paths while
+    /// `tz` falls back to `"UTC"`.
+    pub display_zone: quilltap_core::host_zone::TimeZone,
     /// Override the instance-registry file (tests); `None` = the launcher's
     /// per-user location.
     pub instances_path: Option<PathBuf>,
@@ -131,13 +139,16 @@ pub struct HostConfig {
 
 impl HostConfig {
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
+        // The host's ONE zone read (P4.127); `tz` below is derived from it.
+        let display_zone = quilltap_core::host_zone::system_display_zone();
         Self {
             base_dir: base_dir.into(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             env_pepper: std::env::var("ENCRYPTION_MASTER_PEPPER")
                 .ok()
                 .filter(|p| !p.is_empty()),
-            tz: crate::paths::system_timezone(),
+            tz: display_zone.iana_name().unwrap_or("UTC").to_string(),
+            display_zone,
             instances_path: None,
             autonomous_tick_ms: 60_000,
             stuck_check_ms: STUCK_JOB_CHECK_INTERVAL_MS as u64,
@@ -240,6 +251,7 @@ impl Host {
             terminal: config.terminal,
             terminal_slot: terminal_slot.clone(),
             tz: config.tz,
+            display_zone: config.display_zone.clone(),
             autonomous_tick_ms: config.autonomous_tick_ms,
             stuck_check_ms: config.stuck_check_ms,
             cleanup_interval_ms: config.cleanup_interval_ms,
@@ -260,6 +272,7 @@ impl Host {
                 base_dir: config.base_dir,
                 version: config.version,
                 env_pepper: config.env_pepper,
+                display_zone: config.display_zone,
             },
             Box::new(assembler),
             instances,
@@ -394,6 +407,7 @@ struct HostAssembler {
     terminal: bool,
     terminal_slot: Arc<Mutex<Option<Arc<TerminalManager>>>>,
     tz: String,
+    display_zone: quilltap_core::host_zone::TimeZone,
     autonomous_tick_ms: u64,
     stuck_check_ms: u64,
     cleanup_interval_ms: u64,
@@ -619,7 +633,10 @@ impl EngineAssembler for HostAssembler {
         // "render conversation" button minted retried three times and died.
         registry.register(
             "CONVERSATION_RENDER",
-            Box::new(ConversationRenderHandler { now_iso: None }),
+            Box::new(ConversationRenderHandler {
+                now_iso: None,
+                display_zone: self.display_zone.clone(),
+            }),
         );
         // === end P4.6BM ===
         // === P4.9H2A: the Matryoshka re-apply job — seam-free (DB only, no
@@ -854,6 +871,7 @@ impl EngineAssembler for HostAssembler {
                     self.version.clone(),
                     self.env_pepper.clone(),
                     self.tz.clone(),
+                    self.display_zone.clone(),
                     self.started,
                     Arc::new(SystemClock),
                 ),

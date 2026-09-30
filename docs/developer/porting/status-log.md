@@ -156482,6 +156482,24 @@ proofs, dedup/summaries, the Brahma deep query, #101, the compression
 re-measure, the conceal-marker arm), an autonomous room's budget charging the
 per-leg rows, and a real flat-body OpenAI image refusal.
 
+## P4.127 — the display zone threaded, the 13 ambient wrappers retired (lane record, 2026-09-30)
+
+Branch `claude/display-zone-threaded-ambient-149acd`; baseline `97b25fc53`, no drift absorbed; pin `/tmp/qt-v4-pin-p4127-97b25fc53` (§R.2 probe PASSED at lane start and before the regen batch).
+
+**What landed.** The composition root reads the host zone ONCE (`HostConfig::new` → `display_zone: TimeZone`, `tz` derived) and injects it: a `TimeZone` VALUE on `BuiltInToolRunner` (`with_display_zone`, UTC default), `CoreConfig`, `ConversationRenderHandler`, and the Almanack paths; the already-threaded `server_tz`/`tz` NAME through `host_zone::display_zone_named` at `process_message` (tool runner), `build_context` (mail context, whisper seam — `post_suparna_mail` gained a `zone` parameter, progressions) and the greeting (`build_chat_context`/`build_system_prompt` gained `host_zone`); Carina via the `ToolRunner::display_zone` default method (overridden by `BuiltInToolRunner`). Deleted: the 13 ambient wrappers and the caller-less `progression_placeholders`; `paths::system_timezone`. `BuildProgressionsSectionParams` grew `host_zone`.
+
+**Named divergence (ruled at planning).** The three name-fed entries (Salon turn, `build_context`, greeting) and the spine's runner resolve their zone from an IANA NAME, so a host zone with no IANA name (POSIX `TZ`, fixed offset) displays UTC there where v4 shows the host zone. Recorded in `host_zone.rs` and the census header; Option V (a `TimeZone` field on `ProcessMessageInput`/`BuildContextInput`) is the alternative at the cost of `orchestrator_tier3_equivalence.rs` literals.
+
+**Proof.** No v4 hunk; the differential is the existing families under an explicit zone. The 26 families (P4.119's 18 + `chat_admin_routes`, `tool_dispatch`, `salon_reads`, `help_chats_routes`, `chat_context_init`, `subprompts_prompt_tier2`, `carina_query_tier3`, `chat_create_capstone`) regenerated from the lane pin and run TWICE through `harness/tools/recipe_sweep.py --run-all --families … --v4 /tmp/qt-v4-pin-p4127-97b25fc53 --v5w <worktree> --force` (wrapper `/tmp/p4127/run-sweep.sh <label> none|utc`): with NO `TZ` in the sweep's environment — `{'ok': 26}`, zero `SKIP:` — and under `TZ=UTC` — `{'ok': 26}`, zero `SKIP:`. `chat_admin_routes` and `tool_dispatch` green with no `TZ` is the headline (their recipe comments updated; `tool_dispatch`'s generation-line `TZ=UTC` pins stay, the cargo line's dropped). `host_zone_sites_census` green under both; the rewritten Chicago child proves `HostConfig::new`, the spine-style runner, the helper and the progressions fallback under a real `TZ=America/Chicago`.
+
+**Mutation table** (each reverted by file backup; all against `host_zone_sites_census`, no `TZ`): M1 drop `.with_display_zone` in `ChatSpine::tool_runner` → `host_injection_points_carry_the_host_zone` red; M2 helper returns `system_display_zone()` → census + Chicago child red; M3 `CoreConfig` filled with `TimeZone::UTC` at the host → `host_injection_points_…` red; M4 one ambient `system_display_zone()` added in `tools/web_search.rs` → `host_zone_sites_census` red. (M1's first attempt did not apply — rustfmt had reflowed the anchor text — and was re-run.)
+
+**Not built (Tier 3, recorded).** The two core NAME wrappers (`autonomous_rooms::system_tz`, `markdown_transcript::system_tz`) through `CoreConfig` (~12 harness edits); Option V. **💸 owed (human walk, Tier 2 item 10):** a real turn's `read_conversation` header and a `list_mail` date reading `CDT` on the Friday copy with no `TZ`, and UTC under `TZ=UTC` on the same binary.
+
+**Fixtures:** none changed. **Versions:** core 0.0.1116, harness 0.0.1035, host 0.0.167 (web/cli/tauri unbumped — nothing they construct changed).
+
+**For the unifier:** `salon::chat_get`, `build_chat_context`, `post_suparna_mail`, `BuildProgressionsSectionParams`, `CoreConfig` and `HostConfig` gained a parameter/field; any lane branch calling them needs the new argument. `orchestrator_tier3_equivalence.rs` needed no literal.
+
 ## P4.129 — the orchestrator tier-3 oracle's W4.11b move: CHAT_MESSAGE rows diffed (lane record, 2026-09-30)
 
 Branch `claude/orchestrator-oracle-chat-rows-881e0a`, cut from `main`

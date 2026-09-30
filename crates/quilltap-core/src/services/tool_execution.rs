@@ -355,6 +355,19 @@ pub trait ToolRunner {
         tool_call: &ToolCall,
         ctx: &ToolExecutionContext,
     ) -> impl Future<Output = ToolResult> + Send;
+
+    /// The zone human-readable dates render in on behalf of this runner's turn
+    /// (P4.127). v4 formats with the process zone at every site; v5 threads the
+    /// host's zone VALUE from the composition root instead of reading the
+    /// environment. The zone rides on the runner because the runner is the one
+    /// value every consumer of it already holds — the tools run under it, and so
+    /// does Carina's read-only pass, whose progressions section renders dates
+    /// too. Default UTC (canned runners, the differentials);
+    /// [`BuiltInToolRunner`](crate::tools::executor::BuiltInToolRunner)
+    /// overrides it with the zone it was built with.
+    fn display_zone(&self) -> crate::host_zone::TimeZone {
+        crate::host_zone::TimeZone::UTC
+    }
 }
 
 /// The canonical lookup key for a canned tool result: `name | JSON.stringify(args)

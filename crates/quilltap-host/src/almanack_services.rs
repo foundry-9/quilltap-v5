@@ -45,6 +45,7 @@ pub struct HostAlmanackServices {
     version: String,
     env_pepper: Option<String>,
     tz: String,
+    display_zone: quilltap_core::host_zone::TimeZone,
     started: Instant,
     clock: Arc<dyn Clock>,
 }
@@ -55,6 +56,7 @@ impl HostAlmanackServices {
         version: String,
         env_pepper: Option<String>,
         tz: String,
+        display_zone: quilltap_core::host_zone::TimeZone,
         started: Instant,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -63,6 +65,7 @@ impl HostAlmanackServices {
             version,
             env_pepper,
             tz,
+            display_zone,
             started,
             clock,
         }
@@ -237,8 +240,9 @@ impl AlmanackHost for HostAlmanackServices {
             backups_dir: data.join("backups"),
             data_dir: data,
             // === P4.119 === the host's zone for the volume's dates (v4's
-            // zone-less `toLocale*` / local `new Date(y, m, …)`).
-            display_zone: quilltap_core::host_zone::system_display_zone(),
+            // zone-less `toLocale*` / local `new Date(y, m, …)`) — the value
+            // the composition root read ONCE (P4.127).
+            display_zone: self.display_zone.clone(),
             // === end P4.119 ===
         }
     }
@@ -409,6 +413,7 @@ Buffers:          295204 kB
             "0.0.0-test".to_string(),
             None,
             "UTC".to_string(),
+            quilltap_core::host_zone::TimeZone::UTC,
             std::time::Instant::now(),
             std::sync::Arc::new(FixedClock),
         );

@@ -1227,6 +1227,9 @@ where
         // P4.D168: the greeting's FORCED progressions report rides the same
         // injected clock every other minted value here does.
         deps.now_ms,
+        // P4.127: the greeting's display zone — the already-threaded `tz` NAME
+        // through the one helper.
+        &crate::host_zone::display_zone_named(Some(&deps.tz)),
     )?;
 
     let chat_settings = chat_settings::find_by_user_id(main, user_id)?;

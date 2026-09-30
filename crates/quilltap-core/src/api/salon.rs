@@ -158,11 +158,15 @@ pub fn list_chats(
 /// `ptyManager.get(session.id)` in `lib/terminal/reconcile.ts`). `None`
 /// (read-only embedders, hosts without a terminal subsystem) matches v4's
 /// empty PTY map: every exitedAt-null row reconciles as orphaned.
+///
+/// `zone` is the display zone the operator-mail whispers' letter dates render in
+/// (the engine passes `CoreConfig::display_zone`; P4.127).
 pub async fn chat_get(
     db: &Db,
     user_id: &str,
     chat_id: &str,
     terminal_probe: Option<&dyn ariel_notifications::TerminalLivenessProbe>,
+    zone: &crate::host_zone::TimeZone,
 ) -> Response {
     // 1. Ownership-free slim read (single-user).
     let chat_id_owned = chat_id.to_string();
@@ -180,7 +184,8 @@ pub async fn chat_get(
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    suparna_notifications::surface_operator_mail_for_chat(db, chat_id, &participants).await;
+    suparna_notifications::surface_operator_mail_for_chat_in_zone(db, chat_id, &participants, zone)
+        .await;
     // Un-embedded chunk re-warm (v4 `maybeEnqueueColdChunkReembed`): if this
     // chat's conversation chunks lack embeddings (a leftover from before chunk
     // embeddings were kept warm unconditionally — v4 `f7f3d7bf0` — or a failed

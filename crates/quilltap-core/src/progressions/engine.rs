@@ -33,11 +33,10 @@
 //! does here (P4.119, dogfood #121, ruled (a) 2026-09-29 — this seam was once
 //! pinned to UTC). The host zone is an argument: the `_in_zone` renderers take
 //! it explicitly (every test and differential passes `TimeZone::UTC`, the zone
-//! the family's oracle runs under), and the production wrappers
-//! ([`render_progression_report`], [`progression_placeholders`]) read
-//! [`crate::host_zone::system_display_zone`] — which is how v4's zone-less
-//! greeting and Carina calls (`initialize.ts:222`, `carina.service.ts:588`)
-//! resolve.
+//! the family's oracle runs under), and production passes the host zone the
+//! composition root read once (P4.127 — the ambient wrappers are retired) —
+//! which is how v4's zone-less greeting and Carina calls (`initialize.ts:222`,
+//! `carina.service.ts:588`) resolve.
 //!
 //! CLIENT-SAFE in v4's sense: pure, no DB, no tracing, no I/O. The one logging
 //! reader is P4.D168's `prompt_section.rs`, which passes an `on_issue` sink
@@ -586,18 +585,9 @@ pub struct RenderProgressionOptions<'a> {
 /// states are short, fixed and structurally different, and an author's
 /// in-progress sentence would read as nonsense in either.
 ///
-/// The production entry: an absent or unresolvable `opts.timezone` falls back
-/// to the HOST's zone, read here once (P4.119). Tests and differentials call
-/// [`render_progression_report_in_zone`] with the fallback explicitly.
-pub fn render_progression_report(
-    p: &Progression,
-    d: &DerivedProgression,
-    opts: &RenderProgressionOptions<'_>,
-) -> String {
-    render_progression_report_in_zone(p, d, opts, &crate::host_zone::system_display_zone())
-}
-
-/// [`render_progression_report`] with the host-zone fallback passed in.
+/// An absent or unresolvable `opts.timezone` falls back to `host_zone` — the
+/// display zone the caller was handed (P4.127: threaded from the composition
+/// root, never read ambiently here).
 pub fn render_progression_report_in_zone(
     p: &Progression,
     d: &DerivedProgression,
@@ -637,16 +627,6 @@ pub fn default_in_progress_template(p: &Progression) -> String {
         Some(description) if !description.is_empty() => format!("{description} {sentence}"),
         _ => sentence,
     }
-}
-
-/// Every placeholder a report template may name, in the HOST's fallback zone
-/// (the production entry — see [`render_progression_report`]).
-pub fn progression_placeholders(
-    p: &Progression,
-    d: &DerivedProgression,
-    opts: &RenderProgressionOptions<'_>,
-) -> Vec<(String, String)> {
-    progression_placeholders_in_zone(p, d, opts, &crate::host_zone::system_display_zone())
 }
 
 /// Every placeholder a report template may name, already rendered to text (v4

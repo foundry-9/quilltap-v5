@@ -160,6 +160,7 @@ async fn the_chat_upload_arm_reaches_for_the_host_codec() {
             base_dir: base.clone(),
             version: "test".to_string(),
             env_pepper: Some(PEPPER.to_string()),
+            display_zone: quilltap_core::host_zone::TimeZone::UTC,
         },
         Box::new(NoopAssembler),
         Arc::new(EmptyInstances),
@@ -318,6 +319,7 @@ fn boot_with_codec(base: &Path) -> CoreEngine {
             base_dir: base.to_path_buf(),
             version: "test".to_string(),
             env_pepper: Some(PEPPER.to_string()),
+            display_zone: quilltap_core::host_zone::TimeZone::UTC,
         },
         Box::new(CodecAssembler {
             root: base.to_path_buf(),

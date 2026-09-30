@@ -771,15 +771,18 @@ pub trait BuildContextSeams {
 
     /// v4 `postSuparnaMailWhisper` — Suparṇā's new-mail whisper. Given the unalerted
     /// letters, build the persona whisper ([`crate::services::suparna_notifications::
-    /// build_suparna_mail_whisper`]) and post it targeted at the responding
-    /// participant (multi-character) or public (single). Default: no-op.
+    /// build_suparna_mail_whisper_in_zone`]) and post it targeted at the responding
+    /// participant (multi-character) or public (single). `zone` is the display
+    /// zone the letter dates render in (P4.127 — `build_context` resolves it once
+    /// from `server_tz`). Default: no-op.
     fn post_suparna_mail(
         &self,
         chat_id: &str,
         letters: &[crate::post_office::mailbox::DeliveredLetterSummary],
         target_participant_id: Option<&str>,
+        zone: &crate::host_zone::TimeZone,
     ) -> impl std::future::Future<Output = ()> + Send {
-        let _ = (chat_id, letters, target_participant_id);
+        let _ = (chat_id, letters, target_participant_id, zone);
         async {}
     }
 }
@@ -922,8 +925,11 @@ impl BuildContextSeams for RealBuildContextSeams<'_> {
         chat_id: &str,
         letters: &[crate::post_office::mailbox::DeliveredLetterSummary],
         target_participant_id: Option<&str>,
+        zone: &crate::host_zone::TimeZone,
     ) {
-        let content = crate::services::suparna_notifications::build_suparna_mail_whisper(letters);
+        let content = crate::services::suparna_notifications::build_suparna_mail_whisper_in_zone(
+            letters, zone,
+        );
         let _ = crate::services::suparna_notifications::post_suparna_mail_whisper(
             self.db,
             crate::services::suparna_notifications::PostSuparnaMailWhisperParams {
@@ -3584,6 +3590,11 @@ where
             .await;
     }
 
+    // The display zone every human-readable date below resolves in (P4.127).
+    // The already-threaded `server_tz` NAME through the one helper — NOT
+    // `timezone` (the chat's story zone; equal today, free to diverge).
+    let display_zone = crate::host_zone::display_zone_named(input.server_tz.as_deref());
+
     // Suparṇā mail — v4's READ half (W4.6a): collect unalerted mail, build the
     // LLM context, flip each `alerted` flag. The whisper POST is W4.6b (fired via
     // the recorded seam when there is unalerted mail).
@@ -3591,7 +3602,12 @@ where
         match input.character.character_document_mount_point_id.as_deref() {
             Some(vault) => {
                 let (ctx, unalerted) =
-                    crate::services::suparna_mail::resolve_suparna_mail_context(db, vault).await;
+                    crate::services::suparna_mail::resolve_suparna_mail_context_in_zone(
+                        db,
+                        vault,
+                        &display_zone,
+                    )
+                    .await;
                 if !unalerted.is_empty() {
                     // v4 targets the responding participant in multi-character chats,
                     // public otherwise; the whisper body is built from the letters.
@@ -3601,7 +3617,7 @@ where
                         None
                     };
                     seams
-                        .post_suparna_mail(&input.chat.id, &unalerted, target)
+                        .post_suparna_mail(&input.chat.id, &unalerted, target, &display_zone)
                         .await;
                 }
                 ctx
@@ -3641,6 +3657,7 @@ where
                 responding_participant_id: responding_id.as_deref(),
                 now_ms: input.now_ms,
                 timezone: input.timezone.as_deref(),
+                host_zone: &display_zone,
                 force: false,
             },
         )

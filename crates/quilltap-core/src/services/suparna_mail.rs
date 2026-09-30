@@ -70,23 +70,11 @@ pub fn build_suparna_mail_llm_context(
 /// caller invokes the recorded seam separately). Any failure → `""` (v4 wraps the
 /// whole check warn-only — a mail failure never breaks the turn).
 ///
+/// Letter dates render in `zone` (v4's zone-less `formatDateTime` — the host's
+/// zone, threaded from the composition root; P4.119/P4.127).
+///
 /// Returns `(llm_context, unalerted)` so the caller can hand the unalerted list to
 /// the W4.6b whisper-post seam without re-reading.
-pub async fn resolve_suparna_mail_context(
-    db: &Db,
-    mail_vault_id: &str,
-) -> (String, Vec<DeliveredLetterSummary>) {
-    resolve_suparna_mail_context_in_zone(
-        db,
-        mail_vault_id,
-        &crate::host_zone::system_display_zone(),
-    )
-    .await
-}
-
-/// [`resolve_suparna_mail_context`] with the letter dates rendered in `zone`
-/// (v4's zone-less `formatDateTime` — the host's zone in production, read by
-/// the wrapper above; P4.119). Tests and differentials call this explicitly.
 pub async fn resolve_suparna_mail_context_in_zone(
     db: &Db,
     mail_vault_id: &str,

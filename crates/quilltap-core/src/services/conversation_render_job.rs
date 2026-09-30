@@ -86,30 +86,10 @@ impl ConversationRenderPayload {
 /// passes [`crate::clock::now_iso`]; the differential pins it, which is what
 /// makes the chunk rows compare byte-exact rather than needing normalization.
 ///
-/// This is the production entry: the chunk text's timestamps are v4's
-/// zone-less `toLocale*` renders, so they resolve the HOST's zone (P4.119 —
+/// The chunk text's timestamps are v4's zone-less `toLocale*` renders, so they
+/// resolve the HOST's zone, which the handler threads in as `zone` (P4.119 —
 /// dogfood #121: a UTC render of a chunk v4 wrote in the host zone changed its
-/// text, and the v4-faithful upsert then nulled its embedding). Tests and
-/// differentials call [`handle_conversation_render_in_zone`] explicitly.
-pub async fn handle_conversation_render(
-    db: &Db,
-    job_id: &str,
-    user_id: &str,
-    payload: &ConversationRenderPayload,
-    now_iso: &str,
-) -> Result<(), String> {
-    handle_conversation_render_in_zone(
-        db,
-        job_id,
-        user_id,
-        payload,
-        now_iso,
-        &crate::host_zone::system_display_zone(),
-    )
-    .await
-}
-
-/// [`handle_conversation_render`] with the render's display zone passed in.
+/// text, and the v4-faithful upsert then nulled its embedding).
 pub async fn handle_conversation_render_in_zone(
     db: &Db,
     job_id: &str,
@@ -312,6 +292,9 @@ pub struct ConversationRenderHandler {
     /// `None` reads the real clock at handle time; `Some(s)` pins it (the
     /// differential's runner path).
     pub now_iso: Option<String>,
+    /// The zone the persisted + embedded chunk text's timestamps render in —
+    /// the host's, injected by the composition root (P4.127; dogfood #121).
+    pub display_zone: crate::host_zone::TimeZone,
 }
 
 impl crate::services::job_runner::JobHandler for ConversationRenderHandler {
@@ -325,7 +308,16 @@ impl crate::services::job_runner::JobHandler for ConversationRenderHandler {
             let payload = ConversationRenderPayload::from_json(&payload_json);
             let now = self.now_iso.clone().unwrap_or_else(now_iso);
             // v4 passes `job.userId` — the row's own value.
-            match handle_conversation_render(db, &job.id, &job.user_id, &payload, &now).await {
+            match handle_conversation_render_in_zone(
+                db,
+                &job.id,
+                &job.user_id,
+                &payload,
+                &now,
+                &self.display_zone,
+            )
+            .await
+            {
                 Ok(()) => crate::services::job_runner::JobOutcome::Completed(None),
                 Err(e) => crate::services::job_runner::JobOutcome::Failed(e),
             }

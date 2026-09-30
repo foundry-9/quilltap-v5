@@ -43,8 +43,12 @@
 //!   QT_FIXTURE_TOOLDISPATCH_MOUNT=/tmp/qt-tooldispatch-mount.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/tool-dispatch.ts \
 //!     > /tmp/oracle-tooldispatch.ndjson
+//! The two `TZ=UTC` pins on the GENERATION lines above stay — the tsx oracle
+//! reads the process zone. The Run line needs none since P4.127: the executor's
+//! zone is the one it is built with (`BuiltInToolRunner::new` defaults to UTC),
+//! not an ambient read.
 //! Run:
-//!   TZ=UTC QT_ORACLE_TOOLDISPATCH=/tmp/oracle-tooldispatch.ndjson \
+//!   QT_ORACLE_TOOLDISPATCH=/tmp/oracle-tooldispatch.ndjson \
 //!   QT_FIXTURE_TOOLDISPATCH=/tmp/qt-tooldispatch-main.db \
 //!   QT_FIXTURE_TOOLDISPATCH_MOUNT=/tmp/qt-tooldispatch-mount.db \
 //!     cargo test -p quilltap-harness --test tool_dispatch_equivalence

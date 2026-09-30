@@ -970,32 +970,6 @@ pub async fn chat_impersonation_voice_preview(
 // `?action=send-mail` — v4 `handleSendMail`
 // ===========================================================================
 
-/// v4 `POST /api/v1/chats/[id]?action=send-mail` in the HOST's zone — the
-/// dispatch entry. A reply preface's date is v4's zone-less `formatDateTime`,
-/// so it resolves the host zone (P4.119), read here once; tests and
-/// differentials call [`chat_send_mail_in_zone`] explicitly.
-pub async fn chat_send_mail(
-    db: &Db,
-    chat_id: &str,
-    from_character_id: &str,
-    to_character_id: &str,
-    body_markdown: &str,
-    in_reply_to_path: Option<&str>,
-    now_iso: &str,
-) -> Response {
-    chat_send_mail_in_zone(
-        db,
-        chat_id,
-        from_character_id,
-        to_character_id,
-        body_markdown,
-        in_reply_to_path,
-        now_iso,
-        &crate::host_zone::system_display_zone(),
-    )
-    .await
-}
-
 /// v4 `POST /api/v1/chats/[id]?action=send-mail`. `now_iso` is the injected
 /// delivery `sentAt` (v4 mints it inside the delivery path); `zone` renders a
 /// reply preface's date.

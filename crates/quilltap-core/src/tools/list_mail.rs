@@ -58,27 +58,6 @@ fn fail(message: &str) -> ListMailOutput {
     }
 }
 
-/// Execute the `list_mail` tool in the host's zone.
-/// The production entry (the tool executor's): v4's zone-less date renders
-/// resolve the HOST's zone (P4.119), read here once. Tests and differentials
-/// call [`execute_list_mail_in_zone`] with their zone explicitly.
-pub fn execute_list_mail(
-    main: &Connection,
-    mount: &Connection,
-    chat_id: &str,
-    character_id: Option<&str>,
-    args: &Value,
-) -> ListMailOutput {
-    execute_list_mail_in_zone(
-        main,
-        mount,
-        chat_id,
-        character_id,
-        args,
-        &crate::host_zone::system_display_zone(),
-    )
-}
-
 /// Execute the `list_mail` tool (v4 `executeListMailTool`). Runs on both writer
 /// connections; each letter's date renders in `zone`.
 ///

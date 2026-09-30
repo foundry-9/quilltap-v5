@@ -220,14 +220,6 @@ pub fn execute_web_search<P: WebSearchProvider + ?Sized>(
     }
 }
 
-/// v4 `formatWebSearchResults` in the HOST's zone — the production entry (the
-/// tool executor's). v4's `toLocaleDateString()` carries no `timeZone`, so a
-/// `publishedDate` renders in the Node process's zone (P4.119). Tests and
-/// differentials call [`format_web_search_results_in_zone`] explicitly.
-pub fn format_web_search_results(results: &[WebSearchResult]) -> String {
-    format_web_search_results_in_zone(results, &crate::host_zone::system_display_zone())
-}
-
 /// v4 `formatWebSearchResults` — the BUILT-IN formatter (the provider's own
 /// `formatResults` is a plugin seam not ported). A `publishedDate` renders via
 /// `toLocaleDateString()` in `zone`.

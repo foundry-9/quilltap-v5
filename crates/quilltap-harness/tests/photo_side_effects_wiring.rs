@@ -244,6 +244,7 @@ fn boot(base: &Path, pepper: &str, assembler: Box<dyn EngineAssembler>) -> CoreE
             base_dir: base.to_path_buf(),
             version: "test".to_string(),
             env_pepper: Some(pepper.to_string()),
+            display_zone: quilltap_core::host_zone::TimeZone::UTC,
         },
         assembler,
         Arc::new(EmptyInstances),

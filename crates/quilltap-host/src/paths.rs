@@ -82,9 +82,3 @@ pub fn app_dir() -> PathBuf {
         home_dir().join(".quilltap")
     }
 }
-
-/// The system IANA timezone for cron evaluation (v4 evaluates crons in the
-/// process zone). Falls back to UTC when the platform zone is unnameable.
-pub fn system_timezone() -> String {
-    quilltap_core::host_zone::system_zone_name()
-}

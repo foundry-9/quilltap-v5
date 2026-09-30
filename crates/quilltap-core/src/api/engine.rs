@@ -68,6 +68,11 @@ pub struct CoreConfig {
     pub version: String,
     /// The `ENCRYPTION_MASTER_PEPPER` env pepper, if set (host reads env).
     pub env_pepper: Option<String>,
+    /// The zone every human-readable date the engine renders resolves in (the
+    /// Post Office's reply preface, the Salon load's operator-mail whispers).
+    /// v4 formats with the process zone; the host reads it ONCE and injects it
+    /// here (P4.127) — core never reads the environment for a display zone.
+    pub display_zone: crate::host_zone::TimeZone,
 }
 
 impl CoreConfig {
@@ -908,7 +913,14 @@ impl CoreEngine {
             },
             Request::ChatGet { chat_id } => match self.ready_db_and_terminal_probe() {
                 Ok((db, probe)) => {
-                    super::salon::chat_get(&db, SINGLE_USER_ID, &chat_id, probe.as_deref()).await
+                    super::salon::chat_get(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        probe.as_deref(),
+                        &self.inner.config.display_zone,
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
@@ -1317,7 +1329,7 @@ impl CoreEngine {
                 in_reply_to_path,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::chat_post_office::chat_send_mail(
+                    super::chat_post_office::chat_send_mail_in_zone(
                         &db,
                         &chat_id,
                         &from_character_id,
@@ -1325,6 +1337,7 @@ impl CoreEngine {
                         &body_markdown,
                         in_reply_to_path.as_deref(),
                         &crate::clock::now_iso(),
+                        &self.inner.config.display_zone,
                     )
                     .await
                 }
@@ -7306,6 +7319,7 @@ mod tests {
             base_dir: base.path().to_path_buf(),
             version: "test".to_string(),
             env_pepper: env_pepper.map(str::to_string),
+            display_zone: crate::host_zone::TimeZone::UTC,
         }
     }
 

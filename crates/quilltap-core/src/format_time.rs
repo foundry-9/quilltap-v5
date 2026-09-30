@@ -14,8 +14,9 @@
 //! differential pins the oracle to `TZ=UTC`, which made "matches v4 under
 //! `TZ=UTC`" read as "always UTC" — and on real data the difference cost every
 //! re-rendered chat its embeddings and persisted wrong-zone letter times. Each
-//! formatter now takes the zone v4's call resolves — production passes
-//! [`crate::host_zone::system_display_zone`], every test and differential
+//! formatter now takes the zone v4's call resolves — production passes the
+//! host zone the composition root read once and threaded down (P4.127; see
+//! [`crate::host_zone`]), every test and differential
 //! passes `TimeZone::UTC` explicitly — and renders each instant with that
 //! instant's OWN offset (`Timestamp::to_zoned`), so a January letter rendered
 //! in July keeps its winter offset.

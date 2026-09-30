@@ -80,32 +80,6 @@ fn validate(args: &Value) -> bool {
     }
 }
 
-/// Execute the `send_mail` tool in the host's zone.
-/// The production entry (the tool executor's): v4's zone-less date renders
-/// resolve the HOST's zone (P4.119), read here once. Tests and differentials
-/// call [`execute_send_mail_in_zone`] with their zone explicitly.
-#[allow(clippy::too_many_arguments)]
-pub fn execute_send_mail(
-    main: &Connection,
-    mount: &Connection,
-    chat_id: &str,
-    user_id: &str,
-    character_id: Option<&str>,
-    args: &Value,
-    now_iso: &str,
-) -> SendMailOutput {
-    execute_send_mail_in_zone(
-        main,
-        mount,
-        chat_id,
-        user_id,
-        character_id,
-        args,
-        now_iso,
-        &crate::host_zone::system_display_zone(),
-    )
-}
-
 /// Execute the `send_mail` tool (v4 `executeSendMailTool`). Runs on both writer
 /// connections. `now_iso` is the injected delivery timestamp; `zone` renders a
 /// reply preface's date.

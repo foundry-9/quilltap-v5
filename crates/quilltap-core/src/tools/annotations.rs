@@ -176,30 +176,6 @@ enum UpsertPlan {
     },
 }
 
-/// Execute the `upsert_annotation` tool in the HOST's zone — the tool
-/// executor's entry. Its live render (which numbers the messages) is v4's
-/// zone-less render, so it resolves the host zone (P4.119), read here once;
-/// tests and differentials call [`execute_upsert_annotation_in_zone`].
-pub async fn execute_upsert_annotation(
-    db: &Db,
-    user_id: &str,
-    chat_id: &str,
-    character_name: &str,
-    args: &Value,
-    now_iso: &str,
-) -> UpsertAnnotationOutput {
-    execute_upsert_annotation_in_zone(
-        db,
-        user_id,
-        chat_id,
-        character_name,
-        args,
-        now_iso,
-        &crate::host_zone::system_display_zone(),
-    )
-    .await
-}
-
 /// Execute the `upsert_annotation` tool (v4 `executeUpsertAnnotationTool`).
 ///
 /// `now_iso` is the live render's wall clock (its `Current time:` header line);
