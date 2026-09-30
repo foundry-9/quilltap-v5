@@ -705,13 +705,18 @@ mod tests {
 
     /// P4.D225 (v4 `8bd080267` widened `RouteAttemptSchema.evidence` from two
     /// values to five and added `profileKind`): a stored trail carrying every
-    /// NEW value — and an unknown one — reads back byte-for-byte, key order
-    /// included. The `deleting-a-ts-union-member-is-not-deleting-a-serde-variant`
-    /// rule: this read is a JSON passthrough, not a typed enum, so no value v4
-    /// (or an import) ever persisted can be lost in the round trip. (v4's
+    /// value v4's enum admits reads back byte-for-byte, key order included —
+    /// the `deleting-a-ts-union-member-is-not-deleting-a-serde-variant` rule:
+    /// this read is a JSON passthrough, not a typed enum, so no value v4 ever
+    /// persisted (it validates on write) is lost in the round trip.
+    ///
+    /// P4.130 closed the divergence this test used to RECORD ("v4's
     /// `ChatEventSchema` would SKIP a row whose evidence is outside its enum;
-    /// v5's read has never validated the trail's items — a pre-existing
-    /// narrowing, recorded in the P4.D225 lane record, unchanged here.)
+    /// v5's read has never validated the trail's items"): the read now holds
+    /// each element to the strict `RouteAttemptSchema` twin, so a row carrying
+    /// an unknown evidence — or a non-uuid `profileId`, which this test's rows
+    /// used to carry — is SKIPPED with v4's WARN, as v4 skips it (the
+    /// differential is `chats_messages_ops_tier2`'s trail read).
     #[test]
     fn a_route_trail_with_every_evidence_value_round_trips() {
         let conn = Connection::open_in_memory().unwrap();
@@ -719,36 +724,58 @@ mod tests {
         crate::test_support::ensure_p4d171_columns(&conn);
         let row = |evidence: &str| {
             format!(
-                r#"{{"profileId":"p","profileName":"Painter","provider":"OPENAI","modelName":"gpt-image-2","via":"primary","outcome":"refused","profileKind":"image","trigger":"moderation-refusal","evidence":"{evidence}","detail":"d"}}"#
+                r#"{{"profileId":"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11","profileName":"Painter","provider":"OPENAI","modelName":"gpt-image-2","via":"primary","outcome":"refused","profileKind":"image","trigger":"moderation-refusal","evidence":"{evidence}","detail":"d"}}"#
             )
         };
-        let trail = format!(
-            "[{}]",
-            [
-                "typed-error",
-                "provider-code",
-                "finish-reason",
-                "message-pattern",
-                "inferred",
-                "some-future-evidence",
-            ]
-            .iter()
-            .map(|e| row(e))
-            .collect::<Vec<_>>()
-            .join(",")
+        let trail_of = |evidences: &[&str]| {
+            format!(
+                "[{}]",
+                evidences
+                    .iter()
+                    .map(|e| row(e))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        };
+        let trail = trail_of(&[
+            "typed-error",
+            "provider-code",
+            "finish-reason",
+            "message-pattern",
+            "inferred",
+        ]);
+        let unknown = trail_of(&["typed-error", "some-future-evidence"]);
+        for (id, at, t) in [
+            (M1, "2026-09-25T00:00:01.000Z", &trail),
+            (M2, "2026-09-25T00:00:02.000Z", &unknown),
+        ] {
+            conn.execute(
+                "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, routeTrail) \
+                 VALUES (?1, 'c1', 'message', 'TOOL', 'x', ?2, ?3)",
+                rusqlite::params![id, at, t],
+            )
+            .unwrap();
+        }
+        let (msgs, lines) = crate::test_support::captured_with(|| get_messages(&conn, "c1"));
+        let msgs = msgs.unwrap();
+        assert_eq!(
+            msgs.len(),
+            1,
+            "the unknown-evidence row is skipped, as v4 skips it"
         );
-        conn.execute(
-            "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, routeTrail) \
-             VALUES (?1, 'c1', 'message', 'TOOL', 'x', '2026-09-25T00:00:01.000Z', ?2)",
-            rusqlite::params![M1, trail],
-        )
-        .unwrap();
-        let msgs = get_messages(&conn, "c1").unwrap();
-        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0]["id"], M1);
         assert_eq!(
             serde_json::to_string(&msgs[0]["routeTrail"]).unwrap(),
             trail,
             "the trail must survive byte-for-byte"
+        );
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with("WARN quilltap::db Skipping corrupted chat message")
+                && lines[0].contains(&format!("messageId={M2}"))
+                && lines[0].contains("routeTrail.1.evidence"),
+            "{}",
+            lines[0]
         );
     }
 

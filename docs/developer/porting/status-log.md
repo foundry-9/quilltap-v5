@@ -156709,6 +156709,71 @@ Regen outputs staged under `/tmp/p4130/`.
   `danger_resolver`, `danger_gatekeeper_tier3`, `refusal_ledger_tier3` — 4/4
   ok, zero `SKIP:`.
 
+### Unit 6 — measurement (Tier 2 item 12) + the gate + close-out
+
+- **`dumpFileFacts` MEASURED, not built** (a throwaway `/tmp/p4130/files-
+  measure` copy of `files-routes.test.ts` with a `Logger.prototype` spy and a
+  4 s settle; the committed oracle is untouched — not this lane's file): both
+  chat-upload cases log INFO `auto-describe: vision describe did not produce a
+  description {fileEntryId, type: "unsupported", error: "No image description
+  profile available. Configure one in Settings → Chat Settings → Image
+  Description Profile"}` → `describe-failed`, nothing written; the general
+  file upload never auto-describes. Recorded in P4.120's header; the tier-3
+  upgrade stays a later order.
+- **Mutation proofs** (each by file backup, `cmp`-verified restored):
+  M1 UTF-16 back in `zod_group_issues` → `scenario_builder_mount_pool` red on
+  the astral arm alone (pool, pool DEBUG, validation lines); M2 `InvalidUnion`
+  `errors` before `code` → `repository_zod_messages` red on exactly the 8
+  union rows (6 group + 2 link); M3 a retired variant word re-added to the
+  writer (`enum RetiredKind { ManualFlagged }`, compilable) → the census red;
+  M4 the twin's uuid check removed → `retry_uncensored_tier3` 1 of 65 (the
+  non-uuid-profile 404 case); M5 the mask exception removed → the import
+  family's new assert red (`… "Concierge Bogus 6": <ENGINE>`). The unit-2
+  and unit-4 red-first runs were the same mechanism (P4.124's sentence
+  restored; the trail check disabled).
+- **The gate** (one detached chain, `/tmp/p4130/gate.log`, `CARGO_INCREMENTAL=0
+  TZ=UTC`): §R.2 probe PASS before every regen batch; fmt clean; clippy
+  `--workspace --all-targets` clean in both feature sets (the second only
+  re-checks `quilltap-tauri` — `native-transport` is already unified on);
+  the sweep driver from the pin over the lane's eight families
+  (`repository_zod_messages`, `scenario_builder_mount_pool`,
+  `scenario_builder_routes`, `system_restore_state`, `system_import_state`,
+  `chats_messages_ops_tier2`, `retry_uncensored_tier3`, `tiered_mount_pool`
+  as neutrality) — 8/8 ok, ZERO `SKIP:`, plus unit 5's four neutrality
+  families 4/4; release build clean; **Tier R 266 cases / 0 failures** at the
+  pin; `cargo test --workspace --no-fail-fast` with the lane's env block:
+  **653 binaries / 4,007 passed / 2 failed / 3 ignored** — both reds THIS
+  lane's, fixed in the close-out commit: (1) `chats_messages_read`'s
+  `a_route_trail_with_every_evidence_value_round_trips` had PINNED the old
+  divergence (a non-uuid `profileId` + an unknown evidence expected back) —
+  rewritten to v4's behaviour; (2) `get_messages_caller_census` names the
+  retired-kinds test by name — the rename reverted
+  (`the_six_retired_kinds_read_back_unchanged`), the census UNMOVED. After the
+  fix: core lib 2,813 / 0 (twice), the two censuses green, clippy clean.
+  Every lane family confirmed RUN by duration; every named census/guard green
+  (`dispatch_wrong_type_census` 14 tests, `zod_issues_home_guard` — the
+  constructor census unmoved at 5/1/1, parsed-type 6/6 — `concierge_state_
+  writers_census`, `get_messages_caller_census`, `web_edge_action_sites_census`,
+  `blob_write_sites_census`, `compressed_column_write_sites_census`,
+  `stream_watchdog_wrap_census`, `host_zone_sites_census`,
+  `bare_cheap_llm_executor_guard`, `help_tree_embed_guard`,
+  `qtap_schema_embed_guard`, `zod_version_guard`, `provider_sdk_version_guard`,
+  `public_schemas_vendor_guard`, `builtin_prompt_templates_guard`,
+  `spelling_guard`).
+- ⚠ **An intermittent, not this lane's:** `db::chats::concierge_state_tests::
+  a_failed_write_errors_and_answers_false` (`db/chats.rs:2124`, a captured
+  line-count assert) failed once in three full core-lib runs; green alone
+  3/3 and in the workspace run. Untouched by P4.130 — for the unifier to
+  watch.
+- **For the unifier:** §S 1 — fold `group_doc_mount_links.rs`'s inline
+  `Error finding entities by filter` arm onto P4.131's
+  `db::fallback::find_by_filter_or_empty`; `tiered_mount_pool.rs`'s caller
+  `Err` arm (P4.131's fold hunk) is unreachable after this lane. Two findings
+  for later orders: the `characters` validation line v4 logs on the mount
+  pool's BLOB-named member (pinned `V4_ONLY_VALIDATION`), and the import's
+  non-chat entity refusals whose v4 tails are ZodErrors where v5 answers its
+  own decode sentence (still masked).
+
 ## P4.131 — the document-store repository fallbacks as v4 REALLY has them (lane record, 2026-09-30)
 
 Branch `claude/document-store-repo-fallbacks-55643f`, pin `97b25fc53` (`/tmp/qt-v4-pin-p4131-97b25fc53`), §2 probe PASS at start. core 0.0.1116, harness 0.0.1035.

@@ -279,7 +279,7 @@ pub fn build_danger_opaque_content(details: Option<&ConciergeDangerDetails>) -> 
 /// was written when they were posted — "they are plain messages and render as
 /// they always did" (v4 `4d370a90f`) — and read back through the transcript
 /// read like any other row, with no kind decoded
-/// (`the_retired_kinds_bubbles_read_back_unchanged`).
+/// (`the_six_retired_kinds_read_back_unchanged`).
 /// `concierge_state_writers_census` (`no_production_code_names_a_retired_
 /// manual_kind`) pins that no production file — this one included — names a
 /// retired variant or wire string again. (`set-unmoderated`'s persona text is
@@ -890,7 +890,7 @@ mod tests {
     /// content, opaque content, sender and kind unchanged. No kind is decoded
     /// on the way.
     #[test]
-    fn the_retired_kinds_bubbles_read_back_unchanged() {
+    fn the_six_retired_kinds_read_back_unchanged() {
         let (_dir, db) = provisioned();
         // `(wire kind, content, opaqueContent)` — the pre-phase-3 writer's
         // bodies, transcribed from the arms P4.130 deleted (the auto-switch's

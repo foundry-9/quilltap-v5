@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — test(core): the route-trail round trip follows the strict read; P4.130 lane close
+
+_Versions: core 0.0.1120._
+
+A P4.D225 unit test stored a trail with a non-uuid `profileId` and an unknown
+evidence and expected it back; it had recorded the divergence P4.130 closed.
+It now round-trips v4's five evidences under a valid uuid and asserts the
+unknown-evidence row is skipped with v4's WARN. The retired-kinds read-back
+test keeps its original name (the `get_messages` caller census names it).
+Lane record, the order's status header, and one-line notes on the P4.124,
+P4.120 and P4.D228 headers.
+
 #### 2026-09-30 — refactor(core): `ConciergeManualKind` is v4's four kinds (P4.130 unit 5)
 
 _Versions: core 0.0.1119, harness 0.0.1039._
