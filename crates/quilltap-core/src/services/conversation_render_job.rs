@@ -159,8 +159,8 @@ async fn handle_inner(
     let Some(chat) = chat else {
         tracing::warn!(
             target: "quilltap::jobs",
-            job_id = %job_id,
-            chat_id = %payload.chat_id,
+            jobId = %job_id,
+            chatId = %payload.chat_id,
             "[ConversationRender] Chat not found, skipping",
         );
         return Ok(());
@@ -172,8 +172,8 @@ async fn handle_inner(
     let Some(result) = result else {
         tracing::debug!(
             target: "quilltap::jobs",
-            job_id = %job_id,
-            chat_id = %payload.chat_id,
+            jobId = %job_id,
+            chatId = %payload.chat_id,
             "[ConversationRender] Chat has no events, nothing to render",
         );
         return Ok(());
@@ -211,8 +211,8 @@ async fn handle_inner(
         if let Err(e) = enqueue_embeddings(db, user_id, payload, &result.interchanges).await {
             tracing::warn!(
                 target: "quilltap::jobs",
-                job_id = %job_id,
-                chat_id = %payload.chat_id,
+                jobId = %job_id,
+                chatId = %payload.chat_id,
                 error = %e,
                 "[ConversationRender] Failed to enqueue embedding, continuing",
             );
@@ -221,12 +221,12 @@ async fn handle_inner(
 
     tracing::info!(
         target: "quilltap::jobs",
-        job_id = %job_id,
-        chat_id = %payload.chat_id,
-        interchange_count = result.interchanges.len(),
+        jobId = %job_id,
+        chatId = %payload.chat_id,
+        interchangeCount = result.interchanges.len(),
         // JS `string.length` — UTF-16 code units.
-        markdown_length = result.markdown.encode_utf16().count(),
-        duration_ms = started.elapsed().as_millis() as u64,
+        markdownLength = result.markdown.encode_utf16().count(),
+        durationMs = started.elapsed().as_millis() as u64,
         "[ConversationRender] Conversation rendered successfully",
     );
 
@@ -298,7 +298,7 @@ pub async fn trigger_conversation_render(db: &Db, user_id: &str, chat_id: &str) 
     {
         tracing::warn!(
             target: "quilltap::chat",
-            chat_id = %chat_id,
+            chatId = %chat_id,
             error = %e,
             "Failed to trigger conversation render",
         );
@@ -382,13 +382,14 @@ mod log_tests {
         let lines = run(&db, CHAT);
         let info = jobs(&lines, "INFO");
         assert_eq!(info.len(), 1, "{lines:?}");
+        // v4's camelCase field NAMES (P4.126 — v5 had logged snake_case).
         for f in [
             "[ConversationRender] Conversation rendered successfully",
-            "job_id=00000000-0000-4000-8000-0000000000f1",
-            "chat_id=00000000-0000-4000-8000-0000000000c1",
-            "interchange_count=1",
-            "markdown_length=",
-            "duration_ms=",
+            " jobId=00000000-0000-4000-8000-0000000000f1",
+            " chatId=00000000-0000-4000-8000-0000000000c1",
+            " interchangeCount=1",
+            " markdownLength=",
+            " durationMs=",
         ] {
             assert!(info[0].contains(f), "{f} missing: {}", info[0]);
         }
@@ -420,8 +421,8 @@ mod log_tests {
         assert_eq!(debug.len(), 1, "{lines:?}");
         assert!(
             debug[0].contains("[ConversationRender] Chat has no events, nothing to render")
-                && debug[0].contains("job_id=00000000-0000-4000-8000-0000000000f1")
-                && debug[0].contains("chat_id=00000000-0000-4000-8000-0000000000c2"),
+                && debug[0].contains(" jobId=00000000-0000-4000-8000-0000000000f1")
+                && debug[0].contains(" chatId=00000000-0000-4000-8000-0000000000c2"),
             "{}",
             debug[0]
         );
@@ -470,10 +471,73 @@ mod log_tests {
         assert_eq!(warn.len(), 1, "{lines:?}");
         assert!(
             warn[0].contains("[ConversationRender] Chat not found, skipping")
-                && warn[0].contains("job_id=00000000-0000-4000-8000-0000000000f1"),
+                && warn[0].contains(" jobId=00000000-0000-4000-8000-0000000000f1")
+                && warn[0].contains(" chatId=00000000-0000-4000-8000-0000000000ff"),
             "{}",
             warn[0]
         );
         assert!(jobs(&lines, "INFO").is_empty() && jobs(&lines, "DEBUG").is_empty());
+    }
+
+    /// v4 `:92-96`: an enqueue failure warns with `jobId`/`chatId`/`error`
+    /// and the job still completes. Planted as a throw in v4 too: a DEFAULT
+    /// profile exists (the read succeeds) and the job write fails.
+    #[test]
+    fn an_enqueue_failure_warns_with_v4s_field_names() {
+        let db = db();
+        db.write_blocking(|w| {
+            w.main().connection().execute_batch(&format!(
+                "INSERT INTO embedding_profiles (id, userId, name, provider, modelName, \
+                 isDefault, createdAt, updatedAt) VALUES \
+                 ('00000000-0000-4000-8000-0000000000e9', '{USER}', 'Default', 'OPENAI', \
+                 'text-embedding-3-small', 1, '{NOW}', '{NOW}'); \
+                 DROP TABLE background_jobs;"
+            ))?;
+            Ok(())
+        })
+        .unwrap();
+        let lines = run(&db, CHAT);
+        let warn = jobs(&lines, "WARN");
+        assert_eq!(warn.len(), 1, "{lines:?}");
+        for f in [
+            "[ConversationRender] Failed to enqueue embedding, continuing",
+            " jobId=00000000-0000-4000-8000-0000000000f1",
+            " chatId=00000000-0000-4000-8000-0000000000c1",
+            " error=",
+        ] {
+            assert!(warn[0].contains(f), "{f} missing: {}", warn[0]);
+        }
+        assert_eq!(jobs(&lines, "INFO").len(), 1, "{lines:?}");
+    }
+
+    /// v4 `orchestrator.service.ts:253-256`: a failed trigger warns with
+    /// `chatId` + `error` and is swallowed.
+    #[test]
+    fn a_failed_trigger_warns_with_v4s_field_names() {
+        let db = db();
+        db.write_blocking(|w| {
+            w.main()
+                .connection()
+                .execute_batch("DROP TABLE background_jobs")?;
+            Ok(())
+        })
+        .unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let ((), lines) = capture(|| rt.block_on(trigger_conversation_render(&db, USER, CHAT)));
+        let warn: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.starts_with("WARN quilltap::chat"))
+            .collect();
+        assert_eq!(warn.len(), 1, "{lines:?}");
+        for f in [
+            "Failed to trigger conversation render",
+            " chatId=00000000-0000-4000-8000-0000000000c1",
+            " error=",
+        ] {
+            assert!(warn[0].contains(f), "{f} missing: {}", warn[0]);
+        }
     }
 }

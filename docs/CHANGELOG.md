@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(scriptorium): use v4's camelCase field names on the render lines (P4.126)
+
+_Versions: core 0.0.1110._
+
+The conversation render and render-job log lines used snake_case field
+names (`chat_id`, `job_id`, `markdown_length`, `duration_ms`,
+`interchange_count`) where v4 logs camelCase. Renamed in all seven
+`tracing` calls, including the orchestrator-side `Failed to trigger
+conversation render` warn. Unit tests now assert the field names, with new
+pins for the enqueue-failure and trigger-failure warns.
+
 #### 2026-09-29 — fix(tools): omit requestedConversationId when no id was sent (P4.126)
 
 _Versions: core 0.0.1109._

@@ -66,7 +66,7 @@ pub fn render_chat_conversation(
     if events.is_empty() {
         tracing::debug!(
             target: "quilltap::scriptorium",
-            chat_id = %chat_id,
+            chatId = %chat_id,
             "No events to render",
         );
         return Ok(None);
@@ -96,12 +96,12 @@ pub fn render_chat_conversation(
 
     tracing::debug!(
         target: "quilltap::scriptorium",
-        chat_id = %chat_id,
+        chatId = %chat_id,
         events = events.len(),
         interchanges = result.interchanges.len(),
         // JS `string.length` — UTF-16 code units, not bytes.
-        markdown_length = result.markdown.encode_utf16().count(),
-        duration_ms = started.elapsed().as_millis() as u64,
+        markdownLength = result.markdown.encode_utf16().count(),
+        durationMs = started.elapsed().as_millis() as u64,
         "Rendered conversation",
     );
 
@@ -194,7 +194,7 @@ mod tests {
                 .iter()
                 .any(|l| l.starts_with("DEBUG quilltap::scriptorium")
                     && l.contains("No events to render")
-                    && l.contains("chat_id=00000000-0000-4000-8000-0000000000c1")),
+                    && l.contains(" chatId=00000000-0000-4000-8000-0000000000c1")),
             "{lines:?}"
         );
         assert!(!lines.iter().any(|l| l.contains("Rendered conversation")));
@@ -232,15 +232,16 @@ mod tests {
             .find(|l| l.contains("Rendered conversation"))
             .unwrap_or_else(|| panic!("{lines:?}"));
         assert!(line.starts_with("DEBUG quilltap::scriptorium"), "{line}");
+        // v4's camelCase field NAMES (P4.126 — v5 had logged snake_case).
         for field in [
-            "chat_id=00000000-0000-4000-8000-0000000000c1",
-            "events=2",
-            "interchanges=1",
+            " chatId=00000000-0000-4000-8000-0000000000c1",
+            " events=2",
+            " interchanges=1",
             &format!(
-                "markdown_length={}",
+                " markdownLength={}",
                 rendered.markdown.encode_utf16().count()
             ),
-            "duration_ms=",
+            " durationMs=",
         ] {
             assert!(line.contains(field), "{field} missing: {line}");
         }
