@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — docs(porting): dogfood pass over the `97b25fc53` follow-ups round
+
+_Docs-only change._
+
+Walked P4.119/P4.120/P4.121/P4.122/P4.123/P4.125 on a Friday copy: 26 rows,
+22 pass, 4 deferred to the human, no v5 defects. Recorded findings #130–#132
+(all match v4; candidate v4 notes). Added four modes to
+`harness/tools/refusal-server.py` (`midframe`, `midframe-late`,
+`midframe-uncoded`, `toolcall`) for mid-stream error frames and deterministic
+tool legs. Walk doc, findings log, status log and CLAUDE.md updated.
+
 #### 2026-09-30 — chore(unify): the `97b25fc53` follow-ups round (P4.119 → P4.126 ∥ P4.120 ∥ P4.121 ∥ P4.122 ∥ P4.123 ∥ P4.124 ∥ P4.125) unified on main
 
 _Versions: core 0.0.1115, harness 0.0.1034, host 0.0.166, SPA 0.5.787; web/cli/tauri unchanged._

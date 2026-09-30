@@ -156409,3 +156409,75 @@ is a construction pin; P4.123's post-closure trigger runs after a failed
 - The standing queue (Lantern budget, a real token-limit turn, the four
   planted proofs, dedup/summaries, the Brahma deep query, #101, the
   compression re-measure, the conceal-marker arm).
+
+## Dogfood pass — the `97b25fc53` follow-ups round: host-zone dates, the upload describe, per-leg rows, mid-stream frames, the wardrobe avatar seam, the memory badge (2026-09-30)
+
+**Walk doc:** `dogfood-walks/2026-09-30-followups-host-zone-upload-describe-pass.md`.
+**26 rows: 22 PASS (5 with a corrected expectation or a recorded scope),
+0 FAIL, 4 DEFERRED-TO-HUMAN (the standing queue, the autonomous budget twice, a real
+flat-body OpenAI image refusal).** **Zero v5 defects.** Three findings, all
+v4-faithful candidate v4 notes: **#130** (a whisper sweep renumbers the
+transcript, so a per-turn render re-embeds every later chunk), **#131** (a
+coded refusal on the greeting never reaches the desk), **#132** (taking off an
+unworn item counts as applied and re-rolls the portrait). One boot, zero
+panics, `migrations_state` 199 before and after.
+
+Orders covered: P4.119 (+ P4.126's riders), P4.120, P4.121, P4.122, P4.123,
+P4.125. The ledger's §2 probe **passed** at planning and again after the
+refresh (v4 AT `97b25fc53`, §3 EMPTY). The instrument
+`harness/tools/refusal-server.py` grew four modes (`midframe`,
+`midframe-late`, `midframe-uncoded`, `toolcall`).
+
+### Pre-walk measurement
+The render-reconcile scan (its SQL replicated read-only) found ONE incomplete
+chat — "Two on the Way at the Salon", 8 chunks, 6 owed — that v4 had rendered
+that morning with its timestamps in CDT; its chunk texts were md5-snapshotted
+before the boot. The human had repointed the uncensored image desk to NanoGPT
+`flux-2-dev` in v4 (#124's workaround, now live data). 688 chats carry
+`avatarGenerationEnabled = 1`; the `teh → the` rule already existed.
+
+### Proven live
+- **P4.119 — #121's re-embed churn is gone on real data.** The boot render
+  embedded exactly the 6 owed chunks (the 2026-09-29 boot: 39 for 5) and chunks
+  1–7 came out byte-identical to v4's render, only the render-time `Current
+  time:` header moving (now CDT). A per-turn render kept the untouched chunks'
+  v4 vectors. `list_mail` shows `August 30, 2026 at 02:40 PM`; a `send_mail`
+  reply persists `In reply to your letter of August 30, 2026 at 02:40 PM` and
+  is postmarked in CDT; `read_conversation` renders CDT; and a real Z.AI turn
+  read the letter's time back to the user as 2:40 PM. The Scriptorium badge's
+  re-render re-embeds everything — `fullReembed: true`, v4's own design (B3).
+- **P4.120:** a canvas card set on the composer's own file input was described
+  by the instance describer (Grok) 5.9 s after upload, correctly, with
+  `chatId: null` on its `IMAGE_DESCRIPTION` row; the photo's mount-chunk embed
+  ran; the next turn's DeepSeek seat logged `Reusing persisted description (no
+  vision call)` while the Z.AI seat took the image natively; a text upload
+  fired nothing.
+- **P4.121:** a posed `toolcall` seat and a real Z.AI tool turn each wrote TWO
+  `CHAT_MESSAGE` rows for one message (the tool-call leg, then the re-stream).
+- **P4.122:** a 200 stream carrying a coded error frame before content
+  rerouted on `provider-code` to the real desk with the full trail and a ledger
+  row; after a content chunk it skipped the chain and kept the partial with the
+  `{{OOC: stream ended abruptly …}}` note; an uncoded frame is an ordinary
+  `provider-error`. The image flat-body half cannot be posed (the OPENAI image
+  URL is fixed to `api.openai.com`).
+- **P4.123:** a real Salon turn in which Friday called `wardrobe_wear` queued
+  exactly one `CHARACTER_AVATAR_GENERATION` job; GPT Image 2.5 Flare painted
+  her in the apron over the sweater and cardigan (looked at). Flag-off and a
+  failed take-off queued nothing.
+- **P4.125:** `first line` ⏎ `teh` Space → `first line<br>the `; the memory
+  badge ran v4's confirm, `memoryDeleteByChat` → `chatQueueMemories`, three
+  extraction jobs and v4's toast `Queued 3 memory extraction jobs` (badge 3 → 7);
+  the off-duty hint under a disabled per-chat select, the Concierge restored.
+
+### Instrument notes
+The pane's page runs at 1.479× the screenshot frame — a click aimed from
+`getBoundingClientRect` must be divided by `innerWidth/800` (a first click
+opened a different chat). The composer on this instance takes Enter as a
+newline. A hidden pane refuses keystrokes outright (`computer` needs a
+composited frame), not only screenshots.
+
+### Still owed
+The standing queue (Lantern budget, a real token-limit turn, the four planted
+proofs, dedup/summaries, the Brahma deep query, #101, the compression
+re-measure, the conceal-marker arm), an autonomous room's budget charging the
+per-leg rows, and a real flat-body OpenAI image refusal.

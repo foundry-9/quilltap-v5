@@ -1216,6 +1216,24 @@ records THERE. Update this summary only when a phase or round completes.
   dogfood pass, then the follow-ups smalls round named in `phase-4.md`,
   then a drift catch-up when v4 moves** — `phase-4.md`. Round record:
   `status-log.md`.
+- **The follow-ups-round dogfood pass RAN (2026-09-30, agent-driven, on the
+  Friday copy) — 26 rows, 22 PASS, ZERO v5 defects, the round's 💸 queue
+  discharged bar the spend-bound items.** Walk doc:
+  `dogfood-walks/2026-09-30-followups-host-zone-upload-describe-pass.md`;
+  record in `status-log.md`. ⭐ **#121's churn is gone on real data:** the boot
+  render embedded exactly the 6 owed chunks (39 for 5 before) and re-rendered
+  v4's text byte-identical; `list_mail` / a persisted reply preface / a real
+  model all read `02:40 PM`. ⭐ An upload described in 5.9 s with v4's
+  `chatId`-less row, then reused on a non-vision seat; ⭐ two `CHAT_MESSAGE`
+  rows per tool turn (posed AND real); ⭐ a posed 200-then-error-frame rerouted
+  on `provider-code` to the real desk, the late twin keeping its partial; ⭐ a
+  real turn's `wardrobe_wear` rolled exactly one portrait (looked at); the
+  soft-break `teh → the`, the memory badge's confirm/wire/toast, the off-duty
+  hint. **#130–#132 v4-faithful** (candidate v4 notes: a whisper sweep
+  re-embeds the transcript's tail; a coded greeting refusal never reaches the
+  desk; taking off an unworn item re-rolls the portrait). **Still owed:** the
+  standing queue, an autonomous room's budget over per-leg rows, a real
+  flat-body OpenAI image refusal.
 - **Oracle baseline: `97b25fc53` (2026-09-28, v4 main — "Drape undressed
   characters in story backgrounds instead of re-dressing them",
   `4.10.0-dev.100`), adopted at the `97b25fc53` seven-commit round

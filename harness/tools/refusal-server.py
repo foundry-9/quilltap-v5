@@ -29,6 +29,18 @@ model name, default `code`):
                  the describer's instruction-token ceiling) -> bug 116's
                  positive arm (the invented description is discarded)
   echo           answers "ok" -> a plain working desk
+  midframe       200 SSE whose FIRST frame is `data: {"error": {..., "code":
+                 "content_filter"}}` (added 2026-09-30) -> P4.122's mid-stream
+                 error frame before content: the SDK throws a CODED APIError,
+                 so the Concierge reroutes on `provider-code`
+  midframe-late  200 SSE: one content chunk, THEN the same coded error frame
+                 -> P4.122's twin: no failover, the partial kept
+  midframe-uncoded  200 SSE whose first frame is an error with a message and
+                 NO code -> whatever v4 does (measured, not asserted)
+  toolcall       with `tools` and no `tool` message yet: streams ONE native
+                 tool call (`list_mail` if offered, else the first tool, args
+                 {}); once a tool result is in the history, answers in text
+                 -> P4.121's per-leg CHAT_MESSAGE rows, deterministically
 
 A POST to .../responses (the OPENAI provider's Responses API) is answered in
 that shape, non-streaming only -- enough for an OPENAI-provider describer
@@ -47,7 +59,9 @@ PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8898
 DEFAULT_MODE = os.environ.get("QT_REFUSE_MODE", "code")
 CAPTURE = os.environ.get("QT_REFUSE_CAPTURE", "/tmp/refusal-server-requests.ndjson")
 MODES = {"refuse-code": "code", "refuse-finish": "finish", "tokenlimit": "tokenlimit",
-         "notools": "notools", "blind": "blind", "echo": "echo"}
+         "notools": "notools", "blind": "blind", "echo": "echo",
+         "midframe": "midframe", "midframe-late": "midframe-late",
+         "midframe-uncoded": "midframe-uncoded", "toolcall": "toolcall"}
 
 # Azure OpenAI's content-filter rejection, as the openai SDK surfaces it.
 CODE_BODY = {"error": {
@@ -67,6 +81,14 @@ BLIND_TEXT = ("**Overview.** The image shows a sunlit Victorian conservatory. "
               "A woman in a green dress stands beside a brass telescope, one hand "
               "on the eyepiece; behind her, ferns climb the ironwork and the glass "
               "panes throw long diagonal shadows across a tiled floor.")
+
+
+# The mid-stream error frame's inner error (the openai SDK throws
+# `APIError(undefined, data.error)` on it: status undefined, `code` read).
+FRAME_ERROR = {"message": "The response was filtered due to the prompt triggering "
+               "Azure OpenAI's content management policy.", "type": None,
+               "param": "prompt", "code": "content_filter"}
+FRAME_ERROR_UNCODED = {"message": "The upstream model host went away mid-answer."}
 
 
 def mode_for(model):
@@ -134,6 +156,48 @@ class H(BaseHTTPRequestHandler):
         self.wfile.flush()
         self.close_connection = True
 
+    def _sse_open(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+    def _sse(self, obj):
+        self.wfile.write(b"data: " + json.dumps(obj).encode() + b"\n\n")
+        self.wfile.flush()
+
+    def _frame(self, req, error, before=None):
+        """200, optionally one content chunk, then an error frame, then close."""
+        model = req.get("model", "echo")
+        self._sse_open()
+        if before:
+            self._sse({"id": "posed-1", "object": "chat.completion.chunk", "model": model,
+                       "choices": [{"index": 0, "delta": {"role": "assistant",
+                                                          "content": before},
+                                    "finish_reason": None}]})
+        self._sse({"error": error})
+        self.close_connection = True
+
+    def _toolcall(self, req):
+        names = [t.get("function", {}).get("name") for t in req.get("tools") or []]
+        name = "list_mail" if "list_mail" in names else (names[0] if names else "list_mail")
+        model = req.get("model", "echo")
+        self._sse_open()
+        self._sse({"id": "posed-1", "object": "chat.completion.chunk", "model": model,
+                   "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [
+                       {"index": 0, "id": "call_posed_1", "type": "function",
+                        "function": {"name": name, "arguments": "{}"}}]},
+                       "finish_reason": None}]})
+        self._sse({"id": "posed-1", "object": "chat.completion.chunk", "model": model,
+                   "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]})
+        self._sse({"id": "posed-1", "object": "chat.completion.chunk", "model": model,
+                   "choices": [], "usage": {"prompt_tokens": 500, "completion_tokens": 5,
+                                            "total_tokens": 505}})
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
+        self.close_connection = True
+
     def do_GET(self):
         if self.path.rstrip("/").endswith("/models"):
             self._json(200, {"object": "list", "data": [
@@ -171,6 +235,17 @@ class H(BaseHTTPRequestHandler):
                 self._json(400, NOTOOLS_BODY)
             else:
                 self._answer(req, "Answered without any tools, as requested.")
+        elif mode == "midframe":
+            self._frame(req, FRAME_ERROR)
+        elif mode == "midframe-late":
+            self._frame(req, FRAME_ERROR, before="The kettle had only just begun to ")
+        elif mode == "midframe-uncoded":
+            self._frame(req, FRAME_ERROR_UNCODED)
+        elif mode == "toolcall":
+            if "tools" in req and not any(m.get("role") == "tool" for m in msgs):
+                self._toolcall(req)
+            else:
+                self._answer(req, "The posed tool ran; here is its answer, in plain text.")
         elif mode == "blind":
             self._answer(req, BLIND_TEXT, prompt_tokens=40)
         else:
