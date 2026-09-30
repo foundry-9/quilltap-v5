@@ -1961,8 +1961,21 @@ async fn retry_picture_uncensored<A: ApiKeyResolver>(
             RetryProfileKind::Image,
         )
     };
+    // P4.130 (P4.D228's NIT, RE-PREMISED): the NIT read "the saved trail drops
+    // a prior row that fails the typed parse while the 200 body returns it".
+    // It cannot happen on v4: `getMessages` `safeParse`s every event, and a
+    // `routeTrail` element failing `RouteAttemptSchema` skips the WHOLE TOOL
+    // message, so the route answers 404 `Tool message not found` before any
+    // trail code runs. v5 now validates at the same READ
+    // (`chats_messages_read::zod_shape_failure`, the strict twin
+    // `zod_route_attempt_failure`), so every prior row reaching here already
+    // passed it and every other row is one the chokepoint just built. The
+    // filter stays as a defensive no-op, held to the SAME strict twin ahead of
+    // the lenient typed reader (`RouteAttempt::from_value`, which reads `null`
+    // as absent and checks neither the uuid nor the length).
     let saved_trail: Vec<RouteAttempt> = body_trail
         .iter()
+        .filter(|row| crate::api::zod_issues::zod_route_attempt_failure(row).is_none())
         .filter_map(RouteAttempt::from_value)
         .collect();
 

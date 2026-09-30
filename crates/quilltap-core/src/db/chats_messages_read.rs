@@ -311,6 +311,8 @@ const HOST_EVENT_STATUSES: [&str; 4] = ["active", "silent", "absent", "removed"]
 /// cell can carry: `createdAt` (`TimestampSchema`, all three members — through the
 /// ONE [`zod_iso_datetime_ok`](crate::api::zod_issues::zod_iso_datetime_ok)
 /// home) and the message's `participantId` (`UUIDSchema.nullable().optional()`);
+/// P4.130 adds the message's `routeTrail` (each element through the strict
+/// `RouteAttemptSchema` twin, [`crate::api::zod_issues::zod_route_attempt_failure`]);
 /// and makes this the ONE home of the check for BOTH the per-row skip and
 /// `updateMessage`'s `ChatEventSchema.parse` of the MERGED event
 /// (`chats_messages.rs`). Returns the failing path + reason, the
@@ -349,6 +351,21 @@ pub(crate) fn zod_shape_failure(event: &Value) -> Option<String> {
     if let Some(p) = obj.get("participantId") {
         if !p.is_null() && !is_uuid(p) {
             return Some(format!("participantId: Invalid UUID ({p})"));
+        }
+    }
+    // P4.130 (P4.D228 re-premised): `routeTrail: RouteAttemptSchema.array()
+    // .nullable().optional()` — every element through the strict twin, so a
+    // trail row v4 refuses skips the WHOLE message here as it does in v4's
+    // `getMessages` (and the "Try uncensored" picture route then answers 404
+    // `Tool message not found`, as v4's does, instead of re-saving the row).
+    if let Some(trail) = obj.get("routeTrail").filter(|t| !t.is_null()) {
+        let Some(rows) = trail.as_array() else {
+            return Some(format!("routeTrail: not an array ({trail})"));
+        };
+        for (i, row) in rows.iter().enumerate() {
+            if let Some(why) = crate::api::zod_issues::zod_route_attempt_failure(row) {
+                return Some(format!("routeTrail.{i}.{why}"));
+            }
         }
     }
     // `.nullable().optional()` on the object itself: a `null` hostEvent passes

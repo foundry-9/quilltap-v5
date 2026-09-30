@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — fix(core): the message read validates each route-trail row as v4 does (P4.130 unit 4)
+
+_Versions: core 0.0.1118, harness 0.0.1038._
+
+v4's `getMessages` validates every `routeTrail` element against
+`RouteAttemptSchema` and skips the whole message on a failure; the "Try
+uncensored" picture route then answers 404. v5 stored the trail unchecked and
+kept such rows. `get_messages` now applies a strict twin (uuid `profileId`,
+`detail` ≤ 200 code points, `null` rejected where v4 says `.optional()`, the
+enum domains). Red-first in `chats_messages_ops_tier2` (a new trail chat: v4
+keeps 2 of 7, v5 kept 7) and `retry_uncensored_tier3` (three 404 plants). The
+route's saved-trail filter stays as a defensive no-op under the same twin.
+
 #### 2026-09-30 — test(harness): restore and import plants for a chat v4's schema refuses (P4.130 unit 3)
 
 _Versions: harness 0.0.1037, web 0.0.203._

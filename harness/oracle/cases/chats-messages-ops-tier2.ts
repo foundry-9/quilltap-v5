@@ -72,7 +72,16 @@ interface Op {
 }
 
 /** The columns a `plantCell` op may name (a closed set — it is spliced). */
-const PLANTABLE_COLUMNS = new Set(['id', 'role', 'hostEvent', 'createdAt', 'participantId']);
+// P4.130: + `routeTrail` — a trail element v4's `RouteAttemptSchema` refuses
+// skips the whole message (P4.D228's NIT re-premised at the read).
+const PLANTABLE_COLUMNS = new Set([
+  'id',
+  'role',
+  'hostEvent',
+  'createdAt',
+  'participantId',
+  'routeTrail',
+]);
 interface Spec {
   testPepperBase64: string;
   ops: Op[];

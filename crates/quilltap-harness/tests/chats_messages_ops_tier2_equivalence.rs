@@ -493,8 +493,16 @@ fn chats_messages_ops_tier2_matches_oracle() {
                 } => {
                     // The oracle's closed set — the name is spliced into SQL.
                     assert!(
-                        ["id", "role", "hostEvent", "createdAt", "participantId"]
-                            .contains(&column.as_str()),
+                        // P4.130: + `routeTrail`.
+                        [
+                            "id",
+                            "role",
+                            "hostEvent",
+                            "createdAt",
+                            "participantId",
+                            "routeTrail"
+                        ]
+                        .contains(&column.as_str()),
                         "plantCell: unplantable column {column}"
                     );
                     writer
@@ -707,6 +715,14 @@ fn check_update_return(
 /// `z.iso.datetime()` — no seconds, an offset, `yesterday` — on a message, a
 /// context-summary AND a system row, and a non-uuid message `participantId`;
 /// a well-formed `participantId` is kept.
+///
+/// P4.130 (P4.D228's NIT re-premised): the third read skips every message
+/// whose `routeTrail` fails v4's `RouteAttemptSchema` — a non-uuid
+/// `profileId`, a 201-character `detail`, an explicit `null` `trigger`
+/// (`.optional()` is not `.nullable()`), a `via` outside its enum in the
+/// SECOND element, a non-array trail — and keeps a valid two-row trail and a
+/// 200-code-point `detail` (199 × `x` + one astral character). Before P4.130
+/// v5's read never looked at the trail and kept all five.
 fn assert_reads(got: &[(String, Value, Vec<String>)], want: &Value) {
     let want = want
         .as_array()

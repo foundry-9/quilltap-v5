@@ -79,6 +79,11 @@ interface Case {
   malformed?: boolean;
   imageResult?: Record<string, unknown>;
   plantJob?: boolean;
+  /** P4.130: a raw `routeTrail` cell planted on the case's TOOL message (a
+   *  trail v4's `RouteAttemptSchema` refuses — no repository write can make
+   *  one). Recorded in `patches` and replayed verbatim; never reverted (the
+   *  plant cases run LAST). */
+  plantTrail?: unknown;
   stream?: boolean;
   serviceThrows?: string;
 }
@@ -328,6 +333,12 @@ async function main(): Promise<void> {
           '2026-01-02T03:04:05.000Z',
           '2026-01-02T03:04:05.000Z',
         ],
+      });
+    }
+    if (c.plantTrail !== undefined) {
+      patches.push({
+        sql: 'UPDATE chat_messages SET routeTrail = ? WHERE id = ?',
+        params: [JSON.stringify(c.plantTrail), (c.body as { toolMessageId: string }).toolMessageId],
       });
     }
     for (const p of patches) await rawQuery(p.sql, p.params as never);

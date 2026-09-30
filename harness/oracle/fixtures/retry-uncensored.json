@@ -1966,6 +1966,102 @@
       "chatId": "d7000003-0000-4000-8000-000000000001",
       "messageId": "f7003002-0000-4000-8000-000000000001",
       "serviceThrows": "the understudy fell silent"
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_trail_non_uuid_profile_404",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001008-0000-4000-8000-000000000001"
+      },
+      "plantTrail": [
+        {
+          "profileId": "house-painter",
+          "profileName": "House Painter",
+          "provider": "OPENAI",
+          "modelName": "gpt-image-1",
+          "via": "primary",
+          "outcome": "refused",
+          "trigger": "moderation-refusal",
+          "evidence": "provider-code",
+          "profileKind": "image",
+          "detail": "moderation_blocked"
+        }
+      ],
+      "imageResult": {
+        "success": true,
+        "images": []
+      },
+      "note": "P4.130 (P4.D228's NIT re-premised): a trail element v4's RouteAttemptSchema refuses (a non-uuid profileId) makes v4's getMessages SKIP the TOOL message, so the route answers 404 `Tool message not found` before any trail code — v5 had kept the row (its lenient reader checks no uuid)"
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_trail_null_trigger_404",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001010-0000-4000-8000-000000000001"
+      },
+      "plantTrail": [
+        {
+          "profileId": "17000001-0000-4000-8000-000000000001",
+          "profileName": "House Painter",
+          "provider": "OPENAI",
+          "modelName": "gpt-image-1",
+          "via": "primary",
+          "outcome": "refused",
+          "trigger": "moderation-refusal",
+          "evidence": "provider-code",
+          "profileKind": "image",
+          "detail": "moderation_blocked"
+        },
+        {
+          "profileId": "17000001-0000-4000-8000-000000000001",
+          "profileName": "House Painter",
+          "provider": "OPENAI",
+          "modelName": "gpt-image-1",
+          "via": "primary",
+          "outcome": "refused",
+          "trigger": null,
+          "evidence": "provider-code",
+          "profileKind": "image",
+          "detail": "moderation_blocked"
+        }
+      ],
+      "imageResult": {
+        "success": true,
+        "images": []
+      },
+      "note": "P4.130: an explicit null `trigger` in the SECOND element (`.optional()` is not `.nullable()`) → 404 both sides"
+    },
+    {
+      "kind": "chat",
+      "name": "chat_picture_trail_long_detail_404",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatId": "d7000001-0000-4000-8000-000000000001",
+      "body": {
+        "toolMessageId": "f7001014-0000-4000-8000-000000000001"
+      },
+      "plantTrail": [
+        {
+          "profileId": "17000001-0000-4000-8000-000000000001",
+          "profileName": "House Painter",
+          "provider": "OPENAI",
+          "modelName": "gpt-image-1",
+          "via": "primary",
+          "outcome": "refused",
+          "trigger": "moderation-refusal",
+          "evidence": "provider-code",
+          "profileKind": "image",
+          "detail": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      ],
+      "imageResult": {
+        "success": true,
+        "images": []
+      },
+      "note": "P4.130: a 201-character `detail` (`z.string().max(200)`) → 404 both sides"
     }
   ]
 }

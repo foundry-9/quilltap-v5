@@ -223,6 +223,29 @@
           "updatedAt": "2026-02-01T00:00:00.000Z"
         }
       ]
+    },
+    {
+      "id": "c00000b0-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Route-Trail Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb0000b0-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc0000b0-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "seedMessages": [
@@ -533,6 +556,60 @@
           "role": "USER",
           "content": "will lose its content",
           "createdAt": "2026-03-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "chatId": "c00000b0-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e00000b0-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "trail row 1",
+          "createdAt": "2026-03-01T00:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e00000b0-0000-4000-8000-000000000002",
+          "role": "TOOL",
+          "content": "trail row 2",
+          "createdAt": "2026-03-01T00:00:02.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e00000b0-0000-4000-8000-000000000003",
+          "role": "ASSISTANT",
+          "content": "trail row 3",
+          "createdAt": "2026-03-01T00:00:03.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e00000b0-0000-4000-8000-000000000004",
+          "role": "ASSISTANT",
+          "content": "trail row 4",
+          "createdAt": "2026-03-01T00:00:04.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e00000b0-0000-4000-8000-000000000005",
+          "role": "TOOL",
+          "content": "trail row 5",
+          "createdAt": "2026-03-01T00:00:05.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e00000b0-0000-4000-8000-000000000006",
+          "role": "ASSISTANT",
+          "content": "trail row 6",
+          "createdAt": "2026-03-01T00:00:06.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e00000b0-0000-4000-8000-000000000007",
+          "role": "ASSISTANT",
+          "content": "trail row 7",
+          "createdAt": "2026-03-01T00:00:07.000Z"
         }
       ]
     }
@@ -891,6 +968,59 @@
       "updates": {
         "content": "content restored by an update"
       }
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c00000b0-0000-4000-8000-000000000001",
+      "messageId": "e00000b0-0000-4000-8000-000000000001",
+      "column": "routeTrail",
+      "value": "[{\"profileId\": \"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\", \"profileName\": \"Frank Desk\", \"provider\": \"OPENAI\", \"modelName\": \"gpt-image-2\", \"via\": \"primary\", \"outcome\": \"refused\", \"trigger\": \"moderation-refusal\", \"evidence\": \"provider-code\", \"profileKind\": \"image\", \"detail\": \"refused\"}, {\"profileId\": \"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\", \"profileName\": \"Frank Desk\", \"provider\": \"OPENAI\", \"modelName\": \"gpt-image-2\", \"via\": \"understudy\", \"outcome\": \"answered\"}]"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c00000b0-0000-4000-8000-000000000001",
+      "messageId": "e00000b0-0000-4000-8000-000000000002",
+      "column": "routeTrail",
+      "value": "[{\"profileId\": \"not-a-profile\", \"profileName\": \"Frank Desk\", \"provider\": \"OPENAI\", \"modelName\": \"gpt-image-2\", \"via\": \"primary\", \"outcome\": \"refused\", \"trigger\": \"moderation-refusal\", \"evidence\": \"provider-code\", \"profileKind\": \"image\", \"detail\": \"refused\"}]"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c00000b0-0000-4000-8000-000000000001",
+      "messageId": "e00000b0-0000-4000-8000-000000000003",
+      "column": "routeTrail",
+      "value": "[{\"profileId\": \"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\", \"profileName\": \"Frank Desk\", \"provider\": \"OPENAI\", \"modelName\": \"gpt-image-2\", \"via\": \"primary\", \"outcome\": \"refused\", \"trigger\": \"moderation-refusal\", \"evidence\": \"provider-code\", \"profileKind\": \"image\", \"detail\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}]"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c00000b0-0000-4000-8000-000000000001",
+      "messageId": "e00000b0-0000-4000-8000-000000000004",
+      "column": "routeTrail",
+      "value": "[{\"profileId\": \"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\", \"profileName\": \"Frank Desk\", \"provider\": \"OPENAI\", \"modelName\": \"gpt-image-2\", \"via\": \"primary\", \"outcome\": \"refused\", \"trigger\": null, \"evidence\": \"provider-code\", \"profileKind\": \"image\", \"detail\": \"refused\"}]"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c00000b0-0000-4000-8000-000000000001",
+      "messageId": "e00000b0-0000-4000-8000-000000000005",
+      "column": "routeTrail",
+      "value": "[{\"profileId\": \"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\", \"profileName\": \"Frank Desk\", \"provider\": \"OPENAI\", \"modelName\": \"gpt-image-2\", \"via\": \"primary\", \"outcome\": \"refused\", \"trigger\": \"moderation-refusal\", \"evidence\": \"provider-code\", \"profileKind\": \"image\", \"detail\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀\"}]"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c00000b0-0000-4000-8000-000000000001",
+      "messageId": "e00000b0-0000-4000-8000-000000000006",
+      "column": "routeTrail",
+      "value": "[{\"profileId\": \"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\", \"profileName\": \"Frank Desk\", \"provider\": \"OPENAI\", \"modelName\": \"gpt-image-2\", \"via\": \"primary\", \"outcome\": \"refused\", \"trigger\": \"moderation-refusal\", \"evidence\": \"provider-code\", \"profileKind\": \"image\", \"detail\": \"refused\"}, {\"profileId\": \"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\", \"profileName\": \"Frank Desk\", \"provider\": \"OPENAI\", \"modelName\": \"gpt-image-2\", \"via\": \"sideways\", \"outcome\": \"refused\", \"trigger\": \"moderation-refusal\", \"evidence\": \"provider-code\", \"profileKind\": \"image\", \"detail\": \"refused\"}]"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c00000b0-0000-4000-8000-000000000001",
+      "messageId": "e00000b0-0000-4000-8000-000000000007",
+      "column": "routeTrail",
+      "value": "{\"not\": \"an array\"}"
+    },
+    {
+      "kind": "getMessages",
+      "chatId": "c00000b0-0000-4000-8000-000000000001"
     }
   ]
 }

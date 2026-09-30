@@ -156640,6 +156640,53 @@ Regen outputs staged under `/tmp/p4130/`.
   oracle-system-import-execute.ndjson npx jest … 'system-import-execute\.test
   \.ts$'`.
 
+### Unit 4 — P4.D228's saved-trail NIT, RE-PREMISED at the read (Tier 1 item 6)
+
+- Verified at the pin: v4 `getMessages` (`chats-messages.ops.ts:343-356`)
+  `safeParse`s each event; `MessageEventSchema.routeTrail` is
+  `RouteAttemptSchema.array().nullable().optional()`; a failing element skips
+  the WHOLE message with WARN `Skipping corrupted chat message`, and the
+  picture route answers 404 `Tool message not found` before any trail code.
+  The NIT's premise ("the saved trail drops a prior row … while the 200 body
+  returns it") cannot occur on v4.
+- ⚠ **Order mis-location:** `RouteAttempt::from_value` lives in
+  `services/route_trail.rs` (owned by NO lane), not `api/chat_media.rs:241-253`
+  as the order says. Not touched. The strict twin is
+  `api::zod_issues::zod_route_attempt_failure` (unit 2's commit), applied at
+  (1) the READ — `chats_messages_read::zod_shape_failure` checks each
+  `routeTrail` element (a non-array trail fails too) inside the P4.113
+  per-row skip, so every consumer (chat GET, export, transcript, the picture
+  route) sees v4's set; and (2) the route's `saved_trail` filter, kept as a
+  defensive no-op under the same twin AHEAD of the lenient `from_value`, its
+  comment carrying the corrected premise.
+- The twin: `profileId` a Zod uuid; the three names strings; `via` (5) /
+  `outcome` (3) required enums; `trigger` (the ONE `FallbackTrigger` union),
+  `evidence` (the classifier's `RefusalEvidence`), `profileKind` optional —
+  ABSENT passes, `null` FAILS (`.optional()` ≠ `.nullable()`); `detail`
+  `max(200)` in CODE POINTS; unknown keys stripped. Unit test
+  `route_attempt_schema_is_strict`.
+- **`chats_messages_ops_tier2`** (the spec grows by addition: chat
+  `c00000b0…` "Route-Trail Chat" with seven seeded messages, seven `plantCell
+  routeTrail` ops — `routeTrail` joins the closed plantable set on both sides
+  — and a third `getMessages`): v4 keeps 01 (a valid two-row trail) and 05
+  (199 × `x` + astral = 200 code points) and WARNs on 02 (non-uuid profile),
+  03 (201-char detail), 04 (null trigger), 06 (bad `via` in the SECOND
+  element), 07 (an object, not an array). **Red-first** (mutation disabling
+  the trail check): read 3 kept all seven where v4 keeps two; green after.
+- **`retry_uncensored_tier3`**: a `plantTrail` case field (raw `UPDATE
+  chat_messages SET routeTrail`, recorded in `patches` and replayed verbatim
+  by the Rust side; never reverted — the three cases run LAST) + three chat
+  cases (non-uuid profileId / null trigger in the second element / 201-char
+  detail) → v4 404 `Tool message not found`. **Red-first:** exactly those 3 of
+  65 cases differ pre-fix; 65/65 after.
+- Regens (as run, from the lane pin): the ops family —
+  `QT_FIXTURE_OUT=/tmp/p4130/chatsmsgops-fixture.db npx tsx <W>/harness/oracle/
+  fixtures/build-chats-messages-ops-fixture.ts`, then `QT_FIXTURE_CHATSMSGOPS=
+  /tmp/p4130/chatsmsgops-fixture.db npx tsx <W>/harness/oracle/cases/chats-
+  messages-ops-tier2.ts > /tmp/p4130/oracle-chatsmsgops.ndjson`; retry — the
+  family header's recipe with `TMPO=/tmp/p4130/stage-retry` and outputs under
+  `/tmp/p4130/` (`grep -c '"announced":true'` = 4).
+
 ## P4.131 — the document-store repository fallbacks as v4 REALLY has them (lane record, 2026-09-30)
 
 Branch `claude/document-store-repo-fallbacks-55643f`, pin `97b25fc53` (`/tmp/qt-v4-pin-p4131-97b25fc53`), §2 probe PASS at start. core 0.0.1116, harness 0.0.1035.
