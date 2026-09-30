@@ -739,8 +739,12 @@ const CATCH_LINE_PROVIDERS: &[&str] = &["OPENAI_COMPATIBLE", "DEEPSEEK", "NANOGP
 
 /// ERROR lines v4's OTHER plugins log on these rows that v5 has NOT ported
 /// (measured at the `97b25fc53` pin by P4.128's logger bridge; outside that
-/// order's mandate — a named follow-up). Pinned so a port of any of them, or
-/// a new one, is noticed: `(provider, v4 mode, message)`.
+/// order's mandate — a named follow-up). Pinned BOTH ways: a NEW v4 line
+/// fails the per-row check in [`diff_catch_lines`]; an entry v4 stops
+/// emitting fails the exercised-count assert in the test; and a v5 PORT of
+/// one fails the absence check (v5's whole capture, not only its catch-line
+/// filter — the `97b25fc53` smalls unification's catch: the first shape
+/// noticed a new v4 line and nothing else). `(provider, v4 mode, message)`.
 const UNPORTED_PLUGIN_ERROR_LINES: &[(&str, &str, &str)] = &[
     ("GOOGLE", "send", "Error calling Google Gemini API"),
     ("GOOGLE", "stream", "Error streaming from Google Gemini API"),
@@ -762,7 +766,19 @@ const UNPORTED_PLUGIN_ERROR_LINES: &[(&str, &str, &str)] = &[
 /// must be exactly v4's (a silence leg on every row where v4 logged none),
 /// and every OTHER v4 plugin ERROR line must be a pinned unported one. Returns
 /// the number of v4 catch lines on the row, or the mismatch.
-fn diff_catch_lines(row: &Row, v5: &V5Outcome) -> Result<usize, String> {
+fn diff_catch_lines(
+    row: &Row,
+    v5: &V5Outcome,
+    unported_seen: &mut BTreeSet<(String, String, String)>,
+) -> Result<usize, String> {
+    for (_, _, msg) in UNPORTED_PLUGIN_ERROR_LINES {
+        assert!(
+            !v5.lines.iter().any(|l| l.contains(msg)),
+            "{}: v5 now emits an UNPORTED_PLUGIN_ERROR_LINES message ({msg:?}) — port it as a \
+             diffed catch line and retire its entry",
+            label(row)
+        );
+    }
     let (method, target) = if row.mode.starts_with("stream") {
         ("streamMessage", "quilltap::model::streaming_provider")
     } else {
@@ -789,16 +805,18 @@ fn diff_catch_lines(row: &Row, v5: &V5Outcome) -> Result<usize, String> {
                 e.error.as_deref().expect("the SDK threw an Error"),
             ));
         } else {
+            let triple = (row.provider.as_str(), row.mode.as_str(), e.message.as_str());
             assert!(
-                UNPORTED_PLUGIN_ERROR_LINES.contains(&(
-                    row.provider.as_str(),
-                    row.mode.as_str(),
-                    e.message.as_str()
-                )),
+                UNPORTED_PLUGIN_ERROR_LINES.contains(&triple),
                 "{}: v4 logged an ERROR line no pin names: {:?}",
                 label(row),
                 e.message
             );
+            unported_seen.insert((
+                triple.0.to_string(),
+                triple.1.to_string(),
+                triple.2.to_string(),
+            ));
         }
     }
     let want: Vec<&str> = want.iter().map(String::as_str).collect();
@@ -838,6 +856,7 @@ fn text_http_errors_match_v4s_real_plugins() {
     let mut refused_matched = 0usize;
     let mut transport_rows = 0usize;
     let mut catch_lines = 0usize;
+    let mut unported_seen: BTreeSet<(String, String, String)> = BTreeSet::new();
     let mut catch_mismatches: Vec<String> = Vec::new();
 
     for row in &rows {
@@ -877,7 +896,7 @@ fn text_http_errors_match_v4s_real_plugins() {
                 transport_rows += 1;
             }
         }
-        match diff_catch_lines(row, &v5) {
+        match diff_catch_lines(row, &v5, &mut unported_seen) {
             Ok(n) => catch_lines += n,
             Err(e) => catch_mismatches.push(e),
         }
@@ -926,6 +945,16 @@ fn text_http_errors_match_v4s_real_plugins() {
     // P4.128: the three catch-line plugins × 34 cases (33 shared + the
     // transport row) × 2 modes — every one diffed field for field.
     assert_eq!(catch_lines, 3 * 34 * 2, "v4's plugin catch lines diffed");
+    let unported_missing: Vec<&(&str, &str, &str)> = UNPORTED_PLUGIN_ERROR_LINES
+        .iter()
+        .filter(|(p, m, msg)| {
+            !unported_seen.contains(&(p.to_string(), m.to_string(), msg.to_string()))
+        })
+        .collect();
+    assert!(
+        unported_missing.is_empty(),
+        "UNPORTED_PLUGIN_ERROR_LINES entries v4 no longer emits on any row (retire them): {unported_missing:?}"
+    );
     assert_eq!(refused_matched, 160, "v5's matching refusal verdicts");
     let mut missing: Vec<String> = Vec::new();
     for (p, m, f, cases) in EXPECTED_DIVERGENCES {

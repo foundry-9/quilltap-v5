@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — test(harness): the unported plugin ERROR lines pinned both ways; the SDK frame-semantics rows pinned by count (P4.128, the `97b25fc53` smalls §3 review)
+
+_Versions: harness 0.0.1047._
+
+`UNPORTED_PLUGIN_ERROR_LINES` noticed a NEW v4 line but neither an entry v4
+stopped emitting nor a v5 port of one (the catch-line filter hid it); every
+triple is now counted as seen on v4's side and v5's whole capture is asserted
+free of the nine messages. `stream_decoders_equivalence` gains the coverage
+block the P4.122 rows have: the 42 SDK frame-semantics rows by count and
+throw/no-throw (4 SDK providers × 5 throwing shapes + 2 silent; OpenRouter's
+raw path blind to all 7; the Responses twin 2 × 5 + 2 × 2), so a regen that
+drops the synthetic rows cannot pass green.
+
 #### 2026-09-30 — test(harness): retire the three vanished `NameHash` pins; the render marker as v4's sentence; sampling recorded as the funnel hands it (the `97b25fc53` smalls §S 2 wire + §3 review)
 
 _Versions: harness 0.0.1046._

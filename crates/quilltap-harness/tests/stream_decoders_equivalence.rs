@@ -586,6 +586,58 @@ fn run_decoder(decoder: &str) {
             null.iter().all(|t| !*t),
             "`{{\"error\":null}}` now throws on v4"
         );
+        // P4.128 unit B3: the openai SDK's frame semantics through the REAL SDK
+        // (`core/streaming.js:95-147,600-649`). Pinned by count and by
+        // throw/no-throw so a regen or a `cases.json` edit that drops the
+        // synthetic rows cannot pass green (the `97b25fc53` smalls
+        // unification's catch — the generic diff compares only rows that
+        // exist). Four SDK-flavoured providers (deepseek, nanogpt,
+        // openai-compatible, z-ai): five parse-failure shapes THROW
+        // (`malformed-frame`, `padded-done`, `done-trailing-space`,
+        // `empty-data`, `event-only`); `after-done` and `id-only` do not.
+        // OpenRouter's raw path is blind to all seven.
+        let sdk_frame = |o: &OracleCase| {
+            o.case.contains("-sdk-") || o.case.starts_with("sdk-") || o.case.contains("sdk")
+        };
+        let sdk_throwing = recorded_throws(&|o| {
+            o.provider != "openrouter"
+                && sdk_frame(o)
+                && !o.case.ends_with("-after-done")
+                && !o.case.ends_with("-id-only")
+        });
+        assert_eq!(
+            sdk_throwing.len(),
+            4 * 5,
+            "the SDK frame-semantics throwing rows moved"
+        );
+        assert!(
+            sdk_throwing.iter().all(|t| *t),
+            "an SDK frame-semantics parse-failure row stopped throwing on v4"
+        );
+        let sdk_silent = recorded_throws(&|o| {
+            o.provider != "openrouter"
+                && sdk_frame(o)
+                && (o.case.ends_with("-after-done") || o.case.ends_with("-id-only"))
+        });
+        assert_eq!(
+            sdk_silent.len(),
+            4 * 2,
+            "the SDK after-done / id-only rows moved"
+        );
+        assert!(
+            sdk_silent.iter().all(|t| !*t),
+            "v4's SDK now throws after `[DONE]` or on an `id:`-only block"
+        );
+        let or_sdk = recorded_throws(&|o| o.provider == "openrouter" && sdk_frame(o));
+        assert_eq!(
+            or_sdk.len(),
+            7,
+            "the OpenRouter raw-path frame-semantics rows moved"
+        );
+        assert!(
+            or_sdk.iter().all(|t| !*t),
+            "v4's OpenRouter raw path now throws on a frame-semantics row"
+        );
     }
     if decoder == "responses_api_sse" {
         let throws = recorded_throws(&|o| {
@@ -601,6 +653,33 @@ fn run_decoder(decoder: &str) {
         assert!(
             failed.iter().all(|t| !*t),
             "v4 now throws on `response.failed` — the convergence moved"
+        );
+        // P4.128 unit B3, the Responses twin: two providers (grok, openai) ×
+        // the same five throwing shapes; `after-done` / `id-only` silent.
+        let sdk_frame = |o: &OracleCase| o.case.contains("sdk");
+        let throwing = recorded_throws(&|o| {
+            sdk_frame(o) && !o.case.ends_with("-after-done") && !o.case.ends_with("-id-only")
+        });
+        assert_eq!(
+            throwing.len(),
+            2 * 5,
+            "the Responses frame-semantics throwing rows moved"
+        );
+        assert!(
+            throwing.iter().all(|t| *t),
+            "a Responses frame-semantics parse-failure row stopped throwing on v4"
+        );
+        let silent = recorded_throws(&|o| {
+            sdk_frame(o) && (o.case.ends_with("-after-done") || o.case.ends_with("-id-only"))
+        });
+        assert_eq!(
+            silent.len(),
+            2 * 2,
+            "the Responses after-done / id-only rows moved"
+        );
+        assert!(
+            silent.iter().all(|t| !*t),
+            "v4's Responses SDK now throws after `[DONE]` or on an `id:`-only block"
         );
     }
     eprintln!("OK: {decoder} — {checked} case(s) × 2–3 chunkings match v4.");
