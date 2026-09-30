@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — test(harness): diff the orchestrator family's CHAT_MESSAGE llm_logs rows against v4's real stream funnel (P4.129)
+
+_Versions: harness 0.0.1035._
+
+The orchestrator tier-3 oracle's stream mock moves from v4's service-level
+`streamMessage` to the provider object `createLLMProvider` returns, so v4's
+real funnel runs for every call site and logs its own CHAT_MESSAGE row per
+leg. Recorded canned keys are unchanged (91 stream and 107 completion rows
+byte-identical against the same fixture). A deterministic drain awaits every
+`logLLMCall` before the dump. The family now compares CHAT_MESSAGE rows
+(filtering only DANGER_CLASSIFICATION), with local normalizers for the minted
+`messageId`, the live `read_conversation` render inside `request` (text and
+`contentLength`), and the one clock-bearing `historyTailHash`. The measured
+divergences are pinned both ways: the multi-character `name` hash on three
+rows (proven to vanish on top of P4.128's name slot) and one new finding —
+v5's Carina consultation stream logs no CHAT_MESSAGE row where v4 logs one
+(a core change, recorded for the unifier). Mutation proofs M1–M4 red on
+their targets. No core change.
+
 #### 2026-09-30 — docs(porting): close P4.128 — the lane record and status headers
 
 _Docs-only change._

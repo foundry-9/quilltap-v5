@@ -156482,6 +156482,189 @@ proofs, dedup/summaries, the Brahma deep query, #101, the compression
 re-measure, the conceal-marker arm), an autonomous room's budget charging the
 per-leg rows, and a real flat-body OpenAI image refusal.
 
+## P4.129 — the orchestrator tier-3 oracle's W4.11b move: CHAT_MESSAGE rows diffed (lane record, 2026-09-30)
+
+Branch `claude/orchestrator-oracle-chat-rows-881e0a`, cut from `main`
+`9c2bd3f87`. Harness + oracle case only — **zero core change**. Order:
+`work-orders/p4.129-orchestrator-oracle-w4-11b-chat-message-rows.md`.
+
+**Drift probe (§R.2):** PASSED at lane start and before each regen batch —
+v4 on `main`, HEAD `97b25fc53`, both logs empty, tree clean. Pin:
+`/tmp/qt-v4-pin-p4129-97b25fc53` (the three symlink classes; `openai`
+7.23.0 under it). Every regen ran from the pin through a lane-private `/tmp`
+mirror (`/tmp/p4129/…`), never the recipe's fixed `/tmp/oracle-orchestrator.ndjson`.
+
+### What moved
+
+- **The oracle** (`harness/oracle/cases/orchestrator-tier3.test.ts`): the
+  service-level `streaming.service` `streamMessage` doMock is DELETED; its
+  generator + side-channel recorder now live on the `createLLMProvider` mock's
+  provider object (the `enclave-step-tier3` shape), beside the unchanged
+  `sendMessage`. v4's REAL funnel runs above it for every call site. The two
+  hand-run derivations the old mock needed (`resolveSamplingParams`,
+  `buildCharacterCacheKey`) are gone from the recording path: `cacheKey` is the
+  funnel's own `params.cacheKey`; `sampling` is still v4's REAL resolver over the
+  same bag (`params.profileParameters`); the key's temperature is still the bag's
+  own `temperature`. **The deterministic drain:** `logLLMCall` is wrapped in its
+  existing doMock, every promise kept, and `await Promise.allSettled(pending)`
+  runs before the `llm_logs` dump (the funnel's named import binds to the mocked
+  module). The three comments the order named are rewritten.
+- **Canned keys UNMOVED, measured:** the pre-move case (`git show HEAD:…`) and the
+  moved case run against the SAME fixture — all 91 `cannedStream` and 107
+  `cannedCompletion` rows byte-identical, `cost`/`toolChangeLog` identical;
+  events/tables differ only in minted uuids/timestamps (the funnel's own
+  `Date.now()` reads advance the oracle's 1 ms-per-read clock). Spec and fixture
+  builder untouched.
+- **The family** (`orchestrator_tier3_equivalence.rs`): `strip_seam_rows` keeps
+  `DANGER_CLASSIFICATION` only (its stale "24-case corpus" rationale rewritten —
+  the corpus is 65 calls). New LOCAL normalizers (never `tests/common/mod.rs`):
+  `normalize_llm_log_rows` (after `normalize_messages`: `messageId` through each
+  side's message idmap, `<msgref>` unmapped, re-sorted; a CHAT_MESSAGE `request`
+  carrying a live `read_conversation` render decoded from its brotli hex,
+  `blank_current_time` applied, the render-bearing message's `contentLength`
+  placeholdered; `requestHashes.historyTailHash` → `<clock-bearing history
+  tail>` on exactly the rows whose HASHED tail carries a render), the named
+  `CLOCK_TAIL_LEGS` set asserted equal on both sides (= `agent_force_final`'s
+  force-final leg only), `EXPECTED_DIVERGENCES` + `apply_expected_divergences`
+  (the both-directions shape), and `report_llm_log_diffs` naming every differing
+  cell of every unpaired row (a differing `request` compared DECODED, a
+  `requestHashes` by sub-key).
+
+### The first honest regen, measured (before any pin was written)
+
+v4 wrote **96** CHAT_MESSAGE rows (plus 110 MEMORY_EXTRACTION, 2 SUMMARIZATION,
+1 TITLE_GENERATION, 0 DANGER_CLASSIFICATION); v5 wrote 95. Every differing
+cell, classified:
+
+| Case | Leg (canned reply) | Cell | Class |
+|---|---|---|---|
+| #51 `failover_then_native_tool_call`, #52 `openai_chained_then_native_tool_call`, #53 `simple_json_then_native_tool_call`, #54 `simple_json_text_tool_continuation`, #55 `agent_force_final` | every leg after the `read_conversation` call | `request` (decoded differs) | EXPECTED — the live render. After blanking, a SECOND clock cell remained: the render message's `contentLength` (1,610 vs 1,581 — the clock's own length: v4's frozen same-day span vs v5's wall-clock span). Placeholdered on render-bearing messages only. |
+| #55 `agent_force_final` | `" Nothing more to report."` (force-final) | `requestHashes.historyTailHash` | EXPECTED — the render sits inside the hashed tail (RULED placeholder) |
+| #18 `textblock_mode` | `"A simple answer from Bertie."` | `historyTailHash` only | the `name` hash — MEASURED (the order said "MEASURE") |
+| #55 `agent_force_final` | `"Friday opens the vault ledger."` (the PRIMARY) | `historyTailHash` only | the `name` hash |
+| #55 `agent_force_final` | `" The ledger is blank."` (native re-stream) | `historyTailHash` only | the `name` hash |
+| `carina_markup` | `"It is high noon."` | the WHOLE ROW is v4-only | **NEW FINDING** — see below |
+
+The five `lantern_budget_*` rows: **no difference at all** (stored ~2.5 KB,
+brotli bytes identical).
+
+### Findings (what the order got wrong, and one it could not have known)
+
+1. **NEW — v5's Carina consultation logs no CHAT_MESSAGE row.** v4's
+   `carina.service.ts:676-686` `runStream` streams through the ONE
+   `streamMessage` funnel (`userId`, `chatId`, `characterId: answerer.id`, no
+   `messageId`), so v4 logs a row per Carina stream; v5's
+   `services/carina_query.rs` `run_stream` (`:1158-1225` at `9c2bd3f87`)
+   streams through `watch_stream` directly and writes NOTHING. A real row-count
+   divergence, and a CORE hunk this lane may not write — **STOPPED on it and
+   recorded for the unifier.** The hunk: after the `while let Some(chunk)` loop
+   sees `c.done`, log a CHAT_MESSAGE row the way the loop legs do
+   (`native_tool_loop.rs`'s `log_loop_leg` shape: `user_id`, `chat_id`,
+   `character_id: Some(answerer_id)`, `message_id: None`, the Carina profile,
+   the `params`, the accumulated answer, usage, `raw_response`) — every Carina
+   stream, i.e. the initial call, each tool-loop turn and the forced-text final
+   turn (`carina.service.ts` calls `runStream` for all three). Owner: nobody this
+   round — `carina_query.rs` is split between P4.127 (`:470`) and P4.128
+   (`:689`), and `run_stream` is neither's hunk (§R.10(b): "a third hunk in
+   either file is a STOP"). Pinned BOTH WAYS as `EXPECTED_DIVERGENCES`'
+   `("carina_markup", "It is high noon.", V4OnlyRow)` — it trips VANISHED the
+   day `run_stream` logs the row. (The corpus reaches ONE Carina stream; the
+   tool-loop and forced-final Carina turns are unreached.)
+2. **§3 "Large Lantern requests" — premise FALSE.** The funnel hands
+   `logLLMCall` the attachments, but `logLLMCall` stores a per-message SUMMARY
+   (`llm-logging.service.ts:117-121`: `role`, `content`, `contentLength`,
+   `hasAttachments`), so no attachment byte reaches the stored `request`; the
+   five rows are ~2.5 KB and byte-identical. Tier 2 item 10 is NOT APPLICABLE.
+3. **The summary is also why the render leaks twice** — `contentLength` (item 1
+   of the table above); the order named only the text.
+4. **#55's `name` divergence: the order predicted "both loop legs"; measured on
+   the PRIMARY and the native re-stream.** The force-final leg's hash is the
+   clock placeholder on both sides, so its `name` half is unmeasurable in this
+   family (recorded on the `EXPECTED_DIVERGENCES` entry).
+5. **M1 as written SURVIVED.** "The native leg logged under the orchestrator's
+   local `effective_profile`" is a no-op: by the loop call (`orchestrator.rs`
+   ≈`:3125`) that local IS the understudy already (it is what P4.90's fix
+   threaded). Re-aimed at the seat's own profile
+   (`to_effective_profile(&connection_profile)`, saved and restored around the
+   loop call so only the loop's logging moves): red on exactly row 2
+   (`fa110001` vs `fa110002`), nothing else.
+6. `DANGER_CLASSIFICATION` writes ZERO rows on this corpus on v4 too (the filter
+   is kept as the order says — it is a seam, and a future case may reach it).
+
+### Mutation proofs (each reverted from a file backup; M1/M2 core, never committed)
+
+| Proof | Mutation | Result |
+|---|---|---|
+| M1 | `streaming_state.effective_profile` replaced by the seat's own profile around the native loop call (the order's literal wording SURVIVED — finding 5) | RED on exactly #51's row 2: v5 `fa110001` vs v4 `fa110002` |
+| M2 | `provider_failover.rs` hard-error leg `character_id: None` | RED on #51 row 1 `characterId` (+ the corpus's two other hard-error failover rows, the same site) |
+| M3 | `messageId` remap disabled | RED — 190 unpaired rows incl. both #51 rows |
+| M4 | the render blank disabled | RED on `request` for all five tool cases #51–#55 |
+
+### §S 2 measured ahead of unification
+
+A scratch worktree at P4.128 unit A (`1781c6b43`, the `name` slot) with this
+lane's two files dropped in, run against this lane's oracle: **exactly the three
+`NameHash` entries trip VANISHED; the Carina `V4OnlyRow` holds; no other cell
+differs** (zero report lines). The unifier deletes those three entries at
+unification per §S 2 and keeps the Carina one.
+
+### Non-vacuity (Tier 1 item 7) and the census (Tier 2 item 9)
+
+#51 carries exactly two rows, both `fa110002` / `gpt-stands-in`, Friday's
+`characterId`, one shared `messageId` remapping to a `chat_messages` token,
+replies att1 + att2; #55's force-final row has NO `characterId` while its native
+re-stream row has one; #54's text continuation has no `characterId`. The P4.68
+census is kept (on v5's raw rows, before the compare) and now also runs on v4's
+rows: the same set of two-profile chats (asserted after the whole-row compare so
+a profile mix-up reds as the row it is).
+
+### Regen + run, as run
+
+```bash
+PIN=/tmp/qt-v4-pin-p4129-97b25fc53   # git worktree add --detach, + the 3 symlink classes
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree> ; TMPO=/tmp/p4129/qt-orch-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
+cp "$V5W/harness/oracle/cases/orchestrator-tier3.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/lib/pinned-draws.ts" "$TMPO/lib/"
+cp "$V5W/harness/oracle/fixtures/orchestrator-tier3.json" "$TMPO/fixtures/"
+cd "$PIN"
+QT_FIXTURE_OUT=/tmp/p4129/qt-orch-main.db QT_FIXTURE_MOUNT_OUT=/tmp/p4129/qt-orch-mount.db \
+  $N/npx tsx $V5W/harness/oracle/fixtures/build-orchestrator-fixture.ts
+QT_FIXTURE_ORCH_MAIN=/tmp/p4129/qt-orch-main.db QT_FIXTURE_ORCH_MOUNT=/tmp/p4129/qt-orch-mount.db \
+TZ=UTC QT_ORACLE_OUT=/tmp/p4129/oracle-v2.ndjson PATH=$N:$PATH \
+  $N/npx jest --silent --watchman=false --testTimeout=600000 --roots "$PWD" --roots "$TMPO/cases" -- orchestrator-tier3
+cd $V5W
+CARGO_INCREMENTAL=0 TZ=UTC QT_ORACLE_ORCHESTRATOR=/tmp/p4129/oracle-v2.ndjson \
+QT_FIXTURE_ORCH_MAIN=/tmp/p4129/qt-orch-main.db QT_FIXTURE_ORCH_MOUNT=/tmp/p4129/qt-orch-mount.db \
+  cargo test -p quilltap-harness --test orchestrator_tier3_equivalence -- --nocapture
+```
+
+Two independent regens (fresh fixture each) green; the fresh NDJSON carries
+96 `"type":"CHAT_MESSAGE"` rows where the pre-move oracle carried 0.
+
+### Handoffs (Tier 3 — recorded, not built)
+
+- **To P4.128 (by name):** the deterministic drain — `const pendingLogs = [];`
+  the `llm-logging.service` doMock returning `{ ...actual, logLLMCall: (...a) =>
+  { const p = actual.logLLMCall(...a); pendingLogs.push(p); return p; } }`, and
+  `await Promise.allSettled(pendingLogs)` before the dump — for
+  `primary-stream-tier3.test.ts` if it regenerates that family. The loop
+  oracles keep their 300 ms sleep (nobody's this round).
+- **To P4.128:** the stale `services/primary_stream.rs:934-943` comment (the
+  failover re-stream DOES pass `characterId`, both sides) — not touched here.
+- **To the unifier:** delete the three `NameHash` entries (measured VANISHED
+  above); keep and route the Carina `V4OnlyRow` finding (finding 1) to an order.
+- A clock seam on the executor's render — refused at planning; not built.
+
+Neutrality legs (Tier 1 item 8), each regenerated fresh from the pin through
+its own `recipe_sweep.py --show` recipe with every `/tmp/` path rewritten under
+`/tmp/p4129/nt/` (the recipes' fixed paths are shared with P4.128, which
+regenerates three of these families this round) and run `--nocapture`, zero
+`SKIP`: `enclave_step_tier3` 1/0, `primary_stream_tier3` 2/0,
+`native_tool_loop_tier3` 1/0, `text_tool_loop_tier3` 1/0,
+`tool_loop_leg_logging` 2/0 (no oracle), `chat_admin_routes` 1/0,
+`build_context_tier3` 1/0. fmt clean; clippy clean in both feature sets.
+
 ## P4.128 unit A — the participant-`name` hash slot (2026-09-30, lane `claude/p4-128-model-name-hash-slot-19feaa`)
 
 Order: `work-orders/p4.128-model-name-hash-slot-prestream-catch-line-sdk-frame-semantics.md`

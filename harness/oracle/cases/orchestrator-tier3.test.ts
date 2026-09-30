@@ -11,12 +11,13 @@
  * fixture, mocking ONLY the model boundaries + the out-of-scope subsystems the
  * Rust port injects as seams (each matching the Rust seam exactly):
  *
- *   - `streamMessage` (the primary stream): rule-match by the call's stream label
- *     (the `originalMessage` marker planted in a user message) + RECORD the exact
- *     `provider|model|temperature|messages` canned key answered (the primary-stream
- *     oracle's approach) so the Rust `CannedStreamingProvider` replays them;
- *   - `createLLMProvider` (the summary-check cheap-LLM): returns the corpus canned
- *     summary response + records the canned key;
+ *   - `createLLMProvider` — BOTH model boundaries at the provider level (P4.129,
+ *     the W4.11b shape): its `streamMessage` rule-matches by the call's stream
+ *     label + RECORDS the exact `provider|model|temperature|messages` canned key
+ *     answered so the Rust `CannedStreamingProvider` replays them, while v4's
+ *     service-level `streamMessage` funnel above it runs REAL (so its
+ *     CHAT_MESSAGE `llm_logs` row is diffed); its `sendMessage` answers the
+ *     summary-check / distill cheap-LLM with the corpus canned response;
  *   - `generateEmbeddingForUser`: canned (unused by the corpus — no memory search);
  *   - buildContext's unported feeders (tiered-mount-pool / memory-recap /
  *     frozen-archive / instance-settings / system-prompt-compiler / keyword
@@ -25,7 +26,7 @@
  *   - the post-office writers (core-whisper / commonplace / suparna / mailbox /
  *     host / prospero) → no-ops;
  *   - the orchestrator's own subsystem seams (agent-mode / danger reroute / RNG
- *     auto-detect / carina markup / cost estimate / async compression / logLLMCall)
+ *     auto-detect / carina markup / cost estimate / async compression)
  *     → recorders / no-ops matching the Rust `OrchestratorSeams` + finalizer seams;
  *   - the background-job processor auto-start → no-op (the enqueued PENDING rows are
  *     state under test).
@@ -259,137 +260,26 @@ async function main(): Promise<void> {
     };
   });
 
-  // ---- streamMessage (the primary stream) ----
-  jest.doMock('@/lib/services/chat-message/streaming.service', () => {
-    const actual = jest.requireActual('@/lib/services/chat-message/streaming.service');
-    // The REAL resolver the mocked-away `streamMessage` would have called
-    // (P4.D83): imported, never reimplemented.
-    const { resolveSamplingParams } = jest.requireActual('@/lib/llm/sampling-params') as {
-      resolveSamplingParams: (p?: Record<string, unknown>) => {
-        temperature?: number;
-        maxTokens?: number;
-        topP?: number;
-      };
-    };
-    // P4.95: the REAL `buildCharacterCacheKey` (`lib/llm/cache-key.ts`) — the
-    // other derivation the mocked-away `streamMessage` would have run, at
-    // `streaming.service.ts:392`. Imported, never reimplemented, for the same
-    // reason the sampling resolver is: this mock STANDS IN FOR the funnel, so
-    // the funnel's own body never executes and nothing else on the v4 side would
-    // compute the key.
-    const { buildCharacterCacheKey } = jest.requireActual('@/lib/llm/cache-key') as {
-      buildCharacterCacheKey: (characterId: string | undefined) => string | undefined;
-    };
-    return {
-      __esModule: true,
-      ...actual,
-      // W4.1g: `buildTools` is now the REAL v4 function (no longer stubbed to an
-      // empty slate) — its tool instructions flow into the system prompt and its
-      // `actualTools` reach the wire. Only the model-capability inputs are mocked
-      // (checkModelSupportsTools above; provider.supportsWebSearch below).
-      streamMessage: async function* streamMessage(options: {
-        messages: Array<{ role: string; content: string; attachments?: unknown[] }>;
-        connectionProfile: { provider: string; modelName: string };
-        modelParams: Record<string, unknown>;
-        tools?: unknown[];
-        // P4.92: the two options v4's FOUR `streamMessage` call sites pass
-        // ASYMMETRICALLY. The primary passes both; the native re-stream, the
-        // native force-final and the text continuation each omit
-        // `previousResponseId`, and only the text continuation passes a `stop`
-        // (`strategy.stopSequences`). v5 hands the loops the primary's whole
-        // `StreamParams`, so both rode into every re-stream — invisibly, because
-        // the call key is `provider|model|temperature|messages` and nothing else
-        // recorded them.
-        previousResponseId?: string;
-        stop?: string[];
-        // P4.95: the THIRD asymmetric option. v4's funnel does not take a
-        // `cacheKey` — it takes `characterId` and derives the key itself
-        // (`streaming.service.ts:392`), so "which legs cache" is spelled as
-        // "which legs pass a characterId". Measured at `1fefadb9a`: the primary
-        // (`primary-stream.service.ts:207`) and the native loop's FIRST
-        // re-stream (`native-tool-loop.service.ts:350`) pass it; the native
-        // force-final (`:421-431`), the text continuation
-        // (`text-tool-loop.service.ts:390-400`) and the primary's
-        // tool-unsupported retry (`primary-stream.service.ts:261-270`) do not.
-        characterId?: string;
-      }) {
-        const messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
-        // P4.D154 (bug 121): the per-message attachment slate reaching the wire,
-        // positionally aligned with `messages`. The call KEY still projects
-        // role+content only (matching `canned_stream_key`), so recorded keys are
-        // unchanged; this rides alongside like `tools` / `modelParams` do. Until
-        // it existed the corpus could not see `mergedAttachmentsToSend` at all —
-        // v4 stamps the merged slate onto the anchor message only, and a v5 that
-        // dropped `rehydratedAttachmentsToKeep` would have diffed clean.
-        const attachmentsAtWire = options.messages.map((m) => m.attachments ?? []);
-        const label = currentLabel;
-        if (!label) throw new Error('streamMessage mock: no current label');
-        const attempts = spec.streams[label];
-        if (!attempts) throw new Error(`streamMessage mock: no streams for ${label}`);
-        const idx = attemptCursor.get(label) ?? 0;
-        attemptCursor.set(label, idx + 1);
-        const chunks = attempts[idx];
-        if (!chunks) throw new Error(`streamMessage mock: exhausted attempts for ${label} (idx ${idx})`);
-
-        const provider = options.connectionProfile.provider;
-        const model = options.connectionProfile.modelName;
-        const temperature = (options.modelParams.temperature as number | undefined) ?? null;
-        const key = `${provider}|${model}|${temperature ?? '-'}|${JSON.stringify(messages)}`;
-        // Record the tool slate reaching the wire (W4.1g: proven per call). v4
-        // passes `tools.length > 0 ? tools : undefined`; normalize undefined → [].
-        const toolsAtWire = (options.tools ?? []) as unknown[];
-        // P4.D79: record the whole `modelParams` bag reaching the wire, not just
-        // the temperature the key carries. v4 builds it with
-        // `profileParams(effectiveProfile) ?? {}` and forwards it as
-        // `profileParameters`; until this was recorded the corpus could not see
-        // that v5 sent nothing at all.
-        const modelParamsAtWire = (options.modelParams ?? {}) as Record<string, unknown>;
-        // P4.D83 (v4 `d89babc4`): the three sampling knobs the REAL
-        // `streaming.service.ts` derives from that bag. This mock stands in for
-        // `streamMessage` itself, which is where v4 calls the resolver — so the
-        // resolver is invoked here, on v4's own code, rather than left
-        // unmeasured. (v5's orchestrator resolves before its narrower seam, so
-        // this is the only place the two computations meet.) JSON.stringify
-        // drops the undefined knobs, which is the "absent" the Rust side
-        // reproduces by omitting the key.
-        const samplingAtWire = resolveSamplingParams(modelParamsAtWire) as unknown as Record<string, unknown>;
-        // P4.92: side-channel recordings, NEVER part of the key — every
-        // pre-existing recorded key stays byte-identical and every old canned
-        // answer still matches. `undefined` normalizes to `null` / `[]`, which is
-        // exactly what the omitting call sites produce.
-        const previousResponseIdAtWire = options.previousResponseId ?? null;
-        const stopAtWire = options.stop ?? [];
-        // P4.95: run v4's own derivation on whatever `characterId` this call site
-        // supplied, and record the RESULT (`quilltap:char:<id>:v<version>`, or
-        // null where the site passed none). Recording the derived key rather
-        // than the id keeps the comparand on the byte that reaches the provider
-        // — v5 carries the derived string in `StreamParams.cache_key`.
-        const cacheKeyAtWire = buildCharacterCacheKey(options.characterId) ?? null;
-        const entry = cannedStreams.get(key);
-        if (entry) entry.sequences.push(chunks);
-        else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, modelParams: modelParamsAtWire, sampling: samplingAtWire, attachments: attachmentsAtWire, previousResponseId: previousResponseIdAtWire, stop: stopAtWire, cacheKey: cacheKeyAtWire, sequences: [chunks] });
-
-        for (const chunk of chunks) {
-          if (chunk.error) throw new Error(chunk.error);
-          if (chunk.reasoning) {
-            yield { reasoningContent: chunk.reasoning };
-          } else if (chunk.done) {
-            yield {
-              done: true,
-              usage: chunk.usage ?? undefined,
-              cacheUsage: undefined,
-              attachmentResults: undefined,
-              rawResponse: chunk.rawResponse,
-            };
-          } else {
-            yield { content: chunk.content };
-          }
-        }
-      },
-    };
-  });
-
-  // ---- createLLMProvider (the summary-check cheap-LLM) ----
+  // ---- BOTH model boundaries at the PROVIDER level (P4.129 — the W4.11b
+  //      shape, `enclave-step-tier3.test.ts` the model) ----
+  // v4's service-level `streamMessage` funnel (`streaming.service.ts`) runs
+  // REAL: every call site (the primary, the failover re-streams, both tool
+  // loops' legs, the force-final) goes through it, and its terminal
+  // CHAT_MESSAGE `logLLMCall` is diffed state. Only the provider object it
+  // gets from `createLLMProvider` is canned. The funnel works the per-call
+  // options out itself — `resolveSamplingParams`, `buildCharacterCacheKey`,
+  // the `tools.length > 0 ? tools : undefined` slate — so this mock records
+  // what REACHES the provider rather than re-running those derivations (the
+  // two hand-run derivations the service-level mock needed are gone).
+  //
+  // Every recorded canned key is byte-identical to the service-level mock's:
+  // the key's temperature is still the bag's own `temperature` (the funnel
+  // forwards the bag untouched as `profileParameters`), `sampling` is v4's
+  // REAL resolver over that same bag, and `cacheKey` is the funnel's own
+  // derivation (null where the call site passed no `characterId`).
+  const { resolveSamplingParams } = jest.requireActual('@/lib/llm/sampling-params') as {
+    resolveSamplingParams: (p?: Record<string, unknown>) => Record<string, unknown>;
+  };
   jest.doMock('@/lib/llm', () => {
     const actual = jest.requireActual('@/lib/llm');
     return {
@@ -400,6 +290,86 @@ async function main(): Promise<void> {
         // false (the corpus needs no native web search); the Rust side injects
         // `provider_supports_web_search: false` to match.
         supportsWebSearch: false,
+        streamMessage: async function* streamMessage(
+          params: {
+            messages: Array<{ role: string; content: string; attachments?: unknown[] }>;
+            model: string;
+            tools?: unknown[];
+            profileParameters?: Record<string, unknown>;
+            // P4.92: the two options v4's call sites pass ASYMMETRICALLY — the
+            // primary passes both; the native re-stream, the native force-final
+            // and the text continuation omit `previousResponseId`, and only the
+            // text continuation passes a `stop` (`strategy.stopSequences`).
+            previousResponseId?: string;
+            stop?: string[];
+            // P4.95: the funnel's `buildCharacterCacheKey(characterId)`
+            // (`streaming.service.ts:392`) — "which legs cache" is "which legs
+            // pass a characterId": the primary and the native loop's FIRST
+            // re-stream do; the native force-final, the text continuation and
+            // the primary's tool-unsupported retry do not.
+            cacheKey?: string;
+          },
+          _apiKey: string
+        ) {
+          const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
+          // P4.D154 (bug 121): the per-message attachment slate reaching the
+          // wire, positionally aligned with `messages`. The call KEY projects
+          // role+content only (matching `canned_stream_key`); this rides
+          // alongside like `tools` / `modelParams` do — v4 stamps the merged
+          // slate onto the anchor message only, so this is the one comparand
+          // that sees `mergedAttachmentsToSend`.
+          const attachmentsAtWire = params.messages.map((m) => m.attachments ?? []);
+          const label = currentLabel;
+          if (!label) throw new Error('streamMessage mock: no current label');
+          const attempts = spec.streams[label];
+          if (!attempts) throw new Error(`streamMessage mock: no streams for ${label}`);
+          const idx = attemptCursor.get(label) ?? 0;
+          attemptCursor.set(label, idx + 1);
+          const chunks = attempts[idx];
+          if (!chunks) throw new Error(`streamMessage mock: exhausted attempts for ${label} (idx ${idx})`);
+
+          const model = params.model;
+          // P4.D79: the whole `modelParams` bag reaching the wire (v4
+          // `profileParams(effectiveProfile) ?? {}`, forwarded by the funnel as
+          // `profileParameters`), not just the temperature the key carries.
+          const modelParamsAtWire = (params.profileParameters ?? {}) as Record<string, unknown>;
+          const temperature = (modelParamsAtWire.temperature as number | undefined) ?? null;
+          const key = `${provider}|${model}|${temperature ?? '-'}|${JSON.stringify(messages)}`;
+          // W4.1g: the tool slate reaching the wire (the funnel passes
+          // `tools.length > 0 ? tools : undefined`; normalize undefined → []).
+          const toolsAtWire = (params.tools ?? []) as unknown[];
+          // P4.D83 (v4 `d89babc4`): the three sampling knobs v4's REAL
+          // resolver derives from that bag — the same call the funnel makes
+          // (`streaming.service.ts:393`). JSON.stringify drops the undefined
+          // knobs, which is the "absent" the Rust side reproduces.
+          const samplingAtWire = resolveSamplingParams(modelParamsAtWire);
+          // P4.92 / P4.95: side-channel recordings, NEVER part of the key.
+          const previousResponseIdAtWire = params.previousResponseId ?? null;
+          const stopAtWire = params.stop ?? [];
+          const cacheKeyAtWire = params.cacheKey ?? null;
+          const entry = cannedStreams.get(key);
+          if (entry) entry.sequences.push(chunks);
+          else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, modelParams: modelParamsAtWire, sampling: samplingAtWire, attachments: attachmentsAtWire, previousResponseId: previousResponseIdAtWire, stop: stopAtWire, cacheKey: cacheKeyAtWire, sequences: [chunks] });
+
+          for (const chunk of chunks) {
+            if (chunk.error) throw new Error(chunk.error);
+            if (chunk.reasoning) {
+              yield { reasoningContent: chunk.reasoning };
+            } else if (chunk.done) {
+              yield {
+                done: true,
+                usage: chunk.usage ?? undefined,
+                cacheUsage: undefined,
+                rawProviderUsage: undefined,
+                attachmentResults: undefined,
+                rawResponse: chunk.rawResponse,
+              };
+            } else {
+              yield { content: chunk.content };
+            }
+          }
+        },
+        // The summary-check / distill cheap-LLM.
         sendMessage: async (
           params: { messages: Array<{ role: string; content: string }>; model: string; temperature?: number },
           _apiKey: string
@@ -460,14 +430,27 @@ async function main(): Promise<void> {
   });
   // W4.11a: `logLLMCall` runs REAL — the cheap-LLM distill (memory-keyword-extraction
   // → MEMORY_EXTRACTION) and any summary-fold cheap calls land `llm_logs` rows the
-  // Rust harness (with a `with_logging` executor) matches. v4's CHAT_MESSAGE row
-  // lives INSIDE the service-level `streamMessage` wrapper (mocked above), so v4
-  // writes NO CHAT_MESSAGE rows here — the Rust primary_stream does, so both sides
-  // filter `type == 'CHAT_MESSAGE'` before diffing (the primary-stream row shape is
-  // proven directly by `primary_stream_tier3` / W4.11b).
-  jest.doMock('@/lib/services/llm-logging.service', () =>
-    jest.requireActual('@/lib/services/llm-logging.service')
-  );
+  // Rust harness (with a `with_logging` executor) matches. P4.129: the funnel's
+  // CHAT_MESSAGE row lands too, now that `streamMessage` runs REAL (the provider-
+  // level mock above) — one row per leg that reaches `chunk.done`.
+  //
+  // The funnel calls it fire-and-forget (`streaming.service.ts:482-515`), so a
+  // per-call settle can lose a row to the dump. Every call is wrapped here and its
+  // promise kept; the dump below awaits them all (`allSettled` — the funnel owns
+  // its own `.catch`). The funnel's named import binds to this mocked module.
+  const pendingLogs: Array<Promise<unknown>> = [];
+  jest.doMock('@/lib/services/llm-logging.service', () => {
+    const actual = jest.requireActual('@/lib/services/llm-logging.service');
+    return {
+      __esModule: true,
+      ...actual,
+      logLLMCall: (...args: unknown[]) => {
+        const p = (actual.logLLMCall as (...a: unknown[]) => Promise<unknown>)(...args);
+        pendingLogs.push(p);
+        return p;
+      },
+    };
+  });
 
   // ---- buildMessageContext → the REAL wrapper, and (P4.D154) the REAL file
   //      loader + fallback under it ----
@@ -884,9 +867,10 @@ async function main(): Promise<void> {
 
   // W4.11a: the `llm_logs` rows the un-mocked `logLLMCall` wrote (read through the
   // llm-logs handle BEFORE closeDatabase(); id/createdAt/updatedAt placeholdered,
-  // sorted by canonical JSON). CHAT_MESSAGE rows never appear here (the service-
-  // level stream mock swallows v4's), so no filter is needed on this side — the
-  // Rust harness filters its own primary-stream CHAT_MESSAGE rows.
+  // sorted by canonical JSON). P4.129: every pending `logLLMCall` is drained first
+  // (the deterministic drain above), and the funnel's CHAT_MESSAGE rows are here
+  // now — the harness diffs them, filtering only DANGER_CLASSIFICATION.
+  await Promise.allSettled(pendingLogs);
   const { getRawLLMLogsDatabase } = await import(
     '@/lib/database/backends/sqlite/llm-logs-client'
   );

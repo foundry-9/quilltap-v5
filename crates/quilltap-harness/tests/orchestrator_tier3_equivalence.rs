@@ -22,7 +22,19 @@
 //!      `turnComplete`, `chainComplete`, `error`);
 //!   2. the `chats` / `chat_messages` / `background_jobs` dumps are compared in a
 //!      minted-values normalization (message/job ids remapped to first-appearance
-//!      tokens in a shared cross-table map; minted timestamps placeholdered).
+//!      tokens in a shared cross-table map; minted timestamps placeholdered);
+//!   3. the `llm_logs` rows, whole — since **P4.129** INCLUDING every
+//!      `CHAT_MESSAGE` row: the oracle's stream mock sits at the PROVIDER level
+//!      (the W4.11b shape, `enclave_step_tier3`'s model), so v4's real
+//!      `streamMessage` funnel logs one row per leg that reaches `done` (the
+//!      primary, the failover re-streams, both tool loops' legs, the
+//!      force-final, the Carina consultation). Only `DANGER_CLASSIFICATION` is
+//!      still filtered (a documented seam, W4.11c). The rows are normalized
+//!      locally (`normalize_llm_log_rows`: `messageId` through the message
+//!      idmaps; a live `read_conversation` render inside `request` decoded and
+//!      blanked, its `contentLength` placeholdered; the clock-bearing
+//!      `historyTailHash` of `CLOCK_TAIL_LEGS`), and the measured divergences
+//!      are pinned both ways in `EXPECTED_DIVERGENCES`.
 //!
 //! **TZ=UTC is REQUIRED since P4.d26**: the distill TODAY line renders in the
 //! SERVER-LOCAL zone, so this oracle is TZ-sensitive (the harness pins
@@ -52,7 +64,10 @@
 //! recorded base64 lengths (307,200 in, 307,200 on the wire).
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout; jest ignores
-//! `.claude/` paths, so the case is staged in a /tmp mirror):
+//! `.claude/` paths, so the case is staged in a /tmp mirror). The oracle must
+//! come from a case at or after P4.129 — an older case's `llmlogs` line carries
+//! no CHAT_MESSAGE rows and this test reds on the row count (the drain the case
+//! awaits before its dump makes the row set deterministic):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   TMPO=/tmp/qt-orch-oracle
 //!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
@@ -287,8 +302,9 @@ struct CannedStreamW {
     #[serde(rename = "modelParams", default)]
     model_params: Value,
     /// P4.D83: the three sampling knobs v4's REAL `resolveSamplingParams`
-    /// derived from that bag inside `streamMessage` — the function this family
-    /// mocks, which is where v4 resolves them. Keys `JSON.stringify` dropped are
+    /// derives from that bag inside `streamMessage` (since P4.129 the funnel runs
+    /// REAL and the provider-level mock re-runs the same resolver over the bag it
+    /// receives as `profileParameters`). Keys `JSON.stringify` dropped are
     /// the knobs v4 left undefined. The corpus's Primary profile deliberately
     /// mixes spellings (`max_tokens` snake, `topP` camel) so both arms of the
     /// resolver are measured here, not just asserted at tier 1.
@@ -318,8 +334,8 @@ struct CannedStreamW {
     /// (`null` where the call site passed no `characterId`). v4's funnel takes a
     /// `characterId` and runs `buildCharacterCacheKey` on it itself
     /// (`streaming.service.ts:392`), so "which legs cache" is really "which legs
-    /// pass a characterId" — and the mock calls v4's REAL derivation, because it
-    /// stands IN PLACE OF the funnel and the funnel's own body never runs.
+    /// pass a characterId". Since P4.129 the funnel runs REAL and this is the
+    /// `cacheKey` it hands the provider-level mock.
     /// Measured at `1fefadb9a`: the primary and the native loop's FIRST
     /// re-stream pass one; the native force-final, the text continuation and the
     /// primary's tool-unsupported retry do not.
@@ -405,6 +421,399 @@ fn decode_live_renders(dump: &mut Value) {
         if text.contains("Current time: ") {
             row["content"] = Value::String(blank_current_time(&text));
         }
+    }
+}
+
+/// The shape a recorded `llm_logs` divergence must keep.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum LogDivergence {
+    /// `requestHashes.historyTailHash` is the ONE differing cell of the row:
+    /// v4 hashes each message's `name` into the tail (`cache-prefix-hashes.ts:
+    /// 73-82`), the OPENAI plugin is the one name-supporting provider, and
+    /// v5's `StreamMessage` had no `name` slot. P4.128 adds the slot — at
+    /// unification these entries trip VANISHED and the unifier deletes them
+    /// (§S 2 of the `97b25fc53` smalls round).
+    NameHash,
+    /// A row v4 writes and v5 does not (the whole row is v4-only).
+    V4OnlyRow,
+}
+
+/// P4.129: the `llm_logs` divergences the FIRST HONEST REGEN measured (never
+/// the predicted list), keyed by case + leg — the leg named by the canned
+/// reply its row logs. Each is asserted in BOTH directions
+/// ([`apply_expected_divergences`]): "WRONG SHAPE" if the row differs by
+/// anything but the recorded shape, "unproven" if the row is not seen,
+/// "VANISHED" when v4 and v5 agree — retire an entry by watching it vanish,
+/// never by deleting the assert first.
+const EXPECTED_DIVERGENCES: &[(&str, &str, LogDivergence)] = &[
+    // `textblock_mode`: OPENAI `o1-mini`, Bertie + the Operator (whose history
+    // message carries `name: "Operator"`), continue mode — the order said
+    // MEASURE; measured differing on its one leg.
+    (
+        "textblock_mode",
+        "A simple answer from Bertie.",
+        LogDivergence::NameHash,
+    ),
+    // `agent_force_final`: OPENAI `gpt-chains`, Friday + the Operator. The
+    // order predicted "both loop legs"; measured on the PRIMARY and the native
+    // re-stream. The force-final leg cannot show it: its hashed tail carries
+    // the live render, so its `historyTailHash` is `CLOCK_TAIL_HASH` on both
+    // sides (the name half of that hash is unmeasurable here).
+    (
+        "agent_force_final",
+        "Friday opens the vault ledger.",
+        LogDivergence::NameHash,
+    ),
+    (
+        "agent_force_final",
+        " The ledger is blank.",
+        LogDivergence::NameHash,
+    ),
+    // `carina_markup`: the Carina (`@Oracle`) consultation's answer stream.
+    // v4's `carina.service.ts:676-686` `runStream` goes through the ONE
+    // `streamMessage` funnel with `userId`/`chatId`/`characterId: answerer.id`
+    // and no `messageId`, so the funnel logs a CHAT_MESSAGE row for it
+    // (`streaming.service.ts:478-515`); v5's `carina_query.rs` `run_stream`
+    // streams through `watch_stream` directly and logs NOTHING. A NEW finding
+    // of P4.129's first honest regen — a CORE hunk this harness lane may not
+    // write (`crates/quilltap-core/**` is outside its ownership); recorded for
+    // the unifier in P4.129's lane record. Pinned both ways so the day
+    // `run_stream` logs the row this entry trips VANISHED.
+    (
+        "carina_markup",
+        "It is high noon.",
+        LogDivergence::V4OnlyRow,
+    ),
+];
+
+/// Apply [`EXPECTED_DIVERGENCES`] to the normalized rows of both sides: each
+/// entry's rows are located (CHAT_MESSAGE, the case's chat, the leg's reply),
+/// their difference checked against the recorded shape, and then made equal
+/// (a `NameHash` pair's hash placeholdered; a `V4OnlyRow` removed from v4's
+/// side). Returns every failure; the caller panics on any.
+fn apply_expected_divergences(
+    got: &mut Vec<Value>,
+    want: &mut Vec<Value>,
+    chat_of_case: &HashMap<String, String>,
+) -> Vec<String> {
+    let reply = |r: &Value| -> Option<String> {
+        let resp: Value = serde_json::from_str(&decoded_log_cell(&r["response"])?).ok()?;
+        resp["content"].as_str().map(String::from)
+    };
+    let is_leg = |r: &Value, chat: &str, leg: &str| {
+        r["type"] == "CHAT_MESSAGE" && r["chatId"] == chat && reply(r).as_deref() == Some(leg)
+    };
+    let mut failures = Vec::new();
+    for (case, leg, shape) in EXPECTED_DIVERGENCES {
+        let chat = chat_of_case
+            .get(*case)
+            .unwrap_or_else(|| panic!("EXPECTED_DIVERGENCES names `{case}`, not in the corpus"));
+        let g: Vec<usize> = (0..got.len())
+            .filter(|&i| is_leg(&got[i], chat, leg))
+            .collect();
+        let w: Vec<usize> = (0..want.len())
+            .filter(|&i| is_leg(&want[i], chat, leg))
+            .collect();
+        match shape {
+            LogDivergence::NameHash => {
+                let (&[gi], &[wi]) = (g.as_slice(), w.as_slice()) else {
+                    failures.push(format!(
+                        "{case} / {leg:?}: the `name` hash divergence is unproven — v5 has {} row(s), v4 {} (want exactly one each)",
+                        g.len(),
+                        w.len()
+                    ));
+                    continue;
+                };
+                if got[gi] == want[wi] {
+                    failures.push(format!(
+                        "{case} / {leg:?}: the `name` hash divergence VANISHED — v4 and v5 now hash the same tail; delete this EXPECTED_DIVERGENCES entry (P4.128's name slot retires it)"
+                    ));
+                    continue;
+                }
+                let (go, wo) = (got[gi].as_object().unwrap(), want[wi].as_object().unwrap());
+                let cols: Vec<&String> = go.keys().filter(|k| go[*k] != wo[*k]).collect();
+                let hashes = |v: &Value| -> Value {
+                    v.as_str()
+                        .and_then(|s| serde_json::from_str(s).ok())
+                        .unwrap_or(Value::Null)
+                };
+                let (gh, wh) = (hashes(&go["requestHashes"]), hashes(&wo["requestHashes"]));
+                let mut sub: Vec<String> = Vec::new();
+                for h in [&gh, &wh] {
+                    if let Some(o) = h.as_object() {
+                        sub.extend(o.keys().cloned());
+                    }
+                }
+                sub.sort();
+                sub.dedup();
+                sub.retain(|k| gh.get(k) != wh.get(k));
+                if cols != ["requestHashes"] || sub != ["historyTailHash"] {
+                    failures.push(format!(
+                        "{case} / {leg:?}: the `name` hash divergence has the WRONG SHAPE — differing columns {cols:?}, requestHashes keys {sub:?} (want exactly `requestHashes.historyTailHash`)"
+                    ));
+                    continue;
+                }
+                for (rows, i, h) in [(&mut *got, gi, gh), (&mut *want, wi, wh)] {
+                    let mut h = h;
+                    h["historyTailHash"] = Value::String("<name-hash divergence>".into());
+                    rows[i]["requestHashes"] = Value::String(serde_json::to_string(&h).unwrap());
+                }
+            }
+            LogDivergence::V4OnlyRow => match (g.len(), w.len()) {
+                (0, 1) => {
+                    want.remove(w[0]);
+                }
+                (1, 1) => failures.push(format!(
+                    "{case} / {leg:?}: the v4-only row VANISHED — v5 logs it now; delete this EXPECTED_DIVERGENCES entry and let the row compare whole"
+                )),
+                (gn, wn) => failures.push(format!(
+                    "{case} / {leg:?}: the v4-only row is unproven or the WRONG SHAPE — v5 has {gn} row(s), v4 {wn} (want 0 and 1)"
+                )),
+            },
+        }
+    }
+    common::sort_by_canonical_json(got);
+    common::sort_by_canonical_json(want);
+    failures
+}
+
+/// A dumped `llm_logs` text cell as TEXT: `common::dump_llm_logs` (and the
+/// oracle's own dump) render a compressed BLOB as the hex of its stored brotli
+/// bytes and a short payload as plain text.
+fn decoded_log_cell(v: &Value) -> Option<String> {
+    let s = v.as_str()?;
+    if let Ok(bytes) = hex::decode(s) {
+        if quilltap_core::db::text_compression::is_compressed_text_blob(&bytes) {
+            return Some(quilltap_core::db::text_compression::decode_blob(&bytes));
+        }
+    }
+    Some(s.to_string())
+}
+
+/// P4.129: the rows whose `historyTailHash` is placeholdered as
+/// [`CLOCK_TAIL_HASH`] — case + leg (the leg's canned reply). Measured on the
+/// first honest regen; see the named-set assert in the test body.
+const CLOCK_TAIL_LEGS: &[(&str, &str)] = &[("agent_force_final", " Nothing more to report.")];
+
+/// P4.90's `FailoverUnderstudy` profile (OPENAI `gpt-stands-in`).
+const FAILOVER_UNDERSTUDY_PROFILE: &str = "fa110002-0000-4000-8000-000000000f12";
+
+/// The placeholder a clock-bearing `historyTailHash` becomes.
+const CLOCK_TAIL_HASH: &str = "<clock-bearing history tail>";
+
+/// P4.129: the `llm_logs` comparand's local normalization, run on BOTH sides
+/// after `normalize_messages` has filled that side's message idmap. Returns the
+/// rows whose `historyTailHash` was placeholdered, as `chatId|<the leg's reply>`.
+///
+///   * `messageId` is minted (the pre-generated assistant id every leg of a
+///     turn shares) → the side's message idmap, `<msgref>` when unmapped (the
+///     `enclave_step_tier3` `normalize_llm_logs` shape).
+///   * A CHAT_MESSAGE `request` carrying a LIVE `read_conversation` render (its
+///     `Current time:` line) → the DECODED text with `blank_current_time`
+///     applied (the `decode_live_renders` shape): v5 stamps the render with the
+///     executor's wall clock, and the minted dates sit inside the brotli bytes
+///     where no string blanking can reach. Every other request keeps its stored
+///     bytes, so the codec's byte parity stays a comparand.
+///   * `requestHashes.historyTailHash` → [`CLOCK_TAIL_HASH`] on exactly the rows
+///     whose HASHED tail (v4 `cache-prefix-hashes.ts:73-82` — every non-system
+///     message but the last) carries a render: the hash is over the clock and
+///     cannot be blanked (RULED at P4.129's planning; never a clock seam in
+///     core). A native re-stream's render is its LAST message, so its hash is
+///     clock-free and stays a comparand.
+///
+/// Then re-sorted by canonical JSON (the remap moves the sort key).
+fn normalize_llm_log_rows(rows: &mut [Value], idmap: &HashMap<String, String>) -> Vec<String> {
+    let mut tail_blanked = Vec::new();
+    for row in rows.iter_mut() {
+        let Some(obj) = row.as_object_mut() else {
+            continue;
+        };
+        if let Some(m) = obj.get("messageId").and_then(Value::as_str) {
+            let tok = idmap.get(m).cloned().unwrap_or_else(|| "<msgref>".into());
+            obj.insert("messageId".into(), Value::String(tok));
+        }
+        if obj.get("type").and_then(Value::as_str) != Some("CHAT_MESSAGE") {
+            continue;
+        }
+        let Some(request) = obj.get("request").and_then(decoded_log_cell) else {
+            continue;
+        };
+        if !request.contains("Current time: ") {
+            continue;
+        }
+        // v4's `logLLMCall` stores a SUMMARY of each message
+        // (`llm-logging.service.ts:117-121`: role, content, `contentLength`,
+        // `hasAttachments`), so the render's clock reaches the row twice: in
+        // the content (blanked as text) and in its `contentLength` (the clock's
+        // own length — v4's frozen same-day span vs v5's wall-clock span —
+        // measured 29 characters apart on the first regen). The length of a
+        // render-bearing message is placeholdered; every other length stays.
+        let mut parsed: Value = serde_json::from_str(&blank_current_time(&request))
+            .expect("CHAT_MESSAGE request is JSON");
+        let mut tail_has_render = false;
+        if let Some(messages) = parsed["messages"].as_array_mut() {
+            let last_non_system = messages.iter().rposition(|m| m["role"] != "system");
+            for (i, m) in messages.iter_mut().enumerate() {
+                let renders = m["content"]
+                    .as_str()
+                    .is_some_and(|c| c.contains("Current time: "));
+                if !renders {
+                    continue;
+                }
+                if m.get("contentLength").is_some() {
+                    m["contentLength"] = Value::String("<render length>".into());
+                }
+                if m["role"] != "system" && Some(i) != last_non_system {
+                    tail_has_render = true;
+                }
+            }
+        }
+        obj.insert(
+            "request".into(),
+            Value::String(serde_json::to_string(&parsed).unwrap()),
+        );
+        if tail_has_render {
+            if let Some(hashes) = obj.get("requestHashes").and_then(Value::as_str) {
+                let mut h: Value = serde_json::from_str(hashes).expect("requestHashes is JSON");
+                if h.get("historyTailHash").is_some() {
+                    h["historyTailHash"] = Value::String(CLOCK_TAIL_HASH.into());
+                    obj.insert(
+                        "requestHashes".into(),
+                        Value::String(serde_json::to_string(&h).unwrap()),
+                    );
+                    tail_blanked.push(format!(
+                        "{}|{}",
+                        obj["chatId"].as_str().unwrap_or_default(),
+                        obj.get("response")
+                            .and_then(decoded_log_cell)
+                            .and_then(|r| serde_json::from_str::<Value>(&r).ok())
+                            .and_then(|r| r["content"].as_str().map(String::from))
+                            .unwrap_or_default()
+                    ));
+                }
+            }
+        }
+    }
+    common::sort_by_canonical_json(rows);
+    tail_blanked.sort();
+    tail_blanked
+}
+
+/// The key a differing `llm_logs` row is paired under in the report.
+fn log_row_key(r: &Value) -> String {
+    format!(
+        "{}|{}|{}|{}|{}",
+        r["type"].as_str().unwrap_or_default(),
+        r["chatId"].as_str().unwrap_or_default(),
+        r["messageId"].as_str().unwrap_or_default(),
+        r["connectionProfileId"].as_str().unwrap_or_default(),
+        r.get("response")
+            .and_then(decoded_log_cell)
+            .unwrap_or_default(),
+    )
+}
+
+fn clip(s: &str) -> String {
+    if s.len() > 400 {
+        let mut end = 400;
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}…({} bytes)", &s[..end], s.len())
+    } else {
+        s.to_string()
+    }
+}
+
+/// A window around the first byte two strings differ at (both sides).
+fn first_difference(a: &str, b: &str) -> (String, String) {
+    let at = a
+        .bytes()
+        .zip(b.bytes())
+        .position(|(x, y)| x != y)
+        .unwrap_or(a.len().min(b.len()));
+    let window = |s: &str| {
+        let mut lo = at.saturating_sub(120);
+        while !s.is_char_boundary(lo) {
+            lo -= 1;
+        }
+        let mut hi = (at + 280).min(s.len());
+        while !s.is_char_boundary(hi) {
+            hi += 1;
+        }
+        format!("@{at}: …{}…", &s[lo..hi])
+    };
+    (window(a), window(b))
+}
+
+/// Name every differing cell of every unmatched row (paired by
+/// [`log_row_key`]); a `request` that differs is also compared DECODED, and a
+/// `requestHashes` by sub-key.
+fn report_llm_log_diffs(got: &[Value], want: &[Value]) {
+    let mut unmatched_want: Vec<&Value> = want.iter().filter(|w| !got.contains(w)).collect();
+    for g in got.iter().filter(|g| !want.contains(g)) {
+        let key = log_row_key(g);
+        let Some(pos) = unmatched_want.iter().position(|w| log_row_key(w) == key) else {
+            eprintln!("[llm_logs] v5-ONLY row {}", clip(&key));
+            continue;
+        };
+        let w = unmatched_want.remove(pos);
+        let (go, wo) = (g.as_object().unwrap(), w.as_object().unwrap());
+        for (col, gv) in go {
+            let wv = &wo[col];
+            if gv == wv {
+                continue;
+            }
+            match col.as_str() {
+                "request" | "response" => {
+                    let (gd, wd) = (decoded_log_cell(gv), decoded_log_cell(wv));
+                    eprintln!(
+                        "[llm_logs] {} :: {col} differs (decoded {}; stored {} vs {} chars)\n   got  {}\n   want {}",
+                        clip(&key),
+                        if gd == wd { "IDENTICAL" } else { "DIFFERS" },
+                        gv.as_str().map_or(0, str::len),
+                        wv.as_str().map_or(0, str::len),
+                        first_difference(&gd.clone().unwrap_or_default(), &wd.clone().unwrap_or_default()).0,
+                        first_difference(&gd.unwrap_or_default(), &wd.unwrap_or_default()).1,
+                    );
+                }
+                "requestHashes" => {
+                    let gh: Value = gv
+                        .as_str()
+                        .and_then(|s| serde_json::from_str(s).ok())
+                        .unwrap_or(Value::Null);
+                    let wh: Value = wv
+                        .as_str()
+                        .and_then(|s| serde_json::from_str(s).ok())
+                        .unwrap_or(Value::Null);
+                    let mut keys: Vec<String> = Vec::new();
+                    for m in [&gh, &wh] {
+                        if let Some(o) = m.as_object() {
+                            keys.extend(o.keys().cloned());
+                        }
+                    }
+                    keys.sort();
+                    keys.dedup();
+                    let diff: Vec<String> = keys
+                        .into_iter()
+                        .filter(|k| gh.get(k) != wh.get(k))
+                        .collect();
+                    eprintln!(
+                        "[llm_logs] {} :: requestHashes differs on {diff:?}",
+                        clip(&key)
+                    );
+                }
+                _ => eprintln!(
+                    "[llm_logs] {} :: {col} differs: got {} want {}",
+                    clip(&key),
+                    clip(&gv.to_string()),
+                    clip(&wv.to_string())
+                ),
+            }
+        }
+    }
+    for w in unmatched_want {
+        eprintln!("[llm_logs] v4-ONLY row {}", clip(&log_row_key(w)));
     }
 }
 
@@ -2276,17 +2685,15 @@ fn orchestrator_tier3_matches_oracle() {
         );
     }
 
-    // --- llm_logs (W4.11a) ---
+    // --- llm_logs (W4.11a; CHAT_MESSAGE diffed since P4.129) ---
     // The per-call `with_logging` executor wrote the cheap-LLM rows (distill
     // MEMORY_EXTRACTION, summary-fold SUMMARIZATION, title TITLE_GENERATION);
-    // primary_stream wrote CHAT_MESSAGE rows. TWO row families are documented
-    // seam/mock artifacts filtered from BOTH sides:
-    //   * `CHAT_MESSAGE` — the Rust primary_stream logs these, but v4's
-    //     service-level `streamMessage` mock swallows its own CHAT_MESSAGE log
-    //     (`streaming.service.ts:405` lives INSIDE the mocked wrapper), so v4
-    //     writes none. That row shape is proven byte-exact by `primary_stream_tier3`
-    //     (W4.11b); relocating the oracle's stream mock to the provider level is
-    //     out of scope (it would re-risk the 24-case corpus).
+    // the primary stream, the failover re-streams and every tool-loop leg wrote
+    // CHAT_MESSAGE rows. Since P4.129 the oracle's stream mock sits at the
+    // PROVIDER level (the W4.11b shape) and v4's real `streamMessage` funnel
+    // logs its own CHAT_MESSAGE row per leg (`streaming.service.ts:474-515`), so
+    // those rows are compared whole. ONE row family is still a documented seam
+    // artifact, filtered from BOTH sides:
     //   * `DANGER_CLASSIFICATION` — v4's `resolveMessageDangerState` classifies the
     //     user message INLINE (a cheap-LLM call → one log row) for non-off / not-
     //     already-dangerous chats; that classify is a documented seam in the Rust
@@ -2294,15 +2701,17 @@ fn orchestrator_tier3_matches_oracle() {
     //     non-dangerous → no reroute — so the diffed tables/events already match).
     //     The Rust side writes no such row; filtered on both sides. (The danger
     //     logging seam proper is W4.11c.)
+    // (Until P4.129 `CHAT_MESSAGE` was filtered too, with the rationale that
+    // relocating the stream mock "would re-risk the 24-case corpus"; the corpus
+    // is 65 calls and the relocation moved no canned key — P4.129's lane record.)
     let strip_seam_rows = |rows: Vec<Value>| -> Vec<Value> {
         rows.into_iter()
-            .filter(|r| {
-                let t = r["type"].as_str().unwrap_or("");
-                t != "CHAT_MESSAGE" && t != "DANGER_CLASSIFICATION"
-            })
+            .filter(|r| r["type"].as_str() != Some("DANGER_CLASSIFICATION"))
             .collect()
     };
     let all_got_logs = common::dump_llm_logs(&db);
+
+    let want_logs_raw = want_llm_logs.expect("oracle emitted no llmlogs row");
 
     // --- the failover-logging WIRING pin (P4.68) ---
     //
@@ -2313,13 +2722,13 @@ fn orchestrator_tier3_matches_oracle() {
     // that one message id. v5 called a no-logging entry point here until P4.68,
     // so the retry legs wrote nothing.
     //
-    // The `strip_seam_rows` filter below removes `CHAT_MESSAGE` from BOTH sides
-    // (v4's service-level `streamMessage` mock swallows its own log, so the
-    // oracle has none to compare against), which means the differential CANNOT
-    // see this wiring — measured: 57 rows with the log unwired, 59 with it, and
-    // the family is green either way. Hence a v5-side census here. It is not an
-    // equivalence claim; the failover row SHAPE is proven byte-exact by
-    // `primary_stream_tier3`.
+    // Until P4.129 the differential could not see this wiring (CHAT_MESSAGE was
+    // filtered from both sides — measured then: 57 rows with the log unwired,
+    // 59 with it, green either way), so this census was v5's only guard. The
+    // rows are compared whole now; the census stays as a NON-VACUITY guard —
+    // the whole-row compare is only as strong as the corpus's reach, and this
+    // says the corpus still reaches a failover leg — and since P4.129 it runs on
+    // the ORACLE's rows too: v4 must show the same two-profile turns.
     //
     // The discriminator is structural rather than a magic count, so the corpus
     // can grow, and it is the leg's PROFILE: a failover leg streams under the
@@ -2333,10 +2742,10 @@ fn orchestrator_tier3_matches_oracle() {
     // stayed green with the failover wiring broken. A tool-loop leg logs under
     // the SAME effective profile as the row before it — the understudy's, after
     // a failover — so it can neither fake nor mask this signal.)
-    {
+    let failover_turns = |rows: &[Value]| -> std::collections::BTreeSet<String> {
         let mut profiles_by_key: HashMap<(String, String), std::collections::BTreeSet<String>> =
             HashMap::new();
-        for row in all_got_logs
+        for row in rows
             .iter()
             .filter(|r| r["type"].as_str() == Some("CHAT_MESSAGE"))
         {
@@ -2349,30 +2758,179 @@ fn orchestrator_tier3_matches_oracle() {
                     .to_string(),
             );
         }
-        let failover_turns = profiles_by_key.values().filter(|p| p.len() > 1).count();
-        assert!(
-            failover_turns > 0,
-            "no pre-generated assistant message has CHAT_MESSAGE rows under two \
-             connection profiles, so no failover leg logged one. The orchestrator's \
-             empty-response recovery is not being handed its `FailoverLogCtx` \
-             (v4 `orchestrator.service.ts:1572`), or the corpus lost its \
-             empty-primary case. Pairs seen: {}",
-            profiles_by_key.len()
+        profiles_by_key
+            .into_iter()
+            .filter(|(_, p)| p.len() > 1)
+            .map(|((chat, _), _)| chat)
+            .collect()
+    };
+    let got_failover_chats = failover_turns(&all_got_logs);
+    assert!(
+        !got_failover_chats.is_empty(),
+        "no pre-generated assistant message has CHAT_MESSAGE rows under two \
+         connection profiles, so no failover leg logged one. The orchestrator's \
+         empty-response recovery is not being handed its `FailoverLogCtx` \
+         (v4 `orchestrator.service.ts:1572`), or the corpus lost its \
+         empty-primary case."
+    );
+    let mut got_logs = strip_seam_rows(all_got_logs);
+    let want_failover_chats = failover_turns(&want_logs_raw);
+    let mut want_logs = strip_seam_rows(want_logs_raw);
+    // P4.129: the CHAT_MESSAGE comparand's normalization (see
+    // `normalize_llm_log_rows`), AFTER `normalize_messages` so `messageId` goes
+    // through each side's message idmap.
+    let got_tail_blanked = normalize_llm_log_rows(&mut got_logs, &idmap);
+    let want_tail_blanked = normalize_llm_log_rows(&mut want_logs, &idmap2);
+    let chat_of_case: HashMap<String, String> = spec
+        .calls
+        .iter()
+        .map(|c| (c.name.clone(), c.chat_id.clone()))
+        .collect();
+    // The clock-bearing `historyTailHash` placeholder is a NAMED set — the rows
+    // whose hashed tail carries a live render: asserted non-empty (else the
+    // placeholder is dead code and a clock seam could creep in unseen) and no
+    // larger than predicted (else it is hiding a hash it has no business
+    // hiding). Only `agent_force_final`'s force-final leg: it appends the
+    // assistant prose + the nudge after the render, where every native
+    // re-stream keeps the render LAST, outside the hash.
+    {
+        let expected: Vec<String> = CLOCK_TAIL_LEGS
+            .iter()
+            .map(|(case, leg)| format!("{}|{leg}", chat_of_case[*case]))
+            .collect();
+        assert_eq!(
+            got_tail_blanked, expected,
+            "v5's clock-bearing historyTailHash rows are not exactly CLOCK_TAIL_LEGS"
+        );
+        assert_eq!(
+            want_tail_blanked, expected,
+            "v4's clock-bearing historyTailHash rows are not exactly CLOCK_TAIL_LEGS"
         );
     }
-
-    let got_logs = strip_seam_rows(all_got_logs);
-    let want_logs = strip_seam_rows(want_llm_logs.expect("oracle emitted no llmlogs row"));
+    let divergence_failures =
+        apply_expected_divergences(&mut got_logs, &mut want_logs, &chat_of_case);
+    report_llm_log_diffs(&got_logs, &want_logs);
+    assert!(
+        divergence_failures.is_empty(),
+        "EXPECTED_DIVERGENCES:\n  {}",
+        divergence_failures.join("\n  ")
+    );
     assert_eq!(
         got_logs.len(),
         want_logs.len(),
-        "llm_logs row count diverges (got {} vs oracle {})\n got: {:#?}\n want: {:#?}",
+        "llm_logs row count diverges (got {} vs oracle {})",
         got_logs.len(),
         want_logs.len(),
-        got_logs,
-        want_logs,
     );
-    assert_eq!(got_logs, want_logs, "llm_logs rows diverge");
+    assert!(
+        got_logs == want_logs,
+        "llm_logs rows diverge (the report above names every differing cell)"
+    );
+
+    // P4.129 Tier 2 item 9: the census on v4's rows — the same chats. (After
+    // the whole-row compare, so a profile mix-up reds as the ROW it is.)
+    assert_eq!(
+        want_failover_chats, got_failover_chats,
+        "the two-profile (failover) turns differ between v4's CHAT_MESSAGE rows and v5's"
+    );
+
+    // --- P4.129 non-vacuity: the rows the CHAT_MESSAGE comparand must carry ---
+    // (read off v5's rows, which the compare above has just made v4's)
+    let leg_rows = |case: &str| -> Vec<&Value> {
+        let chat = &chat_of_case[case];
+        got_logs
+            .iter()
+            .filter(|r| r["type"] == "CHAT_MESSAGE" && r["chatId"] == chat.as_str())
+            .collect()
+    };
+    let reply_of = |r: &Value| -> String {
+        let resp: Value =
+            serde_json::from_str(&decoded_log_cell(&r["response"]).unwrap_or_default())
+                .unwrap_or(Value::Null);
+        resp["content"].as_str().unwrap_or_default().to_string()
+    };
+    // (1) P4.90's arm: the primary throws before `done` (no row); the hard-error
+    // failover re-stream and the native re-stream both log under the
+    // UNDERSTUDY's profile, for Friday, sharing the pre-generated messageId.
+    {
+        let rows = leg_rows("failover_then_native_tool_call");
+        let replies: Vec<String> = rows.iter().map(|r| reply_of(r)).collect();
+        assert_eq!(
+            rows.len(),
+            2,
+            "failover_then_native_tool_call: want the failover leg + the native re-stream, got {replies:?}"
+        );
+        for r in &rows {
+            assert_eq!(
+                r["connectionProfileId"],
+                FAILOVER_UNDERSTUDY_PROFILE,
+                "a P4.90 leg logged off the understudy: {}",
+                reply_of(r)
+            );
+            assert_eq!(r["modelName"], "gpt-stands-in");
+            assert!(
+                r["characterId"].is_string(),
+                "a P4.90 leg lost its characterId: {}",
+                reply_of(r)
+            );
+            assert_eq!(
+                r["messageId"], rows[0]["messageId"],
+                "the P4.90 legs share one messageId"
+            );
+        }
+        assert!(
+            rows[0]["messageId"]
+                .as_str()
+                .is_some_and(|m| m.starts_with("<m")),
+            "the P4.90 legs' messageId must remap to a chat_messages token: {}",
+            rows[0]["messageId"]
+        );
+        let mut replies = replies;
+        replies.sort();
+        assert_eq!(
+            replies,
+            [
+                " The ledger is not written up yet.",
+                "The understudy reaches for the ledger."
+            ],
+        );
+    }
+    // (2) the native force-final passes NO characterId (v4
+    // `native-tool-loop.service.ts:421-431`), where the re-stream before it does.
+    {
+        let rows = leg_rows("agent_force_final");
+        let force_final = rows
+            .iter()
+            .find(|r| reply_of(r) == " Nothing more to report.")
+            .expect("agent_force_final: the force-final leg's row");
+        assert!(
+            force_final["characterId"].is_null(),
+            "the force-final leg must log no characterId"
+        );
+        assert!(
+            rows.iter()
+                .any(|r| reply_of(r) == " The ledger is blank." && r["characterId"].is_string()),
+            "agent_force_final: the native re-stream's row must carry the characterId"
+        );
+    }
+    // (3) the TEXT continuation passes no characterId either
+    // (`text-tool-loop.service.ts:390-400`).
+    {
+        let rows = leg_rows("simple_json_text_tool_continuation");
+        let continuation = rows
+            .iter()
+            .find(|r| reply_of(r) == "Nothing is written there yet.")
+            .expect("simple_json_text_tool_continuation: the continuation leg's row");
+        assert!(
+            continuation["characterId"].is_null(),
+            "the text continuation must log no characterId"
+        );
+        assert_eq!(
+            rows.len(),
+            2,
+            "simple_json_text_tool_continuation: the primary + the continuation"
+        );
+    }
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
