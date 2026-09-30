@@ -24,7 +24,7 @@ use serde::{Serialize, Serializer};
 use serde_json::Value;
 
 use super::list_mail::ensure_own_vault;
-use crate::db::characters_read::find_by_id_raw;
+use crate::db::characters_read::find_by_id_raw_or_none;
 use crate::db::DbError;
 use crate::jsstr::js_trim;
 use crate::post_office::instructions::{format_letter_actions, format_letter_date};
@@ -155,7 +155,7 @@ fn read_mail_inner(
         ));
     };
 
-    let Some(me) = find_by_id_raw(main, character_id)? else {
+    let Some(me) = find_by_id_raw_or_none(main, character_id) else {
         return Ok(fail(
             "The Post Office cannot find your postbox; your character seems to have gone astray.",
         ));

@@ -15,7 +15,7 @@ use serde::{Serialize, Serializer};
 use serde_json::Value;
 
 use crate::db::character_vault::ensure_character_vault;
-use crate::db::characters_read::find_by_id_raw;
+use crate::db::characters_read::find_by_id_raw_or_none;
 use crate::db::vault_character_write::CharacterVaultWriteInput;
 use crate::post_office::instructions::{format_letter_actions, format_letter_heading};
 use crate::post_office::mailbox::list_mailbox;
@@ -82,11 +82,13 @@ pub fn execute_list_mail(
 /// Execute the `list_mail` tool (v4 `executeListMailTool`). Runs on both writer
 /// connections; each letter's date renders in `zone`.
 ///
-/// v4 wraps the whole handler in ONE `try`/`catch`: any thrown error — the
-/// character read, the vault ensure, the mailbox listing — lands in the catch,
-/// which logs `list_mail handler threw unexpectedly {chatId}` at ERROR and
-/// answers the in-voice "stumbled" failure. Here that is [`list_mail_inner`]'s
-/// `Err` arm.
+/// v4 wraps the whole handler in ONE `try`/`catch`: any thrown error lands in
+/// the catch, which logs `list_mail handler threw unexpectedly {chatId}` at
+/// ERROR and answers the in-voice "stumbled" failure. Here that is
+/// [`list_mail_inner`]'s `Err` arm. v4's character read and mailbox listing are
+/// FALLBACK repository reads that never throw (a failed one is the postbox
+/// refusal / an empty postbox — P4.126), so what still reaches it is an
+/// UNLINKED character's vault-create write.
 pub fn execute_list_mail_in_zone(
     main: &Connection,
     mount: &Connection,
@@ -132,7 +134,7 @@ fn list_mail_inner(
         ));
     };
 
-    let Some(me) = find_by_id_raw(main, character_id)? else {
+    let Some(me) = find_by_id_raw_or_none(main, character_id) else {
         return Ok(fail(
             "The Post Office cannot find your postbox; your character seems to have gone astray.",
         ));
@@ -188,6 +190,14 @@ fn list_mail_inner(
 /// which routes through the doc-tool resolver: the systemTransparency covenant
 /// (P4.D200, `doc_edit::shared::build_read_resolution_context`) deliberately
 /// never keeps a character from its own post (v4 `39bc98ffc`/`12c336fad`).
+///
+/// A LINKED character's arm is v4's exactly: `ensureCharacterVault` returns
+/// the FK and touches no store (`character-vault.ts:146-148`), so it cannot
+/// fail. v5's [`ensure_character_vault`] also runs the lazy fact-sheet
+/// backfill on that arm — a mount-store read and write v4's mail tools never
+/// make, and whose failure would reach the catch v4 cannot — so the mail tools
+/// take the FK directly (P4.126). An UNLINKED character takes the full ensure,
+/// whose store writes throw in v4 too.
 pub(crate) fn ensure_own_vault(
     main: &Connection,
     mount: &Connection,
@@ -198,15 +208,50 @@ pub(crate) fn ensure_own_vault(
     let fk = me
         .get("characterDocumentMountPointId")
         .and_then(Value::as_str);
+    // JS truthiness: an empty FK is unlinked.
+    if let Some(fk) = fk.filter(|s| !s.is_empty()) {
+        return Ok(fk.to_string());
+    }
     let input: CharacterVaultWriteInput = serde_json::from_value(me.clone()).unwrap_or_default();
-    Ok(ensure_character_vault(main, mount, character_id, name, &input, fk)?.mount_point_id)
+    Ok(ensure_character_vault(main, mount, character_id, name, &input, None)?.mount_point_id)
 }
 
-/// v4 `formatListMailResults`: `success ? listing : error || listing`.
+/// v4 `formatListMailResults`: `success ? listing : error || listing` — an
+/// EMPTY `error` is falsy and falls through to the listing (the `read_mail` /
+/// `discard_mail` siblings' filter).
 pub fn format_list_mail_results(out: &ListMailOutput) -> String {
     if out.success {
         out.listing.clone()
     } else {
-        out.error.clone().unwrap_or_else(|| out.listing.clone())
+        out.error
+            .clone()
+            .filter(|e| !e.is_empty())
+            .unwrap_or_else(|| out.listing.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn failed(error: Option<&str>) -> ListMailOutput {
+        ListMailOutput {
+            success: false,
+            listing: "the listing".to_string(),
+            count: 0,
+            error: error.map(str::to_string),
+        }
+    }
+
+    /// v4 `output.error || output.listing`: an empty `error` is falsy, so the
+    /// listing answers (P4.126 — the siblings already filtered it).
+    #[test]
+    fn an_empty_error_falls_through_to_the_listing() {
+        assert_eq!(format_list_mail_results(&failed(Some(""))), "the listing");
+        assert_eq!(format_list_mail_results(&failed(None)), "the listing");
+        assert_eq!(format_list_mail_results(&failed(Some("boom"))), "boom");
+        let mut ok = failed(Some("ignored"));
+        ok.success = true;
+        assert_eq!(format_list_mail_results(&ok), "the listing");
     }
 }

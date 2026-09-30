@@ -292,6 +292,30 @@ pub fn find_by_id_raw(main: &Connection, id: &str) -> Result<Option<Value>, DbEr
     Ok(query_raw(main, "id = ?1", &[&id])?.pop())
 }
 
+/// v4 `repos.characters.findByIdRaw` exactly as its callers see it:
+/// `findByIdRaw` is `_findById` (`characters.repository.ts:97-98`), which is
+/// `safeQuery(…, 'Error finding entity by ID', { id }, null)`
+/// (`base.repository.ts:247-257`), so a FAILED read logs that ERROR and
+/// answers `null` — it never throws. Callers whose v4 twin reads a raw
+/// character through the repository use this, so a read error takes v4's
+/// not-found arm rather than a catch v4 can never reach (the Post Office's
+/// four mail tools — P4.126; the [`crate::db::chats_read::find_by_id_or_none`]
+/// shape).
+pub fn find_by_id_raw_or_none(main: &Connection, id: &str) -> Option<Value> {
+    match find_by_id_raw(main, id) {
+        Ok(found) => found,
+        Err(error) => {
+            tracing::error!(
+                collection = "characters",
+                id = %id,
+                error = %error,
+                "Error finding entity by ID"
+            );
+            None
+        }
+    }
+}
+
 /// Find all characters, overlaid (v4 `findAll`). A character whose vault is
 /// unavailable is dropped.
 pub fn find_all(main: &Connection, mount: &Connection) -> Result<Vec<Value>, DbError> {

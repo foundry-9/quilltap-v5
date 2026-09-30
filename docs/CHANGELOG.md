@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(post-office): mail tools take v4's fallback reads on a store failure (P4.126)
+
+_Versions: core 0.0.1108, harness 0.0.1028._
+
+The four mail tools let a failed database read reach their "stumbled"
+catch, where v4's repository reads fall back instead. New
+`characters_read::find_by_id_raw_or_none` logs v4's `Error finding entity
+by ID` and answers `None`, so a failed character read gives the postbox
+refusal. The mailbox's three store reads (the letter read, the `Mail/`
+listing, the discard's link lookup) now log v4's repository ERROR and
+fall back, so a failed read gives "No letter named …" or an empty
+postbox. The mail tools' vault ensure returns a linked character's FK
+without I/O, as v4's `ensureCharacterVault` does (the lazy metadata
+backfill still runs at every other ensure). `format_list_mail_results`
+now treats an empty error as absent, like its siblings. The harness's
+catch plant is re-aimed at v4's arms, with a second plant for the
+character read; `send_mail`'s catch stays pinned on its delivery write.
+
 #### 2026-09-29 — docs(porting): close P4.119 — the lane record and status header
 
 _Docs-only change._

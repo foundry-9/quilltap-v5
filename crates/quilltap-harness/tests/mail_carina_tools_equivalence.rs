@@ -15,7 +15,9 @@
 //!   in the fixture is OPAQUE, so each read/discard arm is the covenant-bypass
 //!   proof), the `in_reply_to` file-name arms, and v5-side capture pins for
 //!   v4's handler log lines (fire + silence) — see `assert_mail_logs` and
-//!   `assert_catch_lines`.
+//!   `assert_catch_lines` (P4.126: the read-failure plants re-aimed at v4's
+//!   fallback arms — the postbox refusal / "No letter named" / an empty
+//!   postbox — with the repository ERROR lines).
 //! - **carina** (tier-3, DB-free): inject a canned `RunCarinaQuery` + a recording
 //!   `PostProsperoCarinaError` (mirroring the oracle's jest mocks); diff the
 //!   serialized output + `format*` + the recorded Prospero args.
@@ -909,16 +911,27 @@ fn assert_mail_logs(logs: &HashMap<&'static str, Vec<Vec<String>>>, spec: &Spec,
     }
 }
 
-/// The catch arms' ERROR lines (v4's `<tool> handler threw unexpectedly
-/// {chatId}`) and `markAlerted`'s NOT_FOUND warn, pinned on a v5-ONLY plant.
+/// The read-failure arms, pinned on v5-side PLANTS (P4.126 re-aimed them at
+/// v4's arms; they had pinned v4's catch as reachable — v5-only behaviour).
 ///
-/// ⚠ Not a differential: the plant (a mount index whose `doc_mount_file_links`
-/// table is gone) reaches v4's catch only where a repository THROWS, and v4's
-/// mount-index reads are fallback `withRawDb` / `safeQuery` calls that answer
-/// null instead — so v4 would read the same broken store as an empty postbox or
-/// an absent letter. v5's `read_database_document` / `list_database_files`
-/// propagate the error (pre-existing, not this lane's surface), so here the
-/// catch IS reachable, and it must log v4's line.
+/// ⚠ Not a differential: v4's jest oracle cannot plant a broken table under a
+/// fallback repository read (its reads ANSWER the fallback), so each arm here
+/// is a v5 plant whose expected bytes are read from v4 at the pin:
+///
+/// - **A mount index whose `doc_mount_file_links` table is gone.** v4's
+///   mount-index reads are fallback `withRawDb` / `safeQuery` calls
+///   (`doc-mount-file-links.repository.ts:500-529`, `doc-mount-documents.
+///   repository.ts:110-134`), so each logs its repository ERROR and answers the
+///   fallback: `list_mail` reads an EMPTY postbox (success), `read_mail` and
+///   `discard_mail` answer "No letter named …", and NONE reaches the handler
+///   catch. `send_mail` still does — its delivery WRITES rethrow in v4 too —
+///   so its catch line stays pinned here, the one leg that remains.
+/// - **A main database whose `characters` table is gone.** v4's
+///   `findByIdRaw` is the fallback `_findById` (`base.repository.ts:247-257`):
+///   every tool logs `Error finding entity by ID {collection:'characters', id}`
+///   and answers the postbox refusal — never the catch.
+///
+/// Plus `markAlerted`'s NOT_FOUND warn (v4's own arm, reachable in both).
 async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &str) {
     let (main, mount) = fresh_copy(main_fx, mount_fx, "catch-plant");
     let db = open_two_db(&main, &mount, &spec.test_pepper_base64);
@@ -926,7 +939,8 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
     let user_id = spec.user_id.clone();
     let reader_vault = meta.reader_vault.clone();
     let letter = meta.reader_paths["unalerted"].clone();
-    let lines: Vec<(String, String, Vec<String>)> = db
+    type Run = Vec<(String, String, Vec<String>)>;
+    let (lines, char_lines): (Run, Run) = db
         .write(move |writers| {
             let mount_c = writers.mount_index().expect("mount present").connection();
             let main_c = writers.main().connection();
@@ -942,58 +956,68 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
             assert!(res.is_ok());
             let mut out = vec![("mark_alerted".to_string(), String::new(), mail_lines(warn))];
 
+            let name = letter.strip_prefix("Mail/").unwrap().to_string();
+            // Every tool, once per plant; the whole capture is kept (the
+            // repository lines carry their own module targets).
+            let run_all = |label: &str| -> Run {
+                let mut out: Run = Vec::new();
+                let (o, l) = quilltap_core::test_support::captured_with(|| {
+                    execute_list_mail_in_zone(
+                        main_c,
+                        mount_c,
+                        "chat-plant",
+                        Some(&reader),
+                        &json!({}),
+                        &quilltap_core::host_zone::TimeZone::UTC,
+                    )
+                });
+                out.push(("list".into(), o.listing, l));
+                let (o, l) = quilltap_core::test_support::captured_with(|| {
+                    execute_read_mail_in_zone(
+                        main_c,
+                        mount_c,
+                        "chat-plant",
+                        Some(&reader),
+                        &json!({ "letter": name }),
+                        &quilltap_core::host_zone::TimeZone::UTC,
+                    )
+                });
+                out.push(("read".into(), o.text, l));
+                let (o, l) = quilltap_core::test_support::captured_with(|| {
+                    execute_discard_mail(
+                        main_c,
+                        mount_c,
+                        "chat-plant",
+                        Some(&reader),
+                        &json!({ "letter": name }),
+                    )
+                });
+                out.push(("discard".into(), o.message, l));
+                let (o, l) = quilltap_core::test_support::captured_with(|| {
+                    execute_send_mail_in_zone(
+                        main_c,
+                        mount_c,
+                        "chat-plant",
+                        &user_id,
+                        Some(&reader),
+                        &json!({ "character": reader.as_str(), "message": label }),
+                        "2026-09-29T00:00:00.000Z",
+                        &quilltap_core::host_zone::TimeZone::UTC,
+                    )
+                });
+                out.push(("send".into(), o.message, l));
+                out
+            };
+
             mount_c
                 .execute_batch("DROP TABLE doc_mount_file_links")
                 .map_err(|e| DbError::Internal(e.to_string()))?;
-            let name = letter.strip_prefix("Mail/").unwrap().to_string();
-            let (o, l) = quilltap_core::test_support::captured_with(|| {
-                execute_list_mail_in_zone(
-                    main_c,
-                    mount_c,
-                    "chat-plant",
-                    Some(&reader),
-                    &json!({}),
-                    &quilltap_core::host_zone::TimeZone::UTC,
-                )
-            });
-            out.push(("list".into(), o.listing, mail_lines(l)));
-            let (o, l) = quilltap_core::test_support::captured_with(|| {
-                execute_read_mail_in_zone(
-                    main_c,
-                    mount_c,
-                    "chat-plant",
-                    Some(&reader),
-                    &json!({ "letter": name }),
-                    &quilltap_core::host_zone::TimeZone::UTC,
-                )
-            });
-            out.push(("read".into(), o.text, mail_lines(l)));
-            let (o, l) = quilltap_core::test_support::captured_with(|| {
-                execute_discard_mail(
-                    main_c,
-                    mount_c,
-                    "chat-plant",
-                    Some(&reader),
-                    &json!({ "letter": name }),
-                )
-            });
-            out.push(("discard".into(), o.message, mail_lines(l)));
-            // v4's `send_mail` catch (`send-mail-handler.ts:107-114`): the
-            // delivery's link write fails on the dropped table.
-            let (o, l) = quilltap_core::test_support::captured_with(|| {
-                execute_send_mail_in_zone(
-                    main_c,
-                    mount_c,
-                    "chat-plant",
-                    &user_id,
-                    Some(&reader),
-                    &json!({ "character": reader.as_str(), "message": "to myself" }),
-                    "2026-09-29T00:00:00.000Z",
-                    &quilltap_core::host_zone::TimeZone::UTC,
-                )
-            });
-            out.push(("send".into(), o.message, mail_lines(l)));
-            Ok(out)
+            out.extend(run_all("to myself"));
+            main_c
+                .execute_batch("DROP TABLE characters")
+                .map_err(|e| DbError::Internal(e.to_string()))?;
+            let chars = run_all("to myself, again");
+            Ok((out, chars))
         })
         .await
         .expect("catch plant");
@@ -1005,36 +1029,110 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
             meta.reader_vault
         )]
     );
-    for (tool, prefix, module) in [
-        (
-            "list",
-            "The Post Office stumbled and couldn't sort your post — ",
-            "list-mail-handler",
+    let errors = |l: &[String]| -> Vec<String> {
+        l.iter()
+            .filter(|x| x.starts_with("ERROR "))
+            .cloned()
+            .collect()
+    };
+    let find = |run: &Run, tool: &str| -> (String, Vec<String>) {
+        let (_, text, l) = run.iter().find(|(t, _, _)| t == tool).unwrap();
+        (text.clone(), l.clone())
+    };
+    let vault = &meta.reader_vault;
+    let name = meta.reader_paths["unalerted"]
+        .strip_prefix("Mail/")
+        .unwrap()
+        .to_string();
+    let no_letter = format!(
+        "No letter named \"{name}\" rests in your postbox. list_mail will show you what does."
+    );
+
+    // ── The dropped link table: v4's fallback arms, no catch.
+    // (v4 `listDatabaseFiles`: the links read falls back to `[]`, the folders
+    // read succeeds; the letter-less vault lists as empty.)
+    let (text, l) = find(&lines, "list");
+    assert_eq!(text, "Your postbox stands empty.", "{l:?}");
+    let e = errors(&l);
+    assert_eq!(e.len(), 1, "list: {l:?}");
+    assert!(
+        e[0].starts_with(&format!(
+            "ERROR quilltap_core::post_office::mailbox Error finding file links by mount point ID collection=doc_mount_file_links mountPointId={vault} error="
+        )),
+        "list: {}",
+        e[0]
+    );
+    let (text, l) = find(&lines, "read");
+    assert_eq!(text, no_letter, "{l:?}");
+    let e = errors(&l);
+    assert_eq!(e.len(), 1, "read: {l:?}");
+    assert!(
+        e[0].starts_with(&format!(
+            "ERROR quilltap_core::post_office::mailbox Error finding document by mount point and path collection=doc_mount_documents mountPointId={vault} relativePath=Mail/{name} error="
+        )),
+        "read: {}",
+        e[0]
+    );
+    let (text, l) = find(&lines, "discard");
+    assert_eq!(text, no_letter, "{l:?}");
+    let e = errors(&l);
+    assert_eq!(e.len(), 1, "discard: {l:?}");
+    assert!(
+        e[0].starts_with(&format!(
+            "ERROR quilltap_core::post_office::mailbox Error finding file link by mount point and path collection=doc_mount_file_links mountPointId={vault} relativePath=Mail/{name} error="
+        )),
+        "discard: {}",
+        e[0]
+    );
+    // `send_mail`: a delivery that cannot WRITE is a throw in v4 too — the
+    // catch leg that remains (`send-mail-handler.ts:107-114`).
+    let (text, l) = find(&lines, "send");
+    assert!(
+        text.starts_with("The Post Office stumbled and the letter went unsent — "),
+        "send: {text}"
+    );
+    let catch: Vec<String> = errors(&l)
+        .into_iter()
+        .filter(|x| x.contains("handler threw unexpectedly"))
+        .collect();
+    assert_eq!(catch.len(), 1, "send: {l:?}");
+    assert!(
+        catch[0].starts_with(
+            "ERROR quilltap_core::tools::send_mail send_mail handler threw unexpectedly module=send-mail-handler chatId=chat-plant error="
         ),
-        (
-            "read",
-            "The Post Office stumbled and couldn't fetch your letter — ",
-            "read-mail-handler",
-        ),
-        (
-            "discard",
-            "The Post Office stumbled and the letter stays where it was — ",
-            "discard-mail-handler",
-        ),
-        (
-            "send",
-            "The Post Office stumbled and the letter went unsent — ",
-            "send-mail-handler",
-        ),
+        "send: {}",
+        catch[0]
+    );
+    // …and no OTHER tool reached its catch.
+    for (tool, _, l) in &lines {
+        if tool != "send" {
+            assert!(
+                !l.iter().any(|x| x.contains("handler threw unexpectedly")),
+                "{tool} reached the catch: {l:?}"
+            );
+        }
+    }
+
+    // ── The dropped characters table: the postbox refusal + the repository
+    // ERROR, for all four tools — never the catch.
+    for (tool, want) in [
+        ("list", "The Post Office cannot find your postbox; your character seems to have gone astray."),
+        ("read", "The Post Office cannot find your postbox; your character seems to have gone astray."),
+        ("discard", "The Post Office cannot find your postbox; your character seems to have gone astray."),
+        ("send", "The Post Office cannot find your own postbox; your character seems to have gone astray."),
     ] {
-        let (_, text, l) = lines.iter().find(|(t, _, _)| t == tool).unwrap();
-        assert!(text.starts_with(prefix), "{tool}: {text}");
-        let errors: Vec<&String> = l.iter().filter(|x| x.starts_with("ERROR ")).collect();
-        assert_eq!(errors.len(), 1, "{tool}: {l:?}");
-        let want = format!(
-            "ERROR quilltap_core::tools::{tool}_mail {tool}_mail handler threw unexpectedly module={module} chatId=chat-plant error="
+        let (text, l) = find(&char_lines, tool);
+        assert_eq!(text, want, "{tool}: {l:?}");
+        let e = errors(&l);
+        assert_eq!(e.len(), 1, "{tool}: {l:?}");
+        assert!(
+            e[0].starts_with(&format!(
+                "ERROR quilltap_core::db::characters_read Error finding entity by ID collection=characters id={} error=",
+                spec.reader_id
+            )),
+            "{tool}: {}",
+            e[0]
         );
-        assert!(errors[0].starts_with(&want), "{tool}: {}", errors[0]);
     }
     drop(db);
     for p in [&main, &mount] {

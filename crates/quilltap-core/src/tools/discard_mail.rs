@@ -26,7 +26,7 @@ use serde_json::Value;
 
 use super::list_mail::ensure_own_vault;
 use super::read_mail::validate_letter_input;
-use crate::db::characters_read::find_by_id_raw;
+use crate::db::characters_read::find_by_id_raw_or_none;
 use crate::db::DbError;
 use crate::post_office::mailbox::{discard_letter, letter_file_name, resolve_mail_path};
 
@@ -119,7 +119,7 @@ fn discard_mail_inner(
         ));
     };
 
-    let Some(me) = find_by_id_raw(main, character_id)? else {
+    let Some(me) = find_by_id_raw_or_none(main, character_id) else {
         return Ok(fail(
             "The Post Office cannot find your postbox; your character seems to have gone astray.",
         ));

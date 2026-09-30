@@ -15,7 +15,7 @@ use serde::{Serialize, Serializer};
 use serde_json::Value;
 
 use crate::db::character_resolver::resolve_character_by_name_or_id;
-use crate::db::characters_read::find_by_id_raw;
+use crate::db::characters_read::find_by_id_raw_or_none;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::doc_edit::uri_producers::doc_store_uri_for;
 use crate::post_office::deliver::{compose_and_deliver_letter, ComposeAndDeliverResult};
@@ -123,8 +123,10 @@ pub fn execute_send_mail_in_zone(
     // v4's whole handler sits in one `try`; its catch logs
     // `send_mail handler threw unexpectedly` `{chatId}` + the error and
     // answers the "stumbled" refusal (`send-mail-handler.ts:107-114`). The
-    // three `Err` arms below are the throws that catch can see (the
-    // `97b25fc53` unification review restored the line P4.D234's §D.8 named).
+    // two `Err` arms below (the recipient resolve, the delivery) are the
+    // throws that catch can see (the `97b25fc53` unification review restored
+    // the line P4.D234's §D.8 named); the sender read was a third until
+    // P4.126 put it on v4's fallback repository read.
     let stumbled = |e: &dyn std::fmt::Display| {
         tracing::error!(
             module = "send-mail-handler",
@@ -149,14 +151,12 @@ pub fn execute_send_mail_in_zone(
     let message = obj.get("message").and_then(Value::as_str).unwrap_or("");
     let in_reply_to = obj.get("in_reply_to").and_then(Value::as_str);
 
-    let sender = match find_by_id_raw(main, character_id) {
-        Ok(Some(s)) => s,
-        Ok(None) => {
-            return fail(
-                "The Post Office cannot find your own postbox; your character seems to have gone astray.",
-            )
-        }
-        Err(e) => return stumbled(&e),
+    // v4 `findByIdRaw` is a fallback repository read: a failed read logs the
+    // repository ERROR and lands here as `null`, never in the catch (P4.126).
+    let Some(sender) = find_by_id_raw_or_none(main, character_id) else {
+        return fail(
+            "The Post Office cannot find your own postbox; your character seems to have gone astray.",
+        );
     };
     // An archived sender may not post (v4 `d553f72a`,
     // `send-mail-handler.ts:56`).
