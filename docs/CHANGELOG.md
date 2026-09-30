@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — docs(porting): P4.129 lane record — the gate
+
+_Docs-only change._
+
+Appends P4.129's gate result to its status-log record: fmt, clippy (both
+feature sets) and the release build clean; the workspace suite 652 binaries,
+4,003 passed, 0 failed, 3 ignored, with the orchestrator family confirmed run.
+
 #### 2026-09-30 — test(harness): diff the orchestrator family's CHAT_MESSAGE llm_logs rows against v4's real stream funnel (P4.129)
 
 _Versions: harness 0.0.1035._

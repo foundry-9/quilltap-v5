@@ -156665,6 +156665,16 @@ regenerates three of these families this round) and run `--nocapture`, zero
 `tool_loop_leg_logging` 2/0 (no oracle), `chat_admin_routes` 1/0,
 `build_context_tier3` 1/0. fmt clean; clippy clean in both feature sets.
 
+**P4.129 gate (tree `d2801fbde`, `CARGO_INCREMENTAL=0 TZ=UTC`):** fmt clean;
+clippy clean in both feature sets; `cargo build --workspace --release` clean;
+`cargo test --workspace --no-fail-fast -- --nocapture` with ONLY this family's
+three vars set (`QT_ORACLE_ORCHESTRATOR`, `QT_FIXTURE_ORCH_MAIN`,
+`QT_FIXTURE_ORCH_MOUNT` → the lane's `/tmp/p4129/` regen) — **652 binaries /
+4,003 passed / 0 failed / 3 ignored**, `orchestrator_tier3_matches_oracle` RAN
+(5.06 s); the 543 `SKIP:` lines are the withheld families, none this lane's.
+The census/guard binaries are in that run and green. Tier R: not applicable
+(harness only). The lane's `target/` was removed after the gate.
+
 ## P4.128 unit A — the participant-`name` hash slot (2026-09-30, lane `claude/p4-128-model-name-hash-slot-19feaa`)
 
 Order: `work-orders/p4.128-model-name-hash-slot-prestream-catch-line-sdk-frame-semantics.md`
