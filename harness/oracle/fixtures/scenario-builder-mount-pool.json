@@ -589,6 +589,110 @@
     },
     {
       "kind": "plant",
+      "name": "zod-shaped-group-stamps",
+      "statements": [
+        {
+          "sql": "CREATE TEMP TABLE \"sb_gclone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+          "params": [
+            "d2000000-0000-4000-8000-000000000001"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_gclone\" SET \"id\" = ?, \"officialMountPointId\" = ?, \"name\" = 'Dateless', \"createdAt\" = ?",
+          "params": [
+            "d2310000-0000-4000-8000-0000000000c8",
+            "e2000000-0000-4000-8000-0000000000f3",
+            "2026-01-02"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"groups\" SELECT * FROM \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "CREATE TEMP TABLE \"sb_gclone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+          "params": [
+            "d2000000-0000-4000-8000-000000000001"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_gclone\" SET \"id\" = ?, \"officialMountPointId\" = ?, \"name\" = 'Blobstamp', \"updatedAt\" = X'0000803F00000040'",
+          "params": [
+            "d2310000-0000-4000-8000-0000000000c9",
+            "e2000000-0000-4000-8000-0000000000f3"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"groups\" SELECT * FROM \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "CREATE TEMP TABLE \"sb_gclone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+          "params": [
+            "d2000000-0000-4000-8000-000000000001"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_gclone\" SET \"id\" = ?, \"officialMountPointId\" = ?, \"name\" = X'0000803F', \"createdAt\" = 'yesterday'",
+          "params": [
+            "d2310000-0000-4000-8000-0000000000ca",
+            "e2000000-0000-4000-8000-0000000000f3"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"groups\" SELECT * FROM \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_gclone\"",
+          "params": []
+        }
+      ],
+      "note": "P4.130: three group rows whose TIMESTAMPS fail v4's `TimestampSchema` (`z.iso.datetime().or(z.date())`): a date-only string (the bare datetime `invalid_format`, zod's JS-form pattern echoed), a BLOB `updatedAt` (v4's collection hydrates it to a two-element `Float32Array`, which aborts both union options — `invalid_union`), and a BLOB name beside a bad string stamp (two issues in schema order). The `Data validation failed` `error` bytes are the comparand."
+    },
+    {
+      "kind": "arm",
+      "name": "date-only-stamp-group",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "groupIds": [
+        "d2310000-0000-4000-8000-0000000000c8"
+      ],
+      "note": "P4.130: invalid_format/datetime → null — no official store"
+    },
+    {
+      "kind": "arm",
+      "name": "blob-stamp-group",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "groupIds": [
+        "d2310000-0000-4000-8000-0000000000c9"
+      ],
+      "note": "P4.130: invalid_union over a Float32Array → null"
+    },
+    {
+      "kind": "arm",
+      "name": "blob-name-bad-stamp-group",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "groupIds": [
+        "d2310000-0000-4000-8000-0000000000ca"
+      ],
+      "note": "P4.130: two issues, schema order → null"
+    },
+    {
+      "kind": "plant",
       "name": "general-removed",
       "statements": [
         {

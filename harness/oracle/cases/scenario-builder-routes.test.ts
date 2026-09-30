@@ -231,6 +231,8 @@ async function main(): Promise<void> {
                 collection: context.collection,
                 id: context.id ?? null,
                 hasError: typeof context.error === 'string' && context.error.length > 0,
+                // P4.130: the bytes themselves (v4's `ZodError.message`).
+                error: context.error ?? null,
               });
             }
           }

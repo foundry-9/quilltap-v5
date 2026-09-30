@@ -161,59 +161,82 @@ impl<'c> GroupDocMountLinksRepository<'c> {
     /// `Data validation failed {collection, error}`, `validateSafe` WARN `Safe
     /// validation failed {collection, error}` — keeping the rest (P4.124,
     /// P4.D231). v5 had decoded `mountPointId` as text for the whole result and
-    /// failed the WHOLE read on one bad row. A query failure is still `Err` (the
-    /// callers' own fallback arms log v4's `Error finding entities by filter`).
+    /// failed the WHOLE read on one bad row.
+    ///
+    /// A QUERY failure is v4's too: `findByFilter` is a fallback-mode
+    /// `safeQuery(…, 'Error finding entities by filter', {}, [])`, so v4 logs
+    /// ERROR `Error finding entities by filter {collection, error}` and answers
+    /// `[]` — `findByGroupId`'s own outer `Error finding links by group ID` is
+    /// unreachable (P4.130 Tier 2 item 8; before it this fn answered `Err` and
+    /// each caller logged or propagated on its own). The `Result` stays so the
+    /// callers' signatures do not move; this fn no longer returns `Err`.
     pub fn find_by_group_id(&self, group_id: &str) -> Result<Vec<String>, DbError> {
-        use rusqlite::types::ValueRef;
-        let text = |v: ValueRef<'_>| match v {
-            ValueRef::Text(t) => std::str::from_utf8(t).ok().map(str::to_string),
-            _ => None,
+        const COLUMNS: [&str; 5] = ["id", "groupId", "mountPointId", "createdAt", "updatedAt"];
+        let read =
+            || -> Result<Vec<serde_json::Map<String, serde_json::Value>>, rusqlite::Error> {
+                let mut stmt = self.conn.prepare(
+                    "SELECT id, groupId, mountPointId, createdAt, updatedAt \
+                 FROM group_doc_mount_links WHERE groupId = ?1",
+                )?;
+                // Every cell as v4's Zod meets it (a BLOB is the `Float32Array`
+                // v4's collection hydrates it to, a NULL is `undefined`) — a
+                // non-text cell must be distinguishable from an absent one,
+                // because the two render different issues (P4.130).
+                let rows = stmt
+                    .query_map(params![group_id], |row| {
+                        let mut obj = serde_json::Map::new();
+                        for (i, key) in COLUMNS.into_iter().enumerate() {
+                            if let Some(v) = super::groups::zod_row_cell(row.get_ref(i)?) {
+                                obj.insert(key.to_string(), v);
+                            }
+                        }
+                        Ok(obj)
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            };
+        // P4.130 §S 1: P4.131 delivers this exact line as
+        // `db::fallback::find_by_filter_or_empty` — the unifier repoints this
+        // arm onto it and deletes the duplicate.
+        let rows = match read() {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "group_doc_mount_links",
+                    error = %e,
+                    "Error finding entities by filter"
+                );
+                return Ok(Vec::new());
+            }
         };
-        let mut stmt = self.conn.prepare(
-            "SELECT id, groupId, mountPointId, createdAt, updatedAt \
-             FROM group_doc_mount_links WHERE groupId = ?1",
-        )?;
-        let rows = stmt
-            .query_map(params![group_id], |row| {
-                let mut cells: [Option<String>; 5] = Default::default();
-                for (i, cell) in cells.iter_mut().enumerate() {
-                    *cell = text(row.get_ref(i)?);
-                }
-                Ok(cells)
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
         let mut ids = Vec::with_capacity(rows.len());
-        for [id, gid, mount_point_id, created_at, updated_at] in rows {
-            let uuid = |v: &Option<String>| {
-                v.as_deref()
-                    .is_some_and(crate::api::zod_issues::zod_uuid_ok)
-            };
-            let ts = |v: &Option<String>| {
-                v.as_deref()
-                    .is_some_and(crate::api::zod_issues::zod_iso_datetime_ok)
-            };
+        for row in rows {
             // `GroupDocMountLinkSchema`: three uuids, two timestamps.
-            if uuid(&id)
-                && uuid(&gid)
-                && uuid(&mount_point_id)
-                && ts(&created_at)
-                && ts(&updated_at)
-            {
-                ids.extend(mount_point_id);
+            let issues = crate::api::zod_issues::zod_group_doc_mount_link_issues(&row);
+            if issues.is_empty() {
+                ids.extend(
+                    row.get("mountPointId")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string),
+                );
                 continue;
             }
-            let error = "the group_doc_mount_links row does not match v4's \
-                         GroupDocMountLinkSchema";
+            // v4 `validate` (ERROR) then `validateSafe` (WARN), both carrying
+            // the `ZodError.message` (P4.130; P4.124 had logged a v5
+            // sentence, and with the `error = error` sigil where the group
+            // read used `%error`).
+            let error = crate::api::zod_issues::zod_error_message(&issues);
             tracing::error!(
                 target: "quilltap::db",
                 collection = "group_doc_mount_links",
-                error = error,
+                error = %error,
                 "Data validation failed"
             );
             tracing::warn!(
                 target: "quilltap::db",
                 collection = "group_doc_mount_links",
-                error = error,
+                error = %error,
                 "Safe validation failed"
             );
         }
@@ -302,5 +325,87 @@ impl<'c> GroupDocMountLinksRepository<'c> {
                 },
             )
             .map_err(DbError::from)
+    }
+}
+
+/// P4.130: the link read's three exits — v4's `findByFilter` over a failing
+/// query (`[]` after ONE `Error finding entities by filter`), a Zod-invalid row
+/// dropped with v4's two validation lines carrying the `ZodError.message`, and
+/// a clean read that is silent.
+#[cfg(test)]
+mod find_by_group_id_tests {
+    use super::*;
+
+    const G: &str = "d1000000-0000-4000-8000-0000000000a1";
+
+    fn links() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&format!(
+            "CREATE TABLE group_doc_mount_links (id TEXT, groupId TEXT, mountPointId, \
+             createdAt TEXT, updatedAt TEXT); \
+             INSERT INTO group_doc_mount_links VALUES ('f1000000-0000-4000-8000-000000000001', \
+               '{G}', 'e1000000-0000-4000-8000-0000000000f1', '2026-09-25T00:00:00.000Z', \
+               '2026-09-25T00:00:00.000Z');"
+        ))
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn a_clean_read_is_silent() {
+        let conn = links();
+        let (ids, lines) = crate::test_support::captured_with(|| {
+            GroupDocMountLinksRepository::new(&conn).find_by_group_id(G)
+        });
+        assert_eq!(ids.unwrap(), vec!["e1000000-0000-4000-8000-0000000000f1"]);
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    #[test]
+    fn a_failing_query_answers_empty_after_v4s_fallback_line() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (ids, lines) = crate::test_support::captured_with(|| {
+            GroupDocMountLinksRepository::new(&conn).find_by_group_id(G)
+        });
+        assert_eq!(ids.unwrap(), Vec::<String>::new());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with(
+                "ERROR quilltap::db Error finding entities by filter \
+                 collection=group_doc_mount_links error=no such table: group_doc_mount_links"
+            ),
+            "{}",
+            lines[0]
+        );
+    }
+
+    #[test]
+    fn an_invalid_row_is_dropped_with_the_zod_message_on_both_lines() {
+        let conn = links();
+        conn.execute(
+            &format!(
+                "INSERT INTO group_doc_mount_links VALUES ('f1000000-0000-4000-8000-000000000002', \
+                 '{G}', X'0000803F', '2026-09-25T00:00:00.000Z', '2026-09-25')"
+            ),
+            [],
+        )
+        .unwrap();
+        let (ids, lines) = crate::test_support::captured_with(|| {
+            GroupDocMountLinksRepository::new(&conn).find_by_group_id(G)
+        });
+        assert_eq!(ids.unwrap(), vec!["e1000000-0000-4000-8000-0000000000f1"]);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(lines[0].starts_with(
+            "ERROR quilltap::db Data validation failed collection=group_doc_mount_links error=[\n"
+        ));
+        assert!(lines[1].starts_with(
+            "WARN quilltap::db Safe validation failed collection=group_doc_mount_links error=[\n"
+        ));
+        for l in &lines {
+            assert!(
+                l.contains("received Float32Array") && l.contains("Invalid ISO datetime"),
+                "{l}"
+            );
+        }
     }
 }

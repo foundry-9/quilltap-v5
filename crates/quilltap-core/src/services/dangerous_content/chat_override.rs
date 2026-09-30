@@ -311,7 +311,7 @@ pub fn with_concierge_mode_from_legacy(chat: Value) -> Value {
     Value::Object(obj)
 }
 
-/// v4 `ChatMetadataSchema`'s three Concierge columns as a chat entering from
+/// v4 `ChatMetadataBaseSchema`'s three Concierge columns as a chat entering from
 /// outside meets them (P4.124, P4.D226): `conciergeMode` /
 /// `conciergeModeSetBy` / `conciergeModeReason` are `z.enum([...])
 /// .nullable().optional()`, so after [`with_concierge_mode_from_legacy`] a value
@@ -320,7 +320,12 @@ pub fn with_concierge_mode_from_legacy(chat: Value) -> Value {
 /// `ZodError` message. v5's `ChatCreate` stores any string, so both sites ask
 /// this first. `None` when all three pass; otherwise v4's message
 /// (`JSON.stringify(issues, null, 2)`, one `invalid_value` per bad column in
-/// schema order — measured with v4's real schema at `97b25fc53`).
+/// schema order — measured with v4's real schema at `97b25fc53`, and proven
+/// row by row by `repository_zod_messages_equivalence` since P4.130). The
+/// schema is `ChatMetadataBaseSchema` — the one `chats.repository.ts`
+/// constructs its repository with, not `ChatMetadataSchema` (P4.124's text
+/// named the wrong one; the extension columns read `undefined` on a restored
+/// or imported chat, so outcome and issue order are the same).
 ///
 /// ⚠ Scope: only these three columns are checked here; any OTHER field v4's
 /// schema would reject still reaches v5's typed decode, whose own error text
@@ -388,7 +393,7 @@ mod tests {
     use serde_json::json;
 
     /// P4.124 (P4.D226): the three Concierge enums against v4's REAL
-    /// `ChatMetadataSchema` — the messages below are v4's `error.message`
+    /// `ChatMetadataBaseSchema` — the messages below are v4's `error.message`
     /// recorded at the `97b25fc53` pin (a throwaway probe `safeParse`d a chat
     /// carrying each patch; run from the pin with `npx tsx`). v4's base chat
     /// fails no other issue for these patches, so the message is the three

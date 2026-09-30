@@ -27,7 +27,8 @@
 //! that VALIDATES the row, so it answers `null` after the repository's own
 //! `Error finding entity by ID` ERROR and the route's `Scenario Builder dropped
 //! an unreadable group id` WARN never fires. That ERROR is compared on its own
-//! channel (`repoLines`); the WARN's absence is every case's `lines` equality.
+//! channel (`repoLines`, its `error` bytes included since P4.130); the WARN's
+//! absence is every case's `lines` equality.
 //! The chat-send pair has no `groups` table at all, so the plants create it
 //! with v4's DDL.
 //!
@@ -123,8 +124,11 @@ static LOGGED: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 /// ID` with `collection: "groups"`) — v4 logs it inside `findByIdRaw`'s
 /// fallback-mode `safeQuery`, on no `ScenarioBuilder` logger, so it is kept
 /// OUT of [`LOGGED`] and compared as `{ level, message, collection, id,
-/// hasError }` (the error TEXT is each side's own driver's — v4's Zod
-/// validation message, v5's rusqlite decode error).
+/// hasError, error }`. P4.130: `error` is compared BYTE FOR BYTE — v4's
+/// `ZodError.message` over the BLOB-named row (`received Float32Array` — v4's
+/// collection hydrates the BLOB — plus the zero-length array's `too_small`),
+/// which v5's validated raw read now renders (P4.124 had logged a v5
+/// sentence, so this was `hasError` only).
 static REPO_LOGGED: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 const REPO_FALLBACK: &str = "Error finding entity by ID";
 
@@ -185,6 +189,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for StructuredCapture 
                     "collection": "groups",
                     "id": field("id"),
                     "hasError": field("error").as_str().is_some_and(|e| !e.is_empty()),
+                    "error": field("error"),
                 }));
                 return;
             }

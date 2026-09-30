@@ -19,9 +19,12 @@
  * doc-opacity recipe). The `ScenarioBuilderMountPool` service logger is wrapped
  * to RECORD its lines (and only its lines) per arm.
  *
- * Emits ONE NDJSON line per arm: { arm, pool, logs, settingsLogs } in step
- * order (`settingsLogs`, P4.113: v4's `[InstanceSettings]` WARN + the backend's
- * `Raw query failed` ERROR, off the plain logger).
+ * Emits ONE NDJSON line per arm: { arm, pool, logs, settingsLogs,
+ * validationLogs } in step order (`settingsLogs`, P4.113: v4's
+ * `[InstanceSettings]` WARN + the backend's `Raw query failed` ERROR, off the
+ * plain logger; `validationLogs`, P4.130: the repositories' `Data validation
+ * failed` ERROR / `Safe validation failed` WARN, `collection` + the whole
+ * `error` string — the `ZodError.message` bytes).
  *
  * Run (Node 24, from the v4 checkout or a PINNED worktree). STAGE this case
  * OUTSIDE `.claude/` — v4's jest ignores those paths, so `--roots` into a
@@ -146,6 +149,9 @@ async function main(): Promise<void> {
   // after `resetModules`, so it is the one the modules under test resolve),
   // filtered to those two lines, per arm.
   const settingsLines: Array<Record<string, unknown>> = [];
+  // P4.130: the repository validation lines (`base.repository.ts` `validate` /
+  // `validateSafe`, on the plain logger), with their `error` bytes.
+  const validationLines: Array<Record<string, unknown>> = [];
   const { Logger } = await import('@/lib/logger');
   for (const level of ['error', 'warn'] as const) {
     const original = Logger.prototype[level];
@@ -155,6 +161,14 @@ async function main(): Promise<void> {
       context?: Record<string, unknown>,
       ...rest: unknown[]
     ) {
+      if (message === 'Data validation failed' || message === 'Safe validation failed') {
+        validationLines.push({
+          level,
+          message,
+          collection: context?.collection ?? null,
+          error: context?.error ?? null,
+        });
+      }
       if (message.startsWith('[InstanceSettings]') || message === 'Raw query failed') {
         settingsLines.push({
           level,
@@ -185,6 +199,7 @@ async function main(): Promise<void> {
       }
       logLines.splice(0);
       settingsLines.splice(0);
+      validationLines.splice(0);
       const pool = await resolveScenarioBuilderMountPool({
         userId: step.userId,
         projectId: step.projectId,
@@ -197,6 +212,7 @@ async function main(): Promise<void> {
           pool,
           logs: logLines.splice(0),
           settingsLogs: settingsLines.splice(0),
+          validationLogs: validationLines.splice(0),
         }),
       );
     }

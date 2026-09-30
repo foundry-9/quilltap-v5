@@ -46,6 +46,23 @@
 //! v5 had counted UTF-16 units and dropped it (red-first: that arm alone, pool
 //! and pool DEBUG).
 //!
+//! **P4.130 — the `ZodError.message` bytes.** The oracle records v4's
+//! repository `Data validation failed` ERROR / `Safe validation failed` WARN
+//! (`base.repository.ts` `validate` / `validateSafe`, on the plain logger) per
+//! arm with `collection` and the WHOLE `error` string; this file's own
+//! [`ValidationCapture`] reads v5's at `quilltap::db` and compares level,
+//! message, collection and `error` byte for byte, in order. A
+//! `zod-shaped-group-stamps` plant adds three timestamp shapes (a date-only
+//! string, a BLOB stamp, a BLOB name beside a bad string stamp). Red-first:
+//! v5 had logged a v5 sentence as `error` on every refused group arm.
+//! **Measured, not predicted:** a BLOB cell reaches v4's Zod as a
+//! `Float32Array` (the collection's `blobToEmbedding` hydration), never a
+//! `Buffer`. ⚠ **RECORDED v4-only line:** the `unreadable-member-warns` arm's
+//! `Data validation failed {collection: characters}` — v4's
+//! `characters.findByIdRaw` validates the BLOB-named member, v5's member read
+//! does not log it (outside P4.130's files; pinned both ways by
+//! [`V4_ONLY_VALIDATION`]).
+//!
 //! ⚠ PIN REQUIRED at `08c49319d` (P4.D231) while the oracle baseline is older:
 //! a `b0b6656b5`-pinned regen carries no `namedGroupCount` (0 of 22 arms) and
 //! ignores every `groupIds`. The
@@ -94,6 +111,86 @@ const SETTINGS_TARGET: &str = "quilltap_core::db::instance_settings";
 /// the arms named here (else VANISHED), v5 must never.
 const RAW_QUERY_FAILED: &str = "Raw query failed";
 const RAW_QUERY_FAILED_ARMS: &[&str] = &["general-read-fails"];
+
+/// P4.130 — the repository validation lines' target and messages.
+const VALIDATION_TARGET: &str = "quilltap::db";
+const VALIDATION_MESSAGES: &[&str] = &["Data validation failed", "Safe validation failed"];
+
+/// `(arm, collection)` where v4 logs a validation line v5 does not — the
+/// recorded divergence, pinned both ways: v4 must still log exactly one there
+/// (else VANISHED), v5 must log none.
+const V4_ONLY_VALIDATION: &[(&str, &str)] = &[("unreadable-member-warns", "characters")];
+
+/// One captured validation line: level, message, `collection`, `error`.
+type ValidationLine = (String, String, Option<String>, Option<String>);
+
+#[derive(Clone, Default)]
+struct ValidationCapture(std::sync::Arc<std::sync::Mutex<Vec<ValidationLine>>>);
+
+#[derive(Default)]
+struct ValidationFields {
+    message: String,
+    collection: Option<String>,
+    error: Option<String>,
+}
+
+impl tracing::field::Visit for ValidationFields {
+    fn record_str(&mut self, f: &tracing::field::Field, v: &str) {
+        match f.name() {
+            "collection" => self.collection = Some(v.to_string()),
+            "error" => self.error = Some(v.to_string()),
+            "message" => self.message = v.to_string(),
+            _ => {}
+        }
+    }
+    fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+        // `%error` records through `Display`, which arrives here as a
+        // `DisplayValue` whose `Debug` IS the `Display` — the raw bytes.
+        let rendered = format!("{v:?}");
+        match f.name() {
+            "message" => self.message = rendered,
+            "collection" => self.collection = Some(rendered.trim_matches('"').to_string()),
+            "error" => self.error = Some(rendered),
+            _ => {}
+        }
+    }
+}
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for ValidationCapture {
+    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+        if event.metadata().target() != VALIDATION_TARGET {
+            return;
+        }
+        let mut f = ValidationFields::default();
+        event.record(&mut f);
+        if !VALIDATION_MESSAGES.contains(&f.message.as_str()) {
+            return;
+        }
+        self.0.lock().unwrap().push((
+            event.metadata().level().to_string(),
+            f.message,
+            f.collection,
+            f.error,
+        ));
+    }
+}
+
+/// v4's `validationLogs` for one arm.
+fn v4_validation_lines(want: &Value) -> Vec<ValidationLine> {
+    want["validationLogs"]
+        .as_array()
+        .expect("the oracle carries validationLogs — regenerate it (P4.130)")
+        .iter()
+        .map(|l| {
+            (
+                l["level"].as_str().unwrap().to_uppercase(),
+                l["message"].as_str().unwrap().to_string(),
+                l["collection"].as_str().map(str::to_string),
+                l["error"].as_str().map(str::to_string),
+            )
+        })
+        .collect()
+}
 
 /// One captured `instance_settings` line: level, message, `key`, and whether
 /// a non-empty `error` field was present.
@@ -289,11 +386,14 @@ fn scenario_builder_mount_pool_matches_oracle() {
     use tracing_subscriber::layer::SubscriberExt;
     let (layer, captured) = StructuralCapture::new(TARGETS);
     let settings = SettingsCapture::default();
+    let validation = ValidationCapture::default();
     let _guard = tracing::subscriber::set_default(
         tracing_subscriber::registry()
             .with(layer)
-            .with(settings.clone()),
+            .with(settings.clone())
+            .with(validation.clone()),
     );
+    let (mut validation_lines_seen, mut v4_only_seen) = (0usize, 0usize);
     let mut raw_query_failed_seen = 0usize;
     let mut settings_warns_seen = 0usize;
 
@@ -322,6 +422,7 @@ fn scenario_builder_mount_pool_matches_oracle() {
                 assert_eq!(want["arm"].as_str(), Some(name.as_str()), "arm order");
                 captured.lock().unwrap().clear();
                 settings.0.lock().unwrap().clear();
+                validation.0.lock().unwrap().clear();
                 let pool = resolve_scenario_builder_mount_pool(
                     main,
                     mount,
@@ -372,6 +473,39 @@ fn scenario_builder_mount_pool_matches_oracle() {
                     ));
                 }
                 settings_warns_seen += want_settings.len();
+                // P4.130: the repository validation lines, bytes and all —
+                // minus the recorded v4-only `characters` line, pinned both ways.
+                let (v4_only, want_validation): (Vec<_>, Vec<_>) =
+                    v4_validation_lines(want).into_iter().partition(|l| {
+                        V4_ONLY_VALIDATION
+                            .iter()
+                            .any(|(arm, coll)| arm == name && l.2.as_deref() == Some(*coll))
+                    });
+                let got_validation = validation.0.lock().unwrap().clone();
+                if got_validation != want_validation {
+                    failures.push(format!(
+                        "{name}: validation lines differ\n  v4: {want_validation:#?}\n  v5: {got_validation:#?}"
+                    ));
+                }
+                let recorded = V4_ONLY_VALIDATION.iter().filter(|(a, _)| a == name).count();
+                if v4_only.len() != recorded {
+                    failures.push(format!(
+                        "{name}: v4-only validation line count {}, recorded {recorded} — the \
+                         divergence VANISHED or moved",
+                        v4_only.len()
+                    ));
+                }
+                if got_validation.iter().any(|l| {
+                    V4_ONLY_VALIDATION
+                        .iter()
+                        .any(|(a, c)| a == name && l.2.as_deref() == Some(*c))
+                }) {
+                    failures.push(format!(
+                        "{name}: v5 logged the recorded v4-only line — WRONG SHAPE"
+                    ));
+                }
+                validation_lines_seen += want_validation.len();
+                v4_only_seen += v4_only.len();
                 // The recorded v4-only `Raw query failed` ERROR, both ways.
                 let v4_raw = want["settingsLogs"]
                     .as_array()
@@ -412,6 +546,15 @@ fn scenario_builder_mount_pool_matches_oracle() {
     assert!(
         named_group_arms >= 7,
         "P4.D231: the named-group arms must all be armed ({named_group_arms} < 7)"
+    );
+    assert!(
+        validation_lines_seen >= 8,
+        "P4.130: the group validation lines must all be armed ({validation_lines_seen} < 8)"
+    );
+    assert_eq!(
+        v4_only_seen,
+        V4_ONLY_VALIDATION.len(),
+        "the recorded v4-only validation line must be exercised"
     );
     assert_eq!(
         (settings_warns_seen, raw_query_failed_seen),

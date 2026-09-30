@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — feat(core): repository validation lines carry v4's ZodError bytes (P4.130 unit 2)
+
+_Versions: core 0.0.1117, harness 0.0.1036, web 0.0.202._
+
+The group and group-link raw reads now log v4's exact `Data validation
+failed` / `Safe validation failed` `error` text (`JSON.stringify(issues, null,
+2)`) instead of a v5 sentence, and the `Err` carries the same bytes. The Zod
+home gains the `invalid_union` issue, the datetime `invalid_format` with zod's
+JS-form pattern, and a length check over typed arrays. Measured, not as the
+order predicted: v4's SQLite collection hands a BLOB cell to Zod as a
+`Float32Array` (not a `Buffer`), and zod still runs a string's length checks
+over it. New tier-1 family `repository_zod_messages` (51 rows over v4's real
+`GroupSchema`, `GroupDocMountLinkSchema`, `ChatMetadataBaseSchema`). The
+mount-pool oracle now records the two lines' bytes (three new timestamp-shaped
+group plants); the routes family compares the fallback line's `error` bytes.
+A failed link query now answers `[]` after v4's `Error finding entities by
+filter` line. Recorded: v4 also logs a `characters` validation line v5 does not.
+
 #### 2026-09-30 — fix(core): group names are measured in code points, as zod 4.6.5 does (P4.130 unit 1)
 
 _Versions: core 0.0.1116, harness 0.0.1035._

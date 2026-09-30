@@ -182,12 +182,14 @@ pub fn find_name_and_official_mount_point_id_raw(
 
 /// Read a group's `name` + `officialMountPointId` WITHOUT the store overlay, as
 /// v4's `groups.findByIdRaw` sees the row: `_findById` VALIDATES it against
-/// `GroupRowSchema` ([`crate::api::zod_issues::zod_group_row_ok`]), and a row
+/// `GroupSchema` ([`crate::api::zod_issues::zod_group_issues`]), and a row
 /// that fails is not found — v4's `validate` logs ERROR `Data validation
 /// failed {collection, error}`, then its fallback `safeQuery` logs `Error
 /// finding entity by ID` and answers `null` (P4.124, P4.D231). This fn logs the
 /// first line and answers `Err`, so each caller's existing fallback arm logs
-/// the second at its own target. A row whose cells merely DECODE (an empty or
+/// the second at its own target. `error` on both is v4's
+/// `ZodError.message` — `JSON.stringify(issues, null, 2)` (P4.130; P4.124 had
+/// logged a v5 sentence) — carried as the `Err`'s `Display`. A row whose cells merely DECODE (an empty or
 /// 101-character name, a non-uuid id or pointer) is refused here where
 /// [`find_name_and_official_mount_point_id_raw`] would return it. `Ok(None)`
 /// when the row is absent.
@@ -195,17 +197,6 @@ pub fn find_validated_name_and_official_mount_point_id_raw(
     main: &Connection,
     id: &str,
 ) -> Result<Option<(String, Option<String>)>, DbError> {
-    use rusqlite::types::ValueRef;
-    let cell = |v: ValueRef<'_>| -> serde_json::Value {
-        match v {
-            ValueRef::Null => serde_json::Value::Null,
-            ValueRef::Integer(i) => serde_json::json!(i),
-            ValueRef::Real(f) => serde_json::json!(f),
-            ValueRef::Text(t) => serde_json::json!(String::from_utf8_lossy(t)),
-            // A Buffer to v4's Zod: never a string.
-            ValueRef::Blob(b) => serde_json::json!({ "blobBytes": b.len() }),
-        }
-    };
     let row = main
         .query_row(
             "SELECT id, name, officialMountPointId, createdAt, updatedAt FROM groups WHERE id = ?1",
@@ -222,9 +213,8 @@ pub fn find_validated_name_and_official_mount_point_id_raw(
                 .into_iter()
                 .enumerate()
                 {
-                    let v = cell(row.get_ref(i)?);
                     // v4 turns a NULL cell into `undefined` — the key is absent.
-                    if !v.is_null() {
+                    if let Some(v) = zod_row_cell(row.get_ref(i)?) {
                         obj.insert(key.to_string(), v);
                     }
                 }
@@ -239,8 +229,9 @@ pub fn find_validated_name_and_official_mount_point_id_raw(
     let Some(row) = row else {
         return Ok(None);
     };
-    if !crate::api::zod_issues::zod_group_row_ok(&row) {
-        let error = "the groups row does not match v4's GroupRowSchema".to_string();
+    let issues = crate::api::zod_issues::zod_group_issues(&row);
+    if !issues.is_empty() {
+        let error = crate::api::zod_issues::zod_error_message(&issues);
         tracing::error!(
             target: "quilltap::db",
             collection = "groups",
@@ -258,6 +249,26 @@ pub fn find_validated_name_and_official_mount_point_id_raw(
         text("name").unwrap_or_default(),
         text("officialMountPointId"),
     )))
+}
+
+/// One SQLite cell as better-sqlite3 hands it to v4's Zod: `None` for NULL
+/// (v4 reads a NULL cell as `undefined` — the key is absent), a number for an
+/// INTEGER/REAL, a string for TEXT, and — for a BLOB — the `Float32Array`
+/// v4's collection hydrates it to ([`crate::api::zod_issues::
+/// zod_float32_array_cell`] over the header-aware element count — `received
+/// Float32Array`, never a string). Shared by the two validated raw reads
+/// (P4.130).
+pub(crate) fn zod_row_cell(v: rusqlite::types::ValueRef<'_>) -> Option<serde_json::Value> {
+    use rusqlite::types::ValueRef;
+    match v {
+        ValueRef::Null => None,
+        ValueRef::Integer(i) => Some(serde_json::json!(i)),
+        ValueRef::Real(f) => Some(serde_json::json!(f)),
+        ValueRef::Text(t) => Some(serde_json::json!(String::from_utf8_lossy(t))),
+        ValueRef::Blob(b) => Some(crate::api::zod_issues::zod_float32_array_cell(
+            crate::embedding_blob::blob_to_float32(b).len(),
+        )),
+    }
 }
 
 /// Read a group's `officialMountPointId` pointer WITHOUT the store overlay (v4
@@ -311,18 +322,29 @@ mod validated_raw_read_tests {
         });
         assert_eq!(found.unwrap(), Some(("Loners".to_string(), None)));
         assert!(lines.is_empty(), "{lines:?}");
-        for bad in [
-            "d2310000-0000-4000-8000-0000000000c3",
-            "d2310000-0000-4000-8000-0000000000c2",
+        // P4.130: `error` is v4's `ZodError.message` — the rendered issue
+        // list (the bytes themselves are `repository_zod_messages`'s, over
+        // v4's real `GroupSchema`), and the `Err` carries the same string.
+        for (bad, marker) in [
+            (
+                "d2310000-0000-4000-8000-0000000000c3",
+                "Too small: expected string to have >=1 characters",
+            ),
+            (
+                "d2310000-0000-4000-8000-0000000000c2",
+                "Invalid input: expected string, received Float32Array",
+            ),
         ] {
             let (found, lines) = crate::test_support::captured_with(|| {
                 find_validated_name_and_official_mount_point_id_raw(&conn, bad)
             });
-            assert!(found.is_err(), "{bad}");
+            let err = found.expect_err(bad).to_string();
+            assert!(err.starts_with("[\n  {\n") && err.contains(marker), "{err}");
             assert_eq!(lines.len(), 1, "{lines:?}");
             assert!(
                 lines[0].starts_with("ERROR quilltap::db Data validation failed")
-                    && lines[0].contains("collection=groups"),
+                    && lines[0].contains("collection=groups")
+                    && lines[0].contains(marker),
                 "{}",
                 lines[0]
             );

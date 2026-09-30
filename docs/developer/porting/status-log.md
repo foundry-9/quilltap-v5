@@ -156520,6 +156520,78 @@ Regen outputs staged under `/tmp/p4130/`.
     --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "scenario-builder-mount-pool\.test\.ts$"
   ```
 
+### Unit 2 — the ZodError bytes (Tier 1 items 2–4; Tier 2 items 8, 9)
+
+- **The home** (`api/zod_issues.rs`): `ZodIssue::InvalidUnion {code, errors,
+  path, message}`; `invalid_datetime` over the NEW `ZOD_ISO_DATETIME_JS_PATTERN`
+  (zod's echoed JS form, pinned to the Rust matcher by
+  `datetime_js_pattern_is_the_matcher_in_js_form`); `too_small_unknown` /
+  `too_big_unknown`; `zod_group_issues` / `zod_group_doc_mount_link_issues`
+  replace the bool `zod_group_row_ok`; the header re-measured at 4.6.5 (the
+  render table renamed `render_table_matches_real_zod_465`, three rows added).
+  The strict `RouteAttemptSchema` twin `zod_route_attempt_failure` lands in the
+  same file in this commit (consumed by unit 4).
+- ⚠ **The order's `received Buffer` premise is WRONG for every repository
+  path — MEASURED.** better-sqlite3 hands a BLOB back as a `Buffer`, but v4's
+  SQLite collection hydrates rows before Zod (`backend.ts`, "Buffer in non-blob
+  column, decoding as Float32") → `blobToEmbedding` → a `Float32Array` of the
+  header-aware element count. Zod reports `received Float32Array` AND still
+  runs a string's length checks over the array (`$ZodCheckMinLength.when` —
+  anything with `.length`): a zero-element array adds `too_small` `origin:
+  "unknown"`, "expected unknown to be >=1"; > 100 elements `too_big`. So the
+  Buffer arm the order asked for is a `Float32Array` arm
+  (`ZOD_FLOAT32_ARRAY_MARKER`, a NUL-led key, inside `zod_parsed_type`; no new
+  `fn` — the parsed-type census stays 6/6), and the readers map a BLOB through
+  `embedding_blob::blob_to_float32(..).len()`. Not modelled (recorded): a
+  Buffer whose `byteOffset` is not a multiple of 4 would make v4's
+  `Float32Array` constructor THROW (then the fallback line, no validation
+  line) — better-sqlite3 allocates BLOB buffers fresh, so not reached here.
+- **The readers**: `db/groups.rs`'s validated raw read and
+  `group_doc_mount_links.rs`'s `find_by_group_id` read raw `ValueRef`s through
+  ONE `zod_row_cell` (NULL → absent, BLOB → the typed-array marker), log
+  `error = %error` (one sigil at both sites; the link reader had `error =
+  error`) with `zod_error_message(&issues)`; the group `Err` carries the same
+  string, so the callers' `Error finding entity by ID` lines follow.
+- **Tier 2 item 8**: `find_by_group_id`'s QUERY failure is v4's `findByFilter`
+  fallback — ONE `ERROR quilltap::db Error finding entities by filter
+  {collection: group_doc_mount_links, error}` then `Ok([])`; the fn no longer
+  answers `Err` (signature kept). The line is written inline with a comment
+  naming §S 1's `db::fallback::find_by_filter_or_empty` — **the unifier folds
+  it**; `tiered_mount_pool.rs`'s caller `Err` arm (P4.131's fold hunk) is now
+  unreachable. Capture + silence pins: three unit tests
+  (`find_by_group_id_tests`).
+- **Tier-1 oracle** `harness/oracle/cases/repository-zod-messages.ts` ↔
+  `repository_zod_messages_equivalence.rs` (env
+  `QT_ORACLE_REPOSITORY_ZOD_MESSAGES`): 51 rows (32 group, 10 link, 9 chat —
+  10 accepted across the three), `{id, schema, row, ok}` /
+  `{…, message, issues}`, the `{"$float32": n}` marker; message AND compact
+  issue list compared byte-exact; the six refused Concierge chat rows prove
+  P4.124's hand-pinned messages mechanically. 51/51 on the first run of the
+  renderer. The recipe extracts under `recipe_sweep.py --show`.
+- **The lines captured**: `scenario-builder-mount-pool.test.ts`'s prototype
+  spy records `validationLogs` (`Data validation failed` / `Safe validation
+  failed`, collection + the whole `error`); the spec grows by addition — plant
+  `zod-shaped-group-stamps` (a date-only `createdAt`, a BLOB `updatedAt`, a
+  BLOB name beside `createdAt: 'yesterday'`) + three arms (30 arms). The Rust
+  family's file-local `ValidationCapture` reads `quilltap::db`. **Red-first**
+  (mutation restoring P4.124's sentence at `groups.rs`): 8 arms differ —
+  exactly the eight group validation arms; 30/30 after. ⚠ **FINDING (outside
+  P4.130's files):** v4 logs `Data validation failed {collection: characters}`
+  on `unreadable-member-warns` (its `characters.findByIdRaw` validates the
+  BLOB-named member); v5's member read does not. Pinned both ways as
+  `V4_ONLY_VALIDATION` (VANISHED if v4 stops, WRONG SHAPE if v5 starts).
+- **Tier 2 item 9**: `scenario-builder-routes.test.ts`'s `repoLines` records
+  `error`; `crates/quilltap-web/tests/scenario_builder_routes_equivalence.rs`
+  (the family lives in the WEB crate, not harness as the order's ownership
+  row implies) compares it byte for byte — the BLOB-named group's two-issue
+  `Float32Array` message. Red-first under the same mutation: that case's
+  `repoLines` differs; green after (30/30 cases).
+- Regens (as run, from `/tmp/qt-v4-pin-p4130-97b25fc53`, Node 24):
+  `npx tsx <W>/harness/oracle/cases/repository-zod-messages.ts >
+  /tmp/p4130/oracle-repository-zod-messages.ndjson`; the mount pool per unit
+  1's recipe; the routes per the family header with `STAGE=/tmp/p4130/stage-
+  sb-routes`, `QT_ORACLE_OUT=/tmp/p4130/oracle-sbroutes.ndjson`.
+
 ## P4.131 — the document-store repository fallbacks as v4 REALLY has them (lane record, 2026-09-30)
 
 Branch `claude/document-store-repo-fallbacks-55643f`, pin `97b25fc53` (`/tmp/qt-v4-pin-p4131-97b25fc53`), §2 probe PASS at start. core 0.0.1116, harness 0.0.1035.

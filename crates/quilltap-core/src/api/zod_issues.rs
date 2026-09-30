@@ -23,10 +23,14 @@
 //! # Provenance of every shape
 //!
 //! Measured against the v4 checkout's real `zod` **4.5.4** at the `89fcc3c0d`
-//! baseline pin, not inferred from Zod's source. The command, verbatim:
+//! baseline pin, not inferred from Zod's source, and RE-MEASURED unchanged
+//! against **4.6.5** at the `97b25fc53` pin by P4.130 — which added the last
+//! rows (the datetime format issue, the `invalid_union` a `TimestampSchema`
+//! reports over a missing cell, and a `Float32Array` — a hydrated BLOB cell —
+//! with the length checks zod still runs over it). The command, verbatim:
 //!
 //! ```text
-//! cd /tmp/qt-v4-pin-p4101-89fcc3c0d && node --input-type=module -e '
+//! cd /tmp/qt-v4-pin-p4130-97b25fc53 && node --input-type=module -e '
 //! import { z } from "zod";
 //! const show = (label, schema, input) => {
 //!   const r = schema.safeParse(input);
@@ -44,10 +48,15 @@
 //! show("too_big/number",        z.object({ a: z.number().max(1) }),  { a: 2 });
 //! show("too_big/int-safeint",   z.object({ a: z.int() }),            { a: 1e300 });
 //! show("too_small/int-safeint", z.object({ a: z.int() }),            { a: -1e300 });
+//! show("invalid_format/datetime", z.object({ a: z.iso.datetime() }), { a: "n" });
+//! show("invalid_union/timestamp", z.object({ a: z.iso.datetime().or(z.date()) }), { });
+//! show("invalid_type/float32",  z.object({ a: z.string() }),         { a: new Float32Array(1) });
+//! show("too_small/unknown",     z.object({ a: z.string().min(1) }),  { a: new Float32Array(0) });
+//! show("too_big/unknown",       z.object({ a: z.string().max(100) }), { a: new Float32Array(101) });
 //! '
 //! ```
 //!
-//! Its output is transcribed into [`tests::render_table_matches_real_zod_454`],
+//! Its output is transcribed into [`tests::render_table_matches_real_zod_465`],
 //! one row per code — so a future Zod bump that reorders a key set reddens here
 //! first rather than on a route's wire.
 //!
@@ -168,6 +177,20 @@ pub enum ZodIssue {
         message: String,
     },
     // === end P4.D217 ===
+    /// A `z.union([...])` / `.or(...)` where every option ABORTED — `code,
+    /// errors, path, message`, `errors` one issue list per option (each
+    /// relative to the union's own position, so its `path` is `[]`). Measured
+    /// at zod 4.6.5 (`97b25fc53`, P4.130) through `TimestampSchema` (`z.iso
+    /// .datetime().or(z.date())`) over a missing or non-string cell. A union in
+    /// which exactly one option did NOT abort reports that option's issues
+    /// bare instead — which is why a malformed STRING stamp is a lone
+    /// [`ZodIssue::invalid_datetime`].
+    InvalidUnion {
+        code: &'static str,
+        errors: Vec<Vec<ZodIssue>>,
+        path: Vec<Value>,
+        message: String,
+    },
 }
 
 /// JS `Number.MAX_SAFE_INTEGER` — the bound `z.number().int()` reports as
@@ -394,6 +417,57 @@ impl ZodIssue {
     }
     // === end P4.D217 ===
 
+    /// A `z.iso.datetime()` miss (the string type check has already passed) —
+    /// the `invalid_format` shape with `format: "datetime"` and zod's own
+    /// JS-form pattern ([`ZOD_ISO_DATETIME_JS_PATTERN`]) as a VALUE.
+    pub fn invalid_datetime(path: Vec<Value>) -> Self {
+        Self::InvalidFormat {
+            origin: "string",
+            code: "invalid_format",
+            format: "datetime",
+            pattern: ZOD_ISO_DATETIME_JS_PATTERN,
+            path,
+            message: "Invalid ISO datetime".to_string(),
+        }
+    }
+
+    /// A length `.min(n)` over a value zod cannot name a length origin for (a
+    /// typed array reaching a string schema) — `origin: "unknown"`.
+    pub fn too_small_unknown(minimum: Value, path: Vec<Value>) -> Self {
+        let message = format!("Too small: expected unknown to be >={minimum}");
+        Self::TooSmall {
+            origin: "unknown",
+            code: "too_small",
+            minimum,
+            inclusive: true,
+            path,
+            message,
+        }
+    }
+
+    /// The `.max(n)` mirror of [`Self::too_small_unknown`].
+    pub fn too_big_unknown(maximum: Value, path: Vec<Value>) -> Self {
+        let message = format!("Too big: expected unknown to be <={maximum}");
+        Self::TooBig {
+            origin: "unknown",
+            code: "too_big",
+            maximum,
+            inclusive: true,
+            path,
+            message,
+        }
+    }
+
+    /// A union every option of which aborted (see [`Self::InvalidUnion`]).
+    pub fn invalid_union(errors: Vec<Vec<ZodIssue>>, path: Vec<Value>) -> Self {
+        Self::InvalidUnion {
+            code: "invalid_union",
+            errors,
+            path,
+            message: "Invalid input".to_string(),
+        }
+    }
+
     /// This issue as a `serde_json::Value`, for the call sites that carry issue
     /// bags as raw JSON rather than as typed values. `preserve_order` keeps the
     /// key order the variant declares.
@@ -412,7 +486,8 @@ impl ZodIssue {
             | Self::TooBig { path, .. }
             | Self::TooSmallInt { path, .. }
             | Self::TooBigInt { path, .. }
-            | Self::Custom { path, .. } => path,
+            | Self::Custom { path, .. }
+            | Self::InvalidUnion { path, .. } => path,
         }
     }
 
@@ -427,7 +502,8 @@ impl ZodIssue {
             | Self::TooBig { message, .. }
             | Self::TooSmallInt { message, .. }
             | Self::TooBigInt { message, .. }
-            | Self::Custom { message, .. } => message,
+            | Self::Custom { message, .. }
+            | Self::InvalidUnion { message, .. } => message,
         }
     }
 }
@@ -471,36 +547,218 @@ pub fn zod_uuid_ok(s: &str) -> bool {
     matches!(b[14], b'1'..=b'8') && matches!(b[19], b'8' | b'9' | b'a' | b'b' | b'A' | b'B')
 }
 
-/// v4 `GroupRowSchema` (`lib/schemas/group.types.ts`) over a raw `groups` row
-/// — the shape `groups.findByIdRaw` (`_findById`) validates before a row counts
-/// as found (P4.124, P4.D231): `id: UUIDSchema`, `name: z.string().min(1)
-/// .max(100)` (Unicode CODE POINTS — zod ≥ 4.5's `$ZodCheckMaxLength` /
-/// `$ZodCheckMinLength` over `util.codePointLength`, not JS `.length`; P4.130
-/// found the UTF-16 count refusing a row v4 keeps), `officialMountPointId:
-/// UUIDSchema.nullable().optional()` (absent and `null` both pass — v4 reads a
-/// NULL cell as `undefined`), `createdAt`/`updatedAt: TimestampSchema` (a
-/// stored value is a string, so `z.iso.datetime()`). A non-string cell (a BLOB)
-/// fails wherever a string is required.
+/// v4 `GroupSchema` (`lib/schemas/group.types.ts`) over a raw `groups` row —
+/// the schema `groups.repository.ts` constructs its repository with, so the
+/// one `groups.findByIdRaw` (`_findById`) validates before a row counts as
+/// found (P4.124, P4.D231). Returns zod's issue list in zod's order (empty =
+/// the row passes); `ZodError.message` is [`zod_error_message`] over it.
 ///
-/// ⚠ Scope, recorded: `GroupSchema` also extends the row with the five
+/// The row columns, in schema order: `id: UUIDSchema`, `name:
+/// z.string().min(1).max(100)` (Unicode CODE POINTS — zod ≥ 4.5's
+/// `$ZodCheckMaxLength` / `$ZodCheckMinLength` over `util.codePointLength`, not
+/// JS `.length`; P4.130 found a UTF-16 count refusing a row v4 keeps),
+/// `officialMountPointId: UUIDSchema.nullable().optional()` (absent and `null`
+/// both pass — v4 reads a NULL cell as `undefined`), `createdAt`/`updatedAt:
+/// TimestampSchema` ([`zod_timestamp_issues`]).
+///
+/// ⚠ Scope, recorded: `GroupSchema` extends `GroupRowSchema` with the five
 /// store-resident fields (`description` ≤ 2000, `instructions` ≤ 10000,
-/// `state` a JSON record, `color` a hex colour, `icon` ≤ 50). v4 strips those
-/// from every row it writes (`GROUP_STORE_MANAGED_FIELDS`), so their columns
-/// read NULL on any v4-written instance and are not checked here.
-pub fn zod_group_row_ok(row: &serde_json::Map<String, Value>) -> bool {
-    let text = |k: &str| row.get(k).and_then(Value::as_str);
-    let official_ok = match row.get("officialMountPointId") {
-        None | Some(Value::Null) => true,
-        Some(Value::String(v)) => zod_uuid_ok(v),
-        Some(_) => false,
+/// `state` a JSON record with a `{}` default, `color` a hex colour, `icon` ≤
+/// 50). v4 strips those from every row it writes (`GROUP_STORE_MANAGED_FIELDS`),
+/// so their columns read NULL → `undefined` on any v4-written instance and add
+/// no issue; they are not checked here. (P4.124 named the schema
+/// `GroupRowSchema`; the outcome and issue order are the same on such a row.)
+pub fn zod_group_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    zod_uuid_issues(row, "id", false, &mut issues);
+    match row.get("name") {
+        Some(Value::String(n)) => {
+            if !crate::jsstr::zod_len_min_ok(n, 1) {
+                issues.push(ZodIssue::too_small_string(json!(1), vec![key("name")]));
+            } else if !crate::jsstr::zod_len_max_ok(n, 100) {
+                issues.push(ZodIssue::too_big_string(json!(100), vec![key("name")]));
+            }
+        }
+        got => {
+            issues.push(ZodIssue::invalid_type("string", vec![key("name")], got));
+            // zod runs a length check over anything with a `.length` even after
+            // the type issue (`$ZodCheckMinLength.when`), so a typed array
+            // outside `[1, 100]` ALSO fails its bound — `origin: "unknown"`
+            // (`getLengthableOrigin`), counted in elements. Measured at 4.6.5.
+            if let Some(n) = float32_array_len(got) {
+                if n < 1 {
+                    issues.push(ZodIssue::too_small_unknown(json!(1), vec![key("name")]));
+                } else if n > 100 {
+                    issues.push(ZodIssue::too_big_unknown(json!(100), vec![key("name")]));
+                }
+            }
+        }
+    }
+    zod_uuid_issues(row, "officialMountPointId", true, &mut issues);
+    zod_timestamp_issues(row, "createdAt", &mut issues);
+    zod_timestamp_issues(row, "updatedAt", &mut issues);
+    issues
+}
+
+/// v4 `GroupDocMountLinkSchema` (`lib/schemas/mount-index.types.ts`) — three
+/// required uuids and two timestamps — over a raw `group_doc_mount_links` row
+/// (the shape `findByFilter` `validateSafe()`s row by row). Zod's issue list;
+/// empty = the row passes.
+pub fn zod_group_doc_mount_link_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    for k in ["id", "groupId", "mountPointId"] {
+        zod_uuid_issues(row, k, false, &mut issues);
+    }
+    zod_timestamp_issues(row, "createdAt", &mut issues);
+    zod_timestamp_issues(row, "updatedAt", &mut issues);
+    issues
+}
+
+/// `UUIDSchema` (`z.uuid()`) at `k` — `.nullable().optional()` when
+/// `nullable`: a non-string is `invalid_type` `expected string`, a non-uuid
+/// string [`ZodIssue::invalid_uuid`].
+fn zod_uuid_issues(
+    row: &serde_json::Map<String, Value>,
+    k: &str,
+    nullable: bool,
+    issues: &mut Vec<ZodIssue>,
+) {
+    match row.get(k) {
+        None | Some(Value::Null) if nullable => {}
+        Some(Value::String(v)) => {
+            if !zod_uuid_ok(v) {
+                issues.push(ZodIssue::invalid_uuid(vec![key(k)]));
+            }
+        }
+        got => issues.push(ZodIssue::invalid_type("string", vec![key(k)], got)),
+    }
+}
+
+/// v4 `TimestampSchema` (`lib/schemas/common.types.ts`: `z.iso.datetime()
+/// .or(z.date()).transform(…)`) at `k`. A STRING that fails the datetime check
+/// did not abort the string option, so zod reports that option's issue bare
+/// ([`ZodIssue::invalid_datetime`]); anything else (absent, `null`, a number,
+/// a BLOB) aborts BOTH options — `invalid_union` with an `expected string` and
+/// an `expected date` issue, each at `path: []` (measured at zod 4.6.5).
+fn zod_timestamp_issues(row: &serde_json::Map<String, Value>, k: &str, issues: &mut Vec<ZodIssue>) {
+    match row.get(k) {
+        Some(Value::String(s)) => {
+            if !zod_iso_datetime_ok(s) {
+                issues.push(ZodIssue::invalid_datetime(vec![key(k)]));
+            }
+        }
+        got => issues.push(ZodIssue::invalid_union(
+            vec![
+                vec![ZodIssue::invalid_type("string", vec![], got)],
+                vec![ZodIssue::invalid_type("date", vec![], got)],
+            ],
+            vec![key(k)],
+        )),
+    }
+}
+
+/// v4 `RouteAttemptSchema` (`lib/schemas/chat.types.ts`) — the STRICT twin of
+/// one `routeTrail` element as v4's per-row `ChatEventSchema.safeParse` meets
+/// it (`MessageEventSchema.routeTrail` is `RouteAttemptSchema.array()
+/// .nullable().optional()`). `None` when the element passes; otherwise the
+/// first failing key and zod's sentence for it (the stand-in for the issue
+/// list the per-row WARN reports — P4.130, P4.D228 re-premised).
+///
+/// The schema, key by key: `profileId: UUIDSchema`; `profileName`,
+/// `provider`, `modelName: z.string()`; `via` (`RouteAttemptViaEnum`, 5) and
+/// `outcome` (`RouteAttemptOutcomeEnum`, 3); `trigger` (7 — v5's ONE
+/// [`FallbackTrigger`](crate::llm_fallback::FallbackTrigger) union),
+/// `evidence` (5 — the classifier's
+/// [`RefusalEvidence`](crate::services::dangerous_content::refusal::RefusalEvidence)),
+/// `profileKind` (`connection` | `image`) and `detail: z.string().max(200)`
+/// (CODE POINTS) — all `.optional()`, so ABSENT passes and an explicit `null`
+/// FAILS (`.optional()` is not `.nullable()`). Unknown keys are stripped, not
+/// refused. v5's lenient reader `RouteAttempt::from_value`
+/// (`services/route_trail.rs`) had read `null` as absent and checked neither
+/// the uuid nor the length, so a row v4 skips was KEPT (and re-saved by the
+/// "Try uncensored" picture route).
+pub fn zod_route_attempt_failure(v: &Value) -> Option<String> {
+    let Some(o) = v.as_object() else {
+        return Some(format!(
+            "Invalid input: expected object, received {}",
+            zod_parsed_type(Some(v))
+        ));
     };
-    text("id").is_some_and(zod_uuid_ok)
-        && text("name").is_some_and(|n| {
-            crate::jsstr::zod_len_min_ok(n, 1) && crate::jsstr::zod_len_max_ok(n, 100)
+    let fail = |k: &str, why: String| Some(format!("{k}: {why}"));
+    match o.get("profileId") {
+        Some(Value::String(id)) if zod_uuid_ok(id) => {}
+        Some(Value::String(_)) => return fail("profileId", "Invalid UUID".into()),
+        got => {
+            return fail(
+                "profileId",
+                format!(
+                    "Invalid input: expected string, received {}",
+                    zod_parsed_type(got)
+                ),
+            )
+        }
+    }
+    for k in ["profileName", "provider", "modelName"] {
+        if !o.get(k).is_some_and(Value::is_string) {
+            return fail(
+                k,
+                format!(
+                    "Invalid input: expected string, received {}",
+                    zod_parsed_type(o.get(k))
+                ),
+            );
+        }
+    }
+    let member = |k: &str, ok: &dyn Fn(&str) -> bool, required: bool| -> Option<String> {
+        match o.get(k) {
+            None if !required => None,
+            Some(Value::String(s)) if ok(s) => None,
+            _ => fail(k, "Invalid option".into()),
+        }
+    };
+    const VIA: [&str; 5] = ["primary", "retry", "concierge", "understudy", "tier-pick"];
+    const OUTCOME: [&str; 3] = ["answered", "failed", "refused"];
+    member("via", &|s| VIA.contains(&s), true)
+        .or_else(|| member("outcome", &|s| OUTCOME.contains(&s), true))
+        .or_else(|| {
+            member(
+                "trigger",
+                &|s| crate::llm_fallback::FallbackTrigger::from_wire(s).is_some(),
+                false,
+            )
         })
-        && official_ok
-        && text("createdAt").is_some_and(zod_iso_datetime_ok)
-        && text("updatedAt").is_some_and(zod_iso_datetime_ok)
+        .or_else(|| {
+            member(
+                "evidence",
+                &|s| {
+                    crate::services::dangerous_content::refusal::RefusalEvidence::from_wire(s)
+                        .is_some()
+                },
+                false,
+            )
+        })
+        .or_else(|| {
+            member(
+                "profileKind",
+                &|s| matches!(s, "connection" | "image"),
+                false,
+            )
+        })
+        .or_else(|| match o.get("detail") {
+            None => None,
+            Some(Value::String(d)) if crate::jsstr::zod_len_max_ok(d, 200) => None,
+            Some(Value::String(_)) => fail(
+                "detail",
+                "Too big: expected string to have <=200 characters".into(),
+            ),
+            got => fail(
+                "detail",
+                format!(
+                    "Invalid input: expected string, received {}",
+                    zod_parsed_type(got)
+                ),
+            ),
+        })
 }
 
 /// v4 zod **4.6.5**'s `z.iso.datetime()` (no options: no `offset`, no `local`,
@@ -524,8 +782,53 @@ pub fn zod_iso_datetime_ok(s: &str) -> bool {
     ZOD_ISO_DATETIME_RE.is_match(s)
 }
 
+/// The SAME `z.iso.datetime()` pattern as zod ECHOES it in an `invalid_format`
+/// issue's `pattern` VALUE — JS form, `\d` rather than [`ZOD_ISO_DATETIME_PATTERN`]'s
+/// `[0-9]` rewrite, wrapped in the regex literal's slashes. Transcribed
+/// verbatim from the `repository_zod_messages` oracle at `97b25fc53` (zod
+/// 4.6.5, P4.130); `datetime_js_pattern_is_the_matcher_in_js_form` pins that
+/// the two constants are one pattern.
+pub const ZOD_ISO_DATETIME_JS_PATTERN: &str = r"/^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$/";
+
+/// The key of the one-entry object that stands for a JS `Float32Array` of
+/// `n` elements (the entry's value) in a row handed to this module
+/// ([`zod_float32_array_cell`]). A NUL-led key no JSON body plausibly carries,
+/// so an ordinary object never reads as one.
+///
+/// **Why a `Float32Array` and not a `Buffer` (MEASURED, P4.130 — the order
+/// predicted `received Buffer`):** better-sqlite3 hands a BLOB back as a
+/// `Buffer`, but v4's SQLite collection hydrates every row before Zod sees it,
+/// and a `Buffer` in a non-BLOB, non-JSON, non-boolean column is decoded
+/// `blobToEmbedding(value)` (`lib/database/backends/sqlite/backend.ts`, "Buffer
+/// in non-blob column, decoding as Float32") — a `Float32Array` of the
+/// header-aware element count ([`crate::embedding_blob::blob_to_float32`]).
+/// The scenario-builder mount-pool oracle's BLOB-named group logs `received
+/// Float32Array` and, for a zero-element array, a second `too_small` issue.
+pub const ZOD_FLOAT32_ARRAY_MARKER: &str = "\u{0}Float32Array";
+
+/// A `Float32Array` of `len` elements as this module's rows carry it
+/// ([`ZOD_FLOAT32_ARRAY_MARKER`]); [`zod_parsed_type`] answers `Float32Array`.
+pub fn zod_float32_array_cell(len: usize) -> Value {
+    let mut o = serde_json::Map::new();
+    o.insert(ZOD_FLOAT32_ARRAY_MARKER.to_string(), json!(len));
+    Value::Object(o)
+}
+
+/// The element count of a [`zod_float32_array_cell`], `None` for anything else.
+fn float32_array_len(v: Option<&Value>) -> Option<u64> {
+    match v {
+        Some(Value::Object(o)) if o.len() == 1 => {
+            o.get(ZOD_FLOAT32_ARRAY_MARKER).and_then(Value::as_u64)
+        }
+        _ => None,
+    }
+}
+
 /// v4 `util.parsedType` (the same table the Pascal Zod port pins). `None` is
-/// JS `undefined` — a missing key.
+/// JS `undefined` — a missing key. An object whose prototype is not
+/// `Object.prototype` answers its `constructor.name` in zod
+/// (`core/util.js` `parsedType`); the one such value a v4 row carries is a
+/// BLOB cell, hydrated to a `Float32Array` ([`ZOD_FLOAT32_ARRAY_MARKER`]).
 pub fn zod_parsed_type(v: Option<&Value>) -> &'static str {
     match v {
         None => "undefined",
@@ -534,6 +837,7 @@ pub fn zod_parsed_type(v: Option<&Value>) -> &'static str {
         Some(Value::Number(_)) => "number",
         Some(Value::String(_)) => "string",
         Some(Value::Array(_)) => "array",
+        v @ Some(Value::Object(_)) if float32_array_len(v).is_some() => "Float32Array",
         Some(Value::Object(_)) => "object",
     }
 }
@@ -590,10 +894,12 @@ pub fn key(k: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
-    /// P4.124: v4 `GroupRowSchema` — each shape the order named, both edges.
+    /// P4.124: v4 `GroupSchema` — each shape the order named, both edges (the
+    /// messages themselves are `repository_zod_messages_equivalence`'s, over
+    /// v4's real schema).
     #[test]
-    fn group_row_schema_holds_the_five_columns() {
-        use super::zod_group_row_ok;
+    fn group_schema_holds_the_five_columns() {
+        let zod_group_row_ok = |r: &serde_json::Map<String, Value>| zod_group_issues(r).is_empty();
         let ok = serde_json::json!({
             "id": "d2310000-0000-4000-8000-0000000000c1",
             "name": "Loners",
@@ -637,7 +943,7 @@ mod tests {
         )));
         for bad in [
             serde_json::json!({"name": ""}),
-            serde_json::json!({"name": {"blobBytes": 1}}),
+            serde_json::json!({"name": zod_float32_array_cell(1)}),
             serde_json::json!({"name": "<absent>"}),
             serde_json::json!({"id": "d2310000-0000-0000-8000-0000000000c5"}),
             serde_json::json!({"officialMountPointId": "e2000000-0000-0000-8000-0000000000f3"}),
@@ -688,11 +994,12 @@ mod tests {
     }
 
     /// The render table: one row per Zod code, each transcribed from the real
-    /// `zod` 4.5.4 output recorded in this module's header. The whole point is
+    /// `zod` output recorded in this module's header (4.5.4, re-measured at
+    /// 4.6.5 by P4.130). The whole point is
     /// KEY ORDER, so each row compares the serialized STRING, not a `Value`
     /// equality (which would be order-blind for a `Map`-backed comparison).
     #[test]
-    fn render_table_matches_real_zod_454() {
+    fn render_table_matches_real_zod_465() {
         let rows: Vec<(&str, ZodIssue, &str)> = vec![
             (
                 "invalid_type/string",
@@ -766,6 +1073,38 @@ mod tests {
                 ZodIssue::custom(vec![], "priorDraft and revision travel together"),
                 r#"{"code":"custom","path":[],"message":"priorDraft and revision travel together"}"#,
             ),
+            // P4.130 — measured at 4.6.5 by the header command.
+            (
+                "invalid_format/datetime",
+                ZodIssue::invalid_datetime(vec![key("a")]),
+                r#"{"origin":"string","code":"invalid_format","format":"datetime","pattern":"/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$/","path":["a"],"message":"Invalid ISO datetime"}"#,
+            ),
+            (
+                "invalid_union/timestamp",
+                ZodIssue::invalid_union(
+                    vec![
+                        vec![ZodIssue::invalid_type("string", vec![], None)],
+                        vec![ZodIssue::invalid_type("date", vec![], None)],
+                    ],
+                    vec![key("a")],
+                ),
+                r#"{"code":"invalid_union","errors":[[{"expected":"string","code":"invalid_type","path":[],"message":"Invalid input: expected string, received undefined"}],[{"expected":"date","code":"invalid_type","path":[],"message":"Invalid input: expected date, received undefined"}]],"path":["a"],"message":"Invalid input"}"#,
+            ),
+            (
+                "invalid_type/float32array",
+                ZodIssue::invalid_type("string", vec![key("a")], Some(&zod_float32_array_cell(1))),
+                r#"{"expected":"string","code":"invalid_type","path":["a"],"message":"Invalid input: expected string, received Float32Array"}"#,
+            ),
+            (
+                "too_small/unknown",
+                ZodIssue::too_small_unknown(json!(1), vec![key("a")]),
+                r#"{"origin":"unknown","code":"too_small","minimum":1,"inclusive":true,"path":["a"],"message":"Too small: expected unknown to be >=1"}"#,
+            ),
+            (
+                "too_big/unknown",
+                ZodIssue::too_big_unknown(json!(100), vec![key("a")]),
+                r#"{"origin":"unknown","code":"too_big","maximum":100,"inclusive":true,"path":["a"],"message":"Too big: expected unknown to be <=100"}"#,
+            ),
         ];
         for (label, issue, want) in rows {
             assert_eq!(
@@ -814,6 +1153,92 @@ mod tests {
         assert_eq!(zod_parsed_type(Some(&json!("s"))), "string");
         assert_eq!(zod_parsed_type(Some(&json!([]))), "array");
         assert_eq!(zod_parsed_type(Some(&json!({}))), "object");
+        // P4.130: a BLOB cell reaches v4's Zod as a `Float32Array`; an
+        // ordinary one-key object (even one spelling the word) stays an object.
+        assert_eq!(
+            zod_parsed_type(Some(&zod_float32_array_cell(3))),
+            "Float32Array"
+        );
+        assert_eq!(zod_parsed_type(Some(&json!({"Float32Array": 3}))), "object");
+        assert_eq!(zod_parsed_type(Some(&json!({"$float32": 3}))), "object");
+    }
+
+    /// P4.130 — v4 `RouteAttemptSchema`, each shape the strict twin refuses
+    /// and the lenient reader had kept (the read-side proof is
+    /// `chats_messages_ops_tier2` + `retry_uncensored_tier3` over v4's real
+    /// `getMessages` / route).
+    #[test]
+    fn route_attempt_schema_is_strict() {
+        let ok = json!({
+            "profileId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+            "profileName": "Frank Desk",
+            "provider": "OPENAI",
+            "modelName": "gpt-image-2",
+            "via": "primary",
+            "outcome": "refused",
+            "trigger": "moderation-refusal",
+            "evidence": "provider-code",
+            "profileKind": "image",
+            "detail": "x".repeat(200),
+            "unknownKey": "stripped, not refused",
+        });
+        assert_eq!(zod_route_attempt_failure(&ok), None);
+        let with = |k: &str, v: Value| {
+            let mut o = ok.clone();
+            o[k] = v;
+            o
+        };
+        let without = |k: &str| {
+            let mut o = ok.clone();
+            o.as_object_mut().unwrap().remove(k);
+            o
+        };
+        for k in ["trigger", "evidence", "profileKind", "detail"] {
+            assert_eq!(zod_route_attempt_failure(&without(k)), None, "{k} absent");
+            assert!(
+                zod_route_attempt_failure(&with(k, Value::Null)).is_some(),
+                "{k}: null"
+            );
+        }
+        // 199 × x + one astral = 200 code points: passes.
+        assert_eq!(
+            zod_route_attempt_failure(&with(
+                "detail",
+                json!(format!("{}\u{1F600}", "x".repeat(199)))
+            )),
+            None
+        );
+        for (k, v) in [
+            ("profileId", json!("not-a-uuid")),
+            ("profileId", json!("a0eebc99-9c0b-9ef8-bb6d-6bb9bd380a11")),
+            ("profileName", json!(7)),
+            ("via", json!("sideways")),
+            ("outcome", json!("maybe")),
+            ("trigger", json!("boredom")),
+            ("evidence", json!("hunch")),
+            ("profileKind", json!("embedding")),
+            ("detail", json!("x".repeat(201))),
+        ] {
+            assert!(
+                zod_route_attempt_failure(&with(k, v.clone())).is_some(),
+                "{k}: {v}"
+            );
+        }
+        assert!(zod_route_attempt_failure(&without("profileId")).is_some());
+        assert!(zod_route_attempt_failure(&json!("row")).is_some());
+    }
+
+    /// The echoed JS pattern and the Rust matcher are ONE pattern: the matcher
+    /// is the JS source with `\d` rewritten to `[0-9]` (Rust's `\d` is
+    /// Unicode-aware), and the echo wraps it in the literal's slashes.
+    #[test]
+    fn datetime_js_pattern_is_the_matcher_in_js_form() {
+        let js = ZOD_ISO_DATETIME_JS_PATTERN;
+        let inner = js
+            .strip_prefix('/')
+            .and_then(|s| s.strip_suffix('/'))
+            .expect("slashes");
+        assert_eq!(inner.replace(r"\d", "[0-9]"), ZOD_ISO_DATETIME_PATTERN);
     }
 
     #[test]
