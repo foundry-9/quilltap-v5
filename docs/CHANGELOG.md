@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — chore(unify): the `97b25fc53` smalls round (P4.127 ∥ P4.128 ∥ P4.129 ∥ P4.130 ∥ P4.131 ∥ P4.132) unified on main
+
+_Versions: core 0.0.1127, harness 0.0.1050, host 0.0.168, web 0.0.204, SPA 0.5.792; cli/tauri unchanged._
+
+Six lanes cherry-picked in dependency order onto `unify/97b25fc53-smalls`
+and fast-forwarded to main; the oracle baseline stays `97b25fc53` (no drift
+absorbed, v4 at the baseline at both probes). Scope: the display zone
+threaded from the composition root with the 13 ambient wrappers retired
+(P4.127); the participant-`name` hash slot, the pre-stream and `sendMessage`
+catch lines and the openai SDK's frame semantics (P4.128); the orchestrator
+oracle's W4.11b move so CHAT_MESSAGE rows are diffed (P4.129); the Zod
+smalls — code-point lengths, the ZodError bytes, four Concierge manual
+kinds, the strict route-trail read (P4.130); the document-store repository
+fallbacks with P4.126's mail lines corrected (P4.131); the SPA smalls — v4's
+end-of-text-run replacement rule, one memory badge, the Edit Content memory
+pair (P4.132). Wires: the §S 1 fold onto `find_by_filter_or_empty`; the
+three `NameHash` pins retired by VANISHING on a pin-fresh oracle. The §3
+review found no blocking defect; fixed at unification: every fallback-home
+line rendering a SQLite failure as `sqlite error: …` where v4 logs the bare
+message, seven module-target twins of `Error finding entity by ID` plus the
+help-sync copy folded onto the home with a new `fallback_home_guard`, the
+mail plants' excluded v4 lines named, the `HostAssembler` zone fill pinned
+(mutation M5) with the host's last ambient clock retired and the POSIX-`TZ`
+divergence's true scope documented, P4.129's render marker narrowed to v4's
+sentence with the row count pinned and the sampling recorded as handed,
+P4.128's unported lines and SDK stream rows pinned by count, P4.132's beat
+hearing v4's exact refusal sentences with the transport divergence recorded.
+Gate: fmt/clippy (both feature sets)/release clean; the full 580-family sweep from the pin 572 ok / 5 run_failed (the three standing rows + the sweep's own two catches, re-aimed and green by name) / 3 refused by design; Tier R 266/0 (in the sweep and by name — inside the workspace suite an env-block artifact, root-caused: the harvested `QT_NODE=$N/node` literal); `cargo test --workspace` 655 binaries / 4,023 passed / 6 failed (the three standing + three env-block artifacts, each green by name) / 3 ignored, zero `SKIP:` lines; SPA 466 files / 8,788, lint + build clean; full Playwright 354 passed / 2 failed / 6 skipped (11.7 m) — the six skips the standing parks; the two reds the documented `salon-regenerate-stream-flow` intermittent, re-run by file six times (2/3 four times with a different beat each, then 3/3 twice), its server logs and the mock's frames read before accepting it.
+
 #### 2026-09-30 — test(harness,web): the mount-pool and Scenario Builder route families hear the repository fallback line on the home's target (the `97b25fc53` smalls unification sweep's catch)
 
 _Versions: harness 0.0.1050, web 0.0.204._

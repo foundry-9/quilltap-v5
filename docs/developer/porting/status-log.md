@@ -157228,3 +157228,273 @@ Branch `claude/document-store-repo-fallbacks-55643f`, pin `97b25fc53` (`/tmp/qt-
 **Flake.** `sync_engine_equivalence` failed once in the batched sweep (first `mkdir` action `createdAt` null vs minted) and passed 2/2 when re-run alone: a timing intermittent, untouched code.
 
 **Regen recipes as run.** `python3 harness/tools/recipe_sweep.py --run <family> --v4 /tmp/qt-v4-pin-p4131-97b25fc53 --v5w <worktree>` for the 18 families named in the order (mail, post_office_routes, doc_mount_files/file_links/folders/documents tier2, wardrobe_instructions tier2, tiered_mount_pool, scriptorium_tools, tool_execution_tier2, search_tools, pascal_workbench, sync_engine, system_backup/export, subprompts_storage_tier2, chat_gallery, tool_dispatch). The mail recipe now also writes `/tmp/oracle-mail-tools-plants.ndjson`. No committed fixture changed.
+
+## The `97b25fc53` smalls round — UNIFICATION record (2026-09-30)
+
+**Unified on `main` — ALL SIX LANES (P4.127 ∥ P4.128 ∥ P4.129 ∥ P4.130 ∥
+P4.131 ∥ P4.132) LANDED; the oracle baseline STAYS `97b25fc53` (this round
+absorbs no drift row) and the drift ledger's §3 is EMPTY — the §2 probe
+PASSED at the unification's start and again before the docs commit (v4 `main`
+HEAD `97b25fc53`, tree clean on `main`, `bugfix` `1a2b2164c` and `release`
+`8fbf2afe0` unmoved, `origin/main` agreeing after a fetch).** Branch
+`unify/97b25fc53-smalls` from `9c2bd3f87`, cherry-picked in the plan's
+dependency order (P4.131 → P4.130 → P4.128 → P4.129 → P4.127 → P4.132): 18
+lane commits, every conflict a version file or a union doc (CHANGELOG /
+status-log, both sides kept — verified by heading and by count against each
+lane's diff: zero entries missing), plus the P4.121 header carrying one
+appended sentence from BOTH P4.128 and P4.129 — merged as both sentences. No
+source conflict; the union built clean (fmt + a full debug build) before any
+wire. **The version recount** caught the identical-first-bump trap once more:
+P4.131 and P4.130 both bumped core to 0.0.1116 / harness 0.0.1035 and the
+pick auto-merged them as ONE — recounted as base + the sum of every lane's
+bumps (core 0.0.1125, harness 0.0.1045, host 0.0.167, web 0.0.203, SPA
+0.5.791) before the review, then per-commit bumps for the fixes below.
+
+### §3 review — what it found
+
+Six parallel readers, one per lane (P4.131 ∥ P4.130 ∥ P4.128 ∥ P4.129 ∥
+P4.127 ∥ P4.132), every non-doc hunk against v4 at the `97b25fc53` pin, plus
+the unifier's own reads of the union. **NO blocking defect in any lane's code
+— the twelfth such round.** Every Tier 1/2 item of every order has its hunk
+(no overclaim this round); every claimed "the order got this wrong" was
+re-verified against v4 and held (P4.131's three, P4.130's five, P4.127's
+three, P4.128's two, P4.132's one). The one gate-blocking item was the
+unifier's own §S 2 handoff (below). Should-fixes, all landed on the unify
+branch with the test that keeps each caught:
+
+- **The `error` field's bytes on every P4.131 line (commit `b44a1ae42`)** —
+  the headline, and it would have shipped: all seven `db::fallback` shapes
+  rendered a SQLite failure as `sqlite error: no such column: …`
+  (`DbError::Sqlite`'s `Display`) where v4 logs `extractErrorMessage(error)`,
+  the driver's bare sentence. Nothing pinned the value — every P4.131 test
+  stopped at `error=`, the mail plant compare skips the tail — and the §S 1
+  fold had first worked around it at ONE call site (`DbError::Internal(e.to_
+  string())`) before the reviewers (P4.131's and P4.130's, independently)
+  named the home as the place. Fixed in the home (`error_text`: `Sqlite(e)`
+  renders `e`), unit-pinned on the exact bytes, the fold carrying the
+  `DbError` whole.
+- **Seven module-target twins of `Error finding entity by ID`** (the finding
+  shape of the previous round, again): `photos/chat_gallery.rs`,
+  `db/tiered_mount_pool.rs`, `api/chat_media.rs`, `api/scenario_builder.rs`,
+  `services/scenario_builder/mount_pool.rs`, and P4.130's two Concierge
+  state readers, each hand-writing v4's line with no `target:` so it landed
+  at the module path the differentials cannot see, plus `help_doc_sync`'s
+  local copy of `find_all_or_empty`. All folded onto the home, their tests
+  made target-aware (`starts_with("ERROR quilltap::db …")` where they had
+  `contains`), and **`fallback_home_guard` (new)** scans core's production
+  zone with literals kept and allows each home message in `db/fallback.rs`
+  alone — the grep-and-count-targets step the previous round did by hand is
+  now a test.
+- **The mail plant differential was an allowlist** (P4.131): v4 lines outside
+  `PLANT_SHARED_MESSAGES` vanished unpinned — among them the `characters`
+  collection's `Data validation failed`, a real v4-only line. Now
+  `PLANT_EXCLUDED_MESSAGES` names every other v4 line with its reason and the
+  compare fails on a line in neither table (measured over the pin-fresh
+  plants file: seven excluded messages).
+- **`subprompts/storage.rs`'s re-aimed test labelled v5-only lines as v4's**
+  (a no-tables partition is not a failure v4 can have — P4.131's own finding
+  1); relabelled.
+- **The census hole under the P4.119 fix (commit `624fd944f`)**: the
+  `HostAssembler`'s `display_zone` fill — the ONE hop the render job and the
+  Almanack read from — had no needle, so a `TimeZone::UTC` there re-opened
+  the #121 regression with every family green (the reviewer's mutation
+  survived). Pinned, with the spine's whole builder call (argument included),
+  the positional Almanack fill and a host-crate `TimeZone::UTC` count; **M5**
+  (the fill → UTC) reddens exactly `host_injection_points_carry_the_host_zone`,
+  reverted by file backup. With it: the host's LAST ambient zone read
+  (`spine.rs`'s Scenario Builder clock, `jiff::Zoned::now()`, pre-P4.127)
+  retired onto the spine's zone through the one helper; the census's host
+  loop now hunts `TimeZone::system(`, `try_system(` and `Zoned::now(` (it
+  hunted `system_display_zone(` alone) with an allow table naming the CLI's
+  docs listing; the census header no longer claims the Chicago child proves
+  the spine-built runner (it builds its own — source needles hold the spine,
+  `build_context` and greeting fills); and **the ruled divergence's true
+  scope**: both production executor builders are NAME-fed, so on a POSIX-`TZ`
+  host every executor tool and Carina display UTC (not "three entries"), and
+  the two persisted mail prefaces (Compose vs the `send_mail` tool) render in
+  different zones — `host_zone.rs` and the census header corrected for the
+  human's ruling.
+- **P4.129's normalizers (commit `419d50782`)**: the render detector keyed on
+  the bare `Current time: ` prefix, which v4's Host per-turn system block
+  ALSO emits (`host-notifications/writer.ts:741`) — a future case carrying it
+  would have been date-blanked whole with a system `contentLength`
+  placeholdered; keyed on the renderer's own sentence now, and the
+  render-bearing row count (6) pinned on both sides. The oracle recorded
+  `sampling` by re-running `resolveSamplingParams` over the bag instead of
+  the three knobs the funnel hands the provider (the case's own comment
+  claimed the opposite) — recorded as handed. The P4.90 `messageId` assert
+  accepted the unmapped `<msgref>` fallback.
+- **P4.128's pins (commit `f12430c16`)**: `UNPORTED_PLUGIN_ERROR_LINES`
+  noticed a NEW v4 line but neither an entry v4 stopped emitting nor a v5
+  port of one (the catch-line filter hid it) — an exercised count over v4's
+  side and a v5 absence check over the whole capture; the 42 SDK
+  frame-semantics stream rows had no coverage pin (a regen dropping the
+  synthetic rows passed green) — pinned by count and throw/no-throw per
+  decoder, measured from the recorded rows (4 SDK providers × 5 throwing +
+  2 silent shapes; OpenRouter raw blind to all 7; Responses 2 × 5 + 2 × 2).
+- **P4.132 (commit `27b2d68aa`)**: the new Salon sidebar beat accepted
+  `Failed to queue memory extraction: .+` — the loose-alternation shape the
+  P4.125 unification had already removed from the card beat, back in the
+  sibling; now v4's two exact refusal sentences or the count line. The bare
+  `Failed to …` toasts are the non-`CoreDispatchError` guard no client path
+  produces (every transport synthesizes one on a failed fetch) — the same
+  deliberate divergence `onRebuildSummary` records, now recorded here too,
+  the spec arm renamed to say what it pins, a `Connection lost` case pinning
+  the colon form. The two new methods had split `onRebuildSummary`'s JSDoc
+  from its method; the re-extract guard takes v4's `find`-then-`.character`
+  shape.
+
+**Recorded, not fixed — one named follow-up smalls order (`phase-4.md`
+NEXT):** the recorded-but-unpinned divergences the review surfaced, each
+already loud in its order's header: (a) P4.128's two approximations — a
+NON-streaming reqwest timeout maps to `Connection error.` (v4 `Request timed
+out.`, and openai 7.23.0 classes any `/timed? ?out/i` connection failure that
+way, so a streaming connect-timeout too) and a 2xx whose body fails to parse
+logs no catch line — where v5 answers `Ok` with empty content on
+`{"choices":[]}` and v4 throws a `TypeError` into its catch: a posed-2xx arm
+in the `text-http-errors` recorder (through the REAL SDKs) with the v5 side
+pinned; (b) P4.130's import mask exception scoped to the CHAT family while
+tags / the three profile kinds / roleplay templates end in ZodError tails v5
+answers with its own decode sentence — a per-family carve; (c) the restore
+orchestrator's serde arm (the same `skip` shape as import's, one more derived
+clone); (d) P4.129's Carina finding — v5's `carina_query::run_stream` logs no
+`CHAT_MESSAGE` row where v4's funnel logs one (pinned both ways as the
+`V4OnlyRow` that stays; a core hunk in `carina_query.rs` after the
+`while let Some(chunk)` loop, the `log_loop_leg` shape); (e) P4.131's
+`mount_embedding_effects` re-poison sits on v4's chunks fallback
+(`doc-mount-chunks.repository.ts:115-121`), which v5's
+`find_rows_by_mount_point_id` still propagates — the census cannot see it;
+(f) the `characters` overlay read that makes `send_mail`'s recorded
+divergence (the census's `fallback-in-v4` list). Nits recorded in each
+order's Unification paragraph.
+
+### The unification wires
+
+- **§S 1 (commit `b44a1ae42`, with the home fix):** P4.130's inline `Error
+  finding entities by filter` arm in `group_doc_mount_links::find_by_group_
+  id` repointed onto P4.131's `db::fallback::find_by_filter_or_empty`; the
+  in-file byte pin (`error=no such table: group_doc_mount_links`) holds
+  through the home's bare-message rendering. `tiered_mount_pool.rs`'s outer
+  wrap is unreachable after it (the inner never answers `Err`) and harmless.
+- **§S 2 (commit `419d50782`):** `orchestrator_tier3_equivalence` run on the
+  union against an oracle regenerated FRESH from the pin tripped VANISHED on
+  exactly P4.129's three `NameHash` entries (`textblock_mode` / "A simple
+  answer from Bertie."; `agent_force_final` / "Friday opens the vault
+  ledger." and " The ledger is blank.") — no WRONG SHAPE, no extra cell — so
+  the entries, the variant and its arm were deleted and those rows compare
+  whole (the retirement proven by vanishing, the P4.128 `orchestrator.rs`
+  hunk's only proof, as §S 2 designed). Re-run green after the deletion.
+- **§S 3:** P4.128 did not copy P4.129's drain (recorded); nothing to fold.
+
+### Gate (tree `ac105cba6` for the workspace suite + this docs commit; the sweep at `b44a1ae42`, the two family re-aims re-run by name on `ac105cba6`)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (default;
+  `--features quilltap-core/native-transport`) — one lint caught on the first
+  pass (a `&mut Vec` that became a slice once the `NameHash` arm went) and
+  fixed inside the P4.129 commit; `cargo build --workspace --release` clean.
+- **The full sweep from the `97b25fc53` pin** (`recipe_sweep.py --run-all
+  --v4 /tmp/qt-v4-pin-unify-97b25fc53`, the results artifact
+  `harness/tools/sweep-results/2026-09-30-97b25fc53-smalls-unify.json`):
+  **572 ok / 5 run_failed / 3 refused of 580.** The five reds: the three
+  STANDING rows (`ariel_writers_tier3`, `memory_processor_tier3` — the
+  compressed-text byte parity; `search_replace` — `missing_action_recorded`)
+  + **the sweep's own two catches, fixed (commit `ac105cba6`) and green by
+  name against the sweep's fresh oracles**: `scenario_builder_mount_pool` and
+  `scenario_builder_routes` captured the `Error finding entity by ID` line by
+  the module target the one-home fold retired — the mount-pool family now
+  pins the fallback lines per collection from v4's own record (`characters`
+  × 1, `groups` × 1 per refused group row; nine exercised) and asserts the
+  module target silent; the routes family admits only that line from
+  `quilltap::db`. Refused by design: `backup_uuid_remap` (a repo-write
+  corpus), `avatar_rolls_routes` and `generator_sse_wire` (non-extractable).
+  Every round family confirmed RUN (non-zero duration): `orchestrator_tier3`
+  (4.1 s, the three `NameHash` VANISHED then retired), `primary_stream_
+  tier3`, both loop families, `text_http_errors`, `stream_decoders`,
+  `request_builder*`, `mail_carina_tools` (the plants file re-read for the
+  excluded table), the four doc-mount tier-2 families, `wardrobe_instructions
+  _tier2`, `repository_zod_messages` (new), `chats_messages_ops_tier2`,
+  `retry_uncensored_tier3`, `system_restore_state` + `system_import_state`,
+  `host_zone_sites_census` (rewritten; M5 red-first), `doc_mount_fallback_
+  sites_census` (new, 130), `fallback_home_guard` (new), the 26 zone
+  families under the driver's own `TZ`.
+- **Tier R** (`cli_differential`, `QT_V4_CHECKOUT=` the pin): **266 cases /
+  0 failures** (415 s in the sweep).
+- **`QT_V4_CHECKOUT=<the pin> TZ=UTC cargo test --workspace --no-fail-fast`**
+  on the final tree (`ac105cba6`) with a 746-variable env block harvested
+  mechanically from every family's `--show` run stage (the 8 vars two or
+  more families spell with different values — `QT_FIXTURE_{CHARUPD,
+  QTAPIMPORT,TMP}_{MAIN,MOUNT}`, `QT_FIXTURE_VAULT_READ_OVERLAY`,
+  `QT_ORACLE_CARINA` — WITHHELD, so their ~14 families SKIP there and are
+  proven by the sweep's own clean invocations): **655 test binaries / 4,023
+  passed / 6 failed / 3 ignored, zero `SKIP:` lines.** The six reds: the
+  three standing families (their vars deliberately IN the block so the true
+  state shows) plus THREE env-block artifacts, each green by name —
+  `backup_uuid_remap` (its var names an oracle the refused recipe never
+  produces), `doc_mount_files_tier2` (the recorded 0.00 s fixture consumption;
+  `matched oracle (2 rows)` through the driver), and **`cli_differential`,
+  ROOT-CAUSED this round:** the harvester copies `QT_NODE=$N/node` LITERALLY
+  from the Tier R recipe (a shell variable the recipe defines and the block
+  does not), so the suite's Tier R spawned `/node` and died `NotFound` in
+  8 s — **266 cases / 0 failures by name through the driver (421 s), and
+  266/0 in the sweep.** Every round family confirmed RUN inside the suite
+  by non-zero duration (the list above; `host_zone_sites_census` 4/4,
+  `fallback_home_guard` 2/2, `doc_mount_fallback_sites_census` 3/3,
+  `repository_zod_messages` 1/1, `stream_decoders` 5/5, `system_restore_
+  state` 2/2, `system_import_state` 1/1, both Scenario Builder families
+  re-aimed and green).
+- **SPA:** `npm test` **466 files / 8,788 tests** green (P4.132's new
+  specs + the review's `Connection lost` case RUN); `npm run lint` clean;
+  `npm run build` clean.
+- **Full Playwright** against the fresh release binary: **354 passed / 2
+  failed / 6 skipped (11.7 m)** — the six skips the standing parks; the two
+  reds both in `salon-regenerate-stream-flow.spec.ts`, the documented
+  Salon-streaming intermittent (the P4.113 round's `2/3` watch item, flaky
+  alone on main then too). **Re-run BY FILE six times, one invocation at a
+  time:** 2/3 four times (twice under the sweep's load, twice with the
+  workspace suite loading the machine) with a DIFFERENT beat red each time
+  — every one of the three beats failed once and passed at least twice —
+  then **3/3 twice in a row** (the fifth with the server log kept, the sixth
+  with `RUST_LOG=info,tower_http=debug`), both still under the workspace
+  suite. Read before accepting: the failing asserts are the spec's own
+  luck-dependent windows (the 15 s plate poll it documents as such; the
+  status strip's 30 s `toHaveCount(0)`), the kept server logs carry no
+  stream error, no stall and no failover, and the e2e mock writes exact
+  `data: {json}` / `data: [DONE]` frames — so P4.128's SDK frame semantics
+  are not the cause (a frame the SDK now refuses would fail every run, not
+  one beat in three). The `2/3` watch item stands; its counter is now 4 of
+  6 by file on this tree.
+- **Instrument note (pre-existing, recorded for the walk):** with
+  `tower_http=debug` the e2e server answers **500** on every `GET
+  /api/v1/files/f0000001-…` / `f0000002-…` (the Salon fixture's avatar
+  rows, 22 per run) and on `/files/bg-e2e-file` — file rows whose blobs the
+  e2e instance copy does not carry. Neither `files_routes.rs` nor
+  `api/files.rs` moved this round; a candidate smalls item is whether v4
+  answers 404 there (the `files_routes` family is green at the pin over its
+  own corpus, so the divergence, if any, is off-corpus).
+
+### Versions
+
+core 0.0.1127, harness 0.0.1050, host 0.0.168, web 0.0.204, SPA 0.5.792;
+cli / tauri / fixture-sanitizer / sqlite3mc-sys unchanged. (Base at planning:
+core 0.0.1115, harness 0.0.1034, host 0.0.166, web 0.0.201, SPA 0.5.787 —
+the lanes' sum recounted to core 0.0.1125 / harness 0.0.1045 / host 0.0.167 /
+web 0.0.203 / SPA 0.5.791, then the review's five commits: core +2, harness
++5, host +1, web +1, SPA +1.)
+
+### 💸 for the owed dogfood pass (each order's Acceptance names its own)
+
+- P4.127: a real turn's `read_conversation` header and a `list_mail` date
+  reading `CDT` on the Friday copy with NO `TZ`, and UTC under `TZ=UTC` on
+  the same binary; the Scenario Builder prompt's clock now in the host zone.
+- P4.128: a multi-character OPENAI turn's `historyTailHash` (the `name`
+  slot); a real pre-stream 4xx on a DEEPSEEK/NANOGPT desk logging v4's catch
+  line; a posed malformed SSE frame ending the stream as the SDK does.
+- P4.130: a group named 99 letters + one emoji keeping its store; a
+  `Data validation failed` line with the ZodError bytes on a planted row; a
+  saved trail row with a bad `via` 404ing on read.
+- P4.131: a renamed-column plant on the Friday copy's mount index — the
+  mail tools answering v4's lines with the bare SQLite message.
+- P4.132: `teh world` + Space not rewriting mid-run; Re-extract Memories
+  queuing only; Delete Memories (n) on a chat with real memories (the
+  Tier-3 live arm).
