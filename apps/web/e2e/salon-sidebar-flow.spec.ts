@@ -492,4 +492,91 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
         .toContain('qt-participant-position-spoken');
     }
   });
+  /**
+   * P4.132 — the Edit Content memory pair (v4 `ChatSidebar.tsx:1769-1795` +
+   * `useMemoryActions.ts`). On a throwaway chat (no memories): Delete Memories
+   * (0) is disabled with v4's "laid down no memories yet" title; Re-extract
+   * Memories QUEUES ONLY — a dismissed confirm sends nothing, an accepted one
+   * sends `chatQueueMemories` and never `memoryDeleteByChat` (the chat card's
+   * badge flow deletes first; this one must not) — and the operator hears v4's
+   * own words, the count or the colon-form refusal, never silence.
+   */
+  test('Edit Content: Re-extract Memories queues only; Delete Memories (0) is disabled', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.goto('/salon');
+    await maybeUnlock(page);
+
+    const dispatch = async (data: Record<string, unknown>): Promise<Record<string, any>> => {
+      const resp = await page.request.post('/api/dispatch', { data });
+      expect(resp.ok(), `dispatch ${String(data['type'])} → ${resp.status()}`).toBe(true);
+      return ((await resp.json()) as { data?: Record<string, any> }).data ?? {};
+    };
+    const characters = ((await dispatch({ type: 'characterList' }))['characters'] ?? []) as Array<{
+      id: string;
+      controlledBy?: string;
+    }>;
+    const character = characters.find((c) => c.controlledBy !== 'user');
+    expect(character, 'the fixture must seed an llm character').toBeTruthy();
+    const profiles = ((await dispatch({ type: 'connectionProfileList' }))['profiles'] ?? []) as Array<{
+      id: string;
+      provider?: string;
+    }>;
+    const profile = profiles.find((p) => p.provider === 'OPENAI_COMPATIBLE') ?? profiles[0];
+    const created = await dispatch({
+      type: 'chatCreate',
+      title: `Memory Pair ${Date.now()}`,
+      participants: [
+        {
+          type: 'CHARACTER',
+          characterId: character!.id,
+          controlledBy: 'llm',
+          connectionProfileId: profile.id,
+        },
+      ],
+    });
+    const chatId = created['chat']?.id as string;
+    expect(chatId).toBeTruthy();
+
+    await page.goto(`/salon/${chatId}`);
+    await openSidebarSection(page, 'Edit Content');
+    const section = page.locator('qt-edit-section');
+    const reextract = section.getByRole('button', { name: 'Re-extract Memories' });
+    const del = section.getByRole('button', { name: /^Delete Memories \(\d+\)$/ });
+    await expect(reextract).toBeVisible();
+    await expect(del).toBeVisible();
+    await expect(del).toHaveText(/Delete Memories \(0\)/);
+    await expect(del).toBeDisabled();
+    await expect(del).toHaveAttribute('title', 'This chat has laid down no memories yet');
+
+    const verbs: string[] = [];
+    page.on('request', (req) => {
+      if (!req.url().endsWith('/api/dispatch') || req.method() !== 'POST') return;
+      const type = (req.postDataJSON() as { type?: string } | null)?.type ?? '';
+      if (type === 'memoryDeleteByChat' || type === 'chatQueueMemories') verbs.push(type);
+    });
+
+    page.once('dialog', (d) => void d.dismiss());
+    await reextract.click();
+    await page.waitForTimeout(500);
+    expect(verbs, 'a dismissed confirmation must dispatch nothing').toEqual([]);
+
+    let asked = '';
+    page.once('dialog', (d) => {
+      asked = d.message();
+      void d.accept();
+    });
+    await reextract.click();
+    await expect.poll(() => verbs, { timeout: 15_000 }).toEqual(['chatQueueMemories']);
+    expect(asked).toBe(
+      'Queue memory extraction jobs for all messages in this chat? This will process the entire conversation history.',
+    );
+    await expect(
+      page
+        .getByText(/^(Queued \d+ memory extraction jobs|Failed to queue memory extraction: .+)$/)
+        .first(),
+    ).toBeVisible({ timeout: 15_000 });
+    expect(verbs).not.toContain('memoryDeleteByChat');
+  });
 });

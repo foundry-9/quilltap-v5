@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — feat(spa): Edit Content gains Re-extract Memories and Delete Memories (n)
+
+_Versions: SPA 0.5.791._
+
+The Salon sidebar's Edit Content section now has v4's two memory buttons. Re-extract Memories only queues extraction (it does not delete first, unlike the chat card badge); Delete Memories (n) is disabled at zero, re-reads the live count before confirming, and uses v4's confirm and toast wording. The per-chat count is kept fresh by the memories realtime topic. Also closes the P4.125 smalls: the stale deferral comments are replaced.
+
 #### 2026-09-30 — refactor(spa): one memory badge component over its two card hosts
 
 _Versions: SPA 0.5.790._

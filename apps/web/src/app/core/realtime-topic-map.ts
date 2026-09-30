@@ -19,6 +19,7 @@
  */
 
 import { chatKeys } from '../chat/chat-keys';
+import { memoryKeys } from '../memory/memory.api';
 import { characterKeys } from '../screens/characters/characters.api';
 import { projectKeys } from '../screens/prospero/projects.api';
 import { storyBackgroundKeys } from '../screens/salon/story-background.api';
@@ -53,11 +54,11 @@ export const ALL_REALTIME_PREFIXES: readonly QueryKeyPrefix[] = [
   chatKeys.all,
   projectKeys.all,
   characterKeys.all,
-  // `memories` (below): v5 has no per-chat memory count reader, so its ONLY
-  // target is the Salon LIST's memory badge — the same `chatKeys.all` prefix
-  // the `chats` row above already sweeps. Listed again anyway (matching v4's
-  // own topic-per-row shape) rather than folding it into the `chats` row.
+  // `memories` (below): the Salon LIST's memory badge (the same `chatKeys.all`
+  // prefix the `chats` row above already sweeps — listed again, matching v4's
+  // topic-per-row shape) and the sidebar's per-chat count.
   chatKeys.all,
+  memoryKeys.chatCounts(),
 ];
 
 /**
@@ -130,15 +131,13 @@ export function queryKeysForTopic(topic: string, id?: string): readonly QueryKey
 
     case 'memories':
       // v4 narrows to a per-chat memory count (`queryKeys.memories.chatCount
-      // (id)` when scoped, `queryKeys.memories.all` collection-wide). v5 has
-      // NO per-chat memory count reader (`chat/sidebar/edit-section.ts`'s
-      // Delete Memories affordance is a loud tier-3 deferral with no query
-      // key of its own) — the one v5 surface a memory-extraction/-deletion
-      // hint un-stales is the Salon LIST card's memory badge
-      // (`screens/salon/chat-card.ts:198`), which lives under `chatKeys.all`
-      // whether the hint carried a chat id or not (P4.D177 §C.4, a
-      // measured mapping divergence from v4's).
-      return [chatKeys.all];
+      // (id)` when scoped, `queryKeys.memories.all` collection-wide). v5 holds
+      // the same reader now (`memoryKeys.chatCount`, the sidebar's Delete
+      // Memories (n)); the Salon LIST card's badge lives under `chatKeys.all`
+      // whether the hint carried a chat id or not (P4.D177 §C.4, a measured
+      // mapping divergence from v4's). The unscoped hint takes the per-chat
+      // count prefix — the narrowest thing that covers every chat.
+      return [chatKeys.all, id ? memoryKeys.chatCount(id) : memoryKeys.chatCounts()];
 
     default:
       return [];

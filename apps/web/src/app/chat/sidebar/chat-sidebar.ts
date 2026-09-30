@@ -338,6 +338,9 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
           <qt-edit-section
             (searchReplace)="searchReplace.emit()"
             (bulkReplace)="bulkReplace.emit()"
+            [memoryCount]="memoryCount()"
+            (reextractMemories)="reextractMemories.emit()"
+            (deleteMemories)="deleteMemories.emit()"
           />
         </qt-collapsible-card>
       </div>
@@ -426,6 +429,10 @@ export class ChatSidebar implements OnInit {
   // --- Edit Content section ---
   readonly searchReplace = output<void>();
   readonly bulkReplace = output<void>();
+  /** The chat's memory count (v4 `chatMemoryCount`) — the Delete Memories label. */
+  readonly memoryCount = input(0);
+  readonly reextractMemories = output<void>();
+  readonly deleteMemories = output<void>();
 
   readonly chatUpdated = output<void>();
   readonly regenerateBackground = output<void>();

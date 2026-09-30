@@ -32,6 +32,10 @@ export const memoryKeys = {
   backfill: () => ['memories', 'backfill'] as const,
   housekeepingConfig: () => ['memories', 'housekeeping-config'] as const,
   characterCounts: () => ['memories', 'character-counts'] as const,
+  /** Every per-chat count (the unscoped `memories` hint's prefix). */
+  chatCounts: () => ['memories', 'chat-count'] as const,
+  /** One chat's memory count (v4 `queryKeys.memories.chatCount`) — the sidebar's `Delete Memories (n)`. */
+  chatCount: (chatId: string | null | undefined) => ['memories', 'chat-count', chatId] as const,
   recallConfig: () => ['memories', 'recall-config'] as const,
   regenerateStatus: () => ['memories', 'regenerate-status'] as const,
 };

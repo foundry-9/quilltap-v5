@@ -152,6 +152,8 @@ import type {
 import { ErrorAlert } from '../../ui/error-alert';
 import { LoadingState } from '../../ui/loading-state';
 import { ToastService } from '../../ui/toast.service';
+import { memoryKeys } from '../../memory/memory.api';
+import { confirmAndDeleteChatMemories, confirmAndQueueMemories } from './memory-sidebar.api';
 import { SalonModePanes } from './salon-mode-panes';
 import { TerminalPane } from '../../terminal/terminal-pane';
 import { TerminalSessionPicker } from '../../terminal/terminal-session-picker';
@@ -389,6 +391,9 @@ interface CascadePrompt {
           (rebuildSummary)="onRebuildSummary()"
           (bulkReplace)="showBulkReplace.set(true)"
           (searchReplace)="showSearchReplace.set(true)"
+          [memoryCount]="memoryCountQuery.data() ?? 0"
+          (reextractMemories)="onReextractMemories()"
+          (deleteMemories)="onDeleteMemories()"
           (openProject)="showProject.set(true)"
           (openToolSettings)="showToolSettings.set(true)"
           (openRunTool)="showRunTool.set(true)"
@@ -1164,6 +1169,23 @@ export class SalonConversation {
         'chat',
       );
       return resp.data.chat;
+    },
+  }));
+
+  /**
+   * The chat's memory count (v4 `useChatData.ts:309-320`) for the sidebar's
+   * `Delete Memories (n)` — kept fresh by the `memories` realtime topic
+   * (`realtime-topic-map.ts`); the delete handler re-reads it before confirming.
+   */
+  protected readonly memoryCountQuery = injectQuery(() => ({
+    queryKey: memoryKeys.chatCount(this.chatId()),
+    enabled: !!this.chatId(),
+    queryFn: async (): Promise<number> => {
+      const data = await this.core.dispatchData({
+        type: 'memoryCountByChat',
+        chatId: this.chatId()!,
+      });
+      return Number(data['memoryCount']) || 0;
     },
   }));
 
@@ -4407,6 +4429,33 @@ export class SalonConversation {
    * the Salon through the EXISTING `chatKeys.detail` subscription, the same
    * way every other realtime-pushed chat field does.
    */
+  /**
+   * Edit Content → Re-extract Memories (v4 `useMemoryActions.handleReextract
+   * Memories`): queue-only — NOT the chat card's delete-then-queue flow.
+   */
+  protected async onReextractMemories(): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    const hasActiveCharacter = (this.chat()?.participants ?? []).some(
+      (p) => p.type === 'CHARACTER' && p.isActive && p.character,
+    );
+    await confirmAndQueueMemories(this.core, this.toasts, chatId, hasActiveCharacter);
+  }
+
+  /** Edit Content → Delete Memories (n) (v4 `handleDeleteChatMemories`). */
+  protected async onDeleteMemories(): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    const deleted = await confirmAndDeleteChatMemories(
+      this.core,
+      this.toasts,
+      chatId,
+      this.memoryCountQuery.data() ?? 0,
+    );
+    void this.queryClient.invalidateQueries({ queryKey: memoryKeys.chatCount(chatId) });
+    if (deleted) void this.queryClient.invalidateQueries({ queryKey: chatKeys.all });
+  }
+
   protected async onRebuildSummary(): Promise<void> {
     if (
       typeof window !== 'undefined' &&
