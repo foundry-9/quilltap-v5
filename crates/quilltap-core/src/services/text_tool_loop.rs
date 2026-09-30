@@ -65,7 +65,11 @@ use crate::model::stream::{StreamError, StreamParams, StreamingCompletionProvide
 use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
-use super::primary_stream::{apply_reasoning_chunk, PreservePartialOnError, StreamingState};
+use super::llm_logging::LogContext;
+use super::primary_stream::{
+    apply_reasoning_chunk, log_loop_leg, LegLogIds, LegUsage, PreservePartialOnError,
+    StreamingState,
+};
 use super::tool_call_threading::{to_stream_message, ThreadedMessage};
 use super::tool_execution::{
     process_tool_calls, GeneratedImage, StatusContext, ToolCall, ToolExecutionContext, ToolMessage,
@@ -319,6 +323,10 @@ pub struct RunTextToolPassOptions<'a> {
     pub tool_messages: &'a mut Vec<ToolMessage>,
     /// v4 `generatedImagePaths` — appended in place.
     pub generated_image_paths: &'a mut Vec<GeneratedImage>,
+    /// Rides each continuation's `CHAT_MESSAGE` row — the autonomous run's id
+    /// under an autonomous turn, [`LogContext::none()`] on the request path
+    /// (dogfood #129).
+    pub log_context: LogContext,
 }
 
 /// Run text-tool detection-and-continuation up to [`MAX_TEXT_TOOL_ITERATIONS`]
@@ -355,6 +363,7 @@ where
         state,
         tool_messages,
         generated_image_paths,
+        log_context,
     } = opts;
 
     // Entry gate (v4 :158): a falsy `fullResponse` or no markers → no-op.
@@ -372,9 +381,11 @@ where
     // body, which needs `&mut preserve` for the partial save.
     let watchdog_message_id = preserve.pre_generated_assistant_message_id().to_string();
     let watchdog_ids = ContinuationWatchdogIds {
+        db,
         user_id: &tool_context.user_id,
         chat_id: &chat_id,
         message_id: &watchdog_message_id,
+        log_context: &log_context,
     };
 
     // Raw (un-stripped) response from each stream pass — the primary stream first,
@@ -616,12 +627,16 @@ fn call_signature_of(parsed: &[ParsedTextToolCall]) -> String {
 
 /// The three ids v4's continuation call puts in the stall watchdog's
 /// `logContext` (`text-tool-loop.service.ts:397-399`: `userId`, `messageId`,
-/// `chatId` — and deliberately no `characterId`).
+/// `chatId` — and deliberately no `characterId`). The same bag is what the
+/// funnel's `logLLMCall` reads, so the leg's own `CHAT_MESSAGE` row (dogfood
+/// #129) rides here too, with the writer and the run's [`LogContext`].
 #[derive(Clone, Copy)]
 struct ContinuationWatchdogIds<'a> {
+    db: &'a Db,
     user_id: &'a str,
     chat_id: &'a str,
     message_id: &'a str,
+    log_context: &'a LogContext,
 }
 
 /// Re-stream a continuation (v4 `streamContinuation`). Emits the `sending`-status
@@ -693,6 +708,8 @@ where
     // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
     // consumers). v4's continuation call (`text-tool-loop.service.ts:390`) passes
     // NO `characterId` — only `userId`, `messageId` and `chatId`.
+    let leg_started_at_ms = crate::clock::now_unix_ms();
+    let mut leg_usage = LegUsage::default();
     let mut rx = watch_stream(
         provider
             .stream_message(provider_name, base_url, &params)
@@ -716,11 +733,32 @@ where
         // segments reliably here — the flat `reasoning_content` renders as a single
         // leading thinking block instead. DISPLAY ONLY.
         apply_reasoning_chunk(state, &chunk, sink);
+        leg_usage.observe(&chunk);
         if !chunk.content.is_empty() {
             raw_responses[idx].push_str(&chunk.content);
             sink.emit(ChatEvent::content(chunk.content.clone()));
         }
         if chunk.done {
+            // v4's funnel row for this call: no `characterId`, this segment's
+            // own text (`accumulatedContent` is per call), `stop` visible in
+            // the request projection where the params carry it.
+            log_loop_leg(
+                watchdog.db,
+                &LegLogIds {
+                    user_id: watchdog.user_id,
+                    chat_id: watchdog.chat_id,
+                    message_id: watchdog.message_id,
+                    character_id: None,
+                    log_context: watchdog.log_context,
+                },
+                leg_started_at_ms,
+                state.effective_profile.as_ref(),
+                &params,
+                raw_responses[idx].clone(),
+                &leg_usage,
+                chunk.raw_response.clone(),
+            )
+            .await;
             // OVERWRITE (not accumulate): a done with no usage NULLS them (v4's
             // `chunk.usage || null`).
             state.usage = chunk.usage;
@@ -871,6 +909,7 @@ mod tests {
                 state: &mut state,
                 tool_messages: &mut tool_messages,
                 generated_image_paths: &mut images,
+                log_context: crate::services::llm_logging::LogContext::none(),
             },
         )
         .await
@@ -968,6 +1007,7 @@ mod tests {
                 state: &mut state,
                 tool_messages: &mut tool_messages,
                 generated_image_paths: &mut images,
+                log_context: crate::services::llm_logging::LogContext::none(),
             },
         )
         .await

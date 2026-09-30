@@ -46,8 +46,10 @@ use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogCon
 
 use super::agent_mode::{build_force_final_message, generate_iteration_summary, ResolvedAgentMode};
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
+use super::llm_logging::LogContext;
 use super::primary_stream::{
-    apply_reasoning_chunk, flush_reasoning_segment, PreservePartialOnError, StreamingState,
+    apply_reasoning_chunk, flush_reasoning_segment, log_loop_leg, LegLogIds, LegUsage,
+    PreservePartialOnError, StreamingState,
 };
 use super::tool_call_threading::{
     build_assistant_tool_call_message, build_tool_result_messages, to_stream_messages,
@@ -187,6 +189,10 @@ pub struct RunNativeToolLoopOptions<'a> {
     pub tool_messages: &'a mut Vec<ToolMessage>,
     /// v4 `generatedImagePaths` — appended in place.
     pub generated_image_paths: &'a mut Vec<GeneratedImage>,
+    /// Rides each leg's `CHAT_MESSAGE` row — the autonomous run's id under an
+    /// autonomous turn (what makes the room budget charge the loop legs),
+    /// [`LogContext::none()`] on the request path (dogfood #129).
+    pub log_context: LogContext,
 }
 
 /// Run the bounded native-tool loop, including agent-mode `submit_final_response`
@@ -222,6 +228,7 @@ where
         state,
         tool_messages,
         generated_image_paths,
+        log_context,
     } = opts;
 
     let status_context = StatusContext {
@@ -466,6 +473,10 @@ where
         let mut params = base_params.clone();
         params.messages = to_stream_messages(&current_messages);
         let mut emitted_streaming_status = false;
+        // v4's funnel logs THIS call at its own `done` (`streaming.service.ts:479`):
+        // its own start, its own last-usage figures, its own streamed text.
+        let leg_started_at_ms = crate::clock::now_unix_ms();
+        let mut leg_usage = LegUsage::default();
         // A provider that answers with headers and then goes silent would
         // otherwise hold this loop open forever — the SDK's own timeout stops at
         // the headers. The watchdog turns that into an ordinary `Err`, which the
@@ -497,6 +508,7 @@ where
                 }
             };
             apply_reasoning_chunk(state, &chunk, sink);
+            leg_usage.observe(&chunk);
             if !chunk.content.is_empty() {
                 if !emitted_streaming_status {
                     emitted_streaming_status = true;
@@ -514,6 +526,26 @@ where
                 sink.emit(ChatEvent::content(chunk.content.clone()));
             }
             if chunk.done {
+                // v4 passes `characterId` on this call (`:340-350`). Logged
+                // BEFORE the loop consumes the result, so a later throw still
+                // leaves the row.
+                log_loop_leg(
+                    db,
+                    &LegLogIds {
+                        user_id: &tool_context.user_id,
+                        chat_id: &chat_id,
+                        message_id: &watchdog_message_id,
+                        character_id: Some(&character_id),
+                        log_context: &log_context,
+                    },
+                    leg_started_at_ms,
+                    state.effective_profile.as_ref(),
+                    &params,
+                    current_response.clone(),
+                    &leg_usage,
+                    chunk.raw_response.clone(),
+                )
+                .await;
                 state.usage = chunk.usage;
                 state.cache_usage = chunk.cache_usage;
                 state.attachment_results = attachment_results_to_value(&chunk.attachment_results);
@@ -585,6 +617,12 @@ where
             // `base_params`, so the clear belongs here, on the leg, rather than
             // on the shared `loop_base_params` seam in `orchestrator.rs`.
             params.cache_key = None;
+            // This leg's own log row (v4 `:421` funnel): no per-leg buffer
+            // existed here — `state.full_response` is the whole turn — so the
+            // text THIS call streamed is tracked separately.
+            let leg_started_at_ms = crate::clock::now_unix_ms();
+            let mut leg_usage = LegUsage::default();
+            let mut leg_content = String::new();
             // The watchdog, as above. v4's force-final call
             // (`native-tool-loop.service.ts:421`) passes NO `characterId` — only
             // `userId`, `messageId` and `chatId`.
@@ -610,12 +648,32 @@ where
                     }
                 };
                 apply_reasoning_chunk(state, &chunk, sink);
+                leg_usage.observe(&chunk);
                 if !chunk.content.is_empty() {
                     flush_reasoning_segment(state);
+                    leg_content.push_str(&chunk.content);
                     state.full_response.push_str(&chunk.content);
                     sink.emit(ChatEvent::content(chunk.content.clone()));
                 }
                 if chunk.done {
+                    // v4 passes NO `characterId` on this call.
+                    log_loop_leg(
+                        db,
+                        &LegLogIds {
+                            user_id: &tool_context.user_id,
+                            chat_id: &chat_id,
+                            message_id: &watchdog_message_id,
+                            character_id: None,
+                            log_context: &log_context,
+                        },
+                        leg_started_at_ms,
+                        state.effective_profile.as_ref(),
+                        &params,
+                        leg_content.clone(),
+                        &leg_usage,
+                        chunk.raw_response.clone(),
+                    )
+                    .await;
                     state.usage = chunk.usage;
                     state.cache_usage = chunk.cache_usage;
                     state.attachment_results =
@@ -807,6 +865,7 @@ mod tests {
                 state: &mut state,
                 tool_messages: &mut tool_messages,
                 generated_image_paths: &mut images,
+                log_context: crate::services::llm_logging::LogContext::none(),
             },
         )
         .await
@@ -923,6 +982,7 @@ mod tests {
                 state: &mut state,
                 tool_messages: &mut tool_messages,
                 generated_image_paths: &mut images,
+                log_context: crate::services::llm_logging::LogContext::none(),
             },
         )
         .await

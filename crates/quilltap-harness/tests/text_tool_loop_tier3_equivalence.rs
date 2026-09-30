@@ -43,7 +43,6 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use quilltap_core::db::runtime::Db;
 use quilltap_core::model::completion::{CompletionMessage, CompletionRole};
 use quilltap_core::model::stream::{
     canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamParams, StreamUsage,
@@ -64,6 +63,9 @@ use quilltap_core::services::tool_execution::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+// P4.121: shared `llm_logs` materialize/dump helpers (the W4.10b common module).
+mod common;
 
 // ---------------------------------------------------------------------------
 // Spec.
@@ -321,6 +323,7 @@ async fn text_tool_loop_tier3_matches_oracle() {
     let mut oracle_events: HashMap<String, Value> = HashMap::new();
     let mut oracle_stops: HashMap<String, Value> = HashMap::new();
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
+    let mut oracle_llm_logs: Option<Vec<Value>> = None;
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let v: Value = serde_json::from_str(line).expect("parse oracle line");
         match v.get("kind").and_then(Value::as_str) {
@@ -334,17 +337,18 @@ async fn text_tool_loop_tier3_matches_oracle() {
                 oracle_stops.insert(v["case"].as_str().unwrap().into(), v["stopPerCall"].clone());
             }
             Some("canned") => oracle_canned.push(serde_json::from_value(v).expect("parse canned")),
+            Some("llmlogs") => oracle_llm_logs = Some(common::oracle_llm_logs(&v)),
             other => panic!("unknown oracle row kind {other:?}"),
         }
     }
 
     let provider = QueuedStreamingProvider::from_oracle(&oracle_canned);
 
-    // A throwaway encrypted Db for the (no-op) preserve path.
+    // P4.121: a fresh main + llm-logs `Db` — the pass writes nothing to main, but
+    // every continuation leg's CHAT_MESSAGE row lands in the llm-logs partition
+    // to be dumped against v4's REAL funnel.
     const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
-    let db_path = std::env::temp_dir().join(format!("qt-ttl-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&db_path);
-    let db = Db::open_main(&db_path, PEPPER).expect("open db");
+    let (db, _db_dir) = common::open_main_and_llm_logs_db(PEPPER);
 
     // One global canned tool runner (unique keys across the corpus).
     let mut runner = CannedToolRunner::new();
@@ -379,14 +383,14 @@ async fn text_tool_loop_tier3_matches_oracle() {
             vec![],
             format!("{}-pp", c.chat_id),
             None,
-            format!("{}-msg", c.chat_id),
+            c.chat_id.replacen('3', "5", 1),
             // P4.D205: this corpus carries no informs.
             vec![],
         );
         let mut state = StreamingState {
             full_response: c.initial_full_response.clone(),
             effective_profile: Some(EffectiveProfile {
-                id: "prof-1".into(),
+                id: "60000000-0000-4000-8000-000000000001".into(),
                 name: "prof-1 profile".into(),
                 provider: c.provider.clone(),
                 model_name: c.model.clone(),
@@ -474,6 +478,7 @@ async fn text_tool_loop_tier3_matches_oracle() {
                 state: &mut state,
                 tool_messages: &mut tool_messages,
                 generated_image_paths: &mut generated_image_paths,
+                log_context: quilltap_core::services::llm_logging::LogContext::none(),
             },
         )
         .await;
@@ -518,6 +523,26 @@ async fn text_tool_loop_tier3_matches_oracle() {
             c.name
         );
     }
+
+    // P4.121 (dogfood #129): each continuation leg's own CHAT_MESSAGE row,
+    // byte-for-byte against v4's real `streamMessage` funnel — this segment's own
+    // text, its own usage, no `characterId`, `stop` where the leg passes one.
+    let got_logs = common::dump_llm_logs(&db);
+    let want_logs = oracle_llm_logs.expect(
+        "oracle emitted no llmlogs row — regenerate it (P4.121 relocated the model \
+         mock beneath v4's real funnel)",
+    );
+    assert_eq!(
+        got_logs,
+        want_logs,
+        "llm_logs CHAT_MESSAGE rows diverge (got {} vs oracle {})",
+        got_logs.len(),
+        want_logs.len()
+    );
+    assert!(
+        !got_logs.is_empty() && got_logs.iter().all(|r| r["characterId"].is_null()),
+        "non-vacuity: continuation legs log, and none carries a characterId"
+    );
 
     eprintln!(
         "OK: text-tool-loop tier-3 matched oracle ({} cases).",

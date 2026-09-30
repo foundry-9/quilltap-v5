@@ -12,6 +12,11 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — fix(chat): log every Salon tool-loop leg as v4's streamMessage funnel does (dogfood #129)
+
+_Versions: core 0.0.1107, harness 0.0.1027._
+
+The native re-stream, the native force-final and the text-tool continuation each write their own `CHAT_MESSAGE` row now, under the post-failover effective profile, with the run id on autonomous turns (so the room token budget charges them). `characterId` is set on the native re-stream only, as in v4. Each row carries only that leg's text, usage, cache usage and duration. The request-prefix `historyTailHash` now includes `name`/`toolCallId`/`toolCalls` like v4's (it read `undefined` for all three; only a tool-loop leg's tail ever carries them). The native and text loop oracles moved beneath v4's real funnel and diff the `llm_logs` rows; the P4.68 failover census now discriminates on connection profile instead of `characterId`.
 #### 2026-09-30 — docs(porting): close the P4.122 lane
 
 _Docs-only change._

@@ -10,7 +10,8 @@
  * with ONLY the model / detection / tool-execution boundaries pinned to match the
  * Rust seams:
  *
- *   - `streamMessage` (./streaming.service) → returns each case's scripted chunk
+ *   - `createLLMProvider().streamMessage` (BENEATH the real ./streaming.service
+ *     funnel, P4.121 — its CHAT_MESSAGE rows are dumped and diffed) → returns each case's scripted chunk
  *     sequence in call order, RECORDING the exact
  *     `provider|model|temperature|messages` key it answered (as a `canned` row the
  *     Rust `QueuedStreamingProvider` replays). The rest of streaming.service
@@ -53,6 +54,14 @@ const anthropicPlugin = (() => {
   const m = nodeRequire(join(process.cwd(), 'plugins', 'dist', 'qtap-plugin-anthropic', 'index.js'));
   return m.plugin || m.default?.plugin || m.default;
 })();
+
+// Inlined canonicalizer (same as the other tier-2/3 oracles).
+function canonValue(v: unknown): unknown {
+  if (v === null || v === undefined) return null;
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(v)) return v.toString('hex');
+  if (v instanceof Uint8Array) return Buffer.from(v).toString('hex');
+  return v;
+}
 
 interface ToolCallSpec {
   name: string;
@@ -121,6 +130,9 @@ async function main(): Promise<void> {
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = workMain;
+  // P4.121: a fresh llm-logs DB so the un-mocked funnel's CHAT_MESSAGE
+  // `logLLMCall` lands real rows to dump/diff.
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'data', 'llm-logs.db');
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
@@ -150,6 +162,13 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/database/repositories', () => jest.requireActual('@/lib/database/repositories'));
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
 
+  // P4.121: run the REAL `logLLMCall` (v4's jest.setup no-ops the whole
+  // llm-logging module — `jest-setup-llm-logging-service-mocked`) so the funnel's
+  // CHAT_MESSAGE rows land in the llm-logs DB dumped below.
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service')
+  );
+
   // The tool-executor: canned per-call (mirrors the Rust CannedToolRunner).
   jest.doMock('@/lib/chat/tool-executor', () => ({
     __esModule: true,
@@ -178,32 +197,43 @@ async function main(): Promise<void> {
     };
   });
 
-  // streamMessage: scripted sequences in call order; record the key (keep the
-  // rest of streaming.service REAL).
-  jest.doMock('@/lib/services/chat-message/streaming.service', () => {
-    const actual = jest.requireActual('@/lib/services/chat-message/streaming.service');
+  // P4.121 (the W4.11b shape, as `primary-stream-tier3` / dogfood #129): the model
+  // mock sits BELOW v4's REAL `streamMessage` funnel (streaming.service.ts) — only
+  // the provider it constructs (`createLLMProvider().streamMessage`) is scripted —
+  // so the funnel's own terminal CHAT_MESSAGE `logLLMCall` (:479, gated `if
+  // (userId)`) fires for every loop leg and lands REAL rows to dump and diff. The
+  // recorded canned key is IDENTICAL to the old service-level one (`provider` =
+  // `connectionProfile.provider`, `model`/`temperature` = the params the funnel
+  // derives from `modelParams`/the profile, `messages` role/content).
+  jest.doMock('@/lib/llm', () => {
+    const actual = jest.requireActual('@/lib/llm');
     return {
       __esModule: true,
       ...actual,
-      streamMessage: async function* (opts: {
-        messages: Array<{ role: string; content: string }>;
-        connectionProfile: { provider: string; modelName: string };
-        modelParams?: { temperature?: number };
-      }) {
-        const seq = currentCase.streams[streamCallIndex];
-        streamCallIndex += 1;
-        if (!seq) throw new Error(`no scripted stream #${streamCallIndex - 1} for case ${currentCase.name}`);
-        cannedRows.push({
-          provider: opts.connectionProfile.provider,
-          model: opts.connectionProfile.modelName,
-          temperature: opts.modelParams?.temperature ?? null,
-          messages: opts.messages.map((m) => ({ role: m.role, content: m.content })),
-          sequences: [seq],
-        });
-        for (const chunk of seq) {
-          yield chunk;
-        }
-      },
+      createLLMProvider: async (providerName: string, _baseUrl?: string) => ({
+        streamMessage: async function* (
+          params: {
+            messages: Array<{ role: string; content: string }>;
+            model: string;
+            temperature?: number;
+          },
+          _apiKey: string
+        ) {
+          const seq = currentCase.streams[streamCallIndex];
+          streamCallIndex += 1;
+          if (!seq) throw new Error(`no scripted stream #${streamCallIndex - 1} for case ${currentCase.name}`);
+          cannedRows.push({
+            provider: providerName,
+            model: params.model,
+            temperature: params.temperature ?? null,
+            messages: params.messages.map((m) => ({ role: m.role, content: m.content })),
+            sequences: [seq],
+          });
+          for (const chunk of seq) {
+            yield chunk;
+          }
+        },
+      }),
     };
   });
 
@@ -244,7 +274,7 @@ async function main(): Promise<void> {
 
     const streaming = {
       fullResponse: c.initialFullResponse,
-      effectiveProfile: { id: 'prof-1', provider: c.provider, modelName: c.model, baseUrl: null },
+      effectiveProfile: { id: '60000000-0000-4000-8000-000000000001', provider: c.provider, modelName: c.model, baseUrl: null },
       effectiveApiKey: 'test-key',
       usage: null,
       cacheUsage: null,
@@ -275,7 +305,7 @@ async function main(): Promise<void> {
       userId: spec.userId,
       character: { id: c.characterId, name: c.characterName } as never,
       characterParticipant: { id: `${c.chatId}-pp` } as never,
-      preGeneratedAssistantMessageId: `${c.chatId}-msg`,
+      preGeneratedAssistantMessageId: c.chatId.replace(/^3/, '5'),
       agentMode: {
         enabled: c.agentMode.enabled,
         maxTurns: c.agentMode.maxTurns,
@@ -332,6 +362,35 @@ async function main(): Promise<void> {
     })
     .sort((a, b) => String(a.id).localeCompare(String(b.id)));
   lines.push(JSON.stringify({ kind: 'table', table: 'chats', columns, rows }));
+
+  // P4.121: the CHAT_MESSAGE `llm_logs` rows the REAL funnel wrote. The funnel's
+  // `logLLMCall` is fire-and-forget (`.catch`, not awaited), so drain the pending
+  // writes before reading. id/createdAt/updatedAt are placeholdered; `durationMs`
+  // is collapsed to a presence marker on the Rust side (`common::dump_llm_logs`).
+  await new Promise((r) => setTimeout(r, 300));
+  const { getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const lldb = getRawLLMLogsDatabase();
+  if (!lldb) throw new Error('llm-logs DB handle unavailable (degraded open?)');
+  const llColumns = (lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>).map(
+    (c) => c.name
+  );
+  const llRows = (lldb.prepare('SELECT * FROM llm_logs').all() as Array<Record<string, unknown>>)
+    .map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of llColumns) out[col] = canonValue(r[col]);
+      out.id = '<id>';
+      out.createdAt = '<ts>';
+      out.updatedAt = '<ts>';
+      return out;
+    })
+    .sort((a, b) => {
+      const sa = JSON.stringify(a);
+      const sb = JSON.stringify(b);
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+  lines.push(JSON.stringify({ kind: 'llmlogs', columns: llColumns, rows: llRows }));
 
   await closeDatabase();
   fs.writeFileSync(outPath, lines.join('\n') + '\n');

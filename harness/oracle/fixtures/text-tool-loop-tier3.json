@@ -1,10 +1,10 @@
 {
-  "userId": "user-text-tool",
+  "userId": "10000000-0000-4000-8000-000000000002",
   "cases": [
     {
       "name": "c1_simple_json_single",
-      "chatId": "c1",
-      "characterId": "char-c1",
+      "chatId": "31000000-0000-4000-8000-000000000001",
+      "characterId": "21000000-0000-4000-8000-000000000001",
       "characterName": "Friday",
       "provider": "ANTHROPIC",
       "model": "m",
@@ -50,8 +50,8 @@
     },
     {
       "name": "c2_text_block_multi",
-      "chatId": "c2",
-      "characterId": "char-c2",
+      "chatId": "31000000-0000-4000-8000-000000000002",
+      "characterId": "21000000-0000-4000-8000-000000000002",
       "characterName": "Marlowe",
       "provider": "ANTHROPIC",
       "model": "m",
@@ -107,8 +107,8 @@
     },
     {
       "name": "c3_provider_multi_iteration",
-      "chatId": "c3",
-      "characterId": "char-c3",
+      "chatId": "31000000-0000-4000-8000-000000000003",
+      "characterId": "21000000-0000-4000-8000-000000000003",
       "characterName": "Petra",
       "provider": "DEEPSEEK",
       "model": "ds",
@@ -175,8 +175,8 @@
     },
     {
       "name": "c4_provider_duplicate_nudge",
-      "chatId": "c4",
-      "characterId": "char-c4",
+      "chatId": "31000000-0000-4000-8000-000000000004",
+      "characterId": "21000000-0000-4000-8000-000000000004",
       "characterName": "Quill",
       "provider": "DEEPSEEK",
       "model": "ds",
@@ -244,8 +244,8 @@
     },
     {
       "name": "c5_provider_parse_empty_noop",
-      "chatId": "c5",
-      "characterId": "char-c5",
+      "chatId": "31000000-0000-4000-8000-000000000005",
+      "characterId": "21000000-0000-4000-8000-000000000005",
       "characterName": "Rune",
       "provider": "DEEPSEEK",
       "model": "ds",
@@ -263,8 +263,8 @@
     },
     {
       "name": "c6_provider_mid_stream_failure",
-      "chatId": "c6",
-      "characterId": "char-c6",
+      "chatId": "31000000-0000-4000-8000-000000000006",
+      "characterId": "21000000-0000-4000-8000-000000000006",
       "characterName": "Sable",
       "provider": "DEEPSEEK",
       "model": "ds",
@@ -303,8 +303,8 @@
     },
     {
       "name": "c7_provider_iteration_cap",
-      "chatId": "c7",
-      "characterId": "char-c7",
+      "chatId": "31000000-0000-4000-8000-000000000007",
+      "characterId": "21000000-0000-4000-8000-000000000007",
       "characterName": "Tallis",
       "provider": "DEEPSEEK",
       "model": "ds",
@@ -434,8 +434,8 @@
     },
     {
       "name": "c8_provider_empty_segment_surrogate",
-      "chatId": "c8",
-      "characterId": "char-c8",
+      "chatId": "31000000-0000-4000-8000-000000000008",
+      "characterId": "21000000-0000-4000-8000-000000000008",
       "characterName": "Umbra",
       "provider": "DEEPSEEK",
       "model": "ds",
@@ -502,8 +502,8 @@
     },
     {
       "name": "c9_provider_stop_sequences",
-      "chatId": "c9",
-      "characterId": "char-c9",
+      "chatId": "31000000-0000-4000-8000-000000000009",
+      "characterId": "21000000-0000-4000-8000-000000000009",
       "characterName": "Vesper",
       "provider": "DEEPSEEK",
       "model": "ds",

@@ -280,6 +280,7 @@ async fn captured_body_opts(
             state: &mut state,
             tool_messages: &mut tool_messages,
             generated_image_paths: &mut generated_image_paths,
+            log_context: quilltap_core::services::llm_logging::LogContext::none(),
         },
     )
     .await

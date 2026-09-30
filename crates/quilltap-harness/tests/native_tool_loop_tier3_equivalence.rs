@@ -70,6 +70,9 @@ use quilltap_core::services::tool_execution::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+// P4.121: shared `llm_logs` materialize/dump helpers (the W4.10b common module).
+mod common;
+
 // ---------------------------------------------------------------------------
 // Spec.
 // ---------------------------------------------------------------------------
@@ -309,6 +312,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
     let mut oracle_events: HashMap<String, Value> = HashMap::new();
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_chats: Option<Value> = None;
+    let mut oracle_llm_logs: Option<Vec<Value>> = None;
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let v: Value = serde_json::from_str(line).expect("parse oracle line");
         match v.get("kind").and_then(Value::as_str) {
@@ -320,6 +324,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
             }
             Some("canned") => oracle_canned.push(serde_json::from_value(v).expect("parse canned")),
             Some("table") => oracle_chats = Some(v),
+            Some("llmlogs") => oracle_llm_logs = Some(common::oracle_llm_logs(&v)),
             other => panic!("unknown oracle row kind {other:?}"),
         }
     }
@@ -329,8 +334,20 @@ async fn native_tool_loop_tier3_matches_oracle() {
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let provider = QueuedStreamingProvider::from_oracle(&oracle_canned);
-    let db = Db::open(DbPaths::main_only(work.clone()), &spec.test_pepper_base64)
-        .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+    // P4.121: a fresh llm-logs partition so every loop leg's CHAT_MESSAGE row
+    // lands somewhere we can dump and diff against v4's REAL funnel.
+    let ll_work = std::env::temp_dir().join(format!("qt-ntl-rust-ll-{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&ll_work);
+    common::materialize_llm_logs(&ll_work, &spec.test_pepper_base64);
+    let db = Db::open(
+        DbPaths {
+            main: work.clone(),
+            mount_index: None,
+            llm_logs: Some(ll_work.clone()),
+        },
+        &spec.test_pepper_base64,
+    )
+    .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
 
     // One global canned tool runner (unique keys across the corpus).
     let mut runner = CannedToolRunner::new();
@@ -367,14 +384,14 @@ async fn native_tool_loop_tier3_matches_oracle() {
             vec![],
             format!("{}-pp", c.chat_id),
             None,
-            format!("{}-msg", c.chat_id),
+            c.chat_id.replacen('3', "5", 1),
             // P4.D205: this corpus carries no informs.
             vec![],
         );
         let mut state = StreamingState {
             full_response: c.initial_full_response.clone(),
             effective_profile: Some(EffectiveProfile {
-                id: "prof-1".into(),
+                id: "60000000-0000-4000-8000-000000000001".into(),
                 name: "prof-1 profile".into(),
                 provider: c.provider.clone(),
                 model_name: c.model.clone(),
@@ -452,6 +469,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
                 state: &mut state,
                 tool_messages: &mut tool_messages,
                 generated_image_paths: &mut generated_image_paths,
+                log_context: quilltap_core::services::llm_logging::LogContext::none(),
             },
         )
         .await
@@ -487,14 +505,53 @@ async fn native_tool_loop_tier3_matches_oracle() {
     let got_chats = db
         .read_main(|conn| quilltap_core::db::dump_table_json_conn(conn, "chats", "id"))
         .expect("dump chats");
+    let got_logs = common::dump_llm_logs(&db);
     drop(db);
     let _ = std::fs::remove_file(&work);
+    let _ = std::fs::remove_file(&ll_work);
 
     let want_chats = oracle_chats.expect("oracle chats dump");
     assert_eq!(
         got_chats["rows"], want_chats["rows"],
         "chats rows diverge\n  rust:   {}\n  oracle: {}",
         got_chats["rows"], want_chats["rows"]
+    );
+
+    // P4.121 (dogfood #129): every loop leg's own CHAT_MESSAGE row, byte-for-byte
+    // against v4's real `streamMessage` funnel — per-leg content, usage, cache
+    // usage, request-prefix hashes, and `characterId` present on the re-stream
+    // but absent on force-final.
+    let want_logs = oracle_llm_logs.expect(
+        "oracle emitted no llmlogs row — regenerate it (P4.121 relocated the model \
+         mock beneath v4's real funnel)",
+    );
+    for (i, (g, w)) in got_logs.iter().zip(want_logs.iter()).enumerate() {
+        if g != w {
+            let cols: Vec<&str> = g
+                .as_object()
+                .unwrap()
+                .keys()
+                .filter(|k| g[k.as_str()] != w[k.as_str()])
+                .map(String::as_str)
+                .collect();
+            eprintln!("llm_logs row {i} differs in columns {cols:?}");
+            for c in &cols {
+                eprintln!("  {c}\n    rust:   {}\n    oracle: {}", g[*c], w[*c]);
+            }
+        }
+    }
+    assert_eq!(
+        got_logs,
+        want_logs,
+        "llm_logs CHAT_MESSAGE rows diverge (got {} vs oracle {})",
+        got_logs.len(),
+        want_logs.len()
+    );
+    assert!(
+        got_logs.iter().any(|r| r["characterId"].is_null())
+            && got_logs.iter().any(|r| !r["characterId"].is_null()),
+        "non-vacuity: the corpus must exercise both a characterId-carrying re-stream \
+         and a characterId-less force-final leg"
     );
 
     eprintln!(

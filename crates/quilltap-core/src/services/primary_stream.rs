@@ -1042,15 +1042,34 @@ pub(crate) async fn log_stream_message_call(
         .filter(|a| !a.is_empty())
         .cloned();
 
+    // v4 hashes the SAME `llmMessages` it sends, `name` / `toolCallId` /
+    // `toolCalls` included (`cache-prefix-hashes.ts:80-81`). The Salon primary's
+    // history never carries them, so this stayed `None` everywhere until the
+    // tool-loop legs logged (dogfood #129): their tail holds the assistant's
+    // `toolCalls` turn and the `tool` results, and the history-tail hash read
+    // `undefined` for all three.
     let prefix_messages: Vec<PrefixMessage> = params
         .messages
         .iter()
-        .map(|m| PrefixMessage {
-            role: m.role_str().to_string(),
-            content: Value::String(m.content().to_string()),
-            name: None,
-            tool_call_id: None,
-            tool_calls: None,
+        .map(|m| {
+            let (name, tool_call_id, tool_calls) = match m {
+                StreamMessage::Tool { call_id, name, .. } => (
+                    name.clone().map(Value::String),
+                    Some(Value::String(call_id.clone())),
+                    None,
+                ),
+                StreamMessage::Assistant { tool_calls, .. } if !tool_calls.is_empty() => {
+                    (None, None, serde_json::to_value(tool_calls).ok())
+                }
+                _ => (None, None, None),
+            };
+            PrefixMessage {
+                role: m.role_str().to_string(),
+                content: Value::String(m.content().to_string()),
+                name,
+                tool_call_id,
+                tool_calls,
+            }
         })
         .collect();
     let request_hashes = compute_request_prefix_hashes(&prefix_messages, tools_nonempty.as_deref());
@@ -1101,6 +1120,92 @@ pub(crate) async fn log_stream_message_call(
     let _ = log_llm_call(log.db, params_log, log.log_context).await;
 }
 
+/// The LAST non-null usage / cache usage / `rawProviderUsage` a single provider
+/// call streamed — v4 `streamMessage` tracks these across ALL chunks of ITS call
+/// and logs them at `chunk.done` (`streaming.service.ts:479-499`). One tracker per
+/// call, never per turn: every tool-loop leg is its own `streamMessage`
+/// invocation and logs its own figures (dogfood #129).
+#[derive(Default)]
+pub(crate) struct LegUsage {
+    pub(crate) usage: Option<StreamUsage>,
+    pub(crate) cache_usage: Option<StreamCacheUsage>,
+    pub(crate) raw_provider_usage: Option<Value>,
+}
+
+impl LegUsage {
+    /// Fold one chunk in (call on EVERY chunk, `done` included, before logging).
+    pub(crate) fn observe(&mut self, chunk: &StreamChunk) {
+        if chunk.usage.is_some() {
+            self.usage = chunk.usage;
+        }
+        if chunk.cache_usage.is_some() {
+            self.cache_usage = chunk.cache_usage;
+        }
+        if chunk
+            .raw_provider_usage
+            .as_ref()
+            .is_some_and(|v| v.is_object())
+        {
+            self.raw_provider_usage = chunk.raw_provider_usage.clone();
+        }
+    }
+}
+
+/// The ids a tool-loop leg needs to write v4's funnel row (dogfood #129).
+pub(crate) struct LegLogIds<'a> {
+    pub(crate) user_id: &'a str,
+    pub(crate) chat_id: &'a str,
+    pub(crate) message_id: &'a str,
+    /// `Some` only where v4 passes `characterId` (the native re-stream); `None`
+    /// on force-final and the text continuation — which is also what keeps their
+    /// prompt-cache key off the wire.
+    pub(crate) character_id: Option<&'a str>,
+    pub(crate) log_context: &'a LogContext,
+}
+
+/// Write ONE `CHAT_MESSAGE` row for a tool-loop leg at its `done` chunk — v4's
+/// funnel `logLLMCall`, gated on `if (userId)`. The profile is
+/// `state.effective_profile` (v4's `streaming.effectiveProfile`, the UNDERSTUDY
+/// after a failover); no profile, no row (as [`consume_stream`]'s gate).
+/// `content` is only what THIS call streamed (v4's per-call
+/// `accumulatedContent`); `started_at_ms` is this call's own start.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn log_loop_leg(
+    db: &Db,
+    ids: &LegLogIds<'_>,
+    started_at_ms: i64,
+    profile: Option<&EffectiveProfile>,
+    params: &StreamParams,
+    content: String,
+    leg: &LegUsage,
+    raw_response: Option<Value>,
+) {
+    if ids.user_id.is_empty() {
+        return;
+    }
+    let Some(profile) = profile else { return };
+    let log = StreamLogCtx {
+        db,
+        user_id: ids.user_id,
+        chat_id: ids.chat_id,
+        message_id: ids.message_id,
+        character_id: ids.character_id,
+        log_context: ids.log_context,
+        started_at_ms,
+    };
+    log_chat_message_call(
+        &log,
+        profile,
+        params,
+        content,
+        leg.usage,
+        leg.cache_usage,
+        leg.raw_provider_usage.clone(),
+        raw_response,
+    )
+    .await;
+}
+
 /// Drain a canned stream, applying every chunk to the state exactly as v4's
 /// `for await` loop body does; return the mid-stream error if one arrived. On the
 /// terminal chunk, writes the v4 `CHAT_MESSAGE` `llm_logs` row when `log` is set.
@@ -1132,9 +1237,7 @@ where
         .unwrap_or_else(|| params.model.clone());
     // v4 tracks the LAST non-null usage/cache/rawProviderUsage across all chunks
     // for the terminal log.
-    let mut last_usage: Option<StreamUsage> = None;
-    let mut last_cache_usage: Option<StreamCacheUsage> = None;
-    let mut last_raw_provider_usage: Option<Value> = None;
+    let mut leg_usage = LegUsage::default();
     // A provider that answers with headers and then goes silent would otherwise
     // hold this loop open forever — the SDK's own timeout stops at the headers.
     // The watchdog turns that into an ordinary `Err`, which the fallback engine
@@ -1168,19 +1271,7 @@ where
         };
         // Capture + live-forward reasoning on any chunk. DISPLAY ONLY.
         apply_reasoning_chunk(state, &chunk, sink);
-        if chunk.usage.is_some() {
-            last_usage = chunk.usage;
-        }
-        if chunk.cache_usage.is_some() {
-            last_cache_usage = chunk.cache_usage;
-        }
-        if chunk
-            .raw_provider_usage
-            .as_ref()
-            .is_some_and(|v| v.is_object())
-        {
-            last_raw_provider_usage = chunk.raw_provider_usage.clone();
-        }
+        leg_usage.observe(&chunk);
         if !chunk.content.is_empty() {
             if !state.has_started_streaming {
                 sink.emit(ChatEvent::status(StatusPayload {
@@ -1218,9 +1309,9 @@ where
                         &profile,
                         params,
                         state.full_response.clone(),
-                        last_usage,
-                        last_cache_usage,
-                        last_raw_provider_usage.clone(),
+                        leg_usage.usage,
+                        leg_usage.cache_usage,
+                        leg_usage.raw_provider_usage.clone(),
                         chunk.raw_response.clone(),
                     )
                     .await;

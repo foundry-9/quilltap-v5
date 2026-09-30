@@ -155373,6 +155373,22 @@ auto-described; the P4.D108 deferral, now measured — proposed order),
 row; invisible to the differential, which strips CHAT_MESSAGE rows — proposed
 order). Walk doc §5.
 
+### P4.121 — Salon tool-loop leg logging (dogfood #129) — lane record (2026-09-30)
+
+Branch `claude/salon-tool-loop-leg-logging-9e3228`. Baseline `97b25fc53`; the drift-ledger §2 probe passed at lane start (v4 `main` at the baseline, clean, bugfix unmoved). Pin: `/tmp/qt-v4-pin-p4121-97b25fc53` (three symlink classes).
+
+**Landed.** `primary_stream.rs`: `LegUsage` (per-call last-usage tracker, now also used by `consume_stream`), `LegLogIds`, `log_loop_leg` (one writer over the existing `log_chat_message_call`; `if (userId)` gate; no profile, no row). `native_tool_loop.rs`: the re-stream logs with `characterId` Some, force-final (new per-leg content buffer) with None, both at the leg's `done` chunk, before the loop consumes the result, under `state.effective_profile`. `text_tool_loop.rs`: the continuation logs with None in both text passes (`ContinuationWatchdogIds` grew `db` + `log_context`). `log_context` added to `RunNativeToolLoopOptions`/`RunTextToolPassOptions`, passed at the three `orchestrator.rs` sites from `input.log_context`.
+
+**Found by the differential (not in the order):** `log_stream_message_call` built the request-prefix hashes with `name`/`toolCallId`/`toolCalls` always None; v4 hashes the same `llmMessages` it sends. Invisible until a tool-loop leg logged (the tail holds the assistant tool-call turn and tool results); red-first on `historyTailHash` in 6 of 7 native rows, fixed in the same helper.
+
+**Tier 2.** Both loop oracles relocated to the W4.11b shape (model mock at `createLLMProvider`, real `streamMessage` funnel, real `logLLMCall` via `requireActual` because v4's jest.setup no-ops it, fresh `SQLITE_LLM_LOGS_PATH`). The text corpus had non-UUID ids (`c1`, `user-text-tool`) that v4's log schema rejects silently (the row is swallowed, the table never appears) — fixture ids moved to UUIDs, and message/profile ids are UUIDs on both sides in both families. Native: 7 cases, 7 rows; text: 9 cases, 15 rows; both byte-equal to v4, with non-vacuity asserts (a characterId-carrying and a characterId-less row; text rows all characterId NULL). The P4.68 census in `orchestrator_tier3_equivalence.rs` now counts turns whose CHAT_MESSAGE rows name two distinct `connectionProfileId`s. `primary_stream_tier3` (P4.122's) regenerated as a RECORD leg from the pin: 49 calls / 45 rows, green, no case enters a tool loop, so nothing moved. New `tool_loop_leg_logging.rs` (no oracle, cannot SKIP): rows under the understudy's profile/model (not the loop's `provider`), run id on the row, `get_total_token_usage_for_run` charging the leg with and without cache hits (5/6 vs 9/10), both loops.
+
+**Mutation table** (each reddened only its target; reverted by file backup): A native re-stream logs the whole turn's text -> `native_tool_loop_tier3` response column; B force-final passes a characterId -> native tier3 characterId + downstream columns; D text continuation logs the whole turn -> `text_tool_loop_tier3`; E/E2 run id dropped (text / native) -> `tool_loop_leg_logging`; G hash projection reverted -> native tier3 `requestHashes`; H failover log disabled -> the sharpened census panics. **Not measured:** the order's "disable the loop log -> red" for the census: with the loop logs off the census stays green by construction (it keys on profile), and the loop families go red instead.
+
+**Regen recipes** (from the lane worktree, `TZ=UTC`, `CARGO_INCREMENTAL=0`): `python3 harness/tools/recipe_sweep.py --run {native_tool_loop_tier3,text_tool_loop_tier3,orchestrator_tier3,primary_stream_tier3}_equivalence --v4 /tmp/qt-v4-pin-p4121-97b25fc53 --v5w "$PWD" --force`. Fixture changed: `harness/oracle/fixtures/text-tool-loop-tier3.json` (ids only); it invalidates no other oracle (read only by these two text files). `orchestrator_tier3` regenerates nothing new, its oracle is unchanged.
+
+**Not done / open for the unifier:** the enclave `step` family was not modified or separately re-run (the budget charge is pinned in `tool_loop_leg_logging` via the same repo read); Tier R and the full sweep run at unification.
+
 ## P4.122 — mid-stream error frames + the image helper's flat body (lane `claude/p4-122-midstream-error-frames-3a675a`, 2026-09-30)
 
 Pin: `/tmp/qt-v4-pin-p4122-97b25fc53` (detached `97b25fc53`, the three symlink

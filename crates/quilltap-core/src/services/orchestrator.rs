@@ -3142,6 +3142,7 @@ where
             state: &mut streaming_state,
             tool_messages: &mut tool_messages,
             generated_image_paths: &mut generated_image_paths,
+            log_context: input.log_context.clone(),
         },
     )
     .await
@@ -3224,6 +3225,7 @@ where
                 state: &mut streaming_state,
                 tool_messages: &mut tool_messages,
                 generated_image_paths: &mut generated_image_paths,
+                log_context: input.log_context.clone(),
             },
         )
         .await
@@ -3267,6 +3269,7 @@ where
                 state: &mut streaming_state,
                 tool_messages: &mut tool_messages,
                 generated_image_paths: &mut generated_image_paths,
+                log_context: input.log_context.clone(),
             },
         )
         .await

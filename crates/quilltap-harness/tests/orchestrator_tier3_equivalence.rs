@@ -2322,45 +2322,42 @@ fn orchestrator_tier3_matches_oracle() {
     // `primary_stream_tier3`.
     //
     // The discriminator is structural rather than a magic count, so the corpus
-    // can grow: a repeated `(chatId, messageId)` pair is a re-stream into the
-    // same pre-generated assistant message, which only a failover leg does.
+    // can grow, and it is the leg's PROFILE: a failover leg streams under the
+    // UNDERSTUDY (v4 `restreamInto` logs `effectiveProfile`, which the failover
+    // swapped), so a `(chatId, messageId)` whose CHAT_MESSAGE rows name more than
+    // one `connectionProfileId` is the wiring's evidence.
+    //
+    // (P4.121, dogfood #129: this used to count repeated-pair rows WITH a
+    // character. That premise died the moment the native re-stream logged — it
+    // repeats the pair AND carries a `characterId`, so the census would have
+    // stayed green with the failover wiring broken. A tool-loop leg logs under
+    // the SAME effective profile as the row before it — the understudy's, after
+    // a failover — so it can neither fake nor mask this signal.)
     {
-        // A re-stream into the same pre-generated assistant message is either a
-        // FAILOVER leg (v4 `restreamInto` — `characterId` SET since `65f5021c8`)
-        // or the tool-unsupported RETRY (v4 `primary-stream.service.ts:246-256`,
-        // which passes NO `characterId`; v5 reproduces that at
-        // `primary_stream.rs`'s retry ctx). Only the former is this wiring's
-        // evidence, so the census counts repeated-pair rows WITH a character —
-        // the §3 unification review found the first draft counting every
-        // repeat and asserting NULL-free characters on every row, which a
-        // retry case landing in the corpus would have reddened on a correct
-        // tree.
-        let mut by_key: HashMap<(String, String), (usize, usize)> = HashMap::new();
+        let mut profiles_by_key: HashMap<(String, String), std::collections::BTreeSet<String>> =
+            HashMap::new();
         for row in all_got_logs
             .iter()
             .filter(|r| r["type"].as_str() == Some("CHAT_MESSAGE"))
         {
             let chat = row["chatId"].as_str().unwrap_or_default().to_string();
             let msg = row["messageId"].as_str().unwrap_or_default().to_string();
-            let e = by_key.entry((chat, msg)).or_default();
-            e.0 += 1;
-            if row["characterId"].as_str().is_some() {
-                e.1 += 1;
-            }
+            profiles_by_key.entry((chat, msg)).or_default().insert(
+                row["connectionProfileId"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            );
         }
-        let failover_legs: usize = by_key
-            .values()
-            .filter(|(total, _)| *total > 1)
-            .map(|(_, with_character)| with_character.saturating_sub(1))
-            .sum();
+        let failover_turns = profiles_by_key.values().filter(|p| p.len() > 1).count();
         assert!(
-            failover_legs > 0,
-            "no CHAT_MESSAGE row with a characterId shares a (chatId, messageId) \
-             with another, so no failover leg logged one. The orchestrator's \
+            failover_turns > 0,
+            "no pre-generated assistant message has CHAT_MESSAGE rows under two \
+             connection profiles, so no failover leg logged one. The orchestrator's \
              empty-response recovery is not being handed its `FailoverLogCtx` \
              (v4 `orchestrator.service.ts:1572`), or the corpus lost its \
              empty-primary case. Pairs seen: {}",
-            by_key.len()
+            profiles_by_key.len()
         );
     }
 

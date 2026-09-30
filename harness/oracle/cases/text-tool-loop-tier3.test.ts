@@ -8,15 +8,15 @@
  * (harness/oracle/fixtures/text-tool-loop-tier3.json). The pass writes NOTHING to
  * the DB (`processToolCalls` only emits SSE frames + builds the ToolMessage slate;
  * the only DB write in the whole pass is the preserve closure, injected here as a
- * recording no-op), so there is NO fixture / initializeDatabase — just the three
- * boundaries pinned to match the Rust seams:
+ * recording no-op). P4.121: a fresh main + llm-logs DB pair is initialized so v4's
+ * REAL `streamMessage` funnel's CHAT_MESSAGE rows can be dumped and diffed; the
+ * boundaries pinned to match the Rust seams are:
  *
- *   - `streamMessage` (./streaming.service) → each case's scripted chunk sequence
- *     in call order, RECORDING the exact `provider|model|temperature|messages` key
+ *   - `createLLMProvider().streamMessage` (BENEATH the real ./streaming.service
+ *     funnel, P4.121) → each case's scripted chunk sequence in call order, RECORDING the exact `provider|model|temperature|messages` key
  *     (a `canned` row the Rust `QueuedStreamingProvider` replays) + the `stop`
  *     forwarded on that continuation (per-case, to prove stopSequences forwarding).
- *     The rest of streaming.service (encodeStatus/safeEnqueue/applyReasoningChunk)
- *     stays REAL.
+ *     The whole of streaming.service (incl. its CHAT_MESSAGE logLLMCall) is REAL.
  *   - `executeToolCallWithContext` (@/lib/chat/tool-executor) → canned per-call
  *     results keyed by `name|JSON.stringify(args)|callId`, mirroring the Rust
  *     `CannedToolRunner`. The REAL `processToolCalls` runs beneath it.
@@ -36,7 +36,17 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { mkdtempSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
+
+// Inlined canonicalizer (same as the other tier-2/3 oracles).
+function canonValue(v: unknown): unknown {
+  if (v === null || v === undefined) return null;
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(v)) return v.toString('hex');
+  if (v instanceof Uint8Array) return Buffer.from(v).toString('hex');
+  return v;
+}
 
 // The REAL DeepSeek provider plugin — its `hasTextToolMarkers` /
 // `parseTextToolCalls` / `stripTextToolMarkers` (the composite XML functions).
@@ -119,7 +129,32 @@ async function main(): Promise<void> {
     sequences: ChunkSpec[][];
   }> = [];
 
+  // P4.121: a fresh main + llm-logs DB pair so v4's REAL `streamMessage` funnel's
+  // CHAT_MESSAGE `logLLMCall` lands rows to dump/diff (the pass itself writes
+  // nothing to main).
+  const scratch = mkdtempSync(join(tmpdir(), 'qt-ttl-oracle-'));
+  mkdirSync(join(scratch, 'data'), { recursive: true });
+  process.env.ENCRYPTION_MASTER_PEPPER = 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=';
+  process.env.SQLITE_PATH = join(scratch, 'ttl-main.db');
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'data', 'llm-logs.db');
+  process.env.QUILLTAP_DATA_DIR = scratch;
+  delete process.env.SQLITE_WAL_MODE;
+  process.env.LOG_LEVEL = 'error';
+
   jest.resetModules();
+  const cipherDriverPath = require('node:path').join(
+    process.cwd(),
+    'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'
+  );
+  jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
+  jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
+  jest.doMock('@/lib/database/repositories', () => jest.requireActual('@/lib/database/repositories'));
+  jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // v4's jest.setup no-ops the whole llm-logging module
+  // (`jest-setup-llm-logging-service-mocked`) — run the REAL `logLLMCall`.
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service')
+  );
 
   // The tool-executor: canned per-call (mirrors the Rust CannedToolRunner).
   jest.doMock('@/lib/chat/tool-executor', () => ({
@@ -138,35 +173,43 @@ async function main(): Promise<void> {
     detectToolCalls: () => [],
   }));
 
-  // streamMessage: scripted sequences in call order; record the key + the stop
-  // (keep the rest of streaming.service REAL).
-  jest.doMock('@/lib/services/chat-message/streaming.service', () => {
-    const actual = jest.requireActual('@/lib/services/chat-message/streaming.service');
+  // P4.121 (the W4.11b shape): the model mock sits BELOW v4's REAL
+  // `streamMessage` funnel — only `createLLMProvider().streamMessage` is scripted —
+  // so the funnel's own CHAT_MESSAGE `logLLMCall` fires for every continuation.
+  // The recorded canned key and the forwarded `stop` are the ones the old
+  // service-level mock saw (`params.stop` is what the funnel hands the provider).
+  jest.doMock('@/lib/llm', () => {
+    const actual = jest.requireActual('@/lib/llm');
     return {
       __esModule: true,
       ...actual,
-      streamMessage: async function* (opts: {
-        messages: Array<{ role: string; content: string }>;
-        connectionProfile: { provider: string; modelName: string };
-        modelParams?: { temperature?: number };
-        stop?: string[];
-      }) {
-        const seq = currentCase.streams[streamCallIndex];
-        streamCallIndex += 1;
-        if (!seq) throw new Error(`no scripted stream #${streamCallIndex - 1} for case ${currentCase.name}`);
-        cannedRows.push({
-          provider: opts.connectionProfile.provider,
-          model: opts.connectionProfile.modelName,
-          temperature: opts.modelParams?.temperature ?? null,
-          messages: opts.messages.map((m) => ({ role: m.role, content: m.content })),
-          sequences: [seq],
-        });
-        currentStops.push(opts.stop ?? []);
-        for (const chunk of seq) {
-          if (chunk.error) throw new Error(chunk.error);
-          yield chunk;
-        }
-      },
+      createLLMProvider: async (providerName: string, _baseUrl?: string) => ({
+        streamMessage: async function* (
+          params: {
+            messages: Array<{ role: string; content: string }>;
+            model: string;
+            temperature?: number;
+            stop?: string[];
+          },
+          _apiKey: string
+        ) {
+          const seq = currentCase.streams[streamCallIndex];
+          streamCallIndex += 1;
+          if (!seq) throw new Error(`no scripted stream #${streamCallIndex - 1} for case ${currentCase.name}`);
+          cannedRows.push({
+            provider: providerName,
+            model: params.model,
+            temperature: params.temperature ?? null,
+            messages: params.messages.map((m) => ({ role: m.role, content: m.content })),
+            sequences: [seq],
+          });
+          currentStops.push(params.stop ?? []);
+          for (const chunk of seq) {
+            if (chunk.error) throw new Error(chunk.error);
+            yield chunk;
+          }
+        },
+      }),
     };
   });
 
@@ -177,6 +220,8 @@ async function main(): Promise<void> {
   const { hasTextBlockMarkers } = await import('@/lib/tools');
   const { createToolContext } = await import('@/lib/services/chat-message/tool-execution.service');
   const { runTextToolPass } = await import('@/lib/services/chat-message/text-tool-loop.service');
+  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  await initializeDatabase();
 
   const decoder = new TextDecoder();
   function makeController(sink: unknown[]) {
@@ -206,7 +251,7 @@ async function main(): Promise<void> {
 
     const streaming: Record<string, unknown> = {
       fullResponse: c.initialFullResponse,
-      effectiveProfile: { id: 'prof-1', provider: c.provider, modelName: c.model, baseUrl: null },
+      effectiveProfile: { id: '60000000-0000-4000-8000-000000000001', provider: c.provider, modelName: c.model, baseUrl: null },
       effectiveApiKey: 'test-key',
       usage: null,
       cacheUsage: null,
@@ -267,7 +312,7 @@ async function main(): Promise<void> {
         chatId: c.chatId,
         userId: spec.userId,
         character: { id: c.characterId, name: c.characterName } as never,
-        preGeneratedAssistantMessageId: `${c.chatId}-msg`,
+        preGeneratedAssistantMessageId: c.chatId.replace(/^3/, '5'),
         strategy: strategy as never,
         formattedMessages: c.formattedMessages as never,
         modelParams: { temperature: c.temperature },
@@ -317,6 +362,35 @@ async function main(): Promise<void> {
     lines.push(JSON.stringify({ kind: 'canned', ...row }));
   }
 
+  // P4.121: the CHAT_MESSAGE `llm_logs` rows the REAL funnel wrote (fire-and-forget
+  // `.catch`, not awaited — drain before reading). id/createdAt/updatedAt are
+  // placeholdered; `durationMs` is collapsed to a presence marker Rust-side.
+  await new Promise((r) => setTimeout(r, 300));
+  const { getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const lldb = getRawLLMLogsDatabase();
+  if (!lldb) throw new Error('llm-logs DB handle unavailable (degraded open?)');
+  const llColumns = (lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>).map(
+    (c) => c.name
+  );
+  const llRows = (lldb.prepare('SELECT * FROM llm_logs').all() as Array<Record<string, unknown>>)
+    .map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of llColumns) out[col] = canonValue(r[col]);
+      out.id = '<id>';
+      out.createdAt = '<ts>';
+      out.updatedAt = '<ts>';
+      return out;
+    })
+    .sort((a, b) => {
+      const sa = JSON.stringify(a);
+      const sb = JSON.stringify(b);
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+  lines.push(JSON.stringify({ kind: 'llmlogs', columns: llColumns, rows: llRows }));
+
+  await closeDatabase();
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`text-tool-loop oracle wrote ${outPath}\n`);
 }
