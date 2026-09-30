@@ -47,6 +47,15 @@
 pub struct SseEvent {
     pub event: String,
     pub data: String,
+    /// Whether `openai` 7.23.0's `SSEDecoder` would dispatch this event at
+    /// all (P4.128): it returns `null` at a blank line unless an `event:`
+    /// value is set (a non-empty one — `!this.event`) or at least one `data:`
+    /// line arrived (`this.data.length`). So an `id:`-only / `retry:`-only
+    /// block is invisible to the SDK, while an explicit empty `data:` line —
+    /// or a bare `event: ping` — dispatches with data `''`, which the SDK's
+    /// `JSON.parse` then throws on. The spec-faithful splitter above
+    /// dispatches all three; the SDK-flavoured decoders read this bit.
+    pub sdk_visible: bool,
 }
 
 /// Incremental SSE parser. Feed bytes with [`SseParser::push`]; drain complete
@@ -65,6 +74,9 @@ pub struct SseParser {
     /// buffer is non-empty OR fields were set). We track "saw a field" so an
     /// explicit empty-data event (`event: ping\n\n`) still dispatches.
     have_fields: bool,
+    /// Whether a `data:` line arrived since the last dispatch (for
+    /// [`SseEvent::sdk_visible`]).
+    saw_data_line: bool,
 }
 
 impl SseParser {
@@ -173,6 +185,7 @@ impl SseParser {
                 }
                 self.data.push_str(value);
                 self.have_fields = true;
+                self.saw_data_line = true;
             }
             // id / retry / anything else: parsed but ignored (still counts as a
             // field so an event carrying only such a line would still dispatch,
@@ -186,8 +199,14 @@ impl SseParser {
     fn dispatch(&mut self, out: &mut Vec<SseEvent>) {
         let event = std::mem::take(&mut self.event_type);
         let data = std::mem::take(&mut self.data);
+        let sdk_visible = !event.is_empty() || self.saw_data_line;
         self.have_fields = false;
-        out.push(SseEvent { event, data });
+        self.saw_data_line = false;
+        out.push(SseEvent {
+            event,
+            data,
+            sdk_visible,
+        });
     }
 }
 
@@ -209,7 +228,8 @@ mod tests {
             ev,
             vec![SseEvent {
                 event: String::new(),
-                data: "hello".into()
+                data: "hello".into(),
+                sdk_visible: true,
             }]
         );
     }
@@ -222,7 +242,8 @@ mod tests {
             ev,
             vec![SseEvent {
                 event: String::new(),
-                data: "a\nb".into()
+                data: "a\nb".into(),
+                sdk_visible: true,
             }]
         );
     }
@@ -235,7 +256,8 @@ mod tests {
             ev,
             vec![SseEvent {
                 event: "ping".into(),
-                data: "{}".into()
+                data: "{}".into(),
+                sdk_visible: true,
             }]
         );
     }
@@ -248,7 +270,8 @@ mod tests {
             ev,
             vec![SseEvent {
                 event: String::new(),
-                data: "x".into()
+                data: "x".into(),
+                sdk_visible: true,
             }]
         );
     }
@@ -278,7 +301,8 @@ mod tests {
             got,
             vec![SseEvent {
                 event: String::new(),
-                data: "hi".into()
+                data: "hi".into(),
+                sdk_visible: true,
             }]
         );
     }
@@ -291,7 +315,8 @@ mod tests {
             ev,
             vec![SseEvent {
                 event: String::new(),
-                data: "hello".into()
+                data: "hello".into(),
+                sdk_visible: true,
             }]
         );
     }
@@ -305,8 +330,34 @@ mod tests {
             got,
             vec![SseEvent {
                 event: String::new(),
-                data: "tail".into()
+                data: "tail".into(),
+                sdk_visible: true,
             }]
+        );
+    }
+
+    /// P4.128: what the openai SDK's `SSEDecoder` dispatches — an empty
+    /// `data:` line and a bare `event:` do, an `id:`-only block does not.
+    #[test]
+    fn sdk_visibility_follows_the_sdks_dispatch_rule() {
+        let mut p = SseParser::new();
+        let ev = all(
+            &mut p,
+            b"data:\n\nevent: ping\n\nid: 7\n\nevent:\n\ndata: x\n\n",
+        );
+        let vis: Vec<(&str, &str, bool)> = ev
+            .iter()
+            .map(|e| (e.event.as_str(), e.data.as_str(), e.sdk_visible))
+            .collect();
+        assert_eq!(
+            vis,
+            vec![
+                ("", "", true),
+                ("ping", "", true),
+                ("", "", false),
+                ("", "", false),
+                ("", "x", true),
+            ]
         );
     }
 
@@ -321,7 +372,8 @@ mod tests {
             got,
             vec![SseEvent {
                 event: String::new(),
-                data: "é".into()
+                data: "é".into(),
+                sdk_visible: true,
             }]
         );
     }

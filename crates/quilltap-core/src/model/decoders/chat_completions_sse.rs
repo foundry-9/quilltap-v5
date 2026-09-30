@@ -144,6 +144,10 @@ pub struct ChatCompletionsSseDecoder {
     /// Set once the error has been surfaced: the SDK's iterator has thrown,
     /// so nothing after it — not even the terminal `done` — is ever yielded.
     failed: bool,
+    /// P4.128: the SDK flavours saw the exact `[DONE]` sentinel — the SDK's
+    /// iterator `break`s there, so every later frame is never read (the
+    /// terminal `done` chunk still follows, as the plugin's loop ends).
+    sdk_done: bool,
 }
 
 impl ChatCompletionsSseDecoder {
@@ -162,6 +166,7 @@ impl ChatCompletionsSseDecoder {
             done_emitted: false,
             pending_error: None,
             failed: false,
+            sdk_done: false,
         }
     }
 
@@ -563,6 +568,44 @@ impl ChatCompletionsSseDecoder {
     }
 
     fn process_events(&mut self, events: Vec<super::sse::SseEvent>) -> Vec<StreamChunk> {
+        if self.flavor == Flavor::OpenRouterRaw {
+            return self.process_raw_events(events);
+        }
+        // P4.128: the four OpenAI-SDK flavours read frames exactly as
+        // `Stream.fromSSEResponse` does (see [`super::SdkFrame`]): `[DONE]`
+        // ends the stream, a frame `JSON.parse` would reject throws the SDK's
+        // `SyntaxError`, and an error frame throws its `APIError` (P4.122).
+        let mut out = Vec::new();
+        for ev in events {
+            if self.sdk_done {
+                break;
+            }
+            match super::sdk_frame(&ev) {
+                super::SdkFrame::Invisible => {}
+                super::SdkFrame::Done => self.sdk_done = true,
+                super::SdkFrame::Malformed => {
+                    self.pending_error = Some(DecodeError::new(super::SDK_MALFORMED_SSE_JSON));
+                    break;
+                }
+                super::SdkFrame::Json(v) => {
+                    if let Some(e) = super::openai_sdk_frame_error(&ev.event, &v) {
+                        self.pending_error = Some(e);
+                        break;
+                    }
+                    self.handle_chunk(&v, &mut out)
+                }
+            }
+        }
+        out
+    }
+
+    /// OpenRouter's raw `fetch` loop (`streamViaChatCompletions`): trims each
+    /// `data:` payload, skips `[DONE]` and any frame that does not parse
+    /// ("Skip malformed JSON chunks"), and reads only `choices` — so an error
+    /// frame is skipped like any other choice-less frame. Recorded unchanged
+    /// by P4.128's `openrouter-sdk-*` rows (every one decodes past the bad
+    /// frame).
+    fn process_raw_events(&mut self, events: Vec<super::sse::SseEvent>) -> Vec<StreamChunk> {
         let mut out = Vec::new();
         for ev in events {
             let data = ev.data.trim();
@@ -572,29 +615,8 @@ impl ChatCompletionsSseDecoder {
             if data == "[DONE]" {
                 continue;
             }
-            match serde_json::from_str::<Value>(data) {
-                Ok(v) => {
-                    // P4.122: the four OpenAI-SDK flavours throw on an error
-                    // frame (`Stream.fromSSEResponse`); OpenRouter's raw
-                    // `fetch` loop parses the frame and reads only `choices`,
-                    // so an error frame there is skipped like any other
-                    // choice-less frame.
-                    if self.flavor != Flavor::OpenRouterRaw {
-                        if let Some(e) = super::openai_sdk_frame_error(&ev.event, &v) {
-                            self.pending_error = Some(e);
-                            break;
-                        }
-                    }
-                    self.handle_chunk(&v, &mut out)
-                }
-                Err(_) => {
-                    // v4's SDK path would surface a malformed frame as a parse
-                    // error; the openrouter raw path silently skips ("Skip
-                    // malformed JSON chunks"). We skip — the recorder produces
-                    // only well-formed frames, and a skip is the conservative,
-                    // never-wrong choice (matching the raw path exactly and the
-                    // SDK path in practice, which never sees a malformed frame).
-                }
+            if let Ok(v) = serde_json::from_str::<Value>(data) {
+                self.handle_chunk(&v, &mut out)
             }
         }
         out

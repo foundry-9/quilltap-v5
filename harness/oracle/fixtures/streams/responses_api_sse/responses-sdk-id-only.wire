@@ -1,0 +1,14 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_s","status":"in_progress"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"Hello"}
+
+id: 7
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":" more"}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_s","object":"response","created_at":1730000000,"model":"gpt-5","status":"completed","output_text":"Hello more","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello more"}]}],"usage":{"input_tokens":15,"output_tokens":4,"total_tokens":19}}}
+

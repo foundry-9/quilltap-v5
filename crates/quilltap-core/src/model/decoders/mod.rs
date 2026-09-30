@@ -105,6 +105,52 @@ impl DecodeError {
     }
 }
 
+/// The message of the `SyntaxError` `openai` 7.23.0's `Stream.fromSSEResponse`
+/// throws when a frame's `JSON.parse(sse.data)` fails (`core/streaming.js:
+/// 108-114`) — thrown from inside the iterator, so the plugin's catch line
+/// logs it and the stream ends with no terminal chunk (P4.128).
+pub(crate) const SDK_MALFORMED_SSE_JSON: &str =
+    "Error reading response: malformed server-sent event JSON.";
+
+/// One dispatched SSE event as `openai` 7.23.0's `Stream.fromSSEResponse`
+/// sees it (P4.128 — the SDK's frame semantics, recorded through the REAL SDK
+/// by the `*-sdk-*.wire` rows of the stream corpora):
+///
+/// ```text
+/// for await (const sse of messages) {          // SSEDecoder: see SseEvent::sdk_visible
+///   if (sse.data === '[DONE]') { …; break; }   // EXACT — no trim
+///   … data = JSON.parse(sse.data) …            // throws SyntaxError on '' / garbage
+/// ```
+///
+/// So `[DONE]` ENDS the stream (every later frame, even an error frame, is
+/// never read); a padded `[DONE]` (`data:  [DONE]`, `data: [DONE] `) is not
+/// the sentinel and fails the parse; an empty `data:` or a bare `event:`
+/// fails the parse; an `id:`-only block is never dispatched. `JSON.parse`
+/// tolerates the same surrounding JSON whitespace `serde_json` does.
+pub(crate) enum SdkFrame {
+    /// Not dispatched by the SDK's decoder.
+    Invisible,
+    /// The exact `[DONE]` sentinel — stop reading.
+    Done,
+    /// A parsed frame.
+    Json(serde_json::Value),
+    /// `JSON.parse` would throw — the SDK's [`SDK_MALFORMED_SSE_JSON`].
+    Malformed,
+}
+
+pub(crate) fn sdk_frame(ev: &sse::SseEvent) -> SdkFrame {
+    if !ev.sdk_visible {
+        return SdkFrame::Invisible;
+    }
+    if ev.data == "[DONE]" {
+        return SdkFrame::Done;
+    }
+    match serde_json::from_str(&ev.data) {
+        Ok(v) => SdkFrame::Json(v),
+        Err(_) => SdkFrame::Malformed,
+    }
+}
+
 /// `openai` 7.23.0 `Stream.fromSSEResponse`'s two mid-stream throws (P4.122),
 /// in the SDK's order, over one already-parsed frame:
 ///

@@ -156598,6 +156598,55 @@ Tier 1 item 4, Tier 2 items 6, 7, 8, 9. §R.2 probe PASSED before the batch.
   providers/regenerate-text-errors.sh`; `/tmp/p4128/regen-ps.sh` (the
   recipe's commands, lane-private `/tmp/p4128/` outputs, cwd the pin).
 
+## P4.128 unit B3 — the SDK's frame semantics for the SDK-flavoured decoders (2026-09-30)
+
+Tier 1 item 5. §R.2 probe PASSED before the batch.
+
+- **Neutrality first:** `regenerate-stream-fixtures.sh` at the pin with the
+  corpora unchanged → all TEN `*.recorded.ndjson` `cmp`-EQUAL.
+- **Synthetic wires (7 chat-completions × 5 providers incl. OpenRouter raw;
+  7 Responses × 2):** `sdk-malformed-frame`, `sdk-after-done` (content + an
+  error frame AFTER `[DONE]`), `sdk-padded-done` (`data:  [DONE]`),
+  `sdk-done-trailing-space` (`data: [DONE] `), `sdk-empty-data` (`data:`),
+  `sdk-event-only` (`event: ping`, no data), `sdk-id-only` (`id: 7`), and the
+  `responses-sdk-*` twins. Appended to both `cases.json` by addition (the
+  Responses file is hand-formatted — appended textually). **Measured through
+  the real SDK:** the five parse-failure shapes throw `SyntaxError: Error
+  reading response: malformed server-sent event JSON.` (v4 trigger
+  `provider-error`, not refused; the three catch-line plugins log it, Z.AI /
+  OPENAI / GROK do not) after the `Hello` chunk and with NO terminal chunk;
+  `after-done` yields `Hello` + the terminal chunk and never reads the late
+  error frame (Responses: the terminal chunk WITHOUT `response.completed`);
+  `id-only` decodes straight through. OpenRouter raw skips every bad frame
+  and reads past `[DONE]` (v5 already matched). Existing rows of every corpus
+  byte-identical after the re-record (`grep -v -- -sdk- | cmp`).
+- **Red-first:** `stream_decoders` + `streaming_composer` RED on the first
+  new row of both SSE decoders (`oracle errored but Rust did not`; the
+  composer's catch-line assert) — 36 rows are designed reds (5 throw shapes ×
+  6 SDK providers + 6 `after-done`); 13 neutral (`id-only` × 6, OpenRouter ×
+  7).
+- **Core:** `SseEvent.sdk_visible` (the SDK `SSEDecoder`'s dispatch rule: a
+  non-empty `event:` or a `data:` line), unit-pinned; `decoders::sdk_frame` →
+  `SdkFrame::{Invisible, Done, Json, Malformed}` + `SDK_MALFORMED_SSE_JSON`,
+  the one home both decoders read; `sdk_done` latch in each; the chat
+  decoder's OpenRouter path split into `process_raw_events` (its old
+  "skip — the SDK path never sees a malformed frame" comment was the claim
+  this unit refutes). Both families green: 87 + 37 cases × every chunking,
+  the catch line and v4's verdict/trigger included.
+- **Classification (item 5's last clause):** the SDK's `SyntaxError` is
+  `provider-error` on v4's real classifier and on v5's, compared per row by
+  both families — the same trigger as P4.122's uncoded frame, so no new
+  `primary_stream_tier3` arm (the order's condition for one did not arise).
+- **Tier 3, recorded not built:** Anthropic's raw `SyntaxError` rethrow and
+  Google's incomplete-segment throw were NOT measured this lane (no wires
+  added for those decoders); v4's bytes for a MID-stream transport failure
+  remain UNMEASURED. The SDK's own `logger.error('Could not parse message
+  into JSON:')` console lines (client logger, not the plugin logger) are not
+  ported.
+- Regen AS RUN: `V4=/tmp/qt-v4-pin-p4128-97b25fc53 V5=$PWD bash harness/
+  oracle/providers/regenerate-stream-fixtures.sh` (Node 24 on PATH), twice
+  (neutrality, then with the new cases).
+
 ## P4.130 — the Zod smalls + the read-side trail validation (lane record, 2026-09-30)
 
 Lane branch `claude/zod-work-orders-validation-cfc445`, cut from `main`

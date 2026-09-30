@@ -152,5 +152,19 @@
   {"decoder": "responses_api_sse", "provider": "grok", "case": "grok-responses-event-error-before", "wire": "responses-event-error-before.wire", "model": "grok-4", "temperature": 0.7},
   {"decoder": "responses_api_sse", "provider": "grok", "case": "grok-responses-event-error-after", "wire": "responses-event-error-after.wire", "model": "grok-4", "temperature": 0.7},
   {"decoder": "responses_api_sse", "provider": "grok", "case": "grok-responses-failed", "wire": "responses-failed.wire", "model": "grok-4", "temperature": 0.7},
-  {"decoder": "responses_api_sse", "provider": "grok", "case": "grok-responses-data-error", "wire": "responses-data-error.wire", "model": "grok-4", "temperature": 0.7}
+  {"decoder": "responses_api_sse", "provider": "grok", "case": "grok-responses-data-error", "wire": "responses-data-error.wire", "model": "grok-4", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "openai", "case": "openai-responses-sdk-malformed-frame", "wire": "responses-sdk-malformed-frame.wire", "model": "gpt-5", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "grok", "case": "grok-responses-sdk-malformed-frame", "wire": "responses-sdk-malformed-frame.wire", "model": "grok-4", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "openai", "case": "openai-responses-sdk-after-done", "wire": "responses-sdk-after-done.wire", "model": "gpt-5", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "grok", "case": "grok-responses-sdk-after-done", "wire": "responses-sdk-after-done.wire", "model": "grok-4", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "openai", "case": "openai-responses-sdk-padded-done", "wire": "responses-sdk-padded-done.wire", "model": "gpt-5", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "grok", "case": "grok-responses-sdk-padded-done", "wire": "responses-sdk-padded-done.wire", "model": "grok-4", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "openai", "case": "openai-responses-sdk-done-trailing-space", "wire": "responses-sdk-done-trailing-space.wire", "model": "gpt-5", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "grok", "case": "grok-responses-sdk-done-trailing-space", "wire": "responses-sdk-done-trailing-space.wire", "model": "grok-4", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "openai", "case": "openai-responses-sdk-empty-data", "wire": "responses-sdk-empty-data.wire", "model": "gpt-5", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "grok", "case": "grok-responses-sdk-empty-data", "wire": "responses-sdk-empty-data.wire", "model": "grok-4", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "openai", "case": "openai-responses-sdk-event-only", "wire": "responses-sdk-event-only.wire", "model": "gpt-5", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "grok", "case": "grok-responses-sdk-event-only", "wire": "responses-sdk-event-only.wire", "model": "grok-4", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "openai", "case": "openai-responses-sdk-id-only", "wire": "responses-sdk-id-only.wire", "model": "gpt-5", "temperature": 0.7},
+  {"decoder": "responses_api_sse", "provider": "grok", "case": "grok-responses-sdk-id-only", "wire": "responses-sdk-id-only.wire", "model": "grok-4", "temperature": 0.7}
 ]

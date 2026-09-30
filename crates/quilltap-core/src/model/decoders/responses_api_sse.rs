@@ -46,6 +46,10 @@ pub struct ResponsesApiSseDecoder {
     /// Set once the error has been surfaced — the SDK's iterator has thrown,
     /// so nothing after it (not even the terminal `done`) is ever yielded.
     failed: bool,
+    /// P4.128: the exact `[DONE]` sentinel was read — the SDK's iterator
+    /// `break`s there, so nothing after it is read (a `response.completed`
+    /// behind it included: the stream ends "without response.completed").
+    sdk_done: bool,
 }
 
 impl Default for ResponsesApiSseDecoder {
@@ -65,6 +69,7 @@ impl ResponsesApiSseDecoder {
             grok: false,
             pending_error: None,
             failed: false,
+            sdk_done: false,
         }
     }
 
@@ -281,24 +286,33 @@ impl ResponsesApiSseDecoder {
     }
 
     fn process_events(&mut self, events: Vec<super::sse::SseEvent>) -> Vec<StreamChunk> {
+        // Both Responses plugins iterate the SDK's generic `Stream`, so the
+        // SDK's frame semantics apply whole (P4.128, see [`super::SdkFrame`]).
         let mut out = Vec::new();
         for ev in events {
-            let data = ev.data.trim();
-            if data.is_empty() || data == "[DONE]" {
-                continue;
+            if self.sdk_done {
+                break;
             }
-            if let Ok(v) = serde_json::from_str::<Value>(data) {
-                // P4.122: the generic `Stream` both Responses plugins iterate
-                // throws on `event: error` and on a truthy top-level
-                // `data.error` — and on nothing else: a `response.failed`
-                // frame (its error at `response.error`) falls through to
-                // `handle_event`'s `_ => {}` and the stream ends without
-                // `response.completed`, as on v4.
-                if let Some(e) = super::openai_sdk_frame_error(&ev.event, &v) {
-                    self.pending_error = Some(e);
+            match super::sdk_frame(&ev) {
+                super::SdkFrame::Invisible => {}
+                super::SdkFrame::Done => self.sdk_done = true,
+                super::SdkFrame::Malformed => {
+                    self.pending_error = Some(DecodeError::new(super::SDK_MALFORMED_SSE_JSON));
                     break;
                 }
-                self.handle_event(&v, &mut out);
+                super::SdkFrame::Json(v) => {
+                    // P4.122: the generic `Stream` both Responses plugins
+                    // iterate throws on `event: error` and on a truthy
+                    // top-level `data.error` — and on nothing else: a
+                    // `response.failed` frame (its error at `response.error`)
+                    // falls through to `handle_event`'s `_ => {}` and the
+                    // stream ends without `response.completed`, as on v4.
+                    if let Some(e) = super::openai_sdk_frame_error(&ev.event, &v) {
+                        self.pending_error = Some(e);
+                        break;
+                    }
+                    self.handle_event(&v, &mut out);
+                }
             }
         }
         out

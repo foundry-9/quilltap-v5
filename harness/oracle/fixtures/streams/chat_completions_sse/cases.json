@@ -639,5 +639,411 @@
     "wire": "midstream-error-numeric-1301.wire",
     "model": "glm-4.6",
     "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-sdk-malformed-frame",
+    "wire": "sdk-malformed-frame.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-sdk-malformed-frame",
+    "wire": "sdk-malformed-frame.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-sdk-malformed-frame",
+    "wire": "sdk-malformed-frame.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-sdk-malformed-frame",
+    "wire": "sdk-malformed-frame.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-sdk-malformed-frame",
+    "wire": "sdk-malformed-frame.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-sdk-after-done",
+    "wire": "sdk-after-done.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-sdk-after-done",
+    "wire": "sdk-after-done.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-sdk-after-done",
+    "wire": "sdk-after-done.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-sdk-after-done",
+    "wire": "sdk-after-done.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-sdk-after-done",
+    "wire": "sdk-after-done.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-sdk-padded-done",
+    "wire": "sdk-padded-done.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-sdk-padded-done",
+    "wire": "sdk-padded-done.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-sdk-padded-done",
+    "wire": "sdk-padded-done.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-sdk-padded-done",
+    "wire": "sdk-padded-done.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-sdk-padded-done",
+    "wire": "sdk-padded-done.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-sdk-done-trailing-space",
+    "wire": "sdk-done-trailing-space.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-sdk-done-trailing-space",
+    "wire": "sdk-done-trailing-space.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-sdk-done-trailing-space",
+    "wire": "sdk-done-trailing-space.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-sdk-done-trailing-space",
+    "wire": "sdk-done-trailing-space.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-sdk-done-trailing-space",
+    "wire": "sdk-done-trailing-space.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-sdk-empty-data",
+    "wire": "sdk-empty-data.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-sdk-empty-data",
+    "wire": "sdk-empty-data.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-sdk-empty-data",
+    "wire": "sdk-empty-data.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-sdk-empty-data",
+    "wire": "sdk-empty-data.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-sdk-empty-data",
+    "wire": "sdk-empty-data.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-sdk-event-only",
+    "wire": "sdk-event-only.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-sdk-event-only",
+    "wire": "sdk-event-only.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-sdk-event-only",
+    "wire": "sdk-event-only.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-sdk-event-only",
+    "wire": "sdk-event-only.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-sdk-event-only",
+    "wire": "sdk-event-only.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-sdk-id-only",
+    "wire": "sdk-id-only.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-sdk-id-only",
+    "wire": "sdk-id-only.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-sdk-id-only",
+    "wire": "sdk-id-only.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-sdk-id-only",
+    "wire": "sdk-id-only.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-sdk-id-only",
+    "wire": "sdk-id-only.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
   }
 ]

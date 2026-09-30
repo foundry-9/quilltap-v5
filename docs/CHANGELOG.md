@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — feat(core): the openai SDK's SSE frame semantics for the SDK-flavoured decoders (P4.128 unit B3)
+
+_Versions: core 0.0.1118, harness 0.0.1037._
+
+The chat-completions decoder (OpenAI-compatible, DeepSeek, NanoGPT, Z.AI) and
+the Responses decoder (OpenAI, Grok) now read SSE frames the way the openai
+SDK does: `[DONE]` ends the stream and later frames are ignored; a frame that
+fails `JSON.parse` — malformed JSON, an empty `data:`, a bare `event:`, or a
+padded `[DONE]` — fails the stream with the SDK's `SyntaxError` message; an
+`id:`-only block is not an event. They used to skip bad frames and keep
+decoding past `[DONE]`. OpenRouter's raw path is unchanged (it skips, as v4's
+does). Pinned by 49 synthetic wire rows recorded through the real SDKs (the
+existing rows of all ten stream corpora re-recorded byte-identical).
+
 #### 2026-09-30 — feat(core): the pre-stream and sendMessage plugin catch lines with v4's thrown text (P4.128 unit B1)
 
 _Versions: core 0.0.1117, harness 0.0.1036._
