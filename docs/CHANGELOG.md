@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(cheap-llm): gate the cheap refusal record on the chat id, as v4 does
+
+_Versions: core 0.0.1108._
+
+`record_cheap_refusal` now reads the chat id and the refusal verdict first,
+in v4's order (`if (!chatId || !emptyVerdict?.refused) return`), and only
+then the log config. Measured: the config carries both the chat id and the
+database the ledger write needs, and no production site builds an executor
+without one, so the change moves no reachable behaviour; the doc comment
+records that the config's absence was never a gate v4 has. New unit pin: a
+stated empty-body refusal reaches the ledger under a chat and is silent with
+no chat or an empty one. P4.124 item 3.
+
 #### 2026-09-29 — fix(maintenance): log the stale-chat collapse fields camelCase, as v4 does
 
 _Versions: core 0.0.1107._

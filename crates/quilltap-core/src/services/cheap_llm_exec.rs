@@ -1240,9 +1240,17 @@ impl CheapLlmTaskExecutor {
     }
 
     /// v4 `recordCheapRefusal` (core-execution.ts, `49059fb14`): put a STATED
-    /// empty-body refusal on the chat's ledger. A no-op without a chat (v5's
-    /// chat id rides the log config, like the task-failed warn's) or when the
-    /// verdict did not refuse.
+    /// empty-body refusal on the chat's ledger. A no-op without a chat or when
+    /// the verdict did not refuse — v4's `if (!chatId || !emptyVerdict?.refused)
+    /// return`, and in v4's order.
+    ///
+    /// v5's chat id rides the log config (like the task-failed warn's), and so
+    /// does the `Db` the ledger write needs. P4.124 measured that the config's
+    /// absence therefore cannot stand in for anything v4 does: a config-less
+    /// executor has no database to record on, and no production site builds one
+    /// (`bare_cheap_llm_executor_guard`). So the gate reads the chat id and the
+    /// verdict FIRST, as v4 does, and only then the handle; the no-config
+    /// early-out is the unreachable-in-production "no `Db`" arm, not a gate.
     ///
     /// The refused profile's NAME: v4 reads `uncensoredFallback?.
     /// availableProfiles.find(p => p.id === selection.connectionProfileId)
@@ -1261,13 +1269,19 @@ impl CheapLlmTaskExecutor {
         verdict: Option<&crate::services::dangerous_content::refusal::RefusalVerdict>,
         rerouted: bool,
     ) {
-        let Some(log) = self.log.as_ref() else {
-            return;
-        };
-        let Some(chat_id) = log.chat_id.as_deref().filter(|c| !c.is_empty()) else {
+        let Some(chat_id) = self
+            .log
+            .as_ref()
+            .and_then(|l| l.chat_id.as_deref())
+            .filter(|c| !c.is_empty())
+        else {
             return;
         };
         let Some(verdict) = verdict.filter(|v| v.refused) else {
+            return;
+        };
+        // A chat id implies the config that carries it — and with it the `Db`.
+        let Some(log) = self.log.as_ref() else {
             return;
         };
         let listed = selection.connection_profile_id.as_deref().filter(|id| {
@@ -3704,5 +3718,91 @@ mod tests {
             "response: {response}"
         );
         assert_eq!(usage.as_deref(), None, "an error row carries no usage");
+    }
+
+    /// P4.124 (P4.D225 NIT (c)): `record_cheap_refusal` gates on the chat id,
+    /// as v4's `if (!chatId || …) return` does. A stated empty-body refusal
+    /// under a chat reaches the ledger (its line, whatever the write answers —
+    /// this fixture has no `chats` table, so the ledger's own ERROR fires);
+    /// the same refusal with no chat, or an empty one, is silent.
+    #[tokio::test]
+    async fn a_cheap_refusal_reaches_the_ledger_only_under_a_chat() {
+        use tracing_subscriber::layer::SubscriberExt;
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let main_path = dir.path().join("main.db");
+        drop(Writer::open_writable(&main_path, PEPPER).unwrap());
+        let db = Db::open(
+            DbPaths {
+                main: main_path,
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let messages = vec![CompletionMessage::user("summarize")];
+
+        let mut ledger_lines = Vec::new();
+        for chat_id in [Some("chat-r"), None, Some("")] {
+            let provider = CannedCompletionProvider::new().with_response_full(
+                "OPENAI",
+                "gpt-mini",
+                Some(0.3),
+                &messages,
+                &[],
+                CompletionResponse {
+                    content: String::new(),
+                    usage: None,
+                    finish_reason: Some("content_filter".to_string()),
+                    attachment_results: None,
+                    cache_usage: None,
+                },
+            );
+            let exec = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                db: db.clone(),
+                user_id: "user-1".to_string(),
+                chat_id: chat_id.map(str::to_string),
+                message_id: None,
+                ctx: LogContext::none(),
+            });
+            let logs = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
+            let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+            {
+                let _guard = tracing::subscriber::set_default(subscriber);
+                exec.execute(
+                    &provider,
+                    &selection("OPENAI", "gpt-mini"),
+                    messages.clone(),
+                    |s| s.to_string(),
+                    None,
+                    None,
+                    None,
+                    Some("summarize-chat"),
+                    CheapLlmTaskOptions::default(),
+                )
+                .await;
+            }
+            let lines = logs.lock().unwrap().clone();
+            ledger_lines.push(
+                lines
+                    .into_iter()
+                    .filter(|l| l.contains(" quilltap::concierge_refusal_ledger "))
+                    .collect::<Vec<_>>(),
+            );
+        }
+        assert!(
+            ledger_lines[0]
+                .iter()
+                .any(|l| l.contains("chat_id=chat-r") && l.contains("purpose=cheap")),
+            "a refusal under a chat reaches the ledger: {:?}",
+            ledger_lines[0]
+        );
+        assert!(ledger_lines[1].is_empty(), "no chat: {:?}", ledger_lines[1]);
+        assert!(
+            ledger_lines[2].is_empty(),
+            "empty chat: {:?}",
+            ledger_lines[2]
+        );
     }
 }

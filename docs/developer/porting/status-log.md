@@ -155392,3 +155392,16 @@ hunks, `services/orchestrator.rs:947` (P4.121's file) and
   one comment at `story_background_job.rs`'s sanitize call; v4's catch WARN
   is unreachable (re-measured at the pin: the classification never throws,
   and the sanitize goes through `executeCheapLLMTask`'s `{success: false}`).
+- **Unit 2 (item 3), core 0.0.1108.** `record_cheap_refusal` reads the chat id
+  then the verdict (v4's order) before the log config. **The order's premise
+  was measured wrong in part:** the chat id is ONLY on the log config, and so
+  is the `Db` the ledger write needs — a config-less executor has nothing to
+  record on, and `bare_cheap_llm_executor_guard` keeps production free of
+  one. So there is no reachable "refusal under a chat without a config" to go
+  RED, and M2 (re-key on the config) is NOT a mutation that can redden
+  anything: the two gates agree on every constructible executor. Recorded as
+  such; threading a separate chat id would add a field with no reachable
+  consumer (YAGNI). Pin added instead: `a_cheap_refusal_reaches_the_ledger_
+  only_under_a_chat` (chat → a `quilltap::concierge_refusal_ledger` line with
+  `purpose=cheap`; `None` and `""` → silent). `refusal_ledger_tier3` +
+  `fallback_engine` re-run green from the pin (neutral).
