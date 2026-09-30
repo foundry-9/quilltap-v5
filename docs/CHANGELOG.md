@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — refactor(spa): the Concierge on-duty derivation gets a pure chat-tree home
+
+_Versions: SPA 0.5.789._
+
+`effectiveConcierge`, `isConciergeOnDuty` and `conciergeNewChatDefault` move to `chat/concierge-duty.ts`, so the sidebar and New Chat no longer import a settings card class. No behavior change; the settings module re-exports the two functions.
+
 #### 2026-09-30 — fix(spa): text replacement fires only at the end of the text run, as v4
 
 _Versions: SPA 0.5.788._

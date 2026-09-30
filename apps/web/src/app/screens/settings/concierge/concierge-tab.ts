@@ -4,7 +4,7 @@ import { ActivatedRoute } from '@angular/router';
 
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { ChatSettingsCard } from '../chat/chat-settings.api';
-import { isConciergeOnDuty } from './concierge-settings.api';
+import { isConciergeOnDuty } from '../../../chat/concierge-duty';
 import { DisplayCard } from './display-card';
 import { OnDutyCard } from './on-duty-card';
 import { PreScreeningCard } from './pre-screening-card';

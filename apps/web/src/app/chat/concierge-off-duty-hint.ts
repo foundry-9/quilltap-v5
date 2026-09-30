@@ -1,10 +1,6 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
-import type { ChatSettingsDto } from '../core/core-contract';
-import { isConciergeOnDuty } from '../screens/settings/concierge/concierge-settings.api';
-import type { ConciergeState } from './concierge-state';
-
 /**
  * The one sentence shown beneath a per-chat Concierge select when the
  * Concierge is off duty globally (`conciergeSettings.enabled === false`). The
@@ -36,19 +32,4 @@ import type { ConciergeState } from './concierge-state';
 })
 export class ConciergeOffDutyHint {
   readonly className = input('');
-}
-
-/**
- * The state a new chat starts in when the form says nothing (v4 `useNewChat`
- * at `3b463d6b1`): `newChatsStartAs` while on duty — `'unmoderated'` only when
- * it says so exactly — else `'moderated'`. "Off duty the server ignores
- * `newChatsStartAs` and every chat is created Moderated."
- */
-export function conciergeNewChatDefault(
-  settings: ChatSettingsDto | null | undefined,
-): ConciergeState {
-  return isConciergeOnDuty(settings) &&
-    settings?.conciergeSettings?.newChatsStartAs === 'unmoderated'
-    ? 'unmoderated'
-    : 'moderated';
 }

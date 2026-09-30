@@ -2,6 +2,7 @@ import { computed } from '@angular/core';
 import { injectQueryClient, type QueryClient } from '@tanstack/angular-query-experimental';
 
 import type { ChatSettingsDto } from '../../../core/core-contract';
+import { effectiveConcierge } from '../../../chat/concierge-duty';
 import { ChatSettingsCard, chatSettingsKeys } from '../chat/chat-settings.api';
 import {
   DEFAULT_CONCIERGE_SETTINGS,
@@ -17,36 +18,10 @@ import {
  * @module screens/settings/concierge/concierge-settings.api
  */
 
-/**
- * v4 `ConciergeTabContent`'s effective object (and the server's
- * `readConciergeSettings`): the defaults, overlaid by whatever is stored, with
- * `display` and `preScreen` merged one level down so a stored object that
- * predates a field still reads that field's default.
- */
-export function effectiveConcierge(
-  stored: Partial<ConciergeSettings> | null | undefined,
-): ConciergeSettings {
-  return {
-    ...DEFAULT_CONCIERGE_SETTINGS,
-    ...stored,
-    display: { ...DEFAULT_CONCIERGE_SETTINGS.display, ...stored?.display },
-    preScreen: { ...DEFAULT_CONCIERGE_SETTINGS.preScreen, ...stored?.preScreen },
-  };
-}
-
-/**
- * Is the Concierge at his post? The ONE on-duty derivation — the Settings tab,
- * the Salon sidebar and the New Chat form all read it. v4 spells the same rule
- * inline at two sites (`ChatSidebar.tsx:965`, `useNewChat.ts:436` at
- * `97b25fc53`): `settings.conciergeSettings?.enabled !== false`, with the query's
- * `data = true` default — so TRUE while the settings are loading, missing or
- * failed, and whenever the key is absent; only an explicit `enabled: false`
- * takes him off duty. Read through {@link effectiveConcierge} so a stored object
- * predating the field gets the default (`true`).
- */
-export function isConciergeOnDuty(settings: ChatSettingsDto | null | undefined): boolean {
-  return effectiveConcierge(settings?.conciergeSettings).enabled !== false;
-}
+// The on-duty derivation lives in the chat tree's pure home (no Angular /
+// TanStack / settings-card imports); re-exported so the Settings tab and its
+// spec import it from where they always have.
+export { effectiveConcierge, isConciergeOnDuty } from '../../../chat/concierge-duty';
 
 /**
  * v4 `handleConciergeUpdate`'s merge: top-level fields replace, `display` and

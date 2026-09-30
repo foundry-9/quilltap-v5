@@ -40,8 +40,7 @@ import {
   fetchProjectScenarios,
   toScenarioOption,
 } from '../../scenario/scenario.api';
-import { conciergeNewChatDefault } from '../../chat/concierge-off-duty-hint';
-import { isConciergeOnDuty } from '../settings/concierge/concierge-settings.api';
+import { conciergeNewChatDefault, isConciergeOnDuty } from '../../chat/concierge-duty';
 import type { ConciergeState } from '../../chat/concierge-state';
 import { resolveDefaultSystemPromptId } from '../../shared/default-system-prompt';
 import type { ToastService } from '../../ui/toast.service';

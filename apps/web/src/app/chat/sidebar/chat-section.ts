@@ -31,7 +31,7 @@ import {
   describeConciergeState,
 } from '../concierge-state-presentation';
 import { chatSettingsKeys, fetchChatSettings } from '../../screens/settings/chat/chat-settings.api';
-import { isConciergeOnDuty } from '../../screens/settings/concierge/concierge-settings.api';
+import { isConciergeOnDuty } from '../concierge-duty';
 import { fetchImageProfiles, imageProfileKeys } from '../../screens/settings/images/image-profiles.api';
 import { fetchRoleplayTemplates, templateKeys } from '../../screens/settings/templates/templates.api';
 import { Icon, type IconName } from '../../ui/icon';

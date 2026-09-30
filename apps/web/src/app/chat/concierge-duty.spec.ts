@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ChatSettingsDto } from '../core/core-contract';
-import { isConciergeOnDuty } from '../screens/settings/concierge/concierge-settings.api';
-import { conciergeNewChatDefault } from './concierge-off-duty-hint';
+import { conciergeNewChatDefault, isConciergeOnDuty } from './concierge-duty';
 
 /**
  * The on-duty rule and the new-chat default (v4 `ChatSidebar.tsx:965` and
  * `useNewChat.ts:436-440` at `97b25fc53`): `conciergeSettings?.enabled !== false`
  * with the query's `data = true` default — only an explicit `false` takes the
  * Concierge off duty. `isConciergeOnDuty` has ONE home
- * (`concierge-settings.api.ts`), shared by the Settings tab, the sidebar and the
+ * (`concierge-duty.ts`), shared by the Settings tab, the sidebar and the
  * New Chat form; this spec pins the rule and that the default reads it.
  */
 
