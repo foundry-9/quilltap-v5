@@ -907,6 +907,11 @@ fn archive_for(name: &str) -> &'static str {
         // derive table distinguishes, plus a 4.10 row it leaves alone. Built
         // by `harness/oracle/fixtures/derive-restore-archive-concierge-legacy.py`.
         "restore_concierge_legacy_replace" => "restore-archive-concierge-legacy.zip",
+        // P4.130 (P4.124 item 14's plant): `restore-archive.zip` plus one
+        // message-less clone carrying `conciergeMode: 'bogus'` — skipped by
+        // BOTH sides with the ZodError bytes in `summary.warnings`. Built by
+        // `harness/oracle/fixtures/derive-restore-archive-concierge-bogus.py`.
+        "restore_concierge_bogus_replace" => "restore-archive-concierge-bogus.zip",
         "restore_legacy_archive" => "restore-archive-legacy.zip",
         "restore_minimal" => "restore-archive-minimal.zip",
         "restore_new_account" => "restore-archive.zip",
@@ -1243,6 +1248,16 @@ fn system_restore_state_equivalence() {
         // [P4.D158] v4 `2edd823c0`'s four bag-key arms, within-tree.
         assert_bag_keys_survive(name, &got_state, &mut failures);
 
+        // [P4.130] the refused-chat plant, by name.
+        assert_bogus_concierge_chat_skipped(
+            name,
+            &summary,
+            &case["summary"],
+            &got_state,
+            want_state,
+            &mut failures,
+        );
+
         // [P4.106 item 6] the pre-4.10-archive arm.
         assert_pre_410_archive_restores_no_informs(
             name,
@@ -1269,14 +1284,15 @@ fn system_restore_state_equivalence() {
 
     // 18 + 1 = 19: P4.D208's bug-158 arm (the seeded summary a stale backup
     // carries, stripped on the way in). 19 + 1 = 20: P4.D226's legacy
-    // Concierge arm (the three states derived from the legacy pair).
+    // Concierge arm (the three states derived from the legacy pair). 20 + 1 =
+    // 21: P4.130's refused-chat arm (a `conciergeMode` outside the enum).
     assert_eq!(
-        seen, 20,
-        "expected all twenty restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 21,
+        "expected all twenty-one restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
-         + P4.D226's legacy-Concierge arm)"
+         + P4.D226's legacy-Concierge arm + P4.130's refused-chat arm)"
     );
     assert!(
         failures.is_empty(),
@@ -1284,6 +1300,64 @@ fn system_restore_state_equivalence() {
         failures.len(),
         failures.join("\n")
     );
+}
+
+/// [P4.130] **The refused-chat arm** (P4.124 item 14's family-level plant).
+/// `restore-archive-concierge-bogus.zip` carries one chat, `c…0005`, whose
+/// `conciergeMode` is `'bogus'`: v4's `repos.chats.create` validation throws,
+/// and the per-chat catch skips it with `Failed to restore chat "The Bogus
+/// Room": <ZodError.message>`. The whole-table diff and `compare_warnings`
+/// already compare both halves; this pins them by NAME so the arm cannot go
+/// vacuous — the chat is absent on BOTH sides, and BOTH warning lists carry
+/// exactly one such warning whose tail is the rendered `invalid_value` issue
+/// (v4's bytes, `concierge_columns_zod_error` on v5's side).
+fn assert_bogus_concierge_chat_skipped(
+    name: &str,
+    got_summary: &RestoreSummary,
+    want_summary: &Value,
+    got_state: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want_state: &Value,
+    failures: &mut Vec<String>,
+) {
+    if name != "restore_concierge_bogus_replace" {
+        return;
+    }
+    const BOGUS: &str = "c1000000-0000-4000-8000-000000000005";
+    const HEAD: &str =
+        "Failed to restore chat \"The Bogus Room\": [\n  {\n    \"code\": \"invalid_value\"";
+    let got_chats = got_state
+        .get("main")
+        .and_then(|m| m.get("chats"))
+        .map(|rows| rows.iter().any(|r| r["id"] == BOGUS));
+    let want_chats = want_state["main"]["chats"]
+        .as_array()
+        .map(|rows| rows.iter().any(|r| r["id"] == BOGUS));
+    if got_chats != Some(false) || want_chats != Some(false) {
+        failures.push(format!(
+            "[{name}] the bogus chat must be ABSENT on both sides (v5 present: {got_chats:?}, \
+             v4 present: {want_chats:?})"
+        ));
+    }
+    let got_warn = json!(got_summary.warnings);
+    for (side, warnings) in [("v5", &got_warn), ("v4", &want_summary["warnings"])] {
+        let hits = warnings
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .filter(|w| {
+                        w.starts_with(HEAD) && w.contains("\"path\": [\n      \"conciergeMode\"")
+                    })
+                    .count()
+            })
+            .unwrap_or(0);
+        if hits != 1 {
+            failures.push(format!(
+                "[{name}] {side}: expected exactly one ZodError-carrying skip warning, got {hits}: \
+                 {warnings}"
+            ));
+        }
+    }
 }
 
 /// [P4.106 item 6] **The pre-4.10-archive arm.** Every committed restore

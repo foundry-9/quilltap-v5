@@ -257,6 +257,16 @@ const RESTORE_CASES: Array<{
   // `fixtures/derive-restore-archive-concierge-legacy.py`.
   { name: 'restore_concierge_legacy_replace', archive: 'restore-archive-concierge-legacy.zip' },
 
+  // ── P4.130 (P4.124 item 14's plant): a chat v4's schema refuses ───────────
+  //
+  // `restore-archive-concierge-bogus.zip` is `restore-archive.zip` plus ONE
+  // message-less clone carrying `conciergeMode: 'bogus'`. `restore.ts` leaves
+  // a non-null mode alone, `repos.chats.create` → `validate` throws, and the
+  // per-chat catch skips it with `Failed to restore chat "The Bogus Room":
+  // <ZodError message>` — `summary.warnings` carries the ZodError bytes. Built
+  // by `fixtures/derive-restore-archive-concierge-bogus.py`.
+  { name: 'restore_concierge_bogus_replace', archive: 'restore-archive-concierge-bogus.zip' },
+
   // ── P4.D126 (`e000d6bfc`, bug 103): the columns an older archive predates ─
   //
   // `restore-archive-legacy-profiles.zip` is the ONE archive that can see the

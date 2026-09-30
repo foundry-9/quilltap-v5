@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — test(harness): restore and import plants for a chat v4's schema refuses (P4.130 unit 3)
+
+_Versions: harness 0.0.1037, web 0.0.203._
+
+A derived restore archive (`restore-archive-concierge-bogus.zip`, built by a
+committed derive script from `restore-archive.zip`) and two new import cases
+carry chats v4's `ChatMetadataBaseSchema` refuses. Both families now prove the
+skip warning's ZodError bytes against v4 (the import mask keeps a chat's
+ZodError tail verbatim). The import's serde-decode arm (`scenarioText: 5`) is a
+recorded divergence pinned both ways: v4 warns with the ZodError, v5 with
+serde's sentence. Restore 21 cases, import 43.
+
 #### 2026-09-30 — feat(core): repository validation lines carry v4's ZodError bytes (P4.130 unit 2)
 
 _Versions: core 0.0.1117, harness 0.0.1036, web 0.0.202._

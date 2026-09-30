@@ -1476,6 +1476,43 @@ function conciergeLegacyPayload(base: { manifest: unknown; data: Record<string, 
   return p;
 }
 
+/**
+ * P4.130 (P4.124 item 14's family-level plant): a chat v4's schema REFUSES on
+ * import. `conciergeLegacyPayload`'s template, reduced to two chats: one
+ * carrying `conciergeMode: 'bogus'` (`withConciergeModeFromLegacy` leaves a
+ * non-null mode alone, `repos.chats.create` → `validate` throws the ZodError,
+ * the per-chat catch warns `Failed to import chat "Concierge Bogus 6":
+ * <ZodError message>` and skips it) and a plain neighbour that lands, so the
+ * arm is not an empty import.
+ */
+function conciergeBogusPayload(
+  base: { manifest: unknown; data: Record<string, unknown[]> },
+  chats: Array<[number, Record<string, unknown>]> = [
+    [6, { conciergeMode: 'bogus' }],
+    [7, {}],
+  ],
+) {
+  const p = JSON.parse(JSON.stringify(rewriteIds(base))) as {
+    manifest: unknown;
+    data: Record<string, unknown[]>;
+  };
+  const tmpl = p.data.chats[0] as Record<string, unknown>;
+  const mk = (n: number, extra: Record<string, unknown>) => {
+    const c = JSON.parse(JSON.stringify(tmpl)) as Record<string, unknown>;
+    delete c.conciergeMode;
+    delete c.conciergeModeSetBy;
+    delete c.conciergeModeReason;
+    delete c.conciergeOverride;
+    c.isDangerousChat = false;
+    c.id = `a4130000-0000-4000-8000-00000000000${n}`;
+    c.title = `Concierge Bogus ${n}`;
+    c.messages = [];
+    return { ...c, ...extra };
+  };
+  p.data = { chats: chats.map(([n, extra]) => mk(n, extra)) };
+  return p;
+}
+
 function executeCase(
   name: string,
   payload: (spec: Spec) => Promise<unknown> | unknown,
@@ -1914,6 +1951,21 @@ async function main(): Promise<void> {
       includeMemories: false,
       includeRelatedEntities: false,
     }),
+    // P4.130: a chat the schema refuses — the ZodError bytes in `warnings`.
+    executeCase('execute_concierge_bogus', () => conciergeBogusPayload(chatsInformsPayload), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // P4.130 Tier 2 item 10: a chat whose Concierge columns PASS but another
+    // field v4's schema refuses (`scenarioText: 5`) — v5 reaches its typed
+    // serde decode, not the Concierge check, so its warning tail is serde's
+    // sentence where v4's is the ZodError (a recorded divergence, pinned).
+    executeCase(
+      'execute_concierge_serde_arm',
+      () => conciergeBogusPayload(chatsInformsPayload, [[8, { scenarioText: 5 }], [9, {}]]),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+    ),
     executeCase('execute_legacy_folds', () => legacyFoldsPayload(), {
       conflictStrategy: 'skip',
       includeMemories: true,

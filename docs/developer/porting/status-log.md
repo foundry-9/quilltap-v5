@@ -156592,6 +156592,54 @@ Regen outputs staged under `/tmp/p4130/`.
   1's recipe; the routes per the family header with `STAGE=/tmp/p4130/stage-
   sb-routes`, `QT_ORACLE_OUT=/tmp/p4130/oracle-sbroutes.ndjson`.
 
+### Unit 3 — item 14's family-level plants (Tier 1 item 7; Tier 2 item 10)
+
+- **Restore**: NEW committed `crates/quilltap-web/tests/fixtures/restore-
+  archives/restore-archive-concierge-bogus.zip`, DERIVED (never rebuilt) by
+  NEW `harness/oracle/fixtures/derive-restore-archive-concierge-bogus.py` from
+  `restore-archive.zip`: the two chats kept byte for byte + ONE message-less,
+  dependent-less clone `c…0005` "The Bogus Room" with `conciergeMode:
+  'bogus'`; `counts.chats` 2 → 3. Case `restore_concierge_bogus_replace` in
+  `RESTORE_CASES` + `archive_for`; count 20 → 21; a by-name non-vacuity pin
+  (`assert_bogus_concierge_chat_skipped`: the chat ABSENT on both sides, and
+  exactly ONE `Failed to restore chat "The Bogus Room": [\n  {\n    "code":
+  "invalid_value"…conciergeMode` warning on each). v4's `summary.warnings`
+  carries the ZodError bytes and `compare_warnings` diffs them VERBATIM —
+  green on the first run (P4.124 ported the refusal; this is the family-level
+  proof). No other archive or case moved (21/21).
+- **Import**: no archive surgery — `conciergeBogusPayload` (the
+  `conciergeLegacyPayload` template) → case `execute_concierge_bogus` (chat 6
+  `conciergeMode: 'bogus'` skipped, neighbour 7 lands). The warning mask
+  (`mask_warning`) gains its ONE exception: a `Failed to import chat "…": `
+  tail that parses as a JSON array of Zod issues stays VERBATIM. ⚠ **Scoped to
+  the chat family, MEASURED:** the first cut applied it to every quoted
+  family and reddened `execute_named_item_failures` and
+  `execute_bug105_seed_abort` — v4's tag / connection / image / embedding
+  profile / roleplay-template refusals are ZodError tails too, where v5
+  answers with its own decode sentence (pre-existing, masked as `<ENGINE>`
+  before and after; a FINDING for a later order). Non-vacuity pin: v4's
+  end-state carries only "Concierge Bogus 7", and its one refusal warning
+  survives the mask with `"code": "invalid_value"` and `conciergeMode`.
+- **Tier 2 item 10 — the serde arm IS reachable, so it is PINNED both ways:**
+  case `execute_concierge_serde_arm` (chat 8 `scenarioText: 5`, neighbour 9).
+  v4: `Failed to import chat "Concierge Bogus 8": [ {expected string, …
+  scenarioText …} ]`; v5 reaches its typed `ChatCreate` decode (the Concierge
+  check passes) and warns with serde's `invalid type: integer `5`, expected a
+  string` — and its two repository ERRORs carry that serde sentence as though
+  it were a ZodError (pre-existing, `quilltap_import/entities.rs:772-785`; the
+  same shape exists in restore's `skip`, not planted there). `classify_serde_
+  arm` replaces exactly that warning on both sides with a stand-in, "VANISHED"
+  if the tails agree, "WRONG SHAPE" otherwise. No core change (ownership: the
+  entities.rs hunk was optional and is not needed for the pin).
+- Count 41 → 43. Both families green (restore 21 cases; import 43).
+- Regens (as run, from the lane pin): restore — `TMPO=/tmp/p4130/sysrestore-
+  stage`, `QT_RESTORE_ARCHIVES=<W>/crates/quilltap-web/tests/fixtures/restore-
+  archives QT_ORACLE_OUT=/tmp/p4130/oracle-system-restore.ndjson npx jest …
+  'system-restore\.test\.ts$'`; import — `TMPO=/tmp/p4130/sysimport-stage`,
+  the three `QT_FIXTURE_SD_*` at the committed pair, `QT_ORACLE_OUT=/tmp/p4130/
+  oracle-system-import-execute.ndjson npx jest … 'system-import-execute\.test
+  \.ts$'`.
+
 ## P4.131 — the document-store repository fallbacks as v4 REALLY has them (lane record, 2026-09-30)
 
 Branch `claude/document-store-repo-fallbacks-55643f`, pin `97b25fc53` (`/tmp/qt-v4-pin-p4131-97b25fc53`), §2 probe PASS at start. core 0.0.1116, harness 0.0.1035.
