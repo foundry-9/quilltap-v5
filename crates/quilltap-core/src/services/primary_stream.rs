@@ -1043,11 +1043,16 @@ pub(crate) async fn log_stream_message_call(
         .cloned();
 
     // v4 hashes the SAME `llmMessages` it sends, `name` / `toolCallId` /
-    // `toolCalls` included (`cache-prefix-hashes.ts:80-81`). The Salon primary's
-    // history never carries them, so this stayed `None` everywhere until the
-    // tool-loop legs logged (dogfood #129): their tail holds the assistant's
-    // `toolCalls` turn and the `tool` results, and the history-tail hash read
-    // `undefined` for all three.
+    // `toolCalls` included (`cache-prefix-hashes.ts:80-81`). This stayed `None`
+    // everywhere until the tool-loop legs logged (dogfood #129): their tail
+    // holds the assistant's `toolCalls` turn and the `tool` results, and the
+    // history-tail hash read `undefined` for all three. ⚠ `name` is still
+    // `None` on the Salon primary's OWN history: v4's `formatMessagesForProvider`
+    // keeps `name` on multi-character turns for name-supporting providers
+    // (`message-formatter.ts:179-210`) and the funnel hashes AND sends it, where
+    // v5's `StreamMessage` has no `name` slot — a pre-existing wire divergence
+    // in `model/**`, recorded at the `97b25fc53` follow-ups unification as a
+    // follow-up order, not fixed here.
     let prefix_messages: Vec<PrefixMessage> = params
         .messages
         .iter()

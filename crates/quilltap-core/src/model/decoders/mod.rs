@@ -124,7 +124,6 @@ impl DecodeError {
 /// path never reaches this (it reads only `choices`): its flavour does not
 /// call it. `event` is the SSE event name, empty for the default event.
 pub(crate) fn openai_sdk_frame_error(event: &str, data: &serde_json::Value) -> Option<DecodeError> {
-    use serde_json::Value;
     if event.starts_with("thread.") {
         return None;
     }
@@ -140,13 +139,8 @@ pub(crate) fn openai_sdk_frame_error(event: &str, data: &serde_json::Value) -> O
             crate::model::provider_error::openai_stream_error(error),
         ));
     }
-    let truthy = |v: &Value| match v {
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::Number(n) => n.as_f64().is_some_and(|f| f != 0.0),
-        Value::String(s) => !s.is_empty(),
-        Value::Array(_) | Value::Object(_) => true,
-    };
+    // JS truthiness — the one home is `provider_error::truthy`.
+    let truthy = crate::model::provider_error::truthy;
     match inner {
         Some(e) if truthy(e) => Some(DecodeError::from_refusal(
             crate::model::provider_error::openai_stream_error(e),

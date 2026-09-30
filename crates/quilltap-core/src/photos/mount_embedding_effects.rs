@@ -65,8 +65,11 @@ impl SaveImageSideEffects for MountEmbeddingSideEffects {
                 })
                 .await;
             if let Err(error) = result {
+                // v4's field is `mountPointId` on both source lines
+                // (`save-image-to-album.ts:320-323`, `auto-describe-attachment.ts:
+                // 171-174`); the TEXT divergence is the recorded one.
                 tracing::warn!(
-                    mount_point_id = %mp,
+                    mountPointId = %mp,
                     error = %error,
                     "failed to enqueue embedding jobs for mount"
                 );
@@ -262,6 +265,59 @@ mod tests {
             pending_embedding_jobs(&db) >= 1,
             "no EMBEDDING_GENERATE job for the described mount's chunks"
         );
+    }
+
+    /// A failed enqueue WARNs with v4's field name — `mountPointId` on both of
+    /// v4's source lines (`save-image-to-album.ts:320-323`,
+    /// `auto-describe-attachment.ts:171-174`); the TEXT divergence is the
+    /// recorded one. Forced by dropping the mount's `doc_mount_file_links`
+    /// between the hand-off and the run — the enqueue's FIRST read, so the
+    /// failure does not depend on the mount holding un-embedded chunks (a
+    /// chunk-less mount answers `Ok(0)` before it ever touches
+    /// `background_jobs`). A plain `#[test]` with its own runtime, because the
+    /// capture is a thread-scoped sync closure.
+    #[test]
+    fn a_failed_enqueue_warns_with_v4s_field_name() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let db = rt.block_on(seeded_db(&dir));
+        let queue: Arc<Mutex<Vec<Task>>> = Arc::new(Mutex::new(Vec::new()));
+        let q = queue.clone();
+        arm_background_spawner_for_current_thread(Arc::new(move |fut| {
+            q.lock().unwrap().push(fut);
+        }));
+        let fx = MountEmbeddingSideEffects::new(db.clone());
+        fx.enqueue_embedding_jobs("mp-1");
+        disarm_background_spawner_for_current_thread();
+        rt.block_on(async {
+            db.write(|ws| {
+                ws.mount_index()
+                    .unwrap()
+                    .connection()
+                    .execute_batch("DROP TABLE doc_mount_file_links")?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+        let tasks: Vec<Task> = std::mem::take(&mut *queue.lock().unwrap());
+        assert_eq!(tasks.len(), 1, "one enqueue handed to the spawner");
+        let (_, logs) = captured_with(|| {
+            for t in tasks {
+                rt.block_on(t);
+            }
+        });
+        let warns: Vec<&String> = logs
+            .iter()
+            .filter(|l| l.contains("failed to enqueue embedding jobs for mount"))
+            .collect();
+        assert_eq!(warns.len(), 1, "{logs:?}");
+        assert!(warns[0].starts_with("WARN "), "{}", warns[0]);
+        assert!(warns[0].contains("mountPointId=mp-1"), "{}", warns[0]);
+        assert!(!warns[0].contains("mount_point_id="), "{}", warns[0]);
     }
 
     /// Unarmed: a DEBUG line and no enqueue — the harness/CLI posture.

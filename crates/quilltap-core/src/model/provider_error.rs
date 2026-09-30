@@ -97,7 +97,7 @@ fn safe_json(text: &str) -> Option<Value> {
 }
 
 /// JS truthiness of a parsed JSON value.
-fn truthy(v: &Value) -> bool {
+pub(crate) fn truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
         Value::Bool(b) => *b,

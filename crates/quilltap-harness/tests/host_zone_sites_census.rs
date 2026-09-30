@@ -137,6 +137,32 @@ const UTC_ALLOWED: &[(&str, usize, &str)] = &[
     ),
 ];
 
+/// `(path, production `civil_from_days(` + `div_euclid(86_400_000)` uses, why
+/// it is calendar math and not a display zone)`. Filled from a census of the
+/// tree at unification; a new entry needs the same sentence.
+const UTC_ARITHMETIC_ALLOWED: &[(&str, usize, &str)] = &[
+    (
+        "clock.rs",
+        5,
+        "the civil-day arithmetic itself (`civil_from_days` lives here)",
+    ),
+    (
+        "chat_timestamp.rs",
+        3,
+        "`get_date_parts_in_timezone`'s zone-shifted epoch → civil split (v4 `getDatePartsInTimezone`)",
+    ),
+    (
+        "enclave/cron.rs",
+        4,
+        "cron field arithmetic over an already-zoned wall time",
+    ),
+    (
+        "api/system_backup.rs",
+        2,
+        "the retention window's whole-day maths, not a rendered date",
+    ),
+];
+
 fn production_code(rel: &str) -> String {
     let path = core_src_root().join(rel);
     let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {rel}: {e}"));
@@ -198,6 +224,25 @@ fn host_zone_sites_census() {
         assert_eq!(
             reads, want,
             "{rel}: reads the system zone directly — go through crate::host_zone"
+        );
+    }
+
+    // (2b) …and none re-derived by hand: the pre-P4.119 formatters did their
+    // UTC arithmetic through `clock::civil_from_days(ms.div_euclid(86_400_000))`,
+    // which `clock.rs` still exports for the calendar math that IS UTC by
+    // definition. A new display formatter written that way never names
+    // `TimeZone::UTC`, so the literal needle above cannot see it — this one can
+    // (unified at the `97b25fc53` follow-ups round).
+    for (rel, code) in &files {
+        let got = count(code, "civil_from_days(") + count(code, "div_euclid(86_400_000)");
+        let want = UTC_ARITHMETIC_ALLOWED
+            .iter()
+            .find(|(r, _, _)| r == rel)
+            .map_or(0, |(_, n, _)| *n);
+        assert_eq!(
+            got, want,
+            "{rel}: {got} production UTC civil-day derivations, {want} allowed — a display \
+             formatter renders through a zone (P4.119)"
         );
     }
 

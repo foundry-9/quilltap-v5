@@ -771,12 +771,19 @@ fn create_chat(
     );
     // v4's `repos.chats.create` validates the three Concierge enums (P4.124):
     // an out-of-enum value fails the chat with the ZodError message.
+    // A refused create is v4's `validate` throw inside `_create`: the two
+    // repository ERRORs precede the caller's `Failed to import chat` WARN.
     if let Some(zod) =
         crate::services::dangerous_content::chat_override::concierge_columns_zod_error(&obj)
     {
+        crate::services::dangerous_content::chat_override::log_chat_create_validation_failure(&zod);
         return Err(zod);
     }
-    let mut create: ChatCreate = serde_json::from_value(obj).map_err(|e| e.to_string())?;
+    let mut create: ChatCreate = serde_json::from_value(obj).map_err(|e| {
+        let e = e.to_string();
+        crate::services::dangerous_content::chat_override::log_chat_create_validation_failure(&e);
+        e
+    })?;
     // v4 bug 158 (`da9c4f34f`): a pre-fix export carries the chat's scenario in
     // `contextSummary` as well as `scenarioText`; the boot heal that cleared
     // those rows has long since run in this instance, so the import is the only
@@ -855,5 +862,75 @@ mod rendered_markdown_strip_tests {
         let read = chats_read::find_by_id(&conn, &id).unwrap().unwrap();
         assert!(read.get("renderedMarkdown").is_none());
         assert_eq!(read["title"], "An old bundle");
+    }
+
+    /// P4.124 item 14 + its unification follow-up: an out-of-enum
+    /// `conciergeMode` is refused with v4's ZodError message, and the two
+    /// repository ERRORs v4's `validate` / `_create` log precede the caller's
+    /// catch; a valid chat logs neither.
+    #[test]
+    fn a_bundle_chat_with_an_unknown_concierge_mode_logs_v4s_repository_errors() {
+        let schema: Value =
+            serde_json::from_str(include_str!("../provisioning/fresh_schema.json")).unwrap();
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"chats\" ("))
+            .unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(ddl).unwrap();
+        let repo = ChatsRepository::new(&conn);
+        let raw = json!({
+            "id": "src-chat",
+            "userId": "someone-else",
+            "title": "A bogus mode",
+            "participants": [],
+            "conciergeMode": "bogus",
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-01-01T00:00:00.000Z",
+        });
+        let (got, lines) = crate::test_support::captured_with(|| {
+            create_chat(
+                &repo,
+                "u1",
+                &raw,
+                None,
+                &ImportOptions::seed_defaults(),
+                "src-chat",
+            )
+        });
+        let err = got.expect_err("the chat is refused");
+        assert!(err.contains("invalid_value"), "{err}");
+        let errors: Vec<&String> = lines.iter().filter(|l| l.starts_with("ERROR ")).collect();
+        assert_eq!(errors.len(), 2, "{lines:?}");
+        assert!(
+            errors[0]
+                .starts_with("ERROR quilltap::db Data validation failed collection=chats error="),
+            "{}",
+            errors[0]
+        );
+        assert!(
+            errors[1]
+                .starts_with("ERROR quilltap::db Error creating entity collection=chats error="),
+            "{}",
+            errors[1]
+        );
+        // Silence leg.
+        let mut ok = raw.clone();
+        ok["conciergeMode"] = json!("moderated");
+        let (got, lines) = crate::test_support::captured_with(|| {
+            create_chat(
+                &repo,
+                "u1",
+                &ok,
+                None,
+                &ImportOptions::seed_defaults(),
+                "src-chat",
+            )
+        });
+        got.expect("a valid mode imports");
+        assert!(!lines.iter().any(|l| l.starts_with("ERROR ")), "{lines:?}");
     }
 }

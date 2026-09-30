@@ -359,43 +359,19 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Valu
 /// v4 `repos.imageProfiles.findById` exactly as its callers see it: `_findById`
 /// is `safeQuery(…, 'Error finding entity by ID', { id }, null)`, so a FAILED
 /// read logs that ERROR (`collection`, `id`, `error`) and answers `null` — it
-/// never throws (P4.123; the `chats_read::find_by_id_or_none` shape). The ONE
-/// home for the `image_profiles` fallback reads — the understudy resolvers,
-/// the retry's exclude list and `load_profile_parameters` all read through
-/// here (P4.124's §S handoff, folded at unification); `target: quilltap::db`
-/// is v4's `Repository` module as the differentials map it.
+/// never throws (P4.123; the shape lives in [`super::fallback`]). The ONE home
+/// for the `image_profiles` fallback reads — the understudy resolvers, the
+/// retry's exclude list and `load_profile_parameters` all read through here
+/// (P4.124's §S handoff, folded at unification).
 pub fn find_by_id_or_none(conn: &Connection, id: &str) -> Option<serde_json::Value> {
-    match find_by_id(conn, id) {
-        Ok(found) => found,
-        Err(error) => {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "image_profiles",
-                id = %id,
-                error = %error,
-                "Error finding entity by ID"
-            );
-            None
-        }
-    }
+    super::fallback::find_by_id_or_none("image_profiles", id, || find_by_id(conn, id))
 }
 
 /// v4 `repos.imageProfiles.findAll` as its callers see it: `_findAll` is
 /// `safeQuery(…, 'Error finding all entities', {}, [])` — a FAILED read logs
 /// that ERROR (`collection`, `error`) and answers `[]`.
 pub fn find_all_or_empty(conn: &Connection) -> Vec<serde_json::Value> {
-    match find_all(conn) {
-        Ok(all) => all,
-        Err(error) => {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "image_profiles",
-                error = %error,
-                "Error finding all entities"
-            );
-            Vec::new()
-        }
-    }
+    super::fallback::find_all_or_empty("image_profiles", || find_all(conn))
 }
 
 /// v4 `repos.imageProfiles.findAll()` — every image profile, insertion (rowid)

@@ -393,18 +393,7 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<Value>, DbError>
 /// rather than a catch v4 can never reach (the unification review of the
 /// `acadcc7cd` round).
 pub fn find_by_id_or_none(conn: &Connection, id: &str) -> Option<Value> {
-    match find_by_id(conn, id) {
-        Ok(found) => found,
-        Err(error) => {
-            tracing::error!(
-                collection = "chats",
-                id = %id,
-                error = %error,
-                "Error finding entity by ID"
-            );
-            None
-        }
-    }
+    super::fallback::find_by_id_or_none("chats", id, || find_by_id(conn, id))
 }
 
 /// Find all chats (v4 `findAll`).

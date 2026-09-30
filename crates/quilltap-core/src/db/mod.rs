@@ -81,6 +81,7 @@ pub mod document_store_overlay;
 pub mod embedding_profiles;
 pub mod embedding_status;
 pub mod ensure_official_store;
+pub mod fallback;
 pub mod fictional_clock_anchor_repair;
 pub mod files;
 // === P4.D182 ===

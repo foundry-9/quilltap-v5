@@ -740,8 +740,10 @@ where
         }
         if chunk.done {
             // v4's funnel row for this call: no `characterId`, this segment's
-            // own text (`accumulatedContent` is per call), `stop` visible in
-            // the request projection where the params carry it.
+            // own text (`accumulatedContent` is per call). `stop` rides the
+            // WIRE params, not the row: the logged request projection is
+            // `{messages, temperature, maxTokens, tools}` on both sides
+            // (`streaming.service.ts:488-497`).
             log_loop_leg(
                 watchdog.db,
                 &LegLogIds {

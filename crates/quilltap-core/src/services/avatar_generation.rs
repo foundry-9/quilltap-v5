@@ -96,9 +96,13 @@ async fn trigger_avatar_generation_inner(
 ) -> Result<AvatarGenerationResult, DbError> {
     let chat_id = params.chat_id.clone();
     // v4's repository reads are FALLBACK reads (`null` / `[]` + an ERROR line),
-    // so a read failure takes the not-found / next-tier arm, never the catch.
-    let chat =
-        db.read_main(move |conn| Ok(crate::db::chats_read::find_by_id_or_none(conn, &chat_id)))?;
+    // so a read failure takes the not-found / next-tier arm, never the catch —
+    // and v4's `getCollection()` sits inside the same `safeQuery`, so a POOL
+    // failure takes the same arm with the same line (P4.123 item 9): the whole
+    // checkout goes under the one fallback home.
+    let chat = crate::db::fallback::find_by_id_or_none("chats", &params.chat_id, || {
+        db.read_main(move |conn| crate::db::chats_read::find_by_id(conn, &chat_id))
+    });
     let Some(chat) = chat else {
         return Ok(AvatarGenerationResult::NotQueued {
             reason: "chat-not-found".to_string(),
@@ -116,9 +120,9 @@ async fn trigger_avatar_generation_inner(
     {
         let over = over.to_string();
         let lookup = over.clone();
-        let profile = db.read_main(move |conn| {
-            Ok(crate::db::image_profiles::find_by_id_or_none(conn, &lookup))
-        })?;
+        let profile = crate::db::fallback::find_by_id_or_none("image_profiles", &over, || {
+            db.read_main(move |conn| crate::db::image_profiles::find_by_id(conn, &lookup))
+        });
         match profile {
             Some(p) => {
                 image_profile_id = p.get("id").and_then(Value::as_str).map(str::to_string);
@@ -135,12 +139,11 @@ async fn trigger_avatar_generation_inner(
     if image_profile_id.is_none() {
         if let Some(chat_profile) = chat.get("imageProfileId").and_then(Value::as_str) {
             let chat_profile = chat_profile.to_string();
-            let profile = db.read_main(move |conn| {
-                Ok(crate::db::image_profiles::find_by_id_or_none(
-                    conn,
-                    &chat_profile,
-                ))
-            })?;
+            let lookup = chat_profile.clone();
+            let profile =
+                crate::db::fallback::find_by_id_or_none("image_profiles", &chat_profile, || {
+                    db.read_main(move |conn| crate::db::image_profiles::find_by_id(conn, &lookup))
+                });
             if let Some(p) = profile {
                 image_profile_id = p.get("id").and_then(Value::as_str).map(str::to_string);
             }
@@ -148,7 +151,9 @@ async fn trigger_avatar_generation_inner(
     }
 
     if image_profile_id.is_none() {
-        let all = db.read_main(|conn| Ok(crate::db::image_profiles::find_all_or_empty(conn)))?;
+        let all = crate::db::fallback::find_all_or_empty("image_profiles", || {
+            db.read_main(|conn| crate::db::image_profiles::find_all(conn))
+        });
         let default = all
             .into_iter()
             .find(|p| p.get("isDefault").and_then(Value::as_bool) == Some(true));
@@ -192,9 +197,10 @@ async fn trigger_avatar_generation_inner(
 /// `()`, so there is nothing left for a catch to see (P4.D238).
 pub async fn trigger_avatar_generation_if_enabled(db: &Db, params: &AvatarGenerationParams) {
     let chat_id = params.chat_id.clone();
-    let chat = db
-        .read_main(move |conn| Ok(crate::db::chats_read::find_by_id_or_none(conn, &chat_id)))
-        .unwrap_or(None);
+    // The pool checkout under the same fallback as the read (P4.123 item 9).
+    let chat = crate::db::fallback::find_by_id_or_none("chats", &params.chat_id, || {
+        db.read_main(move |conn| crate::db::chats_read::find_by_id(conn, &chat_id))
+    });
     let Some(chat) = chat else {
         return;
     };

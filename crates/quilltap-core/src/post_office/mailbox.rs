@@ -275,6 +275,7 @@ fn list_mail_entries(mount: &Connection, vault_id: &str) -> Result<Vec<String>, 
         .find_by_mount_point_id(vault_id)
         .unwrap_or_else(|error| {
             tracing::error!(
+                target: "quilltap::db",
                 collection = "doc_mount_file_links",
                 mountPointId = vault_id,
                 error = %error,
@@ -284,6 +285,7 @@ fn list_mail_entries(mount: &Connection, vault_id: &str) -> Result<Vec<String>, 
         });
     if let Err(error) = DocMountFoldersRepository::new(mount).find_by_mount_point_id(vault_id) {
         tracing::error!(
+                target: "quilltap::db",
             collection = "doc_mount_folders",
             mountPointId = vault_id,
             error = %error,
@@ -379,6 +381,7 @@ pub fn read_letter(
         Err(StoreError::Store(e)) if e.code == DbStoreErrorCode::NotFound => Ok(None),
         Err(StoreError::Db(error)) => {
             tracing::error!(
+                target: "quilltap::db",
                 collection = "doc_mount_documents",
                 mountPointId = vault_id,
                 relativePath = normalise_relative_path(path)?.as_str(),
@@ -443,6 +446,28 @@ pub fn mark_alerted(mount: &Connection, vault_id: &str, path: &str) -> Result<()
             );
             return Ok(());
         }
+        // v4's `readDatabaseDocument` read is the repository's fallback
+        // `withRawDb(null)`: a failed read logs the repository ERROR and reads
+        // as NOT_FOUND — the same warned no-op (unified at the `97b25fc53`
+        // follow-ups round; `read_letter`'s arm, microseconds earlier on the
+        // same letter, made this one unplantable on its own).
+        Err(StoreError::Db(error)) => {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "doc_mount_documents",
+                mountPointId = vault_id,
+                relativePath = normalise_relative_path(path)?.as_str(),
+                error = %error,
+                "Error finding document by mount point and path"
+            );
+            tracing::warn!(
+                target: LOG_TARGET,
+                vaultId = vault_id,
+                path = path,
+                "markAlerted: letter no longer present"
+            );
+            return Ok(());
+        }
         Err(e) => return Err(store_to_db(e)),
     };
     let mut updates = Map::new();
@@ -476,6 +501,7 @@ pub fn discard_letter(mount: &Connection, vault_id: &str, path: &str) -> Result<
     {
         Err(error) => {
             tracing::error!(
+                target: "quilltap::db",
                 collection = "doc_mount_file_links",
                 mountPointId = vault_id,
                 relativePath = rel.as_str(),

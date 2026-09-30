@@ -479,18 +479,28 @@ fn restore_on_writer(
                 );
             // v4's `repos.chats.create` validates the three Concierge enums
             // (P4.124): an out-of-enum value skips the chat with the ZodError.
+            // A refused create is v4's `validate` throw inside `_create`: the two
+            // repository ERRORs, then the per-chat catch's warning + WARN
+            // (`restore.ts:238-240` `Failed to restore chat {chatId, error}`).
+            let skip = |w: &mut Vec<String>, error: &str| {
+                crate::services::dangerous_content::chat_override::log_chat_create_validation_failure(
+                    error,
+                );
+                w.push(format!("Failed to restore chat \"{title}\": {error}"));
+                tracing::warn!(chatId = %id, error = %error, "Failed to restore chat");
+            };
             if let Some(zod) =
                 crate::services::dangerous_content::chat_override::concierge_columns_zod_error(
                     &chat_in,
                 )
             {
-                w.push(format!("Failed to restore chat \"{title}\": {zod}"));
+                skip(&mut w, &zod);
                 continue;
             }
             let mut create: crate::db::chats::ChatCreate = match serde_json::from_value(chat_in) {
                 Ok(v) => v,
                 Err(e) => {
-                    w.push(format!("Failed to restore chat \"{title}\": {e}"));
+                    skip(&mut w, &e.to_string());
                     continue;
                 }
             };

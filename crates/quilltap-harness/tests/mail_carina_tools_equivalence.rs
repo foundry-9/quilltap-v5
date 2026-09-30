@@ -1057,7 +1057,7 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
     assert_eq!(e.len(), 1, "list: {l:?}");
     assert!(
         e[0].starts_with(&format!(
-            "ERROR quilltap_core::post_office::mailbox Error finding file links by mount point ID collection=doc_mount_file_links mountPointId={vault} error="
+            "ERROR quilltap::db Error finding file links by mount point ID collection=doc_mount_file_links mountPointId={vault} error="
         )),
         "list: {}",
         e[0]
@@ -1068,7 +1068,7 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
     assert_eq!(e.len(), 1, "read: {l:?}");
     assert!(
         e[0].starts_with(&format!(
-            "ERROR quilltap_core::post_office::mailbox Error finding document by mount point and path collection=doc_mount_documents mountPointId={vault} relativePath=Mail/{name} error="
+            "ERROR quilltap::db Error finding document by mount point and path collection=doc_mount_documents mountPointId={vault} relativePath=Mail/{name} error="
         )),
         "read: {}",
         e[0]
@@ -1079,7 +1079,7 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
     assert_eq!(e.len(), 1, "discard: {l:?}");
     assert!(
         e[0].starts_with(&format!(
-            "ERROR quilltap_core::post_office::mailbox Error finding file link by mount point and path collection=doc_mount_file_links mountPointId={vault} relativePath=Mail/{name} error="
+            "ERROR quilltap::db Error finding file link by mount point and path collection=doc_mount_file_links mountPointId={vault} relativePath=Mail/{name} error="
         )),
         "discard: {}",
         e[0]
@@ -1091,11 +1091,24 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
         text.starts_with("The Post Office stumbled and the letter went unsent — "),
         "send: {text}"
     );
-    let catch: Vec<String> = errors(&l)
+    let (catch, other): (Vec<String>, Vec<String>) = errors(&l)
         .into_iter()
-        .filter(|x| x.contains("handler threw unexpectedly"))
-        .collect();
+        .partition(|x| x.contains("handler threw unexpectedly"));
     assert_eq!(catch.len(), 1, "send: {l:?}");
+    // The recorded divergence, pinned so a convergence is SEEN vanishing: v4's
+    // write path logs the documents-read ERROR before its write throws; v5's
+    // chokepoint throws at the read, so exactly ONE non-catch ERROR (the links
+    // listing) precedes the catch here where v4 has two.
+    assert_eq!(
+        other.len(),
+        1,
+        "send: the non-catch ERROR count moved: {other:?}"
+    );
+    assert!(
+        other[0].starts_with("ERROR quilltap::db Error finding file links by mount point ID "),
+        "send: {}",
+        other[0]
+    );
     assert!(
         catch[0].starts_with(
             "ERROR quilltap_core::tools::send_mail send_mail handler threw unexpectedly module=send-mail-handler chatId=chat-plant error="

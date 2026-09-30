@@ -383,7 +383,11 @@ async fn text_tool_loop_tier3_matches_oracle() {
             vec![],
             format!("{}-pp", c.chat_id),
             None,
-            c.chat_id.replacen('3', "5", 1),
+            // The jest side's `c.chatId.replace(/^3/, '5')` — anchored at the
+            // START, as there; `replacen('3', …, 1)` hit the first `3` anywhere.
+            c.chat_id
+                .strip_prefix('3')
+                .map_or_else(|| c.chat_id.clone(), |rest| format!("5{rest}")),
             // P4.D205: this corpus carries no informs.
             vec![],
         );

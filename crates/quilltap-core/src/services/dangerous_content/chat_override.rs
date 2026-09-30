@@ -347,6 +347,29 @@ pub fn concierge_columns_zod_error(chat: &Value) -> Option<String> {
     (!issues.is_empty()).then(|| zod_error_message(&issues))
 }
 
+/// The two repository ERRORs v4 logs when `repos.chats.create` refuses a chat
+/// (`base.repository.ts:130-141` `validate` → `Data validation failed
+/// {collection, error}`, then the rethrowing `safeQuery` around `_create` →
+/// `Error creating entity {collection, error}`, `:350-378`), in that order,
+/// BEFORE the caller's per-chat catch. Both restore and import log them beside
+/// the refusal [`concierge_columns_zod_error`] returns (unified at the
+/// `97b25fc53` follow-ups round — P4.124 item 14 ported the refusal without
+/// them). `error` is the ZodError's message on both lines (`extractErrorMessage`).
+pub fn log_chat_create_validation_failure(zod_message: &str) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "chats",
+        error = %zod_message,
+        "Data validation failed"
+    );
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "chats",
+        error = %zod_message,
+        "Error creating entity"
+    );
+}
+
 /// JS object spread of `src` over `dst`: an existing key is overwritten in
 /// place, a new one is appended.
 fn spread_into(dst: &mut Map<String, Value>, src: Map<String, Value>) {
@@ -410,6 +433,29 @@ mod tests {
         ] {
             assert_eq!(concierge_columns_zod_error(&ok), None, "{ok}");
         }
+    }
+
+    /// The two repository ERRORs precede the caller's catch, in v4's order,
+    /// with the ZodError message on both — and nothing else is logged.
+    #[test]
+    fn a_refused_chat_create_logs_v4s_two_repository_errors_in_order() {
+        let (_, lines) = crate::test_support::captured_with(|| {
+            log_chat_create_validation_failure("[\n  \"posed\"\n]")
+        });
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(
+            lines[0]
+                .starts_with("ERROR quilltap::db Data validation failed collection=chats error="),
+            "{}",
+            lines[0]
+        );
+        assert!(
+            lines[1]
+                .starts_with("ERROR quilltap::db Error creating entity collection=chats error="),
+            "{}",
+            lines[1]
+        );
+        assert!(lines.iter().all(|l| l.contains("posed")), "{lines:?}");
     }
 
     type SetByRow = Option<ConciergeSetBy>;

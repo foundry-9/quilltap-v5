@@ -258,11 +258,26 @@ test.describe('P4.80 — deleting a chat', () => {
     expect(asked).toBe(
       'This will delete all existing memories from this chat and re-extract them from the conversation. Are you sure?',
     );
-    // The operator hears v4's own words: the count, or the server's refusal.
+    // The operator hears v4's own words, and ONLY those: the count, or one of
+    // the queue verb's two refusals (`actions/memories.ts:82,122-127` — the
+    // fixture may carry no cheap LLM, and this seeded chat has no USER message,
+    // so each arm is reachable and nothing looser than the exact sentence
+    // counts as "heard"). A silent click is the failure this beat exists for.
     await expect(
       page
         .getByText(/^Queued \d+ memory extraction jobs$/)
-        .or(page.getByText(/cheap LLM|No messages|memory extraction|re-extract memories/i))
+        .or(
+          page.getByText(
+            'No valid cheap LLM configured. Please set a cheap LLM profile in settings.',
+            { exact: true },
+          ),
+        )
+        .or(
+          page.getByText(
+            'No user messages found in this chat — nothing to extract memories from.',
+            { exact: true },
+          ),
+        )
         .first(),
     ).toBeVisible({ timeout: 15_000 });
     // Clicking the badge never navigated into the chat.

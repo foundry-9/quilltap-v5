@@ -302,18 +302,7 @@ pub fn find_by_id_raw(main: &Connection, id: &str) -> Result<Option<Value>, DbEr
 /// four mail tools — P4.126; the [`crate::db::chats_read::find_by_id_or_none`]
 /// shape).
 pub fn find_by_id_raw_or_none(main: &Connection, id: &str) -> Option<Value> {
-    match find_by_id_raw(main, id) {
-        Ok(found) => found,
-        Err(error) => {
-            tracing::error!(
-                collection = "characters",
-                id = %id,
-                error = %error,
-                "Error finding entity by ID"
-            );
-            None
-        }
-    }
+    super::fallback::find_by_id_or_none("characters", id, || find_by_id_raw(main, id))
 }
 
 /// Find all characters, overlaid (v4 `findAll`). A character whose vault is

@@ -44,45 +44,11 @@ use serde_json::Value;
 
 use super::provider_routing::{route_profile_from_value, ApiKeyResolver, RouteProfile};
 use crate::db::runtime::Db;
-use crate::db::{connection_profiles, image_profiles, DbError};
+use crate::db::{connection_profiles, image_profiles};
 
-/// v4 `_findById` as its callers see it — `safeQuery(…, 'Error finding entity
-/// by ID', { id }, null)` with the repository's `collection` injected first.
-/// `read` may include the pool checkout: v4's `getCollection()` sits inside the
-/// same `safeQuery`.
-pub(crate) fn find_by_id_or_none(
-    collection: &'static str,
-    read: impl FnOnce() -> Result<Option<Value>, DbError>,
-    id: &str,
-) -> Option<Value> {
-    read().unwrap_or_else(|error| {
-        tracing::error!(
-            target: "quilltap::db",
-            collection = collection,
-            id = %id,
-            error = %error,
-            "Error finding entity by ID"
-        );
-        None
-    })
-}
-
-/// v4 `_findAll` as its callers see it — `safeQuery(…, 'Error finding all
-/// entities', {}, [])`.
-fn find_all_or_empty(
-    collection: &'static str,
-    read: impl FnOnce() -> Result<Vec<Value>, DbError>,
-) -> Vec<Value> {
-    read().unwrap_or_else(|error| {
-        tracing::error!(
-            target: "quilltap::db",
-            collection = collection,
-            error = %error,
-            "Error finding all entities"
-        );
-        Vec::new()
-    })
-}
+// v4's fallback reads (`_findById` / `_findAll` under `safeQuery`) — ONE home,
+// `crate::db::fallback`; the resolvers below read through it.
+pub(crate) use crate::db::fallback::{find_all_or_empty, find_by_id_or_none};
 
 /// `repos.connections.findAll()` — v4's fallback read (`connection_profiles`).
 pub(crate) fn connection_profiles_find_all_or_empty(conn: &rusqlite::Connection) -> Vec<Value> {
@@ -200,11 +166,9 @@ pub fn resolve_uncensored_text_understudy<A: ApiKeyResolver>(
         // `explicitId && …` — an empty id is no pick at all.
         let explicit_id = lookup.uncensored_text_profile_id.filter(|s| !s.is_empty());
         if let Some(explicit_id) = explicit_id.filter(|id| !excluded(id)) {
-            let explicit = find_by_id_or_none(
-                "connection_profiles",
-                || connection_profiles::find_by_id(conn, explicit_id),
-                explicit_id,
-            );
+            let explicit = find_by_id_or_none("connection_profiles", explicit_id, || {
+                connection_profiles::find_by_id(conn, explicit_id)
+            });
             match &explicit {
                 Some(p) if eligible(p) => {
                     if let Some(api_key) = decrypt_key(api_keys, p, lookup.user_id) {

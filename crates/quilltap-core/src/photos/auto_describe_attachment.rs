@@ -135,7 +135,14 @@ pub fn auto_describe_precheck(
     file_entry_id: &str,
 ) -> Result<AutoDescribePrecheck, DbError> {
     let files = FilesRepository::new(main);
-    let Some(entry) = files.find_by_id(file_entry_id)? else {
+    // v4 `repos.files.findById` is the FALLBACK `_findById`: a failed read logs
+    // the repository ERROR and answers `null`, which is the `not-found` skip —
+    // never a throw into the caller's `.catch` (unified at the `97b25fc53`
+    // follow-ups round; v5 had propagated here, so a dropped `files` table
+    // WARNed where v4 skips).
+    let Some(entry) = crate::db::fallback::find_by_id_or_none("files", file_entry_id, || {
+        files.find_by_id(file_entry_id)
+    }) else {
         return Ok(AutoDescribePrecheck::Skip(AutoDescribeSkipReason::NotFound));
     };
     if !entry.mime_type.starts_with("image/") {
@@ -355,7 +362,8 @@ pub async fn auto_describe_chat_image_attachment(
     // Queue embedding generation for every mount we wrote chunks into so the
     // new text becomes searchable (the recorded seam — v4
     // `enqueueEmbeddingJobsForMountPoint`, per-mount warn-and-continue there;
-    // the differential jest-mocks it to a no-op, `NoSideEffects` here).
+    // the differential jest-mocks it to a no-op and hands `NoSideEffects`;
+    // production hands `MountEmbeddingSideEffects`, P4.120).
     for mount_point_id in &touched {
         side_effects.enqueue_embedding_jobs(mount_point_id);
     }

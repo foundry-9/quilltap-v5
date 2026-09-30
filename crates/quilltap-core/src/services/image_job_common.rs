@@ -186,23 +186,13 @@ pub(crate) fn decode_base64_node(s: &str) -> Vec<u8> {
 /// ERROR (`Error finding entity by ID`, `collection: image_profiles`) and
 /// answers `null` parameters — where v5 answered `Null` silently.
 ///
-/// The row read is P4.123's `image_profiles::find_by_id_or_none` twin (the one
-/// home, which logs that line); the pool checkout sits inside v4's same
-/// `safeQuery` (`getCollection()` runs under it), so a POOL failure logs the
-/// same line once through the generic wrapper — never twice, since the twin
-/// only runs once a connection is held.
+/// The whole checkout runs under the one fallback home (`db::fallback`): the
+/// pool checkout sits inside v4's same `safeQuery` (`getCollection()` runs
+/// under it), so a pool failure and a read failure log the same line, once.
 pub(crate) fn load_profile_parameters(db: &Db, profile_id: &str) -> Value {
-    crate::services::dangerous_content::understudy::find_by_id_or_none(
-        "image_profiles",
-        || {
-            db.read_main(|conn| {
-                Ok(crate::db::image_profiles::find_by_id_or_none(
-                    conn, profile_id,
-                ))
-            })
-        },
-        profile_id,
-    )
+    crate::db::fallback::find_by_id_or_none("image_profiles", profile_id, || {
+        db.read_main(|conn| crate::db::image_profiles::find_by_id(conn, profile_id))
+    })
     .and_then(|p| p.get("parameters").cloned())
     .unwrap_or(Value::Null)
 }

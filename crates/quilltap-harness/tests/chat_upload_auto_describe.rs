@@ -439,9 +439,17 @@ fn an_err_from_the_module_logs_v4s_warn() {
     // The response is already the success envelope.
     assert!(serde_json::to_value(&resp).unwrap()["data"]["file"]["id"].is_string());
 
+    // The forcing is the leg v4 reaches: `repos.files.update` inside the
+    // persist throws UNCAUGHT (the precheck's `findById` is a FALLBACK read on
+    // both sides — see `a_missing_files_row_read_is_a_not_found_skip_not_the_warn`).
+    // A BEFORE UPDATE trigger on `files` fails the persist after the vision
+    // call succeeded.
     rt.block_on(async {
         db.write(|ws| {
-            ws.main().connection().execute_batch("DROP TABLE files")?;
+            ws.main().connection().execute_batch(
+                "CREATE TRIGGER qt_posed_files_update BEFORE UPDATE ON files \
+                 BEGIN SELECT RAISE(ABORT, 'posed: files update refused'); END",
+            )?;
             Ok(())
         })
         .await
@@ -462,11 +470,14 @@ fn an_err_from_the_module_logs_v4s_warn() {
     assert!(w.starts_with("WARN "), "{w}");
     assert!(w.contains("module=chat-files-v2"), "{w}");
     assert!(w.contains(&format!("fileId={id}")), "{w}");
-    assert!(w.contains("error="), "{w}");
+    assert!(
+        w.contains("error=") && w.contains("posed: files update refused"),
+        "{w}"
+    );
     assert_eq!(
         driver.calls.load(Ordering::SeqCst),
-        0,
-        "no vision call on the Err path"
+        1,
+        "the vision call ran; the PERSIST is what threw"
     );
 
     // Silence leg: the same task over an INTACT db logs no such warn.
@@ -497,6 +508,71 @@ fn an_err_from_the_module_logs_v4s_warn() {
             .iter()
             .any(|l| l.contains("Auto-describe failed for chat image upload")),
         "{logs:?}"
+    );
+}
+
+/// v4 `repos.files.findById` is the FALLBACK `_findById`: a failed precheck
+/// read logs the repository ERROR and answers `null`, which is the `not-found`
+/// SKIP — the module resolves `Ok`, no vision call, and the `.catch` WARN never
+/// fires (unified at the `97b25fc53` follow-ups round: v5 had propagated the
+/// read and WARNed here).
+#[test]
+fn a_missing_files_row_read_is_a_not_found_skip_not_the_warn() {
+    let rt = rt();
+    let driver = Arc::new(RecordingDescribe::default());
+    let db = fresh_db("not-found");
+    let q = arm_queue();
+    let resp = run(
+        &rt,
+        &db,
+        Upload {
+            chat: CHAT_G,
+            filename: "vanished.png",
+            content_type: "image/png",
+            body: png(),
+            resolution: None,
+            conflicting: None,
+        },
+        Some(seams(&driver)),
+    );
+    disarm_background_spawner_for_current_thread();
+    let id = uploaded_id(&resp);
+    rt.block_on(async {
+        db.write(|ws| {
+            ws.main().connection().execute_batch("DROP TABLE files")?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    });
+    let tasks: Vec<Task> = std::mem::take(&mut *q.lock().unwrap());
+    let (_, logs) = captured_with(|| {
+        for t in tasks {
+            rt.block_on(t);
+        }
+    });
+    assert!(
+        !logs
+            .iter()
+            .any(|l| l.contains("Auto-describe failed for chat image upload")),
+        "the fallback read never reaches the catch: {logs:?}"
+    );
+    let repo: Vec<&String> = logs
+        .iter()
+        .filter(|l| l.contains("Error finding entity by ID"))
+        .collect();
+    assert_eq!(repo.len(), 1, "{logs:?}");
+    assert!(
+        repo[0].starts_with(&format!(
+            "ERROR quilltap::db Error finding entity by ID collection=files id={id} error="
+        )),
+        "{}",
+        repo[0]
+    );
+    assert_eq!(
+        driver.calls.load(Ordering::SeqCst),
+        0,
+        "a not-found skip makes no vision call"
     );
 }
 
