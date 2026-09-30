@@ -255,28 +255,6 @@ pub struct OffSceneParticipant {
     pub status: String,
 }
 
-/// The chat's `chatType` as v4's chat object carries it: the schema is
-/// `ChatTypeEnum.default('salon')` and v4 reads a NULL cell as `undefined`, so
-/// a NULL cell arrives as `'salon'` — and v4's DEBUG logs `chatType: 'salon'`,
-/// never an absent or null field (P4.124, measured at `97b25fc53`; v5 omitted
-/// the field). A missing row takes the same default (v4's scan always holds a
-/// chat; `chats_read`'s row marshal applies the same default). Both read as "the
-/// operator speaks", the pre-bug-172 behaviour.
-fn read_chat_type(db: &Db, chat_id: &str) -> Result<String, DbError> {
-    use rusqlite::OptionalExtension;
-    let chat_id = chat_id.to_string();
-    let cell = db.read_main(move |conn| {
-        conn.query_row(
-            r#"SELECT "chatType" FROM chats WHERE id = ?1"#,
-            [&chat_id],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .optional()
-        .map_err(DbError::from)
-    })?;
-    Ok(cell.flatten().unwrap_or_else(|| "salon".to_string()))
-}
-
 /// v4's off-scene SCAN block (`context-manager.ts`) — compute the pending Host
 /// announcement CONTENT for this turn, or `None`. The POST is W4.6b.
 ///
@@ -289,6 +267,7 @@ fn read_chat_type(db: &Db, chat_id: &str) -> Result<String, DbError> {
 pub fn scan_off_scene_newcomers(
     db: &Db,
     chat_id: &str,
+    chat_type: &str,
     user_id: &str,
     responding_character_id: &str,
     user_character_name: Option<&str>,
@@ -298,6 +277,7 @@ pub fn scan_off_scene_newcomers(
     scan_off_scene_newcomers_inner(
         db,
         chat_id,
+        chat_type,
         user_id,
         responding_character_id,
         user_character_name,
@@ -309,6 +289,7 @@ pub fn scan_off_scene_newcomers(
 fn scan_off_scene_newcomers_inner(
     db: &Db,
     chat_id: &str,
+    chat_type: &str,
     user_id: &str,
     responding_character_id: &str,
     user_character_name: Option<&str>,
@@ -344,20 +325,20 @@ fn scan_off_scene_newcomers_inner(
     //    persona is already excluded by characterId above.
     //
     //    v4 reads `chat.chatType` off the chat object `buildContext` was handed;
-    //    v5's `ContextChat` carries no chat type (and the orchestrator that
-    //    builds it is not this lane's), so the scan reads the one column itself.
-    //    The DEBUG sits where v4's does: after the characters read, before the
-    //    candidate filter — a failed characters read logs nothing on either side.
-    let chat_type = read_chat_type(db, chat_id)?;
-    let user_name_lower = if crate::chat_predicates::operator_speaks_without_seat(Some(&chat_type))
-    {
+    //    v5's `ContextChat.chat_type` is that field (the orchestrator threads it
+    //    off the chat row, whose marshal applies v4's `salon` default — so v4's
+    //    DEBUG below always logs `chatType: 'salon'` for a NULL cell, never an
+    //    absent or null field; P4.124, measured at `97b25fc53`). The DEBUG sits
+    //    where v4's does: after the characters read, before the candidate
+    //    filter — a failed characters read logs nothing on either side.
+    let user_name_lower = if crate::chat_predicates::operator_speaks_without_seat(Some(chat_type)) {
         user_character_name.map(|n| crate::jsstr::js_trim(n).to_lowercase())
     } else {
         None
     };
     tracing::debug!(
         chatId = chat_id,
-        chatType = chat_type.as_str(),
+        chatType = chat_type,
         // v4 `Boolean(userCharacterNameLower)`: the gated NAME's presence (an
         // empty trimmed name is falsy), not the chat type alone.
         excludesPersonaByName = user_name_lower.as_deref().is_some_and(|n| !n.is_empty()),

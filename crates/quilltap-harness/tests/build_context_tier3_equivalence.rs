@@ -236,11 +236,10 @@ struct SpecMsg {
 #[serde(rename_all = "camelCase")]
 struct SpecChatOverrides {
     /// P4.124: bug 172's scan gate — the chat ROW's `chatType` for this op
-    /// (restored after). v5's off-scene scan reads the row (`off_scene.rs`'s
-    /// `read_chat_type` — `ContextChat` carries no chat type until the
-    /// orchestrator threads one, P4.124 item 6's recorded hunk), and v4's
-    /// oracle re-reads the chat each op, so the row is the one channel both
-    /// sides see.
+    /// (restored after). v4's oracle re-reads the chat each op, and v5's
+    /// `ContextChat.chat_type` is fed from the same row AFTER the plant (as
+    /// the orchestrator feeds it from the chat it read), so the row is the one
+    /// channel both sides see.
     #[serde(default)]
     chat_type: Option<String>,
     /// P4.D103: puts the chat in an instructed project for the
@@ -800,7 +799,7 @@ async fn build_context_tier3_matches_oracle() {
             None => (None, None),
         };
 
-        let input = BuildContextInput {
+        let mut input = BuildContextInput {
             // P4.D205 / P4.106 item 1: absent = a fresh turn (the PENDING set);
             // the swipe op passes the target + its group (the CONSUMED set). The
             // corpus plants `chat_informs` rows only for seats no pre-P4.106 op
@@ -1040,6 +1039,21 @@ async fn build_context_tier3_matches_oracle() {
                 }
                 None => None,
             };
+        // The orchestrator reads `chatType` off the chat row it was handed
+        // (`chats_read` applies v4's `salon` default); mirror that read here,
+        // after the plant, so the op's room type reaches the scan the way
+        // production's does (P4.124 item 6, unified).
+        {
+            let chat_id = spec.chat.id.clone();
+            input.chat.chat_type = db
+                .read_main(move |c| chats_read::find_by_id(c, &chat_id))
+                .expect("read chat")
+                .and_then(|c| {
+                    c.get("chatType")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                });
+        }
         inform_read_counter::reset();
         let built = build_context(&db, &embedding, &completion, &executor, &seams, &input)
             .await

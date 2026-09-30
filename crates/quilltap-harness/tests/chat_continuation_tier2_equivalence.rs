@@ -558,6 +558,7 @@ fn chat_continuation_matches_oracle() {
                 scan_off_scene_newcomers(
                     &db,
                     &probe.chat_id,
+                    chat["chatType"].as_str().unwrap_or("salon"),
                     &spec.user_id,
                     &spec.character_a,
                     Some(spec.scan_probe_user_character_name.as_str()),
@@ -594,6 +595,7 @@ fn chat_continuation_matches_oracle() {
                     scan_off_scene_newcomers(
                         &db,
                         &probe.chat_id,
+                        chat["chatType"].as_str().unwrap_or("salon"),
                         &spec.user_id,
                         &spec.character_a,
                         name,
@@ -643,10 +645,20 @@ fn chat_continuation_matches_oracle() {
                 .expect("plant chatType")
             };
             assert_eq!(set_type(None), 1, "the NULL plant hit the probe chat");
+            // The orchestrator hands the scan the chat it READ (`ContextChat.
+            // chat_type`, P4.124 item 6 unified); re-read the planted row the way
+            // it does, so the marshal's `salon` default is what reaches the scan.
+            let replanted = {
+                let id = probe.chat_id.clone();
+                db.read_main(move |conn| quilltap_core::db::chats_read::find_by_id(conn, &id))
+                    .expect("re-read the probe chat")
+                    .expect("probe chat exists")
+            };
             let (_, lines) = quilltap_core::test_support::captured_with(|| {
                 scan_off_scene_newcomers(
                     &db,
                     &probe.chat_id,
+                    replanted["chatType"].as_str().unwrap_or("salon"),
                     &spec.user_id,
                     &spec.character_a,
                     Some(spec.scan_probe_user_character_name.as_str()),

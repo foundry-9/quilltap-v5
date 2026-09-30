@@ -1276,9 +1276,17 @@ pub async fn message_swipe_generate(
             // v4 `route.ts:356-364`: a failure AFTER the stream opened is an
             // `error` FRAME whose `details` is the raw `error.message`; the
             // response envelope is unchanged (v4's JSON leg answers
-            // `serverError(error.message)` from the same catch).
+            // `serverError(error.message)` from the same catch — a 500 WHATEVER
+            // the service threw, `messages/[id]/route.ts:351-359`). v5's
+            // driver carries a kind (its service backstop answers
+            // `BadRequest`), which this arm had passed through; the
+            // retry-uncensored twin was fixed by P4.124 (P4.D228 (ii)) and
+            // this arm with it at unification.
             progress.emit_error(&e.message);
-            Response::Error(e)
+            Response::Error(crate::api::types::CoreError {
+                kind: ErrorKind::Internal,
+                ..e
+            })
         }
     }
 }

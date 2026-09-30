@@ -91,26 +91,6 @@ pub(crate) fn connection_profiles_find_all_or_empty(conn: &rusqlite::Connection)
     })
 }
 
-// P4.124 → the unifier: P4.123 delivers `image_profiles::find_by_id_or_none` /
-// `find_all_or_empty` (the §S twins) with this same line; fold these two onto
-// them and delete the duplicates.
-/// `repos.imageProfiles.findById()` — v4's fallback read (`image_profiles`).
-pub(crate) fn image_profiles_find_by_id_or_none(
-    conn: &rusqlite::Connection,
-    id: &str,
-) -> Option<Value> {
-    find_by_id_or_none(
-        "image_profiles",
-        || image_profiles::find_by_id(conn, id),
-        id,
-    )
-}
-
-/// `repos.imageProfiles.findAll()` — v4's fallback read (`image_profiles`).
-pub(crate) fn image_profiles_find_all_or_empty(conn: &rusqlite::Connection) -> Vec<Value> {
-    find_all_or_empty("image_profiles", || image_profiles::find_all(conn))
-}
-
 /// A resolved understudy: the chosen profile's identity, its raw row (callers
 /// re-run the attachment decision against it — v4's result carries the whole
 /// profile), and its decrypted key.
@@ -327,7 +307,7 @@ pub fn resolve_uncensored_image_understudy<A: ApiKeyResolver>(
     let attempt = || -> Option<Understudy> {
         let explicit_id = lookup.uncensored_image_profile_id.filter(|s| !s.is_empty());
         if let Some(explicit_id) = explicit_id.filter(|id| !excluded(id)) {
-            let explicit = image_profiles_find_by_id_or_none(conn, explicit_id);
+            let explicit = image_profiles::find_by_id_or_none(conn, explicit_id);
             match &explicit {
                 Some(p) if user_id_of(p) == Some(lookup.user_id) => {
                     if let Some(api_key) = decrypt_key(api_keys, p, lookup.user_id) {
@@ -364,7 +344,7 @@ pub fn resolve_uncensored_image_understudy<A: ApiKeyResolver>(
             );
         }
 
-        let compatible: Vec<Value> = image_profiles_find_all_or_empty(conn)
+        let compatible: Vec<Value> = image_profiles::find_all_or_empty(conn)
             .into_iter()
             .filter(|p| {
                 user_id_of(p) == Some(lookup.user_id)

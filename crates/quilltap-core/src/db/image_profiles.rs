@@ -359,12 +359,17 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Valu
 /// v4 `repos.imageProfiles.findById` exactly as its callers see it: `_findById`
 /// is `safeQuery(…, 'Error finding entity by ID', { id }, null)`, so a FAILED
 /// read logs that ERROR (`collection`, `id`, `error`) and answers `null` — it
-/// never throws (P4.123; the `chats_read::find_by_id_or_none` shape).
+/// never throws (P4.123; the `chats_read::find_by_id_or_none` shape). The ONE
+/// home for the `image_profiles` fallback reads — the understudy resolvers,
+/// the retry's exclude list and `load_profile_parameters` all read through
+/// here (P4.124's §S handoff, folded at unification); `target: quilltap::db`
+/// is v4's `Repository` module as the differentials map it.
 pub fn find_by_id_or_none(conn: &Connection, id: &str) -> Option<serde_json::Value> {
     match find_by_id(conn, id) {
         Ok(found) => found,
         Err(error) => {
             tracing::error!(
+                target: "quilltap::db",
                 collection = "image_profiles",
                 id = %id,
                 error = %error,
@@ -383,6 +388,7 @@ pub fn find_all_or_empty(conn: &Connection) -> Vec<serde_json::Value> {
         Ok(all) => all,
         Err(error) => {
             tracing::error!(
+                target: "quilltap::db",
                 collection = "image_profiles",
                 error = %error,
                 "Error finding all entities"

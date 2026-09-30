@@ -45,9 +45,8 @@ use super::resolver::{
     resolve_concierge_settings, resolve_configured_concierge_desk, ResolvedConciergePolicy,
 };
 use super::understudy::{
-    connection_profiles_find_all_or_empty, image_profiles_find_all_or_empty,
-    resolve_image_understudy_on, resolve_text_understudy_on, ImageUnderstudyLookup,
-    TextUnderstudyLookup, Understudy,
+    connection_profiles_find_all_or_empty, resolve_image_understudy_on, resolve_text_understudy_on,
+    ImageUnderstudyLookup, TextUnderstudyLookup, Understudy,
 };
 
 const TARGET: &str = "quilltap::concierge_retry_uncensored";
@@ -333,7 +332,7 @@ pub async fn resolve_image_retry_understudy<A: ApiKeyResolver>(
         && answered_by.model_name.is_some_and(|s| !s.is_empty())
     {
         // The text arm's fallback-read rule (P4.124).
-        match db.read_main(|c| Ok(image_profiles_find_all_or_empty(c))) {
+        match db.read_main(|c| Ok(crate::db::image_profiles::find_all_or_empty(c))) {
             Ok(profiles) => {
                 for id in same_model_ids(&profiles, answered_by) {
                     if !exclude.contains(&id) {

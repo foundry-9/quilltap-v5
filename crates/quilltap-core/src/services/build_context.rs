@@ -498,6 +498,13 @@ pub struct ContextChat {
     /// Bug 44). Only consulted by the multi-character attribution name lookup;
     /// empty for single-character chats and every non-impersonating chat.
     pub impersonating_participant_ids: Vec<String>,
+    /// The chat's `chatType` as v4's chat object carries it: the schema is
+    /// `ChatTypeEnum.default('salon')` and v4 reads a NULL cell as `undefined`,
+    /// so a bare row always arrives as `'salon'` (`chats_read`'s marshal applies
+    /// the same default). Read by the off-scene scan's persona gate (bug 172).
+    /// `None` (a test literal) takes the same `salon` default (P4.124 item 6,
+    /// threaded at unification once the orchestrator's literal was reachable).
+    pub chat_type: Option<String>,
 }
 
 /// The full input bag (v4 `BuildContextOptions`, the subset in scope).
@@ -1951,6 +1958,7 @@ where
         let newcomers = crate::services::off_scene::scan_off_scene_newcomers(
             db,
             &input.chat.id,
+            input.chat.chat_type.as_deref().unwrap_or("salon"),
             &input.user_id,
             &input.character.id,
             input.user_character.as_ref().map(|uc| uc.name.as_str()),
