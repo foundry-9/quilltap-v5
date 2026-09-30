@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — fix(zone): the assembler's zone fill pinned; the host's last ambient clock retired; the census hunts every ambient read; the divergence doc names the true entries (P4.127, the `97b25fc53` smalls §3 review)
+
+_Versions: core 0.0.1126, harness 0.0.1048, host 0.0.168._
+
+`HostAssembler`'s `display_zone` fill from `HostConfig` — the one hop the
+render job and the Almanack read from — had no census needle, so mutating it
+to UTC stayed green (the P4.119 / #121 regression, silently): pinned, with the
+spine's whole builder call (argument included), the positional Almanack fill,
+and a host-crate `TimeZone::UTC` count; mutation M5 reddens it. The Scenario
+Builder prompt's clock in the spine read `jiff::Zoned::now()` ambiently; it
+now resolves the spine's zone through the one helper, and the census's
+host-side loop hunts `TimeZone::system(`, `try_system(` and `Zoned::now(`
+besides `system_display_zone(`, with the CLI's docs listing named as the one
+allowed survivor. The census header and `host_zone.rs` said the Chicago child
+proves the spine-built runner (it builds its own) and that only three name-fed
+entries fall to UTC on a POSIX-`TZ` host; both executor builders are name-fed
+in production, so every executor tool and Carina do too — and the two
+persisted mail prefaces (Compose vs the `send_mail` tool) then render in
+different zones. Both docs corrected; the `cron` mention retired.
+
 #### 2026-09-30 — test(harness): the unported plugin ERROR lines pinned both ways; the SDK frame-semantics rows pinned by count (P4.128, the `97b25fc53` smalls §3 review)
 
 _Versions: harness 0.0.1047._

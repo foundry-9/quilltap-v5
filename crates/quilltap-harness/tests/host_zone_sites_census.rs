@@ -25,14 +25,25 @@
 //! And behaviourally ([`production_entries_render_in_the_host_zone`]): this
 //! test binary re-runs itself with `TZ=America/Chicago` set on the CHILD's
 //! `Command` (never `std::env::set_var` — that races every test thread) and the
-//! child drives the DB-free host wiring, asserting Chicago output AND that a
-//! `server_tz: "UTC"` input still renders UTC on that Chicago host.
+//! child drives the DB-free host wiring it CAN reach without a database —
+//! `HostConfig::new` (the one environment read) and the name helper — and
+//! renders through an executor it builds itself with the same builder call,
+//! asserting Chicago output AND that a `server_tz: "UTC"` input still renders
+//! UTC on that Chicago host. The spine-built runner, `build_context` and the
+//! greeting fills are held by the SOURCE needles above, not by the child
+//! (the `97b25fc53` smalls unification corrected this claim).
 //!
-//! **Ruled divergence (P4.127, recorded for the human):** the three name-fed
-//! entries resolve their zone from an IANA NAME, so a host whose zone has no IANA
-//! name (a POSIX `TZ` string, a fixed offset) displays UTC there where v4
-//! displays the host zone. The VALUE-fed entries (executor, engine, render job,
-//! Almanack) keep the real offsets. See `host_zone.rs`'s [`display_zone_named`].
+//! **Ruled divergence (P4.127, recorded for the human):** every NAME-fed entry
+//! resolves its zone from an IANA name, so a host whose zone has no IANA name
+//! (a POSIX `TZ` string, a fixed offset) displays UTC there where v4 displays
+//! the host zone. The name-fed entries are the Salon turn's tool runner AND
+//! the spine-built runner (so every executor tool — `read_conversation`,
+//! `list_mail`, `read_mail`, `send_mail`, `upsert_annotation`, `search_web` —
+//! and Carina), `build_context` and the greeting; the VALUE-fed entries
+//! (`CoreConfig`'s Compose reply preface, the render job, the Almanack) keep
+//! the real offsets — so on such a host the Compose reply preface and the
+//! `send_mail` tool's preface, both persisted, render in different zones.
+//! See `host_zone.rs`'s [`display_zone_named`].
 //!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test host_zone_sites_census
@@ -47,8 +58,8 @@ const CENSUS: &[(&str, usize, &str)] = &[(
     "host_zone.rs",
     2,
     "the home: the `fn` itself + `system_zone_name`, which reads the value \
-     through it (cron, the markdown-transcript export, the autonomous-room \
-     schedule)",
+     through it (the markdown-transcript export and the autonomous-room \
+     schedule — the two recorded Tier-3 name readers; cron reads `HostConfig.tz`)",
 )];
 
 /// `(path from the repo root, needle, production occurrences, what it pins)` —
@@ -63,15 +74,25 @@ const HOST_SITES: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "crates/quilltap-host/src/host.rs",
+        "display_zone: config.display_zone.clone(),",
+        1,
+        "the `HostAssembler` fill from `HostConfig` — the ONE hop every value-fed \
+         entry below reads from (a `TimeZone::UTC` here would silently render \
+         UTC in the render job and the Almanack: the P4.119 / #121 regression, \
+         unpinned until the `97b25fc53` smalls unification)",
+    ),
+    (
+        "crates/quilltap-host/src/host.rs",
         "display_zone: config.display_zone,",
         1,
         "the `CoreConfig` fill (the engine's reply preface + Salon-load whispers)",
     ),
     (
         "crates/quilltap-host/src/host.rs",
-        "display_zone: self.display_zone.clone(),",
-        1,
-        "the `CONVERSATION_RENDER` handler's fill (the persisted chunk text)",
+        "self.display_zone.clone()",
+        2,
+        "the `CONVERSATION_RENDER` handler's fill (the persisted chunk text) and \
+         the Almanack services' positional argument",
     ),
     (
         "crates/quilltap-host/src/almanack_services.rs",
@@ -81,10 +102,40 @@ const HOST_SITES: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "crates/quilltap-host/src/spine.rs",
-        ".with_display_zone(",
+        ".with_display_zone(quilltap_core::host_zone::display_zone_named(Some(&self.tz)))",
         1,
-        "`ChatSpine::tool_runner()` (carina / ask_carina / Brahma / Run Tool)",
+        "`ChatSpine::tool_runner()` (carina / ask_carina / Brahma / Run Tool) — the \
+         whole call, so the ARGUMENT is pinned, not just the builder",
     ),
+    (
+        "crates/quilltap-host/src/spine.rs",
+        ".to_zoned(quilltap_core::host_zone::display_zone_named(Some(&self.tz)))",
+        1,
+        "the Scenario Builder prompt's clock (v4's `new Date()` in the process \
+         zone) — the host's last ambient `Zoned::now()`, retired at the \
+         `97b25fc53` smalls unification",
+    ),
+];
+
+/// Ambient zone/time reads a host-side crate may still carry, by file:
+/// `(path from the repo root, needle, allowed count, why)`. Anything not
+/// listed here is red — the host reads the zone once.
+const AMBIENT_READ_ALLOWED: &[(&str, &str, usize, &str)] = &[(
+    "crates/quilltap-cli/src/docs_cmd.rs",
+    "TimeZone::system(",
+    1,
+    "the CLI's docs listing renders in the process zone (pre-P4.119, a \
+     display-only CLI surface with no host config to read — named, not hidden)",
+)];
+
+/// The ambient zone/time reads the loop below hunts: a `TimeZone::system()`,
+/// jiff's fallible twin, and a zoned `now` (`Zoned::now()` reads the system
+/// zone), besides the home's own `system_display_zone(`.
+const AMBIENT_READ_NEEDLES: &[&str] = &[
+    "system_display_zone(",
+    "TimeZone::system(",
+    "try_system(",
+    "Zoned::now(",
 ];
 
 /// `(path under crates/quilltap-core/src, `display_zone_named(` call sites in
@@ -323,8 +374,12 @@ fn host_injection_points_carry_the_host_zone() {
             "{rel}: `{needle}` must appear {want}x in production code — {why}"
         );
     }
-    // No other host-side crate reads the environment for a display zone, and the
-    // host crate's only read is the one pinned above.
+    // No other host-side crate reads the environment for a display zone or a
+    // zoned `now` — the host crate's only read is the one pinned above, and the
+    // one recorded CLI read is named in `AMBIENT_READ_ALLOWED`. (The first
+    // shape of this loop hunted `system_display_zone(` alone and could not see
+    // `TimeZone::system()` or `Zoned::now()` — the `97b25fc53` smalls
+    // unification widened it, and found the spine's Scenario Builder clock.)
     for dir in NO_AMBIENT_READ_DIRS
         .iter()
         .copied()
@@ -333,17 +388,45 @@ fn host_injection_points_carry_the_host_zone() {
         let mut files = Vec::new();
         rust_sources(&repo.join(dir), &mut files);
         for f in files {
+            let rel = f
+                .strip_prefix(&repo)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
             let src = std::fs::read_to_string(&f).unwrap();
             let code = code_only(&production_zone(&src));
-            let n = code.matches("system_display_zone(").count();
-            let want = usize::from(f.ends_with("quilltap-host/src/host.rs"));
-            assert_eq!(
-                n,
-                want,
-                "{}: {n} production system_display_zone() calls, {want} allowed — the host reads \
-                 the zone once, in `HostConfig::new`",
-                f.display()
-            );
+            for needle in AMBIENT_READ_NEEDLES {
+                let n = code.matches(needle).count();
+                let want = if *needle == "system_display_zone("
+                    && rel == "crates/quilltap-host/src/host.rs"
+                {
+                    1
+                } else {
+                    AMBIENT_READ_ALLOWED
+                        .iter()
+                        .find(|(p, nd, _, _)| *p == rel && nd == needle)
+                        .map_or(0, |(_, _, n, _)| *n)
+                };
+                assert_eq!(
+                    n, want,
+                    "{rel}: {n} production `{needle}` reads, {want} allowed — the host reads the \
+                     zone once, in `HostConfig::new`; a display-only survivor is named in \
+                     AMBIENT_READ_ALLOWED"
+                );
+            }
+            // The host crate hard-codes UTC nowhere for display (the core's
+            // own allowances are `UTC_ALLOWED`); its ONE production
+            // `TimeZone::UTC` is `spine.rs`'s cron parser falling back for an
+            // unparseable NAME — a zone lookup, not a display default. The
+            // `HostAssembler` fill pinned above is the line this guards.
+            if dir == "crates/quilltap-host/src" {
+                let utc = code.matches("TimeZone::UTC").count();
+                let want = usize::from(rel == "crates/quilltap-host/src/spine.rs");
+                assert_eq!(
+                    utc, want,
+                    "{rel}: {utc} production `TimeZone::UTC` uses, {want} allowed"
+                );
+            }
         }
     }
 }

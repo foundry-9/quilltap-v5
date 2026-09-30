@@ -1820,9 +1820,14 @@ where
             req.run_id.clone(),
             std::sync::Arc::clone(&req.abort),
         );
-        // The server's local zone — v4's `new Date()` rendered by
-        // `formatIsoWithOffset` in the process zone.
-        let now = jiff::Zoned::now();
+        // v4's `new Date()` rendered by `formatIsoWithOffset` in the process
+        // zone — here the zone the spine was built with (the already-threaded
+        // `tz` NAME through the one helper, as the spine's tool runner), never
+        // an ambient read: the host reads the zone ONCE, in `HostConfig::new`
+        // (P4.127; this read was the one left behind — the `97b25fc53` smalls
+        // unification).
+        let now = jiff::Timestamp::now()
+            .to_zoned(quilltap_core::host_zone::display_zone_named(Some(&self.tz)));
         Ok(run_scenario_builder(
             &deps,
             RunScenarioBuilderOptions {
