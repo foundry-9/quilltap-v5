@@ -1,7 +1,7 @@
 import type { CoreClient } from '../core/core-client';
 import { notifyQueueChange } from '../layout/queue-status.logic';
 import type { ToastService } from '../ui/toast.service';
-import { describeRetryRefusal } from './concierge-retry';
+import { describeRetryRefusalError } from './concierge-retry';
 
 /** What the controller needs from its host — the Salon (v4 `useConciergeRetry`'s three arguments). */
 export interface ConciergeRetryHost {
@@ -21,12 +21,13 @@ const BACKDROP_FAILED = 'Failed to queue the backdrop';
 /**
  * v4's `errorFrom(res, fallback)`: a 409 is the Concierge declining — Locked,
  * or nobody to send it to — and is said in words; anything else shows the
- * server's own message, else the fallback. Over v5's dispatch the refusal is
- * the error's MESSAGE (the bare token, §S.3), so it is mapped by message.
+ * server's own message, else the fallback. Over v5's dispatch the 409 is
+ * `kind === 'conflict'` and the sentence is keyed by the error's MESSAGE (the
+ * bare token, §S.3) — see {@link describeRetryRefusalError}.
  */
 function errorMessage(err: unknown, fallback: string): string {
   const message = err instanceof Error ? err.message : '';
-  return describeRetryRefusal(message) || message || fallback;
+  return describeRetryRefusalError(err) || message || fallback;
 }
 
 /**

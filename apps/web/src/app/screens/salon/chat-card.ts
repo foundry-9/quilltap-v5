@@ -26,8 +26,9 @@ import { ToastService } from '../../ui/toast.service';
  * card is a link to `/salon/:id`; badges/tags/participants are read-only.
  *
  * The Scriptorium badge (p4.9o) is a three-state pill that queues an on-demand
- * conversation render on click. Remaining deferral: the memory badge is a static
- * count (no click-to-reextract) and tag colours use the default style (v4
+ * conversation render on click. The memory badge is v4's click-to-delete-and-
+ * re-extract button (it emits `reextractMemories`; the list confirms and
+ * dispatches). Remaining deferral: tag colours use the default style (v4
  * resolves them client-side by id).
  *
  * The optional `removable` mode (v4 `actionType="remove"`, used by the project
@@ -92,15 +93,20 @@ import { ToastService } from '../../ui/toast.service';
                 </span>
               </qt-tooltip>
 
-              @if (memoryCount() > 0) {
-                <qt-tooltip content="Memories">
-                  <span
-                    class="chat-card__badge inline-flex items-center gap-1 rounded-full qt-bg-primary/10 px-2.5 py-0.5 qt-body-sm font-semibold flex-shrink-0"
-                  >
-                    <qt-icon name="book" class="w-3 h-3" />{{ memoryCount() }}
-                  </span>
-                </qt-tooltip>
-              }
+              <!-- v4 ChatCard.tsx:267-283 -- the badge IS a button: click to delete
+                   the chat's memories and re-extract them. v4 gates it on
+                   memoryCount !== undefined, and its transforms always answer a
+                   number (chat-utils.ts:71,129), so it renders at zero too. -->
+              <qt-tooltip content="Memories — click to delete and re-extract">
+                <button
+                  type="button"
+                  class="chat-card__badge inline-flex items-center gap-1 rounded-full qt-bg-primary/10 px-2.5 py-0.5 qt-body-sm font-semibold flex-shrink-0 hover:qt-bg-primary/20 transition-colors cursor-pointer"
+                  [attr.aria-label]="memoryCount() + ' memories — delete and re-extract'"
+                  (click)="onReextractMemories($event)"
+                >
+                  <qt-icon name="book" class="w-3 h-3" />{{ memoryCount() }}
+                </button>
+              </qt-tooltip>
 
               <qt-scriptorium-badge
                 [status]="chat().scriptoriumStatus"
@@ -204,6 +210,13 @@ export class ChatCard {
   readonly deletable = input(false);
   readonly delete = output<string>();
 
+  /**
+   * v4 `onReextractMemories` — the memory badge's click. Emitted rather than
+   * dispatched here for the reason `delete` is: v4's handler carries the
+   * confirmation AND the host list's own refresh.
+   */
+  readonly reextractMemories = output<string>();
+
   protected readonly copied = signal(false);
   protected readonly rendering = signal(false);
 
@@ -251,6 +264,16 @@ export class ChatCard {
     event.preventDefault();
     event.stopPropagation();
     this.delete.emit(this.chat().id);
+  }
+
+  /**
+   * v4 `ChatCard.tsx:273-277` — the whole card is a link, so the badge stops the
+   * navigation before it emits; the host owns confirm + dispatch + refresh.
+   */
+  protected onReextractMemories(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.reextractMemories.emit(this.chat().id);
   }
 
   /**

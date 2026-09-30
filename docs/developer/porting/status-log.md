@@ -155373,6 +155373,18 @@ auto-described; the P4.D108 deferral, now measured — proposed order),
 row; invisible to the differential, which strips CHAT_MESSAGE rows — proposed
 order). Walk doc §5.
 
+## P4.125 — the SPA smalls (lane record, 2026-09-29)
+
+Branch `claude/p4-125-spa-smalls-soft-break-eb7f54`; SPA 0.5.787; no cargo change (a release build was made only to run Playwright). Drift probe PASSED at lane start (v4 AT `97b25fc53`, clean); v4 reads taken at `/tmp/qt-v4-pin-p4125-97b25fc53`.
+
+- **Soft break:** `text-replacement.ts` reads via `triggerLeafText`; `\n` ends the word walk, never a keydown trigger. Red-first: 2 of 4 new cases failed pre-fix (`first line⏎teh`, caret before a break). Image-leaf refusal kept (v5-only), pinned.
+- **Refusal gate:** `describeRetryRefusalError` (`kind === 'conflict'`) at the three sites; specs reworked to conflict errors + non-conflict lookalikes.
+- **Concierge:** dead URL export and `ConciergeDutyView` deleted; `isConciergeOnDuty(ChatSettingsDto)` single home in `concierge-settings.api.ts`; new `concierge-off-duty-hint.spec.ts`.
+- **e2e:** on-duty restore in `finally` (reopens the tab first).
+- **Memory badge:** button + v4 tooltip/aria-label on both cards, `memory-reextract.api.ts` (confirm → `memoryDeleteByChat` → `chatQueueMemories` → `Queued N memory extraction jobs`, `notifyQueueChange`), Salon list refetches, character tab does not. Renders at zero (v4's gate is always true).
+- **Mutations (each red, reverted by file backup):** M1 = the red-first run; M2 drop kind gate → 3 red; M3 swap verbs → 4 red; M4 restore `> 0` → 1 red.
+- **Gate:** npm test 462 / 8,747; lint; build; Playwright by file 4/4 + 3/3.
+- 💸 Walk: click the badge on a small chat on a Friday copy; toast names the job count and the Inspector shows the extraction jobs; and `first line⏎teh` + Space in the composer.
 ## P4.119 — format display dates in the HOST zone (dogfood #121, ruled (a)) — lane record (2026-09-29)
 
 Branch `claude/host-zone-display-formatting-46d6b8` (from `main` `4d033c9cc`).

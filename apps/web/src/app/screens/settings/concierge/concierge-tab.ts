@@ -4,7 +4,7 @@ import { ActivatedRoute } from '@angular/router';
 
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { ChatSettingsCard } from '../chat/chat-settings.api';
-import { effectiveConcierge } from './concierge-settings.api';
+import { isConciergeOnDuty } from './concierge-settings.api';
 import { DisplayCard } from './display-card';
 import { OnDutyCard } from './on-duty-card';
 import { PreScreeningCard } from './pre-screening-card';
@@ -124,8 +124,6 @@ export class ConciergeTab extends ChatSettingsCard {
 
   protected readonly section = computed(() => this.queryParams?.().get('section') ?? null);
 
-  /** v4 `concierge.enabled` off the effective object. */
-  protected readonly onDuty = computed(
-    () => effectiveConcierge(this.settings()?.conciergeSettings).enabled,
-  );
+  /** v4 `concierge.enabled` — the shared on-duty derivation. */
+  protected readonly onDuty = computed(() => isConciergeOnDuty(this.settings()));
 }

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
 import { coreStreamStub, type CoreStreamStub } from '../core/core-client.testing';
-import type { ScopedEvent } from '../core/core-contract';
+import { CoreDispatchError, type ScopedEvent } from '../core/core-contract';
 import { ToastService } from '../ui/toast.service';
 import { RegenerationController } from './regeneration.state';
 
@@ -394,12 +394,25 @@ describe('RegenerationController — "Try uncensored" (v4 useRegeneration @ ce2f
       const h = harness();
       const run = h.controller.regenerate('m-1', async () => {}, undefined, { request: RETRY });
       await tick();
-      h.settle(new Error(token));
+      // v4 gates on the 409 (`useRegeneration.ts:136` at `97b25fc53`) — `conflict` here.
+      h.settle(new CoreDispatchError({ kind: 'conflict', message: token }));
       await run;
       expect(TestBed.inject(ToastService).toasts().map((t) => t.message)).toEqual([sentence]);
       expect(h.controller.regeneration()).toBeNull();
     });
   }
+
+  it.each(['no-understudy', 'locked'])(
+    'does NOT reword a non-conflict error whose message reads "%s" (v4 gates on 409)',
+    async (token) => {
+      const h = harness();
+      const run = h.controller.regenerate('m-1', async () => {}, undefined, { request: RETRY });
+      await tick();
+      h.settle(new CoreDispatchError({ kind: 'locked', message: token }));
+      await run;
+      expect(TestBed.inject(ToastService).toasts().map((t) => t.message)).toEqual([token]);
+    },
+  );
 
   it('falls through to the raw message for any other refusal', async () => {
     const h = harness();

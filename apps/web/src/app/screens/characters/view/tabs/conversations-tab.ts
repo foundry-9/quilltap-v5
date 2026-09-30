@@ -16,6 +16,7 @@ import { CoreClient } from '../../../../core/core-client';
 import { QuickHideService } from '../../../../quick-hide/quick-hide.service';
 import { ToastService } from '../../../../ui/toast.service';
 import { confirmAndDeleteChat } from '../../../salon/chat-delete.api';
+import { confirmAndReextractMemories } from '../../../salon/memory-reextract.api';
 import type { CharacterChatsResult } from '../../../../core/core-contract';
 import { Icon } from '../../../../ui/icon';
 import { characterKeys, fetchCharacterChats } from '../../characters.api';
@@ -32,8 +33,9 @@ const SEARCH_DEBOUNCE_MS = 300;
  * v4's `deleteChat` (`character-conversations-tab.tsx:142-146`) confirms, calls
  * the shared `confirmAndDeleteChat`, and then filters its LOCAL list — it does
  * not refetch, and neither does this. The v4 "Refresh Conversation Archive" /
- * "New Chat" actions and the per-card re-extract still hit routes outside this
- * vertical's contract and are omitted (the P4.6g deferral list, narrowed);
+ * "New Chat" actions still hit routes outside this vertical's contract and are
+ * omitted (the P4.6g deferral list, narrowed; the per-card re-extract landed
+ * with P4.125);
  * the per-card re-render went LIVE with the P4.9H2B scriptorium badge.
  */
 @Component({
@@ -96,6 +98,7 @@ const SEARCH_DEBOUNCE_MS = 300;
               [chat]="chat"
               [deletable]="true"
               (delete)="deleteChat($event)"
+              (reextractMemories)="reextractMemories($event)"
             />
           }
 
@@ -184,6 +187,15 @@ export class CharacterConversationsTab {
     if (await confirmAndDeleteChat(this.core, (m) => this.toasts.showError(m), chatId)) {
       this.deletedIds.update((prev) => new Set(prev).add(chatId));
     }
+  }
+
+  /**
+   * v4 `handleReextractMemories` (`character-conversations-tab.tsx:148-176`):
+   * confirm, delete, queue, toast, wake the queue badges — and, unlike the Salon
+   * list, NO list refresh (v4 has none here either).
+   */
+  protected async reextractMemories(chatId: string): Promise<void> {
+    await confirmAndReextractMemories(this.core, this.toasts, chatId);
   }
 
   constructor() {

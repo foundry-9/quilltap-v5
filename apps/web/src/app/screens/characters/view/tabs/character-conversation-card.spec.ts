@@ -137,7 +137,43 @@ describe('CharacterConversationCard — the in-app tooltips (P4.D236)', () => {
       .queryAll(By.directive(Tooltip))
       .map((d) => (d.componentInstance as Tooltip).content());
     expect(contents).toContain('Messages');
-    expect(contents).toContain('Memories');
+    expect(contents).toContain('Memories — click to delete and re-extract');
     expect((fixture.nativeElement as HTMLElement).querySelector('[title]')).toBeNull();
+  });
+});
+
+/**
+ * The memory badge on the character Conversations tab card — the same v4
+ * `ChatCard` button (`ChatCard.tsx:267-283` at `97b25fc53`), P4.125.
+ */
+describe('CharacterConversationCard — the memory badge (P4.125)', () => {
+  const badge = (fixture: ReturnType<typeof render>) =>
+    (fixture.nativeElement as HTMLElement).querySelector(
+      'button[aria-label$="memories — delete and re-extract"]',
+    ) as HTMLButtonElement | null;
+
+  it("is a button with v4's tooltip and aria-label, and renders at zero", () => {
+    const two = render('2026-01-01T12:00:00.000Z', { _count: { messages: 3, memories: 2 } });
+    expect(badge(two)!.getAttribute('aria-label')).toBe('2 memories — delete and re-extract');
+    expect(
+      two.debugElement
+        .queryAll(By.directive(Tooltip))
+        .map((d) => (d.componentInstance as Tooltip).content()),
+    ).toContain('Memories — click to delete and re-extract');
+    const zero = render('2026-01-01T12:00:00.000Z', { _count: { messages: 3, memories: 0 } });
+    expect(badge(zero)!.getAttribute('aria-label')).toBe('0 memories — delete and re-extract');
+  });
+
+  it('emits the chat id and stops the card link from navigating', () => {
+    const fixture = render('2026-01-01T12:00:00.000Z', {
+      id: 'chat-7',
+      _count: { messages: 3, memories: 2 },
+    });
+    const emitted: string[] = [];
+    fixture.componentInstance.reextractMemories.subscribe((id) => emitted.push(id));
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    badge(fixture)!.dispatchEvent(event);
+    expect(emitted).toEqual(['chat-7']);
+    expect(event.defaultPrevented).toBe(true);
   });
 });

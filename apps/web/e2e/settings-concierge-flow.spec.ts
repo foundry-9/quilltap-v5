@@ -171,20 +171,30 @@ test.describe('P4.D230 — the Concierge Settings tab', () => {
     }
     await expect(banner).toHaveCount(0);
 
-    const off = waitForConciergeSave(page);
-    await onDuty.uncheck();
-    expect((await off)['enabled']).toBe(false);
-    await expect(banner).toBeVisible();
+    try {
+      const off = waitForConciergeSave(page);
+      await onDuty.uncheck();
+      expect((await off)['enabled']).toBe(false);
+      await expect(banner).toBeVisible();
 
-    await openConcierge(page);
-    await expect(page.locator('#on-duty input[type="checkbox"]')).not.toBeChecked({
-      timeout: 15_000,
-    });
-    await expect(banner).toBeVisible();
-
-    const on = waitForConciergeSave(page);
-    await page.locator('#on-duty input[type="checkbox"]').check();
-    expect((await on)['enabled']).toBe(true);
+      await openConcierge(page);
+      await expect(page.locator('#on-duty input[type="checkbox"]')).not.toBeChecked({
+        timeout: 15_000,
+      });
+      await expect(banner).toBeVisible();
+    } finally {
+      // The switch is GLOBAL instance state: a failing assertion above must not
+      // leave the Concierge off duty for every spec that runs after this one
+      // (P4.D230). Restore from whatever state the page is in — reopen the tab so
+      // a mid-flow failure (a stale page, a closed dialog) cannot hide the switch.
+      await openConcierge(page);
+      const restoring = page.locator('#on-duty input[type="checkbox"]');
+      if (!(await restoring.isChecked())) {
+        const on = waitForConciergeSave(page);
+        await restoring.check();
+        expect((await on)['enabled']).toBe(true);
+      }
+    }
     await expect(banner).toHaveCount(0);
   });
 });

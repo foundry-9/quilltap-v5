@@ -35,6 +35,20 @@ export function effectiveConcierge(
 }
 
 /**
+ * Is the Concierge at his post? The ONE on-duty derivation — the Settings tab,
+ * the Salon sidebar and the New Chat form all read it. v4 spells the same rule
+ * inline at two sites (`ChatSidebar.tsx:965`, `useNewChat.ts:436` at
+ * `97b25fc53`): `settings.conciergeSettings?.enabled !== false`, with the query's
+ * `data = true` default — so TRUE while the settings are loading, missing or
+ * failed, and whenever the key is absent; only an explicit `enabled: false`
+ * takes him off duty. Read through {@link effectiveConcierge} so a stored object
+ * predating the field gets the default (`true`).
+ */
+export function isConciergeOnDuty(settings: ChatSettingsDto | null | undefined): boolean {
+  return effectiveConcierge(settings?.conciergeSettings).enabled !== false;
+}
+
+/**
  * v4 `handleConciergeUpdate`'s merge: top-level fields replace, `display` and
  * `preScreen` deep-merge over defaults + current. The result is the WHOLE
  * object — the server's `ConciergeSettingsSchema.safeParse` REPLACES the

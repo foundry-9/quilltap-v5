@@ -1,10 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import type { EnrichedChatSummary } from '../../core/core-contract';
+import { ToastService } from '../../ui/toast.service';
 import { SalonList } from './salon-list';
 
 function chat(over: Partial<EnrichedChatSummary>): EnrichedChatSummary {
@@ -98,5 +99,61 @@ describe('SalonList', () => {
   it('falls back to "Untitled Chat" for a blank title', async () => {
     const fixture = await render(stubClient([chat({ title: '' })]));
     expect(fixture.nativeElement.textContent).toContain('Untitled Chat');
+  });
+});
+
+describe('SalonList — the memory badge (P4.125)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('confirms, deletes THEN queues, toasts the count, and refetches the list', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const sent: string[] = [];
+    let listCalls = 0;
+    const client = {
+      dispatchExpect: (async () => {
+        listCalls++;
+        return { type: 'chats', data: [chat({ id: 'a', _count: { messages: 5, memories: 2 } })] };
+      }) as CoreClient['dispatchExpect'],
+      dispatchData: (async (req: { type: string }) => {
+        if (req.type.startsWith('memory') || req.type === 'chatQueueMemories') sent.push(req.type);
+        return req.type === 'chatQueueMemories' ? { success: true, jobCount: 3 } : { success: true };
+      }) as CoreClient['dispatchData'],
+    };
+    const fixture = await render(client);
+    const before = listCalls;
+    const toasts = TestBed.inject(ToastService);
+    const success = vi.spyOn(toasts, 'showSuccess');
+    (fixture.nativeElement.querySelector(
+      'button[aria-label="2 memories — delete and re-extract"]',
+    ) as HTMLButtonElement).click();
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(sent).toEqual(['memoryDeleteByChat', 'chatQueueMemories']);
+    expect(success).toHaveBeenCalledWith('Queued 3 memory extraction jobs');
+    // v4 `mutateChats()` — the list is re-read after a queued extraction.
+    expect(listCalls).toBeGreaterThan(before);
+  });
+
+  it('a declined confirm dispatches nothing and does not refetch', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const sent: string[] = [];
+    let listCalls = 0;
+    const client = {
+      dispatchExpect: (async () => {
+        listCalls++;
+        return { type: 'chats', data: [chat({ id: 'a', _count: { messages: 5, memories: 2 } })] };
+      }) as CoreClient['dispatchExpect'],
+      dispatchData: (async (req: { type: string }) => {
+        if (req.type.startsWith('memory') || req.type === 'chatQueueMemories') sent.push(req.type);
+        return {};
+      }) as CoreClient['dispatchData'],
+    };
+    const fixture = await render(client);
+    const before = listCalls;
+    (fixture.nativeElement.querySelector(
+      'button[aria-label="2 memories — delete and re-extract"]',
+    ) as HTMLButtonElement).click();
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(sent).toEqual([]);
+    expect(listCalls).toBe(before);
   });
 });

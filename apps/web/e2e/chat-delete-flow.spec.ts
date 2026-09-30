@@ -204,4 +204,68 @@ test.describe('P4.80 — deleting a chat', () => {
     });
     expect(await stillExists(chatId)).toBe(false);
   });
+  /**
+   * P4.125 — the memory badge is v4's click-to-delete-and-re-extract button
+   * (`ChatCard.tsx:267-283` at `97b25fc53`). The beat clicks it on a throwaway
+   * chat, accepts v4's confirmation and reads the WIRE: the two dispatch verbs go
+   * out in v4's order (delete, THEN queue), and the operator is told v4's own
+   * sentence — the queued count, or the server's refusal (this fixture may have
+   * no cheap LLM, in which case v4's route 400s and its toast is the server's
+   * `error`) — never silence. A dismissed confirm sends nothing.
+   */
+  test('Salon list: the memory badge deletes then re-queues, after v4\'s confirmation', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.goto('/salon');
+    await maybeUnlock(page, 'Chats');
+
+    const title = `Reextract Me ${Date.now()}`;
+    const chatId = await seedChat(title, (await firstCharacter()).id);
+    await page.goto('/salon');
+    await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    const card = () => page.locator('a.chat-card').filter({ hasText: title }).first();
+    await expect(card()).toBeVisible({ timeout: 15_000 });
+    const badge = () => card().getByRole('button', { name: /memories — delete and re-extract$/ });
+    await expect(badge()).toBeVisible();
+
+    const verbs: string[] = [];
+    page.on('request', (req) => {
+      if (!req.url().endsWith('/api/dispatch') || req.method() !== 'POST') return;
+      const type = (req.postDataJSON() as { type?: string } | null)?.type ?? '';
+      if (type === 'memoryDeleteByChat' || type === 'chatQueueMemories') verbs.push(type);
+    });
+
+    // Dismissed: nothing is sent, and the card link did not navigate.
+    page.once('dialog', (d) => void d.dismiss());
+    await badge().click();
+    await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
+    expect(verbs, 'a dismissed confirmation must dispatch nothing').toEqual([]);
+
+    // Accepted: v4's sentence, then delete → queue on the wire.
+    let asked = '';
+    page.once('dialog', (d) => {
+      asked = d.message();
+      void d.accept();
+    });
+    await badge().click();
+    await expect.poll(() => verbs, { timeout: 15_000 }).toEqual([
+      'memoryDeleteByChat',
+      'chatQueueMemories',
+    ]);
+    expect(asked).toBe(
+      'This will delete all existing memories from this chat and re-extract them from the conversation. Are you sure?',
+    );
+    // The operator hears v4's own words: the count, or the server's refusal.
+    await expect(
+      page
+        .getByText(/^Queued \d+ memory extraction jobs$/)
+        .or(page.getByText(/cheap LLM|No messages|memory extraction|re-extract memories/i))
+        .first(),
+    ).toBeVisible({ timeout: 15_000 });
+    // Clicking the badge never navigated into the chat.
+    expect(page.url()).not.toContain(`/salon/${chatId}`);
+  });
 });

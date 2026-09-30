@@ -22,7 +22,7 @@ import type {
   ImageProfileDto,
   RoleplayTemplateDto,
 } from '../../core/core-contract';
-import { ConciergeOffDutyHint, isConciergeOnDuty } from '../concierge-off-duty-hint';
+import { ConciergeOffDutyHint } from '../concierge-off-duty-hint';
 import { CONCIERGE_STATES, getConciergeState } from '../concierge-state';
 import {
   CONCIERGE_STATE_PRESENTATION,
@@ -31,6 +31,7 @@ import {
   describeConciergeState,
 } from '../concierge-state-presentation';
 import { chatSettingsKeys, fetchChatSettings } from '../../screens/settings/chat/chat-settings.api';
+import { isConciergeOnDuty } from '../../screens/settings/concierge/concierge-settings.api';
 import { fetchImageProfiles, imageProfileKeys } from '../../screens/settings/images/image-profiles.api';
 import { fetchRoleplayTemplates, templateKeys } from '../../screens/settings/templates/templates.api';
 import { Icon, type IconName } from '../../ui/icon';

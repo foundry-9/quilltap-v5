@@ -164,3 +164,66 @@ describe('textReplacementPlugin — bug 63, code is never rewritten', () => {
     view.destroy();
   });
 });
+
+/**
+ * P4.D224 / P4.125 — a soft line break is a word boundary. v4's Lexical plugin
+ * reads ONLY the anchor text node (`TextReplacementPlugin.tsx:107-121` at
+ * `97b25fc53`): a `LineBreakNode` is a separate node, so after `first line⏎` the
+ * text node is just `teh` and the rule fires. v5 reads the whole textblock, where
+ * the `hard_break` must therefore read as `\n` (the `triggerLeafText` seam the
+ * `:` / `@` typeaheads share) and `\n` must end the word walk — while never
+ * becoming a keydown TRIGGER (`TRIGGER_CHARS` `:48` has no newline).
+ */
+describe('textReplacementPlugin — after a soft line break (P4.D224)', () => {
+  const RULES = compileRules([rule({ fromText: 'teh', toText: 'the' })]);
+  const schema = dialectSchema;
+
+  function makeBroken(...parts: ('br' | 'img' | string)[]) {
+    const nodes = parts.map((p) =>
+      p === 'br'
+        ? schema.nodes['hard_break'].create()
+        : p === 'img'
+          ? schema.nodes['image'].create({ src: 'x.png', alt: 'x' })
+          : schema.text(p),
+    );
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    const plugin = textReplacementPlugin(() => RULES);
+    const state = EditorState.create({
+      doc: schema.nodes['doc'].create(null, schema.nodes['paragraph'].create(null, nodes)),
+      plugins: [plugin],
+    });
+    const view = new EditorView(mount, { state });
+    return { view, plugin };
+  }
+
+  it('fires on `first line⏎teh` + Space', () => {
+    const { view, plugin } = makeBroken('first line', 'br', 'teh');
+    const end = view.state.doc.child(0).content.size + 1;
+    expect(trigger(view, plugin, end, ' ')).toBe(true);
+    expect(view.state.doc.textBetween(0, view.state.doc.content.size, undefined, '\n')).toBe(
+      'first line\nthe ',
+    );
+    view.destroy();
+  });
+
+  it('fires when the word is followed by a soft break (caret before the break)', () => {
+    const { view, plugin } = makeBroken('teh', 'br', 'more');
+    expect(trigger(view, plugin, 4, ' ')).toBe(true);
+    view.destroy();
+  });
+
+  it('still refuses after an image leaf (v5-only: v4 has no inline decorator node)', () => {
+    const { view, plugin } = makeBroken('img', 'teh');
+    const end = view.state.doc.child(0).content.size + 1;
+    expect(trigger(view, plugin, end, ' ')).toBe(false);
+    view.destroy();
+  });
+
+  it('a newline key is never a trigger', () => {
+    const { view, plugin } = makeBroken('first line', 'br', 'teh');
+    const end = view.state.doc.child(0).content.size + 1;
+    expect(trigger(view, plugin, end, '\n')).toBe(false);
+    view.destroy();
+  });
+});

@@ -1,6 +1,7 @@
 import { Plugin } from 'prosemirror-state';
 
 import type { TextReplacementRule } from '../core/core-contract';
+import { triggerLeafText } from './char-insert/trigger-context';
 import { isInCodeContext } from './code-context';
 
 /**
@@ -83,8 +84,15 @@ export const TRIGGER_CHARS = new Set([
   ')',
 ]);
 
+/**
+ * Where the word walk stops: a trigger char, or a soft line break. v4 reads only
+ * the anchor text node (`TextReplacementPlugin.tsx:107-121`), and a
+ * `LineBreakNode` is a separate node — so the word can never reach across one.
+ * v5 reads the whole textblock, where the `hard_break` reads as `\n` (the shared
+ * {@link triggerLeafText}); `\n` ends the word here but is NOT a keydown trigger.
+ */
 function isBoundaryChar(ch: string): boolean {
-  return TRIGGER_CHARS.has(ch);
+  return TRIGGER_CHARS.has(ch) || ch === '\n';
 }
 
 /**
@@ -118,11 +126,11 @@ export function textReplacementPlugin(getRules: () => CompiledRules | null): Plu
 
         const offset = $from.parentOffset;
         // Text before the caret in this block, and the char after it. Inline
-        // leaf nodes collapse to one placeholder position (￼) so the string
-        // stays 1:1 with document positions for the walk-back below.
-        const LEAF = '￼';
-        const before = parent.textBetween(0, offset, undefined, LEAF);
-        const after = parent.textBetween(offset, parent.content.size, undefined, LEAF);
+        // leaf nodes collapse to one placeholder position (a soft break reads
+        // `\n`, every other leaf ￼) so the string stays 1:1 with document
+        // positions for the walk-back below.
+        const before = parent.textBetween(0, offset, undefined, triggerLeafText);
+        const after = parent.textBetween(offset, parent.content.size, undefined, triggerLeafText);
 
         // Only at the end of a word — a non-boundary char right after the caret
         // means a mid-word edit (v4's "offset === text node length" guard).

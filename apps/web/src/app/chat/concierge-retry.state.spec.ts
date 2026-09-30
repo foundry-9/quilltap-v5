@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { CoreDispatchError } from '../core/core-contract';
 import { QUEUE_CHANGE_EVENT } from '../layout/queue-status.logic';
 import { ConciergeRetryController, type ConciergeRetryHost } from './concierge-retry.state';
 
@@ -11,6 +12,13 @@ import { ConciergeRetryController, type ConciergeRetryHost } from './concierge-r
  * BEFORE the request, the refetch then the success toast, the 409 words, the
  * fallbacks, and the backdrop's queue notify + poll.
  */
+
+/** v4 words the refusal only on a 409 — `kind: 'conflict'` over v5's dispatch. */
+function refusal(token: string): Error {
+  return token === 'no-understudy' || token === 'locked'
+    ? new CoreDispatchError({ kind: 'conflict', message: token })
+    : new Error(token);
+}
 
 interface Toast {
   type: string;
@@ -87,13 +95,27 @@ describe('ConciergeRetryController.retryPicture (v4 useConciergeRetry @ ce2f1dab
     ['', 'The uncensored desk could not produce the picture'],
   ])('words a refusal "%s" as "%s", and neither refetches nor claims delivery', async (token, sentence) => {
     const { h, toasts, order } = host(async () => {
-      throw new Error(token);
+      throw refusal(token);
     });
     await new ConciergeRetryController(h).retryPicture('t1');
     expect(toasts.at(-1)).toEqual({ type: 'error', message: sentence });
     expect(order).not.toContain('refetch');
     expect(order).not.toContain('success');
   });
+});
+
+describe('the refusal wording is gated on the 409 (v4 useConciergeRetry.ts:36 at 97b25fc53)', () => {
+  it.each(['retryPicture', 'retryBackground'] as const)(
+    '%s does NOT reword a non-conflict error whose message reads no-understudy',
+    async (verb) => {
+      const { h, toasts } = host(async () => {
+        throw new CoreDispatchError({ kind: 'internal', message: 'no-understudy' });
+      });
+      const c = new ConciergeRetryController(h);
+      await (verb === 'retryPicture' ? c.retryPicture('t1') : c.retryBackground());
+      expect(toasts.at(-1)).toEqual({ type: 'error', message: 'no-understudy' });
+    },
+  );
 });
 
 describe('ConciergeRetryController.retryBackground (v4 useConciergeRetry @ ce2f1dabf)', () => {
@@ -130,7 +152,7 @@ describe('ConciergeRetryController.retryBackground (v4 useConciergeRetry @ ce2f1
     ['', 'Failed to queue the backdrop'],
   ])('words a refusal "%s" as "%s", and starts no poll', async (token, sentence) => {
     const { h, toasts, order } = host(async () => {
-      throw new Error(token);
+      throw refusal(token);
     });
     await new ConciergeRetryController(h).retryBackground();
     expect(toasts).toEqual([{ type: 'error', message: sentence }]);

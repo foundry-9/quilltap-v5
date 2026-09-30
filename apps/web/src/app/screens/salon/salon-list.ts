@@ -13,6 +13,7 @@ import { QuickHideService } from '../../quick-hide/quick-hide.service';
 import { ToastService } from '../../ui/toast.service';
 import { ChatCard } from './chat-card';
 import { confirmAndDeleteChat } from './chat-delete.api';
+import { confirmAndReextractMemories } from './memory-reextract.api';
 import { effectiveInclude, hasHiddenAutonomous } from './autonomous-visibility';
 
 /**
@@ -93,7 +94,12 @@ import { effectiveInclude, hasHiddenAutonomous } from './autonomous-visibility';
       } @else {
         <div class="chat-card-stack space-y-4">
           @for (chat of visibleChats(); track chat.id) {
-            <qt-chat-card [chat]="chat" [deletable]="true" (delete)="deleteChat($event)" />
+            <qt-chat-card
+              [chat]="chat"
+              [deletable]="true"
+              (delete)="deleteChat($event)"
+              (reextractMemories)="reextractMemories($event)"
+            />
           }
         </div>
       }
@@ -192,6 +198,17 @@ export class SalonList {
    */
   protected async deleteChat(chatId: string): Promise<void> {
     if (await confirmAndDeleteChat(this.core, (m) => this.toasts.showError(m), chatId)) {
+      await this.chats.refetch();
+    }
+  }
+
+  /**
+   * v4 `SalonListView.tsx:119-145` — confirm, delete the memories, queue the
+   * extraction, toast, wake the queue badges, then `mutateChats()` on success (a
+   * refetch of the same query, as `deleteChat`'s).
+   */
+  protected async reextractMemories(chatId: string): Promise<void> {
+    if (await confirmAndReextractMemories(this.core, this.toasts, chatId)) {
       await this.chats.refetch();
     }
   }

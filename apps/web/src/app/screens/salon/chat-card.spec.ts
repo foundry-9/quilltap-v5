@@ -213,8 +213,51 @@ describe('ChatCard — the in-app tooltips', () => {
     const el = fixture.nativeElement as HTMLElement;
     const contents = tooltipContents(fixture);
     expect(contents).toContain('Messages');
-    expect(contents).toContain('Memories');
+    expect(contents).toContain('Memories — click to delete and re-extract');
     expect(contents).toContain('Copy link to this chat');
     expect(el.querySelector('[title]')).toBeNull();
+  });
+});
+
+/**
+ * The memory badge is v4's click-to-delete-and-re-extract button
+ * (`components/chat/ChatCard.tsx:267-283` at `97b25fc53`): tooltip
+ * `Memories — click to delete and re-extract`, aria-label
+ * `${n} memories — delete and re-extract`, click = preventDefault +
+ * stopPropagation + `onReextractMemories(chat.id)`. v4 gates it on
+ * `memoryCount !== undefined` and its transforms always answer a number
+ * (`lib/chat-utils.ts:71,129`), so it renders at ZERO too.
+ */
+describe('ChatCard — the memory badge (P4.125)', () => {
+  const badge = (fixture: ComponentFixture<ChatCard>) =>
+    (fixture.nativeElement as HTMLElement).querySelector(
+      'button[aria-label$="memories — delete and re-extract"]',
+    ) as HTMLButtonElement | null;
+
+  it("is a button with v4's tooltip and aria-label", () => {
+    const fixture = mount(chat({ _count: { messages: 3, memories: 2 } } as Partial<EnrichedChatSummary>));
+    const b = badge(fixture)!;
+    expect(b.getAttribute('aria-label')).toBe('2 memories — delete and re-extract');
+    expect(b.type).toBe('button');
+    expect(tooltipContents(fixture)).toContain('Memories — click to delete and re-extract');
+    expect(b.textContent).toContain('2');
+  });
+
+  it('renders at zero (v4 gates on !== undefined, and its transform answers ?? 0)', () => {
+    const fixture = mount(chat({ _count: { messages: 3, memories: 0 } } as Partial<EnrichedChatSummary>));
+    // M4: keeping the old `> 0` gate reddens this.
+    expect(badge(fixture)!.getAttribute('aria-label')).toBe('0 memories — delete and re-extract');
+  });
+
+  it('emits the chat id and stops the card link from navigating', () => {
+    const fixture = mount(chat({ id: 'c9', _count: { messages: 3, memories: 2 } } as Partial<EnrichedChatSummary>));
+    const emitted: string[] = [];
+    fixture.componentInstance.reextractMemories.subscribe((id) => emitted.push(id));
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    const stop = vi.spyOn(event, 'stopPropagation');
+    badge(fixture)!.dispatchEvent(event);
+    expect(emitted).toEqual(['c9']);
+    expect(event.defaultPrevented).toBe(true);
+    expect(stop).toHaveBeenCalled();
   });
 });

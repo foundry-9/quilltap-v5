@@ -8,7 +8,7 @@ import {
 } from '../core/core-contract';
 import { notifyQueueChange } from '../layout/queue-status.logic';
 import { ToastService } from '../ui/toast.service';
-import { describeRetryRefusal } from './concierge-retry';
+import { describeRetryRefusalError } from './concierge-retry';
 
 /** What the message row needs to render a line that is being re-rolled. */
 export interface RegenerationState {
@@ -218,14 +218,13 @@ export class RegenerationController {
       if (newSwipeId) selectSwipeVariant?.(newSwipeId);
       notifyQueueChange();
     } catch (err) {
-      // v4 (`useRegeneration.ts:136` at `ce2f1dabf`): a 409 names the Concierge's refusal in
-      // words — `describeRetryRefusal(info.error)` — falling through to the raw
-      // error, then the default. Over v5's dispatch the refusal arrives as the
-      // error's MESSAGE (the bare `locked` / `no-understudy` token, §S.3), so it
-      // is mapped by message; an ordinary swipe's errors never carry either
-      // token, so the swipe path is unchanged.
+      // v4 (`useRegeneration.ts:136` at `97b25fc53`): a 409 names the Concierge's refusal in
+      // words — `res.status === 409 ? describeRetryRefusal(info?.error)` — falling
+      // through to the raw error, then the default. Over v5's dispatch the 409 is
+      // `kind === 'conflict'` and the sentence is keyed by the error's MESSAGE (the
+      // bare `locked` / `no-understudy` token, §S.3); any other kind is not reworded.
       const message = err instanceof Error ? err.message : '';
-      this.toasts.showError(describeRetryRefusal(message) || message || FAILED);
+      this.toasts.showError(describeRetryRefusalError(err) || message || FAILED);
     } finally {
       this.cancelPendingFlush();
       this.contentBuffer = '';

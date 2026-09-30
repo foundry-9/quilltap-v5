@@ -1,4 +1,8 @@
-import type { MessageDto, MessageRetryUncensoredRequest } from '../core/core-contract';
+import {
+  CoreDispatchError,
+  type MessageDto,
+  type MessageRetryUncensoredRequest,
+} from '../core/core-contract';
 
 /**
  * "Try uncensored" — the client-side helpers shared by the text, picture and
@@ -26,8 +30,8 @@ export function retryUncensoredTurnRequest(messageId: string): MessageRetryUncen
  * The operator-facing sentence for a refused retry, or null when the error
  * names no reason we know. v4 reads the 409 body's `error`; over v5's dispatch
  * the refusal is a `CoreDispatchError` whose MESSAGE is the bare token
- * (`locked` / `no-understudy`, §S.3), so callers pass the error's message and
- * fall through to it when this returns null.
+ * (`locked` / `no-understudy`, §S.3). Callers with the thrown error use
+ * {@link describeRetryRefusalError}, which adds v4's 409 gate.
  */
 export function describeRetryRefusal(error: unknown): string | null {
   switch (error) {
@@ -38,6 +42,22 @@ export function describeRetryRefusal(error: unknown): string | null {
     default:
       return null;
   }
+}
+
+/**
+ * The refusal sentence for a thrown dispatch error, or null. v4 gates on the
+ * STATUS — `res.status === 409 ? describeRetryRefusal(info?.error) : null`
+ * (`useRegeneration.ts:136`, `useConciergeRetry.ts:36` at `97b25fc53`) — so the
+ * bare token only means "refused" on a 409. Over v5's dispatch the 409 is
+ * `CoreDispatchError.kind === 'conflict'` (core maps the refusal to
+ * `("conflict", "no-understudy" | "locked")`), which is the gate here: a
+ * non-conflict error whose message merely reads `locked` (`kind: 'locked'` is
+ * the vault-locked 503) is NOT reworded.
+ */
+export function describeRetryRefusalError(err: unknown): string | null {
+  return err instanceof CoreDispatchError && err.kind === 'conflict'
+    ? describeRetryRefusal(err.message)
+    : null;
 }
 
 /**

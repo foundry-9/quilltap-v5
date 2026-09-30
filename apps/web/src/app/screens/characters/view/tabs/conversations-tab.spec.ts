@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../../core/core-client';
 import type { CharacterChatSummary } from '../../../../core/core-contract';
@@ -170,5 +170,31 @@ describe('CharacterConversationsTab', () => {
     const cards = fixture.nativeElement.querySelectorAll('qt-character-conversation-card');
     expect(cards.length).toBe(1);
     expect(fixture.nativeElement.textContent).toContain('War Council');
+  });
+});
+
+describe('CharacterConversationsTab — the memory badge (P4.125)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('confirms, deletes THEN queues, and does NOT refetch the list (v4 has no refresh here)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const sent: string[] = [];
+    let listReads = 0;
+    const fixture = await render(
+      stubClient(
+        [chat({ id: 'chat-1', _count: { messages: 7, memories: 2 } })],
+        (req) => {
+          if (req.type === 'characterChats') listReads++;
+          else if (req.type.startsWith('memory') || req.type === 'chatQueueMemories') sent.push(req.type);
+        },
+      ),
+    );
+    const before = listReads;
+    (fixture.nativeElement.querySelector(
+      'button[aria-label="2 memories — delete and re-extract"]',
+    ) as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(sent).toEqual(['memoryDeleteByChat', 'chatQueueMemories']);
+    expect(listReads).toBe(before);
   });
 });

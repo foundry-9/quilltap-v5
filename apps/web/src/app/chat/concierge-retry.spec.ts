@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { CoreDispatchError } from '../core/core-contract';
 import {
   describeRetryRefusal,
+  describeRetryRefusalError,
   isLanternBackgroundRefusal,
   retryUncensoredTurnRequest,
 } from './concierge-retry';
@@ -41,6 +43,19 @@ describe('concierge-retry helpers', () => {
     expect(describeRetryRefusal('locked')).toMatch(/Locked/);
     expect(describeRetryRefusal('something else')).toBeNull();
     expect(describeRetryRefusal(undefined)).toBeNull();
+  });
+
+  it('rewords a thrown refusal ONLY on a conflict (v4 gates on 409)', () => {
+    const conflict = new CoreDispatchError({ kind: 'conflict', message: 'no-understudy' });
+    expect(describeRetryRefusalError(conflict)).toBe(describeRetryRefusal('no-understudy'));
+    expect(
+      describeRetryRefusalError(new CoreDispatchError({ kind: 'locked', message: 'locked' })),
+    ).toBeNull();
+    expect(describeRetryRefusalError(new Error('no-understudy'))).toBeNull();
+    expect(describeRetryRefusalError('no-understudy')).toBeNull();
+    expect(
+      describeRetryRefusalError(new CoreDispatchError({ kind: 'conflict', message: 'other' })),
+    ).toBeNull();
   });
 
   it("recognises the Lantern's refused backdrop", () => {

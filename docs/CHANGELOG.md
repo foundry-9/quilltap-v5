@@ -38859,3 +38859,10 @@ Gate: formatting, both lint configurations, a release build, the full
 workspace test run, the unit suite (3,210), a production bundle, and the
 complete end-to-end suite — 168 of 168, no skips.
 
+
+### SPA smalls: soft break, Concierge nits, memory badge
+
+- Composer text replacement now fires after a soft line break (`first line⏎teh` + Space becomes `the`), as v4 does.
+- "Try uncensored" refusal wording is applied only to a conflict (409) error; other errors show their own message.
+- One on-duty rule for the Concierge (Settings tab, sidebar, New Chat); removed a dead export and a stopgap type.
+- The memory count on chat cards is now a button: click to confirm, delete the chat's memories and queue re-extraction (Salon list and character Conversations tab). It shows at zero too, as in v4.
