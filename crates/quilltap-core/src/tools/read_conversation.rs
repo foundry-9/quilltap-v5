@@ -607,7 +607,7 @@ mod log_tests {
             Some("Conversation not found."),
             "{out:?}"
         );
-        // The repository line carries its module target (`quilltap_core::db::chats_read`).
+        // The repository line carries v4's `Repository` target (`quilltap::db`, the one `db::fallback` home).
         let db_err: Vec<&String> = lines
             .iter()
             .filter(|l| l.starts_with("ERROR ") && l.contains("Error finding entity by ID"))

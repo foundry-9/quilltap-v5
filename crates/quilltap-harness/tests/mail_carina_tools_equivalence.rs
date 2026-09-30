@@ -1137,7 +1137,7 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
         assert_eq!(e.len(), 1, "{tool}: {l:?}");
         assert!(
             e[0].starts_with(&format!(
-                "ERROR quilltap_core::db::characters_read Error finding entity by ID collection=characters id={} error=",
+                "ERROR quilltap::db Error finding entity by ID collection=characters id={} error=",
                 spec.reader_id
             )),
             "{tool}: {}",
