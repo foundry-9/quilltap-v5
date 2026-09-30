@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — refactor(core): `ConciergeManualKind` is v4's four kinds (P4.130 unit 5)
+
+_Versions: core 0.0.1119, harness 0.0.1039._
+
+v4's `ConciergeManualKind` is a four-member union (`set-moderated`,
+`set-unmoderated`, `set-locked`, `auto-unmoderated`) with no bodies for the six
+kinds the four-state control retired. v5 still declared, decoded and bodied
+those six; they are removed. Old transcripts' bubbles are plain rows and read
+back unchanged (the test now plants them raw instead of posting them). The
+writers census scans every production file, the writer included (6 + 6 → 0).
+No behavior change: nothing posted a retired kind.
+
 #### 2026-09-30 — fix(core): the message read validates each route-trail row as v4 does (P4.130 unit 4)
 
 _Versions: core 0.0.1118, harness 0.0.1038._

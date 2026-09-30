@@ -11,8 +11,8 @@
 //! Both posts are tagged `systemSender: 'concierge'` / `systemKind: 'danger'`
 //! (the manual variant reuses the same `systemKind` — see v4's object literals).
 //! The three REFUSAL announcements (v4 `8bd080267`) carry `systemKind:
-//! 'refusal'`; the auto-switch's `auto-flagged-refusals` bubble (v4 `49059fb14`)
-//! is a manual kind and stays `danger`.
+//! 'refusal'`; the auto-switch's `auto-unmoderated` bubble (v4 `49059fb14`'s
+//! auto-switch, renamed at `4d370a90f`) is a manual kind and stays `danger`.
 //!
 //! Errors never propagate — the danger-classification job (and the manual flip)
 //! must never fail because an announcement couldn't be written. A failure is
@@ -267,21 +267,24 @@ pub fn build_danger_opaque_content(details: Option<&ConciergeDangerDetails>) -> 
 }
 
 /// The Concierge's state-transition announcements (v4 `ConciergeManualKind`,
-/// phase 3 — `4d370a90f`, #75): `set-moderated` / `set-unmoderated` /
-/// `set-locked` / `auto-unmoderated`.
+/// `lib/services/concierge-notifications/writer.ts:183-187`, phase 3 —
+/// `4d370a90f`, #75): `set-moderated` / `set-unmoderated` / `set-locked` /
+/// `auto-unmoderated` — v4's four-member union, exactly.
 ///
-/// The SIX retired kinds of the four-state control (`manual-flagged`,
+/// The SIX kinds of the retired four-state control (`manual-flagged`,
 /// `manual-safe`, `manual-vouched`, `manual-resumed`, `manual-uncensored`,
-/// `auto-flagged-refusals`) are still DECODED ([`Self::from_wire`]) and still
-/// have their bodies: v4 — "Transcripts written before phase 3 carry bubbles of
-/// the retired kinds … they are plain messages and render as they always did".
-/// v5 must never EMIT one again: `apply_concierge_flip` names only the four
-/// live wire strings, and `concierge_state_writers_census`
-/// (`no_production_code_emits_a_retired_manual_kind`) pins that no
-/// production file outside this one constructs a retired variant.
-/// (`set-unmoderated`'s persona text is byte-identical to the retired
-/// `manual-uncensored` — a corpus that diffs CONTENT cannot tell them apart;
-/// diff the kind.)
+/// `auto-flagged-refusals`) are NOT members (P4.130, P4.124 item 13): v4 has
+/// no bodies for them and no code path that names them. The bubbles
+/// pre-phase-3 transcripts carry are plain `chat_messages` rows whose content
+/// was written when they were posted — "they are plain messages and render as
+/// they always did" (v4 `4d370a90f`) — and read back through the transcript
+/// read like any other row, with no kind decoded
+/// (`the_retired_kinds_bubbles_read_back_unchanged`).
+/// `concierge_state_writers_census` (`no_production_code_names_a_retired_
+/// manual_kind`) pins that no production file — this one included — names a
+/// retired variant or wire string again. (`set-unmoderated`'s persona text is
+/// byte-identical to the retired `manual-uncensored` — a corpus that diffs
+/// CONTENT cannot tell them apart; diff the kind.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConciergeManualKind {
     /// → Moderated (the operator; resets the ledger).
@@ -293,36 +296,16 @@ pub enum ConciergeManualKind {
     /// Moderated → Unmoderated by the Concierge, after N stated moderation
     /// refusals (the refusal ledger's auto-switch).
     AutoUnmoderated,
-    /// RETIRED at `4d370a90f` (read-only). → Flagged by the operator.
-    ManualFlagged,
-    /// RETIRED at `4d370a90f` (read-only). Flagged → Monitored.
-    ManualSafe,
-    /// RETIRED at `4d370a90f` (read-only). → Vouched Safe.
-    ManualVouched,
-    /// RETIRED at `4d370a90f` (read-only). Vouched/Uncensored → Monitored.
-    ManualResumed,
-    /// RETIRED at `4d370a90f` (read-only). → Uncensored.
-    ManualUncensored,
-    /// RETIRED at `4d370a90f` (read-only). Monitored → Flagged by the
-    /// Concierge (`49059fb14`'s auto-switch, renamed `auto-unmoderated`).
-    AutoFlaggedRefusals,
 }
 
 impl ConciergeManualKind {
-    /// Parse the wire form — the four live kinds AND the six retired ones (an
-    /// old transcript's kind must still decode). Unknown → `None`.
+    /// Parse the wire form — v4's four kinds. Anything else → `None`.
     pub fn from_wire(s: &str) -> Option<Self> {
         match s {
             "set-moderated" => Some(Self::SetModerated),
             "set-unmoderated" => Some(Self::SetUnmoderated),
             "set-locked" => Some(Self::SetLocked),
             "auto-unmoderated" => Some(Self::AutoUnmoderated),
-            "manual-flagged" => Some(Self::ManualFlagged),
-            "manual-safe" => Some(Self::ManualSafe),
-            "manual-vouched" => Some(Self::ManualVouched),
-            "manual-resumed" => Some(Self::ManualResumed),
-            "manual-uncensored" => Some(Self::ManualUncensored),
-            "auto-flagged-refusals" => Some(Self::AutoFlaggedRefusals),
             _ => None,
         }
     }
@@ -334,27 +317,12 @@ impl ConciergeManualKind {
             Self::SetUnmoderated => "set-unmoderated",
             Self::SetLocked => "set-locked",
             Self::AutoUnmoderated => "auto-unmoderated",
-            Self::ManualFlagged => "manual-flagged",
-            Self::ManualSafe => "manual-safe",
-            Self::ManualVouched => "manual-vouched",
-            Self::ManualResumed => "manual-resumed",
-            Self::ManualUncensored => "manual-uncensored",
-            Self::AutoFlaggedRefusals => "auto-flagged-refusals",
         }
-    }
-
-    /// Is this one of the six kinds phase 3 retired (decoded, never emitted)?
-    pub fn is_retired(self) -> bool {
-        !matches!(
-            self,
-            Self::SetModerated | Self::SetUnmoderated | Self::SetLocked | Self::AutoUnmoderated
-        )
     }
 }
 
 /// What the Concierge says about the refusals that earned an auto-switch (v4
-/// `ConciergeAutoFlagDetails`, `49059fb14`). `auto-unmoderated` only (and the
-/// retired `auto-flagged-refusals` it renamed).
+/// `ConciergeAutoFlagDetails`, `49059fb14`). `auto-unmoderated` only.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ConciergeAutoFlagDetails {
     /// Refusals on the ledger when the switch fired.
@@ -446,7 +414,7 @@ pub fn build_auto_flag_opaque_content(details: Option<&ConciergeAutoFlagDetails>
 }
 
 /// Persona-voiced manual-transition body (v4 `buildManualContent`) — the
-/// no-details form; `auto-flagged-refusals` without details reads v4's
+/// no-details form; `auto-unmoderated` without details reads v4's
 /// `details === undefined` sentence.
 pub fn build_manual_content(kind: ConciergeManualKind) -> String {
     build_manual_content_with_details(kind, None)
@@ -465,18 +433,6 @@ pub fn build_manual_content_with_details(
         ConciergeManualKind::SetLocked =>
             "The operator has locked the present company to the house's usual desks. Should one of them decline a matter, the refusal stands: the Concierge will take nothing elsewhere, nor move the conversation of his own accord.",
         ConciergeManualKind::AutoUnmoderated => return build_auto_flag_content(details),
-        // The retired kinds keep their pre-phase-3 bodies (read-only).
-        ConciergeManualKind::ManualFlagged =>
-            "By the operator's own hand, the Concierge has thrown the switch: the conversation is to be entrusted henceforth to a desk better appointed to subjects of its particular character. Pray continue at your leisure.",
-        ConciergeManualKind::ManualSafe =>
-            "By the operator's own hand, the Concierge stands down for the moment. Routine arrangements are restored; he shall, of course, return to his post should the matter again take a turn.",
-        ConciergeManualKind::ManualVouched =>
-            "The operator has vouched for the present company, and the Concierge, satisfied, takes the afternoon off. No moderation, no rerouting, no quiet interventions; the ordinary desks remain in service, on the operator's own recognizance.",
-        ConciergeManualKind::ManualResumed =>
-            "The Concierge returns to his post. Customary watch is resumed; the present arrangements are once again subject to his discreet attentions.",
-        ConciergeManualKind::ManualUncensored =>
-            "By the operator's own hand, the Concierge has been sent away and the uncensored door stands open. Nothing is to be examined, nothing softened; the conversation and its errands go henceforth to the frank desk, entirely on the operator's own recognizance.",
-        ConciergeManualKind::AutoFlaggedRefusals => return build_auto_flag_content(details),
     }
     .to_string()
 }
@@ -500,20 +456,6 @@ pub fn build_manual_opaque_content_with_details(
         ConciergeManualKind::SetLocked =>
             "Operator advisory: this conversation is Locked to the ordinary providers. A content refusal stands; nothing is rerouted and the Concierge will not switch the chat.",
         ConciergeManualKind::AutoUnmoderated => {
-            return build_auto_flag_opaque_content(details)
-        }
-        // The retired kinds keep their pre-phase-3 bodies (read-only).
-        ConciergeManualKind::ManualFlagged =>
-            "Operator advisory: this conversation has been manually marked for handling by an uncensored provider. Subsequent traffic may be routed accordingly.",
-        ConciergeManualKind::ManualSafe =>
-            "Operator advisory: the prior dangerous-content mark has been manually cleared. Standard routing is restored.",
-        ConciergeManualKind::ManualVouched =>
-            "Operator advisory: moderation is disabled for this conversation. No classification, scanning, or provider rerouting will run on the operator’s behalf. Ordinary providers still apply.",
-        ConciergeManualKind::ManualResumed =>
-            "Operator advisory: standard moderation is restored for this conversation.",
-        ConciergeManualKind::ManualUncensored =>
-            "Operator advisory: this conversation has been manually routed to the uncensored providers. No classification or scanning will run; prompts go out unaltered.",
-        ConciergeManualKind::AutoFlaggedRefusals => {
             return build_auto_flag_opaque_content(details)
         }
     }
@@ -940,35 +882,82 @@ mod tests {
 
     /// P4.D226 Tier 2 item 13 (v4 `4d370a90f`: "Transcripts written before
     /// phase 3 carry bubbles of the retired kinds … they are plain messages and
-    /// render as they always did"). A transcript holding one bubble of each of
-    /// the six retired kinds — written exactly as the pre-phase-3 writer wrote
-    /// them — reads back through the transcript read every consumer shares
+    /// render as they always did"). P4.130 narrowed `ConciergeManualKind` to
+    /// v4's four, so the six retired bubbles are PLANTED RAW — the rows the
+    /// pre-phase-3 writer left, content and opaque content exactly as it wrote
+    /// them — and read back through the transcript read every consumer shares
     /// (`get_messages`, under the chat GET and the export) in order, with
-    /// content, opaque content, sender and kind unchanged.
+    /// content, opaque content, sender and kind unchanged. No kind is decoded
+    /// on the way.
     #[test]
-    fn the_six_retired_kinds_read_back_unchanged() {
+    fn the_retired_kinds_bubbles_read_back_unchanged() {
         let (_dir, db) = provisioned();
-        let retired = [
-            ConciergeManualKind::ManualFlagged,
-            ConciergeManualKind::ManualSafe,
-            ConciergeManualKind::ManualVouched,
-            ConciergeManualKind::ManualResumed,
-            ConciergeManualKind::ManualUncensored,
-            ConciergeManualKind::AutoFlaggedRefusals,
+        // `(wire kind, content, opaqueContent)` — the pre-phase-3 writer's
+        // bodies, transcribed from the arms P4.130 deleted (the auto-switch's
+        // own bodies stayed live under `auto-unmoderated`).
+        let retired: Vec<(&str, String, String)> = vec![
+            (
+                "manual-flagged",
+                "By the operator's own hand, the Concierge has thrown the switch: the conversation is to be entrusted henceforth to a desk better appointed to subjects of its particular character. Pray continue at your leisure.".into(),
+                "Operator advisory: this conversation has been manually marked for handling by an uncensored provider. Subsequent traffic may be routed accordingly.".into(),
+            ),
+            (
+                "manual-safe",
+                "By the operator's own hand, the Concierge stands down for the moment. Routine arrangements are restored; he shall, of course, return to his post should the matter again take a turn.".into(),
+                "Operator advisory: the prior dangerous-content mark has been manually cleared. Standard routing is restored.".into(),
+            ),
+            (
+                "manual-vouched",
+                "The operator has vouched for the present company, and the Concierge, satisfied, takes the afternoon off. No moderation, no rerouting, no quiet interventions; the ordinary desks remain in service, on the operator's own recognizance.".into(),
+                "Operator advisory: moderation is disabled for this conversation. No classification, scanning, or provider rerouting will run on the operator’s behalf. Ordinary providers still apply.".into(),
+            ),
+            (
+                "manual-resumed",
+                "The Concierge returns to his post. Customary watch is resumed; the present arrangements are once again subject to his discreet attentions.".into(),
+                "Operator advisory: standard moderation is restored for this conversation.".into(),
+            ),
+            (
+                "manual-uncensored",
+                "By the operator's own hand, the Concierge has been sent away and the uncensored door stands open. Nothing is to be examined, nothing softened; the conversation and its errands go henceforth to the frank desk, entirely on the operator's own recognizance.".into(),
+                "Operator advisory: this conversation has been manually routed to the uncensored providers. No classification or scanning will run; prompts go out unaltered.".into(),
+            ),
+            (
+                "auto-flagged-refusals",
+                build_auto_flag_content(None),
+                build_auto_flag_opaque_content(None),
+            ),
         ];
-        assert!(retired.iter().all(|k| k.is_retired()));
-        let (posted, _) = run(async {
-            seed_chat(&db).await;
-            let mut posted = Vec::new();
-            for kind in retired {
-                posted.push(
-                    post_concierge_manual_announcement(&db, CHAT, kind)
-                        .await
-                        .expect("a retired bubble posts (a pre-phase-3 transcript)"),
-                );
+        assert!(
+            retired
+                .iter()
+                .all(|(wire, _, _)| ConciergeManualKind::from_wire(wire).is_none()),
+            "a retired kind is not a member of v4's union"
+        );
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(seed_chat(&db));
+        let rows = retired.clone();
+        rt.block_on(db.write(move |w| {
+            for (i, (_, content, opaque)) in rows.iter().enumerate() {
+                w.main().connection().execute(
+                    "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, \
+                     systemSender, systemKind, opaqueContent) \
+                     VALUES (?1, ?2, 'message', 'ASSISTANT', ?3, ?4, 'concierge', 'danger', ?5)",
+                    rusqlite::params![
+                        format!("f1300000-0000-4000-8000-00000000000{}", i + 1),
+                        CHAT,
+                        content,
+                        format!("2026-09-25T00:00:0{}.000Z", i + 1),
+                        opaque,
+                    ],
+                )?;
             }
-            posted
-        });
+            Ok(())
+        }))
+        .unwrap();
+        drop(rt);
         let read = db
             .read_main(|c| crate::db::chats_messages_read::get_messages(c, CHAT))
             .unwrap();
@@ -977,16 +966,16 @@ mod tests {
             .filter(|m| m["systemSender"] == "concierge")
             .collect();
         assert_eq!(got.len(), 6, "every retired bubble reads back: {read:#?}");
-        for ((kind, want), got) in retired.iter().zip(&posted).zip(got) {
-            assert_eq!(got["id"], want["id"], "{kind:?}: order");
-            assert_eq!(got["content"], build_manual_content(*kind), "{kind:?}");
+        for (i, ((wire, content, opaque), got)) in retired.iter().zip(got).enumerate() {
             assert_eq!(
-                got["opaqueContent"],
-                build_manual_opaque_content(*kind),
-                "{kind:?}"
+                got["id"],
+                format!("f1300000-0000-4000-8000-00000000000{}", i + 1),
+                "{wire}: order"
             );
-            assert_eq!(got["systemKind"], "danger", "{kind:?}");
-            assert_eq!(got["role"], "ASSISTANT", "{kind:?}");
+            assert_eq!(got["content"], *content, "{wire}");
+            assert_eq!(got["opaqueContent"], *opaque, "{wire}");
+            assert_eq!(got["systemKind"], "danger", "{wire}");
+            assert_eq!(got["role"], "ASSISTANT", "{wire}");
         }
     }
 
@@ -1134,7 +1123,7 @@ mod tests {
         let (none, lines) = run(post_concierge_manual_announcement(
             &db,
             CHAT,
-            ConciergeManualKind::ManualVouched,
+            ConciergeManualKind::SetLocked,
         ));
         assert!(none.is_none());
         assert!(lines.is_empty(), "a missing chat is silent: {lines:?}");
@@ -1148,13 +1137,13 @@ mod tests {
         let (posted, lines) = run(post_concierge_manual_announcement(
             &db,
             CHAT,
-            ConciergeManualKind::ManualVouched,
+            ConciergeManualKind::SetLocked,
         ));
         let id = posted.expect("posted")["id"].as_str().unwrap().to_string();
         assert_eq!(
             lines,
             vec![format!(
-                "INFO quilltap::concierge_notification [ConciergeNotification] Manual transition announced context=concierge-notifications chat_id={CHAT} message_id={id} kind=manual-vouched"
+                "INFO quilltap::concierge_notification [ConciergeNotification] Manual transition announced context=concierge-notifications chat_id={CHAT} message_id={id} kind=set-locked"
             )]
         );
 
@@ -1173,14 +1162,14 @@ mod tests {
         let (none, lines) = run(post_concierge_manual_announcement(
             &db,
             CHAT,
-            ConciergeManualKind::ManualResumed,
+            ConciergeManualKind::SetModerated,
         ));
         assert!(none.is_none());
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(lines[0].starts_with(
             "ERROR quilltap::concierge_notification [ConciergeNotification] Failed to post manual announcement context=concierge-notifications"
         ));
-        assert!(lines[0].contains(" kind=manual-resumed error="));
+        assert!(lines[0].contains(" kind=set-moderated error="));
     }
 
     /// The auto-switch bubble is a MANUAL kind (`systemKind: 'danger'`), and its
@@ -1202,7 +1191,7 @@ mod tests {
             .block_on(post_concierge_manual_announcement_with_details(
                 &db,
                 CHAT,
-                ConciergeManualKind::AutoFlaggedRefusals,
+                ConciergeManualKind::AutoUnmoderated,
                 Some(&tally),
             ))
             .expect("posted");

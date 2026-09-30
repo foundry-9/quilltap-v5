@@ -156687,6 +156687,28 @@ Regen outputs staged under `/tmp/p4130/`.
   family header's recipe with `TMPO=/tmp/p4130/stage-retry` and outputs under
   `/tmp/p4130/` (`grep -c '"announced":true'` = 4).
 
+### Unit 5 — `ConciergeManualKind` narrowed (Tier 1 item 5)
+
+- Verified at the pin: v4's type is `lib/services/concierge-notifications/
+  writer.ts:183-187` (the order cites `lib/post-office/writer.ts`, which does
+  not exist), the four-member union; no bodies for the six.
+- The enum, `from_wire`, `as_wire` and both body builders carry the four;
+  `is_retired` is gone (no production caller). The three tests: the read-back
+  test is RE-PLANTED RAW (`the_retired_kinds_bubbles_read_back_unchanged` —
+  six `chat_messages` rows INSERTed with the pre-phase-3 writer's content +
+  opaque bodies transcribed from the deleted arms; the auto-switch's bodies
+  stay live under `auto-unmoderated`) and asserts every retired wire string is
+  NOT a member; the two log/auto-flag tests use live kinds.
+- `concierge_state_writers_census`: the writer's exemption is removed and the
+  variant half matches the bare variant WORD in code (not only
+  `ConciergeManualKind::X`), the wire half every literal. **Recount: 6
+  variants + 6 wire strings in the one exempt file → 0 + 0 in every file.**
+  Renamed `no_production_code_names_a_retired_manual_kind`.
+- Neutrality (the sweep driver, `--v4 /tmp/qt-v4-pin-p4130-97b25fc53`,
+  results `/tmp/p4130/sweep-u5.json`): `post_office_writers_tier3`,
+  `danger_resolver`, `danger_gatekeeper_tier3`, `refusal_ledger_tier3` — 4/4
+  ok, zero `SKIP:`.
+
 ## P4.131 — the document-store repository fallbacks as v4 REALLY has them (lane record, 2026-09-30)
 
 Branch `claude/document-store-repo-fallbacks-55643f`, pin `97b25fc53` (`/tmp/qt-v4-pin-p4131-97b25fc53`), §2 probe PASS at start. core 0.0.1116, harness 0.0.1035.

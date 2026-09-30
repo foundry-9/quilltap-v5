@@ -13,9 +13,14 @@
 //!   3. nothing `UPDATE`s `conciergeOverride` any more (the legacy column is
 //!      read-only from `4d370a90f`; `ChatCreate` may still carry a bundle's
 //!      value, as v4's Zod create does at this pin);
-//!   4. no production code outside the writer EMITS a retired manual kind
-//!      (`manual-flagged` … `auto-flagged-refusals`): they stay DECODABLE for
-//!      old transcripts, never written again (the order's M9).
+//!   4. NO production code — the writer included — names a retired manual
+//!      kind (`manual-flagged` … `auto-flagged-refusals`), as a variant or as
+//!      a wire string. P4.130 (P4.124 item 13) narrowed
+//!      `ConciergeManualKind` to v4's four-member union: v4 has no bodies and
+//!      no decode for the six, and old transcripts' bubbles are plain rows
+//!      read back without a kind. **Recount:** the writer had declared,
+//!      decoded, encoded and bodied the six (6 variants + 6 wire strings, the
+//!      one exempt file); now 0 + 0 in EVERY file, and the exemption is gone.
 //!
 //! Standing on the shared source-census lexer (`source_census`), which keeps
 //! string literals — the SQL IS a literal.
@@ -149,20 +154,20 @@ fn nothing_updates_the_legacy_concierge_override() {
 }
 
 #[test]
-fn no_production_code_emits_a_retired_manual_kind() {
+fn no_production_code_names_a_retired_manual_kind() {
     let mut emitters: Vec<String> = Vec::new();
     let mut writer_seen = false;
     for (file, zone) in production_files() {
-        // The writer DECLARES and DECODES the retired kinds (old transcripts);
-        // that is the one home allowed to name them.
+        // P4.130: the writer is scanned like every other file — a retired
+        // variant re-added to the enum (or its wire string to `from_wire`)
+        // reds here.
         if file.ends_with("services/concierge_notifications.rs") {
             writer_seen = true;
-            continue;
         }
         let code = code_only(&zone);
         for v in RETIRED_VARIANTS {
-            if contains_word(&code, &format!("ConciergeManualKind::{v}")) {
-                emitters.push(format!("{file}: ConciergeManualKind::{v}"));
+            if contains_word(&code, v) {
+                emitters.push(format!("{file}: {v}"));
             }
         }
         for lit in string_literals(&zone) {
@@ -179,6 +184,7 @@ fn no_production_code_emits_a_retired_manual_kind() {
     );
     assert!(
         emitters.is_empty(),
-        "a retired Concierge manual kind is emitted again (v4 `4d370a90f` retired six): {emitters:#?}"
+        "a retired Concierge manual kind is named again (v4 `4d370a90f` retired six; P4.130 \
+         narrowed the enum to v4's four): {emitters:#?}"
     );
 }
