@@ -1,0 +1,3 @@
+data: {"id":"e1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Cut "}}]}
+
+data: {"error":{"message":"Filtered mid-stream, benign words.","type":"invalid_request_error","param":null,"code":"content_filter"}}

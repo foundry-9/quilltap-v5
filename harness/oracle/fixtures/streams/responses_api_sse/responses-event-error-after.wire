@@ -1,0 +1,6 @@
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"Partial "}
+
+event: error
+data: {"type":"error","code":"content_filter","message":"Filtered mid-stream, benign words.","param":null,"sequence_number":2}
+

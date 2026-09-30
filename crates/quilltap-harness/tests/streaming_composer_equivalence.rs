@@ -41,12 +41,15 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use quilltap_core::model::stream::{StreamChunk, StreamParams, StreamingCompletionProvider};
+use quilltap_core::model::stream::{
+    StreamChunk, StreamError, StreamParams, StreamingCompletionProvider,
+};
 use quilltap_core::model::streaming_provider::WireStreamingProvider;
 use quilltap_core::model::transport::{
     BoxFuture, ProviderTransport, StreamBytes, TransportError, TransportPolicy, TransportRequest,
     TransportResponse,
 };
+use quilltap_core::services::dangerous_content::refusal::code_string;
 use serde_json::{json, Map, Value};
 
 fn streams_dir() -> PathBuf {
@@ -59,6 +62,11 @@ struct OracleCase {
     case: String,
     error: Option<String>,
     chunks: Vec<Value>,
+    /// P4.122: the thrown value's classifier fields on an erroring row.
+    thrown: Option<Value>,
+    /// P4.122 item 6: the ERROR lines v4's plugin logged while the case ran
+    /// (`record-stream-fixtures.mjs` `pluginErrorLog`); empty when none.
+    plugin_error_log: Vec<Value>,
 }
 
 fn load_recorded(decoder: &str) -> Vec<OracleCase> {
@@ -81,6 +89,12 @@ fn load_recorded(decoder: &str) -> Vec<OracleCase> {
                 case: v["case"].as_str().unwrap().to_string(),
                 error: v["error"].as_str().map(|s| s.to_string()),
                 chunks: v["chunks"].as_array().cloned().unwrap_or_default(),
+                thrown: v.get("thrown").cloned(),
+                plugin_error_log: v
+                    .get("pluginErrorLog")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default(),
             });
         }
     }
@@ -252,7 +266,7 @@ async fn drive_composer(
     provider: &str,
     model: &str,
     pieces: Vec<Vec<u8>>,
-) -> (Vec<StreamChunk>, Option<String>) {
+) -> (Vec<StreamChunk>, Option<StreamError>) {
     let transport = ReplayTransport {
         frames: pieces,
         seen: Mutex::new(None),
@@ -269,12 +283,12 @@ async fn drive_composer(
         .stream_message(provider, None, &params(model))
         .await;
     let mut chunks = Vec::new();
-    let mut error: Option<String> = None;
+    let mut error: Option<StreamError> = None;
     while let Some(item) = rx.recv().await {
         match item {
             Ok(c) => chunks.push(c),
             Err(e) => {
-                error = Some(e.message);
+                error = Some(e);
                 // The composer stops after an error item (v4's generator
                 // throws) — the channel closes right after.
             }
@@ -287,22 +301,55 @@ fn assert_matches(
     oracle: &OracleCase,
     chunking: &str,
     chunks: &[StreamChunk],
-    err: &Option<String>,
+    err: &Option<StreamError>,
 ) {
     match (&oracle.error, err) {
-        (Some(want), Some(got)) => assert_eq!(
-            got, want,
-            "{}/{} [{}]: error message mismatch",
-            oracle.provider, oracle.case, chunking
-        ),
+        (Some(want), Some(got)) => {
+            assert_eq!(
+                &got.message, want,
+                "{}/{} [{}]: error message mismatch",
+                oracle.provider, oracle.case, chunking
+            );
+            // P4.122: the pump's mid-stream arms carry the refusal side the
+            // decoder read (both of them — the EOF-flush frame reaches the
+            // FINISH arm). v4's thrown `code` must arrive on the side.
+            let thrown = oracle
+                .thrown
+                .as_ref()
+                .expect("an erroring row records `thrown`");
+            let want_code = thrown.get("code").and_then(code_string);
+            let want_nested = thrown.get("errorCode").and_then(code_string);
+            let label = format!("{}/{} [{}]", oracle.provider, oracle.case, chunking);
+            match got.refusal.as_deref() {
+                Some(side) => {
+                    assert_eq!(side.message, thrown["message"].as_str().unwrap(), "{label}");
+                    assert_eq!(side.code, want_code, "{label}: side code");
+                    assert_eq!(side.nested_code, want_nested, "{label}: side nested code");
+                    assert_eq!(
+                        side.name.as_deref(),
+                        thrown["name"].as_str(),
+                        "{label}: name"
+                    );
+                    assert_eq!(
+                        side.status.map(u64::from),
+                        thrown.get("status").and_then(Value::as_u64),
+                        "{label}: side status"
+                    );
+                }
+                None => assert!(
+                    want_code.is_none() && want_nested.is_none(),
+                    "{label}: v4 threw a coded error ({thrown}) but the pump attached no side"
+                ),
+            }
+        }
         (None, None) => {}
         (Some(_), None) => panic!(
             "{}/{} [{}]: oracle errored but the composer did not",
             oracle.provider, oracle.case, chunking
         ),
         (None, Some(e)) => panic!(
-            "{}/{} [{}]: the composer errored ({e}) but the oracle did not",
-            oracle.provider, oracle.case, chunking
+            "{}/{} [{}]: the composer errored ({}) but the oracle did not",
+            oracle.provider, oracle.case, chunking, e.message
         ),
     }
     assert_eq!(
@@ -330,6 +377,39 @@ fn assert_matches(
             serde_json::to_string_pretty(&want).unwrap()
         );
     }
+}
+
+/// P4.122 item 6 — the plugin catch line (`… API error in streamMessage`),
+/// which the pump logs at its mid-stream arms: the captured lines naming it
+/// must be exactly v4's recorded `pluginErrorLog`, field for field — so every
+/// OPENAI_COMPATIBLE / DEEPSEEK / NANOGPT throw logs ONE line, and every other
+/// row (Z.AI, the Responses plugins, OpenRouter, a clean stream) logs none.
+fn assert_catch_lines(oracle: &OracleCase, chunking: &str, lines: &[String]) {
+    let got: Vec<&String> = lines
+        .iter()
+        .filter(|l| l.contains("API error in streamMessage"))
+        .collect();
+    let want: Vec<String> = oracle
+        .plugin_error_log
+        .iter()
+        .map(|e| {
+            format!(
+                "ERROR quilltap::model::streaming_provider {} context={} baseUrl={} error={}",
+                e["message"].as_str().unwrap(),
+                e["context"]["context"].as_str().unwrap(),
+                e["context"]["baseUrl"].as_str().unwrap(),
+                e["error"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got.iter().map(|l| l.as_str()).collect::<Vec<_>>(),
+        want.iter().map(String::as_str).collect::<Vec<_>>(),
+        "{}/{} [{}]: the plugin catch line",
+        oracle.provider,
+        oracle.case,
+        chunking
+    );
 }
 
 /// Whole-buffer + byte-at-a-time (SSE wires).
@@ -396,7 +476,10 @@ fn run_decoder_fixture(decoder: &str) {
         let mut saw_reasoning_here = false;
         chunkings_run = chunkings.len();
         for (chunking, pieces) in chunkings {
-            let (chunks, err) = rt.block_on(drive_composer(provider, model, pieces));
+            let ((chunks, err), lines) = quilltap_core::test_support::captured_with(|| {
+                rt.block_on(drive_composer(provider, model, pieces))
+            });
+            assert_catch_lines(oracle, chunking, &lines);
             if chunks.iter().any(|c| {
                 c.reasoning_content
                     .as_deref()

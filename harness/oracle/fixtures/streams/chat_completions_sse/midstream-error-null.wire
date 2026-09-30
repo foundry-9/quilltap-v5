@@ -1,0 +1,10 @@
+data: {"error":null,"id":"e1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Still "}}]}
+
+data: {"id":"e1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"fine."}}]}
+
+data: {"id":"e1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"e1","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":6,"completion_tokens":2,"total_tokens":8}}
+
+data: [DONE]
+

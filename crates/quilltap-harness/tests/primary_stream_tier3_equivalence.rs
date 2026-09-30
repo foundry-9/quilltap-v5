@@ -365,6 +365,16 @@ struct ChunkW {
     /// for the same response (see `chunk_to_result`).
     #[serde(default)]
     sdk_error: Option<SdkErrorW>,
+    /// P4.122 — an error FRAME inside a 200 stream from an openai-SDK
+    /// provider: the inner error object v4's SDK hands `new APIError(undefined,
+    /// …)`. `Some(Value::Null)` is a posed `null` (the key present).
+    #[serde(default, deserialize_with = "present_value")]
+    sdk_stream_error: Option<Value>,
+}
+
+/// A present key is `Some` even when its value is JSON `null`.
+fn present_value<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(d).map(Some)
 }
 
 /// P4.118: the `sdkError` calls whose error is RETHROWN (not rerouted), so
@@ -544,6 +554,19 @@ fn chunk_to_result(c: &ChunkW, provider: &str, model: &str) -> StreamChunkResult
             Some(r) => err.with_refusal(r),
             None => err,
         });
+    }
+    if let Some(frame) = &c.sdk_stream_error {
+        // P4.122: exactly what the production path yields for the frame — the
+        // decoder's `DecodeError` over `openai_stream_error` (the SDK's
+        // `APIError(undefined, error)`), turned into the channel's
+        // `StreamError` by the pump's own `decode_stream_error`. No hand copy.
+        return Err(
+            quilltap_core::model::streaming_provider::decode_stream_error(
+                quilltap_core::model::decoders::DecodeError::from_refusal(
+                    quilltap_core::model::provider_error::openai_stream_error(frame),
+                ),
+            ),
+        );
     }
     if let Some(err) = &c.error {
         return Err(StreamError::new(err.clone()));

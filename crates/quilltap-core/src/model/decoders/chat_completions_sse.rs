@@ -136,6 +136,14 @@ pub struct ChatCompletionsSseDecoder {
     /// the host's finish-reason reader.
     stream_finish_reason: Option<String>,
     done_emitted: bool,
+    /// P4.122: the SDK flavours' mid-stream error frame (see
+    /// [`super::openai_sdk_frame_error`]), stashed so the chunks decoded
+    /// before it in the same push are returned first — the SDK throws from
+    /// inside the iterator, after yielding them.
+    pending_error: Option<DecodeError>,
+    /// Set once the error has been surfaced: the SDK's iterator has thrown,
+    /// so nothing after it — not even the terminal `done` — is ever yielded.
+    failed: bool,
 }
 
 impl ChatCompletionsSseDecoder {
@@ -152,6 +160,19 @@ impl ChatCompletionsSseDecoder {
             finish_reason: None,
             stream_finish_reason: None,
             done_emitted: false,
+            pending_error: None,
+            failed: false,
+        }
+    }
+
+    /// Surface the stashed error exactly once and latch the decoder shut.
+    fn take_pending(&mut self) -> Result<Vec<StreamChunk>, DecodeError> {
+        match self.pending_error.take() {
+            Some(e) => {
+                self.failed = true;
+                Err(e)
+            }
+            None => Ok(Vec::new()),
         }
     }
 
@@ -552,7 +573,20 @@ impl ChatCompletionsSseDecoder {
                 continue;
             }
             match serde_json::from_str::<Value>(data) {
-                Ok(v) => self.handle_chunk(&v, &mut out),
+                Ok(v) => {
+                    // P4.122: the four OpenAI-SDK flavours throw on an error
+                    // frame (`Stream.fromSSEResponse`); OpenRouter's raw
+                    // `fetch` loop parses the frame and reads only `choices`,
+                    // so an error frame there is skipped like any other
+                    // choice-less frame.
+                    if self.flavor != Flavor::OpenRouterRaw {
+                        if let Some(e) = super::openai_sdk_frame_error(&ev.event, &v) {
+                            self.pending_error = Some(e);
+                            break;
+                        }
+                    }
+                    self.handle_chunk(&v, &mut out)
+                }
                 Err(_) => {
                     // v4's SDK path would surface a malformed frame as a parse
                     // error; the openrouter raw path silently skips ("Skip
@@ -569,13 +603,37 @@ impl ChatCompletionsSseDecoder {
 
 impl StreamDecoder for ChatCompletionsSseDecoder {
     fn push(&mut self, bytes: &[u8]) -> Result<Vec<StreamChunk>, DecodeError> {
+        if self.failed {
+            return Ok(Vec::new());
+        }
+        if self.pending_error.is_some() {
+            return self.take_pending();
+        }
         let events = self.sse.push(bytes);
-        Ok(self.process_events(events))
+        let out = self.process_events(events);
+        // Chunks decoded before the error frame go out now; the error
+        // surfaces on the next call (the pump's next push, or `finish`).
+        if out.is_empty() && self.pending_error.is_some() {
+            return self.take_pending();
+        }
+        Ok(out)
     }
 
     fn finish(&mut self) -> Result<Vec<StreamChunk>, DecodeError> {
+        if self.failed {
+            return Ok(Vec::new());
+        }
+        if self.pending_error.is_some() {
+            return self.take_pending();
+        }
         let events = self.sse.finish();
         let mut out = self.process_events(events);
+        // `SseParser::finish` dispatches at most ONE event (the one whose
+        // trailing blank line never came — `openai` 7.23.0's `SSEDecoder.
+        // flush` delivers it too), so an error here has nothing before it.
+        if self.pending_error.is_some() {
+            return self.take_pending();
+        }
         if !self.done_emitted {
             self.done_emitted = true;
             self.resolve_pending_reasoning();
@@ -644,6 +702,35 @@ mod tests {
         assert_eq!(raw["choices"][0]["finishReason"], "tool_calls");
         assert_eq!(raw["choices"][0]["delta"]["toolCalls"][0]["id"], "c");
         assert_eq!(raw["usage"]["promptTokens"], 3);
+    }
+
+    /// P4.122: content decoded before an error frame in the SAME push goes out
+    /// first; the error (carrying its refusal side) surfaces on the next call,
+    /// and the decoder is latched shut — no terminal `done` after a throw.
+    #[test]
+    fn error_frame_after_content_in_one_push() {
+        let wire = b"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"}}]}\n\ndata: {\"error\":{\"code\":\"content_filter\",\"message\":\"No.\"}}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"late\"}}]}\n\n";
+        let mut d = ChatCompletionsSseDecoder::new(Flavor::DeepSeek);
+        let first = d.push(wire).unwrap();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].content, "Hi");
+        let err = d.finish().unwrap_err();
+        assert_eq!(err.message, "No.");
+        let side = err.refusal.expect("a coded frame carries its side");
+        assert_eq!(side.code.as_deref(), Some("content_filter"));
+        assert_eq!(side.status, None);
+        assert!(d.push(b"data: {}\n\n").unwrap().is_empty());
+        assert!(d.finish().unwrap().is_empty());
+    }
+
+    /// OpenRouter's raw `fetch` path reads only `choices`: an error frame is
+    /// skipped and the stream ends normally.
+    #[test]
+    fn openrouter_raw_skips_error_frames() {
+        let wire = b"data: {\"error\":{\"code\":\"content_filter\",\"message\":\"No.\"}}\n\nevent: error\ndata: {\"code\":\"content_filter\"}\n\n";
+        let out = drive(Flavor::OpenRouterRaw, wire, 0);
+        assert_eq!(out.len(), 1);
+        assert!(out[0].done);
     }
 
     #[test]

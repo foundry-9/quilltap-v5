@@ -75,13 +75,83 @@ pub use responses_api_sse::ResponsesApiSseDecoder;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DecodeError {
     pub message: String,
+    /// The structured refusal side of the value v4's SDK threw (P4.122) — set
+    /// only where the SDK throws a CODED error object mid-stream (`openai`
+    /// 7.23.0's `APIError(undefined, …)` on an error frame; see
+    /// [`openai_sdk_frame_error`]). `None` for every other decode failure; the
+    /// pump attaches it to the `StreamError` it sends
+    /// (`StreamError::with_refusal`), so the classifier reads the frame's
+    /// `code` exactly as it reads a non-2xx body's.
+    pub refusal: Option<Box<crate::services::dangerous_content::refusal::RefusalError>>,
 }
 
 impl DecodeError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            refusal: None,
         }
+    }
+
+    /// A decode error whose message IS the thrown error's message and which
+    /// carries its refusal side.
+    pub fn from_refusal(
+        refusal: crate::services::dangerous_content::refusal::RefusalError,
+    ) -> Self {
+        Self {
+            message: refusal.message.clone(),
+            refusal: Some(Box::new(refusal)),
+        }
+    }
+}
+
+/// `openai` 7.23.0 `Stream.fromSSEResponse`'s two mid-stream throws (P4.122),
+/// in the SDK's order, over one already-parsed frame:
+///
+/// ```text
+/// if (sse.event === null || !sse.event.startsWith('thread.')) {
+///   data = JSON.parse(sse.data);
+///   if (sse.event === 'error') throw new APIError(undefined, data?.error ?? data, …);
+///   if (data && data.error)    throw new APIError(undefined, data.error, …);
+/// ```
+///
+/// Every SDK-mediated text plugin streams through this one generic `Stream`
+/// — the Chat Completions flavours AND the Responses plugins (OPENAI, GROK:
+/// `client.responses.create({stream: true})`, never `ResponseStream`). So a
+/// Responses `response.failed` frame — whose error sits at `response.error`,
+/// with no top-level `error` and no `event: error` — throws NOTHING; v4 ends
+/// the stream "without response.completed" instead. OpenRouter's raw `fetch`
+/// path never reaches this (it reads only `choices`): its flavour does not
+/// call it. `event` is the SSE event name, empty for the default event.
+pub(crate) fn openai_sdk_frame_error(event: &str, data: &serde_json::Value) -> Option<DecodeError> {
+    use serde_json::Value;
+    if event.starts_with("thread.") {
+        return None;
+    }
+    // `data?.error` — only an object carries own properties from JSON.
+    let inner = data.as_object().and_then(|m| m.get("error"));
+    if event == "error" {
+        // `?? data` — `null`/absent falls through to the whole payload.
+        let error = match inner {
+            Some(e) if !e.is_null() => e,
+            _ => data,
+        };
+        return Some(DecodeError::from_refusal(
+            crate::model::provider_error::openai_stream_error(error),
+        ));
+    }
+    let truthy = |v: &Value| match v {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64().is_some_and(|f| f != 0.0),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
+    };
+    match inner {
+        Some(e) if truthy(e) => Some(DecodeError::from_refusal(
+            crate::model::provider_error::openai_stream_error(e),
+        )),
+        _ => None,
     }
 }
 

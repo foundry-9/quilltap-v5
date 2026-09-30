@@ -944,7 +944,8 @@ where
 
     // Persist the pending turn and tell the client whose floor it is (the client's
     // own recompute lands on the same seat; the frame settles its streaming state).
-    super::turn_orchestrator::write_last_turn_participant_id(db, chat_id, Some(&next_seat_id)).await?;
+    super::turn_orchestrator::write_last_turn_participant_id(db, chat_id, Some(&next_seat_id))
+        .await?;
     sink.emit(ChatEvent::chain_complete(ChainCompletePayload {
         reason: "user_turn".to_string(),
         next_speaker_id: Some(next_seat_id),

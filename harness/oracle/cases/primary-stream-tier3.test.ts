@@ -118,6 +118,27 @@ interface ChunkSpec {
    * `text_http_errors_equivalence` proves that reconstruction row by row).
    */
   sdkError?: { status: number; body: string };
+  /**
+   * P4.122 — throw what an openai-SDK provider plugin throws when a 200 stream
+   * carries an error FRAME: `Stream.fromSSEResponse`'s `new APIError(undefined,
+   * <frame's error>, undefined, headers)` over the REAL class — no status, no
+   * `{error: body}` wrap (see `openaiStreamError`). The value is the inner
+   * error object as-is (`null` is legal: `event: error` with a null payload).
+   */
+  sdkStreamError?: unknown;
+}
+
+/**
+ * P4.122 — the openai 7.23.0 SDK's mid-stream throw (`core/streaming.js`
+ * `Stream.fromSSEResponse`: `throw new APIError(undefined, data.error,
+ * undefined, response.headers)`) over the REAL class, resolved by path as
+ * `openaiStatusError` resolves it. The wire family
+ * (`stream_decoders_equivalence`) proves the frame → error step through the
+ * real SDK; this arm poses the thrown value to v4's real failover chain.
+ */
+function openaiStreamError(error: unknown): Error {
+  const { APIError } = require(join(process.cwd(), 'node_modules/openai'));
+  return new APIError(undefined, error, undefined, new Headers());
 }
 
 /**
@@ -493,6 +514,7 @@ async function main(): Promise<void> {
               );
             }
             if (chunk.sdkError) throw openaiStatusError(chunk.sdkError.status, chunk.sdkError.body);
+            if (chunk.sdkStreamError !== undefined) throw openaiStreamError(chunk.sdkStreamError);
             if (chunk.error) throw new Error(chunk.error);
             if (chunk.reasoning) {
               yield { reasoningContent: chunk.reasoning };

@@ -123,10 +123,14 @@ fn prop<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
 ///   : error ? JSON.stringify(error) : message;
 /// if (status && msg) return `${status} ${msg}`;
 /// if (status) return `${status} status code (no body)`;
+/// if (msg) return msg;
+/// return '(no status code or body)';
 /// ```
 ///
-/// (`status` is never 0 here — it is an HTTP status.)
-fn make_message(status: u16, error: Option<&Value>, message: Option<&str>) -> String {
+/// `status` is `None` on the SDK's mid-stream path (P4.122 — `Stream.
+/// fromSSEResponse` throws `new APIError(undefined, …)`), and never 0 where it
+/// is set — it is an HTTP status.
+fn make_message(status: Option<u16>, error: Option<&Value>, message: Option<&str>) -> String {
     let msg: Option<String> = match prop(error, "message").filter(|m| truthy(m)) {
         Some(Value::String(s)) => Some(s.clone()),
         Some(other) => Some(json_stringify(other)),
@@ -135,9 +139,11 @@ fn make_message(status: u16, error: Option<&Value>, message: Option<&str>) -> St
             None => message.map(str::to_string),
         },
     };
-    match msg.filter(|m| !m.is_empty()) {
-        Some(m) => format!("{status} {m}"),
-        None => format!("{status} status code (no body)"),
+    match (status, msg.filter(|m| !m.is_empty())) {
+        (Some(status), Some(m)) => format!("{status} {m}"),
+        (Some(status), None) => format!("{status} status code (no body)"),
+        (None, Some(m)) => m,
+        (None, None) => "(no status code or body)".to_string(),
     }
 }
 
@@ -151,12 +157,52 @@ fn err_message<'a>(err_json: Option<&Value>, body: &'a str) -> Option<&'a str> {
 }
 
 /// `openai` 7.23.0: `makeStatusError` then `APIError.generate`, which hands
-/// the constructor `errorResponse?.error`.
-fn openai_sdk_error(status: u16, body: &str) -> RefusalError {
+/// the constructor `errorResponse?.error`. The ONE home of the SDK's `{error:
+/// body}` wrap rule.
+pub(crate) fn openai_sdk_error(status: u16, body: &str) -> RefusalError {
     let err_json = safe_json(body);
-    // `error && typeof error === 'object' && error.error == null ? { error } : error`
-    // — an array is an object too, and `[].error` is undefined.
-    let normalized = match &err_json {
+    let normalized = openai_sdk_normalized(err_json.as_ref());
+    let inner = prop(normalized.as_ref(), "error");
+    // `this.code = error?.code`; `this.error = error`, so v4's `collectCodes`
+    // reads the SAME value through `record.code` and `record.error.code`.
+    let code = prop(inner, "code").and_then(code_string);
+    RefusalError {
+        message: make_message(Some(status), inner, err_message(err_json.as_ref(), body)),
+        code: code.clone(),
+        nested_code: code,
+        name: Some("Error".to_string()),
+        provider_reason: None,
+        status: Some(status),
+    }
+}
+
+/// The error `openai` 7.23.0 THROWS from inside a 200 stream (P4.122):
+/// `Stream.fromSSEResponse` answers an `event: error` frame with `new
+/// APIError(undefined, data?.error ?? data, undefined, headers)` and any other
+/// frame whose `data.error` is truthy with `new APIError(undefined,
+/// data.error, …)`. `error` is that ALREADY-INNER value, passed as-is — no
+/// `{error: body}` wrap on this path (a FLAT `event: error` payload is itself
+/// the error object) — and `status` is `undefined`, so the message is v4's
+/// bare `msg` (or `'(no status code or body)'`) and the side carries no
+/// status. `this.code = error?.code` and `this.error = error`, so the
+/// classifier's two code slots read the same value, as on the non-2xx path.
+pub fn openai_stream_error(error: &Value) -> RefusalError {
+    let code = prop(Some(error), "code").and_then(code_string);
+    RefusalError {
+        message: make_message(None, Some(error), None),
+        code: code.clone(),
+        nested_code: code,
+        name: Some("Error".to_string()),
+        provider_reason: None,
+        status: None,
+    }
+}
+
+/// `makeStatusError`'s normalization of the parsed body: `error && typeof
+/// error === 'object' && error.error == null ? { error } : error` — an array
+/// is an object too, and `[].error` is undefined.
+fn openai_sdk_normalized(err_json: Option<&Value>) -> Option<Value> {
+    match err_json {
         Some(v @ (Value::Object(_) | Value::Array(_)))
             if prop(Some(v), "error").is_none_or(Value::is_null) =>
         {
@@ -164,19 +210,7 @@ fn openai_sdk_error(status: u16, body: &str) -> RefusalError {
             wrap.insert("error".to_string(), v.clone());
             Some(Value::Object(wrap))
         }
-        other => other.clone(),
-    };
-    let inner = prop(normalized.as_ref(), "error");
-    // `this.code = error?.code`; `this.error = error`, so v4's `collectCodes`
-    // reads the SAME value through `record.code` and `record.error.code`.
-    let code = prop(inner, "code").and_then(code_string);
-    RefusalError {
-        message: make_message(status, inner, err_message(err_json.as_ref(), body)),
-        code: code.clone(),
-        nested_code: code,
-        name: Some("Error".to_string()),
-        provider_reason: None,
-        status: Some(status),
+        other => other.cloned(),
     }
 }
 
@@ -186,7 +220,7 @@ fn anthropic_sdk_error(status: u16, body: &str) -> RefusalError {
     let err_json = safe_json(body);
     RefusalError {
         message: make_message(
-            status,
+            Some(status),
             err_json.as_ref(),
             err_message(err_json.as_ref(), body),
         ),
@@ -546,6 +580,55 @@ mod tests {
         );
         assert_eq!(l.status, None);
         assert_eq!(r("OLLAMA", 400, "").message, "Ollama API error: 400 ");
+    }
+
+    /// P4.122 — `makeMessage`'s two NO-status branches, through the
+    /// mid-stream builder (`APIError(undefined, error)`; bytes from
+    /// `openai` 7.23.0 `core/error.js`, recorded in the stream corpora).
+    #[test]
+    fn openai_stream_error_has_no_status_and_no_wrap() {
+        let e = openai_stream_error(&serde_json::json!({"code":"content_filter","message":"X"}));
+        assert_eq!(e.message, "X");
+        assert_eq!(e.code.as_deref(), Some("content_filter"));
+        assert_eq!(e.nested_code.as_deref(), Some("content_filter"));
+        assert_eq!(e.name.as_deref(), Some("Error"));
+        assert_eq!(e.status, None);
+        // No message → the whole error, stringified (msg only).
+        let e = openai_stream_error(&serde_json::json!({"code":1301}));
+        assert_eq!(e.message, r#"{"code":1301}"#);
+        assert_eq!(e.code.as_deref(), Some("1301"));
+        // Neither → `(no status code or body)`.
+        for v in [
+            serde_json::json!(null),
+            serde_json::json!(false),
+            serde_json::json!(""),
+        ] {
+            let e = openai_stream_error(&v);
+            assert_eq!(e.message, "(no status code or body)");
+            assert_eq!(e.code, None);
+        }
+        // A string error is JSON-quoted and codeless; NO wrap, so an inner
+        // `error` key is just a key.
+        assert_eq!(
+            openai_stream_error(&serde_json::json!("boom")).message,
+            r#""boom""#
+        );
+        let e = openai_stream_error(&serde_json::json!({"error":{"code":"content_filter"}}));
+        assert_eq!(e.message, r#"{"error":{"code":"content_filter"}}"#);
+        assert_eq!(e.code, None);
+    }
+
+    #[test]
+    fn make_message_four_branches() {
+        let m = serde_json::json!({"message":"m"});
+        assert_eq!(make_message(Some(400), Some(&m), None), "400 m");
+        assert_eq!(
+            make_message(Some(400), None, None),
+            "400 status code (no body)"
+        );
+        assert_eq!(make_message(None, Some(&m), None), "m");
+        assert_eq!(make_message(None, None, None), "(no status code or body)");
+        assert_eq!(make_message(None, None, Some("text")), "text");
     }
 
     #[test]

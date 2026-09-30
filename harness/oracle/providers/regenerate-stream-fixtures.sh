@@ -10,6 +10,10 @@
 #
 # Usage:
 #   V4=~/source/quilltap-server V5=<repo-root> bash regenerate-stream-fixtures.sh
+# (P4.122: the recorder imports v4's classifier from "$V4" for the thrown
+# rows' verdicts; `--tsconfig` points tsx at the checkout's root tsconfig so
+# their `@/` imports resolve from a plugin cwd. V4 may be a pinned worktree —
+# ledger §5.1.)
 # Requires Node 24 (see [[oracle-node-abi-gotcha]] — no DB here, but standardise).
 set -euo pipefail
 
@@ -25,7 +29,8 @@ run() {
   # Run under tsx: some plugins import sibling `.ts` modules (e.g. z-ai's
   # `./models`) that plain `node`'s ESM loader cannot resolve extensionless.
   ( cd "$V4/plugins/dist/$plugin" && \
-    npx tsx "$REC" \
+    npx tsx --tsconfig "$V4/tsconfig.json" "$REC" \
+      --v4 "$V4" \
       --provider "$provider" \
       --cases "$STREAMS/$decoder/cases.json" \
       --fixtures-dir "$STREAMS/$decoder" \

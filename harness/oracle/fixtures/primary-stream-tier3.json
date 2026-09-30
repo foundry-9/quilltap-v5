@@ -294,6 +294,42 @@
           "characterId": "cc000001-0000-4000-8000-000000000001"
         }
       ]
+    },
+    {
+      "id": "dd000063-0000-4000-8000-000000000063",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "sdk stream frame: a coded error frame before any content",
+      "participants": [
+        {
+          "id": "ee000063-0000-4000-8000-000000000063",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000064-0000-4000-8000-000000000064",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "sdk stream frame: a coded error frame after content",
+      "participants": [
+        {
+          "id": "ee000064-0000-4000-8000-000000000064",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000065-0000-4000-8000-000000000065",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "sdk stream frame: an uncoded error frame",
+      "participants": [
+        {
+          "id": "ee000065-0000-4000-8000-000000000065",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
     }
   ],
   "character": {
@@ -1090,6 +1126,66 @@
           }
         }
       ]
+    ],
+    "sdk_stream_frame_coded": [
+      [
+        {
+          "sdkStreamError": {
+            "message": "The response was filtered mid-stream, in perfectly benign words.",
+            "type": "invalid_request_error",
+            "param": null,
+            "code": "content_filter"
+          }
+        }
+      ],
+      [
+        {
+          "content": "The uncensored desk answers the frame-filtered turn."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "sdk_stream_frame_after_content": [
+      [
+        {
+          "content": "A partial reply "
+        },
+        {
+          "sdkStreamError": {
+            "message": "The response was filtered mid-stream, in perfectly benign words.",
+            "type": "invalid_request_error",
+            "param": null,
+            "code": "content_filter"
+          }
+        }
+      ],
+      [
+        {
+          "content": "Nobody should be asked for this."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "sdk_stream_frame_uncoded": [
+      [
+        {
+          "sdkStreamError": {
+            "message": "Upstream went sideways mid-stream."
+          }
+        }
+      ],
+      [
+        {
+          "content": "The understudy answers the uncoded frame."
+        },
+        {
+          "done": true
+        }
+      ]
     ]
   },
   "calls": [
@@ -1834,6 +1930,57 @@
         "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
       },
       "comment": "P4.118: the twin with code null. No evidence at all (the wording matches no pattern), so the 4xx rule answers null on both sides: not fallback-eligible, no reroute, no trail, the error rethrown. The thrown message differs by the order's \u00a7S.5 bytes (v4 '400 \u2026', v5 'HTTP 400: \u2026'), pinned both ways in the harness."
+    },
+    {
+      "name": "hard_stream_frame_code_rerouted",
+      "kind": "hardFailover",
+      "profileKey": "understudyProfile",
+      "chatId": "dd000063-0000-4000-8000-000000000063",
+      "participantId": "ee000063-0000-4000-8000-000000000063",
+      "preGeneratedMessageId": "ff000083-0000-4000-8000-000000000083",
+      "hasTools": false,
+      "streamLabel": "sdk_stream_frame_coded",
+      "attachedFiles": [],
+      "originalMessage": "a coded frame before any content",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
+      "comment": "P4.122: the stream opens 200 and its FIRST frame is `data: {\"error\":{...,\"code\":\"content_filter\"}}`; openai 7.23.0's Stream.fromSSEResponse throws new APIError(undefined, data.error) - no status, message = error.message, code + error.code = content_filter. hasStartedStreaming is still false, so v4's attemptHardErrorFailover classifies moderation-refusal with evidence provider-code and the uncensored desk answers. v5 reaches the same only through the decoder's refusal side (DecodeError -> decode_stream_error); before P4.122 v5's decoder dropped the frame and the turn took the EMPTY-response path."
+    },
+    {
+      "name": "hard_stream_frame_after_content_kept",
+      "kind": "hardFailover",
+      "profileKey": "understudyProfile",
+      "chatId": "dd000064-0000-4000-8000-000000000064",
+      "participantId": "ee000064-0000-4000-8000-000000000064",
+      "preGeneratedMessageId": "ff000084-0000-4000-8000-000000000084",
+      "hasTools": false,
+      "streamLabel": "sdk_stream_frame_after_content",
+      "attachedFiles": [],
+      "originalMessage": "a coded frame after content",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
+      "comment": "P4.122: the twin AFTER one content chunk. hasStartedStreaming flipped on the content, so neither side fails over; the partial is kept by preservePartialOnError and the error rethrown."
+    },
+    {
+      "name": "hard_stream_frame_uncoded",
+      "kind": "hardFailover",
+      "profileKey": "understudyProfile",
+      "chatId": "dd000065-0000-4000-8000-000000000065",
+      "participantId": "ee000065-0000-4000-8000-000000000065",
+      "preGeneratedMessageId": "ff000085-0000-4000-8000-000000000085",
+      "hasTools": false,
+      "streamLabel": "sdk_stream_frame_uncoded",
+      "attachedFiles": [],
+      "originalMessage": "an uncoded frame before any content",
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
+      },
+      "comment": "P4.122: an uncoded frame `{\"error\":{\"message\":...}}` - a status-less, code-less APIError whose message matches no pattern. Whatever v4's classifyFallbackTrigger answers is the measurement both sides pin."
     }
   ],
   "authPrimaryProfile": {

@@ -155373,6 +155373,127 @@ auto-described; the P4.D108 deferral, now measured — proposed order),
 row; invisible to the differential, which strips CHAT_MESSAGE rows — proposed
 order). Walk doc §5.
 
+## P4.122 — mid-stream error frames + the image helper's flat body (lane `claude/p4-122-midstream-error-frames-3a675a`, 2026-09-30)
+
+Pin: `/tmp/qt-v4-pin-p4122-97b25fc53` (detached `97b25fc53`, the three symlink
+classes; `node_modules/openai` 7.23.0 at the root and in all six SDK plugin
+dirs). The §R.2 probe PASSED at lane start and before every regen batch
+(branch `main`, both logs empty, tree clean).
+
+### Unit A — mid-stream error frames (Tier 1 items 1–6)
+
+**Landed.** `provider_error::make_message` over `Option<u16>` with v4's four
+branches (`core/error.js:20-38`); a new pub `openai_stream_error(&Value)` for
+the SDK's `APIError(undefined, error)` path (no wrap, `status: None`, `name:
+"Error"`, `code = nested_code`); `DecodeError.refusal` (default `None`, a
+`from_refusal` constructor); ONE shared `decoders::openai_sdk_frame_error`
+applying `Stream.fromSSEResponse`'s two throws in the SDK's order (`event:
+error` → `data?.error ?? data`; then truthy `data.error`; `thread.*` events
+exempt); the Chat Completions decoder calls it for every flavour but
+`OpenRouterRaw`, the Responses decoder for both plugins; both decoders stash
+the error so earlier chunks in the same push go out first, then latch shut
+(no terminal `done` after a throw). The pump's two decode arms go through a
+new pub `decode_stream_error` that attaches the side.
+
+**Measured against the order (§R.4):**
+- The Responses path ALSO throws on an UNNAMED `data: {"error":…}` frame —
+  both plugins iterate the generic `Stream`, which applies both branches. The
+  order's "event: error ONLY" was too narrow; `response.failed` does not throw
+  (confirmed — the convergence rows).
+- The finish arm IS reachable: `openai` 7.23.0's `SSEDecoder.flush` delivers a
+  final event whose blank line never came, and v5's `SseParser::finish` does
+  the same. Two routes reach it: the EOF-flush frame (`deepseek-midstream-
+  error-eof`) and, in the whole-buffer chunking, an error frame after content
+  in the same push (stashed, surfaced at `finish`). M3 stands.
+- Item 6: v4's `… API error in streamMessage` catch line fires on EVERY throw
+  for OPENAI_COMPATIBLE (the base class, `providerName` `OpenAICompatible`),
+  DEEPSEEK and NANOGPT (their overrides carry the same catch); Z.AI, OPENAI and
+  GROK have none. v5 had it at no site. **Ported at the pump's three mid-stream
+  arms** (`StreamCatchLog`, `context` + `baseUrl` + `error = %message`), and
+  the pump thread now runs under the CALLER's tracing dispatcher (production:
+  the global subscriber either way) so a scoped capture sees it.
+  **NAMED FOLLOW-UP (out of mandate, loud):** v4's `try` also wraps the
+  stream's OPENING, so a non-2xx logs the line too; v5's pre-stream arms
+  (`single_error_from` / `single_error`) do not. Its `error` there would be
+  v4's `APIError` message (the side's), not v5's `HTTP {status}:` bytes.
+- The order's "726 rows" for `text-http-errors` is 730 (measured).
+- Not changed, recorded: v5 skips a malformed JSON frame where the SDK throws
+  `SyntaxError('Error reading response: malformed server-sent event JSON.')`,
+  and v5 keeps decoding after `data: [DONE]` where the SDK stops. Neither is in
+  any corpus; both pre-date this lane.
+
+**Oracles (regen AS RUN, from the worktree root):**
+```
+PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH V4=/tmp/qt-v4-pin-p4122-97b25fc53 V5=$PWD \
+  bash harness/oracle/providers/regenerate-stream-fixtures.sh
+```
+The recorder now requires `--v4` (v4's `classifyRefusal` /
+`classifyFallbackTrigger` from the checkout) and the wrapper passes
+`--tsconfig "$V4/tsconfig.json"` so their `@/` imports resolve from a plugin
+cwd. A throwing row gains `thrown` (the `record-text-errors.mjs` shape),
+`refusal`, `trigger`, and `pluginErrorLog` (ERROR-level plugin lines captured
+through `@quilltap/plugin-utils`' own host bridge, `globalThis.
+__quilltap_logger_factory`). Neutrality: regenerated BEFORE adding cases —
+every existing row byte-identical bar `anthropic-error`, which gained the new
+keys (v4: no code, `refused: false`, trigger `provider-error`; v5 attaches no
+side — pinned).
+
+New wire cases: chat_completions 25 → 52 (five shapes × deepseek / nanogpt /
+openai-compatible / z-ai / openrouter, + deepseek's EOF-flush frame + Z.AI's
+numeric `1301`); responses 15 → 23 (`event: error` before/after content, an
+unnamed `data.error` frame, `response.failed`, × openai / grok).
+**Red-first (the helper neutralized = `main`'s decoders, counted per case):
+24 rows red** (18 SDK-flavour + 6 Responses); the 12 no-throw rows (5
+OpenRouter, 5 `{"error":null}`, 2 `response.failed`) green throughout. A
+coverage pin in `stream_decoders_equivalence` asserts those counts off v4's
+recorded rows.
+
+`streaming_composer_equivalence` (the real pump over the same wires) was
+widened to read the new fields: it pins the side on every throwing row and
+the catch line against `pluginErrorLog`, field for field — a reader widening
+beyond "reader repairs", recorded here because it is the only family that
+sees the pump's arms.
+
+`primary_stream_tier3` (hardFailover, real `runPrimaryStream`): jest chunk
+`sdkStreamError` throwing the REAL `new APIError(undefined, obj, undefined,
+new Headers())`; Rust `ChunkW.sdk_stream_error` built through
+`openai_stream_error` → `DecodeError::from_refusal` → `decode_stream_error`
+(no hand copy). Three new calls (49 → 52): `hard_stream_frame_code_rerouted`
+(v4 trail `[Understudy, primary, refused, moderation-refusal, provider-code]`,
+the uncensored desk answers), `hard_stream_frame_after_content_kept`
+(`hasStartedStreaming` → no failover, partial `A partial reply ` kept, the
+frame's message rethrown), `hard_stream_frame_uncoded` (MEASURED: v4 records
+`failed / provider-error` and rethrows — no understudy lookup). Spec grown by
+addition only. Regen (from the pin):
+```
+V5W=<worktree>; N=~/.nvm/versions/node/v24.13.1/bin; TMPO=/tmp/p4122/ps-oracle
+mkdir -p $TMPO/cases $TMPO/fixtures; cp $V5W/harness/oracle/cases/primary-stream-tier3.test.ts $TMPO/cases/
+cp $V5W/harness/oracle/fixtures/primary-stream-tier3.json $TMPO/fixtures/
+cd /tmp/qt-v4-pin-p4122-97b25fc53
+PATH=$N:$PATH QT_FIXTURE_OUT=/tmp/p4122/qt-primary-stream.db npx tsx $V5W/harness/oracle/fixtures/build-primary-stream-fixture.ts
+PATH=$N:$PATH QT_FIXTURE_PRIMARY_STREAM=/tmp/p4122/qt-primary-stream.db QT_ORACLE_OUT=/tmp/p4122/oracle-primary-stream.ndjson \
+  npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- primary-stream-tier3
+```
+(the sibling `openai-chaining-fallback-tier3` regenerated the same way; 52
+calls / 46 llm_logs rows / 90 streamed calls matched).
+
+**Mutation proofs (each reverted by file backup):**
+| # | mutation | red |
+|---|---|---|
+| M1 | drop the `Flavor` gate | `openrouter-midstream-error-before` (decoder family) |
+| M2 | throw on `response.failed` | `openai-responses-failed` |
+| M3 | plain `StreamError::new` at the FINISH arm | composer: `deepseek-midstream-error-after [whole]` (the pending-then-finish route) |
+| M3b | the same at the PUSH arm | composer: `deepseek-midstream-error-before` |
+| M4 | the tier-3 arm built with the non-2xx builder (wrap + status) | `hard_stream_frame_code_rerouted` (detail bytes `200 …`) |
+| M4b | the tier-3 arm posed WITHOUT the side (`main`'s pump) | `hard_stream_frame_code_rerouted` → `failed / provider-error` |
+| M6a | add Z_AI to the catch-line map | composer silence leg `z-ai-midstream-error-before` |
+| M6b | drop the dispatcher hand-off | composer: capture empty (`deepseek-midstream-error-before`) |
+
+Item 12 (NIT): the two jest oracles' `openaiStatusError` hand-transcription
+left as ordered (the wire family drives the real client path); the existing
+`sdk_error` tier-3 arm still assembles `HTTP {s}: {body}` + the side by hand
+— `single_error_from` is private and exposing it is not a two-line change;
+left, recorded. Its side is the production `transport_error_refusal`.
 ## P4.123 — the wardrobe-tools avatar seam + the trigger's fallback reads + the outfit-failure level (lane record, 2026-09-30)
 
 Branch `claude/wardrobe-avatar-seam-porting-f84dad`, cut from `main` `4d033c9cc`; oracle pin `97b25fc53` via the lane-unique `/tmp/qt-v4-pin-p4123-97b25fc53` (§2 probe PASSED at lane start: v4 `main` at the baseline, both logs empty, tree clean).

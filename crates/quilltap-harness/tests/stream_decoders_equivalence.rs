@@ -34,11 +34,16 @@
 
 use std::path::{Path, PathBuf};
 
+use quilltap_core::llm_fallback::{classify_fallback_trigger, FallbackError};
 use quilltap_core::model::decoders::{
     AnthropicSseDecoder, ChatCompletionsFlavor, ChatCompletionsSseDecoder, DecodeError,
     GooglePartsDecoder, OllamaNdjsonDecoder, ResponsesApiSseDecoder, StreamDecoder,
 };
 use quilltap_core::model::stream::StreamChunk;
+use quilltap_core::model::streaming_provider::decode_stream_error;
+use quilltap_core::services::dangerous_content::refusal::{
+    classify_refusal, code_string, RefusalError, RefusalInput,
+};
 use serde_json::{json, Map, Value};
 
 fn streams_dir() -> PathBuf {
@@ -51,6 +56,13 @@ struct OracleCase {
     case: String,
     error: Option<String>,
     chunks: Vec<Value>,
+    /// P4.122: on a row whose generator THREW, the fields v4's classifier
+    /// duck-types off the thrown value (`record-stream-fixtures.mjs`
+    /// `thrownFields`), and v4's two verdicts over it. `None` on every row
+    /// that did not throw.
+    thrown: Option<Value>,
+    refusal: Option<Value>,
+    trigger: Option<String>,
 }
 
 fn load_recorded(decoder: &str) -> Vec<OracleCase> {
@@ -73,6 +85,9 @@ fn load_recorded(decoder: &str) -> Vec<OracleCase> {
                 case: v["case"].as_str().unwrap().to_string(),
                 error: v["error"].as_str().map(|s| s.to_string()),
                 chunks: v["chunks"].as_array().cloned().unwrap_or_default(),
+                thrown: v.get("thrown").cloned(),
+                refusal: v.get("refusal").cloned(),
+                trigger: v.get("trigger").and_then(Value::as_str).map(str::to_string),
             });
         }
     }
@@ -256,6 +271,7 @@ fn assert_matches(
                 "{}/{}: error message mismatch",
                 oracle.provider, oracle.case
             );
+            assert_thrown_matches(oracle, chunking, got);
         }
         (None, None) => {}
         (Some(_), None) => panic!(
@@ -293,6 +309,93 @@ fn assert_matches(
             serde_json::to_string_pretty(&want).unwrap()
         );
     }
+}
+
+/// P4.122 — the thrown value's STRUCTURE, not just its message: the refusal
+/// side the decoder attached (the fields v4's classifier reads off the value
+/// the SDK threw), and v4's two verdicts over it against v5's classifier over
+/// the `StreamError` the production pump builds from this `DecodeError`
+/// (`decode_stream_error`) — handed to the fallback engine exactly as the
+/// Salon hands it (`FallbackError::from_stream_error`).
+fn assert_thrown_matches(oracle: &OracleCase, chunking: &str, got: &DecodeError) {
+    let label = format!("{}/{} [{}]", oracle.provider, oracle.case, chunking);
+    let thrown = oracle
+        .thrown
+        .as_ref()
+        .unwrap_or_else(|| panic!("{label}: an erroring row must record `thrown`"));
+    let want_code = thrown.get("code").and_then(code_string);
+    let want_nested = thrown.get("errorCode").and_then(code_string);
+    let want_status = thrown
+        .get("status")
+        .and_then(Value::as_u64)
+        .map(|s| s as u16);
+    let want_reason = thrown
+        .get("providerReason")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    match got.refusal.as_deref() {
+        Some(side) => {
+            assert_eq!(
+                side.message,
+                thrown["message"].as_str().unwrap(),
+                "{label}: side message"
+            );
+            assert_eq!(side.code, want_code, "{label}: side code");
+            assert_eq!(side.nested_code, want_nested, "{label}: side nested code");
+            assert_eq!(
+                side.name.as_deref(),
+                thrown["name"].as_str(),
+                "{label}: side name"
+            );
+            assert_eq!(side.status, want_status, "{label}: side status");
+            assert_eq!(
+                side.provider_reason, want_reason,
+                "{label}: side providerReason"
+            );
+        }
+        // No side: v4's thrown value must carry nothing the classifier ranks
+        // on beyond its message (the Anthropic `error` event, whose whole
+        // event is the message and which has no `code`).
+        None => assert!(
+            want_code.is_none()
+                && want_nested.is_none()
+                && want_status.is_none()
+                && want_reason.is_none(),
+            "{label}: v4 threw a structured error ({thrown}) but v5 attached no side"
+        ),
+    }
+    let stream_err = decode_stream_error(got.clone());
+    let side_or_message = stream_err
+        .refusal
+        .as_deref()
+        .cloned()
+        .unwrap_or_else(|| RefusalError::message_only(stream_err.message.clone()));
+    let verdict = classify_refusal(RefusalInput {
+        error: Some(&side_or_message),
+        ..Default::default()
+    });
+    let want = oracle
+        .refusal
+        .as_ref()
+        .expect("an erroring row records `refusal`");
+    assert_eq!(
+        verdict.refused,
+        want["refused"].as_bool().unwrap(),
+        "{label}: refused"
+    );
+    assert_eq!(
+        verdict.evidence.map(|e| e.as_str().to_string()).as_deref(),
+        want.get("evidence").and_then(Value::as_str),
+        "{label}: evidence"
+    );
+    assert_eq!(
+        verdict.detail.as_deref(),
+        want.get("detail").and_then(Value::as_str),
+        "{label}: detail"
+    );
+    let trigger = classify_fallback_trigger(FallbackError::from_stream_error(&stream_err))
+        .map(|t| t.as_str().to_string());
+    assert_eq!(trigger, oracle.trigger, "{label}: fallback trigger");
 }
 
 /// Build the right decoder for a case and run all chunkings against the oracle.
@@ -361,7 +464,8 @@ fn run_decoder(decoder: &str) {
             .iter()
             .find(|o| o.provider == provider && o.case == case)
             .unwrap_or_else(|| panic!("no recorded oracle for {provider}/{case}"));
-        if provider == "nanogpt" {
+        // An erroring row has no final chunk to read the cache shape off.
+        if provider == "nanogpt" && oracle.error.is_none() {
             let final_chunk = oracle.chunks.last().expect("a final chunk");
             let cache = final_chunk.get("cacheUsage");
             let read = cache
@@ -439,6 +543,64 @@ fn run_decoder(decoder: &str) {
         assert!(
             nanogpt_rpu_object,
             "corpus lost every nanogpt case carrying a usage frame"
+        );
+    }
+    // P4.122 — the mid-stream error-frame coverage, read off v4's RECORDED
+    // rows. The SDK flavours throw on every coded/uncoded frame (4 providers
+    // × before/after/flat-event/uncoded, + the EOF-flush frame + Z.AI's
+    // numeric 1301 = 18); OpenRouter's raw path throws on NONE of its five
+    // (the divergence-by-design, pinned from v4's side); the Responses
+    // plugins throw on `event: error` (before/after) and an unnamed
+    // `data.error` frame, and NOT on `response.failed` (the convergence).
+    let recorded_throws = |pred: &dyn Fn(&OracleCase) -> bool| {
+        recorded
+            .iter()
+            .filter(|o| pred(o))
+            .map(|o| o.error.is_some())
+            .collect::<Vec<_>>()
+    };
+    if decoder == "chat_completions_sse" {
+        let sdk = recorded_throws(&|o| {
+            o.provider != "openrouter"
+                && o.case.contains("midstream")
+                && !o.case.ends_with("error-null")
+        });
+        assert_eq!(sdk.len(), 18, "the SDK-flavour error-frame rows moved");
+        assert!(
+            sdk.iter().all(|t| *t),
+            "an SDK error-frame row stopped throwing on v4"
+        );
+        let or = recorded_throws(&|o| o.provider == "openrouter" && o.case.contains("midstream"));
+        assert_eq!(
+            or.len(),
+            5,
+            "the OpenRouter raw-path error-frame rows moved"
+        );
+        assert!(
+            or.iter().all(|t| !*t),
+            "v4's OpenRouter raw path now throws on an error frame"
+        );
+        let null = recorded_throws(&|o| o.case.ends_with("midstream-error-null"));
+        assert_eq!(null.len(), 5);
+        assert!(
+            null.iter().all(|t| !*t),
+            "`{{\"error\":null}}` now throws on v4"
+        );
+    }
+    if decoder == "responses_api_sse" {
+        let throws = recorded_throws(&|o| {
+            o.case.contains("responses-event-error") || o.case.contains("responses-data-error")
+        });
+        assert_eq!(throws.len(), 6);
+        assert!(
+            throws.iter().all(|t| *t),
+            "a Responses error frame stopped throwing on v4"
+        );
+        let failed = recorded_throws(&|o| o.case.ends_with("responses-failed"));
+        assert_eq!(failed.len(), 2);
+        assert!(
+            failed.iter().all(|t| !*t),
+            "v4 now throws on `response.failed` — the convergence moved"
         );
     }
     eprintln!("OK: {decoder} — {checked} case(s) × 2–3 chunkings match v4.");

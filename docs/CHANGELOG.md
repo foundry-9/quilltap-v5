@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — fix(model): carry the refusal side on a mid-stream SDK error frame (P4.122 A)
+
+_Versions: core 0.0.1107, harness 0.0.1027._
+
+A 200 stream from an OpenAI-SDK provider that carries an error frame now
+fails the way v4's SDK fails it. `openai` 7.23.0 throws
+`APIError(undefined, …)` on `event: error` and on any frame whose
+`data.error` is truthy; v5's decoders dropped both, so a coded
+`content_filter` frame before any content ended the turn on the
+empty-response path instead of the hard-error failover. The Chat
+Completions decoder (all SDK flavours; OpenRouter's raw path still skips,
+as v4's does) and the Responses decoder now raise a `DecodeError` carrying
+the refusal side, built by a new `provider_error::openai_stream_error` over
+a `make_message` that learns v4's two no-status branches. The pump attaches
+the side at both mid-stream arms. `response.failed` still does not throw
+(v4 ends the stream without `response.completed`).
+
+The pump also logs v4's plugin catch line (`… API error in streamMessage`,
+with `context` and `baseUrl`) for OPENAI_COMPATIBLE, DEEPSEEK and NANOGPT on
+a mid-stream failure, and now runs under the caller's tracing dispatcher.
+
+Proof: the stream recorder records the thrown value's classifier fields,
+v4's two verdicts, and the plugin's ERROR lines; 35 new wire cases across
+the two corpora (24 red on `main`); the composer family pins the side and
+the log line through the real pump; a new `primary_stream_tier3` arm
+reroutes a coded frame through v4's real failover chain, keeps the partial
+after content, and matches v4 on an uncoded frame.
 #### 2026-09-30 — feat(wardrobe): a character's own wardrobe change refreshes its avatar (P4.123)
 
 _Versions: core 0.0.1107, harness 0.0.1027._

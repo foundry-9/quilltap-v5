@@ -331,5 +331,313 @@
         }
       }
     ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-midstream-error-before",
+    "wire": "midstream-error-before.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-midstream-error-after",
+    "wire": "midstream-error-after.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-midstream-event-error-flat",
+    "wire": "midstream-event-error-flat.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-midstream-error-uncoded",
+    "wire": "midstream-error-uncoded.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-midstream-error-null",
+    "wire": "midstream-error-null.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-midstream-error-before",
+    "wire": "midstream-error-before.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-midstream-error-after",
+    "wire": "midstream-error-after.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-midstream-event-error-flat",
+    "wire": "midstream-event-error-flat.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-midstream-error-uncoded",
+    "wire": "midstream-error-uncoded.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-midstream-error-null",
+    "wire": "midstream-error-null.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-midstream-error-before",
+    "wire": "midstream-error-before.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-midstream-error-after",
+    "wire": "midstream-error-after.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-midstream-event-error-flat",
+    "wire": "midstream-event-error-flat.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-midstream-error-uncoded",
+    "wire": "midstream-error-uncoded.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-midstream-error-null",
+    "wire": "midstream-error-null.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-midstream-error-before",
+    "wire": "midstream-error-before.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-midstream-error-after",
+    "wire": "midstream-error-after.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-midstream-event-error-flat",
+    "wire": "midstream-event-error-flat.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-midstream-error-uncoded",
+    "wire": "midstream-error-uncoded.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-midstream-error-null",
+    "wire": "midstream-error-null.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-midstream-error-before",
+    "wire": "midstream-error-before.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-midstream-error-after",
+    "wire": "midstream-error-after.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-midstream-event-error-flat",
+    "wire": "midstream-event-error-flat.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-midstream-error-uncoded",
+    "wire": "midstream-error-uncoded.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-midstream-error-null",
+    "wire": "midstream-error-null.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-midstream-error-eof",
+    "wire": "midstream-error-eof.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "z-ai-midstream-error-numeric-1301",
+    "wire": "midstream-error-numeric-1301.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
   }
 ]

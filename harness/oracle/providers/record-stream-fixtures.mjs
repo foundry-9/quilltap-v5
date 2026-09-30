@@ -26,11 +26,32 @@
  *
  * The `regenerate.sh` sibling drives all providers/decoders in one shot.
  *
- * NDJSON line shape (one per case): { decoder, provider, case, chunks: [<v4 StreamChunk>...] }
+ * NDJSON line shape (one per case): { decoder, provider, case, error, chunks: [<v4 StreamChunk>...] }
  * where each StreamChunk is the exact object the v4 generator yielded (its keys
  * omitted-when-absent, per v4). Node 24 (see [[oracle-node-abi-gotcha]] — no DB
  * here, but standardise the Node).
- */
+ *
+ * P4.122 — a case whose generator THREW also records `thrown` (the fields v4's
+ * refusal classifier duck-types off the thrown value — `record-text-errors.mjs`'s
+ * `thrownFields`: `message, name, code?, errorCode?, providerReason?, status?`,
+ * RAW values) and v4's two verdicts over that same value: `refusal` =
+ * `classifyRefusal({ error })`, `trigger` = `classifyFallbackTrigger(error)`.
+ * A case that did not throw carries none of the three keys (so every
+ * pre-existing row stays byte-identical). The verdicts import v4's REAL modules
+ * from `--v4 <checkout>`; since this runs from a PLUGIN dir, tsx must be given
+ * the checkout's root tsconfig so their `@/` imports resolve:
+ *
+ *   npx tsx --tsconfig <V4>/tsconfig.json <this> --v4 <V4> --provider …
+ *
+ * A throwing row also records `pluginErrorLog` when the plugin logged at ERROR
+ * level while the case ran (P4.122 item 6 — `openai-compatible.ts`'s, DeepSeek's
+ * and NanoGPT's `… API error in streamMessage` catch lines): `[{ plugin,
+ * message, context, error }]`, captured through `@quilltap/plugin-utils`' own
+ * host bridge (`globalThis.__quilltap_logger_factory` — the injection point
+ * the Quilltap host uses to route plugin logs into its logger), installed
+ * BEFORE any plugin module loads so module-level loggers route through it
+ * too. Non-error levels are forwarded to the console exactly as the
+ * standalone logger printed them. */
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -171,8 +192,65 @@ function wireToResponse(wire) {
   });
 }
 
+// The image recorder's `thrownFields`, as `record-text-errors.mjs` widened it
+// with `name` (P4.118) — copied verbatim so the three corpora agree on shape.
+function thrownFields(e) {
+  if (!(e instanceof Error)) return { message: String(e), name: null };
+  const out = { message: e.message, name: typeof e.name === 'string' ? e.name : null };
+  if (e.code !== undefined && e.code !== null) out.code = e.code;
+  const nested = e.error && typeof e.error === 'object' ? e.error.code : undefined;
+  if (nested !== undefined && nested !== null) out.errorCode = nested;
+  if (typeof e.providerReason === 'string') out.providerReason = e.providerReason;
+  const status =
+    typeof e.statusCode === 'number' ? e.statusCode : typeof e.status === 'number' ? e.status : undefined;
+  if (status !== undefined) out.status = status;
+  return out;
+}
+
+// The per-case ERROR-level plugin log (see the header). `null` between cases.
+let pluginErrorSink = null;
+function captureLogger(prefix, baseContext = {}) {
+  const fmt = (context) => {
+    const merged = { ...baseContext, ...context };
+    const entries = Object.entries(merged)
+      .filter(([key]) => key !== 'context')
+      .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+      .join(' ');
+    return entries ? ` ${entries}` : '';
+  };
+  return {
+    debug: (m, c) => console.debug(`[${prefix}] ${m}${fmt(c)}`),
+    info: (m, c) => console.info(`[${prefix}] ${m}${fmt(c)}`),
+    warn: (m, c) => console.warn(`[${prefix}] ${m}${fmt(c)}`),
+    error: (m, c, e) => {
+      console.error(`[${prefix}] ${m}${fmt(c)}`, e ? `\n${e.stack || e.message}` : '');
+      if (pluginErrorSink) {
+        pluginErrorSink.push({
+          plugin: prefix,
+          message: m,
+          context: { ...baseContext, ...(c ?? {}) },
+          error: e instanceof Error ? e.message : null,
+        });
+      }
+    },
+    child: (extra) => captureLogger(prefix, { ...baseContext, ...extra }),
+  };
+}
+globalThis.__quilltap_logger_factory = (pluginName) => captureLogger(pluginName);
+
 async function main() {
   const args = parseArgs();
+  if (!args.v4) {
+    console.error('usage: --v4 <checkout> is required (v4\'s classifier verdicts — P4.122)');
+    process.exit(1);
+  }
+  // v4's classifier + fallback trigger — the REAL modules, from the checkout.
+  const { classifyRefusal } = await import(
+    pathToFileURL(resolve(args.v4, 'lib/services/dangerous-content/refusal.ts')).href
+  );
+  const { classifyFallbackTrigger } = await import(
+    pathToFileURL(resolve(args.v4, 'lib/llm/fallback/engine.ts')).href
+  );
   const provider = args.provider;
   const casesPath = args.cases;
   const fixturesDir = args['fixtures-dir'];
@@ -201,6 +279,8 @@ async function main() {
     globalThis.fetch = async () => wireToResponse(wire);
     let chunks = [];
     let error = null;
+    let thrownValue = null;
+    pluginErrorSink = [];
     try {
       const inst = await spec.make();
       const params = {
@@ -221,19 +301,26 @@ async function main() {
       }
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
+      thrownValue = e;
     } finally {
       globalThis.fetch = origFetch;
     }
 
-    lines.push(
-      JSON.stringify({
-        decoder: c.decoder,
-        provider: c.provider,
-        case: c.case,
-        error,
-        chunks,
-      })
-    );
+    const row = {
+      decoder: c.decoder,
+      provider: c.provider,
+      case: c.case,
+      error,
+      chunks,
+    };
+    if (thrownValue !== null) {
+      row.thrown = thrownFields(thrownValue);
+      row.refusal = classifyRefusal({ error: thrownValue });
+      row.trigger = classifyFallbackTrigger(thrownValue);
+      if (pluginErrorSink.length > 0) row.pluginErrorLog = pluginErrorSink;
+    }
+    pluginErrorSink = null;
+    lines.push(JSON.stringify(row));
   }
 
   writeFileSync(outPath, lines.join('\n') + '\n');

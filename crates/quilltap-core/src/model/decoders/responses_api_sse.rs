@@ -39,6 +39,13 @@ pub struct ResponsesApiSseDecoder {
     /// two only part on a final response WITHOUT a truthy `output_text`, which
     /// no corpus wire carried until P4.D225's refusal wires.
     grok: bool,
+    /// P4.122: a mid-stream error frame (see
+    /// [`super::openai_sdk_frame_error`]), stashed so the chunks decoded
+    /// before it in the same push are returned first.
+    pending_error: Option<DecodeError>,
+    /// Set once the error has been surfaced — the SDK's iterator has thrown,
+    /// so nothing after it (not even the terminal `done`) is ever yielded.
+    failed: bool,
 }
 
 impl Default for ResponsesApiSseDecoder {
@@ -56,6 +63,19 @@ impl ResponsesApiSseDecoder {
             final_response: None,
             done_emitted: false,
             grok: false,
+            pending_error: None,
+            failed: false,
+        }
+    }
+
+    /// Surface the stashed error exactly once and latch the decoder shut.
+    fn take_pending(&mut self) -> Result<Vec<StreamChunk>, DecodeError> {
+        match self.pending_error.take() {
+            Some(e) => {
+                self.failed = true;
+                Err(e)
+            }
+            None => Ok(Vec::new()),
         }
     }
 
@@ -268,6 +288,16 @@ impl ResponsesApiSseDecoder {
                 continue;
             }
             if let Ok(v) = serde_json::from_str::<Value>(data) {
+                // P4.122: the generic `Stream` both Responses plugins iterate
+                // throws on `event: error` and on a truthy top-level
+                // `data.error` — and on nothing else: a `response.failed`
+                // frame (its error at `response.error`) falls through to
+                // `handle_event`'s `_ => {}` and the stream ends without
+                // `response.completed`, as on v4.
+                if let Some(e) = super::openai_sdk_frame_error(&ev.event, &v) {
+                    self.pending_error = Some(e);
+                    break;
+                }
                 self.handle_event(&v, &mut out);
             }
         }
@@ -277,13 +307,33 @@ impl ResponsesApiSseDecoder {
 
 impl StreamDecoder for ResponsesApiSseDecoder {
     fn push(&mut self, bytes: &[u8]) -> Result<Vec<StreamChunk>, DecodeError> {
+        if self.failed {
+            return Ok(Vec::new());
+        }
+        if self.pending_error.is_some() {
+            return self.take_pending();
+        }
         let events = self.sse.push(bytes);
-        Ok(self.process_events(events))
+        let out = self.process_events(events);
+        if out.is_empty() && self.pending_error.is_some() {
+            return self.take_pending();
+        }
+        Ok(out)
     }
 
     fn finish(&mut self) -> Result<Vec<StreamChunk>, DecodeError> {
+        if self.failed {
+            return Ok(Vec::new());
+        }
+        if self.pending_error.is_some() {
+            return self.take_pending();
+        }
         let events = self.sse.finish();
         let mut out = self.process_events(events);
+        // At most one event dispatches at EOF, so nothing precedes it here.
+        if self.pending_error.is_some() {
+            return self.take_pending();
+        }
         if !self.done_emitted {
             self.done_emitted = true;
             out.push(self.build_done());
@@ -308,6 +358,27 @@ mod tests {
         }
         out.extend(d.finish().unwrap());
         out
+    }
+
+    /// P4.122: `event: error` throws with the frame's code on the side; a
+    /// `response.failed` frame does NOT (v4 ends "without
+    /// response.completed" and yields an empty `done`).
+    #[test]
+    fn event_error_throws_and_response_failed_does_not() {
+        let mut d = ResponsesApiSseDecoder::new();
+        let err = d
+            .push(b"event: error\ndata: {\"type\":\"error\",\"code\":\"content_filter\",\"message\":\"No.\"}\n\n")
+            .unwrap_err();
+        assert_eq!(err.message, "No.");
+        assert_eq!(err.refusal.unwrap().code.as_deref(), Some("content_filter"));
+        assert!(d.finish().unwrap().is_empty());
+
+        let out = drive(
+            b"event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"x\"}}}\n\n",
+            0,
+        );
+        assert_eq!(out.len(), 1);
+        assert!(out[0].done);
     }
 
     #[test]

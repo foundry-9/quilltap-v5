@@ -1066,7 +1066,12 @@ mod tests {
     }
 
     /// Run one decision under a capture layer; return (reason, captured lines).
-    async fn decide(db: &Db, chat_id: &str, depth: i64, now_ms: i64) -> (&'static str, Vec<String>) {
+    async fn decide(
+        db: &Db,
+        chat_id: &str,
+        depth: i64,
+        now_ms: i64,
+    ) -> (&'static str, Vec<String>) {
         use tracing_subscriber::layer::SubscriberExt;
         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         let _g = tracing::subscriber::set_default(
@@ -1104,7 +1109,9 @@ mod tests {
         assert_eq!(reason, "error");
         assert_eq!(
             lines,
-            vec![format!("WARN {T} [TurnOrchestrator] Chat not found during chain chat_id=no-such-chat")]
+            vec![format!(
+                "WARN {T} [TurnOrchestrator] Chat not found during chain chat_id=no-such-chat"
+            )]
         );
     }
 

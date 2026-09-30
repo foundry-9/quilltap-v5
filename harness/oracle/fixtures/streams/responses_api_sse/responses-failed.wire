@@ -1,0 +1,6 @@
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"Partial "}
+
+event: response.failed
+data: {"type":"response.failed","response":{"id":"resp_f1","object":"response","status":"failed","error":{"code":"server_error","message":"The model failed."},"output":[],"output_text":""}}
+

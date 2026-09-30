@@ -334,6 +334,84 @@ fn single_error_from(
     single_stream_error(e)
 }
 
+/// The ERROR line three of v4's OpenAI-SDK text plugins log from the `catch`
+/// wrapping their whole `streamMessage` before rethrowing (P4.122 item 6):
+/// `openai-compatible.ts:578-585` (the OPENAI_COMPATIBLE base — its
+/// `providerName` defaults to `OpenAICompatible`), DeepSeek's `provider.ts:
+/// 439-446` and NanoGPT's `:467-474` — `this.logger.error('<Name> API error in
+/// streamMessage', { context: '<Name>Provider.streamMessage', baseUrl:
+/// this.baseUrl }, error)`. Z.AI, OPENAI and GROK carry no such catch;
+/// OpenRouter and the non-SDK plugins are not this code.
+///
+/// v4's `try` also covers the stream's OPENING, so a non-2xx logs it too; v5
+/// logs it only at the pump's mid-stream arms — the pre-stream arms
+/// (`single_error_from`) are outside P4.122's mandate and stay a named
+/// follow-up (the lane record). `baseUrl` is the value the plugin was
+/// constructed with: the profile's (localhost-rewritten, as v4's registry
+/// hands it over) or the manifest default. The error renders as its message
+/// (the `error = %…` convention of the other ported plugin catch lines).
+struct StreamCatchLog {
+    message: &'static str,
+    context: &'static str,
+    base_url: String,
+}
+
+impl StreamCatchLog {
+    fn for_call(provider: &str, base_url: Option<&str>, gateway: Option<&str>) -> Option<Self> {
+        let (message, context) = match provider {
+            "OPENAI_COMPATIBLE" => (
+                "OpenAICompatible API error in streamMessage",
+                "OpenAICompatibleProvider.streamMessage",
+            ),
+            "DEEPSEEK" => (
+                "DeepSeek API error in streamMessage",
+                "DeepSeekProvider.streamMessage",
+            ),
+            "NANOGPT" => (
+                "NanoGPT API error in streamMessage",
+                "NanoGPTProvider.streamMessage",
+            ),
+            _ => return None,
+        };
+        let base_url = match base_url.filter(|b| !b.is_empty()) {
+            Some(base) => rewrite_localhost_url(base, gateway),
+            None => Registry::built_in()
+                .get_provider(provider)?
+                .base_url
+                .clone(),
+        };
+        Some(Self {
+            message,
+            context,
+            base_url,
+        })
+    }
+
+    fn emit(&self, error: &str) {
+        tracing::error!(
+            target: "quilltap::model::streaming_provider",
+            context = self.context,
+            baseUrl = %self.base_url,
+            error = %error,
+            "{}",
+            self.message
+        );
+    }
+}
+
+/// A mid-stream decode failure as the channel's `StreamError` (P4.122): the
+/// message unchanged, plus the refusal side when the decoder read one off a
+/// coded error frame (`openai` 7.23.0's `APIError(undefined, …)`) — so a
+/// `content_filter` frame before the first content chunk reaches the
+/// classifier's `provider-code` evidence exactly as a coded non-2xx does.
+pub fn decode_stream_error(e: crate::model::decoders::DecodeError) -> StreamError {
+    let mut out = StreamError::new(e.message);
+    if let Some(r) = e.refusal {
+        out = out.with_refusal(*r);
+    }
+    out
+}
+
 fn single_stream_error(error: StreamError) -> tokio::sync::mpsc::Receiver<StreamChunkResult> {
     let (tx, rx) = tokio::sync::mpsc::channel(1);
     // The receiver is live (just created); try_send cannot fail on capacity 1.
@@ -394,6 +472,10 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
         } else {
             None
         };
+        // P4.122 item 6: the plugin catch line v4 logs on every mid-stream
+        // throw (see `StreamCatchLog`), resolved against this call's base URL.
+        let catch_log =
+            StreamCatchLog::for_call(provider, base_url, self.localhost_gateway.as_deref());
         async move {
             let (request, mut decoder, mut attachment_results) = match prepared {
                 Ok(p) => p,
@@ -471,53 +553,70 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
             // the byte receiver + decoder; a dropped consumer ends it via the
             // failed blocking_send.
             let mut bytes_rx = bytes_rx;
+            // P4.122: the pump thread logs under the CALLER's dispatcher — in
+            // production that is the global subscriber either way; under a
+            // test's scoped capture it lets the pump's lines (the catch line
+            // below, a decoder's WARN) reach the capture that started the
+            // stream instead of a thread nobody is listening on.
+            let dispatch = tracing::dispatcher::get_default(|d| d.clone());
             std::thread::spawn(move || {
-                // v4's plugins attach the format-time `attachmentResults` to the
-                // chunks they yield; the provider-agnostic decoders stamp an
-                // EMPTY `Some(..)` on the final chunk, so the builder's real
-                // report replaces exactly those (P4.21).
-                let stamp = move |mut chunk: crate::model::stream::StreamChunk| {
-                    if chunk.attachment_results.is_some() {
-                        chunk.attachment_results = Some(attachment_results.clone());
-                    }
-                    chunk
-                };
-                loop {
-                    match bytes_rx.blocking_recv() {
-                        Some(Ok(bytes)) => match decoder.push(&bytes) {
-                            Ok(chunks) => {
-                                for chunk in chunks {
-                                    if tx.blocking_send(Ok(stamp(chunk))).is_err() {
-                                        return;
+                tracing::dispatcher::with_default(&dispatch, move || {
+                    // v4's plugins attach the format-time `attachmentResults` to the
+                    // chunks they yield; the provider-agnostic decoders stamp an
+                    // EMPTY `Some(..)` on the final chunk, so the builder's real
+                    // report replaces exactly those (P4.21).
+                    let stamp = move |mut chunk: crate::model::stream::StreamChunk| {
+                        if chunk.attachment_results.is_some() {
+                            chunk.attachment_results = Some(attachment_results.clone());
+                        }
+                        chunk
+                    };
+                    loop {
+                        match bytes_rx.blocking_recv() {
+                            Some(Ok(bytes)) => match decoder.push(&bytes) {
+                                Ok(chunks) => {
+                                    for chunk in chunks {
+                                        if tx.blocking_send(Ok(stamp(chunk))).is_err() {
+                                            return;
+                                        }
                                     }
                                 }
-                            }
-                            Err(e) => {
-                                // v4's generator throws here — no finish().
-                                let _ = tx.blocking_send(Err(StreamError::new(e.message)));
+                                Err(e) => {
+                                    // v4's generator throws here — no finish().
+                                    if let Some(log) = &catch_log {
+                                        log.emit(&e.message);
+                                    }
+                                    let _ = tx.blocking_send(Err(decode_stream_error(e)));
+                                    return;
+                                }
+                            },
+                            Some(Err(te)) => {
+                                if let Some(log) = &catch_log {
+                                    log.emit(&te.message);
+                                }
+                                let _ = tx.blocking_send(Err(StreamError::new(te.message)));
                                 return;
                             }
-                        },
-                        Some(Err(te)) => {
-                            let _ = tx.blocking_send(Err(StreamError::new(te.message)));
-                            return;
+                            // Transport EOF.
+                            None => break,
                         }
-                        // Transport EOF.
-                        None => break,
                     }
-                }
-                match decoder.finish() {
-                    Ok(chunks) => {
-                        for chunk in chunks {
-                            if tx.blocking_send(Ok(stamp(chunk))).is_err() {
-                                return;
+                    match decoder.finish() {
+                        Ok(chunks) => {
+                            for chunk in chunks {
+                                if tx.blocking_send(Ok(stamp(chunk))).is_err() {
+                                    return;
+                                }
                             }
                         }
+                        Err(e) => {
+                            if let Some(log) = &catch_log {
+                                log.emit(&e.message);
+                            }
+                            let _ = tx.blocking_send(Err(decode_stream_error(e)));
+                        }
                     }
-                    Err(e) => {
-                        let _ = tx.blocking_send(Err(StreamError::new(e.message)));
-                    }
-                }
+                })
             });
 
             rx
@@ -728,6 +827,47 @@ mod tests {
             m.insert(p.to_string(), format!("synthetic-{}", p.to_lowercase()));
         }
         m
+    }
+
+    /// P4.122 item 6: which providers carry v4's plugin catch line, and the
+    /// `baseUrl` it names — the profile's (localhost-rewritten) over the
+    /// manifest default. The line itself is pinned against v4's recorded
+    /// `pluginErrorLog` by `streaming_composer_equivalence`.
+    #[test]
+    fn stream_catch_log_providers_and_base_url() {
+        let d = StreamCatchLog::for_call("DEEPSEEK", None, None).unwrap();
+        assert_eq!(d.message, "DeepSeek API error in streamMessage");
+        assert_eq!(d.context, "DeepSeekProvider.streamMessage");
+        assert_eq!(d.base_url, "https://api.deepseek.com");
+        let o = StreamCatchLog::for_call(
+            "OPENAI_COMPATIBLE",
+            Some("http://localhost:1234/v1"),
+            Some("host.docker.internal"),
+        )
+        .unwrap();
+        assert_eq!(
+            o.base_url,
+            rewrite_localhost_url("http://localhost:1234/v1", Some("host.docker.internal"))
+        );
+        assert_eq!(o.context, "OpenAICompatibleProvider.streamMessage");
+        // An empty profile base is no override.
+        assert_eq!(
+            StreamCatchLog::for_call("NANOGPT", Some(""), None)
+                .unwrap()
+                .base_url,
+            "https://nano-gpt.com/api/v1"
+        );
+        for p in [
+            "Z_AI",
+            "OPENAI",
+            "GROK",
+            "OPENROUTER",
+            "ANTHROPIC",
+            "GOOGLE",
+            "OLLAMA",
+        ] {
+            assert!(StreamCatchLog::for_call(p, None, None).is_none(), "{p}");
+        }
     }
 
     /// Decoder/flavor selection for all nine providers.
