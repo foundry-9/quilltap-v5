@@ -17,6 +17,7 @@ import { notifyQueueChange } from '../../layout/queue-status.logic';
 import { AvatarStack, type AvatarStackEntity, normalizeAvatarSrc } from '../../ui/avatar-stack';
 import { Icon } from '../../ui/icon';
 import { ScriptoriumBadge } from '../../ui/scriptorium-badge';
+import { MemoryBadge } from '../../memory/memory-badge';
 import { Tooltip } from '../../ui/tooltip';
 import { ToastService } from '../../ui/toast.service';
 
@@ -46,7 +47,7 @@ import { ToastService } from '../../ui/toast.service';
 @Component({
   selector: 'qt-chat-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, AvatarStack, ScriptoriumBadge, ConciergeMark, Tooltip],
+  imports: [RouterLink, Icon, AvatarStack, ScriptoriumBadge, ConciergeMark, MemoryBadge, Tooltip],
   template: `
     <a
       class="qt-entity-card chat-card relative block cursor-pointer transition-colors"
@@ -97,16 +98,11 @@ import { ToastService } from '../../ui/toast.service';
                    the chat's memories and re-extract them. v4 gates it on
                    memoryCount !== undefined, and its transforms always answer a
                    number (chat-utils.ts:71,129), so it renders at zero too. -->
-              <qt-tooltip content="Memories — click to delete and re-extract">
-                <button
-                  type="button"
-                  class="chat-card__badge inline-flex items-center gap-1 rounded-full qt-bg-primary/10 px-2.5 py-0.5 qt-body-sm font-semibold flex-shrink-0 hover:qt-bg-primary/20 transition-colors cursor-pointer"
-                  [attr.aria-label]="memoryCount() + ' memories — delete and re-extract'"
-                  (click)="onReextractMemories($event)"
-                >
-                  <qt-icon name="book" class="w-3 h-3" />{{ memoryCount() }}
-                </button>
-              </qt-tooltip>
+              <qt-memory-badge
+                [chatId]="chat().id"
+                [count]="memoryCount()"
+                (reextract)="reextractMemories.emit($event)"
+              />
 
               <qt-scriptorium-badge
                 [status]="chat().scriptoriumStatus"
@@ -264,16 +260,6 @@ export class ChatCard {
     event.preventDefault();
     event.stopPropagation();
     this.delete.emit(this.chat().id);
-  }
-
-  /**
-   * v4 `ChatCard.tsx:273-277` — the whole card is a link, so the badge stops the
-   * navigation before it emits; the host owns confirm + dispatch + refresh.
-   */
-  protected onReextractMemories(event: Event): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.reextractMemories.emit(this.chat().id);
   }
 
   /**

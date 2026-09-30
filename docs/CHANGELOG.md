@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — refactor(spa): one memory badge component over its two card hosts
+
+_Versions: SPA 0.5.790._
+
+The chat card's memory badge (Salon list and character Conversations tab) was byte-duplicated markup and handler; it is now one `qt-memory-badge` component. aria-label bytes and behavior unchanged.
+
 #### 2026-09-30 — refactor(spa): the Concierge on-duty derivation gets a pure chat-tree home
 
 _Versions: SPA 0.5.789._
