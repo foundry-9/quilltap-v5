@@ -192,6 +192,7 @@ pub mod format_tokens;
 pub mod generators;
 // === end P4.9K0 ===
 pub mod help_doc_slug;
+pub mod host_zone;
 pub mod image_gen;
 pub mod image_gen_data;
 pub mod jsnum;

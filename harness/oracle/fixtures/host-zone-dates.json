@@ -1,0 +1,34 @@
+{
+  "instants": [
+    "2026-09-29T19:40:00.000Z",
+    "2026-01-29T19:40:00.000Z",
+    "2026-03-08T07:59:00.000Z",
+    "2026-03-08T08:00:00.000Z",
+    "2026-11-01T06:30:00.000Z",
+    "2026-11-01T07:30:00.000Z",
+    "2026-06-15T04:30:00.000Z",
+    "2026-06-15T05:30:00.000Z",
+    "2023-11-14T22:13:20.000Z",
+    "2026-02-01T00:00:00.000Z",
+    "2026-12-31T23:59:59.999Z"
+  ],
+  "letters": [
+    { "path": "Mail/1790710800000-from-bertie.md", "from": "Bertie", "sentAt": "2026-09-29T19:40:00.000Z", "body": "  Dinner at eight.  ", "alerted": false },
+    { "path": "Mail/1769715600000-from-aunt-agatha.md", "from": "Aunt Agatha", "sentAt": "2026-01-29T19:40:00.000Z", "body": "Line one\n\nLine two", "alerted": true },
+    { "path": "Mail/1772956740000-from-jeeves.md", "from": "Jeeves", "sentAt": "2026-03-08T07:59:00.000Z", "body": "   ", "alerted": false }
+  ],
+  "searchResults": [
+    { "title": "Late edition", "url": "https://example.test/a", "snippet": "Filed after midnight UTC.", "publishedDate": "2026-06-15T03:00:00.000Z" },
+    { "title": "Winter notes", "url": "https://example.test/b", "snippet": "A January piece.", "publishedDate": "2026-01-05T05:59:59.000Z" },
+    { "title": "Undated", "url": "https://example.test/c", "snippet": "No date at all." },
+    { "title": "Morning post", "url": "https://example.test/d", "snippet": "Well after local midnight.", "publishedDate": "2026-06-15T12:00:00.000Z" }
+  ],
+  "almanackDates": {
+    "generatedAt": "2026-09-29T19:40:00.000Z",
+    "lastMigrationAt": "2026-08-05 09:07:03",
+    "backupNewestDate": "2026-01-04T09:15:00.000Z",
+    "backupOldestDate": "2026-03-08T08:30:00.000Z",
+    "lastMaintenanceSweepAt": "2026-01-05T23:30:00",
+    "oldestPendingScheduledAt": "2026-11-01T06:30:00.000Z"
+  }
+}

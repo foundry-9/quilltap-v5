@@ -45,10 +45,13 @@ use crate::db::{chats_messages_read, DbError};
 /// interchanges.
 ///
 /// Order is v4's: the events read first, then the per-seat character reads.
+/// `zone` is the zone every timestamp renders in — v4's `toLocale*` calls
+/// carry no `timeZone`, so production passes the host's (P4.119).
 pub fn render_chat_conversation(
     conn: &Connection,
     chat: &Value,
     now_iso: &str,
+    zone: &jiff::tz::TimeZone,
 ) -> Result<Option<RenderedConversation>, DbError> {
     let started = Instant::now();
     let str_of = |key: &str| {
@@ -83,8 +86,13 @@ pub fn render_chat_conversation(
         created_at: str_of("createdAt"),
         last_updated_at: str_of("updatedAt"),
     };
-    let result =
-        render_conversation_markdown(&messages, speaker_names.entries(), Some(&metadata), now_iso);
+    let result = render_conversation_markdown(
+        &messages,
+        speaker_names.entries(),
+        Some(&metadata),
+        now_iso,
+        zone,
+    );
 
     tracing::debug!(
         target: "quilltap::scriptorium",
@@ -177,7 +185,9 @@ mod tests {
     #[test]
     fn a_chat_with_no_events_renders_nothing_and_says_so() {
         let conn = conn();
-        let (out, lines) = captured_with(|| render_chat_conversation(&conn, &chat(), NOW));
+        let (out, lines) = captured_with(|| {
+            render_chat_conversation(&conn, &chat(), NOW, &jiff::tz::TimeZone::UTC)
+        });
         assert!(out.unwrap().is_none());
         assert!(
             lines
@@ -211,7 +221,9 @@ mod tests {
             "And to you.",
             "2026-09-01T10:02:00.000Z",
         );
-        let (out, lines) = captured_with(|| render_chat_conversation(&conn, &chat(), NOW));
+        let (out, lines) = captured_with(|| {
+            render_chat_conversation(&conn, &chat(), NOW, &jiff::tz::TimeZone::UTC)
+        });
         let rendered = out.unwrap().expect("two events render");
         assert_eq!(rendered.interchanges.len(), 1);
         assert!(rendered.markdown.contains("Current time: "));
@@ -265,7 +277,7 @@ mod tests {
             "Quite.",
             "2026-09-01T10:03:00.000Z",
         );
-        let rendered = render_chat_conversation(&conn, &chat(), NOW)
+        let rendered = render_chat_conversation(&conn, &chat(), NOW, &jiff::tz::TimeZone::UTC)
             .unwrap()
             .unwrap();
         let md = &rendered.markdown;

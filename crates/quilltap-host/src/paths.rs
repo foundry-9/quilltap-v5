@@ -86,8 +86,5 @@ pub fn app_dir() -> PathBuf {
 /// The system IANA timezone for cron evaluation (v4 evaluates crons in the
 /// process zone). Falls back to UTC when the platform zone is unnameable.
 pub fn system_timezone() -> String {
-    jiff::tz::TimeZone::system()
-        .iana_name()
-        .unwrap_or("UTC")
-        .to_string()
+    quilltap_core::host_zone::system_zone_name()
 }

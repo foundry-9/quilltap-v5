@@ -39,6 +39,11 @@
 //!   TZ=UTC QT_FIXTURE_TMP_MAIN=/tmp/qt-mail-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-mail-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-mail-tools.ndjson \
 //!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "mail-tools\.test\.ts$"
+//!   # P4.119: each mail row records its `tz` and the Rust side is fed that zone
+//!   # by argument. v4's `jest.config.ts` forces `TZ=UTC` before any worker
+//!   # starts, so this jest family cannot run a second zone; the host-zone
+//!   # proof for these same letter dates + reply prefaces is the tsx family
+//!   # `host_zone_dates_equivalence`.
 //!   QT_ORACLE_OUT=/tmp/oracle-carina-tool.ndjson \
 //!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "carina-tool\.test\.ts$"
 //! Run:
@@ -61,9 +66,9 @@ use quilltap_core::tools::discard_mail::{execute_discard_mail, format_discard_ma
 use quilltap_core::tools::doc_edit::{
     execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext,
 };
-use quilltap_core::tools::list_mail::{execute_list_mail, format_list_mail_results};
-use quilltap_core::tools::read_mail::{execute_read_mail, format_read_mail_results};
-use quilltap_core::tools::send_mail::{execute_send_mail, format_send_mail_results};
+use quilltap_core::tools::list_mail::{execute_list_mail_in_zone, format_list_mail_results};
+use quilltap_core::tools::read_mail::{execute_read_mail_in_zone, format_read_mail_results};
+use quilltap_core::tools::send_mail::{execute_send_mail_in_zone, format_send_mail_results};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -196,6 +201,7 @@ async fn mail_carina_tools_matches_oracle() {
         &load_oracle(&mail_oracle),
         &main_fx,
         &mount_fx,
+        "UTC",
     )
     .await;
     assert_mail_logs(&logs, &spec, &meta);
@@ -639,13 +645,25 @@ fn mail_lines(lines: Vec<String>) -> Vec<String> {
 /// `(label, per-op steps, per-op mail log lines)`.
 type ScenarioRun = (Vec<Value>, Vec<Vec<String>>);
 
+/// `expected_tz` is the zone the oracle ran under — every row records it
+/// (`tz`), and v5's tools are fed it by argument (P4.119: v4's letter dates
+/// are zone-less `formatDateTime` renders, the host's zone).
 async fn run_mail(
     spec: &Spec,
     meta: &Meta,
     oracle: &HashMap<String, Value>,
     main_fx: &str,
     mount_fx: &str,
+    expected_tz: &str,
 ) -> HashMap<&'static str, Vec<Vec<String>>> {
+    for (label, row) in oracle {
+        assert_eq!(
+            row.get("tz").and_then(Value::as_str),
+            Some(expected_tz),
+            "mail oracle row {label} was generated under a different TZ — regenerate"
+        );
+    }
+    let the_zone = quilltap_core::host_zone::TimeZone::get(expected_tz).expect("a zone jiff knows");
     let mut logs = HashMap::new();
     let scs = scenarios(spec, meta);
     assert_eq!(
@@ -662,6 +680,7 @@ async fn run_mail(
         let ops = sc.ops.clone();
         let user_id = spec.user_id.clone();
         let now_iso = spec.fixed_sent_at.clone();
+        let zone = the_zone.clone();
         let vaults = (meta.recipient_vault.clone(), meta.reader_vault.clone());
 
         let (steps, op_logs): ScenarioRun = db
@@ -675,7 +694,7 @@ async fn run_mail(
                     let (step, lines) = quilltap_core::test_support::captured_with(|| -> Result<Value, DbError> {
                         Ok(match op {
                             Op::Send(args, cid) => {
-                                let out = execute_send_mail(
+                                let out = execute_send_mail_in_zone(
                                     main_c,
                                     mount_c,
                                     "chat-x",
@@ -683,18 +702,19 @@ async fn run_mail(
                                     cid.as_deref(),
                                     args,
                                     &now_iso,
+                                    &zone,
                                 );
                                 sent_path = if out.success { out.path.clone() } else { None };
                                 json!({ "op": "send", "json": serde_json::to_string(&out).unwrap(), "fmt": format_send_mail_results(&out) })
                             }
                             Op::List(cid) => {
                                 let out =
-                                    execute_list_mail(main_c, mount_c, "chat-x", Some(cid), &json!({}));
+                                    execute_list_mail_in_zone(main_c, mount_c, "chat-x", Some(cid), &json!({}), &zone);
                                 json!({ "op": "list", "json": serde_json::to_string(&out).unwrap(), "fmt": format_list_mail_results(&out) })
                             }
                             Op::Read(args, cid) => {
                                 let out =
-                                    execute_read_mail(main_c, mount_c, "chat-x", cid.as_deref(), args);
+                                    execute_read_mail_in_zone(main_c, mount_c, "chat-x", cid.as_deref(), args, &zone);
                                 json!({ "op": "read", "json": serde_json::to_string(&out).unwrap(), "fmt": format_read_mail_results(&out) })
                             }
                             Op::Discard(args, cid) => {
@@ -927,16 +947,24 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
                 .map_err(|e| DbError::Internal(e.to_string()))?;
             let name = letter.strip_prefix("Mail/").unwrap().to_string();
             let (o, l) = quilltap_core::test_support::captured_with(|| {
-                execute_list_mail(main_c, mount_c, "chat-plant", Some(&reader), &json!({}))
+                execute_list_mail_in_zone(
+                    main_c,
+                    mount_c,
+                    "chat-plant",
+                    Some(&reader),
+                    &json!({}),
+                    &quilltap_core::host_zone::TimeZone::UTC,
+                )
             });
             out.push(("list".into(), o.listing, mail_lines(l)));
             let (o, l) = quilltap_core::test_support::captured_with(|| {
-                execute_read_mail(
+                execute_read_mail_in_zone(
                     main_c,
                     mount_c,
                     "chat-plant",
                     Some(&reader),
                     &json!({ "letter": name }),
+                    &quilltap_core::host_zone::TimeZone::UTC,
                 )
             });
             out.push(("read".into(), o.text, mail_lines(l)));
@@ -953,7 +981,7 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
             // v4's `send_mail` catch (`send-mail-handler.ts:107-114`): the
             // delivery's link write fails on the dropped table.
             let (o, l) = quilltap_core::test_support::captured_with(|| {
-                execute_send_mail(
+                execute_send_mail_in_zone(
                     main_c,
                     mount_c,
                     "chat-plant",
@@ -961,6 +989,7 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
                     Some(&reader),
                     &json!({ "character": reader.as_str(), "message": "to myself" }),
                     "2026-09-29T00:00:00.000Z",
+                    &quilltap_core::host_zone::TimeZone::UTC,
                 )
             });
             out.push(("send".into(), o.message, mail_lines(l)));

@@ -220,10 +220,21 @@ pub fn execute_web_search<P: WebSearchProvider + ?Sized>(
     }
 }
 
-/// v4 `formatWebSearchResults` — the BUILT-IN formatter (the provider's own
-/// `formatResults` is a plugin seam not ported). A `publishedDate` renders via the
-/// UTC-pinned `toLocaleDateString()`.
+/// v4 `formatWebSearchResults` in the HOST's zone — the production entry (the
+/// tool executor's). v4's `toLocaleDateString()` carries no `timeZone`, so a
+/// `publishedDate` renders in the Node process's zone (P4.119). Tests and
+/// differentials call [`format_web_search_results_in_zone`] explicitly.
 pub fn format_web_search_results(results: &[WebSearchResult]) -> String {
+    format_web_search_results_in_zone(results, &crate::host_zone::system_display_zone())
+}
+
+/// v4 `formatWebSearchResults` — the BUILT-IN formatter (the provider's own
+/// `formatResults` is a plugin seam not ported). A `publishedDate` renders via
+/// `toLocaleDateString()` in `zone`.
+pub fn format_web_search_results_in_zone(
+    results: &[WebSearchResult],
+    zone: &jiff::tz::TimeZone,
+) -> String {
     if results.is_empty() {
         return "No search results found.".to_string();
     }
@@ -232,7 +243,9 @@ pub fn format_web_search_results(results: &[WebSearchResult]) -> String {
         .enumerate()
         .map(|(index, r)| {
             let date_str = match &r.published_date {
-                Some(d) if !d.is_empty() => format!(" (Published: {})", format_date_short_us(d)),
+                Some(d) if !d.is_empty() => {
+                    format!(" (Published: {})", format_date_short_us(d, zone))
+                }
                 _ => String::new(),
             };
             format!(
@@ -583,7 +596,10 @@ mod tests {
         let out = execute_web_search(&p, "u", &json!({ "query": "ai" }));
         assert!(out.success);
         assert_eq!(out.total_found, 2);
-        let fmt = format_web_search_results(out.results.as_deref().unwrap());
+        let fmt = format_web_search_results_in_zone(
+            out.results.as_deref().unwrap(),
+            &jiff::tz::TimeZone::UTC,
+        );
         assert!(fmt.contains("(Published: 6/15/2026)"));
         assert!(fmt.starts_with("Found 2 search results:"));
     }

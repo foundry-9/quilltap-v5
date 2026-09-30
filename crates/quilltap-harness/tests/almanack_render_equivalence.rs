@@ -74,7 +74,7 @@ fn almanack_render_matches_oracle() {
         );
 
         let want = v["markdown"].as_str().expect("markdown");
-        let got = render_almanack_markdown(&data);
+        let got = render_almanack_markdown(&data, &quilltap_core::host_zone::TimeZone::UTC);
         if got != want {
             panic!(
                 "case {name}: rendered markdown differs\n{}",

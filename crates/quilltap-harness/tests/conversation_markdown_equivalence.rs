@@ -10,18 +10,26 @@
 //! `Current time:` line) is the corpus `nowIso`, frozen on the oracle side by
 //! replacing `globalThis.Date` and injected on the Rust side as a parameter.
 //!
-//! `TZ=UTC` is load-bearing on BOTH sides: v4 formats through
-//! `toLocaleDateString('en-US')` / `toLocaleTimeString('en-US')` with no
-//! explicit zone, so the timestamps follow the host zone; the port computes in
-//! UTC.
+//! The zone is load-bearing: v4 formats through `toLocaleDateString('en-US')`
+//! / `toLocaleTimeString('en-US')` with no explicit zone, so the timestamps
+//! follow the host zone; the port takes the zone as an ARGUMENT (P4.119) and
+//! is fed the zone each oracle row records. The corpus runs under TWO zones —
+//! `TZ=UTC` (the standing pin) and `TZ=America/Chicago` (the second-zone arm:
+//! a span straddling UTC midnight but not local midnight, a spring-forward
+//! pair, a fall-back fold) — both REQUIRED; a file generated under the wrong
+//! `TZ` fails loudly. Neither side reads this machine's zone, so the family is
+//! green on any host.
 //!
-//! Regenerate the oracle (Node 24, from the v4 checkout):
+//! Regenerate the oracles (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this worktree>
 //!   cd ~/source/quilltap-server
 //!   TZ=UTC $N/npx tsx $V5/harness/oracle/cases/conversation-markdown.ts \
 //!     > /tmp/oracle-conversation-markdown.ndjson
+//!   TZ=America/Chicago $N/npx tsx $V5/harness/oracle/cases/conversation-markdown.ts \
+//!     > /tmp/oracle-conversation-markdown-chicago.ndjson
 //! Run:
 //!   QT_ORACLE_CONVERSATION_MARKDOWN=/tmp/oracle-conversation-markdown.ndjson \
+//!   QT_ORACLE_CONVERSATION_MARKDOWN_CHICAGO=/tmp/oracle-conversation-markdown-chicago.ndjson \
 //!     cargo test -p quilltap-harness --test conversation_markdown_equivalence
 
 use std::path::{Path, PathBuf};
@@ -81,6 +89,8 @@ struct OracleInterchange {
 #[serde(rename_all = "camelCase")]
 struct OracleRow {
     name: String,
+    /// The zone v4 rendered in (`Intl…resolvedOptions().timeZone`).
+    tz: String,
     markdown: String,
     interchanges: Vec<OracleInterchange>,
 }
@@ -101,13 +111,32 @@ fn conversation_markdown_matches_oracle() {
             return;
         }
     };
+    run_file(&oracle_path, "UTC");
+}
 
+/// P4.119 Tier 2: the second-zone arm — the same corpus rendered by v4 under
+/// `TZ=America/Chicago`, v5 fed that zone by argument.
+#[test]
+fn conversation_markdown_matches_oracle_second_zone() {
+    let oracle_path = match std::env::var("QT_ORACLE_CONVERSATION_MARKDOWN_CHICAGO") {
+        Ok(p) => p,
+        Err(_) => {
+            eprintln!(
+                "SKIP: set QT_ORACLE_CONVERSATION_MARKDOWN_CHICAGO to the TZ=America/Chicago oracle NDJSON (see header)."
+            );
+            return;
+        }
+    };
+    run_file(&oracle_path, "America/Chicago");
+}
+
+fn run_file(oracle_path: &str, expected_tz: &str) {
     let spec: Spec = serde_json::from_str(
         &std::fs::read_to_string(spec_path()).unwrap_or_else(|e| panic!("read spec: {e}")),
     )
     .expect("parse spec");
     let oracle_text =
-        std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
+        std::fs::read_to_string(oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
     let rows: Vec<OracleRow> = oracle_text
         .lines()
         .filter(|l| !l.trim().is_empty())
@@ -125,6 +154,15 @@ fn conversation_markdown_matches_oracle() {
             .collect::<Vec<_>>(),
         "oracle case set/order diverges from the corpus — regenerate"
     );
+
+    for row in &rows {
+        assert_eq!(
+            row.tz, expected_tz,
+            "oracle {oracle_path} row {} was generated under TZ={}, expected {expected_tz} — regenerate",
+            row.name, row.tz
+        );
+    }
+    let zone = quilltap_core::host_zone::TimeZone::get(expected_tz).expect("a zone jiff knows");
 
     for (case, want) in spec.cases.iter().zip(rows.iter()) {
         let messages: Vec<RenderEvent> = case
@@ -150,6 +188,7 @@ fn conversation_markdown_matches_oracle() {
             &case.character_names,
             metadata.as_ref(),
             &spec.now_iso,
+            &zone,
         );
 
         assert_eq!(

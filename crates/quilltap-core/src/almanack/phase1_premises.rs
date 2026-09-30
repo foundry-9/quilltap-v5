@@ -21,6 +21,7 @@
 //! `'lima'` from that union; v5 never emitted it, so nothing but this sentence
 //! moved.)
 
+use jiff::tz::TimeZone;
 use std::path::{Path, PathBuf};
 
 use crate::db::runtime::Db;
@@ -45,6 +46,12 @@ pub struct AlmanackPaths {
     pub data_dir: PathBuf,
     /// The physical-backup directory (v4 `getBackupsDir()`).
     pub backups_dir: PathBuf,
+    /// The zone v4's zone-less date calls resolve — the Node process's, i.e.
+    /// the HOST's (P4.119): the backup filenames' local `new Date(y, m, …)`
+    /// parse and every date the volume renders. The host passes
+    /// [`crate::host_zone::system_display_zone`]; a differential passes the
+    /// zone its oracle ran under, so the report never reads the machine's.
+    pub display_zone: TimeZone,
 }
 
 /// Host-supplied runtime facts (v4 reads `process`/`os`; v5's host owns them).
@@ -146,9 +153,11 @@ pub fn collect_database_security(
 
 /// One backup-filename parser: `quilltap[-<suffix>]-YYYY-MM-DDTHHmmss.db`.
 /// Returns epoch ms. v4 builds a LOCAL-time `Date` from the parts and later
-/// `toISOString()`s it; under the pinned `TZ=UTC` those coincide, and v5
-/// computes UTC (the same standing constraint `format_time` documents).
-fn parse_backup_filename(filename: &str, prefix: &str) -> Option<i64> {
+/// `toISOString()`s it, so the parts are read in `zone` — the host's in
+/// production (P4.119, Mandate 3): the Almanack renders the stamp back through
+/// the same zone, so the filename's digits print unchanged, where a UTC parse
+/// under a local render would shift them by the offset.
+fn parse_backup_filename(filename: &str, prefix: &str, zone: &TimeZone) -> Option<i64> {
     let rest = filename.strip_prefix(prefix)?.strip_suffix(".db")?;
     // `YYYY-MM-DDTHHmmss`
     let bytes = rest.as_bytes();
@@ -172,14 +181,18 @@ fn parse_backup_filename(filename: &str, prefix: &str) -> Option<i64> {
     // rejecting them (the regex already bounds them to two digits), so the
     // civil-days helper's rolling arithmetic is the faithful match.
     let days = crate::clock::days_from_civil(year, month, day);
-    Some((days * 86_400 + hour * 3_600 + minute * 60 + second) * 1000)
+    let wall_ms = (days * 86_400 + hour * 3_600 + minute * 60 + second) * 1000;
+    crate::format_time::wall_ms_in_zone(wall_ms, zone)
 }
 
-/// v4 `collectBackupStatus` — the three parsers, in v4's order.
+/// v4 `collectBackupStatus` — the three parsers, in v4's order, reading each
+/// filename's timestamp in `paths.display_zone` (v4's `new Date(y, m, …)` is
+/// the Node process's local time — P4.119).
 ///
 /// Order matters: the main-DB parser is the loosest, so the two prefixed
 /// parsers must get first refusal on every filename.
 pub fn collect_backup_status(paths: &AlmanackPaths) -> Vec<BackupInfo> {
+    let zone = &paths.display_zone;
     const PARSERS: [(&str, &str); 3] = [
         ("LLM Logs", "quilltap-llm-logs-"),
         ("Mount Index", "quilltap-mount-index-"),
@@ -203,7 +216,7 @@ pub fn collect_backup_status(paths: &AlmanackPaths) -> Vec<BackupInfo> {
         names.sort();
         for filename in names {
             for (idx, (_, prefix)) in PARSERS.iter().enumerate() {
-                let Some(ms) = parse_backup_filename(&filename, prefix) else {
+                let Some(ms) = parse_backup_filename(&filename, prefix, zone) else {
                     continue;
                 };
                 // Skip files we can't stat; the count still reflects reality.
@@ -269,7 +282,9 @@ mod tests {
     #[test]
     fn backup_filenames_parse_like_v4() {
         // `quilltap-2026-08-04T031500.db` → 2026-08-04T03:15:00Z under TZ=UTC.
-        let ms = parse_backup_filename("quilltap-2026-08-04T031500.db", "quilltap-").unwrap();
+        let ms =
+            parse_backup_filename("quilltap-2026-08-04T031500.db", "quilltap-", &TimeZone::UTC)
+                .unwrap();
         assert_eq!(
             crate::clock::iso_from_unix_ms(ms),
             "2026-08-04T03:15:00.000Z"
@@ -278,15 +293,54 @@ mod tests {
         // caller tries them first, and the main prefix DOES match these names.
         assert!(parse_backup_filename(
             "quilltap-llm-logs-2026-08-04T031500.db",
-            "quilltap-llm-logs-"
+            "quilltap-llm-logs-",
+            &TimeZone::UTC
         )
         .is_some());
-        assert!(
-            parse_backup_filename("quilltap-llm-logs-2026-08-04T031500.db", "quilltap-").is_none()
-        );
+        assert!(parse_backup_filename(
+            "quilltap-llm-logs-2026-08-04T031500.db",
+            "quilltap-",
+            &TimeZone::UTC
+        )
+        .is_none());
         // Rejections.
-        assert!(parse_backup_filename("quilltap-2026-08-04T0315.db", "quilltap-").is_none());
-        assert!(parse_backup_filename("quilltap-backup.db", "quilltap-").is_none());
-        assert!(parse_backup_filename("quilltap-2026-08-04T031500.sqlite", "quilltap-").is_none());
+        assert!(
+            parse_backup_filename("quilltap-2026-08-04T0315.db", "quilltap-", &TimeZone::UTC)
+                .is_none()
+        );
+        assert!(parse_backup_filename("quilltap-backup.db", "quilltap-", &TimeZone::UTC).is_none());
+        assert!(parse_backup_filename(
+            "quilltap-2026-08-04T031500.sqlite",
+            "quilltap-",
+            &TimeZone::UTC
+        )
+        .is_none());
+    }
+
+    /// P4.119 red-first: v4's `new Date(y, m-1, d, h, mi, s)` is LOCAL, so
+    /// under `America/Chicago` a summer stamp is 5 h behind UTC and a winter
+    /// one 6 h — each file its own offset (Node 24, `TZ=America/Chicago`:
+    /// `new Date(2026,7,4,3,15,0).toISOString()` → `2026-08-04T08:15:00.000Z`).
+    #[test]
+    fn backup_filenames_parse_in_the_passed_zone() {
+        let zone = TimeZone::get("America/Chicago").unwrap();
+        let summer =
+            parse_backup_filename("quilltap-2026-08-04T031500.db", "quilltap-", &zone).unwrap();
+        assert_eq!(
+            crate::clock::iso_from_unix_ms(summer),
+            "2026-08-04T08:15:00.000Z"
+        );
+        let winter =
+            parse_backup_filename("quilltap-2026-01-04T031500.db", "quilltap-", &zone).unwrap();
+        assert_eq!(
+            crate::clock::iso_from_unix_ms(winter),
+            "2026-01-04T09:15:00.000Z"
+        );
+        // Rendered back through the same zone, the filename's digits return.
+        assert_eq!(
+            crate::format_time::locale_date_time_us(&crate::clock::iso_from_unix_ms(summer), &zone)
+                .as_deref(),
+            Some("8/4/2026, 3:15:00 AM")
+        );
     }
 }

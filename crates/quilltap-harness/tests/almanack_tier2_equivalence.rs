@@ -148,6 +148,9 @@ fn scratch(tag: &str, legacy_llm: bool, sp: &Value) -> Scratch {
         mount_index_db: Some(mount),
         data_dir: data.clone(),
         backups_dir: backups,
+        // The oracle's jest config forces `TZ=UTC`; the report's display zone
+        // is an input (P4.119), so the diff holds on any host zone.
+        display_zone: quilltap_core::host_zone::TimeZone::UTC,
     };
     Scratch { root, db, paths }
 }
@@ -583,7 +586,8 @@ fn almanack_tier2_matches_oracle() {
             now_ms,
         };
         let v5_data = generate_almanack_data(&ctx, &CreationProgressEmitter::inert());
-        let v5_markdown = render_almanack_markdown(&v5_data);
+        let v5_markdown =
+            render_almanack_markdown(&v5_data, &quilltap_core::host_zone::TimeZone::UTC);
         if case == "data_exact" {
             v5_markdown_exact = v5_markdown.clone();
         }
@@ -591,7 +595,8 @@ fn almanack_tier2_matches_oracle() {
         // Renderer proof: v5's renderer over v4's REAL data, byte-exact.
         let v4_data_parsed: AlmanackReportData =
             serde_json::from_value(exp["data"].clone()).expect("v4 data round-trips the model");
-        let rendered_v4 = render_almanack_markdown(&v4_data_parsed);
+        let rendered_v4 =
+            render_almanack_markdown(&v4_data_parsed, &quilltap_core::host_zone::TimeZone::UTC);
         let v4_markdown = exp["markdown"].as_str().unwrap();
         failed.check(
             &format!("{case}:renderer"),

@@ -15,6 +15,7 @@
 
 use crate::format_time::{locale_date_time_us, locale_date_us};
 use crate::jsnum::to_fixed;
+use jiff::tz::TimeZone;
 
 use super::phases::ALMANACK_TITLE;
 use super::types::{AlmanackReportData, CacheRow, ProfileWindowRow};
@@ -136,19 +137,22 @@ fn format_usd(amount: f64) -> String {
     format!("${}", to_fixed(amount, 4))
 }
 
-/// v4 `formatDate` — `'N/A'` for a null/unparseable stamp.
-fn format_date(iso: Option<&str>) -> String {
+/// v4 `formatDate` — `'N/A'` for a null/unparseable stamp. v4's
+/// `toLocaleDateString()` carries no `timeZone`, so `zone` is the host's
+/// (P4.119).
+fn format_date(iso: Option<&str>, zone: &TimeZone) -> String {
     match iso.filter(|s| !s.is_empty()) {
         None => "N/A".to_string(),
-        Some(s) => locale_date_us(s).unwrap_or_else(|| "N/A".to_string()),
+        Some(s) => locale_date_us(s, zone).unwrap_or_else(|| "N/A".to_string()),
     }
 }
 
-/// v4 `formatDateTime` — `'N/A'` for a null/unparseable stamp.
-fn format_date_time(iso: Option<&str>) -> String {
+/// v4 `formatDateTime` — `'N/A'` for a null/unparseable stamp; `zone` as
+/// [`format_date`].
+fn format_date_time(iso: Option<&str>, zone: &TimeZone) -> String {
     match iso.filter(|s| !s.is_empty()) {
         None => "N/A".to_string(),
-        Some(s) => locale_date_time_us(s).unwrap_or_else(|| "N/A".to_string()),
+        Some(s) => locale_date_time_us(s, zone).unwrap_or_else(|| "N/A".to_string()),
     }
 }
 
@@ -201,7 +205,7 @@ fn opt_str(value: Option<&String>) -> &str {
 }
 
 /// v4 `renderAlmanackMarkdown(data)` — the whole volume, byte-for-byte.
-pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
+pub fn render_almanack_markdown(data: &AlmanackReportData, zone: &TimeZone) -> String {
     let mut lines: Vec<String> = Vec::new();
     macro_rules! push {
         ($($v:expr),+ $(,)?) => {{ $(lines.push(String::from($v));)+ }};
@@ -211,7 +215,7 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
     push!(
         format!(
             "Generated: {}",
-            format_date_time(Some(data.generated_at.as_str()))
+            format_date_time(Some(data.generated_at.as_str()), zone)
         ),
         ""
     );
@@ -293,8 +297,8 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
             "| {} | {} | {} | {} | {} |",
             cell(&backup.label),
             js_num(backup.count),
-            format_date(backup.newest_date.as_deref()),
-            format_date(backup.oldest_date.as_deref()),
+            format_date(backup.newest_date.as_deref(), zone),
+            format_date(backup.oldest_date.as_deref(), zone),
             format_bytes(backup.total_size_bytes)
         ));
     }
@@ -314,7 +318,7 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
     ));
     push!(format!(
         "- **Applied At**: {}",
-        format_date_time(data.migration_state.last_migration_at.as_deref())
+        format_date_time(data.migration_state.last_migration_at.as_deref(), zone)
     ));
     push!(
         format!(
@@ -462,7 +466,7 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
                 js_num(row.chat),
                 js_num(row.image),
                 js_num(row.embedding),
-                format_date_time(row.newest_updated_at.as_deref())
+                format_date_time(row.newest_updated_at.as_deref(), zone)
             ));
         }
         push!("");
@@ -481,7 +485,7 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
                 js_num(row.total),
                 js_num(row.active),
                 js_num(row.never_used),
-                format_date(row.last_used.as_deref())
+                format_date(row.last_used.as_deref(), zone)
             ));
         }
         push!("");
@@ -1218,7 +1222,7 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
     push!(
         format!(
             "- **Last maintenance sweep**: {}",
-            format_date_time(is.last_maintenance_sweep_at.as_deref())
+            format_date_time(is.last_maintenance_sweep_at.as_deref(), zone)
         ),
         "",
     );
@@ -1254,7 +1258,7 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
     push!(
         format!(
             "- **Oldest pending job scheduled**: {}",
-            format_date_time(bj.oldest_pending_scheduled_at.as_deref())
+            format_date_time(bj.oldest_pending_scheduled_at.as_deref(), zone)
         ),
         "",
     );
@@ -1917,7 +1921,7 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
                 to_locale_string(row.total_prompt_tokens),
                 to_locale_string(row.total_completion_tokens),
                 to_locale_string(row.total_tokens),
-                format_date(row.last_touched_at.as_deref())
+                format_date(row.last_touched_at.as_deref(), zone)
             ));
         }
         push!("");
@@ -2078,11 +2082,14 @@ mod tests {
         assert_eq!(percent(0.0), "0.0%");
         assert_eq!(cell("a|b\nc"), "a\\|b c");
         assert_eq!(yes_no(true), "Yes");
-        assert_eq!(format_date(None), "N/A");
-        assert_eq!(format_date(Some("nope")), "N/A");
-        assert_eq!(format_date(Some("2026-08-04T00:00:00.000Z")), "8/4/2026");
+        assert_eq!(format_date(None, &TimeZone::UTC), "N/A");
+        assert_eq!(format_date(Some("nope"), &TimeZone::UTC), "N/A");
         assert_eq!(
-            format_date_time(Some("2026-08-05T12:00:00.000Z")),
+            format_date(Some("2026-08-04T00:00:00.000Z"), &TimeZone::UTC),
+            "8/4/2026"
+        );
+        assert_eq!(
+            format_date_time(Some("2026-08-05T12:00:00.000Z"), &TimeZone::UTC),
             "8/5/2026, 12:00:00 PM"
         );
         assert_eq!(count_list(&[], "None"), vec!["*None*".to_string()]);

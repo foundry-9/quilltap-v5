@@ -549,6 +549,125 @@
           "createdAt": "2026-04-04T12:01:00.000Z"
         }
       ]
+    },
+    {
+      "name": "straddles-utc-midnight-not-local-midnight",
+      "characterNames": [
+        [
+          "p-user",
+          "User"
+        ],
+        [
+          "p-fri",
+          "Friday"
+        ]
+      ],
+      "metadata": {
+        "conversationId": "chat-night",
+        "title": "After Dark",
+        "createdAt": "2026-01-15T18:30:00.000Z",
+        "lastUpdatedAt": "2026-07-28T02:05:00.000Z"
+      },
+      "messages": [
+        {
+          "id": "n1",
+          "type": "message",
+          "role": "USER",
+          "content": "Evening, Friday.",
+          "participantId": "p-user",
+          "createdAt": "2026-07-27T23:00:00.000Z"
+        },
+        {
+          "id": "n2",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Good evening.",
+          "participantId": "p-fri",
+          "createdAt": "2026-07-28T02:05:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "dst-spring-forward-same-local-day",
+      "characterNames": [
+        [
+          "p-user",
+          "User"
+        ],
+        [
+          "p-fri",
+          "Friday"
+        ]
+      ],
+      "metadata": {
+        "conversationId": "chat-spring",
+        "title": "The Lost Hour",
+        "createdAt": "2026-03-08T07:30:00.000Z",
+        "lastUpdatedAt": "2026-03-08T08:30:00.000Z"
+      },
+      "messages": [
+        {
+          "id": "s1",
+          "type": "message",
+          "role": "USER",
+          "content": "Before the clocks jump.",
+          "participantId": "p-user",
+          "createdAt": "2026-03-08T07:30:00.000Z"
+        },
+        {
+          "id": "s2",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "And after.",
+          "participantId": "p-fri",
+          "createdAt": "2026-03-08T08:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "dst-fall-back-fold-one-local-day",
+      "characterNames": [
+        [
+          "p-user",
+          "User"
+        ],
+        [
+          "p-fri",
+          "Friday"
+        ]
+      ],
+      "metadata": {
+        "conversationId": "chat-fall",
+        "title": "The Doubled Hour",
+        "createdAt": "2026-10-31T23:15:00.000Z",
+        "lastUpdatedAt": "2026-11-02T05:45:00.000Z"
+      },
+      "messages": [
+        {
+          "id": "f1",
+          "type": "message",
+          "role": "USER",
+          "content": "The first half past one.",
+          "participantId": "p-user",
+          "createdAt": "2026-11-01T06:30:00.000Z"
+        },
+        {
+          "id": "f2",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The second half past one.",
+          "participantId": "p-fri",
+          "createdAt": "2026-11-01T07:30:00.000Z"
+        },
+        {
+          "id": "f3",
+          "type": "message",
+          "role": "USER",
+          "content": "Late the next evening.",
+          "participantId": "p-user",
+          "createdAt": "2026-11-02T05:45:00.000Z"
+        }
+      ]
     }
   ]
 }

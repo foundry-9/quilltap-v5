@@ -32,6 +32,7 @@ use crate::db::runtime::Db;
 use crate::jsstr::js_trim;
 use crate::post_office::instructions::{format_letter_actions, format_letter_date};
 use crate::post_office::mailbox::{collect_unalerted_mail, mark_alerted, DeliveredLetterSummary};
+use jiff::tz::TimeZone;
 
 /// Quote a letter body as a Markdown blockquote so Suparṇā "reads it aloud"
 /// (v4 `quoteBody`). Blank → the plain placeholder.
@@ -57,7 +58,20 @@ fn quote_body(body: &str) -> String {
 /// Reads each new letter aloud and appends the read/answer/discard reminders,
 /// naming each letter by its file name — the handle `read_mail` takes (v4
 /// `buildSuparnaMailWhisper`). `""` for an empty list.
+///
+/// The production entry (build_context's whisper seam): v4's zone-less
+/// `formatDateTime` resolves the HOST's zone (P4.119), read here once. The
+/// whisper is PERSISTED, so a v5-written one now carries the same local time
+/// v4 writes. Tests and differentials call [`build_suparna_mail_whisper_in_zone`].
 pub fn build_suparna_mail_whisper(letters: &[DeliveredLetterSummary]) -> String {
+    build_suparna_mail_whisper_in_zone(letters, &crate::host_zone::system_display_zone())
+}
+
+/// [`build_suparna_mail_whisper`] with each letter's date rendered in `zone`.
+pub fn build_suparna_mail_whisper_in_zone(
+    letters: &[DeliveredLetterSummary],
+    zone: &TimeZone,
+) -> String {
     if letters.is_empty() {
         return String::new();
     }
@@ -73,7 +87,7 @@ pub fn build_suparna_mail_whisper(letters: &[DeliveredLetterSummary]) -> String 
             let head = format!(
                 "**A letter from {}**, posted {}:",
                 letter.from,
-                format_letter_date(&letter.sent_at)
+                format_letter_date(&letter.sent_at, zone)
             );
             format!(
                 "{head}\n\n{}\n\n{}",
@@ -173,10 +187,30 @@ pub async fn post_suparna_mail_whisper(
 ///
 /// `participants` are the chat's participant objects (JSON). Returns the whispers
 /// actually posted (one per character with fresh mail).
+///
+/// The production entry (the Salon load's): the whisper's letter dates
+/// resolve the HOST's zone (P4.119), read here once; tests call
+/// [`surface_operator_mail_for_chat_in_zone`] explicitly.
 pub async fn surface_operator_mail_for_chat(
     db: &Db,
     chat_id: &str,
     participants: &[Value],
+) -> Vec<Value> {
+    surface_operator_mail_for_chat_in_zone(
+        db,
+        chat_id,
+        participants,
+        &crate::host_zone::system_display_zone(),
+    )
+    .await
+}
+
+/// [`surface_operator_mail_for_chat`] with the letter dates rendered in `zone`.
+pub async fn surface_operator_mail_for_chat_in_zone(
+    db: &Db,
+    chat_id: &str,
+    participants: &[Value],
+    zone: &TimeZone,
 ) -> Vec<Value> {
     let mut posted: Vec<Value> = Vec::new();
 
@@ -232,7 +266,7 @@ pub async fn surface_operator_mail_for_chat(
             continue;
         }
 
-        let content = build_suparna_mail_whisper(&unalerted);
+        let content = build_suparna_mail_whisper_in_zone(&unalerted, zone);
         let message = post_suparna_mail_whisper(
             db,
             PostSuparnaMailWhisperParams {
@@ -279,7 +313,7 @@ mod tests {
 
     #[test]
     fn empty_letters_yield_empty_whisper() {
-        assert_eq!(build_suparna_mail_whisper(&[]), "");
+        assert_eq!(build_suparna_mail_whisper_in_zone(&[], &TimeZone::UTC), "");
     }
 
     #[test]
@@ -296,7 +330,7 @@ mod tests {
             "  Hello there.  ",
             "Mail/friday-2026-02-01.md",
         );
-        let out = build_suparna_mail_whisper(std::slice::from_ref(&l));
+        let out = build_suparna_mail_whisper_in_zone(std::slice::from_ref(&l), &TimeZone::UTC);
         assert!(out.starts_with(
             "Suparṇā glides in from the Post Office, a single letter held out for you."
         ));
@@ -310,7 +344,7 @@ mod tests {
     fn plural_letters_armful_opener_and_separator() {
         let l1 = letter("Ada", "2026-02-02T09:00:00.000Z", "First.", "Mail/a.md");
         let l2 = letter("Bob", "2026-02-01T09:00:00.000Z", "   ", "Mail/b.md");
-        let out = build_suparna_mail_whisper(&[l1, l2]);
+        let out = build_suparna_mail_whisper_in_zone(&[l1, l2], &TimeZone::UTC);
         assert!(out.contains("with an armful of 2 letters for you."));
         assert!(out.contains("\n\n---\n\n"));
         assert!(out.contains("> (the letter is blank)"));

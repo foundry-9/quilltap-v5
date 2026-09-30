@@ -39,10 +39,12 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::Db;
-use quilltap_core::tools::annotations::{execute_delete_annotation, execute_upsert_annotation};
+use quilltap_core::tools::annotations::{
+    execute_delete_annotation, execute_upsert_annotation_in_zone,
+};
 use quilltap_core::tools::annotations::{format_delete_annotation, format_upsert_annotation};
 use quilltap_core::tools::read_conversation::{
-    execute_read_conversation, format_read_conversation,
+    execute_read_conversation_in_zone, format_read_conversation,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -168,29 +170,34 @@ async fn scriptorium_tools_matches_oracle() {
 
     let db = Db::open_main(&work, &spec.test_pepper_base64).unwrap_or_else(|e| panic!("open: {e}"));
 
+    // The oracle runs under `TZ=UTC`; the render's display zone is an argument
+    // (P4.119), so the comparison holds on any host zone.
+    let zone = quilltap_core::host_zone::TimeZone::UTC;
     for (i, op) in spec.ops.iter().enumerate() {
         let (output, formatted): (Value, String) = match op.tool.as_str() {
             "read_conversation" => {
-                let out = execute_read_conversation(
+                let out = execute_read_conversation_in_zone(
                     &db,
                     &spec.user_id,
                     &op.chat_id,
                     op.character_id.as_deref(),
                     &op.args,
                     &spec.now_iso,
+                    &zone,
                 )
                 .await;
                 let f = format_read_conversation(&out);
                 (serde_json::to_value(&out).unwrap(), f)
             }
             "upsert_annotation" => {
-                let out = execute_upsert_annotation(
+                let out = execute_upsert_annotation_in_zone(
                     &db,
                     &spec.user_id,
                     &op.chat_id,
                     op.character_name.as_deref().expect("characterName"),
                     &op.args,
                     &spec.now_iso,
+                    &zone,
                 )
                 .await;
                 let f = format_upsert_annotation(&out);

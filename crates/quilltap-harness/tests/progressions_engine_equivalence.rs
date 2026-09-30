@@ -23,10 +23,13 @@
 //! (`0.125` → `0.13`, where a Rust `{:.2}` gives `0.12`), and
 //! `Intl.DateTimeFormat`'s exact `en-US` `dateStyle: 'medium'` bytes.
 //!
-//! ⚠ `TZ=UTC` is REQUIRED when generating the oracle: v4's `formatInstant`
-//! falls back to the HOST zone for an absent or unresolvable timezone, and the
-//! Rust twin pins that fallback to UTC — the documented harness seam shared with
-//! `context_feeders_leaves_equivalence`.
+//! ⚠ The generating `TZ` is load-bearing: v4's `formatInstant` falls back to
+//! the HOST zone for an absent or unresolvable timezone. The oracle records the
+//! zone it ran under (the `hostZone` row) and the Rust twin is fed that zone as
+//! the fallback BY ARGUMENT (P4.119 — it was once pinned to UTC). The family
+//! runs twice: `TZ=UTC` (the standing pin) and `TZ=America/Chicago` (the
+//! second-zone arm — the `timezone: null` and unresolvable-zone rows then
+//! render in Chicago on BOTH sides).
 //!
 //! Generate (Node 24, from the v4 checkout; a pinned worktree while v4 HEAD is
 //! past the baseline — the sweep driver rewrites the `cd`):
@@ -35,8 +38,11 @@
 //!   cd ~/source/quilltap-server
 //!   TZ=UTC $N/node --import tsx $V5W/harness/oracle/cases/progressions-engine.ts \
 //!     > /tmp/oracle-progressions-engine.ndjson
+//!   TZ=America/Chicago $N/node --import tsx $V5W/harness/oracle/cases/progressions-engine.ts \
+//!     > /tmp/oracle-progressions-engine-chicago.ndjson
 //! Run:
 //!   QT_ORACLE_PROGRESSIONS_ENGINE=/tmp/oracle-progressions-engine.ndjson \
+//!   QT_ORACLE_PROGRESSIONS_ENGINE_CHICAGO=/tmp/oracle-progressions-engine-chicago.ndjson \
 //!     cargo test -p quilltap-harness --test progressions_engine_equivalence
 
 use std::collections::HashMap;
@@ -47,9 +53,15 @@ use quilltap_core::progressions::{
     default_in_progress_template, derive_progression, flatten_progressions, format_span,
     format_span_whole, infer_increment, is_progression_id, is_report_frequency,
     is_writable_progression_field, join_issues, parse_iso_instant, parse_progress_key,
-    parse_progression, parse_progressions, parse_report_period_ms, progression_placeholders,
-    render_progression_report, should_report_progression, Progression, RenderProgressionOptions,
-    TimeIncrement,
+    parse_progression, parse_progressions, parse_report_period_ms, should_report_progression,
+    Progression, RenderProgressionOptions, TimeIncrement,
+};
+// P4.119: the explicit-zone renderers — the host-zone fallback (an absent or
+// unresolvable `timezone`) is the zone the oracle ran under, passed here by
+// argument rather than read from this machine.
+use quilltap_core::host_zone::TimeZone;
+use quilltap_core::progressions::engine::{
+    progression_placeholders_in_zone, render_progression_report_in_zone,
 };
 
 /// The oracle rows, keyed `(op, label)`.
@@ -64,13 +76,13 @@ fn corpus() -> Value {
     serde_json::from_str(&raw).expect("the committed corpus is valid JSON")
 }
 
-fn oracle() -> Option<Oracle> {
-    let path = std::env::var("QT_ORACLE_PROGRESSIONS_ENGINE").ok()?;
+fn oracle(var: &str) -> Option<Oracle> {
+    let path = std::env::var(var).ok()?;
     let raw = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("QT_ORACLE_PROGRESSIONS_ENGINE={path} is unreadable: {e}"));
+        .unwrap_or_else(|e| panic!("{var}={path} is unreadable: {e}"));
     assert!(
         !raw.trim().is_empty(),
-        "QT_ORACLE_PROGRESSIONS_ENGINE={path} is EMPTY — the generation step failed and its \
+        "{var}={path} is EMPTY — the generation step failed and its \
          stdout redirect truncated the file (the empty-file trap); regenerate before believing \
          any diff"
     );
@@ -172,12 +184,30 @@ fn assert_row(op: &str, label: &str, got: &Value, want: &Value, float_keys: &[&s
 
 #[test]
 fn progressions_engine_equivalence() {
-    let Some(oracle) = oracle() else {
+    let Some(oracle) = oracle("QT_ORACLE_PROGRESSIONS_ENGINE") else {
         eprintln!(
             "SKIP: QT_ORACLE_PROGRESSIONS_ENGINE unset — see this file's header for the recipe"
         );
         return;
     };
+    run_family(&oracle, "UTC");
+}
+
+/// P4.119 Tier 2: the second-zone arm — v4 run under `TZ=America/Chicago`, so
+/// its host-zone fallback is Chicago, and v5 is fed Chicago by argument.
+#[test]
+fn progressions_engine_equivalence_second_zone() {
+    let Some(oracle) = oracle("QT_ORACLE_PROGRESSIONS_ENGINE_CHICAGO") else {
+        eprintln!(
+            "SKIP: QT_ORACLE_PROGRESSIONS_ENGINE_CHICAGO unset — see this file's header for the recipe"
+        );
+        return;
+    };
+    run_family(&oracle, "America/Chicago");
+}
+
+fn run_family(oracle: &Oracle, expected_tz: &str) {
+    let host_zone = TimeZone::get(expected_tz).expect("a zone jiff knows");
     let corpus = corpus();
     let mut checked: HashMap<&str, usize> = HashMap::new();
     let mut check = |op: &'static str, label: &str, got: Value, floats: &[&str]| {
@@ -191,6 +221,10 @@ fn progressions_engine_equivalence() {
         assert_row(op, label, &got, &Value::Object(want.clone()), floats);
         *checked.entry(op).or_default() += 1;
     };
+
+    // The zone the oracle ran under — the host-zone fallback both sides use.
+    // A file generated under the wrong `TZ` fails here, not in a date diff.
+    check("hostZone", "tz", json!({ "tz": expected_tz }), &[]);
 
     // ---------------------------------------------------------- parseIsoInstant
     for c in corpus["parseIsoInstant"].as_array().unwrap() {
@@ -308,7 +342,7 @@ fn progressions_engine_equivalence() {
         check(
             "renderProgressionReport",
             label,
-            json!({ "result": render_progression_report(&p, &d, &opts) }),
+            json!({ "result": render_progression_report_in_zone(&p, &d, &opts, &host_zone) }),
             &[],
         );
     }
@@ -319,7 +353,7 @@ fn progressions_engine_equivalence() {
         let opts = RenderProgressionOptions {
             timezone: c["timezone"].as_str(),
         };
-        let values = progression_placeholders(&p, &d, &opts);
+        let values = progression_placeholders_in_zone(&p, &d, &opts, &host_zone);
         let keys: Vec<Value> = values.iter().map(|(k, _)| Value::from(k.clone())).collect();
         let mut object = Map::new();
         for (k, v) in &values {
@@ -452,7 +486,8 @@ fn progressions_engine_equivalence() {
         checked["shouldReportProgression"] >= 20,
         "shouldReportProgression floor"
     );
-    assert_eq!(ops.len(), 17, "every op is exercised");
+    // 17 v4 ops + P4.119's `hostZone` row (the zone the oracle ran under) = 18.
+    assert_eq!(ops.len(), 18, "every op is exercised");
 }
 
 /// The `DerivedProgression` fields the oracle emits, in the oracle's own key

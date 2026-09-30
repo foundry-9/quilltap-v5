@@ -434,6 +434,7 @@ fn post_office_routes_match_oracle() {
     let mut failed: Vec<String> = Vec::new();
     let mut driven: BTreeSet<String> = BTreeSet::new();
     let now_iso = quilltap_core::clock::iso_from_unix_ms(NOW_MS);
+    let zone = quilltap_core::host_zone::TimeZone::UTC;
 
     let mut check = |name: &str, resp: &Response, tables: Option<Value>| {
         driven.insert(name.to_string());
@@ -767,7 +768,7 @@ fn post_office_routes_match_oracle() {
     // ── ?action=send-mail ──────────────────────────────────────────────────
     {
         let db = fresh_db(&spec, "sm1");
-        let r = rt.block_on(chat_post_office::chat_send_mail(
+        let r = rt.block_on(chat_post_office::chat_send_mail_in_zone(
             &db,
             CHAT,
             ARIA,
@@ -775,6 +776,7 @@ fn post_office_routes_match_oracle() {
             "Bea — I asked Dorian. He says the oil was short.",
             None,
             &now_iso,
+            &zone,
         ));
         let tables = json!({
             "recipientMail": dump_vault_mail(&db, &meta.bea_vault),
@@ -785,7 +787,7 @@ fn post_office_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "sm2");
-        let r = rt.block_on(chat_post_office::chat_send_mail(
+        let r = rt.block_on(chat_post_office::chat_send_mail_in_zone(
             &db,
             CHAT,
             ARIA,
@@ -793,6 +795,7 @@ fn post_office_routes_match_oracle() {
             "Bea — answering yours below.",
             Some(&meta.seeded_letter_path),
             &now_iso,
+            &zone,
         ));
         let tables = json!({
             "recipientMail": dump_vault_mail(&db, &meta.bea_vault),
@@ -823,7 +826,7 @@ fn post_office_routes_match_oracle() {
         ),
     ] {
         let db = fresh_db(&spec, tag);
-        let r = rt.block_on(chat_post_office::chat_send_mail(
+        let r = rt.block_on(chat_post_office::chat_send_mail_in_zone(
             &db,
             CHAT,
             ARIA,
@@ -831,6 +834,7 @@ fn post_office_routes_match_oracle() {
             body,
             Some(&reply),
             &now_iso,
+            &zone,
         ));
         let tables = json!({
             "recipientMail": dump_vault_mail(&db, &meta.bea_vault),
@@ -840,7 +844,7 @@ fn post_office_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "sm3");
-        let r = rt.block_on(chat_post_office::chat_send_mail(
+        let r = rt.block_on(chat_post_office::chat_send_mail_in_zone(
             &db,
             CHAT,
             ARIA,
@@ -848,6 +852,7 @@ fn post_office_routes_match_oracle() {
             "Answering a letter I never had.",
             Some("Mail/1700000000000-from-nobody.md"),
             &now_iso,
+            &zone,
         ));
         let tables = json!({ "recipientMail": dump_vault_mail(&db, &meta.bea_vault) });
         check("send_mail_reply_not_found", &r, Some(tables));
@@ -855,8 +860,8 @@ fn post_office_routes_match_oracle() {
     let mut send_mail_err =
         |tag: &str, name: &str, chat: &str, from: &str, to: &str, body: &str| {
             let db = fresh_db(&spec, tag);
-            let r = rt.block_on(chat_post_office::chat_send_mail(
-                &db, chat, from, to, body, None, &now_iso,
+            let r = rt.block_on(chat_post_office::chat_send_mail_in_zone(
+                &db, chat, from, to, body, None, &now_iso, &zone,
             ));
             check(name, &r, None);
         };
@@ -918,7 +923,7 @@ fn post_office_routes_match_oracle() {
     {
         let db = fresh_db(&spec, "sm11");
         archive_character(&db, &rt, ARIA);
-        let r = rt.block_on(chat_post_office::chat_send_mail(
+        let r = rt.block_on(chat_post_office::chat_send_mail_in_zone(
             &db,
             CHAT,
             ARIA,
@@ -926,13 +931,14 @@ fn post_office_routes_match_oracle() {
             "One last letter.",
             None,
             &now_iso,
+            &zone,
         ));
         check("send_mail_from_archived_sender", &r, None);
     }
     {
         let db = fresh_db(&spec, "sm12");
         archive_character(&db, &rt, BEA);
-        let r = rt.block_on(chat_post_office::chat_send_mail(
+        let r = rt.block_on(chat_post_office::chat_send_mail_in_zone(
             &db,
             CHAT,
             ARIA,
@@ -940,6 +946,7 @@ fn post_office_routes_match_oracle() {
             "Are you still there?",
             None,
             &now_iso,
+            &zone,
         ));
         check("send_mail_to_archived_recipient", &r, None);
     }

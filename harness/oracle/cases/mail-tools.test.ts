@@ -20,8 +20,12 @@
  *     covenant's contrast: the SAME opaque character is refused its own vault
  *     there while `read_mail` reaches it)
  *
- * TZ MUST be UTC (the mailbox date uses the system timezone by v4's design; the
- * Rust port computes it in UTC — run this oracle with `TZ=UTC`).
+ * TZ is load-bearing: the mailbox date uses the system timezone by v4's design
+ * (a zone-less `formatDateTime`). Each record carries the zone it ran under
+ * (`tz`) and the Rust port is fed that zone by argument (P4.119). v4's
+ * `jest.config.ts` forces `process.env.TZ = 'UTC'` before any worker starts,
+ * so this case always records `UTC` — the second-zone proof for the same
+ * letter dates and reply prefaces is the tsx case `host-zone-dates.ts`.
  *
  * Real-DB-under-jest (search-tools recipe). NO model boundary is touched.
  *
@@ -401,7 +405,7 @@ async function main(): Promise<void> {
     closeMountIndexSQLiteClient();
     await closeDatabase();
 
-    lines.push(JSON.stringify({ label: sc.label, steps }));
+    lines.push(JSON.stringify({ label: sc.label, tz: new Intl.DateTimeFormat().resolvedOptions().timeZone, steps }));
   }
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');

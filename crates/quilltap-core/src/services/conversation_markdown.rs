@@ -73,15 +73,24 @@
 //!
 //! ## Locale + timezone
 //!
-//! All formatting is en-US in **UTC**. v4 passes an explicit `'en-US'` locale but
-//! no timezone, so the rendered timestamps follow the host's zone; the
-//! differential pins both sides to `TZ=UTC` (the standing harness constraint —
-//! see [`crate::format_time`]).
+//! All formatting is en-US in the **passed zone**. v4 passes an explicit
+//! `'en-US'` locale but no timezone, so the rendered timestamps follow the
+//! host's zone — and so does the port (P4.119, dogfood #121, ruled (a)
+//! 2026-09-29): the render job, `read_conversation` and `upsert_annotation`
+//! pass [`crate::host_zone::system_display_zone`] in production, so a chunk v5
+//! re-renders carries the same text v4 wrote and its embedding survives the
+//! upsert. Every instant renders with its OWN offset, and the same-day test
+//! compares dates IN the zone, so a span that straddles UTC midnight but not
+//! local midnight is one local day — the span's SHAPE moves, not just its
+//! digits. The differential pins both sides to `TZ=UTC` and passes
+//! `TimeZone::UTC` here explicitly (see [`crate::format_time`]).
 
 use crate::chat_tasks::strip_tool_artifacts;
-use crate::clock::{civil_from_days, iso_to_ms};
+use crate::clock::iso_to_ms;
 use crate::format_time::{format_date_short_us, MONTHS_LONG};
 use crate::jsstr::{js_last_index_of, utf16_len, utf16_slice_from, utf16_truncate};
+use jiff::tz::TimeZone;
+use jiff::Zoned;
 
 /// Per-chunk character budget for conversation interchanges (v4 Bug 17,
 /// `CHUNK_CHAR_BUDGET`). An interchange whose rendered text (metadata prefix
@@ -149,56 +158,67 @@ struct VisibleMessage {
     created_at: String,
 }
 
-/// v4's module-private `formatDateTime`: `"{Month} {D}, {YYYY} at {h}:{mm} {AM|PM}"`
-/// — en-US, **`hour: 'numeric'`** (no leading zero, unlike
-/// [`crate::format_time::format_date_time`]'s 2-digit hour) and
-/// `minute: '2-digit'`, computed in UTC. An unparseable input renders
-/// `"Invalid Date at Invalid Date"` (see the module doc).
-fn format_date_time(iso: &str) -> String {
-    let Some(ms) = iso_to_ms(iso) else {
-        return "Invalid Date at Invalid Date".to_string();
-    };
-    let days = ms.div_euclid(86_400_000);
-    let ms_in_day = ms.rem_euclid(86_400_000);
-    let (year, month, day) = civil_from_days(days);
-    let total_minutes = ms_in_day / 60_000;
-    let hour24 = (total_minutes / 60) as u32;
-    let minute = (total_minutes % 60) as u32;
-    let month_name = MONTHS_LONG[(month - 1) as usize];
+/// `iso` (JS `Date.parse`) seen in `zone` with that instant's own offset;
+/// `None` for an unparseable input (V8's `Invalid Date`).
+fn zoned(iso: &str, zone: &TimeZone) -> Option<Zoned> {
+    let ms = iso_to_ms(iso)?;
+    Some(
+        jiff::Timestamp::from_millisecond(ms)
+            .ok()?
+            .to_zoned(zone.clone()),
+    )
+}
+
+/// en-US `hour: 'numeric', minute: '2-digit'` — `"{h}:{mm} {AM|PM}"`, no
+/// leading zero on the hour.
+fn clock_numeric(z: &Zoned) -> String {
+    let hour24 = z.hour();
     let hour12 = match hour24 % 12 {
         0 => 12,
         h => h,
     };
     let meridiem = if hour24 < 12 { "AM" } else { "PM" };
-    format!("{month_name} {day}, {year} at {hour12}:{minute:02} {meridiem}")
+    format!("{hour12}:{:02} {meridiem}", z.minute())
+}
+
+/// en-US `month: 'long', day: 'numeric', year: 'numeric'` — `"{Month} {D}, {YYYY}"`.
+fn date_long(z: &Zoned) -> String {
+    format!(
+        "{} {}, {}",
+        MONTHS_LONG[(z.month() - 1) as usize],
+        z.day(),
+        z.year()
+    )
+}
+
+/// v4's module-private `formatDateTime`: `"{Month} {D}, {YYYY} at {h}:{mm} {AM|PM}"`
+/// — en-US, **`hour: 'numeric'`** (no leading zero, unlike
+/// [`crate::format_time::format_date_time`]'s 2-digit hour) and
+/// `minute: '2-digit'`, in `zone`. An unparseable input renders
+/// `"Invalid Date at Invalid Date"` (see the module doc).
+fn format_date_time(iso: &str, zone: &TimeZone) -> String {
+    match zoned(iso, zone) {
+        Some(z) => format!("{} at {}", date_long(&z), clock_numeric(&z)),
+        None => "Invalid Date at Invalid Date".to_string(),
+    }
 }
 
 /// v4's `toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })`
 /// alone — the two span endpoints on the same-day branch.
-fn format_time_only(iso: &str) -> String {
-    let Some(ms) = iso_to_ms(iso) else {
-        return "Invalid Date".to_string();
-    };
-    let ms_in_day = ms.rem_euclid(86_400_000);
-    let total_minutes = ms_in_day / 60_000;
-    let hour24 = (total_minutes / 60) as u32;
-    let minute = (total_minutes % 60) as u32;
-    let hour12 = match hour24 % 12 {
-        0 => 12,
-        h => h,
-    };
-    let meridiem = if hour24 < 12 { "AM" } else { "PM" };
-    format!("{hour12}:{minute:02} {meridiem}")
+fn format_time_only(iso: &str, zone: &TimeZone) -> String {
+    match zoned(iso, zone) {
+        Some(z) => clock_numeric(&z),
+        None => "Invalid Date".to_string(),
+    }
 }
 
 /// v4's `toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })`
 /// — the span's date part on the same-day branch.
-fn format_date_long(iso: &str) -> String {
-    let Some(ms) = iso_to_ms(iso) else {
-        return "Invalid Date".to_string();
-    };
-    let (year, month, day) = civil_from_days(ms.div_euclid(86_400_000));
-    format!("{} {day}, {year}", MONTHS_LONG[(month - 1) as usize])
+fn format_date_long(iso: &str, zone: &TimeZone) -> String {
+    match zoned(iso, zone) {
+        Some(z) => date_long(&z),
+        None => "Invalid Date".to_string(),
+    }
 }
 
 /// Push `name` if absent — a JS `Set`'s insertion-ordered de-duplication.
@@ -402,12 +422,14 @@ fn enforce_chunk_budget(interchanges: &[RawInterchange], budget: usize) -> Vec<I
 /// `character_names` maps participantId → display name; the caller builds it
 /// (the handler resolves each participant's character, falling back to `"User"`
 /// for user-controlled participants without one). `now_iso` is the injected wall
-/// clock for the header's `Current time:` line.
+/// clock for the header's `Current time:` line; `zone` is the zone every
+/// timestamp renders in (the host's in production — see the module doc).
 pub fn render_conversation_markdown(
     messages: &[RenderEvent],
     character_names: &[(String, String)],
     metadata: Option<&ConversationMetadata>,
     now_iso: &str,
+    zone: &TimeZone,
 ) -> RenderedConversation {
     // ── Filter to visible messages (v4 :68-93).
     let mut visible: Vec<VisibleMessage> = Vec::new();
@@ -495,7 +517,7 @@ pub fn render_conversation_markdown(
             });
         }
 
-        let message_timestamp = format_date_time(&msg.created_at);
+        let message_timestamp = format_date_time(&msg.created_at, zone);
         let message_block = format!(
             "Past conversation message timestamp: {message_timestamp}\n\n\
              ### Message {global_message_index} ({display_name})\n\n{}\n",
@@ -544,20 +566,20 @@ pub fn render_conversation_markdown(
             .map(|m| m.created_at.clone())
             .unwrap_or_else(|| meta.last_updated_at.clone());
 
-        let same_day =
-            format_date_short_us(&first_message_time) == format_date_short_us(&last_message_time);
+        let same_day = format_date_short_us(&first_message_time, zone)
+            == format_date_short_us(&last_message_time, zone);
         let span_text = if same_day {
             format!(
                 "{} from {} to {}",
-                format_date_long(&first_message_time),
-                format_time_only(&first_message_time),
-                format_time_only(&last_message_time),
+                format_date_long(&first_message_time, zone),
+                format_time_only(&first_message_time, zone),
+                format_time_only(&last_message_time, zone),
             )
         } else {
             format!(
                 "{} to {}",
-                format_date_time(&first_message_time),
-                format_date_time(&last_message_time),
+                format_date_time(&first_message_time, zone),
+                format_date_time(&last_message_time, zone),
             )
         };
 
@@ -572,10 +594,10 @@ pub fn render_conversation_markdown(
             String::new(),
             "**Metadata:**".to_string(),
             format!("- Conversation ID: {}", meta.conversation_id),
-            format!("- Created: {}", format_date_time(&meta.created_at)),
+            format!("- Created: {}", format_date_time(&meta.created_at, zone)),
             format!(
                 "- Last Updated: {}",
-                format_date_time(&meta.last_updated_at)
+                format_date_time(&meta.last_updated_at, zone)
             ),
             format!("- Participants: {participants_line}"),
             format!("- Message Count: {global_message_index}"),
@@ -590,7 +612,7 @@ pub fn render_conversation_markdown(
             ),
             format!(
                 "Current time: {}. You are reading history, not in active conversation.",
-                format_date_time(now_iso)
+                format_date_time(now_iso, zone)
             ),
             String::new(),
             "---".to_string(),
@@ -642,7 +664,13 @@ mod tests {
 
     #[test]
     fn empty_input_renders_nothing() {
-        let r = render_conversation_markdown(&[], &[], None, "2026-07-27T00:00:00.000Z");
+        let r = render_conversation_markdown(
+            &[],
+            &[],
+            None,
+            "2026-07-27T00:00:00.000Z",
+            &TimeZone::UTC,
+        );
         assert_eq!(r.markdown, "");
         assert!(r.interchanges.is_empty());
     }
@@ -678,7 +706,13 @@ mod tests {
             ("p-user".to_string(), "User".to_string()),
             ("p-a".to_string(), "Aria".to_string()),
         ];
-        let r = render_conversation_markdown(&msgs, &names, None, "2026-07-27T00:00:00.000Z");
+        let r = render_conversation_markdown(
+            &msgs,
+            &names,
+            None,
+            "2026-07-27T00:00:00.000Z",
+            &TimeZone::UTC,
+        );
         assert_eq!(r.interchanges.len(), 2);
         assert_eq!(r.interchanges[0].index, 0);
         assert_eq!(r.interchanges[1].index, 1);
@@ -700,7 +734,13 @@ mod tests {
             None,
             "2026-02-01T09:05:00.000Z",
         )];
-        let r = render_conversation_markdown(&msgs, &[], None, "2026-07-27T00:00:00.000Z");
+        let r = render_conversation_markdown(
+            &msgs,
+            &[],
+            None,
+            "2026-07-27T00:00:00.000Z",
+            &TimeZone::UTC,
+        );
         assert!(r.markdown.contains("### Message 0 (Assistant)"));
         assert!(r
             .markdown
@@ -709,7 +749,10 @@ mod tests {
 
     #[test]
     fn invalid_timestamp_renders_invalid_date() {
-        assert_eq!(format_date_time("nope"), "Invalid Date at Invalid Date");
+        assert_eq!(
+            format_date_time("nope", &TimeZone::UTC),
+            "Invalid Date at Invalid Date"
+        );
     }
 
     // ── Bug 17 sub-chunking (the differential proves byte-exactness; these
@@ -737,7 +780,13 @@ mod tests {
             ("p-user".to_string(), "User".to_string()),
             ("p-a".to_string(), "Aria".to_string()),
         ];
-        let r = render_conversation_markdown(&msgs, &names, None, "2026-07-27T00:00:00.000Z");
+        let r = render_conversation_markdown(
+            &msgs,
+            &names,
+            None,
+            "2026-07-27T00:00:00.000Z",
+            &TimeZone::UTC,
+        );
         assert_eq!(r.interchanges.len(), 1);
         assert_eq!(r.interchanges[0].index, 0);
     }
@@ -757,7 +806,13 @@ mod tests {
             "2026-02-01T09:05:00.000Z",
         )];
         let names = vec![("p-user".to_string(), "User".to_string())];
-        let r = render_conversation_markdown(&msgs, &names, None, "2026-07-27T00:00:00.000Z");
+        let r = render_conversation_markdown(
+            &msgs,
+            &names,
+            None,
+            "2026-07-27T00:00:00.000Z",
+            &TimeZone::UTC,
+        );
         assert!(
             r.interchanges.len() > 1,
             "expected the oversize interchange to split"
@@ -792,7 +847,13 @@ mod tests {
             "2026-02-01T09:05:00.000Z",
         )];
         let names = vec![("p-user".to_string(), "User".to_string())];
-        let r = render_conversation_markdown(&msgs, &names, None, "2026-07-27T00:00:00.000Z");
+        let r = render_conversation_markdown(
+            &msgs,
+            &names,
+            None,
+            "2026-07-27T00:00:00.000Z",
+            &TimeZone::UTC,
+        );
         assert!(r.interchanges.len() > 1);
         for ic in &r.interchanges {
             assert!(
@@ -811,5 +872,59 @@ mod tests {
         assert_eq!(last_boundary_cut("\n\ncd", "\n\n"), None);
         // Absent → None.
         assert_eq!(last_boundary_cut("abcd", "\n\n"), None);
+    }
+
+    /// P4.119 red-first: two messages that straddle UTC midnight but NOT
+    /// Chicago's midnight are ONE local day, so the span takes the same-day
+    /// SHAPE under `America/Chicago` and the cross-day shape under UTC; each
+    /// timestamp keeps its own offset (the January `Created` line is CST).
+    /// Vectors: Node 24 under `TZ=UTC` and `TZ=America/Chicago`.
+    #[test]
+    fn span_and_timestamps_follow_the_passed_zone() {
+        let msgs = vec![
+            ev("m1", "USER", "Evening.", None, "2026-07-27T23:00:00.000Z"),
+            ev(
+                "m2",
+                "ASSISTANT",
+                "Good evening.",
+                Some("p1"),
+                "2026-07-28T02:05:00.000Z",
+            ),
+        ];
+        let names = vec![("p1".to_string(), "Friday".to_string())];
+        let meta = ConversationMetadata {
+            conversation_id: "c1".to_string(),
+            title: "Night".to_string(),
+            created_at: "2026-01-15T18:30:00.000Z".to_string(),
+            last_updated_at: "2026-07-28T02:05:00.000Z".to_string(),
+        };
+        let now = "2026-07-28T02:10:00.000Z";
+
+        let utc = render_conversation_markdown(&msgs, &names, Some(&meta), now, &TimeZone::UTC);
+        assert!(utc.markdown.contains(
+            "This conversation occurred on July 27, 2026 at 11:00 PM to July 28, 2026 at 2:05 AM."
+        ));
+        assert!(utc
+            .markdown
+            .contains("- Created: January 15, 2026 at 6:30 PM"));
+
+        let chicago = TimeZone::get("America/Chicago").unwrap();
+        let local = render_conversation_markdown(&msgs, &names, Some(&meta), now, &chicago);
+        assert!(
+            local
+                .markdown
+                .contains("This conversation occurred on July 27, 2026 from 6:00 PM to 9:05 PM."),
+            "{}",
+            local.markdown
+        );
+        assert!(local
+            .markdown
+            .contains("- Created: January 15, 2026 at 12:30 PM"));
+        assert!(local
+            .markdown
+            .contains("Current time: July 27, 2026 at 9:10 PM."));
+        assert!(local.interchanges[0]
+            .content
+            .contains("Past conversation message timestamp: July 27, 2026 at 6:00 PM"));
     }
 }

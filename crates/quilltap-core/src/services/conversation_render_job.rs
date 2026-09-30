@@ -85,6 +85,12 @@ impl ConversationRenderPayload {
 /// the chunk upserts' timestamps (v4 reads `new Date()` for both). Production
 /// passes [`crate::clock::now_iso`]; the differential pins it, which is what
 /// makes the chunk rows compare byte-exact rather than needing normalization.
+///
+/// This is the production entry: the chunk text's timestamps are v4's
+/// zone-less `toLocale*` renders, so they resolve the HOST's zone (P4.119 —
+/// dogfood #121: a UTC render of a chunk v4 wrote in the host zone changed its
+/// text, and the v4-faithful upsert then nulled its embedding). Tests and
+/// differentials call [`handle_conversation_render_in_zone`] explicitly.
 pub async fn handle_conversation_render(
     db: &Db,
     job_id: &str,
@@ -92,7 +98,27 @@ pub async fn handle_conversation_render(
     payload: &ConversationRenderPayload,
     now_iso: &str,
 ) -> Result<(), String> {
-    handle_inner(db, job_id, user_id, payload, now_iso)
+    handle_conversation_render_in_zone(
+        db,
+        job_id,
+        user_id,
+        payload,
+        now_iso,
+        &crate::host_zone::system_display_zone(),
+    )
+    .await
+}
+
+/// [`handle_conversation_render`] with the render's display zone passed in.
+pub async fn handle_conversation_render_in_zone(
+    db: &Db,
+    job_id: &str,
+    user_id: &str,
+    payload: &ConversationRenderPayload,
+    now_iso: &str,
+    zone: &jiff::tz::TimeZone,
+) -> Result<(), String> {
+    handle_inner(db, job_id, user_id, payload, now_iso, zone)
         .await
         .map_err(|e| e.into())
 }
@@ -119,6 +145,7 @@ async fn handle_inner(
     user_id: &str,
     payload: &ConversationRenderPayload,
     now_iso: &str,
+    zone: &jiff::tz::TimeZone,
 ) -> Result<(), RenderError> {
     let started = std::time::Instant::now();
 
@@ -141,7 +168,7 @@ async fn handle_inner(
 
     // 2. Render from the stored messages (v4 :37-44). The Markdown itself is
     //    not kept — only the interchange chunks are stored.
-    let result = db.read_main(|conn| render_chat_conversation(conn, &chat, now_iso))?;
+    let result = db.read_main(|conn| render_chat_conversation(conn, &chat, now_iso, zone))?;
     let Some(result) = result else {
         tracing::debug!(
             target: "quilltap::jobs",
@@ -327,8 +354,16 @@ mod log_tests {
             chat_id: chat_id.to_string(),
             full_reembed: false,
         };
-        let (out, lines) =
-            capture(|| rt.block_on(handle_conversation_render(db, JOB, USER, &payload, NOW)));
+        let (out, lines) = capture(|| {
+            rt.block_on(handle_conversation_render_in_zone(
+                db,
+                JOB,
+                USER,
+                &payload,
+                NOW,
+                &jiff::tz::TimeZone::UTC,
+            ))
+        });
         out.expect("the job completes");
         lines
     }

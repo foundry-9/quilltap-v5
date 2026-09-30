@@ -16,10 +16,14 @@ use crate::post_office::instructions::format_letter_date;
 use crate::post_office::mailbox::{
     collect_unalerted_mail, letter_file_name, mark_alerted, DeliveredLetterSummary,
 };
+use jiff::tz::TimeZone;
 
 /// v4 `buildSuparnaMailLLMContext`: plain second-person framing for the LLM
 /// context, so the model reliably acts on its mail. `''` for an empty list.
-pub fn build_suparna_mail_llm_context(letters: &[DeliveredLetterSummary]) -> String {
+pub fn build_suparna_mail_llm_context(
+    letters: &[DeliveredLetterSummary],
+    zone: &TimeZone,
+) -> String {
     if letters.is_empty() {
         return String::new();
     }
@@ -38,7 +42,7 @@ pub fn build_suparna_mail_llm_context(letters: &[DeliveredLetterSummary]) -> Str
             let head = format!(
                 "Letter from {}, delivered {} (letter: {}):",
                 letter.from,
-                format_letter_date(&letter.sent_at),
+                format_letter_date(&letter.sent_at, zone),
                 letter_file_name(&letter.path)
             );
             let body = {
@@ -72,6 +76,22 @@ pub async fn resolve_suparna_mail_context(
     db: &Db,
     mail_vault_id: &str,
 ) -> (String, Vec<DeliveredLetterSummary>) {
+    resolve_suparna_mail_context_in_zone(
+        db,
+        mail_vault_id,
+        &crate::host_zone::system_display_zone(),
+    )
+    .await
+}
+
+/// [`resolve_suparna_mail_context`] with the letter dates rendered in `zone`
+/// (v4's zone-less `formatDateTime` — the host's zone in production, read by
+/// the wrapper above; P4.119). Tests and differentials call this explicitly.
+pub async fn resolve_suparna_mail_context_in_zone(
+    db: &Db,
+    mail_vault_id: &str,
+    zone: &TimeZone,
+) -> (String, Vec<DeliveredLetterSummary>) {
     let vault = mail_vault_id.to_string();
     let unalerted = match db.read_mount_index(move |conn| collect_unalerted_mail(conn, &vault)) {
         Ok(u) => u,
@@ -81,7 +101,7 @@ pub async fn resolve_suparna_mail_context(
         return (String::new(), Vec::new());
     }
 
-    let llm_context = build_suparna_mail_llm_context(&unalerted);
+    let llm_context = build_suparna_mail_llm_context(&unalerted, zone);
 
     // Flip `alerted` on each surfaced letter (the double-announce guard). Each is a
     // content-only write; a failure never breaks the turn (best-effort).
@@ -116,7 +136,7 @@ mod tests {
 
     #[test]
     fn empty_letters_yield_empty_context() {
-        assert_eq!(build_suparna_mail_llm_context(&[]), "");
+        assert_eq!(build_suparna_mail_llm_context(&[], &TimeZone::UTC), "");
     }
 
     #[test]
@@ -127,7 +147,7 @@ mod tests {
             "  Hello there.  ",
             "Mail/friday-2026-02-01.md",
         );
-        let out = build_suparna_mail_llm_context(std::slice::from_ref(&l));
+        let out = build_suparna_mail_llm_context(std::slice::from_ref(&l), &TimeZone::UTC);
         assert!(out.starts_with(
             "Suparṇā of the Post Office has delivered new mail to you. Each letter is below."
         ));
@@ -141,7 +161,7 @@ mod tests {
     fn plural_letters_count_and_blank_body() {
         let l1 = letter("Ada", "2026-02-02T09:00:00.000Z", "First.", "Mail/a.md");
         let l2 = letter("Bob", "2026-02-01T09:00:00.000Z", "   ", "Mail/b.md");
-        let out = build_suparna_mail_llm_context(&[l1, l2]);
+        let out = build_suparna_mail_llm_context(&[l1, l2], &TimeZone::UTC);
         assert!(out.contains("delivered new mail to you (2 letters)."));
         assert!(out.contains("(the letter is blank)"));
     }

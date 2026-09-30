@@ -19,10 +19,10 @@
  * `Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' })`'s
  * exact bytes — including which space character sits before `AM`/`PM`.
  *
- * ⚠ `TZ=UTC` is REQUIRED. `formatInstant`'s `catch` falls back to the host zone
- * when a timezone is unresolvable or absent, and the Rust twin pins that
- * fallback to UTC (the documented harness seam shared with
- * `context_feeders_leaves_equivalence`).
+ * ⚠ The generating `TZ` is load-bearing. `formatInstant`'s `catch` falls back
+ * to the host zone when a timezone is unresolvable or absent; the first row
+ * (`hostZone`) records that zone, and the Rust twin is fed it as the fallback
+ * by argument (P4.119). Run under `TZ=UTC` AND `TZ=America/Chicago`.
  *
  * Run (Node 24, from the v4 checkout; a pinned worktree while v4 HEAD is past
  * the baseline — the driver rewrites the `cd`):
@@ -31,6 +31,8 @@
  *   cd ~/source/quilltap-server
  *   TZ=UTC $N/node --import tsx $V5W/harness/oracle/cases/progressions-engine.ts \
  *     > /tmp/oracle-progressions-engine.ndjson
+ *   TZ=America/Chicago $N/node --import tsx $V5W/harness/oracle/cases/progressions-engine.ts \
+ *     > /tmp/oracle-progressions-engine-chicago.ndjson
  */
 
 import * as fs from 'fs';
@@ -104,6 +106,9 @@ const corpus = JSON.parse(
 ) as Corpus;
 
 const out = (row: Record<string, unknown>) => process.stdout.write(JSON.stringify(row) + '\n');
+
+// The host zone `formatInstant`'s fallback resolves to (P4.119).
+out({ op: 'hostZone', label: 'tz', tz: new Intl.DateTimeFormat().resolvedOptions().timeZone });
 
 /** A JS number, or `null` where the value is NaN/±Infinity — JSON has neither. */
 const num = (x: number): number | null => (Number.isFinite(x) ? x : null);

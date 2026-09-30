@@ -34,7 +34,7 @@ use quilltap_core::api::provider_actions::WireConnectionValidator;
 use quilltap_core::api::settings::ConnectionValidator;
 use quilltap_core::model::wire::{wire_key, CannedSyncWireTransport, WireResponse};
 use quilltap_core::tools::web_search::{
-    build_serper_request, build_serper_validate_request, format_web_search_results,
+    build_serper_request, build_serper_validate_request, format_web_search_results_in_zone,
     map_serper_results, serper_plugin_error, WebSearchResult,
 };
 use serde_json::Value;
@@ -199,7 +199,10 @@ fn web_search_wire_matches_v4() {
                     .iter()
                     .map(result_from_json)
                     .collect();
-                let got = format_web_search_results(&results);
+                let got = format_web_search_results_in_zone(
+                    &results,
+                    &quilltap_core::host_zone::TimeZone::UTC,
+                );
                 assert_eq!(got, row["formatted"].as_str().unwrap(), "{case} formatted");
             }
             "validate" => {

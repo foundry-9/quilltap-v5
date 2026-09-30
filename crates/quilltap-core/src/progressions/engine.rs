@@ -29,12 +29,15 @@
 //! order predicted. That prediction is REFUTED by measurement; the corpus pins
 //! the bytes.
 //!
-//! An unresolvable timezone falls back to the host's in v4. v5 pins that
-//! fallback to **UTC** and the family's oracle runs under `TZ=UTC` — the same
-//! documented harness seam `context_feeders_leaves_equivalence` and
-//! `mail_carina_tools_equivalence` already keep for v4's system-TZ
-//! `toLocaleDateString`. It keeps the port deterministic instead of
-//! reading the build machine's clock settings.
+//! An absent or unresolvable timezone falls back to the HOST's in v4, and so it
+//! does here (P4.119, dogfood #121, ruled (a) 2026-09-29 — this seam was once
+//! pinned to UTC). The host zone is an argument: the `_in_zone` renderers take
+//! it explicitly (every test and differential passes `TimeZone::UTC`, the zone
+//! the family's oracle runs under), and the production wrappers
+//! ([`render_progression_report`], [`progression_placeholders`]) read
+//! [`crate::host_zone::system_display_zone`] — which is how v4's zone-less
+//! greeting and Carina calls (`initialize.ts:222`, `carina.service.ts:588`)
+//! resolve.
 //!
 //! CLIENT-SAFE in v4's sense: pure, no DB, no tracing, no I/O. The one logging
 //! reader is P4.D168's `prompt_section.rs`, which passes an `on_issue` sink
@@ -571,8 +574,7 @@ pub fn should_report_progression(
 }
 
 /// v4 `RenderProgressionOptions` — the chat's resolved timezone, for
-/// `{{start}}` / `{{end}}`. `None` = the host's (pinned to UTC here; see the
-/// module doc).
+/// `{{start}}` / `{{end}}`. `None` = the host's (see the module doc).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RenderProgressionOptions<'a> {
     pub timezone: Option<&'a str>,
@@ -583,12 +585,26 @@ pub struct RenderProgressionOptions<'a> {
 /// `report_template` overrides the IN-PROGRESS wording only: the other two
 /// states are short, fixed and structurally different, and an author's
 /// in-progress sentence would read as nonsense in either.
+///
+/// The production entry: an absent or unresolvable `opts.timezone` falls back
+/// to the HOST's zone, read here once (P4.119). Tests and differentials call
+/// [`render_progression_report_in_zone`] with the fallback explicitly.
 pub fn render_progression_report(
     p: &Progression,
     d: &DerivedProgression,
     opts: &RenderProgressionOptions<'_>,
 ) -> String {
-    let values = progression_placeholders(p, d, opts);
+    render_progression_report_in_zone(p, d, opts, &crate::host_zone::system_display_zone())
+}
+
+/// [`render_progression_report`] with the host-zone fallback passed in.
+pub fn render_progression_report_in_zone(
+    p: &Progression,
+    d: &DerivedProgression,
+    opts: &RenderProgressionOptions<'_>,
+    host_zone: &jiff::tz::TimeZone,
+) -> String {
+    let values = progression_placeholders_in_zone(p, d, opts, host_zone);
 
     if d.state == ProgressionState::Pending {
         return format!("{}: begins in {}.", p.name, d.remaining);
@@ -623,12 +639,24 @@ pub fn default_in_progress_template(p: &Progression) -> String {
     }
 }
 
-/// Every placeholder a report template may name, already rendered to text (v4
-/// `progressionPlaceholders`). Insertion order is v4's declaration order.
+/// Every placeholder a report template may name, in the HOST's fallback zone
+/// (the production entry — see [`render_progression_report`]).
 pub fn progression_placeholders(
     p: &Progression,
     d: &DerivedProgression,
     opts: &RenderProgressionOptions<'_>,
+) -> Vec<(String, String)> {
+    progression_placeholders_in_zone(p, d, opts, &crate::host_zone::system_display_zone())
+}
+
+/// Every placeholder a report template may name, already rendered to text (v4
+/// `progressionPlaceholders`). Insertion order is v4's declaration order.
+/// `host_zone` is the fallback for an absent or unresolvable `opts.timezone`.
+pub fn progression_placeholders_in_zone(
+    p: &Progression,
+    d: &DerivedProgression,
+    opts: &RenderProgressionOptions<'_>,
+    host_zone: &jiff::tz::TimeZone,
 ) -> Vec<(String, String)> {
     let date_only = matches!(
         p.time_increment,
@@ -662,11 +690,11 @@ pub fn progression_placeholders(
         ),
         (
             "start".to_string(),
-            format_instant_en_us(d.start_ms, date_only, opts.timezone),
+            format_instant_en_us(d.start_ms, date_only, opts.timezone, host_zone),
         ),
         (
             "end".to_string(),
-            format_instant_en_us(d.end_ms, date_only, opts.timezone),
+            format_instant_en_us(d.end_ms, date_only, opts.timezone, host_zone),
         ),
         (
             "increment".to_string(),
@@ -721,20 +749,25 @@ fn substitute(template: &str, values: &[(String, String)]) -> String {
 
 /// v4 `formatInstant` — `Intl.DateTimeFormat('en-US', { dateStyle: 'medium',
 /// timeStyle: 'short' unless date-only, timeZone })`. See the module doc for the
-/// measured bytes and the UTC host-fallback seam. A non-finite instant renders
-/// as the empty string, as v4's `Number.isFinite` guard does.
-fn format_instant_en_us(ms: Option<i64>, date_only: bool, timezone: Option<&str>) -> String {
+/// measured bytes and the host-zone fallback. A non-finite instant renders as
+/// the empty string, as v4's `Number.isFinite` guard does.
+fn format_instant_en_us(
+    ms: Option<i64>,
+    date_only: bool,
+    timezone: Option<&str>,
+    host_zone: &jiff::tz::TimeZone,
+) -> String {
     let Some(ms) = ms else {
         return String::new();
     };
     let Ok(timestamp) = jiff::Timestamp::from_millisecond(ms) else {
         return String::new();
     };
-    // An unresolvable zone must not sink a turn; v4 falls back to the host's,
-    // v5 to UTC (the documented harness seam — the oracle runs under TZ=UTC).
+    // An unresolvable zone must not sink a turn; fall back to the host's (v4's
+    // `catch`, and its `timezone ? { timeZone } : {}` for an absent/empty one).
     let zone = timezone
         .and_then(|name| jiff::tz::TimeZone::get(name).ok())
-        .unwrap_or(jiff::tz::TimeZone::UTC);
+        .unwrap_or_else(|| host_zone.clone());
     let zoned = timestamp.to_zoned(zone);
 
     let month = MONTHS_SHORT[(zoned.month() as usize) - 1];
@@ -884,31 +917,43 @@ mod tests {
     /// the day or the 12-hour hour, and date-only for a day-or-coarser unit.
     #[test]
     fn format_instant_matches_the_measured_intl_bytes() {
+        let utc = jiff::tz::TimeZone::UTC;
         let ms = 1_788_876_130_000; // 2026-09-08T14:02:10Z
         assert_eq!(
-            format_instant_en_us(Some(ms), false, Some("UTC")),
+            format_instant_en_us(Some(ms), false, Some("UTC"), &utc),
             "Sep 8, 2026, 2:02\u{20}PM"
         );
-        assert!(!format_instant_en_us(Some(ms), false, Some("UTC")).contains('\u{202F}'));
+        assert!(!format_instant_en_us(Some(ms), false, Some("UTC"), &utc).contains('\u{202F}'));
         assert_eq!(
-            format_instant_en_us(Some(ms), false, Some("America/Chicago")),
+            format_instant_en_us(Some(ms), false, Some("America/Chicago"), &utc),
             "Sep 8, 2026, 9:02 AM"
         );
         assert_eq!(
-            format_instant_en_us(Some(ms), true, Some("UTC")),
+            format_instant_en_us(Some(ms), true, Some("UTC"), &utc),
             "Sep 8, 2026"
         );
         // Midnight is 12 AM, noon is 12 PM.
         assert_eq!(
-            format_instant_en_us(Some(1_798_761_600_000), false, Some("UTC")),
+            format_instant_en_us(Some(1_798_761_600_000), false, Some("UTC"), &utc),
             "Jan 1, 2027, 12:00 AM"
         );
-        // An unresolvable zone falls back to UTC (the recorded harness seam).
+        // P4.119: an unresolvable, absent or empty zone falls back to the
+        // PASSED host zone (v4's `catch` + its `timezone ? { timeZone } : {}`)
+        // — no longer UTC.
+        let chicago = jiff::tz::TimeZone::get("America/Chicago").unwrap();
+        for tz in [Some("Mars/Olympus_Mons"), None, Some("")] {
+            assert_eq!(
+                format_instant_en_us(Some(ms), false, tz, &chicago),
+                "Sep 8, 2026, 9:02 AM",
+                "{tz:?}"
+            );
+        }
+        // An explicit resolvable zone still wins over the host's.
         assert_eq!(
-            format_instant_en_us(Some(ms), false, Some("Mars/Olympus_Mons")),
-            format_instant_en_us(Some(ms), false, None)
+            format_instant_en_us(Some(ms), false, Some("UTC"), &chicago),
+            "Sep 8, 2026, 2:02\u{20}PM"
         );
-        assert_eq!(format_instant_en_us(None, false, Some("UTC")), "");
+        assert_eq!(format_instant_en_us(None, false, Some("UTC"), &utc), "");
     }
 
     /// v4's `plural` singularises on `count === 1` only.

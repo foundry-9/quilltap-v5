@@ -331,8 +331,10 @@ async function runCase(
 }
 
 async function main(): Promise<void> {
-  // The reply preface's date is host-zone-formatted in v4 and UTC in v5 — the
-  // oracle must be generated under TZ=UTC or the two can never agree.
+  // The reply preface's date is host-zone-formatted in v4 — and in v5 since
+  // P4.119, where the zone is an ARGUMENT the Rust family passes as UTC. This
+  // family pins TZ=UTC (the second-zone arm lives in mail-tools), so a file
+  // generated under any other zone must fail here rather than diff.
   const offset = new Date().getTimezoneOffset();
   if (offset !== 0) {
     throw new Error(`post-office-routes oracle must run under TZ=UTC (getTimezoneOffset=${offset})`);

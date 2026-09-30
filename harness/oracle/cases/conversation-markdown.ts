@@ -12,9 +12,14 @@
  * corpus `nowIso` BEFORE the module is imported. Everything else in the module
  * is a pure function of the corpus.
  *
- * `TZ=UTC` is load-bearing: v4 formats through `toLocaleDateString('en-US')` /
+ * `TZ` is load-bearing: v4 formats through `toLocaleDateString('en-US')` /
  * `toLocaleTimeString('en-US')` with no explicit timezone, so the rendered
- * timestamps follow the host zone. The Rust port computes in UTC.
+ * timestamps follow the host zone. The Rust port takes the zone as an argument
+ * (P4.119) and is fed the zone each row records (`tz`, the process's resolved
+ * zone). The family runs the corpus TWICE — `TZ=UTC` (the standing pin) and
+ * `TZ=America/Chicago` (the second-zone arm: DST-straddling and
+ * UTC-midnight-straddling cases, the first time the harness can see v4's
+ * host-zone behaviour at all).
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -22,6 +27,9 @@
  *   TZ=UTC $N/npx tsx \
  *     ~/source/quilltap-v5/harness/oracle/cases/conversation-markdown.ts \
  *     > /tmp/oracle-conversation-markdown.ndjson
+ *   TZ=America/Chicago $N/npx tsx \
+ *     ~/source/quilltap-v5/harness/oracle/cases/conversation-markdown.ts \
+ *     > /tmp/oracle-conversation-markdown-chicago.ndjson
  */
 
 import { fileURLToPath } from 'node:url';
@@ -79,6 +87,10 @@ async function main(): Promise<void> {
 
   const { renderConversationMarkdown } = await import('@/lib/scriptorium/markdown-renderer');
 
+  // The zone this process renders in — recorded per row so the Rust side is
+  // fed exactly the zone v4 used, and a file generated under the wrong `TZ`
+  // fails loudly instead of diffing.
+  const tz = new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const lines: string[] = [];
   for (const c of spec.cases) {
     const names = new Map<string, string>(c.characterNames);
@@ -91,6 +103,7 @@ async function main(): Promise<void> {
     lines.push(
       JSON.stringify({
         name: c.name,
+        tz,
         markdown: result.markdown,
         interchanges: result.interchanges,
       })

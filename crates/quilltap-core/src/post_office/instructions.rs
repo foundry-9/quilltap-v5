@@ -11,6 +11,7 @@
 
 use super::mailbox::{letter_file_name, DeliveredLetterSummary};
 use crate::format_time::{format_date_time, MonthStyle};
+use jiff::tz::TimeZone;
 
 /// v4 `formatLetterActions`: the indented block of the actions available on a
 /// letter, each naming it by its file name. `include_read` is v4's
@@ -34,8 +35,10 @@ pub fn format_letter_actions(path: &str, from: &str, include_read: bool) -> Stri
 }
 
 /// v4 `formatLetterDate`: a one-line human date, falling back gracefully.
-pub fn format_letter_date(sent_at: &str) -> String {
-    let formatted = format_date_time(Some(sent_at), MonthStyle::Long);
+/// v4's `formatDateTime` carries no `timeZone`, so `zone` is the host's in
+/// production (P4.119).
+pub fn format_letter_date(sent_at: &str, zone: &TimeZone) -> String {
+    let formatted = format_date_time(Some(sent_at), MonthStyle::Long, zone);
     if formatted.is_empty() {
         "an unrecorded hour".to_string()
     } else {
@@ -46,7 +49,11 @@ pub fn format_letter_date(sent_at: &str) -> String {
 /// v4 `formatLetterHeading`: heading line(s) for a letter in a numbered listing,
 /// naming the letter by its file name — the handle `read_mail` and `in_reply_to`
 /// take.
-pub fn format_letter_heading(letter: &DeliveredLetterSummary, index: usize) -> String {
+pub fn format_letter_heading(
+    letter: &DeliveredLetterSummary,
+    index: usize,
+    zone: &TimeZone,
+) -> String {
     let announced = if letter.alerted {
         " (already announced)"
     } else {
@@ -55,7 +62,7 @@ pub fn format_letter_heading(letter: &DeliveredLetterSummary, index: usize) -> S
     format!(
         "{index}. From {} — {}{announced}\n   Letter: {}",
         letter.from,
-        format_letter_date(&letter.sent_at),
+        format_letter_date(&letter.sent_at, zone),
         letter_file_name(&letter.path)
     )
 }

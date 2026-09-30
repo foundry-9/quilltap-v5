@@ -29,6 +29,7 @@ use crate::db::DbError;
 use crate::jsstr::js_trim;
 use crate::post_office::instructions::{format_letter_actions, format_letter_date};
 use crate::post_office::mailbox::{letter_file_name, mark_alerted, read_letter, resolve_mail_path};
+use jiff::tz::TimeZone;
 
 /// v4's module logger identity (`logger.child({ module: 'read-mail-handler' })`).
 const LOG_MODULE: &str = "read-mail-handler";
@@ -80,8 +81,10 @@ pub(crate) fn validate_letter_input(args: &Value) -> Option<&str> {
     }
 }
 
-/// Execute the `read_mail` tool (v4 `executeReadMailTool`). Runs on both writer
-/// connections (the announced flag is a mount-store content write).
+/// Execute the `read_mail` tool in the host's zone.
+/// The production entry (the tool executor's): v4's zone-less date renders
+/// resolve the HOST's zone (P4.119), read here once. Tests and differentials
+/// call [`execute_read_mail_in_zone`] with their zone explicitly.
 pub fn execute_read_mail(
     main: &Connection,
     mount: &Connection,
@@ -89,7 +92,28 @@ pub fn execute_read_mail(
     character_id: Option<&str>,
     args: &Value,
 ) -> ReadMailOutput {
-    match read_mail_inner(main, mount, chat_id, character_id, args) {
+    execute_read_mail_in_zone(
+        main,
+        mount,
+        chat_id,
+        character_id,
+        args,
+        &crate::host_zone::system_display_zone(),
+    )
+}
+
+/// Execute the `read_mail` tool (v4 `executeReadMailTool`). Runs on both writer
+/// connections (the announced flag is a mount-store content write); the
+/// letter's date renders in `zone`.
+pub fn execute_read_mail_in_zone(
+    main: &Connection,
+    mount: &Connection,
+    chat_id: &str,
+    character_id: Option<&str>,
+    args: &Value,
+    zone: &TimeZone,
+) -> ReadMailOutput {
+    match read_mail_inner(main, mount, chat_id, character_id, args, zone) {
         Ok(out) => out,
         Err(e) => {
             tracing::error!(
@@ -112,6 +136,7 @@ fn read_mail_inner(
     chat_id: &str,
     character_id: Option<&str>,
     args: &Value,
+    zone: &TimeZone,
 ) -> Result<ReadMailOutput, DbError> {
     let Some(letter_ref) = validate_letter_input(args) else {
         return Ok(fail(
@@ -175,7 +200,7 @@ fn read_mail_inner(
     let text = [
         format!(
             "A letter from {from}, posted {}:",
-            format_letter_date(&letter.frontmatter.sent_at)
+            format_letter_date(&letter.frontmatter.sent_at, zone)
         ),
         if body.is_empty() {
             "(the letter is blank)".to_string()

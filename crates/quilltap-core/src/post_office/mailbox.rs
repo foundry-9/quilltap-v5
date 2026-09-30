@@ -35,6 +35,7 @@ use crate::db::DbError;
 use crate::doc_edit::markdown_parser::serialize_frontmatter;
 use crate::format_time::{format_date_time, MonthStyle};
 use crate::markdown::{body_after, parse_frontmatter};
+use jiff::tz::TimeZone;
 
 /// Root-level folder, in every character's vault, where letters are delivered.
 pub const MAIL_FOLDER: &str = "Mail";
@@ -228,10 +229,12 @@ pub fn parse_letter(content: &str) -> ParsedLetter {
 }
 
 /// v4 `buildReplyPreface`: the quoted reply preface from an original letter's body
-/// (body only). Each line prefixed `> ` (empty lines → `>`).
-pub fn build_reply_preface(original_body: &str, original_sent_at: &str) -> String {
+/// (body only). Each line prefixed `> ` (empty lines → `>`). The date is v4's
+/// zone-less `formatDateTime` — the host's zone in production (P4.119), so a
+/// v5-written preface persists the same local time v4 would write.
+pub fn build_reply_preface(original_body: &str, original_sent_at: &str, zone: &TimeZone) -> String {
     let when = {
-        let formatted = format_date_time(Some(original_sent_at), MonthStyle::Long);
+        let formatted = format_date_time(Some(original_sent_at), MonthStyle::Long, zone);
         if formatted.is_empty() {
             "an earlier date".to_string()
         } else {
@@ -471,10 +474,32 @@ mod tests {
 
     #[test]
     fn reply_preface_quotes_body() {
-        let preface = build_reply_preface("Line one\n\nLine two", "2026-02-01T09:05:00.000Z");
+        let preface = build_reply_preface(
+            "Line one\n\nLine two",
+            "2026-02-01T09:05:00.000Z",
+            &TimeZone::UTC,
+        );
         assert_eq!(
             preface,
             "> In reply to your letter of February 1, 2026 at 09:05 AM:\n>\n> Line one\n>\n> Line two"
+        );
+    }
+
+    /// P4.119 red-first — the 2026-09-29 walk's D2 bytes: a letter sent at
+    /// 19:40Z is quoted as `02:40 PM` on a host in `America/Chicago` (CDT),
+    /// which is what v4 persists there; a winter letter keeps ITS offset (CST).
+    #[test]
+    fn reply_preface_dates_in_the_host_zone() {
+        let zone = TimeZone::get("America/Chicago").unwrap();
+        let preface = build_reply_preface("Hi.", "2026-09-29T19:40:00.000Z", &zone);
+        assert_eq!(
+            preface,
+            "> In reply to your letter of September 29, 2026 at 02:40 PM:\n>\n> Hi."
+        );
+        let preface = build_reply_preface("Hi.", "2026-01-29T19:40:00.000Z", &zone);
+        assert!(
+            preface.contains("January 29, 2026 at 01:40 PM"),
+            "{preface}"
         );
     }
 

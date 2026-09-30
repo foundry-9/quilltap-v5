@@ -45,7 +45,7 @@ use quilltap_core::db::Writer;
 use quilltap_core::model::wire::{wire_key, CannedSyncWireTransport, WireResponse};
 use quilltap_core::services::provisioning::provision_fresh_instance;
 use quilltap_core::tools::web_search::{
-    build_serper_request, execute_web_search, format_web_search_results, NoSearchApiKeys,
+    build_serper_request, execute_web_search, format_web_search_results_in_zone, NoSearchApiKeys,
     RealWebSearchProvider, WebSearchProvider,
 };
 use quilltap_host::spine::DbSearchApiKeys;
@@ -253,8 +253,9 @@ fn check(
     let out = execute_web_search(provider, user_id, &args);
     let got_json = serde_json::to_string(&out).unwrap();
     let got_fmt = if out.success {
-        Some(format_web_search_results(
+        Some(format_web_search_results_in_zone(
             out.results.as_deref().unwrap_or(&[]),
+            &quilltap_core::host_zone::TimeZone::UTC,
         ))
     } else {
         None

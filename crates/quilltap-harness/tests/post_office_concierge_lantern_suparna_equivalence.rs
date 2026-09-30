@@ -36,7 +36,7 @@ use quilltap_core::services::concierge_notifications::{
     ConciergeRefusalDetails, ConciergeRefusalKind, ConciergeRefusalPurpose,
 };
 use quilltap_core::services::lantern_notifications::is_lantern_image_alert_enabled;
-use quilltap_core::services::suparna_notifications::build_suparna_mail_whisper;
+use quilltap_core::services::suparna_notifications::build_suparna_mail_whisper_in_zone;
 
 fn cat(category: &str, score: f64, label: Option<&str>) -> ConciergeCategory {
     ConciergeCategory {
@@ -265,7 +265,10 @@ fn rust_value(kind: &str, id: &str, input: &Value) -> Value {
                 project.as_ref(),
             ))
         }
-        "suparna_whisper" => Value::String(build_suparna_mail_whisper(&suparna_case(id))),
+        "suparna_whisper" => Value::String(build_suparna_mail_whisper_in_zone(
+            &suparna_case(id),
+            &quilltap_core::host_zone::TimeZone::UTC,
+        )),
         // P4.D228 (v4 `ce2f1dabf`, #77): the Lantern's `background-refused`
         // bubble, both audiences.
         "lantern_refusal_content" | "lantern_refusal_opaque" => {

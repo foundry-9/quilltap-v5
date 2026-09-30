@@ -146,7 +146,7 @@ use std::path::{Path, PathBuf};
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::conversation_render_job::{
-    handle_conversation_render, ConversationRenderPayload,
+    handle_conversation_render_in_zone, ConversationRenderPayload,
 };
 use quilltap_core::services::conversation_render_reconcile::{
     reconcile_conversation_rendering, ReconcileResult,
@@ -699,12 +699,15 @@ async fn embedding_remainder_matches_oracle() {
             chat_id: rc.chat_id.clone(),
             full_reembed: rc.full_reembed,
         };
-        let outcome = handle_conversation_render(
+        // The oracle runs under `TZ=UTC`; the render's display zone is an
+        // argument (P4.119), so the comparison holds on any host zone.
+        let outcome = handle_conversation_render_in_zone(
             &db,
             &format!("render-{}", rc.name),
             &spec.user_id,
             &payload,
             &spec.render_now_iso,
+            &quilltap_core::host_zone::TimeZone::UTC,
         )
         .await;
         got_renders.push(match outcome {

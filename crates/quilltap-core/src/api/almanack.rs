@@ -257,7 +257,9 @@ pub async fn almanack_generate(
 
     // --- Phase 7: Binding the volume ---------------------------------------
     announce_binding(progress);
-    let markdown = render_almanack_markdown(&data);
+    // v4's `toLocale*` renders carry no `timeZone`: the host's zone, which the
+    // host puts on the paths it hands the pipeline (P4.119).
+    let markdown = render_almanack_markdown(&data, &ctx.paths.display_zone);
     let filename = report_filename(ctx.now_ms);
     let bytes = markdown.clone().into_bytes();
     let size = bytes.len() as f64;

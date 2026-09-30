@@ -44,10 +44,7 @@ use super::types::{ErrorKind, Response};
 /// offset with no IANA name falls back to `UTC` (defensive; dev/CI machines
 /// always resolve a zone).
 fn system_tz() -> String {
-    jiff::tz::TimeZone::system()
-        .iana_name()
-        .unwrap_or("UTC")
-        .to_string()
+    crate::host_zone::system_zone_name()
 }
 
 /// A `v ?? default` read over the marshaled chat object (chats_read omits NULL

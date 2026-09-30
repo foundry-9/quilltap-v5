@@ -496,10 +496,7 @@ pub fn transcript_filename(chat: &Value) -> String {
 /// `api::autonomous_rooms::system_tz` precedent — v4 reads the same host TZ
 /// through `Intl`). A fixed offset with no IANA name falls back to `UTC`.
 fn system_tz() -> String {
-    jiff::tz::TimeZone::system()
-        .iana_name()
-        .unwrap_or("UTC")
-        .to_string()
+    crate::host_zone::system_zone_name()
 }
 
 /// v4 `handleExportMarkdown`. `user_id` selects the operator row (the

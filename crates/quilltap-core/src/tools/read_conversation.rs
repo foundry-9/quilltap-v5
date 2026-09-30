@@ -150,11 +150,10 @@ fn fmt_js_int(n: f64) -> String {
     }
 }
 
-/// Execute the `read_conversation` tool (v4 `executeReadConversationTool`).
-///
-/// `now_iso` is the wall clock the live render's `Current time:` header line
-/// carries (v4 reads `new Date()` inside the renderer); the executor passes
-/// [`crate::clock::now_iso`], a differential a frozen instant.
+/// Execute the `read_conversation` tool in the HOST's zone — the tool
+/// executor's entry. The live render's timestamps are v4's zone-less
+/// `toLocale*` renders, so they resolve the host zone (P4.119), read here
+/// once; tests and differentials call [`execute_read_conversation_in_zone`].
 pub async fn execute_read_conversation(
     db: &Db,
     user_id: &str,
@@ -163,7 +162,34 @@ pub async fn execute_read_conversation(
     args: &Value,
     now_iso: &str,
 ) -> ReadConversationOutput {
-    match execute_inner(db, user_id, chat_id, character_id, args, now_iso) {
+    execute_read_conversation_in_zone(
+        db,
+        user_id,
+        chat_id,
+        character_id,
+        args,
+        now_iso,
+        &crate::host_zone::system_display_zone(),
+    )
+    .await
+}
+
+/// Execute the `read_conversation` tool (v4 `executeReadConversationTool`).
+///
+/// `now_iso` is the wall clock the live render's `Current time:` header line
+/// carries (v4 reads `new Date()` inside the renderer); the executor passes
+/// [`crate::clock::now_iso`], a differential a frozen instant. `zone` is the
+/// render's display zone.
+pub async fn execute_read_conversation_in_zone(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    character_id: Option<&str>,
+    args: &Value,
+    now_iso: &str,
+    zone: &jiff::tz::TimeZone,
+) -> ReadConversationOutput {
+    match execute_inner(db, user_id, chat_id, character_id, args, now_iso, zone) {
         Ok(out) => out,
         // v4's catch-all: `error instanceof Error ? error.message : 'Unknown error…'`.
         Err(e) => {
@@ -196,6 +222,7 @@ fn execute_inner(
     character_id: Option<&str>,
     args: &Value,
     now_iso: &str,
+    zone: &jiff::tz::TimeZone,
 ) -> Result<ReadConversationOutput, DbError> {
     if !validate_input(args) {
         tracing::warn!(
@@ -268,7 +295,7 @@ fn execute_inner(
 
     // Rendered live from the stored messages — never a stored copy, so every
     // conversation is readable however long it has been quiet (v4 :99-107).
-    let rendered = db.read_main(|c| render_chat_conversation(c, &chat, now_iso))?;
+    let rendered = db.read_main(|c| render_chat_conversation(c, &chat, now_iso, zone))?;
     let rendered = match rendered {
         Some(r) if !r.interchanges.is_empty() => r.markdown,
         _ => {
@@ -451,13 +478,14 @@ mod log_tests {
             .build()
             .unwrap();
         capture(|| {
-            rt.block_on(execute_read_conversation(
+            rt.block_on(execute_read_conversation_in_zone(
                 db,
                 USER,
                 CHAT,
                 Some(FRIDAY),
                 &args,
                 NOW,
+                &jiff::tz::TimeZone::UTC,
             ))
         })
     }

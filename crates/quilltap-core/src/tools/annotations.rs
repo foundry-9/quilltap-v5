@@ -176,11 +176,10 @@ enum UpsertPlan {
     },
 }
 
-/// Execute the `upsert_annotation` tool (v4 `executeUpsertAnnotationTool`).
-///
-/// `now_iso` is the live render's wall clock (its `Current time:` header line);
-/// the executor passes [`crate::clock::now_iso`], a differential a frozen
-/// instant.
+/// Execute the `upsert_annotation` tool in the HOST's zone — the tool
+/// executor's entry. Its live render (which numbers the messages) is v4's
+/// zone-less render, so it resolves the host zone (P4.119), read here once;
+/// tests and differentials call [`execute_upsert_annotation_in_zone`].
 pub async fn execute_upsert_annotation(
     db: &Db,
     user_id: &str,
@@ -188,6 +187,32 @@ pub async fn execute_upsert_annotation(
     character_name: &str,
     args: &Value,
     now_iso: &str,
+) -> UpsertAnnotationOutput {
+    execute_upsert_annotation_in_zone(
+        db,
+        user_id,
+        chat_id,
+        character_name,
+        args,
+        now_iso,
+        &crate::host_zone::system_display_zone(),
+    )
+    .await
+}
+
+/// Execute the `upsert_annotation` tool (v4 `executeUpsertAnnotationTool`).
+///
+/// `now_iso` is the live render's wall clock (its `Current time:` header line);
+/// the executor passes [`crate::clock::now_iso`], a differential a frozen
+/// instant. `zone` is the render's display zone.
+pub async fn execute_upsert_annotation_in_zone(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    character_name: &str,
+    args: &Value,
+    now_iso: &str,
+    zone: &jiff::tz::TimeZone,
 ) -> UpsertAnnotationOutput {
     // v4's one outer `catch` (`:143-148`).
     let log_failure = |e: &DbError| {
@@ -203,7 +228,7 @@ pub async fn execute_upsert_annotation(
     };
     // All pre-checks + the action decision are synchronous reads; the actual
     // upsert is the one `db.write(...).await`.
-    let plan = match upsert_plan(db, user_id, chat_id, character_name, args, now_iso) {
+    let plan = match upsert_plan(db, user_id, chat_id, character_name, args, now_iso, zone) {
         Ok(p) => p,
         Err(e) => {
             log_failure(&e);
@@ -289,6 +314,7 @@ fn upsert_plan(
     character_name: &str,
     args: &Value,
     now_iso: &str,
+    zone: &jiff::tz::TimeZone,
 ) -> Result<UpsertPlan, DbError> {
     let (message_index, content) = match validate_upsert_input(args) {
         Some(v) => v,
@@ -341,7 +367,7 @@ fn upsert_plan(
 
     // Message indices are the renderer's numbering, so count them from a live
     // render rather than a stored copy (v4 :83-95).
-    let rendered = db.read_main(|c| render_chat_conversation(c, &chat, now_iso))?;
+    let rendered = db.read_main(|c| render_chat_conversation(c, &chat, now_iso, zone))?;
     let message_count = rendered
         .as_ref()
         .map_or(0, |r| count_message_headers(&r.markdown));
@@ -608,8 +634,14 @@ pub(crate) mod log_tests {
             .build()
             .unwrap();
         capture(|| {
-            rt.block_on(execute_upsert_annotation(
-                db, USER, chat, "Friday", &args, NOW,
+            rt.block_on(execute_upsert_annotation_in_zone(
+                db,
+                USER,
+                chat,
+                "Friday",
+                &args,
+                NOW,
+                &jiff::tz::TimeZone::UTC,
             ))
         })
     }

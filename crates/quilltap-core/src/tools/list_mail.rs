@@ -19,6 +19,7 @@ use crate::db::characters_read::find_by_id_raw;
 use crate::db::vault_character_write::CharacterVaultWriteInput;
 use crate::post_office::instructions::{format_letter_actions, format_letter_heading};
 use crate::post_office::mailbox::list_mailbox;
+use jiff::tz::TimeZone;
 
 const EMPTY_POSTBOX: &str = "Your postbox stands empty.";
 
@@ -57,14 +58,10 @@ fn fail(message: &str) -> ListMailOutput {
     }
 }
 
-/// Execute the `list_mail` tool (v4 `executeListMailTool`). Runs on both writer
-/// connections.
-///
-/// v4 wraps the whole handler in ONE `try`/`catch`: any thrown error — the
-/// character read, the vault ensure, the mailbox listing — lands in the catch,
-/// which logs `list_mail handler threw unexpectedly {chatId}` at ERROR and
-/// answers the in-voice "stumbled" failure. Here that is [`list_mail_inner`]'s
-/// `Err` arm.
+/// Execute the `list_mail` tool in the host's zone.
+/// The production entry (the tool executor's): v4's zone-less date renders
+/// resolve the HOST's zone (P4.119), read here once. Tests and differentials
+/// call [`execute_list_mail_in_zone`] with their zone explicitly.
 pub fn execute_list_mail(
     main: &Connection,
     mount: &Connection,
@@ -72,7 +69,33 @@ pub fn execute_list_mail(
     character_id: Option<&str>,
     args: &Value,
 ) -> ListMailOutput {
-    match list_mail_inner(main, mount, character_id, args) {
+    execute_list_mail_in_zone(
+        main,
+        mount,
+        chat_id,
+        character_id,
+        args,
+        &crate::host_zone::system_display_zone(),
+    )
+}
+
+/// Execute the `list_mail` tool (v4 `executeListMailTool`). Runs on both writer
+/// connections; each letter's date renders in `zone`.
+///
+/// v4 wraps the whole handler in ONE `try`/`catch`: any thrown error — the
+/// character read, the vault ensure, the mailbox listing — lands in the catch,
+/// which logs `list_mail handler threw unexpectedly {chatId}` at ERROR and
+/// answers the in-voice "stumbled" failure. Here that is [`list_mail_inner`]'s
+/// `Err` arm.
+pub fn execute_list_mail_in_zone(
+    main: &Connection,
+    mount: &Connection,
+    chat_id: &str,
+    character_id: Option<&str>,
+    args: &Value,
+    zone: &TimeZone,
+) -> ListMailOutput {
+    match list_mail_inner(main, mount, character_id, args, zone) {
         Ok(out) => out,
         Err(e) => {
             tracing::error!(
@@ -97,6 +120,7 @@ fn list_mail_inner(
     mount: &Connection,
     character_id: Option<&str>,
     args: &Value,
+    zone: &TimeZone,
 ) -> Result<ListMailOutput, crate::db::DbError> {
     // v4 `validateListMailInput` = `z.object({})` safeParse: any object is valid.
     if !args.is_object() {
@@ -144,7 +168,7 @@ fn list_mail_inner(
         .map(|(i, letter)| {
             format!(
                 "{}\n{}",
-                format_letter_heading(letter, i + 1),
+                format_letter_heading(letter, i + 1, zone),
                 format_letter_actions(&letter.path, &letter.from, true)
             )
         })

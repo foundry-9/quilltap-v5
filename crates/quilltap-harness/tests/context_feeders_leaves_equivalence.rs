@@ -319,7 +319,7 @@ fn suparna_case(id: &str) -> String {
         ],
         other => panic!("unknown suparna case {other}"),
     };
-    build_suparna_mail_llm_context(&letters)
+    build_suparna_mail_llm_context(&letters, &quilltap_core::host_zone::TimeZone::UTC)
 }
 
 fn clothing_case(id: &str) -> String {

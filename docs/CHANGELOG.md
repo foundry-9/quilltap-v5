@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(core): format display dates in the host zone, as v4 does (P4.119, dogfood #121)
+
+_quilltap-core 0.0.1107, quilltap-harness 0.0.1027, quilltap-host 0.0.166._
+
+v5 rendered every human-readable date in UTC where v4 uses the host's
+system zone: Post Office letter dates and reply prefaces, the Suparṇā mail
+whisper and turn context, the Scriptorium transcript render (chunk text,
+`read_conversation`, `upsert_annotation`), web-search `Published:` dates,
+the Almanack, and the progressions fallback for an absent or unknown chat
+zone. On a real instance that re-embedded every chat v5 re-rendered and
+wrote wrong-zone times into letters. Each formatter now takes its zone as an
+argument and renders each instant with its own offset (DST-correct); the
+zone-less Almanack stamps (SQLite `datetime('now')` form and backup
+filenames) are parsed in the same zone, so their digits print back
+unchanged; the Almanack takes the zone as an input on `AlmanackPaths`. Production entry points read the host zone once through a new
+`host_zone` module, which also replaces three duplicate zone-name readers.
+Tests and differentials pass the zone explicitly, so nothing depends on the
+machine's zone. New differentials run v4 under both `TZ=UTC` and
+`TZ=America/Chicago`: a new `host_zone_dates` family, plus second-zone arms
+on `conversation_markdown` and `progressions_engine`. A new census pins every
+production site that reads the host zone, backed by a child-process check.
 #### 2026-09-29 — feat(chat): describe every new chat image upload in the background, and give every photo path its embedding enqueue (dogfood #128)
 
 _Versions: core 0.0.1107, harness 0.0.1027, host 0.0.166._

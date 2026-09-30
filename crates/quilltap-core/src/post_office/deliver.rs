@@ -60,7 +60,9 @@ fn ensure_vault(
     Ok(res.mount_point_id)
 }
 
-/// v4 `composeAndDeliverLetter`. `now_iso` is the injected `sentAt`.
+/// v4 `composeAndDeliverLetter`. `now_iso` is the injected `sentAt`; `zone`
+/// renders a reply preface's date (the host's in production — P4.119).
+#[allow(clippy::too_many_arguments)]
 pub fn compose_and_deliver_letter(
     main: &Connection,
     mount: &Connection,
@@ -69,6 +71,7 @@ pub fn compose_and_deliver_letter(
     message: &str,
     in_reply_to: Option<&str>,
     now_iso: &str,
+    zone: &jiff::tz::TimeZone,
 ) -> Result<ComposeAndDeliverResult, DbError> {
     // Store the canonical `Mail/…` path whichever form the caller named it by
     // (v4 `39bc98ffc`: `params.inReplyTo ? (resolveMailPath(…) ?? raw) : null`).
@@ -95,7 +98,7 @@ pub fn compose_and_deliver_letter(
             );
             return Ok(ComposeAndDeliverResult::ReplyNotFound);
         };
-        let preface = build_reply_preface(&original.body, &original.frontmatter.sent_at);
+        let preface = build_reply_preface(&original.body, &original.frontmatter.sent_at, zone);
         body = format!("{preface}\n\n{message}");
     }
 
