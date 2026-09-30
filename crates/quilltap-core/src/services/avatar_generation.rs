@@ -152,7 +152,7 @@ async fn trigger_avatar_generation_inner(
 
     if image_profile_id.is_none() {
         let all = crate::db::fallback::find_all_or_empty("image_profiles", || {
-            db.read_main(|conn| crate::db::image_profiles::find_all(conn))
+            db.read_main(crate::db::image_profiles::find_all)
         });
         let default = all
             .into_iter()
