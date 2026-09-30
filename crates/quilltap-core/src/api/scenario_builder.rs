@@ -401,11 +401,13 @@ pub fn scenario_builder_prepare(
     // whose WARN `Scenario Builder dropped an unreadable group id` is
     // therefore UNREACHABLE through its real code — the cast WARN's class
     // above; `08c49319d`'s commit message claims the WARN. v5 reads with
-    // `find_name_and_official_mount_point_id_raw`, which DECODES `name` as
-    // text (the one-column pointer read would admit a BLOB-named row v4
-    // drops), and reproduces the repository fallback ERROR on its `Err` (the
-    // `mount_pool.rs` precedent). Measured by the route family's unreadable-
-    // group case: v4 drops the BLOB-named row with that ERROR and no route line.
+    // `find_validated_name_and_official_mount_point_id_raw`, which holds the
+    // row to v4's `GroupRowSchema` (P4.124 — the name-decoding read it replaced
+    // refused only a non-text `name`, and let an empty or 101-character name, a
+    // non-uuid id and a non-uuid official pointer through), and reproduces the
+    // repository fallback ERROR on its `Err` (the `mount_pool.rs` precedent).
+    // Measured by the route family's unreadable-group case: v4 drops the
+    // BLOB-named row with that ERROR and no route line.
     let mut group_ids: Vec<String> = Vec::new();
     let mut seen_groups: Vec<&str> = Vec::new();
     for id in &parsed.group_ids {
@@ -414,7 +416,9 @@ pub fn scenario_builder_prepare(
         }
         seen_groups.push(id);
         let gid = id.clone();
-        match db.read_main(move |c| groups::find_name_and_official_mount_point_id_raw(c, &gid)) {
+        match db.read_main(move |c| {
+            groups::find_validated_name_and_official_mount_point_id_raw(c, &gid)
+        }) {
             Ok(Some(_)) => group_ids.push(id.clone()),
             Ok(None) => {}
             Err(e) => {

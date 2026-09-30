@@ -471,6 +471,35 @@ pub fn zod_uuid_ok(s: &str) -> bool {
     matches!(b[14], b'1'..=b'8') && matches!(b[19], b'8' | b'9' | b'a' | b'b' | b'A' | b'B')
 }
 
+/// v4 `GroupRowSchema` (`lib/schemas/group.types.ts`) over a raw `groups` row
+/// — the shape `groups.findByIdRaw` (`_findById`) validates before a row counts
+/// as found (P4.124, P4.D231): `id: UUIDSchema`, `name: z.string().min(1)
+/// .max(100)` (JS `.length`, so UTF-16 code units), `officialMountPointId:
+/// UUIDSchema.nullable().optional()` (absent and `null` both pass — v4 reads a
+/// NULL cell as `undefined`), `createdAt`/`updatedAt: TimestampSchema` (a
+/// stored value is a string, so `z.iso.datetime()`). A non-string cell (a BLOB)
+/// fails wherever a string is required.
+///
+/// ⚠ Scope, recorded: `GroupSchema` also extends the row with the five
+/// store-resident fields (`description` ≤ 2000, `instructions` ≤ 10000,
+/// `state` a JSON record, `color` a hex colour, `icon` ≤ 50). v4 strips those
+/// from every row it writes (`GROUP_STORE_MANAGED_FIELDS`), so their columns
+/// read NULL on any v4-written instance and are not checked here.
+pub fn zod_group_row_ok(row: &serde_json::Map<String, Value>) -> bool {
+    let text = |k: &str| row.get(k).and_then(Value::as_str);
+    let name_len = text("name").map(|n| n.encode_utf16().count());
+    let official_ok = match row.get("officialMountPointId") {
+        None | Some(Value::Null) => true,
+        Some(Value::String(v)) => zod_uuid_ok(v),
+        Some(_) => false,
+    };
+    text("id").is_some_and(zod_uuid_ok)
+        && name_len.is_some_and(|n| (1..=100).contains(&n))
+        && official_ok
+        && text("createdAt").is_some_and(zod_iso_datetime_ok)
+        && text("updatedAt").is_some_and(zod_iso_datetime_ok)
+}
+
 /// v4 zod **4.6.5**'s `z.iso.datetime()` (no options: no `offset`, no `local`,
 /// unbounded `precision`) — the ONE server-side home of that check (P4.113).
 /// Sourced from the compiled `pattern` of a live `z.iso.datetime()` at the
@@ -558,6 +587,51 @@ pub fn key(k: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
+    /// P4.124: v4 `GroupRowSchema` — each shape the order named, both edges.
+    #[test]
+    fn group_row_schema_holds_the_five_columns() {
+        use super::zod_group_row_ok;
+        let ok = serde_json::json!({
+            "id": "d2310000-0000-4000-8000-0000000000c1",
+            "name": "Loners",
+            "officialMountPointId": "e2000000-0000-4000-8000-0000000000f3",
+            "createdAt": "2026-01-02T03:04:05.000Z",
+            "updatedAt": "2026-01-02T03:04:05.000Z",
+        });
+        let row = |patch: serde_json::Value| {
+            let mut r = ok.as_object().unwrap().clone();
+            for (k, v) in patch.as_object().unwrap() {
+                if v == &serde_json::json!("<absent>") {
+                    r.remove(k);
+                } else {
+                    r.insert(k.clone(), v.clone());
+                }
+            }
+            r
+        };
+        assert!(zod_group_row_ok(ok.as_object().unwrap()));
+        // `.nullable().optional()`: absent and null both pass.
+        assert!(zod_group_row_ok(&row(serde_json::json!({"officialMountPointId": "<absent>"}))));
+        assert!(zod_group_row_ok(&row(serde_json::json!({"officialMountPointId": null}))));
+        // `min(1).max(100)` in UTF-16 units: 100 passes, 101 fails; an astral
+        // character counts TWO.
+        assert!(zod_group_row_ok(&row(serde_json::json!({"name": "x".repeat(100)}))));
+        assert!(!zod_group_row_ok(&row(serde_json::json!({"name": "x".repeat(101)}))));
+        assert!(!zod_group_row_ok(&row(serde_json::json!({"name": format!("{}\u{1F600}", "x".repeat(99))}))));
+        for bad in [
+            serde_json::json!({"name": ""}),
+            serde_json::json!({"name": {"blobBytes": 1}}),
+            serde_json::json!({"name": "<absent>"}),
+            serde_json::json!({"id": "d2310000-0000-0000-8000-0000000000c5"}),
+            serde_json::json!({"officialMountPointId": "e2000000-0000-0000-8000-0000000000f3"}),
+            serde_json::json!({"officialMountPointId": 7}),
+            serde_json::json!({"createdAt": "2026-01-02"}),
+            serde_json::json!({"updatedAt": "<absent>"}),
+        ] {
+            assert!(!zod_group_row_ok(&row(bad.clone())), "{bad}");
+        }
+    }
+
     use super::*;
 
     /// P4.113 — every expected value MEASURED by running the `d1c06cd9d` pin's

@@ -180,6 +180,73 @@ pub fn find_name_and_official_mount_point_id_raw(
     Ok(row)
 }
 
+/// Read a group's `name` + `officialMountPointId` WITHOUT the store overlay, as
+/// v4's `groups.findByIdRaw` sees the row: `_findById` VALIDATES it against
+/// `GroupRowSchema` ([`crate::api::zod_issues::zod_group_row_ok`]), and a row
+/// that fails is not found — v4's `validate` logs ERROR `Data validation
+/// failed {collection, error}`, then its fallback `safeQuery` logs `Error
+/// finding entity by ID` and answers `null` (P4.124, P4.D231). This fn logs the
+/// first line and answers `Err`, so each caller's existing fallback arm logs
+/// the second at its own target. A row whose cells merely DECODE (an empty or
+/// 101-character name, a non-uuid id or pointer) is refused here where
+/// [`find_name_and_official_mount_point_id_raw`] would return it. `Ok(None)`
+/// when the row is absent.
+pub fn find_validated_name_and_official_mount_point_id_raw(
+    main: &Connection,
+    id: &str,
+) -> Result<Option<(String, Option<String>)>, DbError> {
+    use rusqlite::types::ValueRef;
+    let cell = |v: ValueRef<'_>| -> serde_json::Value {
+        match v {
+            ValueRef::Null => serde_json::Value::Null,
+            ValueRef::Integer(i) => serde_json::json!(i),
+            ValueRef::Real(f) => serde_json::json!(f),
+            ValueRef::Text(t) => serde_json::json!(String::from_utf8_lossy(t)),
+            // A Buffer to v4's Zod: never a string.
+            ValueRef::Blob(b) => serde_json::json!({ "blobBytes": b.len() }),
+        }
+    };
+    let row = main
+        .query_row(
+            "SELECT id, name, officialMountPointId, createdAt, updatedAt FROM groups WHERE id = ?1",
+            rusqlite::params![id],
+            |row| {
+                let mut obj = serde_json::Map::new();
+                for (i, key) in ["id", "name", "officialMountPointId", "createdAt", "updatedAt"]
+                    .into_iter()
+                    .enumerate()
+                {
+                    let v = cell(row.get_ref(i)?);
+                    // v4 turns a NULL cell into `undefined` — the key is absent.
+                    if !v.is_null() {
+                        obj.insert(key.to_string(), v);
+                    }
+                }
+                Ok(obj)
+            },
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    if !crate::api::zod_issues::zod_group_row_ok(&row) {
+        let error = "the groups row does not match v4's GroupRowSchema".to_string();
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "groups",
+            error = %error,
+            "Data validation failed"
+        );
+        return Err(DbError::Internal(error));
+    }
+    let text = |k: &str| row.get(k).and_then(serde_json::Value::as_str).map(str::to_string);
+    Ok(Some((text("name").unwrap_or_default(), text("officialMountPointId"))))
+}
+
 /// Read a group's `officialMountPointId` pointer WITHOUT the store overlay (v4
 /// `groups.findByIdRaw(...).officialMountPointId`). The tiered-mount-pool group
 /// resolver uses this on its hot path — it only needs the pointer, not the
@@ -201,4 +268,55 @@ pub fn find_official_mount_point_id_raw(
             other => Err(other),
         })?;
     Ok(row)
+}
+
+/// P4.124: the validated raw read refuses a Zod-invalid row with v4's
+/// `Data validation failed` and returns a valid one — silent.
+#[cfg(test)]
+mod validated_raw_read_tests {
+    use super::*;
+
+    #[test]
+    fn a_zod_invalid_group_row_is_refused_with_v4s_line() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE groups (id TEXT, name, officialMountPointId TEXT, \
+             createdAt TEXT, updatedAt TEXT); \
+             INSERT INTO groups VALUES ('d2310000-0000-4000-8000-0000000000c1', 'Loners', \
+               NULL, '2026-01-02T03:04:05.000Z', '2026-01-02T03:04:05.000Z'); \
+             INSERT INTO groups VALUES ('d2310000-0000-4000-8000-0000000000c3', '', \
+               NULL, '2026-01-02T03:04:05.000Z', '2026-01-02T03:04:05.000Z'); \
+             INSERT INTO groups VALUES ('d2310000-0000-4000-8000-0000000000c2', X'00', \
+               NULL, '2026-01-02T03:04:05.000Z', '2026-01-02T03:04:05.000Z');",
+        )
+        .unwrap();
+        let (found, lines) = crate::test_support::captured_with(|| {
+            find_validated_name_and_official_mount_point_id_raw(
+                &conn,
+                "d2310000-0000-4000-8000-0000000000c1",
+            )
+        });
+        assert_eq!(found.unwrap(), Some(("Loners".to_string(), None)));
+        assert!(lines.is_empty(), "{lines:?}");
+        for bad in [
+            "d2310000-0000-4000-8000-0000000000c3",
+            "d2310000-0000-4000-8000-0000000000c2",
+        ] {
+            let (found, lines) = crate::test_support::captured_with(|| {
+                find_validated_name_and_official_mount_point_id_raw(&conn, bad)
+            });
+            assert!(found.is_err(), "{bad}");
+            assert_eq!(lines.len(), 1, "{lines:?}");
+            assert!(
+                lines[0].starts_with("ERROR quilltap::db Data validation failed")
+                    && lines[0].contains("collection=groups"),
+                "{}",
+                lines[0]
+            );
+        }
+        let (found, _) = crate::test_support::captured_with(|| {
+            find_validated_name_and_official_mount_point_id_raw(&conn, "absent")
+        });
+        assert_eq!(found.unwrap(), None);
+    }
 }

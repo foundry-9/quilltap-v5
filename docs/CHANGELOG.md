@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(groups): hold raw group and link reads to v4's Zod row shapes
+
+_Versions: core 0.0.1112, harness 0.0.1031._
+
+Group reads now apply v4's row validation. A group's raw read (the
+Scenario Builder's named-group check and the tiered mount pool's group
+tier) holds the row to v4's `GroupRowSchema`: an empty or over-100-character
+name, a non-uuid id or a non-uuid official pointer now reads as "not
+found" with v4's `Data validation failed` and `Error finding entity by ID`
+lines, where v5 had accepted any row whose name decoded as text. The
+predicate is one function beside the other Zod helpers. `find_by_group_id`
+now drops one invalid link row, as v4's per-row `validateSafe` does,
+instead of failing the whole read; the tiered-pool family's divergence pin
+for that arm was measured VANISHED and retired. New corpus rows: four
+Zod-invalid named groups in the Scenario Builder pool spec (red before the
+fix) and a decodes-but-invalid link row in the tiered-pool helper spec.
+P4.124 items 11 and 12.
+
 #### 2026-09-29 — test(tools): drive the production destructive filter and pin the retired list_email name against v4
 
 _Versions: harness 0.0.1030._

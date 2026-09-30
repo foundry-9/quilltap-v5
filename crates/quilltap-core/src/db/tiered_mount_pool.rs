@@ -228,12 +228,10 @@ fn character_mount_of(v: &serde_json::Value) -> Option<String> {
 ///   DROPPING an undecodable link and keeping the rest.
 ///
 /// v5 reproduces the two repository lines on each read's `Err`, not the dead
-/// WARN. The name-decoding read stands in for v4's validation (the one-column
-/// pointer read would keep a BLOB-named group's official store v4 drops).
-/// One residual divergence, outside this file: v5's `find_by_group_id` fails
-/// its WHOLE read on one undecodable link row where v4 drops just that row —
-/// recorded (both ways) by `tiered_mount_pool_equivalence`'s
-/// `helper_unreadable_link_row` arm (P4.D231).
+/// WARN. The group read holds the row to v4's `GroupRowSchema`, and
+/// `find_by_group_id` drops an invalid link row alone, as v4's `findByFilter`
+/// does (P4.124 — the `helper_unreadable_link_row` divergence P4.D231 recorded
+/// both ways VANISHED, and its pin is retired).
 pub fn resolve_mount_point_ids_for_group(
     main: &Connection,
     mount: &Connection,
@@ -245,7 +243,7 @@ pub fn resolve_mount_point_ids_for_group(
     let mut ids: Vec<String> = Vec::new();
     // findByIdRaw avoids a store read on this hot path — we only need the
     // group's officialMountPointId pointer, not its hydrated content.
-    match groups::find_name_and_official_mount_point_id_raw(main, group_id) {
+    match groups::find_validated_name_and_official_mount_point_id_raw(main, group_id) {
         Ok(Some((_, Some(off)))) if !off.is_empty() => push_unique(&mut ids, off),
         Ok(_) => {}
         Err(e) => tracing::error!(

@@ -20,7 +20,8 @@
 //! order's prediction: neither read's failure empties the group — both of
 //! v4's reads are fallback-mode `safeQuery`s, so the helper's catch never
 //! fires; an unreadable group row loses only its official store, and an
-//! unreadable LINK row is dropped alone (a v5 divergence, recorded above).
+//! unreadable LINK row is dropped alone — and, since P4.124, on v5 too (the
+//! `LINK_ROW_DIVERGENCE` pin retired by VANISHING; see below).
 //! ⚠ PIN REQUIRED at `08c49319d` for the helper rows (a baseline pin records
 //! none — the helper does not exist there).
 //!
@@ -92,21 +93,12 @@ struct Row {
     ids: Option<Value>,
 }
 
-/// P4.D231 — the ONE helper arm whose v4 and v5 answers differ, both recorded.
-/// v4's `groupDocMountLinks.findByGroupId` → `findByFilter` `validateSafe()`s
-/// row by row and DROPS the one undecodable link, keeping the rest; v5's
-/// `GroupDocMountLinksRepository::find_by_group_id` (`db/group_doc_mount_links.rs`,
-/// OUTSIDE P4.D231's ownership) fails the WHOLE read on it, so the helper keeps
-/// only the official store. Recorded for the unifier; the family fails
-/// "VANISHED" if the two ever agree.
-const LINK_ROW_DIVERGENCE: (&str, &[&str], &[&str]) = (
-    "helper_unreadable_link_row",
-    &[
-        "e8231000-0000-4000-8000-0000000000c7",
-        "e8231000-0000-4000-8000-0000000000c8",
-    ],
-    &["e8231000-0000-4000-8000-0000000000c7"],
-);
+// P4.D231's `LINK_ROW_DIVERGENCE` pin (`helper_unreadable_link_row`: v4
+// dropped the one undecodable link row, v5 failed the whole read) was RETIRED
+// by P4.124 after the family measured it VANISHED — `find_by_group_id` now
+// validates row by row as v4's `findByFilter` does. The arm is an ordinary
+// comparand row again; `helper_zod_invalid_link_row` adds the decodes-but-
+// fails-Zod shape.
 
 fn spec_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -312,19 +304,6 @@ fn tiered_mount_pool_matches_oracle() {
         ))
         .unwrap();
         let want = &helper_oracle[&arm.id];
-        if arm.id == LINK_ROW_DIVERGENCE.0 {
-            let (v4, v5) = (
-                serde_json::json!(LINK_ROW_DIVERGENCE.1),
-                serde_json::json!(LINK_ROW_DIVERGENCE.2),
-            );
-            if want != &v4 || got != v5 || want == &got {
-                helper_failures.push(format!(
-                    "{}: the recorded divergence moved or VANISHED\n  v4: {want} (recorded {v4})\n  v5: {got} (recorded {v5})",
-                    arm.id
-                ));
-            }
-            continue;
-        }
         if &got != want {
             helper_failures.push(format!("{}\n  v4: {want}\n  v5: {got}", arm.id));
         }

@@ -410,6 +410,145 @@
     },
     {
       "kind": "plant",
+      "name": "zod-shaped-groups",
+      "statements": [
+        {
+          "sql": "CREATE TEMP TABLE \"sb_gclone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+          "params": [
+            "d2000000-0000-4000-8000-000000000001"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_gclone\" SET \"id\" = ?, \"officialMountPointId\" = ?, \"name\" = ?",
+          "params": [
+            "d2310000-0000-4000-8000-0000000000c3",
+            "e2000000-0000-4000-8000-0000000000f3",
+            ""
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"groups\" SELECT * FROM \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "CREATE TEMP TABLE \"sb_gclone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+          "params": [
+            "d2000000-0000-4000-8000-000000000001"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_gclone\" SET \"id\" = ?, \"officialMountPointId\" = ?, \"name\" = ?",
+          "params": [
+            "d2310000-0000-4000-8000-0000000000c4",
+            "e2000000-0000-4000-8000-0000000000f3",
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"groups\" SELECT * FROM \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "CREATE TEMP TABLE \"sb_gclone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+          "params": [
+            "d2000000-0000-4000-8000-000000000001"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_gclone\" SET \"id\" = ?, \"officialMountPointId\" = ?, \"name\" = ?",
+          "params": [
+            "d2310000-0000-0000-8000-0000000000c5",
+            "e2000000-0000-4000-8000-0000000000f3",
+            "Versionless"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"groups\" SELECT * FROM \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "CREATE TEMP TABLE \"sb_gclone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+          "params": [
+            "d2000000-0000-4000-8000-000000000001"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_gclone\" SET \"id\" = ?, \"officialMountPointId\" = ?, \"name\" = ?",
+          "params": [
+            "d2310000-0000-4000-8000-0000000000c6",
+            "e2000000-0000-0000-8000-0000000000f3",
+            "Pointerless"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"groups\" SELECT * FROM \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_gclone\"",
+          "params": []
+        }
+      ],
+      "note": "P4.124 (P4.D231): four group rows every column of which DECODES but which v4's `groups.findByIdRaw` (`_findById`, validating `GroupRowSchema`) rejects — an empty name and a 101-character name (`z.string().min(1).max(100)`), a non-uuid id and a non-uuid official pointer (`UUIDSchema` — version nibble 0). Each points at the stranger store, so a v5 that reads the pointer without the Zod shape leaks it into the pool."
+    },
+    {
+      "kind": "arm",
+      "name": "empty-named-group",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "groupIds": [
+        "d2310000-0000-4000-8000-0000000000c3"
+      ],
+      "note": "an empty `name`: v4's findByIdRaw fails `min(1)` → null after its repository ERROR — no official store"
+    },
+    {
+      "kind": "arm",
+      "name": "overlong-named-group",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "groupIds": [
+        "d2310000-0000-4000-8000-0000000000c4"
+      ],
+      "note": "a 101-character `name`: fails `max(100)` → null — no official store"
+    },
+    {
+      "kind": "arm",
+      "name": "non-uuid-group-id",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "groupIds": [
+        "d2310000-0000-0000-8000-0000000000c5"
+      ],
+      "note": "a non-uuid `id` (version nibble 0): fails `UUIDSchema` → null — no official store"
+    },
+    {
+      "kind": "arm",
+      "name": "non-uuid-official-pointer",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "groupIds": [
+        "d2310000-0000-4000-8000-0000000000c6"
+      ],
+      "note": "a non-uuid `officialMountPointId`: fails `UUIDSchema.nullable().optional()` → null — no official store"
+    },
+    {
+      "kind": "plant",
       "name": "general-removed",
       "statements": [
         {

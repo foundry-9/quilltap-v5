@@ -155534,3 +155534,45 @@ hunks, `services/orchestrator.rs:947` (P4.121's file) and
   byte-for-byte (so `list_email` is correctly NOT in v5's `BUILT_IN_TOOLS`).
   Regenerated from the pin: 14 ops, the row present in the fresh NDJSON.
   `executor.rs` untouched (P4.120's). Only this family reads the spec.
+- **Unit 7 (items 11 + 12), core 0.0.1112, harness 0.0.1031.** Item 12: ONE
+  predicate `api::zod_issues::zod_group_row_ok` (v4 `GroupRowSchema`: uuid
+  `id`, `name` 1..=100 UTF-16 units, `officialMountPointId` absent/null/uuid,
+  two `z.iso.datetime()` stamps) behind a NEW `db::groups::find_validated_
+  name_and_official_mount_point_id_raw` (reads the five cells as values — a
+  BLOB is never a string — logs v4's `validate` ERROR `Data validation failed
+  {collection: groups}` on `quilltap::db` and answers `Err`, so each caller's
+  existing fallback arm logs `Error finding entity by ID` at ITS target — the
+  route family (`scenario_builder_routes`, not this lane's) captures that
+  line by the route's target, so the ERROR had to stay at the call site). Used
+  at the two sites the order named (`api/scenario_builder.rs`'s exists check,
+  `db/tiered_mount_pool.rs`'s group read); the old decode-only read keeps its
+  other callers (`api/groups.rs`, not this lane's). **Recorded scope:**
+  `GroupSchema`'s five store-resident columns (`description`/`instructions`/
+  `state`/`color`/`icon`) are not checked — v4 strips them on every write
+  (`GROUP_STORE_MANAGED_FIELDS`), so they read NULL on v4-written rows. Spec
+  `scenario-builder-mount-pool.json` grown by ADDITION (indent-2 re-dump
+  verified first): plant `zod-shaped-groups` (four clones of the fixture group
+  pointing at the stranger store — empty name, 101 `x`, version-0 id,
+  version-0 pointer) + four arms. **Red-first:** 8 diffs (pool + DEBUG per
+  arm; v5 leaked the stranger store); green after. Item 11: `find_by_group_id`
+  reads all five link cells and drops a row failing `GroupDocMountLinkSchema`
+  (three uuids, two stamps) with v4's `Data validation failed` ERROR + `Safe
+  validation failed` WARN, keeping the rest; a query failure is still `Err`.
+  Every caller inherits it (v4's `findByGroupId` is one method): tiered pool,
+  provisioning adopt, workbench, self-inventory, core whisper, qtap export,
+  the groups API. **`LINK_ROW_DIVERGENCE` retired by VANISHING:** the family
+  run on the fix failed on exactly "the recorded divergence moved or
+  VANISHED" (v5 == v4 == `[…c7, …c8]`), THEN the const + its assert were
+  deleted; the arm is an ordinary comparand row. Spec `tiered-mount-pool.json`
+  grown by ADDITION: group `…b6` with a good link and a version-0
+  `mountPointId` link, arm `helper_zod_invalid_link_row` (v4 `[…c9, …ca]`).
+  **M3** (restore the collect-all read) reddened BOTH link arms on the diff
+  itself; reverted by file backup. Unit pins: `group_row_schema_holds_the_
+  five_columns` (both edges of every bound, an astral char counts two),
+  `a_zod_invalid_group_row_is_refused_with_v4s_line`. Neutral from the pin:
+  `core_whisper`, `doc_opacity`, `group_doc_mount_links_tier2`,
+  `groups_routes`, `groups_tier2`, `scenario_builder_routes`,
+  `scenario_builder_tier3`, `store_delete`, `context_feeders_leaves`
+  (`backup_uuid_remap` refused by the driver — a repo-writing recipe).
+  `zod_issues_home_guard` counts constructor DEFINITIONS; a predicate moves
+  nothing (re-run in the gate).

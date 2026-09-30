@@ -258,6 +258,53 @@
         "2026-09-25T00:00:00.000Z",
         "2026-09-25T00:00:00.000Z"
       ]
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d231_clone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+      "params": [
+        "d8000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d231_clone\" SET \"id\" = ?, \"name\" = 'Zod-Invalid Link', \"officialMountPointId\" = ?",
+      "params": [
+        "d8231000-0000-4000-8000-0000000000b6",
+        "e8231000-0000-4000-8000-0000000000c9"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"groups\" SELECT * FROM \"p4d231_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d231_clone\"",
+      "params": []
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_doc_mount_links\" (\"id\", \"groupId\", \"mountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8231000-0000-4000-8000-000000000006",
+        "d8231000-0000-4000-8000-0000000000b6",
+        "e8231000-0000-4000-8000-0000000000ca",
+        "2026-09-25T00:00:00.000Z",
+        "2026-09-25T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_doc_mount_links\" (\"id\", \"groupId\", \"mountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8231000-0000-4000-8000-000000000007",
+        "d8231000-0000-4000-8000-0000000000b6",
+        "e8231000-0000-0000-8000-0000000000cb",
+        "2026-09-25T00:00:00.000Z",
+        "2026-09-25T00:00:00.000Z"
+      ]
     }
   ],
   "helperArms": [
@@ -295,6 +342,11 @@
       "id": "helper_unreadable_link_row",
       "groupId": "d8231000-0000-4000-8000-0000000000b5",
       "note": "one good link + one BLOB-mountPointId link: v4's findByFilter validateSafe()s row by row and DROPS the bad one — [official, good link]. v5's find_by_group_id fails the WHOLE read (db/group_doc_mount_links.rs, outside P4.D231) — a recorded divergence, pinned both ways"
+    },
+    {
+      "id": "helper_zod_invalid_link_row",
+      "groupId": "d8231000-0000-4000-8000-0000000000b6",
+      "note": "P4.124: one good link + one link whose cells all DECODE but whose mountPointId is not a uuid (version nibble 0): v4's findByFilter validateSafe()s it out against GroupDocMountLinkSchema — [official, good link]; v5 ports the same per-row Zod shape"
     }
   ]
 }

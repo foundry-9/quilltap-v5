@@ -155,13 +155,64 @@ impl<'c> GroupDocMountLinksRepository<'c> {
 
     /// v4 `findByGroupId` — every mount-point id linked to this group. Used by the
     /// provisioning flow's adopt branch ([`super::ensure_official_store`]).
+    ///
+    /// v4 reads through `findByFilter`, which `validateSafe()`s EACH row against
+    /// `GroupDocMountLinkSchema` and DROPS one that fails — `validate` logs ERROR
+    /// `Data validation failed {collection, error}`, `validateSafe` WARN `Safe
+    /// validation failed {collection, error}` — keeping the rest (P4.124,
+    /// P4.D231). v5 had decoded `mountPointId` as text for the whole result and
+    /// failed the WHOLE read on one bad row. A query failure is still `Err` (the
+    /// callers' own fallback arms log v4's `Error finding entities by filter`).
     pub fn find_by_group_id(&self, group_id: &str) -> Result<Vec<String>, DbError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT mountPointId FROM group_doc_mount_links WHERE groupId = ?1")?;
-        let ids = stmt
-            .query_map(params![group_id], |row| row.get::<_, String>(0))?
+        use rusqlite::types::ValueRef;
+        let text = |v: ValueRef<'_>| match v {
+            ValueRef::Text(t) => std::str::from_utf8(t).ok().map(str::to_string),
+            _ => None,
+        };
+        let mut stmt = self.conn.prepare(
+            "SELECT id, groupId, mountPointId, createdAt, updatedAt \
+             FROM group_doc_mount_links WHERE groupId = ?1",
+        )?;
+        let rows = stmt
+            .query_map(params![group_id], |row| {
+                let mut cells: [Option<String>; 5] = Default::default();
+                for (i, cell) in cells.iter_mut().enumerate() {
+                    *cell = text(row.get_ref(i)?);
+                }
+                Ok(cells)
+            })?
             .collect::<Result<Vec<_>, _>>()?;
+        let mut ids = Vec::with_capacity(rows.len());
+        for [id, gid, mount_point_id, created_at, updated_at] in rows {
+            let uuid = |v: &Option<String>| {
+                v.as_deref()
+                    .is_some_and(crate::api::zod_issues::zod_uuid_ok)
+            };
+            let ts = |v: &Option<String>| {
+                v.as_deref()
+                    .is_some_and(crate::api::zod_issues::zod_iso_datetime_ok)
+            };
+            // `GroupDocMountLinkSchema`: three uuids, two timestamps.
+            if uuid(&id) && uuid(&gid) && uuid(&mount_point_id) && ts(&created_at) && ts(&updated_at)
+            {
+                ids.extend(mount_point_id);
+                continue;
+            }
+            let error = "the group_doc_mount_links row does not match v4's \
+                         GroupDocMountLinkSchema";
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "group_doc_mount_links",
+                error = error,
+                "Data validation failed"
+            );
+            tracing::warn!(
+                target: "quilltap::db",
+                collection = "group_doc_mount_links",
+                error = error,
+                "Safe validation failed"
+            );
+        }
         Ok(ids)
     }
 
