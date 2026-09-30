@@ -193,22 +193,36 @@ pub async fn execute_read_conversation_in_zone(
         Ok(out) => out,
         // v4's catch-all: `error instanceof Error ? error.message : 'Unknown error…'`.
         Err(e) => {
-            // Hoisted: inside `tracing!` the name `Value` is the macro's own.
-            let requested = args
-                .get("conversationId")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            tracing::error!(
-                target: "quilltap::tools",
-                context = LOG_CONTEXT,
-                userId = user_id,
-                chatId = chat_id,
-                requestedConversationId = requested,
-                error = %e,
-                "Read conversation tool execution failed",
-            );
+            log_execution_failed(user_id, chat_id, args, &e);
             ReadConversationOutput::error(e.to_string())
         }
+    }
+}
+
+/// v4's catch line. v4 logs `(input)?.conversationId` — the raw key, so an
+/// ABSENT id OMITS the field (P4.126; v5 had logged `""`). A `tracing` field
+/// cannot be conditional, hence the two arms; the key, once present, is a
+/// string (validation ran first).
+fn log_execution_failed(user_id: &str, chat_id: &str, args: &Value, e: &dyn std::fmt::Display) {
+    // Hoisted: inside `tracing!` the name `Value` is the macro's own.
+    match args.get("conversationId").and_then(Value::as_str) {
+        Some(requested) => tracing::error!(
+            target: "quilltap::tools",
+            context = LOG_CONTEXT,
+            userId = user_id,
+            chatId = chat_id,
+            requestedConversationId = requested,
+            error = %e,
+            "Read conversation tool execution failed",
+        ),
+        None => tracing::error!(
+            target: "quilltap::tools",
+            context = LOG_CONTEXT,
+            userId = user_id,
+            chatId = chat_id,
+            error = %e,
+            "Read conversation tool execution failed",
+        ),
     }
 }
 
@@ -258,14 +272,25 @@ fn execute_inner(
     let chat = match db.read_main(|c| Ok(chats_read::find_by_id_or_none(c, target_chat_id)))? {
         Some(c) => c,
         None => {
-            tracing::warn!(
-                target: "quilltap::tools",
-                context = LOG_CONTEXT,
-                chatId = target_chat_id,
-                userId = user_id,
-                requestedConversationId = conversation_id.unwrap_or_default(),
-                "Read conversation tool: chat not found",
-            );
+            // v4 logs the PARSED `conversationId` — present (even `""`) when
+            // the key was sent, OMITTED when it was not (P4.126).
+            match args.get("conversationId").and_then(Value::as_str) {
+                Some(requested) => tracing::warn!(
+                    target: "quilltap::tools",
+                    context = LOG_CONTEXT,
+                    chatId = target_chat_id,
+                    userId = user_id,
+                    requestedConversationId = requested,
+                    "Read conversation tool: chat not found",
+                ),
+                None => tracing::warn!(
+                    target: "quilltap::tools",
+                    context = LOG_CONTEXT,
+                    chatId = target_chat_id,
+                    userId = user_id,
+                    "Read conversation tool: chat not found",
+                ),
+            }
             return Ok(ReadConversationOutput::error("Conversation not found."));
         }
     };
@@ -594,9 +619,38 @@ mod log_tests {
             "{}",
             db_err[0]
         );
-        only(&lines, "WARN", "Read conversation tool: chat not found");
+        let warn = only(&lines, "WARN", "Read conversation tool: chat not found");
+        // v4 logs `requestedConversationId: conversationId` — `undefined`
+        // with no id sent, so the key is OMITTED (P4.126; v5 had logged `""`).
+        assert!(!warn.contains("requestedConversationId"), "{warn}");
         none_at(&lines, "ERROR");
         none_at(&lines, "INFO");
+
+        // …and a SENT id is logged even when empty (v4 logs the parsed
+        // string; `""` is falsy, so the target is the current chat).
+        let (_, lines) = read(&db, json!({"conversationId": ""}));
+        let warn = only(&lines, "WARN", "Read conversation tool: chat not found");
+        assert!(warn.contains("requestedConversationId="), "{warn}");
+    }
+
+    /// v4's catch logs `(input)?.conversationId` — OMITTED when no id was
+    /// sent, the id when one was (P4.126). Pinned on the line itself: every
+    /// read below the catch is a FALLBACK read (a dropped messages table
+    /// renders nothing, it does not throw), so no plant reaches it.
+    #[test]
+    fn the_execution_failed_error_omits_an_absent_requested_id() {
+        let err = |args: Value| {
+            let ((), lines) = capture(|| log_execution_failed(USER, CHAT, &args, &"boom"));
+            only(&lines, "ERROR", "Read conversation tool execution failed")
+        };
+        let line = err(json!({}));
+        assert!(!line.contains("requestedConversationId"), "{line}");
+        assert!(line.contains("error=boom"), "{line}");
+        let line = err(json!({"conversationId": OTHER_CHAT}));
+        assert!(
+            line.contains(&format!("requestedConversationId={OTHER_CHAT}")),
+            "{line}"
+        );
     }
 
     /// v4's `findByChatId` is a fallback `safeQuery`: with no annotations table

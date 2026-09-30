@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(tools): omit requestedConversationId when no id was sent (P4.126)
+
+_Versions: core 0.0.1109._
+
+`read_conversation` logged `requestedConversationId=""` on its
+chat-not-found WARN and execution-failed ERROR when the model sent no
+`conversationId`; v4 logs `undefined`, which drops the key. Both lines now
+omit the field when the key is absent and log it (even empty) when sent.
+The ERROR line moved into a helper so it can be pinned directly.
+
 #### 2026-09-29 — fix(post-office): mail tools take v4's fallback reads on a store failure (P4.126)
 
 _Versions: core 0.0.1108, harness 0.0.1028._
