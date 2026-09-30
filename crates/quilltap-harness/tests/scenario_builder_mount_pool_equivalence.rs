@@ -40,6 +40,12 @@
 //! by `mount_pool.rs`'s own unit test (the structural capture cannot see
 //! order).
 //!
+//! **P4.130 — code points.** An `astral-named-group` arm plants a group named
+//! 99 × `x` + one astral character (100 code points, 101 UTF-16 units). zod
+//! 4.6.5 measures `z.string().max(100)` in code points, so v4 keeps the row;
+//! v5 had counted UTF-16 units and dropped it (red-first: that arm alone, pool
+//! and pool DEBUG).
+//!
 //! ⚠ PIN REQUIRED at `08c49319d` (P4.D231) while the oracle baseline is older:
 //! a `b0b6656b5`-pinned regen carries no `namedGroupCount` (0 of 22 arms) and
 //! ignores every `groupIds`. The

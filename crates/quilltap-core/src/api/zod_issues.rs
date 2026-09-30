@@ -474,7 +474,9 @@ pub fn zod_uuid_ok(s: &str) -> bool {
 /// v4 `GroupRowSchema` (`lib/schemas/group.types.ts`) over a raw `groups` row
 /// — the shape `groups.findByIdRaw` (`_findById`) validates before a row counts
 /// as found (P4.124, P4.D231): `id: UUIDSchema`, `name: z.string().min(1)
-/// .max(100)` (JS `.length`, so UTF-16 code units), `officialMountPointId:
+/// .max(100)` (Unicode CODE POINTS — zod ≥ 4.5's `$ZodCheckMaxLength` /
+/// `$ZodCheckMinLength` over `util.codePointLength`, not JS `.length`; P4.130
+/// found the UTF-16 count refusing a row v4 keeps), `officialMountPointId:
 /// UUIDSchema.nullable().optional()` (absent and `null` both pass — v4 reads a
 /// NULL cell as `undefined`), `createdAt`/`updatedAt: TimestampSchema` (a
 /// stored value is a string, so `z.iso.datetime()`). A non-string cell (a BLOB)
@@ -487,14 +489,15 @@ pub fn zod_uuid_ok(s: &str) -> bool {
 /// read NULL on any v4-written instance and are not checked here.
 pub fn zod_group_row_ok(row: &serde_json::Map<String, Value>) -> bool {
     let text = |k: &str| row.get(k).and_then(Value::as_str);
-    let name_len = text("name").map(|n| n.encode_utf16().count());
     let official_ok = match row.get("officialMountPointId") {
         None | Some(Value::Null) => true,
         Some(Value::String(v)) => zod_uuid_ok(v),
         Some(_) => false,
     };
     text("id").is_some_and(zod_uuid_ok)
-        && name_len.is_some_and(|n| (1..=100).contains(&n))
+        && text("name").is_some_and(|n| {
+            crate::jsstr::zod_len_min_ok(n, 1) && crate::jsstr::zod_len_max_ok(n, 100)
+        })
         && official_ok
         && text("createdAt").is_some_and(zod_iso_datetime_ok)
         && text("updatedAt").is_some_and(zod_iso_datetime_ok)
@@ -617,16 +620,20 @@ mod tests {
         assert!(zod_group_row_ok(&row(
             serde_json::json!({"officialMountPointId": null})
         )));
-        // `min(1).max(100)` in UTF-16 units: 100 passes, 101 fails; an astral
-        // character counts TWO.
+        // `min(1).max(100)` in CODE POINTS (zod 4.6.5): 100 passes, 101 fails;
+        // an astral character counts ONE — 99 × `x` + one astral character is
+        // 101 UTF-16 units and PASSES in v4 (P4.130, measured at `97b25fc53`).
         assert!(zod_group_row_ok(&row(
             serde_json::json!({"name": "x".repeat(100)})
         )));
         assert!(!zod_group_row_ok(&row(
             serde_json::json!({"name": "x".repeat(101)})
         )));
-        assert!(!zod_group_row_ok(&row(
+        assert!(zod_group_row_ok(&row(
             serde_json::json!({"name": format!("{}\u{1F600}", "x".repeat(99))})
+        )));
+        assert!(!zod_group_row_ok(&row(
+            serde_json::json!({"name": format!("{}\u{1F600}", "x".repeat(100))})
         )));
         for bad in [
             serde_json::json!({"name": ""}),

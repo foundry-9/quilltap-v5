@@ -549,6 +549,46 @@
     },
     {
       "kind": "plant",
+      "name": "astral-named-group",
+      "statements": [
+        {
+          "sql": "CREATE TEMP TABLE \"sb_gclone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+          "params": [
+            "d2000000-0000-4000-8000-000000000001"
+          ]
+        },
+        {
+          "sql": "UPDATE \"sb_gclone\" SET \"id\" = ?, \"officialMountPointId\" = ?, \"name\" = ?",
+          "params": [
+            "d2310000-0000-4000-8000-0000000000c7",
+            "e2000000-0000-4000-8000-0000000000f3",
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"groups\" SELECT * FROM \"sb_gclone\"",
+          "params": []
+        },
+        {
+          "sql": "DROP TABLE \"sb_gclone\"",
+          "params": []
+        }
+      ],
+      "note": "P4.130: a 100-code-point name whose last character is astral (101 UTF-16 units). zod 4.6.5 measures `z.string().max(100)` in CODE POINTS (`checks.js` `$ZodCheckMaxLength` over `util.codePointLength`), so v4 KEEPS the row and its official pointer (the stranger store) joins the pool; a UTF-16 count refuses it."
+    },
+    {
+      "kind": "arm",
+      "name": "astral-named-group",
+      "userId": "a2000000-0000-4000-8000-0000000000d2",
+      "projectId": "d2000000-0000-4000-8000-000000000002",
+      "characterIds": [],
+      "groupIds": [
+        "d2310000-0000-4000-8000-0000000000c7"
+      ],
+      "note": "P4.130: the astral-named group is VALID in v4 — its official store is in the pool"
+    },
+    {
+      "kind": "plant",
       "name": "general-removed",
       "statements": [
         {

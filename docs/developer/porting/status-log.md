@@ -156482,6 +156482,44 @@ proofs, dedup/summaries, the Brahma deep query, #101, the compression
 re-measure, the conceal-marker arm), an autonomous room's budget charging the
 per-leg rows, and a real flat-body OpenAI image refusal.
 
+## P4.130 — the Zod smalls + the read-side trail validation (lane record, 2026-09-30)
+
+Lane branch `claude/zod-work-orders-validation-cfc445`, cut from `main`
+`9c2bd3f87`. §R.2 probe PASSED at lane start (v4 `main` at `97b25fc53`, both
+logs empty, tree clean). Lane pin: `/tmp/qt-v4-pin-p4130-97b25fc53` (detached
+at `97b25fc53`, the three symlink classes; `node_modules/zod` 4.6.5 verified).
+Regen outputs staged under `/tmp/p4130/`.
+
+### Unit 1 — code points (Tier 1 item 1)
+
+- Measured at the pin (throwaway tsx probe over the REAL `GroupSchema`): a name
+  of 99 × `x` + U+1F600 PASSES; 101 × `x` fails `too_big` (`<=100
+  characters`). v5's `zod_group_row_ok` counted `encode_utf16()` and refused
+  the first.
+- Red-first: the mount-pool spec grew by addition — plant
+  `astral-named-group` (group `d2310000-…-0000000000c7`, official = the
+  stranger store `e2000000-…-f3`) + arm `astral-named-group` after
+  `non-uuid-official-pointer`. v4 oracle (27 arms): the arm's pool carries
+  `groupMountPointIds: ["e2000000-0000-4000-8000-0000000000f3"]` and the pool
+  DEBUG `namedGroupCount: 1, groups: 1`. Pre-fix Rust: **2 differences, both on
+  that arm** (POOL + LOG lines); every other arm unmoved. Post-fix: 27/27.
+- Fix: the bound goes through `jsstr::zod_len_min_ok(n, 1) &&
+  zod_len_max_ok(n, 100)`; the unit test's astral assertion inverted, plus a
+  100 × `x` + astral (101 code points) refusal.
+- M1 (UTF-16 back → the astral arm red) is the red-first run itself.
+- Regen (as run):
+  ```
+  N=~/.nvm/versions/node/v24.13.1/bin ; W=<worktree> ; PIN=/tmp/qt-v4-pin-p4130-97b25fc53
+  STAGE=/tmp/p4130/stage-sb-pool ; (stage case + spec per the family header)
+  cd $PIN
+  QT_FIXTURE_DOPA_MAIN=/tmp/p4130/sbpool-main.db QT_FIXTURE_DOPA_MOUNT=/tmp/p4130/sbpool-mount.db \
+    $N/node --import tsx $W/harness/oracle/fixtures/build-doc-opacity-fixture.ts
+  QT_FIXTURE_SBPOOL_MAIN=/tmp/p4130/sbpool-main.db QT_FIXTURE_SBPOOL_MOUNT=/tmp/p4130/sbpool-mount.db \
+  QT_ORACLE_OUT=/tmp/p4130/oracle-sbpool.ndjson \
+    $N/npx jest --silent --watchman=false --testTimeout=240000 \
+    --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "scenario-builder-mount-pool\.test\.ts$"
+  ```
+
 ## P4.131 — the document-store repository fallbacks as v4 REALLY has them (lane record, 2026-09-30)
 
 Branch `claude/document-store-repo-fallbacks-55643f`, pin `97b25fc53` (`/tmp/qt-v4-pin-p4131-97b25fc53`), §2 probe PASS at start. core 0.0.1116, harness 0.0.1035.

@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — fix(core): group names are measured in code points, as zod 4.6.5 does (P4.130 unit 1)
+
+_Versions: core 0.0.1116, harness 0.0.1035._
+
+The raw group read validated `name` against `.max(100)` by counting UTF-16
+units, but zod 4.6.5 counts Unicode code points. A group named 99 letters plus
+one emoji (101 units, 100 code points) is valid in v4 and was dropped by v5.
+The check now uses the existing `jsstr::zod_len_min_ok`/`zod_len_max_ok`. The
+Scenario Builder mount-pool spec gains an `astral-named-group` plant and arm
+(v4 keeps the row and its official store); it was red on that arm alone before
+the fix. The unit test that asserted the wrong behavior is inverted.
+
 #### 2026-09-30 — feat(db): document-store repository fallbacks as v4 has them; mail failure plants become a real differential
 
 _Versions: core 0.0.1116, harness 0.0.1035._
