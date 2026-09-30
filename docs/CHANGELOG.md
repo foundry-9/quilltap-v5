@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(concierge): type the manual announcement kind, validate the Concierge enums on restore and import, answer the retry's failures 500
+
+_Versions: core 0.0.1113, harness 0.0.1032._
+
+Three Concierge smalls. The manual-flip announcer now takes the
+announcement kind as the `ConciergeManualKind` enum instead of a wire
+string, so an unknown kind can no longer be passed and silently dropped
+(v4 types the kind to four values). Restore and `.qtap` import now reject
+a chat whose `conciergeMode`, `conciergeModeSetBy` or
+`conciergeModeReason` is outside its enum, with v4's Zod error message in
+the "Failed to restore/import chat" warning, where v5 had stored any
+string. The retry-uncensored route's JSON leg now answers 500 for any
+failure of the swipe it runs, as v4's `serverError` does, instead of
+passing the driver's error kind through; the retry family's throwing stub
+now carries the production driver's `BadRequest` kind so the rule is
+pinned. P4.124 items 13, 14 and 15(ii).
+
 #### 2026-09-29 — fix(groups): hold raw group and link reads to v4's Zod row shapes
 
 _Versions: core 0.0.1112, harness 0.0.1031._

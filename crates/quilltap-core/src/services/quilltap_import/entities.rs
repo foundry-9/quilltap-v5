@@ -769,6 +769,13 @@ fn create_chat(
     let obj = crate::services::dangerous_content::chat_override::with_concierge_mode_from_legacy(
         Value::Object(obj),
     );
+    // v4's `repos.chats.create` validates the three Concierge enums (P4.124):
+    // an out-of-enum value fails the chat with the ZodError message.
+    if let Some(zod) =
+        crate::services::dangerous_content::chat_override::concierge_columns_zod_error(&obj)
+    {
+        return Err(zod);
+    }
     let mut create: ChatCreate = serde_json::from_value(obj).map_err(|e| e.to_string())?;
     // v4 bug 158 (`da9c4f34f`): a pre-fix export carries the chat's scenario in
     // `contextSummary` as well as `scenarioText`; the boot heal that cleared

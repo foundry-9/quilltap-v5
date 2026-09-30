@@ -295,8 +295,14 @@ impl SwipeGenerateDriver for RecordingSwipeDriver {
             );
             self.calls.lock().unwrap().push(Value::Object(call));
             if let Some(msg) = self.throws.lock().unwrap().clone() {
+                // P4.124 (P4.D228 (ii)): the throw carries the kind the
+                // production driver's service backstop gives (`BadRequest`),
+                // not `Internal` — v4's route answers `serverError` (500)
+                // whatever the service threw, so the route must not pass the
+                // driver's kind through (a stub throwing `Internal` could not
+                // tell).
                 return Err(CoreError {
-                    kind: ErrorKind::Internal,
+                    kind: ErrorKind::BadRequest,
                     message: msg,
                     pepper_state: None,
                     code: None,

@@ -155576,3 +155576,47 @@ hunks, `services/orchestrator.rs:947` (P4.121's file) and
   (`backup_uuid_remap` refused by the driver — a repo-writing recipe).
   `zod_issues_home_guard` counts constructor DEFINITIONS; a predicate moves
   nothing (re-run in the gate).
+- **Unit 8 (items 13, 14, 15(ii)), core 0.0.1113, harness 0.0.1032.** Item
+  13, measured: v4's `postConciergeManualAnnouncement` types `kind` to the four
+  transition kinds and every caller passes a literal, so an unknown kind is
+  unreachable-by-construction on v4 — and on v5 every `post_manual` caller and
+  both implementors live in `manual_flip.rs`, so the fix is TYPE-level: the
+  trait takes `ConciergeManualKind` (no `from_wire` parse, no silent `if let`
+  drop, no `debug_assert` needed — an unknown kind cannot be written).
+  Neutral: `danger_resolver`, `danger_gatekeeper_tier3`, `refusal_ledger_
+  tier3`. Item 14, measured at the pin: v4's restore (`restore.ts:201-240`)
+  and import (`import-entities.ts:350/386`, catch `:406-410`) both reach
+  `repos.chats.create` → `_create` → `validate(ChatMetadataSchema)`, which
+  REJECTS an out-of-enum `conciergeMode` / `conciergeModeSetBy` /
+  `conciergeModeReason` (`z.enum(...).nullable().optional()`), and the
+  per-chat catch skips the chat with `Failed to restore|import chat
+  "<title>": <ZodError message>` — ordinary validation, so matched (the
+  `backup-restore-fix-dont-match` ruling does not apply). ONE check
+  `chat_override::concierge_columns_zod_error` (all three enums — the order
+  named only `conciergeMode`; the other two fail v4's schema the same way),
+  called after `with_concierge_mode_from_legacy` at both sites. v4's REAL
+  messages recorded by a throwaway `safeParse` probe run with `npx tsx` from
+  the pin (one `invalid_value` per bad column, schema order, a non-string
+  value the same issue) and pinned byte-for-byte in `concierge_columns_fail_
+  with_v4s_zod_message`. ⚠ **Deferred by name:** the family-level plant
+  (`system_restore_state` / `system_import_state` restoring an archive with a
+  planted bad value) — both families restore a COMMITTED archive on both
+  sides, so the plant needs oracle-side archive surgery in two recipes;
+  recorded for the next smalls round. Both families re-run green from the pin
+  (neutral). Also recorded (pre-existing, not changed): v4's restore logs a
+  WARN `Failed to restore chat {chatId, error}` beside the warning that v5's
+  restore never logs (import does). Item 15(ii): **measured NOT ruled** — no
+  harness pin names the swipe route's kind; v4's JSON leg (`route.ts:
+  450-458`) answers `serverError(error.message)` for ANY throw. v5's
+  `message_retry_uncensored` now wraps the driver's error as `Internal`
+  (message kept). **Red-first:** the family's throwing stub now carries the
+  production driver's backstop kind (`BadRequest`, `quilltap-host/src/
+  spine.rs:1355`); with the fix reverted `msg_retry_service_throws` answered
+  400 vs v4's 500 (1 of 62); green with it. **Recorded for the unifier:**
+  `message_swipe_generate`'s identical arm (`api/salon.rs`, the refresh
+  icon's swipe) passes the kind through too — outside this lane's named hunk.
+  Item 15(i): see unit 3 (NOT a divergence). Neutral from the pin: `retry_
+  uncensored_tier3`, `route_trail_compose`, `danger_*` (five), `image_
+  failover_tier3`, `refusal_ledger_tier3`, `system_{restore,import}_{state,
+  equivalence}`, `restore_vintage_state`; the three Concierge censuses +
+  `zod_issues_home_guard` green by name (counts unmoved).

@@ -1437,7 +1437,17 @@ pub async fn message_retry_uncensored<
                 );
             }
             progress.emit_error(&e.message);
-            Response::Error(e)
+            // v4's JSON leg answers `serverError(error.message)` from its one
+            // catch (`route.ts:450-458`) — a 500 WHATEVER the service threw;
+            // the stream leg's envelope is already open. v5's driver carries a
+            // kind (its service backstop answers `BadRequest`), which this arm
+            // had passed through (P4.124, P4.D228 (ii)). The swipe route's
+            // identical arm (`message_swipe_generate`) is outside this lane —
+            // recorded for the unifier.
+            Response::Error(crate::api::types::CoreError {
+                kind: ErrorKind::Internal,
+                ..e
+            })
         }
     }
 }

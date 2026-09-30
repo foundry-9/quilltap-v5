@@ -311,6 +311,42 @@ pub fn with_concierge_mode_from_legacy(chat: Value) -> Value {
     Value::Object(obj)
 }
 
+/// v4 `ChatMetadataSchema`'s three Concierge columns as a chat entering from
+/// outside meets them (P4.124, P4.D226): `conciergeMode` /
+/// `conciergeModeSetBy` / `conciergeModeReason` are `z.enum([...])
+/// .nullable().optional()`, so after [`with_concierge_mode_from_legacy`] a value
+/// outside its enum fails v4's `repos.chats.create` validation — the restore
+/// and the import both catch that and skip the chat with a warning carrying the
+/// `ZodError` message. v5's `ChatCreate` stores any string, so both sites ask
+/// this first. `None` when all three pass; otherwise v4's message
+/// (`JSON.stringify(issues, null, 2)`, one `invalid_value` per bad column in
+/// schema order — measured with v4's real schema at `97b25fc53`).
+///
+/// ⚠ Scope: only these three columns are checked here; any OTHER field v4's
+/// schema would reject still reaches v5's typed decode, whose own error text
+/// is v5's (pre-existing).
+pub fn concierge_columns_zod_error(chat: &Value) -> Option<String> {
+    use crate::api::zod_issues::{key, zod_error_message, ZodIssue};
+    const COLUMNS: [(&str, &[&str]); 3] = [
+        ("conciergeMode", &["moderated", "unmoderated", "locked"]),
+        ("conciergeModeSetBy", &["operator", "concierge"]),
+        (
+            "conciergeModeReason",
+            &["manual", "refusals", "classifier", "migration"],
+        ),
+    ];
+    let issues: Vec<ZodIssue> = COLUMNS
+        .iter()
+        .filter(|(column, values)| match chat.get(*column) {
+            None | Some(Value::Null) => false,
+            Some(Value::String(s)) => !values.contains(&s.as_str()),
+            Some(_) => true,
+        })
+        .map(|(column, values)| ZodIssue::invalid_value(values, vec![key(column)]))
+        .collect();
+    (!issues.is_empty()).then(|| zod_error_message(&issues))
+}
+
 /// JS object spread of `src` over `dst`: an existing key is overwritten in
 /// place, a new one is appended.
 fn spread_into(dst: &mut Map<String, Value>, src: Map<String, Value>) {
@@ -321,11 +357,45 @@ fn spread_into(dst: &mut Map<String, Value>, src: Map<String, Value>) {
 
 #[cfg(test)]
 mod tests {
+
     //! v4 `chat-override.test.ts` at `4d370a90f`, mirrored by name. The
     //! `danger_resolver_equivalence` family runs the same questions against v4's
     //! real module over a wider corpus.
     use super::*;
     use serde_json::json;
+
+    /// P4.124 (P4.D226): the three Concierge enums against v4's REAL
+    /// `ChatMetadataSchema` — the messages below are v4's `error.message`
+    /// recorded at the `97b25fc53` pin (a throwaway probe `safeParse`d a chat
+    /// carrying each patch; run from the pin with `npx tsx`). v4's base chat
+    /// fails no other issue for these patches, so the message is the three
+    /// columns' alone; a valid or absent/null value passes.
+    #[test]
+    fn concierge_columns_fail_with_v4s_zod_message() {
+        let recorded: &[(&str, &str)] = &[
+            (r#"{"conciergeMode": "bogus"}"#, r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"moderated\",\n      \"unmoderated\",\n      \"locked\"\n    ],\n    \"path\": [\n      \"conciergeMode\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"moderated\\\"|\\\"unmoderated\\\"|\\\"locked\\\"\"\n  }\n]""#),
+            (r#"{"conciergeMode": 5}"#, r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"moderated\",\n      \"unmoderated\",\n      \"locked\"\n    ],\n    \"path\": [\n      \"conciergeMode\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"moderated\\\"|\\\"unmoderated\\\"|\\\"locked\\\"\"\n  }\n]""#),
+            (r#"{"conciergeModeSetBy": "nobody"}"#, r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"operator\",\n      \"concierge\"\n    ],\n    \"path\": [\n      \"conciergeModeSetBy\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"operator\\\"|\\\"concierge\\\"\"\n  }\n]""#),
+            (r#"{"conciergeModeReason": "whim"}"#, r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"manual\",\n      \"refusals\",\n      \"classifier\",\n      \"migration\"\n    ],\n    \"path\": [\n      \"conciergeModeReason\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"manual\\\"|\\\"refusals\\\"|\\\"classifier\\\"|\\\"migration\\\"\"\n  }\n]""#),
+            (r#"{"conciergeMode": "bogus", "conciergeModeSetBy": "nobody", "conciergeModeReason": "whim"}"#, r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"moderated\",\n      \"unmoderated\",\n      \"locked\"\n    ],\n    \"path\": [\n      \"conciergeMode\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"moderated\\\"|\\\"unmoderated\\\"|\\\"locked\\\"\"\n  },\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"operator\",\n      \"concierge\"\n    ],\n    \"path\": [\n      \"conciergeModeSetBy\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"operator\\\"|\\\"concierge\\\"\"\n  },\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"manual\",\n      \"refusals\",\n      \"classifier\",\n      \"migration\"\n    ],\n    \"path\": [\n      \"conciergeModeReason\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"manual\\\"|\\\"refusals\\\"|\\\"classifier\\\"|\\\"migration\\\"\"\n  }\n]""#),
+        ];
+        for (patch, v4_message) in recorded {
+            let chat: Value = serde_json::from_str(patch).unwrap();
+            let want: String = serde_json::from_str(v4_message).unwrap();
+            assert_eq!(
+                concierge_columns_zod_error(&chat).as_deref(),
+                Some(want.as_str()),
+                "{patch}"
+            );
+        }
+        for ok in [
+            serde_json::json!({}),
+            serde_json::json!({"conciergeMode": null, "conciergeModeSetBy": null}),
+            serde_json::json!({"conciergeMode": "locked", "conciergeModeSetBy": "operator", "conciergeModeReason": "migration"}),
+        ] {
+            assert_eq!(concierge_columns_zod_error(&ok), None, "{ok}");
+        }
+    }
 
     type SetByRow = Option<ConciergeSetBy>;
     /// A TABLE row.

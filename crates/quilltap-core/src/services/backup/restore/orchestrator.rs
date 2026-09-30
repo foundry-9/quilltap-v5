@@ -473,11 +473,21 @@ fn restore_on_writer(
             // summary pair, so deriving on the archive's JSON before the typed
             // decode is v4's `withConciergeModeFromLegacy(stripScenarioSeeded
             // Summary(chat))` exactly.
-            let mut create: crate::db::chats::ChatCreate = match serde_json::from_value(
+            let chat_in =
                 crate::services::dangerous_content::chat_override::with_concierge_mode_from_legacy(
                     chat.clone(),
-                ),
-            ) {
+                );
+            // v4's `repos.chats.create` validates the three Concierge enums
+            // (P4.124): an out-of-enum value skips the chat with the ZodError.
+            if let Some(zod) =
+                crate::services::dangerous_content::chat_override::concierge_columns_zod_error(
+                    &chat_in,
+                )
+            {
+                w.push(format!("Failed to restore chat \"{title}\": {zod}"));
+                continue;
+            }
+            let mut create: crate::db::chats::ChatCreate = match serde_json::from_value(chat_in) {
                 Ok(v) => v,
                 Err(e) => {
                     w.push(format!("Failed to restore chat \"{title}\": {e}"));

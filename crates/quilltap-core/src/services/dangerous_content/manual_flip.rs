@@ -34,7 +34,9 @@ use serde_json::Value;
 use crate::db::chats::ChatUpdate;
 use crate::db::runtime::Db;
 use crate::db::DbError;
-use crate::services::concierge_notifications::{ConciergeAutoFlagDetails, ConciergeDangerDetails};
+use crate::services::concierge_notifications::{
+    ConciergeAutoFlagDetails, ConciergeDangerDetails, ConciergeManualKind,
+};
 
 use super::chat_override::{
     get_concierge_provenance, get_concierge_reason, get_concierge_state, ConciergeModeColumns,
@@ -44,9 +46,13 @@ use super::refusal_ledger::is_job_child;
 
 /// The Concierge announcement seam (v4 `postConciergeManualAnnouncement` +
 /// `postConciergeDangerAnnouncement`). `post_manual`'s `kind` is one of the
-/// four transition wire strings v4 `4d370a90f` emits — `set-moderated` /
+/// four transition kinds v4 `4d370a90f` emits — `set-moderated` /
 /// `set-unmoderated` / `set-locked` / `auto-unmoderated` — with `details` the
-/// auto-switch's tally for `auto-unmoderated` (`None` otherwise).
+/// auto-switch's tally for `auto-unmoderated` (`None` otherwise). TYPED
+/// (P4.124, P4.D226): v4's writer types `kind` to those four and every caller
+/// passes a literal, so an unknown kind cannot reach it — v5 had taken a wire
+/// `&str` and silently dropped one that did not parse; now it cannot be
+/// written.
 /// `post_danger` is the classifier's own switch (v4 posts the DANGER
 /// announcement with the verdict, not a transition kind). Async (the writer
 /// awaits the single-writer channel); RPITIT so the future is `Send` without
@@ -55,7 +61,7 @@ pub trait ConciergeAnnouncer {
     fn post_manual(
         &self,
         chat_id: &str,
-        kind: &str,
+        kind: ConciergeManualKind,
         details: Option<&ConciergeAutoFlagDetails>,
     ) -> impl std::future::Future<Output = ()> + Send;
 
@@ -72,7 +78,7 @@ impl ConciergeAnnouncer for NoConciergeAnnouncer {
     async fn post_manual(
         &self,
         _chat_id: &str,
-        _kind: &str,
+        _kind: ConciergeManualKind,
         _details: Option<&ConciergeAutoFlagDetails>,
     ) {
     }
@@ -81,8 +87,7 @@ impl ConciergeAnnouncer for NoConciergeAnnouncer {
 }
 
 /// The real Concierge announcer — posts the personified bubbles through the
-/// ported [`crate::services::concierge_notifications`] writer. A `kind` that is
-/// not a transition wire string is ignored.
+/// ported [`crate::services::concierge_notifications`] writer.
 pub struct RealConciergeAnnouncer<'a> {
     pub db: &'a Db,
 }
@@ -90,13 +95,13 @@ impl ConciergeAnnouncer for RealConciergeAnnouncer<'_> {
     async fn post_manual(
         &self,
         chat_id: &str,
-        kind: &str,
+        kind: ConciergeManualKind,
         details: Option<&ConciergeAutoFlagDetails>,
     ) {
-        use crate::services::concierge_notifications as cn;
-        if let Some(k) = cn::ConciergeManualKind::from_wire(kind) {
-            cn::post_concierge_manual_announcement_with_details(self.db, chat_id, k, details).await;
-        }
+        crate::services::concierge_notifications::post_concierge_manual_announcement_with_details(
+            self.db, chat_id, kind, details,
+        )
+        .await;
     }
 
     async fn post_danger(&self, chat_id: &str, details: Option<&ConciergeDangerDetails>) {
@@ -390,12 +395,12 @@ pub async fn apply_concierge_flip_with<An: ConciergeAnnouncer>(
                 Ok(())
             })
             .await?;
-            announcer.post_manual(chat_id, "set-moderated", None).await;
+            announcer.post_manual(chat_id, ConciergeManualKind::SetModerated, None).await;
         }
         ConciergeState::Unmoderated => {
             if by == FlipBy::Operator {
                 announcer
-                    .post_manual(chat_id, "set-unmoderated", None)
+                    .post_manual(chat_id, ConciergeManualKind::SetUnmoderated, None)
                     .await;
             } else if reason == FlipReason::Classifier {
                 announcer
@@ -403,12 +408,16 @@ pub async fn apply_concierge_flip_with<An: ConciergeAnnouncer>(
                     .await;
             } else {
                 announcer
-                    .post_manual(chat_id, "auto-unmoderated", options.refusals.as_ref())
+                    .post_manual(
+                        chat_id,
+                        ConciergeManualKind::AutoUnmoderated,
+                        options.refusals.as_ref(),
+                    )
                     .await;
             }
         }
         ConciergeState::Locked => {
-            announcer.post_manual(chat_id, "set-locked", None).await;
+            announcer.post_manual(chat_id, ConciergeManualKind::SetLocked, None).await;
         }
     }
 
