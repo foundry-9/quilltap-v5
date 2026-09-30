@@ -418,7 +418,7 @@ fn decode_live_renders(dump: &mut Value) {
             continue;
         }
         let text = quilltap_core::db::text_compression::decode_blob(&bytes);
-        if text.contains("Current time: ") {
+        if text.contains(RENDER_MARKER) {
             row["content"] = Value::String(blank_current_time(&text));
         }
     }
@@ -427,13 +427,6 @@ fn decode_live_renders(dump: &mut Value) {
 /// The shape a recorded `llm_logs` divergence must keep.
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum LogDivergence {
-    /// `requestHashes.historyTailHash` is the ONE differing cell of the row:
-    /// v4 hashes each message's `name` into the tail (`cache-prefix-hashes.ts:
-    /// 73-82`), the OPENAI plugin is the one name-supporting provider, and
-    /// v5's `StreamMessage` had no `name` slot. P4.128 adds the slot — at
-    /// unification these entries trip VANISHED and the unifier deletes them
-    /// (§S 2 of the `97b25fc53` smalls round).
-    NameHash,
     /// A row v4 writes and v5 does not (the whole row is v4-only).
     V4OnlyRow,
 }
@@ -446,29 +439,11 @@ enum LogDivergence {
 /// "VANISHED" when v4 and v5 agree — retire an entry by watching it vanish,
 /// never by deleting the assert first.
 const EXPECTED_DIVERGENCES: &[(&str, &str, LogDivergence)] = &[
-    // `textblock_mode`: OPENAI `o1-mini`, Bertie + the Operator (whose history
-    // message carries `name: "Operator"`), continue mode — the order said
-    // MEASURE; measured differing on its one leg.
-    (
-        "textblock_mode",
-        "A simple answer from Bertie.",
-        LogDivergence::NameHash,
-    ),
-    // `agent_force_final`: OPENAI `gpt-chains`, Friday + the Operator. The
-    // order predicted "both loop legs"; measured on the PRIMARY and the native
-    // re-stream. The force-final leg cannot show it: its hashed tail carries
-    // the live render, so its `historyTailHash` is `CLOCK_TAIL_HASH` on both
-    // sides (the name half of that hash is unmeasurable here).
-    (
-        "agent_force_final",
-        "Friday opens the vault ledger.",
-        LogDivergence::NameHash,
-    ),
-    (
-        "agent_force_final",
-        " The ledger is blank.",
-        LogDivergence::NameHash,
-    ),
+    // The three `NameHash` entries P4.129 measured (`textblock_mode`'s one leg,
+    // `agent_force_final`'s primary + native re-stream) tripped VANISHED on
+    // the union once P4.128's `name` slot preceded this family, and were
+    // retired there (the `97b25fc53` smalls unification, §S 2): v4 and v5
+    // now hash the same tail, and those rows compare whole.
     // `carina_markup`: the Carina (`@Oracle`) consultation's answer stream.
     // v4's `carina.service.ts:676-686` `runStream` goes through the ONE
     // `streamMessage` funnel with `userId`/`chatId`/`characterId: answerer.id`
@@ -489,10 +464,10 @@ const EXPECTED_DIVERGENCES: &[(&str, &str, LogDivergence)] = &[
 /// Apply [`EXPECTED_DIVERGENCES`] to the normalized rows of both sides: each
 /// entry's rows are located (CHAT_MESSAGE, the case's chat, the leg's reply),
 /// their difference checked against the recorded shape, and then made equal
-/// (a `NameHash` pair's hash placeholdered; a `V4OnlyRow` removed from v4's
+/// (a `V4OnlyRow` removed from v4's
 /// side). Returns every failure; the caller panics on any.
 fn apply_expected_divergences(
-    got: &mut Vec<Value>,
+    got: &mut [Value],
     want: &mut Vec<Value>,
     chat_of_case: &HashMap<String, String>,
 ) -> Vec<String> {
@@ -515,50 +490,6 @@ fn apply_expected_divergences(
             .filter(|&i| is_leg(&want[i], chat, leg))
             .collect();
         match shape {
-            LogDivergence::NameHash => {
-                let (&[gi], &[wi]) = (g.as_slice(), w.as_slice()) else {
-                    failures.push(format!(
-                        "{case} / {leg:?}: the `name` hash divergence is unproven — v5 has {} row(s), v4 {} (want exactly one each)",
-                        g.len(),
-                        w.len()
-                    ));
-                    continue;
-                };
-                if got[gi] == want[wi] {
-                    failures.push(format!(
-                        "{case} / {leg:?}: the `name` hash divergence VANISHED — v4 and v5 now hash the same tail; delete this EXPECTED_DIVERGENCES entry (P4.128's name slot retires it)"
-                    ));
-                    continue;
-                }
-                let (go, wo) = (got[gi].as_object().unwrap(), want[wi].as_object().unwrap());
-                let cols: Vec<&String> = go.keys().filter(|k| go[*k] != wo[*k]).collect();
-                let hashes = |v: &Value| -> Value {
-                    v.as_str()
-                        .and_then(|s| serde_json::from_str(s).ok())
-                        .unwrap_or(Value::Null)
-                };
-                let (gh, wh) = (hashes(&go["requestHashes"]), hashes(&wo["requestHashes"]));
-                let mut sub: Vec<String> = Vec::new();
-                for h in [&gh, &wh] {
-                    if let Some(o) = h.as_object() {
-                        sub.extend(o.keys().cloned());
-                    }
-                }
-                sub.sort();
-                sub.dedup();
-                sub.retain(|k| gh.get(k) != wh.get(k));
-                if cols != ["requestHashes"] || sub != ["historyTailHash"] {
-                    failures.push(format!(
-                        "{case} / {leg:?}: the `name` hash divergence has the WRONG SHAPE — differing columns {cols:?}, requestHashes keys {sub:?} (want exactly `requestHashes.historyTailHash`)"
-                    ));
-                    continue;
-                }
-                for (rows, i, h) in [(&mut *got, gi, gh), (&mut *want, wi, wh)] {
-                    let mut h = h;
-                    h["historyTailHash"] = Value::String("<name-hash divergence>".into());
-                    rows[i]["requestHashes"] = Value::String(serde_json::to_string(&h).unwrap());
-                }
-            }
             LogDivergence::V4OnlyRow => match (g.len(), w.len()) {
                 (0, 1) => {
                     want.remove(w[0]);
@@ -622,7 +553,25 @@ const CLOCK_TAIL_HASH: &str = "<clock-bearing history tail>";
 ///     clock-free and stays a comparand.
 ///
 /// Then re-sorted by canonical JSON (the remap moves the sort key).
-fn normalize_llm_log_rows(rows: &mut [Value], idmap: &HashMap<String, String>) -> Vec<String> {
+/// The `read_conversation` render's own sentence (`markdown-renderer.ts:380`)
+/// — NOT the bare `Current time: ` prefix, which the Host's per-turn
+/// system-prompt block shares (`host-notifications/writer.ts:741`): keying
+/// the render blanking on the prefix would date-blank a whole request and
+/// placeholder a system message's `contentLength` the day a case carries
+/// that block (the `97b25fc53` smalls unification's catch).
+const RENDER_MARKER: &str = ". You are reading history, not in active conversation.";
+
+/// The CHAT_MESSAGE rows whose logged `request` carries a live render (the
+/// five tool cases' render legs), measured on the first honest regen and
+/// pinned on BOTH sides so the blanking can never widen or narrow silently.
+const RENDER_BEARING_ROWS: usize = 6;
+
+/// Answers `(tail-blanked legs, render-bearing row count)`.
+fn normalize_llm_log_rows(
+    rows: &mut [Value],
+    idmap: &HashMap<String, String>,
+) -> (Vec<String>, usize) {
+    let mut render_bearing = 0usize;
     let mut tail_blanked = Vec::new();
     for row in rows.iter_mut() {
         let Some(obj) = row.as_object_mut() else {
@@ -638,9 +587,10 @@ fn normalize_llm_log_rows(rows: &mut [Value], idmap: &HashMap<String, String>) -
         let Some(request) = obj.get("request").and_then(decoded_log_cell) else {
             continue;
         };
-        if !request.contains("Current time: ") {
+        if !request.contains(RENDER_MARKER) {
             continue;
         }
+        render_bearing += 1;
         // v4's `logLLMCall` stores a SUMMARY of each message
         // (`llm-logging.service.ts:117-121`: role, content, `contentLength`,
         // `hasAttachments`), so the render's clock reaches the row twice: in
@@ -656,7 +606,7 @@ fn normalize_llm_log_rows(rows: &mut [Value], idmap: &HashMap<String, String>) -
             for (i, m) in messages.iter_mut().enumerate() {
                 let renders = m["content"]
                     .as_str()
-                    .is_some_and(|c| c.contains("Current time: "));
+                    .is_some_and(|c| c.contains(RENDER_MARKER));
                 if !renders {
                     continue;
                 }
@@ -696,7 +646,7 @@ fn normalize_llm_log_rows(rows: &mut [Value], idmap: &HashMap<String, String>) -
     }
     common::sort_by_canonical_json(rows);
     tail_blanked.sort();
-    tail_blanked
+    (tail_blanked, render_bearing)
 }
 
 /// The key a differing `llm_logs` row is paired under in the report.
@@ -2779,8 +2729,13 @@ fn orchestrator_tier3_matches_oracle() {
     // P4.129: the CHAT_MESSAGE comparand's normalization (see
     // `normalize_llm_log_rows`), AFTER `normalize_messages` so `messageId` goes
     // through each side's message idmap.
-    let got_tail_blanked = normalize_llm_log_rows(&mut got_logs, &idmap);
-    let want_tail_blanked = normalize_llm_log_rows(&mut want_logs, &idmap2);
+    let (got_tail_blanked, got_render_rows) = normalize_llm_log_rows(&mut got_logs, &idmap);
+    let (want_tail_blanked, want_render_rows) = normalize_llm_log_rows(&mut want_logs, &idmap2);
+    assert_eq!(
+        (got_render_rows, want_render_rows),
+        (RENDER_BEARING_ROWS, RENDER_BEARING_ROWS),
+        "the render-bearing CHAT_MESSAGE rows (v5, v4) are not exactly RENDER_BEARING_ROWS — the blanking widened or narrowed"
+    );
     let chat_of_case: HashMap<String, String> = spec
         .calls
         .iter()
@@ -2881,8 +2836,8 @@ fn orchestrator_tier3_matches_oracle() {
         assert!(
             rows[0]["messageId"]
                 .as_str()
-                .is_some_and(|m| m.starts_with("<m")),
-            "the P4.90 legs' messageId must remap to a chat_messages token: {}",
+                .is_some_and(|m| m.starts_with("<m") && m != "<msgref>"),
+            "the P4.90 legs' messageId must remap to a chat_messages token (not the unmapped `<msgref>` fallback): {}",
             rows[0]["messageId"]
         );
         let mut replies = replies;

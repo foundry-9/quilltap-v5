@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — test(harness): retire the three vanished `NameHash` pins; the render marker as v4's sentence; sampling recorded as the funnel hands it (the `97b25fc53` smalls §S 2 wire + §3 review)
+
+_Versions: harness 0.0.1046._
+
+The §S 2 handoff: on the union with P4.128's `name` slot ahead of it, the
+orchestrator family tripped VANISHED on exactly P4.129's three `NameHash`
+entries (`textblock_mode`'s leg, `agent_force_final`'s primary + native
+re-stream) and nothing else, so the entries, the variant and its arm are
+deleted and those rows compare whole. Review fixes: the render detector keyed
+on the bare `Current time: ` prefix, which the Host's per-turn system block
+also emits; it now keys on the renderer's own sentence and the render-bearing
+row count (6) is pinned on both sides. The oracle case recorded `sampling` by
+re-running `resolveSamplingParams` over the bag instead of the three knobs the
+funnel hands the provider; it records the handed values now. The P4.90
+`messageId` non-vacuity assert accepted the unmapped `<msgref>` fallback.
+
 #### 2026-09-30 — fix(spa): the Edit Content beat hears v4's exact refusal sentences; the transport-failure divergence recorded; the memory pair's predicate and doc placement (the `97b25fc53` smalls §3 review)
 
 _Versions: SPA 0.5.792._

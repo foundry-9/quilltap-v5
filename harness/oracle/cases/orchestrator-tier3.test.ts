@@ -274,12 +274,10 @@ async function main(): Promise<void> {
   //
   // Every recorded canned key is byte-identical to the service-level mock's:
   // the key's temperature is still the bag's own `temperature` (the funnel
-  // forwards the bag untouched as `profileParameters`), `sampling` is v4's
-  // REAL resolver over that same bag, and `cacheKey` is the funnel's own
-  // derivation (null where the call site passed no `characterId`).
-  const { resolveSamplingParams } = jest.requireActual('@/lib/llm/sampling-params') as {
-    resolveSamplingParams: (p?: Record<string, unknown>) => Record<string, unknown>;
-  };
+  // forwards the bag untouched as `profileParameters`), `sampling` is the
+  // three knobs the funnel hands the provider (its own resolver's output),
+  // and `cacheKey` is the funnel's own derivation (null where the call site
+  // passed no `characterId`).
   jest.doMock('@/lib/llm', () => {
     const actual = jest.requireActual('@/lib/llm');
     return {
@@ -338,11 +336,18 @@ async function main(): Promise<void> {
           // W4.1g: the tool slate reaching the wire (the funnel passes
           // `tools.length > 0 ? tools : undefined`; normalize undefined → []).
           const toolsAtWire = (params.tools ?? []) as unknown[];
-          // P4.D83 (v4 `d89babc4`): the three sampling knobs v4's REAL
-          // resolver derives from that bag — the same call the funnel makes
-          // (`streaming.service.ts:393`). JSON.stringify drops the undefined
-          // knobs, which is the "absent" the Rust side reproduces.
-          const samplingAtWire = resolveSamplingParams(modelParamsAtWire);
+          // P4.D83 (v4 `d89babc4`): the three sampling knobs — recorded as
+          // the funnel HANDS them (`streaming.service.ts:427-429`, its own
+          // `resolveSamplingParams(modelParams)` call), not re-derived here,
+          // so a funnel that stopped passing one would show (the `97b25fc53`
+          // smalls unification's catch). Same key order as v4's resolver;
+          // JSON.stringify drops the undefined knobs, which is the "absent"
+          // the Rust side reproduces.
+          const samplingAtWire = {
+            temperature: params.temperature,
+            maxTokens: params.maxTokens,
+            topP: params.topP,
+          };
           // P4.92 / P4.95: side-channel recordings, NEVER part of the key.
           const previousResponseIdAtWire = params.previousResponseId ?? null;
           const stopAtWire = params.stop ?? [];
