@@ -158,7 +158,7 @@ fn err_message<'a>(err_json: Option<&Value>, body: &'a str) -> Option<&'a str> {
 
 /// `openai` 7.23.0: `makeStatusError` then `APIError.generate`, which hands
 /// the constructor `errorResponse?.error`. The ONE home of the SDK's `{error:
-/// body}` wrap rule.
+/// body}` wrap rule — the image dialect's non-2xx helper reads it too (P4.122).
 pub(crate) fn openai_sdk_error(status: u16, body: &str) -> RefusalError {
     let err_json = safe_json(body);
     let normalized = openai_sdk_normalized(err_json.as_ref());
@@ -212,6 +212,16 @@ fn openai_sdk_normalized(err_json: Option<&Value>) -> Option<Value> {
         }
         other => other.cloned(),
     }
+}
+
+/// The RAW `APIError.code` `openai` 7.23.0 sets for a non-2xx `body` — the
+/// normalized inner error's `code`, any JSON type (`this.code =
+/// error?.code`). The image plugins' moderation mappers read it raw (Z.AI
+/// stringifies a number; OpenAI/xAI test for a string), so it is exposed
+/// beside [`openai_sdk_error`], through the SAME wrap rule (P4.122 (B)).
+pub(crate) fn openai_sdk_raw_code(body: &str) -> Option<Value> {
+    let normalized = openai_sdk_normalized(safe_json(body).as_ref());
+    prop(prop(normalized.as_ref(), "error"), "code").cloned()
 }
 
 /// `@anthropic-ai/sdk` 0.115.0: no normalization, `const error =

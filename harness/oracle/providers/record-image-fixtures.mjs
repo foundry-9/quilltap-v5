@@ -143,6 +143,20 @@ function casesFor(provider) {
       ok(400, { error: { message: 'Filtered.', type: 'invalid_request_error', code: 'content_filter' } }));
     add('ordinary_400', { prompt: 'x', model: 'dall-e-3', n: 1 },
       ok(400, { error: { message: 'Invalid size.', type: 'invalid_request_error', code: null, param: 'size' } }));
+    // P4.122 (B): the five non-2xx body shapes v5's image helper predated the
+    // SDK's `{error: body}` wrap for (`makeStatusError`), plus a FLAT
+    // moderation code — which the plugin's moderation mapper reads through the
+    // same wrap (`err.code`).
+    add('flat_content_filter', { prompt: 'bad', model: 'dall-e-3', n: 1 },
+      ok(400, { code: 'content_filter', message: 'Flat body, benign words.' }));
+    add('flat_null_error_code', { prompt: 'bad', model: 'dall-e-3', n: 1 },
+      ok(400, { error: null, message: 'Null error, flat code.', code: 'safety' }));
+    add('flat_empty_body', { prompt: 'x', model: 'dall-e-3', n: 1 }, { status: 400, body: '' });
+    add('flat_empty_message', { prompt: 'bad', model: 'dall-e-3', n: 1 },
+      ok(400, { error: { message: '', code: 'content_filter' } }));
+    add('flat_bare_number', { prompt: 'x', model: 'dall-e-3', n: 1 }, { status: 400, body: '42' });
+    add('flat_moderation_code', { prompt: 'bad', model: 'dall-e-3', n: 1 },
+      ok(400, { code: 'moderation_blocked', message: 'Refused, flatly.' }));
     add('invalid_response', { prompt: 'a cat', model: 'dall-e-3', n: 1 },
       ok(200, { created: 1, foo: 1 }));
     // === d8d2890ee (PR #62): GPT Image 2.5 and the full OpenAI parameter set ===
@@ -275,6 +289,20 @@ function casesFor(provider) {
       ok(400, { error: { message: 'Refused.', code: 'moderation_blocked' } }));
     add('ordinary_400', { prompt: 'x', model: 'grok-imagine-image', n: 1 },
       ok(400, { error: { message: 'Bad aspect ratio', code: 'invalid_argument' } }));
+    // P4.122 (B): the five non-2xx body shapes v5's image helper predated the
+    // SDK's `{error: body}` wrap for (`makeStatusError`), plus a FLAT
+    // moderation code — which the plugin's moderation mapper reads through the
+    // same wrap (`err.code`).
+    add('flat_content_filter', { prompt: 'bad', model: 'grok-imagine-image', n: 1 },
+      ok(400, { code: 'content_filter', message: 'Flat body, benign words.' }));
+    add('flat_null_error_code', { prompt: 'bad', model: 'grok-imagine-image', n: 1 },
+      ok(400, { error: null, message: 'Null error, flat code.', code: 'safety' }));
+    add('flat_empty_body', { prompt: 'x', model: 'grok-imagine-image', n: 1 }, { status: 400, body: '' });
+    add('flat_empty_message', { prompt: 'bad', model: 'grok-imagine-image', n: 1 },
+      ok(400, { error: { message: '', code: 'content_filter' } }));
+    add('flat_bare_number', { prompt: 'x', model: 'grok-imagine-image', n: 1 }, { status: 400, body: '42' });
+    add('flat_moderation_code', { prompt: 'bad', model: 'grok-imagine-image', n: 1 },
+      ok(400, { code: 'moderation_blocked', message: 'Refused, flatly.' }));
   } else if (provider === 'z-ai') {
     add('happy_b64', { prompt: 'a cat', model: 'cogview-4-250304', n: 1 },
       ok(200, { data: [{ b64_json: 'QUJD' }] }));

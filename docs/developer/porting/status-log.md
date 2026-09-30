@@ -155494,6 +155494,65 @@ left as ordered (the wire family drives the real client path); the existing
 `sdk_error` tier-3 arm still assembles `HTTP {s}: {body}` + the side by hand
 — `single_error_from` is private and exposing it is not a two-line change;
 left, recorded. Its side is the production `transport_error_refusal`.
+
+### Unit B — the image helper's flat body (Tier 1 items 7–9)
+
+**Landed.** `image_dialects.rs`'s `openai_sdk_error` now returns
+`provider_error::openai_sdk_error(status, body)` (made `pub(crate)`; the
+image error's message is the twin's, `name: "Error"` where it was `None`);
+`sdk_error_raw_code` reads a new `provider_error::openai_sdk_raw_code(body)`
+— the NORMALIZED inner error's raw `code` through the same wrap
+(`openai_sdk_normalized` factored out), which `map_sdk_image_moderation`'s
+OPENAI/GROK and Z_AI arms read, so a flat `moderation_blocked` reaches the
+typed mapping (v4 recorded `MODERATION_REJECTED` / `providerReason
+moderation_blocked`). The helper's doc table was corrected (its "no `error`
+→ raw text" line was the pre-wrap rule). The measured unit table grew the
+five shapes; the consequence pin gained a flat benign-worded `content_filter`
+400 that must read as a moderation refusal.
+
+**Corpus:** `record-image-fixtures.mjs` gained six rows each for `openai` and
+`grok` (flat `content_filter`; `{"error":null,…,"code":"safety"}`; empty
+body; empty `error.message`; bare `42`; flat `moderation_blocked` — the
+sixth proves the typed mapping reads the normalized code). 173 → 185, every
+old line byte-identical. Regen AS RUN (worktree root):
+```
+PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH V4=/tmp/qt-v4-pin-p4122-97b25fc53 V5=$PWD \
+  bash harness/oracle/providers/regenerate-image-fixtures.sh
+```
+**Red-first (`main`'s `image_dialects.rs` swapped in, rows counted by a
+scratch `catch_unwind`): 12 of 12 new rows red, 173 green.** That swap is
+also M5 (the helper's own prefixing restored). Census
+`sdk_error_message_has_one_home` (a `#[test]` in `image_dialects.rs`): the
+production half contains no `"{} {message}"`/`"{status} {"`/`status code (no
+body)` rendering and does call the two `provider_error` helpers.
+
+**Item 9 measured — NAMED GAP:** neither `image_generation_tier3` (refusals
+posed as transport THROWS via `with_raw_throw` — no status, no body) nor
+`image_generate_route` (200s only) poses an HTTP body through the real
+dialect's non-2xx gate, so no flat-body reroute arm was added there; the
+proof rests on the wire family + the unit pins. `image_failover_tier3` poses
+errors abstractly (cannot see the helper).
+
+### Neutrality + gate
+
+Sweep from the pin (`recipe_sweep.py --run-all --families … --v4
+/tmp/qt-v4-pin-p4122-97b25fc53`): `image_failover_tier3`,
+`refusal_ledger_tier3`, `cheap_llm_fallback`, `retry_uncensored_tier3`,
+`image_generation_tier3`, `primary_stream_tier3`, `image_dialects`,
+`text_http_errors` (regenerated: 730 rows, byte-identical), `stream_decoders`,
+`streaming_composer` — 10/10 ok, zero `SKIP:`. fmt clean; clippy clean in
+both feature sets; `cargo test --workspace --no-fail-fast` (the
+primary-stream env block only) **646 binaries / 3,949 passed / 0 failed / 3
+ignored**, the lane's families confirmed RUN by their `OK:` lines;
+`stream_watchdog_wrap_census` green.
+
+**For the unifier:** no fixture pair touched; the widened stream corpora are
+read by `stream_decoders_equivalence` and `streaming_composer_equivalence`
+only; the `primary-stream-tier3.json` spec grew three chats, three streams
+and three calls (P4.121's record-leg regen will see 52 calls). Named
+follow-ups: the catch line on the PRE-stream arms; the malformed-frame /
+post-`[DONE]` SDK behaviours (unported, unexercised); the Tier 3 items 13–15
+untouched (no new row touches the OpenRouter/Google ruling).
 ## P4.123 — the wardrobe-tools avatar seam + the trigger's fallback reads + the outfit-failure level (lane record, 2026-09-30)
 
 Branch `claude/wardrobe-avatar-seam-porting-f84dad`, cut from `main` `4d033c9cc`; oracle pin `97b25fc53` via the lane-unique `/tmp/qt-v4-pin-p4123-97b25fc53` (§2 probe PASSED at lane start: v4 `main` at the baseline, both logs empty, tree clean).

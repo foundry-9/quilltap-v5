@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — fix(model): read a flat SDK image-error body through the one wrap rule (P4.122 B)
+
+_Versions: core 0.0.1108, harness 0.0.1028._
+
+The image dialect's non-2xx helper predated the text side's SDK error
+reconstruction and never applied `makeStatusError`'s `{error: body}` wrap.
+A flat `{"code":"content_filter",…}` image refusal lost its code, so the
+image failover missed a refusal v4 reroutes; empty, numeric and
+empty-message bodies rendered different messages than v4's. The helper and
+its raw-code sibling now read through `provider_error` (one wrap rule, one
+`makeMessage`), so a flat `moderation_blocked` also reaches the plugins'
+typed moderation mapping. Twelve new `image-dialects` rows (six shapes for
+OpenAI and Grok, recorded through the real `client.images.generate`) were
+all red before the change; the 173 existing rows are byte-identical. A
+census pins that the file renders no SDK status message of its own.
+
 #### 2026-09-30 — fix(model): carry the refusal side on a mid-stream SDK error frame (P4.122 A)
 
 _Versions: core 0.0.1107, harness 0.0.1027._

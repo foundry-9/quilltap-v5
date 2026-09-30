@@ -1394,49 +1394,35 @@ pub fn build_models_request(
 /// | `service unavailable` (not JSON) | `500 service unavailable` |
 ///
 /// A **string** `error` — no `.message` to read — is `JSON.stringify`d, quotes
-/// included; only a body with no `error` at all falls back to the raw text.
-/// Dogfood finding #104: the middle row is exactly what Grok's Images API
-/// returns on a moderation refusal, and reading the whole raw body there (the
-/// previous fallback) is not what an operator sees in v4.
+/// included. Dogfood finding #104: the middle row is exactly what Grok's
+/// Images API returns on a moderation refusal.
 ///
-/// All four rows measured against the REAL SDK at 2026-08-25 (a stub server per
-/// case, `client.images.generate` driven through it), not transcribed.
+/// The rows above measured against the REAL SDK at 2026-08-25. P4.122 (B)
+/// moved the rest of the rule here by pointing this helper at
+/// [`crate::model::provider_error`]'s reconstruction, which this helper had
+/// predated: a JSON OBJECT body whose `error` is null/absent is first WRAPPED
+/// as `{error: body}` (`makeStatusError`), so a FLAT `{"code":
+/// "content_filter","message":"…"}` renders `400 …` and keeps its code; an
+/// empty body or a truthy non-object (`42`) renders `400 status code (no
+/// body)`; an EMPTY `error.message` stringifies the whole inner error. Only a
+/// body that does not parse (or parses falsy) keeps its raw text. The five
+/// shapes are rows of the `image-dialects` corpus.
 fn openai_sdk_error(resp: &WireResponse) -> ImageGenError {
-    let parsed: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
-    let message = match parsed.get("error") {
-        Some(err) => match err.get("message") {
-            // `typeof error.message === 'string' ? error.message : JSON.stringify(error.message)`
-            Some(Value::String(m)) if !m.is_empty() => m.clone(),
-            Some(m) => m.to_string(),
-            // `error ? JSON.stringify(error) : message`
-            None => err.to_string(),
-        },
-        None => resp.body.clone(),
-    };
-    let message = format!("{} {message}", resp.status);
-    // P4.D225: the rest of the SDK's `APIError`, as v4's refusal classifier
-    // reads it — `this.error = body.error`, `this.code = body.error?.code`,
-    // `this.status`. v5 has no SDK, so the fields come off the body here.
-    let body_error = parsed.get("error").and_then(Value::as_object);
-    let raw_code = body_error.and_then(|e| e.get("code"));
-    let refusal = crate::services::dangerous_content::refusal::RefusalError {
-        message: message.clone(),
-        code: raw_code.and_then(crate::services::dangerous_content::refusal::code_string),
-        nested_code: raw_code.and_then(crate::services::dangerous_content::refusal::code_string),
-        name: None,
-        provider_reason: None,
-        status: Some(resp.status),
-    };
+    // P4.122 (B): the ONE home of the SDK's non-2xx reconstruction
+    // (`makeStatusError`'s `{error: body}` wrap + `APIError.makeMessage`),
+    // shared with the text transport — a FLAT `{"code":"content_filter",…}`
+    // refusal keeps its code, and the message is v4's byte for byte.
+    let refusal = crate::model::provider_error::openai_sdk_error(resp.status, &resp.body);
     ImageGenError {
-        message,
+        message: refusal.message.clone(),
         refusal: Some(Box::new(refusal)),
     }
 }
 
-/// The raw `body.error.code` an SDK `APIError` carries as its own `code`.
+/// The raw `APIError.code` the SDK sets for this response — the NORMALIZED
+/// inner error's `code` (P4.122 (B): a flat body is wrapped first).
 fn sdk_error_raw_code(resp: &WireResponse) -> Option<Value> {
-    let parsed: Value = serde_json::from_str(&resp.body).ok()?;
-    parsed.get("error")?.as_object()?.get("code").cloned()
+    crate::model::provider_error::openai_sdk_raw_code(&resp.body)
 }
 
 /// OpenAI / xAI Images codes that mean the request was refused on content
@@ -2365,13 +2351,84 @@ mod tests {
                 r#"{"error":{"message":"Incorrect API key provided: sk-xxx"}}"#,
                 "401 Incorrect API key provided: sk-xxx",
             ),
-            // No `error` key at all (and not even JSON) — the raw body.
+            // Not JSON — the raw body.
             (500, "service unavailable", "500 service unavailable"),
+            // P4.122 (B) — the five shapes the helper predated the wrap for
+            // (the `image-dialects` corpus's `flat_*` rows, recorded through
+            // the real `client.images.generate`). A FLAT object is wrapped
+            // `{error: body}`, so its own message renders…
+            (
+                400,
+                r#"{"code":"content_filter","message":"Flat body."}"#,
+                "400 Flat body.",
+            ),
+            // …and so does one whose `error` is null.
+            (
+                400,
+                r#"{"error":null,"message":"Null error, flat code.","code":"safety"}"#,
+                "400 Null error, flat code.",
+            ),
+            // No body at all, and a truthy non-object: no message.
+            (400, "", "400 status code (no body)"),
+            (400, "42", "400 status code (no body)"),
+            // An EMPTY message is falsy — the whole inner error.
+            (
+                400,
+                r#"{"error":{"message":"","code":"content_filter"}}"#,
+                r#"400 {"message":"","code":"content_filter"}"#,
+            ),
         ];
         for (status, body, want) in cases {
             let got = openai_sdk_error(&WireResponse::new(*status, *body));
             assert_eq!(&got.message, want, "body {body}");
         }
+        // The flat bodies keep their codes on the side (and the raw-code
+        // sibling the moderation mappers read agrees).
+        for (body, code) in [
+            (
+                r#"{"code":"content_filter","message":"Flat body."}"#,
+                "content_filter",
+            ),
+            (r#"{"error":null,"message":"m","code":"safety"}"#, "safety"),
+        ] {
+            let resp = WireResponse::new(400, body);
+            let side = openai_sdk_error(&resp).refusal.unwrap();
+            assert_eq!(side.code.as_deref(), Some(code), "{body}");
+            assert_eq!(side.nested_code.as_deref(), Some(code), "{body}");
+            assert_eq!(side.name.as_deref(), Some("Error"), "{body}");
+            assert_eq!(
+                sdk_error_raw_code(&resp),
+                Some(Value::String(code.into())),
+                "{body}"
+            );
+        }
+    }
+
+    /// P4.122 (B) census: the SDK non-2xx message is `provider_error`'s alone —
+    /// ONE wrap rule, ONE `makeMessage`. This file's production code carries no
+    /// `"{status} {message}"`-shaped prefixing of its own (the pre-P4.122
+    /// helper's `format!("{} {message}", resp.status)` was exactly that, and
+    /// it had silently skipped the wrap). The raw-`fetch` providers' own
+    /// sentences (`Gemini API error: {status}` …) are not this shape.
+    #[test]
+    fn sdk_error_message_has_one_home() {
+        let src = include_str!("image_dialects.rs");
+        let prod = &src[..src.find("#[cfg(test)]").expect("the test module")];
+        for needle in [
+            "format!(\"{} {message}\"",
+            "format!(\"{} {}\", resp.status",
+            "format!(\"{status} {",
+            "status code (no body)",
+        ] {
+            assert!(
+                !prod.contains(needle),
+                "image_dialects.rs renders an SDK status message itself ({needle}) — \
+                 route it through provider_error::openai_sdk_error"
+            );
+        }
+        assert!(prod
+            .contains("crate::model::provider_error::openai_sdk_error(resp.status, &resp.body)"));
+        assert!(prod.contains("crate::model::provider_error::openai_sdk_raw_code(&resp.body)"));
     }
 
     /// The gate itself: a non-2xx from an SDK provider never reaches the parser.
@@ -2435,6 +2492,19 @@ mod tests {
             is_moderation_refusal(&grok_400.refusal_error()),
             "the reroute must still recognise this: {}",
             grok_400.message
+        );
+
+        // P4.122 (B): a FLAT coded refusal under benign wording — no pattern
+        // matches the words, so only the code can recognise it, and the code
+        // survives only through the SDK's `{error: body}` wrap.
+        let flat_400 = openai_sdk_error(&WireResponse::new(
+            400,
+            r#"{"code":"content_filter","message":"Flat body, benign words."}"#,
+        ));
+        assert!(
+            is_moderation_refusal(&flat_400.refusal_error()),
+            "a flat content_filter 400 must reroute: {:?}",
+            flat_400.refusal
         );
 
         // The pre-fix message is the counter-example that explains the bug.
