@@ -363,18 +363,12 @@ pub fn chat_gallery(db: &Db, chat_id: &str) -> Response {
     // `null`, and the route then answers `notFound('Chat')`. A 500 here was
     // v5's own invention (P4.88's escalation — the "a 404" half of P4.D174's
     // OPEN note), fixed at the round's unification.
-    match db.read_main(move |c| chats_read::find_by_id(c, &cid)) {
-        Ok(Some(_)) => {}
-        Ok(None) => return not_found("Chat"),
-        Err(e) => {
-            tracing::error!(
-                collection = "chats",
-                id = %chat_id,
-                error = %e,
-                "Error finding entity by ID"
-            );
-            return not_found("Chat");
-        }
+    if crate::db::fallback::find_by_id_or_none("chats", chat_id, || {
+        db.read_main(move |c| chats_read::find_by_id(c, &cid))
+    })
+    .is_none()
+    {
+        return not_found("Chat");
     }
     let cid = chat_id.to_string();
     let gallery = read_main_mount(db, |main, mount| {
@@ -2605,9 +2599,9 @@ mod gallery_route_degrade_tests {
         assert!(
             lines
                 .iter()
-                .any(|l| l.contains("Error finding entity by ID")
-                    && l.contains("collection=chats")
-                    && l.contains("c0000000-0000-4000-8000-000000000001")),
+                .any(|l| l.starts_with(
+                    "ERROR quilltap::db Error finding entity by ID collection=chats id=c0000000-0000-4000-8000-000000000001 "
+                )),
             "v4's safeQuery line must be logged: {lines:#?}"
         );
         assert!(

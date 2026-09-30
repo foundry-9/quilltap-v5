@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — fix(db): the fallback home renders v4's bare SQLite message; seven module-target twins of `Error finding entity by ID` and the help-sync copy folded onto it; a guard holds the one home; the mail plants' excluded v4 lines named (P4.131 + P4.130, the `97b25fc53` smalls §3 review)
+
+_Versions: core 0.0.1127, harness 0.0.1049._
+
+Every `db::fallback` line rendered a SQLite failure as `sqlite error: …`
+(`DbError::Sqlite`'s `Display`) where v4 logs the driver's bare sentence;
+the home now renders the bare message for all seven shapes (unit-pinned), and
+the §S 1 fold of P4.130's inline `Error finding entities by filter` arm onto
+`find_by_filter_or_empty` carries the `DbError` whole. Seven hand-copied
+`Error finding entity by ID` lines under module targets (chat_gallery, the
+tiered mount pool, the chat-media route, the Scenario Builder route and pool,
+the two Concierge state readers) and `help_doc_sync`'s local `find_all_or_
+empty` now go through the home; their tests assert the `quilltap::db` target.
+New `fallback_home_guard` scans core's production zone (literals kept) and
+allows each home message in `db/fallback.rs` alone. The mail plant
+differential names every other v4 line it excludes with its reason and fails
+on one in neither table (the `characters` `Data validation failed` line is a
+recorded v4-only line). `subprompts/storage.rs`'s re-aimed test now says its
+two lines are v5's under a no-tables plant v4 cannot fail under.
+
 #### 2026-09-30 — fix(zone): the assembler's zone fill pinned; the host's last ambient clock retired; the census hunts every ambient read; the divergence doc names the true entries (P4.127, the `97b25fc53` smalls §3 review)
 
 _Versions: core 0.0.1126, harness 0.0.1048, host 0.0.168._

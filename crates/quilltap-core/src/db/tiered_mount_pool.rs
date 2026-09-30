@@ -243,15 +243,12 @@ pub fn resolve_mount_point_ids_for_group(
     let mut ids: Vec<String> = Vec::new();
     // findByIdRaw avoids a store read on this hot path — we only need the
     // group's officialMountPointId pointer, not its hydrated content.
-    match groups::find_validated_name_and_official_mount_point_id_raw(main, group_id) {
-        Ok(Some((_, Some(off)))) if !off.is_empty() => push_unique(&mut ids, off),
-        Ok(_) => {}
-        Err(e) => tracing::error!(
-            collection = "groups",
-            id = %group_id,
-            error = %e,
-            "Error finding entity by ID"
-        ),
+    if let Some((_, Some(off))) = super::fallback::find_by_id_or_none("groups", group_id, || {
+        groups::find_validated_name_and_official_mount_point_id_raw(main, group_id)
+    }) {
+        if !off.is_empty() {
+            push_unique(&mut ids, off);
+        }
     }
     for link in super::fallback::find_by_filter_or_empty("group_doc_mount_links", || {
         GroupDocMountLinksRepository::new(mount).find_by_group_id(group_id)
@@ -592,8 +589,10 @@ mod tests {
             lines[0].starts_with("ERROR quilltap::db Data validation failed"),
             "{lines:?}"
         );
-        assert!(lines[1].starts_with("ERROR "), "{lines:?}");
-        assert!(lines[1].contains("Error finding entity by ID"), "{lines:?}");
+        assert!(
+            lines[1].starts_with("ERROR quilltap::db Error finding entity by ID "),
+            "{lines:?}"
+        );
         assert!(
             lines[1].contains("collection=groups") && lines[1].contains(&format!("id={G_BLOB}"))
         );
@@ -615,7 +614,8 @@ mod tests {
         assert_eq!(ids, s(&[MP_OFF]));
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(
-            lines[0].starts_with("ERROR ") && lines[0].contains("Error finding entities by filter")
+            lines[0].starts_with("ERROR quilltap::db Error finding entities by filter "),
+            "{lines:?}"
         );
         assert!(!lines
             .iter()

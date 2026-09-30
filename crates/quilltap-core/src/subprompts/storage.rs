@@ -601,9 +601,15 @@ mod log_tests {
 
         // A mount partition with no store tables. v4's `listDatabaseFiles` reads
         // are FALLBACK repository reads (`[]` after each repository's ERROR), so
-        // the listing does NOT throw: the resolver answers `[]` through v4's
+        // the listing does NOT throw: the resolver answers `[]` through the
         // fallbacks and its own catch-all WARN is unreachable for a store failure
         // (P4.131 — this pin had asserted the WARN through v5's propagating list).
+        // The two ERROR lines below are v5's under THIS plant only: a partition
+        // with no tables is not a failure v4 can have (its `ensureTable`
+        // re-creates them and logs nothing — P4.131's finding 1); the failure v4
+        // shares is a renamed column, pinned in `database_store.rs`'s tests and
+        // the mail family's plants. What this test pins is the no-throw and the
+        // silent WARN (the `97b25fc53` smalls unification's relabel).
         let broken = tempfile::tempdir().unwrap();
         let empty = Writer::open_writable(&broken.path().join("empty.db"), TEST_PEPPER).unwrap();
         let (out, lines) = captured_with(|| {

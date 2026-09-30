@@ -947,6 +947,52 @@ const PLANT_SHARED_MESSAGES: [&str; 5] = [
     "Error finding entity by ID",
 ];
 
+/// Every OTHER message v4 logs on these plants, each with the reason it is not
+/// compared — an EXPLICIT list, so a v4 line in neither table fails the
+/// compare instead of vanishing through the allowlist (the `97b25fc53` smalls
+/// unification's catch: the first shape filtered v4's log to
+/// [`PLANT_SHARED_MESSAGES`] and could not see a new repository line, nor the
+/// `characters` validation line below). `(message, why)`.
+const PLANT_EXCLUDED_MESSAGES: &[(&str, &str)] = &[
+    (
+        "Failed to ensure doc_mount_file_links table in mount index database",
+        "a plant artefact: `ensureTable` trips on the very column the plant renamed \
+         (v5 has no ensure step)",
+    ),
+    (
+        "Failed to ensure doc_mount_folders table in mount index database",
+        "the same plant artefact on the folders plant",
+    ),
+    (
+        "Error finding documents by mount point IDs and path",
+        "the character overlay's batch read (`document_store_overlay`), not the \
+         document store — the census's `fallback-in-v4` list for the next order",
+    ),
+    (
+        "Error finding documents by mount point IDs and folder",
+        "the overlay's sibling batch read",
+    ),
+    (
+        "Dropping character from list — vault unavailable",
+        "the overlay dropping each character whose vault read failed (v5's overlay \
+         read propagates instead — the recorded `send_mail` divergence, \
+         `assert_send_divergence`)",
+    ),
+    (
+        "applyDocumentStoreOverlay dropped characters with unavailable vaults",
+        "the overlay's summary WARN after the drops above",
+    ),
+    (
+        "Data validation failed",
+        "v4's `characters` collection validates each row under the renamed column \
+         and logs the repository's `Data validation failed {collection: characters}` \
+         (base.repository.ts:130-157) where v5's overlay read propagates: a RECORDED \
+         v4-only line, the same one P4.130 pinned both ways in the mount-pool \
+         family (`V4_ONLY_VALIDATION`); un-ported here until the overlay takes v4's \
+         fallback reads",
+    ),
+];
+
 /// The failure plants, run against v4's real stack by the oracle (`mail-tools.
 /// test.ts`, the second output file) and against v5 here — a true differential
 /// now (P4.131; P4.126 had pinned "bytes read from v4" from prose over
@@ -1124,6 +1170,17 @@ async fn assert_catch_lines(
                 .find(|r| r.plant == plant && &r.tool == tool)
                 .unwrap_or_else(|| panic!("no oracle row {plant}:{tool}"));
             let label = format!("{plant}:{tool}");
+            // Every v4 line is either compared (shared) or named excluded —
+            // never silently dropped.
+            for l in &want.logs {
+                assert!(
+                    PLANT_SHARED_MESSAGES.contains(&l.message.as_str())
+                        || PLANT_EXCLUDED_MESSAGES.iter().any(|(m, _)| *m == l.message),
+                    "{label}: v4 logged a line neither PLANT_SHARED_MESSAGES nor \
+                     PLANT_EXCLUDED_MESSAGES names: {:?} — classify it",
+                    l.message
+                );
+            }
             // v4's repository-layer lines, as v5's line prefixes.
             let expected: Vec<String> = want
                 .logs

@@ -119,29 +119,24 @@ pub fn resolve_scenario_builder_mount_pool(
     let mut live_cast_ids: Vec<String> = Vec::new();
     let mut vault_ids: Vec<String> = Vec::new();
     for character_id in &cast_ids {
-        let character: Value = match characters_read::find_by_id_raw(main, character_id) {
-            Ok(Some(c)) => c,
-            Ok(None) => continue,
-            // v4's `findByIdRaw` is `_findById`, i.e. `safeQuery(…, 'Error
-            // finding entity by ID', { id }, null)` in FALLBACK mode
-            // (`base.repository.ts:236-246`): a failed read — a row that no
-            // longer decodes included — logs that line at the repository and
-            // answers `null`, so v4's pool skips the member SILENTLY and its own
-            // `Cast vault lookup failed` WARN never fires. v5's raw read
-            // surfaces the error instead, so the fallback is reproduced here
-            // (the `api::chat_media` precedent), not the unreachable WARN.
-            // Measured: the family's `unreadable-member-warns` arm (a BLOB
-            // `name`) — v4's pool logger is silent.
-            Err(e) => {
-                tracing::error!(
-                    collection = "characters",
-                    id = %character_id,
-                    error = %e,
-                    "Error finding entity by ID"
-                );
-                continue;
-            }
+        // v4's `findByIdRaw` is `_findById`, i.e. `safeQuery(…, 'Error
+        // finding entity by ID', { id }, null)` in FALLBACK mode
+        // (`base.repository.ts:236-246`): a failed read — a row that no
+        // longer decodes included — logs that line at the repository and
+        // answers `null`, so v4's pool skips the member SILENTLY and its own
+        // `Cast vault lookup failed` WARN never fires. v5's raw read
+        // surfaces the error instead, so the fallback is taken through the
+        // ONE home (`db::fallback`), not the unreachable WARN.
+        // Measured: the family's `unreadable-member-warns` arm (a BLOB
+        // `name`) — v4's pool logger is silent.
+        let Some(character) =
+            crate::db::fallback::find_by_id_or_none("characters", character_id, || {
+                characters_read::find_by_id_raw(main, character_id)
+            })
+        else {
+            continue;
         };
+        let character: Value = character;
         let str_of = |k: &str| character.get(k).and_then(Value::as_str);
         // `character.userId && character.userId !== userId` — an empty owner
         // is falsy and admitted.

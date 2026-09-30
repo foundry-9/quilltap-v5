@@ -422,18 +422,9 @@ pub fn list_chat_gallery(
     // FIRST — see `api/chat_media.rs::chat_gallery`, which answers 500 where
     // v4 answers `notFound('Chat')`. That file is not this order's to touch;
     // the escalation is in P4.88's lane record.
-    let chat = match chats_read::find_by_id(main, chat_id) {
-        Ok(found) => found,
-        Err(err) => {
-            tracing::error!(
-                collection = "chats",
-                id = %chat_id,
-                error = %err,
-                "Error finding entity by ID"
-            );
-            None
-        }
-    };
+    let chat = crate::db::fallback::find_by_id_or_none("chats", chat_id, || {
+        chats_read::find_by_id(main, chat_id)
+    });
     let Some(chat) = chat else {
         tracing::debug!(
             chat_id = %chat_id,
@@ -1913,10 +1904,9 @@ mod walk_degrade_tests {
             assert!(out.is_empty(), "{out:#?}");
         });
         assert!(
-            lines
-                .iter()
-                .any(|l| l.contains("Error finding entity by ID") && l.contains("collection=chats")),
-            "v4's repository error line: {lines:?}"
+            lines.iter().any(|l| l
+                .starts_with("ERROR quilltap::db Error finding entity by ID collection=chats ")),
+            "v4's repository error line, under the home's target: {lines:?}"
         );
         assert!(
             lines

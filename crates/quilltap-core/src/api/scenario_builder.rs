@@ -416,19 +416,14 @@ pub fn scenario_builder_prepare(
         }
         seen_groups.push(id);
         let gid = id.clone();
-        match db.read_main(move |c| {
-            groups::find_validated_name_and_official_mount_point_id_raw(c, &gid)
-        }) {
-            Ok(Some(_)) => group_ids.push(id.clone()),
-            Ok(None) => {}
-            Err(e) => {
-                tracing::error!(
-                    collection = "groups",
-                    id = %id,
-                    error = %e,
-                    "Error finding entity by ID"
-                );
-            }
+        if crate::db::fallback::find_by_id_or_none("groups", id, || {
+            db.read_main(move |c| {
+                groups::find_validated_name_and_official_mount_point_id_raw(c, &gid)
+            })
+        })
+        .is_some()
+        {
+            group_ids.push(id.clone());
         }
     }
 

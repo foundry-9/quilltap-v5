@@ -256,13 +256,7 @@ fn clear_embedding(main: &Connection, id: &str) -> Result<(), DbError> {
 /// help-sync reads of the table go through it (the sync's index and the
 /// reconcile's re-read), so neither ever fails on the read.
 fn find_all_or_empty(repo: &HelpDocsRepository<'_>) -> Vec<crate::db::help_docs::HelpDocRow> {
-    match repo.find_all() {
-        Ok(rows) => rows,
-        Err(e) => {
-            log_find_all_fallback(&e);
-            Vec::new()
-        }
-    }
+    crate::db::fallback::find_all_or_empty("help_docs", || repo.find_all())
 }
 
 /// The reconcile's projection of the same fallback read (see
@@ -270,22 +264,7 @@ fn find_all_or_empty(repo: &HelpDocsRepository<'_>) -> Vec<crate::db::help_docs:
 fn find_all_for_reconcile_or_empty(
     repo: &HelpDocsRepository<'_>,
 ) -> Vec<crate::db::help_docs::HelpDocReconcileRow> {
-    match repo.find_all_for_reconcile() {
-        Ok(rows) => rows,
-        Err(e) => {
-            log_find_all_fallback(&e);
-            Vec::new()
-        }
-    }
-}
-
-fn log_find_all_fallback(e: &DbError) {
-    tracing::error!(
-        target: "quilltap::db",
-        collection = "help_docs",
-        error = %e,
-        "Error finding all entities",
-    );
+    crate::db::fallback::find_all_or_empty("help_docs", || repo.find_all_for_reconcile())
 }
 
 pub fn sync_help_docs(

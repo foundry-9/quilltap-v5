@@ -1,7 +1,10 @@
 //! v4's FALLBACK repository reads, as their callers see them — the ONE home
 //! for the shape (unified at the `97b25fc53` follow-ups round; before it the
-//! same two lines lived in four hand-copies across `chats_read`,
-//! `characters_read`, `image_profiles` and `dangerous_content::understudy`).
+//! first two lines lived in four hand-copies across `chats_read`,
+//! `characters_read`, `image_profiles` and `dangerous_content::understudy`;
+//! P4.131 grew it by the document-store shapes, and the `97b25fc53` smalls
+//! unification folded seven more module-target twins of `Error finding entity
+//! by ID` onto it — `fallback_home_guard` in the harness now holds the line).
 //!
 //! v4 `BaseRepository._findById` is `safeQuery(…, 'Error finding entity by ID',
 //! { id }, null)` and `_findAll` is `safeQuery(…, 'Error finding all
@@ -18,6 +21,21 @@
 
 use super::DbError;
 
+/// The `error` field's bytes: v4 logs `extractErrorMessage(error)` — the
+/// thrown error's own message, which for a SQLite failure is the driver's
+/// bare sentence (`no such table: chats`). `DbError::Sqlite`'s `Display`
+/// prefixes it with `sqlite error: ` (a v5 rendering convention, useful in a
+/// propagated error, wrong on a line that stands in for v4's); every other
+/// variant already IS a bare message. Every shape in this home renders the
+/// field through here (the `97b25fc53` smalls unification — the P4.131 lines
+/// had all carried the prefix, and one caller had worked around it locally).
+fn error_text(error: &DbError) -> String {
+    match error {
+        DbError::Sqlite(e) => e.to_string(),
+        other => other.to_string(),
+    }
+}
+
 /// v4 `_findById` as its callers see it: `read()`'s `Err` logs `Error finding
 /// entity by ID {collection, id, error}` and answers `None`.
 pub fn find_by_id_or_none<T>(
@@ -30,7 +48,7 @@ pub fn find_by_id_or_none<T>(
             target: "quilltap::db",
             collection = collection,
             id = %id,
-            error = %error,
+            error = %error_text(&error),
             "Error finding entity by ID"
         );
         None
@@ -47,7 +65,7 @@ pub fn find_all_or_empty<T>(
         tracing::error!(
             target: "quilltap::db",
             collection = collection,
-            error = %error,
+            error = %error_text(&error),
             "Error finding all entities"
         );
         Vec::new()
@@ -69,7 +87,7 @@ pub fn find_by_filter_or_empty<T>(
         tracing::error!(
             target: "quilltap::db",
             collection = collection,
-            error = %error,
+            error = %error_text(&error),
             "Error finding entities by filter"
         );
         Vec::new()
@@ -87,7 +105,7 @@ pub fn find_one_by_filter_or_none<T>(
         tracing::error!(
             target: "quilltap::db",
             collection = collection,
-            error = %error,
+            error = %error_text(&error),
             "Error finding entity by filter"
         );
         None
@@ -110,7 +128,7 @@ pub fn joined_file_links_or_empty<T>(
             target: "quilltap::db",
             collection = "doc_mount_file_links",
             whereClause = where_clause,
-            error = %error,
+            error = %error_text(&error),
             "Error querying joined file links"
         );
         Vec::new()
@@ -132,7 +150,7 @@ pub fn document_by_mount_point_and_path_or_none<T>(
             collection = "doc_mount_documents",
             mountPointId = %mount_point_id,
             relativePath = %relative_path,
-            error = %error,
+            error = %error_text(&error),
             "Error finding document by mount point and path"
         );
         None
@@ -154,7 +172,7 @@ pub fn delete_with_gc_or_false(
             target: "quilltap::db",
             collection = "doc_mount_file_links",
             linkId = %link_id,
-            error = %error,
+            error = %error_text(&error),
             "Error deleting file link with GC"
         );
         false
@@ -211,6 +229,28 @@ mod tests {
     }
 
     /// One capture + one silence leg per v4 line shape added with the
+    /// A SQLite failure's `error` field is the driver's bare sentence, as v4's
+    /// `extractErrorMessage` renders it — never `DbError::Sqlite`'s
+    /// `sqlite error: ` prefix (the `97b25fc53` smalls unification).
+    #[test]
+    fn a_sqlite_failure_renders_v4s_bare_message() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            find_by_id_or_none::<i32>("chats", "c1", || {
+                conn.execute_batch("SELECT 1 FROM no_such_table")
+                    .map(|_| None)
+                    .map_err(DbError::from)
+            })
+        });
+        assert!(got.is_none());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(
+            lines[0],
+            "ERROR quilltap::db Error finding entity by ID collection=chats id=c1 error=no such table: no_such_table",
+            "{lines:?}"
+        );
+    }
+
     /// document-store fallbacks (P4.131): bytes, level, target, field order.
     #[test]
     fn each_document_store_shape_logs_v4s_line_and_answers_its_fallback() {

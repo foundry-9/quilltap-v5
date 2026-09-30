@@ -49,17 +49,9 @@ pub async fn maybe_switch_after_classification<An: ConciergeAnnouncer>(
     // v4 reads through `repos.chats.findById`, a fallback `safeQuery`: a failed
     // read logs `Error finding entity by ID` and answers `null`, so it takes the
     // not-found arm below — never this function's catch (the unification review).
-    let chat = db
-        .read_main(|c| Ok(chats_read::find_by_id_or_none(c, chat_id)))
-        .unwrap_or_else(|error| {
-            tracing::error!(
-                collection = "chats",
-                id = %chat_id,
-                error = %error,
-                "Error finding entity by ID"
-            );
-            None
-        });
+    let chat = crate::db::fallback::find_by_id_or_none("chats", chat_id, || {
+        db.read_main(|c| Ok(chats_read::find_by_id_or_none(c, chat_id)))
+    });
     let Some(chat) = chat else {
         tracing::debug!(
             target: "quilltap::concierge_classifier_switch",
@@ -299,7 +291,7 @@ mod tests {
         let (switched, lines) = switch(&rt, &db, CHAT);
         assert!(!switched);
         let err = line(&lines, "Error finding entity by ID");
-        assert!(err.starts_with("ERROR "), "{err}");
+        assert!(err.starts_with("ERROR quilltap::db "), "{err}");
         assert!(err.contains("collection=chats"), "{err}");
         line(&lines, "Classifier switch skipped: chat not found");
         assert!(

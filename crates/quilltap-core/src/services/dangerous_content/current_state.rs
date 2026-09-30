@@ -31,17 +31,9 @@ pub fn read_current_concierge_state(
     // v4 reads through `repos.chats.findById`, a fallback `safeQuery` that logs
     // and answers `null` on a failed read — so a read error IS the not-found
     // arm; v4's own `catch` here is unreachable (the unification review).
-    let chat = db
-        .read_main(|c| Ok(chats_read::find_by_id_or_none(c, chat_id)))
-        .unwrap_or_else(|error| {
-            tracing::error!(
-                collection = "chats",
-                id = %chat_id,
-                error = %error,
-                "Error finding entity by ID"
-            );
-            None
-        });
+    let chat = crate::db::fallback::find_by_id_or_none("chats", chat_id, || {
+        db.read_main(|c| Ok(chats_read::find_by_id_or_none(c, chat_id)))
+    });
     let Some(chat) = chat else {
         tracing::debug!(
             target: "quilltap::concierge_current_state",
@@ -330,7 +322,7 @@ mod tests {
             .find(|l| l.contains("Error finding entity by ID"))
             .unwrap_or_else(|| panic!("the repository ERROR: {lines:#?}"));
         assert!(
-            err.starts_with("ERROR ") && err.contains("collection=chats"),
+            err.starts_with("ERROR quilltap::db ") && err.contains("collection=chats"),
             "{err}"
         );
         assert!(lines

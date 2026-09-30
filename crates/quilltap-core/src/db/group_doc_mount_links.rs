@@ -195,21 +195,12 @@ impl<'c> GroupDocMountLinksRepository<'c> {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(rows)
             };
-        // P4.130 §S 1: P4.131 delivers this exact line as
-        // `db::fallback::find_by_filter_or_empty` — the unifier repoints this
-        // arm onto it and deletes the duplicate.
-        let rows = match read() {
-            Ok(rows) => rows,
-            Err(e) => {
-                tracing::error!(
-                    target: "quilltap::db",
-                    collection = "group_doc_mount_links",
-                    error = %e,
-                    "Error finding entities by filter"
-                );
-                return Ok(Vec::new());
-            }
-        };
+        // The query failure is v4's `findByFilter` fallback line, through the
+        // ONE home (`db::fallback`, P4.131 — folded here at the `97b25fc53`
+        // smalls unification, §S 1; the home renders the SQLite message bare).
+        let rows = super::fallback::find_by_filter_or_empty("group_doc_mount_links", || {
+            read().map_err(DbError::from)
+        });
         let mut ids = Vec::with_capacity(rows.len());
         for row in rows {
             // `GroupDocMountLinkSchema`: three uuids, two timestamps.
