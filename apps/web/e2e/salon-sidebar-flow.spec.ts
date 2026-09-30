@@ -572,9 +572,27 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
     expect(asked).toBe(
       'Queue memory extraction jobs for all messages in this chat? This will process the entire conversation history.',
     );
+    // The toast is the count line or one of the queue verb's two refusals with
+    // v4's EXACT sentence (`actions/memories.ts:82,122-127`) — this throwaway
+    // chat has no USER message and the fixture may carry no cheap LLM, so each
+    // refusal is reachable, and nothing looser than the sentence counts as
+    // "heard" (the `chat-delete-flow` shape; a `.+` tail would pass on any
+    // server text).
     await expect(
       page
-        .getByText(/^(Queued \d+ memory extraction jobs|Failed to queue memory extraction: .+)$/)
+        .getByText(/^Queued \d+ memory extraction jobs$/)
+        .or(
+          page.getByText(
+            'Failed to queue memory extraction: No valid cheap LLM configured. Please set a cheap LLM profile in settings.',
+            { exact: true },
+          ),
+        )
+        .or(
+          page.getByText(
+            'Failed to queue memory extraction: No user messages found in this chat — nothing to extract memories from.',
+            { exact: true },
+          ),
+        )
         .first(),
     ).toBeVisible({ timeout: 15_000 });
     expect(verbs).not.toContain('memoryDeleteByChat');

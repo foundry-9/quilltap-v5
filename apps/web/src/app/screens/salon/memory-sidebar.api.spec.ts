@@ -72,7 +72,7 @@ describe('confirmAndQueueMemories (Re-extract Memories — queue ONLY)', () => {
     expect(calls).toEqual([]);
   });
 
-  it('a refused queue is the colon-form toast; a transport failure the bare one', async () => {
+  it('a refused queue is the colon-form toast; a non-dispatch throw the bare guard (no client path produces one)', async () => {
     const a = rig(async () => {
       throw refusal('Chat has no messages');
     });
@@ -85,6 +85,28 @@ describe('confirmAndQueueMemories (Re-extract Memories — queue ONLY)', () => {
     });
     await confirmAndQueueMemories(b.core, b.toasts, 'c1', true);
     expect(b.toasts.showError).toHaveBeenCalledWith('Failed to queue memory extraction');
+  });
+
+  it('DIVERGENCE (recorded): a transport failure is the synthetic CoreDispatchError, so it reads the colon form where v4 reads the bare toast', async () => {
+    const lost = new CoreDispatchError({
+      kind: 'internal',
+      message: 'Connection lost. The server may still be starting.',
+    });
+    const q = rig(async () => {
+      throw lost;
+    });
+    await confirmAndQueueMemories(q.core, q.toasts, 'c1', true);
+    expect(q.toasts.showError).toHaveBeenCalledWith(
+      'Failed to queue memory extraction: Connection lost. The server may still be starting.',
+    );
+    const d = rig(async (req) => {
+      if (req.type === 'memoryCountByChat') return { memoryCount: 2 };
+      throw lost;
+    });
+    await confirmAndDeleteChatMemories(d.core, d.toasts, 'c1', 2);
+    expect(d.toasts.showError).toHaveBeenCalledWith(
+      'Failed to delete memories: Connection lost. The server may still be starting.',
+    );
   });
 });
 

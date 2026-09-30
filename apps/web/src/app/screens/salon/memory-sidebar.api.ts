@@ -10,6 +10,19 @@
  * answer is a `CoreDispatchError` whose message is the server's `error` text.
  * The gate is `window.confirm`, the established idiom (`memory-reextract.api.ts`).
  *
+ * v4's error toasts are two shapes: a non-ok response carries the server's
+ * sentence (`Failed to …: <sentence>`), and a fetch that THREW (the network
+ * down) reports the bare `Failed to queue memory extraction` / `Failed to
+ * delete memories` (`useMemoryActions.ts:61,99`). DIVERGENCE (deliberate,
+ * recorded — the same one `salon-conversation.ts`'s `onRebuildSummary` records
+ * from the `a2db63da7` unification): every v5 transport turns a failed fetch
+ * into a synthetic `CoreDispatchError` (`Connection lost. The server may still
+ * be starting. …`, `core-transport.ts` / `tauri-core-transport.ts`), so a
+ * network failure here reads the colon form with that sentence. The bare
+ * fallback stays as the non-`CoreDispatchError` guard, which no client path
+ * produces; the unit spec's `Error('offline')` case pins the guard, not v4's
+ * branch, and its `Connection lost` case pins the divergence.
+ *
  * @module screens/salon/memory-sidebar.api
  */
 

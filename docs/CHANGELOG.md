@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — fix(spa): the Edit Content beat hears v4's exact refusal sentences; the transport-failure divergence recorded; the memory pair's predicate and doc placement (the `97b25fc53` smalls §3 review)
+
+_Versions: SPA 0.5.792._
+
+P4.132 review findings, fixed at unification. The new Salon sidebar beat
+accepted `Failed to queue memory extraction: .+` (any server text — the
+loose-alternation shape the P4.125 unification had already removed from the
+card beat); it now hears the count line or one of the queue verb's two
+refusals with v4's exact sentence. The bare `Failed to …` toasts are the
+non-`CoreDispatchError` guard no client path produces (every transport
+synthesizes a `CoreDispatchError` on a failed fetch); recorded as the same
+deliberate divergence `onRebuildSummary` carries, the spec arm renamed to say
+what it pins, and a `Connection lost` case added that pins the colon form. The
+two new sidebar methods had split `onRebuildSummary`'s JSDoc from its method;
+moved above it. The re-extract guard takes v4's shape (the FIRST active
+character, then its resolved object). `package-lock.json` synced.
+
 #### 2026-09-30 — feat(spa): Edit Content gains Re-extract Memories and Delete Memories (n)
 
 _Versions: SPA 0.5.791._

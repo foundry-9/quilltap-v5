@@ -4406,6 +4406,36 @@ export class SalonConversation {
   }
 
   /**
+   * Edit Content → Re-extract Memories (v4 `useMemoryActions.handleReextract
+   * Memories`): queue-only — NOT the chat card's delete-then-queue flow.
+   */
+  protected async onReextractMemories(): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    // v4 `useMemoryActions.ts:66-67`: the FIRST active character, then its
+    // resolved `character` — not "any active seat whose object resolved".
+    const characterParticipant = (this.chat()?.participants ?? []).find(
+      (p) => p.type === 'CHARACTER' && p.isActive,
+    );
+    const hasActiveCharacter = Boolean(characterParticipant?.character);
+    await confirmAndQueueMemories(this.core, this.toasts, chatId, hasActiveCharacter);
+  }
+
+  /** Edit Content → Delete Memories (n) (v4 `handleDeleteChatMemories`). */
+  protected async onDeleteMemories(): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    const deleted = await confirmAndDeleteChatMemories(
+      this.core,
+      this.toasts,
+      chatId,
+      this.memoryCountQuery.data() ?? 0,
+    );
+    void this.queryClient.invalidateQueries({ queryKey: memoryKeys.chatCount(chatId) });
+    if (deleted) void this.queryClient.invalidateQueries({ queryKey: chatKeys.all });
+  }
+
+  /**
    * The Organize drawer's "Rebuild Summary…" entry (v4 `useSummaryActions.ts`,
    * bug 161, `e7821606f`) — the operator's remedy for a running context
    * summary that has gone wrong (most notably an invented speaker name).
@@ -4429,33 +4459,6 @@ export class SalonConversation {
    * the Salon through the EXISTING `chatKeys.detail` subscription, the same
    * way every other realtime-pushed chat field does.
    */
-  /**
-   * Edit Content → Re-extract Memories (v4 `useMemoryActions.handleReextract
-   * Memories`): queue-only — NOT the chat card's delete-then-queue flow.
-   */
-  protected async onReextractMemories(): Promise<void> {
-    const chatId = this.chatId();
-    if (!chatId) return;
-    const hasActiveCharacter = (this.chat()?.participants ?? []).some(
-      (p) => p.type === 'CHARACTER' && p.isActive && p.character,
-    );
-    await confirmAndQueueMemories(this.core, this.toasts, chatId, hasActiveCharacter);
-  }
-
-  /** Edit Content → Delete Memories (n) (v4 `handleDeleteChatMemories`). */
-  protected async onDeleteMemories(): Promise<void> {
-    const chatId = this.chatId();
-    if (!chatId) return;
-    const deleted = await confirmAndDeleteChatMemories(
-      this.core,
-      this.toasts,
-      chatId,
-      this.memoryCountQuery.data() ?? 0,
-    );
-    void this.queryClient.invalidateQueries({ queryKey: memoryKeys.chatCount(chatId) });
-    if (deleted) void this.queryClient.invalidateQueries({ queryKey: chatKeys.all });
-  }
-
   protected async onRebuildSummary(): Promise<void> {
     if (
       typeof window !== 'undefined' &&
