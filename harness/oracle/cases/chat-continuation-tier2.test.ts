@@ -140,6 +140,31 @@ async function main(): Promise<void> {
     );
     const { applyChatContinuation } = await import('@/lib/chat/apply-chat-continuation');
 
+    // P4.124: every `[ChatContinuation]` WARN/ERROR v4 writes, recorded off the
+    // `Logger` prototype of THIS module generation (singleton and children
+    // alike, before the level check) — the chats-messages-ops recipe. The
+    // `error` text is not compared (v4's is a SqliteError, v5's a DbError).
+    const continuationLogs: Array<Record<string, unknown>> = [];
+    const { Logger } = await import('@/lib/logger');
+    for (const level of ['error', 'warn'] as const) {
+      const original = Logger.prototype[level];
+      Logger.prototype[level] = function (
+        this: unknown,
+        message: string,
+        context?: Record<string, unknown>,
+        ...rest: unknown[]
+      ) {
+        if (typeof message === 'string' && message.startsWith('[ChatContinuation]')) {
+          const line: Record<string, unknown> = { level, message };
+          for (const key of ['newChatId', 'sourceChatId', 'sourceMessageId']) {
+            if (context && key in context) line[key] = context[key];
+          }
+          continuationLogs.push(line);
+        }
+        return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+      } as never;
+    }
+
     await initializeDatabase();
     const repos = getRepositories();
 
@@ -184,7 +209,7 @@ async function main(): Promise<void> {
       chatMessages: await dumpTable('chat_messages'),
     };
 
-    lines.push(JSON.stringify({ name: c.name, result, tables, messageOrder }));
+    lines.push(JSON.stringify({ name: c.name, result, tables, messageOrder, continuationLogs }));
 
     await closeDatabase();
     closeMountIndexSQLiteClient();

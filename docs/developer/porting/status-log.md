@@ -155482,3 +155482,38 @@ hunks, `services/orchestrator.rs:947` (P4.121's file) and
   and restored before the dump), `chatType=salon excludesPersonaByName=true`
   — **M5** (drop the NULL default) reddened exactly that arm (`chatType=`);
   reverted by file backup. `chat_continuation_tier2` green from the pin.
+- **Unit 5 (item 9), core 0.0.1111, harness 0.0.1029.** Measured at the pin:
+  `repos.chats.findById` is `_findById` (fallback) → the two not-found arms
+  also take a read error, so v5's reads are now `chats_read::find_by_id_or_
+  none` (the pool `?` alone propagates); `getMessages` was already the
+  fallback twin; `addMessage` is a RETHROW `safeQuery` (so the replay catch
+  is reachable); `replicateTurnState`'s update throws (reachable); **the
+  tail-bubble catch is UNREACHABLE on v4** (`postHostMessageWithTargets`
+  catches and returns `null`) — a comment, not a line (the order listed it
+  as a line to port). Lines at v4's levels/fields: WARN `Source chat not
+  found…` / ERROR `New chat not found…` `{newChatId, sourceChatId}`; ERROR
+  `Failed to replay carried message {…, sourceMessageId, error}`; ERROR
+  `Failed to replicate turn state {…, error}`. The create path's `let _ =`
+  became `apply_chat_continuation_at_create` (in `chat_continuation.rs`, so
+  it is unit-testable) logging `[Chats v1] applyChatContinuation failed
+  {chatId, sourceChatId, error}`; `chat_create.rs` carries TWO hunks, not the
+  one §R.10(f) names — the call and its `use` line (no other lane edits the
+  file). **The oracle now records v4's `[ChatContinuation]` WARN/ERRORs** off
+  the `Logger` prototype of each case's module generation (the
+  chats-messages-ops recipe; `{level, message, newChatId, sourceChatId,
+  sourceMessageId}`, never `error`), and the Rust side compares the ordered
+  list per case — the pre-existing `left_behind_vault_unreadable` WARN joined
+  the comparand for free (it agreed). Spec grown by ADDITION (indent-1
+  re-dump verified byte-identical first): two cloned chat pairs
+  (`78…/88…`, `79…/89…`), two triggers (`p4124_refuse_replay` — an INSERT
+  into the new chat with no `systemSender`; `p4124_refuse_turn_state` — an
+  UPDATE moving `lastTurnParticipantId`), two cases `replay_refused` /
+  `turn_state_refused` with their must/must-not needles; every other case is
+  the two new lines' silence leg. Regenerated from the pin: five cases carry
+  lines (the two not-found, the vault WARN, the refused replays, the refused
+  turn state). **Mutation:** muting the turn-state ERROR reddened exactly
+  `turn_state_refused`'s comparand; reverted by file backup. Unit pin:
+  `a_failed_continuation_at_create_logs_v4s_catch_line` (pool plant → the
+  `[Chats v1]` ERROR; a healthy pool with no chat → the WARN and no
+  `[Chats v1]` line). Other readers of the spec: only this family's builder
+  and case.

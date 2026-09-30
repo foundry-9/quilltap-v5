@@ -616,6 +616,218 @@
    "columns": {
     "chatType": "autonomous"
    }
+  },
+  {
+   "id": "78000001-0000-4000-8000-000000000001",
+   "title": "The chapter whose replay is refused",
+   "participants": [
+    {
+     "id": "78aa0001-0000-4000-8000-0000000000a1",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "78bb0001-0000-4000-8000-0000000000b1",
+     "character": "bb000000-0000-4000-8000-0000000000cb"
+    }
+   ],
+   "messages": [
+    {
+     "id": "78d00001-0000-4000-8000-000000000101",
+     "role": "USER",
+     "content": "Where were we?",
+     "participantId": null
+    },
+    {
+     "id": "78d00002-0000-4000-8000-000000000102",
+     "role": "ASSISTANT",
+     "content": "At the archive door.",
+     "participantId": "78aa0001-0000-4000-8000-0000000000a1"
+    },
+    {
+     "id": "78d00003-0000-4000-8000-000000000103",
+     "role": "ASSISTANT",
+     "content": "A word in your ear.",
+     "participantId": "78aa0001-0000-4000-8000-0000000000a1",
+     "targetParticipantIds": [
+      "78bb0001-0000-4000-8000-0000000000b1"
+     ]
+    },
+    {
+     "id": "78d00004-0000-4000-8000-000000000104",
+     "role": "ASSISTANT",
+     "content": "The Host notes a change.",
+     "participantId": null,
+     "systemSender": "host",
+     "systemKind": "scenario-change",
+     "opaqueContent": "the opaque form",
+     "hostEvent": {
+      "kind": "scenario-change",
+      "participantId": "78bb0001-0000-4000-8000-0000000000b1"
+     }
+    },
+    {
+     "id": "78d00005-0000-4000-8000-000000000105",
+     "role": "ASSISTANT",
+     "content": "The understudy carried it.",
+     "participantId": "78bb0001-0000-4000-8000-0000000000b1",
+     "provider": "OPENAI",
+     "modelName": "gpt-stands-in",
+     "tokenCount": 42,
+     "promptTokens": 30,
+     "completionTokens": 12,
+     "routeTrail": [
+      {
+       "profileId": "78f00001-0000-4000-8000-0000000000f1",
+       "profileName": "Primary",
+       "provider": "ANTHROPIC",
+       "modelName": "m",
+       "via": "primary",
+       "outcome": "failed",
+       "trigger": "empty-response"
+      },
+      {
+       "profileId": "78f00002-0000-4000-8000-0000000000f2",
+       "profileName": "Understudy",
+       "provider": "OPENAI",
+       "modelName": "gpt-stands-in",
+       "via": "understudy",
+       "outcome": "answered"
+      }
+     ]
+    }
+   ],
+   "columns": {
+    "isPaused": true,
+    "lastTurnParticipantId": "78aa0001-0000-4000-8000-0000000000a1",
+    "activeTypingParticipantId": "78bb0001-0000-4000-8000-0000000000b1",
+    "impersonatingParticipantIds": "[\"78bb0001-0000-4000-8000-0000000000b1\"]",
+    "allLLMPauseTurnCount": 3,
+    "turnQueue": "[\"78bb0001-0000-4000-8000-0000000000b1\",\"78aa0001-0000-4000-8000-0000000000a1\"]",
+    "spokenThisCycleParticipantIds": "[\"78aa0001-0000-4000-8000-0000000000a1\"]",
+    "cycleOrderParticipantIds": "[\"78bb0001-0000-4000-8000-0000000000b1\",\"78aa0001-0000-4000-8000-0000000000a1\"]"
+   }
+  },
+  {
+   "id": "88000001-0000-4000-8000-0000000000d1",
+   "title": "The next chapter, replay refused",
+   "participants": [
+    {
+     "id": "88aa0001-0000-4000-8000-0000000000e1",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "88bb0001-0000-4000-8000-0000000000f1",
+     "character": "bb000000-0000-4000-8000-0000000000cb"
+    }
+   ],
+   "messages": [],
+   "columns": {}
+  },
+  {
+   "id": "79000001-0000-4000-8000-000000000001",
+   "title": "The chapter whose turn state is refused",
+   "participants": [
+    {
+     "id": "79aa0001-0000-4000-8000-0000000000a1",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "79bb0001-0000-4000-8000-0000000000b1",
+     "character": "bb000000-0000-4000-8000-0000000000cb"
+    }
+   ],
+   "messages": [
+    {
+     "id": "79d00001-0000-4000-8000-000000000101",
+     "role": "USER",
+     "content": "Where were we?",
+     "participantId": null
+    },
+    {
+     "id": "79d00002-0000-4000-8000-000000000102",
+     "role": "ASSISTANT",
+     "content": "At the archive door.",
+     "participantId": "79aa0001-0000-4000-8000-0000000000a1"
+    },
+    {
+     "id": "79d00003-0000-4000-8000-000000000103",
+     "role": "ASSISTANT",
+     "content": "A word in your ear.",
+     "participantId": "79aa0001-0000-4000-8000-0000000000a1",
+     "targetParticipantIds": [
+      "79bb0001-0000-4000-8000-0000000000b1"
+     ]
+    },
+    {
+     "id": "79d00004-0000-4000-8000-000000000104",
+     "role": "ASSISTANT",
+     "content": "The Host notes a change.",
+     "participantId": null,
+     "systemSender": "host",
+     "systemKind": "scenario-change",
+     "opaqueContent": "the opaque form",
+     "hostEvent": {
+      "kind": "scenario-change",
+      "participantId": "79bb0001-0000-4000-8000-0000000000b1"
+     }
+    },
+    {
+     "id": "79d00005-0000-4000-8000-000000000105",
+     "role": "ASSISTANT",
+     "content": "The understudy carried it.",
+     "participantId": "79bb0001-0000-4000-8000-0000000000b1",
+     "provider": "OPENAI",
+     "modelName": "gpt-stands-in",
+     "tokenCount": 42,
+     "promptTokens": 30,
+     "completionTokens": 12,
+     "routeTrail": [
+      {
+       "profileId": "79f00001-0000-4000-8000-0000000000f1",
+       "profileName": "Primary",
+       "provider": "ANTHROPIC",
+       "modelName": "m",
+       "via": "primary",
+       "outcome": "failed",
+       "trigger": "empty-response"
+      },
+      {
+       "profileId": "79f00002-0000-4000-8000-0000000000f2",
+       "profileName": "Understudy",
+       "provider": "OPENAI",
+       "modelName": "gpt-stands-in",
+       "via": "understudy",
+       "outcome": "answered"
+      }
+     ]
+    }
+   ],
+   "columns": {
+    "isPaused": true,
+    "lastTurnParticipantId": "79aa0001-0000-4000-8000-0000000000a1",
+    "activeTypingParticipantId": "79bb0001-0000-4000-8000-0000000000b1",
+    "impersonatingParticipantIds": "[\"79bb0001-0000-4000-8000-0000000000b1\"]",
+    "allLLMPauseTurnCount": 3,
+    "turnQueue": "[\"79bb0001-0000-4000-8000-0000000000b1\",\"79aa0001-0000-4000-8000-0000000000a1\"]",
+    "spokenThisCycleParticipantIds": "[\"79aa0001-0000-4000-8000-0000000000a1\"]",
+    "cycleOrderParticipantIds": "[\"79bb0001-0000-4000-8000-0000000000b1\",\"79aa0001-0000-4000-8000-0000000000a1\"]"
+   }
+  },
+  {
+   "id": "89000001-0000-4000-8000-0000000000d1",
+   "title": "The next chapter, turn state refused",
+   "participants": [
+    {
+     "id": "89aa0001-0000-4000-8000-0000000000e1",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "89bb0001-0000-4000-8000-0000000000f1",
+     "character": "bb000000-0000-4000-8000-0000000000cb"
+    }
+   ],
+   "messages": [],
+   "columns": {}
   }
  ],
  "cases": [
@@ -683,6 +895,16 @@
    "name": "nobody_left_behind_autonomous",
    "source": "77100000-0000-4000-8000-000000000071",
    "destination": "77200000-0000-4000-8000-000000000072"
+  },
+  {
+   "name": "replay_refused",
+   "source": "78000001-0000-4000-8000-000000000001",
+   "destination": "88000001-0000-4000-8000-0000000000d1"
+  },
+  {
+   "name": "turn_state_refused",
+   "source": "79000001-0000-4000-8000-000000000001",
+   "destination": "89000001-0000-4000-8000-0000000000d1"
   }
  ],
  "characters": [
@@ -715,7 +937,9 @@
   }
  ],
  "triggers": [
-  "CREATE TRIGGER \"p4d233_poison_left_behind\" BEFORE INSERT ON chat_messages WHEN NEW.\"chatId\" = '76200000-0000-4000-8000-000000000062' AND NEW.\"systemKind\" = 'off-scene-characters' BEGIN SELECT RAISE(ABORT, 'p4d233 poisoned off-scene post'); END"
+  "CREATE TRIGGER \"p4d233_poison_left_behind\" BEFORE INSERT ON chat_messages WHEN NEW.\"chatId\" = '76200000-0000-4000-8000-000000000062' AND NEW.\"systemKind\" = 'off-scene-characters' BEGIN SELECT RAISE(ABORT, 'p4d233 poisoned off-scene post'); END",
+  "CREATE TRIGGER \"p4124_refuse_replay\" BEFORE INSERT ON chat_messages WHEN NEW.\"chatId\" = '88000001-0000-4000-8000-0000000000d1' AND NEW.\"systemSender\" IS NULL BEGIN SELECT RAISE(ABORT, 'p4124 refused replay'); END",
+  "CREATE TRIGGER \"p4124_refuse_turn_state\" BEFORE UPDATE ON chats WHEN NEW.\"id\" = '89000001-0000-4000-8000-0000000000d1' AND NEW.\"lastTurnParticipantId\" IS NOT OLD.\"lastTurnParticipantId\" BEGIN SELECT RAISE(ABORT, 'p4124 refused turn state'); END"
  ],
  "scanProbeUserCharacterName": "Percival",
  "scanProbes": [

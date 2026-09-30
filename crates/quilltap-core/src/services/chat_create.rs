@@ -50,7 +50,7 @@ use crate::provider_manifest::Registry;
 use crate::services::avatar_generation::{
     trigger_avatar_generation_if_enabled, AvatarGenerationParams,
 };
-use crate::services::chat_continuation::apply_chat_continuation;
+use crate::services::chat_continuation::apply_chat_continuation_at_create;
 use crate::services::chat_enrichment::{enrich_participant_summary, EnrichedParticipantSummary};
 use crate::services::chat_initialize::{build_chat_context, ChatContext};
 use crate::services::chat_participants::VALIDATION_ERROR;
@@ -1592,7 +1592,7 @@ where
         )
         .await
         .map_err(HandleCreateError::Db)?;
-        let _ = apply_chat_continuation(db, &chat_id, source_id).await;
+        apply_chat_continuation_at_create(db, &chat_id, source_id).await;
         create_initial_messages_scenario_and_staff(
             db,
             main,

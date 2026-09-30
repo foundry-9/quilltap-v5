@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(continuation): log v4's four continuation failure lines and the create path's catch
+
+_Versions: core 0.0.1111, harness 0.0.1029._
+
+Chat continuation's failure arms now log what v4 logs. A missing source
+chat WARNs `Source chat not found, skipping continuation`; a missing new
+chat logs ERROR `New chat not found, aborting continuation`; a carried
+message that fails to replay logs ERROR `Failed to replay carried message`
+(with its `sourceMessageId`) and the replay continues; a failed turn-state
+copy logs ERROR `Failed to replicate turn state`. The two chat reads are
+now v4's fallback reads (a read error is "not found"). The create path had
+dropped a failed continuation silently; it now logs v4's `[Chats v1]
+applyChatContinuation failed`. v4's tail-bubble catch is unreachable on
+both sides (the Host writer catches its own failure), recorded in a
+comment. The continuation oracle now records every `[ChatContinuation]`
+WARN/ERROR through a `Logger.prototype` spy, and the spec gains two planted
+cases (a refused replay insert, a refused turn-state write). P4.124 item 9.
+
 #### 2026-09-29 — fix(off-scene): log a NULL chat type as v4's salon default; an empty persona id is no persona
 
 _Versions: core 0.0.1110, harness 0.0.1028._

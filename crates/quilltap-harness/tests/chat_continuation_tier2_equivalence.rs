@@ -290,11 +290,38 @@ fn expected_lines(case: &str) -> (Vec<&'static str>, Vec<&'static str>) {
     const RESOLVED: &str = "Unseated persona presence resolved";
     const FAILED: &str = "[ChatContinuation] Failed to name left-behind characters";
     const COMPLETE: &str = "[ChatContinuation] Continuation complete";
+    // P4.124: the four once-silent arms (every case not named below is their
+    // silence leg — the `REPLAY`/`TURN` needles are checked for ALL cases).
+    const NO_SOURCE: &str = "[ChatContinuation] Source chat not found, skipping continuation";
+    const NO_NEW: &str = "[ChatContinuation] New chat not found, aborting continuation";
     match case {
-        // Early returns: no step 2b, no completion line.
-        "missing_source" | "missing_destination" => {
-            (vec![], vec![CHECK, COMPLETE, POSTED, RESOLVED, FAILED])
-        }
+        // Early returns: no step 2b, no completion line — v4's WARN / ERROR.
+        "missing_source" => (
+            vec!["WARN && Source chat not found, skipping continuation && newChatId=61000001-0000-4000-8000-0000000000d1 sourceChatId=59999999-0000-4000-8000-000000009999"],
+            vec![CHECK, COMPLETE, POSTED, RESOLVED, FAILED, NO_NEW],
+        ),
+        "missing_destination" => (
+            vec!["ERROR && New chat not found, aborting continuation && newChatId=69999999-0000-4000-8000-000000009999 sourceChatId=51000001-0000-4000-8000-000000000001"],
+            vec![CHECK, COMPLETE, POSTED, RESOLVED, FAILED, NO_SOURCE],
+        ),
+        // A refused replay insert: v4 logs each failed message and carries on.
+        "replay_refused" => (
+            vec![
+                "ERROR && Failed to replay carried message && sourceMessageId=78d00001-0000-4000-8000-000000000101",
+                "p4124 refused replay",
+                COMPLETE,
+            ],
+            vec![NO_SOURCE, NO_NEW, FAILED, "Failed to replicate turn state"],
+        ),
+        // A refused turn-state write: logged, and the continuation completes.
+        "turn_state_refused" => (
+            vec![
+                "ERROR && Failed to replicate turn state && newChatId=89000001-0000-4000-8000-0000000000d1",
+                "p4124 refused turn state",
+                COMPLETE,
+            ],
+            vec![NO_SOURCE, NO_NEW, FAILED, "Failed to replay carried message"],
+        ),
         // Nobody left behind (or a row-less absentee): the check line fires
         // with an EMPTY list (trap (d)); nothing posts.
         "basic_carryover" | "librarian_anchor" | "malformed_turn_state"
@@ -354,6 +381,51 @@ fn expected_lines(case: &str) -> (Vec<&'static str>, Vec<&'static str>) {
         ),
         other => panic!("no expected log lines for case {other}"),
     }
+}
+
+/// v5's `[ChatContinuation]` WARN/ERROR lines in the oracle's shape: `{ level,
+/// message, newChatId?, sourceChatId?, sourceMessageId? }` (the capture rig
+/// renders `LEVEL target message k=v …`; the message holds no `=`).
+fn continuation_logs(lines: &[String]) -> Value {
+    let mut out = Vec::new();
+    for l in lines {
+        let level = if l.starts_with("WARN ") {
+            "warn"
+        } else if l.starts_with("ERROR ") {
+            "error"
+        } else {
+            continue;
+        };
+        let Some(start) = l.find("[ChatContinuation]") else {
+            continue;
+        };
+        let rest = &l[start..];
+        // The message ends where the first ` key=` field begins.
+        let end = rest
+            .char_indices()
+            .filter(|&(i, c)| c == ' ' && i > 0)
+            .map(|(i, _)| i)
+            .find(|&i| {
+                rest[i + 1..]
+                    .split(' ')
+                    .next()
+                    .is_some_and(|tok| tok.contains('='))
+            })
+            .unwrap_or(rest.len());
+        let mut obj = serde_json::Map::new();
+        obj.insert("level".into(), json!(level));
+        obj.insert("message".into(), json!(&rest[..end]));
+        for key in ["newChatId", "sourceChatId", "sourceMessageId"] {
+            let tag = format!(" {key}=");
+            if let Some(i) = rest[end..].find(&tag) {
+                let v = &rest[end + i + tag.len()..];
+                let v = v.split(' ').next().unwrap_or("");
+                obj.insert(key.into(), json!(v));
+            }
+        }
+        out.push(Value::Object(obj));
+    }
+    Value::Array(out)
 }
 
 #[test]
@@ -418,6 +490,29 @@ fn chat_continuation_matches_oracle() {
             rt.block_on(apply_chat_continuation(&db, &c.destination, &c.source))
                 .expect("apply_chat_continuation")
         });
+
+        // P4.124: v4's `[ChatContinuation]` WARN/ERROR lines, in order, from
+        // the oracle's `Logger.prototype` spy — level, message and the three
+        // id fields (never `error`: a SqliteError vs a DbError).
+        assert_eq!(
+            continuation_logs(&lines),
+            want["continuationLogs"],
+            "{}: the [ChatContinuation] WARN/ERROR lines",
+            c.name
+        );
+        // The two once-silent step failures, silent everywhere else.
+        if !matches!(c.name.as_str(), "replay_refused" | "turn_state_refused") {
+            for needle in [
+                "Failed to replay carried message",
+                "Failed to replicate turn state",
+            ] {
+                assert!(
+                    !lines.iter().any(|l| l.contains(needle)),
+                    "{}: unexpected {needle:?}\n{lines:#?}",
+                    c.name
+                );
+            }
+        }
 
         // P4.D233: every line the case owes, and the silence legs.
         let (must, must_not) = expected_lines(&c.name);

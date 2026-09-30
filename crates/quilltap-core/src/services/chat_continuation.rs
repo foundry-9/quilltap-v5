@@ -456,13 +456,27 @@ pub async fn apply_chat_continuation(
     new_chat_id: &str,
     source_chat_id: &str,
 ) -> Result<ApplyChatContinuationResult, DbError> {
+    // v4's `repos.chats.findById` is a FALLBACK read: a failed query logs the
+    // repository ERROR and reads as "not found", so it takes these two arms and
+    // their lines (P4.124). Only a read POOL failure — v5's alone — propagates,
+    // to the create path's `applyChatContinuation failed` ERROR.
     let sid = source_chat_id.to_string();
-    let Some(source_chat) = db.read_main(move |c| chats_read::find_by_id(c, &sid))? else {
-        // v4 logs + returns the empty result.
+    let Some(source_chat) = db.read_main(move |c| Ok(chats_read::find_by_id_or_none(c, &sid)))?
+    else {
+        tracing::warn!(
+            newChatId = new_chat_id,
+            sourceChatId = source_chat_id,
+            "[ChatContinuation] Source chat not found, skipping continuation"
+        );
         return Ok(ApplyChatContinuationResult::default());
     };
     let nid = new_chat_id.to_string();
-    let Some(new_chat) = db.read_main(move |c| chats_read::find_by_id(c, &nid))? else {
+    let Some(new_chat) = db.read_main(move |c| Ok(chats_read::find_by_id_or_none(c, &nid)))? else {
+        tracing::error!(
+            newChatId = new_chat_id,
+            sourceChatId = source_chat_id,
+            "[ChatContinuation] New chat not found, aborting continuation"
+        );
         return Ok(ApplyChatContinuationResult::default());
     };
 
@@ -508,20 +522,38 @@ pub async fn apply_chat_continuation(
         let write = db
             .write(move |writers| writers.main().chat_messages().add_message(&target, &event))
             .await;
-        if write.is_ok() {
-            replayed_message_count += 1;
+        match write {
+            Ok(_) => replayed_message_count += 1,
+            // v4 logs a failed replay and continues.
+            Err(error) => tracing::error!(
+                newChatId = new_chat_id,
+                sourceChatId = source_chat_id,
+                sourceMessageId = source_msg.get("id").and_then(serde_json::Value::as_str),
+                error = %error,
+                "[ChatContinuation] Failed to replay carried message"
+            ),
         }
-        // v4 logs a failed replay and continues.
     }
 
     // 2b. Name whoever stayed behind (v4 `acadcc7cd`, bug 171).
     let left_behind_character_ids =
         name_left_behind_characters(db, new_chat_id, source_chat_id, &source_chat, &new_chat).await;
 
-    // 3. Replicate turn state (swallow errors — v4 logs and continues).
-    let _ = replicate_turn_state(db, new_chat_id, &source_chat, &participant_map).await;
+    // 3. Replicate turn state (v4 logs and continues).
+    if let Err(error) = replicate_turn_state(db, new_chat_id, &source_chat, &participant_map).await
+    {
+        tracing::error!(
+            newChatId = new_chat_id,
+            sourceChatId = source_chat_id,
+            error = %error,
+            "[ChatContinuation] Failed to replicate turn state"
+        );
+    }
 
-    // 4. Tail bubble in the source chat — last.
+    // 4. Tail bubble in the source chat — last. v4 wraps it in a catch logging
+    // `Failed to post source-chat tail bubble`, unreachable there as here: the
+    // Host writer catches its own failure (`[HostNotification] Failed to post
+    // whisper`) and answers `null` (P4.124, measured at `97b25fc53`).
     let posted_source_tail_bubble = post_host_continuation_to_announcement(
         db,
         HostContinuationToAnnouncement {
@@ -554,6 +586,22 @@ pub async fn apply_chat_continuation(
         posted_source_tail_bubble,
         left_behind_character_ids,
     })
+}
+
+/// v4's create handler around `applyChatContinuation` (`app/api/v1/chats/
+/// route.ts`): a thrown continuation is caught and logged — `[Chats v1]
+/// applyChatContinuation failed` — and the create carries on. v5 had dropped
+/// the error silently (`let _ =`, P4.124). Since the reads became fallback
+/// reads the one `Err` left is a read-POOL failure.
+pub async fn apply_chat_continuation_at_create(db: &Db, new_chat_id: &str, source_chat_id: &str) {
+    if let Err(error) = apply_chat_continuation(db, new_chat_id, source_chat_id).await {
+        tracing::error!(
+            chatId = new_chat_id,
+            sourceChatId = source_chat_id,
+            error = %error,
+            "[Chats v1] applyChatContinuation failed"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -608,5 +656,59 @@ mod tests {
         let kept = json!({"role": "ASSISTANT", "content": "psst", "targetParticipantIds": ["os1", "gone"]});
         let p = project_message_for_new_chat(&kept, &map).unwrap();
         assert_eq!(p["targetParticipantIds"], json!(["ns1"]));
+    }
+
+    /// P4.124: the create path's catch — a continuation that fails (a read
+    /// POOL that cannot open, the one `Err` left) logs v4's `[Chats v1]` ERROR;
+    /// a missing source is the continuation's own WARN and no `[Chats v1]` line.
+    #[test]
+    fn a_failed_continuation_at_create_logs_v4s_catch_line() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let open = |dir: &std::path::Path| {
+            let path = dir.join("main.db");
+            drop(crate::db::Writer::open_writable(&path, PEPPER).unwrap());
+            (Db::open_main(&path, PEPPER).unwrap(), path)
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let (db, path) = open(dir.path());
+        std::fs::remove_file(&path).unwrap();
+        assert!(db.read_main(|_| Ok(())).is_err(), "the plant must fail the pool");
+        let ((), lines) = crate::test_support::captured_with(|| {
+            rt.block_on(apply_chat_continuation_at_create(&db, "new-1", "src-1"))
+        });
+        let hit: Vec<_> = lines
+            .iter()
+            .filter(|l| l.contains("[Chats v1] applyChatContinuation failed"))
+            .collect();
+        assert_eq!(hit.len(), 1, "{lines:?}");
+        assert!(
+            hit[0].starts_with("ERROR ")
+                && hit[0].contains("chatId=new-1")
+                && hit[0].contains("sourceChatId=src-1")
+                && hit[0].contains("error="),
+            "{}",
+            hit[0]
+        );
+
+        // Silence leg: a healthy pool with no such chat takes v4's WARN arm.
+        let dir = tempfile::tempdir().unwrap();
+        let (db, _) = open(dir.path());
+        let ((), lines) = crate::test_support::captured_with(|| {
+            rt.block_on(apply_chat_continuation_at_create(&db, "new-1", "src-1"))
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains("[Chats v1]")),
+            "{lines:?}"
+        );
+        assert!(
+            lines.iter().any(|l| l.starts_with("WARN ")
+                && l.contains("Source chat not found, skipping continuation")),
+            "{lines:?}"
+        );
     }
 }
