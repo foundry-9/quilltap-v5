@@ -1623,30 +1623,59 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
 
     async fn run_wardrobe_create(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
         let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
-        self.wardrobe_write(db, move |main, mount| {
-            let out =
-                wardrobe_create::execute(main, mount, &user_id, &chat_id, &character_id, &args);
-            let formatted = wardrobe_create::format(&out);
-            if out.success {
-                // v4 selects a subset: formattedText, item_id, title, equipped,
-                // recipient_name?, current_state? (undefined ones omitted).
-                let mut result = Map::new();
-                result.insert("formattedText".into(), json!(formatted));
-                result.insert("item_id".into(), json!(out.item_id));
-                result.insert("title".into(), json!(out.title));
-                result.insert("equipped".into(), json!(out.equipped));
-                if let Some(name) = &out.recipient_name {
-                    result.insert("recipient_name".into(), json!(name));
+        // === P4.123 === v4 awaits the avatar trigger for the equip RECIPIENT
+        // inside the handler; v5 fires it here once the write has committed.
+        let trigger_ids: Arc<Mutex<Vec<String>>> = Arc::default();
+        let trigger_out = trigger_ids.clone();
+        let (trigger_db, trigger_user, trigger_chat) =
+            (db.clone(), user_id.clone(), chat_id.clone());
+        // === end P4.123 ===
+        let result = self
+            .wardrobe_write(db, move |main, mount| {
+                let out =
+                    wardrobe_create::execute(main, mount, &user_id, &chat_id, &character_id, &args);
+                // === P4.123 === gate: `success && equipped` (`equip_now` only).
+                if out.success {
+                    if let Some(target) = &out.target_character_id {
+                        if let Ok(mut g) = trigger_out.lock() {
+                            g.push(target.clone());
+                        }
+                    }
                 }
-                if let Some(state) = &out.current_state {
-                    result.insert("current_state".into(), state.clone());
+                // === end P4.123 ===
+                let formatted = wardrobe_create::format(&out);
+                if out.success {
+                    // v4 selects a subset: formattedText, item_id, title, equipped,
+                    // recipient_name?, current_state? (undefined ones omitted).
+                    let mut result = Map::new();
+                    result.insert("formattedText".into(), json!(formatted));
+                    result.insert("item_id".into(), json!(out.item_id));
+                    result.insert("title".into(), json!(out.title));
+                    result.insert("equipped".into(), json!(out.equipped));
+                    if let Some(name) = &out.recipient_name {
+                        result.insert("recipient_name".into(), json!(name));
+                    }
+                    if let Some(state) = &out.current_state {
+                        result.insert("current_state".into(), state.clone());
+                    }
+                    ok("wardrobe_create", Value::Object(result))
+                } else {
+                    fail("wardrobe_create", out.error.clone().unwrap_or_default())
                 }
-                ok("wardrobe_create", Value::Object(result))
-            } else {
-                fail("wardrobe_create", out.error.clone().unwrap_or_default())
-            }
-        })
-        .await
+            })
+            .await;
+        // === P4.123 ===
+        let ids = std::mem::take(&mut *trigger_ids.lock().unwrap_or_else(|e| e.into_inner()));
+        crate::services::avatar_generation::trigger_for_characters(
+            &trigger_db,
+            &trigger_user,
+            &trigger_chat,
+            &ids,
+            "wardrobe-create-handler",
+        )
+        .await;
+        // === end P4.123 ===
+        result
     }
 
     async fn run_wardrobe_update(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
@@ -1667,65 +1696,152 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
     async fn run_wardrobe_archive(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
         let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
         let announce = ctx.pending_wardrobe_announcements.clone();
-        self.wardrobe_write(db, move |main, mount| {
-            let (out, ids) =
-                wardrobe_archive::execute(main, mount, &user_id, &chat_id, &character_id, &args);
-            fold_announcements(&announce, ids);
-            let formatted = wardrobe_archive::format(&out);
-            if out.success {
-                ok(
-                    "wardrobe_archive",
-                    json!({
-                        "formattedText": formatted,
-                        "item_id": out.item_id,
-                        "title": out.title,
-                        "action": out.action,
-                    }),
-                )
-            } else {
-                fail("wardrobe_archive", out.error.clone().unwrap_or_default())
-            }
-        })
-        .await
+        // === P4.123 === the announce ids ARE v4's `notifyWardrobeChanged`
+        // trigger set; the trigger fires after the write commits.
+        let trigger_ids: Arc<Mutex<Vec<String>>> = Arc::default();
+        let trigger_out = trigger_ids.clone();
+        let (trigger_db, trigger_user, trigger_chat) =
+            (db.clone(), user_id.clone(), chat_id.clone());
+        // === end P4.123 ===
+        let result = self
+            .wardrobe_write(db, move |main, mount| {
+                let (out, ids) = wardrobe_archive::execute(
+                    main,
+                    mount,
+                    &user_id,
+                    &chat_id,
+                    &character_id,
+                    &args,
+                );
+                // === P4.123 ===
+                if let Ok(mut g) = trigger_out.lock() {
+                    g.extend(ids.iter().cloned());
+                }
+                // === end P4.123 ===
+                fold_announcements(&announce, ids);
+                let formatted = wardrobe_archive::format(&out);
+                if out.success {
+                    ok(
+                        "wardrobe_archive",
+                        json!({
+                            "formattedText": formatted,
+                            "item_id": out.item_id,
+                            "title": out.title,
+                            "action": out.action,
+                        }),
+                    )
+                } else {
+                    fail("wardrobe_archive", out.error.clone().unwrap_or_default())
+                }
+            })
+            .await;
+        // === P4.123 ===
+        let ids = std::mem::take(&mut *trigger_ids.lock().unwrap_or_else(|e| e.into_inner()));
+        crate::services::avatar_generation::trigger_for_characters(
+            &trigger_db,
+            &trigger_user,
+            &trigger_chat,
+            &ids,
+            "wardrobe-archive-handler",
+        )
+        .await;
+        // === end P4.123 ===
+        result
     }
 
     async fn run_wardrobe_wear(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
         let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
         let announce = ctx.pending_wardrobe_announcements.clone();
-        self.wardrobe_write(db, move |main, mount| {
-            let (out, ids) =
-                wardrobe_wear::execute(main, mount, &user_id, &chat_id, &character_id, &args);
-            fold_announcements(&announce, ids);
-            let formatted = wardrobe_wear::format(&out);
-            // v4 returns the result object even on failure; error set when !success.
-            let result = json!({
-                "formattedText": formatted,
-                "operations": out.operations,
-                "current_state": out.current_state,
-                "coverage_summary": out.coverage_summary,
-            });
-            wear_take_off_result("wardrobe_wear", out.success, result, out.error.clone())
-        })
-        .await
+        // === P4.123 === the announce ids ARE v4's `notifyWardrobeChanged`
+        // trigger set; the trigger fires after the write commits.
+        let trigger_ids: Arc<Mutex<Vec<String>>> = Arc::default();
+        let trigger_out = trigger_ids.clone();
+        let (trigger_db, trigger_user, trigger_chat) =
+            (db.clone(), user_id.clone(), chat_id.clone());
+        // === end P4.123 ===
+        let result = self
+            .wardrobe_write(db, move |main, mount| {
+                let (out, ids) =
+                    wardrobe_wear::execute(main, mount, &user_id, &chat_id, &character_id, &args);
+                // === P4.123 ===
+                if let Ok(mut g) = trigger_out.lock() {
+                    g.extend(ids.iter().cloned());
+                }
+                // === end P4.123 ===
+                fold_announcements(&announce, ids);
+                let formatted = wardrobe_wear::format(&out);
+                // v4 returns the result object even on failure; error set when !success.
+                let result = json!({
+                    "formattedText": formatted,
+                    "operations": out.operations,
+                    "current_state": out.current_state,
+                    "coverage_summary": out.coverage_summary,
+                });
+                wear_take_off_result("wardrobe_wear", out.success, result, out.error.clone())
+            })
+            .await;
+        // === P4.123 ===
+        let ids = std::mem::take(&mut *trigger_ids.lock().unwrap_or_else(|e| e.into_inner()));
+        crate::services::avatar_generation::trigger_for_characters(
+            &trigger_db,
+            &trigger_user,
+            &trigger_chat,
+            &ids,
+            "wardrobe-wear-handler",
+        )
+        .await;
+        // === end P4.123 ===
+        result
     }
 
     async fn run_wardrobe_take_off(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
         let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
         let announce = ctx.pending_wardrobe_announcements.clone();
-        self.wardrobe_write(db, move |main, mount| {
-            let (out, ids) =
-                wardrobe_take_off::execute(main, mount, &user_id, &chat_id, &character_id, &args);
-            fold_announcements(&announce, ids);
-            let formatted = wardrobe_take_off::format(&out);
-            let result = json!({
-                "formattedText": formatted,
-                "operations": out.operations,
-                "current_state": out.current_state,
-                "coverage_summary": out.coverage_summary,
-            });
-            wear_take_off_result("wardrobe_take_off", out.success, result, out.error.clone())
-        })
-        .await
+        // === P4.123 === the announce ids ARE v4's `notifyWardrobeChanged`
+        // trigger set; the trigger fires after the write commits.
+        let trigger_ids: Arc<Mutex<Vec<String>>> = Arc::default();
+        let trigger_out = trigger_ids.clone();
+        let (trigger_db, trigger_user, trigger_chat) =
+            (db.clone(), user_id.clone(), chat_id.clone());
+        // === end P4.123 ===
+        let result = self
+            .wardrobe_write(db, move |main, mount| {
+                let (out, ids) = wardrobe_take_off::execute(
+                    main,
+                    mount,
+                    &user_id,
+                    &chat_id,
+                    &character_id,
+                    &args,
+                );
+                // === P4.123 ===
+                if let Ok(mut g) = trigger_out.lock() {
+                    g.extend(ids.iter().cloned());
+                }
+                // === end P4.123 ===
+                fold_announcements(&announce, ids);
+                let formatted = wardrobe_take_off::format(&out);
+                let result = json!({
+                    "formattedText": formatted,
+                    "operations": out.operations,
+                    "current_state": out.current_state,
+                    "coverage_summary": out.coverage_summary,
+                });
+                wear_take_off_result("wardrobe_take_off", out.success, result, out.error.clone())
+            })
+            .await;
+        // === P4.123 ===
+        let ids = std::mem::take(&mut *trigger_ids.lock().unwrap_or_else(|e| e.into_inner()));
+        crate::services::avatar_generation::trigger_for_characters(
+            &trigger_db,
+            &trigger_user,
+            &trigger_chat,
+            &ids,
+            "wardrobe-take-off-handler",
+        )
+        .await;
+        // === end P4.123 ===
+        result
     }
 
     // ── generate_image (W4.9a; lib/chat/tool-executor.ts:368) ─────────────

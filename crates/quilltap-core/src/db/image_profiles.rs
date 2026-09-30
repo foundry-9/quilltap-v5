@@ -356,6 +356,42 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Valu
     })
 }
 
+/// v4 `repos.imageProfiles.findById` exactly as its callers see it: `_findById`
+/// is `safeQuery(…, 'Error finding entity by ID', { id }, null)`, so a FAILED
+/// read logs that ERROR (`collection`, `id`, `error`) and answers `null` — it
+/// never throws (P4.123; the `chats_read::find_by_id_or_none` shape).
+pub fn find_by_id_or_none(conn: &Connection, id: &str) -> Option<serde_json::Value> {
+    match find_by_id(conn, id) {
+        Ok(found) => found,
+        Err(error) => {
+            tracing::error!(
+                collection = "image_profiles",
+                id = %id,
+                error = %error,
+                "Error finding entity by ID"
+            );
+            None
+        }
+    }
+}
+
+/// v4 `repos.imageProfiles.findAll` as its callers see it: `_findAll` is
+/// `safeQuery(…, 'Error finding all entities', {}, [])` — a FAILED read logs
+/// that ERROR (`collection`, `error`) and answers `[]`.
+pub fn find_all_or_empty(conn: &Connection) -> Vec<serde_json::Value> {
+    match find_all(conn) {
+        Ok(all) => all,
+        Err(error) => {
+            tracing::error!(
+                collection = "image_profiles",
+                error = %error,
+                "Error finding all entities"
+            );
+            Vec::new()
+        }
+    }
+}
+
 /// v4 `repos.imageProfiles.findAll()` — every image profile, insertion (rowid)
 /// order (v4's `collection.find({})` with no sort). Used by the dangerous-content
 /// image-provider-routing scan.

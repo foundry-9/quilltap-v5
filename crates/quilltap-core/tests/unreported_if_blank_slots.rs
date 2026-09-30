@@ -205,6 +205,7 @@ fn create_dump_omits_the_hair_row_when_hair_is_empty() {
         recipient_name: None,
         current_state: Some(state_with("top", &["item-1"])),
         error: None,
+        target_character_id: None,
     });
     assert!(text.contains("top: item-1"));
     assert!(text.contains("accessories: (empty)"));
@@ -229,6 +230,7 @@ fn create_dump_still_lists_the_hair_row_when_a_hairdo_is_worn() {
             "hair": ["braid-1"],
         })),
         error: None,
+        target_character_id: None,
     });
     assert!(text.contains("hair: braid-1"));
 }

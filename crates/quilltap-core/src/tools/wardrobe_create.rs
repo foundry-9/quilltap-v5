@@ -4,10 +4,12 @@
 //! Creates a leaf or composite wardrobe item and optionally equips it. Supports
 //! gifting to another chat participant (`recipient`). Composite `types` are the
 //! union of the components' slots widened by any supplied `types`. Cycles are
-//! rejected by the public create path. Avatar generation on equip is an image
-//! subsystem seam (out of scope): the corpus keeps `avatarGenerationEnabled`
-//! false so v4's `triggerAvatarGenerationIfEnabled` is a no-op, matching the port
-//! (which omits it).
+//! rejected by the public create path. v4's `equip_now` branch awaits
+//! `triggerAvatarGenerationIfEnabled` for the RECIPIENT (`callerContext:
+//! 'wardrobe-create-handler'`); this sync handler cannot enqueue (the trigger is
+//! async and cannot run inside the writer closure), so it surfaces the recipient
+//! id in [`WardrobeCreateToolOutput::target_character_id`] and the executor's
+//! `run_wardrobe_create` fires the trigger after the write commits (P4.123).
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -53,6 +55,12 @@ pub struct WardrobeCreateToolOutput {
     pub current_state: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// The character the item was equipped on (the RECIPIENT of a gift, else
+    /// the caller) — set ONLY on the equipped branch. Never serialized: it
+    /// carries v4's `targetCharacterId` to the executor's avatar-trigger site
+    /// (P4.123) without touching the tool's JSON result.
+    #[serde(skip)]
+    pub target_character_id: Option<String>,
 }
 
 fn failure(error: impl Into<String>) -> WardrobeCreateToolOutput {
@@ -69,6 +77,7 @@ fn failure(error: impl Into<String>) -> WardrobeCreateToolOutput {
         recipient_name: None,
         current_state: None,
         error: Some(error.into()),
+        target_character_id: None,
     }
 }
 
@@ -366,7 +375,8 @@ fn run(
                 .unwrap_or_else(|| Slots::fresh().to_value()),
         );
 
-        // triggerAvatarGenerationIfEnabled — image subsystem seam (out of scope).
+        // v4 awaits `triggerAvatarGenerationIfEnabled` for `targetCharacterId`
+        // here; the executor fires it after the write (see the module note).
     }
 
     let effect_str = effect.map(|e| e.as_str().to_string());
@@ -390,6 +400,11 @@ fn run(
         recipient_name,
         current_state,
         error: None,
+        target_character_id: if equipped {
+            Some(target_character_id)
+        } else {
+            None
+        },
     })
 }
 

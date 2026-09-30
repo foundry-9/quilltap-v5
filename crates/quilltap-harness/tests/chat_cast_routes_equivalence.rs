@@ -1866,3 +1866,83 @@ fn an_override_profile_that_is_gone_warns_and_falls_back() {
     });
     assert!(!has(&quiet, "override profile not found"), "{quiet:#?}");
 }
+
+/// A `Db` over the cast fixture's main partition ONLY: every mount-index read
+/// answers `PartitionUnavailable`, which is what makes the default-outfit
+/// resolve fail (the join's outfit-failure arms).
+fn main_only_db(spec: &Spec, tag: &str) -> Db {
+    let scratch = std::env::temp_dir().join(format!("qt-cast-{}-{}", tag, std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let main = scratch.join("main.db");
+    std::fs::copy(fixtures_dir().join("chat-cast-main.db"), &main).unwrap();
+    Db::open(
+        DbPaths {
+            main,
+            mount_index: None,
+            llm_logs: None,
+        },
+        &spec.test_pepper_base64,
+    )
+    .expect("open main-only db")
+}
+
+#[test]
+fn the_outfit_failure_line_is_error_with_mode_on_both_arms() {
+    // v4 `participants.ts:230-235`: ONE catch covers every mode, at ERROR, with
+    // `mode` = the selection's mode (`llm_choose` on the fallback arm). P4.123
+    // (P4.D238 item (c)): v5 logged both sites at WARN and the fallback arm
+    // carried no `mode`.
+    const FAILED: &str = "[Chats v1] Failed to apply outfit for added participant";
+    let spec = load_spec();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let chat = spec.ids["chatQuiet"].clone();
+    let character = spec.ids["dora"].clone();
+
+    for (tag, mode) in [("of-default", "default"), ("of-llm", "llm_choose")] {
+        let db = main_only_db(&spec, tag);
+        let selection = json!({ "characterId": character, "mode": mode });
+        let ((), lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(
+                quilltap_core::services::chat_participants::apply_outfit_for_added_participant(
+                    &db,
+                    &spec.user_id,
+                    &chat,
+                    &character,
+                    Some(&selection),
+                    None,
+                ),
+            )
+        });
+        let l = line(&lines, FAILED);
+        assert!(l.starts_with("ERROR "), "{mode}: {l}");
+        assert!(l.contains(&format!("mode={mode}")), "{mode}: {l}");
+        assert!(l.contains(&format!("chat_id={chat}")), "{mode}: {l}");
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains(FAILED) && l.starts_with("WARN ")),
+            "{mode}: no WARN twin: {lines:#?}"
+        );
+    }
+
+    // Silence leg: a working default resolve logs no failure line at all.
+    let db = fresh_db(&spec, "of-quiet");
+    let selection = json!({ "characterId": character, "mode": "default" });
+    let ((), lines) = quilltap_core::test_support::captured_with(|| {
+        rt.block_on(
+            quilltap_core::services::chat_participants::apply_outfit_for_added_participant(
+                &db,
+                &spec.user_id,
+                &chat,
+                &character,
+                Some(&selection),
+                None,
+            ),
+        )
+    });
+    assert!(!has(&lines, FAILED), "{lines:#?}");
+}

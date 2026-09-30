@@ -12,6 +12,11 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — feat(wardrobe): a character's own wardrobe change refreshes its avatar (P4.123)
+
+_Versions: core 0.0.1107, harness 0.0.1027._
+
+`wardrobe_create` (equip now, for the recipient of a gift), `wardrobe_wear`, `wardrobe_take_off` and `wardrobe_archive` (of a worn item) now enqueue the same avatar-generation job v4 enqueues, from the executor after the write commits; the tools' JSON results are unchanged. The avatar trigger's own reads now fall back the way v4's repository reads do (a failed chat read is "chat not found", a failed profile read falls to the next tier) instead of being reported as an enqueue error, and both "Failed to apply outfit for added participant" lines are ERROR with the mode on both arms. New differential runs v4's real handlers and real trigger against v5's executor over 14 scenarios and diffs the enqueued jobs. Known ordering difference: v4 triggers before its state re-read, v5 after the write commits; no test can observe it.
 #### 2026-09-29 — chore(p4.124): close the lane — rustfmt, v4-valid tiered-pool unit rows, the status headers
 
 _Versions: core 0.0.1114._

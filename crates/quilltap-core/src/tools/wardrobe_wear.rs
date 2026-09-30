@@ -5,8 +5,8 @@
 //! last). Per-op mode maps to the equip primitives; fails fast on the first bad
 //! op (item not found / archived / slot mismatch). Avatar generation + the pending
 //! wardrobe announcement fire ONCE after the loop when at least one op landed
-//! (avatar generation is an image seam, out of scope; the announcement id is
-//! returned to the executor to fold into the per-turn set).
+//! (the returned ids are both the announcement set the executor folds into the
+//! per-turn set AND the characters it triggers avatar generation for — P4.123).
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -203,7 +203,8 @@ fn run(
 
     // Side effects fire ONCE, only if at least one op landed.
     let announce = if applied_count > 0 {
-        // triggerAvatarGenerationIfEnabled — image subsystem seam (out of scope).
+        // v4's `notifyWardrobeChanged` awaits `triggerAvatarGenerationIfEnabled`
+        // for these ids; the executor's `run_wardrobe_wear` fires it after the write.
         vec![character_id.to_string()]
     } else {
         Vec::new()

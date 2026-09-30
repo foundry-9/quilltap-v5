@@ -6,8 +6,8 @@
 //! first bad op). `remove` filters a named item out of every slot it covers (or a
 //! single named slot); `clear_slot` empties one slot. Avatar generation + the
 //! pending wardrobe announcement fire ONCE after the loop when at least one op
-//! landed (avatar generation is an image seam, out of scope; the announcement id is
-//! returned to the executor).
+//! landed (the returned ids are both the announcement set the executor folds AND
+//! the characters it triggers avatar generation for — P4.123).
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -212,7 +212,8 @@ fn run(
     }
 
     let announce = if applied_count > 0 {
-        // triggerAvatarGenerationIfEnabled — image subsystem seam (out of scope).
+        // v4's `notifyWardrobeChanged` awaits `triggerAvatarGenerationIfEnabled`
+        // for these ids; the executor's `run_wardrobe_take_off` fires it after the write.
         vec![character_id.to_string()]
     } else {
         Vec::new()

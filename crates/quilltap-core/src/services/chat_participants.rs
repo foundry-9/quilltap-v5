@@ -1394,7 +1394,7 @@ pub async fn apply_outfit_for_added_participant(
             }) {
                 Ok(s) => s,
                 Err(e) => {
-                    tracing::warn!(
+                    tracing::error!(
                         chat_id, character_id, mode = %mode, error = %e,
                         "[Chats v1] Failed to apply outfit for added participant"
                     );
@@ -1460,8 +1460,8 @@ pub async fn apply_outfit_for_added_participant(
                     }) {
                         Ok(s) => s,
                         Err(e) => {
-                            tracing::warn!(
-                                chat_id, character_id, error = %e,
+                            tracing::error!(
+                                chat_id, character_id, mode = %mode, error = %e,
                                 "[Chats v1] Failed to apply outfit for added participant"
                             );
                             return;

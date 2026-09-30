@@ -4,8 +4,9 @@
 //! Soft-retires the character's OWN item (sets `archivedAt` via the public update
 //! path). Shared archetypes are read-only. When the archived item was equipped it
 //! records a pending wardrobe announcement (returned to the executor to fold into
-//! the per-turn set) and would trigger avatar generation — the latter an image
-//! subsystem seam, out of scope (see the module note in [`super::wardrobe_create`]).
+//! the per-turn set) and the executor's `run_wardrobe_archive` triggers avatar generation
+//! for the same id after the write commits (P4.123; see the module note in
+//! [`super::wardrobe_create`]).
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -150,9 +151,9 @@ Only items in your own wardrobe can be archived."
         ));
     }
 
-    // Equipped-then-archived: avatar generation (image subsystem seam, out of
-    // scope) + a pending wardrobe announcement (the character id, folded by the
-    // executor into the per-turn set).
+    // Equipped-then-archived: a pending wardrobe announcement (the character id,
+    // folded by the executor into the per-turn set) — the same id the executor
+    // triggers avatar generation for (v4's `notifyWardrobeChanged`).
     let announce = if was_equipped {
         vec![character_id.to_string()]
     } else {

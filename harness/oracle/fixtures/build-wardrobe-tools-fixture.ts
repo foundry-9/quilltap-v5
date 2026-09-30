@@ -15,6 +15,12 @@
  *      caller (Blue Blouse worn on top). avatarGenerationEnabled is false so the
  *      handlers' avatar-generation seam is a v4 no-op (matching the Rust port).
  *
+ * P4.123: with `QT_WT_AVATAR_SPEC=<path to wardrobe-tools-avatar-trigger.json>` set,
+ * the builder ALSO seeds a default image profile and one extra chat per scenario in
+ * that spec (flag ON / autonomous / flag OFF) and materializes `background_jobs`.
+ * Without it the output is byte-for-byte what it always was (the committed
+ * `wardrobe-tools.json` corpus keeps `avatarGenerationEnabled: false`).
+ *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -340,6 +346,52 @@ async function main(): Promise<void> {
     { id: spec.chatId, createdAt: TS, updatedAt: TS },
   );
   await repos.chats.getMessageCount(spec.chatId);
+
+  // 6. [P4.123] The flag-ON companion: a default image profile + one chat per
+  // scenario. Only when QT_WT_AVATAR_SPEC is set — the default output is unchanged.
+  if (process.env.QT_WT_AVATAR_SPEC) {
+    const av = JSON.parse(readFileSync(process.env.QT_WT_AVATAR_SPEC, 'utf8')) as {
+      imageProfile: Record<string, unknown> & { id: string };
+      scenarios: Array<{
+        chatId: string;
+        name: string;
+        chatType: string;
+        avatarGenerationEnabled: boolean;
+      }>;
+    };
+    const { ImageProfileSchema } = await import('@/lib/schemas/profile.types');
+    await ensureCollection('image_profiles', ImageProfileSchema);
+    const { id: ipId, ...ipRest } = av.imageProfile;
+    await repos.imageProfiles.create(
+      {
+        userId: spec.userId,
+        apiKeyId: null,
+        parameters: {},
+        isDefault: true,
+        isDangerousCompatible: false,
+        tags: [],
+        ...ipRest,
+      } as never,
+      { id: ipId, createdAt: TS, updatedAt: TS } as never,
+    );
+    for (const sc of av.scenarios) {
+      await repos.chats.create(
+        {
+          userId: spec.userId,
+          title: `Avatar trigger: ${sc.name}`,
+          participants,
+          chatType: sc.chatType,
+          contextSummary: null,
+          avatarGenerationEnabled: sc.avatarGenerationEnabled,
+          equippedOutfit: { [spec.callerCharacterId]: spec.seedEquipped },
+        } as never,
+        { id: sc.chatId, createdAt: TS, updatedAt: TS },
+      );
+      await repos.chats.getMessageCount(sc.chatId);
+    }
+    // v4 creates `background_jobs` lazily; force it so the Rust side can INSERT.
+    await repos.backgroundJobs.findByUserId(spec.userId, 'PENDING');
+  }
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

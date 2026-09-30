@@ -1,0 +1,263 @@
+{
+  "comment": "P4.123 \u2014 flag-ON companion to wardrobe-tools.json. The base spec (seed items, characters, groups) is READ from wardrobe-tools.json; this file adds the default image profile and one chat per scenario (its own chat so the trigger's pending-job dedup never crosses scenarios). Consumed by build-wardrobe-tools-fixture.ts when QT_WT_AVATAR_SPEC is set, by cases/wardrobe-tools-avatar-trigger.ts, and by wardrobe_tools_avatar_trigger_equivalence.rs.",
+  "imageProfile": {
+    "id": "eeeeeeee-0000-4000-8000-000000000001",
+    "name": "Avatar Imagery",
+    "provider": "OPENAI_COMPATIBLE",
+    "baseUrl": "http://127.0.0.1:1/v1",
+    "modelName": "mock-image-model"
+  },
+  "scenarios": [
+    {
+      "name": "create_equip_self",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true,
+      "ops": [
+        {
+          "tool": "wardrobe_create",
+          "args": {
+            "title": "Red Hat",
+            "types": [
+              "accessories"
+            ],
+            "equip_now": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_equip_gifted",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000002",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true,
+      "ops": [
+        {
+          "tool": "wardrobe_create",
+          "args": {
+            "title": "Gift Tee",
+            "types": [
+              "top"
+            ],
+            "recipient": "Basil",
+            "equip_now": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_no_equip",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000003",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true,
+      "ops": [
+        {
+          "tool": "wardrobe_create",
+          "args": {
+            "title": "Spare Hat",
+            "types": [
+              "accessories"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "wear_applied",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000004",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true,
+      "ops": [
+        {
+          "tool": "wardrobe_wear",
+          "args": {
+            "operations": [
+              {
+                "item_title": "Grey Slacks"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "wear_nothing_applied",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000005",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true,
+      "ops": [
+        {
+          "tool": "wardrobe_wear",
+          "args": {
+            "operations": [
+              {
+                "item_title": "Ghost Cloak"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "take_off_applied",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000006",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true,
+      "ops": [
+        {
+          "tool": "wardrobe_take_off",
+          "args": {
+            "operations": [
+              {
+                "item_title": "Blue Blouse"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "take_off_nothing_applied",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000007",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true,
+      "ops": [
+        {
+          "tool": "wardrobe_take_off",
+          "args": {
+            "operations": [
+              {
+                "item_title": "Ghost Cloak"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "archive_equipped",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000008",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true,
+      "ops": [
+        {
+          "tool": "wardrobe_archive",
+          "args": {
+            "item_title": "Blue Blouse"
+          }
+        }
+      ]
+    },
+    {
+      "name": "archive_unequipped",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000009",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true,
+      "ops": [
+        {
+          "tool": "wardrobe_archive",
+          "args": {
+            "item_title": "Loafers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wear_twice_dedup",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000010",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true,
+      "ops": [
+        {
+          "tool": "wardrobe_wear",
+          "args": {
+            "operations": [
+              {
+                "item_title": "Grey Slacks"
+              }
+            ]
+          }
+        },
+        {
+          "tool": "wardrobe_wear",
+          "args": {
+            "operations": [
+              {
+                "item_title": "Casual Outfit"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "autonomous_wear",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000011",
+      "chatType": "autonomous",
+      "avatarGenerationEnabled": true,
+      "ops": [
+        {
+          "tool": "wardrobe_wear",
+          "args": {
+            "operations": [
+              {
+                "item_title": "Grey Slacks"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "autonomous_create_gifted",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000012",
+      "chatType": "autonomous",
+      "avatarGenerationEnabled": true,
+      "ops": [
+        {
+          "tool": "wardrobe_create",
+          "args": {
+            "title": "Auto Tee",
+            "types": [
+              "top"
+            ],
+            "recipient": "Basil",
+            "equip_now": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "flag_off_wear",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000013",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false,
+      "ops": [
+        {
+          "tool": "wardrobe_wear",
+          "args": {
+            "operations": [
+              {
+                "item_title": "Grey Slacks"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "flag_off_archive_equipped",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000014",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false,
+      "ops": [
+        {
+          "tool": "wardrobe_archive",
+          "args": {
+            "item_title": "Blue Blouse"
+          }
+        }
+      ]
+    }
+  ]
+}

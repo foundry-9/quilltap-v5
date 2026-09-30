@@ -155373,6 +155373,38 @@ auto-described; the P4.D108 deferral, now measured — proposed order),
 row; invisible to the differential, which strips CHAT_MESSAGE rows — proposed
 order). Walk doc §5.
 
+## P4.123 — the wardrobe-tools avatar seam + the trigger's fallback reads + the outfit-failure level (lane record, 2026-09-30)
+
+Branch `claude/wardrobe-avatar-seam-porting-f84dad`, cut from `main` `4d033c9cc`; oracle pin `97b25fc53` via the lane-unique `/tmp/qt-v4-pin-p4123-97b25fc53` (§2 probe PASSED at lane start: v4 `main` at the baseline, both logs empty, tree clean).
+
+**Landed.**
+- **The four sites** (`tools/executor.rs`, hunks fenced `// === P4.123 ===`): each `run_wardrobe_{create,wear,take_off,archive}` collects the trigger ids inside the writer closure (an `Arc<Mutex<Vec<String>>>`, so `wardrobe_write` is untouched) and awaits `avatar_generation::trigger_for_characters` after `wardrobe_write(...).await`, before returning. Ids: wear/take_off/archive = the handler's announce Vec (read against v4: `appliedCount > 0` / `wasEquipped` are exactly what make it non-empty, so it IS v4's `notifyWardrobeChanged` set); create = the new `WardrobeCreateToolOutput.target_character_id` (`#[serde(skip)]`, set only on the equipped branch — the RECIPIENT, not `context.character_id`). Caller contexts: `wardrobe-create-handler`, `wardrobe-wear-handler`, `wardrobe-take-off-handler`, `wardrobe-archive-handler`.
+- **Fallback twins** `db/image_profiles.rs::{find_by_id_or_none, find_all_or_empty}` (the §S handoff, P4.124's item 15 folds them) logging v4's repository ERRORs (`Error finding entity by ID` `{collection,id,error}`; `Error finding all entities` `{collection,error}` — from `lib/database/repositories/base.repository.ts` + `safe-query.ts` at the pin). The trigger's four inner reads use them, so a read failure takes `chat-not-found` / the next tier / `no-image-profile`; the `Failed to enqueue` catch keeps its one reachable leg (the enqueue write), pinned.
+- **`[Chats v1] Failed to apply outfit for added participant`** at `error!`, `mode` on both arms (pins in `chat_cast_routes_equivalence`, silence leg included).
+- Stale module doc corrected; the ordering divergence recorded there (v4 triggers before its state re-read, v5 after the write commits; observable only when the re-read fails; unpinnable).
+
+**The differential** `wardrobe_tools_avatar_trigger_equivalence` (tier 2): builder option `QT_WT_AVATAR_SPEC` on `harness/oracle/fixtures/build-wardrobe-tools-fixture.ts` (default output unchanged), spec `wardrobe-tools-avatar-trigger.json`, oracle `cases/wardrobe-tools-avatar-trigger.ts` (tsx, real DB, v4's real handlers). 14 scenarios, one chat each (so the pending-job dedup never crosses): create self / gifted / no-equip, wear applied / nothing applied, take_off applied / nothing applied, archive equipped / unequipped, a double wear (ONE row), autonomous ×2, flag-off ×2. Six jobs, byte-identical on `type`/`priority`/`maxAttempts`/`payload` plus per-scenario success flags, announcement sets and equipped outfits. The three fallback arms + the enqueue leg + their silence leg, and a guard that the committed builder's base chat stays flag-OFF, ride in the same binary.
+
+**Regen (as run).**
+```
+PIN=/tmp/qt-v4-pin-p4123-97b25fc53   # git worktree add --detach … 97b25fc53 + the 3 symlink classes
+cd "$PIN"; N=~/.nvm/versions/node/v24.13.1/bin; V5=<worktree>
+QT_WT_AVATAR_SPEC=$V5/harness/oracle/fixtures/wardrobe-tools-avatar-trigger.json \
+QT_FIXTURE_WT_MAIN=/tmp/p4123/wta-main.db QT_FIXTURE_WT_MOUNT=/tmp/p4123/wta-mount.db \
+  $N/node --import tsx $V5/harness/oracle/fixtures/build-wardrobe-tools-fixture.ts
+QT_FIXTURE_WTA_MAIN=/tmp/p4123/wta-main.db QT_FIXTURE_WTA_MOUNT=/tmp/p4123/wta-mount.db \
+  $N/node --import tsx $V5/harness/oracle/cases/wardrobe-tools-avatar-trigger.ts > /tmp/p4123/oracle.ndjson
+QT_ORACLE_WTA=… QT_FIXTURE_WTA_MAIN=… QT_FIXTURE_WTA_MOUNT=… cargo test -p quilltap-harness --test wardrobe_tools_avatar_trigger_equivalence -- --nocapture
+```
+
+**Red-first / mutation table.** M0 (`trigger_for_characters` a no-op — the pre-item-1 state): `create_equip_self` red. M1 (drop the create site): `create_equip_self` red. M2 (trigger for the caller, not the recipient): `create_equip_gifted` red. M3 (`was_equipped || true` in archive): red at the announcement-set assertion (the announce Vec and the trigger set are one value by design). M4 (trigger inside the writer closure): compile error E0728 (`await` in a sync closure). M5 (outfit line back to WARN / no `mode`): `the_outfit_failure_line_is_error_with_mode_on_both_arms` red. Each restored by file backup.
+
+**Findings outside the lane's ownership (for the unifier).**
+- `cargo fmt --all --check` is RED on `main` before this lane: `services/orchestrator.rs:944` and `services/turn_orchestrator.rs:1066,1104` (P4.121-owned files) — long lines rustfmt would wrap. Left alone.
+- `crates/quilltap-core/tests/unreported_if_blank_slots.rs` builds `WardrobeCreateToolOutput` literally; the two literals gained `target_character_id: None` (a forced compile fix, not a behaviour change).
+- v4's in-process job queue starts a fresh avatar job within milliseconds (oracle rows dump `PROCESSING`, `attempts` 1); v5's enqueue leaves `PENDING`. Harmless; the compare projects those columns out and asserts v5's rows are PENDING.
+- 💸 dogfood: on a Friday copy with the flag ON, one Salon turn in which a character wears something writes one `CHARACTER_AVATAR_GENERATION` job row and the roll lands.
+
 ## P4.124 — the Rust-core smalls (lane `claude/rust-smalls-fallback-reads-235ab6`, pin `/tmp/qt-v4-pin-p4124-97b25fc53` at `97b25fc53`)
 
 Opened 2026-09-29. §R.2 probe PASSED at lane start (v4 `main` at `97b25fc53`,

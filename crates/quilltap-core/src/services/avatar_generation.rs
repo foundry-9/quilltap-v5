@@ -4,10 +4,15 @@
 //! `CHARACTER_AVATAR_GENERATION` job. Failures are caught and logged — they must
 //! never affect the caller's result.
 //!
-//! This closes the W4.1d2 wardrobe deferral (the wardrobe handlers' equip path
-//! calls [`trigger_avatar_generation_if_enabled`]; that corpus kept
-//! `avatarGenerationEnabled` false so the trigger was a verified no-op — now the
-//! trigger is real and can be banked firing).
+//! Callers of [`trigger_avatar_generation_if_enabled`]: the four `[Chats v1]`
+//! API sites (`chat_create`, `chat_cast`, `chat_outfits`) and, since P4.123, the
+//! four wardrobe-tool sites — the executor's `run_wardrobe_{create,wear,take_off,
+//! archive}` via [`trigger_for_characters`], AFTER the writer closure resolves
+//! (the trigger is async and cannot run on the writer thread). **Named ordering
+//! divergence:** v4 triggers BEFORE its state re-read; v5 triggers after the
+//! whole write commits — observable only when the re-read itself fails (v5's op
+//! fails with no job where v4 has already enqueued). No differential can plant
+//! that failure; it is pinned in neither direction.
 //!
 //! The avatar JOB HANDLER itself (v4 `character-avatar-generation-handler.ts`)
 //! and `STORY_BACKGROUND` are the tracked follow-up **W4.9c** — they reuse this
@@ -90,7 +95,10 @@ async fn trigger_avatar_generation_inner(
     params: &AvatarGenerationParams,
 ) -> Result<AvatarGenerationResult, DbError> {
     let chat_id = params.chat_id.clone();
-    let chat = db.read_main(move |conn| crate::db::chats_read::find_by_id(conn, &chat_id))?;
+    // v4's repository reads are FALLBACK reads (`null` / `[]` + an ERROR line),
+    // so a read failure takes the not-found / next-tier arm, never the catch.
+    let chat =
+        db.read_main(move |conn| Ok(crate::db::chats_read::find_by_id_or_none(conn, &chat_id)))?;
     let Some(chat) = chat else {
         return Ok(AvatarGenerationResult::NotQueued {
             reason: "chat-not-found".to_string(),
@@ -108,8 +116,9 @@ async fn trigger_avatar_generation_inner(
     {
         let over = over.to_string();
         let lookup = over.clone();
-        let profile =
-            db.read_main(move |conn| crate::db::image_profiles::find_by_id(conn, &lookup))?;
+        let profile = db.read_main(move |conn| {
+            Ok(crate::db::image_profiles::find_by_id_or_none(conn, &lookup))
+        })?;
         match profile {
             Some(p) => {
                 image_profile_id = p.get("id").and_then(Value::as_str).map(str::to_string);
@@ -127,7 +136,10 @@ async fn trigger_avatar_generation_inner(
         if let Some(chat_profile) = chat.get("imageProfileId").and_then(Value::as_str) {
             let chat_profile = chat_profile.to_string();
             let profile = db.read_main(move |conn| {
-                crate::db::image_profiles::find_by_id(conn, &chat_profile)
+                Ok(crate::db::image_profiles::find_by_id_or_none(
+                    conn,
+                    &chat_profile,
+                ))
             })?;
             if let Some(p) = profile {
                 image_profile_id = p.get("id").and_then(Value::as_str).map(str::to_string);
@@ -136,7 +148,7 @@ async fn trigger_avatar_generation_inner(
     }
 
     if image_profile_id.is_none() {
-        let all = db.read_main(crate::db::image_profiles::find_all)?;
+        let all = db.read_main(|conn| Ok(crate::db::image_profiles::find_all_or_empty(conn)))?;
         let default = all
             .into_iter()
             .find(|p| p.get("isDefault").and_then(Value::as_bool) == Some(true));
@@ -196,4 +208,31 @@ pub async fn trigger_avatar_generation_if_enabled(db: &Db, params: &AvatarGenera
     }
     // Swallow the result (automatic path).
     let _ = trigger_avatar_generation(db, params).await;
+}
+
+/// The wardrobe tools' shared trigger loop (P4.123): one awaited
+/// [`trigger_avatar_generation_if_enabled`] per character id, with v4's literal
+/// `callerContext`. Never fails the caller.
+pub async fn trigger_for_characters(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    character_ids: &[String],
+    caller_context: &'static str,
+) {
+    for character_id in character_ids {
+        trigger_avatar_generation_if_enabled(
+            db,
+            &AvatarGenerationParams {
+                user_id: user_id.to_string(),
+                chat_id: chat_id.to_string(),
+                character_id: character_id.clone(),
+                caller_context,
+                image_profile_id_override: None,
+                equipped_slots_override: None,
+                force: false,
+            },
+        )
+        .await;
+    }
 }
