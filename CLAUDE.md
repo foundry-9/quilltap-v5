@@ -1176,6 +1176,46 @@ records THERE. Update this summary only when a phase or round completes.
   pre-screen on), and the standing queue (Lantern budget, a real token-limit
   turn, the four planted proofs, dedup/summaries, the Brahma deep query, #101,
   the compression re-measure).
+- **The `97b25fc53` follow-ups round (P4.119 → P4.126 ∥ P4.120 ∥ P4.121 ∥
+  P4.122 ∥ P4.123 ∥ P4.124 ∥ P4.125): UNIFIED on main (2026-09-30) — ALL
+  EIGHT LANES LANDED; the oracle baseline STAYS `97b25fc53` (no drift
+  absorbed; §3 EMPTY, v4 AT the baseline at both probes).** The three
+  dogfood orders of 2026-09-29 and every named follow-up of the
+  `97b25fc53` unification: dates rendered in the HOST zone through one
+  explicit-zone seam (P4.119 — the tsx `host_zone_dates` family proves both
+  zones, since v4's `jest.config.ts` pins every jest oracle to UTC); every
+  new chat image upload described in the background with v4's `chatId`-less
+  call + the production `SaveImageSideEffects` v5 never had (P4.120, a
+  process-global spawner armed by the Host); the three Salon tool-loop legs
+  each writing their `CHAT_MESSAGE` row under v4's real funnel (P4.121 —
+  and the request-prefix hash had dropped `name`/`toolCallId`/`toolCalls`);
+  a mid-stream SDK error frame carrying the refusal side at exactly the
+  frames v4 throws on (P4.122, 35 new wire rows through the real SDK; the
+  order was wrong twice — Responses throws on unnamed `data.error` too, and
+  the finish arm IS reachable); a character's own mid-chat wardrobe change
+  refreshing its avatar at v4's four sites (P4.123, a new executor-level
+  differential over v4's real handlers); the Rust smalls (P4.124 — the
+  understudy reads as v4's fallback reads, so the retry answers 409 not
+  500; bug 172's scan gate as a REAL `build_context_tier3` arm; the group
+  reads under v4's Zod shapes); the SPA smalls (P4.125 — the soft-break
+  text replacement, ONE on-duty rule, the memory badge as v4's
+  re-extract button); the Post Office riders (P4.126 — the postbox read on
+  a `find_by_id_raw_or_none` twin, the mail reads at v4's repository
+  fallback layer). **The §3 review (five readers): NO blocking defect — the
+  eleventh such round; fixed at unification: P4.123 item 9 reported landed
+  with NO hunk (the trigger's pool arms), P4.120's `.catch` WARN pin forced
+  on a leg v4 cannot reach (the precheck is a fallback read), P4.125's
+  badge beat green only for want of a cheap LLM, P4.124 item 14's two
+  missing repository ERRORs, and ONE v4 line under THREE tracing targets —
+  now ONE `db::fallback` home for v4's fallback-read shape.** The three
+  unifier handoffs landed (the §S fold, `ContextChat.chat_type`, the swipe
+  arm's 500). Gate: fmt/clippy (both feature sets)/release clean; the full 578-family sweep from the pin 571 ok / 4 run_failed (the three standing rows + the sweep's own catch, fixed and green by name) / 3 refused by design; Tier R 266/0; `cargo test --workspace` 652 binaries / 3,998 passed / 5 failed (the three standing + two env-block artifacts, each green by name) / 3 ignored, zero `SKIP:` lines; SPA 462 files / 8,747, lint + build clean; full Playwright 354 passed / 1 failed / 6 skipped (11.4 m) — the six skips the standing parks; the one red the documented P4.66 optimistic-bubble intermittent (`salon-optimistic-bubble-reconcile.spec.ts`), green alone afterwards (2/2, 1.4 m). Versions: core 0.0.1115, harness
+  0.0.1034, host 0.0.166, SPA 0.5.787. 💸 the dogfood queue gains the
+  host-zone proof, the upload describe, the per-leg rows, a posed
+  mid-stream frame, a flag-ON wardrobe turn, the badge. **Next: the owed
+  dogfood pass, then the follow-ups smalls round named in `phase-4.md`,
+  then a drift catch-up when v4 moves** — `phase-4.md`. Round record:
+  `status-log.md`.
 - **Oracle baseline: `97b25fc53` (2026-09-28, v4 main — "Drape undressed
   characters in story backgrounds instead of re-dressing them",
   `4.10.0-dev.100`), adopted at the `97b25fc53` seven-commit round

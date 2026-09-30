@@ -26,10 +26,13 @@ probe verifies against._
   P4.D236 ∥ P4.D237 ∥ P4.D238 ∥ P4.D239 ∥ P4.118, 2026-09-29). The seven rows
   `39bc98ffc` … `97b25fc53` are ABSORBED / NO-PORT-RATIFIED (§6). CLAUDE.md's
   Status bullet agrees.
-- **Checked:** 2026-09-29 (`/unify`, main-checkout session, at the
-  unification's docs commit; `git fetch` first. The §2 probe PASSED at the
-  unification's start and again before the docs commit: HEAD unmoved at
-  `97b25fc53`, the tree clean on `main`, bugfix unmoved.)
+- **Checked:** 2026-09-30 (`/unify` of the `97b25fc53` follow-ups round,
+  main-checkout session, at its docs commit; `git fetch` first. The §2
+  probe PASSED at the unification's start and again before the docs
+  commit: HEAD unmoved at `97b25fc53`, the tree clean on `main`, `bugfix`
+  and `origin/main` unmoved. That round absorbed NO drift row; the
+  baseline did not move. Previous check: 2026-09-29, the `97b25fc53`
+  round's unification.)
 - **v4 `main` HEAD at check: `97b25fc53`** — AT THE BASELINE. **Zero
   commits past it; §3 is EMPTY.**
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug

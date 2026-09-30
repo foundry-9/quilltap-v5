@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — chore(unify): the `97b25fc53` follow-ups round (P4.119 → P4.126 ∥ P4.120 ∥ P4.121 ∥ P4.122 ∥ P4.123 ∥ P4.124 ∥ P4.125) unified on main
+
+_Versions: core 0.0.1115, harness 0.0.1034, host 0.0.166, SPA 0.5.787; web/cli/tauri unchanged._
+
+Eight lanes cherry-picked in dependency order onto `unify/97b25fc53-followups`
+and fast-forwarded to main; the oracle baseline stays `97b25fc53` (no drift
+absorbed, v4 at the baseline at both probes). Scope: host-zone display
+formatting (P4.119); chat-upload auto-describe + the production photo side
+effects (P4.120); Salon tool-loop leg logging (P4.121); mid-stream error
+frames + the image helper's flat body (P4.122); the wardrobe-tools avatar
+seam (P4.123); the Rust-core smalls (P4.124); the SPA smalls (P4.125); the
+Post Office / render riders (P4.126). Wires: the §S fold of P4.124's
+`image_profiles` fallback helpers onto P4.123's twins, `ContextChat.chat_type`
+threaded (P4.124 item 6, stopped on ownership), the swipe arm's 500. The §3
+review found no blocking defect; fixed at unification: ONE `db::fallback`
+home for v4's fallback-read shape (four hand-copies and a three-way tracing
+target split retired), the avatar trigger's pool arms (P4.123 item 9, an
+overclaim), the auto-describe precheck as v4's fallback read with the WARN
+forcing re-aimed and a not-found arm, v4's two repository ERRORs before a
+refused chat create on restore/import, `mark_alerted`'s fallback arm, the
+census's hand-derived UTC needle, the memory-badge beat pinned to v4's exact
+sentences, four comment truths. Gate: fmt/clippy (both feature sets)/release clean; the full 578-family sweep from the pin 571 ok / 4 run_failed (the three standing rows + the sweep's own catch, fixed and green by name) / 3 refused by design; Tier R 266/0; `cargo test --workspace` 652 binaries / 3,998 passed / 5 failed (the three standing + two env-block artifacts, each green by name) / 3 ignored, zero `SKIP:` lines; SPA 462 files / 8,747, lint + build clean; full Playwright 354 passed / 1 failed / 6 skipped (11.4 m) — the six skips the standing parks; the one red the documented P4.66 optimistic-bubble intermittent (`salon-optimistic-bubble-reconcile.spec.ts`), green alone afterwards (2/2, 1.4 m).
+
 #### 2026-09-29 — docs(porting): close P4.126 — the lane record and status headers
 
 _Docs-only change._

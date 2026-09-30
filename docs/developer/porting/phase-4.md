@@ -6928,7 +6928,39 @@ only once P4.D235 lands, and the re-embed spend needs P4.D235's
 measurement recipe first).
 
 
-## The `97b25fc53` follow-ups round (P4.119 → P4.126 ∥ P4.120 ∥ P4.121 ∥ P4.122 ∥ P4.123 ∥ P4.124 ∥ P4.125) — ORDERED 2026-09-29
+## The `97b25fc53` follow-ups round (P4.119 → P4.126 ∥ P4.120 ∥ P4.121 ∥ P4.122 ∥ P4.123 ∥ P4.124 ∥ P4.125) — UNIFIED 2026-09-30 (ordered 2026-09-29)
+
+**UNIFIED on main (2026-09-30) — ALL EIGHT LANES LANDED; the baseline STAYS
+`97b25fc53` (no drift row absorbed; the ledger's §3 EMPTY, v4 AT the
+baseline at both probes). Round record: `status-log.md` → "The `97b25fc53`
+follow-ups round — UNIFICATION record (2026-09-30)". The §3 review (five
+parallel readers) found NO blocking defect; ONE overclaim (P4.123 item 9
+reported landed with no hunk), one mis-aimed pin (P4.120's `.catch` WARN
+forced on a leg v4 cannot reach), one green-by-accident beat (P4.125), one
+missing log pair (P4.124 item 14) and one target split (three tracing targets
+for one v4 repository line) — all fixed at unification, each with its pin.
+The three recorded unifier handoffs landed (the §S fold, `ContextChat.chat_
+type`, the swipe arm's 500).**
+
+**NEXT (in order):**
+1. **The owed dogfood pass** over the round's 💸 items (each order's
+   Acceptance + the record's list) on the Friday copy — the top candidate.
+2. **A follow-ups smalls round** from the round's Unification paragraphs, by
+   name: the zone VALUE threaded through the executor / engine /
+   `build_context` / `prompt_section` so the 13 ambient wrappers retire (and
+   `chat_admin_routes` / `tool_dispatch` stop depending on `TZ=UTC`);
+   the multi-character `name` on the wire + in the hash (`model/stream.rs`
+   needs a `name` slot; a wire-family case first); the orchestrator oracle
+   relocated to the W4.11b shape so the P4.90 arm's loop-leg rows are
+   diffed; the `Data validation failed` / `Safe validation failed` lines'
+   `error` as the ZodError bytes; the `text-replacement.ts` caret-mid-line
+   divergence; P4.126's wider repository-fallback question (three repos);
+   P4.122's pre-stream catch line + transport-arm bytes; P4.124's item-13
+   transition type and item-14 family plant.
+3. **A drift catch-up when v4 moves** (`/driftcheck` first — the probe
+   passed at this unification).
+
+
 
 **Baseline `97b25fc53`; v4 AT the baseline at both planning probes (HEAD
 `97b25fc53`, tree CLEAN, `bugfix` `1a2b2164c` and `release` `8fbf2afe0`
@@ -7043,9 +7075,7 @@ P4.D228 — P4.120's file this round; next round); the sidebar memory-badge
 variant (P4.125 Tier 3); `9ff4bbd8e`'s wardrobe image-analysis vertical
 (banked by pointer); the reclamation migrations (the standing deferral
 class); the conceal-marker dogfood arm and the standing 💸 queue (the next
-dogfood pass, after this round). **NEXT after this round unifies:** the
-owed dogfood pass over the round's 💸 items (each order's Acceptance names
-its own), then a drift catch-up when v4 moves (`/driftcheck` first).
+dogfood pass, after this round). **NEXT after this round unified:** see the UNIFIED paragraph at the top of this section.
 
 ## The `acadcc7cd` Concierge-overhaul drift catch-up round (P4.D225 → P4.D226 → P4.D227 → P4.D228 ∥ P4.D229 ∥ P4.D230 ∥ P4.D231 ∥ P4.D232 ∥ P4.D233) — ORDERED 2026-09-25, UNIFIED 2026-09-28
 

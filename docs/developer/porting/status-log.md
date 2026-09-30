@@ -156198,3 +156198,214 @@ hunks, `services/orchestrator.rs:947` (P4.121's file) and
   `cargo fmt --all --check` red ONLY on main's pre-existing
   `orchestrator.rs`/`turn_orchestrator.rs` hunks. Tier R: see the final
   report.
+
+## The `97b25fc53` follow-ups round — UNIFICATION record (2026-09-30)
+
+**Unified on `main` — ALL EIGHT LANES (P4.119 → P4.126 ∥ P4.120 ∥ P4.121 ∥
+P4.122 ∥ P4.123 ∥ P4.124 ∥ P4.125) LANDED; the oracle baseline STAYS
+`97b25fc53` (this round absorbs no drift row) and the drift ledger's §3 is
+EMPTY — the §2 probe PASSED at the unification's start and again before the
+docs commit (v4 `main` HEAD `97b25fc53`, tree clean on `main`, `bugfix`
+`1a2b2164c` and `release` `8fbf2afe0` unmoved, `origin/main` agreeing after a
+fetch).** Branch `unify/97b25fc53-followups` from `4d033c9cc`, cherry-picked
+in the plan's dependency order (P4.124 → P4.123 → P4.122 → P4.121 → P4.120 →
+P4.119+P4.126 whole → P4.125): 23 lane commits, every conflict a version
+file or a union doc (CHANGELOG / status-log, both sides kept — verified line
+by line against each lane's diff: zero lines missing), plus the two older
+order headers (P4.D234, P4.D235) each carrying one appended sentence from
+BOTH P4.124 and P4.126 — merged as both sentences. No source conflict; the
+union built clean with zero warnings before any wire.
+
+### §3 review — what it found
+
+Five parallel readers (P4.124 ∥ P4.123+P4.120 ∥ P4.122+P4.121 ∥
+P4.119+P4.126 ∥ P4.125), every non-doc hunk against v4 at `97b25fc53`, plus
+the unifier's own reads of the union. **NO blocking defect — the eleventh
+such round.** One OVERCLAIM, one mis-aimed pin, one green-by-accident beat,
+one missing log pair and one target split, all fixed on the unify branch
+(commit `a4e413c37`), with the test that keeps each caught:
+
+- **P4.123 Tier 2 item 9 was reported landed with NO hunk in it** (the
+  headline): the avatar trigger's five pool checkouts (`.unwrap_or(None)` on
+  the enabled gate, four `?` in `_inner`) still sent a pool error to the
+  `Failed to enqueue avatar generation` catch where v4's `getCollection()`
+  sits INSIDE the fallback `safeQuery` (the repository ERROR, then the
+  not-found / next-tier arm). Each whole checkout now runs under ONE new
+  fallback home, `db::fallback::{find_by_id_or_none, find_all_or_empty}` —
+  which also retired FOUR hand-copies of v4's `_findById`/`_findAll` shape
+  (`chats_read`, `characters_read`, `image_profiles`, `understudy`) and
+  closed the target split the P4.119/P4.126 reader named (one v4 line under
+  THREE tracing targets on the union; now `quilltap::db` everywhere, v4's
+  `Repository` module as the differentials map it; `mail_carina_tools_
+  equivalence` re-aimed).
+- **P4.120's `.catch` WARN pin was forced on a leg v4 cannot reach:** v4's
+  `repos.files.findById` is the FALLBACK `_findById` (`base.repository.ts:
+  248-257`), so a dropped `files` table is v4's `not-found` SKIP with a
+  repository ERROR — v5's precheck `?`-propagated it into the WARN. The
+  precheck now reads through the fallback home; the forcing is re-aimed at
+  the persist's `files` UPDATE (a `BEFORE UPDATE` trigger — the leg v4's
+  uncaught `repos.files.update` throw reaches; the vision call counted as
+  1); a new not-found arm pins the ERROR + no WARN + no vision call (RED on
+  the old precheck, measured by mutation). The enqueue-failure WARN's field
+  was `mount_point_id` where v4 writes `mountPointId` on both source lines
+  — fixed, pinned by a forced first-read failure.
+- **P4.124 item 14 ported v4's Zod refusal without the two repository
+  ERRORs that precede the per-chat catch** (`validate` → `Data validation
+  failed`, then the `_create` `safeQuery`'s `Error creating entity`,
+  `base.repository.ts:130-141, 350-378`) nor restore's `Failed to restore
+  chat {chatId, error}` WARN (`restore.ts:238-240`); ONE `log_chat_create_
+  validation_failure` now emits them on restore and import, unit-pinned on
+  the helper and on `create_chat` with a bogus `conciergeMode` (+ silence).
+- **P4.125's memory-badge beat was green only because the fixture has no
+  cheap LLM:** its refusal regex could not match v4's empty-chat 400 (`No
+  user messages found …` matches none of the four alternatives); it now
+  hears the count toast or one of the two exact v4 sentences, nothing looser.
+- **P4.126:** `mark_alerted`'s `StoreError::Db` arm propagated where v4's
+  `readDatabaseDocument` falls back to NOT_FOUND (now the repository ERROR +
+  the `markAlerted: letter no longer present` WARN, a no-op; unplantable on
+  its own — recorded); the recorded `send_mail` divergence is pinned both
+  ways (the ONE non-catch ERROR asserted by name, so a convergence is SEEN).
+- **P4.119:** the census's "no UTC display zone" guard counted only the
+  `TimeZone::UTC` literal; a formatter written over `clock::civil_from_
+  days(ms.div_euclid(86_400_000))` — the pre-P4.119 idiom, still exported —
+  would have landed silently; a second needle with a four-file allow-list.
+- **P4.121/P4.122 comment truths:** the hash hunk no longer claims the
+  primary's history never carries `name` (it does on multi-character turns —
+  a PRE-EXISTING `model/**` wire divergence, now a named follow-up); the
+  `stop`-in-the-row comment corrected (wire only, both sides); JS truthiness
+  has one home (`provider_error::truthy`); the relocated loop families
+  anchor the jest side's `/^3/` rewrite at the START.
+
+**Recorded, not fixed — each in its order's Unification paragraph:** two
+executor-driven families (`chat_admin_routes`, `tool_dispatch`) render a
+transcript through the executor's AMBIENT zone wrapper and are green only
+under `TZ=UTC` (recipes now pinned; the threading order retires the 13
+ambient wrappers); P4.121 Tier 1 item 5 is proven by a self-posed unit — the
+orchestrator oracle still strips `CHAT_MESSAGE` both sides (relocate it to
+the W4.11b shape); the `.catch` WARN of the funnel is unreachable on BOTH
+sides (a convergence); P4.122's mid-stream TRANSPORT arm's catch-line bytes
+are unpinned (no corpus row poses one) and its unit-A commit carried
+whitespace-only fmt fallout in P4.121's file; P4.124's `Data validation
+failed` / `Safe validation failed` lines carry a hand-written `error` where
+v4's is the ZodError message (the `zod_issues` machinery exists — a
+follow-up), `ConciergeManualKind` still admits the six retired variants
+(unreachable), the pool-failure arm is a v5-only choice at two sites; P4.125's
+PRE-EXISTING caret-mid-line soft-break divergence (`teh world` + Space → v5
+rewrites, v4 does not; red-first case given); P4.120's `describe_image` leg
+is a construction pin; P4.123's post-closure trigger runs after a failed
+`db.write` (v4 has no transaction — roughly equivalent, unrecorded before).
+
+### The unification wires (commit `9e68c80c1`)
+
+- **§S (P4.124 → P4.123):** `understudy.rs`'s two `image_profiles_*`
+  fallback helpers deleted, their three readers (the image understudy's
+  explicit pick and scan, the retry's exclude list, `load_profile_
+  parameters`) repointed onto `db::image_profiles::{find_by_id_or_none,
+  find_all_or_empty}`; `load_profile_parameters` keeps the whole pool
+  checkout under the one home (v4's `getCollection()` is inside the same
+  `safeQuery`) — one line per failure, never two.
+- **P4.124 item 6 (STOPPED on ownership — `orchestrator.rs` was P4.121's):**
+  `ContextChat.chat_type` threaded from the chat row's marshal (v4's `salon`
+  default), `scan_off_scene_newcomers` takes it, `off_scene.rs`'s raw SQL
+  deleted; the `build_context_tier3` harness feeds the field from the row
+  AFTER its `chatType` plant (the orchestrator's own path); the continuation
+  family's three probes pass the marshalled type (its NULL plant re-read
+  through `chats_read`) — the lane's recorded hunk had missed those three.
+- **P4.124's recorded twin:** `message_swipe_generate`'s post-stream `Err`
+  arm answers `Internal` as the retry-uncensored arm now does (v4's
+  `serverError(error.message)` from the one catch, `messages/[id]/route.ts:
+  351-359`); the `salon_swipe_generate` family is its pin.
+- P4.119's out-of-mandate `almanack_services.rs` line ratified (the host is
+  the composition root for machine-dependent inputs); the union of
+  `tools/executor.rs` (P4.120 ∥ P4.123) measured safe by the reader (disjoint
+  hunks, no shared state); P4.121 ∥ P4.122 measured consistent with v4's
+  funnel (a mid-leg error frame writes NO row on either side, never a double).
+
+### Gate (tree `d61b93638` + this docs commit)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+  -D warnings` clean plain AND with `--features quilltap-core/native-
+  transport` (one redundant-closure lint of the unifier's own, fixed
+  `4d21f02be`); `cargo build --workspace --release` clean.
+- **The full sweep from the `97b25fc53` pin** (`/tmp/qt-v4-pin-unify-
+  97b25fc53`, the three symlink classes, openai 7.23.0 verified; `--run-all`,
+  ONE pass, launched detached — the Bash tool's 600 s background cap kills an
+  hours-long job, a trap recorded in the round's memory note): **571 ok / 4
+  run_failed / 3 refused of 578** (22 `nothing_to_run`). Artifact:
+  `harness/tools/sweep-results/2026-09-30-97b25fc53-followups-unify.json`.
+  Every red classified:
+  - **The sweep's own catch — FIXED, then green by name through the driver
+    (1.65 s):** `mail_carina_tools_equivalence`. The unifier's new send-arm
+    pin had counted ONE non-catch ERROR from the lane's prose; the sweep
+    measured ZERO — v5's write chokepoint throws AT the documents read and
+    the throw IS the catch line, where v4's fallback read logs the
+    repository ERROR first (the recorded divergence stands, now pinned at
+    v5's side, `9da3fde07`); then its characters-twin assert still named
+    the module-path target the unification retired (`d61b93638`).
+  - **Standing (every prior sweep):** `ariel_writers_tier3` and
+    `memory_processor_tier3` (the compressed-text byte parity, decoded text
+    identical), `search_replace` (`missing_action_recorded`).
+  - Refused by design: `backup_uuid_remap` (a repo-write corpus),
+    `avatar_rolls_routes` and `generator_sse_wire` (non-extractable).
+- **Tier R** (`cli_differential`, `QT_V4_CHECKOUT=` the pin): **266 cases /
+  0 failures** (417 s in the sweep, 394 s again inside the workspace suite).
+- `QT_V4_CHECKOUT=<the pin> TZ=UTC cargo test --workspace --no-fail-fast`
+  with a 745-variable env block harvested mechanically from every family's
+  `--show` run stage (the 8 vars two or more families spell with different
+  values — `QT_FIXTURE_{CHARUPD,QTAPIMPORT,TMP}_{MAIN,MOUNT}`, `QT_FIXTURE_
+  VAULT_READ_OVERLAY`, `QT_ORACLE_CARINA` — withheld, so their ~14 families
+  SKIP here and are proven by the sweep's own clean invocations;
+  `mail_carina_tools_equivalence` is one of them, hence its 0.00 s row):
+  **652 test binaries / 3,998 passed / 5 failed / 3 ignored, zero `SKIP:`
+  lines.** The five reds: the three standing families above (their vars
+  deliberately IN the block so the true state shows) plus two env-block
+  artifacts — `backup_uuid_remap` (its var names an oracle the refused
+  recipe never produces) and `doc_mount_files_tier2` (`no such table` on a
+  fixture the sweep's earlier run had consumed; green by name through the
+  driver and confirmed a REAL run under `--nocapture`: `matched oracle (2
+  rows)`). Every round family confirmed RUN by name with a non-zero
+  duration: `chat_upload_auto_describe` 6/6, `photo_side_effects_wiring`
+  2/2, `wardrobe_tools_avatar_trigger_equivalence` 3/3, `tool_loop_leg_
+  logging` 2/2, `host_zone_dates_equivalence` 2/2, `host_zone_sites_
+  census` 4/4, `stream_decoders_equivalence` 5/5, `primary_stream_tier3`
+  2/2 (0.22 s), `orchestrator_tier3` 1/1 (4.10 s), `build_context_tier3`
+  1/1, `chat_continuation_tier2` 1/1, `salon_swipe_generate` 1/1 (the swipe
+  arm's pin), `danger_routing` 1/1.
+- SPA: `npm test` **462 files / 8,747 tests**; lint clean (check-qt-classes
+  956, none added); `npm run build` clean (both bundles).
+- **Full Playwright** on the final tree, run AFTER the sweep and the
+  workspace suite (not beside them): **354 passed / 1 failed / 6 skipped (11.4 m) — the six skips the standing parks; the one red the documented P4.66 optimistic-bubble intermittent (`salon-optimistic-bubble-reconcile.spec.ts`), green alone afterwards (2/2, 1.4 m)**
+
+### Versions
+
+- core 0.0.1114 → **0.0.1115** (the unification's own commits: the §S fold,
+  `ContextChat.chat_type`, the swipe arm, the `db::fallback` home + the
+  review fixes, the clippy fix); harness 0.0.1033 → **0.0.1034**; host
+  **0.0.166** (P4.119's line, unchanged here); SPA **0.5.787** (P4.125; the
+  e2e-only fix at unification ships nothing); web 0.0.201 / cli 0.0.27 /
+  tauri 0.0.7 unchanged. The lanes' own bumps reconciled to the maxima at
+  the cherry-picks (P4.119 and P4.120 had both claimed core 0.0.1107 /
+  harness 0.0.1027 / host 0.0.166 — the identical-bump trap; the union
+  carried P4.124's 0.0.1114 / 0.0.1033).
+
+### 💸 for the owed dogfood pass (each order's Acceptance names its own)
+
+- P4.119: re-render a v4-rendered chat → zero `EMBEDDING_GENERATE` for
+  unchanged interchanges; `list_mail` shows `02:40 PM`; a fresh reply
+  preface persists local time.
+- P4.120: upload an image in a chat on the Friday copy; within ~15 s
+  `files.description` is set, blank links carry it, `EMBEDDING_GENERATE`
+  jobs run, a later send logs `[Image Fallback] Reusing persisted
+  description (no vision call)`.
+- P4.121: a real tool turn writes one `CHAT_MESSAGE` row per leg in the
+  Inspector; an autonomous room's budget charges them.
+- P4.122: a posed mid-stream `data: {"error":…}` frame before content →
+  the `provider-code` trail then the uncensored answer (the refusal-server
+  instrument can pose it).
+- P4.123: one flag-ON Salon turn in which a character wears something →
+  one `CHARACTER_AVATAR_GENERATION` row and the roll lands.
+- P4.125: the badge on a small Friday chat → the count toast + Inspector
+  jobs; `first line⏎teh` + Space in the composer.
+- The standing queue (Lantern budget, a real token-limit turn, the four
+  planted proofs, dedup/summaries, the Brahma deep query, #101, the
+  compression re-measure, the conceal-marker arm).
