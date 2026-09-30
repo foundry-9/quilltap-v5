@@ -2651,7 +2651,7 @@ where
     let attempt = |profile: FailoverProfile, key: String| async move {
         let rerouted = profile.id != image_profile.id;
         let parameters = if rerouted {
-            load_profile_parameters(db, &profile.id)
+            crate::services::image_job_common::load_profile_parameters(db, &profile.id)
         } else {
             image_profile.parameters.clone()
         };
@@ -2907,16 +2907,6 @@ where
         answering_model: active_model,
         route_trail,
     })
-}
-
-/// Load a profile's `parameters` JSON (for the post-hoc reroute merge).
-fn load_profile_parameters(db: &Db, profile_id: &str) -> Value {
-    let pid = profile_id.to_string();
-    db.read_main(move |conn| crate::db::image_profiles::find_by_id(conn, &pid))
-        .ok()
-        .flatten()
-        .and_then(|p| p.get("parameters").cloned())
-        .unwrap_or(Value::Null)
 }
 
 /// v4 `image-generation-handler.ts:978-983` — the fourth argument this handler

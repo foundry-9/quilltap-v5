@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(concierge): read the understudy lookups as v4's fallback reads and log a pool failure
+
+_Versions: core 0.0.1109, harness 0.0.1027._
+
+The uncensored understudy lookups now read the way v4's do. v4's
+`findById`/`findAll`/`findApiKeyByIdAndUserId` are fallback reads: a failed
+query logs the repository's ERROR (`Error finding entity by ID`, `Error
+finding all entities`, `Error finding API key by ID and user ID`) and
+answers null or an empty list, so a database error walks the not-found arms
+and never reaches the resolver's own catch. v5 read through `?` and logged
+`... understudy lookup failed` instead, and the two real API-key resolvers
+and four call sites (the text failover router, the image failover's
+understudy source, both retry-uncensored resolvers) dropped a read-pool
+failure silently. The reads are now fallback reads with v4's lines, and the
+four sites go through one wrapper that logs the catch line for a pool
+failure and answers "nobody", which is v4's outcome for any database
+failure there (so the retry's 409 `no-understudy` stands).
+`load_profile_parameters` had two identical copies; there is now one, and a
+failed read logs the repository ERROR instead of answering `null`
+silently. The `danger-routing` oracle's failing-lookup plant now fails the
+collection read under v4's real `findAll` rather than stubbing `findAll` to
+throw, and the repository lines join the comparand. P4.124 items 1, 2 and
+15(i).
+
 #### 2026-09-29 — fix(cheap-llm): gate the cheap refusal record on the chat id, as v4 does
 
 _Versions: core 0.0.1108._

@@ -155405,3 +155405,51 @@ hunks, `services/orchestrator.rs:947` (P4.121's file) and
   only_under_a_chat` (chat → a `quilltap::concierge_refusal_ledger` line with
   `purpose=cheap`; `None` and `""` → silent). `refusal_ledger_tier3` +
   `fallback_engine` re-run green from the pin (neutral).
+- **Unit 3 (items 1, 2, 15(i)), core 0.0.1109, harness 0.0.1027.**
+  **Re-measured at the pin, overturning the order's framing of items 2 and
+  15(i):** v4's understudy reads (`repos.connections.findById`/`findAll`,
+  `repos.imageProfiles.*`, `findApiKeyByIdAndUserId`) are ALL fallback
+  `safeQuery` reads — a database failure (including `getCollection()`, v4's
+  "pool") logs the repository ERROR and answers `null`/`[]`, so it walks the
+  not-found arms and **never reaches the resolver's `… understudy lookup
+  failed` catch**, and v4's retry route answers **409 `no-understudy`**, not
+  500. So 15(i) is NOT a divergence (v5's 409 stands), and item 2's fix is
+  wider than "the pool error takes the catch arm": (a) the inner reads are
+  now v4's fallback reads with v4's lines (`understudy.rs`'s
+  `find_by_id_or_none`/`find_all_or_empty` helpers; the image pair names
+  P4.123's §S twins for the unifier to fold); (b) the two real API-key
+  resolvers (`ConnApiKeys`/`DbApiKeys`) log `Error finding API key by ID and
+  user ID {collection, keyId, userId, error}` and never `Err` — so
+  `decryptKey`'s WARN is reached only by a stub that throws, as in v4; (c)
+  the four `read_main(…).ok().flatten()` sites route through
+  `resolve_{text,image}_understudy_on`, which keeps the catch line for the
+  one failure v4 has no counterpart for (the read POOL) and answers `None`;
+  (d) `retry_uncensored`'s two exclude-list `findAll`s are fallback reads
+  too (their debug catch now fires only on a pool failure — also v4's
+  unreachable-on-DB-error catch). Every fallback line carries `target:
+  "quilltap::db"`. Item 1: the two `load_profile_parameters` copies were
+  byte-identical bar sync/async with no `.await` inside — ONE sync home in
+  `image_job_common.rs`, the tool's copy deleted; a failed read (pool
+  included) logs `Error finding entity by ID {collection: image_profiles,
+  id}` and answers `Null`. **The danger-routing oracle's `failLookup` plant
+  stubbed `repo.findAll` to throw — a mock of the thing under test (§R.6)
+  that exercised a throw real v4 cannot raise.** It now makes
+  `repo.getCollection` throw, so v4's real `_findAll` fallback runs, and the
+  recorder keeps the root logger's three repository messages (service
+  `Repository` ↔ `quilltap::db`, `error` normalised). **Red-first:** the
+  lane's first sweep ran the new v5 code against the OLD oracle —
+  `danger_routing_equivalence` RED on `tu-lookup-fails` (v5 `DEBUG No
+  uncensored text understudy…` vs v4-stub `ERROR Text understudy lookup
+  failed`); regenerated from the pin it is green, `grep -c '"Repository"'`
+  = 2 (the two `*-lookup-fails` rows). Pins: `understudy.rs`
+  `pool_failure_tests` (the fallback arms + no catch line; the API-key line
+  on both resolvers + a found-key silence leg; the pool arm through both
+  wrappers + a healthy-pool silence leg; **one row per production site**),
+  `image_job_common.rs` `load_profile_parameters_logs_a_failed_read`
+  (silence + line). **M1:** restoring `.ok().flatten()` at the image
+  failover's source alone reddened exactly `every_production_site_logs_its_
+  pool_failure` at its image-source row; reverted by file backup. Pool
+  plant: the DB file unlinked after open (the writer keeps its handle; a
+  fresh read-only open fails) — asserted inside the helper. Neutral from the
+  pin: `image_failover_tier3`, `retry_uncensored_tier3`, `refusal_ledger_
+  tier3`, `fallback_engine`, `route_trail_compose`.

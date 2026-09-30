@@ -59,6 +59,12 @@ interface Spec {
 
 interface RecordedLog { service: string | null; level: string; message: string; bag: Record<string, unknown> }
 const LOGGED_SERVICES = new Set(['ConciergeUnderstudy', 'DangerousContentProviderRouting']);
+// v4's fallback-read ERRORs (`base.repository.ts` / `safe-query.ts`).
+const REPOSITORY_FALLBACK_MESSAGES = new Set([
+  'Error finding entity by ID',
+  'Error finding all entities',
+  'Error finding API key by ID and user ID',
+]);
 
 function profileSubset(p: any): unknown {
   return { id: p.id, name: p.name, provider: p.provider, modelName: p.modelName, baseUrl: p.baseUrl ?? null };
@@ -103,6 +109,11 @@ async function main(): Promise<void> {
       const record = (level: string) => (message: string, bag?: Record<string, unknown>) => {
         if (service && LOGGED_SERVICES.has(service)) {
           logs.push({ service, level, message, bag: JSON.parse(JSON.stringify(bag ?? {})) });
+        } else if (!service && REPOSITORY_FALLBACK_MESSAGES.has(message)) {
+          // P4.124: the repository's own fallback-read line (`safeQuery`
+          // logs through the root logger), so the failed read's line is in
+          // the comparand, not only the resolver's.
+          logs.push({ service: 'Repository', level, message, bag: JSON.parse(JSON.stringify(bag ?? {})) });
         }
       };
       const self: Record<string, unknown> = {
@@ -192,12 +203,17 @@ async function main(): Promise<void> {
   // P4.D225: the understudies, driven directly (exclusion, the courier skip,
   // the caller's filter on the explicit pick and the scan, the throwing key,
   // the swallowed lookup failure).
+  // P4.124: the failure is planted UNDER v4's real `findAll` — the collection
+  // read throws — so its `safeQuery` fallback runs (the repository's ERROR,
+  // then `[]`). Stubbing `findAll` itself to throw (the pre-P4.124 plant)
+  // tested a throw real v4 cannot raise: the resolver's own catch is
+  // unreachable on a database failure (v5's pool arm keeps its line).
   const withFailingLookup = async <T>(fail: boolean | undefined, which: 'connections' | 'imageProfiles', f: () => Promise<T>): Promise<T> => {
     if (!fail) return f();
     const repo = (repos as any)[which];
-    const findAll = repo.findAll;
-    repo.findAll = async () => { throw new Error('canned lookup failure'); };
-    try { return await f(); } finally { repo.findAll = findAll; }
+    const getCollection = repo.getCollection;
+    repo.getCollection = async () => { throw new Error('canned lookup failure'); };
+    try { return await f(); } finally { repo.getCollection = getCollection; }
   };
   takeLogs();
   for (const c of spec.textUnderstudyCases) {

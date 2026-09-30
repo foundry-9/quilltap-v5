@@ -176,14 +176,25 @@ pub(crate) fn decode_base64_node(s: &str) -> Vec<u8> {
 }
 
 /// Load an image profile's `parameters` object by id (v4 reads
-/// `reroute.profile.parameters`; the `RouteProfile` doesn't carry them).
-pub(crate) async fn load_profile_parameters(db: &Db, profile_id: &str) -> Value {
-    let pid = profile_id.to_string();
-    db.read_main(move |conn| crate::db::image_profiles::find_by_id(conn, &pid))
-        .ok()
-        .flatten()
-        .and_then(|p| p.get("parameters").cloned())
-        .unwrap_or(Value::Null)
+/// `reroute.profile.parameters`; the `RouteProfile` doesn't carry them). The ONE
+/// home — the image job and the generate-image tool both call it (P4.124: the
+/// tool had a second, sync copy of the same body).
+///
+/// v4 has no direct counterpart: its attempt takes the whole `ImageProfile`,
+/// which the understudy read (`repos.imageProfiles.findById`, a FALLBACK
+/// `_findById`) already fetched. So a failed read logs that read's repository
+/// ERROR (`Error finding entity by ID`, `collection: image_profiles`) and
+/// answers `null` parameters — where v5 answered `Null` silently.
+// P4.124 → the unifier: repoint onto P4.123's `image_profiles::find_by_id_or_none`
+// (the §S twin, which logs this same line) and drop the `understudy` helper.
+pub(crate) fn load_profile_parameters(db: &Db, profile_id: &str) -> Value {
+    crate::services::dangerous_content::understudy::find_by_id_or_none(
+        "image_profiles",
+        || db.read_main(|conn| crate::db::image_profiles::find_by_id(conn, profile_id)),
+        profile_id,
+    )
+    .and_then(|p| p.get("parameters").cloned())
+    .unwrap_or(Value::Null)
 }
 
 /// The outcome of an image-failover generation: the images + the profile that
@@ -359,7 +370,7 @@ pub(crate) async fn generate_job_image<I: ImageProvider, A: ApiKeyResolver>(
             (_, is_requested) => build_job_image_params(
                 &profile.provider,
                 &profile.model_name,
-                &load_profile_parameters(db, &profile.id).await,
+                &load_profile_parameters(db, &profile.id),
                 final_prompt,
                 orientation,
                 declarations_for,
@@ -859,5 +870,46 @@ mod tests {
         .await
         .expect_err("untouched");
         assert_eq!(concierge_trail_log_json(&err), None, "no trail → no key");
+    }
+
+    /// P4.124 (P4.D225 NIT (a)): a failed read logs v4's repository ERROR and
+    /// answers `null` parameters; a found row is silent.
+    #[test]
+    fn load_profile_parameters_logs_a_failed_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_db(dir.path());
+        let (params, lines) =
+            crate::test_support::captured_with(|| load_profile_parameters(&db, "understudy-1"));
+        assert_eq!(params, serde_json::json!({}));
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Error finding entity by ID")),
+            "{lines:?}"
+        );
+
+        db.write_blocking(|w| {
+            w.main()
+                .connection()
+                .execute_batch("DROP TABLE image_profiles;")?;
+            Ok(())
+        })
+        .unwrap();
+        let (params, lines) =
+            crate::test_support::captured_with(|| load_profile_parameters(&db, "understudy-1"));
+        assert_eq!(params, Value::Null);
+        let hit: Vec<_> = lines
+            .iter()
+            .filter(|l| l.contains("Error finding entity by ID"))
+            .collect();
+        assert_eq!(hit.len(), 1, "{lines:?}");
+        assert!(
+            hit[0].starts_with("ERROR quilltap::db ")
+                && hit[0].contains("collection=image_profiles")
+                && hit[0].contains("id=understudy-1")
+                && hit[0].contains("error="),
+            "{}",
+            hit[0]
+        );
     }
 }

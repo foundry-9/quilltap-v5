@@ -14,6 +14,7 @@
 use serde_json::Value;
 
 use crate::db::runtime::Db;
+use crate::db::DbError;
 use crate::services::primary_stream::EffectiveProfile;
 
 use super::resolver::ResolvedConciergePolicy;
@@ -102,13 +103,45 @@ impl<'c> ConnApiKeys<'c> {
 
 impl ApiKeyResolver for ConnApiKeys<'_> {
     fn resolve(&self, api_key_id: &str, user_id: &str) -> Option<String> {
-        self.try_resolve(api_key_id, user_id).ok().flatten()
+        find_api_key_or_none(
+            || crate::db::api_keys::find_by_id_and_user_id(self.conn, api_key_id, user_id),
+            api_key_id,
+            user_id,
+        )
     }
 
+    /// Never `Err`: the real read is v4's FALLBACK read (see
+    /// [`find_api_key_or_none`]), so a database error logs the repository's
+    /// ERROR and answers "no key" — v4's `decryptKey` catch never sees it.
     fn try_resolve(&self, api_key_id: &str, user_id: &str) -> Result<Option<String>, String> {
-        crate::db::api_keys::find_by_id_and_user_id(self.conn, api_key_id, user_id)
-            .map(|k| k.map(|k| k.key_value))
-            .map_err(|e| e.to_string())
+        Ok(self.resolve(api_key_id, user_id))
+    }
+}
+
+/// v4 `repos.connections.findApiKeyByIdAndUserId` as its callers see it —
+/// `safeQuery(…, 'Error finding API key by ID and user ID', { keyId, userId },
+/// null)` with the repository's `collection` (`connection_profiles`) injected
+/// first — so a failed read (the read pool included, which v4's in-`safeQuery`
+/// `getCollection()` stands for) logs that ERROR and answers `null`. P4.124: the
+/// two real resolvers' `try_resolve(…).ok().flatten()` had dropped it silently.
+fn find_api_key_or_none(
+    read: impl FnOnce() -> Result<Option<crate::db::api_keys::ApiKey>, DbError>,
+    key_id: &str,
+    user_id: &str,
+) -> Option<String> {
+    match read() {
+        Ok(key) => key.map(|k| k.key_value),
+        Err(error) => {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "connection_profiles",
+                keyId = %key_id,
+                userId = %user_id,
+                error = %error,
+                "Error finding API key by ID and user ID"
+            );
+            None
+        }
     }
 }
 
@@ -122,18 +155,20 @@ impl ApiKeyResolver for ConnApiKeys<'_> {
 pub struct DbApiKeys(pub Db);
 impl ApiKeyResolver for DbApiKeys {
     fn resolve(&self, api_key_id: &str, user_id: &str) -> Option<String> {
-        self.try_resolve(api_key_id, user_id).ok().flatten()
+        find_api_key_or_none(
+            || {
+                self.0.read_main(|conn| {
+                    crate::db::api_keys::find_by_id_and_user_id(conn, api_key_id, user_id)
+                })
+            },
+            api_key_id,
+            user_id,
+        )
     }
 
+    /// Never `Err` — the [`ConnApiKeys::try_resolve`] rule.
     fn try_resolve(&self, api_key_id: &str, user_id: &str) -> Result<Option<String>, String> {
-        let api_key_id = api_key_id.to_string();
-        let user_id = user_id.to_string();
-        self.0
-            .read_main(move |conn| {
-                crate::db::api_keys::find_by_id_and_user_id(conn, &api_key_id, &user_id)
-            })
-            .map(|k| k.map(|k| k.key_value))
-            .map_err(|e| e.to_string())
+        Ok(self.resolve(api_key_id, user_id))
     }
 }
 
@@ -442,27 +477,19 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
         turn_attachment_mime_types: &[String],
     ) -> Option<TextUnderstudy> {
         // The resolver swallows its own lookup failures (v4's catch); a read
-        // pool that cannot even hand out a connection is the same "nobody".
-        let found = self
-            .db
-            .read_main(|conn| {
-                Ok(super::understudy::resolve_uncensored_text_understudy(
-                    conn,
-                    &self.api_keys,
-                    super::understudy::TextUnderstudyLookup {
-                        user_id,
-                        uncensored_text_profile_id: concierge_policy
-                            .desk
-                            .text_profile_id
-                            .as_deref(),
-                        exclude,
-                        turn_attachment_mime_types,
-                        filter: None,
-                    },
-                ))
-            })
-            .ok()
-            .flatten()?;
+        // pool that cannot even hand out a connection is the same "nobody",
+        // logged as v4's catch logs it (P4.124 — this site had dropped it).
+        let found = super::understudy::resolve_text_understudy_on(
+            &self.db,
+            &self.api_keys,
+            super::understudy::TextUnderstudyLookup {
+                user_id,
+                uncensored_text_profile_id: concierge_policy.desk.text_profile_id.as_deref(),
+                exclude,
+                turn_attachment_mime_types,
+                filter: None,
+            },
+        )?;
         Some(TextUnderstudy {
             connection_profile: EffectiveProfile {
                 id: found.profile.id,

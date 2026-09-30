@@ -36,7 +36,7 @@
 use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
-use crate::db::{characters_read, connection_profiles, image_profiles, DbError};
+use crate::db::{characters_read, DbError};
 use crate::services::participant_resolver::connection::resolve_connection_profile;
 
 use super::chat_override::{concierge_state_may_fail_over, get_concierge_state};
@@ -45,7 +45,8 @@ use super::resolver::{
     resolve_concierge_settings, resolve_configured_concierge_desk, ResolvedConciergePolicy,
 };
 use super::understudy::{
-    resolve_uncensored_image_understudy, resolve_uncensored_text_understudy, ImageUnderstudyLookup,
+    connection_profiles_find_all_or_empty, image_profiles_find_all_or_empty,
+    resolve_image_understudy_on, resolve_text_understudy_on, ImageUnderstudyLookup,
     TextUnderstudyLookup, Understudy,
 };
 
@@ -238,7 +239,10 @@ pub async fn resolve_text_retry_understudy<A: ApiKeyResolver>(
         }
     }
 
-    match db.read_main(connection_profiles::find_all) {
+    // v4's `repos.connections.findAll()` is a fallback read (a failed query
+    // logs the repository ERROR and answers `[]`), so its `catch` — this
+    // debug line — only sees what v5 alone can meet: the read pool (P4.124).
+    match db.read_main(|c| Ok(connection_profiles_find_all_or_empty(c))) {
         Ok(connections) => {
             let answered_by = AnsweredBy {
                 provider: str_of(target_message, "provider"),
@@ -258,22 +262,20 @@ pub async fn resolve_text_retry_understudy<A: ApiKeyResolver>(
     }
 
     let policy = retry_policy(chat_settings, chat);
-    let understudy = db
-        .read_main(|conn| {
-            Ok(resolve_uncensored_text_understudy(
-                conn,
-                api_keys,
-                TextUnderstudyLookup {
-                    user_id,
-                    uncensored_text_profile_id: policy.desk.text_profile_id.as_deref(),
-                    exclude: &exclude,
-                    turn_attachment_mime_types: &[],
-                    filter: None,
-                },
-            ))
-        })
-        .ok()
-        .flatten();
+    // A pool failure logs v4's catch line and answers "nobody" — v4's outcome
+    // for EVERY database failure here (its reads are fallback reads), so the
+    // route's 409 `no-understudy` is v4's answer too (P4.124 measured).
+    let understudy = resolve_text_understudy_on(
+        db,
+        api_keys,
+        TextUnderstudyLookup {
+            user_id,
+            uncensored_text_profile_id: policy.desk.text_profile_id.as_deref(),
+            exclude: &exclude,
+            turn_attachment_mime_types: &[],
+            filter: None,
+        },
+    );
 
     tracing::debug!(
         target: TARGET,
@@ -330,7 +332,8 @@ pub async fn resolve_image_retry_understudy<A: ApiKeyResolver>(
     if answered_by.provider.is_some_and(|s| !s.is_empty())
         && answered_by.model_name.is_some_and(|s| !s.is_empty())
     {
-        match db.read_main(image_profiles::find_all) {
+        // The text arm's fallback-read rule (P4.124).
+        match db.read_main(|c| Ok(image_profiles_find_all_or_empty(c))) {
             Ok(profiles) => {
                 for id in same_model_ids(&profiles, answered_by) {
                     if !exclude.contains(&id) {
@@ -348,20 +351,16 @@ pub async fn resolve_image_retry_understudy<A: ApiKeyResolver>(
     }
 
     let policy = retry_policy(chat_settings, chat);
-    let understudy = db
-        .read_main(|conn| {
-            Ok(resolve_uncensored_image_understudy(
-                conn,
-                api_keys,
-                ImageUnderstudyLookup {
-                    user_id,
-                    uncensored_image_profile_id: policy.desk.image_profile_id.as_deref(),
-                    exclude: &exclude,
-                },
-            ))
-        })
-        .ok()
-        .flatten();
+    // The text arm's rule (P4.124).
+    let understudy = resolve_image_understudy_on(
+        db,
+        api_keys,
+        ImageUnderstudyLookup {
+            user_id,
+            uncensored_image_profile_id: policy.desk.image_profile_id.as_deref(),
+            exclude: &exclude,
+        },
+    );
 
     tracing::debug!(
         target: TARGET,

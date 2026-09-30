@@ -16,6 +16,16 @@
 //! seam on both sides — the spec's `apiKeys` map, plus `throwingApiKeys` whose
 //! lookup THROWS in v4 / answers `Err` through `try_resolve` in v5.
 //!
+//! **The failing profile lookup is planted UNDER v4's real read (P4.124).** The
+//! `failLookup` cases make the repository's collection read throw, so v4's real
+//! `findAll` runs its `safeQuery` fallback — the repository ERROR `Error finding
+//! all entities`, then `[]` — and the resolver walks its not-found arm; v5's
+//! broken connection takes the same fallback read. Those repository lines are
+//! in the comparand (`Repository` ↔ `quilltap::db`, `error` normalised). The
+//! pre-P4.124 plant stubbed `findAll` itself to throw, which exercised the
+//! resolver's catch through a throw real v4 cannot raise; the catch's line now
+//! belongs to v5's read-POOL arm alone (pinned in `understudy.rs`).
+//!
 //! Since v4 `3b463d6b1` (#76, P4.D227) the wrappers' gate is the Concierge
 //! POLICY (`route_direct || failover_allowed`), resolved per case from the
 //! stored `conciergeSettings` WITH the case's chat: off duty and a Locked chat
@@ -179,10 +189,14 @@ fn snake(k: &str) -> String {
     out
 }
 
-/// The one lookup-failure `error` value is normalised on both sides.
+/// The lookup-failure `error` values are normalised on both sides (v4's is the
+/// plant's canned message, v5's the broken connection's SQLite error).
 fn normalise(line: &str) -> String {
     match line.find(" error=") {
-        Some(i) if line.contains("understudy lookup failed") => {
+        Some(i)
+            if line.contains("understudy lookup failed")
+                || line.starts_with("ERROR quilltap::db ") =>
+        {
             format!("{} error=<error>", &line[..i])
         }
         _ => line.to_string(),
@@ -199,6 +213,8 @@ fn v4_lines(row: &Value) -> Vec<String> {
             let target = match l["service"].as_str().unwrap() {
                 "ConciergeUnderstudy" => "quilltap::concierge_understudy",
                 "DangerousContentProviderRouting" => "quilltap::dangerous_content_routing",
+                // P4.124: the repository's fallback-read ERROR.
+                "Repository" => "quilltap::db",
                 other => panic!("unexpected service {other}"),
             };
             let mut line = format!(
@@ -230,6 +246,7 @@ fn v5_lines(lines: &[String]) -> Vec<String> {
         .filter(|l| {
             l.contains(" quilltap::concierge_understudy ")
                 || l.contains(" quilltap::dangerous_content_routing ")
+                || l.contains(" quilltap::db ")
         })
         .map(|l| normalise(l))
         .collect()

@@ -61,7 +61,7 @@ use super::refusal_ledger::{
     record_moderation_refusal, RefusalKind, RefusalPurpose, RefusalRecord,
 };
 use super::resolver::ResolvedConciergePolicy;
-use super::understudy::{resolve_uncensored_image_understudy, ImageUnderstudyLookup};
+use super::understudy::{resolve_image_understudy_on, ImageUnderstudyLookup};
 
 const TARGET: &str = "quilltap::concierge_image_failover";
 
@@ -145,21 +145,16 @@ pub struct ImageUnderstudySource<'a, A: ApiKeyResolver> {
 
 impl<A: ApiKeyResolver> UnderstudySource for ImageUnderstudySource<'_, A> {
     async fn resolve(&self, exclude: &[String]) -> Option<(FailoverProfile, String)> {
-        let found = self
-            .db
-            .read_main(|conn| {
-                Ok(resolve_uncensored_image_understudy(
-                    conn,
-                    self.api_keys,
-                    ImageUnderstudyLookup {
-                        user_id: self.user_id,
-                        uncensored_image_profile_id: self.uncensored_image_profile_id,
-                        exclude,
-                    },
-                ))
-            })
-            .ok()
-            .flatten()?;
+        // A pool failure logs v4's catch line (P4.124 — this site had dropped it).
+        let found = resolve_image_understudy_on(
+            self.db,
+            self.api_keys,
+            ImageUnderstudyLookup {
+                user_id: self.user_id,
+                uncensored_image_profile_id: self.uncensored_image_profile_id,
+                exclude,
+            },
+        )?;
         Some((FailoverProfile::from_row(&found.row), found.api_key))
     }
 }
