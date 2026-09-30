@@ -270,11 +270,14 @@ mod tests {
     /// A failed enqueue WARNs with v4's field name — `mountPointId` on both of
     /// v4's source lines (`save-image-to-album.ts:320-323`,
     /// `auto-describe-attachment.ts:171-174`); the TEXT divergence is the
-    /// recorded one. Forced by dropping the mount's `doc_mount_file_links`
-    /// between the hand-off and the run — the enqueue's FIRST read, so the
-    /// failure does not depend on the mount holding un-embedded chunks (a
-    /// chunk-less mount answers `Ok(0)` before it ever touches
-    /// `background_jobs`). A plain `#[test]` with its own runtime, because the
+    /// recorded one. Forced by dropping the mount's `doc_mount_chunks` between
+    /// the hand-off and the run — the enqueue's first read that still
+    /// PROPAGATES: the links read before it is v4's fallback `findByMountPointId`
+    /// (`[]` after its own ERROR, `embedding-scheduler.ts:33`), so dropping
+    /// `doc_mount_file_links` no longer fails the run (P4.131), while the chunks
+    /// read (`:60`) keeps the failure independent of the mount holding
+    /// un-embedded chunks (a chunk-less mount answers `Ok(0)` before it ever
+    /// touches `background_jobs`). A plain `#[test]` with its own runtime, because the
     /// capture is a thread-scoped sync closure.
     #[test]
     fn a_failed_enqueue_warns_with_v4s_field_name() {
@@ -297,7 +300,7 @@ mod tests {
                 ws.mount_index()
                     .unwrap()
                     .connection()
-                    .execute_batch("DROP TABLE doc_mount_file_links")?;
+                    .execute_batch("DROP TABLE doc_mount_chunks")?;
                 Ok(())
             })
             .await

@@ -15,9 +15,10 @@
 //!   in the fixture is OPAQUE, so each read/discard arm is the covenant-bypass
 //!   proof), the `in_reply_to` file-name arms, and v5-side capture pins for
 //!   v4's handler log lines (fire + silence) — see `assert_mail_logs` and
-//!   `assert_catch_lines` (P4.126: the read-failure plants re-aimed at v4's
-//!   fallback arms — the postbox refusal / "No letter named" / an empty
-//!   postbox — with the repository ERROR lines).
+//!   `assert_catch_lines` (the read-failure PLANTS, a true differential since
+//!   P4.131: the same column-rename plants run against v4's real stack in the
+//!   oracle's SECOND output file, `<out>-plants.ndjson`, and the formatted
+//!   text + repository-layer ERROR lines are diffed per (plant, tool)).
 //! - **carina** (tier-3, DB-free): inject a canned `RunCarinaQuery` + a recording
 //!   `PostProsperoCarinaError` (mirroring the oracle's jest mocks); diff the
 //!   serialized output + `format*` + the recorded Prospero args.
@@ -41,6 +42,9 @@
 //!   TZ=UTC QT_FIXTURE_TMP_MAIN=/tmp/qt-mail-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-mail-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-mail-tools.ndjson \
 //!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "mail-tools\.test\.ts$"
+//!   # The same run also writes the failure-plant records next to it, at
+//!   # `/tmp/oracle-mail-tools-plants.ndjson` (`QT_ORACLE_OUT` with `.ndjson`
+//!   # → `-plants.ndjson`; override with `QT_ORACLE_OUT_PLANTS`).
 //!   # P4.119: each mail row records its `tz` and the Rust side is fed that zone
 //!   # by argument. v4's `jest.config.ts` forces `TZ=UTC` before any worker
 //!   # starts, so this jest family cannot run a second zone; the host-zone
@@ -207,7 +211,8 @@ async fn mail_carina_tools_matches_oracle() {
     )
     .await;
     assert_mail_logs(&logs, &spec, &meta);
-    assert_catch_lines(&spec, &meta, &main_fx, &mount_fx).await;
+    let plants_oracle = mail_oracle.replace(".ndjson", "-plants.ndjson");
+    assert_catch_lines(&spec, &meta, &main_fx, &mount_fx, &plants_oracle).await;
     run_carina(&load_oracle(&carina_oracle)).await;
 
     eprintln!("OK: mail-carina-tools differential matched the oracles.");
@@ -911,243 +916,297 @@ fn assert_mail_logs(logs: &HashMap<&'static str, Vec<Vec<String>>>, spec: &Spec,
     }
 }
 
-/// The read-failure arms, pinned on v5-side PLANTS (P4.126 re-aimed them at
-/// v4's arms; they had pinned v4's catch as reachable — v5-only behaviour).
+/// One ERROR/WARN v4 logged while a plant ran (the oracle's `Logger`-prototype
+/// spy): the message plus its context keys, in v4's order, `module`/`error` left
+/// out (the error text is each stack's own).
+#[derive(Deserialize)]
+struct PlantLog {
+    message: String,
+    fields: Vec<(String, String)>,
+}
+
+/// One (plant, tool) record from the oracle's plants file.
+#[derive(Deserialize)]
+struct PlantRow {
+    plant: String,
+    tool: String,
+    text: String,
+    logs: Vec<PlantLog>,
+}
+
+/// The repository-layer messages v5 ports (P4.131). v4's other lines on these
+/// plants are plant artefacts or other subsystems: `Failed to ensure <table>
+/// table …` is `ensureTable` tripping on the very column the plant renamed, and
+/// the overlay chatter (`Error finding documents by mount point IDs …`,
+/// `Dropping character from list …`) belongs to the character overlay.
+const PLANT_SHARED_MESSAGES: [&str; 5] = [
+    "Error querying joined file links",
+    "Error finding document by mount point and path",
+    "Error finding entities by filter",
+    "Error finding entity by filter",
+    "Error finding entity by ID",
+];
+
+/// The failure plants, run against v4's real stack by the oracle (`mail-tools.
+/// test.ts`, the second output file) and against v5 here — a true differential
+/// now (P4.131; P4.126 had pinned "bytes read from v4" from prose over
+/// `DROP TABLE` plants, which v4 cannot fail under).
 ///
-/// ⚠ Not a differential: v4's jest oracle cannot plant a broken table under a
-/// fallback repository read (its reads ANSWER the fallback), so each arm here
-/// is a v5 plant whose expected bytes are read from v4 at the pin:
-///
-/// - **A mount index whose `doc_mount_file_links` table is gone.** v4's
-///   mount-index reads are fallback `withRawDb` / `safeQuery` calls
-///   (`doc-mount-file-links.repository.ts:500-529`, `doc-mount-documents.
-///   repository.ts:110-134`), so each logs its repository ERROR and answers the
-///   fallback: `list_mail` reads an EMPTY postbox (success), `read_mail` and
-///   `discard_mail` answer "No letter named …", and NONE reaches the handler
-///   catch. `send_mail` still does — its delivery WRITES rethrow in v4 too —
-///   so its catch line stays pinned here, the one leg that remains.
-/// - **A main database whose `characters` table is gone.** v4's
-///   `findByIdRaw` is the fallback `_findById` (`base.repository.ts:247-257`):
-///   every tool logs `Error finding entity by ID {collection:'characters', id}`
-///   and answers the postbox refusal — never the catch.
+/// - **Column RENAMEs, not DROP TABLEs.** v4's dedicated-DB repositories
+///   (`withRawDb` → `ensureTable`) and its main-DB collections re-create a
+///   dropped table on the next read, so a dropped `doc_mount_file_links` or
+///   `characters` is no failure in v4: it answers empty and logs nothing. A
+///   renamed column survives `ensureTable` and breaks every query naming it.
+/// - **Compared per (plant, tool):** the formatted text, and the ordered
+///   sequence of v4's repository-layer lines ([`PLANT_SHARED_MESSAGES`]) against
+///   v5's ERROR lines of those messages — message, field NAMES and ORDER and
+///   field values byte for byte (`collection`, `whereClause`, `mountPointId`,
+///   `relativePath`, `id`), v5's `error=` tail aside.
+/// - **One RECORDED divergence, pinned both ways** ([`assert_send_divergence`]):
+///   `send_mail` over a broken links table. v4 resolves the recipient through
+///   the character overlay, whose batch reads are FALLBACK reads — each logs and
+///   answers empty, every character is dropped as "vault unavailable", and the
+///   tool answers `No soul by that name keeps a postbox here.` — so v4 never
+///   reaches the write (and never its catch). v5's overlay read propagates, so
+///   the recipient resolve throws into the catch. The overlay is not this lane's
+///   file (`characters_read` / `document_store_overlay`); it is the census's
+///   `fallback-in-v4` list for the next order.
 ///
 /// Plus `markAlerted`'s NOT_FOUND warn (v4's own arm, reachable in both).
-async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &str) {
-    let (main, mount) = fresh_copy(main_fx, mount_fx, "catch-plant");
-    let db = open_two_db(&main, &mount, &spec.test_pepper_base64);
-    let reader = spec.reader_id.clone();
-    let user_id = spec.user_id.clone();
-    let reader_vault = meta.reader_vault.clone();
-    let letter = meta.reader_paths["unalerted"].clone();
-    type Run = Vec<(String, String, Vec<String>)>;
-    let (lines, char_lines): (Run, Run) = db
-        .write(move |writers| {
-            let mount_c = writers.mount_index().expect("mount present").connection();
-            let main_c = writers.main().connection();
+async fn assert_catch_lines(
+    spec: &Spec,
+    meta: &Meta,
+    main_fx: &str,
+    mount_fx: &str,
+    plants_oracle: &str,
+) {
+    let rows: Vec<PlantRow> = std::fs::read_to_string(plants_oracle)
+        .unwrap_or_else(|e| panic!("read plants oracle {plants_oracle}: {e}"))
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("plant row parses"))
+        .collect();
+    assert_eq!(rows.len(), 10, "the oracle records ten (plant, tool) rows");
 
-            // markAlerted on a letter that is not there: warn, no-op.
-            let (res, warn) = quilltap_core::test_support::captured_with(|| {
-                quilltap_core::post_office::mailbox::mark_alerted(
-                    mount_c,
-                    &reader_vault,
-                    "Mail/gone.md",
-                )
-            });
-            assert!(res.is_ok());
-            let mut out = vec![("mark_alerted".to_string(), String::new(), mail_lines(warn))];
-
-            let name = letter.strip_prefix("Mail/").unwrap().to_string();
-            // Every tool, once per plant; the whole capture is kept (the
-            // repository lines carry their own module targets).
-            let run_all = |label: &str| -> Run {
-                let mut out: Run = Vec::new();
-                let (o, l) = quilltap_core::test_support::captured_with(|| {
-                    execute_list_mail_in_zone(
-                        main_c,
+    // markAlerted on a letter that is not there: warn, no-op — on an intact copy.
+    {
+        let (main, mount) = fresh_copy(main_fx, mount_fx, "catch-mark");
+        let db = open_two_db(&main, &mount, &spec.test_pepper_base64);
+        let reader_vault = meta.reader_vault.clone();
+        let warn = db
+            .write(move |writers| {
+                let mount_c = writers.mount_index().expect("mount present").connection();
+                let (res, warn) = quilltap_core::test_support::captured_with(|| {
+                    quilltap_core::post_office::mailbox::mark_alerted(
                         mount_c,
-                        "chat-plant",
-                        Some(&reader),
-                        &json!({}),
-                        &quilltap_core::host_zone::TimeZone::UTC,
+                        &reader_vault,
+                        "Mail/gone.md",
                     )
                 });
-                out.push(("list".into(), o.listing, l));
-                let (o, l) = quilltap_core::test_support::captured_with(|| {
-                    execute_read_mail_in_zone(
-                        main_c,
-                        mount_c,
-                        "chat-plant",
-                        Some(&reader),
-                        &json!({ "letter": name }),
-                        &quilltap_core::host_zone::TimeZone::UTC,
-                    )
-                });
-                out.push(("read".into(), o.text, l));
-                let (o, l) = quilltap_core::test_support::captured_with(|| {
-                    execute_discard_mail(
-                        main_c,
-                        mount_c,
-                        "chat-plant",
-                        Some(&reader),
-                        &json!({ "letter": name }),
-                    )
-                });
-                out.push(("discard".into(), o.message, l));
-                let (o, l) = quilltap_core::test_support::captured_with(|| {
-                    execute_send_mail_in_zone(
-                        main_c,
-                        mount_c,
-                        "chat-plant",
-                        &user_id,
-                        Some(&reader),
-                        &json!({ "character": reader.as_str(), "message": label }),
-                        "2026-09-29T00:00:00.000Z",
-                        &quilltap_core::host_zone::TimeZone::UTC,
-                    )
-                });
-                out.push(("send".into(), o.message, l));
-                out
-            };
-
-            mount_c
-                .execute_batch("DROP TABLE doc_mount_file_links")
-                .map_err(|e| DbError::Internal(e.to_string()))?;
-            out.extend(run_all("to myself"));
-            main_c
-                .execute_batch("DROP TABLE characters")
-                .map_err(|e| DbError::Internal(e.to_string()))?;
-            let chars = run_all("to myself, again");
-            Ok((out, chars))
-        })
-        .await
-        .expect("catch plant");
-
-    assert_eq!(
-        lines[0].2,
-        vec![format!(
-            "WARN quilltap::post_office::mailbox markAlerted: letter no longer present vaultId={} path=Mail/gone.md",
-            meta.reader_vault
-        )]
-    );
-    let errors = |l: &[String]| -> Vec<String> {
-        l.iter()
-            .filter(|x| x.starts_with("ERROR "))
-            .cloned()
-            .collect()
-    };
-    let find = |run: &Run, tool: &str| -> (String, Vec<String>) {
-        let (_, text, l) = run.iter().find(|(t, _, _)| t == tool).unwrap();
-        (text.clone(), l.clone())
-    };
-    let vault = &meta.reader_vault;
-    let name = meta.reader_paths["unalerted"]
-        .strip_prefix("Mail/")
-        .unwrap()
-        .to_string();
-    let no_letter = format!(
-        "No letter named \"{name}\" rests in your postbox. list_mail will show you what does."
-    );
-
-    // ── The dropped link table: v4's fallback arms, no catch.
-    // (v4 `listDatabaseFiles`: the links read falls back to `[]`, the folders
-    // read succeeds; the letter-less vault lists as empty.)
-    let (text, l) = find(&lines, "list");
-    assert_eq!(text, "Your postbox stands empty.", "{l:?}");
-    let e = errors(&l);
-    assert_eq!(e.len(), 1, "list: {l:?}");
-    assert!(
-        e[0].starts_with(&format!(
-            "ERROR quilltap::db Error finding file links by mount point ID collection=doc_mount_file_links mountPointId={vault} error="
-        )),
-        "list: {}",
-        e[0]
-    );
-    let (text, l) = find(&lines, "read");
-    assert_eq!(text, no_letter, "{l:?}");
-    let e = errors(&l);
-    assert_eq!(e.len(), 1, "read: {l:?}");
-    assert!(
-        e[0].starts_with(&format!(
-            "ERROR quilltap::db Error finding document by mount point and path collection=doc_mount_documents mountPointId={vault} relativePath=Mail/{name} error="
-        )),
-        "read: {}",
-        e[0]
-    );
-    let (text, l) = find(&lines, "discard");
-    assert_eq!(text, no_letter, "{l:?}");
-    let e = errors(&l);
-    assert_eq!(e.len(), 1, "discard: {l:?}");
-    assert!(
-        e[0].starts_with(&format!(
-            "ERROR quilltap::db Error finding file link by mount point and path collection=doc_mount_file_links mountPointId={vault} relativePath=Mail/{name} error="
-        )),
-        "discard: {}",
-        e[0]
-    );
-    // `send_mail`: a delivery that cannot WRITE is a throw in v4 too — the
-    // catch leg that remains (`send-mail-handler.ts:107-114`).
-    let (text, l) = find(&lines, "send");
-    assert!(
-        text.starts_with("The Post Office stumbled and the letter went unsent — "),
-        "send: {text}"
-    );
-    let (catch, other): (Vec<String>, Vec<String>) = errors(&l)
-        .into_iter()
-        .partition(|x| x.contains("handler threw unexpectedly"));
-    assert_eq!(catch.len(), 1, "send: {l:?}");
-    // The recorded divergence, pinned so a convergence is SEEN vanishing: v4's
-    // write path logs the documents-read repository ERROR (a fallback read)
-    // BEFORE its write throws into the catch; v5's write chokepoint throws AT
-    // that read, and the throw IS the catch line — so NO non-catch ERROR
-    // precedes the catch here where v4 has one. The day v5 logs that line,
-    // this count moves and the divergence note retires.
-    assert_eq!(
-        other.len(),
-        0,
-        "send: a non-catch ERROR appeared — the recorded v5 divergence moved: {other:?}"
-    );
-    assert!(
-        catch[0].starts_with(
-            "ERROR quilltap_core::tools::send_mail send_mail handler threw unexpectedly module=send-mail-handler chatId=chat-plant error="
-        ),
-        "send: {}",
-        catch[0]
-    );
-    // …and no OTHER tool reached its catch.
-    for (tool, _, l) in &lines {
-        if tool != "send" {
-            assert!(
-                !l.iter().any(|x| x.contains("handler threw unexpectedly")),
-                "{tool} reached the catch: {l:?}"
-            );
+                assert!(res.is_ok());
+                Ok(mail_lines(warn))
+            })
+            .await
+            .expect("mark_alerted plant");
+        assert_eq!(
+            warn,
+            vec![format!(
+                "WARN quilltap::post_office::mailbox markAlerted: letter no longer present vaultId={} path=Mail/gone.md",
+                meta.reader_vault
+            )]
+        );
+        drop(db);
+        for p in [&main, &mount] {
+            clear(p);
         }
     }
 
-    // ── The dropped characters table: the postbox refusal + the repository
-    // ERROR, for all four tools — never the catch.
-    for (tool, want) in [
-        ("list", "The Post Office cannot find your postbox; your character seems to have gone astray."),
-        ("read", "The Post Office cannot find your postbox; your character seems to have gone astray."),
-        ("discard", "The Post Office cannot find your postbox; your character seems to have gone astray."),
-        ("send", "The Post Office cannot find your own postbox; your character seems to have gone astray."),
-    ] {
-        let (text, l) = find(&char_lines, tool);
-        assert_eq!(text, want, "{tool}: {l:?}");
-        let e = errors(&l);
-        assert_eq!(e.len(), 1, "{tool}: {l:?}");
-        assert!(
-            e[0].starts_with(&format!(
-                "ERROR quilltap::db Error finding entity by ID collection=characters id={} error=",
-                spec.reader_id
-            )),
-            "{tool}: {}",
-            e[0]
+    let letter = meta.reader_paths["unalerted"].clone();
+    let name = letter.strip_prefix("Mail/").unwrap().to_string();
+    let mut compared = 0;
+    let mut send_divergence_seen = false;
+    for plant in ["links", "links+folders", "folders", "characters"] {
+        let tools: Vec<&str> = rows
+            .iter()
+            .filter(|r| r.plant == plant)
+            .map(|r| r.tool.as_str())
+            .collect();
+        assert!(!tools.is_empty(), "no oracle rows for plant {plant}");
+        let (main, mount) = fresh_copy(
+            main_fx,
+            mount_fx,
+            &format!("plant-{}", plant.replace('+', "-")),
         );
+        let db = open_two_db(&main, &mount, &spec.test_pepper_base64);
+        let reader = spec.reader_id.clone();
+        let user_id = spec.user_id.clone();
+        let tool_names: Vec<String> = tools.iter().map(|t| t.to_string()).collect();
+        let letter_name = name.clone();
+        let plant_name = plant.to_string();
+        let got: Vec<(String, String, Vec<String>)> = db
+            .write(move |writers| {
+                let mount_c = writers.mount_index().expect("mount present").connection();
+                let main_c = writers.main().connection();
+                let plant_sql = |conn: &rusqlite::Connection, sql: &str| {
+                    conn.execute_batch(sql)
+                        .map_err(|e| DbError::Internal(e.to_string()))
+                };
+                if plant_name == "links" || plant_name == "links+folders" {
+                    plant_sql(
+                        mount_c,
+                        "ALTER TABLE doc_mount_file_links RENAME COLUMN relativePath TO relativePath_x",
+                    )?;
+                }
+                if plant_name == "links+folders" || plant_name == "folders" {
+                    plant_sql(
+                        mount_c,
+                        "ALTER TABLE doc_mount_folders RENAME COLUMN path TO path_x",
+                    )?;
+                }
+                if plant_name == "characters" {
+                    plant_sql(
+                        main_c,
+                        "ALTER TABLE characters RENAME COLUMN name TO name_x",
+                    )?;
+                }
+                let mut out = Vec::new();
+                for tool in &tool_names {
+                    let (text, lines) = quilltap_core::test_support::captured_with(|| match tool.as_str() {
+                        "list" => format_list_mail_results(&execute_list_mail_in_zone(
+                            main_c,
+                            mount_c,
+                            "chat-plant",
+                            Some(&reader),
+                            &json!({}),
+                            &quilltap_core::host_zone::TimeZone::UTC,
+                        )),
+                        "read" => format_read_mail_results(&execute_read_mail_in_zone(
+                            main_c,
+                            mount_c,
+                            "chat-plant",
+                            Some(&reader),
+                            &json!({ "letter": letter_name }),
+                            &quilltap_core::host_zone::TimeZone::UTC,
+                        )),
+                        "discard" => format_discard_mail_results(&execute_discard_mail(
+                            main_c,
+                            mount_c,
+                            "chat-plant",
+                            Some(&reader),
+                            &json!({ "letter": letter_name }),
+                        )),
+                        "send" => format_send_mail_results(&execute_send_mail_in_zone(
+                            main_c,
+                            mount_c,
+                            "chat-plant",
+                            &user_id,
+                            Some(&reader),
+                            &json!({ "character": reader.as_str(), "message": "to myself" }),
+                            "2026-09-29T00:00:00.000Z",
+                            &quilltap_core::host_zone::TimeZone::UTC,
+                        )),
+                        other => panic!("unknown tool {other}"),
+                    });
+                    out.push((tool.clone(), text, lines));
+                }
+                Ok(out)
+            })
+            .await
+            .expect("plant run");
+        drop(db);
+        for p in [&main, &mount] {
+            clear(p);
+        }
+
+        for (tool, text, lines) in &got {
+            let want = rows
+                .iter()
+                .find(|r| r.plant == plant && &r.tool == tool)
+                .unwrap_or_else(|| panic!("no oracle row {plant}:{tool}"));
+            let label = format!("{plant}:{tool}");
+            // v4's repository-layer lines, as v5's line prefixes.
+            let expected: Vec<String> = want
+                .logs
+                .iter()
+                .filter(|l| PLANT_SHARED_MESSAGES.contains(&l.message.as_str()))
+                .map(|l| {
+                    let fields: String =
+                        l.fields.iter().map(|(k, v)| format!("{k}={v} ")).collect();
+                    format!("ERROR quilltap::db {} {fields}error=", l.message)
+                })
+                .collect();
+            let actual: Vec<&String> = lines
+                .iter()
+                .filter(|l| {
+                    PLANT_SHARED_MESSAGES
+                        .iter()
+                        .any(|m| l.starts_with(&format!("ERROR quilltap::db {m} ")))
+                })
+                .collect();
+            assert_eq!(
+                actual.len(),
+                expected.len(),
+                "{label}: v5 logged {actual:#?}\nv4 logged {expected:#?}\nall v5 lines: {lines:#?}"
+            );
+            for (a, e) in actual.iter().zip(&expected) {
+                assert!(a.starts_with(e.as_str()), "{label}:\n  v5: {a}\n  v4: {e}");
+            }
+            let caught = lines
+                .iter()
+                .any(|l| l.contains("handler threw unexpectedly"));
+            if plant == "links" && tool == "send" {
+                assert_send_divergence(&want.text, text, lines);
+                send_divergence_seen = true;
+            } else {
+                assert_eq!(text, &want.text, "{label}: text");
+                // …and no OTHER tool reached its catch (v4 has none in these rows).
+                assert!(!caught, "{label} reached the catch: {lines:?}");
+            }
+            compared += 1;
+        }
     }
-    drop(db);
-    for p in [&main, &mount] {
-        clear(p);
-    }
+    assert_eq!(compared, rows.len(), "every oracle row was exercised");
+    assert!(
+        send_divergence_seen,
+        "the send divergence row was exercised"
+    );
+}
+
+/// The recorded `send_mail`-over-a-broken-links-table divergence, pinned BOTH
+/// ways (the `EXPECTED_DIVERGENCES` shape): it must still differ, and differ
+/// exactly as recorded.
+///
+/// v4: the recipient resolve FAILS SOFT (the character overlay's batch reads are
+/// fallback reads), every character is dropped as "vault unavailable", and the
+/// tool answers `No soul by that name keeps a postbox here.` — no catch, and no
+/// repository-layer line of the ported set (all of v4's lines are overlay
+/// chatter). v5: the overlay read propagates, the recipient resolve throws, and
+/// the handler's catch answers the stumbled refusal with ONE catch line.
+fn assert_send_divergence(v4_text: &str, v5_text: &str, v5_lines: &[String]) {
+    assert_eq!(
+        v4_text, "No soul by that name keeps a postbox here.",
+        "v4's recorded text moved"
+    );
+    assert_ne!(
+        v5_text, v4_text,
+        "VANISHED: v5 now fails soft as v4 does — retire the recorded send divergence"
+    );
+    assert!(
+        v5_text.starts_with("The Post Office stumbled and the letter went unsent — "),
+        "WRONG SHAPE: {v5_text}"
+    );
+    let catches: Vec<&String> = v5_lines
+        .iter()
+        .filter(|l| l.contains("handler threw unexpectedly"))
+        .collect();
+    assert_eq!(catches.len(), 1, "WRONG SHAPE: {v5_lines:?}");
+    assert!(
+        catches[0].starts_with(
+            "ERROR quilltap_core::tools::send_mail send_mail handler threw unexpectedly module=send-mail-handler chatId=chat-plant error="
+        ),
+        "{}",
+        catches[0]
+    );
 }
 
 // ── carina (DB-free, canned seams) ─────────────────────────────────────────

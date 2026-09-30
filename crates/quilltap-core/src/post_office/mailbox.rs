@@ -27,11 +27,10 @@ use serde_json::{json, Map, Value};
 use crate::clock::iso_to_ms;
 use crate::collation::locale_compare;
 use crate::db::database_store::{
-    delete_database_document, read_database_document, write_database_document, DbStoreErrorCode,
-    StoreError,
+    delete_database_document, list_database_files, read_database_document, write_database_document,
+    DbStoreErrorCode, StoreError,
 };
-use crate::db::doc_mount_file_links::{normalise_relative_path, DocMountFileLinksRepository};
-use crate::db::doc_mount_folders::DocMountFoldersRepository;
+use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::DbError;
 use crate::doc_edit::markdown_parser::serialize_frontmatter;
 use crate::format_time::{format_date_time, MonthStyle};
@@ -260,48 +259,19 @@ pub fn build_reply_preface(original_body: &str, original_sent_at: &str, zone: &T
 /// `listMailEntries` over `listDatabaseFiles(vaultId, { folder: 'Mail' })`).
 /// Missing/empty → empty vec.
 ///
-/// v4's two reads under `listDatabaseFiles` are FALLBACK repository reads —
-/// `docMountFileLinks.findByMountPointId` and `docMountFolders.
-/// findByMountPointId` are each `safeQuery(…, [])`
-/// (`doc-mount-file-links.repository.ts:500-507`, `doc-mount-folders.
-/// repository.ts:179-188`) — so a failed read logs the repository's ERROR and
-/// lists nothing: a broken store reads as an EMPTY postbox, never a throw. v5's
-/// shared `list_database_files` propagates, so the Post Office takes the two
-/// reads here, each with v4's fallback and line (P4.126). Only the file links
-/// can name a letter (`listMailEntries` drops every folder entry); the folder
-/// read is kept for its failure line, in v4's order.
+/// `listDatabaseFiles`' two repository reads are v4 FALLBACK reads, so a broken
+/// store reads as an EMPTY postbox, never a throw — and v5's
+/// [`list_database_files`] now answers them the same way (P4.131), so this is the
+/// plain composition. The lines a failure logs are the INNER ones: the links'
+/// `queryJoined` (`Error querying joined file links`) and the folders'
+/// `findByFilter` (`Error finding entities by filter`); v4's outer
+/// `Error finding file links by mount point ID` / `Error finding folders by mount
+/// point ID` are unreachable (P4.126 had pinned them from prose).
 fn list_mail_entries(mount: &Connection, vault_id: &str) -> Result<Vec<String>, DbError> {
-    let links = DocMountFileLinksRepository::new(mount)
-        .find_by_mount_point_id(vault_id)
-        .unwrap_or_else(|error| {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "doc_mount_file_links",
-                mountPointId = vault_id,
-                error = %error,
-                "Error finding file links by mount point ID"
-            );
-            Vec::new()
-        });
-    if let Err(error) = DocMountFoldersRepository::new(mount).find_by_mount_point_id(vault_id) {
-        tracing::error!(
-                target: "quilltap::db",
-            collection = "doc_mount_folders",
-            mountPointId = vault_id,
-            error = %error,
-            "Error finding folders by mount point ID"
-        );
-    }
-    // `listDatabaseFiles`' folder filter (`relativePath.startsWith('Mail/')`)
-    // then `listMailEntries`' `.md` filter.
-    let folder_prefix = format!("{MAIL_FOLDER}/");
-    Ok(links
+    Ok(list_database_files(mount, vault_id, Some(MAIL_FOLDER))?
         .into_iter()
-        .filter(|l| {
-            l.relative_path.starts_with(&folder_prefix)
-                && l.relative_path.to_lowercase().ends_with(".md")
-        })
-        .map(|l| l.relative_path)
+        .filter(|e| e.kind != "folder" && e.relative_path.to_lowercase().ends_with(".md"))
+        .map(|e| e.relative_path)
         .collect())
 }
 
@@ -368,9 +338,9 @@ pub fn deliver_letter(mount: &Connection, params: &DeliverLetterParams) -> Resul
 /// (`doc-mount-documents.repository.ts:110-134`) — so a failed read logs the
 /// repository's ERROR, answers `null`, becomes `readDatabaseDocument`'s
 /// NOT_FOUND and so `readLetter`'s `null`: the letter reads as ABSENT, never a
-/// throw. v5's shared `read_database_document` propagates, so the repository
-/// failure (the `Db` arm — a path refusal stays a throw, as in v4) takes v4's
-/// fallback and line here (P4.126).
+/// throw. [`read_database_document`] takes the same fallback (P4.131), so a
+/// path refusal (`normaliseRelativePath`) is the only `Db` error left — a throw
+/// here, as in v4.
 pub fn read_letter(
     mount: &Connection,
     vault_id: &str,
@@ -379,17 +349,6 @@ pub fn read_letter(
     match read_database_document(mount, vault_id, path) {
         Ok(doc) => Ok(Some(parse_letter(&doc.content))),
         Err(StoreError::Store(e)) if e.code == DbStoreErrorCode::NotFound => Ok(None),
-        Err(StoreError::Db(error)) => {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "doc_mount_documents",
-                mountPointId = vault_id,
-                relativePath = normalise_relative_path(path)?.as_str(),
-                error = %error,
-                "Error finding document by mount point and path"
-            );
-            Ok(None)
-        }
         Err(e) => Err(store_to_db(e)),
     }
 }
@@ -446,28 +405,6 @@ pub fn mark_alerted(mount: &Connection, vault_id: &str, path: &str) -> Result<()
             );
             return Ok(());
         }
-        // v4's `readDatabaseDocument` read is the repository's fallback
-        // `withRawDb(null)`: a failed read logs the repository ERROR and reads
-        // as NOT_FOUND — the same warned no-op (unified at the `97b25fc53`
-        // follow-ups round; `read_letter`'s arm, microseconds earlier on the
-        // same letter, made this one unplantable on its own).
-        Err(StoreError::Db(error)) => {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "doc_mount_documents",
-                mountPointId = vault_id,
-                relativePath = normalise_relative_path(path)?.as_str(),
-                error = %error,
-                "Error finding document by mount point and path"
-            );
-            tracing::warn!(
-                target: LOG_TARGET,
-                vaultId = vault_id,
-                path = path,
-                "markAlerted: letter no longer present"
-            );
-            return Ok(());
-        }
         Err(e) => return Err(store_to_db(e)),
     };
     let mut updates = Map::new();
@@ -488,31 +425,14 @@ pub fn mark_alerted(mount: &Connection, vault_id: &str, path: &str) -> Result<()
 /// unreachable from here: `deleteDatabaseDocument` never throws NOT_FOUND
 /// (an absent link is its `false` return), and a path [`resolve_mail_path`]
 /// produces never trips `normaliseRelativePath`'s `..` refusal. So the plain
-/// chokepoint is the whole behaviour — bar its link lookup:
-/// `docMountFileLinks.findByMountPointAndPath` is a FALLBACK repository read
-/// (`safeQuery(…, null)`, `doc-mount-file-links.repository.ts:514-529`), so a
-/// failed lookup logs the repository's ERROR and discards NOTHING (`false`),
-/// never a throw. v5's chokepoint propagates, so the Post Office makes that
-/// lookup first, with v4's fallback and line (P4.126).
+/// chokepoint is the whole behaviour. Its link lookup —
+/// `docMountFileLinks.findByMountPointAndPath` — is a FALLBACK `queryJoined`
+/// read, so a failed lookup logs `Error querying joined file links` (v4's outer
+/// `Error finding file link by mount point and path` is unreachable) and
+/// discards NOTHING (`false`), never a throw; [`delete_database_document`] is now
+/// v4's on exactly that (P4.131).
 pub fn discard_letter(mount: &Connection, vault_id: &str, path: &str) -> Result<bool, DbError> {
-    let rel = normalise_relative_path(path)?;
-    let deleted = match DocMountFileLinksRepository::new(mount)
-        .find_by_mount_point_and_path(vault_id, &rel)
-    {
-        Err(error) => {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "doc_mount_file_links",
-                mountPointId = vault_id,
-                relativePath = rel.as_str(),
-                error = %error,
-                "Error finding file link by mount point and path"
-            );
-            false
-        }
-        Ok(None) => false,
-        Ok(Some(_)) => delete_database_document(mount, vault_id, path)?,
-    };
+    let deleted = delete_database_document(mount, vault_id, path)?;
     tracing::debug!(
         target: LOG_TARGET,
         vaultId = vault_id,

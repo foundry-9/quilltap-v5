@@ -410,6 +410,129 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`mail-tools oracle wrote ${outPath} (${lines.length} scenarios)\n`);
+
+  // ── The FAILURE plants (P4.131): v4's REAL stack over a broken mount index /
+  // main DB, recorded to a SECOND file so the scenario count above is untouched.
+  //
+  // Why column RENAMEs and not DROP TABLEs: v4's dedicated-DB repositories
+  // (`withRawDb` → `ensureTable`) re-create a DROPPED table on the next read, so
+  // a dropped `doc_mount_file_links` (or main-DB `characters`) is not a failure
+  // in v4 at all — every read answers empty, nothing is logged, and `send_mail`
+  // resolves its recipient normally. A RENAMEd column survives `ensureTable` and breaks every query
+  // that names it, which is the failure the repository fallbacks exist for.
+  // Each record is one (plant, tool): the handler's formatted text plus every
+  // ERROR/WARN v4 logged while it ran, recorded off the `Logger` prototype (the
+  // `chats-messages-ops-tier2.ts` spy recipe) with the context keys in v4's
+  // order. The Rust side filters to the repository-layer messages it ports.
+  const plantOut = process.env.QT_ORACLE_OUT_PLANTS ?? outPath.replace(/\.ndjson$/, '-plants.ndjson');
+  const plantLines: string[] = [];
+  const plants: Array<{ plant: string; tools: string[] }> = [
+    { plant: 'links', tools: ['list', 'read', 'discard', 'send'] },
+    { plant: 'links+folders', tools: ['list'] },
+    { plant: 'folders', tools: ['list'] },
+    { plant: 'characters', tools: ['list', 'read', 'discard', 'send'] },
+  ];
+  for (const { plant, tools } of plants) {
+    const scratch = mkdtempSync(join(tmpdir(), 'qt-mail-plant-oracle-'));
+    mkdirSync(join(scratch, 'data'), { recursive: true });
+    const mainWork = join(scratch, 'main-work.db');
+    const mountWork = join(scratch, 'mount-work.db');
+    copyFileSync(mainFixture, mainWork);
+    copyFileSync(mountFixture, mountWork);
+
+    process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
+    process.env.SQLITE_PATH = mainWork;
+    process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
+    process.env.QUILLTAP_DATA_DIR = scratch;
+    delete process.env.SQLITE_WAL_MODE;
+    process.env.LOG_LEVEL = 'error';
+
+    jest.resetModules();
+    jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
+    jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
+    jest.doMock('@/lib/database/repositories', () => jest.requireActual('@/lib/database/repositories'));
+    jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+
+    const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
+      '@/lib/database/backends/sqlite/mount-index-client'
+    );
+    await initializeDatabase();
+    const { Logger } = await import('@/lib/logger');
+    let current: Array<Record<string, unknown>> | null = null;
+    for (const level of ['error', 'warn'] as const) {
+      const original = Logger.prototype[level];
+      Logger.prototype[level] = function (
+        this: unknown,
+        message: string,
+        context?: Record<string, unknown>,
+        ...rest: unknown[]
+      ) {
+        if (current) {
+          const fields: Array<[string, string]> = [];
+          for (const [k, v] of Object.entries(context ?? {})) {
+            if (k === 'module' || k === 'error') continue;
+            if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+              fields.push([k, String(v)]);
+            }
+          }
+          current.push({ level, message, fields });
+        }
+        return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+      } as never;
+    }
+
+    jest.useFakeTimers({
+      doNotFake: [
+        'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval',
+        'clearImmediate', 'nextTick', 'queueMicrotask', 'requestAnimationFrame',
+        'cancelAnimationFrame', 'hrtime', 'performance',
+      ],
+    });
+    jest.setSystemTime(new Date(spec.fixedSentAt));
+
+    const mountDb = getRawMountIndexDatabase();
+    const mainDb = getRawDatabase();
+    if (!mountDb || !mainDb) throw new Error('raw DB handles unavailable');
+    if (plant === 'links' || plant === 'links+folders') {
+      mountDb.exec('ALTER TABLE doc_mount_file_links RENAME COLUMN relativePath TO relativePath_x');
+    }
+    if (plant === 'links+folders' || plant === 'folders') {
+      mountDb.exec('ALTER TABLE doc_mount_folders RENAME COLUMN path TO path_x');
+    }
+    if (plant === 'characters') mainDb.exec('ALTER TABLE characters RENAME COLUMN name TO name_x');
+
+    const ctx = (characterId: string) => ({ userId: spec.userId, chatId: 'chat-plant', characterId });
+    const { executeListMailTool, formatListMailResults } = await import('@/lib/tools/handlers/list-mail-handler');
+    const { executeReadMailTool, formatReadMailResults } = await import('@/lib/tools/handlers/read-mail-handler');
+    const { executeDiscardMailTool, formatDiscardMailResults } = await import('@/lib/tools/handlers/discard-mail-handler');
+    const { executeSendMailTool, formatSendMailResults } = await import('@/lib/tools/handlers/send-mail-handler');
+    const letter = name(P.unalerted);
+    for (const tool of tools) {
+      current = [];
+      let text: string;
+      if (tool === 'list') text = formatListMailResults(await executeListMailTool({}, ctx(R)));
+      else if (tool === 'read') text = formatReadMailResults(await executeReadMailTool({ letter }, ctx(R)));
+      else if (tool === 'discard') text = formatDiscardMailResults(await executeDiscardMailTool({ letter }, ctx(R)));
+      else {
+        text = formatSendMailResults(
+          await executeSendMailTool(
+            { character: R, message: 'to myself' },
+            { ...ctx(R), callingParticipantId: null },
+          ),
+        );
+      }
+      plantLines.push(JSON.stringify({ label: `plant:${plant}:${tool}`, plant, tool, text, logs: current }));
+      current = null;
+    }
+
+    jest.useRealTimers();
+    closeMountIndexSQLiteClient();
+    await closeDatabase();
+  }
+  fs.writeFileSync(plantOut, plantLines.join('\n') + '\n');
+  process.stderr.write(`mail-tools plants oracle wrote ${plantOut} (${plantLines.length} records)\n`);
 }
 
 test('mail-tools oracle', async () => {

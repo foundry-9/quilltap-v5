@@ -156481,3 +156481,30 @@ The standing queue (Lantern budget, a real token-limit turn, the four planted
 proofs, dedup/summaries, the Brahma deep query, #101, the compression
 re-measure, the conceal-marker arm), an autonomous room's budget charging the
 per-leg rows, and a real flat-body OpenAI image refusal.
+
+## P4.131 — the document-store repository fallbacks as v4 REALLY has them (lane record, 2026-09-30)
+
+Branch `claude/document-store-repo-fallbacks-55643f`, pin `97b25fc53` (`/tmp/qt-v4-pin-p4131-97b25fc53`), §2 probe PASS at start. core 0.0.1116, harness 0.0.1035.
+
+**Landed.** Tier 1 items 1–4 and 6–7, item 5 partly (see below); Tier 2 items 9 and 10.
+- `db::fallback`: five new shapes (`find_by_filter_or_empty`, `find_one_by_filter_or_none`, `joined_file_links_or_empty`, `document_by_mount_point_and_path_or_none`, `delete_with_gc_or_false`), capture + silence pinned. `chat_gallery`'s module-local joined-read copy and `tiered_mount_pool`'s group-links line folded onto the home.
+- Twins beside the propagating fns in the documents, links and folders repos (folders' `find_by_mount_point_and_path_or_none` is v4's exact-then-scan over the two inner lines). The repo method `delete_database_document` is v4's shape (joined lookup fallback; GC failure logs and still answers `true`).
+- `database_store`: read → NOT_FOUND on a failed read, list → empty/partial, delete as above, write gains v4's unconditional pre-read (answer discarded), move/exists/folder fns on the twins. Seven new unit pins. The importer's strict reads do NOT route through the store (its strict reads are `get_messages_strict`); `sync/apply_store.rs` calls `delete_database_folder`, which now takes v4's fallback (v4's applier is not strict either; its own direct reads are unchanged and ESCALATED).
+- Mail: `list_mail_entries` / `read_letter` / `mark_alerted` / `discard_letter` collapse onto the store fns (wrong outer lines removed, the redundant second lookup gone). `deliver.rs::ensure_vault` takes a linked FK directly.
+- `embedding_scheduler` opts in; `mount_embedding_effects` test re-poisoned at the chunks read; `subprompts/storage.rs` test re-aimed (its WARN was unreachable through v4's fallback list); wardrobe plant re-aimed at the real-stack swallow.
+- New census `doc_mount_fallback_sites_census` (130 sites; 23/7/18/0/13/1/68 by class, arithmetic in its comment).
+
+**What the order got wrong (measured against v4 at the pin).**
+1. **`DROP TABLE` is not a failure in v4.** Dedicated-DB repos re-create a dropped table on the next read and main-DB collections likewise: every read answers empty, nothing is logged. A column RENAME survives `ensureTable` and is the real failure. P4.126's plants pinned "v4 bytes" for a failure v4 cannot have. All mail plants are now RENAME plants recorded from v4's real stack (second oracle output file `<out>-plants.ndjson`), diffed per (plant, tool) on text + the ordered repository-layer lines.
+2. **The `send_mail` "two pre-catch ERRORs" shape does not exist.** v4 resolves the recipient through the character overlay, whose batch reads are fallback reads: every character is dropped as "vault unavailable" and the tool answers `No soul by that name keeps a postbox here.` — it never reaches the write or its catch. v5's overlay read (`characters_read::find_by_user_id` → `document_store_overlay`) propagates, so the recipient resolve throws into the catch (the order's `ensure_vault`/backfill throw site was not where v5 throws). Recorded divergence, pinned both ways (`assert_send_divergence`: VANISHED / WRONG SHAPE); the fix lives in the overlay (not this lane's files; on the census's `fallback-in-v4` list). The FK-direct `ensure_vault` and the pre-read are kept as v4-faithful regardless. The pre-read's failure line is pinned by a unit test (M2).
+3. v4 logs an extra `Failed to ensure <table> table in mount index database` per call under a rename plant (`ensureTable` trips on the renamed column): a plant artefact v5 has no analogue for; the diff compares the ported repository-layer messages only.
+4. The survey's ~101 census sites omitted blobs and twins; the scanner measures 130.
+
+**Mutation proofs (file-backup reverts).** M1 (joined line back to the outer bytes) → `fallback` unit, two `database_store` units and the mail family red. M2 (pre-read dropped) → `a_failed_write_logs_the_pre_read_first_then_throws` red alone. M3 (GC propagates) → `a_failed_gc_logs_and_still_answers_true` red alone. M4 (a census row flipped) → `every_document_store_read_site_is_classified` red.
+**Red-first.** Mail family against the old pins: red at the list arm (`mail_carina_tools_equivalence.rs:1058`, old outer bytes) before the re-pin.
+
+**Deferred (loud).** Tier 2 item 8 (the mail inputs written twice — oracle emits inputs, Rust replays): NOT landed; the file is otherwise restructured and the change is independent. The sync applier's direct reads, the character overlay and `api/chat_media.rs:2317` stay propagating (census rows). `subprompts/storage.rs` (no lane owns it) had one in-file test re-aimed — a consequence of the store semantics.
+
+**Flake.** `sync_engine_equivalence` failed once in the batched sweep (first `mkdir` action `createdAt` null vs minted) and passed 2/2 when re-run alone: a timing intermittent, untouched code.
+
+**Regen recipes as run.** `python3 harness/tools/recipe_sweep.py --run <family> --v4 /tmp/qt-v4-pin-p4131-97b25fc53 --v5w <worktree>` for the 18 families named in the order (mail, post_office_routes, doc_mount_files/file_links/folders/documents tier2, wardrobe_instructions tier2, tiered_mount_pool, scriptorium_tools, tool_execution_tier2, search_tools, pascal_workbench, sync_engine, system_backup/export, subprompts_storage_tier2, chat_gallery, tool_dispatch). The mail recipe now also writes `/tmp/oracle-mail-tools-plants.ndjson`. No committed fixture changed.

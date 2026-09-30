@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — feat(db): document-store repository fallbacks as v4 has them; mail failure plants become a real differential
+
+_Versions: core 0.0.1116, harness 0.0.1035._
+
+`db::fallback` gains one fn per v4 line shape (filter reads, the joined file-link read, the document-by-path read, delete-with-GC). The three document-store repositories get fallback twins beside their propagating fns. `database_store` now follows v4: a failed read is NOT_FOUND, a failed listing is empty, a failed delete lookup answers `false`, a failed GC logs and still answers `true`, and a write does v4's unconditional pre-read. The mail list/discard lines are corrected (v4's outer ERRORs are unreachable; the inner joined-read line fires), `send_mail` takes a linked vault FK directly, and the embedding scheduler and the tiered mount pool use the shared home. The mail failure plants are now column-rename plants recorded from v4's real stack and diffed per tool (DROP TABLE is self-healed in v4). New census `doc_mount_fallback_sites_census` lists all 130 direct repository read sites by class.
+
 #### 2026-09-30 — docs(porting): order the `97b25fc53` smalls round (P4.127–P4.132)
 
 _Docs-only change._

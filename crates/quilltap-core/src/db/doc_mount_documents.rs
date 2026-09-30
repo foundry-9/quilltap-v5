@@ -279,6 +279,38 @@ impl<'c> DocMountDocumentsRepository<'c> {
             })
     }
 
+    /// v4's FALLBACK `findByMountPointAndPath` as its callers see it — the
+    /// content half of [`Self::find_by_mount_point_and_path`]. v4's read is a
+    /// `withRawDb(null)`: a failed read logs `Error finding document by mount
+    /// point and path` and answers `null`, never a throw. The propagating
+    /// sibling STAYS for the importer's strict reads (v4 bug 79); callers opt
+    /// in to this one where v4's caller is the fallback read (P4.131).
+    pub fn find_by_mount_point_and_path_or_none(
+        &self,
+        mount_point_id: &str,
+        relative_path: &str,
+    ) -> Option<String> {
+        super::fallback::document_by_mount_point_and_path_or_none(
+            mount_point_id,
+            relative_path,
+            || self.find_by_mount_point_and_path(mount_point_id, relative_path),
+        )
+    }
+
+    /// The `(content, lastModified)` half of the same fallback read — see
+    /// [`Self::find_by_mount_point_and_path_or_none`].
+    pub fn find_content_and_mtime_by_mount_point_and_path_or_none(
+        &self,
+        mount_point_id: &str,
+        relative_path: &str,
+    ) -> Option<(String, String)> {
+        super::fallback::document_by_mount_point_and_path_or_none(
+            mount_point_id,
+            relative_path,
+            || self.find_content_and_mtime_by_mount_point_and_path(mount_point_id, relative_path),
+        )
+    }
+
     /// v4 `findByMountPointId` (`doc-mount-documents.repository.ts`): every
     /// document in a mount point as `(relativePath, content)` pairs, joined
     /// through `doc_mount_file_links` (documents are content-addressed, so the

@@ -183,28 +183,18 @@ const BLOB_SHA256_LENGTH: usize = 64;
 /// / `findByFileId` never sees the error, so the pre-commit outer lines
 /// ("Error finding file link(s) by …") are unreachable now — this is the ONLY
 /// line a SQL failure on the joined read logs.
-fn joined_read_error(err: &DbError, where_clause: &'static str) {
-    tracing::error!(
-        collection = "doc_mount_file_links",
-        whereClause = where_clause,
-        error = %err,
-        "Error querying joined file links"
-    );
-}
-
-/// Answer `None` on a joined-read failure, having already logged it via
-/// [`joined_read_error`].
+///
+/// The line lives in [`crate::db::fallback`] — the ONE home for v4's repository
+/// fallback reads (target `quilltap::db`) — rather than a module-local copy.
 fn joined_link_or_none<T>(
     read: Result<Option<T>, DbError>,
     where_clause: &'static str,
 ) -> Option<T> {
-    match read {
-        Ok(found) => found,
-        Err(err) => {
-            joined_read_error(&err, where_clause);
-            None
-        }
-    }
+    crate::db::fallback::joined_file_links_or_empty(where_clause, || {
+        read.map(|found| found.into_iter().collect())
+    })
+    .into_iter()
+    .next()
 }
 
 fn walk_message_attachments(
@@ -262,13 +252,12 @@ fn walk_message_attachments(
                     None => {
                         // v4's `findByFileId` returns the SAME joined shape, so
                         // re-read the winning row through the joined getter.
-                        let first = match links.find_by_file_id(&attachment_id) {
-                            Ok(rows) => rows.into_iter().next(),
-                            Err(err) => {
-                                joined_read_error(&err, "WHERE l.fileId = ?");
-                                None
-                            }
-                        };
+                        let first = crate::db::fallback::joined_file_links_or_empty(
+                            "WHERE l.fileId = ?",
+                            || links.find_by_file_id(&attachment_id),
+                        )
+                        .into_iter()
+                        .next();
                         match first {
                             Some(first) => joined_link_or_none(
                                 links.find_by_id_with_content(&first.id),

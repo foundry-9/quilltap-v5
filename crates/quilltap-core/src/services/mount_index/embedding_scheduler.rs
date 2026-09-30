@@ -140,7 +140,10 @@ pub fn enqueue_embedding_jobs_for_mount_point(
     mount: &Connection,
     mount_point_id: &str,
 ) -> Result<i64, DbError> {
-    let links = DocMountFileLinksRepository::new(mount).find_by_mount_point_id(mount_point_id)?;
+    // v4's `findByMountPointId` is the FALLBACK joined read (`[]` after its
+    // `Error querying joined file links` ERROR), not a throw (P4.131).
+    let links =
+        DocMountFileLinksRepository::new(mount).find_by_mount_point_id_or_empty(mount_point_id);
     let mut allow_by_link: std::collections::HashMap<&str, bool> = std::collections::HashMap::new();
     let mut blocked: Vec<&str> = Vec::new();
     for l in &links {

@@ -26,6 +26,19 @@
 //! - `backfillFolderRowsForMountPoint` / `rescanDatabaseMountPoint` are out of
 //!   scope (they drive the chunk/embed pipeline).
 //!
+//! ## Failure semantics are v4's — the repository FALLBACKS
+//!
+//! Every repository read v4's `database-store.ts` makes is a FALLBACK read
+//! (`safeQuery(…, null | [])`, or a fallback `withRawDb`): a failed read logs the
+//! repository's ERROR and answers "nothing", it never throws (P4.131). So a
+//! failed document read is `NOT_FOUND`, a failed listing is empty/partial, a
+//! failed link lookup on delete answers `false`, and a failed GC logs and STILL
+//! answers `true` (v4 emits `documentDeleted` and returns `true` regardless). The
+//! reads here therefore go through the repositories' `…_or_none` / `…_or_empty`
+//! twins; the PROPAGATING repository fns stay for the callers that must see a
+//! failure — the importer's strict reads (v4 bug 79, `quilltap_import/files.rs`,
+//! `mod.rs`) never route through this module.
+//!
 //! ## Error messages reach the LLM
 //!
 //! The `doc_*` tool handlers inspect the thrown message text (they check
@@ -131,6 +144,8 @@ pub struct ReadDoc {
 /// v4 `readDatabaseDocument` (`database-store.ts:78`): read a document's content +
 /// mtime + size at `(mountPointId, rel)`. NOT_FOUND → a `NotFound` store error
 /// with v4's exact message (kept faithful; the text-read handler special-cases it).
+/// A FAILED read is NOT_FOUND too: v4's `findByMountPointAndPath` is a fallback
+/// `withRawDb(null)` that logs its ERROR and answers `null`.
 pub fn read_database_document(
     conn: &Connection,
     mount_point_id: &str,
@@ -138,7 +153,7 @@ pub fn read_database_document(
 ) -> Result<ReadDoc, StoreError> {
     let rel = normalise_relative_path(relative_path)?;
     let docs = DocMountDocumentsRepository::new(conn);
-    let found = docs.find_content_and_mtime_by_mount_point_and_path(mount_point_id, &rel)?;
+    let found = docs.find_content_and_mtime_by_mount_point_and_path_or_none(mount_point_id, &rel);
     let Some((content, last_modified)) = found else {
         return Err(DatabaseStoreError::new(
             format!("Document not found in database-backed store: {rel}"),
@@ -189,6 +204,14 @@ pub fn write_database_document(
             DbStoreErrorCode::Unsupported,
         )
     })?;
+
+    // v4's UNCONDITIONAL `existing` pre-read (`database-store.ts:124`). It feeds
+    // only the `expectedMtime` guard, which stays deferred here, so the answer is
+    // discarded — but the READ is v4's, and a failing one logs its fallback ERROR
+    // before `linkDocumentContent` throws, which is how `send_mail`'s catch sees
+    // two non-catch lines, not one (P4.131).
+    let _ = DocMountDocumentsRepository::new(conn)
+        .find_by_mount_point_and_path_or_none(mount_point_id, &rel);
 
     let content_sha256 = sha256_of_string(content);
     let file_name = basename(&rel).to_string();
@@ -249,8 +272,11 @@ pub fn write_database_document(
 
 /// v4 `deleteDatabaseDocument` (`database-store.ts:188`): unlink the document at
 /// `(mountPointId, rel)` with GC. Returns `false` when no link exists (v4's
-/// NOT_FOUND-tolerant early return). The `emitDocumentDeleted` event is a no-op
-/// seam (skipped).
+/// NOT_FOUND-tolerant early return) — and ALSO when the link lookup FAILED (v4's
+/// `findByMountPointAndPath` is a fallback `queryJoined`). A failed GC logs and
+/// still answers `true`: v4 emits `documentDeleted` and returns `true` whatever
+/// `deleteWithGC` answered. The `emitDocumentDeleted` event is a no-op seam
+/// (skipped).
 pub fn delete_database_document(
     conn: &Connection,
     mount_point_id: &str,
@@ -280,7 +306,7 @@ pub fn move_database_document(
     let docs = DocMountDocumentsRepository::new(conn);
     // Source must exist (content lookup suffices for existence).
     if docs
-        .find_by_mount_point_and_path(mount_point_id, &from_rel)?
+        .find_by_mount_point_and_path_or_none(mount_point_id, &from_rel)
         .is_none()
     {
         return Err(DatabaseStoreError::new(
@@ -306,7 +332,7 @@ pub fn move_database_document(
     let case_only_rename = from_rel != to_rel && from_rel.to_lowercase() == to_rel.to_lowercase();
     if !case_only_rename
         && docs
-            .find_by_mount_point_and_path(mount_point_id, &to_rel)?
+            .find_by_mount_point_and_path_or_none(mount_point_id, &to_rel)
             .is_some()
     {
         return Err(DatabaseStoreError::new(
@@ -328,7 +354,7 @@ pub fn move_database_document(
     // Move = update the link row at the source path. fileType lives on the content
     // row so it doesn't move with the rename, but the fileType detected from the
     // new path may differ; update the file row's fileType when it changed.
-    if let Some(link) = links.find_by_mount_point_and_path(mount_point_id, &from_rel)? {
+    if let Some(link) = links.find_by_mount_point_and_path_or_none(mount_point_id, &from_rel) {
         links.update(
             &link.id,
             &LinkUpdate {
@@ -387,8 +413,12 @@ pub fn list_database_files(
     mount_point_id: &str,
     folder: Option<&str>,
 ) -> Result<Vec<DbFileListEntry>, DbError> {
-    let links = DocMountFileLinksRepository::new(conn).find_by_mount_point_id(mount_point_id)?;
-    let folders = DocMountFoldersRepository::new(conn).find_by_mount_point_id(mount_point_id)?;
+    // Both reads are v4 FALLBACK reads (`[]` after the repository's ERROR), so a
+    // failure lists empty — or partial when only one of the two fails.
+    let links =
+        DocMountFileLinksRepository::new(conn).find_by_mount_point_id_or_empty(mount_point_id);
+    let folders =
+        DocMountFoldersRepository::new(conn).find_by_mount_point_id_or_empty(mount_point_id);
 
     // Normalise folder input. Stored paths carry no leading/trailing slashes, so
     // strip any here before comparing. '', '/', '//' etc. → "no filter" (root).
@@ -479,7 +509,7 @@ pub fn delete_database_folder(
     let rel = normalise_relative_path(folder_path)?;
     let folders = DocMountFoldersRepository::new(conn);
 
-    let Some(folder) = folders.find_by_mount_point_and_path(mount_point_id, &rel)? else {
+    let Some(folder) = folders.find_by_mount_point_and_path_or_none(mount_point_id, &rel) else {
         // v4 interpolates the ORIGINAL folderPath, not the normalised rel.
         return Err(DatabaseStoreError::new(
             format!("Folder not found: {folder_path}"),
@@ -516,7 +546,8 @@ pub fn move_database_folder(
     let folders = DocMountFoldersRepository::new(conn);
     let links_repo = DocMountFileLinksRepository::new(conn);
 
-    let Some(source_folder) = folders.find_by_mount_point_and_path(mount_point_id, &from_rel)?
+    let Some(source_folder) =
+        folders.find_by_mount_point_and_path_or_none(mount_point_id, &from_rel)
     else {
         return Err(DatabaseStoreError::new(
             format!("Source folder not found: {from_path}"),
@@ -528,7 +559,8 @@ pub fn move_database_folder(
     // The lookup is case-insensitive, so a case-only rename of the folder itself
     // (lore → Lore) finds the source row — that's allowed; any OTHER folder at
     // the destination (in any casing) is a conflict.
-    if let Some(dest_folder) = folders.find_by_mount_point_and_path(mount_point_id, &to_rel)? {
+    if let Some(dest_folder) = folders.find_by_mount_point_and_path_or_none(mount_point_id, &to_rel)
+    {
         if dest_folder.id != source_folder.id {
             return Err(DatabaseStoreError::new(
                 format!("Destination folder already exists: {to_path}"),
@@ -544,7 +576,9 @@ pub fn move_database_folder(
     let mut dest_parent_path = String::new();
     if dest_dir != "." {
         links_repo.ensure_folder_path(mount_point_id, &dest_dir)?;
-        if let Some(parent) = folders.find_by_mount_point_and_path(mount_point_id, &dest_dir)? {
+        if let Some(parent) =
+            folders.find_by_mount_point_and_path_or_none(mount_point_id, &dest_dir)
+        {
             dest_parent_id = Some(parent.id);
             dest_parent_path = parent.path;
         }
@@ -575,7 +609,7 @@ pub fn move_database_folder(
     )?;
 
     // Update all descendant folder paths.
-    let all_folders = folders.find_by_mount_point_id(mount_point_id)?;
+    let all_folders = folders.find_by_mount_point_id_or_empty(mount_point_id);
     for folder in &all_folders {
         if folder.id == source_folder.id {
             continue;
@@ -596,7 +630,7 @@ pub fn move_database_folder(
     // Walk every link and rewrite its relativePath + folderId when it falls inside
     // the renamed folder. Post-refactor, path/folder membership lives entirely on
     // doc_mount_file_links.
-    let links = links_repo.find_by_mount_point_id(mount_point_id)?;
+    let links = links_repo.find_by_mount_point_id_or_empty(mount_point_id);
     for link in &links {
         if !old_prefix.is_empty() && link.relative_path.starts_with(&old_prefix) {
             let new_path = format!("{}{}", new_prefix, &link.relative_path[old_prefix.len()..]);
@@ -604,7 +638,7 @@ pub fn move_database_folder(
             let mut new_folder_id: Option<String> = None;
             if new_folder_path != "." {
                 if let Some(nf) =
-                    folders.find_by_mount_point_and_path(mount_point_id, &new_folder_path)?
+                    folders.find_by_mount_point_and_path_or_none(mount_point_id, &new_folder_path)
                 {
                     new_folder_id = Some(nf.id);
                 }
@@ -637,7 +671,7 @@ pub fn database_document_exists(
 ) -> Result<bool, DbError> {
     let rel = normalise_relative_path(relative_path)?;
     Ok(DocMountDocumentsRepository::new(conn)
-        .find_by_mount_point_and_path(mount_point_id, &rel)?
+        .find_by_mount_point_and_path_or_none(mount_point_id, &rel)
         .is_some())
 }
 
@@ -649,7 +683,7 @@ pub fn database_folder_exists(
 ) -> Result<bool, DbError> {
     let rel = normalise_relative_path(relative_path)?;
     Ok(DocMountFoldersRepository::new(conn)
-        .find_by_mount_point_and_path(mount_point_id, &rel)?
+        .find_by_mount_point_and_path_or_none(mount_point_id, &rel)
         .is_some())
 }
 
@@ -662,7 +696,8 @@ pub fn folder_has_contents(
     folder_id: &str,
 ) -> Result<bool, DbError> {
     // Child folders (parentId == folderId).
-    let folders = DocMountFoldersRepository::new(conn).find_by_mount_point_id(mount_point_id)?;
+    let folders =
+        DocMountFoldersRepository::new(conn).find_by_mount_point_id_or_empty(mount_point_id);
     if folders
         .iter()
         .any(|f| f.parent_id.as_deref() == Some(folder_id))
@@ -671,7 +706,8 @@ pub fn folder_has_contents(
     }
 
     // Any link directly under this folder (folderId == folderId).
-    let links = DocMountFileLinksRepository::new(conn).find_by_mount_point_id(mount_point_id)?;
+    let links =
+        DocMountFileLinksRepository::new(conn).find_by_mount_point_id_or_empty(mount_point_id);
     Ok(links
         .iter()
         .any(|l| l.folder_id.as_deref() == Some(folder_id)))
@@ -1075,5 +1111,181 @@ mod tests {
         assert!(database_document_exists(&conn, MP, "B/sub/two.md").unwrap());
         assert!(database_folder_exists(&conn, MP, "B").unwrap());
         assert!(database_folder_exists(&conn, MP, "B/sub").unwrap());
+    }
+
+    // ── Failure semantics: v4's repository FALLBACKS (P4.131) ───────────────
+    //
+    // Every plant is a column RENAME, not a DROP TABLE: v4's dedicated-DB
+    // repositories re-create a dropped table, so only a column that survives
+    // `ensureTable` and breaks the query is a failure v4 sees. Expected bytes
+    // are v4's at the pin (`doc-mount-file-links.repository.ts:500-530,753-800,
+    // 1445-1505`, `doc-mount-documents.repository.ts:110-135`, `doc-mount-
+    // folders.repository.ts:179-188`, `base.repository.ts:283-314`).
+
+    fn break_links(conn: &Connection) {
+        conn.execute_batch(
+            "ALTER TABLE doc_mount_file_links RENAME COLUMN relativePath TO relativePath_x",
+        )
+        .unwrap();
+    }
+
+    fn errors(lines: &[String]) -> Vec<&String> {
+        lines.iter().filter(|l| l.starts_with("ERROR ")).collect()
+    }
+
+    #[test]
+    fn a_failed_read_is_not_found_and_logs_the_documents_line() {
+        let conn = open_store_db();
+        seed(&conn, "Mail/a.md", "hello");
+        break_links(&conn);
+        let (res, lines) =
+            crate::test_support::captured_with(|| read_database_document(&conn, MP, "Mail/a.md"));
+        match res {
+            Err(StoreError::Store(e)) => {
+                assert_eq!(e.code, DbStoreErrorCode::NotFound);
+                assert_eq!(
+                    e.message,
+                    "Document not found in database-backed store: Mail/a.md"
+                );
+            }
+            other => panic!("expected NOT_FOUND, got {other:?}"),
+        }
+        let e = errors(&lines);
+        assert_eq!(e.len(), 1, "{lines:?}");
+        assert!(
+            e[0].starts_with(
+                "ERROR quilltap::db Error finding document by mount point and path collection=doc_mount_documents mountPointId=mount-1 relativePath=Mail/a.md error="
+            ),
+            "{}",
+            e[0]
+        );
+    }
+
+    #[test]
+    fn a_failed_listing_is_empty_with_v4s_two_lines_in_order() {
+        let conn = open_store_db();
+        seed(&conn, "Mail/a.md", "hello");
+        break_links(&conn);
+        conn.execute_batch("ALTER TABLE doc_mount_folders RENAME COLUMN path TO path_x")
+            .unwrap();
+        let (res, lines) = crate::test_support::captured_with(|| {
+            list_database_files(&conn, MP, Some("Mail")).unwrap()
+        });
+        assert!(res.is_empty());
+        let e = errors(&lines);
+        assert_eq!(e.len(), 2, "{lines:?}");
+        assert!(
+            e[0].starts_with(
+                "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? error="
+            ),
+            "{}",
+            e[0]
+        );
+        assert!(
+            e[1].starts_with(
+                "ERROR quilltap::db Error finding entities by filter collection=doc_mount_folders error="
+            ),
+            "{}",
+            e[1]
+        );
+    }
+
+    #[test]
+    fn a_partial_listing_keeps_the_half_that_read() {
+        let conn = open_store_db();
+        seed(&conn, "Mail/a.md", "hello");
+        conn.execute_batch("ALTER TABLE doc_mount_folders RENAME COLUMN path TO path_x")
+            .unwrap();
+        let (res, lines) = crate::test_support::captured_with(|| {
+            list_database_files(&conn, MP, Some("Mail")).unwrap()
+        });
+        assert_eq!(res.len(), 1, "the link half still lists");
+        assert_eq!(errors(&lines).len(), 1, "{lines:?}");
+    }
+
+    #[test]
+    fn a_failed_delete_lookup_answers_false_with_the_two_clause_line() {
+        let conn = open_store_db();
+        seed(&conn, "Mail/a.md", "hello");
+        break_links(&conn);
+        let (res, lines) = crate::test_support::captured_with(|| {
+            delete_database_document(&conn, MP, "Mail/a.md").unwrap()
+        });
+        assert!(!res);
+        let e = errors(&lines);
+        assert_eq!(e.len(), 1, "{lines:?}");
+        assert!(
+            e[0].starts_with(
+                "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?) error="
+            ),
+            "{}",
+            e[0]
+        );
+    }
+
+    /// v4's quirk, CONFIRMED by reading `deleteDatabaseDocument` (`database-store.
+    /// ts:176-190`): `deleteWithGC` is a fallback `withRawDb`, so a failed GC logs
+    /// `Error deleting file link with GC` and the function STILL emits
+    /// `documentDeleted` and answers `true`.
+    #[test]
+    fn a_failed_gc_logs_and_still_answers_true() {
+        let conn = open_store_db();
+        seed(&conn, "Mail/a.md", "hello");
+        conn.execute_batch(
+            "CREATE TRIGGER no_link_deletes BEFORE DELETE ON doc_mount_file_links \
+             BEGIN SELECT RAISE(ABORT, 'posed'); END;",
+        )
+        .unwrap();
+        let (res, lines) = crate::test_support::captured_with(|| {
+            delete_database_document(&conn, MP, "Mail/a.md").unwrap()
+        });
+        assert!(res, "v4 answers true whatever deleteWithGC answered");
+        let e = errors(&lines);
+        assert_eq!(e.len(), 1, "{lines:?}");
+        assert!(
+            e[0].starts_with("ERROR quilltap::db Error deleting file link with GC collection=doc_mount_file_links linkId="),
+            "{}",
+            e[0]
+        );
+        // The link is still there: the GC failed, nothing was deleted.
+        assert!(database_document_exists(&conn, MP, "Mail/a.md").unwrap());
+    }
+
+    /// v4's `writeDatabaseDocument` reads `existing` UNCONDITIONALLY before it
+    /// writes (`:124`); when that read fails it logs the documents line and the
+    /// write then throws. Two lines in that order: the read's, then whatever the
+    /// write itself throws (here the links rename breaks the link upsert).
+    #[test]
+    fn a_failed_write_logs_the_pre_read_first_then_throws() {
+        let conn = open_store_db();
+        break_links(&conn);
+        let (res, lines) = crate::test_support::captured_with(|| {
+            write_database_document(&conn, MP, "Mail/new.md", "hello")
+        });
+        assert!(res.is_err(), "the link upsert must still throw");
+        let e = errors(&lines);
+        assert_eq!(e.len(), 1, "{lines:?}");
+        assert!(
+            e[0].starts_with(
+                "ERROR quilltap::db Error finding document by mount point and path collection=doc_mount_documents mountPointId=mount-1 relativePath=Mail/new.md error="
+            ),
+            "{}",
+            e[0]
+        );
+    }
+
+    #[test]
+    fn a_healthy_store_logs_nothing_on_any_path() {
+        let conn = open_store_db();
+        let (_, lines) = crate::test_support::captured_with(|| {
+            seed(&conn, "Mail/a.md", "hello");
+            read_database_document(&conn, MP, "Mail/a.md").unwrap();
+            list_database_files(&conn, MP, None).unwrap();
+            database_document_exists(&conn, MP, "Mail/a.md").unwrap();
+            database_folder_exists(&conn, MP, "Mail").unwrap();
+            delete_database_document(&conn, MP, "Mail/a.md").unwrap();
+            delete_database_document(&conn, MP, "Mail/missing.md").unwrap();
+        });
+        assert!(errors(&lines).is_empty(), "{lines:?}");
     }
 }

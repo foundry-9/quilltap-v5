@@ -566,10 +566,10 @@ mod log_tests {
     /// The resolver: `Some selected subprompts no longer exist` (debug,
     /// `{characterId, selected, found}` — `selected` is the raw list length,
     /// `found` the matched count) when an id is dangling; silent when every
-    /// wanted id resolves; `Failed to resolve selected subprompts — continuing
-    /// without them` (warn) + `[]` when the listing itself throws.
+    /// wanted id resolves; a store failure lists EMPTY through v4's fallback reads
+    /// (their repository ERRORs, no WARN — the resolver's catch-all is unreachable).
     #[test]
-    fn resolver_debugs_the_dropped_ids_and_warns_on_a_failed_listing() {
+    fn resolver_debugs_the_dropped_ids_and_a_failed_listing_lists_empty() {
         let dir = tempfile::tempdir().unwrap();
         let (main, mount) = open_pair(&dir);
         let ids = |s: &[&str]| s.iter().map(|x| x.to_string()).collect::<Vec<_>>();
@@ -599,8 +599,11 @@ mod log_tests {
             "{lines:?}"
         );
 
-        // A mount partition with no store tables: the listing throws, the
-        // resolver fails SOFT.
+        // A mount partition with no store tables. v4's `listDatabaseFiles` reads
+        // are FALLBACK repository reads (`[]` after each repository's ERROR), so
+        // the listing does NOT throw: the resolver answers `[]` through v4's
+        // fallbacks and its own catch-all WARN is unreachable for a store failure
+        // (P4.131 — this pin had asserted the WARN through v5's propagating list).
         let broken = tempfile::tempdir().unwrap();
         let empty = Writer::open_writable(&broken.path().join("empty.db"), TEST_PEPPER).unwrap();
         let (out, lines) = captured_with(|| {
@@ -612,14 +615,13 @@ mod log_tests {
             )
         });
         assert!(out.is_empty());
-        let l = line(
-            &lines,
-            "Failed to resolve selected subprompts — continuing without them",
-        );
-        assert!(l.starts_with("WARN quilltap::subprompts"), "{l}");
+        line(&lines, "Error querying joined file links");
+        line(&lines, "Error finding entities by filter");
         assert!(
-            l.contains(&format!("character_id={CHAR_A}")) && l.contains("error="),
-            "{l}"
+            !lines
+                .iter()
+                .any(|l| l.contains("Failed to resolve selected subprompts")),
+            "{lines:?}"
         );
     }
 

@@ -253,17 +253,10 @@ pub fn resolve_mount_point_ids_for_group(
             "Error finding entity by ID"
         ),
     }
-    match GroupDocMountLinksRepository::new(mount).find_by_group_id(group_id) {
-        Ok(links) => {
-            for link in links {
-                push_unique(&mut ids, link);
-            }
-        }
-        Err(e) => tracing::error!(
-            collection = "group_doc_mount_links",
-            error = %e,
-            "Error finding entities by filter"
-        ),
+    for link in super::fallback::find_by_filter_or_empty("group_doc_mount_links", || {
+        GroupDocMountLinksRepository::new(mount).find_by_group_id(group_id)
+    }) {
+        push_unique(&mut ids, link);
     }
     ids
 }

@@ -1306,29 +1306,23 @@ impl<'c> DocMountFileLinksRepository<'c> {
         })
     }
 
-    /// v4 `deleteDatabaseDocument` (`database-store.ts`): unlink a document by
-    /// `(mountPointId, relativePath)` with GC. Returns `false` when no link exists
-    /// at that path (v4's `NOT_FOUND`-tolerant early return), else `true`.
+    /// v4 `deleteDatabaseDocument` (`database-store.ts:176-190`): unlink a document
+    /// by `(mountPointId, relativePath)` with GC, through v4's FALLBACK reads. A
+    /// missing link — or a link lookup that FAILED (`findByMountPointAndPath` is a
+    /// fallback `queryJoined`, which logs `Error querying joined file links`) —
+    /// answers `false`; otherwise `deleteWithGC` runs and v4 answers `true`
+    /// WHATEVER it returned, so a failed GC (logged by [`Self::delete_with_gc_or_false`])
+    /// still answers `true`. Only a path `normaliseRelativePath` refuses throws.
     pub fn delete_database_document(
         &self,
         mount_point_id: &str,
         relative_path: &str,
     ) -> Result<bool, DbError> {
         let rel = normalise_relative_path(relative_path)?;
-        let link_id: Option<String> = self
-            .conn
-            .query_row(
-                "SELECT id FROM doc_mount_file_links \
-                 WHERE mountPointId = ?1 AND LOWER(relativePath) = LOWER(?2)",
-                params![mount_point_id, rel],
-                |row| row.get::<_, String>(0),
-            )
-            .map(Some)
-            .or_else(no_rows_to_none)?;
-        let Some(link_id) = link_id else {
+        let Some(link) = self.find_by_mount_point_and_path_or_none(mount_point_id, &rel) else {
             return Ok(false);
         };
-        self.delete_with_gc(&link_id)?;
+        self.delete_with_gc_or_false(&link.id);
         Ok(true)
     }
 
@@ -1879,6 +1873,42 @@ impl<'c> DocMountFileLinksRepository<'c> {
             .query_map(params![mount_point_id], Self::map_link_row)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// v4's FALLBACK `findByMountPointId`, as its callers see it: `queryJoined` is
+    /// a fallback `withRawDb`, so a failed read logs `Error querying joined file
+    /// links {whereClause: "WHERE l.mountPointId = ?"}` and answers `[]` — the
+    /// outer `Error finding file links by mount point ID` is unreachable. The
+    /// propagating sibling STAYS for strict callers (the importer, bug 79).
+    pub fn find_by_mount_point_id_or_empty(&self, mount_point_id: &str) -> Vec<LinkRow> {
+        super::fallback::joined_file_links_or_empty("WHERE l.mountPointId = ?", || {
+            self.find_by_mount_point_id(mount_point_id)
+        })
+    }
+
+    /// v4's FALLBACK `findByMountPointAndPath`, as its callers see it: the same
+    /// `queryJoined` line, with v4's two-clause `whereClause`, and `None`.
+    pub fn find_by_mount_point_and_path_or_none(
+        &self,
+        mount_point_id: &str,
+        relative_path: &str,
+    ) -> Option<LinkRow> {
+        super::fallback::joined_file_links_or_empty(
+            "WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?)",
+            || {
+                self.find_by_mount_point_and_path(mount_point_id, relative_path)
+                    .map(|found| found.into_iter().collect())
+            },
+        )
+        .into_iter()
+        .next()
+    }
+
+    /// v4's FALLBACK `deleteWithGC`, as its callers see it: a failed delete logs
+    /// `Error deleting file link with GC` and answers `false` (v4's
+    /// `{ fileId: null, fileGC: false }`).
+    pub fn delete_with_gc_or_false(&self, link_id: &str) -> bool {
+        super::fallback::delete_with_gc_or_false(link_id, || self.delete_with_gc(link_id))
     }
 
     /// v4 `findByFileId` (`doc-mount-file-links.repository.ts:375`): every link

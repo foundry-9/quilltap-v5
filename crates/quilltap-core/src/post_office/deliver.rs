@@ -36,13 +36,26 @@ pub enum ComposeAndDeliverResult {
 }
 
 /// Resolve (or provision) a character's vault mount-point id (v4
-/// `ensureCharacterVault(character).mountPointId`). A provisioned character
-/// short-circuits on its existing FK; otherwise the vault is scaffolded.
+/// `ensureCharacterVault(character).mountPointId`). A LINKED character returns
+/// its existing FK and touches no store (`character-vault.ts:146-148`) — so it
+/// cannot fail. v5's [`ensure_character_vault`] also runs the lazy fact-sheet
+/// backfill on that arm, a mount-store read (and write) v4's delivery never
+/// makes, whose failure would throw ahead of the two repository ERRORs and the
+/// catch v4 logs on a broken store; so the FK is taken directly, as
+/// `tools::list_mail::ensure_own_vault` does (P4.131). JS truthiness: an EMPTY
+/// FK is unlinked. An unlinked character takes the full ensure.
 fn ensure_vault(
     main: &Connection,
     mount: &Connection,
     character: &Value,
 ) -> Result<String, DbError> {
+    let fk = character
+        .get("characterDocumentMountPointId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+    if let Some(fk) = fk {
+        return Ok(fk.to_string());
+    }
     let cid = character
         .get("id")
         .and_then(Value::as_str)
@@ -51,12 +64,9 @@ fn ensure_vault(
         .get("name")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let fk = character
-        .get("characterDocumentMountPointId")
-        .and_then(Value::as_str);
     let input: CharacterVaultWriteInput =
         serde_json::from_value(character.clone()).unwrap_or_default();
-    let res = ensure_character_vault(main, mount, cid, name, &input, fk)?;
+    let res = ensure_character_vault(main, mount, cid, name, &input, None)?;
     Ok(res.mount_point_id)
 }
 

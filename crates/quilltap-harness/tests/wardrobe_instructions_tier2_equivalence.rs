@@ -491,18 +491,25 @@ fn wardrobe_instructions_cascade_matches_oracle() {
     );
 }
 
-/// v4's third write-helper unit arm: **only** a `NOT_FOUND` delete failure is
-/// swallowed — anything else rethrows. v4 reaches it by mocking
-/// `deleteDatabaseDocument` to reject with an `IO_ERROR`; over a real database
-/// no INPUT can produce that, so the fault is injected the way this repo already
-/// injects unreachable catch arms (`force-a-swallowed-catch-by-breaking-the-table`):
-/// drop the links table on a scratch copy and clear.
+/// v4's third write-helper unit arm says **only** a `NOT_FOUND` delete failure is
+/// swallowed — anything else rethrows. That arm is a v4 UNIT-MOCK arm: the test
+/// mocks `deleteDatabaseDocument` to reject with an `IO_ERROR`. Over v4's REAL
+/// stack a failing links table does not reach it at all — `deleteDatabaseDocumentIfExists`
+/// → `deleteDatabaseDocument` looks the link up through
+/// `docMountFileLinks.findByMountPointAndPath`, a fallback `queryJoined` that
+/// logs `Error querying joined file links` and answers `[]`, so the lookup is
+/// `null` and the clear answers `false` — a SWALLOW (`wardrobe-instructions.ts:
+/// 106-115`). This test had asserted the mock arm's rethrow through v5's
+/// propagating delete; P4.131 re-aimed it at the real stack (v5's
+/// `delete_database_document` now takes v4's fallback reads).
 ///
-/// The positive half (a clear against a mount with no such file succeeds) is the
-/// corpus's `clear_when_already_absent_is_a_noop` op, so this test only has to
-/// pin that the swallow is NARROW.
+/// A mock arm is a source of case names, never an oracle, so the proof here is a
+/// capture pin read from v4 at the pin: the clear succeeds, and the ONE line it
+/// logs is the joined-read ERROR with v4's two-clause `whereClause`. There is no
+/// v5 seam to pose a non-`NOT_FOUND` `Err` — the clear's only remaining `Err`
+/// source is a path `normaliseRelativePath` refuses, and its path is a constant.
 #[test]
-fn a_non_not_found_delete_failure_is_not_swallowed() {
+fn a_failed_links_lookup_on_clear_is_swallowed_as_v4s_false() {
     let spec: Spec = serde_json::from_str(
         &std::fs::read_to_string(spec_path()).unwrap_or_else(|e| panic!("read spec: {e}")),
     )
@@ -528,30 +535,49 @@ fn a_non_not_found_delete_failure_is_not_swallowed() {
     .expect("open db");
 
     let general = spec.general_mount_point_id.clone();
-    // Baseline: the clear succeeds while the table is intact.
+    // Baseline: the clear succeeds — and logs no ERROR — while the table is intact.
     let g = general.clone();
-    db.write_blocking(move |w| {
-        let links = w
-            .mount_index()
-            .expect("mount writer")
-            .doc_mount_file_links();
-        write_wardrobe_instructions_file(&links, &g, None)
-    })
-    .expect("clearing an absent file is a no-op");
+    // The capture is thread-scoped, and `write_blocking` runs its closure on the
+    // writer's thread — so the capture lives INSIDE the closure.
+    let (res, lines) = db
+        .write_blocking(move |w| {
+            let links = w
+                .mount_index()
+                .expect("mount writer")
+                .doc_mount_file_links();
+            Ok(quilltap_core::test_support::captured_with(|| {
+                write_wardrobe_instructions_file(&links, &g, None)
+            }))
+        })
+        .expect("writer ran");
+    res.expect("clearing an absent file is a no-op");
+    assert!(
+        !lines.iter().any(|l| l.starts_with("ERROR ")),
+        "intact-table clear logged an ERROR: {lines:?}"
+    );
 
     let g = general.clone();
-    let err = db
+    let (res, lines) = db
         .write_blocking(move |w| {
             let mi = w.mount_index().expect("mount writer");
-            mi.connection()
-                .execute("DROP TABLE doc_mount_file_links", [])?;
+            mi.connection().execute(
+                "ALTER TABLE doc_mount_file_links RENAME COLUMN relativePath TO relativePath_x",
+                [],
+            )?;
             let links = mi.doc_mount_file_links();
-            write_wardrobe_instructions_file(&links, &g, None)
+            Ok(quilltap_core::test_support::captured_with(|| {
+                write_wardrobe_instructions_file(&links, &g, None)
+            }))
         })
-        .expect_err("a broken links table must NOT be swallowed as NOT_FOUND");
-    let msg = err.to_string();
+        .expect("writer ran");
+    res.expect("a failed links lookup is swallowed as v4's `false`, never a throw");
+    let errors: Vec<&String> = lines.iter().filter(|l| l.starts_with("ERROR ")).collect();
+    assert_eq!(errors.len(), 1, "{lines:?}");
     assert!(
-        msg.contains("doc_mount_file_links"),
-        "the underlying failure must reach the caller, got: {msg}"
+        errors[0].starts_with(
+            "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?) error="
+        ),
+        "{}",
+        errors[0]
     );
 }

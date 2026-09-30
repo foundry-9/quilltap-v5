@@ -119,8 +119,23 @@ impl<'c> DocMountFoldersRepository<'c> {
         mount_point_id: &str,
         path: &str,
     ) -> Result<Option<FolderRow>, DbError> {
-        let exact = self
-            .conn
+        let exact = self.find_exact_path(mount_point_id, path)?;
+        if exact.is_some() {
+            return Ok(exact);
+        }
+        let needle = path.to_lowercase();
+        let all = self.find_by_mount_point_id(mount_point_id)?;
+        Ok(all.into_iter().find(|f| f.path.to_lowercase() == needle))
+    }
+
+    /// The exact-match fast path of [`Self::find_by_mount_point_and_path`] — v4's
+    /// `findOneByFilter({ mountPointId, path })`.
+    fn find_exact_path(
+        &self,
+        mount_point_id: &str,
+        path: &str,
+    ) -> Result<Option<FolderRow>, DbError> {
+        self.conn
             .query_row(
                 "SELECT id, mountPointId, parentId, name, path, createdAt \
                    FROM doc_mount_folders \
@@ -133,13 +148,32 @@ impl<'c> DocMountFoldersRepository<'c> {
             .or_else(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => Ok(None),
                 other => Err(DbError::from(other)),
-            })?;
+            })
+    }
+
+    /// v4's FALLBACK `findByMountPointAndPath`, as its callers see it. v4's
+    /// `safeQuery(…, null)` wraps two fallback reads of its own, so the lines a
+    /// failure logs are the INNER ones — `Error finding entity by filter` for the
+    /// exact read (which then falls through to the scan), then `Error finding
+    /// entities by filter` for the scan — and the outer `Error finding folder by
+    /// mount point and path` is unreachable (`doc-mount-folders.repository.ts:
+    /// 130-149`, `base.repository.ts:283-314`). The propagating sibling STAYS for
+    /// strict callers.
+    pub fn find_by_mount_point_and_path_or_none(
+        &self,
+        mount_point_id: &str,
+        path: &str,
+    ) -> Option<FolderRow> {
+        let exact = super::fallback::find_one_by_filter_or_none("doc_mount_folders", || {
+            self.find_exact_path(mount_point_id, path)
+        });
         if exact.is_some() {
-            return Ok(exact);
+            return exact;
         }
         let needle = path.to_lowercase();
-        let all = self.find_by_mount_point_id(mount_point_id)?;
-        Ok(all.into_iter().find(|f| f.path.to_lowercase() == needle))
+        self.find_by_mount_point_id_or_empty(mount_point_id)
+            .into_iter()
+            .find(|f| f.path.to_lowercase() == needle)
     }
 
     /// v4 `docMountFolders.findByMountPointId`: every folder row for a mount
@@ -155,6 +189,16 @@ impl<'c> DocMountFoldersRepository<'c> {
             .query_map(params![mount_point_id], Self::map_folder_row)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// v4's FALLBACK `findByMountPointId`, as its callers see it: a failed read
+    /// logs `Error finding entities by filter` (the inner `findByFilter`'s line —
+    /// the outer `Error finding folders by mount point ID` is unreachable) and
+    /// answers `[]`. The propagating sibling STAYS for strict callers.
+    pub fn find_by_mount_point_id_or_empty(&self, mount_point_id: &str) -> Vec<FolderRow> {
+        super::fallback::find_by_filter_or_empty("doc_mount_folders", || {
+            self.find_by_mount_point_id(mount_point_id)
+        })
     }
 
     /// v4 `docMountFolders.findById` — one folder row by primary key. The

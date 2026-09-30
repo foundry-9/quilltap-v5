@@ -160,11 +160,13 @@ pub fn read_wardrobe_instructions_file(mount: &Connection, mount_point_id: &str)
 
 /// Write (or, for null/blank content, remove) one container's
 /// `Wardrobe/instructions.md`. Deleting a file that isn't there is a no-op, so
-/// clearing an already-empty editor never errors — v4 swallows ONLY a
-/// `NOT_FOUND` `DatabaseStoreError` and rethrows anything else; v5's
-/// [`DocMountFileLinksRepository::delete_database_document`] already answers
-/// `false` for the missing-file case and errors for everything else, which is
-/// the same contract.
+/// clearing an already-empty editor never errors. v4's `deleteDatabaseDocument
+/// IfExists` swallows ONLY a `NOT_FOUND` `DatabaseStoreError`, but no read
+/// failure reaches it: the link lookup is a fallback `queryJoined`, so a failed
+/// lookup logs its ERROR and answers `false` — a swallow. v5's
+/// [`DocMountFileLinksRepository::delete_database_document`] is v4's on both
+/// counts (`false` for the missing file AND for a failed lookup; only a refused
+/// path errors — P4.131).
 ///
 /// The folder ensure runs on the WRITE path only — clearing never creates a
 /// `Wardrobe/` folder. The bytes on disk are the TRIMMED string: no trailing
