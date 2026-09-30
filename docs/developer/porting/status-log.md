@@ -155373,6 +155373,150 @@ auto-described; the P4.D108 deferral, now measured — proposed order),
 row; invisible to the differential, which strips CHAT_MESSAGE rows — proposed
 order). Walk doc §5.
 
+## P4.119 — format display dates in the HOST zone (dogfood #121, ruled (a)) — lane record (2026-09-29)
+
+Branch `claude/host-zone-display-formatting-46d6b8` (from `main` `4d033c9cc`).
+The §R.2 probe PASSED at lane start and before each regen batch (v4 `main`
+AT `97b25fc53`, bugfix unmoved, tree clean). Every regen ran from the
+lane-unique pin `/tmp/qt-v4-pin-p4119-97b25fc53` (three symlink classes).
+
+### What landed
+- **`host_zone.rs` (new):** `system_display_zone() -> TimeZone` (the one
+  environment read in the display path; `try_system()`, UTC only if the
+  platform zone is unreadable) + `system_zone_name()`; `TimeZone` re-exported
+  for the harness (no dependency-block change this round). The three duplicate
+  name readers (`quilltap-host/src/paths.rs::system_timezone`,
+  `api/autonomous_rooms.rs::system_tz`, `markdown_transcript.rs::system_tz`)
+  now call it — same behaviour.
+- **H1–H9 take a `&TimeZone`** and render per instant (`Timestamp::to_zoned`):
+  `format_time` (H1–H4), `conversation_markdown` (H5–H8; the same-day test
+  compares dates IN the zone), `progressions::engine::format_instant_en_us`
+  (H9 — an absent / empty / unresolvable zone falls back to the PASSED host
+  zone; `engine.rs:908-909`'s UTC pin flipped). **Mandate 3:** the Almanack
+  parse reads a zone-less datetime (the SQLite space form AND a zone-less `T`
+  form — V8 reads both as local) in the render zone via the new shared
+  `format_time::wall_ms_in_zone`; `parse_backup_filename` likewise.
+  `episodic::js_date_parse_ms` untouched.
+- **Threading (the seam choice, recorded as the order asked):** every function
+  in the lane's files that renders takes the zone. Where the CALLER sits in a
+  file this round forbids (`tools/executor.rs` — P4.120's; `api/engine.rs` —
+  P4.120's; `services/build_context.rs` — P4.124's; `api/salon.rs`,
+  `progressions/prompt_section.rs`, the job runner), the entry keeps its
+  signature, reads `system_display_zone()` ONCE, and delegates to an
+  explicit-zone `…_in_zone` sibling that every test and differential calls:
+  `execute_{list,read,send}_mail`, `execute_read_conversation`,
+  `execute_upsert_annotation`, `format_web_search_results`,
+  `handle_conversation_render`, `chat_send_mail`,
+  `resolve_suparna_mail_context`, `build_suparna_mail_whisper`,
+  `surface_operator_mail_for_chat`, `render_progression_report`,
+  `progression_placeholders`. The Almanack instead takes the zone as an INPUT:
+  `AlmanackPaths::display_zone` (its pipeline already takes every
+  machine-dependent value as input so the tier-2 differential can pin it);
+  the host fills it in `quilltap-host/src/almanack_services.rs::paths()` —
+  **ONE marked out-of-mandate line** (`// === P4.119 ===`) in a
+  `crates/quilltap-host/**` file; the alternative was an `api/engine.rs`
+  field (P4.120-only). `chat_initialize.rs` / `carina_query.rs` needed no
+  change: they pass `timezone: None` into `prompt_section`, which reaches the
+  host-zone wrapper — v4's no-zone call, resolved the same way.
+- **Production-wiring census** `host_zone_sites_census` (Tier 1 item 7): exact
+  per-file production `system_display_zone()` counts, one row per surface, the
+  list = the set of calling files; `TimeZone::system()` / `try_system(` in
+  `host_zone.rs` alone; production `TimeZone::UTC` only on four named
+  non-display rows; the host's `AlmanackPaths` site; and a CHILD PROCESS (the
+  test binary re-run with `TZ=America/Chicago` on its `Command` — no
+  `set_var`) asserting the web-search, whisper and progressions production
+  entries render Chicago.
+
+### Tier 2 — the differential proof
+- **NEW tier-1 family `host_zone_dates_equivalence`** (tsx oracle
+  `harness/oracle/cases/host-zone-dates.ts`, corpus
+  `harness/oracle/fixtures/host-zone-dates.json`): v4's real `formatDateTime`,
+  `formatLetterDate`, `formatLetterHeading`, `buildReplyPreface`,
+  `buildSuparnaMailWhisper`, `buildSuparnaMailLLMContext`,
+  `formatWebSearchResults` and `renderAlmanackMarkdown` (v4's fixture with a
+  space-form and a zone-less-`T` stamp planted) under `TZ=UTC` AND
+  `TZ=America/Chicago`; each file records its zone (first row) and v5 is fed it
+  by argument. **43/43 rows both zones, first run.** The walk's D2 bytes
+  (`September 29, 2026 at 02:40 PM`) are a row.
+- **`conversation_markdown_equivalence`** second-zone arm: corpus grown 15 →
+  18 by ADDITION (UTC-midnight-straddling span, spring-forward pair, fall-back
+  fold); the oracle records `tz` per row. **18/18 per zone.** The fall-back
+  case is one LOCAL day in Chicago and two in UTC — the span's SHAPE moves
+  (renamed from "…-cross-day" on measurement).
+- **`progressions_engine_equivalence`** second-zone arm: the oracle's first
+  row records the host zone (`hostZone`), v5's fallback is fed it. **556/556
+  per zone**, 25 rows differing between the zones; the op-count literal 17 →
+  18 (the `hostZone` row).
+- **⚠ The order's premise that `mail_carina_tools` / `post_office_routes`
+  could host the second-zone arm is REFUTED:** v4's `jest.config.ts` sets
+  `process.env.TZ = 'UTC'` before any worker starts, so a jest oracle cannot
+  run a second zone. Measured, not argued: the mail oracle regenerated under
+  `TZ=America/Chicago` recorded `"tz":"UTC"` on all 54 rows and was
+  byte-identical to the UTC one. The mail family keeps the per-row `tz` guard
+  (UTC); the second-zone proof for the same surfaces is the tsx family above.
+  The same applies to `almanack_render` / `almanack_tier2` (jest) — item 10's
+  zone-less stamp is proven in `host_zone_dates` instead.
+- **Neutrality (item 8), from the pin, NO `TZ` set on this CDT machine:** the
+  sweep driver over 18 families — conversation_markdown, almanack_render,
+  almanack_tier2, context_feeders_leaves, progressions_engine,
+  mail_carina_tools, post_office_routes,
+  post_office_concierge_lantern_suparna, scriptorium_tools,
+  conversation_annotations_tier2, conversation_annotations_upsert_tier2,
+  web_search_tool, web_search_wire, orchestrator_tier3, embedding_remainder,
+  host_zone_dates, markdown_transcript, annotations_rendering_patterns — **17
+  ok, 1 red: `almanack_tier2`** (the collector + generate route read the
+  ambient CDT zone against the jest-UTC oracle: `oldestDate` 03:15Z vs 08:15Z
+  and the route's `Generated:` line). That red is what moved the Almanack
+  from an ambient wrapper to the `AlmanackPaths::display_zone` input; re-run
+  by name: green.
+
+### Mutation proofs (each reverted by file backup; tree md5 identical after)
+M1 `format_time::zoned` → UTC: reddens the five Chicago unit tests + the
+conversation_markdown Chicago arm. M2 same-day test in UTC: the span unit
+test + conversation_markdown Chicago. M3 zone-less parse skipped: the
+round-trip unit test + host_zone_dates Chicago. M4 progressions fallback →
+UTC: the engine unit test + the census (production UTC) + the child. M5 / M6
+the web-search / whisper wrappers → UTC: census + child. M7 backup parse →
+UTC: the phase1 unit test + (then) the child. M8 `chat_send_mail` wrapper →
+UTC: census. M9 the renderer's zoned → UTC: the span unit test +
+conversation_markdown Chicago. M10 the host's `AlmanackPaths` line → UTC:
+`host_almanack_paths_carry_the_host_zone`. (The battery ran without
+`--no-fail-fast`, so a mutation's list stops at the first red binary — lower
+bounds; every named target fired.)
+
+### Regen recipes as run (cwd = the pin; N = Node 24.13.1; V5 = this worktree)
+- `TZ=UTC $N/npx tsx $V5/harness/oracle/cases/conversation-markdown.ts > /tmp/p4119/oracle-conversation-markdown.ndjson`; the same under `TZ=America/Chicago` → `…-chicago.ndjson`.
+- `TZ=UTC $N/node --import tsx $V5/harness/oracle/cases/progressions-engine.ts > /tmp/p4119/oracle-progressions-engine.ndjson`; Chicago → `…-chicago.ndjson`.
+- `TZ=UTC $N/node --import tsx $V5/harness/oracle/cases/host-zone-dates.ts > /tmp/p4119/oracle-host-zone-dates.ndjson`; Chicago → `…-chicago.ndjson`.
+- Everything else through `recipe_sweep.py --run-all --families … --v4 /tmp/qt-v4-pin-p4119-97b25fc53 --force` (committed recipe headers, unchanged bar the three above and the mail/post-office TZ prose).
+
+### For the unifier
+- Out-of-mandate: ONE marked line in `crates/quilltap-host/src/almanack_services.rs`
+  (P4.120's host tree; a field on the host's own `AlmanackPaths` literal).
+- Harness call sites repointed to `_in_zone` siblings in two files outside the
+  order's list: `web_search_wire_equivalence.rs` (nobody's) and
+  `embedding_remainder_equivalence.rs` (P4.126's row — same branch, later).
+- A later round may thread the zone through the executor / engine / build_context
+  (a field on the executor, the tool context, `AlmanackContext`) and retire the
+  ambient wrappers; the census rows name each one.
+- Tier 3 (items 11, 12) recorded only: v4's local-time physical-backup
+  filenames have no v5 writer; letters/chunks v5 already wrote in UTC stay as
+  written (dogfood copies only). 💸 the dogfood proof stays queued (re-render a
+  v4-rendered chat → no `EMBEDDING_GENERATE` for unchanged interchanges;
+  `list_mail` shows `02:40 PM`; a fresh reply preface persists local time).
+
+### Gate (lane tree, NO `TZ` set, `CARGO_INCREMENTAL=0`)
+`cargo fmt --all --check` clean; clippy `-D warnings` clean in both feature
+sets (one `needless_borrows_for_generic_args` in the lane's own harness edit
+fixed, both re-run); `cargo build --workspace --release` clean; `cargo test
+--workspace --no-fail-fast` with the lane's six oracle vars (the three
+two-zone families) — **648 test binaries / 3,956 passed / 0 failed / 3
+ignored**, the lane's families confirmed RUN (`host_zone_dates` 43 rows ×2,
+`conversation_markdown` 18 cases ×2, `progressions_engine` 556 rows ×2, the
+census + child); every other family's var withheld (532 honest `SKIP:` lines,
+none the lane's). Tier R (`cli_differential`, `QT_V4_CHECKOUT` = the pin):
+**266 cases / 0 failures**. The 18-family neutrality sweep: see Tier 2 above.
+Versions: core 0.0.1107, harness 0.0.1027, host 0.0.166.
 ## P4.120 — chat-upload auto-describe + the production `SaveImageSideEffects` (lane record, 2026-09-29)
 
 Branch `claude/chat-upload-auto-describe-257c39`; order `work-orders/p4.120-chat-upload-auto-describe.md`. Drift probe PASSED at lane start and before the regen batch (v4 `main` AT `97b25fc53`, both logs empty, tree clean); pin `/tmp/qt-v4-pin-p4120-97b25fc53` (three symlink classes). Versions: core 0.0.1107, harness 0.0.1027, host 0.0.166.

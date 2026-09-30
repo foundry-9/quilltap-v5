@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — docs(porting): close P4.119 — the lane record and status header
+
+_Docs-only change._
+
+Records the P4.119 lane in `status-log.md` and updates the order's status
+header: what landed, the seam chosen for callers in other lanes' files, the
+one marked host line for the unifier, and the order premise the lane
+refuted (v4's jest config pins `TZ=UTC`, so the second-zone proof lives in a
+tsx family).
+
 #### 2026-09-29 — fix(core): format display dates in the host zone, as v4 does (P4.119, dogfood #121)
 
 _quilltap-core 0.0.1107, quilltap-harness 0.0.1027, quilltap-host 0.0.166._
