@@ -58,7 +58,8 @@ impl TransportError {
     /// transport (`ReqwestTransport`, both its non-streaming and streaming
     /// arms) renders a non-2xx as `HTTP {status}: {text}` and sets `status`;
     /// a network/timeout failure has no status and no body. The format is
-    /// pinned by `http_body_strips_the_transport_prefix` below.
+    /// [`TransportError::http`]'s, pinned by `http_body_strips_the_transport_
+    /// prefix` below.
     pub fn http_body(&self) -> Option<&str> {
         let status = self.status?;
         self.message.strip_prefix(&format!("HTTP {status}: "))
@@ -71,6 +72,34 @@ pub fn transport_error_refusal(provider: &str, error: &TransportError) -> Option
     let status = error.status?;
     let body = error.http_body()?;
     text_http_refusal(provider, status, body)
+}
+
+/// The `message` of the value v4's plugin THREW for a transport failure — the
+/// `error` its `… API error in streamMessage|sendMessage` catch line logs
+/// (P4.128). A non-2xx is the reconstructed side's message (the SDK's
+/// `APIError.makeMessage`, e.g. `400 Filtered.`). A failure with no status
+/// never reached a response, so the openai SDK threw its connection errors
+/// (`openai` 7.23.0 `core/error.js:78-92`): `APIConnectionTimeoutError`
+/// (`Request timed out.`) for v5's time-to-headers budget, `APIConnection
+/// Error` (`Connection error.`) for everything else.
+///
+/// RULED at planning (the P4.128 order, §B1): this mapping is CONFINED to the
+/// catch line's `error` field. The `StreamError` / `CompletionError` message
+/// and the failover classifier's input stay v5's own transport bytes.
+///
+/// Recorded approximation: `ReqwestTransport`'s NON-streaming arm bounds the
+/// whole exchange with reqwest's `.timeout()`, whose error renders like any
+/// other send failure, so a non-streaming timeout maps to `Connection error.`
+/// where v4 logs `Request timed out.`.
+pub fn sdk_thrown_message(provider: &str, error: &TransportError) -> String {
+    if let Some(side) = transport_error_refusal(provider, error) {
+        return side.message;
+    }
+    if error.is_headers_timeout() {
+        "Request timed out.".to_string()
+    } else {
+        "Connection error.".to_string()
+    }
 }
 
 /// Rebuild the error v4's `provider` plugin throws for a non-2xx `status`
@@ -354,10 +383,8 @@ mod tests {
         // The exact bytes `ReqwestTransport` writes at both its arms.
         let status = 400;
         let text = r#"{"error":{"code":"content_filter"}}"#;
-        let e = TransportError {
-            message: format!("HTTP {status}: {text}"),
-            status: Some(status),
-        };
+        let e = TransportError::http(status, text);
+        assert_eq!(e.message, format!("HTTP {status}: {text}"));
         assert_eq!(e.http_body(), Some(text));
         let empty = TransportError {
             message: "HTTP 400: ".to_string(),
@@ -376,6 +403,36 @@ mod tests {
             status: Some(400),
         };
         assert_eq!(other.http_body(), None);
+    }
+
+    /// P4.128: the catch line's `error` — the SDK's `APIError` text on a
+    /// non-2xx, its two connection errors otherwise.
+    #[test]
+    fn sdk_thrown_message_maps_the_three_failure_shapes() {
+        let http = TransportError::http(
+            400,
+            r#"{"error":{"message":"Filtered.","code":"content_filter"}}"#,
+        );
+        assert_eq!(sdk_thrown_message("DEEPSEEK", &http), "400 Filtered.");
+        assert_eq!(
+            sdk_thrown_message("NANOGPT", &TransportError::http(400, "")),
+            "400 status code (no body)"
+        );
+        let connect = TransportError {
+            message: "error sending request for url (http://127.0.0.1:1/)".into(),
+            status: None,
+        };
+        assert_eq!(
+            sdk_thrown_message("OPENAI_COMPATIBLE", &connect),
+            "Connection error."
+        );
+        let timeout = TransportError::headers_timeout(5);
+        assert!(timeout.is_headers_timeout());
+        assert!(!connect.is_headers_timeout());
+        assert_eq!(
+            sdk_thrown_message("DEEPSEEK", &timeout),
+            "Request timed out."
+        );
     }
 
     #[test]

@@ -200,6 +200,14 @@ fn fallback_repos_lookup(db: &Db, id: &str) -> Option<Value> {
         .flatten()
 }
 
+#[derive(Deserialize, Clone)]
+struct HistoryW {
+    role: String,
+    content: String,
+    #[serde(default)]
+    name: Option<String>,
+}
+
 impl ProfileW {
     fn to_effective(&self) -> EffectiveProfile {
         EffectiveProfile {
@@ -251,6 +259,14 @@ struct CallW {
     /// two disagreeing is exactly what the new case measures.
     #[serde(default)]
     message_attachments: Vec<Value>,
+    /// P4.128: prior turns between the system prompt and the user turn, each
+    /// optionally named (v4's multi-character `name`, hashed into
+    /// `historyTailHash`, never sent). Read by the `primary` kind only.
+    #[serde(default)]
+    history: Vec<HistoryW>,
+    /// P4.128: `runPrimaryStream`'s `isMultiCharacter` (absent = false).
+    #[serde(default)]
+    is_multi_character: bool,
     #[serde(default)]
     original_message: Option<String>,
     #[serde(default)]
@@ -540,20 +556,15 @@ fn chunk_to_result(c: &ChunkW, provider: &str, model: &str) -> StreamChunkResult
         ));
     }
     if let Some(e) = &c.sdk_error {
-        // P4.118: the transport's bytes (`ReqwestTransport`'s `HTTP {status}:
-        // {body}`) plus the refusal side the production reconstruction attaches
-        // (`streaming_provider.rs`'s `single_error_from`, through the same public
-        // `transport_error_refusal`).
-        let te = TransportError {
-            message: format!("HTTP {}: {}", e.status, e.body),
-            status: Some(e.status),
-        };
-        let side = quilltap_core::model::provider_error::transport_error_refusal(provider, &te);
-        let err = StreamError::new(te.message);
-        return Err(match side {
-            Some(r) => err.with_refusal(r),
-            None => err,
-        });
+        // P4.118 / P4.128: the transport's own rendering of the non-2xx
+        // (`TransportError::http`, both `ReqwestTransport` arms) through the
+        // production pre-stream rule (`streaming_provider::pre_stream_error` —
+        // the message unchanged plus the reconstructed refusal side). No copy
+        // of either lives here any more (the P4.122 lane record's item 12).
+        return Err(quilltap_core::model::streaming_provider::pre_stream_error(
+            provider,
+            TransportError::http(e.status, &e.body),
+        ));
     }
     if let Some(frame) = &c.sdk_stream_error {
         // P4.122: exactly what the production path yields for the frame — the
@@ -1027,6 +1038,29 @@ async fn primary_stream_tier3_matches_oracle() {
             CompletionMessage::user(marker.to_string()),
         ]
     };
+    // P4.128: the oracle's `userMessages(marker, attachments, history)` — the
+    // history rows between the system prompt and the user turn, their names
+    // carried onto the StreamMessage slot (the canned key is role + content).
+    let with_history = |mut params: StreamParams, history: &[HistoryW]| -> StreamParams {
+        if history.is_empty() {
+            return params;
+        }
+        let user = params.messages.pop().expect("the user turn");
+        for h in history {
+            let mut m = if h.role == "assistant" {
+                StreamMessage::assistant(h.content.clone())
+            } else {
+                StreamMessage::user(h.content.clone())
+            };
+            if let StreamMessage::User { name, .. } | StreamMessage::Assistant { name, .. } = &mut m
+            {
+                *name = h.name.clone();
+            }
+            params.messages.push(m);
+        }
+        params.messages.push(user);
+        params
+    };
     // P4.D136 (v4 `a1d88aa3a`, bug 106): the attachments a call plants ON THE
     // ARRAY. `needsVision` is read from here now, not from `attachedFiles`.
     // P4.97 — v4's `runPrimaryStream` passes `characterId: character.id`
@@ -1102,10 +1136,13 @@ async fn primary_stream_tier3_matches_oracle() {
             }
             "primary" => {
                 let marker = call.original_message.clone().unwrap_or_default();
-                let mut params = base_params_with_attachments(
-                    user_messages(&marker),
-                    &call.message_attachments,
-                    &primary_of(&spec, call).model_name,
+                let mut params = with_history(
+                    base_params_with_attachments(
+                        user_messages(&marker),
+                        &call.message_attachments,
+                        &primary_of(&spec, call).model_name,
+                    ),
+                    &call.history,
                 );
                 if call.has_tools {
                     params.tools = Some(json!([{ "function": { "name": "noop" } }]));
@@ -1150,7 +1187,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     participant_id: call.participant_id.clone().unwrap(),
                     participant_status: None,
                     user_participant_id: None,
-                    is_multi_character: false,
+                    is_multi_character: call.is_multi_character,
                     params,
                     attached_files: attached,
                     original_message: call.original_message.clone(),

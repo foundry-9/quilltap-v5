@@ -65,6 +65,7 @@ use quilltap_core::model::transport::{
 use quilltap_core::services::dangerous_content::refusal::{
     classify_refusal, code_string, RefusalError, RefusalInput,
 };
+use quilltap_core::test_support::captured_with;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -97,14 +98,26 @@ struct Row {
     case: String,
     provider: String,
     mode: String,
-    status: u16,
-    body: String,
+    /// `None` on a posed TRANSPORT failure (`transport_fetch_throws`, P4.128).
+    status: Option<u16>,
+    body: Option<String>,
     #[serde(rename = "fetchCalls")]
     fetch_calls: usize,
     outcome: String,
     thrown: Option<Thrown>,
     refusal: Verdict,
     trigger: Option<String>,
+    /// P4.128: the ERROR lines v4's plugin logged while the row ran (the
+    /// host-bridge logger); absent when it logged none.
+    #[serde(rename = "pluginErrorLog", default)]
+    plugin_error_log: Vec<PluginLine>,
+}
+
+#[derive(Deserialize)]
+struct PluginLine {
+    message: String,
+    context: Value,
+    error: Option<String>,
 }
 
 /// Every (case, provider, v4 mode, field) where v5 differs from the recorded
@@ -131,6 +144,28 @@ struct Row {
 /// `HTTP {status}:` rule; `google_json_as_text_plain` is the content-type
 /// branch the transport cannot see (the module doc of `model::provider_error`).
 const EXPECTED_DIVERGENCES: &[(&str, &str, &str, &[&str])] = &[
+    // P4.128's posed TRANSPORT failure: v4 threw the SDK's
+    // `APIConnectionError` (`Connection error.`, no status, no code); v5's
+    // refusal side models an HTTP failure only (`transport_error_refusal`
+    // needs a status), so there is no side to diff. The verdict (not refused)
+    // and the trigger (`provider-error`) agree regardless — both are compared
+    // and pass on these rows; only the side's ABSENCE is the difference.
+    (
+        "OPENAI_COMPATIBLE",
+        "stream",
+        "side",
+        &["transport_fetch_throws"],
+    ),
+    (
+        "OPENAI_COMPATIBLE",
+        "send",
+        "side",
+        &["transport_fetch_throws"],
+    ),
+    ("DEEPSEEK", "stream", "side", &["transport_fetch_throws"]),
+    ("DEEPSEEK", "send", "side", &["transport_fetch_throws"]),
+    ("NANOGPT", "stream", "side", &["transport_fetch_throws"]),
+    ("NANOGPT", "send", "side", &["transport_fetch_throws"]),
     // A non-JSON body served AS `application/json`: `@google/genai` throws a
     // bare `SyntaxError` (no `status`, V8's message); v5 synthesizes the
     // `ApiError` (the third approximation in `model::provider_error`'s doc).
@@ -378,47 +413,61 @@ fn expected(case: &str, provider: &str, mode: &str, field: &str) -> bool {
 }
 
 /// A transport that fails every call with the posed non-2xx, rendered exactly
-/// as `ReqwestTransport` renders it, and counts the calls.
+/// as `ReqwestTransport` renders it, and counts the calls. With no status it
+/// poses a TRANSPORT failure (P4.128's `transport_fetch_throws`): reqwest's
+/// connect-failure rendering, no status, no body.
 struct PosedFailure {
-    status: u16,
+    status: Option<u16>,
     body: String,
     calls: AtomicUsize,
 }
 
 impl PosedFailure {
-    fn new(status: u16, body: &str) -> Self {
+    fn new(status: Option<u16>, body: Option<&str>) -> Self {
         Self {
             status,
-            body: body.to_string(),
+            body: body.unwrap_or_default().to_string(),
             calls: AtomicUsize::new(0),
         }
     }
 
-    fn fail(&self) -> TransportError {
+    fn fail(&self, request: &TransportRequest) -> TransportError {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        TransportError {
-            message: format!("HTTP {}: {}", self.status, self.body),
-            status: Some(self.status),
+        match self.status {
+            Some(status) => TransportError {
+                message: format!("HTTP {}: {}", status, self.body),
+                status: Some(status),
+            },
+            None => TransportError {
+                message: posed_connect_failure(&request.url),
+                status: None,
+            },
         }
     }
+}
+
+/// `reqwest::Error`'s `Display` for a refused connection — what
+/// `ReqwestTransport` hands up for v4's `fetch failed`.
+fn posed_connect_failure(url: &str) -> String {
+    format!("error sending request for url ({url})")
 }
 
 impl ProviderTransport for PosedFailure {
     fn execute<'a>(
         &'a self,
-        _request: &'a TransportRequest,
+        request: &'a TransportRequest,
         _policy: &'a TransportPolicy,
     ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
-        let e = self.fail();
+        let e = self.fail(request);
         Box::pin(async move { Err(e) })
     }
 
     fn execute_stream<'a>(
         &'a self,
-        _request: &'a TransportRequest,
+        request: &'a TransportRequest,
         _policy: &'a TransportPolicy,
     ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>> {
-        let e = self.fail();
+        let e = self.fail(request);
         Box::pin(async move { Err(e) })
     }
 }
@@ -485,24 +534,29 @@ struct V5Outcome {
     side: Option<RefusalError>,
     trigger: Option<String>,
     calls: usize,
+    /// Every tracing line the call emitted on the caller thread (the
+    /// pre-stream arm and the whole completion path run there).
+    lines: Vec<String>,
 }
 
 fn run_stream(rt: &tokio::runtime::Runtime, row: &Row) -> V5Outcome {
     let provider = WireStreamingProvider::new(
-        PosedFailure::new(row.status, &row.body),
+        PosedFailure::new(row.status, row.body.as_deref()),
         SingleKey(String::new()),
         TransportPolicy::default(),
         "Quilltap/test".to_string(),
     );
-    let items = rt.block_on(async {
-        let mut rx = provider
-            .stream_message(&row.provider, None, &stream_params(&row.provider))
-            .await;
-        let mut out = Vec::new();
-        while let Some(item) = rx.recv().await {
-            out.push(item);
-        }
-        out
+    let (items, lines) = captured_with(|| {
+        rt.block_on(async {
+            let mut rx = provider
+                .stream_message(&row.provider, None, &stream_params(&row.provider))
+                .await;
+            let mut out = Vec::new();
+            while let Some(item) = rx.recv().await {
+                out.push(item);
+            }
+            out
+        })
     });
     assert_eq!(
         items.len(),
@@ -523,23 +577,26 @@ fn run_stream(rt: &tokio::runtime::Runtime, row: &Row) -> V5Outcome {
         side: err.refusal.as_deref().cloned(),
         trigger,
         calls: provider.transport_ref().calls.load(Ordering::SeqCst),
+        lines,
     }
 }
 
 fn run_send(rt: &tokio::runtime::Runtime, row: &Row, vision: bool) -> V5Outcome {
-    let transport = PosedFailure::new(row.status, &row.body);
+    let transport = PosedFailure::new(row.status, row.body.as_deref());
     let params = completion_params(&row.provider, vision);
-    let result = rt.block_on(execute_completion(
-        &transport,
-        &row.provider,
-        None,
-        "",
-        &params,
-        &TransportPolicy::default(),
-        "Quilltap/test",
-        None,
-        None,
-    ));
+    let (result, lines) = captured_with(|| {
+        rt.block_on(execute_completion(
+            &transport,
+            &row.provider,
+            None,
+            "",
+            &params,
+            &TransportPolicy::default(),
+            "Quilltap/test",
+            None,
+            None,
+        ))
+    });
     let err: CompletionError = match result {
         Ok(_) => panic!("{}: a posed non-2xx must fail", label(row)),
         Err(e) => e,
@@ -557,6 +614,7 @@ fn run_send(rt: &tokio::runtime::Runtime, row: &Row, vision: bool) -> V5Outcome 
         side: err.refusal.as_deref().cloned(),
         trigger,
         calls: transport.calls.load(Ordering::SeqCst),
+        lines,
     }
 }
 
@@ -673,6 +731,87 @@ fn diff_row(row: &Row, v5: &V5Outcome) -> Vec<(&'static str, String)> {
     out
 }
 
+/// The three openai-SDK plugins whose `streamMessage` / `sendMessage` wrap
+/// the SDK call in a `try … catch { this.logger.error('<Name> API error in
+/// <method>', { context, baseUrl }, error); throw }` (P4.122 item 6 ported the
+/// MID-stream half; P4.128 the pre-stream and `sendMessage` halves).
+const CATCH_LINE_PROVIDERS: &[&str] = &["OPENAI_COMPATIBLE", "DEEPSEEK", "NANOGPT"];
+
+/// ERROR lines v4's OTHER plugins log on these rows that v5 has NOT ported
+/// (measured at the `97b25fc53` pin by P4.128's logger bridge; outside that
+/// order's mandate — a named follow-up). Pinned so a port of any of them, or
+/// a new one, is noticed: `(provider, v4 mode, message)`.
+const UNPORTED_PLUGIN_ERROR_LINES: &[(&str, &str, &str)] = &[
+    ("GOOGLE", "send", "Error calling Google Gemini API"),
+    ("GOOGLE", "stream", "Error streaming from Google Gemini API"),
+    ("OLLAMA", "send", "Ollama API error response"),
+    ("OLLAMA", "send", "Ollama sendMessage failed"),
+    ("OLLAMA", "stream", "Ollama streaming API error"),
+    ("OLLAMA", "stream", "Ollama streamMessage failed"),
+    ("OPENROUTER", "send_vision", "OpenRouter API error"),
+    ("OPENROUTER", "stream_tools", "OpenRouter API error"),
+    (
+        "OPENROUTER",
+        "stream_tools",
+        "Error in streamViaChatCompletions",
+    ),
+];
+
+/// P4.128 — the plugin catch line, diffed against v4's recorded
+/// `pluginErrorLog` field for field: v5's captured `… API error in …` lines
+/// must be exactly v4's (a silence leg on every row where v4 logged none),
+/// and every OTHER v4 plugin ERROR line must be a pinned unported one. Returns
+/// the number of v4 catch lines on the row, or the mismatch.
+fn diff_catch_lines(row: &Row, v5: &V5Outcome) -> Result<usize, String> {
+    let (method, target) = if row.mode.starts_with("stream") {
+        ("streamMessage", "quilltap::model::streaming_provider")
+    } else {
+        ("sendMessage", "quilltap::model::completion_provider")
+    };
+    let got: Vec<&str> = v5
+        .lines
+        .iter()
+        .map(String::as_str)
+        .filter(|l| {
+            l.contains(" API error in streamMessage") || l.contains(" API error in sendMessage")
+        })
+        .collect();
+    let mut want: Vec<String> = Vec::new();
+    for e in &row.plugin_error_log {
+        if CATCH_LINE_PROVIDERS.contains(&row.provider.as_str())
+            && e.message.ends_with(&format!(" API error in {method}"))
+        {
+            want.push(format!(
+                "ERROR {target} {} context={} baseUrl={} error={}",
+                e.message,
+                e.context["context"].as_str().unwrap(),
+                e.context["baseUrl"].as_str().unwrap(),
+                e.error.as_deref().expect("the SDK threw an Error"),
+            ));
+        } else {
+            assert!(
+                UNPORTED_PLUGIN_ERROR_LINES.contains(&(
+                    row.provider.as_str(),
+                    row.mode.as_str(),
+                    e.message.as_str()
+                )),
+                "{}: v4 logged an ERROR line no pin names: {:?}",
+                label(row),
+                e.message
+            );
+        }
+    }
+    let want: Vec<&str> = want.iter().map(String::as_str).collect();
+    if got == want {
+        Ok(want.len())
+    } else {
+        Err(format!(
+            "{}: the plugin catch line\n  v5: {got:?}\n  v4: {want:?}",
+            label(row)
+        ))
+    }
+}
+
 #[test]
 fn text_http_errors_match_v4s_real_plugins() {
     let text = std::fs::read_to_string(CORPUS).unwrap_or_else(|e| panic!("read {CORPUS}: {e}"));
@@ -683,10 +822,12 @@ fn text_http_errors_match_v4s_real_plugins() {
         .collect();
     // 33 cases × (9 providers × 2 modes + OPENROUTER × 4 modes), plus the two
     // GOOGLE-only rows (`google_html_as_json`, `google_empty_body_as_json`:
-    // a body that is not JSON served AS `application/json`) × 2 modes.
+    // a body that is not JSON served AS `application/json`) × 2 modes, plus
+    // P4.128's posed transport failure through the three catch-line plugins
+    // × 2 modes.
     assert_eq!(
         rows.len(),
-        33 * 22 + 2 * 2,
+        33 * 22 + 2 * 2 + 3 * 2,
         "corpus row count; regenerate the corpus"
     );
 
@@ -695,20 +836,51 @@ fn text_http_errors_match_v4s_real_plugins() {
     let mut unexpected: Vec<String> = Vec::new();
     let mut refused_v4 = 0usize;
     let mut refused_matched = 0usize;
+    let mut transport_rows = 0usize;
+    let mut catch_lines = 0usize;
+    let mut catch_mismatches: Vec<String> = Vec::new();
 
     for row in &rows {
         assert_eq!(row.outcome, "thrown", "{}: v4 must throw", label(row));
         let v5 = run_v5(&rt, row);
-        // (4) the message bytes do not move.
-        assert_eq!(
-            v5.message,
-            format!("HTTP {}: {}", row.status, row.body),
-            "{}: v5's message must stay the transport's bytes (§S.5)",
-            label(row)
-        );
-        // v4 issued exactly one request per row (no SDK retry on these
-        // statuses); so must v5.
-        assert_eq!(v5.calls, row.fetch_calls, "{}: request count", label(row));
+        match row.status {
+            Some(status) => {
+                // (4) the message bytes do not move.
+                assert_eq!(
+                    v5.message,
+                    format!(
+                        "HTTP {}: {}",
+                        status,
+                        row.body.as_deref().unwrap_or_default()
+                    ),
+                    "{}: v5's message must stay the transport's bytes (§S.5)",
+                    label(row)
+                );
+                // v4 issued exactly one request per row (no SDK retry on these
+                // statuses); so must v5.
+                assert_eq!(v5.calls, row.fetch_calls, "{}: request count", label(row));
+            }
+            None => {
+                // A transport failure: v5's message stays the transport's own
+                // (RULED at planning — only the catch line's `error` field
+                // takes v4's `Connection error.`), and the SDK's retries (1 +
+                // `DEFAULT_MAX_RETRIES` 2) are recorded but NOT compared: the
+                // 2026-07-23 provider-I/O ruling (v5's retries live inside
+                // `ReqwestTransport`, which a posed transport replaces).
+                assert!(
+                    v5.message.starts_with("error sending request for url ("),
+                    "{}: v5's transport message moved: {}",
+                    label(row),
+                    v5.message
+                );
+                assert_eq!(row.fetch_calls, 3, "{}: v4's SDK retry count", label(row));
+                transport_rows += 1;
+            }
+        }
+        match diff_catch_lines(row, &v5) {
+            Ok(n) => catch_lines += n,
+            Err(e) => catch_mismatches.push(e),
+        }
 
         let diffs = diff_row(row, &v5);
         if row.refusal.refused {
@@ -744,6 +916,16 @@ fn text_http_errors_match_v4s_real_plugins() {
     // fetch plugins, × 2) — and v5 matches every one bar the two OpenRouter
     // SDK-path `1301` rows pinned above. Before P4.118 wired the side, v5 matched NONE.
     assert_eq!(refused_v4, 162, "v4's refused rows");
+    assert_eq!(transport_rows, 6, "the posed transport-failure rows");
+    assert!(
+        catch_mismatches.is_empty(),
+        "{} row(s) with a catch-line mismatch:\n{}",
+        catch_mismatches.len(),
+        catch_mismatches.join("\n")
+    );
+    // P4.128: the three catch-line plugins × 34 cases (33 shared + the
+    // transport row) × 2 modes — every one diffed field for field.
+    assert_eq!(catch_lines, 3 * 34 * 2, "v4's plugin catch lines diffed");
     assert_eq!(refused_matched, 160, "v5's matching refusal verdicts");
     let mut missing: Vec<String> = Vec::new();
     for (p, m, f, cases) in EXPECTED_DIVERGENCES {

@@ -232,6 +232,16 @@ interface CallSpec {
    */
   profileKey?: 'authPrimaryProfile' | 'understudyProfile';
   /**
+   * P4.128 — prior turns between the system prompt and the call's user turn,
+   * each optionally NAMED (the participant `name` v4's
+   * `formatMessagesForProvider` keeps on a multi-character turn). Absent on
+   * every pre-existing case. The funnel hashes the names into
+   * `historyTailHash`; no plugin sends them. Read by the `primary` kind only.
+   */
+  history?: Array<{ role: string; content: string; name?: string }>;
+  /** P4.128 — `runPrimaryStream`'s `isMultiCharacter` (absent = false). */
+  isMultiCharacter?: boolean;
+  /**
    * P4.97 — the two option-bag keys v4's PRIMARY `streamMessage` call passes
    * and its tool-unsupported RETRY does not (`primary-stream.service.ts:207`
    * vs `:261-270`). Absent on every pre-existing case, which is exactly the
@@ -662,8 +672,13 @@ async function main(): Promise<void> {
   // ARRAY, which is where `needsVision` is now read from. `attachedFiles` (what
   // the user uploaded) stays independent, and the disagreement between the two
   // is the whole point of the `hard_error_vision_skips_understudy` case.
-  const userMessages = (marker: string, attachments?: unknown[]) => [
+  const userMessages = (
+    marker: string,
+    attachments?: unknown[],
+    history?: Array<{ role: string; content: string; name?: string }>
+  ) => [
     { role: 'system', content: `You are ${spec.character.name}.` },
+    ...(history ?? []),
     attachments && attachments.length > 0
       ? { role: 'user', content: marker, attachments }
       : { role: 'user', content: marker },
@@ -709,8 +724,8 @@ async function main(): Promise<void> {
           character: character as never,
           characterParticipant,
           userParticipantId: null,
-          isMultiCharacter: false,
-          formattedMessages: userMessages(call.originalMessage as string, call.messageAttachments as unknown[] | undefined) as never,
+          isMultiCharacter: call.isMultiCharacter ?? false,
+          formattedMessages: userMessages(call.originalMessage as string, call.messageAttachments as unknown[] | undefined, call.history) as never,
           modelParams: { temperature: 1.0, maxTokens: 4096 },
           actualTools: call.hasTools ? [{ function: { name: 'noop' } }] : [],
           useNativeWebSearch: false,

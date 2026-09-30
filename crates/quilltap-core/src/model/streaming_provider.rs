@@ -316,60 +316,92 @@ fn single_error(message: String) -> tokio::sync::mpsc::Receiver<StreamChunkResul
     single_stream_error(StreamError::new(message))
 }
 
-/// [`single_error`] for a TRANSPORT failure (P4.118): the message is the
-/// transport's bytes, unchanged, and a non-2xx also carries the refusal side —
-/// the value v4's plugin threw, rebuilt per provider
-/// ([`provider_error`](crate::model::provider_error)) — so a coded 400
-/// (`content_filter`, Z.AI's `1301`) reaches the classifier's `provider-code`
-/// evidence as it does on v4.
-fn single_error_from(
+/// A TRANSPORT failure before the first chunk as the channel's `StreamError`
+/// (P4.118): the message is the transport's bytes, unchanged, and a non-2xx
+/// also carries the refusal side — the value v4's plugin threw, rebuilt per
+/// provider ([`provider_error`](crate::model::provider_error)) — so a coded
+/// 400 (`content_filter`, Z.AI's `1301`) reaches the classifier's
+/// `provider-code` evidence as it does on v4. Public so the tier-3 harness
+/// builds its posed pre-stream failure through THIS rule rather than a copy
+/// (P4.128 — the order's B4).
+pub fn pre_stream_error(
     provider: &str,
     error: crate::model::transport::TransportError,
-) -> tokio::sync::mpsc::Receiver<StreamChunkResult> {
+) -> StreamError {
     let refusal = crate::model::provider_error::transport_error_refusal(provider, &error);
     let mut e = StreamError::new(error.message);
     if let Some(r) = refusal {
         e = e.with_refusal(r);
     }
-    single_stream_error(e)
+    e
 }
 
 /// The ERROR line three of v4's OpenAI-SDK text plugins log from the `catch`
-/// wrapping their whole `streamMessage` before rethrowing (P4.122 item 6):
-/// `openai-compatible.ts:578-585` (the OPENAI_COMPATIBLE base — its
-/// `providerName` defaults to `OpenAICompatible`), DeepSeek's `provider.ts:
-/// 439-446` and NanoGPT's `:467-474` — `this.logger.error('<Name> API error in
-/// streamMessage', { context: '<Name>Provider.streamMessage', baseUrl:
-/// this.baseUrl }, error)`. Z.AI, OPENAI and GROK carry no such catch;
-/// OpenRouter and the non-SDK plugins are not this code.
+/// wrapping their whole `streamMessage` / `sendMessage` before rethrowing:
+/// the OPENAI_COMPATIBLE base (`plugin-utils dist providers/index.js:441-446`
+/// and `:529-534` — its `providerName` defaults to `OpenAICompatible`),
+/// DeepSeek's `provider.ts:299-303` / `:440-444` and NanoGPT's `:338-342` /
+/// `:467-474` — `this.logger.error('<Name> API error in <method>', { context:
+/// '<Name>Provider.<method>', baseUrl: this.baseUrl }, error)`. Z.AI, OPENAI
+/// and GROK carry no such catch; OpenRouter and the non-SDK plugins are not
+/// this code (their own ERROR lines are unported — the `text_http_errors`
+/// family pins them by name).
 ///
-/// v4's `try` also covers the stream's OPENING, so a non-2xx logs it too; v5
-/// logs it only at the pump's mid-stream arms — the pre-stream arms
-/// (`single_error_from`) are outside P4.122's mandate and stay a named
-/// follow-up (the lane record). `baseUrl` is the value the plugin was
-/// constructed with: the profile's (localhost-rewritten, as v4's registry
-/// hands it over) or the manifest default. The error renders as its message
-/// (the `error = %…` convention of the other ported plugin catch lines).
-struct StreamCatchLog {
+/// v4's `try` wraps the SDK call itself (`buildRequestBody` sits BEFORE it,
+/// so a build failure is silent), so the line fires on a non-2xx, on a
+/// connection failure, and on every mid-stream throw — once, after the SDK's
+/// own retries. P4.122 ported the mid-stream arms; P4.128 the pre-stream arms
+/// and the non-streaming `sendMessage` twin (`completion_provider.rs`).
+/// `baseUrl` is the value the plugin was constructed with: the profile's
+/// (localhost-rewritten, as v4's registry hands it over) or the manifest
+/// default. The error renders as its message (the `error = %…` convention of
+/// the other ported plugin catch lines); for a transport failure that is v4's
+/// thrown text, [`sdk_thrown_message`](crate::model::provider_error::sdk_thrown_message).
+pub(crate) struct PluginCatchLog {
     message: &'static str,
     context: &'static str,
     base_url: String,
+    method: CatchMethod,
 }
 
-impl StreamCatchLog {
-    fn for_call(provider: &str, base_url: Option<&str>, gateway: Option<&str>) -> Option<Self> {
-        let (message, context) = match provider {
-            "OPENAI_COMPATIBLE" => (
+/// Which plugin method the catch line belongs to.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CatchMethod {
+    StreamMessage,
+    SendMessage,
+}
+
+impl PluginCatchLog {
+    pub(crate) fn for_call(
+        provider: &str,
+        base_url: Option<&str>,
+        gateway: Option<&str>,
+        method: CatchMethod,
+    ) -> Option<Self> {
+        let (message, context) = match (provider, method) {
+            ("OPENAI_COMPATIBLE", CatchMethod::StreamMessage) => (
                 "OpenAICompatible API error in streamMessage",
                 "OpenAICompatibleProvider.streamMessage",
             ),
-            "DEEPSEEK" => (
+            ("OPENAI_COMPATIBLE", CatchMethod::SendMessage) => (
+                "OpenAICompatible API error in sendMessage",
+                "OpenAICompatibleProvider.sendMessage",
+            ),
+            ("DEEPSEEK", CatchMethod::StreamMessage) => (
                 "DeepSeek API error in streamMessage",
                 "DeepSeekProvider.streamMessage",
             ),
-            "NANOGPT" => (
+            ("DEEPSEEK", CatchMethod::SendMessage) => (
+                "DeepSeek API error in sendMessage",
+                "DeepSeekProvider.sendMessage",
+            ),
+            ("NANOGPT", CatchMethod::StreamMessage) => (
                 "NanoGPT API error in streamMessage",
                 "NanoGPTProvider.streamMessage",
+            ),
+            ("NANOGPT", CatchMethod::SendMessage) => (
+                "NanoGPT API error in sendMessage",
+                "NanoGPTProvider.sendMessage",
             ),
             _ => return None,
         };
@@ -384,18 +416,42 @@ impl StreamCatchLog {
             message,
             context,
             base_url,
+            method,
         })
     }
 
-    fn emit(&self, error: &str) {
-        tracing::error!(
-            target: "quilltap::model::streaming_provider",
-            context = self.context,
-            baseUrl = %self.base_url,
-            error = %error,
-            "{}",
-            self.message
-        );
+    pub(crate) fn emit(&self, error: &str) {
+        // One callsite per target: a `tracing` target is a static.
+        match self.method {
+            CatchMethod::StreamMessage => tracing::error!(
+                target: "quilltap::model::streaming_provider",
+                context = self.context,
+                baseUrl = %self.base_url,
+                error = %error,
+                "{}",
+                self.message
+            ),
+            CatchMethod::SendMessage => tracing::error!(
+                target: "quilltap::model::completion_provider",
+                context = self.context,
+                baseUrl = %self.base_url,
+                error = %error,
+                "{}",
+                self.message
+            ),
+        }
+    }
+
+    /// The pre-stream / non-streaming arm: v4's thrown text for this
+    /// transport failure.
+    pub(crate) fn emit_transport(
+        &self,
+        provider: &str,
+        error: &crate::model::transport::TransportError,
+    ) {
+        self.emit(&crate::model::provider_error::sdk_thrown_message(
+            provider, error,
+        ));
     }
 }
 
@@ -472,14 +528,30 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
         } else {
             None
         };
-        // P4.122 item 6: the plugin catch line v4 logs on every mid-stream
-        // throw (see `StreamCatchLog`), resolved against this call's base URL.
-        let catch_log =
-            StreamCatchLog::for_call(provider, base_url, self.localhost_gateway.as_deref());
+        // P4.122 item 6 / P4.128: the plugin catch line v4 logs on every
+        // failure inside its `try` — pre-stream and mid-stream (see
+        // `PluginCatchLog`), resolved against this call's base URL.
+        let catch_log = PluginCatchLog::for_call(
+            provider,
+            base_url,
+            self.localhost_gateway.as_deref(),
+            CatchMethod::StreamMessage,
+        );
+        let provider_id = provider.to_string();
         async move {
             let (request, mut decoder, mut attachment_results) = match prepared {
                 Ok(p) => p,
+                // A build failure: v4's `buildRequestBody` runs BEFORE the
+                // plugin's `try`, so no catch line.
                 Err(e) => return single_error(e.message),
+            };
+            // A pre-stream transport failure inside v4's `try` (P4.128): the
+            // catch line with v4's thrown text, then the channel's error.
+            let fail = |e: crate::model::transport::TransportError| {
+                if let Some(log) = &catch_log {
+                    log.emit_transport(&provider_id, &e);
+                }
+                single_stream_error(pre_stream_error(&provider_id, e))
             };
 
             let bytes_rx = match self.transport.execute_stream(&request, &policy).await {
@@ -504,7 +576,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
                         match self.transport.execute_stream(&retry, &policy).await {
                             Ok(rx) => rx,
                             // v4 surfaces the SECOND failure (the retry's error).
-                            Err(retry_err) => return single_error_from(provider, retry_err),
+                            Err(retry_err) => return fail(retry_err),
                         }
                     } else {
                         // Pre-stream failure. If this was a chained request, retry once
@@ -513,7 +585,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
                         // byte-for-byte.
                         let fallback = match fallback_prepared {
                             Some(fb) => fb,
-                            None => return single_error_from(provider, e),
+                            None => return fail(e),
                         };
                         let (fallback_request, fallback_decoder, fallback_attachment_results) =
                             match fallback {
@@ -541,7 +613,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
                                 rx
                             }
                             // v4 surfaces the SECOND failure (the retry's error).
-                            Err(retry_err) => return single_error_from(provider, retry_err),
+                            Err(retry_err) => return fail(retry_err),
                         }
                     }
                 }
@@ -835,14 +907,16 @@ mod tests {
     /// `pluginErrorLog` by `streaming_composer_equivalence`.
     #[test]
     fn stream_catch_log_providers_and_base_url() {
-        let d = StreamCatchLog::for_call("DEEPSEEK", None, None).unwrap();
+        let d =
+            PluginCatchLog::for_call("DEEPSEEK", None, None, CatchMethod::StreamMessage).unwrap();
         assert_eq!(d.message, "DeepSeek API error in streamMessage");
         assert_eq!(d.context, "DeepSeekProvider.streamMessage");
         assert_eq!(d.base_url, "https://api.deepseek.com");
-        let o = StreamCatchLog::for_call(
+        let o = PluginCatchLog::for_call(
             "OPENAI_COMPATIBLE",
             Some("http://localhost:1234/v1"),
             Some("host.docker.internal"),
+            CatchMethod::StreamMessage,
         )
         .unwrap();
         assert_eq!(
@@ -850,9 +924,13 @@ mod tests {
             rewrite_localhost_url("http://localhost:1234/v1", Some("host.docker.internal"))
         );
         assert_eq!(o.context, "OpenAICompatibleProvider.streamMessage");
+        // P4.128: the `sendMessage` twin names its own method.
+        let s = PluginCatchLog::for_call("NANOGPT", None, None, CatchMethod::SendMessage).unwrap();
+        assert_eq!(s.message, "NanoGPT API error in sendMessage");
+        assert_eq!(s.context, "NanoGPTProvider.sendMessage");
         // An empty profile base is no override.
         assert_eq!(
-            StreamCatchLog::for_call("NANOGPT", Some(""), None)
+            PluginCatchLog::for_call("NANOGPT", Some(""), None, CatchMethod::StreamMessage)
                 .unwrap()
                 .base_url,
             "https://nano-gpt.com/api/v1"
@@ -866,7 +944,9 @@ mod tests {
             "GOOGLE",
             "OLLAMA",
         ] {
-            assert!(StreamCatchLog::for_call(p, None, None).is_none(), "{p}");
+            for m in [CatchMethod::StreamMessage, CatchMethod::SendMessage] {
+                assert!(PluginCatchLog::for_call(p, None, None, m).is_none(), "{p}");
+            }
         }
     }
 

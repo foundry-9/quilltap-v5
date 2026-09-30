@@ -212,6 +212,39 @@ pub struct TransportError {
     pub status: Option<u16>,
 }
 
+impl TransportError {
+    /// A non-2xx response, rendered the ONE way every v5 transport renders it
+    /// — `HTTP {status}: {body}` with the status set. [`Self::http_body`]
+    /// (`provider_error.rs`) strips exactly this prefix back off, and the
+    /// failover detectors read these bytes (P4.128 — the format used to be
+    /// spelled out at each `ReqwestTransport` arm and again in the tier-3
+    /// harness).
+    pub fn http(status: u16, body: impl AsRef<str>) -> Self {
+        TransportError {
+            message: format!("HTTP {status}: {}", body.as_ref()),
+            status: Some(status),
+        }
+    }
+
+    /// The streaming arm's time-to-headers budget running out (v4's
+    /// `openStream()` `AbortController`).
+    pub fn headers_timeout(ms: u128) -> Self {
+        TransportError {
+            message: format!("{HEADERS_TIMEOUT_PREFIX}{ms}ms"),
+            status: None,
+        }
+    }
+
+    /// Whether this is [`Self::headers_timeout`] — the one transport failure
+    /// the openai SDK names `APIConnectionTimeoutError` rather than
+    /// `APIConnectionError` (P4.128's catch-line mapping).
+    pub fn is_headers_timeout(&self) -> bool {
+        self.status.is_none() && self.message.starts_with(HEADERS_TIMEOUT_PREFIX)
+    }
+}
+
+const HEADERS_TIMEOUT_PREFIX: &str = "provider did not send response headers within ";
+
 impl std::fmt::Display for TransportError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)
@@ -321,11 +354,8 @@ mod native {
                             if (200..300).contains(&status) {
                                 return Ok(TransportResponse { status, body });
                             }
-                            let text = String::from_utf8_lossy(&body).to_string();
-                            last = Some(TransportError {
-                                message: format!("HTTP {status}: {text}"),
-                                status: Some(status),
-                            });
+                            last =
+                                Some(TransportError::http(status, String::from_utf8_lossy(&body)));
                         }
                         Err(e) => {
                             last = Some(TransportError {
@@ -358,13 +388,7 @@ mod native {
                 // unbounded: a long generation must never be cut off mid-answer.
                 let sent = tokio::time::timeout(policy.timeout, self.build(request).send())
                     .await
-                    .map_err(|_| TransportError {
-                        message: format!(
-                            "provider did not send response headers within {}ms",
-                            policy.timeout.as_millis()
-                        ),
-                        status: None,
-                    })?;
+                    .map_err(|_| TransportError::headers_timeout(policy.timeout.as_millis()))?;
                 let resp = sent.map_err(|e| TransportError {
                     message: e.to_string(),
                     status: None,
@@ -372,10 +396,7 @@ mod native {
                 let status = resp.status().as_u16();
                 if !(200..300).contains(&status) {
                     let text = resp.text().await.unwrap_or_default();
-                    return Err(TransportError {
-                        message: format!("HTTP {status}: {text}"),
-                        status: Some(status),
-                    });
+                    return Err(TransportError::http(status, text));
                 }
                 let (tx, rx) = tokio::sync::mpsc::channel::<StreamBytes>(32);
                 let mut stream = resp;

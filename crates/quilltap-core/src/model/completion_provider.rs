@@ -228,6 +228,23 @@ pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
             api_key: api_key.to_string(),
         };
 
+        // P4.128: v4's openai-SDK plugins wrap `client.chat.completions.
+        // create` in a `try` whose catch logs `<Name> API error in
+        // sendMessage` before rethrowing (`PluginCatchLog`) — once, after the
+        // SDK's own retries, with the thrown text. The build above sits
+        // outside it, as v4's `buildRequestBody` does.
+        let catch_log = crate::model::streaming_provider::PluginCatchLog::for_call(
+            provider,
+            base_url,
+            localhost_gateway,
+            crate::model::streaming_provider::CatchMethod::SendMessage,
+        );
+        let fail = |e: crate::model::transport::TransportError| {
+            if let Some(log) = &catch_log {
+                log.emit_transport(provider, &e);
+            }
+            completion_error_from(provider, e)
+        };
         let resp = match transport.execute(&request, policy).await {
             Ok(r) => r,
             Err(e) => {
@@ -248,9 +265,9 @@ pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
                             .execute(&retry, policy)
                             .await
                             // v4 surfaces the SECOND failure's text.
-                            .map_err(|retry_err| completion_error_from(provider, retry_err))?
+                            .map_err(fail)?
                     }
-                    None => return Err(completion_error_from(provider, e)),
+                    None => return Err(fail(e)),
                 }
             }
         };

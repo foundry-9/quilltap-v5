@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — feat(core): the pre-stream and sendMessage plugin catch lines with v4's thrown text (P4.128 unit B1)
+
+_Versions: core 0.0.1117, harness 0.0.1036._
+
+The OpenAI-compatible, DeepSeek and NanoGPT streaming providers now log v4's
+`<Name> API error in streamMessage` line when the request fails before the
+first chunk (a non-2xx or a connection failure), and the non-streaming path
+logs the `sendMessage` twin. The `error` field carries v4's thrown text: the
+SDK's `APIError` message for a non-2xx (`400 Filtered.`), `Connection error.`
+or `Request timed out.` for a transport failure. That mapping is confined to
+the log line; the stream/completion error message and the failover input
+keep v5's own transport bytes.
+
+The `text-http-errors` recorder now captures each plugin's ERROR lines
+through the plugin-logger bridge and gains a posed connection-failure case
+(736 rows); the Rust family diffs all 204 catch lines field by field and pins
+the Google, Ollama and OpenRouter lines v5 has not ported. `TransportError::
+http` is the one rendering of a non-2xx, and `pre_stream_error` the one
+pre-stream rule the tier-3 harness now calls. `primary_stream_tier3` gains its
+first multi-character case (a named OPENAI history).
+
 #### 2026-09-30 — feat(core): the participant-name slot on StreamMessage, hashed and never sent (P4.128 unit A)
 
 _Versions: core 0.0.1116, harness 0.0.1035._

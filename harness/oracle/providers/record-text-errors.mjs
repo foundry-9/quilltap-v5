@@ -36,7 +36,26 @@
  *     fetchCalls, outcome: 'thrown'|'ok',
  *     thrown: { message, name, code?, errorCode?, providerReason?, status? } | null,
  *     refusal: { refused, evidence?, detail? },
- *     trigger: <FallbackTrigger>|null }
+ *     trigger: <FallbackTrigger>|null,
+ *     pluginErrorLog?: [{ plugin, message, context, error }] }
+ *
+ * `pluginErrorLog` (P4.128): the ERROR-level lines the PLUGIN logged while the
+ * row ran, through the host-bridge logger global every plugin's
+ * `createPluginLogger` consults (`globalThis.__quilltap_logger_factory` — the
+ * PLUGIN-logger hook, the `record-stream-fixtures.mjs` bridge copied
+ * verbatim). Present only when the plugin logged at ERROR: the three
+ * openai-SDK plugins' `… API error in streamMessage|sendMessage` catch lines
+ * (the OpenAI-compatible base, DeepSeek, NanoGPT). `error` is the thrown
+ * value's `message` — the SDK's `APIError` text.
+ *
+ * A case with `"transport": "fetch-throws"` (P4.128) poses a TRANSPORT
+ * failure instead of a response: the mocked `fetch` throws
+ * `TypeError('fetch failed')` (undici's own shape), so the SDK surfaces its
+ * `APIConnectionError` (`Connection error.`) after its retries; `status`,
+ * `statusText`, `contentType` and `body` are `null`. `fetchCalls` on those
+ * rows is the SDK's retry count (1 + `DEFAULT_MAX_RETRIES` 2) — recorded, and
+ * NOT a comparand: the 2026-07-23 provider-I/O ruling (retry counts are the
+ * transport's, not the port's contract).
  *
  * `code` / `errorCode` are the RAW values (any JSON type) — the Rust side runs
  * them through its `code_string` (v4's `codeString`) before comparing.
@@ -96,6 +115,40 @@ const PROVIDERS = {
     make: async () => new (await plugin('ollama')).OllamaProvider('http://localhost:11434'),
   },
 };
+
+// The per-row ERROR-level plugin log (see the header). `null` between rows.
+// Copied verbatim from `record-stream-fixtures.mjs` so the corpora agree on
+// the `pluginErrorLog` shape; installed BEFORE any plugin is imported, since a
+// plugin's logger resolves the factory when it is built.
+let pluginErrorSink = null;
+function captureLogger(prefix, baseContext = {}) {
+  const fmt = (context) => {
+    const merged = { ...baseContext, ...context };
+    const entries = Object.entries(merged)
+      .filter(([key]) => key !== 'context')
+      .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+      .join(' ');
+    return entries ? ` ${entries}` : '';
+  };
+  return {
+    debug: (m, c) => console.debug(`[${prefix}] ${m}${fmt(c)}`),
+    info: (m, c) => console.info(`[${prefix}] ${m}${fmt(c)}`),
+    warn: (m, c) => console.warn(`[${prefix}] ${m}${fmt(c)}`),
+    error: (m, c, e) => {
+      console.error(`[${prefix}] ${m}${fmt(c)}`, e ? `\n${e.stack || e.message}` : '');
+      if (pluginErrorSink) {
+        pluginErrorSink.push({
+          plugin: prefix,
+          message: m,
+          context: { ...baseContext, ...(c ?? {}) },
+          error: e instanceof Error ? e.message : null,
+        });
+      }
+    },
+    child: (extra) => captureLogger(prefix, { ...baseContext, ...extra }),
+  };
+}
+globalThis.__quilltap_logger_factory = (pluginName) => captureLogger(pluginName);
 
 // v4's classifier + fallback trigger — the REAL modules, from the pin.
 const { classifyRefusal } = await import(
@@ -169,6 +222,7 @@ for (const c of cases) {
       const origFetch = globalThis.fetch;
       globalThis.fetch = async () => {
         fetchCalls++;
+        if (c.transport === 'fetch-throws') throw new TypeError('fetch failed');
         const headers = c.contentType ? { 'content-type': c.contentType } : {};
         return new Response(c.body === '' ? null : c.body, {
           status: c.status,
@@ -178,6 +232,7 @@ for (const c of cases) {
       };
       let thrownValue = null;
       let outcome = 'ok';
+      pluginErrorSink = [];
       try {
         const inst = await spec.make();
         const params = paramsFor(provider, mode);
@@ -196,22 +251,23 @@ for (const c of cases) {
       }
       const verdict = thrownValue ? classifyRefusal({ error: thrownValue }) : { refused: false };
       const trigger = thrownValue ? classifyFallbackTrigger(thrownValue) : null;
-      lines.push(
-        JSON.stringify({
-          case: c.case,
-          provider: spec.id,
-          mode,
-          status: c.status,
-          statusText: c.statusText,
-          contentType: c.contentType,
-          body: c.body,
-          fetchCalls,
-          outcome,
-          thrown: thrownValue ? thrownFields(thrownValue) : null,
-          refusal: verdict,
-          trigger,
-        })
-      );
+      const row = {
+        case: c.case,
+        provider: spec.id,
+        mode,
+        status: c.status ?? null,
+        statusText: c.statusText ?? null,
+        contentType: c.contentType ?? null,
+        body: c.body ?? null,
+        fetchCalls,
+        outcome,
+        thrown: thrownValue ? thrownFields(thrownValue) : null,
+        refusal: verdict,
+        trigger,
+      };
+      if (pluginErrorSink.length > 0) row.pluginErrorLog = pluginErrorSink;
+      pluginErrorSink = null;
+      lines.push(JSON.stringify(row));
     }
   }
 }

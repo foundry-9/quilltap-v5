@@ -156531,6 +156531,73 @@ clean); every regen from the lane pin `/tmp/qt-v4-pin-p4128-97b25fc53`
   `V4=/tmp/qt-v4-pin-p4128-97b25fc53 V5=$PWD bash harness/oracle/providers/
   regenerate-request-envelopes.sh` (Node 24 on PATH).
 
+## P4.128 unit B1 — the pre-stream + `sendMessage` catch lines, the transport-failure row, item 12, the two-seat case (2026-09-30)
+
+Tier 1 item 4, Tier 2 items 6, 7, 8, 9. §R.2 probe PASSED before the batch.
+
+- **Measured at the pin (the recorder's new `pluginErrorLog`, 736 rows):** the
+  three catch-line plugins log on EVERY failing row in both modes — 34 cases
+  (33 shared + the transport row) × 2 modes × 3 = 204 lines, `error` = the
+  SDK's `APIError` text (`400 Filtered.`, `400 status code (no body)`, …) or
+  `Connection error.`. **Survey correction:** v4's OTHER plugins log ERROR
+  lines on these rows too — GOOGLE (`Error calling Google Gemini API` /
+  `Error streaming from Google Gemini API`), OLLAMA (two lines per mode),
+  OPENROUTER's raw-fetch modes (`OpenRouter API error`, `Error in
+  streamViaChatCompletions`) — none ported in v5 (grep: zero hits). The order
+  said "silence legs for the seven no-catch providers"; measured, only
+  OPENAI, GROK, Z_AI, ANTHROPIC and OpenRouter's SDK modes are silent. The
+  nine unported (provider, mode, message) triples are pinned by name in
+  `UNPORTED_PLUGIN_ERROR_LINES` (a new/ported one fails) — a follow-up for a
+  later order, outside this one's three-provider mandate. The 730 pre-existing
+  rows re-recorded identical bar the added field (parsed-row compare).
+- **Red-first:** the family grown to diff v5's captured `… API error in …`
+  lines (thread-scoped `captured_with` around both `run_stream` and
+  `run_send`) against `pluginErrorLog`: **204 of 204 catch-line rows RED**
+  before the emit; green after, the silence leg holding on the other 532.
+- **Core:** `StreamCatchLog` → `PluginCatchLog` with a `CatchMethod`
+  (stream/send; the send line under target `quilltap::model::
+  completion_provider`); `pre_stream_error` factored out of the deleted
+  `single_error_from`; every pre-stream transport arm in `stream_message`
+  (the plain `:511`, the think-retry and chaining-fallback retries —
+  provider-disjoint from the three, so only the plain arm is reachable for
+  them) goes through one `fail` closure that emits then errors; the build
+  failure stays silent (v4's `buildRequestBody` precedes its `try`).
+  `completion_provider::execute_completion_with_anchor` emits the
+  `sendMessage` twin on both transport-error arms (item 7 — this is the
+  "non-streaming request site" the ownership row names).
+  `provider_error::sdk_thrown_message` renders the `error` field: the side's
+  message on a non-2xx; `Request timed out.` for `TransportError::
+  headers_timeout`; `Connection error.` otherwise (RULED mapping, confined to
+  the field). **Recorded approximation:** the non-streaming reqwest
+  whole-exchange timeout renders like any send failure, so it maps to
+  `Connection error.` where v4 logs `Request timed out.`. **Not emitted
+  (recorded):** a 2xx whose body fails to parse on the non-streaming path is
+  inside v4's `try` too; v5's `response parse:` arm logs nothing.
+- **Transport-failure row (item 6):** `cases.json` gains `transport_fetch_
+  throws` (`"transport": "fetch-throws"`, the three providers) — the mocked
+  `fetch` throws `TypeError('fetch failed')`; v4 threw `Connection error.`
+  after `fetchCalls: 3` (recorded, not compared — the 2026-07-23 ruling,
+  cited in the recorder and the family). v5's `PosedFailure` yields a
+  status-less `error sending request for url (…)`; the verdict and the
+  trigger (`provider-error`) MATCH v4; v5 attaches no refusal side to a
+  status-less failure, pinned both ways as six `side` entries.
+- **Item 12 (B4):** `TransportError::http(status, body)` (both
+  `ReqwestTransport` arms; `http_body_strips_the_transport_prefix` pinned
+  against it) and `TransportError::headers_timeout` / `is_headers_timeout`;
+  the tier-3 `sdk_error` arm now calls `pre_stream_error(provider,
+  TransportError::http(..))` — no copy of either rule left in the harness.
+- **Item 9:** `primary_stream_tier3` gains `named_two_seat_history` (chat
+  `dd000066`, two CHARACTER participants, `profileKey: understudyProfile` =
+  OPENAI, `isMultiCharacter: true`, a named user + assistant history) on a
+  new `named_two_seat` stream (the first attempt reused `clean`, whose
+  single-attempt queue v4 had exhausted); the spec's `history` /
+  `isMultiCharacter` read by the `primary` kind on both sides. v4's row:
+  `historyTailHash 6edf5f77…`; v5 matches (53 calls, 47 llm_logs rows). The
+  300 ms drain is unchanged (§S 3 — P4.129's drain not copied).
+- Regen AS RUN: `V4=/tmp/qt-v4-pin-p4128-97b25fc53 bash harness/oracle/
+  providers/regenerate-text-errors.sh`; `/tmp/p4128/regen-ps.sh` (the
+  recipe's commands, lane-private `/tmp/p4128/` outputs, cwd the pin).
+
 ## P4.130 — the Zod smalls + the read-side trail validation (lane record, 2026-09-30)
 
 Lane branch `claude/zod-work-orders-validation-cfc445`, cut from `main`

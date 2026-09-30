@@ -330,6 +330,23 @@
           "characterId": "cc000001-0000-4000-8000-000000000001"
         }
       ]
+    },
+    {
+      "id": "dd000066-0000-4000-8000-000000000066",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "two seats: a named multi-character history",
+      "participants": [
+        {
+          "id": "ee000066-0000-4000-8000-000000000066",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "ee000066-0000-4000-8000-0000000000b6",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
     }
   ],
   "character": {
@@ -358,6 +375,24 @@
             "promptTokens": 40,
             "completionTokens": 5,
             "totalTokens": 45
+          }
+        }
+      ]
+    ],
+    "named_two_seat": [
+      [
+        {
+          "content": "The lamps "
+        },
+        {
+          "content": "are lit early tonight."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 52,
+            "completionTokens": 6,
+            "totalTokens": 58
           }
         }
       ]
@@ -1981,6 +2016,24 @@
         "uncensoredTextProfileId": "aa000002-0000-4000-8000-000000000002"
       },
       "comment": "P4.122: an uncoded frame `{\"error\":{\"message\":...}}` - a status-less, code-less APIError whose message matches no pattern. Whatever v4's classifyFallbackTrigger answers is the measurement both sides pin."
+    },
+    {
+      "name": "named_two_seat_history",
+      "kind": "primary",
+      "profileKey": "understudyProfile",
+      "chatId": "dd000066-0000-4000-8000-000000000066",
+      "participantId": "ee000066-0000-4000-8000-000000000066",
+      "preGeneratedMessageId": "ff000086-0000-4000-8000-000000000086",
+      "hasTools": false,
+      "streamLabel": "named_two_seat",
+      "attachedFiles": [],
+      "isMultiCharacter": true,
+      "history": [
+        { "role": "user", "content": "[Bob] Evening, Friday.", "name": "Bob" },
+        { "role": "assistant", "content": "Good evening, Bob.", "name": "Friday" }
+      ],
+      "originalMessage": "[Bob] what is the news tonight",
+      "comment": "P4.128: the family's first multi-character chat (two seats, an OPENAI primary). v4's funnel hashes the history's participant `name` into `historyTailHash` (`cache-prefix-hashes.ts:80`); no plugin sends it. RED on the llm_logs row's `requestHashes` while v5's hash projection read `Tool` names only."
     }
   ],
   "authPrimaryProfile": {

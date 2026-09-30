@@ -645,5 +645,14 @@
     "providers": [
       "google"
     ]
+  },
+  {
+    "case": "transport_fetch_throws",
+    "transport": "fetch-throws",
+    "providers": [
+      "openai-compatible",
+      "deepseek",
+      "nanogpt"
+    ]
   }
 ]
