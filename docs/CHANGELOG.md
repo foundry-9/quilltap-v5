@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(off-scene): log a NULL chat type as v4's salon default; an empty persona id is no persona
+
+_Versions: core 0.0.1110, harness 0.0.1028._
+
+The off-scene scan's persona-exclusion DEBUG omitted `chatType` when the
+chat's column was NULL. v4's chat schema defaults the type to `salon` and
+reads a NULL cell as undefined, so v4 logs `chatType: 'salon'`; the scan now
+reads the column with that default. `isUserPersonaInRoom` treated an empty
+persona id as a persona; v4's `!identity.characterId` does not, and now
+neither does v5. New pins: a planted NULL `chatType` in the continuation
+family's scan probes (restored before the table dump), and unit tests for
+the empty id and an absent chat type. P4.124 items 7 and 8.
+
 #### 2026-09-29 — fix(concierge): read the understudy lookups as v4's fallback reads and log a pool failure
 
 _Versions: core 0.0.1109, harness 0.0.1027._

@@ -155453,3 +155453,32 @@ hunks, `services/orchestrator.rs:947` (P4.121's file) and
   fresh read-only open fails) — asserted inside the helper. Neutral from the
   pin: `image_failover_tier3`, `retry_uncensored_tier3`, `refusal_ledger_
   tier3`, `fallback_engine`, `route_trail_compose`.
+- **Item 6 — STOPPED (ownership), recorded for the unifier.** `ContextChat`'s
+  ONLY production constructor is `services/orchestrator.rs:4431`
+  (`build_context_input`), a full struct literal — P4.121's file and on this
+  lane's must-not-touch list. §R.10(f) assumed the constructors lived in
+  `build_context.rs`; only the two TEST literals (`:4362`, `:4686`) and the
+  harness's (`build_context_tier3_equivalence.rs:818`) do. Adding
+  `chat_type` cannot compile without that hunk, so `off_scene.rs` keeps
+  `read_chat_type` (now v4's `salon` default — unit 4). **The hunk for the
+  unifier** (after P4.121 lands): `pub chat_type: Option<String>` on
+  `ContextChat`; `chat_type: json_str(args.chat, "chatType"),` in the
+  orchestrator literal; `chat_type: None` (or the override) in the three
+  test literals; `scan_off_scene_newcomers` takes `chat_type: &str`
+  (defaulted `salon` at the call site, `build_context.rs:~1951`);
+  `read_chat_type` deleted. A mechanical follow-up, no behaviour change.
+- **Unit 4 (items 7 + 8), core 0.0.1110, harness 0.0.1028.** **Item 7's
+  premise re-measured:** v4 does NOT log `chatType: null` —
+  `ChatTypeEnum.default('salon')` (`chat.types.ts:998`) over a NULL read as
+  `undefined` means v4's chat object always carries `'salon'`, so v4 logs
+  `chatType=salon`; v5's raw-SQL read omitted the field. `read_chat_type`
+  now applies the default (a missing row too — `chats_read` does the same).
+  `user_identity_resolver`'s `chatType` needed no change: its production
+  caller passes the `chats_read`-defaulted value, and a `None` omits the
+  field exactly as v4's logger drops `undefined` (pinned). Item 8:
+  `is_user_persona_in_room` filters an empty id (v4's truthiness); its one
+  caller already filtered, so unit-pinned (both sources, silent). Pins: the
+  continuation family's scan probes gain a planted NULL cell (raw cell read
+  and restored before the dump), `chatType=salon excludesPersonaByName=true`
+  — **M5** (drop the NULL default) reddened exactly that arm (`chatType=`);
+  reverted by file backup. `chat_continuation_tier2` green from the pin.

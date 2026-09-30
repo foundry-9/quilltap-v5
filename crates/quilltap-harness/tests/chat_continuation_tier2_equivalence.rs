@@ -516,6 +516,58 @@ fn chat_continuation_matches_oracle() {
                     c.name
                 );
             }
+
+            // P4.124 (P4.D233 (b)): a NULL `chatType` cell is v4's schema
+            // default — `ChatTypeEnum.default('salon')` over a NULL read as
+            // `undefined` — so the DEBUG logs `chatType=salon` (and the operator
+            // speaks), never an omitted field. Planted on this case's copy and
+            // restored before the table dump below.
+            let original: Option<String> = {
+                let id = probe.chat_id.clone();
+                db.read_main(move |conn| {
+                    conn.query_row(
+                        r#"SELECT "chatType" FROM chats WHERE id = ?1"#,
+                        [&id],
+                        |row| row.get(0),
+                    )
+                    .map_err(Into::into)
+                })
+                .expect("read the raw chatType cell")
+            };
+            let set_type = |t: Option<String>| {
+                let id = probe.chat_id.clone();
+                db.write_blocking(move |ws| {
+                    ws.main()
+                        .connection()
+                        .execute(
+                            r#"UPDATE chats SET "chatType" = ?1 WHERE id = ?2"#,
+                            rusqlite::params![t, id],
+                        )
+                        .map_err(Into::into)
+                })
+                .expect("plant chatType")
+            };
+            assert_eq!(set_type(None), 1, "the NULL plant hit the probe chat");
+            let (_, lines) = quilltap_core::test_support::captured_with(|| {
+                scan_off_scene_newcomers(
+                    &db,
+                    &probe.chat_id,
+                    &spec.user_id,
+                    &spec.character_a,
+                    Some(spec.scan_probe_user_character_name.as_str()),
+                    &participants,
+                )
+            });
+            let want = format!(
+                "[ContextManager] Off-scene persona exclusion chatId={} chatType=salon excludesPersonaByName=true",
+                probe.chat_id,
+            );
+            assert!(
+                lines.iter().any(|l| l.contains(&want)),
+                "NULL chatType after {}: want {want:?} in {lines:#?}",
+                c.name
+            );
+            assert_eq!(set_type(original), 1, "restore the probe chat's chatType");
         }
 
         let dump = |t: &'static str| -> Value {

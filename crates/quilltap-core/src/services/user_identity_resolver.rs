@@ -219,8 +219,15 @@ pub async fn resolve_user_identity(
 /// v4 takes `Pick<ChatMetadataBase, 'chatType'>`; the chat type alone is the
 /// whole of what it reads. The DEBUG fires ONLY on the fallback branch — a
 /// seated persona and a persona-less identity both return before it.
+///
+/// `if (!identity.characterId) return false` is JS truthiness: an EMPTY id is
+/// no persona either (P4.124, P4.D233 (c) — v5 had accepted `Some("")`; its one
+/// production caller already filters empties, so the rule is pinned here). A
+/// `None` chat type renders no `chatType` field, as v4's logger drops an
+/// `undefined` value; production never passes one (`chats_read` applies v4's
+/// `salon` schema default).
 pub fn is_user_persona_in_room(chat_type: Option<&str>, identity: &ResolvedUserIdentity) -> bool {
-    let Some(character_id) = identity.character_id.as_deref() else {
+    let Some(character_id) = identity.character_id.as_deref().filter(|id| !id.is_empty()) else {
         return false;
     };
     if identity.source == IdentitySource::ChatParticipant {
@@ -328,6 +335,44 @@ mod tests {
             vec![
                 "DEBUG quilltap_core::services::user_identity_resolver Unseated persona \
                  presence resolved characterId=char-charlie chatType=autonomous inRoom=false"
+                    .to_string()
+            ]
+        );
+    }
+
+    /// P4.124 (P4.D233 (c)): v4's `!identity.characterId` — an empty id is
+    /// falsy, so no persona, whatever the source; silent (it returns before
+    /// the DEBUG).
+    #[test]
+    fn persona_in_room_is_false_for_an_empty_persona_id() {
+        for source in [
+            IdentitySource::ChatParticipant,
+            IdentitySource::SingleUserCharacter,
+        ] {
+            let empty = ResolvedUserIdentity {
+                character_id: Some(String::new()),
+                ..fallback(source)
+            };
+            let (in_room, lines) = crate::test_support::captured_with(|| {
+                is_user_persona_in_room(Some("salon"), &empty)
+            });
+            assert!(!in_room, "{source:?}");
+            assert!(lines.is_empty(), "{lines:?}");
+        }
+    }
+
+    /// A `None` chat type omits the field (v4's logger drops `undefined`).
+    #[test]
+    fn persona_in_room_omits_an_absent_chat_type() {
+        let (in_room, lines) = crate::test_support::captured_with(|| {
+            is_user_persona_in_room(None, &fallback(IdentitySource::SingleUserCharacter))
+        });
+        assert!(in_room);
+        assert_eq!(
+            lines,
+            vec![
+                "DEBUG quilltap_core::services::user_identity_resolver Unseated persona \
+                 presence resolved characterId=char-charlie inRoom=true"
                     .to_string()
             ]
         );
