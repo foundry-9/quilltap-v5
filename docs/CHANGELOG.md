@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — fix(maintenance): log the stale-chat collapse fields camelCase, as v4 does
+
+_Versions: core 0.0.1107._
+
+The stale-chat cache collapse logged its three lines with snake_case field
+names (`chat_id`, `chat_rows`, `chats_scanned`, ...). v4 logs `chatId`,
+`chatRows`, `messageRows` and spreads its camelCase summary into the pass
+line; the fields now carry v4's names, with the unit pins updated and a
+negative assert that the old names are gone. Also a comment at the story
+background job's sanitize call recording why v4's catch WARN there has no
+v5 counterpart (it is unreachable on v4 too). P4.124 items 16 and 17.
+
 #### 2026-09-29 — docs(porting): order the `97b25fc53` follow-ups round (P4.122–P4.126) and bind P4.119–P4.121 into it
 
 _Docs-only change._

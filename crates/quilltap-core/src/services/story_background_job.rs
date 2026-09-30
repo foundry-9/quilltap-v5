@@ -525,7 +525,16 @@ where
         }
     }
 
-    // Sanitize gate (failure swallowed → unsanitized).
+    // Sanitize gate (failure swallowed → unsanitized). v4 wraps this call in a
+    // catch logging WARN `[StoryBackground] Appearance sanitization failed,
+    // using unsanitized`; v5 has no such line because the call is infallible
+    // here, and the WARN is unreachable on v4 too for every failure v4's own
+    // code raises: the classification never throws (see
+    // `appearance_resolution.rs`'s own note on v4's unreachable catch), and
+    // the sanitize call goes through
+    // `executeCheapLLMTask`, whose outer catch answers `{success: false}` —
+    // handled by its own WARN `Sanitization failed, passing through original`,
+    // which `appearance_resolution.rs` carries (P4.D239 → P4.124, no code).
     let mut resolved_appearances: Option<Vec<ResolvedCharacterAppearance>> =
         appearance_result.map(|r| r.appearances);
     if let Some(appearances) = resolved_appearances.take() {

@@ -155372,3 +155372,23 @@ auto-described; the P4.D108 deferral, now measured — proposed order),
 **#129 RECORDED** (no tool-loop re-stream on any turn writes an `llm_logs`
 row; invisible to the differential, which strips CHAT_MESSAGE rows — proposed
 order). Walk doc §5.
+
+## P4.124 — the Rust-core smalls (lane `claude/rust-smalls-fallback-reads-235ab6`, pin `/tmp/qt-v4-pin-p4124-97b25fc53` at `97b25fc53`)
+
+Opened 2026-09-29. §R.2 probe PASSED at lane start (v4 `main` at `97b25fc53`,
+`bugfix` unmoved, tree clean). ⚠ Found at the first `cargo fmt --all`:
+**`main` is not fmt-clean** — `c0d647086` (dogfood #127) left two unformatted
+hunks, `services/orchestrator.rs:947` (P4.121's file) and
+`services/turn_orchestrator.rs:1069/1107` (no lane's). Left untouched here
+(ownership); the unifier runs `cargo fmt --all` on the union.
+
+- **Unit 1 (items 16 + 17), core 0.0.1107.** The stale-chat collapse's three
+  lines now carry v4's camelCase fields (`chatId`/`chatRows`/`messageRows`;
+  the pass line's `chatsScanned`/`staleChats`/`chatsCollapsed`/
+  `chatRowsCleared`/`messageRowsCleared` — v4's `{...summary}`); the two unit
+  pins assert the new names AND the absence of the old. No differential
+  moves (neither `collapse_stale_chat_caches_tier2` nor `maintenance_sweep_
+  tier2` compares log lines) — both re-run green from the pin. Item 17: the
+  one comment at `story_background_job.rs`'s sanitize call; v4's catch WARN
+  is unreachable (re-measured at the pin: the classification never throws,
+  and the sanitize goes through `executeCheapLLMTask`'s `{success: false}`).

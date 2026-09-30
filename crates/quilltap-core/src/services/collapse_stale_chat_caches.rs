@@ -45,10 +45,11 @@
 //! ## v4's three log lines
 //!
 //! v5 had none of them (pre-existing; restored with `f7f3d7bf0`'s shapes): the
-//! per-chat INFO `Collapsed stale chat caches {chat_id, chat_rows,
-//! message_rows}` gated on either count being non-zero, the per-chat WARN
-//! `Failed to collapse stale chat caches — continuing {chat_id, error}`, and the
-//! pass's INFO `Stale-chat cache collapse complete` with the summary spread. v4
+//! per-chat INFO `Collapsed stale chat caches {chatId, chatRows,
+//! messageRows}` gated on either count being non-zero, the per-chat WARN
+//! `Failed to collapse stale chat caches — continuing {chatId, error}`, and the
+//! pass's INFO `Stale-chat cache collapse complete` with the summary spread
+//! (camelCase field names, as v4's `{...summary}` logs them — P4.124). v4
 //! logs the per-chat INFO inside the collapse; here it is logged on the calling
 //! thread once the chat's write transaction returns (the writer thread runs the
 //! UPDATEs), which changes no field and no order.
@@ -133,9 +134,9 @@ async fn collapse_one_chat(db: &Db, chat_id: &str) -> Result<(usize, usize), DbE
     if chat_rows > 0 || message_rows > 0 {
         tracing::info!(
             target: "quilltap::maintenance",
-            chat_id = %chat_id,
-            chat_rows,
-            message_rows,
+            chatId = %chat_id,
+            chatRows = chat_rows,
+            messageRows = message_rows,
             "Collapsed stale chat caches",
         );
     }
@@ -178,7 +179,7 @@ pub async fn collapse_stale_chat_caches(
             Err(e) => {
                 tracing::warn!(
                     target: "quilltap::maintenance",
-                    chat_id = %chat_id,
+                    chatId = %chat_id,
                     error = %e,
                     "Failed to collapse stale chat caches — continuing",
                 );
@@ -188,11 +189,11 @@ pub async fn collapse_stale_chat_caches(
 
     tracing::info!(
         target: "quilltap::maintenance",
-        chats_scanned = summary.chats_scanned,
-        stale_chats = summary.stale_chats,
-        chats_collapsed = summary.chats_collapsed,
-        chat_rows_cleared = summary.chat_rows_cleared,
-        message_rows_cleared = summary.message_rows_cleared,
+        chatsScanned = summary.chats_scanned,
+        staleChats = summary.stale_chats,
+        chatsCollapsed = summary.chats_collapsed,
+        chatRowsCleared = summary.chat_rows_cleared,
+        messageRowsCleared = summary.message_rows_cleared,
         "Stale-chat cache collapse complete",
     );
     Ok(summary)
@@ -254,9 +255,10 @@ mod log_tests {
         );
         assert!(
             per_chat[0].starts_with("INFO")
-                && per_chat[0].contains(&format!("chat_id={CHAT}"))
-                && per_chat[0].contains("chat_rows=1")
-                && per_chat[0].contains("message_rows=0"),
+                && per_chat[0].contains(&format!("chatId={CHAT}"))
+                && per_chat[0].contains("chatRows=1")
+                && per_chat[0].contains("messageRows=0")
+                && !per_chat[0].contains("chat_id="),
             "{}",
             per_chat[0]
         );
@@ -264,14 +266,15 @@ mod log_tests {
         let done = maint(&lines, "Stale-chat cache collapse complete");
         assert_eq!(done.len(), 1, "{lines:?}");
         for f in [
-            "chats_scanned=2",
-            "stale_chats=2",
-            "chats_collapsed=1",
-            "chat_rows_cleared=1",
-            "message_rows_cleared=0",
+            "chatsScanned=2",
+            "staleChats=2",
+            "chatsCollapsed=1",
+            "chatRowsCleared=1",
+            "messageRowsCleared=0",
         ] {
             assert!(done[0].contains(f), "{f} missing: {}", done[0]);
         }
+        assert!(!done[0].contains("chats_scanned="), "{}", done[0]);
         assert!(!done[0].contains("chunk_embeddings"), "{}", done[0]);
         assert!(maint(&lines, "Failed to collapse").is_empty());
 
@@ -304,7 +307,7 @@ mod log_tests {
         assert_eq!(warns.len(), 2, "one per stale chat: {lines:?}");
         assert!(warns
             .iter()
-            .all(|w| w.starts_with("WARN") && w.contains("error=")));
+            .all(|w| w.starts_with("WARN") && w.contains("error=") && w.contains("chatId=")));
         assert_eq!(summary.chats_collapsed, 0);
         assert_eq!(maint(&lines, "Stale-chat cache collapse complete").len(), 1);
     }
