@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — docs(porting): close the P4.122 lane
+
+_Docs-only change._
+
+Status headers for P4.122 (landed, deferred, and what the order got wrong)
+and P4.118 (items 7 and 12 taken), plus the lane's gate addendum in the
+status log.
+
 #### 2026-09-30 — fix(model): read a flat SDK image-error body through the one wrap rule (P4.122 B)
 
 _Versions: core 0.0.1108, harness 0.0.1028._

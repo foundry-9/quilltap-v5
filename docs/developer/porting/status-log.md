@@ -155553,6 +155553,14 @@ and three calls (P4.121's record-leg regen will see 52 calls). Named
 follow-ups: the catch line on the PRE-stream arms; the malformed-frame /
 post-`[DONE]` SDK behaviours (unported, unexercised); the Tier 3 items 13–15
 untouched (no new row touches the OpenRouter/Google ruling).
+
+### Close-out (P4.122)
+
+Release build (`cargo build --workspace --release`) clean; **Tier R**
+(`QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4122-97b25fc53`) **266 cases / 0 failures**.
+The order's status header records landed vs deferred; P4.118's header gained
+the one allowed sentence (items 7 and 12 taken). The lane's `target/` and the
+pin worktree were removed after the last commit.
 ## P4.123 — the wardrobe-tools avatar seam + the trigger's fallback reads + the outfit-failure level (lane record, 2026-09-30)
 
 Branch `claude/wardrobe-avatar-seam-porting-f84dad`, cut from `main` `4d033c9cc`; oracle pin `97b25fc53` via the lane-unique `/tmp/qt-v4-pin-p4123-97b25fc53` (§2 probe PASSED at lane start: v4 `main` at the baseline, both logs empty, tree clean).
