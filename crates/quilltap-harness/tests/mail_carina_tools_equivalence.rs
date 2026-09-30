@@ -1096,18 +1096,15 @@ async fn assert_catch_lines(spec: &Spec, meta: &Meta, main_fx: &str, mount_fx: &
         .partition(|x| x.contains("handler threw unexpectedly"));
     assert_eq!(catch.len(), 1, "send: {l:?}");
     // The recorded divergence, pinned so a convergence is SEEN vanishing: v4's
-    // write path logs the documents-read ERROR before its write throws; v5's
-    // chokepoint throws at the read, so exactly ONE non-catch ERROR (the links
-    // listing) precedes the catch here where v4 has two.
+    // write path logs the documents-read repository ERROR (a fallback read)
+    // BEFORE its write throws into the catch; v5's write chokepoint throws AT
+    // that read, and the throw IS the catch line — so NO non-catch ERROR
+    // precedes the catch here where v4 has one. The day v5 logs that line,
+    // this count moves and the divergence note retires.
     assert_eq!(
         other.len(),
-        1,
-        "send: the non-catch ERROR count moved: {other:?}"
-    );
-    assert!(
-        other[0].starts_with("ERROR quilltap::db Error finding file links by mount point ID "),
-        "send: {}",
-        other[0]
+        0,
+        "send: a non-catch ERROR appeared — the recorded v5 divergence moved: {other:?}"
     );
     assert!(
         catch[0].starts_with(
