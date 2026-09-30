@@ -6928,7 +6928,58 @@ only once P4.D235 lands, and the re-embed spend needs P4.D235's
 measurement recipe first).
 
 
-## The `97b25fc53` smalls round (P4.127 ∥ P4.128 ∥ P4.129 ∥ P4.130 ∥ P4.131 ∥ P4.132) — ORDERED 2026-09-30
+## The `97b25fc53` smalls round (P4.127 ∥ P4.128 ∥ P4.129 ∥ P4.130 ∥ P4.131 ∥ P4.132) — UNIFIED 2026-09-30 (ordered 2026-09-30)
+
+**UNIFIED on main (2026-09-30) — ALL SIX LANES LANDED; the baseline STAYS
+`97b25fc53` (no drift row absorbed; the ledger's §3 EMPTY, v4 AT the
+baseline at both probes). Round record: `status-log.md` → "The `97b25fc53`
+smalls round — UNIFICATION record (2026-09-30)". The §3 review (six
+parallel readers, one per lane) found NO blocking defect in any lane's code
+— the twelfth such round — and no overclaim; the should-fixes it found were
+all landed at unification, each with its pin: the `error` bytes on every
+`db::fallback` line (`sqlite error: ` where v4 logs the bare message — it
+would have shipped), seven module-target twins of `Error finding entity by
+ID` + the help-sync copy folded onto the home with a NEW `fallback_home_
+guard`, the mail plants' excluded v4 lines named (an allowlist before), the
+`HostAssembler` zone fill pinned (a UTC there re-opened #121 with every
+family green) + the host's last ambient clock retired + the divergence's true
+scope (every executor tool and Carina, not three entries), P4.129's render
+marker narrowed to v4's sentence with the row count pinned + the sampling
+recorded as handed, P4.128's unported lines and SDK stream rows pinned by
+count, P4.132's beat hearing v4's exact sentences. The three §S handoffs
+landed (the fold; the three `NameHash` pins retired by VANISHING on a
+pin-fresh oracle; no drain copy).**
+
+**NEXT (in order):**
+1. **The owed dogfood pass** over this round's 💸 items (the record's list +
+   each order's Acceptance) on the Friday copy, folded into the standing
+   queue — the top candidate.
+2. **A recorded-divergences smalls round**, by name (each already loud in
+   its order's Unification paragraph): (a) P4.128's two approximations — the
+   NON-streaming reqwest timeout → `Connection error.` (v4 `Request timed
+   out.`; openai 7.23.0 classes any `/timed? ?out/i` connection failure that
+   way) and the 2xx-body-fails-to-parse gap where v5 answers `Ok` with empty
+   content on `{"choices":[]}` and v4 throws into its catch — a posed-2xx arm
+   in the `text-http-errors` recorder through the REAL SDKs, the v5 side
+   pinned; (b) P4.130's import mask exception widened per entity family
+   (tags, the three profile kinds, roleplay templates end in ZodError tails
+   v5 answers with its own decode sentence); (c) the restore orchestrator's
+   serde arm (one more derived clone of the concierge-bogus archive); (d)
+   P4.129's Carina finding — `carina_query::run_stream` logs no
+   `CHAT_MESSAGE` row where v4's funnel logs one (the `V4OnlyRow` pin trips
+   VANISHED the day it does; the `log_loop_leg` shape after the chunk loop);
+   (e) the doc-mount chunks read (`find_rows_by_mount_point_id`) as v4's
+   fallback, and the character overlay's batch reads (P4.131's census
+   `fallback-in-v4` list — the `send_mail` divergence closes with them);
+   (f) the per-caller conversion of the 130 census sites and the sync
+   applier's fallback RULING (P4.131 Tier 3); (g) the two core zone-NAME
+   wrappers (`autonomous_rooms`, `markdown_transcript`) through `CoreConfig`
+   (P4.127 Tier 3); (h) the nine unported GOOGLE / OLLAMA / OpenRouter-raw
+   plugin ERROR lines (P4.128's named follow-up); (i) `dumpFileFacts`'s
+   tier-3 upgrade (P4.130 Tier 3); (j) the trail WARN's `errors` as v4's full
+   issue array (P4.130 review nit 7, the home can render it now).
+3. **A drift catch-up when v4 moves** (`/driftcheck` first — the probe
+   passed at this unification).
 
 **Baseline `97b25fc53`; v4 AT the baseline at both planning probes (HEAD
 `97b25fc53`, tree CLEAN on `main`, `bugfix` `1a2b2164c` and `release`

@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — test(harness,web): the mount-pool and Scenario Builder route families hear the repository fallback line on the home's target (the `97b25fc53` smalls unification sweep's catch)
+
+_Versions: harness 0.0.1050, web 0.0.204._
+
+Folding the two Scenario Builder twins of `Error finding entity by ID` onto
+`db::fallback` moved their line from the modules' own targets to `quilltap::db`,
+which the two families captured by the old target: `scenario_builder_mount_pool`
+now pins the fallback lines per collection from v4's own record (`characters`
+once on the unreadable-member arm, `groups` once per group row v4's `findByIdRaw`
+refuses — nine exercised) and asserts the module target silent;
+`scenario_builder_routes` lets the fallback line in from the home's target and
+nothing else from it. Both green by name against the sweep's fresh oracles.
+
 #### 2026-09-30 — fix(db): the fallback home renders v4's bare SQLite message; seven module-target twins of `Error finding entity by ID` and the help-sync copy folded onto it; a guard holds the one home; the mail plants' excluded v4 lines named (P4.131 + P4.130, the `97b25fc53` smalls §3 review)
 
 _Versions: core 0.0.1127, harness 0.0.1049._

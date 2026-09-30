@@ -131,6 +131,8 @@ static LOGGED: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 /// sentence, so this was `hasError` only).
 static REPO_LOGGED: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 const REPO_FALLBACK: &str = "Error finding entity by ID";
+/// v4's `Repository` logger as the differentials map it — the home's target.
+const REPO_TARGET: &str = "quilltap::db";
 
 struct StructuredCapture;
 
@@ -166,7 +168,12 @@ impl tracing::field::Visit for JsonFields {
 impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for StructuredCapture {
     fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
         let meta = event.metadata();
-        if !LOG_TARGETS.contains(&meta.target()) {
+        // The repository fallback line rides the ONE home's target
+        // (`db::fallback`, `quilltap::db`) since the `97b25fc53` smalls
+        // unification folded the route's hand-copied twin onto it; every other
+        // `quilltap::db` line stays out of the route-log comparand.
+        let repo_target = meta.target() == REPO_TARGET;
+        if !repo_target && !LOG_TARGETS.contains(&meta.target()) {
             return;
         }
         let mut v = JsonFields {
@@ -174,6 +181,9 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for StructuredCapture 
             fields: Vec::new(),
         };
         event.record(&mut v);
+        if repo_target && v.message.as_deref() != Some(REPO_FALLBACK) {
+            return;
+        }
         if v.message.as_deref() == Some(REPO_FALLBACK) {
             let field = |k: &str| {
                 v.fields

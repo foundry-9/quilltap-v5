@@ -98,6 +98,7 @@ use quilltap_core::services::scenario_builder::mount_pool::resolve_scenario_buil
 use scenario_builder_capture::{normalize, v4_lines, StructuralCapture};
 use serde::Deserialize;
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 const TARGETS: &[&str] = &["quilltap_core::services::scenario_builder::mount_pool"];
 
@@ -115,6 +116,14 @@ const RAW_QUERY_FAILED_ARMS: &[&str] = &["general-read-fails"];
 /// P4.130 — the repository validation lines' target and messages.
 const VALIDATION_TARGET: &str = "quilltap::db";
 const VALIDATION_MESSAGES: &[&str] = &["Data validation failed", "Safe validation failed"];
+
+/// v4's `safeQuery` fallback line for the pool's per-member `findByIdRaw`
+/// (`_findById`, `base.repository.ts:236-246`) — on the repository's logger,
+/// i.e. the home's `quilltap::db` target since the `97b25fc53` smalls
+/// unification folded `mount_pool.rs`'s hand-copied twin onto
+/// `db::fallback::find_by_id_or_none` (it had been captured under this
+/// module's own target). Captured by [`ValidationCapture`], pinned on its own.
+const FALLBACK_MESSAGE: &str = "Error finding entity by ID";
 
 /// `(arm, collection)` where v4 logs a validation line v5 does not — the
 /// recorded divergence, pinned both ways: v4 must still log exactly one there
@@ -163,7 +172,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for ValidationCapture 
         }
         let mut f = ValidationFields::default();
         event.record(&mut f);
-        if !VALIDATION_MESSAGES.contains(&f.message.as_str()) {
+        if !VALIDATION_MESSAGES.contains(&f.message.as_str()) && f.message != FALLBACK_MESSAGE {
             return;
         }
         self.0.lock().unwrap().push((
@@ -394,6 +403,7 @@ fn scenario_builder_mount_pool_matches_oracle() {
             .with(validation.clone()),
     );
     let (mut validation_lines_seen, mut v4_only_seen) = (0usize, 0usize);
+    let mut safe_query_seen = 0usize;
     let mut raw_query_failed_seen = 0usize;
     let mut settings_warns_seen = 0usize;
 
@@ -433,20 +443,14 @@ fn scenario_builder_mount_pool_matches_oracle() {
                 );
                 // v4's `safeQuery` fallback line (`Error finding entity by ID`)
                 // lives on the REPOSITORY's logger, which the oracle does not
-                // record; v5 emits it from this module (`mount_pool.rs`'s read
-                // loop). It is split out of the pool-logger comparand and pinned
-                // on its own: exactly once, on the unreadable arm, never else.
-                let (safe_query, got_lines): (Vec<_>, Vec<_>) = captured
-                    .lock()
-                    .unwrap()
-                    .clone()
-                    .into_iter()
-                    .partition(|l| l.message == "Error finding entity by ID");
-                let want_safe_query = usize::from(name == "unreadable-member-warns");
-                if safe_query.len() != want_safe_query {
+                // record; v5 emits it through the home (`quilltap::db`), never
+                // from this module's own logger — a twin here would be the
+                // one-home rule broken (the `97b25fc53` smalls unification).
+                let got_lines: Vec<_> = captured.lock().unwrap().clone();
+                if let Some(l) = got_lines.iter().find(|l| l.message == FALLBACK_MESSAGE) {
                     failures.push(format!(
-                        "{name}: expected {want_safe_query} safeQuery fallback line(s), got {}",
-                        safe_query.len()
+                        "{name}: the fallback line under this module's target ({l:?}) — it belongs \
+                         to the home's `quilltap::db`"
                     ));
                 }
                 let (g, w) = (pool_fields(&pool), v4_pool_fields(&want["pool"]));
@@ -481,7 +485,53 @@ fn scenario_builder_mount_pool_matches_oracle() {
                             .iter()
                             .any(|(arm, coll)| arm == name && l.2.as_deref() == Some(*coll))
                     });
-                let got_validation = validation.0.lock().unwrap().clone();
+                // The fallback line, split out of the validation comparand and
+                // pinned on its own: exactly once, on the unreadable arm
+                // (the BLOB-named member's `findByIdRaw` answering `null`),
+                // never else.
+                let (safe_query, got_validation): (Vec<_>, Vec<_>) = validation
+                    .0
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .into_iter()
+                    .partition(|l| l.1 == FALLBACK_MESSAGE);
+                // Per collection: `characters` once on the unreadable-member
+                // arm (the BLOB-named member's `findByIdRaw` — v4's line is the
+                // recorded v4-only validation line's sibling); `groups` once
+                // per group row v4's `findByIdRaw` VALIDATES and refuses — v4
+                // logs `validate`'s ERROR then `_findById`'s fallback ERROR
+                // (`tiered_mount_pool.rs`, P4.124), so the count is v4's own
+                // `groups` validation ERRORs on the arm (the oracle's spy does
+                // not record the repository logger's line itself). Both
+                // through the home since the `97b25fc53` smalls unification.
+                let mut got_by_collection: BTreeMap<String, usize> = BTreeMap::new();
+                for l in &safe_query {
+                    *got_by_collection
+                        .entry(l.2.clone().unwrap_or_default())
+                        .or_default() += 1;
+                }
+                let mut want_by_collection: BTreeMap<String, usize> = BTreeMap::new();
+                if name == "unreadable-member-warns" {
+                    want_by_collection.insert("characters".into(), 1);
+                }
+                let group_refusals = v4_validation_lines(want)
+                    .iter()
+                    .filter(|l| {
+                        l.0 == "ERROR"
+                            && l.1 == "Data validation failed"
+                            && l.2.as_deref() == Some("groups")
+                    })
+                    .count();
+                if group_refusals > 0 {
+                    want_by_collection.insert("groups".into(), group_refusals);
+                }
+                if got_by_collection != want_by_collection {
+                    failures.push(format!(
+                        "{name}: safeQuery fallback lines on `quilltap::db` by collection\n  want: {want_by_collection:?}\n  got:  {got_by_collection:?}"
+                    ));
+                }
+                safe_query_seen += safe_query.len();
                 if got_validation != want_validation {
                     failures.push(format!(
                         "{name}: validation lines differ\n  v4: {want_validation:#?}\n  v5: {got_validation:#?}"
@@ -550,6 +600,10 @@ fn scenario_builder_mount_pool_matches_oracle() {
     assert!(
         validation_lines_seen >= 8,
         "P4.130: the group validation lines must all be armed ({validation_lines_seen} < 8)"
+    );
+    assert_eq!(
+        safe_query_seen, 9,
+        "the safeQuery fallback lines exercised: `characters` once + `groups` on the eight refused-row arms ({safe_query_seen})"
     );
     assert_eq!(
         v4_only_seen,
