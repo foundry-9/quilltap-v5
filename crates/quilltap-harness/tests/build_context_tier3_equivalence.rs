@@ -235,6 +235,14 @@ struct SpecMsg {
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct SpecChatOverrides {
+    /// P4.124: bug 172's scan gate — the chat ROW's `chatType` for this op
+    /// (restored after). v5's off-scene scan reads the row (`off_scene.rs`'s
+    /// `read_chat_type` — `ContextChat` carries no chat type until the
+    /// orchestrator threads one, P4.124 item 6's recorded hunk), and v4's
+    /// oracle re-reads the chat each op, so the row is the one channel both
+    /// sides see.
+    #[serde(default)]
+    chat_type: Option<String>,
     /// P4.D103: puts the chat in an instructed project for the
     /// standing-instructions spine op.
     #[serde(default)]
@@ -993,10 +1001,52 @@ async fn build_context_tier3_matches_oracle() {
             .unwrap_or_else(|| panic!("{}: seed fold whisper failed", op.name));
         }
 
+        // P4.124: the op's room type, on the row, for this build only.
+        async fn set_chat_type(db: &Db, id: &str, t: Option<String>) -> usize {
+            let id = id.to_string();
+            db.write(move |ws| {
+                ws.main()
+                    .connection()
+                    .execute(
+                        r#"UPDATE chats SET "chatType" = ?1 WHERE id = ?2"#,
+                        rusqlite::params![t, id],
+                    )
+                    .map_err(Into::into)
+            })
+            .await
+            .expect("set chatType")
+        }
+        let prior_chat_type: Option<Option<String>> =
+            match op.chat_overrides.as_ref().and_then(|o| o.chat_type.clone()) {
+                Some(t) => {
+                    let id = spec.chat.id.clone();
+                    let prior: Option<String> = db
+                        .read_main(move |c| {
+                            c.query_row(
+                                r#"SELECT "chatType" FROM chats WHERE id = ?1"#,
+                                [&id],
+                                |r| r.get(0),
+                            )
+                            .map_err(Into::into)
+                        })
+                        .expect("read chatType");
+                    assert_eq!(
+                        set_chat_type(&db, &spec.chat.id, Some(t)).await,
+                        1,
+                        "{}: the chatType plant",
+                        op.name
+                    );
+                    Some(prior)
+                }
+                None => None,
+            };
         inform_read_counter::reset();
         let built = build_context(&db, &embedding, &completion, &executor, &seams, &input)
             .await
             .unwrap_or_else(|e| panic!("{}: build_context failed: {e}", op.name));
+        if let Some(prior) = prior_chat_type {
+            set_chat_type(&db, &spec.chat.id, prior).await;
+        }
         // P4.106 item 7: ONE per-seat `chat_informs` read per turn — the inform
         // block's (pending on a fresh turn, consumed on a swipe; the two share
         // their SQL) — and NONE when there is no responding seat (v4 gates the

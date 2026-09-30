@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — test(context): pin bug 172's off-scene scan gate as a real build-context oracle arm
+
+_Versions: harness 0.0.1033._
+
+Harness-only. The `build_context_tier3` family now drives bug 172's
+off-scene scan gate through v4's real `buildContext`. A `chatType` key in
+an op's `chatOverrides` sets the chat row's type for that op on both sides
+(and restores it after). Two ops are appended: in a Salon room the
+persona is excluded by name and nothing is announced; in an autonomous
+room the persona is an ordinary absent character, so the Host introduces
+them and the announcement is pushed into the turn's context. Dropping the
+gate reddens the autonomous op. P4.124 item 10.
+
 #### 2026-09-29 — fix(concierge): type the manual announcement kind, validate the Concierge enums on restore and import, answer the retry's failures 500
 
 _Versions: core 0.0.1113, harness 0.0.1032._

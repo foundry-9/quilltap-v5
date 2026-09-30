@@ -155620,3 +155620,26 @@ hunks, `services/orchestrator.rs:947` (P4.121's file) and
   failover_tier3`, `refusal_ledger_tier3`, `system_{restore,import}_{state,
   equivalence}`, `restore_vintage_state`; the three Concierge censuses +
   `zod_issues_home_guard` green by name (counts unmoved).
+- **Unit 9 (item 10), harness 0.0.1033 (tests only).** Measured: v4's
+  oracle re-reads the chat each op (`repos.chats.findById`) and spreads
+  `op.chatOverrides` onto it, and `context-manager.ts:845` reads
+  `chat.chatType` off that object — but v5's scan reads the ROW
+  (`read_chat_type`; item 6 stopped on ownership), so the override is a ROW
+  UPDATE on BOTH sides for the op, restored after (v4 through `rawQuery`,
+  now imported by the case; v5 through `db.write(...).await` — the test body
+  is async, a `write_blocking` panicked "Cannot block the current thread").
+  The post-office writers run LIVE on both sides, so the Host announcement is
+  posted and pushed as the turn's role=user context message — visible in the
+  compared `BuiltContext`. Spec `build-context-tier3.json` grown by ADDITION
+  (indent-2 ASCII re-dump verified byte-identical first): `bug172_scan_salon_
+  room_excludes_persona` then `bug172_scan_autonomous_room_introduces_
+  persona` (clones of `plain_single_char_turn`, LAST — the autonomous op
+  stamps Charlie introduced). Fresh oracle from the pin: the Salon op carries
+  5 context messages and no announcement; the autonomous op 6, the Host's
+  introduction second-to-last. v5 matches. **M4** (drop the gate — always
+  exclude the persona) reddened exactly `bug172_scan_autonomous_room_
+  introduces_persona` ("built context diverges"); reverted by file backup.
+  ⚠ Gotcha recorded: `harness/oracle/cases/build-context-tier3.test.ts`
+  contains a non-text byte, so the shell's `grep` wrapper (ugrep `-I`)
+  SKIPS it silently — every search of it returned nothing until `command
+  grep -a`. Only this family reads the spec.

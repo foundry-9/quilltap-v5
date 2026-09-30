@@ -80,6 +80,10 @@ interface Op {
   existingMessages?: Array<{ id?: string; role: string; content: string }>;
   existingMessagesRepeat?: { count: number; userContent: string; assistantContent: string };
   chatOverrides?: {
+    /** P4.124: bug 172's scan gate — set as the chat ROW's `chatType` for the
+     *  op (and restored after), since v5's scan reads the row; v4 re-reads the
+     *  chat each op, so the row is the one channel both sides see. */
+    chatType?: string;
     summaryAnchorMessageIds?: string[];
     contextSummary?: string;
     commonplaceRecallHistory?: unknown;
@@ -333,7 +337,7 @@ async function main(): Promise<void> {
     return { __esModule: true, ...actual, surfaceOperatorMailForChat: async () => undefined };
   });
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { buildContext } = await import('@/lib/chat/context-manager');
   // P4.D50: buildContext reads `instance_settings['taboo']` itself; the op seed
@@ -380,6 +384,18 @@ async function main(): Promise<void> {
     currentOp = op.name;
     const character = await repos.characters.findById(op.characterId);
     if (!character) throw new Error(`character ${op.characterId} not found`);
+    // P4.124: an op may put the chat in another room type for its turn.
+    let priorChatType: { value: string | null } | null = null;
+    if (op.chatOverrides?.chatType !== undefined) {
+      const rows = (await rawQuery('SELECT "chatType" FROM chats WHERE id = ?', [
+        spec.chat.id,
+      ])) as Array<{ chatType: string | null }>;
+      priorChatType = { value: rows[0]?.chatType ?? null };
+      await rawQuery('UPDATE chats SET "chatType" = ? WHERE id = ?', [
+        op.chatOverrides.chatType,
+        spec.chat.id,
+      ]);
+    }
     const chat = await repos.chats.findById(spec.chat.id);
     if (!chat) throw new Error('chat not found');
 
@@ -583,6 +599,12 @@ async function main(): Promise<void> {
           null,
       })
     );
+    if (priorChatType) {
+      await rawQuery('UPDATE chats SET "chatType" = ? WHERE id = ?', [
+        priorChatType.value,
+        spec.chat.id,
+      ]);
+    }
   }
 
   for (const entry of cannedRecorded.values()) {

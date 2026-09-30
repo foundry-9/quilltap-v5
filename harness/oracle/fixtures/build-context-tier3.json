@@ -2314,6 +2314,50 @@
       "skipMemories": true,
       "compressionEnabled": false,
       "timestampMode": null
+    },
+    {
+      "name": "bug172_scan_salon_room_excludes_persona",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Tell me about your work."
+        },
+        {
+          "role": "assistant",
+          "content": "I design engines of thought."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "_comment": "P4.124 (P4.D233 (e)): bug 172's off-scene scan gate in a Salon room \u2014 the operator speaks unseated, so the persona 'Charlie' (the userCharacter, named in the seed transcript, never introduced) is excluded by name: no Host announcement, no pushed context message. Runs BEFORE the autonomous op (which introduces Charlie and stamps the id).",
+      "chatOverrides": {
+        "chatType": "salon"
+      }
+    },
+    {
+      "name": "bug172_scan_autonomous_room_introduces_persona",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Tell me about your work."
+        },
+        {
+          "role": "assistant",
+          "content": "I design engines of thought."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "_comment": "P4.124 (P4.D233 (e)): the same turn in an AUTONOMOUS room \u2014 nobody types as the persona there, so 'Charlie' is an ordinary absent character: the scan introduces them, the Host announcement is posted live and pushed as this turn's role=user context message. Drop the gate (always exclude the persona) and this op diverges.",
+      "chatOverrides": {
+        "chatType": "autonomous"
+      }
     }
   ],
   "vaultConversationSummaries": [
