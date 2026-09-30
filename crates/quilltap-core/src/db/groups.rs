@@ -212,9 +212,15 @@ pub fn find_validated_name_and_official_mount_point_id_raw(
             rusqlite::params![id],
             |row| {
                 let mut obj = serde_json::Map::new();
-                for (i, key) in ["id", "name", "officialMountPointId", "createdAt", "updatedAt"]
-                    .into_iter()
-                    .enumerate()
+                for (i, key) in [
+                    "id",
+                    "name",
+                    "officialMountPointId",
+                    "createdAt",
+                    "updatedAt",
+                ]
+                .into_iter()
+                .enumerate()
                 {
                     let v = cell(row.get_ref(i)?);
                     // v4 turns a NULL cell into `undefined` — the key is absent.
@@ -243,8 +249,15 @@ pub fn find_validated_name_and_official_mount_point_id_raw(
         );
         return Err(DbError::Internal(error));
     }
-    let text = |k: &str| row.get(k).and_then(serde_json::Value::as_str).map(str::to_string);
-    Ok(Some((text("name").unwrap_or_default(), text("officialMountPointId"))))
+    let text = |k: &str| {
+        row.get(k)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+    };
+    Ok(Some((
+        text("name").unwrap_or_default(),
+        text("officialMountPointId"),
+    )))
 }
 
 /// Read a group's `officialMountPointId` pointer WITHOUT the store overlay (v4

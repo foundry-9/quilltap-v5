@@ -193,7 +193,11 @@ impl<'c> GroupDocMountLinksRepository<'c> {
                     .is_some_and(crate::api::zod_issues::zod_iso_datetime_ok)
             };
             // `GroupDocMountLinkSchema`: three uuids, two timestamps.
-            if uuid(&id) && uuid(&gid) && uuid(&mount_point_id) && ts(&created_at) && ts(&updated_at)
+            if uuid(&id)
+                && uuid(&gid)
+                && uuid(&mount_point_id)
+                && ts(&created_at)
+                && ts(&updated_at)
             {
                 ids.extend(mount_point_id);
                 continue;

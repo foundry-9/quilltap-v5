@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — chore(p4.124): close the lane — rustfmt, v4-valid tiered-pool unit rows, the status headers
+
+_Versions: core 0.0.1114._
+
+Lane close-out. rustfmt over the lane's files; the tiered-pool unit
+fixture now uses v4-valid rows (uuid ids, ISO timestamps) because the group
+and link reads hold rows to v4's Zod shapes, and the unreadable-group test
+expects v4's two lines (`Data validation failed`, then `Error finding
+entity by ID`). The P4.124 work order's status header, one-sentence notes
+on the eight source orders' headers, and the item-18 record. P4.124.
+
 #### 2026-09-29 — test(context): pin bug 172's off-scene scan gate as a real build-context oracle arm
 
 _Versions: harness 0.0.1033._

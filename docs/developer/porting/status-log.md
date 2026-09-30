@@ -155643,3 +155643,35 @@ hunks, `services/orchestrator.rs:947` (P4.121's file) and
   contains a non-text byte, so the shell's `grep` wrapper (ugrep `-I`)
   SKIPS it silently — every search of it returned nothing until `command
   grep -a`. Only this family reads the spec.
+- **Item 18 — P4.D225's three never-recorded items (docs only).** (1) **Tier 3
+  item 16's NO-PORT list** (the standing class, as P4.D225's order named it):
+  `prettify.ts`'s migration label, `scripts/concierge-four-state-test.sh`,
+  `BACKGROUND_JOBS_CHILD.md`, `PROVIDER_PLUGIN_DEVELOPMENT.md` — v4 tooling
+  and developer docs with no v5 surface. (2) **E.11 — the tool-loop
+  asymmetry:** v4 retries a refused turn on the uncensored desk only from the
+  primary stream's failover (`provider-failover.service.ts:307`) and the
+  empty-response recovery (`:1032`); the tool loops' re-streams take neither,
+  and v5's `danger_settings` is threaded from `run_primary_stream` ONLY to
+  match. **Re-measured at `97b25fc53`: unchanged** — still a probable v4
+  follow-up (a refusal on a tool-loop re-stream falls to the ordinary chain),
+  ported as-is. (3) **E.12 — the three help pages' drift:** `8bd080267`
+  (#73) touched `help/dangerous-content.md`, `help/image-generation-
+  profiles.md` and `help/story-backgrounds.md`; `49059fb14` (#74)
+  `help/dangerous-content.md` again. All three were absorbed by P4.D228's
+  whole-tree copy at `acadcc7cd` (where `dangerous-content.md` became
+  `the-concierge.md`), so nothing is owed.
+- **Close-out, core 0.0.1114.** The workspace gate's first run caught three
+  reds in `db::tiered_mount_pool::tests` — the unit fixture's `'g-ok'`/`'t'`
+  rows are rows v4's Zod refuses, so the new validated reads refused them too
+  (a fixture-realism miss, not a behaviour change): rebuilt with uuid ids +
+  ISO stamps, and the BLOB test now expects v4's TWO lines. rustfmt over the
+  lane's files (`orchestrator.rs`/`turn_orchestrator.rs` excluded — main's
+  pre-existing drift). **Gate:** §R.2 probe PASS at every regen batch; clippy
+  both feature sets clean; release build clean; the 18 lane + neutrality
+  families regenerated fresh from the pin through the driver, 18/18 ok, zero
+  `SKIP:`; `cargo test --workspace --no-fail-fast` with the 41-var block: 646
+  binaries / 3,951 passed / 3 failed (the three above, fixed and green by
+  name) / 3 ignored; the censuses re-run by name green (counts unmoved);
+  `cargo fmt --all --check` red ONLY on main's pre-existing
+  `orchestrator.rs`/`turn_orchestrator.rs` hunks. Tier R: see the final
+  report.

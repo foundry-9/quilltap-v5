@@ -349,12 +349,12 @@ fn scan_off_scene_newcomers_inner(
     //    The DEBUG sits where v4's does: after the characters read, before the
     //    candidate filter — a failed characters read logs nothing on either side.
     let chat_type = read_chat_type(db, chat_id)?;
-    let user_name_lower =
-        if crate::chat_predicates::operator_speaks_without_seat(Some(&chat_type)) {
-            user_character_name.map(|n| crate::jsstr::js_trim(n).to_lowercase())
-        } else {
-            None
-        };
+    let user_name_lower = if crate::chat_predicates::operator_speaks_without_seat(Some(&chat_type))
+    {
+        user_character_name.map(|n| crate::jsstr::js_trim(n).to_lowercase())
+    } else {
+        None
+    };
     tracing::debug!(
         chatId = chat_id,
         chatType = chat_type.as_str(),

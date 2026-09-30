@@ -677,7 +677,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (db, path) = open(dir.path());
         std::fs::remove_file(&path).unwrap();
-        assert!(db.read_main(|_| Ok(())).is_err(), "the plant must fail the pool");
+        assert!(
+            db.read_main(|_| Ok(())).is_err(),
+            "the plant must fail the pool"
+        );
         let ((), lines) = crate::test_support::captured_with(|| {
             rt.block_on(apply_chat_continuation_at_create(&db, "new-1", "src-1"))
         });
@@ -701,10 +704,7 @@ mod tests {
         let ((), lines) = crate::test_support::captured_with(|| {
             rt.block_on(apply_chat_continuation_at_create(&db, "new-1", "src-1"))
         });
-        assert!(
-            !lines.iter().any(|l| l.contains("[Chats v1]")),
-            "{lines:?}"
-        );
+        assert!(!lines.iter().any(|l| l.contains("[Chats v1]")), "{lines:?}");
         assert!(
             lines.iter().any(|l| l.starts_with("WARN ")
                 && l.contains("Source chat not found, skipping continuation")),

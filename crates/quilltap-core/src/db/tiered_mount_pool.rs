@@ -540,14 +540,23 @@ pub fn classify_mount_tier(mount_point_id: &str, pool: &TieredMountPool) -> Opti
 mod tests {
     use super::*;
 
+    // P4.124: v4-valid rows (uuid ids, ISO stamps) — since the group and link
+    // reads hold rows to v4's Zod shapes, a `'g-ok'`/`'t'` row would be refused
+    // exactly as v4 refuses it.
+    const G_OK: &str = "d1000000-0000-4000-8000-0000000000a1";
+    const G_BLOB: &str = "d1000000-0000-4000-8000-0000000000b1";
+    const MP_OFF: &str = "e1000000-0000-4000-8000-0000000000f0";
+    const MP_L1: &str = "e1000000-0000-4000-8000-0000000000f1";
+    const MP_L3: &str = "e1000000-0000-4000-8000-0000000000f3";
+
     /// P4.D231: the two partitions' tables the helper reads, in memory.
     fn helper_dbs() -> (Connection, Connection) {
         let main = Connection::open_in_memory().unwrap();
         main.execute_batch(
             r#"CREATE TABLE "groups" ("id" TEXT PRIMARY KEY NOT NULL, "name" TEXT NOT NULL,
                  "officialMountPointId" TEXT, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);
-               INSERT INTO "groups" VALUES ('g-ok', 'Aeronauts', 'mp-off', 't', 't');
-               INSERT INTO "groups" VALUES ('g-blob', X'00', 'mp-blob-off', 't', 't');"#,
+               INSERT INTO "groups" VALUES ('d1000000-0000-4000-8000-0000000000a1', 'Aeronauts', 'e1000000-0000-4000-8000-0000000000f0', '2026-09-25T00:00:00.000Z', '2026-09-25T00:00:00.000Z');
+               INSERT INTO "groups" VALUES ('d1000000-0000-4000-8000-0000000000b1', X'00', 'e1000000-0000-4000-8000-0000000000fb', '2026-09-25T00:00:00.000Z', '2026-09-25T00:00:00.000Z');"#,
         )
         .unwrap();
         let mount = Connection::open_in_memory().unwrap();
@@ -556,9 +565,9 @@ mod tests {
                 r#"CREATE TABLE "group_doc_mount_links" ("id" TEXT PRIMARY KEY NOT NULL,
                  "groupId" TEXT NOT NULL, "mountPointId" TEXT NOT NULL,
                  "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);
-               INSERT INTO "group_doc_mount_links" VALUES ('l1', 'g-ok', 'mp-l1', 't', 't');
-               INSERT INTO "group_doc_mount_links" VALUES ('l2', 'g-ok', 'mp-off', 't', 't');
-               INSERT INTO "group_doc_mount_links" VALUES ('l3', 'g-blob', 'mp-l3', 't', 't');"#,
+               INSERT INTO "group_doc_mount_links" VALUES ('f1000000-0000-4000-8000-000000000001', 'd1000000-0000-4000-8000-0000000000a1', 'e1000000-0000-4000-8000-0000000000f1', '2026-09-25T00:00:00.000Z', '2026-09-25T00:00:00.000Z');
+               INSERT INTO "group_doc_mount_links" VALUES ('f1000000-0000-4000-8000-000000000002', 'd1000000-0000-4000-8000-0000000000a1', 'e1000000-0000-4000-8000-0000000000f0', '2026-09-25T00:00:00.000Z', '2026-09-25T00:00:00.000Z');
+               INSERT INTO "group_doc_mount_links" VALUES ('f1000000-0000-4000-8000-000000000003', 'd1000000-0000-4000-8000-0000000000b1', 'e1000000-0000-4000-8000-0000000000f3', '2026-09-25T00:00:00.000Z', '2026-09-25T00:00:00.000Z');"#,
             )
             .unwrap();
         (main, mount)
@@ -568,9 +577,9 @@ mod tests {
     fn group_helper_official_then_links_deduped_and_silent() {
         let (main, mount) = helper_dbs();
         let (ids, lines) = crate::test_support::captured_with(|| {
-            resolve_mount_point_ids_for_group(&main, &mount, "g-ok")
+            resolve_mount_point_ids_for_group(&main, &mount, G_OK)
         });
-        assert_eq!(ids, s(&["mp-off", "mp-l1"]));
+        assert_eq!(ids, s(&[MP_OFF, MP_L1]));
         assert!(lines.is_empty(), "the success path is silent: {lines:?}");
         assert!(resolve_mount_point_ids_for_group(&main, &mount, "").is_empty());
         assert!(resolve_mount_point_ids_for_group(&main, &mount, "g-none").is_empty());
@@ -580,14 +589,21 @@ mod tests {
     fn an_unreadable_group_row_loses_its_official_store_with_the_repository_line() {
         let (main, mount) = helper_dbs();
         let (ids, lines) = crate::test_support::captured_with(|| {
-            resolve_mount_point_ids_for_group(&main, &mount, "g-blob")
+            resolve_mount_point_ids_for_group(&main, &mount, G_BLOB)
         });
         // v4: findByIdRaw → null after its ERROR; the links read still runs.
-        assert_eq!(ids, s(&["mp-l3"]));
-        assert_eq!(lines.len(), 1, "{lines:?}");
-        assert!(lines[0].starts_with("ERROR "), "{lines:?}");
-        assert!(lines[0].contains("Error finding entity by ID"), "{lines:?}");
-        assert!(lines[0].contains("collection=groups") && lines[0].contains("id=g-blob"));
+        assert_eq!(ids, s(&[MP_L3]));
+        // v4's two lines: `validate`'s ERROR, then `safeQuery`'s (P4.124).
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(
+            lines[0].starts_with("ERROR quilltap::db Data validation failed"),
+            "{lines:?}"
+        );
+        assert!(lines[1].starts_with("ERROR "), "{lines:?}");
+        assert!(lines[1].contains("Error finding entity by ID"), "{lines:?}");
+        assert!(
+            lines[1].contains("collection=groups") && lines[1].contains(&format!("id={G_BLOB}"))
+        );
         // The dead WARN (both wordings, 08c49319d and before) never fires.
         assert!(!lines
             .iter()
@@ -599,11 +615,11 @@ mod tests {
         let (main, _) = helper_dbs();
         let no_links = Connection::open_in_memory().unwrap();
         let (ids, lines) = crate::test_support::captured_with(|| {
-            resolve_mount_point_ids_for_group(&main, &no_links, "g-ok")
+            resolve_mount_point_ids_for_group(&main, &no_links, G_OK)
         });
         // v4's findByFilter answers [] after its own ERROR; the catch that
         // would empty the group is unreachable.
-        assert_eq!(ids, s(&["mp-off"]));
+        assert_eq!(ids, s(&[MP_OFF]));
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(
             lines[0].starts_with("ERROR ") && lines[0].contains("Error finding entities by filter")

@@ -395,7 +395,9 @@ pub async fn apply_concierge_flip_with<An: ConciergeAnnouncer>(
                 Ok(())
             })
             .await?;
-            announcer.post_manual(chat_id, ConciergeManualKind::SetModerated, None).await;
+            announcer
+                .post_manual(chat_id, ConciergeManualKind::SetModerated, None)
+                .await;
         }
         ConciergeState::Unmoderated => {
             if by == FlipBy::Operator {
@@ -417,7 +419,9 @@ pub async fn apply_concierge_flip_with<An: ConciergeAnnouncer>(
             }
         }
         ConciergeState::Locked => {
-            announcer.post_manual(chat_id, ConciergeManualKind::SetLocked, None).await;
+            announcer
+                .post_manual(chat_id, ConciergeManualKind::SetLocked, None)
+                .await;
         }
     }
 

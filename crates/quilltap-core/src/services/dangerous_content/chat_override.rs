@@ -373,11 +373,26 @@ mod tests {
     #[test]
     fn concierge_columns_fail_with_v4s_zod_message() {
         let recorded: &[(&str, &str)] = &[
-            (r#"{"conciergeMode": "bogus"}"#, r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"moderated\",\n      \"unmoderated\",\n      \"locked\"\n    ],\n    \"path\": [\n      \"conciergeMode\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"moderated\\\"|\\\"unmoderated\\\"|\\\"locked\\\"\"\n  }\n]""#),
-            (r#"{"conciergeMode": 5}"#, r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"moderated\",\n      \"unmoderated\",\n      \"locked\"\n    ],\n    \"path\": [\n      \"conciergeMode\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"moderated\\\"|\\\"unmoderated\\\"|\\\"locked\\\"\"\n  }\n]""#),
-            (r#"{"conciergeModeSetBy": "nobody"}"#, r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"operator\",\n      \"concierge\"\n    ],\n    \"path\": [\n      \"conciergeModeSetBy\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"operator\\\"|\\\"concierge\\\"\"\n  }\n]""#),
-            (r#"{"conciergeModeReason": "whim"}"#, r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"manual\",\n      \"refusals\",\n      \"classifier\",\n      \"migration\"\n    ],\n    \"path\": [\n      \"conciergeModeReason\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"manual\\\"|\\\"refusals\\\"|\\\"classifier\\\"|\\\"migration\\\"\"\n  }\n]""#),
-            (r#"{"conciergeMode": "bogus", "conciergeModeSetBy": "nobody", "conciergeModeReason": "whim"}"#, r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"moderated\",\n      \"unmoderated\",\n      \"locked\"\n    ],\n    \"path\": [\n      \"conciergeMode\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"moderated\\\"|\\\"unmoderated\\\"|\\\"locked\\\"\"\n  },\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"operator\",\n      \"concierge\"\n    ],\n    \"path\": [\n      \"conciergeModeSetBy\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"operator\\\"|\\\"concierge\\\"\"\n  },\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"manual\",\n      \"refusals\",\n      \"classifier\",\n      \"migration\"\n    ],\n    \"path\": [\n      \"conciergeModeReason\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"manual\\\"|\\\"refusals\\\"|\\\"classifier\\\"|\\\"migration\\\"\"\n  }\n]""#),
+            (
+                r#"{"conciergeMode": "bogus"}"#,
+                r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"moderated\",\n      \"unmoderated\",\n      \"locked\"\n    ],\n    \"path\": [\n      \"conciergeMode\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"moderated\\\"|\\\"unmoderated\\\"|\\\"locked\\\"\"\n  }\n]""#,
+            ),
+            (
+                r#"{"conciergeMode": 5}"#,
+                r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"moderated\",\n      \"unmoderated\",\n      \"locked\"\n    ],\n    \"path\": [\n      \"conciergeMode\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"moderated\\\"|\\\"unmoderated\\\"|\\\"locked\\\"\"\n  }\n]""#,
+            ),
+            (
+                r#"{"conciergeModeSetBy": "nobody"}"#,
+                r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"operator\",\n      \"concierge\"\n    ],\n    \"path\": [\n      \"conciergeModeSetBy\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"operator\\\"|\\\"concierge\\\"\"\n  }\n]""#,
+            ),
+            (
+                r#"{"conciergeModeReason": "whim"}"#,
+                r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"manual\",\n      \"refusals\",\n      \"classifier\",\n      \"migration\"\n    ],\n    \"path\": [\n      \"conciergeModeReason\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"manual\\\"|\\\"refusals\\\"|\\\"classifier\\\"|\\\"migration\\\"\"\n  }\n]""#,
+            ),
+            (
+                r#"{"conciergeMode": "bogus", "conciergeModeSetBy": "nobody", "conciergeModeReason": "whim"}"#,
+                r#""[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"moderated\",\n      \"unmoderated\",\n      \"locked\"\n    ],\n    \"path\": [\n      \"conciergeMode\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"moderated\\\"|\\\"unmoderated\\\"|\\\"locked\\\"\"\n  },\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"operator\",\n      \"concierge\"\n    ],\n    \"path\": [\n      \"conciergeModeSetBy\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"operator\\\"|\\\"concierge\\\"\"\n  },\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"manual\",\n      \"refusals\",\n      \"classifier\",\n      \"migration\"\n    ],\n    \"path\": [\n      \"conciergeModeReason\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"manual\\\"|\\\"refusals\\\"|\\\"classifier\\\"|\\\"migration\\\"\"\n  }\n]""#,
+            ),
         ];
         for (patch, v4_message) in recorded {
             let chat: Value = serde_json::from_str(patch).unwrap();

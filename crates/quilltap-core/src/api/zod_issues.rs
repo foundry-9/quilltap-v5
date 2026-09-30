@@ -611,13 +611,23 @@ mod tests {
         };
         assert!(zod_group_row_ok(ok.as_object().unwrap()));
         // `.nullable().optional()`: absent and null both pass.
-        assert!(zod_group_row_ok(&row(serde_json::json!({"officialMountPointId": "<absent>"}))));
-        assert!(zod_group_row_ok(&row(serde_json::json!({"officialMountPointId": null}))));
+        assert!(zod_group_row_ok(&row(
+            serde_json::json!({"officialMountPointId": "<absent>"})
+        )));
+        assert!(zod_group_row_ok(&row(
+            serde_json::json!({"officialMountPointId": null})
+        )));
         // `min(1).max(100)` in UTF-16 units: 100 passes, 101 fails; an astral
         // character counts TWO.
-        assert!(zod_group_row_ok(&row(serde_json::json!({"name": "x".repeat(100)}))));
-        assert!(!zod_group_row_ok(&row(serde_json::json!({"name": "x".repeat(101)}))));
-        assert!(!zod_group_row_ok(&row(serde_json::json!({"name": format!("{}\u{1F600}", "x".repeat(99))}))));
+        assert!(zod_group_row_ok(&row(
+            serde_json::json!({"name": "x".repeat(100)})
+        )));
+        assert!(!zod_group_row_ok(&row(
+            serde_json::json!({"name": "x".repeat(101)})
+        )));
+        assert!(!zod_group_row_ok(&row(
+            serde_json::json!({"name": format!("{}\u{1F600}", "x".repeat(99))})
+        )));
         for bad in [
             serde_json::json!({"name": ""}),
             serde_json::json!({"name": {"blobBytes": 1}}),
