@@ -114,6 +114,20 @@ describe('textReplacementPlugin', () => {
     view.destroy();
   });
 
+  it('skips a caret mid-line before a space (`teh| world` — v4 `offset !== text.length`, :117)', () => {
+    const { view, plugin } = makeView('teh world', RULES);
+    expect(trigger(view, plugin, 4, ' ')).toBe(false);
+    expect(view.state.doc.textContent).toBe('teh world');
+    view.destroy();
+  });
+
+  it('skips a caret before punctuation (`teh|.`)', () => {
+    const { view, plugin } = makeView('teh.', RULES);
+    expect(trigger(view, plugin, 4, '.')).toBe(false);
+    expect(view.state.doc.textContent).toBe('teh.');
+    view.destroy();
+  });
+
   it('does not fire when the caret sits on a boundary (empty word)', () => {
     const { view, plugin } = makeView('teh ', RULES);
     // caret at 5 (after the trailing space) → the char before is a boundary.

@@ -1,3 +1,4 @@
+import { Mark } from 'prosemirror-model';
 import { Plugin } from 'prosemirror-state';
 
 import type { TextReplacementRule } from '../core/core-contract';
@@ -125,16 +126,42 @@ export function textReplacementPlugin(getRules: () => CompiledRules | null): Plu
         if (!parent.isTextblock) return false;
 
         const offset = $from.parentOffset;
-        // Text before the caret in this block, and the char after it. Inline
-        // leaf nodes collapse to one placeholder position (a soft break reads
-        // `\n`, every other leaf ￼) so the string stays 1:1 with document
-        // positions for the walk-back below.
-        const before = parent.textBetween(0, offset, undefined, triggerLeafText);
-        const after = parent.textBetween(offset, parent.content.size, undefined, triggerLeafText);
+        // The caret's RUN — v4 reads only the anchor TEXT NODE
+        // (`TextReplacementPlugin.tsx:107-121` at `97b25fc53`), and Lexical keeps
+        // every differently-formatted stretch as its own node. v5's twin of a
+        // node is a maximal span of leaves with an identical mark set. The run
+        // is the one ending at the caret (the node before it — where typing
+        // leaves the caret). Inline leaf nodes collapse to one placeholder
+        // position (a soft break reads `\n`, every other leaf ￼) so the strings
+        // stay 1:1 with document positions for the walk-back below.
+        const leaves: { start: number; end: number; text: string; marks: readonly Mark[] }[] = [];
+        parent.forEach((node, nodeOffset) => {
+          leaves.push({
+            start: nodeOffset,
+            end: nodeOffset + node.nodeSize,
+            text: node.isText ? node.text! : triggerLeafText(node),
+            marks: node.marks,
+          });
+        });
+        const at = leaves.findIndex((l) => l.start < offset && offset <= l.end);
+        if (at < 0) return false; // caret at the start of the block: empty word
+        const marks = leaves[at].marks;
+        let first = at;
+        while (first > 0 && Mark.sameSet(leaves[first - 1].marks, marks)) first--;
+        let last = at;
+        while (last + 1 < leaves.length && Mark.sameSet(leaves[last + 1].marks, marks)) last++;
+        const runText = leaves.slice(first, last + 1).map((l) => l.text).join('');
+        const runStart = leaves[first].start;
+        const before = runText.slice(0, offset - runStart);
+        const after = runText.slice(offset - runStart);
 
-        // Only at the end of a word — a non-boundary char right after the caret
-        // means a mid-word edit (v4's "offset === text node length" guard).
-        if (after.length > 0 && !isBoundaryChar(after[0])) return false;
+        // Only at the very end of the text node — v4's `offset !== text.length`
+        // guard (`:117`). Anything but a soft break after the caret in the same
+        // run refuses: a boundary char (`teh| world`) is text in the node too.
+        // A `LineBreakNode` is a separate node, so the caret before one still
+        // fires. The image placeholder refuses as well (v5's own choice — v4
+        // has no inline decorator node).
+        if (after.length > 0 && after[0] !== '\n') return false;
 
         // Walk back across non-boundary chars to the word start.
         let start = before.length;

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — fix(spa): text replacement fires only at the end of the text run, as v4
+
+_Versions: SPA 0.5.788._
+
+The composer's text replacement now follows v4's rule exactly: it fires only when the caret is at the end of the text run. `teh| world` + Space no longer rewrites (it made `the  world`), and a formatted run (`**te**h`) is its own run, so a word no longer rewrites across a bold boundary. A soft line break after the caret still fires. Proven by a committed capture of v4's real Lexical plugin (22 rows) replayed row for row; the two shapes that depend on which node Lexical anchors the caret to are recorded as a divergence.
+
 #### 2026-09-30 — refactor(zone): thread the display zone from the composition root; retire the 13 ambient host-zone wrappers
 
 _Versions: core 0.0.1116, harness 0.0.1035, host 0.0.167._

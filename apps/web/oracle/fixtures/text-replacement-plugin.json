@@ -1,0 +1,320 @@
+[
+  {
+    "id": "end-of-word",
+    "parts": [
+      "teh"
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": " ",
+    "defaultPrevented": true,
+    "text": "the "
+  },
+  {
+    "id": "mid-line-caret-before-space",
+    "parts": [
+      "teh world"
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": " ",
+    "defaultPrevented": false,
+    "text": "teh world"
+  },
+  {
+    "id": "mid-word",
+    "parts": [
+      "tehx"
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": " ",
+    "defaultPrevented": false,
+    "text": "tehx"
+  },
+  {
+    "id": "before-punctuation",
+    "parts": [
+      "teh."
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": ".",
+    "defaultPrevented": false,
+    "text": "teh."
+  },
+  {
+    "id": "before-comma-key-space",
+    "parts": [
+      "teh,"
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": " ",
+    "defaultPrevented": false,
+    "text": "teh,"
+  },
+  {
+    "id": "after-other-prose",
+    "parts": [
+      "x teh"
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 5
+    },
+    "key": " ",
+    "defaultPrevented": true,
+    "text": "x the "
+  },
+  {
+    "id": "empty-word",
+    "parts": [
+      "teh "
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 4
+    },
+    "key": " ",
+    "defaultPrevented": false,
+    "text": "teh "
+  },
+  {
+    "id": "comma-key-end",
+    "parts": [
+      "teh"
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": ",",
+    "defaultPrevented": true,
+    "text": "the,"
+  },
+  {
+    "id": "non-trigger-key",
+    "parts": [
+      "teh"
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": "x",
+    "defaultPrevented": false,
+    "text": "teh"
+  },
+  {
+    "id": "caret-before-break",
+    "parts": [
+      "teh",
+      "br",
+      "more"
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": " ",
+    "defaultPrevented": true,
+    "text": "the \nmore"
+  },
+  {
+    "id": "caret-end-after-break-no-rule",
+    "parts": [
+      "teh",
+      "br",
+      "more"
+    ],
+    "caret": {
+      "node": 2,
+      "offset": 4
+    },
+    "key": " ",
+    "defaultPrevented": false,
+    "text": "teh\nmore"
+  },
+  {
+    "id": "word-after-break",
+    "parts": [
+      "first line",
+      "br",
+      "teh"
+    ],
+    "caret": {
+      "node": 2,
+      "offset": 3
+    },
+    "key": " ",
+    "defaultPrevented": true,
+    "text": "first line\nthe "
+  },
+  {
+    "id": "caret-before-break-then-word",
+    "parts": [
+      "teh",
+      "br",
+      "teh"
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": " ",
+    "defaultPrevented": true,
+    "text": "the \nteh"
+  },
+  {
+    "id": "break-first-word-end",
+    "parts": [
+      "teh",
+      "br"
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": " ",
+    "defaultPrevented": true,
+    "text": "the \n"
+  },
+  {
+    "id": "bold-split-word-end",
+    "parts": [
+      {
+        "bold": "te"
+      },
+      "h"
+    ],
+    "caret": {
+      "node": 1,
+      "offset": 1
+    },
+    "key": " ",
+    "defaultPrevented": false,
+    "text": "teh"
+  },
+  {
+    "id": "plain-then-bold-tail",
+    "parts": [
+      "te",
+      {
+        "bold": "h"
+      }
+    ],
+    "caret": {
+      "node": 1,
+      "offset": 1
+    },
+    "key": " ",
+    "defaultPrevented": false,
+    "text": "teh"
+  },
+  {
+    "id": "bold-whole-word",
+    "parts": [
+      {
+        "bold": "teh"
+      }
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": " ",
+    "defaultPrevented": true,
+    "text": "the "
+  },
+  {
+    "id": "plain-then-bold-word",
+    "parts": [
+      "x ",
+      {
+        "bold": "teh"
+      }
+    ],
+    "caret": {
+      "node": 1,
+      "offset": 3
+    },
+    "key": " ",
+    "defaultPrevented": true,
+    "text": "x the "
+  },
+  {
+    "id": "bold-word-then-plain-anchor-bold-end",
+    "parts": [
+      {
+        "bold": "teh"
+      },
+      " plain"
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": " ",
+    "defaultPrevented": true,
+    "text": "the  plain"
+  },
+  {
+    "id": "bold-word-then-plain-anchor-plain-start",
+    "parts": [
+      {
+        "bold": "teh"
+      },
+      " plain"
+    ],
+    "caret": {
+      "node": 1,
+      "offset": 0
+    },
+    "key": " ",
+    "defaultPrevented": false,
+    "text": "teh plain"
+  },
+  {
+    "id": "bold-word-then-plain-word-anchor-bold-end",
+    "parts": [
+      {
+        "bold": "teh"
+      },
+      "more"
+    ],
+    "caret": {
+      "node": 0,
+      "offset": 3
+    },
+    "key": " ",
+    "defaultPrevented": true,
+    "text": "the more"
+  },
+  {
+    "id": "bold-word-then-plain-word-anchor-plain-start",
+    "parts": [
+      {
+        "bold": "teh"
+      },
+      "more"
+    ],
+    "caret": {
+      "node": 1,
+      "offset": 0
+    },
+    "key": " ",
+    "defaultPrevented": false,
+    "text": "tehmore"
+  }
+]
