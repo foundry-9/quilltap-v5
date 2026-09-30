@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — docs(porting): close P4.126 — the lane record and status headers
+
+_Docs-only change._
+
+Records the P4.126 lane in `status-log.md`, updates its order's status
+header (what landed, what the order got wrong: v4's mount-store fallbacks
+are at the repository layer, the vault-ensure failure was v5's metadata
+backfill, the execution-failed ERROR has no reachable plant), and adds one
+sentence each to the P4.D234 and P4.D235 headers naming the items taken.
+
 #### 2026-09-29 — fix(scriptorium): use v4's camelCase field names on the render lines (P4.126)
 
 _Versions: core 0.0.1110._

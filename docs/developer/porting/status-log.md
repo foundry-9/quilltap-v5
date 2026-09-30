@@ -155517,6 +155517,115 @@ census + child); every other family's var withheld (532 honest `SKIP:` lines,
 none the lane's). Tier R (`cli_differential`, `QT_V4_CHECKOUT` = the pin):
 **266 cases / 0 failures**. The 18-family neutrality sweep: see Tier 2 above.
 Versions: core 0.0.1107, harness 0.0.1027, host 0.0.166.
+
+## P4.126 — the riders stacked on P4.119 (mail fallback reads, the omitted id, camelCase render fields) — lane record (2026-09-29)
+
+Branch `claude/post-office-render-riders-stacked-aec01c`, cut at P4.119's
+close-out commit `173b75915` (P4.119's two commits are its base, so the
+branch still cherry-picks WHOLE as P4.119 + P4.126; the order had said
+"the SAME branch" — the launcher gave this lane a fresh worktree off that
+tip instead, and P4.119's own worktree and branch were left untouched).
+Precondition verified: `main..HEAD` showed `89341d30b` + `173b75915`, and
+P4.119's header reads LANDED. The §R.2 probe PASSED at lane start and before
+each regen batch; every regen ran from P4.119's pin
+`/tmp/qt-v4-pin-p4119-97b25fc53` (`rev-parse` = `97b25fc53`).
+
+### What landed (commits `57206d378`, `c636f7166`, `0aea3543d`)
+- **Item 1:** `db/characters_read::find_by_id_raw_or_none` (the
+  `chats_read::find_by_id_or_none` shape; ERROR `collection=characters id
+  error "Error finding entity by ID"` → `None`). All four mail handlers read
+  the caller through it; `send_mail`'s third `Err` arm is gone (its catch
+  keeps two: the recipient resolve and the delivery).
+- **Item 2 — measured at the pin, the fallback is the REPOSITORY layer:**
+  `readLetter` → `readDatabaseDocument` → `docMountDocuments.
+  findByMountPointAndPath` (`withRawDb(null, …)`, "Error finding document by
+  mount point and path" `{collection, mountPointId, relativePath}`);
+  `listMailEntries` → `listDatabaseFiles` → `docMountFileLinks.
+  findByMountPointId` + `docMountFolders.findByMountPointId` (both
+  `safeQuery(…, [])`); `discardLetter` → `deleteDatabaseDocument` →
+  `docMountFileLinks.findByMountPointAndPath` (`safeQuery(…, null)`). v5's
+  repositories live in files no lane owns and `read_database_document` /
+  `list_database_files` / `delete_database_document` have many other
+  callers, so the fallbacks sit in `post_office/mailbox.rs` (owned),
+  wrapping exactly the mail path's reads with v4's lines and field order.
+  `ensure_own_vault`: v4's `ensureCharacterVault` with an FK set does NO I/O
+  and can't fail; v5's also ran the lazy metadata backfill (a mount-store
+  read + write), whose failure reached the catch — the mail tools now take a
+  linked FK directly (an empty FK is unlinked, JS truthiness), and the
+  backfill still runs at every other `ensure_character_vault` call.
+- **Item 3:** `assert_catch_lines` re-aimed. **VANISHED proof:** the
+  unmodified harness against the new core failed at `list: Your postbox
+  stands empty.` (the old catch expectation; the main differential had
+  passed first). Now two plants: the dropped `doc_mount_file_links` (list →
+  empty postbox + the links ERROR; read / discard → "No letter named …" +
+  the documents / link ERROR; none reaches a catch; **`send_mail`'s catch is
+  the one leg left** — a delivery that can't write throws in v4 too) and a
+  dropped `characters` table (all four → the postbox refusal + the
+  repository ERROR, no catch).
+- **Item 4:** `format_list_mail_results` filters an empty error; unit pin.
+- **Item 5:** both `requestedConversationId` sites are two-arm `tracing`
+  calls (present iff the key was sent — `""` included, as v4 logs the parsed
+  string); the ERROR moved into `log_execution_failed` and is pinned
+  directly — **no plant reaches it**: every read below the catch is a
+  fallback (a dropped `chat_messages` renders nothing rather than throwing —
+  measured). The WARN pinned on the dropped-`chats` plant, both ways.
+- **Item 6:** seven `tracing` calls renamed to camelCase (render: 2; job: the
+  not-found WARN, the no-events DEBUG, the enqueue WARN, the success INFO;
+  the trigger WARN). Unit asserts re-aimed with a leading space so a name is
+  matched whole; new pins for the enqueue WARN (a default profile planted,
+  then `background_jobs` dropped — a throw in v4 too) and the trigger WARN.
+  Red-first: the five existing render/job tests failed on the old names
+  before the asserts moved.
+
+### Mutation proofs (file-backup revert; md5 of the four files identical after)
+M1 `read_mail` back on `find_by_id_raw(...)?` → `mail_carina_tools` red on
+the `read` postbox pin (it answered the stumbled catch). M2 empty filter
+dropped → `an_empty_error_falls_through_to_the_listing`. M3 WARN back on
+`unwrap_or_default()` → `a_failed_chat_read_takes_v4s_not_found_arm`. M3b the
+ERROR helper likewise → `the_execution_failed_error_omits_an_absent_requested_id`.
+M4 `interchangeCount` → `interchange_count` → `a_render_logs_v4s_success_line`.
+M5 (added) the FK shortcut → the backfill → `mail_carina_tools` red on the
+list's empty-postbox pin. Each reddened exactly its target.
+
+### Regen, as run (cwd = the pin; N = Node 24.13.1; V5W = this worktree)
+- Mail: the committed recipe with lane-private paths —
+  `QT_FIXTURE_TMP_MAIN=/tmp/p4126/qt-mail-main.db QT_FIXTURE_TMP_MOUNT=/tmp/p4126/qt-mail-mount.db $N/node --import tsx $V5W/harness/oracle/fixtures/build-mail-carina-tools-fixture.ts`,
+  then the two anchored jest runs (stage `/tmp/p4126/mail-stage`) writing
+  `/tmp/p4126/oracle-{mail-tools,carina-tool}.ndjson` (54 + 9 rows).
+- Neutrality: `recipe_sweep.py --run-all --families mail_carina_tools,post_office_routes,tool_execution_tier2,tool_dispatch,scriptorium_tools,embedding_remainder,conversation_markdown,post_office_concierge_lantern_suparna,orchestrator_tier3,host_zone_dates,markdown_transcript,conversation_annotations_tier2,conversation_annotations_upsert_tier2 (each …_equivalence) --v4 /tmp/qt-v4-pin-p4119-97b25fc53 --force`
+  → **13/13 ok, zero `SKIP:`**. `orchestrator_tier3` green: **no assert
+  there moved** (Tier 3 item 4 — nothing to hand the unifier). No fixture
+  changed; no oracle NDJSON committed.
+
+### For the unifier
+- The mailbox-scoped fallbacks mirror v4's REPOSITORY-layer fallbacks for
+  the mail path only. Every other caller of `read_database_document` /
+  `list_database_files` / `delete_database_document` still propagates where
+  v4's repository falls back — a wider v4-fidelity question for a future
+  order (the three repos: `doc_mount_documents::
+  find_content_and_mtime_by_mount_point_and_path`, `doc_mount_file_links::
+  {find_by_mount_point_id, find_by_mount_point_and_path}`, `doc_mount_folders::
+  find_by_mount_point_id`).
+- Not ported (outside the mandate, recorded): v4's `deleteWithGC` is ALSO a
+  fallback `withRawDb` — a failed GC delete logs `Error deleting file link
+  with GC` and `deleteDatabaseDocument` still answers `true` (a v4 quirk:
+  "discarded" though nothing was); v5 propagates to the catch. And inside
+  `send_mail`, v4's write path logs the documents-read ERROR before its write
+  throws; v5's write chokepoint throws at the read.
+- Tier 3 item 3 (the `mail_carina_tools` inputs hand-written twice) —
+  recorded, not restructured.
+
+### Gate (lane tree at `0aea3543d`, `CARGO_INCREMENTAL=0 TZ=UTC`)
+`cargo fmt --all --check` clean; clippy `-D warnings` clean in both feature
+sets; `cargo build --workspace --release` clean; `cargo test --workspace
+--no-fail-fast -- --nocapture` with the mail family's four vars +
+`QT_V4_CHECKOUT` = the pin — **648 test binaries / 3,960 passed / 0 failed /
+3 ignored**; `mail_carina_tools` confirmed RUN (`OK: … matched the oracles`),
+every census and guard in the workspace run green, 523 honest `SKIP:` lines
+(families outside the block, none this lane's). Tier R (`cli_differential`):
+**266 cases / 0 failures**. The three unit commits were gated together on
+the final tree (each intermediate tree is a strict subset; fmt/clippy ran
+before the first commit). Versions: core 0.0.1110, harness 0.0.1028.
 ## P4.120 — chat-upload auto-describe + the production `SaveImageSideEffects` (lane record, 2026-09-29)
 
 Branch `claude/chat-upload-auto-describe-257c39`; order `work-orders/p4.120-chat-upload-auto-describe.md`. Drift probe PASSED at lane start and before the regen batch (v4 `main` AT `97b25fc53`, both logs empty, tree clean); pin `/tmp/qt-v4-pin-p4120-97b25fc53` (three symlink classes). Versions: core 0.0.1107, harness 0.0.1027, host 0.0.166.
