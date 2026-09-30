@@ -207,6 +207,9 @@ pub mod memory_weighting;
 pub mod mentioned_characters;
 pub mod message_attribution;
 pub mod message_formatter;
+// === P4.120 ===
+pub mod background;
+// === /P4.120 ===
 pub mod message_selector;
 pub mod mime;
 pub mod model;

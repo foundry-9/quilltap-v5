@@ -4484,7 +4484,9 @@ impl CoreEngine {
                         &message_id,
                         &body,
                         bytes,
-                        Arc::new(crate::photos::save_image_to_album::NoSideEffects)
+                        // P4.120: the production side effects (the embedding
+                        // enqueue; the mount invalidation is a measured no-op).
+                        Arc::new(crate::photos::mount_embedding_effects::MountEmbeddingSideEffects::new(db.clone()))
                             as Arc<
                                 dyn crate::photos::save_image_to_album::SaveImageSideEffects
                                     + Send
@@ -4509,7 +4511,9 @@ impl CoreEngine {
                         &chat_id,
                         &body,
                         bytes,
-                        Arc::new(crate::photos::save_image_to_album::NoSideEffects)
+                        // P4.120: the production side effects (the embedding
+                        // enqueue; the mount invalidation is a measured no-op).
+                        Arc::new(crate::photos::mount_embedding_effects::MountEmbeddingSideEffects::new(db.clone()))
                             as Arc<
                                 dyn crate::photos::save_image_to_album::SaveImageSideEffects
                                     + Send
@@ -4592,9 +4596,9 @@ impl CoreEngine {
                 data,
                 resolution,
                 conflicting_file_id,
-            } => match self.ready_db() {
-                Ok(db) => {
-                    super::chat_media::chat_file_upload(
+            } => match self.ready_upload_auto_describe() {
+                Ok((db, auto_describe)) => {
+                    super::chat_media::chat_file_upload_with_auto_describe(
                         &db,
                         // P4.73: the HOST codec, at last. v4 transcodes chat
                         // uploads through sharp; until this lane v5 handed the
@@ -4629,6 +4633,9 @@ impl CoreEngine {
                             resolution,
                             conflicting_file_id,
                         },
+                        // P4.120: v4's fire-and-forget describe of a new image
+                        // upload, spawned after the write commits.
+                        Some(auto_describe),
                     )
                     .await
                 }
@@ -6171,6 +6178,35 @@ impl CoreEngine {
     > {
         match &*self.inner.state.lock().unwrap() {
             EngineState::Ready(r) => Ok((r.db.clone(), r.recall_replay.clone())),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The Db + the seams the chat upload's background auto-describe runs over
+    /// (P4.120): the byte store (an unwired host falls back to
+    /// [`NotConfiguredBytes`], whose describe lands in v4's `no-bytes` skip), the
+    /// optional vision driver, and the production photo side effects.
+    fn ready_upload_auto_describe(
+        &self,
+    ) -> Result<(Db, super::chat_media::UploadAutoDescribe), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => {
+                let bytes = r.save_image_bytes.clone().unwrap_or_else(|| {
+                    Arc::new(crate::photos::save_image_to_album::NotConfiguredBytes)
+                });
+                Ok((
+                    r.db.clone(),
+                    super::chat_media::UploadAutoDescribe {
+                        bytes,
+                        describe: r.image_describe.clone(),
+                        side_effects: Arc::new(
+                            crate::photos::mount_embedding_effects::MountEmbeddingSideEffects::new(
+                                r.db.clone(),
+                            ),
+                        ),
+                    },
+                ))
+            }
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }

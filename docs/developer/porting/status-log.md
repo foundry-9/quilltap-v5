@@ -155373,6 +155373,28 @@ auto-described; the P4.D108 deferral, now measured — proposed order),
 row; invisible to the differential, which strips CHAT_MESSAGE rows — proposed
 order). Walk doc §5.
 
+## P4.120 — chat-upload auto-describe + the production `SaveImageSideEffects` (lane record, 2026-09-29)
+
+Branch `claude/chat-upload-auto-describe-257c39`; order `work-orders/p4.120-chat-upload-auto-describe.md`. Drift probe PASSED at lane start and before the regen batch (v4 `main` AT `97b25fc53`, both logs empty, tree clean); pin `/tmp/qt-v4-pin-p4120-97b25fc53` (three symlink classes). Versions: core 0.0.1107, harness 0.0.1027, host 0.0.166.
+
+**Landed.** `background.rs` (process-global spawner on the `BusSpawner` model + a thread-scoped test seam; unarmed → `false`, callers log DEBUG); `photos/mount_embedding_effects.rs` (`MountEmbeddingSideEffects`: enqueue spawned onto the writer behind the calling closure, invalidate a measured no-op — v5 has no mount-chunk cache); `ChatUploadedFile.auto_describe` (new image row only; `category` from the STORED mime); `chat_media::chat_file_upload_with_auto_describe` + `UploadAutoDescribe` (spawn after commit, `chatId` `None`, v4's `.catch` WARN `Auto-describe failed for chat image upload` with `module`/`fileId`/`error`); the engine's upload arm and both save-image arms, and `BuiltInToolRunner::new`'s default, now carry the production side effects; `Host` arms the spawner beside the bus. `chat_file_upload` keeps its old signature (delegates with no seams) so the differential families are untouched.
+
+**Deviations / findings (for the unifier).**
+1. Spawner is a global, not an engine field: the Salon turn's runner is built in `services/orchestrator.rs` / `enclave/step.rs` (not this lane's files); only a global reaches all three photo paths. Side effects live in core, not the host, so a provisioned-instance test proves them.
+2. Order error: "category from the INPUT mime" — v4 at `97b25fc53` gates on the stored (post-transcode) mime; v5 already did.
+3. Trap: `save_image_to_album` calls its side effects from INSIDE the writer closure, i.e. on the writer OS thread — a thread-scoped spawner armed on the test thread is invisible there. The save pin arms the process-global spawner; the two wiring tests serialise on a static mutex.
+4. `cargo fmt --all --check` reports drift in `services/orchestrator.rs` (~:944) and `services/turn_orchestrator.rs` (~:1066, :1104) on main — not this lane's files, left untouched (P4.121 territory).
+5. Candidate v4 note: the upload's `chatId`-less call lets a Locked chat's upload reach the uncensored vision desk.
+6. Order item 5's `dumpFileFacts` extension NOT done: the differential families call `chat_file_upload` without seams, so nothing fires there by construction; whether v4's real describe writes on `files-main.db` was not measured. Item 9 (e2e specs inert) NOT measured — no Playwright run in this lane. Both left to the unifier's full suite.
+7. Failure-path log text differs from v4 by caller: the spawned enqueue logs one generic WARN (`failed to enqueue embedding jobs for mount`) where v4 has `auto-describe: failed to enqueue embedding for mount` / `[saveImageToAlbum] failed to enqueue embedding jobs`. Unreachable in the harness; unpinned.
+
+**Tests (new, no oracle).** `chat_upload_auto_describe` (fire set: new PNG / text / duplicate-conflict / skip / replace / keepBoth / sha-dedup; the call's args; the WARN + silence leg; unarmed + no-seams DEBUG skips); `photo_side_effects_wiring` (engine upload end to end incl. the job; engine save-gallery door); core unit tests in `mount_embedding_effects` and `tools::executor` (default runner). Regen from the pin: `python3 harness/tools/recipe_sweep.py --run files_routes_equivalence --v4 /tmp/qt-v4-pin-p4120-97b25fc53 --v5w "$PWD"` and the same for `photo_tools_equivalence` — both ok, zero `SKIP:`, zero moves.
+
+**Mutation table** (each reddened exactly its target, restored by file backup): M1 `auto_describe` always false → fire-set, dedup, call, warn, unarmed tests + the engine upload pin; M2 re-link fires → fire-set + dedup; M3 call passes a chatId → the call test; M4 warn text changed → the warn test; M5 engine upload arm passes no seams → upload pin; M6 save-gallery arm back to `NoSideEffects` → save pin (0 spawns pre-fix); M7 executor default back to `NoSideEffects` → executor pin.
+
+**Gate.** fmt clean on owned files; release build ok; `cargo test --workspace --no-fail-fast`: 648 test binaries, 0 failures; clippy (both feature sets) re-run after fixing one `await_holding_lock` in the wiring test. Not run in this lane: Tier R `cli_differential`, the SPA gate, Playwright (no SPA change) — for the unifier. 💸 dogfood: on a Friday copy upload an image in a chat; within ~15 s `files.description` is set, blank links carry it, `EMBEDDING_GENERATE` jobs run, and a later send logs `[Image Fallback] Reusing persisted description (no vision call)`.
+
+Addendum (same lane): Tier R `cli_differential` at the pin — 266 cases, 0 failures.
 ### P4.121 — Salon tool-loop leg logging (dogfood #129) — lane record (2026-09-30)
 
 Branch `claude/salon-tool-loop-leg-logging-9e3228`. Baseline `97b25fc53`; the drift-ledger §2 probe passed at lane start (v4 `main` at the baseline, clean, bugfix unmoved). Pin: `/tmp/qt-v4-pin-p4121-97b25fc53` (three symlink classes).

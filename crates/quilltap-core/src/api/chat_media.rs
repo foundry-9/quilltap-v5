@@ -1157,17 +1157,92 @@ pub struct ChatFileUploadInput {
     pub conflicting_file_id: Option<String>,
 }
 
-/// v4 `POST /api/v1/chats/[id]/files` (default multipart leg) → `uploadChatFile`
-/// (`chat-files-v2.ts`, ported in [`crate::services::chat_files`]). Reads the
-/// chat's projectId, decodes the base64 bytes, runs the upload (project
-/// dup-detect + resolutions / non-project sha-dedup), and shapes the `{file}` |
-/// `{duplicate, …}` body. A >10 MB overflow → v4's message-sniffed 400.
+/// The seams the upload's fire-and-forget `autoDescribeChatImageAttachment`
+/// runs over (P4.120, dogfood #128) — the byte store, the vision-describe
+/// driver (`None` → v4's `describe-failed` arm, the unwired-host posture) and
+/// the post-write side effects (mount invalidation + embedding enqueue).
+pub struct UploadAutoDescribe {
+    pub bytes: Arc<dyn FileBytesStore>,
+    pub describe: Option<Arc<dyn ImageDescribeDriver>>,
+    pub side_effects: Arc<dyn SaveImageSideEffects + Send + Sync>,
+}
+
+/// [`chat_file_upload_with_auto_describe`] with no auto-describe seams — the
+/// upload alone, as the differential families drive it. A new image row skips
+/// the background describe with a DEBUG line.
 pub async fn chat_file_upload(
     db: &Db,
     codec: std::sync::Arc<dyn crate::services::file_storage::PixelCodec>,
     user_id: &str,
     chat_id: &str,
     input: ChatFileUploadInput,
+) -> Response {
+    chat_file_upload_with_auto_describe(db, codec, user_id, chat_id, input, None).await
+}
+
+/// v4 `autoDescribeChatImageAttachment` as `uploadFileToProject` fires it
+/// (`chat-files-v2.ts:425-437`): `void call({ fileEntryId, userId, repos })
+/// .catch(warn)`. **No `chatId`** — v4's own call passes none, so the uncensored
+/// vision fallback sees `chat = null` and only the global on-duty switch decides
+/// (a Locked chat's upload can still reach the uncensored desk; that is v4's
+/// gap, ported faithfully and filed as a candidate v4 note, not fixed).
+///
+/// Spawned onto the host's armed background spawner ([`crate::background`]),
+/// AFTER the upload's write committed; never awaited, so the response is never
+/// affected. Nothing armed (harness, CLI direct mode) → a DEBUG line, no call.
+fn fire_upload_auto_describe(db: &Db, seams: Option<UploadAutoDescribe>, file_id: &str) {
+    let Some(seams) = seams else {
+        tracing::debug!(
+            fileId = %file_id,
+            "chat upload: no auto-describe seams wired; skipping the background describe"
+        );
+        return;
+    };
+    let db = db.clone();
+    let id = file_id.to_string();
+    let spawned = crate::background::spawn_background(Box::pin(async move {
+        let result = crate::photos::auto_describe_attachment::auto_describe_chat_image_attachment(
+            &db,
+            &*seams.bytes,
+            &*seams.side_effects,
+            seams.describe.as_deref(),
+            &id,
+            None,
+        )
+        .await;
+        if let Err(error) = result {
+            tracing::warn!(
+                module = "chat-files-v2",
+                fileId = %id,
+                error = %error,
+                "Auto-describe failed for chat image upload"
+            );
+        }
+    }));
+    if !spawned {
+        tracing::debug!(
+            fileId = %file_id,
+            "chat upload: no background spawner armed; skipping the background describe"
+        );
+    }
+}
+
+/// v4 `POST /api/v1/chats/[id]/files` (default multipart leg) → `uploadChatFile`
+/// (`chat-files-v2.ts`, ported in [`crate::services::chat_files`]). Reads the
+/// chat's projectId, decodes the base64 bytes, runs the upload (project
+/// dup-detect + resolutions / non-project sha-dedup), and shapes the `{file}` |
+/// `{duplicate, …}` body. A >10 MB overflow → v4's message-sniffed 400.
+///
+/// P4.120: a NEW image row also fires v4's background auto-describe over
+/// `auto_describe` (see [`fire_upload_auto_describe`]) once the write has
+/// committed and before the response is shaped.
+pub async fn chat_file_upload_with_auto_describe(
+    db: &Db,
+    codec: std::sync::Arc<dyn crate::services::file_storage::PixelCodec>,
+    user_id: &str,
+    chat_id: &str,
+    input: ChatFileUploadInput,
+    auto_describe: Option<UploadAutoDescribe>,
 ) -> Response {
     use crate::services::chat_files::{upload_chat_file, ChatUploadError, ChatUploadOutcome};
 
@@ -1208,16 +1283,21 @@ pub async fn chat_file_upload(
     .await;
 
     match outcome {
-        Ok(ChatUploadOutcome::Uploaded(f)) => Response::ChatMedia(json!({
-            "file": {
-                "id": f.id,
-                "filename": f.filename,
-                "filepath": f.filepath,
-                "mimeType": f.mime_type,
-                "size": f.size,
-                "url": f.filepath,
+        Ok(ChatUploadOutcome::Uploaded(f)) => {
+            if f.auto_describe {
+                fire_upload_auto_describe(db, auto_describe, &f.id);
             }
-        })),
+            Response::ChatMedia(json!({
+                "file": {
+                    "id": f.id,
+                    "filename": f.filename,
+                    "filepath": f.filepath,
+                    "mimeType": f.mime_type,
+                    "size": f.size,
+                    "url": f.filepath,
+                }
+            }))
+        }
         Ok(ChatUploadOutcome::Duplicate(d)) => Response::ChatMedia(json!({
             "duplicate": true,
             "conflictType": d.conflict_type,

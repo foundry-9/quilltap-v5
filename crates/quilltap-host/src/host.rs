@@ -285,6 +285,21 @@ impl Host {
             quilltap_core::realtime::bus::arm_realtime_bus(core.event_sender().clone(), spawner);
         }
 
+        // === P4.120: the fire-and-forget spawner. v4's `void call().catch(warn)`
+        // (the chat upload's auto-describe, the photo save's embedding enqueue)
+        // needs a runtime to carry the future; the core ships no scheduler, so
+        // the composition root arms one — the bus's arrangement, detached for the
+        // same reason (a background describe must never hold the process open).
+        // Unarmed engines (the harness, the CLI's direct mode) skip those fires
+        // with a DEBUG line. ===
+        {
+            let rt = rt_handle.clone();
+            quilltap_core::background::arm_background_spawner(Arc::new(move |fut| {
+                rt.spawn(fut);
+            }));
+        }
+        // === end P4.120 ===
+
         Ok(Host {
             core,
             backup_services,

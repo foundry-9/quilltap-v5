@@ -32,6 +32,9 @@ pub mod character_gallery_service;
 pub mod chat_gallery;
 // === /P4.D174 ===
 pub mod keep_image_markdown;
+// === P4.120 ===
+pub mod mount_embedding_effects;
+// === /P4.120 ===
 pub mod photo_link_summary;
 pub mod photos_paths;
 pub mod resolve_character_avatar;

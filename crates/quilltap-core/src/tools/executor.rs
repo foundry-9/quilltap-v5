@@ -70,8 +70,9 @@ use crate::db::{characters_read, chats_read};
 use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider, ErasedEmbeddingProvider};
 use crate::pascal::custom_tools::LlmInvoker;
 use crate::pascal::llm_consult::{ConsultRunner, CustomToolConsultContext, SeamConsultInvoker};
+use crate::photos::mount_embedding_effects::MountEmbeddingSideEffects;
 use crate::photos::save_image_to_album::{
-    FileBytesStore, NoSideEffects, NotConfiguredBytes, SaveImageSideEffects,
+    FileBytesStore, NotConfiguredBytes, SaveImageSideEffects,
 };
 use crate::services::tool_execution::{
     ToolCall, ToolExecutionContext, ToolMetadata, ToolResult, ToolRunner,
@@ -374,9 +375,11 @@ pub struct BuiltInToolRunner<F: ToolRunner = LoudFallbackRunner> {
     /// wiring probe's backing flag).
     file_bytes_wired: bool,
     /// The recorded save side-effects (mount invalidation + embedding enqueue).
-    /// Defaults to [`NoSideEffects`]; production wires the mount-chunk cache + the
-    /// embedding scheduler host-side (the embedding-enqueue via `queue_service`
-    /// EMBEDDING_GENERATE is a **tracked deferral** — a recorded seam this round).
+    /// Defaults to [`MountEmbeddingSideEffects`] over the runner's own `Db`
+    /// (P4.120): the embedding enqueue is spawned on the host's armed background
+    /// spawner and is a DEBUG-logged no-op wherever none is armed (the
+    /// differential harness, the CLI's direct mode); v5 has no mount-chunk cache
+    /// for the invalidation half to clear.
     photo_side_effects: Arc<dyn SaveImageSideEffects + Send + Sync>,
     /// The image-generation boundary the `generate_image` tool uses (v4's
     /// `executeImageGenerationTool` composing the image/completion/moderation
@@ -417,6 +420,7 @@ impl BuiltInToolRunner<LoudFallbackRunner> {
     /// Build a runner with the loud production fallback + the empty scrollback
     /// source + no embedding provider + the not-configured web-search boundary.
     pub fn new(db: Db, self_inventory_env: SelfInventoryEnv) -> Self {
+        let photo_side_effects = Arc::new(MountEmbeddingSideEffects::new(db.clone()));
         BuiltInToolRunner {
             db,
             self_inventory_env,
@@ -425,7 +429,7 @@ impl BuiltInToolRunner<LoudFallbackRunner> {
             web_search_provider: Arc::new(web_search::NotConfiguredWebSearch),
             file_bytes: Arc::new(NotConfiguredBytes),
             file_bytes_wired: false,
-            photo_side_effects: Arc::new(NoSideEffects),
+            photo_side_effects,
             image_generation: generate_image::ErasedImageGeneration::none(),
             ask_carina: ask_carina::ErasedAskCarina::not_available(),
             image_describe: None,
@@ -2319,6 +2323,63 @@ mod tests {
         create_tool_context(
             "chat-1", "user-1", "char-1", "pp-1", None, None, None, None, None,
         )
+    }
+
+    /// P4.120 — the `describe_image` tool's WIRING: a runner nobody configured
+    /// still carries the production photo side effects, so the vision tier's
+    /// `enqueue_embedding_jobs` reaches the armed spawner (it carried
+    /// `NoSideEffects` — a silent no-op — until this order). The Salon turn,
+    /// the enclave and the Run Tool modal all build their runner through
+    /// `BuiltInToolRunner::new`, which is why the default is where this lives.
+    #[tokio::test]
+    async fn a_default_runner_carries_the_production_photo_side_effects() {
+        use crate::background::{
+            arm_background_spawner_for_current_thread, disarm_background_spawner_for_current_thread,
+        };
+        use crate::db::runtime::DbPaths;
+
+        const PEPPER: &str = "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==";
+        let dir = tempfile::tempdir().unwrap();
+        let dpath = dir.path().to_path_buf();
+        let db = tokio::task::spawn_blocking(move || {
+            crate::services::provisioning::provision_fresh_instance(&dpath, PEPPER).unwrap();
+            Db::open(
+                DbPaths {
+                    main: dpath.join("quilltap.db"),
+                    mount_index: Some(dpath.join("quilltap-mount-index.db")),
+                    llm_logs: None,
+                },
+                PEPPER,
+            )
+            .unwrap()
+        })
+        .await
+        .unwrap();
+        let env = SelfInventoryEnv {
+            version: String::new(),
+            runtime_mode: "local-dev".to_string(),
+            client_shell: crate::tools::self_inventory::ClientShell::Unknown,
+            mount_index_degraded: false,
+            release_notes: None,
+            changelog: None,
+            model_info: Vec::new(),
+            fallback_pricing: Vec::new(),
+            registry_default_context: 8192,
+        };
+        let runner = BuiltInToolRunner::new(db, env);
+
+        let spawned = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let n = spawned.clone();
+        arm_background_spawner_for_current_thread(Arc::new(move |_fut| {
+            n.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }));
+        runner.photo_side_effects.enqueue_embedding_jobs("mp-1");
+        disarm_background_spawner_for_current_thread();
+        assert_eq!(
+            spawned.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the default photo side effects did not reach the spawner"
+        );
     }
 
     #[test]

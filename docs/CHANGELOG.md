@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-29 — feat(chat): describe every new chat image upload in the background, and give every photo path its embedding enqueue (dogfood #128)
+
+_Versions: core 0.0.1107, harness 0.0.1027, host 0.0.166._
+
+A new image uploaded into a chat is now described in the background the way
+the reference app does it: after the upload's write commits, a detached task
+runs the already-ported auto-describe over the new row (with no chat id, as
+the reference app passes none), and a failure logs the reference app's
+warning without touching the upload's response. Only a brand-new image row
+fires it; the duplicate-conflict return, skip, and the same-bytes re-link do
+not, while replace and keep-both do. The background work rides a spawner the
+host arms at boot (the realtime bus's arrangement); an engine with none
+armed skips the fire with a debug line. Alongside it, the three photo paths
+that passed a no-op for the reference app's post-write hooks (save to album,
+the `describe_image` tool, and this upload) now share one production
+implementation that queues the mount's embedding jobs; the cache
+invalidation half stays a measured no-op because v5 has no chunk cache.
+Two findings recorded: the order said the fire is gated on the input mime,
+but the reference app gates on the stored mime after the transcode (v5
+already did); and `cargo fmt --check` reports drift in two files this lane
+does not own. Gate: see the status log.
 #### 2026-09-30 — fix(chat): log every Salon tool-loop leg as v4's streamMessage funnel does (dogfood #129)
 
 _Versions: core 0.0.1107, harness 0.0.1027._

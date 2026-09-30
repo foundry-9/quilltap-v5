@@ -19,10 +19,13 @@
 //!    photo of the kettle on the windowsill") surfaces the image even though
 //!    it's not a text document.
 //!
-//! In v4 the function is fire-and-forget from the upload path; in v5 the
-//! upload-time call remains a named no-op (`services/chat_files.rs` — the
-//! P4.D106 boundary), and the first live caller is the `describe_image`
-//! tool's vision tier (`tools/executor.rs::run_describe_image`).
+//! In v4 the function is fire-and-forget from the upload path
+//! (`uploadFileToProject`, on every NEW image row). v5 makes the same call —
+//! `api::chat_media::chat_file_upload` spawns it on the host's armed
+//! background spawner ([`crate::background`]) after the upload's write commits
+//! (P4.120, dogfood #128; it was a named no-op from P4.D106 until then, which
+//! left every chat upload undescribed). The other live caller is the
+//! `describe_image` tool's vision tier (`tools/executor.rs::run_describe_image`).
 //!
 //! ## Seams (mirroring the sibling `save_image_to_album` precedent)
 //!

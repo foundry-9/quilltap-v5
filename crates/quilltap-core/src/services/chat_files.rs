@@ -741,6 +741,14 @@ pub struct ChatUploadedFile {
     pub size: i64,
     pub width: Option<i64>,
     pub height: Option<i64>,
+    /// P4.120: `true` exactly when v4's `uploadFileToProject` reaches its
+    /// `category === 'IMAGE'` fire-and-forget `autoDescribeChatImageAttachment`
+    /// — a NEW `files` row was created for an image (`category` derives from
+    /// the STORED mime, post-transcode, as v4 does since bug 117). The
+    /// duplicate-conflict return, `skip`, and the non-project sha-dedup return
+    /// only re-link an existing row and never set it. The caller fires AFTER
+    /// the write commits ([`crate::api::chat_media::chat_file_upload`]).
+    pub auto_describe: bool,
 }
 
 /// v4 `ChatFileDuplicateResult` — the conflict envelope the route returns 200.
@@ -780,9 +788,10 @@ impl From<crate::db::DbError> for ChatUploadError {
 /// v4 `uploadChatFile` (`chat-files-v2.ts:123`). `project_id` is the chat's
 /// projectId (the route passes `chat.projectId`). Runs the whole read+write on
 /// the single writer (byte writes go through the `file_storage.rs` seams). The
-/// fire-and-forget `autoDescribeChatImageAttachment` (v4:395) is a named no-op —
-/// behaviorally invisible to the route's synchronous contract (enumerated in the
-/// lane report).
+/// fire-and-forget `autoDescribeChatImageAttachment` (v4:425) is NOT fired here —
+/// it must run after the write commits, off the writer: the outcome carries
+/// [`ChatUploadedFile::auto_describe`] and `chat_media::chat_file_upload` spawns
+/// it (P4.120, dogfood #128; the named no-op this comment used to describe).
 #[allow(clippy::too_many_arguments)]
 pub async fn upload_chat_file(
     db: &Db,
@@ -1036,7 +1045,8 @@ fn upload_chat_file_conn(
 /// v4 `uploadFileToProject` (`chat-files-v2.ts:343`) — mint the fileId, write the
 /// bytes (project store `/` vs the Quilltap Uploads mount under `chat/`), inherit
 /// tags, create the metadata row (id == storage path), return the result. The
-/// fire-and-forget image auto-describe is a named no-op (deferred).
+/// fire-and-forget image auto-describe is requested through the result's
+/// `auto_describe` flag (P4.120) and run by the caller after the commit.
 ///
 /// `data` / `mime_type` / `sha256` all describe the *stored* bytes — the caller
 /// has already run the bridge's transcode (bug 117). The hash is passed in only
@@ -1134,9 +1144,10 @@ fn upload_file_to_project(
         },
     )?;
 
-    // autoDescribeChatImageAttachment (v4:395) — fire-and-forget host seam, a
-    // named no-op here (invisible to the route's synchronous contract).
-
+    // autoDescribeChatImageAttachment (v4:425-437) — fire-and-forget, gated on
+    // `category === 'IMAGE'`. We are on the writer's connection here, so the
+    // call is REQUESTED, not made: the caller spawns it once this write has
+    // committed (P4.120).
     Ok(ChatUploadedFile {
         id: file_id.clone(),
         filename: filename.to_string(),
@@ -1145,6 +1156,7 @@ fn upload_file_to_project(
         size: stored_size as i64,
         width: None,
         height: None,
+        auto_describe: category == "IMAGE",
     })
 }
 
@@ -1159,6 +1171,8 @@ fn uploaded_from_full(f: &FileFull) -> ChatUploadedFile {
         size: f.size,
         width: f.width.filter(|w| *w != 0),
         height: f.height.filter(|h| *h != 0),
+        // A re-link of an existing row (skip / sha-dedup) — never described here.
+        auto_describe: false,
     }
 }
 
