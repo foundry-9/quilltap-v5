@@ -80,8 +80,8 @@
 //!    plugin is absent" on the v5 side, because the catalogue is compiled in.
 //! 3. **`systemPromptRegistry` itself** (plugin discovery, `getAll`, the
 //!    display-name computation) — not ported. The vendored table stands in.
-//!    (The plugin's own version stamp — `1.1.24` at `c3eefa752` — is recorded
-//!    nowhere in v5: NO-PORT.)
+//!    (The plugin's own version stamp — `1.1.25` at `ca363178d`, re-vendored
+//!    by P4.D241 — is recorded nowhere in v5: NO-PORT.)
 //!
 //! v4's `seedingPromise` single-flight is a Node concurrency guard with no v5
 //! counterpart: the seed runs on the single writer, which serializes it by

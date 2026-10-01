@@ -36,11 +36,12 @@
 //! subscriber that appends every event to a shared buffer cleared per case.
 //! Adding a second test to this file would make the two race for that buffer.
 //!
-//! ⚠ P4.D237's fixture rule: the FIXTURE is built from a v4 worktree pinned at
-//! `acadcc7cd` (v5 cannot yet open a fixture built at or past `f7f3d7bf0`, which
-//! dropped `chats.renderedMarkdown`) and the ORACLE runs from a worktree pinned
-//! at `c3eefa752` — run the builder line below from the first and the jest line
-//! from the second (drift-ledger §5.1 for the worktree recipe).
+//! The fixture rule (P4.D241, measured at `ca363178d`): build the FIXTURE and
+//! run the ORACLE from ONE v4 tree. P4.D237's two-worktree rule (fixture at
+//! `acadcc7cd`, oracle at `c3eefa752`) is retired: P4.D235's tolerant chat read
+//! opens a post-`f7f3d7bf0` fixture, and the fixture holds no `chats` table
+//! anyway. When v4 HEAD is past the baseline, run both lines below from one
+//! pinned worktree (drift-ledger §5.1).
 //!
 //! Regenerate + run (Node 24, from the v4 checkout — mirror to /tmp; jest
 //! ignores .claude/):

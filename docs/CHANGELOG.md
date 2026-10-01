@@ -10,6 +10,22 @@ are archived under `docs/changelog/`.
 
 Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 (days 1–15)](changelog/2026-07a.md), [June 2026](changelog/2026-06.md).
 
+## October 2026
+
+#### 2026-10-01 — feat(core): re-vendor the 21 built-in prompts at v4 `ca363178d` (P4.D241)
+
+_Versions: core 0.0.1129, harness 0.0.1052._
+
+Re-vendors the 21 built-in sample prompts from v4 `ca363178d` (plugin
+1.1.25) through `dump-prompt-templates.ts`. Every body changes mid-file: a
+"Whose story it is" block, a committee failure-mode bullet, a reworded
+"hold your position" line, and (all but MODERN General) the companion trust
+disposition. The seeder is unchanged: it compares content, so each seeded
+built-in row refreshes on its first prompt-template read.
+`builtin_prompt_templates_guard` is green again against the live checkout.
+The routes differential's header drops P4.D237's two-worktree fixture rule;
+one pin now builds the fixture and runs the oracle.
+
 ## September 2026
 
 #### 2026-10-01 — feat(cli): `quilltap db "<sql>"` prints compressed message text as text (v4 bug 173); help tree and docs mirror at `ca363178d` (P4.D240)
