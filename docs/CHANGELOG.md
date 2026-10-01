@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — feat(core): the three remaining generator sends carry the profile's own key; the fenced-family key twins; the unification recount (§S.1, P4.133 ∥ P4.D241)
+
+_Versions: core 0.0.1138, harness 0.0.1061, host 0.0.170 (recount)._
+
+Applies P4.133's pre-written §S.1 hunks on the union: the Character
+Optimizer, Summon From Lore and the External Prompt generator now hand the
+profile's resolved key to `send_message_keyed` instead of dropping it (the
+module docs say so). Arms the thread-scoped key twins
+(`CannedCheapLlmKey`, `CannedRequiresApiKey`) in the three families P4.D242
+owned this round (`courier_images_routes`, `context_summary_service_tier3`,
+`memory_processor_tier3`). Rewrites the two stale comments P4.133 recorded
+outside its files (`db/connection_profiles.rs`, `api/chat_send.rs`). The
+host crate is recounted to 0.0.170 (two lanes each bumped it to 0.0.169 and
+the merge kept one), and P4.D240's entry moves under this month's header.
+
 #### 2026-10-01 — fix(core): send the connection profile's own API key on every model call (dogfood #133, P4.133)
 
 _Versions: core 0.0.1129, harness 0.0.1052, host 0.0.169, web 0.0.206._
@@ -222,8 +237,6 @@ built-in row refreshes on its first prompt-template read.
 The routes differential's header drops P4.D237's two-worktree fixture rule;
 one pin now builds the fixture and runs the oracle.
 
-## September 2026
-
 #### 2026-10-01 — feat(cli): `quilltap db "<sql>"` prints compressed message text as text (v4 bug 173); help tree and docs mirror at `ca363178d` (P4.D240)
 
 _Versions: cli 0.0.28._
@@ -238,6 +251,8 @@ Node's 10,000-character truncation, wide-character widths and C1 escapes are
 recorded as named divergences with pinning tests. The whole `help/` tree
 (nine pages) and the `docs/v4/` mirror (seven paths) are refreshed at
 `ca363178d`; the two docs-only v4 commits are ratified as no-port.
+
+## September 2026
 
 #### 2026-09-30 — docs(porting): order the `ca363178d` four-commit drift catch-up + dogfood-orders round (P4.D240–P4.D243, P4.133, P4.134)
 

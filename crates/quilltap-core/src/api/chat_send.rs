@@ -80,8 +80,8 @@ pub struct SwipeGenerateRequest {
     /// regenerates on the Concierge's uncensored understudy instead of the
     /// responder's own profile — its WHOLE stored connection-profile row, as
     /// the route resolved it before any frame. The HOST resolves what core
-    /// cannot: the model context limit for THIS profile's model (the key is the
-    /// transport's, per provider — the standing provider-I/O ruling). The row
+    /// cannot: the model context limit for THIS profile's model and, since
+    /// P4.133, the row's own API key (`SwipeProfileOverride.api_key`). The row
     /// rides rather than an id, so the host never re-reads a profile the gate
     /// already chose. `None` is a plain re-roll.
     pub profile_override: Option<Value>,

@@ -1063,6 +1063,8 @@ struct CallCtx<'a, CMP: CompletionProvider> {
     completion: &'a CMP,
     provider: String,
     base_url: Option<String>,
+    /// The profile's own key (v4 `callOptimizerLLM(provider, apiKey, …)`).
+    api_key: String,
     model_name: String,
     profile_id: String,
     profile_parameters: Option<Value>,
@@ -1103,7 +1105,7 @@ async fn call_optimizer_llm<CMP: CompletionProvider>(
     let start_ms = crate::clock::now_unix_ms();
     let response: CompletionResponse = c
         .completion
-        .send_message(&c.provider, c.base_url.as_deref(), &params)
+        .send_message_keyed(&c.provider, c.base_url.as_deref(), &c.api_key, &params)
         .await
         .map_err(|e| e.message)?;
     let duration_ms = crate::clock::now_unix_ms() - start_ms;
@@ -1978,9 +1980,8 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
         .ok_or_else(|| "Connection profile not found".to_string())?;
 
     // Get API key — v4 `if (profile.apiKeyId)` → `findApiKeyByIdAndUserId` →
-    // `key_value`, else `''`. Resolved for read-order fidelity; the provider
-    // seam resolves its own (the external-prompt precedent).
-    let mut _api_key = String::new();
+    // `key_value`, else `''` — SENT on every sub-step call (P4.133).
+    let mut api_key = String::new();
     if let Some(key_id) = profile
         .get("apiKeyId")
         .and_then(Value::as_str)
@@ -1991,7 +1992,7 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
             .read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))
             .map_err(db_msg)?
         {
-            _api_key = key.key_value;
+            api_key = key.key_value;
         }
     }
 
@@ -2030,6 +2031,7 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
         completion,
         provider,
         base_url,
+        api_key,
         model_name: model_name.clone(),
         profile_id: str_of(&profile, "id"),
         profile_parameters: profile_params_value(&profile),

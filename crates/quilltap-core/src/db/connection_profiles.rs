@@ -573,10 +573,11 @@ impl<'c> ConnectionProfilesRepository<'c> {
 ///     same tracked open-JSON seam as the write half (corpus keeps it `{}` /
 ///     single-key).
 ///
-/// The decrypted API key stays a **host-side deferred seam** (mirroring
-/// [`crate::services::cheap_llm_exec`]): the resolver returns this profile row
-/// (which carries `apiKeyId` when set); actually fetching + decrypting the key
-/// from the `api_keys` table is the host's job.
+/// The API key is NOT read here: the resolver returns this profile row (which
+/// carries `apiKeyId` when set), and each caller follows `apiKeyId` into the
+/// `api_keys` table itself and hands the key across the model boundary with
+/// the call (`send_message_keyed` / `stream_message_keyed` — P4.133, dogfood
+/// #133; before it the host's provider scan picked the wire key).
 /// The shared column list every connection-profile net read selects (net-read
 /// order = [`marshal_cp_row`]'s field access order).
 /// The net-read column list up to and including `pseudoToolMode`.

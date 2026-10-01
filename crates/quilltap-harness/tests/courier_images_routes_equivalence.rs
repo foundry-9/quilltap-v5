@@ -441,6 +441,14 @@ fn dump_chat_files(db: &Db, chat_id: &str) -> Value {
 
 #[test]
 fn courier_images_routes_match_oracle() {
+    // P4.133 (dogfood #133; pre-written for the unifier — P4.D242 owns this
+    // family's run this round): the oracle mocks
+    // `getApiKeyForCheapLLMSelection` to a constant; the twin (v5 now resolves
+    // the cheap selection's own key — and the Concierge classifier's — and
+    // refuses without one).
+    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
+    // …and `requiresApiKey: () => false` (v5's Salon turn runs the gate).
+    let _canned_requires = quilltap_core::test_support::CannedRequiresApiKey::install(false);
     let Some(oracle_path) = env_or_skip("QT_ORACLE_COURIER_IMAGES") else {
         return;
     };

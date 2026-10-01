@@ -1059,6 +1059,8 @@ struct ImportCallCtx<'a, CMP: CompletionProvider> {
     completion: &'a CMP,
     provider: String,
     base_url: Option<String>,
+    /// The profile's own key (v4 `callLLM(provider, apiKey, …)`).
+    api_key: String,
     model_name: String,
     profile_parameters: Option<Value>,
     user_id: &'a str,
@@ -1094,7 +1096,7 @@ async fn call_llm<CMP: CompletionProvider>(
     let start_ms = crate::clock::now_unix_ms();
     let response = c
         .completion
-        .send_message(&c.provider, c.base_url.as_deref(), &params)
+        .send_message_keyed(&c.provider, c.base_url.as_deref(), &c.api_key, &params)
         .await
         .map_err(|e| e.message)?;
     let duration_ms = crate::clock::now_unix_ms() - start_ms;
@@ -1521,22 +1523,28 @@ async fn run_import_inner<CMP: CompletionProvider>(
         })
         .ok_or_else(|| "Connection profile not found".to_string())?;
 
-    // Get API key (read-order fidelity; the seam resolves its own)
+    // Get API key — v4 `if (profile.apiKeyId)` → `findApiKeyByIdAndUserId` →
+    // `key_value`, else `''` — SENT on every call (P4.133).
+    let mut api_key = String::new();
     if let Some(key_id) = profile
         .get("apiKeyId")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
     {
         let (key_id, uid) = (key_id.to_string(), user_id.to_string());
-        let _ = db
+        if let Some(key) = db
             .read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))
-            .map_err(db_msg)?;
+            .map_err(db_msg)?
+        {
+            api_key = key.key_value;
+        }
     }
 
     // Create LLM provider — `profile.baseUrl || undefined` (truthy)
     let c = ImportCallCtx {
         db,
         completion,
+        api_key,
         provider: str_of(&profile, "provider"),
         base_url: profile
             .get("baseUrl")

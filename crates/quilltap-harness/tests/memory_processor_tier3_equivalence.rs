@@ -411,6 +411,12 @@ fn normalize_result(result: &mut Value) {
 
 #[tokio::test]
 async fn memory_processor_tier3_matches_oracle() {
+    // P4.133 (dogfood #133; pre-written for the unifier — P4.D242 owns this
+    // family's run this round): the oracle mocks
+    // `getApiKeyForCheapLLMSelection` to a constant; the twin (v5 now resolves
+    // the cheap selection's own key — and the Concierge classifier's — and
+    // refuses without one).
+    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
     let oracle_path = match std::env::var("QT_ORACLE_PROCESSOR") {
         Ok(p) => p,
         Err(_) => {

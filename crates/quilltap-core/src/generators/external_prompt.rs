@@ -18,12 +18,10 @@
 //!
 //! ## The api key
 //!
-//! v4 resolves `profile.apiKeyId` → `key_value` and hands the string to
-//! `provider.sendMessage(params, apiKey)`. v5's [`CompletionProvider`] takes no
-//! key: the host's `WireCompletionProvider` resolves one per provider from the
-//! key source (the tree-wide host key scan, recorded at P4.D93). The lookup is
-//! still performed here — its ABSENCE is not observable, its presence keeps the
-//! read order faithful — and the resolved string is dropped.
+//! v4 resolves `profile.apiKeyId` → `key_value` (user-scoped, `''` when none)
+//! and hands the string to `provider.sendMessage(params, apiKey)`; so does this
+//! runner, through [`CompletionProvider::send_message_keyed`] (P4.133, dogfood
+//! #133 — before it the host's provider scan picked the wire key).
 //!
 //! ## Field semantics
 //!
@@ -325,9 +323,8 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
     };
 
     // v4 `if (profile.apiKeyId)` → `findApiKeyByIdAndUserId` → `key_value`,
-    // else `''`. Resolved for read-order fidelity; the provider seam resolves
-    // its own (module doc).
-    let mut _api_key = String::new();
+    // else `''` — SENT with the call (P4.133).
+    let mut api_key = String::new();
     if let Some(key_id) = profile
         .get("apiKeyId")
         .and_then(Value::as_str)
@@ -338,7 +335,7 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
         if let Some(key) =
             db.read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))?
         {
-            _api_key = key.key_value;
+            api_key = key.key_value;
         }
     }
 
@@ -466,7 +463,7 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
 
     let start_ms = crate::clock::now_unix_ms();
     let response: CompletionResponse = match completion
-        .send_message(&provider, base_url.as_deref(), &params)
+        .send_message_keyed(&provider, base_url.as_deref(), &api_key, &params)
         .await
     {
         Ok(r) => r,
