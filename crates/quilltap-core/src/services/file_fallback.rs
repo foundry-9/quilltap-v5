@@ -17,8 +17,9 @@
 //!
 //! Profiles + chat settings are read as `serde_json::Value` (the connection /
 //! chat-settings net-read shape). The API key is resolved directly off the DB
-//! (host-side in v4; the canned provider ignores it, so it does not affect the
-//! differential).
+//! (the profile's `apiKeyId`, user-scoped, as v4 does) and SENT with the
+//! description call (P4.133); the canned provider ignores it, so it does not
+//! affect the differential.
 
 use serde::Serialize;
 use serde_json::{json, Value};

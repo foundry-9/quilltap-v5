@@ -85,7 +85,12 @@ const GENERAL_SCENARIOS_FOLDER: &str = "Scenarios";
 /// phase 3.3b, a fallback read). Every other sub-step — the mount-index DDL,
 /// the link-content backlog sweep (a ledger-gated v4 migration step) and the
 /// three store provisions (v4 migrations) — PROPAGATES in both modes, because
-/// v4's migration runner exits the process on a failed migration.
+/// v4's migration runner exits the process on a failed migration. That exit is
+/// v4-fatal only on an instance whose ledger LACKS the migration: a
+/// ledger-complete instance skips it before `shouldRun`
+/// (`migrations/index.ts:125-129`) and then reaches these tables only through
+/// the lazy, guarded repository reads — so there v5 is HARDER than v4 (the
+/// ledger-gate divergence P4.134 named for its own order).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LazyRepairFailures {
     /// Every sub-step's `Err` propagates — fresh-instance provisioning, and
@@ -206,29 +211,34 @@ fn ensure_mount_index_tables(
     lazy_ensure(failures, "doc_mount_folders", || {
         mount_index_case_repair::ensure_folder_nocase_unique_index(mount_index)
     })?;
+    // v4 `40319484` (migration `add-doc-mount-link-groups-v1`): deliberate
+    // hard-link groups. Step 1 — the `linkGroupId` column + its partial index.
+    // v4 calls this from the two repositories that name the column (the
+    // file-links repo's `onTableEnsured`, `doc-mount-file-links.repository.ts:
+    // 397-408`, and the documents repo's), because its `safeQuery` would
+    // otherwise turn "no such column" into "every document silently does not
+    // exist"; the two call sites collapse to this one boot hook, exactly as the
+    // case-repair helpers do. It runs BEFORE the links NOCASE repair, as the
+    // file-links repo's `onTableEnsured` orders them, and a failure is that
+    // repo's `ensureTable` line. v4's one `try` logs ONE line per access for
+    // the pair; v5 logs one per sub-step (TWO on a plant that fails both, the
+    // column's error first — pinned below, recorded as the cadence
+    // divergence's other half).
+    lazy_ensure(failures, "doc_mount_file_links", || {
+        mount_index_case_repair::ensure_link_group_column(mount_index)
+    })?;
     lazy_ensure(failures, "doc_mount_file_links", || {
         mount_index_case_repair::ensure_link_nocase_unique_index(mount_index)
     })?;
     lazy_ensure(failures, "doc_mount_points", || {
         mount_index_case_repair::repair_mount_point_name_collisions(mount_index).map(|_| ())
     })?;
-    // v4 `40319484` (migration `add-doc-mount-link-groups-v1`): deliberate
-    // hard-link groups. Step 1 — the `linkGroupId` column + its partial index.
-    // v4 calls this from the two repositories that name the column (the
-    // file-links repo's `onTableEnsured`, ahead of its NOCASE repair, and the
-    // documents repo's), because its `safeQuery` would otherwise turn "no such
-    // column" into "every document silently does not exist"; the two call
-    // sites collapse to this one boot hook, exactly as the three case-repair
-    // helpers above do — and a failure is the file-links repo's `ensureTable`
-    // line, the first of v4's two sites any boot-time read reaches.
-    lazy_ensure(failures, "doc_mount_file_links", || {
-        mount_index_case_repair::ensure_link_group_column(mount_index)
-    })?;
     // Step 2 — collect the backlog of content rows abandoned by
     // content-addressed rewrites before the write path started reaping them.
     // v5 has no migration runner, so this is the boot-repair analogue: cheap and
     // idempotent once the backlog is gone. ALWAYS propagates: in v4 it is a
-    // migration step, and a failed migration exits v4's process.
+    // migration step, and a failed migration exits v4's process (on an
+    // instance whose ledger lacks it — see `LazyRepairFailures`).
     crate::db::doc_mount_file_links::sweep_orphaned_link_content(mount_index)?;
     // P4.31 (dogfood finding #58): reap the links / folders / chunks whose mount
     // point is gone, and the content they were the last reference to. Since
@@ -338,7 +348,9 @@ fn insert_mount_row(
 /// (`:52-59`), so a damaged folder table never reaches `instrumentation.ts`'s
 /// own WARN (`Error ensuring general scenarios folder, continuing startup`,
 /// which the host keeps for the residual). The pointer read is already v4's
-/// fallback `readSetting`. The `Result` stays for that residual.
+/// fallback `readSetting` (infallible here too), so the `Result` can no longer
+/// be `Err` — unreachable in BOTH stacks; kept as the shape of v4's catch, which
+/// the host's residual WARN mirrors as dead code on both sides.
 pub fn ensure_general_scenarios_folder(
     main: &Connection,
     mount_index: &Connection,
@@ -515,6 +527,51 @@ mod tests {
         assert_eq!(
             stores, 3,
             "the store provisions after the failed repair ran"
+        );
+    }
+
+    /// P4.134 (the `ca363178d` unification's §3 catch): the two
+    /// `doc_mount_file_links` lazy ensures run in v4's order — the link-group
+    /// column (`onTableEnsured` `:400`) BEFORE the NOCASE repair (`:408`) — and
+    /// a plant that fails both logs two lines in that order (v4's one `try`
+    /// logs one per access; the cadence divergence's other half). A TABLE
+    /// squatting on the partial index's name fails the column ensure (`CREATE
+    /// INDEX IF NOT EXISTS` does not excuse a same-named table) and the renamed
+    /// `relativePath` fails the repair's SELECT.
+    #[test]
+    fn the_link_group_column_ensure_runs_before_the_nocase_repair_as_v4_orders_them() {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE instance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        )
+        .unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        mount
+            .execute_batch(&format!(
+                "CREATE TABLE doc_mount_file_links (\
+                   id TEXT PRIMARY KEY, fileId TEXT NOT NULL, mountPointId TEXT NOT NULL, \
+                   relativePath_x TEXT NOT NULL, fileName TEXT NOT NULL, folderId TEXT, \
+                   createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);\
+                 CREATE TABLE \"{}\" (id TEXT PRIMARY KEY);\
+                 CREATE TABLE doc_mount_chunks (id TEXT PRIMARY KEY, mountPointId TEXT NOT NULL);",
+                mount_index_case_repair::LINK_GROUP_INDEX
+            ))
+            .unwrap();
+        let (result, lines) = crate::test_support::captured_with(|| {
+            ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::LogAndContinue)
+        });
+        result.unwrap();
+        let errors: Vec<&String> = lines.iter().filter(|l| l.starts_with("ERROR")).collect();
+        assert_eq!(
+            errors,
+            vec![
+                &format!(
+                    "ERROR quilltap::db Failed to ensure doc_mount_file_links table in mount index database error=there is already a table named {}",
+                    mount_index_case_repair::LINK_GROUP_INDEX
+                ),
+                &"ERROR quilltap::db Failed to ensure doc_mount_file_links table in mount index database error=no such column: relativePath".to_string(),
+            ],
+            "the column ensure's line comes first, then the repair's: {lines:?}"
         );
     }
 

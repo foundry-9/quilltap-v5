@@ -614,6 +614,10 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
         api_key: &str,
         params: &StreamParams,
     ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        // INVARIANT: `stream_message` consumes `pending_key` in its SYNC prefix
+        // (the `calls.push` before its `async move`), and this method calls it
+        // synchronously — so two keyed calls can never swap keys. Moving the
+        // push inside the async block would break this handoff.
         *self.pending_key.lock().unwrap() = Some(api_key.to_string());
         self.stream_message(provider, base_url, params)
     }

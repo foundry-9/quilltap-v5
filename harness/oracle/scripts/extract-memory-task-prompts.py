@@ -75,8 +75,10 @@ BLOCKS = {
 
 def body(marker, cap, what):
     raw = template_after(marker)
-    # A body's own escapes (none today) would be evaluated BEFORE the
-    # constants go in — the constants are already runtime text.
+    # A body's own escapes (none today) would have to be evaluated BEFORE the
+    # constants go in — the constants are already runtime text. Today the
+    # script ABORTS instead of guessing (the mandate: never emit a backslash
+    # by guesswork); teach it the escape when one appears.
     if '\\' in raw:
         raise SystemExit(f'{what} body has its own template escape — handle it')
     for name, value in BLOCKS.items():

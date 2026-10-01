@@ -381,6 +381,10 @@ async fn a_blocked_link_group_index_logs_v4s_ensure_table_line_and_boots() {
 
 /// 25g — the orphaned store-children reap (v4 phase 3.3b, a fallback read).
 /// `doc_mount_chunks.mountPointId` is read by the reap and nothing else at boot.
+/// v4's reaper deletes links / folders / DOCUMENTS and never reads chunks, so
+/// under this plant v4 is SILENT: the arm proves v5's line SHAPE for a reaper
+/// failure (transcribed from `doc-mount-file-links.repository.ts:1419-1435` +
+/// `withRawDb`'s fallback mode), not a plant v4 reproduces.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_renamed_chunk_column_logs_v4s_reap_fallback_line_and_boots() {
     let _serial = SERIAL.lock().await;
@@ -460,8 +464,11 @@ async fn a_help_docs_view_logs_v4s_ensure_collection_pair_and_boots() {
 }
 
 /// FATAL class, host level — `help_doc_chunks` is v4's migration
-/// `create-help-doc-chunks-table-v1`; a failed migration exits v4. The boot
-/// must still FAIL (nothing over-softened).
+/// `create-help-doc-chunks-table-v1`; a failed migration exits v4 (on an
+/// instance whose ledger lacks it — a ledger-complete instance skips it before
+/// `shouldRun`, `migrations/index.ts:125-129`; v5's ensures run every boot, the
+/// ledger-gate divergence P4.134 named). The boot must still FAIL (nothing
+/// over-softened).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_failed_migration_counterpart_still_fails_the_boot() {
     let _serial = SERIAL.lock().await;
@@ -484,6 +491,9 @@ async fn a_failed_migration_counterpart_still_fails_the_boot() {
 /// migrations) stay fatal even though the folder case repair before them is
 /// guarded: `path` breaks both, the repair logs and the provision kills the
 /// boot. Wrapping `ensure_builtin_mounts` whole in one guard reds this arm.
+/// v4-fatal only where its ledger lacks the provisioning migration; a
+/// ledger-complete v4 instance reaches `doc_mount_folders` lazily and boots
+/// (v5 HARDER — the ledger-gate divergence, recorded).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_failed_store_provision_still_fails_the_boot() {
     let _serial = SERIAL.lock().await;
@@ -507,7 +517,10 @@ async fn a_failed_store_provision_still_fails_the_boot() {
 }
 
 /// FATAL class, core level — the mount-index DDL (v4's `ensureMountIndexTables`
-/// inside the provisioning migrations) stays fatal.
+/// inside the provisioning migrations) stays fatal. As above: on a
+/// ledger-complete v4 instance the migration is skipped and a same-named VIEW
+/// only fails the lazy index DDL per access (`views may not be indexed`), so
+/// v4 boots where v5 does not (the ledger-gate divergence, recorded).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_failed_mount_index_ddl_still_fails_the_boot() {
     let _serial = SERIAL.lock().await;

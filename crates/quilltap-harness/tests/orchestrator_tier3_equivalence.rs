@@ -1362,6 +1362,16 @@ fn orchestrator_tier3_matches_oracle() {
         eprintln!("QT_FIXTURE_ORCH_MOUNT not set; skipping");
         return;
     };
+    // P4.133 (the `ca363178d` unification's §3 catch): the oracle case mocks
+    // `getApiKeyForCheapLLMSelection` to `'test-key'` (`orchestrator-tier3.test.ts`
+    // "api-key + llm-logging") while v5 resolved the cheap selection's — and the
+    // Concierge classifier's — key for REAL and refused without one; the family
+    // was green only because every non-courier fixture profile is bound to a
+    // seeded key. The twin keeps both sides' cheap paths the same shape. (The
+    // Salon stream's key is NOT mocked on either side — the five P4.133 arms
+    // compare it through the participant resolver.) Lifting the v4 mock instead
+    // is the named stronger proof for a later order.
+    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
 
     let spec: Spec =
         serde_json::from_str(&std::fs::read_to_string(spec_path()).expect("spec readable"))

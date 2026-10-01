@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — fix(core): the §3 review's should-fixes for the `ca363178d` round — the keyed anchored completion, v4's order for the two file-links ensures, the orchestrator family's cheap-key twin, and the exact-count and fallback-arm pins
+
+_Versions: core 0.0.1139, harness 0.0.1062, host 0.0.171, cli 0.0.29._
+
+`CompletionProvider` gains `send_message_keyed_with_anchor` (the anchored
+leg was the one trait method still defaulting onto the host's provider scan;
+no production caller today) with its `Arc` forward, the host override and an
+`Arc` pin. The mount-index boot now runs the link-group column ensure BEFORE
+the links NOCASE repair, as v4's file-links repository orders them, with a
+core pin over a plant that fails both (two lines, the column's first). The
+core fatal arms' comments and the host test's docs say when v4 really exits
+(only where the ledger lacks the migration). Three module headers that still
+called the API key host-side are rewritten. `orchestrator_tier3` arms the
+cheap-key twin its v4 case already mocks; two twin constants now answer their
+mocks' bytes; the `pending_key` handoff's invariant is commented. The
+scene-note tier-1 family pins its corpus at exactly 30 build rows (15/15);
+the Tier R garbage-payload fixture pins `decode_blob`'s fallback ARM; the
+memory-prompt generator's comment says it aborts on a body escape.
+
 #### 2026-10-01 — feat(core): the three remaining generator sends carry the profile's own key; the fenced-family key twins; the unification recount (§S.1, P4.133 ∥ P4.D241)
 
 _Versions: core 0.0.1138, harness 0.0.1061, host 0.0.170 (recount)._

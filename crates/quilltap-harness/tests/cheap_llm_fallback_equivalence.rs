@@ -599,7 +599,7 @@ fn cheap_llm_refusal_matches_oracle() {
     // P4.133 OUT-OF-MANDATE (dogfood #133): `cheap-llm-refusal.test.ts` mocks
     // `getApiKeyForCheapLLMSelection`; the twin (v5 now resolves the cheap
     // selection's own key and refuses without one).
-    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
+    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("canned-test-key");
     let mut failed: Vec<String> = Vec::new();
     for (case, want) in cases.iter().zip(&oracle[1..]) {
         let name = case["name"].as_str().unwrap();

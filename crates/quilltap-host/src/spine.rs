@@ -372,6 +372,25 @@ impl<K: ProviderKeySource> CompletionProvider for WireCompletionProvider<K> {
     ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
         self.send_inner(provider, base_url, api_key.to_string(), params, None)
     }
+
+    /// The keyed anchored send: the handed key AND the anchor position, so the
+    /// first anchored production completion does not fall back onto the scan.
+    fn send_message_keyed_with_anchor(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &CompletionParams,
+        attachment_anchor_index: Option<usize>,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        self.send_inner(
+            provider,
+            base_url,
+            api_key.to_string(),
+            params,
+            attachment_anchor_index,
+        )
+    }
 }
 
 /// The wire knobs the per-job provider constructions share (from
@@ -4349,6 +4368,31 @@ mod profile_timeout_tests {
             header_value(&head, "authorization").as_deref(),
             Some("Bearer k-bound"),
             "the keyed send must carry the key it was handed:\n{head}"
+        );
+
+        // The anchored twin, through the same `Arc` (the unification's §3 catch:
+        // it had been the one leg still defaulting onto the scan).
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let base = format!("http://{}/v1", listener.local_addr().expect("addr"));
+        let head = capture_one_request_head(
+            async {
+                let _ = provider
+                    .send_message_keyed_with_anchor(
+                        "OPENAI_COMPATIBLE",
+                        Some(&base),
+                        "k-bound-anchored",
+                        &params,
+                        Some(0),
+                    )
+                    .await;
+            },
+            listener,
+        )
+        .await;
+        assert_eq!(
+            header_value(&head, "authorization").as_deref(),
+            Some("Bearer k-bound-anchored"),
+            "the keyed anchored send must carry the key it was handed:\n{head}"
         );
 
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");

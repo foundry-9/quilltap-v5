@@ -164,10 +164,14 @@ fn user_narration_anchor_equivalence() {
     }
 
     assert_eq!(renders, 3, "render rows");
-    assert!(builds >= 30, "build rows: {builds}");
-    assert!(
-        applying >= 10 && silent >= 10,
-        "applying {applying} / silent {silent}"
+    assert_eq!(
+        builds, 30,
+        "build rows (the committed corpus; a short NDJSON must refuse)"
+    );
+    assert_eq!(
+        (applying, silent),
+        (15, 15),
+        "applying / silent split of the committed corpus"
     );
     eprintln!("user-narration-anchor: {renders} render + {builds} build rows ({applying} applying, {silent} silent)");
 }

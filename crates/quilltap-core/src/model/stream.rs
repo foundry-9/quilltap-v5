@@ -12,9 +12,10 @@
 //! content-block normalisation, the LLM-call log, finish-reason extraction — is
 //! ported orchestration that must live *inside* the differential, so the seam is
 //! the same one the future primary-stream oracle will mock (`createLLMProvider`'s
-//! returned provider). API-key acquisition stays host-side (resolved before the
-//! provider call; the canned responder needs no key, the real wire decoders of
-//! `docs/developer/porting/provider-manifest.md` arrive later).
+//! returned provider). The API key is resolved by the CALLER from the effective
+//! connection profile and handed across with the call
+//! ([`StreamingCompletionProvider::stream_message_keyed`], P4.133); the canned
+//! responder ignores it, the wire provider puts it on the request.
 //!
 //! **Oracle injection is deferred.** Like [`super::completion`] (which waited for
 //! the memory-processor differential), the v4-oracle-side canned injection —

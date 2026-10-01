@@ -611,10 +611,17 @@ fn build_master(master: &Path, live: &Path) {
             rusqlite::params!["m-2", "c-1", "A short reply.", "2026-09-21T23:31:00.000Z"],
         )
         .unwrap();
+        // The payload is NOT a brotli stream: `0xff` reads as WBITS=24 +
+        // ISLAST=1 + ISLASTEMPTY=1 and the non-zero padding bits that follow
+        // trip the decoder (Node's C decoder and `brotli-decompressor` alike),
+        // so `decode_blob` takes its catch arm — the payload as lossy UTF-8.
+        // Pinned as the ARM, not as "contains U+FFFD": a brotli success that
+        // happened to emit invalid UTF-8 would satisfy the weaker property.
         let garbage: Vec<u8> = vec![0x51, 0x01, 0x01, 0xff, 0xfe, b'o', b'k', 0xc3];
-        assert!(
-            quilltap_core::db::text_compression::decode_blob(&garbage).contains('\u{fffd}'),
-            "the m-3 row must exercise the lossy-UTF-8 fallback"
+        assert_eq!(
+            quilltap_core::db::text_compression::decode_blob(&garbage),
+            String::from_utf8_lossy(&garbage[3..]),
+            "the m-3 row must take decode_blob's fallback arm"
         );
         c.execute(
             "INSERT INTO chat_messages (id, chatId, content, embedding, updatedAt) VALUES (?, ?, ?, NULL, ?)",

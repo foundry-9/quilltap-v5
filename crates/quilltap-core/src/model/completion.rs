@@ -9,9 +9,10 @@
 //! (temperature fallback, the uncensored-provider retry, response parsing) is
 //! ported orchestration that must be *inside* the differential, so the seam is
 //! the same one the v4 oracle mocks (`createLLMProvider`'s returned provider).
-//! API-key acquisition stays host-side (v4's `getApiKeyForCheapLLMSelection`
-//! resolves before the provider call; the canned responder needs no key and the
-//! real adapter arrives with the Phase-4 transport work).
+//! The API key is resolved by the CALLER (v4's `getApiKeyForCheapLLMSelection`
+//! / the profile's `apiKeyId`) and handed across with the call
+//! ([`CompletionProvider::send_message_keyed`], P4.133); the canned responder
+//! ignores it, the host's wire provider puts it on the request.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -304,6 +305,25 @@ pub trait CompletionProvider {
         let _ = api_key;
         self.send_message(provider, base_url, params)
     }
+
+    /// The keyed twin of [`send_message_with_anchor`](Self::send_message_with_anchor)
+    /// (the `ca363178d` unification's §3 catch on P4.133): the anchored leg was
+    /// the one trait method still defaulting onto the unkeyed scan, so the first
+    /// anchored production completion would have sent the provider's FIRST
+    /// active key again. No production caller today; the default ignores the
+    /// anchor and answers [`send_message_keyed`](Self::send_message_keyed); the
+    /// host's wire provider overrides it with both.
+    fn send_message_keyed_with_anchor(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &CompletionParams,
+        attachment_anchor_index: Option<usize>,
+    ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        let _ = attachment_anchor_index;
+        self.send_message_keyed(provider, base_url, api_key, params)
+    }
 }
 
 /// `Arc<T>` is a [`CompletionProvider`] whenever `T` is (delegating to the inner
@@ -340,6 +360,24 @@ impl<T: CompletionProvider> CompletionProvider for Arc<T> {
         params: &CompletionParams,
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
         (**self).send_message_keyed(provider, base_url, api_key, params)
+    }
+
+    // Forwarded explicitly, for the same reason.
+    fn send_message_keyed_with_anchor(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &CompletionParams,
+        attachment_anchor_index: Option<usize>,
+    ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        (**self).send_message_keyed_with_anchor(
+            provider,
+            base_url,
+            api_key,
+            params,
+            attachment_anchor_index,
+        )
     }
 }
 

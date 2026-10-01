@@ -262,6 +262,9 @@ mod tests {
     #[test]
     fn raw_sql_header_with_garbage_payload_is_lossy_utf8_not_an_error() {
         // v4 `decodeText`'s catch: the payload (header stripped) as UTF-8.
+        // `'n'` (0x6e) is no brotli stream head — WBITS=16, ISLAST=1,
+        // ISLASTEMPTY=1 and a non-zero padding nibble — so the decoder
+        // rejects it and the hand-derived expectation is the catch arm.
         let blob = [0x51, 0x01, 0x01, b'n', b'o', b't', 0xff, b'!'];
         assert_eq!(
             raw_sql_cell_to_js_value(ValueRef::Blob(&blob)),
