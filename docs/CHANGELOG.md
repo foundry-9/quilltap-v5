@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — test(harness): compare v4's ensureTable plant lines count-tolerantly in the mail family (P4.134)
+
+_Versions: harness 0.0.1053._
+
+The two `Failed to ensure … table in mount index database` lines v4 logs on
+the mail family's column-rename plants were excluded as plant artifacts
+because v5 had no ensure step. They are now compared: v4 logs them at least
+once per read, v5 never at tool time (it logs once per boot), and a new test
+checks that v5's one emitter renders v4's sentence byte-for-byte. Oracle
+re-recorded from the `ca363178d` pin.
+
 #### 2026-10-01 — fix(host): a damaged mount-index, templates or help_docs table no longer stops the boot (dogfood #134(b), P4.134)
 
 _Versions: core 0.0.1129, host 0.0.169, harness 0.0.1052._

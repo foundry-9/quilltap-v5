@@ -955,15 +955,6 @@ const PLANT_SHARED_MESSAGES: [&str; 5] = [
 /// `characters` validation line below). `(message, why)`.
 const PLANT_EXCLUDED_MESSAGES: &[(&str, &str)] = &[
     (
-        "Failed to ensure doc_mount_file_links table in mount index database",
-        "a plant artefact: `ensureTable` trips on the very column the plant renamed \
-         (v5 has no ensure step)",
-    ),
-    (
-        "Failed to ensure doc_mount_folders table in mount index database",
-        "the same plant artefact on the folders plant",
-    ),
-    (
         "Error finding documents by mount point IDs and path",
         "the character overlay's batch read (`document_store_overlay`), not the \
          document store — the census's `fallback-in-v4` list for the next order",
@@ -992,6 +983,46 @@ const PLANT_EXCLUDED_MESSAGES: &[(&str, &str)] = &[
          fallback reads",
     ),
 ];
+
+/// P4.134 (dogfood #134(b)) — v4's lazy `ensureTable` line, `(table, message)`.
+/// `ensureTable` trips on the very column the plant renamed and logs this ERROR
+/// on EVERY access (`tableEnsured` stays false), so v4 logs it ≥ 1 times per
+/// tool. v5 runs the same repairs once per BOOT (`ensure_builtin_mounts_with`'s
+/// `LogAndContinue`, proven by `quilltap-host`'s `host_boot_hardness`) and so
+/// logs it ZERO times per tool call — the recorded cadence divergence, compared
+/// count-tolerantly and pinned both ways here: v4 ≥ 1, v5 = 0, and the bytes of
+/// v4's sentence equal what v5's one home (`db::fallback::ensure_table_or_log`)
+/// renders for that table. (Before P4.134 these two were excluded as "plant
+/// artefacts — v5 has no ensure step".)
+const PLANT_ENSURE_TABLE_MESSAGES: [(&str, &str); 2] = [
+    (
+        "doc_mount_file_links",
+        "Failed to ensure doc_mount_file_links table in mount index database",
+    ),
+    (
+        "doc_mount_folders",
+        "Failed to ensure doc_mount_folders table in mount index database",
+    ),
+];
+
+/// The cadence pin's v5 half, byte side: v5's home renders exactly v4's
+/// sentence for each table (message only — the `error=` tail is each stack's).
+#[test]
+fn v5s_ensure_table_line_is_v4s_sentence() {
+    for (table, message) in PLANT_ENSURE_TABLE_MESSAGES {
+        let (ok, lines) = quilltap_core::test_support::captured_with(|| {
+            quilltap_core::db::fallback::ensure_table_or_log(table, "mount index", || {
+                Err(quilltap_core::db::DbError::Internal("posed".into()))
+            })
+        });
+        assert!(!ok);
+        assert_eq!(
+            lines,
+            vec![format!("ERROR quilltap::db {message} error=posed")],
+            "{table}"
+        );
+    }
+}
 
 /// The failure plants, run against v4's real stack by the oracle (`mail-tools.
 /// test.ts`, the second output file) and against v5 here — a true differential
@@ -1071,6 +1102,8 @@ async fn assert_catch_lines(
     let name = letter.strip_prefix("Mail/").unwrap().to_string();
     let mut compared = 0;
     let mut send_divergence_seen = false;
+    // v4's `ensureTable` lines seen across every row: [links, folders].
+    let mut ensure_table_seen = [0usize; 2];
     for plant in ["links", "links+folders", "folders", "characters"] {
         let tools: Vec<&str> = rows
             .iter()
@@ -1175,11 +1208,23 @@ async fn assert_catch_lines(
             for l in &want.logs {
                 assert!(
                     PLANT_SHARED_MESSAGES.contains(&l.message.as_str())
+                        || PLANT_ENSURE_TABLE_MESSAGES
+                            .iter()
+                            .any(|(_, m)| *m == l.message)
                         || PLANT_EXCLUDED_MESSAGES.iter().any(|(m, _)| *m == l.message),
-                    "{label}: v4 logged a line neither PLANT_SHARED_MESSAGES nor \
-                     PLANT_EXCLUDED_MESSAGES names: {:?} — classify it",
+                    "{label}: v4 logged a line neither PLANT_SHARED_MESSAGES, \
+                     PLANT_ENSURE_TABLE_MESSAGES nor PLANT_EXCLUDED_MESSAGES names: {:?} \
+                     — classify it",
                     l.message
                 );
+            }
+            // P4.134's cadence pin, both ways: v4 per access (≥ 1 where the
+            // plant broke that table's ensure), v5 never at tool time.
+            for (_, message) in PLANT_ENSURE_TABLE_MESSAGES {
+                let v4 = want.logs.iter().filter(|l| l.message == message).count();
+                let v5 = lines.iter().filter(|l| l.contains(message)).count();
+                assert_eq!(v5, 0, "{label}: v5 logged {message:?} at tool time");
+                ensure_table_seen[usize::from(message.contains("folders"))] += v4;
             }
             // v4's repository-layer lines, as v5's line prefixes.
             let expected: Vec<String> = want
@@ -1226,6 +1271,13 @@ async fn assert_catch_lines(
     assert!(
         send_divergence_seen,
         "the send divergence row was exercised"
+    );
+    // The v4 half of the cadence pin must not pass vacuously: v4 DID log each
+    // `ensureTable` line on its plant.
+    assert!(
+        ensure_table_seen.iter().all(|n| *n >= 1),
+        "v4's ensureTable lines [links, folders] seen {ensure_table_seen:?} times — \
+         each plant must trip its table's ensure in v4 at least once"
     );
 }
 
