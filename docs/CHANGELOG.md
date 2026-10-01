@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — docs(porting): drift check — four v4 commits past `97b25fc53` (bug 173 and the anti-committee prompt safeguards); pins required
+
+_Docs-only change._
+
+`/driftcheck` against v4 `main` at `ca363178d`. Four commits past the
+baseline, recorded in the ledger's §3 as UNPROCESSED: two docs-only
+candidates (`aa92cf91c`, the bug-173 filing; `a67a282c6`, the prompt-trust
+spec) and two ports. `ddf942635` (bug 173) makes the CLI's raw-SQL and
+`--repl` printers decode compressed text values; v5 had pinned the old
+Buffer output as v4-faithful, so that pin will fail at the new oracle.
+`ca363178d` rewrites the 21 built-in sample prompts, adds trust safeguards
+to the four prompt generators, tightens the memory extractor's handling of
+agreements, and adds a trailing scene note on chained multi-character
+turns. `builtin_prompt_templates_guard` is red against the live v4 checkout
+until the re-vendor. Nine help pages lag. `bugfix` and `release` are
+unmoved. Regens now require a pinned `97b25fc53` worktree.
+
 #### 2026-09-30 — docs(porting): the smalls-round dogfood pass — 20 rows, 17 PASS; #133 and #134 recorded; the posed provider gains `malformed` and `unauthorized`
 
 _Docs-only change._
