@@ -1,12 +1,18 @@
-//! GENERATED — the verbatim prompt-body text of v4
-//! `lib/memory/cheap-llm-tasks/memory-tasks.ts` (`selfBodyForCap` /
-//! `otherBodyForCap`, with the constant `ORIENTING_CONTEXT_SKIP_BULLET` /
+//! GENERATED — the verbatim prompt text of v4
+//! `lib/memory/cheap-llm-tasks/memory-tasks.ts`: the SELF / OTHER extraction
+//! bodies (`selfBodyForCap` / `otherBodyForCap`, with the constant
+//! `ORIENTING_CONTEXT_SKIP_BULLET` / `AGREEMENTS_INSTRUCTION_BLOCK` /
 //! `EVENT_INSTRUCTION_BLOCK` / `TAGS_INSTRUCTION_BLOCK` interpolations already
-//! substituted, split at the one live interpolation — the candidate cap).
-//! Extracted mechanically by the session script `extract_prompts.py` so no byte
-//! was transcribed by hand; the tier-1 differential (`memory_tasks_equivalence`)
-//! proves the bytes. Regenerate by re-running the extraction against the v4
-//! checkout if the upstream prompts change.
+//! substituted and the template escapes evaluated) and `FOLD_EPISODE_PROMPT`,
+//! each split at its one live interpolation (the candidate cap /
+//! `FOLD_EPISODE_CAP`). Extracted mechanically by
+//! `harness/oracle/scripts/extract-memory-task-prompts.py` so no byte was
+//! transcribed by hand; the tier-1 differential (`memory_tasks_equivalence`)
+//! and the fold-episode families prove the bytes. Regenerate by re-running
+//! that script against the pinned v4 checkout if the upstream prompts change:
+//!   python3 harness/oracle/scripts/extract-memory-task-prompts.py \
+//!     <v4>/lib/memory/cheap-llm-tasks/memory-tasks.ts \
+//!     crates/quilltap-core/src/memory_tasks/prompt_text.rs
 
 pub(crate) const SELF_BODY_BEFORE_CAP: &str = r####"You produce memory entries that the subject would retain about themselves
 after this exchange.
@@ -57,14 +63,32 @@ WHAT TO SKIP
   That block is background for judging temporal frame, scope, and context
   only — it is not itself a source of memories.
 
+AGREEMENTS, PROPOSALS, AND CONDITIONS — read these strictly
+- Record an agreement ONLY when the agreeing party's own words of
+  assent appear in this transcript, spoken by that party: "yes,"
+  "fine," "deal," "I'll do it." Nothing else counts.
+- A condition, demand, rule, or proposal is recorded as what it is and
+  attributed to whoever said it — "X proposed…", "X asked that…",
+  "X set a condition that…" — never as accepted by anyone else.
+- Silence is not assent. Neither is the exchange ending, an apology,
+  self-criticism, a change of subject, "I'll think about it," or
+  "I need to sit with that." When a proposal was the last word, say
+  so: "…; <name> had not yet responded."
+- The USER's lines came BEFORE every character line in this turn, so
+  nothing the USER said can be assent to a proposal made after it.
+- Keep stated limits in the text: "until breakfast," "for tonight,"
+  "custody, not confiscation — back at breakfast." A memory that
+  drops the limit records a different, larger thing than was said.
+
 DEDUPLICATION
 Before finalizing, scan your own list. If two memories encode the
 same underlying realization or decision in different words, keep
 the more specific one and drop the other.
 
 IMPORTANCE — calibrate to these anchors
-  0.90  The subject made a major commitment or had a self-revelation
-        that changes how they understand themselves.
+  0.90  The subject made a major commitment (one the subject spoke
+        themselves) or had a self-revelation that changes how they
+        understand themselves.
   0.65  The subject formed a substantive new opinion, plan, or
         position.
   0.40  The subject expressed a fresh preference, reaction, or novel
@@ -132,6 +156,8 @@ These describe the memory's frame; they do not change its content.
             moment  — true only at this instant in the scene
             present — true now and expected to stay true
             future  — a stated intent or commitment not yet acted on
+                      (the speaker's own; a proposal awaiting someone
+                      else's answer is `moment`)
 
   scope     one of: narrow | wide
             narrow  — true only inside this project / story
@@ -160,8 +186,9 @@ Do not pad to reach the cap. Subjects with nothing worth keeping
 should simply be omitted from the array.
 
 WHAT TO PICK (priority order, applied per subject)
-1. HINGES — a decision, commitment, agreement, refusal, or realignment
-   formed during this exchange.
+1. HINGES — a decision, commitment, agreement (spoken by the agreeing
+   party — see AGREEMENTS below), refusal, or realignment formed
+   during this exchange.
 2. NEW FACTS — concrete information about the subject that is not in
    their ALREADY ESTABLISHED block (each subject has their own block
    in the CONTEXT footer): background, history, plans, skills,
@@ -200,6 +227,23 @@ WHAT TO SKIP (do not produce a memory for any of these)
   That block is background for judging temporal frame, scope, and context
   only — it is not itself a source of memories.
 
+AGREEMENTS, PROPOSALS, AND CONDITIONS — read these strictly
+- Record an agreement ONLY when the agreeing party's own words of
+  assent appear in this transcript, spoken by that party: "yes,"
+  "fine," "deal," "I'll do it." Nothing else counts.
+- A condition, demand, rule, or proposal is recorded as what it is and
+  attributed to whoever said it — "X proposed…", "X asked that…",
+  "X set a condition that…" — never as accepted by anyone else.
+- Silence is not assent. Neither is the exchange ending, an apology,
+  self-criticism, a change of subject, "I'll think about it," or
+  "I need to sit with that." When a proposal was the last word, say
+  so: "…; <name> had not yet responded."
+- The USER's lines came BEFORE every character line in this turn, so
+  nothing the USER said can be assent to a proposal made after it.
+- Keep stated limits in the text: "until breakfast," "for tonight,"
+  "custody, not confiscation — back at breakfast." A memory that
+  drops the limit records a different, larger thing than was said.
+
 DEDUPLICATION
 Before finalizing, scan your own list. Within a single subject, if two
 memories encode the same underlying fact in different words, keep the
@@ -208,10 +252,14 @@ distinct memories about the same event from their own angle — that
 is allowed and expected.
 
 IMPORTANCE — calibrate to these anchors
-  0.90  An explicit new commitment or revelation that changes how the
-        observer relates to the subject.
+  0.90  An explicit new commitment the subject themselves spoke, or a
+        revelation, that changes how the observer relates to the
+        subject. A proposal made TO the subject is not the subject's
+        commitment.
   0.60  A new substantive fact about the subject's background, plans,
         or skills.
+  0.55  A proposal, condition, or demand the subject stated, not yet
+        answered.
   0.40  A new preference, trait, or novel gesture expressed in passing.
   0.20  A specific event occurred with the subject present, no new
         information.
@@ -253,6 +301,16 @@ EXAMPLE — good extraction (observer is Friday, subjects 1=Amy 2=Charlie):
     "temporal": "future",
     "scope": "narrow",
     "context": "information"
+  },
+  {
+    "subjectIndex": 1,
+    "content": "Amy set a condition that nothing fires without the household hearing it first; Charlie had not yet responded when the exchange ended.",
+    "summary": "proposed household-hears-first condition",
+    "keywords": ["condition", "proposal", "household"],
+    "importance": 0.55,
+    "temporal": "moment",
+    "scope": "narrow",
+    "context": "relationships"
   }
 ]
 
@@ -268,6 +326,15 @@ identity fact about subject 1, all should be skipped):
 ]
 All six restate facts in subject 1's ALREADY ESTABLISHED block.
 Correct output: [].
+
+EXAMPLE — bad extraction (assent invented for subject 2):
+[
+  { "subjectIndex": 2, "content": "Charlie agreed that nothing fires without the household hearing it first", "importance": 0.85 },
+  { "subjectIndex": 2, "content": "Charlie accepted the new household rule", "importance": 0.8 }
+]
+Charlie said nothing after Amy's condition; recording assent invents
+it. Correct output: the condition attributed to Amy, as in the third
+good item above.
 
 EVENTS — episodic memories.
 An EVENT records a specific occurrence at a specific time and/or place
@@ -294,6 +361,8 @@ These describe the memory's frame; they do not change its content.
             moment  — true only at this instant in the scene
             present — true now and expected to stay true
             future  — a stated intent or commitment not yet acted on
+                      (the speaker's own; a proposal awaiting someone
+                      else's answer is `moment`)
 
   scope     one of: narrow | wide
             narrow  — true only inside this project / story
@@ -307,3 +376,29 @@ These describe the memory's frame; they do not change its content.
 
 Return JSON array only. No prose, no code fences. If nothing meets the
 bar for any subject, return []."####;
+pub(crate) const FOLD_EPISODE_PROMPT_BEFORE_CAP: &str = r####"You are consolidating a batch of roleplay conversation turns into EPISODE records — coherent, dated accounts of specific things that happened.
+
+An episode is a real occurrence at a specific time and/or place: an outing, a visit, an arrival, a completed undertaking, a notable incident. It is NOT a standing fact, an opinion, a mood, or an ongoing thread — only something that happened.
+
+Read the dated turns below. Return 0–"####;
+pub(crate) const FOLD_EPISODE_PROMPT_AFTER_CAP: &str = r####" episodes. Most windows contain none — return [] freely. Only emit an episode when the turns actually depict or recount a specific occurrence worth remembering as an event.
+
+For each episode:
+  narrative     2–3 sentences, past tense, third person, using participant
+                names. The prose must ITSELF name the place and the time
+                ("On July 14th, Amy and Charlie visited Lighthouse Point
+                and bought the brass sextant…").
+  summary       3–8 words, lowercase, no punctuation
+  when          when it happened: an absolute date (YYYY-MM-DD, resolved
+                against the message timestamps and the CLOCK line) whenever
+                possible, otherwise the phrase as stated
+  narrativeTime the in-story time phrase, only when the story runs on a
+                fictional timeline ("the third night at sea")
+  entities      2–6 proper nouns: places, people, named things
+  participants  names of those involved
+  importance    0.20–1.00 (0.9 = a day the participants will retell for
+                years; 0.5 = a pleasant but ordinary outing)
+
+An episode records what was said and done, not what was agreed: attribute proposals and conditions to their speaker, and record an agreement only where the agreeing party's own assent appears in the window.
+
+Return a JSON array only. No prose, no code fences. If nothing qualifies, return []."####;

@@ -241,7 +241,11 @@ const FIRST_PERSON_USER_CLAUSE: &str =
 the SUBJECT's lines in the transcript may be written in the first person. \
 Read every \"I\", \"me\", \"my\", and \"myself\" in the SUBJECT's own lines as \
 referring to the SUBJECT — attribute those decisions, realizations, and \
-actions to the SUBJECT, not to anyone else in the exchange.\n\n";
+actions to the SUBJECT, not to anyone else in the exchange. \
+The SUBJECT's lines came first in this turn and the SUBJECT has not yet \
+responded to anything the characters said after them. Never record the \
+SUBJECT as having accepted, agreed to, or consented to anything proposed \
+in those later lines.\n\n";
 
 fn self_body_for_cap(max_memories: i64) -> String {
     format!(
@@ -384,6 +388,10 @@ pub struct TurnTranscript {
     pub turn_timestamp: Option<String>,
 }
 
+/// The transcript heading when the turn carries a human line (v4
+/// `ORDERED_TURN_TRANSCRIPT_HEADING`, spec §8.2) — see [`render_turn_context`].
+pub const ORDERED_TURN_TRANSCRIPT_HEADING: &str = "TURN TRANSCRIPT (in the order spoken — the USER's lines came first; nothing the USER says here answers anything a character says below it):";
+
 /// Render the participant roster + joined transcript for inclusion in
 /// extraction prompts (v4 `renderTurnContext`). Single shared formatter so the
 /// SELF and OTHER passes see byte-identical input prefixes.
@@ -458,8 +466,21 @@ pub fn render_turn_context(transcript: &TurnTranscript) -> String {
         transcript_sections.push(format!("{character_label} says:\n\"{}\"", slice.text));
     }
 
+    // By construction the human's line opens the turn and the next human line
+    // is not in it, so nothing the human says here answers a character below.
+    // Saying so is what keeps the extractor from manufacturing assent. A turn
+    // with no human line keeps the plain heading, byte-identical to before.
+    // (v4 `ca363178d`: `userMessage !== null || hasUserSlice` — an empty
+    // `Some("")` opener is present, so it takes the ordered heading; the
+    // roster's USER line keys on the NAME as well, the heading does not.)
+    let heading = if transcript.user_message.is_some() || has_user_slice {
+        ORDERED_TURN_TRANSCRIPT_HEADING
+    } else {
+        "TURN TRANSCRIPT:"
+    };
+
     format!(
-        "{}\n\nTURN TRANSCRIPT:\n\n{}",
+        "{}\n\n{heading}\n\n{}",
         roster.join("\n"),
         transcript_sections.join("\n\n")
     )
@@ -848,39 +869,16 @@ pub struct FoldEpisode {
 /// Hard cap on consolidated episodes per fold (v4 `FOLD_EPISODE_CAP`).
 pub const FOLD_EPISODE_CAP: usize = 2;
 
-/// v4 `FOLD_EPISODE_PROMPT` (memory-tasks.ts) — split at its one
-/// interpolation, [`FOLD_EPISODE_CAP`]. Extracted mechanically (see
-/// `harness/oracle/scripts/extract-memory-task-prompts.py` for the sibling
-/// extraction of the SELF/OTHER bodies); the fold-episode differential proves
-/// the bytes.
-const FOLD_EPISODE_PROMPT_BEFORE_CAP: &str = r####"You are consolidating a batch of roleplay conversation turns into EPISODE records — coherent, dated accounts of specific things that happened.
-
-An episode is a real occurrence at a specific time and/or place: an outing, a visit, an arrival, a completed undertaking, a notable incident. It is NOT a standing fact, an opinion, a mood, or an ongoing thread — only something that happened.
-
-Read the dated turns below. Return 0–"####;
-const FOLD_EPISODE_PROMPT_AFTER_CAP: &str = r####" episodes. Most windows contain none — return [] freely. Only emit an episode when the turns actually depict or recount a specific occurrence worth remembering as an event.
-
-For each episode:
-  narrative     2–3 sentences, past tense, third person, using participant
-                names. The prose must ITSELF name the place and the time
-                ("On July 14th, Amy and Charlie visited Lighthouse Point
-                and bought the brass sextant…").
-  summary       3–8 words, lowercase, no punctuation
-  when          when it happened: an absolute date (YYYY-MM-DD, resolved
-                against the message timestamps and the CLOCK line) whenever
-                possible, otherwise the phrase as stated
-  narrativeTime the in-story time phrase, only when the story runs on a
-                fictional timeline ("the third night at sea")
-  entities      2–6 proper nouns: places, people, named things
-  participants  names of those involved
-  importance    0.20–1.00 (0.9 = a day the participants will retell for
-                years; 0.5 = a pleasant but ordinary outing)
-
-Return a JSON array only. No prose, no code fences. If nothing qualifies, return []."####;
-
-/// The assembled fold-episode system prompt.
+/// The assembled fold-episode system prompt: v4 `FOLD_EPISODE_PROMPT`, split
+/// at its one interpolation ([`FOLD_EPISODE_CAP`]) in the GENERATED
+/// [`prompt_text`] module (`extract-memory-task-prompts.py`); the fold-episode
+/// differentials prove the bytes.
 pub fn fold_episode_prompt() -> String {
-    format!("{FOLD_EPISODE_PROMPT_BEFORE_CAP}{FOLD_EPISODE_CAP}{FOLD_EPISODE_PROMPT_AFTER_CAP}")
+    format!(
+        "{}{FOLD_EPISODE_CAP}{}",
+        prompt_text::FOLD_EPISODE_PROMPT_BEFORE_CAP,
+        prompt_text::FOLD_EPISODE_PROMPT_AFTER_CAP
+    )
 }
 
 /// v4 `parseFoldEpisodes`: strip fences, parse, coerce each item, cap at

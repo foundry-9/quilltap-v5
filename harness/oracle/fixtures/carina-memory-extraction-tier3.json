@@ -99,6 +99,12 @@
    "participants": [
     { "id": "9a000000-0000-4000-8000-0000000000e1", "characterId": "bb000000-0000-4000-8000-0000000000b1", "controlledBy": "llm" }
    ]
+  },
+  {
+   "id": "1c000000-0000-4000-8000-00000000c0f6",
+   "participants": [
+    { "id": "9a000000-0000-4000-8000-0000000000f1", "characterId": "bb000000-0000-4000-8000-0000000000b1", "controlledBy": "llm" }
+   ]
   }
  ],
  "carinaMessages": [
@@ -122,6 +128,13 @@
    "answererId": "aa000000-0000-4000-8000-0000000000a1",
    "question": "Anything to report?",
    "answer": "   "
+  },
+  {
+   "id": "3a000000-0000-4000-8000-00000000ff06",
+   "chatId": "1c000000-0000-4000-8000-00000000c0f6",
+   "answererId": "bb000000-0000-4000-8000-0000000000b1",
+   "question": "",
+   "answer": "I keep the garden gate oiled, same as always."
   }
  ],
  "cannedEmbeddings": {
@@ -176,6 +189,12 @@
    "chatId": "1c000000-0000-4000-8000-00000000c0e5",
    "carinaMessageId": "3a000000-0000-4000-8000-00000000bb02",
    "answererId": "ff000000-0000-4000-8000-0000000000ff"
+  },
+  {
+   "name": "empty_question_plain_heading",
+   "chatId": "1c000000-0000-4000-8000-00000000c0f6",
+   "carinaMessageId": "3a000000-0000-4000-8000-00000000ff06",
+   "answererId": "bb000000-0000-4000-8000-0000000000b1"
   }
  ]
 }

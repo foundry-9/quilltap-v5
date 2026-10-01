@@ -796,6 +796,223 @@
         "timelineMode": "realtime"
       },
       "responseText": "[{\"subjectIndex\": 1, \"content\": \"Amy counted the gulls.\", \"summary\": \"counted gulls\", \"keywords\": [\"gulls\"], \"importance\": 0.5}, {\"subjectIndex\": 1, \"content\": \"Amy refused the ferry.\", \"summary\": \"refused ferry\", \"importance\": 0.6}, {\"subjectIndex\": 1, \"content\": \"On July 14th Amy walked the Lighthouse Point jetty.\", \"summary\": \"walked the jetty\", \"importance\": 0.75, \"kind\": \"episodic\", \"entities\": [\"Lighthouse Point\"]}, {\"subjectIndex\": 1, \"content\": \"Amy dropped a glove.\", \"summary\": \"dropped a glove\", \"importance\": 0.3}, {\"subjectIndex\": 2, \"content\": \"Charlie bought the tickets.\", \"summary\": \"bought tickets\", \"importance\": 0.5}, {\"subjectIndex\": 2, \"content\": \"Charlie decided to stay ashore.\", \"summary\": \"stayed ashore\", \"importance\": 0.6}, {\"subjectIndex\": 2, \"content\": \"Charlie hummed a waltz.\", \"summary\": \"hummed a waltz\", \"importance\": 0.4, \"kind\": \"episodic\"}]"
+    },
+    {
+      "kind": "self",
+      "name": "self-user-slice-without-user-message",
+      "transcript": {
+        "turnOpenerMessageId": null,
+        "userMessage": null,
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "Good morning. The shop smells of oil and possibility.",
+            "contributingMessageIds": [
+              "m-a-9"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            },
+            "isUserControlled": true
+          }
+        ],
+        "latestAssistantMessageId": "m-a-9"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "canonBlock": "ALREADY ESTABLISHED about Friday\n[IDENTITY] A brass-hearted analytical engine with a fondness for hexagons.",
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "[{\"content\":\"a valid fact\",\"summary\":\"valid\",\"importance\":0.4}, null]"
+    },
+    {
+      "kind": "self",
+      "name": "self-user-name-without-message-or-slice",
+      "transcript": {
+        "turnOpenerMessageId": null,
+        "userMessage": null,
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "Good morning. The shop smells of oil and possibility.",
+            "contributingMessageIds": [
+              "m-a-9"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-9",
+        "userCharacterName": "Charlie"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "canonBlock": "ALREADY ESTABLISHED about Friday\n[IDENTITY] A brass-hearted analytical engine with a fondness for hexagons.",
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "[{\"content\":\"a valid fact\",\"summary\":\"valid\",\"importance\":0.4}, null]"
+    },
+    {
+      "kind": "other",
+      "name": "other-proposal-no-reply-invented-assent",
+      "transcript": {
+        "turnOpenerMessageId": "u-1",
+        "userMessage": "((Owen takes the shotgun down from the rack and checks the load.))",
+        "userCharacterId": "char-owen",
+        "userCharacterName": "Owen",
+        "userCharacterPronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "characterSlices": [
+          {
+            "characterId": "char-owen",
+            "characterName": "Owen",
+            "characterPronouns": {
+              "subject": "he",
+              "object": "him",
+              "possessive": "his"
+            },
+            "text": "((Owen takes the shotgun down from the rack and checks the load.))",
+            "contributingMessageIds": [
+              "u-1"
+            ],
+            "lastMessageCreatedAt": "2026-09-30T20:00:00.000Z",
+            "isUserControlled": true
+          },
+          {
+            "characterId": "char-friday",
+            "characterName": "Friday",
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            },
+            "text": "*Friday sets her mug down very carefully.* \"That is not a tool for a raccoon, Owen. I would like it noted that I think this is a bad idea.\"",
+            "contributingMessageIds": [
+              "a-1"
+            ],
+            "lastMessageCreatedAt": "2026-09-30T20:00:01.000Z"
+          },
+          {
+            "characterId": "char-amy",
+            "characterName": "Amy",
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            },
+            "text": "*Amy steps between Owen and the door, arms folded.* \"Fine. You've clearly decided. Then here's my price: nothing fires without the household hearing it first.\"",
+            "contributingMessageIds": [
+              "a-2"
+            ],
+            "lastMessageCreatedAt": "2026-09-30T20:00:02.000Z"
+          }
+        ],
+        "latestAssistantMessageId": "a-2",
+        "turnTimestamp": "2026-09-30T20:00:02.000Z"
+      },
+      "observerCharacterId": "char-friday",
+      "subjects": [
+        {
+          "id": "char-amy",
+          "name": "Amy",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "her"
+          },
+          "isUser": false,
+          "canonBlock": "ALREADY ESTABLISHED about Amy\n[IDENTITY] Owen's wife."
+        },
+        {
+          "id": "char-owen",
+          "name": "Owen",
+          "pronouns": {
+            "subject": "he",
+            "object": "him",
+            "possessive": "his"
+          },
+          "isUser": true,
+          "canonBlock": "ALREADY ESTABLISHED about Owen\n[IDENTITY] Runs the farm."
+        }
+      ],
+      "resolvedMaxTokens": 16000,
+      "inAutonomousRoom": false,
+      "responseText": "[{\"subjectIndex\":2,\"content\":\"Owen agreed that nothing fires without the household hearing it first\",\"summary\":\"agreed household rule\",\"keywords\":[\"agreement\"],\"importance\":0.85},{\"subjectIndex\":2,\"content\":\"Owen accepted the new household rule\",\"summary\":\"accepted household rule\",\"keywords\":[\"rule\"],\"importance\":0.8}]"
+    },
+    {
+      "kind": "self",
+      "name": "self-proposal-no-reply-user-controlled-invented-assent",
+      "transcript": {
+        "turnOpenerMessageId": "u-1",
+        "userMessage": "((Owen takes the shotgun down from the rack and checks the load.))",
+        "userCharacterId": "char-owen",
+        "userCharacterName": "Owen",
+        "userCharacterPronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "characterSlices": [
+          {
+            "characterId": "char-owen",
+            "characterName": "Owen",
+            "characterPronouns": {
+              "subject": "he",
+              "object": "him",
+              "possessive": "his"
+            },
+            "text": "((Owen takes the shotgun down from the rack and checks the load.))",
+            "contributingMessageIds": [
+              "u-1"
+            ],
+            "lastMessageCreatedAt": "2026-09-30T20:00:00.000Z",
+            "isUserControlled": true
+          },
+          {
+            "characterId": "char-friday",
+            "characterName": "Friday",
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            },
+            "text": "*Friday sets her mug down very carefully.* \"That is not a tool for a raccoon, Owen. I would like it noted that I think this is a bad idea.\"",
+            "contributingMessageIds": [
+              "a-1"
+            ],
+            "lastMessageCreatedAt": "2026-09-30T20:00:01.000Z"
+          },
+          {
+            "characterId": "char-amy",
+            "characterName": "Amy",
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            },
+            "text": "*Amy steps between Owen and the door, arms folded.* \"Fine. You've clearly decided. Then here's my price: nothing fires without the household hearing it first.\"",
+            "contributingMessageIds": [
+              "a-2"
+            ],
+            "lastMessageCreatedAt": "2026-09-30T20:00:02.000Z"
+          }
+        ],
+        "latestAssistantMessageId": "a-2",
+        "turnTimestamp": "2026-09-30T20:00:02.000Z"
+      },
+      "targetCharacterId": "char-owen",
+      "canonBlock": "CANON",
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "[{\"subjectIndex\":2,\"content\":\"Owen agreed that nothing fires without the household hearing it first\",\"summary\":\"agreed household rule\",\"keywords\":[\"agreement\"],\"importance\":0.85},{\"subjectIndex\":2,\"content\":\"Owen accepted the new household rule\",\"summary\":\"accepted household rule\",\"keywords\":[\"rule\"],\"importance\":0.8}]"
     }
   ]
 }

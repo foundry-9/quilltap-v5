@@ -157870,3 +157870,124 @@ on every build; it came back byte-identical.
 
 **Versions:** core 0.0.1128 → 0.0.1132, harness 0.0.1051 → 0.0.1055 (one
 bump each per code commit); host / web / cli / tauri / SPA untouched.
+
+## P4.D242 — v4 `ca363178d` part (c): memory-consent extraction prompts + the two-arm transcript heading (lane, 2026-10-01)
+
+Branch `claude/p4-d242-memory-consent-prompts-e7bdcb` (from `main`
+`382897470`). The ledger's §2 probe PASSED at lane start (v4 `main`, CLEAN,
+HEAD `ca363178d`, both logs empty). Pins: `/tmp/qt-v4-pin-p4d242-ca363178d`
+(target, `AGREEMENTS_INSTRUCTION_BLOCK` ×3) and
+`/tmp/qt-v4-pin-p4d242-97b25fc53` (baseline, ×0), both verified by
+`rev-parse` + `ls -ld`; every fresh NDJSON grepped for the target bytes.
+
+### Landed
+- **The generator extended, `prompt_text.rs` regenerated.** The OLD script
+  aborts at the pin (`self body contains a backslash escape`, measured).
+  `extract-memory-task-prompts.py` now evaluates template escapes (`` \` ``,
+  `\\`, `\$`; any other escape aborts), substitutes
+  `AGREEMENTS_INSTRUCTION_BLOCK` when the source has it, and ALSO emits
+  `FOLD_EPISODE_PROMPT_{BEFORE,AFTER}_CAP` (order item 12 taken — the cheap
+  path; `memory_tasks.rs`'s hand-split pair deleted, so the A10 sentence is
+  GENERATED, not a hand edit as item 2 anticipated). **Neutrality at the
+  baseline:** the extended script at `97b25fc53` reproduces all six constants
+  byte-for-byte (the four bodies AND the old hand-split fold-episode pair).
+  **The regenerated diff at the pin is exactly** A1 (SELF) + A3 + A2 (SELF) +
+  A5 + A1 (OTHER) + A6 (0.90 rewrite + the new 0.55 rung) + A7 + A8 + A2
+  (OTHER) + A10 — the order's predicted set plus A10 (now generated). The
+  header names the real script path. `cargo fmt` leaves the file
+  byte-identical to the script's output (re-checked).
+- **Hand edits:** `FIRST_PERSON_USER_CLAUSE` (A4; the space ends the previous
+  continuation line), `pub const ORDERED_TURN_TRANSCRIPT_HEADING` + the branch
+  in `render_turn_context` (`user_message.is_some() || has_user_slice`) with
+  v4's why-comment carried.
+- **Tier-1 corpus 18 → 22** (`memory-tasks-tier1.json`): (a)
+  `self-user-slice-without-user-message`, (b)
+  `self-user-name-without-message-or-slice`, and the proposal-no-reply pair
+  (`other-proposal-no-reply-invented-assent`,
+  `self-proposal-no-reply-user-controlled-invented-assent`) whose transcript
+  was dumped from v4's REAL `buildTurnTranscript` over v4's
+  `__tests__/unit/lib/fixtures/proposal-no-reply.ts` at the pin (not
+  hand-built), with `INVENTED_ASSENT_RESPONSE` as the reply. The family now
+  collects per-case divergences (names every red case). A second test,
+  `memory_consent_heading_arms_and_no_filter_pin`, pins both heading arms and
+  both disjuncts plus §8.5's no-filter rule on the Rust side without the
+  oracle; the jest case asserts the no-filter rule of v4's own parse.
+  **Red-first:** unported core vs the BASELINE oracle 22/22 GREEN (the new
+  cases are v4-faithful pre-change); vs the TARGET oracle **19/22 RED** (every
+  call-making case; #4/#10/#11 make no call); ported 22/22 + the pin test
+  GREEN.
+- **Mutation proofs (all bite):** M1 (`|| has_user_slice` dropped) → exactly
+  case (a) + the pin test; M2 (heading keyed on the roster name too) →
+  exactly case (b) + the pin test; M3 (`Some("")` as absent) → exactly #7 +
+  the pin test; M4 (AGREEMENTS removed from OTHER) → exactly the six
+  OTHER-building cases; M5 (0.55 after 0.40) → exactly the six OTHER cases;
+  M6 (the TAGS backticks left escaped) → all 19 call cases; M7 (the
+  fold-episode sentence after `Return a JSON array…`) → `fold_episode_tier3`,
+  `context_summary_service_tier3`, `courier_images_routes` RED, and
+  ⚠ **`memory_pipeline_jobs_tier3` SURVIVES** — see Findings.
+- **Tier-3 families, three-state sweep** (driver, `--families` the seven
+  MOVE families; A = unported core, B = ported):
+  | family | A @ `97b25fc53` | A @ `ca363178d` | B @ `ca363178d` |
+  |---|---|---|---|
+  | `memory_tasks_equivalence` | (hand-run: 22/22 ok) | (hand-run: 19/22 red) | ok |
+  | `memory_processor_tier3` | STANDING red (`llm_logs MEMORY_EXTRACTION rows diverge`) | red EARLIER (`main_turn: result object diverges` — the canned miss, 0 created vs 6) | STANDING red only |
+  | `carina_memory_extraction_tier3` | ok | red (`chat_messages rows diverge`) | ok |
+  | `memory_pipeline_jobs_tier3` | ok | red (`memories rows diverge at index 0`) | ok |
+  | `fold_episode_tier3` | ok | red (`episode_pass: result object diverges`) | ok |
+  | `context_summary_service_tier3` | ok | red (`memories rows diverge (the fold-episode pass's writes)`) | ok |
+  | `courier_images_routes` | ok | red (`["resolve_cadence_tables"]`) | ok |
+  (The sweep's own `memory_tasks_equivalence` row is a compile error under
+  unported core — the new pin test names the new const — so its A columns
+  are the hand runs.) **`courier_images_routes` is THIS lane's red, not a
+  sibling's** — it records the fold-episode call by exact key.
+  **`memory_processor_tier3`'s standing red, measured:** the
+  `llm_logs.request` compressed blobs differ in 9 of 21 rows at the baseline
+  and 17 of 21 at the target (longer prompts), and **the brotli-decoded text
+  is identical in every one of the 42 blobs** (decoded with Node's
+  `zlib.brotliDecompressSync`) — the standing compressed-text byte parity,
+  unchanged in kind.
+  Fresh-NDJSON markers at the target (AGREEMENTS / ORDERED / episode
+  sentence): memory-tasks 19/15/0, memory-processor 19/7/0, carina 2/2/0
+  (+1 plain-heading after item 8), memory-pipeline-jobs 10/9/2, fold-episode
+  0/0/2, context-summary-service 0/0/10, courier-images 0/0/2 — every
+  predicted change present.
+- **NEUTRAL seven at the target, ported:** `episodic`,
+  `distill_search_extraction` (the `memory-search-extraction` case),
+  `recall_replay`, `precompute`, `turn_transcript`, `memory_gate_tier3`,
+  `memory_watermark_tier3` — all ok, zero SKIP lines.
+- **Item 8 (Carina's empty-question arm) as a REAL tier-3 case:** the spec is
+  data-driven, so `empty_question_plain_heading` (a Wren answer with
+  `question: ""`, own chat) went in cheaply; the oracle records a third
+  canned row carrying `TURN TRANSCRIPT:` (1 plain, 2 ordered); green at the
+  pin; a mutation forcing the ordered heading on a `None` question reddens it.
+- **Item 9:** the stale `7e6d13e5`-vintage note in
+  `memory-search-extraction.test.ts` corrected (comment only).
+- **Capture pins: none** — `git show ca363178d -- …/memory-tasks.ts` has zero
+  logger hunks (measured).
+
+### Findings
+- **`memory_pipeline_jobs_tier3` is blind to the fold-episode prompt's
+  bytes.** Its `episode` completion rule answers `[]`, and v5's episode pass
+  swallows a canned miss into the same "no episodes" outcome — so a miss and a
+  hit write identical rows (M7 survived as first written). The family proves
+  A1–A9 (it went red on the extraction calls at the target) but NOT A10; the
+  other three A10 families do. **DEFERRED (loud):** the fix — a non-empty
+  episode reply in `memory-pipeline-jobs-tier3.json` (with its embeddings),
+  or a "every recorded canned row was consumed" assert — edits that family's
+  spec/driver beyond this lane's regen-only rights. A smalls item.
+
+### Deferred (typed, loud)
+- Order item 10: the two `help/` pages — P4.D240's.
+- Order item 11: v4's opt-in live eval (`__tests__/eval/memory-consent/`) —
+  a live model, not differential material; NO-PORT by pointer.
+- The `memory_pipeline_jobs_tier3` A10 blindness above.
+
+### Fixtures and invalidated oracles
+`memory-tasks-tier1.json` (18 → 22 cases) → regenerate
+`memory_tasks_equivalence`; `carina-memory-extraction-tier3.json` (+1
+chat, +1 message, +1 case) → regenerate `carina_memory_extraction_tier3`.
+No committed real-DB pair touched. Recipes unchanged (the driver's per-family
+regens work as committed).
+
+### Sibling reds seen
+None — no family outside this lane's list was run red.

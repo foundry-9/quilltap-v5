@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — feat(memory): v4 `ca363178d` memory consent — the AGREEMENTS block, the anchor and example rewrites, and the two-arm transcript heading (P4.D242)
+
+_Versions: core 0.0.1129, harness 0.0.1052._
+
+Memory-extraction prompts now match v4 `ca363178d` byte for byte. Both
+extraction bodies (SELF and OTHER) gain the AGREEMENTS, PROPOSALS, AND
+CONDITIONS section, the TAGS `future` gloss, and the rewritten 0.90
+anchors; OTHER also gains the reworded HINGES item, a new 0.55 rung, a
+third good example, and a second bad example. The user-controlled SELF
+preamble gains the "has not yet responded" sentences, and the fold-episode
+prompt gains its attribution sentence. The turn transcript heading is now
+a branch: a turn with a user message or a user-controlled slice gets the
+new ordered heading (`ORDERED_TURN_TRANSCRIPT_HEADING`), any other turn
+keeps `TURN TRANSCRIPT:`. No code-side consent filter, matching v4.
+
+`extract-memory-task-prompts.py` now evaluates template escapes,
+substitutes the AGREEMENTS block, and also emits `FOLD_EPISODE_PROMPT`, so
+`prompt_text.rs` is fully regenerated and the fold-episode prompt is no
+longer a hand-split constant. The tier-1 corpus grows by four cases (both
+uncovered heading arms and the proposal-no-reply shape, with the
+invented-assent reply pinned as unfiltered on both sides); the Carina
+corpus gains an empty-question case for the plain-heading arm.
+
 #### 2026-10-01 — docs(porting): P4.D241 lane record and order status
 
 _Docs-only change._

@@ -7,6 +7,12 @@
 //! extractors with only `executeCheapLLMTask` mocked, capturing the built
 //! messages and feeding the corpus response into the real parser).
 //!
+//! A divergence is collected per case (the failure names EVERY diverging case),
+//! and a second test, `memory_consent_heading_arms_and_no_filter_pin`, pins
+//! v4 `ca363178d`'s transcript-heading arms and the parser's deliberate
+//! refusal to filter invented assent straight off the corpus (no oracle
+//! needed, so it never SKIPs).
+//!
 //! Generate the oracle output (jest — the seam needs `jest.mock`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -25,7 +31,7 @@ use quilltap_core::memory_format::Pronouns;
 use quilltap_core::memory_tasks::{
     build_other_extraction_messages, build_self_extraction_messages, parse_memory_candidate_array,
     parse_other_candidates_by_subject, resolve_max_memories, ExtractionClock, OrientingContext,
-    OtherSubjectInput, TurnCharacterSlice, TurnTranscript,
+    OtherSubjectInput, TurnCharacterSlice, TurnTranscript, ORDERED_TURN_TRANSCRIPT_HEADING,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -193,6 +199,158 @@ struct OracleRow {
     result: Value,
 }
 
+fn corpus_cases() -> Vec<CaseW> {
+    let corpus_path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../harness/oracle/fixtures/memory-tasks-tier1.json"
+    );
+    let corpus_raw = std::fs::read_to_string(corpus_path).expect("read corpus fixture");
+    #[derive(Deserialize)]
+    struct Spec {
+        cases: Vec<CaseW>,
+    }
+    serde_json::from_str::<Spec>(&corpus_raw)
+        .expect("parse corpus")
+        .cases
+}
+
+fn subjects_core(subjects: Vec<SubjectW>) -> Vec<OtherSubjectInput> {
+    subjects
+        .into_iter()
+        .map(|s| OtherSubjectInput {
+            id: s.id,
+            name: s.name,
+            pronouns: s.pronouns.map(PronounsW::into_core),
+            is_user: s.is_user,
+            canon_block: s.canon_block,
+        })
+        .collect()
+}
+
+/// The user message (the rendered turn) of a corpus case's one call.
+fn built_messages(case: CaseW) -> Vec<(String, String)> {
+    let transcript = case.transcript.into_core();
+    let messages = match case.kind.as_str() {
+        "self" => build_self_extraction_messages(
+            &transcript,
+            case.target_character_id.as_deref().unwrap(),
+            case.canon_block.as_deref().unwrap(),
+            case.resolved_max_tokens,
+            case.in_autonomous_room,
+            None,
+            None,
+        ),
+        _ => build_other_extraction_messages(
+            &transcript,
+            case.observer_character_id.as_deref().unwrap(),
+            &subjects_core(case.subjects),
+            case.resolved_max_tokens,
+            case.in_autonomous_room,
+            None,
+            None,
+        ),
+    };
+    messages
+        .expect("the case makes a call")
+        .into_iter()
+        .map(|m| (m.role.as_str().to_string(), m.content))
+        .collect()
+}
+
+/// v4 `ca363178d` (memory consent, spec §8.2/§8.5), pinned on the Rust side
+/// without the oracle so it never SKIPs: the transcript heading's two arms and
+/// both disjuncts of the ordered one, and the parser's deliberate refusal to
+/// filter invented assent (v4 pins the same in its own
+/// `memory-consent-regression.test.ts`; the oracle case asserts it of v4's
+/// parse). No code-side consent filter exists on either side — the prompt is
+/// the control.
+#[test]
+fn memory_consent_heading_arms_and_no_filter_pin() {
+    let mut by_name: std::collections::HashMap<String, CaseW> = corpus_cases()
+        .into_iter()
+        .map(|c| (c.name.clone(), c))
+        .collect();
+    let mut user_of = |name: &str| -> String {
+        built_messages(by_name.remove(name).expect(name))
+            .into_iter()
+            .find(|(role, _)| role == "user")
+            .map(|(_, content)| content)
+            .expect("a user message")
+    };
+    let old_heading = "\n\nTURN TRANSCRIPT:\n\n";
+
+    // ORDERED by `user_message` (an empty opener is present — `!== null`).
+    assert!(user_of("self-empty-user-message").contains(ORDERED_TURN_TRANSCRIPT_HEADING));
+    // ORDERED purely by a user-controlled slice (`|| hasUserSlice`).
+    let a = user_of("self-user-slice-without-user-message");
+    assert!(a.contains(ORDERED_TURN_TRANSCRIPT_HEADING), "{a}");
+    assert!(!a.contains(old_heading));
+    // The roster's USER line keys on the NAME; the heading does not.
+    let b = user_of("self-user-name-without-message-or-slice");
+    assert!(b.contains("- USER: Charlie (the human participant)"), "{b}");
+    assert!(
+        b.contains(old_heading) && !b.contains(ORDERED_TURN_TRANSCRIPT_HEADING),
+        "{b}"
+    );
+    // No human line at all: the plain heading, byte-identical to before.
+    let greeting = user_of("self-greeting-no-user-null-item");
+    assert!(greeting.contains(old_heading) && !greeting.contains(ORDERED_TURN_TRANSCRIPT_HEADING));
+
+    // The proposal-no-reply turn: the user's stage direction opens it, the
+    // proposal closes it, under the ordered heading.
+    let proposal_line =
+        "Then here's my price: nothing fires without the household hearing it first.";
+    let other = user_of("other-proposal-no-reply-invented-assent");
+    assert!(other.contains(ORDERED_TURN_TRANSCRIPT_HEADING));
+    assert!(other.trim_end().ends_with(&format!("{proposal_line}\"\"")));
+    assert!(other.find("checks the load").unwrap() < other.find("Friday sets her mug").unwrap());
+
+    // Owen's own SELF pass carries the not-yet-responded preamble.
+    let cases = corpus_cases();
+    let self_case = cases
+        .into_iter()
+        .find(|c| c.name == "self-proposal-no-reply-user-controlled-invented-assent")
+        .unwrap();
+    let invented_reply = self_case.response_text.clone();
+    let system = built_messages(self_case)
+        .into_iter()
+        .find(|(role, _)| role == "system")
+        .unwrap()
+        .1;
+    assert!(system.contains("the SUBJECT has not yet responded"));
+
+    // §8.5: the parsers keep invented assent verbatim.
+    let invented = [
+        "Owen agreed that nothing fires without the household hearing it first",
+        "Owen accepted the new household rule",
+    ];
+    let self_parsed: Vec<String> = parse_memory_candidate_array(&invented_reply)
+        .into_iter()
+        .map(|c| c.content.expect("content"))
+        .collect();
+    assert_eq!(self_parsed, invented);
+    let other_case = corpus_cases()
+        .into_iter()
+        .find(|c| c.name == "other-proposal-no-reply-invented-assent")
+        .unwrap();
+    let subjects = subjects_core(other_case.subjects);
+    let buckets = parse_other_candidates_by_subject(
+        &other_case.response_text,
+        &subjects,
+        resolve_max_memories(other_case.resolved_max_tokens),
+    );
+    let about_owen: Vec<String> = buckets
+        .into_iter()
+        .find(|(id, _)| id == "char-owen")
+        .map(|(_, cs)| {
+            cs.into_iter()
+                .map(|c| c.content.expect("content"))
+                .collect()
+        })
+        .unwrap();
+    assert_eq!(about_owen, invented);
+}
+
 #[test]
 fn memory_tasks_equivalence() {
     let oracle_path = match std::env::var("QT_ORACLE_MEMORY_TASKS") {
@@ -226,8 +384,30 @@ fn memory_tasks_equivalence() {
         "corpus/oracle case-count mismatch — regenerate the oracle NDJSON"
     );
 
+    // Every case runs; a divergence is collected rather than aborting the
+    // family, so a red run names EVERY diverging case (the red-first counts and
+    // the mutation proofs' "this case and nothing else" read off this list).
+    let mut failed: Vec<String> = Vec::new();
     for (case, oracle) in spec.cases.into_iter().zip(oracle_rows) {
         assert_eq!(case.name, oracle.name, "case order mismatch");
+        let case_name = case.name.clone();
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            check_case(case, oracle)
+        }));
+        if outcome.is_err() {
+            failed.push(case_name);
+        }
+    }
+    assert!(
+        failed.is_empty(),
+        "{} case(s) diverge from the oracle: {failed:?}",
+        failed.len()
+    );
+}
+
+/// One corpus case against its oracle row; panics on the first divergence.
+fn check_case(case: CaseW, oracle: OracleRow) {
+    {
         let name = &case.name;
 
         let transcript = case.transcript.into_core();

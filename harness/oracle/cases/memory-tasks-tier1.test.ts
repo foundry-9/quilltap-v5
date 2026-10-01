@@ -139,4 +139,25 @@ test('memory-tasks tier-1 oracle', async () => {
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   expect(lines.length).toBe(spec.cases.length);
+
+  // v4 `ca363178d` spec §8.5 (pinned by v4's own memory-consent-regression
+  // test): the parser does NOT filter invented assent — the prompt is the
+  // control. Both proposal-no-reply cases get the invented-assent reply back
+  // verbatim; the Rust side asserts the same of its own parse.
+  const byName = new Map(
+    lines.map((l) => JSON.parse(l) as { name: string; result: unknown }).map((r) => [r.name, r.result])
+  );
+  const invented = [
+    'Owen agreed that nothing fires without the household hearing it first',
+    'Owen accepted the new household rule',
+  ];
+  const otherResult = byName.get('other-proposal-no-reply-invented-assent') as Record<
+    string,
+    Array<{ content: string }>
+  >;
+  expect(otherResult['char-owen'].map((c) => c.content)).toEqual(invented);
+  const selfResult = byName.get('self-proposal-no-reply-user-controlled-invented-assent') as Array<{
+    content: string;
+  }>;
+  expect(selfResult.map((c) => c.content)).toEqual(invented);
 });

@@ -10,8 +10,9 @@
  * full-day normalization + from<=to validation, the entities trim/cap).
  *
  * SPLIT from the memory-tasks tier-1 family (P4.d13): the CREATION-side cases
- * (`memory-tasks-tier1`) stay at their `7e6d13e5` vintage until round 3 ports
- * the clocked creation prompts; THIS family regenerates at `8bf3cb5f`+. Same
+ * live in `memory-tasks-tier1` (regenerated with the clocked creation prompts at
+ * P4.d14 `def4cb968`, and at v4 `ca363178d` by P4.D242 — no longer held at a
+ * `7e6d13e5` vintage); THIS family is the search-side half. Same
  * mock seam as memory-tasks-tier1: only `executeCheapLLMTask` is mocked,
  * capturing the exact messages and feeding the corpus response into the REAL
  * parser the extractor passes in.
