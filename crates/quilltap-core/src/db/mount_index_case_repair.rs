@@ -18,11 +18,15 @@
 //! The `ensure_*_nocase_unique_index` helpers are wired into the boot hook
 //! [`crate::services::builtin_mounts`] (`ensure_mount_index_tables`), which runs
 //! once per process at startup. v4 calls them from EACH repo's lazy table-init
-//! block (folders / file-links / mount-points repos) — three call sites that in
-//! v4's architecture each fire effectively once per process. v5 has no per-repo
-//! lazy `getCollection()` init; the single boot hook is the same effective
-//! once-per-startup cadence, so the three v4 call sites collapse to it here (a
-//! documented non-divergence, not a behavior change). Each call renames any rows
+//! block (folders / file-links / mount-points repos). On CADENCE that collapse
+//! is a non-divergence — each v4 site fires once per process once it succeeds.
+//! On FAILURE it was not (dogfood #134(b)): v4's `ensureTable` logs ERROR
+//! `Failed to ensure <table> table in mount index database` and rethrows into
+//! the caller's fallback read, PER ACCESS, and the boot never touches it — a
+//! damaged column degrades reads, it never stops the server. Since P4.134 the
+//! boot hook answers a failure here with that line (`db::fallback::
+//! ensure_table_or_log`) and continues; v5 logs it once per boot where v4 logs
+//! it per access (the recorded cadence divergence). Each call renames any rows
 //! that violate the invariant (keep-oldest wins, losers get the standard ` (2)`,
 //! ` (3)`, … suffix) and then makes sure a *genuine* unique NOCASE index is in
 //! place, replacing the legacy case-sensitive one or any tampered stand-in.

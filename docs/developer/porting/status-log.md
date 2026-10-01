@@ -158206,3 +158206,207 @@ A Friday-copy multi-character chat: Continue after a character's reply →
 human's seat; the first responder of a new message shows none; a 1:1 chat
 with a persona seat shows it on Nudge; the DEBUG line with `resolvedFromSeat`
 true when the seat name differs from the `{{user}}` name.
+
+## P4.134 — boot hardness: the lazy-home and fallback-read boot steps warn and continue (dogfood #134(b)) (lane record, 2026-10-01)
+
+**Branch:** `claude/p4-134-boot-hardness-warn-868b7c` (cut from `main`
+`382897470`). §2 probe PASSED at lane start and again before the one regen
+batch (v4 `main` at `ca363178d`, clean, both logs empty). Pin
+`/tmp/qt-v4-pin-p4134-ca363178d` (lane-unique, three symlink classes, HEAD
+verified `ca363178dd20…`). v4 source read at the pin with `git show`.
+
+### What landed
+- **Core split (`services/builtin_mounts.rs`).** `ensure_builtin_mounts_with(
+  main, mount_index, LazyRepairFailures)`; `ensure_builtin_mounts` keeps its
+  signature as the `Propagate` wrapper (provisioning and
+  `builtin_mounts_equivalence` unchanged). ONE function with a mode, not five
+  public entry points, so the sub-step order stays in one place. Under
+  `LogAndContinue` the three case repairs (25b/25c/25d) and the link-group
+  column (25e) log v4's lazy `ensureTable` line through the home and the pass
+  goes on; the reap (25g) logs v4's fallback-read line. The DDL (25a), the
+  link-content backlog sweep (25f) and the three store provisions (25h)
+  propagate in BOTH modes. The two stale comments rewritten (cadence a
+  non-divergence, failure semantics not; P4.31's "v4 has no such pass" — v4
+  runs `sweepOrphanedStoreChildren` at boot 3.3b since bug 9).
+  `ensure_general_scenarios_folder` (#26) now catches its own folder failure
+  with v4's `[GeneralScenarios] Failed to ensure Scenarios folder`
+  `{mountPointId, error}` WARN (`general-scenarios.ts:52-59`).
+- **The home (`db/fallback.rs`)** grew four shapes — `ensure_table_or_log`
+  (v4 `dedicated-db.repository.ts:134-152`), `ensure_collection_or_log` (the
+  backend `Failed to ensure collection {table,error}` then the repository
+  `Failed to ensure collection exists {collection,error}`, in that order —
+  `backend.ts:763-791`, `base.repository.ts:113-124`),
+  `seed_built_in_templates_or_log` (`roleplay-templates.repository.ts:
+  141-191`), `sweep_orphaned_store_children_or_default`
+  (`doc-mount-file-links.repository.ts:1419-1435`) — all on `quilltap::db`
+  with the bare driver message; `error_text` made `pub` for the host's
+  instrumentation lines. `fallback_home_guard` widened by the five literals.
+- **Host (`host.rs`).** #1 templates and #17 `help_docs` through the home;
+  25b–25e/25g via `LogAndContinue`; #26's residual arm with v4's
+  `instrumentation.ts:766-776` WARN (`context`, bare error); **#27's two
+  defects fixed** — the `state.json` WARN now carries `context:
+  "instrumentation.register"` and the bare message (was `sqlite error: …`),
+  and its INFO `Seeded general state.json …` gains v4's `context` too (v4
+  `:787-790` logs it; a third defect the order did not list); #31's residual
+  (thread panic / writer gone) now logs v4's `.catch` WARN `Embedding
+  dimension reconciliation failed` `{context, error}` and the boot goes on
+  (`reconcile_embedding_dimensions_at_boot` returns `()`); #30 measured
+  v4-exact, untouched. Every other `?` in the closure is unchanged (the 19
+  migration counterparts). The P4.D184 comment gains its `RULING PENDING
+  (P4.134)` sentence; the guard is NOT changed.
+- **`crates/quilltap-host/tests/host_boot_hardness.rs`** — 12 arms: the
+  silence leg (a healthy boot logs none of the eight guarded messages, both
+  markers come back); the seven plantable guarded steps (25b, 25c, 25d, 25e,
+  25g, #1, #17) each asserting the EXACT line (level + target + message +
+  fields + bare error) AND continuation — the deleted Lantern `tool`
+  subfolder re-created (the store provisions run AFTER the five lazy
+  sub-steps) and the deleted `state.json` re-seeded (the closure's step after
+  the mounts); the 25b arm also proves the LAST sub-step (the reap) ran after
+  the FIRST failed (a planted orphan folder is gone); the #134 plant on the
+  post-office pair; three FATAL-class arms (a `help_doc_chunks` VIEW — host
+  migration counterpart #16; a renamed `doc_mount_folders.path` — 25h, the
+  repair logs and the provision kills; a `doc_mount_folders` VIEW — 25a).
+- **Core unit tests:** the mode decides (the #134 plant `Err`s under
+  `Propagate` with the bare `no such column: relativePath`, and under
+  `LogAndContinue` logs one ERROR and still provisions three stores); #26's
+  `[GeneralScenarios]` WARN with the bare message.
+- **Tier 2 item 8 — the count-tolerant promotion** in
+  `mail_carina_tools_equivalence`: the two `Failed to ensure …` lines leave
+  `PLANT_EXCLUDED_MESSAGES` for a new `PLANT_ENSURE_TABLE_MESSAGES`, pinned
+  both ways — v4 ≥ 1 across the plants (non-vacuous: asserted), v5 = 0 at
+  tool time (it logs once per BOOT), and a new
+  `v5s_ensure_table_line_is_v4s_sentence` proving v5's home renders v4's
+  sentence byte-for-byte for both tables. Oracle re-recorded from the pin
+  (the recipe below); 2/2 green.
+
+### ⚠ Three order premises CORRECTED (measured at `ca363178d`, port from the hunks)
+The order prescribed `instrumentation.ts` / `seed-initial-data.ts` lines for
+three steps. In all three the catch is **UNREACHABLE on a database failure**:
+the repository call inside it is a FALLBACK `safeQuery` that logs and
+swallows first (the P4.126/P4.131 "unreachable outer catch" class again).
+- **#1 templates:** `_doSeedBuiltInTemplates` is `safeQuery(…, 'Error seeding
+  built-in roleplay templates', {}, undefined)` — fallback mode. v4 logs that
+  ERROR `{collection: roleplay_templates, error}`; `Failed to seed built-in
+  roleplay templates` (`seed-initial-data.ts:59`) never fires. Ported the
+  former; the arm pins the latter SILENT.
+- **25g reap:** `sweepOrphanedStoreChildren` is a fallback `withRawDb` — ERROR
+  `Error sweeping orphaned store children {collection: doc_mount_file_links,
+  error}`; 3.3b's WARN `Error reaping orphaned doc-store children, continuing
+  startup` (`instrumentation.ts:686`) never fires. Ported the former; pinned
+  the latter SILENT.
+- **#26 scenarios folder:** `ensureGeneralScenariosFolder` catches its own
+  `ensureFolderPath` throw (`[GeneralScenarios] …` WARN) and the pointer read
+  is the fallback `readSetting`, so `instrumentation.ts:772`'s WARN is
+  unreachable too. Ported both in v4's nesting (the WARN inside the core fn,
+  the instrumentation WARN as the host's residual arm).
+
+### ⚠ The order's substrate was measured unusable for the mount arms
+The committed `post-office-{main,mount}.db` pair has **no `instance_settings`
+table**, so `ensure_builtin_mounts` returns at its first line there and every
+mount arm would pass vacuously (the vintage check the order asked for, done
+first). The arms boot a **fresh provisioned instance** (v4's full
+`generateDDL`); ONE arm runs the #134 plant on the post-office pair with an
+`instance_settings` table added (populated index: six vaults + a letter).
+
+### Plants (measured, not predicted)
+25c `doc_mount_file_links.relativePath`; 25b `doc_mount_folders.name`; 25d
+`doc_mount_points.name`; **25e: a renamed `linkGroupId` SELF-HEALS** (the
+ensure ADDs it back) — the plant is a TABLE holding the partial index's name
+(`there is already a table named …`, which `IF NOT EXISTS` does not
+excuse); 25g `doc_mount_chunks.mountPointId` (read by the reap alone);
+#1 `roleplay_templates.name`; **#17: a renamed column cannot fail `CREATE
+TABLE IF NOT EXISTS`** — the plant is a VIEW named `help_docs` (`views may not
+be indexed`). **#26 is NOT plantable through a real boot** (25h runs the same
+`ensure_folder_path` first and stays fatal) — proven by the core unit test
+instead. **#31 is not plantable** (only a panic / `WriterGone` reaches it) —
+the guard is code-read, recorded. A dropped `chat_settings` and a
+`chat_settings` VIEW do NOT fail #4 (the ensures skip non-tables) — the
+host-level fatal arm uses #16 instead.
+
+### Red-first + mutations
+Red-first (`main`'s four source files restored, this test binary): **10 of 12
+FAIL** — every guarded arm, the post-office arm, the silence leg (on #27's
+missing `context` on the INFO) and the 25h arm (the repair line absent); the
+two VIEW fatal arms pass on `main` by design (red-on-softening). Mutations
+(`/private/tmp/claude-503/p4134-mut.py`, each reverted): **M1-host** (an early
+`return Ok(())` after the templates guard) → the #1 arm reds; **M1-core**
+(an early `Ok` return after the folder repair) → the 25b arm reds on the
+reap marker; **M1-core-fatal** (a guarded failure turned into `Err`) → 6
+arms red; **M2** (`ensure_builtin_mounts_with` wrapped whole) → both core
+fatal arms red; **M3** (`%e` restored on #27) → the two #134 arms red;
+**M4** (#27's `context` dropped) → the same two; **M5** (#16's `?` softened)
+→ the host fatal arm reds.
+
+### Recorded, NOT fixed (each a named follow-up)
+- **RULING PENDING — P4.D184's avatar-collapse guard (`host.rs`).** Its
+  comment says v4 "boots on" after the migration fails; v4's runner BREAKS on
+  `success: false` (`migrations/index.ts:162-181`) and `instrumentation.ts`
+  EXITS (1) (`:417-431`). v5 is SOFTER than v4. Proposed: KEEP (a
+  resumable, unstamped pass; v4's exit buys nothing for an operator),
+  recorded both ways. The guard is unchanged; the comment names the truth.
+- **The ledger-gate divergence** (order item 10): v5's column ensures test
+  `pragma_table_info` every boot; v4 skips a ledgered migration before
+  `shouldRun`, and a `shouldRun` throw is a guarded ERROR `Error checking if
+  migration should run`. Item 12 (#24 and the data heals' `shouldRun` arm)
+  goes with it. Separate order.
+- **The cadence divergence:** v4 logs the lazy `ensureTable` line per access;
+  v5 once per boot (pinned both ways in the mail family). v5's 25e logs the
+  file-links table only; v4 also has the documents repo's site
+  (`doc_mount_documents`), reached on its own reads.
+- **v4's outer-catch `failed`-but-serving model** (item 11): out of scope by
+  design (v5 cannot serve without an engine).
+- **`doc_mount_file_links.rs`'s reaper docstring** still says "v4 offers no
+  equivalent" (outside this lane's ownership); v4's bug-9 reaper sweeps
+  links / folders / DOCUMENTS where v5's sweeps links / folders / CHUNKS +
+  content — a real difference worth its own survey.
+- **v5's templates seed skips a missing `roleplay_templates` table** where
+  v4's `getCollection` would CREATE it — pre-existing, unmoved.
+- `classify_boot_failure`'s `Startup failed` line is a web-crate surface; the
+  host binary asserts the `HostError` string the web layer classifies
+  (P4.134 touches no web test, §R.10(b)).
+
+### Oracle regen recipe (the mail family, from the pin)
+```
+N=$HOME/.nvm/versions/node/v24.13.1/bin; PATH=$N:$PATH
+V5W=<this worktree>; T=/tmp/p4.134
+mkdir -p $T/stage/harness/oracle/{cases,fixtures}
+cp $V5W/harness/oracle/cases/{mail-tools,carina-tool}.test.ts $T/stage/harness/oracle/cases/
+cp $V5W/harness/oracle/fixtures/mail-carina-tools.json $T/stage/harness/oracle/fixtures/
+cd /tmp/qt-v4-pin-p4134-ca363178d
+QT_FIXTURE_TMP_MAIN=$T/qt-mail-main.db QT_FIXTURE_TMP_MOUNT=$T/qt-mail-mount.db \
+  node --import tsx $V5W/harness/oracle/fixtures/build-mail-carina-tools-fixture.ts
+TZ=UTC QT_FIXTURE_TMP_MAIN=$T/qt-mail-main.db QT_FIXTURE_TMP_MOUNT=$T/qt-mail-mount.db \
+  QT_ORACLE_OUT=$T/oracle-mail-tools.ndjson npx jest --silent --watchman=false \
+  --roots "$PWD" --roots "$T/stage/harness/oracle/cases" -- "mail-tools\.test\.ts$"
+QT_ORACLE_OUT=$T/oracle-carina-tool.ndjson npx jest --silent --watchman=false \
+  --roots "$PWD" --roots "$T/stage/harness/oracle/cases" -- "carina-tool\.test\.ts$"
+```
+The plants file carried 4 `Failed to ensure doc_mount…` lines (grep). The
+committed recipe header is unchanged (canonical).
+
+### 💸 rows for the walk
+P4.131's F1 on the Friday copy (`doc_mount_file_links.relativePath →
+relativePath_x`, server stopped, `quilltap db --write`): v5 BOOTS with `ERROR
+quilltap::db Failed to ensure doc_mount_file_links table in mount index
+database error=no such column: relativePath`, the `state.json` WARN with
+`context` and the bare message, `list_mail` as Friday answers v4's fallback
+lines; rename back. A second boot with `roleplay_templates.name` renamed:
+`Error seeding built-in roleplay templates` and the Salon still opens.
+
+### Versions
+core 0.0.1129, host 0.0.169, harness 0.0.1052 → 0.0.1053 (two commits).
+
+### Gate (2026-10-01, on the final tree)
+fmt clean; clippy `-D warnings` clean in both feature sets; `QT_V4_CHECKOUT=
+/tmp/qt-v4-pin-p4134-ca363178d cargo test --workspace --no-fail-fast` with the
+mail family's env block: **656 test binaries / 4,043 passed / 2 failed / 3
+ignored, zero `SKIP:` lines** — the two reds are SIBLINGS' designed reds,
+recorded and not ported: `cli_differential` 266 cases / 1 failure, exactly
+`[db raw blob read]` (P4.D240's bug-173 case at the pin), and
+`builtin_prompt_templates_guard` (P4.D241's live-checkout tripwire). Confirmed
+RUN by name: `host_boot_hardness` 12/12 (8.2 s), `mail_carina_tools_
+equivalence` 2/2, `fallback_home_guard` 2/2, `dispatch_wrong_type_census`
+14/14 (UNMOVED at 441), core lib 2,835/0. `builtin_mounts_equivalence` ran
+without its oracle env (0.00 s) — it drives the unchanged `Propagate` wrapper.
+No SPA file touched. The two commits were gated together on the final tree
+(commit 1's tree differs only by the mail test file and the harness version).

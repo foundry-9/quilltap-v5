@@ -551,7 +551,7 @@ impl EngineAssembler for HostAssembler {
         // === end P4.9I2A / P4.D222 ===
 
         // === P4.d27 / P4.D222: v4's PHASE 3.7, after 3.66 ===
-        reconcile_embedding_dimensions_at_boot(db)?;
+        reconcile_embedding_dimensions_at_boot(db);
         // === end P4.d27 / P4.D222 ===
 
         // The terminal manager (P4.1c) — one per assembly (it holds this
@@ -1120,12 +1120,16 @@ fn reconcile_help_docs_at_boot(db: &Db) {
 /// [`seed_built_ins`]' writer closure by P4.D222 so the help reconcile (Phase
 /// 3.66, v4 `492771aff`) can run BEFORE it — v4 awaits 3.66 precisely so its
 /// writes land before 3.7 can enqueue a reindex whose sync would race it. Same
-/// fresh-thread `write_blocking` idiom as `seed_built_ins`; never fails the boot.
-fn reconcile_embedding_dimensions_at_boot(db: &Db) -> Result<(), String> {
+/// fresh-thread `write_blocking` idiom as `seed_built_ins`; never fails the boot
+/// — P4.134: the pass itself is total, so the only failures left (the thread
+/// panicking, the writer gone) log v4's `.catch` WARN `Embedding dimension
+/// reconciliation failed` (`instrumentation.ts:935-950`) and the boot goes on,
+/// where they used to fail `assemble`.
+fn reconcile_embedding_dimensions_at_boot(db: &Db) {
     use quilltap_core::db::DbError;
 
     let db = db.clone();
-    std::thread::spawn(move || -> Result<(), DbError> {
+    let outcome = std::thread::spawn(move || -> Result<(), DbError> {
         db.write_blocking(|ws| {
             let main = ws.main().connection();
             // === P4.d27 (v4 `7391404e`) ===
@@ -1173,9 +1177,18 @@ fn reconcile_embedding_dimensions_at_boot(db: &Db) -> Result<(), String> {
             Ok(())
         })
     })
-    .join()
-    .map_err(|_| "embedding dimension reconcile thread panicked".to_string())?
-    .map_err(|e| format!("embedding dimension reconcile: {e}"))
+    .join();
+    let error = match outcome {
+        Ok(Ok(())) => return,
+        Ok(Err(e)) => quilltap_core::db::fallback::error_text(&e),
+        Err(_) => "the embedding dimension reconcile thread panicked".to_string(),
+    };
+    tracing::warn!(
+        target: "quilltap::boot",
+        context = "instrumentation.register",
+        error = error.as_str(),
+        "Embedding dimension reconciliation failed",
+    );
 }
 
 /// Seed the built-in roleplay templates + provision-or-adopt the three built-in
@@ -1193,7 +1206,16 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
     std::thread::spawn(move || -> Result<(), DbError> {
         db.write_blocking(|ws| {
             let main = ws.main().connection();
-            builtin_templates::seed_built_in_templates(main)?;
+            // === P4.134 (dogfood #134(b)) ===
+            // v4 seeds the templates inside `seedInitialData` (phase 1.25)
+            // through a FALLBACK `safeQuery`: a failure logs `Error seeding
+            // built-in roleplay templates` and seeding carries on (the
+            // `seed-initial-data.ts` ERROR around it is unreachable on a
+            // database failure). Never a boot failure in v4, so not here.
+            quilltap_core::db::fallback::seed_built_in_templates_or_log(|| {
+                builtin_templates::seed_built_in_templates(main)
+            });
+            // === end P4.134 ===
             // v4 `e3a9654f`'s migration `anchor-fictional-clock-base-v1`,
             // re-homed as a boot repair because v5's migration runner is
             // deferred — the same shape as the mount-index case repair below.
@@ -1442,7 +1464,13 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             // help read); v5's boot sync READS it, so a pre-help_docs instance
             // (the e2e `salon-*` fixture) failed the sync, emptied the Guide
             // and killed every help send — the activated beats' first live run.
-            quilltap_core::db::help_doc_chunks_repair::ensure_help_docs_table(main)?;
+            // P4.134: v4 grows it lazily, so a failure there is v4's lazy
+            // `ensureCollection` pair of lines on the first help read, never a
+            // boot failure — logged here and the boot goes on (the help
+            // reconcile below then logs its own guarded line).
+            quilltap_core::db::fallback::ensure_collection_or_log("help_docs", || {
+                quilltap_core::db::help_doc_chunks_repair::ensure_help_docs_table(main)
+            });
             // === end p4.9i2 unification ===
             // === P4.6BM (replaces the P4.6BL stand-in) ===
             // v4's startup reconcile (`instrumentation.ts` PHASE 3.6): scan for
@@ -1637,6 +1665,11 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 // the boot where v4 carries on — so the error is logged in v4's
                 // words and swallowed, and the next boot tries again (the pass
                 // is resumable by design, and no row was stamped).
+                // RULING PENDING (P4.134): the "boots on" above is FALSE — v4's
+                // runner BREAKS on `success: false` and `instrumentation.ts`
+                // then calls `process.exit(1)` (`migrations/index.ts:162-181`,
+                // `instrumentation.ts:417-431` at `ca363178d`), so v5 is SOFTER
+                // than v4 here; escalated for a ruling, guard left unchanged.
                 match quilltap_core::db::avatar_rolls_collapse_heal::collapse_duplicate_avatar_rolls(
                     main,
                     Some(mount_index),
@@ -1719,21 +1752,49 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                     );
                 }
                 // === end P4.D175 ===
-                builtin_mounts::ensure_builtin_mounts(main, mount_index)?;
-                builtin_mounts::ensure_general_scenarios_folder(main, mount_index)?;
+                // === P4.134 (dogfood #134(b)) ===
+                // The mount-index DDL, the link-content backlog sweep and the
+                // three store provisions stay FATAL (v4 migrations — a failed
+                // migration exits v4's process); the three case repairs, the
+                // link-group column and the orphaned store-children reap log
+                // v4's line and continue (v4 runs them lazily per access, or
+                // as a fallback read at phase 3.3b), so a damaged mount-index
+                // column degrades reads instead of killing the engine.
+                builtin_mounts::ensure_builtin_mounts_with(
+                    main,
+                    mount_index,
+                    builtin_mounts::LazyRepairFailures::LogAndContinue,
+                )?;
+                // v4's phase 3.4c. The folder failure is logged INSIDE (v4's
+                // `[GeneralScenarios]` catch); this arm is v4's
+                // `instrumentation.ts:766-776` WARN for anything else.
+                if let Err(e) = builtin_mounts::ensure_general_scenarios_folder(main, mount_index) {
+                    tracing::warn!(
+                        target: "quilltap::boot",
+                        context = "instrumentation.register",
+                        error = %quilltap_core::db::fallback::error_text(&e),
+                        "Error ensuring general scenarios folder, continuing startup",
+                    );
+                }
+                // === end P4.134 ===
                 // Companion (v4 instrumentation.ts Phase 3 tail, `f48f34dc`):
                 // ensure the general mount's root state.json (the bottom tier
                 // of the state cascade). Idempotent; never heals existing
-                // content; warn-and-continue on error (v4's try/catch).
+                // content; warn-and-continue on error (v4's try/catch,
+                // `instrumentation.ts:782-797` — P4.134: with v4's `context`
+                // field on both lines and the bare driver message, not
+                // `DbError`'s `sqlite error: ` prefix).
                 match general_state::ensure_general_state_file(main, mount_index) {
                     Ok(true) => tracing::info!(
                         target: "quilltap::boot",
+                        context = "instrumentation.register",
                         "Seeded general state.json in the Quilltap General mount",
                     ),
                     Ok(false) => {}
                     Err(e) => tracing::warn!(
                         target: "quilltap::boot",
-                        error = %e,
+                        context = "instrumentation.register",
+                        error = %quilltap_core::db::fallback::error_text(&e),
                         "Error ensuring general state.json, continuing startup",
                     ),
                 }

@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — fix(host): a damaged mount-index, templates or help_docs table no longer stops the boot (dogfood #134(b), P4.134)
+
+_Versions: core 0.0.1129, host 0.0.169, harness 0.0.1052._
+
+Eight boot steps that v4 runs lazily or as a fallback read now log v4's line
+and let the boot continue instead of failing engine assembly: the three
+mount-index case repairs and the link-group column (v4's `ensureTable`
+ERROR), the orphaned store-children reap, the built-in templates seed, the
+`help_docs` ensure, and the general Scenarios folder; the embedding-dimension
+reconcile's thread failure now warns too. `ensure_builtin_mounts` takes a
+failure mode so the mount-index DDL, the link-content sweep and the three
+store provisions stay fatal, as v4's migrations are. The general `state.json`
+lines gain v4's `context` field and the bare SQLite message. New host test
+binary `host_boot_hardness` plants damage on a copy, boots, and checks each
+line and that the boot went on; three arms check that migration-equivalent
+failures still stop the boot. Three of the order's prescribed log lines were
+unreachable in v4 and were replaced with the lines v4 actually logs.
+
 #### 2026-10-01 — docs(porting): P4.D243 lane record; the scene note's inert role-test conjunct noted
 
 _Versions: core 0.0.1130._

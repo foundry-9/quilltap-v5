@@ -29,7 +29,9 @@ use super::DbError;
 /// variant already IS a bare message. Every shape in this home renders the
 /// field through here (the `97b25fc53` smalls unification — the P4.131 lines
 /// had all carried the prefix, and one caller had worked around it locally).
-fn error_text(error: &DbError) -> String {
+/// `pub` since P4.134: the host's boot guards stand in for v4's
+/// `instrumentation.ts` catches, whose `error` field is the same bare message.
+pub fn error_text(error: &DbError) -> String {
     match error {
         DbError::Sqlite(e) => e.to_string(),
         other => other.to_string(),
@@ -178,6 +180,117 @@ pub fn delete_with_gc_or_false(
         false
     })
 }
+
+// === P4.134 (dogfood #134(b)) — v4's lazy-init and boot-reachable repository
+// lines, for the boot steps v5 runs eagerly where v4 degrades per read. Each
+// shape is the line v4 ACTUALLY reaches on a database failure of that step
+// (measured at `ca363178d`): in all three boot sites below v4's own
+// `instrumentation.ts` / `seed-initial-data.ts` catch is UNREACHABLE for a
+// SQLite failure, because the repository call inside it is a fallback
+// `safeQuery` that logs and swallows first. ===
+
+/// v4 `AbstractDedicatedDbRepository.ensureTable` (`dedicated-db.repository.ts:
+/// 134-152`): the table DDL + the repository's `onTableEnsured` repairs inside
+/// one try; a throw logs ERROR `Failed to ensure ${collection} table in
+/// ${DB_LABELS[dbTarget]} database` `{error}` (`mountIndex → 'mount index'`)
+/// and rethrows into the caller's `safeQuery`. v4 runs it LAZILY — on every
+/// access until it succeeds, since `tableEnsured` stays false — where v5 runs
+/// the same repairs once per boot (the recorded cadence divergence), so here
+/// the `Err` is logged once and answered `false`: the boot continues, exactly
+/// as v4's boot never touches the repair at all.
+pub fn ensure_table_or_log(
+    collection: &'static str,
+    db_label: &'static str,
+    ensure: impl FnOnce() -> Result<(), DbError>,
+) -> bool {
+    match ensure() {
+        Ok(()) => true,
+        Err(error) => {
+            tracing::error!(
+                target: "quilltap::db",
+                error = %error_text(&error),
+                "Failed to ensure {} table in {} database",
+                collection,
+                db_label
+            );
+            false
+        }
+    }
+}
+
+/// v4 `BaseRepository.getCollection()`'s lazy `ensureCollection`, as a failure
+/// reaches the log (`base.repository.ts:113-124` + `backends/sqlite/backend.ts:
+/// 763-791`): the backend logs ERROR `Failed to ensure collection` `{table,
+/// error}` and rethrows into the repository's rethrow-mode `safeQuery`, which
+/// logs ERROR `Failed to ensure collection exists` `{collection, error}` — two
+/// lines, in that order. v5 runs the ensure at boot (`help_docs`, p4.9i2), so
+/// the `Err` is logged as v4's pair and answered `false`.
+pub fn ensure_collection_or_log(
+    collection: &'static str,
+    ensure: impl FnOnce() -> Result<(), DbError>,
+) -> bool {
+    match ensure() {
+        Ok(()) => true,
+        Err(error) => {
+            let error = error_text(&error);
+            tracing::error!(
+                target: "quilltap::db",
+                table = collection,
+                error = %error,
+                "Failed to ensure collection"
+            );
+            tracing::error!(
+                target: "quilltap::db",
+                collection = collection,
+                error = %error,
+                "Failed to ensure collection exists"
+            );
+            false
+        }
+    }
+}
+
+/// v4 `roleplayTemplates._doSeedBuiltInTemplates` as its caller sees it
+/// (`roleplay-templates.repository.ts:141-191`): a FALLBACK `safeQuery(…,
+/// 'Error seeding built-in roleplay templates', {}, undefined)`, so `seed()`'s
+/// `Err` logs that ERROR `{collection, error}` and answers — `seed-initial-
+/// data.ts:56-63`'s own ERROR `Failed to seed built-in roleplay templates` is
+/// unreachable behind it on a database failure.
+pub fn seed_built_in_templates_or_log(seed: impl FnOnce() -> Result<(), DbError>) -> bool {
+    match seed() {
+        Ok(()) => true,
+        Err(error) => {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "roleplay_templates",
+                error = %error_text(&error),
+                "Error seeding built-in roleplay templates"
+            );
+            false
+        }
+    }
+}
+
+/// v4 `docMountFileLinks.sweepOrphanedStoreChildren` as its caller sees it
+/// (`doc-mount-file-links.repository.ts:1419-1435`): a fallback `withRawDb({0,
+/// 0, 0})`, so `sweep()`'s `Err` logs ERROR `Error sweeping orphaned store
+/// children` `{collection, error}` and answers the default — `instrumentation.
+/// ts:682-690`'s WARN `Error reaping orphaned doc-store children, continuing
+/// startup` is unreachable behind it on a database failure.
+pub fn sweep_orphaned_store_children_or_default<T: Default>(
+    sweep: impl FnOnce() -> Result<T, DbError>,
+) -> T {
+    sweep().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "doc_mount_file_links",
+            error = %error_text(&error),
+            "Error sweeping orphaned store children"
+        );
+        T::default()
+    })
+}
+// === end P4.134 ===
 
 #[cfg(test)]
 mod tests {

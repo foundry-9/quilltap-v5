@@ -31,6 +31,12 @@ const HOME_MESSAGES: &[&str] = &[
     "Error querying joined file links",
     "Error finding document by mount point and path",
     "Error deleting file link with GC",
+    // P4.134 (dogfood #134(b)): v4's lazy-init and boot-reachable lines.
+    "Failed to ensure {} table in {} database",
+    "Failed to ensure collection",
+    "Failed to ensure collection exists",
+    "Error seeding built-in roleplay templates",
+    "Error sweeping orphaned store children",
 ];
 
 const HOME: &str = "db/fallback.rs";

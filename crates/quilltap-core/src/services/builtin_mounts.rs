@@ -78,10 +78,40 @@ const MOUNTS: &[MountSpec] = &[
 /// re-creates at startup.
 const GENERAL_SCENARIOS_FOLDER: &str = "Scenarios";
 
+/// How [`ensure_builtin_mounts_with`] answers a failure in one of the five
+/// sub-steps whose v4 home is NOT a migration (P4.134, dogfood #134(b)): the
+/// three case repairs and the link-group column (v4's lazy repository
+/// `ensureTable`, per access) and the orphaned store-children reap (v4's boot
+/// phase 3.3b, a fallback read). Every other sub-step — the mount-index DDL,
+/// the link-content backlog sweep (a ledger-gated v4 migration step) and the
+/// three store provisions (v4 migrations) — PROPAGATES in both modes, because
+/// v4's migration runner exits the process on a failed migration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LazyRepairFailures {
+    /// Every sub-step's `Err` propagates — fresh-instance provisioning, and
+    /// every caller that wants a hard failure.
+    Propagate,
+    /// The five lazy-home sub-steps log v4's line (`db::fallback`) and the
+    /// pass continues — the host boot (`seed_built_ins`).
+    LogAndContinue,
+}
+
 /// Provision (or adopt) all three built-in mount stores — the three v4 migrations,
 /// run as one idempotent unit. `main` holds the `instance_settings` pointers;
-/// `mount_index` holds the mount rows and their folders.
+/// `mount_index` holds the mount rows and their folders. Every failure
+/// propagates ([`LazyRepairFailures::Propagate`]).
 pub fn ensure_builtin_mounts(main: &Connection, mount_index: &Connection) -> Result<(), DbError> {
+    ensure_builtin_mounts_with(main, mount_index, LazyRepairFailures::Propagate)
+}
+
+/// [`ensure_builtin_mounts`] with the five lazy-home sub-steps' failure mode
+/// chosen by the caller (see [`LazyRepairFailures`]). One function with a mode,
+/// not five public entry points, so the sub-step ORDER stays in one place.
+pub fn ensure_builtin_mounts_with(
+    main: &Connection,
+    mount_index: &Connection,
+    failures: LazyRepairFailures,
+) -> Result<(), DbError> {
     // v4's migration `shouldRun` guards on `sqliteTableExists('instance_settings')`
     // — skip entirely on a bare / not-yet-provisioned db (e.g. a loose-typed test
     // fixture).
@@ -100,7 +130,7 @@ pub fn ensure_builtin_mounts(main: &Connection, mount_index: &Connection) -> Res
     // v4's migration `run()` calls `ensureMountIndexTables` first — create the
     // mount-index tables when absent. A no-op on a generateDDL-provisioned instance
     // (the tables already exist, in REAL-affinity form).
-    ensure_mount_index_tables(mount_index)?;
+    ensure_mount_index_tables(mount_index, failures)?;
 
     for spec in MOUNTS {
         ensure_one_mount(main, mount_index, spec)?;
@@ -108,11 +138,35 @@ pub fn ensure_builtin_mounts(main: &Connection, mount_index: &Connection) -> Res
     Ok(())
 }
 
+/// v4's label for the mount-index partition in `ensureTable`'s line
+/// (`dedicated-db.repository.ts:54-57`, `DB_LABELS.mountIndex`).
+const MOUNT_INDEX_LABEL: &str = "mount index";
+
+/// One lazy-home sub-step under `failures`: `LogAndContinue` answers an `Err`
+/// with v4's `ensureTable` line for `collection` and moves on.
+fn lazy_ensure(
+    failures: LazyRepairFailures,
+    collection: &'static str,
+    ensure: impl FnOnce() -> Result<(), DbError>,
+) -> Result<(), DbError> {
+    match failures {
+        LazyRepairFailures::Propagate => ensure(),
+        LazyRepairFailures::LogAndContinue => {
+            crate::db::fallback::ensure_table_or_log(collection, MOUNT_INDEX_LABEL, ensure);
+            Ok(())
+        }
+    }
+}
+
 /// v4 migration `ensureMountIndexTables` — `CREATE TABLE IF NOT EXISTS` the two
 /// tables the provisioner writes, plus the folder-path index. Verbatim from the
 /// migrations' `TABLE_DDL`. A no-op whenever the tables already exist (the
-/// generateDDL provisioning path, and every re-run).
-fn ensure_mount_index_tables(mount_index: &Connection) -> Result<(), DbError> {
+/// generateDDL provisioning path, and every re-run). The DDL itself always
+/// propagates; the repairs after it follow `failures`.
+fn ensure_mount_index_tables(
+    mount_index: &Connection,
+    failures: LazyRepairFailures,
+) -> Result<(), DbError> {
     mount_index.execute_batch(
         "CREATE TABLE IF NOT EXISTS \"doc_mount_points\" (\
            \"id\" TEXT PRIMARY KEY, \"name\" TEXT NOT NULL, \
@@ -137,38 +191,68 @@ fn ensure_mount_index_tables(mount_index: &Connection) -> Result<(), DbError> {
     // v4 `0a0419f5`: the case-insensitive mount-namespace invariant. v4 calls the
     // three `ensure*NocaseUniqueIndex` / `repairMountPointNameCollisions` helpers
     // from each repo's lazy `getCollection()` table-init block (folders /
-    // file-links / mount-points), effectively once per process. v5 has no
-    // per-repo lazy init; this boot hook is the single once-per-startup cadence,
-    // so the three v4 call sites collapse to here (a documented non-divergence).
-    // Each runs an unconditional case-collision repair (renaming ` (N)` losers,
-    // keep-oldest), then trusts-or-recreates the genuine NOCASE unique index. A
-    // no-op on a fresh generateDDL-provisioned instance (the NOCASE indexes exist
-    // and no rows collide); an existing pre-`0a0419f5` instance is migrated here.
-    mount_index_case_repair::ensure_folder_nocase_unique_index(mount_index)?;
-    mount_index_case_repair::ensure_link_nocase_unique_index(mount_index)?;
-    mount_index_case_repair::repair_mount_point_name_collisions(mount_index)?;
+    // file-links / mount-points). v5 has no per-repo lazy init; this boot hook is
+    // the single once-per-startup cadence, so the three v4 call sites collapse to
+    // here. On CADENCE that is a non-divergence. On FAILURE it was not (dogfood
+    // #134(b), fixed by P4.134): v4's `ensureTable` logs `Failed to ensure
+    // <table> table in mount index database` and rethrows into the caller's
+    // fallback read, per access — a damaged column there never stops v4's boot.
+    // So under `LogAndContinue` each logs that line once and the pass goes on
+    // (v4 per access, v5 once per boot — recorded). Each runs an unconditional
+    // case-collision repair (renaming ` (N)` losers, keep-oldest), then
+    // trusts-or-recreates the genuine NOCASE unique index. A no-op on a fresh
+    // generateDDL-provisioned instance (the NOCASE indexes exist and no rows
+    // collide); an existing pre-`0a0419f5` instance is migrated here.
+    lazy_ensure(failures, "doc_mount_folders", || {
+        mount_index_case_repair::ensure_folder_nocase_unique_index(mount_index)
+    })?;
+    lazy_ensure(failures, "doc_mount_file_links", || {
+        mount_index_case_repair::ensure_link_nocase_unique_index(mount_index)
+    })?;
+    lazy_ensure(failures, "doc_mount_points", || {
+        mount_index_case_repair::repair_mount_point_name_collisions(mount_index).map(|_| ())
+    })?;
     // v4 `40319484` (migration `add-doc-mount-link-groups-v1`): deliberate
     // hard-link groups. Step 1 — the `linkGroupId` column + its partial index.
-    // v4 calls this from the two repositories that name the column, because its
-    // `safeQuery` would otherwise turn "no such column" into "every document
-    // silently does not exist"; v5 has no such swallow (a missing column is a
-    // hard error), so the two call sites collapse to this one boot hook, exactly
-    // as the three case-repair helpers above already do.
-    mount_index_case_repair::ensure_link_group_column(mount_index)?;
+    // v4 calls this from the two repositories that name the column (the
+    // file-links repo's `onTableEnsured`, ahead of its NOCASE repair, and the
+    // documents repo's), because its `safeQuery` would otherwise turn "no such
+    // column" into "every document silently does not exist"; the two call
+    // sites collapse to this one boot hook, exactly as the three case-repair
+    // helpers above do — and a failure is the file-links repo's `ensureTable`
+    // line, the first of v4's two sites any boot-time read reaches.
+    lazy_ensure(failures, "doc_mount_file_links", || {
+        mount_index_case_repair::ensure_link_group_column(mount_index)
+    })?;
     // Step 2 — collect the backlog of content rows abandoned by
     // content-addressed rewrites before the write path started reaping them.
     // v5 has no migration runner, so this is the boot-repair analogue: cheap and
-    // idempotent once the backlog is gone.
+    // idempotent once the backlog is gone. ALWAYS propagates: in v4 it is a
+    // migration step, and a failed migration exits v4's process.
     crate::db::doc_mount_file_links::sweep_orphaned_link_content(mount_index)?;
     // P4.31 (dogfood finding #58): reap the links / folders / chunks whose mount
-    // point is gone, and the content they were the last reference to. v4 has no
-    // such pass — this is the repair half of the store-delete cascade, and the
-    // only thing that cleans an instance that already carries the damage (43
-    // links + 118 folders measured on the real one). Deliberately AFTER the
-    // backlog sweep above: that one collects content with no link at all, this
-    // one collects links with no store, and running the cheaper, older pass
-    // first leaves this one strictly less to do.
-    crate::db::doc_mount_file_links::sweep_orphaned_store_children(mount_index)?;
+    // point is gone, and the content they were the last reference to. Since
+    // v4's bug 9 v4 runs its own reaper at boot too (`instrumentation.ts`
+    // phase 3.3b, `sweepOrphanedStoreChildren` — links / folders / documents),
+    // so P4.31's "v4 has no such pass" no longer holds; what v4 reaps and what
+    // v5 reaps still differ (chunks vs documents), recorded at the reaper.
+    // v4's reaper is a FALLBACK read: a failure logs ERROR `Error sweeping
+    // orphaned store children` and answers zeros, so under `LogAndContinue`
+    // that is this site's line and the pass goes on (3.3b's own WARN is
+    // unreachable behind it). Deliberately AFTER the backlog sweep above: that
+    // one collects content with no link at all, this one collects links with
+    // no store, and running the cheaper, older pass first leaves this one
+    // strictly less to do.
+    match failures {
+        LazyRepairFailures::Propagate => {
+            crate::db::doc_mount_file_links::sweep_orphaned_store_children(mount_index)?;
+        }
+        LazyRepairFailures::LogAndContinue => {
+            crate::db::fallback::sweep_orphaned_store_children_or_default(|| {
+                crate::db::doc_mount_file_links::sweep_orphaned_store_children(mount_index)
+            });
+        }
+    }
     Ok(())
 }
 
@@ -248,6 +332,13 @@ fn insert_mount_row(
 /// — the runtime re-ensure of the Quilltap General `Scenarios/` folder at startup.
 /// A no-op (returns without error) when the General store is not yet provisioned,
 /// matching v4's degrade-gracefully-during-the-race behavior.
+///
+/// P4.134: v4's function catches its own `ensureFolderPath` throw and logs WARN
+/// `[GeneralScenarios] Failed to ensure Scenarios folder` `{mountPointId, error}`
+/// (`:52-59`), so a damaged folder table never reaches `instrumentation.ts`'s
+/// own WARN (`Error ensuring general scenarios folder, continuing startup`,
+/// which the host keeps for the residual). The pointer read is already v4's
+/// fallback `readSetting`. The `Result` stays for that residual.
 pub fn ensure_general_scenarios_folder(
     main: &Connection,
     mount_index: &Connection,
@@ -255,8 +346,15 @@ pub fn ensure_general_scenarios_folder(
     let Some(mount_point_id) = instance_settings::get_general_mount_point_id(main)? else {
         return Ok(());
     };
-    DocMountFileLinksRepository::new(mount_index)
-        .ensure_folder_path(&mount_point_id, GENERAL_SCENARIOS_FOLDER)?;
+    if let Err(error) = DocMountFileLinksRepository::new(mount_index)
+        .ensure_folder_path(&mount_point_id, GENERAL_SCENARIOS_FOLDER)
+    {
+        tracing::warn!(
+            mountPointId = %mount_point_id,
+            error = %crate::db::fallback::error_text(&error),
+            "[GeneralScenarios] Failed to ensure Scenarios folder",
+        );
+    }
     Ok(())
 }
 
@@ -309,7 +407,7 @@ mod tests {
         )
         .unwrap();
 
-        ensure_mount_index_tables(&conn).unwrap();
+        ensure_mount_index_tables(&conn, LazyRepairFailures::Propagate).unwrap();
 
         let folder_name: String = conn
             .query_row(
@@ -366,6 +464,91 @@ mod tests {
         );
     }
 
+    /// P4.134 (dogfood #134(b)): the mode is the whole difference. The #134
+    /// plant (a renamed `relativePath`) fails the file-links case repair;
+    /// `Propagate` hands the bare `Err` up (provisioning's contract), while
+    /// `LogAndContinue` logs v4's lazy `ensureTable` line and finishes the pass —
+    /// the three stores still provisioned after it.
+    #[test]
+    fn the_failure_mode_decides_whether_a_lazy_repair_failure_stops_the_pass() {
+        let plant = || {
+            let main = Connection::open_in_memory().unwrap();
+            main.execute_batch(
+                "CREATE TABLE instance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+            )
+            .unwrap();
+            let mount = Connection::open_in_memory().unwrap();
+            mount
+                .execute_batch(
+                    "CREATE TABLE doc_mount_file_links (\
+                       id TEXT PRIMARY KEY, fileId TEXT NOT NULL, mountPointId TEXT NOT NULL, \
+                       relativePath_x TEXT NOT NULL, fileName TEXT NOT NULL, folderId TEXT, \
+                       createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);\
+                     CREATE TABLE doc_mount_chunks (id TEXT PRIMARY KEY, mountPointId TEXT NOT NULL);",
+                )
+                .unwrap();
+            (main, mount)
+        };
+
+        let (main, mount) = plant();
+        let err = ensure_builtin_mounts(&main, &mount).unwrap_err();
+        assert_eq!(
+            crate::db::fallback::error_text(&err),
+            "no such column: relativePath"
+        );
+
+        let (main, mount) = plant();
+        let (result, lines) = crate::test_support::captured_with(|| {
+            ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::LogAndContinue)
+        });
+        result.unwrap();
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|l| l.starts_with("ERROR"))
+                .collect::<Vec<_>>(),
+            vec!["ERROR quilltap::db Failed to ensure doc_mount_file_links table in mount index database error=no such column: relativePath"],
+        );
+        let stores: i64 = mount
+            .query_row("SELECT COUNT(*) FROM doc_mount_points", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            stores, 3,
+            "the store provisions after the failed repair ran"
+        );
+    }
+
+    /// P4.134: v4's `ensureGeneralScenariosFolder` catches its own
+    /// `ensureFolderPath` throw — WARN `[GeneralScenarios] Failed to ensure
+    /// Scenarios folder` `{mountPointId, error}` (`general-scenarios.ts:52-59`)
+    /// — and answers; the bare driver message, never `sqlite error: `. Not
+    /// plantable through a real boot: the store provisions run the same
+    /// `ensure_folder_path` first and stay fatal.
+    #[test]
+    fn a_failed_scenarios_folder_logs_v4s_own_warn_and_answers() {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE instance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);\
+             INSERT INTO instance_settings VALUES ('generalMountPointId', 'gen-1');",
+        )
+        .unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        mount
+            .execute_batch("CREATE TABLE doc_mount_folders (id TEXT PRIMARY KEY);")
+            .unwrap();
+        let (result, lines) =
+            crate::test_support::captured_with(|| ensure_general_scenarios_folder(&main, &mount));
+        result.unwrap();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with(
+                "WARN quilltap_core::services::builtin_mounts [GeneralScenarios] Failed to ensure Scenarios folder mountPointId=gen-1 error=no such column: "
+            ),
+            "{}",
+            lines[0]
+        );
+    }
+
     /// P4.31 WIRING pin (dogfood finding #58). `store_delete_equivalence`'s
     /// `reap_orphans` arm proves what the reaper DOES; it calls the sweep
     /// directly, because running the real boot hook against the fixture would
@@ -406,7 +589,7 @@ mod tests {
             .unwrap();
         // `doc_mount_points` + `doc_mount_folders` are created by the boot hook
         // itself; plant the orphaned folder once they exist.
-        ensure_mount_index_tables(&mount).unwrap();
+        ensure_mount_index_tables(&mount, LazyRepairFailures::Propagate).unwrap();
         mount
             .execute_batch(
                 "INSERT INTO doc_mount_folders (id, mountPointId, parentId, name, path, createdAt, updatedAt) \
