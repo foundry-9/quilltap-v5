@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — docs(porting): order the `ca363178d` four-commit drift catch-up + dogfood-orders round (P4.D240–P4.D243, P4.133, P4.134)
+
+_Docs-only change._
+
+Six new work orders from six fresh v4 surveys: bug 173's raw-SQL decode in
+the CLI plus the round's riders (the whole help tree, the `docs/v4/`
+mirror, two docs-only ratifications) (P4.D240); the 21 built-in prompts
+re-vendored and the five trust-safeguard directions at their eight
+generator sites (P4.D241); the memory-consent extraction prompts and the
+two-arm transcript heading (P4.D242); the chained-turn scene note into
+`build_context` (P4.D243); the connection profile's own API key sent on
+every LLM call (dogfood #133, P4.133); and boot hardness, eight fatal boot
+steps made warn-and-continue as v4 does (dogfood #134(b), P4.134). The
+surveys overturned the ledger's descriptions in six places; the orders are
+written to the measured shapes. The ledger's four §3 rows are marked
+ORDERED; one target pin, `ca363178d`, for every lane. Phase plan section
+added.
+
 #### 2026-09-30 — docs(porting): drift check — four v4 commits past `97b25fc53` (bug 173 and the anti-committee prompt safeguards); pins required
 
 _Docs-only change._

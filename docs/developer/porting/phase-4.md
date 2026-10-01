@@ -6928,6 +6928,142 @@ only once P4.D235 lands, and the re-embed spend needs P4.D235's
 measurement recipe first).
 
 
+## The `ca363178d` four-commit drift catch-up + dogfood-orders round (P4.D240 ∥ P4.D241 ∥ P4.D242 ∥ P4.D243 ∥ P4.133 ∥ P4.134) — ORDERED 2026-09-30
+
+**Baseline `97b25fc53`; v4 `main` HEAD `ca363178d` ("Anti-committee phase 3
+& 4: memory consent & chained-turn scene note (#79)", `4.10.0-dev.105`,
+2026-09-30 20:44) — FOUR commits past the baseline: `aa92cf91c` (docs:
+files bug 173), `a67a282c6` (docs: the prompt-trust / anti-committee
+spec), `ddf942635` (bug 173: raw CLI SQL decodes compressed text),
+`ca363178d` (one squash of five anti-committee phases, 66 files); `bugfix`
+`1a2b2164c` and `release` `8fbf2afe0` unmoved; the checkout on `main`,
+CLEAN, at the planning probe (after a fetch; the ledger's §2 probe PASSED
+at planning start and close). PIN REQUIRED — ONE target pin for every
+lane, `ca363178d` (measured: the two docs commits touch no code; the CLI
+is byte-identical at `ddf942635` and `ca363178d`; SDKs unmoved). All four
+§3 rows marked `ORDERED(…)`.** The round is the drift catch-up (four lanes
+over disjoint v5 surfaces of the two code commits) plus the two dogfood
+orders the 2026-09-30 smalls walk left pending (#133, #134(b)) — six
+parallel lanes, all cut from `main`, no stacked chain, no SPA lane. **Six
+fresh surveys (2026-09-30, committed under `work-orders/surveys/2026-09-30-
+ca363178d/`) overturned the ledger's descriptions before any lane started:**
+(a) v5's `--repl` is a loud refusal, so bug 173 has ONE v5 site, and
+exactly ONE Tier R case reds at the pin; the mirror lags seven paths, not
+six; (b) the external meta prompt is a NEW eighth voice-direction site
+(P4.D237's seven were right) and must stop being a `const &str` (1227 →
+5664 UTF-16 units, moving the external tier-3 budget number); the
+preamble's new rule reaches ALL SEVEN optimizer passes; the optimizer uses
+the bare disposition under its own framing gates; (c) the ledger's
+"USER-subject body" does not exist (two bodies, SELF + OTHER); the OTHER
+`HINGES` line also moves; the memory-prompt generator ABORTS at the target
+and must be extended; (d) buildContext's "multi-character" counts the
+persona seat, so 1:1 chats with a persona get the note on Continue / Nudge;
+`regenerate_swipe_tier3` moves; one line in `orchestrator.rs:4499` is
+unavoidable; (e) v5 resolves the right key almost everywhere and DROPS it
+before the wire — `effective_api_key` is dead, nothing crosses the model
+boundary but `(provider, base_url, params)`, three v4 refusals are missing
+outright; (f) ONE writer closure holds 29 boot steps (inline guards
+suffice), the #134 failure sits inside core's `ensure_builtin_mounts`,
+EIGHT v5-fatal steps have a guarded or lazy v4 home while ~24 are v4
+MIGRATIONS and stay fatal, and the P4.D184 avatar-collapse comment is
+FALSE (v4 exits; v5 is softer — escalated for a ruling).
+
+- **P4.D240 — bug 173 in the CLI + the round's riders (Rust CLI + docs,
+  from `main`, pin `ca363178d`, a capable mid-tier agent)**: the decode at
+  `db_cmd.rs:357` through a SCOPED helper (the four other `cell_to_js_
+  value` callers keep the Buffer form), the Tier R master grown to v4's
+  `embedding BLOB` + `m-2` shape with the four mirror cases of v4's
+  integration test (`db raw blob read` RED at the pin / GREEN at the
+  baseline first), the table-mode `<Buffer …>` seam DECIDED and recorded,
+  the false P4.D203 comment rewritten, `--repl`'s decode site banked; the
+  WHOLE `help/` tree at `ca363178d` (nine pages; 129 stays 129; `help_
+  tree_equivalence` + `help_section_size_equivalence` regenerated), the
+  `docs/v4/` mirror refreshed at `ca363178d` bytes (seven paths — THIS
+  round's explicit hand-over to a lane), the two docs commits ratified on
+  their file lists. `work-orders/p4.d240-bug173-raw-sql-decode-cli-help-
+  tree-mirror.md`.
+- **P4.D241 — the 21 prompts + the five trust directions at eight sites
+  (Rust core + harness, from `main`, pin `ca363178d`, Opus tier)**: the
+  catalogue re-vendored by the dump (P4.D237's content-keyed seeder
+  refreshes rows with NO code change), `ALL_EXPORTS` 8 → 13 through the
+  generator, AI import / wizard / optimizer ×4 / external prompt byte-exact
+  with the `{{{{user}}}}` escaping at exactly the `format!` sites,
+  `META_SYSTEM_PROMPT` as a `fn`, `V4_APP_VERSION` → `-dev.105`; eleven
+  families (`external_prompt_tier3` new to the surface; `generators_leaf`
+  red only after the hand lists grow). `work-orders/p4.d241-anti-committee-
+  prompts-generator-trust-directions.md`.
+- **P4.D242 — the memory-consent extraction prompts (Rust core + harness,
+  from `main`, pin `ca363178d`, Opus tier)**: `AGREEMENTS_INSTRUCTION_BLOCK`
+  in BOTH bodies, the TAGS gloss, the anchors incl. the new 0.55 rung, the
+  HINGES line, the OTHER examples, `FIRST_PERSON_USER_CLAUSE`, the
+  fold-episode sentence, the heading as a BRANCH with the two uncovered
+  arms + the proposal-no-reply shape added to the tier-1 corpus (the §8.5
+  no-filter pin); the generator EXTENDED; six tier-3 families + `courier_
+  images_routes` re-recorded, `memory_processor_tier3`'s standing red told
+  apart from the canned miss. `work-orders/p4.d242-memory-consent-
+  extraction-prompts.md`.
+- **P4.D243 — the chained-turn scene note (Rust core + harness, from
+  `main`, pin `ca363178d`, the most capable tier)**: a NEW pure module
+  twinning `user-narration-anchor.ts` (the truthiness table, the post-trim
+  window, no continue gate, the seat-named author, the DEBUG line), wired
+  FIRST into the chained-turn trailing push, fed by a new input field
+  `message_context.rs` fills from bug 95's set (ONE line) and `orchestrator.
+  rs:4499` names (ONE marked line); a NEW tier-1 family over v4's real
+  module, `build_context_tier3` grown with the ops it lacks, `orchestrator_
+  tier3` + `regenerate_swipe_tier3` regenerated as record legs (the
+  predicted firing lists written down), the prefix proven neutral.
+  `work-orders/p4.d243-chained-turn-scene-note.md`.
+- **P4.133 — the profile's own API key (dogfood #133; Rust core + host +
+  harness, from `main`, pin `ca363178d`, the most capable tier)**: ONE pair
+  of defaulted keyed trait methods on the model boundary (shape A — the 78
+  impls untouched, the `Arc` forwards explicit), overridden by the two
+  wire providers; the key SEEDED in the participant resolver and SENT on
+  every leg v4 sends it (the Salon spine, the failover chain carrying the
+  CANDIDATE's key, Try uncensored, the greeting, cheap LLM, the Concierge
+  classifier, Carina, help, Brahma, the Scenario Builder, image
+  description, the test-message, the wizard); v4's three missing refusals;
+  the inactive-key and keyless secondaries ported; proven in `orchestrator_
+  tier3` (two keys, one provider, a first-responder case), `primary_stream_
+  tier3`'s `stream_calls`, one cheap family with its mock lifted, a
+  header-capturing web test, and `refusal-server.py`'s new key gate; the
+  three other generator call sites PRE-WRITTEN for the unifier (§S.1).
+  `work-orders/p4.133-profile-bound-api-key.md`.
+- **P4.134 — boot hardness (dogfood #134(b); Rust host + a minimal core
+  split, from `main`, no oracle regen, Opus tier)**: the eight v5-fatal
+  steps with a guarded or lazy v4 home made warn-and-continue with v4's
+  exact sentence / level / bare error bytes via a per-step split of
+  `builtin_mounts.rs` (25a / 25f / 25h and every migration-counterpart
+  step stay fatal), the existing `state.json` guard's two defects fixed,
+  a new host test binary planting a column rename per step on a copy of
+  the post-office pair (red-first; one fatal-class arm against
+  over-softening), the P4.D184 comment ESCALATED. `work-orders/p4.134-
+  boot-hardness-warn-and-continue.md`.
+
+**Shared contract:** the round-wide §R (R.1–R.10) + §S (five unifier
+wires: the three generator call sites landing after both lanes, `orchestrator_
+tier3` regenerated once on the union, the two marked `orchestrator.rs`
+hunks, the version recount, the ledger moves) + the Ownership table + the
+gate are byte-identical across the six orders (md5 of the spliced block
+recorded in the commit message). **Cherry-pick order:** P4.D240 → P4.D241
+→ P4.D242 → P4.D243 → P4.134 → P4.133 → §S.1. **Fences:** `api/types.rs` +
+`api/engine.rs` FROZEN; `dispatch_wrong_type_census` 441 UNMOVED; no lane
+edits `apps/web/**` or `crates/quilltap-web/src/**`; `orchestrator_tier3`
+is the ONE declared two-lane family (P4.D243 regen-only, P4.133 edits).
+**Deliberately left out of this round:** Option V item (k), the zone VALUE
+(it edits `build_context.rs` and the orchestrator family beside P4.D243 and
+the host spine beside P4.133 — not file-disjoint; it stays NEXT item 2
+with the POSIX-`TZ` read fix the smalls walk measured); the recorded-
+divergences smalls items (a)–(j) (the previous NEXT 2 — unchanged, next
+round); #124's WaveSpeed plugin (the human is repointing the live desk in
+v4; no order); the ledger-gate divergence P4.134's survey found (v5's
+column ensures run every boot; v4 skips ledgered migrations — a separate
+order, named); the wardrobe image-analysis vertical (banked by pointer);
+the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
+**NEXT after this round unifies:** the owed dogfood pass; then Option V
+(k) + the smalls (a)–(j) as one recorded-divergences round; then a drift
+catch-up when v4 moves.
+
+
 ## The `97b25fc53` smalls round (P4.127 ∥ P4.128 ∥ P4.129 ∥ P4.130 ∥ P4.131 ∥ P4.132) — UNIFIED 2026-09-30 (ordered 2026-09-30)
 
 **UNIFIED on main (2026-09-30) — ALL SIX LANES LANDED; the baseline STAYS
