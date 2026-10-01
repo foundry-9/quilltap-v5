@@ -1294,6 +1294,22 @@ records THERE. Update this summary only when a phase or round completes.
   mask per family, the restore serde plant, the Carina `CHAT_MESSAGE` row,
   the chunks/overlay fallback reads), then a drift catch-up when v4 moves**
   — `phase-4.md`. Round record: `status-log.md`.
+- **The smalls-round dogfood pass RAN (2026-09-30 evening, agent-driven, on
+  the Friday copy) — 20 rows, 17 PASS, one v5 defect FIXED, two orders
+  pending.** Walk doc: `dogfood-walks/2026-09-30-smalls-zone-names-fallbacks-pass.md`;
+  record in `status-log.md`. ⭐ P4.128's `name` slot proven on real turns:
+  both stored `historyTailHash` values reproduce only with each speaker's
+  name. Also live: the host-zone `CDT` with no `TZ` (and UTC under `TZ=UTC`),
+  the pre-stream catch lines (posed 401 + a real NanoGPT 401), a malformed
+  frame failing the stream, the emoji group name kept and its 101-letter
+  plant logging zod's bytes, the bad-trail skip, the end-of-run text
+  replacement, Re-extract/Delete Memories. **FIXED #134(a)** (web 0.0.205):
+  a boot failure after lock acquisition was served as a lock conflict with
+  the server's own PID. **ORDERED-PENDING:** #133 (the host key source sends
+  a provider's first active key, not the profile's), #134(b) (boot steps
+  fatal where v4 warns and continues — it blocks P4.131's mail plant live),
+  and Option V must also fix the zone VALUE (a POSIX `TZ` puts every surface
+  in UTC). **Still owed:** the standing queue.
 - **Oracle baseline: `97b25fc53` (2026-09-28, v4 main — "Drape undressed
   characters in story backgrounds instead of re-dressing them",
   `4.10.0-dev.100`), adopted at the `97b25fc53` seven-commit round

@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — docs(porting): the smalls-round dogfood pass — 20 rows, 17 PASS; #133 and #134 recorded; the posed provider gains `malformed` and `unauthorized`
+
+_Docs-only change._
+
+Walk record for the `97b25fc53` smalls round on the Friday copy. Confirmed
+live: the host time zone with no `TZ`, the `name` field in `historyTailHash`
+on real two-character turns, the pre-stream error lines, a malformed SSE frame
+failing the stream, the 100-code-point group name and the ZodError text,
+skipping a message with a bad route trail, end-of-text text replacement, and
+the Edit Content memory actions. Recorded #133 (the host key source sends a
+provider's first active key, not the profile's key) and #134(b) (boot steps
+that are fatal in v5 where v4 warns and continues) as order candidates. Option
+V's item (k) is amended: a POSIX `TZ` puts every surface in UTC, value-fed
+ones included. `harness/tools/refusal-server.py` gains `malformed` and
+`unauthorized` modes.
+
 #### 2026-09-30 — fix(web): a boot failure after the lock is taken is reported as itself, not as a lock conflict with the server's own PID (dogfood #134)
 
 _Versions: web 0.0.205._

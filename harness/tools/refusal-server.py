@@ -37,6 +37,13 @@ model name, default `code`):
                  -> P4.122's twin: no failover, the partial kept
   midframe-uncoded  200 SSE whose first frame is an error with a message and
                  NO code -> whatever v4 does (measured, not asserted)
+  malformed      200 SSE whose FIRST frame is `data: {"choices": [` (not JSON;
+                 added 2026-09-30, the smalls-round walk) -> P4.128's SDK
+                 frame semantics: the stream FAILS with the SDK's SyntaxError
+                 bytes instead of skipping the frame
+  unauthorized   401 {"error": {"message": "Incorrect API key provided", ...}}
+                 before any stream (added 2026-09-30) -> P4.128's pre-stream
+                 `OpenAICompatible API error in streamMessage` catch line
   toolcall       with `tools` and no `tool` message yet: streams ONE native
                  tool call (`list_mail` if offered, else the first tool, args
                  {}); once a tool result is in the history, answers in text
@@ -61,7 +68,8 @@ CAPTURE = os.environ.get("QT_REFUSE_CAPTURE", "/tmp/refusal-server-requests.ndjs
 MODES = {"refuse-code": "code", "refuse-finish": "finish", "tokenlimit": "tokenlimit",
          "notools": "notools", "blind": "blind", "echo": "echo",
          "midframe": "midframe", "midframe-late": "midframe-late",
-         "midframe-uncoded": "midframe-uncoded", "toolcall": "toolcall"}
+         "midframe-uncoded": "midframe-uncoded", "toolcall": "toolcall",
+         "malformed": "malformed", "unauthorized": "unauthorized"}
 
 # Azure OpenAI's content-filter rejection, as the openai SDK surfaces it.
 CODE_BODY = {"error": {
@@ -74,6 +82,9 @@ TOKEN_BODY = {"error": {
     "messages resulted in 12000 tokens. Please reduce the length of the messages.",
     "type": "invalid_request_error", "param": "messages",
     "code": "context_length_exceeded"}}
+UNAUTH_BODY = {"error": {"message": "Incorrect API key provided: dogfood.",
+                         "type": "invalid_request_error", "param": None,
+                         "code": "invalid_api_key"}}
 NOTOOLS_BODY = {"error": {"message": "This model does not support tools",
                           "type": "invalid_request_error", "param": "tools",
                           "code": None}}
@@ -241,6 +252,14 @@ class H(BaseHTTPRequestHandler):
             self._frame(req, FRAME_ERROR, before="The kettle had only just begun to ")
         elif mode == "midframe-uncoded":
             self._frame(req, FRAME_ERROR_UNCODED)
+        elif mode == "malformed":
+            self._sse_open()
+            self.wfile.write(b'data: {"choices": [\n\n')
+            self.wfile.write(b"data: [DONE]\n\n")
+            self.wfile.flush()
+            self.close_connection = True
+        elif mode == "unauthorized":
+            self._json(401, UNAUTH_BODY)
         elif mode == "toolcall":
             if "tools" in req and not any(m.get("role") == "tool" for m in msgs):
                 self._toolcall(req)

@@ -9,6 +9,8 @@ catch, since every fixture is built fresh.
 
 | # | Finding | Class | Status |
 |---|---|---|---|
+| 134 | **A boot that fails after taking the lock is reported as a lock conflict with itself — and a damaged mount index kills the boot outright.** Found 2026-09-30 (the smalls walk, F1). Planting P4.131's column rename on the Friday copy's mount index (`doc_mount_file_links.relativePath → relativePath_x`) made the built-in seed's link case-repair (`mount_index_case_repair::repair_link_case_collisions`, `SELECT … relativePath …`) fail; `seed_built_ins` propagates every step with `?`, so the engine never assembled and every dispatch answered 503. `/health` then answered **409 `lock-conflict` "held by PID 69127 on this host" — the server's own PID** — and the real error (`engine assembly failed: built-in seed failed: sqlite error: no such column: relativePath`) was in no log; only a dispatch body carried it. | **Two halves.** (a) **v5-only defect** — v4 reports `lock-conflict` only when lock ACQUISITION fails (`startupState.setInstanceLockConflict`, `app/api/health/route.ts:141`); v5's `boot_startup_status` re-reads the lock file after any `BootError::Assemble` and so found its own fresh lock. (b) **Port divergence (boot hardness)** — v4 wraps each boot step in try/catch and logs *"… continuing startup"* (`instrumentation.ts:742-797`); its case-repair helpers run from each repository's lazy init. v5 makes ~20 such steps fatal | **(a) FIXED** — `classify_boot_failure` (new, `quilltap-web/src/lib.rs`): a lock held by this process is not a conflict; every boot failure now logs ERROR `quilltap::boot` *"Startup failed: the engine did not assemble"* (or *"Startup refused: the instance lock is held elsewhere"*) with the message. Pinned by `lock_conflict_boot_status::a_failure_after_acquisition_is_not_a_conflict_with_ourselves` (own PID → `Failed` with the real message; another live PID → `LockConflict`); mutation (the guard disabled) reddens it. web 0.0.205. **(b) ORDERED-PENDING** — Standing notes: audit `seed_built_ins` step by step against `instrumentation.ts`, convert each step v4 guards to warn-and-continue with v4's sentence. Until then P4.131's mail-plant row cannot run live on v5 (the boot dies first). |
+| 133 | **A connection profile's own API key is ignored: v5 sends the provider's FIRST active key.** Found 2026-09-30 (the smalls walk, C3). A NANOGPT profile bound to a junk key (`apiKeyId` → the junk row) **answered** a real Salon turn — NanoGPT itself 401s that key (`Invalid session`, measured directly). The production streaming and completion providers resolve the key through `DbProviderKeys::key_for(provider)` (`quilltap-host/src/spine.rs:206`) — `find_active_api_key_for_provider`, the first active key for the provider in insertion order — so the request carried the real `NanoGPT QT` key. The cheap-LLM calls on the same profile did the same. | **Port divergence — a documented host seam, now measured live.** `spine.rs`'s module header records it (*"v4 resolves the key by FOLLOWING the effective profile's `apiKeyId` … Divergence is possible only when one user holds several keys for the same provider"*). Friday today holds one key per provider (14 NanoGPT profiles all on `NanoGPT QT`), so no real turn is misrouted yet; any second key for a provider — two OpenAI-compatible hosts, a work and a personal account, a rotated key kept active — sends the wrong one, and the user sees a 401 from a profile whose key is correct, or spends on the wrong account | **ORDERED-PENDING** (Standing notes) — thread the effective profile's resolved key through the streaming/completion seams (v4's `getApiKeyForConnectionProfile` / `resolveConnectionProfileApiKey`) for the Salon turn, the failover legs, the cheap-LLM path and the danger reroute; keep the provider scan only for v4's own scan sites (web search, moderation auto-detect). A posed proof is free: two keys for one provider, the second bound to a profile, `refusal-server.py`'s `unauthorized` mode on the first. |
 | 132 | **Taking off an item the character is not wearing re-rolls its portrait.** `wardrobe_take_off` on an unworn item answers *"Took \"Apple Watch\" off accessories; any other layers there stayed."* and counts as applied, so in a chat with avatar generation on it queues a `CHARACTER_AVATAR_GENERATION` job — an image spend for no visible change. Found 2026-09-30 (walk F3, P4.123's seam) | **v4-faithful** — v4's `remove` arm does `appliedCount++` for every RESOLVED item, worn or not (`lib/tools/handlers/wardrobe-take-off-handler.ts:119-130`); v5 matches | RECORDED — candidate v4 note (count an op as applied only when a slot changed). No v5 change. |
 | 131 | **A greeting refused with a provider CODE never reaches the uncensored desk.** The greeting ladder sets `contentFilterHit` only from a non-throwing result's `contentFilterDetected`; a thrown coded refusal (an Azure `content_filter` 400, or P4.122's mid-stream error frame) is caught as an ordinary failure, so the chat opens on the static greeting with `content_filter_hit=false` while the very next Salon turn on the same profile reroutes on `provider-code`. Found 2026-09-30 (walk E1) | **v4-faithful** (`app/api/v1/chats/route.ts:927-1000`) | RECORDED — candidate v4 note (classify the greeting's thrown error as the Salon turn does). No v5 change. |
 | 130 | **After a whisper sweep, a per-turn render re-embeds every later chunk.** Posting a seat's new Aurora `core-whisper` deletes its previous one (the sweep); the transcript loses that message, every later `### Message N` renumbers and sub-chunk boundaries move, so every later chunk's text changes and the upsert nulls its embedding. On "The Trustee's Head Count" one send re-embedded chunks 8–14 whose conversational content had not changed. Found 2026-09-30 (walk C3/B3), while proving P4.119 | **v4-faithful** — v4's sweep (`lib/chat/context-manager.ts:2278-2297`) + render do the same; v5's sweep is `services/build_context.rs:956` | RECORDED — candidate v4 note (number transcript messages stably, or keep swept whispers out of the render). No v5 change. The zone half of the churn (#121) is GONE — chunks 1–7 kept their vectors. |
@@ -613,6 +615,33 @@ catch, since every fixture is built fresh.
   (documented at `recall_replay_cmd.rs:130` `pad_end`).
 
 ## Standing notes for the next orders
+
+### From the 2026-09-30 smalls walk: three items for the next `/setupphase`
+
+- **#133 — the profile's own key.** `DbProviderKeys` (the host's key source
+  for the streaming + completion providers) scans by provider; v4 follows
+  the effective profile's `apiKeyId`. A small-to-medium order: the seams
+  carry `(provider, base_url)` today and need the resolved key (or the
+  profile id) beside them, through the Salon turn, failover legs, cheap LLM
+  and the danger reroute; the bug-81 gate (`resolve_connection_profile_api_key`)
+  then becomes the one decision it was written to be. Measure first how many
+  callers already hold the key (the orchestrator's `effective_api_key`
+  "starts empty").
+- **#134(b) — boot hardness.** `quilltap-host::host::seed_built_ins` uses `?`
+  on ~20 steps; v4's `instrumentation.ts` guards most of its counterparts
+  with try/catch + *"… continuing startup"* WARNs, and runs the
+  `ensure*NocaseUniqueIndex` repairs from the repositories' lazy init. Audit
+  step by step (v4's sentence and level for each guarded step; leave fatal
+  only what v4 lets kill the boot — the migrations), red-first on a planted
+  column per step. This also unblocks P4.131's mail-plant row live.
+- **Option V (item (k)) must also fix the zone VALUE.** The walk's B5
+  measured a non-IANA POSIX `TZ` (`XST6XDT,M3.2.0,M11.1.0`): **every**
+  surface rendered UTC, including the value-fed Scenario Builder clock —
+  the value `HostConfig` reads resolves to UTC, so threading it through
+  `ProcessMessageInput` alone will not close the divergence. Make the one
+  read honour a POSIX `TZ` (jiff `TimeZone::posix` / the system resolver)
+  and pin it with a child process under that `TZ`. (`TZ=CST6CDT` is a
+  legacy IANA name and is NOT a POSIX-only probe.)
 
 ### From the 2026-09-29 eight-round walk: two items for the next `/setupphase`
 

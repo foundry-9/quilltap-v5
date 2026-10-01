@@ -6987,6 +6987,16 @@ pin-fresh oracle; no drain copy).**
    with the `server_tz` NAME reads; the `orchestrator_tier3_equivalence.rs`
    literals the P4.127 design avoided are the accepted cost; the
    `host_zone_sites_census` divergence header and `HELPER_SITES` go with it.
+   ⚠ **The 2026-09-30 smalls dogfood walk (B5) measured the premise
+   short:** under a genuinely non-IANA POSIX `TZ`
+   (`XST6XDT,M3.2.0,M11.1.0`) the value-fed surfaces rendered UTC TOO (the
+   Scenario Builder clock read `+00:00`) — the VALUE `HostConfig` reads
+   resolves to UTC, so (k) must also make that one read honour a POSIX `TZ`,
+   pinned by a child process under such a `TZ` (`CST6CDT` is a legacy IANA
+   name, not a POSIX-only probe); `dogfood-findings.md` Standing notes.
+   **Two new candidates from the same walk:** #133 (the host key source
+   ignores the profile's `apiKeyId`) and #134(b) (boot steps fatal where v4
+   warns and continues) — both in the Standing notes.
 3. **A drift catch-up when v4 moves** (`/driftcheck` first — the probe
    passed at this unification).
 

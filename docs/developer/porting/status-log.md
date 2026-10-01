@@ -157507,3 +157507,62 @@ CLOSED, not kept: a `TimeZone` VALUE threaded through `ProcessMessageInput` /
 reads and `display_zone_named`; the orchestrator family's literal edits are
 the accepted cost. Ordered by name as item (k) of the recorded-divergences
 smalls round (`phase-4.md` NEXT 2) and in P4.127's Unification paragraph.
+
+## Dogfood pass — the `97b25fc53` smalls round: the threaded zone, the `name` hash slot, catch lines + SDK frames, the Zod smalls, the SPA smalls (2026-09-30, evening)
+
+**Walk doc:** `dogfood-walks/2026-09-30-smalls-zone-names-fallbacks-pass.md`.
+**20 rows: 17 PASS, 1 MEASURED (B5), 1 BLOCKED (F1, by #134), 1
+DEFERRED-TO-HUMAN (the standing queue).** **Two findings:** **#134** — (a) a
+boot failure after lock acquisition was served as `lock-conflict` "held by
+PID <self>", the real error in no log — **FIXED in place** (web 0.0.205);
+(b) a damaged mount index kills the v5 boot where v4 warns and continues per
+step — ORDERED-PENDING; **#133** — the host key source sends a provider's
+FIRST active key, not the profile's `apiKeyId` (a documented seam, measured
+live for the first time) — ORDERED-PENDING. Six boots (no `TZ`, `TZ=UTC`,
+the planted mount index, `TZ=CST6CDT`, a POSIX `TZ`, no `TZ`), zero panics,
+`migrations_state` 199 before and after.
+
+Orders covered: P4.127, P4.128, P4.130, P4.131 (blocked live), P4.132; P4.129
+is harness-only. The ledger's §2 probe passed at planning (v4 AT
+`97b25fc53`, §3 EMPTY; one untracked v4 design doc, no surface). The
+instrument `harness/tools/refusal-server.py` grew two modes (`malformed`,
+`unauthorized`).
+
+### Proven live
+- **P4.127.** With NO `TZ`: `list_mail` reads the 2026-08-30 letter as
+  `02:40 PM` and `read_conversation` renders CDT; the Scenario Builder
+  prompt's `## Now` line carries `-05:00` (the spine's retired `Zoned::now()`
+  read); under `TZ=UTC` the same binary reads `07:40 PM`.
+- **P4.128 ⭐ the `name` hash slot on real turns.** In a two-character posed
+  chat the captured wire carries no `name`, and both stored
+  `historyTailHash` values reproduce ONLY when each speaker's name is folded
+  into the frozen messages (Amy's also needs her own earlier assistant
+  message named) — the name-less recompute misses. The pre-stream catch line
+  with the SDK's `401 Incorrect API key provided: dogfood.` (posed) and
+  NanoGPT's `401 Invalid session` (real, both `streamMessage` and the
+  cheap-LLM `sendMessage` twin); a malformed first frame now FAILS the
+  stream with `Error reading response: malformed server-sent event JSON.`
+  (`provider-error`) instead of being skipped.
+- **P4.130.** A group named 99 × `x` + `🎩` (100 code points, 101 UTF-16
+  units) created through the UI, stored and read back whole, its store
+  provisioned; planted to 101 letters it logs `Data validation failed
+  collection="groups"` with zod's `JSON.stringify(issues, null, 2)` bytes
+  then the fallback line, and the Scenario Builder run still completes; a
+  planted bad `via` skips the message with `routeTrail.0.via: Invalid
+  option`.
+- **P4.132.** Mid-run Space leaves `teh` alone, end-of-run rewrites it;
+  Re-extract Memories queues only (`chatQueueMemories`) with v4's confirm
+  and toast; Delete Memories (n) runs v4's count probe first, deletes, and
+  re-counts — the Tier-3 live arm the review named; the one
+  `qt-memory-badge` renders on both card hosts.
+
+### Measured / blocked
+- **B5:** `CST6CDT` is a legacy IANA name (everything stayed CDT); a true
+  POSIX rule (`XST6XDT,M3.2.0,M11.1.0`) put EVERY surface in UTC, the
+  value-fed Scenario Builder clock included — Option V's item (k) must also
+  fix the zone value's read (phase-4.md NEXT 2(k), P4.127's header).
+- **F1 (P4.131's mail plant):** BLOCKED — the plant kills the v5 boot
+  (#134(b)), so the mail tools cannot be reached.
+
+### Commits
+`fix(web)` (#134(a), web 0.0.205) and the walk's docs commit.
