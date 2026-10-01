@@ -43,8 +43,9 @@ use crate::db::{
     api_keys, characters_read, connection_profiles, embedding_profiles, wardrobe_read, DbError,
 };
 use crate::generators::field_semantics::{
-    CONVERSATIONAL_VOICE_DIRECTION, EXAMPLE_DIALOGUE_COVERAGE, FIELD_SEMANTICS_PREAMBLE,
-    FULL_FIELD_SEMANTICS, PROPERTIES_SEMANTICS, WARDROBE_SEMANTICS,
+    COMMITTEE_DRIFT_GUARDRAIL, COMPANION_TRUST_DISPOSITION, CONVERSATIONAL_VOICE_DIRECTION,
+    EXAMPLE_DIALOGUE_COVERAGE, FIELD_SEMANTICS_PREAMBLE, FULL_FIELD_SEMANTICS,
+    PROPERTIES_SEMANTICS, TRUST_SAFEGUARDS_DIRECTION, WARDROBE_SEMANTICS,
 };
 use crate::generators::generated_items::sanitize_generated_wardrobe_items;
 use crate::generators::llm_json::{
@@ -87,8 +88,10 @@ pub const MAX_MEMORIES_FOR_ANALYSIS: i64 = 30;
 /// v4 `MIN_SIGNIFICANCE_THRESHOLD`.
 pub const MIN_SIGNIFICANCE_THRESHOLD: f64 = 0.3;
 
-/// v4 `SUGGESTION_SCHEMA_PREAMBLE` (byte-exact) — appended to six of the seven
-/// suggestion prompts.
+/// v4 `SUGGESTION_SCHEMA_PREAMBLE` (byte-exact) — interpolated into ALL SEVEN
+/// suggestion prompts. Since v4 `ca363178d` it ends with the persona-constraint
+/// rule (P4.D241). This is a plain raw `&str`, NOT a `format!` template, so the
+/// rule's `{{user}}` is written LITERALLY here — never doubled.
 pub const SUGGESTION_SCHEMA_PREAMBLE: &str = r#"Each suggestion object in the JSON array must follow this schema:
 {
   "field": "identity|description|manifesto|personality|exampleDialogues|talkativeness|scenarios|systemPrompt|physicalDescription|wardrobeItems|aliases",
@@ -109,7 +112,8 @@ Rules that apply to every suggestion:
 - Preserve the character's existing voice and style while incorporating the behavioral patterns.
 - Keep each field's form of address exactly as its definition states, even when the current value gets it wrong elsewhere: manifesto, personality, and system prompts speak TO the character ("You keep your worry behind your teeth"); identity and description speak ABOUT the character from outside ("She finishes other people's sentences"); physical-description sub-fields are bare noun phrases ("auburn hair cut short; grey eyes"). Never flip a field from one form to another while rewording it.
 - Do NOT propose brand-new scenarios. Existing scenarios may be refined, but creating new scenarios is out of scope.
-- Scenarios describe "where and when" (setting, environment, circumstances). They should not alter the character's personality, voice, or core behavior unless the environment itself demands it."#;
+- Scenarios describe "where and when" (setting, environment, circumstances). They should not alter the character's personality, voice, or core behavior unless the environment itself demands it.
+- Never propose a trait, rule, or condition that constrains what {{user}}'s persona may do, or that requires {{user}}'s actions to be approved, witnessed, or co-signed. A pattern of that kind in the memories is drift to correct, not behaviour to capture."#;
 
 // ============================================================================
 // Helpers
@@ -413,7 +417,11 @@ pub fn build_memory_context(memories: &[Value]) -> String {
     parts.join("\n")
 }
 
-/// v4 `getAnalysisPrompt` (byte-exact).
+/// v4 `getAnalysisPrompt` (byte-exact). Since v4 `ca363178d` the "Look for" list
+/// ends with the committee-drift bullet, then a blank line and the bare
+/// [`COMMITTEE_DRIFT_GUARDRAIL`] (P4.D241). The bullet's `{{user}}` sits INSIDE
+/// this `format!` template, so it is written `{{{{user}}}}` (the constant's own
+/// `{{user}}` arrives as a captured argument and needs no escaping).
 pub fn get_analysis_prompt() -> String {
     format!(
         r#"{FULL_FIELD_SEMANTICS}
@@ -433,6 +441,9 @@ Look for:
 - Concrete physical/appearance details the memories establish — scars, hair, height (these inform the physical description, not behaviour)
 - Habitual garments, outfits, or accessories the memories establish — a signature coat, a locket always worn (these inform the WARDROBE, never the physical description)
 - Nicknames or alternate names other characters repeatedly use for this character (these inform the ALIASES property)
+- Committee drift — the character governing {{{{user}}}}'s persona (sign-offs, votes, conditions), contradicting narrated events, or treating silence as consent. Surface it as a pattern to CORRECT, labelled as such, never as a trait.
+
+{COMMITTEE_DRIFT_GUARDRAIL}
 
 Respond with JSON:
 {{
@@ -515,7 +526,12 @@ Respond with a JSON array of at most one suggestion."#,
     )
 }
 
-/// v4 `getSystemPromptSuggestionPrompt` (byte-exact).
+/// v4 `getSystemPromptSuggestionPrompt` (byte-exact) — the refine pass. Since v4
+/// `ca363178d` its rules end with the trust-safeguards bullet + the unbulleted
+/// [`TRUST_SAFEGUARDS_DIRECTION`], `- ` + [`COMMITTEE_DRIFT_GUARDRAIL`], and the
+/// pass's OWN framing gate before the BARE [`COMPANION_TRUST_DISPOSITION`] (not
+/// v4's `GATED_…` export — P4.D241). The gate's `{{user}}` is written
+/// `{{{{user}}}}` inside this `format!` template.
 pub fn get_system_prompt_suggestion_prompt(analysis: &Value, prompt: &Value) -> String {
     let id = js_interp(prompt.get("id"));
     format!(
@@ -542,6 +558,11 @@ Additional rules specific to system-prompt refinement:
 - Do NOT change the prompt's evident interaction style (e.g. a "terse" prompt should stay terse); only sharpen its articulation of the character.
 - Never remove or weaken the prompt's direction about listening and conversational register (reading jokes and exaggeration for what they mean, sizing replies to the moment, rationing signature habits, saving formal language for moments that call for it).
 - Do NOT codify repetition. A gesture, prop, phrase, or construction that turns up in most replies is a tic to ration, not a trait to reinforce.
+- Never remove or weaken the prompt's trust safeguards (narration is fact, the conversation outranks notes, no invented setting facts, consent only in plain words, disagreement without procedure); add them in the prompt's own voice where they are missing:
+{TRUST_SAFEGUARDS_DIRECTION}
+- {COMMITTEE_DRIFT_GUARDRAIL}
+- If the prompt under review frames the character as {{{{user}}}}'s companion, partner, family, or crew, preserve or add the companion trust disposition; otherwise do not add it.
+{COMPANION_TRUST_DISPOSITION}
 
 Respond with a JSON array of at most one suggestion."#,
         name = js_interp(prompt.get("name")),
@@ -705,7 +726,11 @@ Respond with a JSON array of suggestion objects (may be empty)."#,
     )
 }
 
-/// v4 `getNewSystemPromptsSuggestionPrompt` (byte-exact).
+/// v4 `getNewSystemPromptsSuggestionPrompt` (byte-exact). Since v4 `ca363178d`
+/// its rules end with `- ` + [`TRUST_SAFEGUARDS_DIRECTION`] and the pass's OWN
+/// framing gate before the BARE [`COMPANION_TRUST_DISPOSITION`] — and NO
+/// [`COMMITTEE_DRIFT_GUARDRAIL`] (P4.D241). The gate's `{{user}}` is written
+/// `{{{{user}}}}` inside this `format!` template.
 pub fn get_new_system_prompts_suggestion_prompt(analysis: &Value) -> String {
     format!(
         r#"Review the character's existing system prompts (shown in the character context). Propose any NEW system prompts that are warranted by the behavioral patterns below but aren't already covered by the existing set. Do NOT propose edits to existing prompts here — this pass handles additions only. Do NOT propose new scenarios. If no new system prompt is warranted, respond with an empty JSON array.
@@ -719,6 +744,9 @@ Additional rules specific to this pass:
 - For each new system prompt: field="systemPrompt", omit subId, include a "name" field with a short descriptive label, and put the complete prompt text in proposedValue. currentValue should be the empty string.
 - Be conservative: only propose a new prompt if there is a clear interaction style the existing set does not cover.
 - {CONVERSATIONAL_VOICE_DIRECTION}
+- {TRUST_SAFEGUARDS_DIRECTION}
+- If the existing prompts frame the character as {{{{user}}}}'s companion, partner, family, or crew, the new prompt carries the companion trust disposition; otherwise do not add it.
+{COMPANION_TRUST_DISPOSITION}
 
 Respond with a JSON array of suggestion objects (may be empty)."#,
         analysis_json = pretty(analysis)

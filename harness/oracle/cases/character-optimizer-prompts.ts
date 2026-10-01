@@ -41,6 +41,7 @@ import {
   getWardrobeSuggestionPrompt,
   getPropertiesSuggestionPrompt,
   getNewSystemPromptsSuggestionPrompt,
+  SUGGESTION_SCHEMA_PREAMBLE,
 } from '@/lib/services/character-optimizer.service';
 
 interface Corpus {
@@ -90,6 +91,9 @@ for (const c of corpus.memories) {
 
 // ---- getAnalysisPrompt (no inputs) -----------------------------------------
 out({ kind: 'analysis_prompt', id: 'analysis-prompt', out: getAnalysisPrompt() });
+
+// ---- SUGGESTION_SCHEMA_PREAMBLE (exported since v4 `ca363178d` — P4.D241) ---
+out({ kind: 'schema_preamble', id: 'preamble', out: SUGGESTION_SCHEMA_PREAMBLE });
 
 // ---- the analysis-only prompts, once per corpus analysis -------------------
 for (const a of corpus.analyses) {

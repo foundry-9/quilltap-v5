@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — feat(core): the Character Optimizer trust safeguards and committee-drift guardrail (P4.D241)
+
+_Versions: core 0.0.1131, harness 0.0.1054._
+
+Ports v4 `ca363178d`'s four Character Optimizer edits byte for byte: the
+analysis pass flags committee drift and carries the guardrail; the
+suggestion schema preamble gains the persona-constraint rule, which reaches
+all seven suggestion passes; the refine pass keeps the trust safeguards,
+the committee guardrail, and its own companion framing gate before the bare
+disposition; the new-prompts pass gains the safeguards and its own gate
+(no guardrail). The `{{user}}` written inside the three `format!`
+templates is escaped; the preamble constant keeps it literal. Fixes the
+preamble doc comment (it is seven of seven passes). The prompts
+differential records v4's newly exported `SUGGESTION_SCHEMA_PREAMBLE` as a
+direct row.
+
 #### 2026-10-01 — feat(core): the five trust-safeguard directions through field semantics, the wizard and Summon From Lore (P4.D241)
 
 _Versions: core 0.0.1130, harness 0.0.1053._

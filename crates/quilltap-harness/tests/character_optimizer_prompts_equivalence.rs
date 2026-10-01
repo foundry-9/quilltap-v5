@@ -28,7 +28,7 @@ use quilltap_core::generators::optimizer::{
     get_general_fields_suggestions_prompt, get_new_system_prompts_suggestion_prompt,
     get_physical_description_suggestion_prompt, get_properties_suggestion_prompt,
     get_scenario_suggestion_prompt, get_system_prompt_suggestion_prompt,
-    get_wardrobe_suggestion_prompt,
+    get_wardrobe_suggestion_prompt, SUGGESTION_SCHEMA_PREAMBLE,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -57,6 +57,9 @@ enum Row {
     },
     #[serde(rename = "analysis_prompt")]
     AnalysisPrompt { id: String, out: String },
+    /// P4.D241 — v4 `SUGGESTION_SCHEMA_PREAMBLE` (exported since `ca363178d`).
+    #[serde(rename = "schema_preamble")]
+    SchemaPreamble { id: String, out: String },
     #[serde(rename = "general_prompt")]
     GeneralPrompt {
         id: String,
@@ -165,6 +168,7 @@ fn character_optimizer_prompts_match_oracle() {
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let mut s_props: Vec<String> = Vec::new();
     let mut saw_analysis_prompt = false;
+    let mut saw_schema_preamble = false;
     let mut coverage: Option<Row> = None;
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -207,6 +211,14 @@ fn character_optimizer_prompts_match_oracle() {
                     &out,
                 );
                 saw_analysis_prompt = true;
+            }
+            Row::SchemaPreamble { id, out } => {
+                eq(
+                    &format!("SUGGESTION_SCHEMA_PREAMBLE '{id}'"),
+                    SUGGESTION_SCHEMA_PREAMBLE.to_string(),
+                    &out,
+                );
+                saw_schema_preamble = true;
             }
             Row::GeneralPrompt { id, analysis, out } => {
                 eq(
@@ -307,6 +319,10 @@ fn character_optimizer_prompts_match_oracle() {
     };
 
     assert!(saw_analysis_prompt, "getAnalysisPrompt was never driven");
+    assert!(
+        saw_schema_preamble,
+        "SUGGESTION_SCHEMA_PREAMBLE was never recorded"
+    );
     assert_eq!(s_coerce, coerce, "coerce coverage");
     assert_eq!(s_ctx, contexts, "context coverage");
     assert_eq!(s_mem, memories, "memory coverage");
