@@ -157498,3 +157498,12 @@ web 0.0.203 / SPA 0.5.791, then the review's five commits: core +2, harness
 - P4.132: `teh world` + Space not rewriting mid-run; Re-extract Memories
   queuing only; Delete Memories (n) on a chat with real memories (the
   Tier-3 live arm).
+
+**RULED after the report (the human, 2026-09-30): Option V.** The POSIX-`TZ`
+divergence P4.127 recorded (and this review re-scoped to every executor tool
+and Carina, with the two persisted mail prefaces splitting zones) is to be
+CLOSED, not kept: a `TimeZone` VALUE threaded through `ProcessMessageInput` /
+`BuildContextInput` and the greeting's deps, retiring the `server_tz` NAME
+reads and `display_zone_named`; the orchestrator family's literal edits are
+the accepted cost. Ordered by name as item (k) of the recorded-divergences
+smalls round (`phase-4.md` NEXT 2) and in P4.127's Unification paragraph.

@@ -6977,7 +6977,16 @@ pin-fresh oracle; no drain copy).**
    (P4.127 Tier 3); (h) the nine unported GOOGLE / OLLAMA / OpenRouter-raw
    plugin ERROR lines (P4.128's named follow-up); (i) `dumpFileFacts`'s
    tier-3 upgrade (P4.130 Tier 3); (j) the trail WARN's `errors` as v4's full
-   issue array (P4.130 review nit 7, the home can render it now).
+   issue array (P4.130 review nit 7, the home can render it now); **(k)
+   RULED (the human, 2026-09-30): Option V** — the POSIX-`TZ` divergence
+   CLOSES: thread a `TimeZone` VALUE through `ProcessMessageInput` /
+   `BuildContextInput` (and the greeting's `ChatCreateDeps`) so every
+   name-fed entry (the Salon turn's and the spine's tool runners, so every
+   executor tool and Carina; `build_context`; the greeting) renders the
+   host's real zone like the value-fed ones, `display_zone_named` retiring
+   with the `server_tz` NAME reads; the `orchestrator_tier3_equivalence.rs`
+   literals the P4.127 design avoided are the accepted cost; the
+   `host_zone_sites_census` divergence header and `HELPER_SITES` go with it.
 3. **A drift catch-up when v4 moves** (`/driftcheck` first — the probe
    passed at this unification).
 

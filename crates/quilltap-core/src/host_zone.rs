@@ -54,7 +54,9 @@ pub fn system_display_zone() -> TimeZone {
 /// `server_tz` the composition root hands the Salon turn, `build_context` and the
 /// greeting — P4.127). An unknown or absent name resolves UTC.
 ///
-/// **Ruled divergence (P4.127, recorded for the human):** the name is
+/// **Ruled divergence (P4.127, recorded for the human — and RULED TO CLOSE
+/// 2026-09-30: Option V, a `TimeZone` VALUE through `ProcessMessageInput` /
+/// `BuildContextInput`, is ordered; this helper retires with it):** the name is
 /// `iana_name().unwrap_or("UTC")` of the host's zone, so a host whose zone has no
 /// IANA name (a POSIX `TZ` string, a fixed offset) displays UTC at the name-fed
 /// entries where v4 displays the host zone — the case the module doc's "a zone

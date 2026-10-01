@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — docs(porting): rule the POSIX-`TZ` display divergence CLOSED (Option V) — ordered as the recorded-divergences round's item (k)
+
+_Versions: core 0.0.1128, harness 0.0.1051 (doc comments only)._
+
+The human's ruling after the `97b25fc53` smalls unification report: the
+name-fed display entries (the Salon turn's and the spine's tool runners, so
+every executor tool and Carina; `build_context`; the greeting) will take a
+`TimeZone` VALUE threaded through `ProcessMessageInput` / `BuildContextInput`
+and the greeting's deps instead of resolving the host's IANA name, so a host
+whose zone has no IANA name (a POSIX `TZ` string, a fixed offset) renders the
+real zone everywhere, as v4 does. Recorded in `phase-4.md` NEXT 2(k), the
+P4.127 Unification paragraph, the round record, and the two in-code docs.
+
 #### 2026-09-30 — chore(unify): the `97b25fc53` smalls round (P4.127 ∥ P4.128 ∥ P4.129 ∥ P4.130 ∥ P4.131 ∥ P4.132) unified on main
 
 _Versions: core 0.0.1127, harness 0.0.1050, host 0.0.168, web 0.0.204, SPA 0.5.792; cli/tauri unchanged._

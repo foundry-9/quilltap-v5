@@ -33,7 +33,9 @@
 //! greeting fills are held by the SOURCE needles above, not by the child
 //! (the `97b25fc53` smalls unification corrected this claim).
 //!
-//! **Ruled divergence (P4.127, recorded for the human):** every NAME-fed entry
+//! **Ruled divergence (P4.127, recorded for the human; RULED TO CLOSE
+//! 2026-09-30 — Option V ordered, `phase-4.md` NEXT 2(k), after which the
+//! name-fed entries and `HELPER_SITES` below retire):** every NAME-fed entry
 //! resolves its zone from an IANA name, so a host whose zone has no IANA name
 //! (a POSIX `TZ` string, a fixed offset) displays UTC there where v4 displays
 //! the host zone. The name-fed entries are the Salon turn's tool runner AND
