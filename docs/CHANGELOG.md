@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — test(harness): the scene-note family's recipe header runs its oracle from the v4 checkout (the unified sweep's catch)
+
+_Versions: harness 0.0.1063._
+
+`user_narration_anchor_equivalence`'s committed recipe said `cd <v4 checkout
+at ca363178d>`, a placeholder the sweep driver cannot rewrite, so the full
+sweep ran `tsx` from the v5 checkout and the `@/lib` alias could not resolve
+(`regen_failed`). The header now follows the convention every other tsx
+family uses (`cd ~/source/quilltap-server` + `$V5W`), which the driver's
+`--v4` pins.
+
 #### 2026-10-01 — fix(core): the §3 review's should-fixes for the `ca363178d` round — the keyed anchored completion, v4's order for the two file-links ensures, the orchestrator family's cheap-key twin, and the exact-count and fallback-arm pins
 
 _Versions: core 0.0.1139, harness 0.0.1062, host 0.0.171, cli 0.0.29._

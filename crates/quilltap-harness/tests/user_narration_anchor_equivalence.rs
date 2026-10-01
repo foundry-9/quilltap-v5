@@ -10,10 +10,13 @@
 //! applying rows pin the line, every other row pins its silence.
 //!
 //! The module does not exist at the `97b25fc53` baseline (the case fails to
-//! import there — the both-directions marker). Generate at the pin:
-//!   cd <v4 checkout at ca363178d>
+//! import there — the both-directions marker). Generate at the pin (the
+//! sweep driver's `--v4` rewrites the `cd`; a `tsx` run from the v5 checkout
+//! cannot resolve `@/lib` — the `ca363178d` unification's sweep catch):
+//!   V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   cd ~/source/quilltap-server
 //!   PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH \
-//!     npx tsx ~/source/quilltap-v5/harness/oracle/cases/user-narration-anchor.ts \
+//!     npx tsx $V5W/harness/oracle/cases/user-narration-anchor.ts \
 //!     > /tmp/oracle-user-narration-anchor.ndjson
 //! Run:
 //!   QT_ORACLE_USER_NARRATION_ANCHOR=/tmp/oracle-user-narration-anchor.ndjson \
