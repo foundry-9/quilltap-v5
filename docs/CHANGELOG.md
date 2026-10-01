@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — docs(porting): P4.D242 lane record — the gate, the tier-3 three-state table, and the pipeline-family A10 blindness
+
+_Docs-only change._
+
+Records the lane's workspace gate (three classified reds: P4.D240's and
+P4.D241's designed reds at the pin and the standing `memory_processor_tier3`
+row), the baseline/target/ported table for the seven moving families, the
+finding that `memory_pipeline_jobs_tier3` cannot see the fold-episode
+prompt (deferred), and marks the order LANE COMPLETE.
+
 #### 2026-10-01 — feat(memory): v4 `ca363178d` memory consent — the AGREEMENTS block, the anchor and example rewrites, and the two-arm transcript heading (P4.D242)
 
 _Versions: core 0.0.1129, harness 0.0.1052._

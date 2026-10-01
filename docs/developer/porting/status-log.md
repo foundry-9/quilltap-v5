@@ -157991,3 +157991,34 @@ regens work as committed).
 
 ### Sibling reds seen
 None — no family outside this lane's list was run red.
+
+### P4.D242 lane gate (2026-10-01, at `742313487`)
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean in BOTH feature sets (default; `--features
+quilltap-core/native-transport`); `cargo build --workspace --release` clean.
+`QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d242-ca363178d cargo test --workspace
+--no-fail-fast` (`CARGO_INCREMENTAL=0`, the lane's 26-var env block, no
+`TZ`): **655 test binaries / 4,028 passed / 3 failed / 3 ignored**. The three
+reds, each classified: `cli_differential` **266 cases / 1 failure** — exactly
+`db raw blob read`, P4.D240's designed red at the pin (count otherwise
+unmoved); `builtin_prompt_templates_guard` — P4.D241's designed tripwire
+(`CLAUDE_COMPANION differs`), not fixed here; `memory_processor_tier3` — the
+STANDING compressed-text byte parity (`llm_logs MEMORY_EXTRACTION rows
+diverge`; decoded text identical, measured above). `dispatch_wrong_type_
+census` ran green (UNMOVED). Every lane family ran with non-zero tests;
+⚠ `context_summary_service_tier3` SKIPPED inside the workspace run (the
+gate's env block omitted `QT_FIXTURE_CTXSUM_MOUNT` — an extraction slip in
+this lane's block; libtest hides a passing test's SKIP line) and is GREEN by
+name with the full block (1 passed, 0.37 s). `memory_pipeline_jobs_tier3` is
+green with and without `TZ=UTC`. SPA liveness: `npm ci` + `npm run build`
+clean (no `apps/web/**` file touched).
+
+**Versions:** core 0.0.1129, harness 0.0.1052 (one bump each). **No §S hunks
+pre-written** (this lane meets no other lane's file). **Pre-list for the
+unifier:** no `docs/v4/` path, no `help/` path; ⚠ the CHANGELOG entry OPENS a
+`## October 2026` section — a sibling lane landing the same day will open the
+same header (merge them into one). **💸 for the walk:** a real Salon turn
+whose extraction call (LLM Inspector) shows the ordered heading and the
+AGREEMENTS block in both bodies; a turn ending on a character's condition
+storing "…; <name> had not yet responded"; a fold with the new episode
+sentence; an empty-question Carina run keeping `TURN TRANSCRIPT:`.
