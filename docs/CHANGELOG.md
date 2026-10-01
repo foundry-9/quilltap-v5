@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — docs(porting): P4.D241 lane record and order status
+
+_Docs-only change._
+
+P4.D241's lane record: red-first counts at the baseline and the pin, the
+seven mutation proofs, the regen recipe as run, the deferrals, and the gate.
+The order's status header now reads LANE COMPLETE.
+
 #### 2026-10-01 — feat(core): the External Prompt meta prompt gains the voice direction and trust safeguards (P4.D241)
 
 _Versions: core 0.0.1132, harness 0.0.1055._
