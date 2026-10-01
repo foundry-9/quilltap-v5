@@ -24,6 +24,14 @@
 //! key source (the tree-wide host key scan, recorded at P4.D93). The lookup is
 //! still performed here — its ABSENCE is not observable, its presence keeps the
 //! read order faithful — and the resolved string is dropped.
+//!
+//! ## Field semantics
+//!
+//! Since v4 `ca363178d` the meta prompt carries the conversational voice
+//! direction, the five trust safeguards and the gated companion disposition from
+//! `generators::field_semantics` — the first import of that module here (P4.D241).
+
+use std::sync::LazyLock;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -32,6 +40,9 @@ use crate::api::system_qtap::js_truthy;
 use crate::cheap_llm::{build_character_cache_key, profile_params_value};
 use crate::db::runtime::Db;
 use crate::db::{api_keys, characters_read, connection_profiles, DbError};
+use crate::generators::field_semantics::{
+    CONVERSATIONAL_VOICE_DIRECTION, GATED_COMPANION_TRUST_DISPOSITION, TRUST_SAFEGUARDS_DIRECTION,
+};
 use crate::jsstr::utf16_len;
 use crate::model::completion::{
     CompletionMessage, CompletionParams, CompletionProvider, CompletionResponse,
@@ -86,7 +97,23 @@ impl ExternalPromptResult {
 // ============================================================================
 
 /// v4 `META_SYSTEM_PROMPT` (byte-exact) — the system message of the one call.
-pub const META_SYSTEM_PROMPT: &str = r#"You are a prompt engineering expert. Your task is to generate a standalone system prompt for an AI character, suitable for pasting into external tools like Claude Desktop, ChatGPT Custom Instructions, or similar hosted environments.
+///
+/// Since v4 `ca363178d` it interpolates three field-semantics directions —
+/// [`CONVERSATIONAL_VOICE_DIRECTION`] (an EIGHTH voice-direction site: before that
+/// commit this generator imported nothing from field semantics),
+/// [`TRUST_SAFEGUARDS_DIRECTION`] and [`GATED_COMPANION_TRUST_DISPOSITION`] —
+/// plus the no-literal-placeholder sentence, every block `\n\n`-separated
+/// (P4.D241). It grew 1227 → 5664 UTF-16 units, which moves the token estimate
+/// in the over-budget refusal by about 1110.
+///
+/// A `LazyLock<String>`, not a `const &str`: `concat!` takes literals, not
+/// consts, and a lazily built static keeps the name and the three consumers'
+/// shape (each reads it through one deref). The placeholder sentence's two
+/// `{{user}}` sit INSIDE this `format!` template, so they are written
+/// `{{{{user}}}}`; the constants' own `{{user}}` arrive as captured arguments.
+pub static META_SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        r#"You are a prompt engineering expert. Your task is to generate a standalone system prompt for an AI character, suitable for pasting into external tools like Claude Desktop, ChatGPT Custom Instructions, or similar hosted environments.
 
 **Requirements:**
 - Write the entire prompt in second person ("You are [Name]. You always...", etc.)
@@ -100,7 +127,17 @@ pub const META_SYSTEM_PROMPT: &str = r#"You are a prompt engineering expert. You
 - Do NOT reference Quilltap or any external system
 - The prompt should read as a coherent, well-structured character brief
 
-Stay within the token budget specified by the user. Be thorough but concise."#;
+{CONVERSATIONAL_VOICE_DIRECTION}
+
+{TRUST_SAFEGUARDS_DIRECTION}
+
+{GATED_COMPANION_TRUST_DISPOSITION}
+
+The external tool will not substitute placeholders: wherever the directions above say {{{{user}}}}, the generated prompt names the person the character talks with in plain words ("the user", or their name if the character data gives one), never the literal {{{{user}}}} token.
+
+Stay within the token budget specified by the user. Be thorough but concise."#
+    )
+});
 
 // ============================================================================
 // Helpers
@@ -362,7 +399,7 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
     // Estimate input tokens (rough: 1 token ≈ 4 characters) — `.length` is
     // UTF-16 code units.
     let estimated_input_tokens =
-        ((utf16_len(META_SYSTEM_PROMPT) + utf16_len(&user_message)) as f64 / 4.0).ceil() as i64;
+        ((utf16_len(&META_SYSTEM_PROMPT) + utf16_len(&user_message)) as f64 / 4.0).ceil() as i64;
     let provider = profile
         .get("provider")
         .and_then(Value::as_str)
@@ -411,7 +448,7 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
         .and_then(Value::as_str)
         .map(str::to_string);
     let messages = vec![
-        CompletionMessage::system(META_SYSTEM_PROMPT),
+        CompletionMessage::system(META_SYSTEM_PROMPT.as_str()),
         CompletionMessage::user(user_message.clone()),
     ];
     let params = CompletionParams {
@@ -490,7 +527,7 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
                 messages: vec![
                     LogRequestMessage {
                         role: "system".to_string(),
-                        content: META_SYSTEM_PROMPT.to_string(),
+                        content: META_SYSTEM_PROMPT.clone(),
                         attachments: None,
                     },
                     LogRequestMessage {

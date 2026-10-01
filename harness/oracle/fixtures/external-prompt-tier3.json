@@ -46,6 +46,16 @@
       "reply": { "content": "You are Aria, unbounded.", "usage": { "promptTokens": 1, "completionTokens": 2, "totalTokens": 3 } }
     },
     {
+      "name": "scenario_dangling_is_omitted_ample_context",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "seeds": [
+        "richAria",
+        { "kind": "profilePatch", "profileId": "c0000001-0000-4000-8000-000000000001", "patch": { "maxContext": 40000 } }
+      ],
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "scenarioId": "51000000-0000-4000-8000-0000000000de", "maxTokens": 20000 },
+      "reply": { "content": "You are Aria, unbounded.", "usage": { "promptTokens": 1, "completionTokens": 2, "totalTokens": 3 } }
+    },
+    {
       "name": "usage_absent_reports_zero",
       "characterId": "a1000000-0000-4000-8000-000000000001",
       "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "maxTokens": 2000 },

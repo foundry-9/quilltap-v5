@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — feat(core): the External Prompt meta prompt gains the voice direction and trust safeguards (P4.D241)
+
+_Versions: core 0.0.1132, harness 0.0.1055._
+
+The External Prompt meta prompt now carries the conversational voice
+direction, the trust safeguards, the gated companion disposition, and v4's
+sentence telling the model never to emit the literal `{{user}}` token
+(v4 `ca363178d`; the generator's first field-semantics import).
+`META_SYSTEM_PROMPT` becomes a `LazyLock<String>` and grows from 1227 to
+5664 UTF-16 units, so the input-token estimate rises by about 1110: the
+`scenario_dangling_is_omitted` case (maxTokens 20000) now gets v4's
+over-budget refusal, and a sibling case with an ample `maxContext` keeps
+the dangling-scenario coverage. Adds core unit pins for v4's order
+assertions (gate before disposition at every site, the wizard's "not a
+committee", the external no-literal-token sentence).
+
 #### 2026-10-01 — feat(core): the Character Optimizer trust safeguards and committee-drift guardrail (P4.D241)
 
 _Versions: core 0.0.1131, harness 0.0.1054._
