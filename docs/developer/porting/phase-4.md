@@ -6928,7 +6928,54 @@ only once P4.D235 lands, and the re-embed spend needs P4.D235's
 measurement recipe first).
 
 
-## The `ca363178d` four-commit drift catch-up + dogfood-orders round (P4.D240 ∥ P4.D241 ∥ P4.D242 ∥ P4.D243 ∥ P4.133 ∥ P4.134) — ORDERED 2026-09-30
+## The `ca363178d` four-commit drift catch-up + dogfood-orders round (P4.D240 ∥ P4.D241 ∥ P4.D242 ∥ P4.D243 ∥ P4.133 ∥ P4.134) — UNIFIED 2026-10-01 (ordered 2026-09-30)
+
+**UNIFIED on main (2026-10-01) — ALL SIX LANES LANDED WHOLE; the oracle
+baseline MOVES to `ca363178d` and the ledger's §3 is EMPTY (v4 AT the
+baseline at both probes). Round record: `status-log.md` → "The `ca363178d`
+four-commit drift catch-up + dogfood-orders round — UNIFICATION record
+(2026-10-01)".** The §3 review (seven parallel readers — one per lane,
+P4.133 split in two) found NO blocking defect in any lane's code — the
+thirteenth such round — and no overclaim; the should-fixes it found were
+landed at unification, each with its pin: P4.134's two `doc_mount_file_links`
+lazy ensures ran in the REVERSE of v4's order (the link-group column ensure
+now runs first, as the repo's `onTableEnsured` orders them, with an order pin
+over a plant that fails both), the core fatal arms' claim that "a failed
+migration exits v4" qualified (only on an instance whose ledger lacks the
+migration — on a ledger-complete instance v4 reaches those tables lazily and
+boots, so v5 is HARDER there: the ledger-gate divergence's wider scope);
+P4.133's anchored completion leg was the one trait method still defaulting
+onto the provider scan (no production caller today — `send_message_keyed_
+with_anchor` added with its `Arc` forward, host override and pin) and three
+stale module headers still said the key was host-side; the orchestrator
+family ran v5's cheap-LLM / classifier key resolution for real while its v4
+case mocked it (the twin installed, lifting the mock named as the stronger
+proof); plus the nits taken (the scene-note corpus-shape guard pinned exact,
+the Tier R garbage-payload fixture pinned on the fallback ARM, two twin
+constants matched to their mocks' bytes, the memory generator's comment, the
+`pending_key` invariant). §S.1 landed on the union (the three generator
+sends keyed), the host recount caught the silent same-bump auto-merge
+(0.0.169 twice → 0.0.170), and P4.D240's October-dated entry moved under
+October. **OPEN by name after this round:** the five new API-key reads fold a
+DB error into "no key" silently where v4's `safeQuery` logs `Error finding
+API key by ID` (the fallback-read class; damaged-table-only — the home is
+P4.D225's `provider_routing.rs:141` shape); lift `orchestrator-tier3.test.ts`'s
+cheap-key mock to `requireActual`; **P4.D243-F1** (the pre-existing
+`Some("")` first-responder branch gap, measured REACHABLE: v4 admits an empty
+`content` with files or tool results and routes it to the chained branch);
+`memory_pipeline_jobs_tier3`'s blindness to the fold-episode prompt's bytes
+(its `episode` rule answers `[]`); the ledger-gate divergence order (P4.134's
+item 10, now wider: the migration-counterpart ensures run every boot, v4
+skips ledgered migrations); the two unscoped key re-resolutions (the
+Scenario Builder's one-shot loop, the connection test-message) where v4's
+route reads are user-scoped — single-user instances, record only; the
+P4.D184 avatar-collapse RULING for the human (v4 exits; v5 logs and boots on
+— proposed KEEP, recorded both ways); `recipe_sweep.py --self-test` red on
+main since the Scenario Builder round (five headers spell `W=${V5W:-…}`) —
+a smalls item. **NEXT: the owed Host dogfood pass (the six lanes' 💸 rows
+on the Friday copy), then the recorded-divergences round (Option V (k) +
+the smalls (a)–(j) + the items above), then a drift catch-up when v4
+moves.**
 
 **Baseline `97b25fc53`; v4 `main` HEAD `ca363178d` ("Anti-committee phase 3
 & 4: memory consent & chained-turn scene note (#79)", `4.10.0-dev.105`,

@@ -19,58 +19,71 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `97b25fc53`**: "Drape undressed characters in story
-  backgrounds instead of re-dressing them" (v4 main, 2026-09-28 12:31,
-  `4.10.0-dev.100`), adopted when the `97b25fc53` seven-commit drift catch-up
-  + refusal-seam round was unified (P4.D234 ∥ P4.D235 ∥ P4.D236 ∥ P4.D237 ∥
-  P4.D238 ∥ P4.D239 ∥ P4.118, 2026-09-29). Its seven rows are in §6.
+- **Oracle baseline: `ca363178d`**: "Anti-committee phase 3 & 4: memory
+  consent & chained-turn scene note (#79)" (v4 main, 2026-09-30 20:44,
+  `4.10.0-dev.105`), adopted when the `ca363178d` four-commit drift catch-up
+  + dogfood-orders round was unified — all six lanes (P4.D240 ∥ P4.D241 ∥
+  P4.D242 ∥ P4.D243 ∥ P4.133 ∥ P4.134, 2026-10-01). The four rows
+  `aa92cf91c` … `ca363178d` are ABSORBED / NO-PORT-RATIFIED (§6).
   CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-30 evening (`/driftcheck`, main-checkout session,
-  `git fetch --all` first). Previous check: earlier on 2026-09-30, the
-  `/unify` of the `97b25fc53` smalls round (v4 AT the baseline then).
-- **v4 `main` HEAD at check: `ca363178d`** ("Anti-committee phase 3 & 4:
-  memory consent & chained-turn scene note (#79)", 2026-09-30 20:44,
-  `4.10.0-dev.105`). **Four commits past the baseline**, all landed
-  2026-09-30 19:51–20:44; `origin/main` agrees.
+- **Checked:** 2026-10-01 (`/unify` of the `ca363178d` round, main-checkout
+  session; `git fetch --all` first). The §2 probe PASSED at the
+  unification's start and again before its docs commit: HEAD at
+  `ca363178d`, the tree clean on `main`, `bugfix`, `origin/main` and
+  `origin/bugfix` unmoved. Previous check: 2026-09-30 evening, the
+  `/driftcheck` that recorded these four commits.
+- **v4 `main` HEAD at check: `ca363178d`** — AT THE BASELINE. **Zero
+  commits past it; §3 is EMPTY.**
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
   branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty, so
-  no unabsorbed bugfix content. **`release` tip:** `8fbf2afe0` ("release:
-  4.9.2"), UNMOVED; still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 4 commits** (§3): two PORT rows
-  (`ddf942635` bug 173, `ca363178d` the anti-committee prompts/memory/scene
-  note) and two NO-PORT? docs rows (`aa92cf91c`, `a67a282c6`). No
-  CONVERGENCE row: bug 173 is v4-original (its own provenance line), and
-  this port had deliberately pinned the pre-fix behaviour as v4-faithful
-  (`crates/quilltap-cli/src/nodefmt.rs`, P4.D203) — so that pin and any
-  Tier R raw-SQL case over a compressed cell trip at the new pin **as v4
-  drift, not a v5 bug**. v4's `bugs.md` now ends at bug 173 (fixed,
-  "v5 status: Not assessed").
-- **Regen rule: PIN REQUIRED** — HEAD is past the baseline, so every regen
-  runs from a detached `97b25fc53` worktree per §5.1 until a round absorbs
-  these rows. SDKs are unmoved at HEAD (no provider package touched).
-- **Live-checkout guards now RED by design:** `builtin_prompt_templates_guard`
-  (`ca363178d` rewrites all 21 sample prompts; plugin 1.1.25) — it compares
-  against the LIVE checkout, so it is the drift tripwire firing, not a v5
-  defect. `provider_sdk_version_guard` stays GREEN.
+  there is no unabsorbed bugfix content. **`release` tip:** `8fbf2afe0`
+  ("release: 4.9.2"), UNMOVED; still no `release: 4.10.0` squash.
+- **Checkout at check:** branch **`main`**, tree **CLEAN**; the §2 probe runs
+  against `ca363178d`.
+- **Verdict: NO DRIFT — v4 AT the baseline.** No PORT, PORT-NEW, CONVERGENCE
+  or NO-PORT? rows pending. v4's `bugs.md` ends at bug 173 (fixed at
+  `ddf942635`, ported by P4.D240 — its "v5 status: Not assessed" line is
+  now stale on v4's side).
+- **Regen rule: NO PIN REQUIRED while the §2 probe passes** — HEAD IS the
+  baseline and the tree is clean, so the live checkout regenerates
+  baseline-faithful oracles. The moment the probe fails (HEAD moves or the
+  tree goes dirty), every regen goes back to a detached `ca363178d` worktree
+  per §5.1. HEAD's SDKs equal the recorded ones (openai 7.23.0,
+  `@openrouter/sdk` 1.3.28, anthropic 0.115.0, genai 1.52.0 — P4.D232;
+  `git diff 97b25fc53 ca363178d -- package.json` moved the version stamp
+  alone), so a provider-wire regen is baseline-faithful.
+- **Live-checkout guards at the baseline:** `builtin_prompt_templates_guard`
+  is GREEN against the live checkout again (P4.D241 re-vendored the 21
+  prompts at `ca363178d`, plugin `1.1.25`). `provider_sdk_version_guard` is
+  GREEN.
+- **The workspace gate at the baseline:** the round record in
+  `status-log.md` has the counts (the pinned sweep at `ca363178d`, the
+  workspace suite, Tier R, Playwright).
 - **Schema state:** unchanged by the four commits (no DDL, no migration);
   `fresh_schema.json` stays the THIRD D23 re-dump (P4.D235, `f7f3d7bf0`).
   v5 tolerates both shapes for the two dropped `chats` columns
-  (`conciergeOverride`, `renderedMarkdown`) and drops neither at boot.
-- **`help/**`:** LAGS by nine pages (`ddf942635`:
-  `database-protection.md`; `ca363178d`: `ai-character-import.md`,
-  `character-creation.md`, `character-external-prompt.md`,
-  `character-optimizer.md`, `chat-multi-character.md`,
-  `episodic-memory.md`, `memory-playing-a-character.md`, `prompts.md`). No
-  file added or removed — the 129 count stands.
-- **`docs/v4/`:** LAGS on `docs/CHANGELOG.md`, `docs/developer/bugs.md` +
-  the new `bugs/fixed/bug-173-raw-sql-buffer-output.md`, the new
-  `docs/developer/features/prompt-trust-and-anti-committee.md`,
-  `PROMPT_ARCHITECTURE.md`, `SYSTEM_PROMPT_PLUGIN_DEVELOPMENT.md`.
+  (`conciergeOverride`, `renderedMarkdown`) and drops neither at boot; the
+  reclamation migrations stay the standing deferral class
+  (`db/text_compression.rs`). #74's two ledger columns stay a BOOT ENSURE
+  (P4.D225). A Friday copy of ANY vintage from `-dev.88` on opens on v5.
+- **`help/**`:** re-vendored WHOLE at `ca363178d` (P4.D240; 129 files,
+  `diff -rq` against the pin empty; the nine pages the two code commits
+  touched all md5-equal to v4's). Nothing lags.
+- **`docs/v4/`:** the whole tree matches `ca363178d` (`diff -rq` against the
+  pin's `docs/` reports only the mirror's deliberate extra,
+  `packages-quilltap-README.md`, itself refreshed from the pin's
+  `packages/quilltap/README.md`); `docs/v4/CHANGELOG.md` (171,935 B),
+  `developer/bugs.md`, the new `bugs/fixed/bug-173-raw-sql-buffer-output.md`
+  and `features/prompt-trust-and-anti-committee.md`,
+  `PROMPT_ARCHITECTURE.md` and `SYSTEM_PROMPT_PLUGIN_DEVELOPMENT.md` all at
+  `ca363178d` bytes. No standing lag item.
 - **Standing deferrals unchanged:** the three text-compression migrations,
   the image re-encode migration and the stored-`renderedMarkdown`
   reclamation stay DEFERRED as reclamation; the animated-input ruling is
   LANDED (P4.108); the corrupt-second-frame ruling keeps v5's still.
+  **Open for the human (P4.134):** the P4.D184 avatar-collapse guard —
+  v4 EXITS on that migration's failure where v5 logs and boots on
+  (`host.rs`, `RULING PENDING (P4.134)`); proposed KEEP, recorded both ways.
 
 ## §2 The freshness probe
 
@@ -109,10 +122,9 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `aa92cf91c` | 2026-09-30 | File bug 173: raw CLI SQL prints compressed message text as Buffer JSON | NO-PORT? | Docs only: `docs/CHANGELOG.md`, `docs/developer/bugs.md`, the new open `bugs/bug-173-…md` (moved to `bugs/fixed/` by `ddf942635`). Ratify on the file list; mirror into `docs/v4/` with `ddf942635`'s version of the same files. | ORDERED(P4.D240 — ratification on the file list; the mirror) |
-| `a67a282c6` | 2026-09-30 | Spec the prompt trust and anti-committee safeguards | NO-PORT? | Docs/infra only: `.claude/commands/update-documentation.md`, `docs/CHANGELOG.md`, the new `docs/developer/features/prompt-trust-and-anti-committee.md` (584 lines; `ca363178d` adds as-built notes). "Spec only; no code changes" CONFIRMED by the file list. It is the design of record for `ca363178d` — mirror it into `docs/v4/` and read §8–§9 before porting that row. | ORDERED(P4.D240 — ratification on the file list; the mirror) |
-| `ddf942635` | 2026-09-30 | Fix bug 173: decode compressed text in raw SQL output (#78) | PORT | **The CLI Tier R raw-SQL path** (`quilltap-cli`: `db_cmd.rs`, `nodefmt::cell_to_js_value`; P4.D203 measured and pinned the Buffer form as v4-faithful at `f45a517a9` — that doc comment is now false at HEAD). Hunks: new `decodeCompressedTextInRows(rows)` in `packages/quilltap/lib/text-codec.js` — in place, every key of every row, decodes ONLY values passing `isCompressedTextBlob` (the `0x51 0x01 0x01` header), leaves other BLOBs (embeddings) as Buffers — called in two places in `bin/quilltap.js`: the raw `sql` reader branch (before both the `--json` and the `console.table` printers) and the `--repl` reader branch. Writers/non-reader statements untouched; `qt_text()` registration unchanged. v5 has the `--repl` flag (`db_cmd.rs:99`) — both printers need the decode. Not a CONVERGENCE: v4-original (provenance `186eb09cb`), v5 had it by faithful port. Expect Tier R (`cli_differential`) cases over a compressed cell to RED at the new pin; add a case with a ≥512-byte message and an embedding BLOB in the same row (the "other BLOBs untouched" half). Also: `help/database-protection.md` (+1 paragraph), the CLI README line, `package.json` / `packages/quilltap/package.json` version stamps (NO-PORT), the v4 integration test (oracle material). | ORDERED(P4.D240) |
-| `ca363178d` | 2026-09-30 | Anti-committee phase 3 & 4: memory consent & chained-turn scene note (#79) | PORT + PORT-NEW | One squash of five phases; 66 files. **(a) The 21 sample prompts** (`plugins/dist/qtap-plugin-default-system-prompts/prompts/*.md`, plugin 1.1.0→1.1.25 in `index.ts`/`index.js`/`manifest.json`/`package.json`) → v5's vendored built-ins (`services/builtin_prompt_templates.rs`, last re-vendored by P4.D237 at `c3eefa752`); `builtin_prompt_templates_guard` is RED against the live checkout now; re-vendor + P4.D237's lazy stale-row refresh should then rewrite seeded rows (verify the refresh keys on content, not version). **(b) The generator directions** (`lib/services/character-field-semantics.ts`: NEW `TRUST_SAFEGUARDS_DIRECTION`, `COMPANION_TRUST_DISPOSITION`, `COMPANION_TRUST_DISPOSITION_GATE`, `GATED_COMPANION_TRUST_DISPOSITION`, `COMMITTEE_DRIFT_GUARDRAIL`) → `generators/field_semantics.rs` (`p4.9k`, P4.D237's voice-direction constants), consumed at: `ai-import.service.ts` `SYSTEM_PROMPTS_PROMPT` (now exported; "300-500"→"300-600 words"; trust + gated disposition + a relationships sentence) → `generators/ai_import.rs`; `character-wizard.service.ts` system-prompt instruction ("under 500"→"under 600 words") → `generators/wizard_prompts.rs`; `character-optimizer.service.ts` (an analysis bullet + guardrail, `SUGGESTION_SCHEMA_PREAMBLE` exported + a new rule, the refine and new-prompt passes) → `generators/optimizer.rs`; `external-prompt-generator.service.ts` `META_SYSTEM_PROMPT` (now exported) gains `CONVERSATIONAL_VOICE_DIRECTION` AND the trust pair AND a no-`{{user}}`-literal sentence → `generators/external_prompt.rs` (note: the voice direction is NEW at this site — check whether P4.D237's "seven sites" counted it). **(c) Memory extraction** (`lib/memory/cheap-llm-tasks/memory-tasks.ts`) → `memory_tasks.rs` (episodic-recall / P4.6bj family): NEW `AGREEMENTS_INSTRUCTION_BLOCK` in BOTH the USER-subject and the SELF/OTHER bodies; the `TAGS` `future` gloss; three importance-anchor rewrites incl. a new 0.55 rung; `FIRST_PERSON_USER_CLAUSE` gains two sentences; a new good example + a new bad example; the fold-EPISODE prompt gains one sentence (the episode prompt at `memory_tasks.rs:863`, not `FOLD_SUMMARY_PROMPT`); and `renderTurnContext`'s heading becomes CONDITIONAL — NEW exported `ORDERED_TURN_TRANSCRIPT_HEADING` when `transcript.userMessage !== null \|\| hasUserSlice`, else the old `TURN TRANSCRIPT:` (a branch, not a string swap — tier-1 needs both arms). **(d) The chained-turn scene note** — NEW `lib/chat/context/user-narration-anchor.ts` (`renderUserNarrationAnchor`, `buildUserNarrationAnchor`: empty unless multi-character AND no new user message AND a human-turn id is in the window AND a character spoke after it; author named from the matched message's `participantId` seat via `nameForParticipant`, falling back to `userCharacter?.name \|\| 'User'`; one `logger.debug` line with `historyWindowSize`/`lastHumanIndex`/`resolvedFromSeat`) → `services/build_context.rs` (P3 buildContext + the trailing-only push at ~`:3764`, which gains the anchor FIRST: `[anchor, progressions, turnSkip]`, and the `else if` condition gains it); new `BuildContextOptions.humanTurnMessageIds` fed by `context-builder.service.ts` from the existing `userTurnMessageIds` (v5: `message_context.rs::user_turn_message_ids`, bug 95's capture). The role test is `role.toLowerCase() === 'assistant' \|\| (participantId && not a human id)`. **(e) help/** 8 pages (a), (b), (c), (d) — re-vendor whole. Tests-only: `__tests__/**` incl. a new fixture `proposal-no-reply.ts`, an opt-in live eval, `lib/memory/cheap-llm-tasks/__tests__/*` (oracle material). NO-PORT: `CLAUDE.md`, `README.md`, `.claude/commands/`, the version stamps, `docs/**` (mirror). Prompt-byte surfaces: the cache prefix is untouched by design (the anchor is a per-turn trailing section; v4 says neither `IDENTITY_STACK_BUILDER_VERSION` nor `PROMPT_CACHE_STRUCTURE_VERSION` moves) — verify. | ORDERED(P4.D241 the prompts + generators; P4.D242 the memory prompts; P4.D243 the scene note; help P4.D240) |
+
+_(EMPTY — v4 `main` is AT the baseline `ca363178d`. The four rows of the
+`ca363178d` round moved to §6 at its unification, 2026-10-01.)_
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -265,6 +277,29 @@ the disposable copy proves the mechanism but is a weaker claim — offer it,
 don't silently swap it in.
 
 ## §6 History
+
+- **The `ca363178d` four-commit drift catch-up + dogfood-orders round
+  (2026-10-01, baseline `97b25fc53` → `ca363178d`; P4.D240 ∥ P4.D241 ∥
+  P4.D242 ∥ P4.D243 ∥ P4.133 ∥ P4.134):** `aa92cf91c` (files bug 173) and
+  `a67a282c6` (the prompt-trust / anti-committee spec) NO-PORT-RATIFIED
+  (P4.D240 — on the file lists: `docs/CHANGELOG.md`, `docs/developer/bugs.md`
+  + the new bug file for the first; `.claude/commands/update-documentation.md`,
+  `docs/CHANGELOG.md` + the new spec for the second; neither touches `lib/`,
+  `app/`, `packages/`, `plugins/`, `components/`, `help/` or a test; both
+  mirrored into `docs/v4/` at `ca363178d` bytes). `ddf942635` (bug 173: raw
+  CLI SQL decodes compressed text) ABSORBED(P4.D240 — the scoped
+  `nodefmt::raw_sql_cell_to_js_value` at the ONE v5 site, the four other
+  `cell_to_js_value` callers untouched, Tier R 266 → 271 with v4's
+  integration-test shapes, option (b) for the table-mode seam with four named
+  divergences pinned; `--repl` stays the refusal with its decode site
+  banked). `ca363178d` (the anti-committee phases) ABSORBED(P4.D241 the 21
+  prompts re-vendored + the five trust directions at eight generator sites,
+  `META_SYSTEM_PROMPT` a `LazyLock<String>`; P4.D242 the memory-consent
+  prompts through the extended generator + the two-arm transcript heading;
+  P4.D243 the chained-turn scene note as a pure module + its `build_context`
+  wiring; help P4.D240 — the whole tree at `ca363178d`). P4.133 (the
+  profile's own API key on every model call) and P4.134 (boot hardness)
+  landed beside them as the two dogfood orders. Round record: `status-log.md`.
 
 - **The `97b25fc53` seven-commit drift catch-up + refusal-seam round
   (2026-09-29, baseline `acadcc7cd` → `97b25fc53`; P4.D234 ∥ P4.D235 ∥
