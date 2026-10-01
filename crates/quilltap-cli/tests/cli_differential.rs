@@ -568,6 +568,7 @@ fn build_master(master: &Path, live: &Path) {
                id TEXT PRIMARY KEY,
                chatId TEXT,
                content TEXT,
+               embedding BLOB,
                updatedAt TEXT
              );
              CREATE VIRTUAL TABLE chat_messages_fts USING fts5(content);
@@ -588,9 +589,36 @@ fn build_master(master: &Path, live: &Path) {
         );
         let cell = quilltap_core::db::text_compression::text_to_blob(&long_text);
         assert!(cell.is_blob(), "the bug-162 row must be stored compressed");
+        // P4.D240 — v4 bug 173's integration test shape (`ddf942635`): `m-1`
+        // is the compressed row WITH a non-text embedding BLOB beside it (the
+        // "other BLOBs untouched" half), `m-2` a short plain-TEXT row with a
+        // NULL embedding. `m-3` is a header-bearing GARBAGE payload — the
+        // fallback arm of v4's `decodeText` (the payload as lossy UTF-8), which
+        // both sides must render byte-identically.
         c.execute(
-            "INSERT INTO chat_messages (id, chatId, content, updatedAt) VALUES (?, ?, ?, ?)",
-            rusqlite::params!["m-1", "c-1", cell, "2026-09-21T23:30:00.000Z"],
+            "INSERT INTO chat_messages (id, chatId, content, embedding, updatedAt) VALUES (?, ?, ?, ?, ?)",
+            rusqlite::params![
+                "m-1",
+                "c-1",
+                cell,
+                vec![0xebu8, 1, 2, 3],
+                "2026-09-21T23:30:00.000Z"
+            ],
+        )
+        .unwrap();
+        c.execute(
+            "INSERT INTO chat_messages (id, chatId, content, embedding, updatedAt) VALUES (?, ?, ?, NULL, ?)",
+            rusqlite::params!["m-2", "c-1", "A short reply.", "2026-09-21T23:31:00.000Z"],
+        )
+        .unwrap();
+        let garbage: Vec<u8> = vec![0x51, 0x01, 0x01, 0xff, 0xfe, b'o', b'k', 0xc3];
+        assert!(
+            quilltap_core::db::text_compression::decode_blob(&garbage).contains('\u{fffd}'),
+            "the m-3 row must exercise the lossy-UTF-8 fallback"
+        );
+        c.execute(
+            "INSERT INTO chat_messages (id, chatId, content, embedding, updatedAt) VALUES (?, ?, ?, NULL, ?)",
+            rusqlite::params!["m-3", "c-1", garbage, "2026-09-21T23:32:00.000Z"],
         )
         .unwrap();
     }
@@ -2029,9 +2057,60 @@ fn cli_differential() {
         ]),
         CaseOpts::default(),
     );
+    // P4.D240 — bug 173 (`ddf942635`): the raw-SQL reader branch DECODES a
+    // header-bearing compressed cell (this case printed the Buffer map on
+    // BOTH sides at `97b25fc53`/`f45a517a9`; at v4 `ca363178d` it prints the
+    // text). `db raw blob read` stays the name of the original case.
     ctx.case_with(
         "db raw blob read",
         &d(&["--json", "SELECT content FROM chat_messages LIMIT 1"]),
+        CaseOpts::default(),
+    );
+    // v4's integration test, its mirror shapes: both rows' text, in order.
+    ctx.case_with(
+        "db raw decoded rows json",
+        &d(&[
+            "--json",
+            "SELECT id, content FROM chat_messages ORDER BY id",
+        ]),
+        CaseOpts::default(),
+    );
+    // Table mode over the ASCII 669-char row (under Node's 10,000-unit cap —
+    // `inspect_quote` byte-identical; the table-mode string-form divergences
+    // are NAMED in `nodefmt.rs`, option (b), and stay out of the corpus).
+    ctx.case_with(
+        "db raw decoded row table",
+        &d(&["SELECT content FROM chat_messages WHERE id = 'm-1'"]),
+        CaseOpts::default(),
+    );
+    // The "other BLOBs untouched" half — `--json` only, as v4's own test (the
+    // table form of a Buffer is a named seam: Node `<Buffer …>` vs compact JSON).
+    ctx.case_with(
+        "db raw embedding blob json",
+        &d(&[
+            "--json",
+            "SELECT embedding FROM chat_messages WHERE id = 'm-1'",
+        ]),
+        CaseOpts::default(),
+    );
+    // The fallback arm: header + a payload brotli rejects → lossy UTF-8.
+    ctx.case_with(
+        "db raw garbage payload json",
+        &d(&[
+            "--json",
+            "SELECT content FROM chat_messages WHERE id = 'm-3'",
+        ]),
+        CaseOpts::default(),
+    );
+    // A writer with RETURNING is a reader to better-sqlite3 (`stmt.reader`),
+    // so v4 decodes it too.
+    ctx.case_with(
+        "db raw write returning decoded",
+        &d(&[
+            "--write",
+            "--json",
+            "UPDATE chat_messages SET updatedAt = '2026-09-22T00:00:00.000Z' WHERE id = 'm-1' RETURNING content",
+        ]),
         CaseOpts::default(),
     );
     ctx.case_with(

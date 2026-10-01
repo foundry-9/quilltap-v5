@@ -7,7 +7,11 @@
 //! fixtures): numbers stay inside the range where V8's and ryu's shortest
 //! representations agree (|x| in [1e-4, 1e21) or integer-valued); table
 //! strings avoid ` `/` ` and C1 controls; blobs stay out of
-//! table-rendered SQL results.
+//! table-rendered SQL results. Since v4 `ddf942635` (bug 173) the
+//! raw-SQL path decodes compressed message text, so decoded text and an
+//! embedding Buffer CAN meet in one table: that seam is operator-reachable now,
+//! and the Buffer form plus three string forms are NAMED divergences pinned in
+//! the `db_cmd` tests (`table_mode_divergences_*`), not ported.
 
 use serde_json::{Map, Value};
 
@@ -38,15 +42,16 @@ pub fn js_number_to_json(f: f64) -> Value {
 /// (lossy past 2^53) double conversion, REAL is a double, TEXT a string,
 /// NULL null, BLOB a Node `Buffer` (JSON form `{"type":"Buffer","data":[…]}`).
 ///
-/// MEASURED at v4 `f45a517a9` (P4.D203): the Buffer form is CORRECT for the
-/// raw-SQL path and must not be decoded. v4's CLI decodes compressed columns
-/// in exactly three verbs — `cmdMessages`, `cmdMessage` and `cmdLog`
-/// (`db-commands.js:484,570,616-617`), all three of which v5 does not ship —
-/// while `quilltap db "<SQL>"` (`bin/quilltap.js:1049-1059`) does plain
-/// `JSON.stringify(rows)` / `console.table(rows)` over whatever
-/// better-sqlite3 returns. A compressed cell therefore prints as a Buffer on
-/// BOTH sides. What makes the path usable is the `qt_text()` registration in
-/// `db_cmd::open_encrypted`: the operator wraps the column in their own SQL.
+/// This is the PLAIN form: a compressed cell stays a Buffer here, and the four
+/// non-raw-SQL callers (`--count`, `db_characters`, `docs_cmd`, `sync_cmd`)
+/// keep it because v4 never moved them. History: MEASURED at v4 `f45a517a9`
+/// (P4.D203) the Buffer form was ALSO correct for the raw-SQL path — v4
+/// decoded compressed columns only in `cmdMessages` / `cmdMessage` / `cmdLog`
+/// (`db-commands.js:484,570,616-617`, none shipped by v5) — and `quilltap db
+/// "<SQL>"` did plain `JSON.stringify(rows)` / `console.table(rows)`. That
+/// stopped being true at v4 `ddf942635` (bug 173): the raw-SQL reader branch
+/// now decodes header-bearing BLOBs, which v5 does through
+/// [`raw_sql_cell_to_js_value`] at its ONE such site (P4.D240) — never here.
 pub fn cell_to_js_value(v: rusqlite::types::ValueRef<'_>) -> Value {
     use rusqlite::types::ValueRef;
     match v {
@@ -63,6 +68,22 @@ pub fn cell_to_js_value(v: rusqlite::types::ValueRef<'_>) -> Value {
             );
             Value::Object(m)
         }
+    }
+}
+
+/// A cell of the raw-SQL reader branch (`quilltap db "<SQL>"`): v4
+/// `decodeCompressedTextInRows` (`packages/quilltap/lib/text-codec.js`, bug 173
+/// at `ddf942635`) reassigns every value passing `isCompressedTextBlob` (the
+/// `0x51 0x01 0x01` header) to `decodeText(value)`, in place, so the key order
+/// is untouched. Doing it per cell at build time is equivalent. Every other
+/// BLOB (an embedding) stays the Buffer form, and the decode is total — a
+/// corrupt payload comes back as lossy UTF-8, never an error.
+pub fn raw_sql_cell_to_js_value(v: rusqlite::types::ValueRef<'_>) -> Value {
+    use quilltap_core::db::text_compression::{decode_blob, is_compressed_text_blob};
+    use rusqlite::types::ValueRef;
+    match v {
+        ValueRef::Blob(b) if is_compressed_text_blob(b) => Value::String(decode_blob(b)),
+        other => cell_to_js_value(other),
     }
 }
 
@@ -214,6 +235,84 @@ pub fn format_bytes(n: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use quilltap_core::db::text_compression::{text_to_blob, TextCell};
+    use rusqlite::types::ValueRef;
+
+    fn compressed(text: &str) -> Vec<u8> {
+        match text_to_blob(text) {
+            TextCell::Blob(b) => b,
+            TextCell::Text(_) => panic!("fixture text must compress"),
+        }
+    }
+
+    fn long_text() -> String {
+        format!("A long tale, {}", "x".repeat(600))
+    }
+
+    #[test]
+    fn raw_sql_decodes_a_header_bearing_blob() {
+        let blob = compressed(&long_text());
+        assert_eq!(
+            raw_sql_cell_to_js_value(ValueRef::Blob(&blob)),
+            Value::from(long_text())
+        );
+    }
+
+    #[test]
+    fn raw_sql_header_with_garbage_payload_is_lossy_utf8_not_an_error() {
+        // v4 `decodeText`'s catch: the payload (header stripped) as UTF-8.
+        let blob = [0x51, 0x01, 0x01, b'n', b'o', b't', 0xff, b'!'];
+        assert_eq!(
+            raw_sql_cell_to_js_value(ValueRef::Blob(&blob)),
+            Value::from("not\u{fffd}!")
+        );
+    }
+
+    #[test]
+    fn raw_sql_header_with_empty_payload_is_the_empty_string() {
+        assert_eq!(
+            raw_sql_cell_to_js_value(ValueRef::Blob(&[0x51, 0x01, 0x01])),
+            Value::from("")
+        );
+    }
+
+    #[test]
+    fn raw_sql_leaves_other_blobs_and_scalars_alone() {
+        let embedding = [0xebu8, 1, 2, 3];
+        assert_eq!(
+            raw_sql_cell_to_js_value(ValueRef::Blob(&embedding)),
+            cell_to_js_value(ValueRef::Blob(&embedding))
+        );
+        assert_eq!(
+            raw_sql_cell_to_js_value(ValueRef::Blob(&embedding))["type"],
+            "Buffer"
+        );
+        assert_eq!(raw_sql_cell_to_js_value(ValueRef::Null), Value::Null);
+        assert_eq!(
+            raw_sql_cell_to_js_value(ValueRef::Text(b"hi")),
+            Value::from("hi")
+        );
+        assert_eq!(
+            raw_sql_cell_to_js_value(ValueRef::Integer(7)),
+            Value::from(7)
+        );
+        assert_eq!(
+            raw_sql_cell_to_js_value(ValueRef::Real(1.5)),
+            Value::from(1.5)
+        );
+    }
+
+    /// The scoping pin: the shared `cell_to_js_value` (the `--count`,
+    /// `db_characters`, `docs_cmd` and `sync_cmd` callers) keeps a compressed
+    /// cell as the Buffer map — v4 moved none of those paths.
+    #[test]
+    fn shared_cell_to_js_value_keeps_a_compressed_blob_as_a_buffer() {
+        let blob = compressed(&long_text());
+        let v = cell_to_js_value(ValueRef::Blob(&blob));
+        assert_eq!(v["type"], "Buffer");
+        assert_eq!(v["data"].as_array().unwrap().len(), blob.len());
+    }
 
     #[test]
     fn numbers_render_like_js() {

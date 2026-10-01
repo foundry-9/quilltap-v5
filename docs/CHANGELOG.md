@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-10-01 — feat(cli): `quilltap db "<sql>"` prints compressed message text as text (v4 bug 173); help tree and docs mirror at `ca363178d` (P4.D240)
+
+_Versions: cli 0.0.28._
+
+The raw-SQL reader branch of `quilltap db` now decodes compressed text cells
+(the `0x51 0x01 0x01` header) before printing, as v4 does since `ddf942635`;
+embedding BLOBs and every other verb's output keep the Buffer form, and a
+corrupt payload prints as lossy UTF-8 rather than an error. `--repl` is still
+refused (its decode site is noted beside the refusal). Tier R grows five cases
+over v4's integration-test shapes. In table mode, `<Buffer …>` rendering,
+Node's 10,000-character truncation, wide-character widths and C1 escapes are
+recorded as named divergences with pinning tests. The whole `help/` tree
+(nine pages) and the `docs/v4/` mirror (seven paths) are refreshed at
+`ca363178d`; the two docs-only v4 commits are ratified as no-port.
+
 #### 2026-09-30 — docs(porting): order the `ca363178d` four-commit drift catch-up + dogfood-orders round (P4.D240–P4.D243, P4.133, P4.134)
 
 _Docs-only change._

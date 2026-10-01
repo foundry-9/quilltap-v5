@@ -157566,3 +157566,86 @@ instrument `harness/tools/refusal-server.py` grew two modes (`malformed`,
 
 ### Commits
 `fix(web)` (#134(a), web 0.0.205) and the walk's docs commit.
+
+## P4.D240 — bug 173 (raw CLI SQL decodes compressed text) + the `help/` tree and `docs/v4/` mirror at `ca363178d` (lane record, 2026-10-01)
+
+Branch `claude/p4-raw-sql-decode-cli-bebebb`. Pin `ca363178d` (`/tmp/qt-v4-pin-p4d240-ca363178d`; the
+baseline `97b25fc53` pin for the both-directions proof). The §2 probe PASSED at lane start (main, clean,
+`ca363178d`, both logs empty). Node 24.13.1 at its real path, `new Database()` verified under it before any
+red was trusted.
+
+**Tier R, red-first and both directions (measured on UNPORTED code, before any source edit):** at
+`ca363178d` 266 cases / **1 failure** — `db raw blob read` (stdout differs); at `97b25fc53` **266/0**.
+After the port: green at `ca363178d` (full run, 775 s) with the corpus grown by five cases (266 → 271 by
+case-count diff; the pass line does not print the total).
+
+**The port (one site).** `nodefmt::raw_sql_cell_to_js_value` — a header-bearing BLOB
+(`is_compressed_text_blob`) → `Value::String(decode_blob(b))`, everything else defers to the unchanged
+`cell_to_js_value` — called at `db_cmd.rs`'s raw-SQL row loop (v4 `bin/quilltap.js:1047`, before the
+`--json` / `(no results)` / table printers; `RETURNING` writers decode too, as `stmt.reader` is true).
+The four other `cell_to_js_value` callers (`--count`, `db_characters`, `docs_cmd`, `sync_cmd`) are
+untouched. No core edit (the codec is `pub`); no CLI string changed (`db_help.txt` untouched).
+`--repl` stays a refusal; its decode site (`bin/quilltap.js:1116`) is banked in a comment beside it.
+
+**Tier R grown** (`build_master`): `chat_messages` gains `embedding BLOB`; `m-1` binds
+`0xeb,1,2,3`; `m-2` (short plain TEXT, NULL embedding); `m-3` a header + garbage payload (asserted
+to hit the lossy-UTF-8 fallback on the v5 side). New cases: `db raw decoded rows json`,
+`db raw decoded row table`, `db raw embedding blob json`, `db raw garbage payload json`,
+`db raw write returning decoded`; `db raw blob read` kept and re-commented. Every existing case re-ran
+green (neutrality). Affects no other oracle (Tier R's `build_master` is in-file; no committed fixture changed).
+
+**Item 3 — table-mode seam DECIDED: option (b).** The embedding "untouched" arm is `--json`-only (v4's own
+test); no table case over a BLOB. Four NAMED divergences now operator-reachable, each pinned with v5's value
+in `db_cmd::tests::table_mode_divergences_*`: the Buffer cell as compact JSON (Node `<Buffer eb 01 02 03>`),
+no 10,000-unit string truncation, `char`-count widths (Node counts East-Asian wide as 2), C1 controls not
+escaped. (The pins live in `db_cmd.rs` because `sync_report_equivalence.rs` `#[path]`-includes
+`nodefmt.rs` without `vtable`.)
+
+**Mutations (unit level):** M1 (decode inside `cell_to_js_value`) → `shared_cell_to_js_value_keeps_a_
+compressed_blob_as_a_buffer` reds; M3 (header check dropped) → `raw_sql_leaves_other_blobs_and_scalars_
+alone` reds; M2 unobservable (v4's order kept); M4 NOT run — `decode_blob`'s fallback is core's (read-only
+here); the Tier R `garbage payload` row plus the unit pin carry it. **M5 proven:** `prompts.md` restored to
+its `97b25fc53` bytes → `help_tree_equivalence` RED while `help_tree_embed_guard` stayed GREEN.
+
+**`help/` re-vendored whole** from the pin (`diff -rq help "$PIN/help"` empty; 129 files; nine md5s match
+the order's table: ai-character-import `8d5624e8…`, character-creation `39a4d850…`, character-external-prompt
+`8a746e1a…`, character-optimizer `9e871634…`, chat-multi-character `a0a57cb5…`, database-protection
+`1cb6b735…`, episodic-memory `49253a5d…`, memory-playing-a-character `20442eaf…`, prompts `017a0ee3…`).
+`help_tree_equivalence` and `help_section_size_equivalence` regenerated at the pin through the sweep driver
+and GREEN. The "RED before" half was proven by M5 rather than by running the families against the old tree.
+Both count literals (`help_tree_embed_guard.rs:76`, `host_help_docs_boot.rs:105`) UNMOVED at 129.
+
+**`docs/v4/` mirror refreshed** at `ca363178d`, byte counts: `CHANGELOG.md` 171,935; `developer/bugs.md`
+314,963; NEW `developer/bugs/fixed/bug-173-raw-sql-buffer-output.md` 6,477; NEW `developer/features/
+prompt-trust-and-anti-committee.md` 72,358; `developer/PROMPT_ARCHITECTURE.md` 34,609; `developer/
+SYSTEM_PROMPT_PLUGIN_DEVELOPMENT.md` 29,638; `packages-quilltap-README.md` 35,078 (from
+`packages/quilltap/README.md`). `diff -rq docs/v4 "$PIN/docs"` residual: only `packages-quilltap-README.md`
+(the mirror's deliberate extra).
+
+**Ratifications (NO-PORT, on the file lists):** `aa92cf91c` — `docs/CHANGELOG.md`, `docs/developer/bugs.md`,
+NEW `docs/developer/bugs/bug-173-raw-sql-buffer-output.md`; `a67a282c6` — `.claude/commands/update-
+documentation.md`, `docs/CHANGELOG.md`, NEW `docs/developer/features/prompt-trust-and-anti-committee.md`.
+Neither touches `lib/`, `app/`, `packages/`, `plugins/`, `components/`, `help/` or any test.
+
+**Siblings' designed reds seen:** none acted on. `V4_APP_VERSION` is P4.D241's, untouched.
+**§S hunks pre-written:** none. **Memory note** `a-vendored-count-is-hard-coded-in-several-crates` corrected
+to two literals in two crates (a lane-side memory file, not repo).
+**Versions:** cli 0.0.28 (core, harness, host, web, SPA unmoved).
+**💸 for the dogfood pass:** `quilltap db --data-dir <Friday copy> "SELECT id, content FROM chat_messages
+WHERE length(content) > 600 LIMIT 2"` in `--json` and table mode; the same with `embedding` (Buffer JSON in
+`--json`; compact JSON in table mode — the named divergence); `WHERE qt_text(content) LIKE '%…%'` still
+working; the Database Protection help page's new paragraph rendered in the SPA; the mirror's new spec file
+openable.
+**Gotcha:** the shared disk filled to 100% mid-gate (four lane `target/`s of 27–34 GB); the first gate's test
+stage hit `errno 28` at link time, and its clippy red was a real find (a `#[path]` include of `nodefmt.rs`).
+
+**Gate (P4.D240, final clean run):** `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean in BOTH feature sets; `cargo build --workspace --release` clean; `cargo test --workspace
+--no-fail-fast` with `QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d240-ca363178d`, `QT_NODE` a real path and the two help
+oracle vars: **655 binaries / 4,043 passed / 1 failed / 3 ignored**, zero `SKIP:` lines; the one red is
+`builtin_prompt_templates_guard` (the live-checkout drift tripwire, RED by design until P4.D241 — not fixed
+here). Confirmed RUN and green: `cli_differential`, `help_tree_equivalence`, `help_section_size_equivalence`,
+`help_tree_embed_guard`, `host_help_docs_boot`, `help_web_routes`, `dispatch_wrong_type_census` (441, unmoved).
+The SPA liveness build was NOT run (no `apps/web/**` change; the full Playwright suite is the unifier's).
+An earlier gate attempt failed for want of disk (`errno 28` — four sibling lane `target/` dirs of 27–34 GB
+filled the volume) and was rerun whole after reclaiming this lane's stray `*.rcgu.o` temp objects.

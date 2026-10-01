@@ -12,7 +12,9 @@ use quilltap_host::lock::{
 };
 
 use crate::dbopen::{open_encrypted, sqlite_msg, OpenOptions};
-use crate::nodefmt::{cell_to_js_value, json_stringify_pretty, node_join};
+use crate::nodefmt::{
+    cell_to_js_value, json_stringify_pretty, node_join, raw_sql_cell_to_js_value,
+};
 use crate::out;
 use crate::resolve::{load_db_key, print_default_instance_hint, resolve_data_dir_and_passphrase};
 use crate::vtable::console_table;
@@ -119,6 +121,10 @@ pub fn run(args: &[String]) -> i32 {
         out::exit(0);
     }
 
+    // BANKED (P4.D240): v4's `--repl` SQL arm runs the SAME bug-173 decode
+    // (`decodeCompressedTextInRows(rows)` at `bin/quilltap.js:1116`, a second
+    // site beside the raw-SQL one); whoever ports the REPL must carry it
+    // through `nodefmt::raw_sql_cell_to_js_value`.
     if repl {
         out::elog(
             "Error: db --repl is recognized but not yet available in this build of the quilltap CLI.",
@@ -352,9 +358,15 @@ fn dispatch(
             while let Some(row) = rows.next().map_err(|e| sqlite_msg(&e))? {
                 let mut obj = Map::new();
                 for (idx, name) in col_names.iter().enumerate() {
+                    // Compressed text columns arrive as Buffers; print them as
+                    // text (v4 bug 173, `decodeCompressedTextInRows` at
+                    // `bin/quilltap.js:1047`, before the `--json` / `(no
+                    // results)` / table printers). Scoped to THIS site (v4
+                    // `ddf942635`; it retires P4.D203's Buffer pin): the
+                    // other `cell_to_js_value` callers keep the Buffer form.
                     obj.insert(
                         name.clone(),
-                        cell_to_js_value(row.get_ref(idx).map_err(|e| sqlite_msg(&e))?),
+                        raw_sql_cell_to_js_value(row.get_ref(idx).map_err(|e| sqlite_msg(&e))?),
                     );
                 }
                 rows_out.push(obj);
@@ -1006,5 +1018,53 @@ mod lock_clean_wording_tests {
         assert!(
             lock_clean_refusal_lines(false, false, 1.0, 301_000.0, 301_000.0 < FRESH_MS).is_none()
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::types::ValueRef;
+
+    // ---- Table-mode seam (P4.D240 item 3, option (b)): NAMED divergences from
+    // Node's `console.table`, now operator-reachable because decoded message
+    // text meets embedding Buffers in one `SELECT *`. Each pins v5's value.
+
+    #[test]
+    fn table_mode_divergences_buffer_cell_is_compact_json() {
+        // Node prints `<Buffer eb 01 02 03>`.
+        let v = crate::nodefmt::cell_to_js_value(ValueRef::Blob(&[0xeb, 1, 2, 3]));
+        assert_eq!(
+            crate::vtable::cell_text(&v),
+            r#"{"type":"Buffer","data":[235,1,2,3]}"#
+        );
+    }
+
+    #[test]
+    fn table_mode_divergences_long_strings_are_not_truncated() {
+        // Node truncates a string over 10,000 UTF-16 units with
+        // `'…'... N more characters`.
+        let s = "y".repeat(10_050);
+        let cell = crate::vtable::cell_text(&Value::from(s.clone()));
+        assert_eq!(cell, crate::nodefmt::inspect_quote(&s));
+        assert_eq!(cell.chars().count(), 10_052);
+    }
+
+    #[test]
+    fn table_mode_divergences_width_counts_chars_not_columns() {
+        // Node counts an East-Asian wide char as two columns; v5 counts one.
+        let mut row = Map::new();
+        row.insert("k".into(), Value::from("\u{4e16}\u{754c}"));
+        let table = crate::vtable::console_table(&[row]);
+        // `'世界'` is 4 chars: the data row's cell is `| '世界' |`.
+        assert!(table.contains("│ '\u{4e16}\u{754c}' │"), "{table}");
+        let rule = table.lines().next().unwrap();
+        assert_eq!(rule.chars().filter(|c| *c == '─').count(), 4 + 2 + 7 + 2);
+    }
+
+    #[test]
+    fn table_mode_divergences_c1_controls_are_not_escaped() {
+        // Node escapes C1 controls (`\x85`); v5 prints the char through.
+        assert_eq!(crate::nodefmt::inspect_quote("a\u{85}b"), "'a\u{85}b'");
     }
 }
