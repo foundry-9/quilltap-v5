@@ -258,6 +258,7 @@ pub mod token_estimation;
 pub mod tools;
 pub mod turn_order;
 pub mod turn_state;
+pub mod user_narration_anchor;
 pub mod vault_overlay;
 // === P4.D172 ===
 // The turn manager from v4 `78b381a96`: the cycle's drawn rotation, the one

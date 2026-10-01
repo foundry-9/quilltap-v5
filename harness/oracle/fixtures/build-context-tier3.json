@@ -2358,6 +2358,1419 @@
       "chatOverrides": {
         "chatType": "autonomous"
       }
+    },
+    {
+      "name": "narration_anchor_chained_multi_applies",
+      "_comment": "P4.D243 (v4 ca363178d): a chained multi-character turn (no new user message) where the human spoke and Bea answered since. The scene note is the trailing user message, named from the human row's seat (Charlie's seat, whose character shares the {{user}} name, so resolvedFromSeat is false).",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004a1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a3",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000001"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "narration_anchor_with_turn_skip",
+      "_comment": "P4.D243: the note and the turn-skip note share the chained trailing message, the scene note FIRST, joined by the --- separator.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004a1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a3",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000001"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "turnSkip": {
+        "offerSkip": true,
+        "recentlyAddressed": false,
+        "characterName": "Ada"
+      }
+    },
+    {
+      "name": "narration_anchor_continue_mode",
+      "_comment": "P4.D243: NO continue-mode gate, unlike progressions: a Continue in a multi-character chat still carries the note.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004a1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a3",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000001"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "isContinueMode": true
+    },
+    {
+      "name": "narration_anchor_with_progressions",
+      "_comment": "P4.D243: a NON-continue chained turn responding as Charlie (who carries progressions) \u2014 the trailing message is [scene note, progressions]. The human row was written from a user seat whose character is Bea, so the note names Bea where the {{user}} fallback would say Charlie (resolvedFromSeat true).",
+      "characterId": "ca000000-0000-4000-8000-0000000000a3",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004a4",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a5",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a4",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a5",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a5",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000001"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "narration_anchor_progressions_and_turn_skip",
+      "_comment": "P4.D243: all three trailing sections at once, in v4's order [scene note, progressions, turn-skip].",
+      "characterId": "ca000000-0000-4000-8000-0000000000a3",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004a4",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a5",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a4",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a5",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a5",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000001"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "turnSkip": {
+        "offerSkip": true,
+        "recentlyAddressed": false,
+        "characterName": "Charlie"
+      }
+    },
+    {
+      "name": "narration_anchor_unseated_author_falls_back",
+      "_comment": "P4.D243: the human row's seat is not among the participants, so the note falls back to the {{user}} name (the driver's Charlie).",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004a1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004af",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000001"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "narration_anchor_ids_absent",
+      "_comment": "P4.D243 neutrality: the same chained turn with no humanTurnMessageIds \u2014 no note, byte-identical to a build before the feature.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004a1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a3",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "narration_anchor_human_summary_anchored",
+      "_comment": "P4.D243 neutrality: the human row is summary-anchored, so it is dropped before selection; the window holds no human id and the note is empty.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004a1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a3",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000001"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "chatOverrides": {
+        "summaryAnchorMessageIds": [
+          "e4300000-0000-4000-8000-000000000001"
+        ]
+      }
+    },
+    {
+      "name": "narration_anchor_first_responder_with_ids",
+      "_comment": "P4.D243 neutrality: a new user message rides at the tail, so the ids change nothing (the first-responder branch is untouched).",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004a1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a3",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000001"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "newUserMessage": "Onward."
+    },
+    {
+      "name": "narration_anchor_human_last",
+      "_comment": "P4.D243 neutrality: the human spoke last; no character has answered since, so no note.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "existingMessages": [
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        },
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004a1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a3",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000002"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "narration_anchor_human_trimmed_by_budget",
+      "_comment": "P4.D243 neutrality: the human row is trimmed out of the POST-trim window by the message budget (the reserved-outgoing squeeze), so the note is empty; scanning the pre-trim list would wrongly fire it.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004a1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a3",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000100",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000101",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:01:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000102",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:02:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000103",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:02:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000104",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:03:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000105",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:03:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000106",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:04:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000107",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:04:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000108",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:05:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000109",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:05:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000110",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:06:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000111",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:06:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000112",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:07:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000113",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:07:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000114",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:08:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000115",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:08:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000116",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:09:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000117",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:09:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000118",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:10:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000119",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:10:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000120",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:11:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000121",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:11:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000122",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:12:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000123",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:12:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000124",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:13:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000125",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:13:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000126",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:14:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000127",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:14:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000128",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:15:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000129",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:15:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000130",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:16:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000131",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:16:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000132",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:17:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000133",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:17:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000134",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:18:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000135",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:18:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000136",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:19:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000137",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:19:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000138",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:20:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000139",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:20:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000140",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:21:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000141",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:21:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000142",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:22:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000143",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:22:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000144",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:23:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000145",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:23:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000146",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:24:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000147",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:24:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000148",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:25:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000149",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:25:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000150",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:26:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000151",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:26:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000152",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:27:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000153",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:27:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000154",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:28:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000155",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:28:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000156",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:29:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000157",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:29:30.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000158",
+          "role": "ASSISTANT",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:30:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000159",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:30:30.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000001"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "profileMaxContext": 8000,
+      "reservedOutgoingTokens": 2000
     }
   ],
   "vaultConversationSummaries": [

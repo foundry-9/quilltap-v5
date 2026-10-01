@@ -1423,6 +1423,7 @@ where
         })
         .collect();
     build_input.messages_with_participants = if is_multi { mwp } else { None };
+    build_input.human_turn_message_ids = Some(user_turn_message_ids.clone());
     build_input.is_initial_message = is_initial_message;
     build_input.generate_memory_recap = should_generate_recap;
 

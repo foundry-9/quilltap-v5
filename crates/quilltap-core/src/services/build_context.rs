@@ -617,6 +617,15 @@ pub struct BuildContextInput {
     /// conversation-summary search reuses this vector rather than embedding the
     /// same sentence a second time.
     pub pre_searched_query_embedding: Option<crate::services::memory_service::SearchQueryEmbedding>,
+    /// v4 `options.humanTurnMessageIds` (`ca363178d`) — row ids of the human's
+    /// own turns (USER, no `systemSender`), captured by the caller before
+    /// whisper normalization re-roles Staff whispers to USER. Feeds the
+    /// chained-turn scene note ([`crate::user_narration_anchor`]). **Absent →
+    /// no note** (as is an empty set). Only `build_message_context` fills it —
+    /// from the same bug-95 set the attachment anchor reads — so a production
+    /// path that skipped that fill would silently lose every note; the
+    /// orchestrator / regenerate-swipe regens are the proof the fill is live.
+    pub human_turn_message_ids: Option<std::collections::HashSet<String>>,
 }
 
 /// v4's `turnSkip` option bag (`{ offerSkip, recentlyAddressed, characterName }`).
@@ -3675,6 +3684,67 @@ where
         _ => String::new(),
     };
 
+    // Chained multi-character turns: the human's narration sits mid-history and
+    // the newest line is another character's, possibly one that contradicts it
+    // (a stopped turn that finished server-side, or a second tab). The scene note
+    // names the human's latest message as the state of the scene. Empty unless it
+    // applies; never on the first responder, who has the human's line last.
+    //
+    // v4 `context-manager.ts:2703-2722` (`ca363178d`). Three traps the port
+    // keeps by hand: the window is the POST-trim `selected_messages` (scanning
+    // the pre-trim list would fire when the human's row was trimmed out);
+    // `hasNewUserMessage` is v4's `!!newUserMessage`, so `Some("")` is NO new
+    // message here (the `if let Some(..)` branch below is a separate,
+    // pre-existing shape — the anchor's gate does not inherit it); and there is
+    // NO continue-mode gate, unlike progressions above — Continue and Nudge get
+    // the note too. `is_multi_character` is this function's own predicate, which
+    // counts the user's persona seat (the commit message's "single-character is
+    // byte-identical" holds only for a seatless chat).
+    let user_narration_anchor = {
+        let user_name = input
+            .user_character
+            .as_ref()
+            .map(|u| u.name.as_str())
+            .filter(|n| !n.is_empty())
+            .unwrap_or("User");
+        let window: Vec<crate::user_narration_anchor::NarrationWindowRow<'_>> = selected_messages
+            .iter()
+            .map(|m| crate::user_narration_anchor::NarrationWindowRow {
+                role: &m.role,
+                id: m.id.as_deref(),
+                participant_id: m.participant_id.as_deref(),
+            })
+            .collect();
+        // v4's inline `nameForParticipant`: the seat by id among ALL
+        // participants (removed seats included), then its character's name.
+        let name_for_participant = |participant_id: &str| -> Option<String> {
+            let seat = input
+                .all_participants
+                .as_ref()?
+                .iter()
+                .find(|p| p.id == participant_id)?;
+            let character_id = seat.character_id.as_deref().filter(|c| !c.is_empty())?;
+            input
+                .participant_characters
+                .as_ref()?
+                .get(character_id)
+                .map(|c| c.name.clone())
+        };
+        crate::user_narration_anchor::build_user_narration_anchor(
+            &crate::user_narration_anchor::BuildUserNarrationAnchorInput {
+                is_multi_character,
+                has_new_user_message: input
+                    .new_user_message
+                    .as_deref()
+                    .is_some_and(|s| !s.is_empty()),
+                history_window: &window,
+                human_turn_message_ids: input.human_turn_message_ids.as_ref(),
+                user_name,
+                name_for_participant: Some(&name_for_participant),
+            },
+        )
+    };
+
     // New user message with trailing recall / core / mail context.
     let mut messages_included = selected_messages.len();
     if let Some(new_user_message) = &input.new_user_message {
@@ -3754,17 +3824,25 @@ where
             cache_control: None,
         });
         messages_included += 1;
-    } else if !turn_skip_instruction.is_empty() || !progressions_llm_context.is_empty() {
+    } else if !user_narration_anchor.is_empty()
+        || !turn_skip_instruction.is_empty()
+        || !progressions_llm_context.is_empty()
+    {
         // Chained / continue turns carry no new user message, so neither the
         // note nor the progressions report can ride as a trailing section above.
         // Push them as their own trailing user message (same off-scene/timestamp
         // pattern) so the model sees them this turn, IN THE SAME ORDER they
         // would have taken there. Anthropic 4.6+ rejects role=assistant tails,
-        // so 'user' is required.
-        let trailing_only: Vec<String> = [progressions_llm_context, turn_skip_instruction]
-            .into_iter()
-            .filter(|s| !s.is_empty())
-            .collect();
+        // so 'user' is required. The scene note leads: it is about the scene,
+        // the others about the character.
+        let trailing_only: Vec<String> = [
+            user_narration_anchor,
+            progressions_llm_context,
+            turn_skip_instruction,
+        ]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect();
         context_messages.push(ContextMessage {
             role: "user",
             content: trailing_only.join("\n\n---\n\n"),
@@ -4436,6 +4514,7 @@ mod distill_latency_tests {
             pre_searched_memories: None,
             recall_signals: None,
             pre_searched_query_embedding: None,
+            human_turn_message_ids: None,
         }
     }
 
@@ -4762,6 +4841,7 @@ mod inter_character_log_tests {
             pre_searched_memories: None,
             recall_signals: None,
             pre_searched_query_embedding: None,
+            human_turn_message_ids: None,
         }
     }
 
@@ -4860,6 +4940,149 @@ mod inter_character_log_tests {
         let line = the_line(&lines).unwrap_or_else(|| panic!("no line; captured: {lines:?}"));
         assert!(line.contains("loaded_count=0"), "{line}");
         assert!(line.contains("included_count=0"), "{line}");
+    }
+
+    /// P4.D243 (v4 `ca363178d`) — the chained-turn scene note at the
+    /// `build_context` call site. A child module so it can reuse this module's
+    /// fixtures; the tier-1 family proves the note's own logic, these pin what
+    /// only the call site decides: the push order, the post-trim window, and
+    /// the anchor's own truthiness gate on the new user message.
+    mod narration_anchor {
+        use super::*;
+
+        const SCENE: &str =
+            "Scene note: User's most recent message is the current state of the scene.";
+
+        /// A chained multi-character turn (no new user message): the human
+        /// (unseated, so the `{{user}}` fallback — `User` with no persona)
+        /// spoke, then Marek answered.
+        fn chained(ids: Option<&[&str]>) -> BuildContextInput {
+            let mut t = a_turn(true, true);
+            t.new_user_message = None;
+            t.existing_messages = Vec::new();
+            t.messages_with_participants = Some(vec![
+                MessageWithParticipant {
+                    id: Some("h1".to_string()),
+                    role: "USER".to_string(),
+                    content: "((The engine stalls.))".to_string(),
+                    participant_id: None,
+                    thought_signature: None,
+                    created_at: Some("2026-01-01T00:00:00.000Z".to_string()),
+                    target_participant_ids: None,
+                    host_event: None,
+                },
+                MessageWithParticipant {
+                    id: Some("c1".to_string()),
+                    role: "ASSISTANT".to_string(),
+                    content: "The engine is running fine.".to_string(),
+                    participant_id: Some("participant-b".to_string()),
+                    thought_signature: None,
+                    created_at: Some("2026-01-01T00:01:00.000Z".to_string()),
+                    target_participant_ids: None,
+                    host_event: None,
+                },
+            ]);
+            t.human_turn_message_ids = ids.map(|v| v.iter().map(|s| s.to_string()).collect());
+            t
+        }
+
+        async fn build(input: &BuildContextInput) -> (BuiltContext, Vec<String>) {
+            let (_dir, db) = db_with_inter_character_memories(0);
+            use tracing_subscriber::layer::SubscriberExt;
+            let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+            let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+            let out = {
+                let _guard = tracing::subscriber::set_default(subscriber);
+                build_context(
+                    &db,
+                    &FailingEmbedding,
+                    &UnusedCompletion,
+                    &crate::services::cheap_llm_exec::CheapLlmTaskExecutor::new(),
+                    &NoopSeams,
+                    input,
+                )
+                .await
+                .expect("the turn must build")
+            };
+            let lines = logs.lock().unwrap().clone();
+            (out, lines)
+        }
+
+        fn anchor_lines(lines: &[String]) -> usize {
+            lines
+                .iter()
+                .filter(|l| l.contains("[UserNarrationAnchor] Scene note applies"))
+                .count()
+        }
+
+        #[tokio::test]
+        async fn the_note_is_the_trailing_user_message_on_a_chained_turn() {
+            let (out, lines) = build(&chained(Some(&["h1"]))).await;
+            let last = out.messages.last().unwrap();
+            assert_eq!(last.role, "user");
+            assert!(last.content.starts_with(SCENE), "{}", last.content);
+            assert!(last.metadata.is_none() && last.name.is_none() && last.cache_control.is_none());
+            assert_eq!(anchor_lines(&lines), 1, "{lines:?}");
+        }
+
+        /// v4's order: the scene note FIRST, then the turn-skip note, joined
+        /// by the section separator (M3 — pushing the note last reddens here).
+        #[tokio::test]
+        async fn the_note_leads_the_turn_skip_note() {
+            let mut t = chained(Some(&["h1"]));
+            t.turn_skip = Some(TurnSkip {
+                offer_skip: true,
+                recently_addressed: false,
+                character_name: "Lyra".to_string(),
+            });
+            let (out, _) = build(&t).await;
+            let tail = &out.messages.last().unwrap().content;
+            assert!(tail.starts_with(SCENE), "{tail}");
+            assert!(tail.contains("\n\n---\n\n"), "{tail}");
+            let scene = tail.find("Scene note:").unwrap();
+            let skip = tail
+                .find("[NOTHING TO ADD]")
+                .expect("the turn-skip note rides too");
+            assert!(scene < skip, "{tail}");
+        }
+
+        /// Ids that name no row in the window ≡ no ids at all.
+        #[tokio::test]
+        async fn ids_outside_the_window_change_nothing() {
+            let (with_ids, _) = build(&chained(Some(&["not-in-window"]))).await;
+            let (without, _) = build(&chained(None)).await;
+            assert_eq!(with_ids.messages, without.messages);
+            assert!(!with_ids
+                .messages
+                .iter()
+                .any(|m| m.content.contains("Scene note:")));
+        }
+
+        /// A new user message rides at the tail: the first responder's
+        /// context is unchanged by the ids.
+        #[tokio::test]
+        async fn a_new_user_message_makes_the_ids_inert() {
+            let mut with_ids = chained(Some(&["h1"]));
+            with_ids.new_user_message = Some("Onward.".to_string());
+            let mut without = chained(None);
+            without.new_user_message = Some("Onward.".to_string());
+            let ((a, lines), (b, _)) = (build(&with_ids).await, build(&without).await);
+            assert_eq!(a.messages, b.messages);
+            assert_eq!(anchor_lines(&lines), 0, "{lines:?}");
+        }
+
+        /// The anchor's gate is v4's `!!newUserMessage`: an EMPTY new user
+        /// message is no new message, so the note applies (its DEBUG line is
+        /// the witness — the push itself rides whichever branch the pre-existing
+        /// `if let Some(..)` takes; see the lane record). M4: `is_some()` here
+        /// reddens this pin.
+        #[tokio::test]
+        async fn an_empty_new_user_message_is_no_new_message_to_the_gate() {
+            let mut t = chained(Some(&["h1"]));
+            t.new_user_message = Some(String::new());
+            let (_, lines) = build(&t).await;
+            assert_eq!(anchor_lines(&lines), 1, "{lines:?}");
+        }
     }
 }
 

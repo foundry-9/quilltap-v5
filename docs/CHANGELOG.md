@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — feat(context): the chained-turn scene note — v4 `ca363178d` part (d) (P4.D243)
+
+_Versions: core 0.0.1129, harness 0.0.1052._
+
+Ports v4's `lib/chat/context/user-narration-anchor.ts` as
+`quilltap_core::user_narration_anchor`, plus its one call site in
+`build_context`. On a chained multi-character turn (no new user message:
+second responder onward, Continue, Nudge, a later-reply regenerate), when
+the human's latest in-window message has been answered by a character, the
+trailing `user` message now leads with a one-paragraph scene note naming
+that message's author as the current state of the scene. It is pushed
+ahead of the progressions report and the turn-skip note, joined by the
+usual section separator. First-responder turns are unchanged. The note is
+also empty when the human's row is not in the post-trim window or no ids
+are supplied. There is no continue-mode gate, and "multi-character" is
+`build_context`'s own predicate, which counts a persona seat.
+
+`BuildContextInput` gains `human_turn_message_ids`, filled in
+`build_message_context` from the existing bug-95 set. The orchestrator's
+shared input builder names it as a `None` placeholder (one marked line). The
+module logs v4's DEBUG line on the applying path only.
+
+Proof: a new tier-1 family (`user_narration_anchor_equivalence`, 3 render +
+30 build rows over v4's real module, the DEBUG line compared with v4's field
+order). `build_context_tier3` grows from 47 to 58 ops on both sides (a new
+`humanTurnMessageIds` op field). `orchestrator_tier3` and
+`regenerate_swipe_tier3` were regenerated at `ca363178d` and match on every
+anchor turn. Unit pins cover the push order, the post-trim window and the
+`Some("")` gate.
+
 #### 2026-10-01 — docs(porting): P4.D242 lane record — the gate, the tier-3 three-state table, and the pipeline-family A10 blindness
 
 _Docs-only change._

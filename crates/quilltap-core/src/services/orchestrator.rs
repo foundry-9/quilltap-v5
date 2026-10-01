@@ -4518,6 +4518,7 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         all_participants,
         participant_characters,
         messages_with_participants: None,
+        human_turn_message_ids: None, // P4.D243 — P4.133 preserves (filled by `build_message_context`, like the line above)
         tool_instructions: args.tool_instructions,
         timestamp_config: args.timestamp_config.clone(),
         is_initial_message: false,

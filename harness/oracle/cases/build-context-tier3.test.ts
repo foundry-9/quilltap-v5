@@ -92,6 +92,10 @@ interface Op {
   /** P4.106 item 1: the swipe re-apply arm — `buildContext`'s
    *  `regenerationOfMessageIds` (the target + its swipe group). */
   regenerationOfMessageIds?: string[];
+  /** P4.D243 (v4 `ca363178d`): `options.humanTurnMessageIds` — the human's own
+   *  turn ids, the chained-turn scene note's feed (a `Set` in v4). Absent = no
+   *  note, which every older op is. */
+  humanTurnMessageIds?: string[];
   activeUserParticipantId?: string;
   participants?: Array<{
     id: string;
@@ -447,6 +451,9 @@ async function main(): Promise<void> {
     }
     if (op.regenerationOfMessageIds) {
       options.regenerationOfMessageIds = op.regenerationOfMessageIds;
+    }
+    if (op.humanTurnMessageIds) {
+      options.humanTurnMessageIds = new Set(op.humanTurnMessageIds);
     }
     if (op.distillEnabled) {
       options.cheapLLMSelection = cheapLLMSelection;

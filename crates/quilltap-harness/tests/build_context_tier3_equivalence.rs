@@ -120,6 +120,11 @@ struct SpecOp {
     /// P4.106 item 1: the swipe re-apply arm (`regenerationOfMessageIds`).
     #[serde(default)]
     regeneration_of_message_ids: Option<Vec<String>>,
+    /// P4.D243: `options.humanTurnMessageIds` (`string[]` → a `Set` on the
+    /// oracle side) — the chained-turn scene note's feed. Absent = no note,
+    /// which is every op that predates the feature (the neutrality leg).
+    #[serde(default)]
+    human_turn_message_ids: Option<Vec<String>>,
     /// P4.D164: what `getCompiledIdentityStack` answers for this op (absent =
     /// the fresh build). The whitespace arm pins v4's truthiness asymmetry.
     #[serde(default)]
@@ -927,6 +932,10 @@ async fn build_context_tier3_matches_oracle() {
                         .collect(),
                 )
             },
+            human_turn_message_ids: op
+                .human_turn_message_ids
+                .as_ref()
+                .map(|v| v.iter().cloned().collect()),
             pre_searched_query_embedding: op.pre_searched_query_embedding.as_ref().map(|q| {
                 quilltap_core::services::memory_service::SearchQueryEmbedding {
                     query: q.query.clone(),
