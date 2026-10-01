@@ -109,6 +109,10 @@ pub fn build_user_narration_anchor(input: &BuildUserNarrationAnchorInput<'_>) ->
         return String::new();
     };
 
+    // v4's role test carries `!(m.id && humanIds.has(m.id))`, kept verbatim.
+    // MEASURED (P4.D243's M5): it is inert — every row it reads sits AFTER
+    // the LAST row whose id is in the set, so no such row can be in the set.
+    // Dropping it is an equivalent mutation; no input can tell them apart.
     let character_spoke_since = window[last_human_index + 1..].iter().any(|m| {
         m.role.to_lowercase() == "assistant"
             || (m.participant_id.is_some_and(|p| !p.is_empty()) && !is_human(m.id))
@@ -257,7 +261,8 @@ mod tests {
             row("user", Some(""), Some("p-b")),
         ];
         assert_ne!(build(true, false, &w, Some(&h), "Owen", None), "");
-        // A second human seat after the human is not a character (M5's row).
+        // A second human seat writing last is itself the last human, so nothing
+        // follows it (see the role test's note on why its human conjunct is inert).
         let w = [
             row("user", Some("u1"), Some("p-user")),
             row("user", Some("u2"), Some("p-user-2")),

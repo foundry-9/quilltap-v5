@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — docs(porting): P4.D243 lane record; the scene note's inert role-test conjunct noted
+
+_Versions: core 0.0.1130._
+
+Appends the P4.D243 lane record to the status log and marks the order
+LANE COMPLETE. A code comment in `user_narration_anchor.rs` records that
+v4's role-test conjunct `!(id in humanIds)` is inert. It only reads rows after
+the last human row, so none of them can be a human row, and the M5 mutation
+cannot be caught. No behavior change.
+
 #### 2026-10-01 — feat(context): the chained-turn scene note — v4 `ca363178d` part (d) (P4.D243)
 
 _Versions: core 0.0.1129, harness 0.0.1052._

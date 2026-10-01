@@ -158022,3 +158022,187 @@ whose extraction call (LLM Inspector) shows the ordered heading and the
 AGREEMENTS block in both bodies; a turn ending on a character's condition
 storing "…; <name> had not yet responded"; a fold with the new episode
 sentence; an empty-question Carina run keeping `TURN TRANSCRIPT:`.
+
+## P4.D243 — the chained-turn scene note (v4 `ca363178d` part (d)) — LANE COMPLETE (2026-10-01)
+
+**Branch:** `claude/chained-turn-scene-note-a74ec8` (cut from `main`
+`382897470`). **Pin:** `ca363178d` (`/tmp/qt-v4-pin-p4d243-ca363178d`; marker
+`lib/chat/context/user-narration-anchor.ts` present, absent at the baseline
+pin `/tmp/qt-v4-pin-p4d243-97b25fc53`). The §2 probe passed at lane start and
+before every regen batch (v4 `main` CLEAN at `ca363178d`, both logs empty).
+Versions: core 0.0.1128 → 0.0.1130 (two commits), harness 0.0.1051 →
+0.0.1052. No host/web/cli/tauri/SPA file touched.
+
+### Landed (Tier 1 whole, Tier 2 whole)
+1. **The module** `crates/quilltap-core/src/user_narration_anchor.rs` (+ one
+   `pub mod`): `render_user_narration_anchor` + `build_user_narration_anchor`
+   over `NarrationWindowRow` views, `Option<&HashSet<String>>` ids, a
+   `NameForParticipant` callback; every v4 truthiness test spelled out
+   (`""` id never matches, `""` pid is no character, `""` seat name falls
+   back); v4's DEBUG line at `target: "chat.context.user-narration-anchor"`
+   with `context, historyWindowSize, lastHumanIndex, resolvedFromSeat`
+   (a NAME comparison) on the applying path only. 4 unit tests (v4's eight
+   cases, the truthiness rows, the capture pin per arm + its silence leg).
+2. **The wiring** in `build_context.rs`: `BuildContextInput.human_turn_message_ids:
+   Option<HashSet<String>>` ("absent → no note"); the computation between the
+   turn-skip note and the `if let Some(new_user_message)` branch, over the
+   POST-trim `selected_messages`, `user_name` = `user_character.name` filtered
+   non-empty else `User`, the seat closure over ALL `all_participants` →
+   `participant_characters`; `has_new_user_message` as v4's `!!`; NO
+   continue-mode gate; the `else if` gains the anchor as its FIRST disjunct
+   and `trailing_only` is `[anchor, progressions, turn_skip]`. **Hunk census:**
+   the first-responder branch (`if let Some(new_user_message)`) is UNTOUCHED —
+   `git diff main` shows hunks only at the struct tail, the new computation
+   block, the `else if` head + comment + array, and the two test literals.
+   5 call-site unit pins (`inter_character_log_tests::narration_anchor`):
+   trailing user message with no name/metadata/cache_control; order with
+   turn-skip (`Scene note:` before `[NOTHING TO ADD]`, the separator); ids
+   outside the window ≡ no ids (messages `==`); a new user message makes the
+   ids inert (`==`, no DEBUG line); `Some("")` is no new message to the
+   anchor's gate (the DEBUG line fires).
+3. **The feed:** ONE line in `message_context.rs`
+   (`build_input.human_turn_message_ids = Some(user_turn_message_ids.clone());`
+   beside `messages_with_participants`); ONE marked line in
+   `orchestrator.rs`'s `build_context_input` literal
+   (`human_turn_message_ids: None, // P4.D243 — P4.133 preserves …`).
+   `git diff main -- services/orchestrator.rs` = exactly that one line. The
+   live-fill proof is family-level (M6 below) — no cheap unit seam exists
+   (`build_message_context` has no unit harness; its params need a DB + a
+   resolved chat), so the orchestrator/regenerate regen IS the pin, proven by
+   mutation.
+4. **NEW tier-1 family** `user_narration_anchor_equivalence`
+   (`harness/oracle/cases/user-narration-anchor.ts`, v4's REAL module; v4's
+   real `logger` instance wrapped so each row records its debug calls with
+   key order). 3 render + 30 build rows (15 applying / 15 silent): v4's eight
+   cases + the D-trap rows (null vs undefined vs empty id sets, `""` pid,
+   `""` id with a pid, `""` in the id set, a second human seat, uppercase
+   and mixed-case assistant, removed seat, empty seat name, seat name ==
+   userName, seat name differs, last-human-not-last-user, human id outside
+   the window, `hasNew` with ids, empty window, empty userName, whisper then
+   character). **Red-first** with the module stubbed to `""`: red at the
+   first applying row (`v4-applies`; 15 applying rows); green after. At the
+   baseline pin the case cannot import (the module does not exist) — the
+   both-directions marker.
+5. **`build_context_tier3` grown 47 → 58 ops**, the `humanTurnMessageIds` op
+   field on both sides (`string[]` → `Set` in the case; `Option<Vec<String>>`
+   → `HashSet` in the driver). New ops — FIRE: `narration_anchor_chained_multi_applies`,
+   `_with_turn_skip`, `_continue_mode`, `_with_progressions` (seat-named
+   `Bea` where the fallback says `Charlie`; `[anchor, progressions]`),
+   `_progressions_and_turn_skip` (all three, v4's order),
+   `_unseated_author_falls_back`; NEUTRAL: `_ids_absent`,
+   `_human_summary_anchored`, `_first_responder_with_ids`, `_human_last`,
+   `_human_trimmed_by_budget` (the human row trimmed out of the POST-trim
+   window by the reserved-outgoing squeeze; 48 messages kept). Every older op
+   is the neutrality leg and stayed byte-identical. Red-first (anchor stubbed)
+   on the first firing op `narration_anchor_chained_multi_applies`; green.
+6. **`orchestrator_tier3` + `regenerate_swipe_tier3` regenerated at the pin**
+   (regen ONLY — no driver/case/spec edit). **Actual firing lists vs §R.5's
+   prediction:** orchestrator — **21 streams**: every chained leg of
+   `noncontinue_two_llm_maxdepth` (20, `Operator` = the `{{user}}` fallback,
+   the posted human row having no seat) + `rehydrate_user_attachments` (1,
+   seat-named `Operator`). **PREDICTED BUT NOT FIRING (measured in v4, not a
+   port gap):** `commonplace_strip`, `tool_whisper_filter`, `disabled_tools`,
+   `textblock_mode`, `tool_settings_changed`, `sentinel_prose` — their seeded
+   rows carry no `createdAt`, so v4's tie order puts the human row LAST in
+   the window (e.g. `sentinel_prose` sends `[Friday] As I was saying…` then
+   `[Operator] Tell us more of the ledger.`); nothing has answered since, so
+   v4 returns `''`. The survey read the corpus order, not the window order.
+   Predicted-NOT list held. regenerate-swipe — **2 distinct canned
+   streams**, both on the 20-turn long-history chat (`Operator`; the red-first
+   run names `plain_swipe_long_history` as the first to miss — the
+   case→stream mapping beyond that was not separately measured, since canned
+   streams are keyed by request, not by case); `first_regen` did NOT fire.
+   Red-first (anchor stubbed): orchestrator red on `noncontinue_two_llm_maxdepth`
+   (event trace) + a stream-key miss on `rehydrate_user_attachments`;
+   regenerate-swipe red on `plain_swipe_long_history`. Green after on every
+   anchor turn.
+7. **Mutation proofs** (each applied to the committed tree, run, restored by
+   `git checkout`): **M1** (window → pre-trim `messages_to_process`) →
+   `build_context_tier3` red on `narration_anchor_human_trimmed_by_budget`.
+   **M2** (continue-mode gate) → `build_context_tier3` red on
+   `narration_anchor_continue_mode` AND `orchestrator_tier3` red
+   (`noncontinue_two_llm_maxdepth` — its chained legs are continue-mode).
+   **M3** (anchor pushed last) → the unit pin `the_note_leads_the_turn_skip_note`
+   + `build_context_tier3` `narration_anchor_with_turn_skip`. **M4**
+   (`is_some()`) → the unit pin `an_empty_new_user_message_is_no_new_message_to_the_gate`.
+   **M5 SURVIVED — an EQUIVALENT mutant, measured:** v4's role-test conjunct
+   `!(m.id && humanIds.has(m.id))` only ever reads rows AFTER `lastHumanIndex`,
+   the LAST row whose id is in the set, so no such row can be in the set — the
+   conjunct is always true and no input can redden its removal. The order's
+   M5 premise ("a two-human-seat row reddens") is false; the conjunct is kept
+   verbatim with a code comment naming the measurement, and the unit test's
+   comment that called its row "M5's" was corrected (commit 2). **M6** (fill
+   line removed) → `orchestrator_tier3` red (`noncontinue_two_llm_maxdepth`)
+   AND `regenerate_swipe_tier3` red (`plain_swipe_long_history`) while all 9
+   unit pins stay GREEN — the silent-loss shape, proven loud at family level.
+   **M7** (`resolvedFromSeat` = "came from a seat") → tier-1 red (`v4-applies`
+   debug line) + the unit capture pin.
+8. **`historyTailHash`:** between the baseline- and pin-regenerated
+   orchestrator oracles, 9 of 63 distinct `historyTailHash` values move
+   (the anchor turns — the former tail enters the hashed history); v5's
+   `CHAT_MESSAGE` rows match the pin oracle on every one (no llm_logs cell
+   differs outside the sibling row below). Both version constants untouched.
+9. **The pre-existing `Some("")` branch gap — REACHABLE, a NAMED follow-up:**
+   v4's `sendMessageSchema` defaults `content` to `''` and accepts it with
+   attached files or `pendingToolResults` (`orchestrator.service.ts:153,165-170`);
+   v4 then sends `newUserMessage: ''`, which buildContext's `if (newUserMessage)`
+   routes to the CHAINED branch (no empty user message pushed; the scene note
+   rides). v5's `orchestrator.rs:1836-1843` builds `Some("")` for any
+   non-continue turn without a prefix and `build_context`'s `if let Some(..)`
+   takes the FIRST-RESPONDER branch (an empty user message + trailing sections
+   pushed; the note is computed — its DEBUG line fires — but not pushed).
+   Out of this lane's mandate (the first-responder branch was fenced); the
+   fix is `build_context`'s branch test becoming v4's truthiness, with a
+   tier-3 op on an empty new message. **Follow-up: "P4.D243-F1 — the empty
+   new-user-message branch".**
+
+### Deferred (Tier 3, loud)
+- `help/chat-multi-character.md` ("Your Narration Stands") — P4.D240's tree copy.
+- Spec §9.4 (curing the stopped-turn race itself) — out of scope, as in v4.
+- A dedicated chained-multi orchestrator CASE — the regen proves the corpus
+  fires; **named for P4.133** (this round's orchestrator-driver editor) or
+  whoever next edits it. Worth seeding `createdAt` on the six cases above so
+  the anchor fires where the survey expected.
+
+### Sibling reds seen and NOT ported (cross-lane rule)
+- **`orchestrator_tier3` `summary_fold` — a NEW P4.D242 red §R.5 did not
+  name:** one `llm_logs` row pair (`SUMMARIZATION`, chat `c860cf74…`) — the
+  fold EPISODE pass's canned key misses because v4's `FOLD_EPISODE_PROMPT`
+  gained "An episode records what was said and done, not what was agreed…"
+  at the pin (`memory-tasks.ts @@ -1089`); the sentence is in the pin oracle
+  (1) and absent from the baseline oracle (0) and from v5 core. Measured
+  both ways: unported v5 vs the BASELINE oracle is fully green; this lane vs
+  the pin oracle differs ONLY on that pair. The unifier's §S.2 regen on the
+  union should go green once P4.D242's prompt lands.
+- `cli_differential` 266 / 1 (`db raw blob read`) — P4.D240's designed red.
+- `builtin_prompt_templates_guard` (`the_vendored_catalogue_equals_v4s_shipped_prompts`)
+  — P4.D241's designed red.
+- P4.133's two-key case: not present on this branch (no orchestrator driver
+  edit here).
+
+### Gate
+fmt clean; clippy `-D warnings` clean in both feature sets (after a
+`type_complexity` fix — the `NameForParticipant` alias); `cargo build
+--workspace --release` clean; `QT_V4_CHECKOUT=<pin> cargo test --workspace
+--no-fail-fast` with the lane's env block (the four families + fixtures,
+`TZ=UTC`, Node 24.13.1 on PATH): **656 test binaries / 4,037 passed / 3
+failed / 3 ignored, zero `SKIP` lines** — the three reds exactly the sibling
+reds above; every family this lane touched RAN (tier-1 30 rows,
+`build_context_tier3` 58 ops in 0.43 s, `orchestrator_tier3` 4.5 s,
+`regenerate_swipe_tier3` both tests). `dispatch_wrong_type_census` ran
+unmoved (in the workspace run, green). Commit 2 is a comment + version
+bump; re-gated by fmt, core clippy and the module tests. No SPA file
+touched (no SPA gate needed).
+
+### Regen recipes (lane-private staging; committed headers stay canonical)
+- tier-1: `cd /tmp/qt-v4-pin-p4d243-ca363178d && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx $V5W/harness/oracle/cases/user-narration-anchor.ts > /tmp/oracle-user-narration-anchor.ndjson`;
+  run with `QT_ORACLE_USER_NARRATION_ANCHOR=…`.
+- `build_context_tier3`, `orchestrator_tier3`, `regenerate_swipe_tier3`:
+  their committed headers verbatim, from the pin worktree, `TZ=UTC`.
+
+### 💸 for the walk
+A Friday-copy multi-character chat: Continue after a character's reply →
+`Scene note:` as the LAST user message in the LLM Inspector, named from the
+human's seat; the first responder of a new message shows none; a 1:1 chat
+with a persona seat shows it on Nudge; the DEBUG line with `resolvedFromSeat`
+true when the seat name differs from the `{{user}}` name.
