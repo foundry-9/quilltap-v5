@@ -80,3 +80,74 @@ async fn foreign_hostname_fresh_heartbeat_refuses_the_boot_with_v4s_sentence() {
     assert_eq!(after["pid"], 4242);
     assert_eq!(after["hostname"], "elsewhere-host");
 }
+
+/// Dogfood finding #134 — a boot that fails AFTER this process took the lock
+/// is the boot's own failure, not a lock conflict with itself.
+///
+/// v4 sets `lock-conflict` only when ACQUISITION fails
+/// (`startupState.setInstanceLockConflict`, read by `app/api/health/route.ts`);
+/// any later failure is reported as itself. v5 re-reads the lock file after
+/// every `BootError::Assemble` to classify, so a failure past acquisition found
+/// the lock this very process had written — alive, same host — and answered
+/// 409 `held by PID <self> on this host`. Measured on the Friday copy: a mount
+/// index whose `doc_mount_file_links.relativePath` had been renamed (the
+/// P4.131 plant shape) failed the built-in seed, and `/health` blamed the
+/// server's own PID while the real error reached no surface and no log.
+#[test]
+fn a_failure_after_acquisition_is_not_a_conflict_with_ourselves() {
+    use quilltap_core::api::BootError;
+    use quilltap_host::host::HostError;
+    use quilltap_web::{classify_boot_failure, state::StartupStatus};
+
+    let base = common::materialize_bare_instance();
+    let lock_path = base.path().join("data/quilltap.lock");
+    let write_lock = |pid: u32| {
+        let now = quilltap_core::clock::now_iso();
+        let host = quilltap_host::lock::hostname();
+        std::fs::write(
+            &lock_path,
+            format!(
+                r#"{{"pid": {pid}, "hostname": "{host}", "startedAt": "{now}",
+"lastHeartbeat": "{now}", "environment": "local", "processTitle": "quilltap-web",
+"processArgv0": "quilltap-web", "history": []}}"#
+            ),
+        )
+        .unwrap();
+    };
+    let failure = || {
+        HostError::Boot(BootError::Assemble(
+            "built-in seed failed: no such column: relativePath".to_string(),
+        ))
+    };
+    let own = std::process::id();
+
+    // Our own live lock: the failure is reported as itself (503 surface).
+    write_lock(own);
+    match classify_boot_failure(&failure(), base.path(), own) {
+        StartupStatus::Failed { message } => assert_eq!(
+            message,
+            "engine assembly failed: built-in seed failed: no such column: relativePath"
+        ),
+        other => panic!("expected Failed, got {}", status_name(&other)),
+    }
+
+    // Guard: a DIFFERENT live process on this host still reads as a conflict
+    // (this process's PID stands in as "alive"; we only claim it is another's).
+    write_lock(own);
+    match classify_boot_failure(&failure(), base.path(), own.wrapping_add(1)) {
+        StartupStatus::LockConflict { lock_conflict, .. } => assert_eq!(
+            lock_conflict["reason"],
+            format!("held by PID {own} on this host")
+        ),
+        other => panic!("expected LockConflict, got {}", status_name(&other)),
+    }
+}
+
+fn status_name(s: &quilltap_web::state::StartupStatus) -> &'static str {
+    use quilltap_web::state::StartupStatus::*;
+    match s {
+        Running(_) => "Running",
+        LockConflict { .. } => "LockConflict",
+        Failed { .. } => "Failed",
+    }
+}

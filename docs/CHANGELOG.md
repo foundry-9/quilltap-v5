@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-30 — fix(web): a boot failure after the lock is taken is reported as itself, not as a lock conflict with the server's own PID (dogfood #134)
+
+_Versions: web 0.0.205._
+
+`boot_startup_status` re-read the instance lock after any `BootError::Assemble`
+to decide whether the failure was a lock conflict. A failure that happened
+after this process acquired the lock found its own fresh lock and served 409
+`lock-conflict` "held by PID <self> on this host"; the real error appeared in
+no log. v4 reports `lock-conflict` only when acquisition fails. The new
+`classify_boot_failure` treats a lock held by the current PID as no conflict
+and logs every boot failure at ERROR on `quilltap::boot`. Found on the
+2026-09-30 dogfood walk with a planted mount-index column. New test in
+`lock_conflict_boot_status.rs` (own PID → `Failed` with the message; another
+live PID → `LockConflict`), mutation-checked.
+
 #### 2026-09-30 — docs(porting): rule the POSIX-`TZ` display divergence CLOSED (Option V) — ordered as the recorded-divergences round's item (k)
 
 _Versions: core 0.0.1128, harness 0.0.1051 (doc comments only)._

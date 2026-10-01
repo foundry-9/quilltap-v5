@@ -101,7 +101,7 @@ mod query;
 // === end P4.9f1 ===
 
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -109,7 +109,8 @@ use axum::routing::{get, post};
 use axum::Router;
 use quilltap_core::api::BootError;
 use quilltap_core::clock::now_unix_ms;
-use quilltap_host::lock::{classify_lock_status, instance_lock_path, LockStatus};
+use quilltap_host::host::HostError;
+use quilltap_host::lock::{classify_lock_status, instance_lock_path, read_lock_file, LockStatus};
 use quilltap_host::{Host, HostConfig};
 use serde_json::json;
 
@@ -697,29 +698,42 @@ pub fn boot_startup_status(config: HostConfig) -> StartupStatus {
     let base_dir = config.base_dir.clone();
     match Host::start(config) {
         Ok(host) => StartupStatus::Running(Box::new(host)),
-        Err(e) => {
-            let message = e.to_string();
-            // Classify a lock conflict for the 409 body (read-only — the
-            // classifier never modifies the lock file).
-            let is_assemble = matches!(
-                e,
-                quilltap_host::host::HostError::Boot(BootError::Assemble(_))
-            );
-            if is_assemble {
-                let lock_path = instance_lock_path(&base_dir);
-                match classify_lock_status(&lock_path, now_unix_ms()) {
-                    LockStatus::Active { reason } | LockStatus::Suspect { reason } => {
-                        return StartupStatus::LockConflict {
-                            message,
-                            lock_conflict: json!({ "reason": reason }),
-                        };
-                    }
-                    _ => {}
+        Err(e) => classify_boot_failure(&e, &base_dir, std::process::id()),
+    }
+}
+
+/// Fold a [`Host::start`] failure into the served status.
+///
+/// v4 reports `lock-conflict` only when lock ACQUISITION fails
+/// (`startupState.setInstanceLockConflict`, read by `app/api/health/route.ts`);
+/// v5's `BootError::Assemble` carries a string, so the conflict is recovered by
+/// re-reading the lock file (read-only — the classifier never modifies it). A
+/// lock this very process holds is not a conflict: it means acquisition
+/// SUCCEEDED and a later assembly step failed (dogfood finding #134 — a seed
+/// failure past acquisition was served as `held by PID <self> on this host`,
+/// the real error on no surface and in no log). The failure is logged here
+/// either way, since nothing else records it.
+pub fn classify_boot_failure(e: &HostError, base_dir: &Path, own_pid: u32) -> StartupStatus {
+    let message = e.to_string();
+    let is_assemble = matches!(e, HostError::Boot(BootError::Assemble(_)));
+    if is_assemble {
+        let lock_path = instance_lock_path(base_dir);
+        let held_by_us = read_lock_file(&lock_path).is_some_and(|l| l.pid == own_pid);
+        if !held_by_us {
+            match classify_lock_status(&lock_path, now_unix_ms()) {
+                LockStatus::Active { reason } | LockStatus::Suspect { reason } => {
+                    tracing::error!(target: "quilltap::boot", error = %message, reason = %reason, "Startup refused: the instance lock is held elsewhere");
+                    return StartupStatus::LockConflict {
+                        message,
+                        lock_conflict: json!({ "reason": reason }),
+                    };
                 }
+                _ => {}
             }
-            StartupStatus::Failed { message }
         }
     }
+    tracing::error!(target: "quilltap::boot", error = %message, "Startup failed: the engine did not assemble");
+    StartupStatus::Failed { message }
 }
 
 /// Assemble the shared state around a startup status.
