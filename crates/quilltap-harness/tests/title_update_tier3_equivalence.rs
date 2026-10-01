@@ -121,6 +121,9 @@ struct CannedTitleProvider {
     /// `deleteInFlight`, the same raw `DELETE FROM chats` on both sides, so
     /// the chokepoint's re-read finds nothing (its `missing` outcome).
     delete_in_flight: Option<(Db, String)>,
+    /// P4.133 (dogfood #133): the key each KEYED call received — the oracle's
+    /// `sentKeys` on the lifted-mock cases.
+    sent_keys: std::sync::Mutex<Vec<String>>,
 }
 
 /// The hand rename `mid_flight` plants (the oracle's `MID_FLIGHT_TITLE`).
@@ -136,6 +139,17 @@ fn key_for_system_prompt(system: &str) -> &'static str {
 }
 
 impl CompletionProvider for CannedTitleProvider {
+    async fn send_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &CompletionParams,
+    ) -> Result<CompletionResponse, CompletionError> {
+        self.sent_keys.lock().unwrap().push(api_key.to_string());
+        self.send_message(provider, base_url, params).await
+    }
+
     async fn send_message(
         &self,
         _provider: &str,
@@ -570,6 +584,26 @@ fn title_update_matches_oracle() {
             false,
             "",
         ),
+        // ── P4.133 (dogfood #133): the oracle's key mock LIFTED. The profile's
+        // own key, with a first-inserted key for the provider no profile names
+        // (the old provider scan's pick); and no key at all → v4's throw,
+        // caught into `{success:false}`.
+        (
+            "profile_bound_key_sent",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            None,
+            false,
+            "",
+        ),
+        (
+            "no_key_refuses",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            None,
+            false,
+            "",
+        ),
     ];
     let now_iso = quilltap_core::clock::iso_from_unix_ms(spec.frozen_now_ms);
     // Shape, not a hand-written count: every oracle row is driven, and only those.
@@ -592,8 +626,29 @@ fn title_update_matches_oracle() {
                 .then(|| (db.clone(), chat_id.to_string(), now_iso.clone())),
             delete_in_flight: (name == "deleted_mid_flight")
                 .then(|| (db.clone(), chat_id.to_string())),
+            sent_keys: std::sync::Mutex::new(Vec::new()),
         };
-        let executor = CheapLlmTaskExecutor::new();
+        // P4.133: the lifted cases resolve the key for REAL — a logging
+        // executor carries the `Db` + user the resolution reads (a bare one
+        // has nothing to resolve against, which is the twin of v4's mock on
+        // every other case).
+        let lifted = matches!(name, "profile_bound_key_sent" | "no_key_refuses");
+        if name == "profile_bound_key_sent" {
+            plant_bound_key(&rt, &db, user_id, &spec.connection_profile_id);
+        }
+        let executor = if lifted {
+            CheapLlmTaskExecutor::with_logging(
+                quilltap_core::services::cheap_llm_exec::CheapLlmLogConfig {
+                    db: db.clone(),
+                    user_id: user_id.to_string(),
+                    chat_id: Some(chat_id.to_string()),
+                    message_id: None,
+                    ctx: quilltap_core::services::llm_logging::LogContext::none(),
+                },
+            )
+        } else {
+            CheapLlmTaskExecutor::new()
+        };
         let payload = TitleUpdatePayload {
             chat_id: chat_id.to_string(),
             connection_profile_id: spec.connection_profile_id.clone(),
@@ -621,6 +676,30 @@ fn title_update_matches_oracle() {
         if want_threw.is_some() {
             eprintln!("[{name}] OK (threw).");
             continue;
+        }
+
+        if lifted {
+            let got_keys = provider.sent_keys.lock().unwrap().clone();
+            let want_keys: Vec<String> = want["sentKeys"]
+                .as_array()
+                .unwrap_or_else(|| panic!("[{name}] oracle carries no sentKeys — regenerate from THIS tree's case (P4.133)"))
+                .iter()
+                .map(|k| k.as_str().unwrap().to_string())
+                .collect();
+            let expected: &[&str] = if name == "profile_bound_key_sent" {
+                &["k-title-bound"]
+            } else {
+                &[]
+            };
+            assert_eq!(
+                want_keys, expected,
+                "[{name}] v4 no longer records the arm's key — the arm measures nothing"
+            );
+            if got_keys != want_keys {
+                eprintln!("[{name}] KEY MISMATCH: got {got_keys:?} / want {want_keys:?}");
+                failed.push(name.to_string());
+                continue;
+            }
         }
 
         let got = dump_state(&db, chat_id);
@@ -695,6 +774,7 @@ fn title_update_runner_registration_e2e() {
                 throw_message: String::new(),
                 mid_flight: None,
                 delete_in_flight: None,
+                sent_keys: Default::default(),
             },
             executor: CheapLlmTaskExecutor::new(),
             cost: NoMessageCost,
@@ -842,6 +922,7 @@ fn capture_replies(
                 throw_message: "canned provider failure".to_string(),
                 mid_flight: None,
                 delete_in_flight: None,
+                sent_keys: Default::default(),
             };
             let payload = TitleUpdatePayload {
                 chat_id: chat_id.to_string(),
@@ -1283,6 +1364,7 @@ fn renamed_by_hand_debug_fires_only_on_a_mid_flight_rename() {
                 throw_message: String::new(),
                 mid_flight: mid_flight.then(|| (db.clone(), chat_id.to_string(), now_iso.clone())),
                 delete_in_flight: None,
+                sent_keys: Default::default(),
             };
             let payload = TitleUpdatePayload {
                 chat_id: chat_id.to_string(),
@@ -1358,6 +1440,7 @@ fn chat_vanished_debug_fires_only_when_the_chat_is_deleted_mid_flight() {
                 throw_message: String::new(),
                 mid_flight: rename.then(|| (db.clone(), chat_id.clone(), now_iso.clone())),
                 delete_in_flight: vanish.then(|| (db.clone(), chat_id.clone())),
+                sent_keys: Default::default(),
             };
             let payload = TitleUpdatePayload {
                 chat_id: chat_id.clone(),
@@ -1407,4 +1490,41 @@ fn chat_vanished_debug_fires_only_when_the_chat_is_deleted_mid_flight() {
     let lines = drive("vanished_debug_silent", false, false);
     one(&lines, "[Auto Title] Chat retitled");
     none(&lines, VANISHED);
+}
+
+/// P4.133: the oracle's `plantBoundKey`, statement for statement — the fixture
+/// predates the `api_keys` table; `k-title-first` is inserted FIRST (no profile
+/// names it), then `k-title-bound`, which the cheap profile is bound to. Both
+/// owned by the job's user (the cheap lookup is user-scoped).
+fn plant_bound_key(rt: &tokio::runtime::Runtime, db: &Db, user_id: &str, profile_id: &str) {
+    let (uid, pid) = (user_id.to_string(), profile_id.to_string());
+    rt.block_on(db.write(move |w| {
+        let c = w.main().connection();
+        c.execute_batch(
+            "CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, userId TEXT NOT NULL, \
+             label TEXT NOT NULL, provider TEXT NOT NULL, key_value TEXT NOT NULL, \
+             isActive INTEGER DEFAULT 1, lastUsed TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)",
+        )?;
+        let provider: String = c.query_row(
+            "SELECT provider FROM connection_profiles WHERE id = ?1",
+            [&pid],
+            |r| r.get(0),
+        )?;
+        for (id, value) in [
+            ("f1133000-0000-4000-8000-000000000001", "k-title-first"),
+            ("b1133000-0000-4000-8000-000000000002", "k-title-bound"),
+        ] {
+            c.execute(
+                "INSERT INTO api_keys (id, userId, label, provider, key_value, isActive, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'p4133', ?3, ?4, 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![id, uid, provider, value],
+            )?;
+        }
+        c.execute(
+            "UPDATE connection_profiles SET apiKeyId = ?1 WHERE id = ?2",
+            rusqlite::params!["b1133000-0000-4000-8000-000000000002", pid],
+        )?;
+        Ok(())
+    }))
+    .expect("plant the bound key");
 }

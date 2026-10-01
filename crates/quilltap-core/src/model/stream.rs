@@ -522,6 +522,30 @@ pub trait StreamingCompletionProvider {
         base_url: Option<&str>,
         params: &StreamParams,
     ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send;
+
+    /// The profile-bound variant (P4.133, dogfood #133): v4's
+    /// `streamMessage(params, apiKey)` — the key the effective connection
+    /// profile names, resolved by the caller (the participant resolver, the
+    /// understudy / reroute resolvers, the bug-81 composite) and handed to the
+    /// provider with the call. Every v4 chat call sends a key resolved this way;
+    /// none scans the `api_keys` table by provider.
+    ///
+    /// Implementations that build real wire input (core's
+    /// [`WireStreamingProvider`](crate::model::streaming_provider::WireStreamingProvider))
+    /// override this and put `api_key` on the wire — `""` included, which is
+    /// v4's bare send for a profile with no key. The default ignores the key and
+    /// answers [`stream_message`](Self::stream_message) — correct for canned /
+    /// test providers, whose canned keys deliberately do not see the auth.
+    fn stream_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &StreamParams,
+    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        let _ = api_key;
+        self.stream_message(provider, base_url, params)
+    }
 }
 
 /// `Arc<T>` is a [`StreamingCompletionProvider`] whenever `T` is (delegating to
@@ -538,6 +562,19 @@ impl<T: StreamingCompletionProvider> StreamingCompletionProvider for Arc<T> {
         params: &StreamParams,
     ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
         (**self).stream_message(provider, base_url, params)
+    }
+
+    // Forwarded explicitly: the defaulted body would resolve against Arc's own
+    // `stream_message` and silently drop the inner type's override — the
+    // production streaming provider is held as an `Arc` (P4.133's M1).
+    fn stream_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &StreamParams,
+    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        (**self).stream_message_keyed(provider, base_url, api_key, params)
     }
 }
 

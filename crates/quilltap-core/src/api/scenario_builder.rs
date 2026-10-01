@@ -346,6 +346,9 @@ pub fn scenario_builder_prepare(
         .unwrap_or(ProfileApiKeyResolution::Failed(
             crate::services::api_key_service::ProfileApiKeyFailure::ApiKeyNotFound,
         ));
+    // The Ok key is what the run SENDS (v4 `route.ts:155`, P4.133): the
+    // one-shot loop resolves this same composite over this same row, because
+    // the build request (constructed by the frozen engine) has no key field.
     if let ProfileApiKeyResolution::Failed(reason) = resolution {
         return Err(Response::error(ErrorKind::BadRequest, reason.describe()));
     }

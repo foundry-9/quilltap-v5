@@ -158410,3 +158410,248 @@ equivalence` 2/2, `fallback_home_guard` 2/2, `dispatch_wrong_type_census`
 without its oracle env (0.00 s) — it drives the unchanged `Propagate` wrapper.
 No SPA file touched. The two commits were gated together on the final tree
 (commit 1's tree differs only by the mail test file and the harness version).
+
+## P4.133 — the connection profile's OWN API key on every model call (dogfood #133) — LANE COMPLETE (2026-10-01)
+
+**Branch:** `claude/profile-bound-api-key-7793f0` (worktree
+`.claude/worktrees/profile-bound-api-key-7793f0`), cut from `main`
+`382897470`. **Pins:** `/tmp/qt-v4-pin-p4133-ca363178d` (the round target)
+and `/tmp/qt-v4-pin-p4133-97b25fc53` (the baseline — every green below was
+measured there, where none of the sibling lanes' drift exists; §R.3's
+"before"). §2 probe PASSED at lane start (v4 `main`, `ca363178d`, clean,
+both logs empty).
+
+### Landed (Tier 1 whole, Tier 2 items 9 + 11)
+
+- **The boundary pair (shape A).** `StreamingCompletionProvider::
+  stream_message_keyed` / `CompletionProvider::send_message_keyed`,
+  defaulted to the unkeyed method (no existing impl moved); the `Arc<T>`
+  impls forward both EXPLICITLY; core's `WireStreamingProvider` and the
+  host's `WireCompletionProvider` override them and put the handed key on
+  the request (`""` is a bare send). `ProviderKeySource` / `DbProviderKeys`
+  KEPT, consulted only by the unkeyed methods — the three §S.1 generator
+  sends are their last production callers (after §S.1, none). Unit pins in
+  both crates hold an `Arc`. `host_gateway`'s census UNMOVED (the new host
+  test reuses the module's one test construction through a helper).
+  `images_generate.rs` UNMOVED (the classifier's key now travels with
+  `classify_content`'s keyed send).
+- **Seed + send on the Salon spine.** `participant_resolver` fills
+  `api_key` as v4 (unscoped `find_by_id`, no `isActive`, `None` = v4 `''`).
+  v4's inline requires/accepts gate is ONE marked hunk in `orchestrator.rs`
+  — ⚠ at v4's POSITION (right after the courier detect, `:1216`), NOT the
+  order's `:1407-1440`: v4 throws BEFORE the identity resolve and the
+  `agentTurnCount` reset write, so a later placement would write on a
+  refused turn. The hunk shadows `resolution` with the gated key, so
+  `:1407` (`effective_api_key`'s seed) is UNTOUCHED; `git diff main`
+  shows exactly one hunk. Sent on: the primary + its retry, both tool
+  loops (from `state.effective_api_key`, v4's `streaming.effectiveApiKey`),
+  recovery (`RecoveryContext.api_key`, now consumed), the danger reroute
+  (`route.api_key`, already profile-bound).
+- **Failover / uncensored.** `restream_into` takes the key: the
+  empty-response retry sends `state`'s, the uncensored retry the
+  UNDERSTUDY's, each chain candidate ITS OWN resolved key (passed in —
+  `state` is written only after success). The chain's `[Failover]
+  Understudy has no usable API key; moving on` + `auth` + `continue` was
+  already ported. "Try uncensored": `SwipeProfileOverride.api_key`, filled
+  by the host beside the context limit through the new
+  `regenerate_swipe::override_api_key` (v4's user-scoped
+  `findApiKeyByIdAndUserId` over the row's `apiKeyId`).
+- **Cheap LLM + the classifier.** `send_to_provider` resolves
+  `get_api_key_for_cheap_llm_selection` first and throws `No API key
+  available for cheap LLM provider` before any call (a bare executor —
+  tests only — sends unkeyed). `classify_content` resolves the same and, on
+  `null`, WARNs `[Gatekeeper] No API key available for classification,
+  failing safe` on `quilltap::dangerous_content` and answers
+  `safe_fallback` (capture pin + silence leg in `gatekeeper.rs`).
+- **The other PB callers.** The greeting (`GreetingRequest.api_key`
+  finally sent), Carina, help chat, Brahma orchestrator, the one-shot loop
+  (Brahma one-shot + the Scenario Builder — the loop re-resolves the SAME
+  bug-81 composite over the SAME row, because the Scenario Builder's build
+  request is constructed by the FROZEN `api/engine.rs`; the callers' gates
+  still refuse first), image description (`file_fallback`), the connection
+  test-message (`api/settings.rs`), the wizard's two sites (v4's
+  `visionApiKey = primaryApiKey` default kept: a secondary with no key or a
+  dangling one describes with the PRIMARY's), and the head-and-shoulders
+  backfill (through `generate_field_for_caller`).
+- **The secondaries ported with v4.** An INACTIVE bound key is sent; a
+  keyless OAC profile sends `''` with a stored OAC key present.
+- **The fifteen stale comments** rewritten (`spine.rs`'s module header
+  whole) except `external_prompt.rs:19-25`, which rides §S.1.
+  `api_key_service::tests::provider_scan_is_capability_blind` REPOINTED as
+  `the_salon_gate_forwards_an_oac_key_and_drops_an_ollama_one` (the scan
+  decides no model call's key any more; the bug-81 facts now live in the
+  gate's two predicates).
+- **The instrument.** `refusal-server.py`: `QT_REFUSE_KEY` gate (401 unless
+  `Authorization == Bearer $QT_REFUSE_KEY`, before any mode) and
+  `authorization` + `keyGate` in every capture line. Smoked: `k-first` →
+  401, `k-bound` → 200.
+
+### The proofs (all at the baseline pin; red-first by mutation)
+
+- **`orchestrator_tier3`** — the v4 `requiresApiKey → false` mock REMOVED
+  (and `provider-validation` restored to its REAL module: `jest.setup.ts`
+  mocks it GLOBALLY with both predicates `true`, which first made the
+  keyless-OAC arm refuse on v4's side — measured, fixed); every non-courier
+  fixture profile bound to its own seeded key (`apiKeys` + the builder's
+  new `apiKeyRows`, explicit rows inserted FIRST); a per-call `streamKeys`
+  line on v4's side vs the keyed method's argument on v5's, compared for
+  ALL 70 cases; five new FIRST-RESPONDER cases (anchor-neutral):
+  `two_keys_profile_bound` (`k-first` inserted first, bound `k-bound` →
+  `["k-bound"]`), `inactive_key_still_sent` (`["k-inactive"]`),
+  `keyless_oac_sends_empty` (`[""]`), `keyless_requires_refuses` and
+  `dangling_key_refuses` (no stream; v4's error-frame `details` and
+  v5's `Err` both `No API key configured for this connection profile`,
+  with a silence leg over every other case). GREEN.
+- **`primary_stream_tier3`** — `stream_calls` gains `apiKey` per CALL on
+  both sides (51 `primary-key`, 25 `understudy-key`, 10 `uncensored-key`,
+  5 `spare-key`), with a floor that all three distinct keys are reached.
+  GREEN. (The order put the inactive/keyless arms here too; they landed in
+  `orchestrator_tier3`, where the RESOLVER runs — this family's state key
+  is an input.)
+- **`title_update_tier3`** — two LIFTED-mock cases (explicit
+  `requireActual`, `jest-domock-survives-resetmodules`):
+  `profile_bound_key_sent` (`k-title-first` planted first →
+  `["k-title-bound"]`) and `no_key_refuses` (`[]`, v4's throw caught into
+  the cursor-only arm). GREEN.
+- **`retry_uncensored_tier3`** — `overrideApiKey` now computed through the
+  host's own `override_api_key` over the same canned resolver v4's
+  mocked lookup reads (was an inline fudge). GREEN.
+- **Web, production assembly** — NEW
+  `crates/quilltap-web/tests/profile_bound_api_key_wire.rs`: every profile
+  on a header-capturing listener, a `k-first-*` per provider inserted
+  first, each profile bound to its own `k-bound-*`; the voice rehearsal
+  (completion) carries the SEAT profile's key, a Salon send (streaming)
+  the RESPONDER's. GREEN.
+- **Mutations:** M1 (an `Arc` forward removed) reds both unit pins AND
+  `orchestrator_tier3` (`single_basic`: `[]` vs `["key-primary"]`) —
+  ⚠ but SURVIVES the web test: the production spine hands the turn
+  `&*self.streaming` and the executor its completion by value, so neither
+  web leg goes through `Arc<T>`'s impl (recorded in the test's doc; the
+  Arc-held production seams are Carina / Brahma, `orchestrator_tier3`'s
+  shape). M2 (chain key off `state`) → 30 `primary_stream_tier3` calls
+  diverge. M3 (`isActive` filter) → `inactive_key_still_sent` `[]`. M4
+  (keyless falls to another key) → `keyless_oac_sends_empty`
+  `["scanned-key"]`. M5 (gate dropped) → `keyless_requires_refuses`
+  `[""]`. M6 (cheap send unkeyed) → both lifted title arms red. Pre-port
+  shape (primary unkeyed) → `single_basic` `[]`.
+
+### The blast radius the order did not predict — and its twins
+
+v5 now RESOLVES the cheap-LLM / classifier key and the Salon gate for real,
+so every differential whose v4 side MOCKS `getApiKeyForCheapLLMSelection`
+(to a constant) or `requiresApiKey` (→ false) over a keyless fixture redded
+on the v5 side — 14 families measured (two sweeps, 63 families, at the
+baseline pin). The twin is the mock itself, Rust-side: two THREAD-SCOPED
+test seams in `api_key_service`, armed only through
+`test_support::CannedCheapLlmKey` / `CannedRequiresApiKey` (the
+`a-process-global-test-seam-must-be-thread-scoped` shape; production never
+arms them). ⚠ **OUT-OF-MANDATE harness edits (one guard line each,
+marked `P4.133 OUT-OF-MANDATE`), no lane owns these files this round:**
+`answer_confirmation_tier3`, `appearance_sanitize_gate_tier3`,
+`cheap_llm_fallback` (the refusal test fn), `compression_tier3`,
+`danger_gatekeeper_tier3`, `enclave_step_tier3` (both guards — its case
+mocks `requiresApiKey` too), `image_generation_tier3`,
+`pascal_run_custom_handler`, `pascal_custom_tools_route`,
+`pascal_workbench_route` — all GREEN after; and
+`story_background_job_tier3`, whose case REPLACES
+`findApiKeyByIdAndUserId` with a lookup over `spec.apiKeys`: its twin plants
+those rows (the committed pair predates the `api_keys` table) — GREEN.
+Also edited: `regenerate_swipe_tier3_equivalence.rs` (one struct-literal
+line for the new `SwipeProfileOverride.api_key` — P4.D243 regenerates this
+family but edits no driver), `chat_send_smoke.rs` and
+`impersonation_voice_preview_wire.rs` (call the new
+`tests/common::bind_profile_keys` — that pair's key row belonged to a
+minted owner the generic rewrite misses, and the cheap lookup is
+user-scoped).
+
+### §S hunks for the unifier (UNAPPLIED)
+
+- **§S.1** — `docs/developer/porting/work-orders/patches/p4.133-s1-generator-keyed-sends.patch`
+  (`optimizer.rs`, `ai_import.rs`, `external_prompt.rs`; the struct field,
+  the resolved key kept instead of dropped, the keyed send, the stale
+  module doc). Verified byte-neutral BEFORE reverting:
+  `character_optimizer_tier3`, `ai_import_tier3`, `external_prompt_tier3`
+  GREEN at the baseline pin. Apply after P4.D241, then re-run the three at
+  the target pin.
+- **Fenced (P4.D242's moving families):**
+  `docs/developer/porting/work-orders/patches/p4.133-fenced-family-key-twins.patch`
+  — the guard lines for `courier_images_routes` (both guards),
+  `context_summary_service_tier3`, `memory_processor_tier3`. Measured
+  BEFORE reverting: the first two GREEN at the baseline;
+  `memory_processor_tier3` moves from a row-COUNT red to 17 vs 17 with a
+  row-CONTENT diff — the shape of its documented standing red
+  (compressed-text byte parity), not this lane's. Apply on the union.
+- **§S.2** — `orchestrator_tier3` at the TARGET pin on this lane: v4's
+  `streamKeys` are pin-neutral (identical at both pins); the Rust side
+  reds only through P4.D243's anchor — `noncontinue_two_llm_maxdepth`
+  (2 calls vs 21: its chained legs miss their canned streams), then
+  `rehydrate_user_attachments` (events), then the chain-stop pin on the
+  same case. Both on P4.D243's predicted list; classified, NOT ported. All
+  five P4.133 cases clean at both pins.
+
+### Recorded for the unifier (outside this lane's files)
+
+- `db/connection_profiles.rs:576-579` and `api/chat_send.rs:82-84` still say
+  the key is a "host-side deferred seam" / "the transport's, per provider"
+  — both false now (doc-only).
+- `api/engine.rs` is frozen: the Scenario Builder's build request carries
+  no key, hence the one-shot loop's re-resolution above.
+
+### Deferred (loud)
+
+- Tier 2 item 10 (a greeting-ladder key arm in `initial_greeting_tier3`):
+  NOT taken — the greeting's key was already resolved per rung
+  (`chat_create.rs`), this lane only made the stream SEND it; the web test
+  and `orchestrator_tier3` prove the keyed seam. Banked.
+- Tier 3 items 12-14 as ordered (the Almanack scan + auto-associate
+  unchanged; the generators by §S.1; no e2e beat).
+
+### Regen recipes (lane-private staging; never the committed paths)
+
+- `orchestrator_tier3`: `/tmp/p4133/regen-orch.sh <pin> <tag>` (stages the
+  case + spec + `pinned-draws.ts` under `/tmp/p4133/orch-stage-<tag>`,
+  builds the fixture with `QT_FIXTURE_OUT=/tmp/p4133/orch-<tag>/main.db`,
+  runs the jest case under `TZ=UTC`), then `QT_ORACLE_ORCHESTRATOR=/tmp/p4133/orch-<tag>/oracle.ndjson
+  QT_FIXTURE_ORCH_MAIN=… QT_FIXTURE_ORCH_MOUNT=… cargo test -p quilltap-harness --test orchestrator_tier3_equivalence`.
+  The committed recipe header stands; the fixture spec moved, so the
+  fixture MUST be rebuilt from it (`grep -c '"kind":"streamKeys"'` = 70).
+- Every other family: `python3 harness/tools/recipe_sweep.py --run <family>_equivalence --v4 "$PIN" --v5w <worktree> --force`
+  (the committed recipes, unchanged).
+
+### Fixtures changed (and what they invalidate)
+
+- `harness/oracle/fixtures/orchestrator-tier3.json` (+ the builder's
+  `apiKeyRows`) — regenerate `orchestrator_tier3` from the spec; P4.D243's
+  regen of this family must use the spec AS LANDED HERE (§S.2).
+- No committed real-DB pair was rebuilt.
+
+### Gate (baseline pin `97b25fc53`, `CARGO_INCREMENTAL=0`)
+fmt clean; clippy `-D warnings` clean in both feature sets; `cargo build
+--workspace --release` clean; `cargo test --workspace --no-fail-fast` with
+the lane's env block (`QT_V4_CHECKOUT` = the baseline pin; the four
+families' oracles staged under `/tmp/p4133/`): **656 binaries / 4,035
+passed / 1 failed / 3 ignored, zero `SKIP` lines** — the one red was
+`stream_watchdog_wrap_census`, which counted only `.stream_message(` while
+every production consumer now calls `.stream_message_keyed(`; fixed by
+counting both spellings as one population (`model/stream.rs`'s row 1 → 3:
+the `Arc`'s two forwards + the keyed default's delegation). ⚠ That census
+file is OUT-OF-MANDATE too (no lane owns it). Green by name after. Every
+lane family confirmed RUN (`orchestrator_tier3` 4.96 s, `primary_stream_
+tier3`, `title_update_tier3` 9/9, `retry_uncensored_tier3`,
+`profile_bound_api_key_wire` 2/2). Tier R (`cli_differential`) green
+inside the gate at the baseline pin (389 s); `dispatch_wrong_type_census`
+UNMOVED (441). `builtin_prompt_templates_guard` green here only because
+`QT_V4_CHECKOUT` named the BASELINE pin (it reds at the live checkout by
+design until P4.D241). SPA liveness: `npm ci` + `npm run build` clean (no
+`apps/web` file touched; `node_modules`/`dist` removed afterwards).
+
+### Versions
+core 0.0.1129, harness 0.0.1052, host 0.0.169, web 0.0.206.
+
+### 💸 dogfood rows
+Two NANOGPT keys on the Friday copy (the real one FIRST, a junk one
+second), a profile bound to the junk one → the turn FAILS with NanoGPT's
+401; `refusal-server.py` with `QT_REFUSE_KEY=k-bound` → a `k-first`-bound
+profile 401s, the `k-bound` profile answers, the capture line names the
+header; a Try-uncensored reroute whose captured header is the UNDERSTUDY's
+key; a cheap-LLM title on a keyless profile logging v4's throw.

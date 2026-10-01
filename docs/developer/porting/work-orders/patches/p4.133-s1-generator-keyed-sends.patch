@@ -1,0 +1,156 @@
+diff --git a/crates/quilltap-core/src/generators/ai_import.rs b/crates/quilltap-core/src/generators/ai_import.rs
+index adabc2d40..70cd71f23 100644
+--- a/crates/quilltap-core/src/generators/ai_import.rs
++++ b/crates/quilltap-core/src/generators/ai_import.rs
+@@ -1049,6 +1049,8 @@ struct ImportCallCtx<'a, CMP: CompletionProvider> {
+     completion: &'a CMP,
+     provider: String,
+     base_url: Option<String>,
++    /// The profile's own key (v4 `callLLM(provider, apiKey, …)`).
++    api_key: String,
+     model_name: String,
+     profile_parameters: Option<Value>,
+     user_id: &'a str,
+@@ -1084,7 +1086,7 @@ async fn call_llm<CMP: CompletionProvider>(
+     let start_ms = crate::clock::now_unix_ms();
+     let response = c
+         .completion
+-        .send_message(&c.provider, c.base_url.as_deref(), &params)
++        .send_message_keyed(&c.provider, c.base_url.as_deref(), &c.api_key, &params)
+         .await
+         .map_err(|e| e.message)?;
+     let duration_ms = crate::clock::now_unix_ms() - start_ms;
+@@ -1511,22 +1513,28 @@ async fn run_import_inner<CMP: CompletionProvider>(
+         })
+         .ok_or_else(|| "Connection profile not found".to_string())?;
+ 
+-    // Get API key (read-order fidelity; the seam resolves its own)
++    // Get API key — v4 `if (profile.apiKeyId)` → `findApiKeyByIdAndUserId` →
++    // `key_value`, else `''` — SENT on every call (P4.133).
++    let mut api_key = String::new();
+     if let Some(key_id) = profile
+         .get("apiKeyId")
+         .and_then(Value::as_str)
+         .filter(|s| !s.is_empty())
+     {
+         let (key_id, uid) = (key_id.to_string(), user_id.to_string());
+-        let _ = db
++        if let Some(key) = db
+             .read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))
+-            .map_err(db_msg)?;
++            .map_err(db_msg)?
++        {
++            api_key = key.key_value;
++        }
+     }
+ 
+     // Create LLM provider — `profile.baseUrl || undefined` (truthy)
+     let c = ImportCallCtx {
+         db,
+         completion,
++        api_key,
+         provider: str_of(&profile, "provider"),
+         base_url: profile
+             .get("baseUrl")
+diff --git a/crates/quilltap-core/src/generators/external_prompt.rs b/crates/quilltap-core/src/generators/external_prompt.rs
+index 229c02ad5..18080fba1 100644
+--- a/crates/quilltap-core/src/generators/external_prompt.rs
++++ b/crates/quilltap-core/src/generators/external_prompt.rs
+@@ -18,12 +18,10 @@
+ //!
+ //! ## The api key
+ //!
+-//! v4 resolves `profile.apiKeyId` → `key_value` and hands the string to
+-//! `provider.sendMessage(params, apiKey)`. v5's [`CompletionProvider`] takes no
+-//! key: the host's `WireCompletionProvider` resolves one per provider from the
+-//! key source (the tree-wide host key scan, recorded at P4.D93). The lookup is
+-//! still performed here — its ABSENCE is not observable, its presence keeps the
+-//! read order faithful — and the resolved string is dropped.
++//! v4 resolves `profile.apiKeyId` → `key_value` (user-scoped, `''` when none)
++//! and hands the string to `provider.sendMessage(params, apiKey)`; so does this
++//! runner, through [`CompletionProvider::send_message_keyed`] (P4.133, dogfood
++//! #133 — before it the host's provider scan picked the wire key).
+ 
+ use serde::Serialize;
+ use serde_json::Value;
+@@ -288,9 +286,8 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
+     };
+ 
+     // v4 `if (profile.apiKeyId)` → `findApiKeyByIdAndUserId` → `key_value`,
+-    // else `''`. Resolved for read-order fidelity; the provider seam resolves
+-    // its own (module doc).
+-    let mut _api_key = String::new();
++    // else `''` — SENT with the call (P4.133).
++    let mut api_key = String::new();
+     if let Some(key_id) = profile
+         .get("apiKeyId")
+         .and_then(Value::as_str)
+@@ -301,7 +298,7 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
+         if let Some(key) =
+             db.read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))?
+         {
+-            _api_key = key.key_value;
++            api_key = key.key_value;
+         }
+     }
+ 
+@@ -429,7 +426,7 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
+ 
+     let start_ms = crate::clock::now_unix_ms();
+     let response: CompletionResponse = match completion
+-        .send_message(&provider, base_url.as_deref(), &params)
++        .send_message_keyed(&provider, base_url.as_deref(), &api_key, &params)
+         .await
+     {
+         Ok(r) => r,
+diff --git a/crates/quilltap-core/src/generators/optimizer.rs b/crates/quilltap-core/src/generators/optimizer.rs
+index a7d5ab93a..3bcd15869 100644
+--- a/crates/quilltap-core/src/generators/optimizer.rs
++++ b/crates/quilltap-core/src/generators/optimizer.rs
+@@ -1035,6 +1035,8 @@ struct CallCtx<'a, CMP: CompletionProvider> {
+     completion: &'a CMP,
+     provider: String,
+     base_url: Option<String>,
++    /// The profile's own key (v4 `callOptimizerLLM(provider, apiKey, …)`).
++    api_key: String,
+     model_name: String,
+     profile_id: String,
+     profile_parameters: Option<Value>,
+@@ -1075,7 +1077,7 @@ async fn call_optimizer_llm<CMP: CompletionProvider>(
+     let start_ms = crate::clock::now_unix_ms();
+     let response: CompletionResponse = c
+         .completion
+-        .send_message(&c.provider, c.base_url.as_deref(), &params)
++        .send_message_keyed(&c.provider, c.base_url.as_deref(), &c.api_key, &params)
+         .await
+         .map_err(|e| e.message)?;
+     let duration_ms = crate::clock::now_unix_ms() - start_ms;
+@@ -1950,9 +1952,8 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
+         .ok_or_else(|| "Connection profile not found".to_string())?;
+ 
+     // Get API key — v4 `if (profile.apiKeyId)` → `findApiKeyByIdAndUserId` →
+-    // `key_value`, else `''`. Resolved for read-order fidelity; the provider
+-    // seam resolves its own (the external-prompt precedent).
+-    let mut _api_key = String::new();
++    // `key_value`, else `''` — SENT on every sub-step call (P4.133).
++    let mut api_key = String::new();
+     if let Some(key_id) = profile
+         .get("apiKeyId")
+         .and_then(Value::as_str)
+@@ -1963,7 +1964,7 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
+             .read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))
+             .map_err(db_msg)?
+         {
+-            _api_key = key.key_value;
++            api_key = key.key_value;
+         }
+     }
+ 
+@@ -2002,6 +2003,7 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
+         completion,
+         provider,
+         base_url,
++        api_key,
+         model_name: model_name.clone(),
+         profile_id: str_of(&profile, "id"),
+         profile_parameters: profile_params_value(&profile),

@@ -5,13 +5,16 @@
 //! [`CompletionProvider`] — the tier-3 seam sits at the provider call, exactly
 //! where the v4 oracle mocks `createLLMProvider`'s returned provider.
 //!
-//! ## Deferred (tracked, out of scope for this unit)
+//! ## API-key acquisition (P4.133, dogfood #133)
 //!
-//!   - **API-key acquisition** (`getApiKeyForCheapLLMSelection`) — resolves
-//!     before the provider call in v4 and throws when absent. Key management is
-//!     host-side (the canned responder needs none; the real adapter arrives
-//!     with the Phase-4 transport work), so the port's boundary starts at the
-//!     provider call.
+//! v4 resolves `getApiKeyForCheapLLMSelection(selection, userId)` at the top of
+//! `sendToProvider` — the selection's own profile's `apiKeyId`, `''` for a
+//! local model — and throws `No API key available for cheap LLM provider` when
+//! it answers `null`, before any provider is built. So does
+//! `send_to_provider`, through the executor's `Db` + user id, and the key
+//! rides `send_message_keyed`. A bare executor (tests and differentials only —
+//! `bare_cheap_llm_executor_guard`) has nothing to resolve against and sends
+//! unkeyed through its canned provider.
 //!
 //! ## `logLLMCall` (W4.7e3, wired)
 //!
@@ -691,11 +694,74 @@ impl CheapLlmTaskExecutor {
         let _ = log_llm_call(&cfg.db, params, &cfg.ctx).await;
     }
 
-    /// v4 `sendToProvider` minus the host-side API-key step: build the params
-    /// the cheap path sets (strict max-tokens floor of 2048, temperature 0.3
-    /// unless the profile is known not to support one, the per-character cache
-    /// key, the profile's provider extras) and call the boundary, retrying
-    /// without a temperature when the provider rejects it.
+    /// v4 `getApiKeyForCheapLLMSelection(selection, userId)` — the key this
+    /// selection's connection profile names (`''` for a local model), resolved
+    /// before the provider is built (P4.133, dogfood #133). `Ok(None)` means a
+    /// bare executor: no `Db` to resolve against, so the call goes out unkeyed
+    /// through a canned provider that ignores the key — there is no bare
+    /// production executor (`bare_cheap_llm_executor_guard`). `Err` is v4's
+    /// `null` → throw.
+    fn resolve_api_key(
+        &self,
+        selection: &CheapLlmSelection,
+    ) -> Result<Option<String>, CompletionError> {
+        let Some(handle) = &self.fallback else {
+            return Ok(None);
+        };
+        let selection = selection.clone();
+        let user_id = handle.user_id.clone();
+        // v4's repository reads are fallback `safeQuery`s: a read error answers
+        // `null` there too, and lands on the same throw.
+        match handle
+            .db
+            .read_main(move |conn| {
+                super::api_key_service::get_api_key_for_cheap_llm_selection(
+                    conn, &selection, &user_id,
+                )
+            })
+            .ok()
+            .flatten()
+        {
+            Some(key) => Ok(Some(key)),
+            None => Err(CompletionError::new(
+                "No API key available for cheap LLM provider",
+            )),
+        }
+    }
+
+    /// One provider call with the resolved key (P4.133): v4's
+    /// `provider.sendMessage(params, apiKey)`.
+    async fn send_once<C: CompletionProvider>(
+        completion: &C,
+        selection: &CheapLlmSelection,
+        api_key: Option<&str>,
+        params: &CompletionParams,
+    ) -> Result<CompletionResponse, CompletionError> {
+        match api_key {
+            Some(key) => {
+                completion
+                    .send_message_keyed(
+                        &selection.provider,
+                        selection.base_url.as_deref(),
+                        key,
+                        params,
+                    )
+                    .await
+            }
+            None => {
+                completion
+                    .send_message(&selection.provider, selection.base_url.as_deref(), params)
+                    .await
+            }
+        }
+    }
+
+    /// v4 `sendToProvider`: resolve the selection's key (a missing one throws
+    /// before any call), build the params the cheap path sets (strict
+    /// max-tokens floor of 2048, temperature 0.3 unless the profile is known
+    /// not to support one, the per-character cache key, the profile's provider
+    /// extras) and call the boundary, retrying without a temperature when the
+    /// provider rejects it.
     #[allow(clippy::too_many_arguments)]
     async fn send_to_provider<C: CompletionProvider>(
         &self,
@@ -707,6 +773,10 @@ impl CheapLlmTaskExecutor {
         task_type: Option<&str>,
         latency: CheapLlmLatencyClass,
     ) -> Result<ProviderResponse, CompletionError> {
+        // v4 `core-execution.ts:309-312`: resolved and refused BEFORE
+        // `createLLMProvider` — no provider call, so no log row of either kind.
+        let api_key = self.resolve_api_key(selection)?;
+        let api_key = api_key.as_deref();
         let profile_key = profile_key_for(selection);
         let effective_max_tokens = effective_max_tokens(max_tokens);
 
@@ -741,30 +811,24 @@ impl CheapLlmTaskExecutor {
             // v4 `0cde7fbc`: `const startedAt = Date.now()` around each of the
             // three send arms; the delta is `logCall`'s required third argument.
             let started_at = crate::clock::now_unix_ms();
-            let response = match completion
-                .send_message(
-                    &selection.provider,
-                    selection.base_url.as_deref(),
-                    &params(None),
-                )
-                .await
-            {
-                Ok(r) => r,
-                Err(error) => {
-                    // The ruled error row (see `log_failed_call`).
-                    self.log_failed_call(
-                        task_type,
-                        selection,
-                        messages,
-                        None,
-                        effective_max_tokens,
-                        character_id,
-                        &error.message,
-                    )
-                    .await;
-                    return Err(error);
-                }
-            };
+            let response =
+                match Self::send_once(completion, selection, api_key, &params(None)).await {
+                    Ok(r) => r,
+                    Err(error) => {
+                        // The ruled error row (see `log_failed_call`).
+                        self.log_failed_call(
+                            task_type,
+                            selection,
+                            messages,
+                            None,
+                            effective_max_tokens,
+                            character_id,
+                            &error.message,
+                        )
+                        .await;
+                        return Err(error);
+                    }
+                };
             // v4 logs after every successful provider call (with the temperature
             // actually sent — none here).
             self.log_call(
@@ -787,14 +851,7 @@ impl CheapLlmTaskExecutor {
 
         // Try with lower temperature for more consistent outputs.
         let first_attempt_started_at = crate::clock::now_unix_ms();
-        match completion
-            .send_message(
-                &selection.provider,
-                selection.base_url.as_deref(),
-                &params(Some(0.3)),
-            )
-            .await
-        {
+        match Self::send_once(completion, selection, api_key, &params(Some(0.3))).await {
             Ok(response) => {
                 self.log_call(
                     task_type,
@@ -823,13 +880,13 @@ impl CheapLlmTaskExecutor {
                         .expect("temp cache lock")
                         .insert(profile_key);
                     let retry_started_at = crate::clock::now_unix_ms();
-                    let response = match completion
-                        .send_message(
-                            &selection.provider,
-                            selection.base_url.as_deref(),
-                            &params(None),
-                        )
-                        .await
+                    let response = match Self::send_once(
+                        completion,
+                        selection,
+                        api_key,
+                        &params(None),
+                    )
+                    .await
                     {
                         Ok(r) => r,
                         Err(retry_error) => {
@@ -3013,6 +3070,139 @@ mod tests {
         );
     }
 
+    /// P4.133 (dogfood #133): a provisioned main DB in which the test
+    /// selection's profile (`selection(..)`'s `cur`) names a stored key for
+    /// `user-1` — a logging executor resolves v4's
+    /// `getApiKeyForCheapLLMSelection` before any provider call, and an
+    /// instance with no such profile now refuses with v4's `No API key
+    /// available for cheap LLM provider` before the provider is ever asked.
+    fn main_with_selection_key(
+        dir: &std::path::Path,
+        pepper: &str,
+        provider: &str,
+    ) -> std::path::PathBuf {
+        let inst = dir.join("inst");
+        std::fs::create_dir_all(&inst).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&inst, pepper).unwrap();
+        let main_path = inst.join("quilltap.db");
+        let w = Writer::open_writable(&main_path, pepper).unwrap();
+        w.connection()
+            .execute(
+                "INSERT INTO api_keys (id, userId, label, provider, key_value, createdAt, updatedAt) \
+                 VALUES ('k-cur', 'user-1', 'cur', ?1, 'synthetic-cur', \
+                 '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')",
+                rusqlite::params![provider],
+            )
+            .unwrap();
+        w.connection()
+            .execute(
+                "INSERT INTO connection_profiles (id, userId, name, provider, modelName, apiKeyId, \
+                 parameters, createdAt, updatedAt) VALUES ('cur', 'user-1', 'Cur', ?1, 'm', 'k-cur', \
+                 '{}', '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')",
+                rusqlite::params![provider],
+            )
+            .unwrap();
+        main_path
+    }
+
+    /// P4.133 (dogfood #133): v4 `sendToProvider` resolves
+    /// `getApiKeyForCheapLLMSelection` FIRST and hands the key to the provider
+    /// — the selection's own profile's key, `''` for a local model — and a
+    /// `null` throws `No API key available for cheap LLM provider` before any
+    /// provider call (so no `llm_logs` row of either kind). Unit-level twin of
+    /// `title_update_tier3`'s lifted-mock arms.
+    #[tokio::test]
+    async fn the_cheap_send_carries_the_selections_own_key_or_refuses_without_one() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        struct KeyRecorder(Mutex<Vec<String>>);
+        impl CompletionProvider for KeyRecorder {
+            async fn send_message(
+                &self,
+                _provider: &str,
+                _base_url: Option<&str>,
+                _params: &CompletionParams,
+            ) -> Result<CompletionResponse, CompletionError> {
+                panic!("a resolving executor must send KEYED")
+            }
+            fn send_message_keyed(
+                &self,
+                _provider: &str,
+                _base_url: Option<&str>,
+                api_key: &str,
+                _params: &CompletionParams,
+            ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+            {
+                self.0.lock().unwrap().push(api_key.to_string());
+                async {
+                    Ok(CompletionResponse {
+                        content: "fine".to_string(),
+                        usage: None,
+                        finish_reason: Some("stop".to_string()),
+                        attachment_results: None,
+                        cache_usage: None,
+                    })
+                }
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let main_path = main_with_selection_key(dir.path(), PEPPER, "ANTHROPIC");
+        let db = Db::open(
+            DbPaths {
+                main: main_path,
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let exec = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db,
+            user_id: "user-1".to_string(),
+            chat_id: None,
+            message_id: None,
+            ctx: LogContext::none(),
+        });
+        let provider = KeyRecorder(Mutex::new(Vec::new()));
+        let run = |sel: CheapLlmSelection| {
+            let (exec, provider) = (&exec, &provider);
+            async move {
+                exec.execute(
+                    provider,
+                    &sel,
+                    vec![CompletionMessage::user("title this")],
+                    |s| s.to_string(),
+                    None,
+                    None,
+                    None,
+                    Some("title-generation"),
+                    CheapLlmTaskOptions::default(),
+                )
+                .await
+            }
+        };
+
+        // The profile's own key.
+        assert!(run(selection("ANTHROPIC", "claude-haiku")).await.success);
+        // A local selection: `''`, no lookup.
+        assert!(run(local_selection("OLLAMA", "llama3.2")).await.success);
+        // A profile that names no row at all → v4's throw, no provider call.
+        let refused = run(CheapLlmSelection {
+            connection_profile_id: Some("missing".to_string()),
+            ..selection("ANTHROPIC", "claude-haiku")
+        })
+        .await;
+        assert!(!refused.success);
+        assert_eq!(
+            refused.error.as_deref(),
+            Some("No API key available for cheap LLM provider")
+        );
+        assert_eq!(
+            *provider.0.lock().unwrap(),
+            vec!["synthetic-cur".to_string(), String::new()],
+            "the refused selection must never reach the provider"
+        );
+    }
+
     /// The temperature-rejection retry re-issues inside the SAME attempt, so
     /// both provider calls carry the same budget (v4 spreads one `baseParams`).
     #[tokio::test]
@@ -3207,9 +3397,8 @@ mod tests {
 
         const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
         let dir = tempfile::tempdir().unwrap();
-        let main_path = dir.path().join("main.db");
         let ll_path = dir.path().join("llm-logs.db");
-        drop(Writer::open_writable(&main_path, PEPPER).unwrap());
+        let main_path = main_with_selection_key(dir.path(), PEPPER, "DEEPSEEK");
         {
             let w = Writer::open_writable(&ll_path, PEPPER).unwrap();
             w.connection()
@@ -3452,13 +3641,13 @@ mod tests {
         // The differential test pepper (32 bytes of "testpepper…", base64).
         const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
         let dir = tempfile::tempdir().unwrap();
-        let main_path = dir.path().join("main.db");
         let ll_path = dir.path().join("llm-logs.db");
 
-        // The main file only needs to exist — `is_logging_enabled`'s
-        // `chat_settings` read errors on the missing table and defaults to
-        // enabled (v4's catch → DEFAULT_LOGGING_SETTINGS).
-        drop(Writer::open_writable(&main_path, PEPPER).unwrap());
+        // A provisioned main DB whose `cur` profile names a stored key (the
+        // key resolution runs first, P4.133); `user-1` has no `chat_settings`
+        // row there, so `is_logging_enabled` defaults to enabled (v4's
+        // DEFAULT_LOGGING_SETTINGS).
+        let main_path = main_with_selection_key(dir.path(), PEPPER, "ANTHROPIC");
         // Materialize the `llm_logs` table (the TS oracle's `generateCreateTable`
         // in the tier-2 harness; here hand-rolled for the Rust-only proof).
         {
@@ -3623,9 +3812,8 @@ mod tests {
         let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
         let dir = tempfile::tempdir().unwrap();
-        let main_path = dir.path().join("main.db");
         let ll_path = dir.path().join("llm-logs.db");
-        drop(Writer::open_writable(&main_path, PEPPER).unwrap());
+        let main_path = main_with_selection_key(dir.path(), PEPPER, "DEEPSEEK");
         {
             let w = Writer::open_writable(&ll_path, PEPPER).unwrap();
             w.connection()
@@ -3730,8 +3918,7 @@ mod tests {
         use tracing_subscriber::layer::SubscriberExt;
         const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
         let dir = tempfile::tempdir().unwrap();
-        let main_path = dir.path().join("main.db");
-        drop(Writer::open_writable(&main_path, PEPPER).unwrap());
+        let main_path = main_with_selection_key(dir.path(), PEPPER, "OPENAI");
         let db = Db::open(
             DbPaths {
                 main: main_path,

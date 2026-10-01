@@ -14,13 +14,15 @@
     "temperature": 0.42,
     "max_tokens": 321,
     "topP": 0.87
-   }
+   },
+   "apiKeyId": "ae000001-0000-4000-8000-0000000000a1"
   },
   {
    "id": "b0000001-0000-4000-8000-000000000001",
    "name": "Router",
    "provider": "OPENROUTER",
-   "modelName": "router-model"
+   "modelName": "router-model",
+   "apiKeyId": "ae000002-0000-4000-8000-0000000000a2"
   },
   {
    "id": "c0000003-0000-4000-8000-000000000003",
@@ -43,34 +45,39 @@
    "id": "e0000005-0000-4000-8000-000000000005",
    "name": "TextBlockModel",
    "provider": "OPENAI",
-   "modelName": "o1-mini"
+   "modelName": "o1-mini",
+   "apiKeyId": "ae000003-0000-4000-8000-0000000000a3"
   },
   {
    "id": "f0000006-0000-4000-8000-000000000006",
    "name": "CheapDefault",
    "provider": "OPENAI",
-   "modelName": "cheap-configured-model"
+   "modelName": "cheap-configured-model",
+   "apiKeyId": "ae000004-0000-4000-8000-0000000000a4"
   },
   {
    "id": "aa000079-0000-4000-8000-000000000079",
    "name": "PrefillOffRouter",
    "provider": "OPENROUTER",
    "modelName": "router-noprefill",
-   "multiCharacterPrefill": false
+   "multiCharacterPrefill": false,
+   "apiKeyId": "ae000005-0000-4000-8000-0000000000a5"
   },
   {
    "id": "ab000079-0000-4000-8000-00000000007a",
    "name": "PrefillOnAnthropic",
    "provider": "ANTHROPIC",
    "modelName": "claude-prefill-on",
-   "multiCharacterPrefill": true
+   "multiCharacterPrefill": true,
+   "apiKeyId": "ae000006-0000-4000-8000-0000000000a6"
   },
   {
    "id": "fa110001-0000-4000-8000-000000000f11",
    "name": "FailoverPrimary",
    "provider": "ANTHROPIC",
    "modelName": "claude-falls-over",
-   "fallbackProfileId": "fa110002-0000-4000-8000-000000000f12"
+   "fallbackProfileId": "fa110002-0000-4000-8000-000000000f12",
+   "apiKeyId": "ae000007-0000-4000-8000-0000000000a7"
   },
   {
    "id": "fa110002-0000-4000-8000-000000000f12",
@@ -83,14 +90,49 @@
    "id": "cb110001-0000-4000-8000-000000000c11",
    "name": "ChainPrimary",
    "provider": "OPENAI",
-   "modelName": "gpt-chains"
+   "modelName": "gpt-chains",
+   "apiKeyId": "ae000008-0000-4000-8000-0000000000a8"
   },
   {
    "id": "1a151000-0000-4000-8000-000000000151",
    "name": "LanternVision",
    "provider": "ANTHROPIC",
    "modelName": "claude-sees",
-   "supportsImageUpload": true
+   "supportsImageUpload": true,
+   "apiKeyId": "ae000009-0000-4000-8000-0000000000a9"
+  },
+  {
+   "id": "b1330001-0000-4000-8000-000000000131",
+   "name": "BoundSecondKey",
+   "provider": "DEEPSEEK",
+   "modelName": "deepseek-bound",
+   "apiKeyId": "b133000b-0000-4000-8000-00000000013b"
+  },
+  {
+   "id": "b1330002-0000-4000-8000-000000000132",
+   "name": "InactiveBound",
+   "provider": "GROK",
+   "modelName": "grok-inactive",
+   "apiKeyId": "b133000c-0000-4000-8000-00000000013c"
+  },
+  {
+   "id": "b1330003-0000-4000-8000-000000000133",
+   "name": "KeylessOac",
+   "provider": "OPENAI_COMPATIBLE",
+   "modelName": "llama3.1:8b"
+  },
+  {
+   "id": "b1330004-0000-4000-8000-000000000134",
+   "name": "Unkeyed",
+   "provider": "ANTHROPIC",
+   "modelName": "claude-unkeyed"
+  },
+  {
+   "id": "b1330005-0000-4000-8000-000000000135",
+   "name": "DanglingKey",
+   "provider": "OPENAI",
+   "modelName": "gpt-dangling",
+   "apiKeyId": "b13300ff-0000-4000-8000-0000000001ff"
   }
  ],
  "chatSettings": {
@@ -201,6 +243,51 @@
    "controlledBy": "llm",
    "talkativeness": 0.5,
    "connectionProfileId": "1a151000-0000-4000-8000-000000000151"
+  },
+  {
+   "id": "b1330101-0000-4000-8000-000000000141",
+   "name": "Dorothea",
+   "description": "A character on the Dorothea profile.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "b1330001-0000-4000-8000-000000000131"
+  },
+  {
+   "id": "b1330102-0000-4000-8000-000000000142",
+   "name": "Ignatius",
+   "description": "A character on the Ignatius profile.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "b1330002-0000-4000-8000-000000000132"
+  },
+  {
+   "id": "b1330103-0000-4000-8000-000000000143",
+   "name": "Ottoline",
+   "description": "A character on the Ottoline profile.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "b1330003-0000-4000-8000-000000000133"
+  },
+  {
+   "id": "b1330104-0000-4000-8000-000000000144",
+   "name": "Ulric",
+   "description": "A character on the Ulric profile.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "b1330004-0000-4000-8000-000000000134"
+  },
+  {
+   "id": "b1330105-0000-4000-8000-000000000145",
+   "name": "Delphine",
+   "description": "A character on the Delphine profile.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "b1330005-0000-4000-8000-000000000135"
   }
  ],
  "files": [
@@ -2311,6 +2398,106 @@
     }
    ],
    "messages": []
+  },
+  {
+   "id": "b1330201-0000-4000-8000-000000000151",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "b1330301-0000-4000-8000-000000000161",
+     "character": "b1330101-0000-4000-8000-000000000141",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "b1330401-0000-4000-8000-000000000171",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "b1330202-0000-4000-8000-000000000152",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "b1330302-0000-4000-8000-000000000162",
+     "character": "b1330102-0000-4000-8000-000000000142",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "b1330402-0000-4000-8000-000000000172",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "b1330203-0000-4000-8000-000000000153",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "b1330303-0000-4000-8000-000000000163",
+     "character": "b1330103-0000-4000-8000-000000000143",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "b1330403-0000-4000-8000-000000000173",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "b1330204-0000-4000-8000-000000000154",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "b1330304-0000-4000-8000-000000000164",
+     "character": "b1330104-0000-4000-8000-000000000144",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "b1330404-0000-4000-8000-000000000174",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "b1330205-0000-4000-8000-000000000155",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "b1330305-0000-4000-8000-000000000165",
+     "character": "b1330105-0000-4000-8000-000000000145",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "b1330405-0000-4000-8000-000000000175",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
   }
  ],
  "calls": [
@@ -3052,6 +3239,58 @@
    "streamLabel": "inform_consume_fails_on_a_poisoned_row",
    "cheapLLMSettings": false,
    "summaryCheck": false
+  },
+  {
+   "name": "two_keys_profile_bound",
+   "kind": "single",
+   "chatId": "b1330201-0000-4000-8000-000000000151",
+   "content": "Which key do you carry, Dorothea?",
+   "continueMode": false,
+   "streamLabel": "two_keys_profile_bound",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "inactive_key_still_sent",
+   "kind": "single",
+   "chatId": "b1330202-0000-4000-8000-000000000152",
+   "content": "Which key do you carry, Ignatius?",
+   "continueMode": false,
+   "streamLabel": "inactive_key_still_sent",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "keyless_oac_sends_empty",
+   "kind": "single",
+   "chatId": "b1330203-0000-4000-8000-000000000153",
+   "content": "Which key do you carry, Ottoline?",
+   "continueMode": false,
+   "streamLabel": "keyless_oac_sends_empty",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "keyless_requires_refuses",
+   "kind": "single",
+   "chatId": "b1330204-0000-4000-8000-000000000154",
+   "content": "Which key do you carry, Ulric?",
+   "continueMode": false,
+   "streamLabel": "keyless_requires_refuses",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "expectThrow": true
+  },
+  {
+   "name": "dangling_key_refuses",
+   "kind": "single",
+   "chatId": "b1330205-0000-4000-8000-000000000155",
+   "content": "Which key do you carry, Delphine?",
+   "continueMode": false,
+   "streamLabel": "dangling_key_refuses",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "expectThrow": true
   }
  ],
  "streams": {
@@ -4532,6 +4771,51 @@
      }
     }
    ]
+  ],
+  "two_keys_profile_bound": [
+   [
+    {
+     "content": "Dorothea answers on her own key."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 12,
+      "completionTokens": 6,
+      "totalTokens": 18
+     }
+    }
+   ]
+  ],
+  "inactive_key_still_sent": [
+   [
+    {
+     "content": "Ignatius answers on her own key."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 12,
+      "completionTokens": 6,
+      "totalTokens": 18
+     }
+    }
+   ]
+  ],
+  "keyless_oac_sends_empty": [
+   [
+    {
+     "content": "Ottoline answers on her own key."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 12,
+      "completionTokens": 6,
+      "totalTokens": 18
+     }
+    }
+   ]
   ]
  },
  "detection": {
@@ -4574,7 +4858,17 @@
  },
  "apiKeys": {
   "c0000004-0000-4000-8000-000000000004": "unc-decrypted-key",
-  "fa110004-0000-4000-8000-000000000f14": "understudy-decrypted-key"
+  "fa110004-0000-4000-8000-000000000f14": "understudy-decrypted-key",
+  "ae000001-0000-4000-8000-0000000000a1": "key-primary",
+  "ae000002-0000-4000-8000-0000000000a2": "key-router",
+  "ae000003-0000-4000-8000-0000000000a3": "key-textblock",
+  "ae000004-0000-4000-8000-0000000000a4": "key-cheap-default",
+  "ae000005-0000-4000-8000-0000000000a5": "key-prefill-off",
+  "ae000006-0000-4000-8000-0000000000a6": "key-prefill-on",
+  "ae000007-0000-4000-8000-0000000000a7": "key-failover-primary",
+  "ae000008-0000-4000-8000-0000000000a8": "key-chain-primary",
+  "ae000009-0000-4000-8000-0000000000a9": "key-lantern",
+  "b133000b-0000-4000-8000-00000000013b": "k-bound"
  },
  "informs": [
   {
@@ -4638,5 +4932,34 @@
  ],
  "informPoisonRowIds": [
   "1a000000-0000-4000-8000-0000000000e7"
+ ],
+ "apiKeyRows": [
+  {
+   "$comment": "P4.133: inserted FIRST, so a provider scan (v5 before P4.133) would pick it; no profile names it.",
+   "id": "b133000a-0000-4000-8000-00000000013a",
+   "provider": "DEEPSEEK",
+   "keyValue": "k-first",
+   "isActive": true
+  },
+  {
+   "id": "b133000d-0000-4000-8000-00000000013d",
+   "provider": "GROK",
+   "keyValue": "k-grok-active",
+   "isActive": true
+  },
+  {
+   "$comment": "P4.133: InactiveBound's own key, DEACTIVATED — v4 follows apiKeyId with no isActive question and sends it.",
+   "id": "b133000c-0000-4000-8000-00000000013c",
+   "provider": "GROK",
+   "keyValue": "k-inactive",
+   "isActive": false
+  },
+  {
+   "$comment": "P4.133: an OPENAI_COMPATIBLE key no profile names — KeylessOac (no apiKeyId) must send '' anyway.",
+   "id": "b133000e-0000-4000-8000-00000000013e",
+   "provider": "OPENAI_COMPATIBLE",
+   "keyValue": "k-oac-stored",
+   "isActive": true
+  }
  ]
 }

@@ -279,12 +279,13 @@ pub async fn handle_headshoulders_backfill<CMP: CompletionProvider>(
         );
         return Ok(());
     };
-    // v4 resolves the key and hands it to `generateField`; v5's completion
-    // boundary resolves the key itself from the profile, so the value is only
-    // consulted for the null gate above. Bound so the shape stays visible.
-    let _ = &api_key;
-
-    let content = generate_one(db, completion, &selection, &character, &seed, user_id).await?;
+    // v4 resolves the key and hands it to `generateField` (P4.133, dogfood
+    // #133 — the old comment here claimed the completion boundary resolved it
+    // from the profile; it scanned by provider instead).
+    let content = generate_one(
+        db, completion, &selection, &api_key, &character, &seed, user_id,
+    )
+    .await?;
 
     let head_and_shoulders_prompt = js_trim(&utf16_prefix(&content, PROMPT_CAP_UTF16)).to_string();
     if head_and_shoulders_prompt.is_empty() {
@@ -337,6 +338,7 @@ async fn generate_one<CMP: CompletionProvider>(
     db: &Db,
     completion: &CMP,
     selection: &CheapLlmSelection,
+    api_key: &str,
     character: &Value,
     seed: &str,
     user_id: &str,
@@ -352,6 +354,7 @@ async fn generate_one<CMP: CompletionProvider>(
         completion,
         &selection.provider,
         selection.base_url.as_deref(),
+        api_key,
         &selection.model_name,
         &context_prompt,
         HEAD_AND_SHOULDERS_PHYSICAL_PROMPT,

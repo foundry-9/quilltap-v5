@@ -670,9 +670,11 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
         return result;
     }
 
-    // API key (host-side; the canned provider ignores it, so it does not affect
-    // the differential — resolved for faithfulness).
-    let _api_key = resolve_api_key(deps, profile).await;
+    // API key for the image-description profile, ownership-verified (v4
+    // `findApiKeyByIdAndUserId`, `file-attachment-fallback.ts:436`) and SENT
+    // with the vision call — `''` when the profile names none or the row is
+    // gone (v4 `apiKeyValue || ''`; P4.133, dogfood #133).
+    let api_key = resolve_api_key(deps, profile).await.unwrap_or_default();
 
     // Parameters (snake_case input keys; camelCase wire output). v4 `d9c5a1c7`
     // replaced the raw `imageDescProfile.parameters` cast with
@@ -752,7 +754,7 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
 
     let response = deps
         .completion
-        .send_message(&provider, base_url.as_deref(), &call_params)
+        .send_message_keyed(&provider, base_url.as_deref(), &api_key, &call_params)
         .await;
 
     match response {

@@ -221,6 +221,8 @@ impl SpineFactory for SmokeSpineFactory {
 #[tokio::test(flavor = "multi_thread")]
 async fn m2_chat_send_end_to_end() {
     let base = common::materialize_fixture_instance();
+    // P4.133: the seat's profile needs a key of its own for the requires-gate.
+    common::bind_profile_keys(base.path());
     let base_dir = base.path().to_path_buf();
     let (addr, state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;

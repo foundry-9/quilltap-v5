@@ -384,6 +384,8 @@ async function main(): Promise<void> {
     previousResponseId: string | null;
     stop: string[];
     toolCount: number;
+    /** P4.133 (dogfood #133): the key `streamMessage` HANDED the provider. */
+    apiKey: string;
   }> = [];
 
   // Per-label attempt cursor.
@@ -446,7 +448,7 @@ async function main(): Promise<void> {
             previousResponseId?: string;
             stop?: string[];
           },
-          _apiKey: string
+          apiKey: string
         ) {
           const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
           // Resolve the label: which call's marker appears in any user message?
@@ -476,6 +478,9 @@ async function main(): Promise<void> {
             previousResponseId: params.previousResponseId ?? null,
             stop: params.stop ?? [],
             toolCount: (params.tools ?? []).length,
+            // P4.133: per CALL — the primary's key from state, the uncensored
+            // retry's understudy key, each chain candidate's OWN resolved key.
+            apiKey,
           });
 
           const attempts = spec.streams[label];

@@ -890,6 +890,12 @@ struct QueuedStreamingProvider {
     /// NOT in the key, so this is the only comparand that can see it.
     expected_cache_key: HashMap<String, Option<String>>,
     recorded_cache_key: Mutex<HashMap<String, Option<String>>>,
+    /// P4.133 (dogfood #133): the API key every keyed stream call HANDED the
+    /// provider, in call order — per CALL, never per canned key (a retry and
+    /// its primary share a key). Drained per case. An unkeyed call records
+    /// nothing, so a leg that stopped sending the profile's key shows up as a
+    /// missing entry against v4's list.
+    recorded_api_keys: Mutex<Vec<String>>,
 }
 
 /// The three knobs as `{temperature?, maxTokens?, topP?}` with absent knobs
@@ -975,10 +981,28 @@ impl QueuedStreamingProvider {
             recorded_stop: Mutex::new(HashMap::new()),
             expected_cache_key,
             recorded_cache_key: Mutex::new(HashMap::new()),
+            recorded_api_keys: Mutex::new(Vec::new()),
         }
     }
 }
 impl StreamingCompletionProvider for QueuedStreamingProvider {
+    // P4.133: v4's mock records the `apiKey` argument `streamMessage` receives;
+    // this records the keyed method's argument, then answers as the unkeyed
+    // call does (the canned key never sees the auth).
+    fn stream_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &StreamParams,
+    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        self.recorded_api_keys
+            .lock()
+            .unwrap()
+            .push(api_key.to_string());
+        self.stream_message(provider, base_url, params)
+    }
+
     fn stream_message(
         &self,
         provider: &str,
@@ -1352,12 +1376,26 @@ fn orchestrator_tier3_matches_oracle() {
     let mut want_llm_logs: Option<Vec<Value>> = None;
     // P4.114: v4's `Injected tool change notification` INFO lines, per case.
     let mut want_tool_change: HashMap<String, Vec<Value>> = HashMap::new();
+    // P4.133: the keys v4's `streamMessage` received, per case, in call order.
+    let mut want_stream_keys: HashMap<String, Vec<String>> = HashMap::new();
+    // P4.133: v4's transport-shell `error` frame `details` per case (the
+    // filtered event comparison drops the frame; the requires-gate arms compare
+    // its message against `process_message`'s `Err`).
+    let mut want_error_details: HashMap<String, Vec<String>> = HashMap::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let parsed: OracleLine = serde_json::from_str(line).expect("oracle line parses");
         match parsed.kind.as_str() {
             "events" => {
                 let evs = parsed.rest.get("events").cloned().unwrap_or(Value::Null);
                 let arr = evs.as_array().cloned().unwrap_or_default();
+                want_error_details.insert(
+                    parsed.call.clone().unwrap(),
+                    arr.iter()
+                        .filter(|e| e.get("error").is_some())
+                        .filter_map(|e| e.get("details").and_then(Value::as_str))
+                        .map(str::to_string)
+                        .collect(),
+                );
                 want_events.insert(parsed.call.clone().unwrap(), filter_events(&arr));
             }
             "threw" => { /* recorded alongside the events line; the events line carries `threw` */ }
@@ -1398,6 +1436,17 @@ fn orchestrator_tier3_matches_oracle() {
                     .cloned()
                     .expect("toolChangeLog carries `lines`");
                 want_tool_change.insert(parsed.call.clone().unwrap(), lines);
+            }
+            "streamKeys" => {
+                let keys = parsed
+                    .rest
+                    .get("keys")
+                    .and_then(Value::as_array)
+                    .expect("streamKeys carries `keys`")
+                    .iter()
+                    .map(|k| k.as_str().expect("a key is a string").to_string())
+                    .collect();
+                want_stream_keys.insert(parsed.call.clone().unwrap(), keys);
             }
             other => panic!("unknown oracle line kind: {other}"),
         }
@@ -1529,6 +1578,10 @@ fn orchestrator_tier3_matches_oracle() {
     });
 
     let mut got_events: Vec<(String, Vec<Value>)> = Vec::new();
+    // P4.133: per case, the keys the Rust streams carried + `process_message`'s
+    // `Err` message (if any).
+    let mut got_stream_keys: HashMap<String, Vec<String>> = HashMap::new();
+    let mut got_errors: HashMap<String, String> = HashMap::new();
     // P4.81 item 4: the three `execute_turn_chain` chain-stop log lines,
     // captured per case (thread-scoped — `rt` is current-thread, so the whole
     // `block_on` below runs on this thread and cannot steal a sibling test's
@@ -1570,6 +1623,7 @@ fn orchestrator_tier3_matches_oracle() {
 
     for call in &spec.calls {
         let sink = RecordingSink::new();
+        streaming.recorded_api_keys.lock().unwrap().clear();
         // W4.11a: a per-call executor that logs each cheap-LLM provider call into
         // `llm_logs` (v4's un-mocked `logLLMCall`). The distill (memory-keyword-
         // extraction → MEMORY_EXTRACTION, per-call characterId) and the summary
@@ -1828,6 +1882,13 @@ fn orchestrator_tier3_matches_oracle() {
             }
             Err(_e) => {
                 eprintln!("process_message({}) returned Err: {:?}", call.name, _e);
+                got_errors.insert(
+                    call.name.clone(),
+                    match &_e {
+                        quilltap_core::db::DbError::Internal(m) => m.clone(),
+                        other => other.to_string(),
+                    },
+                );
                 // The mid-stream-error case surfaces the stream error to the caller;
                 // v4's `handleSendMessage` catch emits an `error` frame at the
                 // transport shell. The Rust `process_message` propagates the error
@@ -1838,6 +1899,84 @@ fn orchestrator_tier3_matches_oracle() {
         }
 
         got_events.push((call.name.clone(), filter_events(&sink.events_json())));
+        got_stream_keys.insert(
+            call.name.clone(),
+            std::mem::take(&mut *streaming.recorded_api_keys.lock().unwrap()),
+        );
+    }
+
+    // --- P4.133 (dogfood #133): the key every stream carried ---
+    // Before P4.133 the resolver answered `api_key: None`, nothing crossed the
+    // model boundary but `(provider, base_url, params)`, and the host's
+    // provider scan picked the wire key — so the Rust side recorded NOTHING
+    // here (the canned provider's unkeyed method) where v4 recorded each leg's
+    // profile-bound key. Compared for EVERY case: the primary, the tool loops,
+    // the failover re-stream, the danger reroute, Carina/Brahma consults and
+    // every chained turn.
+    for call in &spec.calls {
+        let want = want_stream_keys.get(&call.name).unwrap_or_else(|| {
+            panic!(
+                "oracle streamKeys missing for {} — regenerate from THIS tree's case (P4.133 added the recording)",
+                call.name
+            )
+        });
+        let got = &got_stream_keys[&call.name];
+        assert_eq!(
+            got, want,
+            "{}: the API keys the streams carried differ (rust left, v4 right)",
+            call.name
+        );
+    }
+    // The named arms, so none of them can pass vacuously (an oracle that
+    // stopped reaching a leg would compare `[] == []`).
+    for (case, want) in [
+        // Two DEEPSEEK keys: `k-first` inserted first (the old scan's pick, no
+        // profile names it), the profile bound to `k-bound`.
+        ("two_keys_profile_bound", vec!["k-bound"]),
+        // Bound to a DEACTIVATED key, an active GROK key inserted before it:
+        // v4 follows `apiKeyId` with no `isActive` question.
+        ("inactive_key_still_sent", vec!["k-inactive"]),
+        // OPENAI_COMPATIBLE with no `apiKeyId`, a stored OAC key present: the
+        // gate does not require one, accepts one, and has none — `''`.
+        ("keyless_oac_sends_empty", vec![""]),
+        // The requires-gate refusals: no stream at all.
+        ("keyless_requires_refuses", vec![]),
+        ("dangling_key_refuses", vec![]),
+    ] {
+        let want: Vec<String> = want.into_iter().map(String::from).collect();
+        assert_eq!(
+            want_stream_keys.get(case),
+            Some(&want),
+            "{case}: v4 no longer records the arm's key — the arm measures nothing"
+        );
+    }
+    // The requires-gate (v4 `orchestrator.service.ts:433-434`): ANTHROPIC with
+    // no key, and OPENAI whose `apiKeyId` names no row (the inline gate treats
+    // a dangling id as "no key", never `'api-key-not-found'`) — the SAME
+    // sentence on both sides, before any stream or write.
+    for case in ["keyless_requires_refuses", "dangling_key_refuses"] {
+        assert_eq!(
+            want_error_details.get(case).map(Vec::as_slice),
+            Some(&["No API key configured for this connection profile".to_string()][..]),
+            "{case}: v4's transport-shell error frame"
+        );
+        assert_eq!(
+            got_errors.get(case).map(String::as_str),
+            Some("No API key configured for this connection profile"),
+            "{case}: process_message must refuse with v4's requires-gate sentence"
+        );
+    }
+    // Silence leg: no other case refuses with the gate's sentence.
+    for (name, msg) in &got_errors {
+        if !matches!(
+            name.as_str(),
+            "keyless_requires_refuses" | "dangling_key_refuses"
+        ) {
+            assert_ne!(
+                msg, "No API key configured for this connection profile",
+                "{name}: an unexpected requires-gate refusal"
+            );
+        }
     }
 
     // --- events ---

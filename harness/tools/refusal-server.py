@@ -55,7 +55,16 @@ pointed here with a dummy key (the OPENAI_COMPATIBLE plugin cannot forward
 images, so bug 116's arm needs the OPENAI provider).
 
 Every request body is appended to $QT_REFUSE_CAPTURE (default
-/tmp/refusal-server-requests.ndjson) so the wire bytes can be read back.
+/tmp/refusal-server-requests.ndjson) so the wire bytes can be read back --
+WITH the request's `Authorization` header (added 2026-10-01, P4.133), so a
+capture line says which key a profile actually sent.
+
+THE KEY GATE (P4.133, dogfood #133): with $QT_REFUSE_KEY set, every POST whose
+`Authorization` is not exactly `Bearer $QT_REFUSE_KEY` answers the
+`unauthorized` 401 BEFORE its mode runs (any model name). Bind one profile to
+that key and another of the same provider to any other key, and only the bound
+profile is answered -- the live proof that a turn sends its OWN profile's key
+rather than the provider's first stored one. Unset (the default), no gate.
 
   /v1/models -> every mode's model name (so profile setup works)
 """
@@ -65,6 +74,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8898
 DEFAULT_MODE = os.environ.get("QT_REFUSE_MODE", "code")
 CAPTURE = os.environ.get("QT_REFUSE_CAPTURE", "/tmp/refusal-server-requests.ndjson")
+REQUIRED_KEY = os.environ.get("QT_REFUSE_KEY")
 MODES = {"refuse-code": "code", "refuse-finish": "finish", "tokenlimit": "tokenlimit",
          "notools": "notools", "blind": "blind", "echo": "echo",
          "midframe": "midframe", "midframe-late": "midframe-late",
@@ -225,13 +235,19 @@ class H(BaseHTTPRequestHandler):
             req = {}
         mode = mode_for(req.get("model"))
         msgs = req.get("messages") or []
+        auth = self.headers.get("Authorization")
+        key_ok = REQUIRED_KEY is None or auth == "Bearer " + REQUIRED_KEY
         with open(CAPTURE, "a") as f:
             f.write(json.dumps({"at": time.time(), "path": self.path, "mode": mode,
+                                "authorization": auth, "keyGate": key_ok,
                                 "body": req}) + "\n")
-        sys.stderr.write("[refuse] POST %s model=%s mode=%s stream=%s messages=%d tools=%s\n"
+        sys.stderr.write("[refuse] POST %s model=%s mode=%s stream=%s messages=%d tools=%s auth=%s%s\n"
                          % (self.path, req.get("model"), mode, req.get("stream"),
-                            len(msgs), "tools" in req))
-        if mode == "finish":
+                            len(msgs), "tools" in req, auth,
+                            "" if key_ok else " (KEY GATE: 401)"))
+        if not key_ok:
+            self._json(401, UNAUTH_BODY)
+        elif mode == "finish":
             self._answer(req, "", finish="content_filter")
         elif mode == "code":
             self._json(400, CODE_BODY)
@@ -272,6 +288,7 @@ class H(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    sys.stderr.write("[refuse] listening on 127.0.0.1:%d default mode=%s capture=%s\n"
-                     % (PORT, DEFAULT_MODE, CAPTURE))
+    sys.stderr.write("[refuse] listening on 127.0.0.1:%d default mode=%s capture=%s key gate=%s\n"
+                     % (PORT, DEFAULT_MODE, CAPTURE,
+                        "Bearer " + REQUIRED_KEY if REQUIRED_KEY else "off"))
     ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()

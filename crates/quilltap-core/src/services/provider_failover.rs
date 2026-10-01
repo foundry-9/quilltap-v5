@@ -408,11 +408,14 @@ where
         // The port had collapsed all three into `let _ = …`: the retry error was
         // discarded and none of v4's three lines existed (the finding-#103/#110
         // class, closed with the route-trail arms they belong to).
+        // v4 `apiKey: state.effectiveApiKey` (`provider-failover.service.ts:229`).
+        let same_api_key = state.effective_api_key.clone();
         match restream_into(
             provider,
             state,
             sink,
             &same_profile,
+            &same_api_key,
             &params,
             // v4's empty-response callers pass no `stop`.
             None,
@@ -868,6 +871,9 @@ where
         state,
         sink,
         &reroute,
+        // v4 `apiKey: understudy.apiKey` (`:507`) — the UNDERSTUDY's key, not
+        // the primary's in state (P4.133).
+        &understudy.api_key,
         &re_params,
         stop,
         character_name,
@@ -1099,6 +1105,7 @@ async fn restream_into<P, S>(
     state: &mut StreamingState,
     sink: &S,
     profile: &EffectiveProfile,
+    api_key: &str,
     params: &StreamParams,
     stop: Option<&[String]>,
     character_name: &str,
@@ -1135,7 +1142,12 @@ where
     // log row that carries none — so the warn names the character here.
     let mut rx = watch_stream(
         provider
-            .stream_message(&profile.provider, profile.base_url.as_deref(), params)
+            .stream_message_keyed(
+                &profile.provider,
+                profile.base_url.as_deref(),
+                api_key,
+                params,
+            )
             .await,
         StallBudgets::default(),
         // v4's wrapper reads `connectionProfile.modelName`, not the params it
@@ -1417,6 +1429,10 @@ where
             state,
             sink,
             &effective,
+            // v4 `apiKey: keyResolution.apiKey` (`:838`) — the CANDIDATE's key,
+            // passed in: `state` is written only after the leg succeeds
+            // (P4.133).
+            &api_key,
             &re_params,
             Some(&params.stop),
             &character_name,
@@ -1938,6 +1954,7 @@ mod tests {
                 &mut state,
                 &sink,
                 &understudy,
+                "k-understudy",
                 &params,
                 None,
                 "Friday",
@@ -2542,6 +2559,7 @@ mod tests {
             &mut state,
             &sink,
             &profile("p1", "OPENAI"),
+            "k1",
             &params,
             None,
             "Friday",
@@ -2557,6 +2575,7 @@ mod tests {
             &mut state,
             &sink,
             &profile("p2", "OPENAI"),
+            "k2",
             &params,
             Some(&params.stop.clone()),
             "Friday",

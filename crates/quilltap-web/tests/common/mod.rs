@@ -497,3 +497,53 @@ pub fn materialize_salon_instance() -> tempfile::TempDir {
     }
     base
 }
+
+/// P4.133 (dogfood #133): bind every connection profile that names NO key to a
+/// synthetic one of its own (`synthetic-<profile id>`, active, owned by the
+/// profile's user). Since P4.133 the Salon's requires-gate refuses a turn on a
+/// key-requiring provider with no key (v4 `orchestrator.service.ts:433`) and
+/// a cheap-LLM task refuses before its provider call (`core-execution.ts:311`)
+/// — exactly as v4 would on these committed fixtures, which predate either
+/// mattering. Every existing key row is handed to `SINGLE_USER_ID` too: the
+/// cheap path's lookup is USER-scoped (`findApiKeyByIdAndUserId`), and a real
+/// instance's keys all belong to its one user, where some fixtures minted
+/// their own owner the generic rewrite does not know. A test whose subject is
+/// NOT the key plants this; the key test (`profile_bound_api_key_wire`) plants
+/// its own.
+#[allow(dead_code)]
+pub fn bind_profile_keys(base: &Path) {
+    let w = Writer::open_writable(&base.join("data").join("quilltap.db"), TEST_PEPPER).unwrap();
+    let c = w.connection();
+    c.execute(
+        "UPDATE api_keys SET userId = ?1",
+        rusqlite::params![SINGLE_USER_ID],
+    )
+    .unwrap();
+    let rows: Vec<(String, String, String)> = {
+        let mut stmt = c
+            .prepare(
+                "SELECT id, userId, provider FROM connection_profiles \
+                 WHERE apiKeyId IS NULL OR apiKeyId = '' ORDER BY rowid",
+            )
+            .unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    };
+    for (i, (id, _user_id, provider)) in rows.into_iter().enumerate() {
+        let key_id = format!("ab133000-0000-4000-8000-{:012x}", i + 1);
+        c.execute(
+            "INSERT INTO api_keys (id, userId, label, provider, key_value, isActive, \
+             createdAt, updatedAt) VALUES (?1, ?2, 'p4133-synthetic', ?3, ?4, 1, \
+             '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')",
+            rusqlite::params![key_id, SINGLE_USER_ID, provider, format!("synthetic-{id}")],
+        )
+        .unwrap();
+        c.execute(
+            "UPDATE connection_profiles SET apiKeyId = ?1 WHERE id = ?2",
+            rusqlite::params![key_id, id],
+        )
+        .unwrap();
+    }
+}

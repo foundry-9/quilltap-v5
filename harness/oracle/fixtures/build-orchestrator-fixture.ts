@@ -254,6 +254,12 @@ interface Spec {
    * connection profile that references each key. Never a real key.
    */
   apiKeys?: Record<string, string>;
+  /**
+   * P4.133 (dogfood #133): explicit `api_keys` rows, inserted BEFORE the
+   * `apiKeys` map's — so insertion order (the old v5 provider scan's order) is
+   * the spec's, a row may be one no profile names, and a row may be inactive.
+   */
+  apiKeyRows?: Array<{ id: string; provider: string; keyValue: string; isActive: boolean }>;
 }
 
 async function main(): Promise<void> {
@@ -371,10 +377,30 @@ async function main(): Promise<void> {
   // `DbApiKeys` / v4's `findApiKeyByIdAndUserId` resolve the key material off the
   // REAL table. The id IS the referencing profile's `apiKeyId` (a raw INSERT since
   // `createApiKey` mints its own id); the provider is the referencing profile's.
-  if (spec.apiKeys && Object.keys(spec.apiKeys).length > 0) {
+  if (
+    (spec.apiKeys && Object.keys(spec.apiKeys).length > 0) ||
+    (spec.apiKeyRows && spec.apiKeyRows.length > 0)
+  ) {
     const { ApiKeySchema } = await import('@/lib/schemas/profile.types');
     await ensureCollection('api_keys', ApiKeySchema);
-    for (const [apiKeyId, keyValue] of Object.entries(spec.apiKeys)) {
+    for (const row of spec.apiKeyRows ?? []) {
+      await rawQuery(
+        'INSERT INTO api_keys (id, userId, label, provider, key_value, isActive, lastUsed, createdAt, updatedAt) ' +
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          row.id,
+          spec.userId,
+          'explicit-key',
+          row.provider,
+          row.keyValue,
+          row.isActive ? 1 : 0,
+          null,
+          spec.seedTimestamp,
+          spec.seedTimestamp,
+        ]
+      );
+    }
+    for (const [apiKeyId, keyValue] of Object.entries(spec.apiKeys ?? {})) {
       const owner = spec.connectionProfiles.find((cp) => cp.apiKeyId === apiKeyId);
       const provider = owner?.provider ?? 'OPENROUTER';
       await rawQuery(

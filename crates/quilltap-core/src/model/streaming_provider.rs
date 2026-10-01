@@ -33,15 +33,20 @@
 //! ## API keys
 //!
 //! v4 resolves the key before the provider call (`streamMessage(params,
-//! apiKey)`); the v5 seam signature carries no key, and the failover path
-//! re-calls the SAME injected provider with a *different* provider id (the
-//! uncensored reroute). So the composer holds an injected [`ProviderKeySource`]
-//! (provider id → plaintext key) the host populates from the resolved
-//! connection profiles; a missing key injects the empty string (the provider
-//! rejects it upstream, surfacing as a stream error — v4's behavior with an
-//! empty key). Auth injection itself is the shared
+//! apiKey)`) by FOLLOWING the effective connection profile's `apiKeyId` — the
+//! participant resolver for the Salon, the understudy resolvers for a reroute
+//! or a failover candidate, the bug-81 composite elsewhere — and never scans
+//! the `api_keys` table by provider on a chat call. The keyed trait method
+//! ([`StreamingCompletionProvider::stream_message_keyed`]) carries that key
+//! across the seam, and this composer puts it on the wire as handed: `""` is
+//! v4's bare send for a keyless profile, not a cue to look elsewhere (P4.133,
+//! dogfood #133 — before it, the host's provider scan sent the FIRST active key
+//! for the provider, so a profile bound to a second key was silently ignored).
+//! The unkeyed [`stream_message`](StreamingCompletionProvider::stream_message)
+//! still reads the injected [`ProviderKeySource`] — the differential's fixed
+//! maps. Auth injection itself is the shared
 //! [`provider_auth::apply_auth`](crate::model::provider_auth) per the manifest
-//! scheme.
+//! scheme (an `auth: none` provider, ollama, injects nothing either way).
 //!
 //! ## Deliberate divergence: OpenRouter always streams the raw chat-completions
 //! ## wire
@@ -69,10 +74,10 @@ use crate::model::transport::{
 };
 use crate::provider_manifest::{rewrite_localhost_url, Registry, StreamDecoder as ManifestDecoder};
 
-/// Provider id → plaintext api key. The host builds this from the resolved
-/// connection profiles (the primary profile + any failover/reroute targets);
-/// the differential injects a fixed map. A provider whose manifest auth is
-/// `none` (ollama) never consults it.
+/// Provider id → plaintext api key, consulted ONLY by the unkeyed trait methods
+/// (P4.133). The differential injects a fixed map; production chat and
+/// completion calls carry the profile-bound key through the keyed methods
+/// instead. A provider whose manifest auth is `none` (ollama) never uses it.
 pub trait ProviderKeySource: Send + Sync {
     fn key_for(&self, provider: &str) -> Option<String>;
 }
@@ -251,6 +256,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
         &self,
         provider: &str,
         base_url: Option<&str>,
+        api_key: &str,
         params: &StreamParams,
     ) -> Result<
         (
@@ -283,7 +289,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
             None => built.url.clone(),
         };
 
-        let api_key = self.keys.key_for(provider).unwrap_or_default();
+        let api_key = api_key.to_string();
         let mut headers = transport_headers(
             provider,
             &built.headers,
@@ -478,14 +484,46 @@ fn single_stream_error(error: StreamError) -> tokio::sync::mpsc::Receiver<Stream
 impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
     for WireStreamingProvider<T, K>
 {
+    /// The unkeyed call: the key comes from the injected [`ProviderKeySource`]
+    /// (the differential's fixed maps). No production chat call reaches this —
+    /// every one goes through [`stream_message_keyed`](Self::stream_message_keyed)
+    /// with the key its connection profile names (P4.133).
     fn stream_message(
         &self,
         provider: &str,
         base_url: Option<&str>,
         params: &StreamParams,
     ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        let api_key = self.keys.key_for(provider).unwrap_or_default();
+        self.stream_with_key(provider, base_url, &api_key, params)
+    }
+
+    /// v4 `streamMessage(params, apiKey)`: `api_key` goes on the wire as
+    /// handed — `""` is a bare send, never a cue to consult the key source.
+    fn stream_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &StreamParams,
+    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        self.stream_with_key(provider, base_url, api_key, params)
+    }
+}
+
+impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
+    /// The shared body of both trait methods. Everything that reads the call's
+    /// borrowed arguments runs synchronously here, so the returned future holds
+    /// only `self` and owned values.
+    fn stream_with_key(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &StreamParams,
+    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send + '_ {
         // Prepare synchronously; the async part is only the transport call.
-        let prepared = self.prepare(provider, base_url, params);
+        let prepared = self.prepare(provider, base_url, api_key, params);
         // P4.D83 (v4 `d89babc4`): this call's wall-clock budget. A provider that
         // offers the setting (Ollama) takes its number from the PROFILE — a
         // better default, so the retry count stands — and a caller-supplied
@@ -524,7 +562,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
         let fallback_prepared = if params.previous_response_id.is_some() {
             let mut fallback_params = params.clone();
             fallback_params.previous_response_id = None;
-            Some(self.prepare(provider, base_url, &fallback_params))
+            Some(self.prepare(provider, base_url, api_key, &fallback_params))
         } else {
             None
         };
@@ -565,7 +603,9 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
                     // arm is provider-disjoint from the chaining fallback below
                     // — only OPENAI chains, only OLLAMA carries `think`.
                     if let Some(retry) = crate::model::ollama_think_retry::think_retry_request(
-                        provider, &request, &e,
+                        &provider_id,
+                        &request,
+                        &e,
                     ) {
                         tracing::warn!(
                             target: "quilltap::model::streaming_provider",
@@ -998,6 +1038,61 @@ mod tests {
             })
         );
         assert_eq!(decoder_selection("NOPE", "m"), None);
+    }
+
+    /// P4.133 (dogfood #133), the core half of the boundary pair: a keyed call
+    /// puts the PROFILE-BOUND key on the wire, through an `Arc` (how the
+    /// production factory holds the streaming provider). M1: drop the `Arc`
+    /// impl's explicit `stream_message_keyed` forward and the defaulted body
+    /// calls the unkeyed `stream_message`, which reads the key source — this
+    /// test then sees the map's key. `""` is sent as `""` (v4's bare send for a
+    /// keyless profile), never replaced by the source's key; the unkeyed call is
+    /// the control.
+    #[tokio::test]
+    async fn a_keyed_stream_through_an_arc_carries_the_profile_bound_key() {
+        let p = std::sync::Arc::new(WireStreamingProvider::new(
+            FakeStreamTransport::new(vec![]),
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        ));
+        let bearer = |p: &std::sync::Arc<WireStreamingProvider<FakeStreamTransport, _>>| {
+            let seen = p.transport.seen.lock().unwrap().clone().unwrap();
+            let auth = seen
+                .headers
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("authorization"))
+                .map(|(_, v)| v.clone());
+            (seen.api_key, auth)
+        };
+
+        let _ = drain(
+            p.stream_message_keyed("DEEPSEEK", None, "k-bound", &params("deepseek-chat"))
+                .await,
+        )
+        .await;
+        assert_eq!(
+            bearer(&p),
+            ("k-bound".to_string(), Some("Bearer k-bound".to_string()))
+        );
+
+        let _ = drain(
+            p.stream_message_keyed("DEEPSEEK", None, "", &params("deepseek-chat"))
+                .await,
+        )
+        .await;
+        assert_eq!(bearer(&p), (String::new(), Some("Bearer ".to_string())));
+
+        let _ = drain(
+            p.stream_message("DEEPSEEK", None, &params("deepseek-chat"))
+                .await,
+        )
+        .await;
+        assert_eq!(
+            bearer(&p).0,
+            keys()["DEEPSEEK"],
+            "the unkeyed call still reads the key source"
+        );
     }
 
     /// P4.71 WIRING PIN — the streaming twin of the completion pin. The seam

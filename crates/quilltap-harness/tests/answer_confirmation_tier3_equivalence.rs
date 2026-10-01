@@ -472,6 +472,10 @@ fn answer_confirmation_tier3_matches_oracle() {
     let _ = std::fs::remove_file(&work_mount);
     std::fs::copy(&fixture_main, &work_main).expect("copy main fixture");
     std::fs::copy(&fixture_mount, &work_mount).expect("copy mount fixture");
+    // P4.133 OUT-OF-MANDATE (dogfood #133): the oracle mocks
+    // `getApiKeyForCheapLLMSelection` to a canned key; the twin (v5 now
+    // resolves the cheap selection's own key and refuses without one).
+    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
 
     // W4.10b: a fresh llm-logs partition so the check + re-affirmation calls'
     // ANSWER_CONFIRMATION `logLLMCall` rows land where we can dump them.

@@ -178,9 +178,9 @@ where
     SUM: HelpContextSummaryCheck,
 {
     pub db: &'a Db,
-    /// The streaming model boundary (v4 `streamMessage`). The api-key resolution
-    /// happens here for the early-failure behavior; the resolved value is unused
-    /// (the host streaming provider resolves keys internally, as elsewhere).
+    /// The streaming model boundary (v4 `streamMessage`). The turn's api key is
+    /// resolved here (the bug-81 composite — an early refusal on failure) and
+    /// SENT with every stream through the keyed method (P4.133).
     pub streaming: &'a STR,
     /// The tool executor boundary (v4 `processToolCalls` → the real handlers).
     pub tool_runner: &'a TR,
@@ -689,9 +689,9 @@ where
     let base_url = s(&profile, "baseUrl");
 
     // Get API key — required for a hosted provider, optional but still forwarded
-    // for one that merely accepts a key (bug 81). The resolved value is unused
-    // (the host streaming provider resolves keys internally); this is the
-    // early-failure gate with `describeProfileApiKeyFailure`'s sentences.
+    // for one that merely accepts a key (bug 81). The resolved key is what every
+    // stream of this turn SENDS (v4 `:361`; P4.133, dogfood #133), and a failed
+    // resolution refuses early with `describeProfileApiKeyFailure`'s sentences.
     let key_id = s(&profile, "apiKeyId");
     let provider_for_key = provider.clone();
     let resolution = db
@@ -705,9 +705,12 @@ where
         .unwrap_or(ProfileApiKeyResolution::Failed(
             ProfileApiKeyFailure::ApiKeyNotFound,
         ));
-    if let ProfileApiKeyResolution::Failed(reason) = resolution {
-        return Err(HelpSendError::new(reason.describe()));
-    }
+    let api_key = match resolution {
+        ProfileApiKeyResolution::Ok(key) => key,
+        ProfileApiKeyResolution::Failed(reason) => {
+            return Err(HelpSendError::new(reason.describe()))
+        }
+    };
 
     // Get user character identity (from the user profile):
     // `userSettings ? { name: userSettings.name || 'User', description: '' } : null`.
@@ -904,6 +907,7 @@ where
             sink,
             &provider,
             base_url.as_deref(),
+            &api_key,
             &model,
             &conversation,
             &effective_tools,
@@ -1373,6 +1377,7 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     sink: &impl EventSink,
     provider: &str,
     base_url: Option<&str>,
+    api_key: &str,
     model: &str,
     messages: &[ThreadedMessage],
     tools: &[Value],
@@ -1410,7 +1415,9 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
     // consumers).
     let mut rx = watch_stream(
-        streaming.stream_message(provider, base_url, &params).await,
+        streaming
+            .stream_message_keyed(provider, base_url, api_key, &params)
+            .await,
         StallBudgets::default(),
         StallWatchdogContext::streaming_service(provider, model).with_ids(
             Some(watchdog.user_id),

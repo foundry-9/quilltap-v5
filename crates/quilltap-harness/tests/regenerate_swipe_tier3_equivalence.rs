@@ -533,6 +533,9 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
             quilltap_core::services::regenerate_swipe::SwipeProfileOverride {
                 profile: row,
                 model_context_limit: override_limit.expect("v4 recorded the override's limit"),
+                // P4.133: the canned streaming provider ignores the key; the
+                // override's own key is pinned by `retry_uncensored_tier3`.
+                api_key: String::new(),
             }
         });
         let result = rt.block_on(regenerate_message_as_swipe(

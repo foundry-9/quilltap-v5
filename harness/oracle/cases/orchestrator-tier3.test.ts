@@ -214,6 +214,8 @@ async function main(): Promise<void> {
   // The current call's stream label (steered per-call so the streamMessage mock
   // pops the right attempt sequence).
   let currentLabel: string | undefined;
+  // P4.133: the API key each `streamMessage` call of the current case received.
+  let currentStreamKeys: string[] = [];
   // The current call's RNG byte stream (steered per-call for the crypto.randomBytes
   // mock; the RNG auto-detect executor draws from here).
   let currentRngBytes: number[] = [];
@@ -307,8 +309,12 @@ async function main(): Promise<void> {
             // the primary's tool-unsupported retry do not.
             cacheKey?: string;
           },
-          _apiKey: string
+          apiKey: string
         ) {
+          // P4.133: the key each leg HANDS the provider, in call order — never
+          // part of the canned key. Recorded first, so a leg whose canned
+          // stream is missing is still a call v4 made.
+          currentStreamKeys.push(apiKey);
           const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
           // P4.D154 (bug 121): the per-message attachment slate reaching the
           // wire, positionally aligned with `messages`. The call KEY projects
@@ -413,15 +419,22 @@ async function main(): Promise<void> {
     };
   });
 
-  // ---- API-key requirement → false (host-side seam) ----
-  // The Rust port treats API-key acquisition as a host-side seam: the participant
-  // resolver returns no key and the orchestrator never blocks on `requiresApiKey`.
-  // Mirror that on the v4 side so the key check does not short-circuit (the
-  // fixture stores no key).
-  jest.doMock('@/lib/plugins/provider-validation', () => {
-    const actual = jest.requireActual('@/lib/plugins/provider-validation');
-    return { __esModule: true, ...actual, requiresApiKey: () => false };
-  });
+  // ---- API keys: REAL since P4.133 (dogfood #133) ----
+  // The participant resolver's unscoped `findApiKeyById`, the orchestrator's
+  // inline `requiresApiKey` / `acceptsApiKey` gate and the key each leg hands
+  // `streamMessage` all run real now — the v5 port resolves and SENDS the
+  // profile-bound key too, so the `requiresApiKey → false` mock that stood in
+  // for the old host-side seam is gone. Every non-courier profile in the
+  // fixture names a seeded key, and the P4.133 arms are the ones that do not.
+  // `jest.setup.ts` mocks the module GLOBALLY (both predicates answer `true`
+  // for every provider), so the real one is restored explicitly; it reads the
+  // real provider registry initialized below. `provider-validation` is then
+  // evaluated BEFORE the `@/lib/tools` barrel can cache a mid-cycle partial
+  // with `requiresApiKey` undefined (the barrel circular-init gotcha) — the
+  // `await import` after the registry init.
+  jest.doMock('@/lib/plugins/provider-validation', () =>
+    jest.requireActual('@/lib/plugins/provider-validation')
+  );
 
   // ---- api-key + llm-logging ----
   jest.doMock('@/lib/services/api-key.service', () => {
@@ -735,6 +748,7 @@ async function main(): Promise<void> {
     });
     await initializeProviderRegistry(providers);
   }
+  await import('@/lib/plugins/provider-validation');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -812,6 +826,7 @@ async function main(): Promise<void> {
     pinned.reset(call.draws ?? [0]);
 
     const events: unknown[] = [];
+    currentStreamKeys = [];
     let threw = false;
     try {
       const stream = await handleSendMessage(repos, call.chatId, spec.userId, {
@@ -839,6 +854,10 @@ async function main(): Promise<void> {
     }
     lines.push(JSON.stringify({ kind: 'events', call: call.name, events, threw }));
     lines.push(JSON.stringify({ kind: 'toolChangeLog', call: call.name, lines: toolChangeLines }));
+    // P4.133: the keys this call's streams carried, in order (every leg: the
+    // primary, its retries, the tool loops, a failover or reroute, a Carina or
+    // Brahma consult, every chained turn).
+    lines.push(JSON.stringify({ kind: 'streamKeys', call: call.name, keys: currentStreamKeys }));
     toolChangeLines = [];
 
     // Let the fire-and-forget background triggers settle before the next call.

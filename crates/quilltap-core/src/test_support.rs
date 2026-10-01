@@ -339,3 +339,58 @@ pub fn open_readonly(path: &std::path::Path, pepper_b64: &str) -> rusqlite::Conn
     conn
 }
 // === end P4.115 ===
+
+/// P4.133 (dogfood #133): the Rust-side twin of the
+/// `getApiKeyForCheapLLMSelection: async () => '<key>'` mock most tier-3
+/// oracles install (`jest.doMock('@/lib/services/api-key.service', …)`).
+/// Since P4.133 v5 resolves a cheap-LLM task's key — and the Concierge
+/// classifier's — from the selection's own profile and refuses without one
+/// (v4 `core-execution.ts:309-312`, `gatekeeper.service.ts:378-382`), so a
+/// differential whose v4 side mocks the lookup must arm the same answer here
+/// or v5 refuses where v4's mock answers. While the guard lives, every
+/// `get_api_key_for_cheap_llm_selection` ON THIS THREAD answers `Some(key)`
+/// without a read — exactly the mocked function. Thread-scoped
+/// (`a-process-global-test-seam-must-be-thread-scoped`): a harness's
+/// `rt.block_on` runs its reads on the arming thread; nothing else sees it.
+/// Production never arms it.
+pub struct CannedCheapLlmKey {
+    previous: Option<String>,
+}
+
+impl CannedCheapLlmKey {
+    pub fn install(key: &str) -> Self {
+        let previous =
+            crate::services::api_key_service::set_canned_cheap_llm_key(Some(key.to_string()));
+        Self { previous }
+    }
+}
+
+impl Drop for CannedCheapLlmKey {
+    fn drop(&mut self) {
+        crate::services::api_key_service::set_canned_cheap_llm_key(self.previous.take());
+    }
+}
+
+/// P4.133 (dogfood #133): the Rust-side twin of the `requiresApiKey: () =>
+/// false` mock several tier-3 oracles install over
+/// `@/lib/plugins/provider-validation` (their fixtures' profiles name no key).
+/// Since P4.133 the Salon turn runs v4's inline requires-gate for real
+/// (`orchestrator.service.ts:433`), so a differential whose v4 side mocks the
+/// predicate must arm the same answer here. Thread-scoped, like
+/// [`CannedCheapLlmKey`]; production never arms it.
+pub struct CannedRequiresApiKey {
+    previous: Option<bool>,
+}
+
+impl CannedRequiresApiKey {
+    pub fn install(answer: bool) -> Self {
+        let previous = crate::services::api_key_service::set_canned_requires_api_key(Some(answer));
+        Self { previous }
+    }
+}
+
+impl Drop for CannedRequiresApiKey {
+    fn drop(&mut self) {
+        crate::services::api_key_service::set_canned_requires_api_key(self.previous.take());
+    }
+}

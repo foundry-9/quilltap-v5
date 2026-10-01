@@ -402,6 +402,9 @@ struct WizardCallCtx<'a, CMP: CompletionProvider> {
     completion: &'a CMP,
     provider: String,
     base_url: Option<String>,
+    /// v4 `generateField(provider, apiKey, …)`'s key — the primary profile's
+    /// (P4.133, dogfood #133).
+    api_key: String,
     model_name: String,
     profile_parameters: Option<Value>,
     user_id: &'a str,
@@ -437,7 +440,7 @@ async fn generate_field<CMP: CompletionProvider>(
     let start_ms = crate::clock::now_unix_ms();
     let response = c
         .completion
-        .send_message(&c.provider, c.base_url.as_deref(), &params)
+        .send_message_keyed(&c.provider, c.base_url.as_deref(), &c.api_key, &params)
         .await
         .map_err(|e| e.message)?;
     let duration_ms = crate::clock::now_unix_ms() - start_ms;
@@ -501,12 +504,14 @@ async fn generate_field<CMP: CompletionProvider>(
 /// `maxTokens: 1000` / `temperature: 0.7` / the vision profile's parameters,
 /// the `No response from vision model` refusal, the log row, the TRIMMED
 /// content.
+#[allow(clippy::too_many_arguments)]
 async fn generate_image_description<CMP: CompletionProvider>(
     db: &Db,
     completion: &CMP,
     backend: &dyn StorageBackend,
     image_file: &FileFull,
     vision_profile: &Value,
+    api_key: &str,
     user_id: &str,
     character_id: Option<&str>,
 ) -> Result<String, String> {
@@ -518,6 +523,7 @@ async fn generate_image_description<CMP: CompletionProvider>(
             backend,
             image_file,
             vision_profile,
+            api_key,
             user_id,
             character_id,
         ),
@@ -525,12 +531,14 @@ async fn generate_image_description<CMP: CompletionProvider>(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_generate_image_description<CMP: CompletionProvider>(
     db: &Db,
     completion: &CMP,
     backend: &dyn StorageBackend,
     image_file: &FileFull,
     vision_profile: &Value,
+    api_key: &str,
     user_id: &str,
     character_id: Option<&str>,
 ) -> Result<String, String> {
@@ -573,7 +581,7 @@ async fn run_generate_image_description<CMP: CompletionProvider>(
     };
     let start_ms = crate::clock::now_unix_ms();
     let response = completion
-        .send_message(&provider, base_url.as_deref(), &params)
+        .send_message_keyed(&provider, base_url.as_deref(), api_key, &params)
         .await
         .map_err(|e| e.message)?;
     let duration_ms = crate::clock::now_unix_ms() - start_ms;
@@ -720,9 +728,10 @@ async fn run_wizard_core<CMP: CompletionProvider>(
         })
         .ok_or_else(|| "Primary profile not found".to_string())?;
 
-    // Get primary profile API key (resolved for read-order fidelity; the
-    // provider seam resolves its own).
-    let mut _primary_api_key = String::new();
+    // Get primary profile API key — user-scoped, `''` when the profile names
+    // none or the row is gone (v4 `:726-732`), and SENT on every field call
+    // (P4.133, dogfood #133).
+    let mut primary_api_key = String::new();
     if let Some(key_id) = primary_profile
         .get("apiKeyId")
         .and_then(Value::as_str)
@@ -733,7 +742,7 @@ async fn run_wizard_core<CMP: CompletionProvider>(
             .read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))
             .map_err(db_msg)?
         {
-            _primary_api_key = key.key_value;
+            primary_api_key = key.key_value;
         }
     }
 
@@ -747,6 +756,7 @@ async fn run_wizard_core<CMP: CompletionProvider>(
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
             .map(str::to_string),
+        api_key: primary_api_key.clone(),
         model_name: str_of(&primary_profile, "modelName"),
         profile_parameters: profile_params_value(&primary_profile),
         user_id,
@@ -766,6 +776,10 @@ async fn run_wizard_core<CMP: CompletionProvider>(
             .ok_or_else(|| "Image not found".to_string())?;
 
         let mut vision_profile = primary_profile.clone();
+        // v4 `let visionApiKey = primaryApiKey` (`:754`): the secondary's key
+        // REPLACES it only when that row is found — a secondary with no key, or
+        // a dangling one, describes with the PRIMARY's key.
+        let mut vision_api_key = primary_api_key.clone();
         if !profile_supports_mime_type(&primary_profile, &image_file.mime_type) {
             let Some(vpid) = request
                 .vision_profile_id
@@ -784,16 +798,18 @@ async fn run_wizard_core<CMP: CompletionProvider>(
                         .is_none_or(|u| u == user_id)
                 })
                 .ok_or_else(|| "Vision profile not found".to_string())?;
-            // (the secondary's api key is resolved by the seam)
             if let Some(key_id) = secondary
                 .get("apiKeyId")
                 .and_then(Value::as_str)
                 .filter(|s| !s.is_empty())
             {
                 let (key_id, uid) = (key_id.to_string(), user_id.to_string());
-                let _ = db
+                if let Some(key) = db
                     .read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))
-                    .map_err(db_msg)?;
+                    .map_err(db_msg)?
+                {
+                    vision_api_key = key.key_value;
+                }
             }
             vision_profile = secondary;
         }
@@ -805,6 +821,7 @@ async fn run_wizard_core<CMP: CompletionProvider>(
                 backend,
                 &image_file,
                 &vision_profile,
+                &vision_api_key,
                 user_id,
                 request.character_id.as_deref(),
             )
@@ -1103,6 +1120,7 @@ pub(crate) async fn generate_field_for_caller<CMP: CompletionProvider>(
     completion: &CMP,
     provider: &str,
     base_url: Option<&str>,
+    api_key: &str,
     model_name: &str,
     context_prompt: &str,
     field_prompt: &str,
@@ -1116,6 +1134,7 @@ pub(crate) async fn generate_field_for_caller<CMP: CompletionProvider>(
         completion,
         provider: provider.to_string(),
         base_url: base_url.map(str::to_string),
+        api_key: api_key.to_string(),
         model_name: model_name.to_string(),
         profile_parameters,
         user_id,

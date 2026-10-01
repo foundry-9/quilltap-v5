@@ -1213,6 +1213,39 @@ where
     let is_courier_transport =
         json_str(&connection_profile, "transport").as_deref() == Some("courier");
 
+    // P4.133 — P4.D243 preserves. v4's inline API-key gate
+    // (`orchestrator.service.ts:425-439`), at v4's position — after the courier
+    // detect, BEFORE the identity resolve and the agent-turn-count reset write,
+    // so a refused turn writes nothing. Two questions over the participant
+    // resolver's raw key (bug 81): a provider that REQUIRES a key and has none
+    // refuses the turn; a provider that does not ACCEPT one is sent `''`. v4
+    // deliberately keeps this inline gate rather than the
+    // `resolveConnectionProfileApiKey` composite, so a dangling `apiKeyId` here
+    // is "no key" (the requires refusal or a bare send), never
+    // `'api-key-not-found'`. The gated key replaces the raw one on
+    // `resolution`, which is where `effective_api_key` is seeded below.
+    let resolution = {
+        let provider = json_str(&connection_profile, "provider").unwrap_or_default();
+        let raw_api_key = resolution.api_key.clone().unwrap_or_default();
+        let mut api_key = String::new();
+        if !is_courier_transport {
+            if super::api_key_service::provider_requires_api_key(&provider)
+                && raw_api_key.is_empty()
+            {
+                return Err(DbError::Internal(
+                    "No API key configured for this connection profile".into(),
+                ));
+            }
+            if super::api_key_service::provider_accepts_api_key(&provider) {
+                api_key = raw_api_key;
+            }
+        }
+        super::participant_resolver::ParticipantResolution {
+            api_key: Some(api_key),
+            ..resolution
+        }
+    };
+
     // --- Resolve user identity (orchestrator.service.ts:332–342) ---
     let identity = super::user_identity_resolver::resolve_user_identity(
         db,

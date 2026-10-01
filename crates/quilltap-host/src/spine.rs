@@ -32,30 +32,25 @@
 //!
 //! ## Documented host-tier seams (flagged, not silently decided)
 //!
-//! - **Provider→key resolution** ([`DbProviderKeys`]): the streaming/completion
-//!   seams carry only `(provider, base_url)` — v4 resolves the key by FOLLOWING
-//!   the effective profile's `apiKeyId`. The host key source scans for the
-//!   user's first active key for the provider
-//!   (`api_key_service::find_active_api_key_for_provider`, the
-//!   web-search/moderation style). Divergence is possible only when one user
-//!   holds several keys for the same provider.
-//!
-//!   **This seam is why v5 never had the spine half of v4 bug 81** (measured by
-//!   P4.D93). v4's `chat-message/orchestrator.service.ts` held the decrypted key
-//!   already and gated *forwarding* it on `requiresApiKey`, so an
-//!   OpenAI-Compatible profile's key never reached the wire and the endpoint
-//!   answered 401. v5 has no such gate anywhere on this path: the participant
-//!   resolver deliberately returns `api_key: None`, the orchestrator's
-//!   `effective_api_key` starts empty, and [`DbProviderKeys`] scans by provider
-//!   with no capability question asked — so a stored OAC key has always been
-//!   forwarded. What keeps a genuinely keyless endpoint bare is the manifest's
-//!   `auth` scheme (`ollama` declares `none` and injects nothing), not a lookup
-//!   gate. The danger reroute is the same shape: `dangerous_content::provider_routing`
-//!   follows the rerouted profile's `apiKeyId` ungated, so the overwrite at
-//!   `orchestrator.rs` is unaffected by bug 81 in either direction. Pinned by
-//!   `api_key_service::tests::provider_scan_is_capability_blind`; v4's site is
-//!   deliberately NOT unified onto `resolveConnectionProfileApiKey` on v4's side
-//!   either.
+//! - **Provider→key resolution** (P4.133, dogfood #133): v4 resolves every
+//!   chat / completion key by FOLLOWING the effective connection profile's
+//!   `apiKeyId` — the participant resolver for the Salon (unscoped, no
+//!   `isActive` question, then the orchestrator's inline bug-81 requires /
+//!   accepts gate), the understudy / reroute resolvers for a stand-in, the
+//!   bug-81 composite for help / Brahma / the Scenario Builder,
+//!   `getApiKeyForCheapLLMSelection` for every cheap task — and never scans the
+//!   `api_keys` table by provider on a model call. v5 resolves the same key in
+//!   core and hands it across the boundary through the keyed trait methods
+//!   (`stream_message_keyed` / `send_message_keyed`), which the two wire
+//!   providers override to put THAT key on the request (`""` = a bare send).
+//!   Before P4.133 the boundary carried only `(provider, base_url)` and
+//!   [`DbProviderKeys`] scanned for the user's FIRST active key for the
+//!   provider, so a profile bound to a second key for one provider sent the
+//!   first — the dogfood finding. [`DbProviderKeys`] now serves only the
+//!   UNKEYED methods: the three generator sends P4.D241 owns this round (their
+//!   keyed switch is pre-written for the unifier, P4.133's §S.1) — after which
+//!   it has no production caller. Web search's [`DbSearchApiKeys`] is v4's own
+//!   scan and stays.
 //! - **Chat-settings mapping** ([`orchestrator_chat_settings_from_value`]) and
 //!   **timestamp config** ([`timestamp_config_from_value`]): NEW
 //!   (differential-less) projections of the verified `chat_settings` net-read,
@@ -201,7 +196,8 @@ use quilltap_core::weighted_random::DrawSource;
 // ===========================================================================
 
 /// A DB-backed [`ProviderKeySource`]: the single user's first active key for
-/// the provider (the provider-scan resolver style).
+/// the provider (the provider-scan resolver style). Consulted ONLY by the
+/// unkeyed trait methods (module header, P4.133) — no v4 model call scans.
 #[derive(Clone)]
 pub struct DbProviderKeys(pub Db);
 
@@ -251,11 +247,12 @@ impl quilltap_core::tools::web_search::SearchApiKeyLookup for DbSearchApiKeys {
 // The production non-streaming CompletionProvider
 // ===========================================================================
 
-/// The production [`CompletionProvider`] over the reqwest transport + the
-/// host key source — the composition
+/// The production [`CompletionProvider`] over the reqwest transport — the
+/// composition
 /// [`execute_completion`](quilltap_core::model::completion_provider::execute_completion)
-/// exists for. A local provider (no key on file) sends the empty key, matching
-/// v4's `getApiKeyForCheapLLMSelection` local `''`.
+/// exists for. A keyed send (P4.133) carries the caller's profile-bound key
+/// (`''` for a local cheap selection, v4's `getApiKeyForCheapLLMSelection`);
+/// only the unkeyed methods read the host key source.
 pub struct WireCompletionProvider<K: ProviderKeySource> {
     transport: quilltap_core::model::transport::ReqwestTransport,
     keys: K,
@@ -297,15 +294,17 @@ impl<K: ProviderKeySource> WireCompletionProvider<K> {
 impl<K: ProviderKeySource> WireCompletionProvider<K> {
     /// The shared send body — `send_message` passes no anchor;
     /// `send_message_with_anchor` (P4.D106, bug 95) threads the caller's
-    /// attachment anchor into the wire build.
+    /// attachment anchor into the wire build. `api_key` is the key that goes on
+    /// the wire: the profile-bound key a keyed call carries (P4.133), or the
+    /// key source's answer on the unkeyed methods.
     async fn send_inner(
         &self,
         provider: &str,
         base_url: Option<&str>,
+        api_key: String,
         params: &CompletionParams,
         attachment_anchor_index: Option<usize>,
     ) -> Result<CompletionResponse, CompletionError> {
-        let api_key = self.keys.key_for(provider).unwrap_or_default();
         // P4.D42 (v4 `74ec93b5`): the caller's per-request budget becomes THIS
         // call's transport policy — a ceiling on one attempt, retries off. The
         // process-wide policy stands when the caller named none. This is the only
@@ -347,7 +346,8 @@ impl<K: ProviderKeySource> CompletionProvider for WireCompletionProvider<K> {
         base_url: Option<&str>,
         params: &CompletionParams,
     ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
-        self.send_inner(provider, base_url, params, None)
+        let api_key = self.keys.key_for(provider).unwrap_or_default();
+        self.send_inner(provider, base_url, api_key, params, None)
     }
 
     fn send_message_with_anchor(
@@ -357,7 +357,20 @@ impl<K: ProviderKeySource> CompletionProvider for WireCompletionProvider<K> {
         params: &CompletionParams,
         attachment_anchor_index: Option<usize>,
     ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
-        self.send_inner(provider, base_url, params, attachment_anchor_index)
+        let api_key = self.keys.key_for(provider).unwrap_or_default();
+        self.send_inner(provider, base_url, api_key, params, attachment_anchor_index)
+    }
+
+    /// v4 `sendMessage(params, apiKey)` (P4.133): the profile-bound key goes on
+    /// the wire as handed — `""` is a bare send, never a cue to scan.
+    fn send_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &CompletionParams,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        self.send_inner(provider, base_url, api_key.to_string(), params, None)
     }
 }
 
@@ -1293,8 +1306,10 @@ where
         // P4.D228 (v4 `profileOverride`, `ce2f1dabf` #77): "Try uncensored"
         // generates on the understudy, so the context is budgeted for ITS
         // model — resolved here, where `getModelContextLimit`'s registry and
-        // pricing tables live, and handed to core beside the row. (The key is
-        // the transport's, per provider — nothing to resolve for it.)
+        // pricing tables live, and handed to core beside the row. And the
+        // understudy SENDS its own key (v4 `profileOverride.apiKey`, P4.133 —
+        // dogfood #133): the row's `apiKeyId`, user-scoped, exactly as the
+        // gate's understudy resolver read it a moment ago.
         let profile_override = req.profile_override.as_ref().map(|row| {
             let field = |k: &str| {
                 row.get(k)
@@ -1306,6 +1321,13 @@ where
             quilltap_core::services::regenerate_swipe::SwipeProfileOverride {
                 profile: row.clone(),
                 model_context_limit: limit,
+                api_key: quilltap_core::services::regenerate_swipe::override_api_key(
+                    &quilltap_core::services::dangerous_content::provider_routing::DbApiKeys(
+                        db.clone(),
+                    ),
+                    row,
+                    &req.user_id,
+                ),
             }
         });
         let timestamp_config = self.resolve_timestamp_config(&chat_id);
@@ -4232,6 +4254,121 @@ mod profile_timeout_tests {
     use quilltap_core::model::transport::TransportPolicy;
     use serde_json::json;
 
+    /// The module's ONE test construction (`host_gateway`'s census counts the
+    /// `WireCompletionProvider::new(` sites in this file — two, this and
+    /// [`WireConfig::completion`]).
+    fn test_provider(
+        keys: std::collections::HashMap<String, String>,
+    ) -> WireCompletionProvider<std::collections::HashMap<String, String>> {
+        WireCompletionProvider::new(
+            keys,
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+            None,
+        )
+    }
+
+    /// One request's raw head from a listener that answers every connection
+    /// with a 500 — enough to read the `Authorization` header the send carried.
+    async fn capture_one_request_head(
+        call: impl std::future::Future<Output = ()>,
+        listener: tokio::net::TcpListener,
+    ) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let tx = tx.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 65536];
+                    let n = sock.read(&mut buf).await.unwrap_or(0);
+                    let _ = tx.send(String::from_utf8_lossy(&buf[..n]).into_owned());
+                    let _ = sock
+                        .write_all(
+                            b"HTTP/1.1 500 Internal Server Error\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}",
+                        )
+                        .await;
+                });
+            }
+        });
+        call.await;
+        rx.recv().await.expect("the send reached the listener")
+    }
+
+    fn header_value(head: &str, name: &str) -> Option<String> {
+        head.lines().find_map(|l| {
+            let (k, v) = l.split_once(':')?;
+            k.trim()
+                .eq_ignore_ascii_case(name)
+                .then(|| v.trim().to_string())
+        })
+    }
+
+    fn oac_params() -> CompletionParams {
+        CompletionParams {
+            messages: vec![CompletionMessage::user("hi")],
+            model: "m".to_string(),
+            temperature: None,
+            max_tokens: None,
+            strict_max_tokens: false,
+            top_p: None,
+            cache_key: None,
+            profile_parameters: None,
+            attachments: Vec::new(),
+            request_timeout_ms: None,
+        }
+    }
+
+    /// P4.133 (dogfood #133), the host half of the boundary pair: a keyed send
+    /// puts the PROFILE-BOUND key on the wire — through an `Arc`, which is how
+    /// the production factories share the provider (M1: an `Arc` impl that
+    /// does not forward `send_message_keyed` explicitly falls back to the
+    /// defaulted body, which calls the unkeyed send, and this test then reads
+    /// the key source's `k-first`). The unkeyed send is the control: it still
+    /// reads the key source.
+    #[tokio::test]
+    async fn a_keyed_send_through_an_arc_carries_the_profile_bound_key() {
+        use tokio::net::TcpListener;
+        let keys: std::collections::HashMap<String, String> =
+            [("OPENAI_COMPATIBLE".to_string(), "k-first".to_string())].into();
+        let provider = Arc::new(test_provider(keys));
+        let params = oac_params();
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let base = format!("http://{}/v1", listener.local_addr().expect("addr"));
+        let head = capture_one_request_head(
+            async {
+                let _ = provider
+                    .send_message_keyed("OPENAI_COMPATIBLE", Some(&base), "k-bound", &params)
+                    .await;
+            },
+            listener,
+        )
+        .await;
+        assert_eq!(
+            header_value(&head, "authorization").as_deref(),
+            Some("Bearer k-bound"),
+            "the keyed send must carry the key it was handed:\n{head}"
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let base = format!("http://{}/v1", listener.local_addr().expect("addr"));
+        let head = capture_one_request_head(
+            async {
+                let _ = provider
+                    .send_message("OPENAI_COMPATIBLE", Some(&base), &params)
+                    .await;
+            },
+            listener,
+        )
+        .await;
+        assert_eq!(
+            header_value(&head, "authorization").as_deref(),
+            Some("Bearer k-first"),
+            "the unkeyed send still reads the key source:\n{head}"
+        );
+    }
+
     /// P4.D83 (v4 `d89babc4`), the NON-STREAMING half of the timeout quartet.
     ///
     /// The composition lives here — `execute_completion` takes the policy as an
@@ -4257,12 +4394,7 @@ mod profile_timeout_tests {
             }
         });
 
-        let provider = WireCompletionProvider::new(
-            std::collections::HashMap::<String, String>::new(),
-            TransportPolicy::default(),
-            "Quilltap/test".to_string(),
-            None,
-        );
+        let provider = test_provider(std::collections::HashMap::new());
         let params = CompletionParams {
             messages: vec![CompletionMessage::user("hi")],
             model: "qwen3:8b".to_string(),

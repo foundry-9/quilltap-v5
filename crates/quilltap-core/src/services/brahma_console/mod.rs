@@ -191,9 +191,9 @@ where
 
     // 2. API key: v4's `resolveConnectionProfileApiKey` (bug 81) — required where
     //    required, forwarded where merely accepted, and loud on a dangling id
-    //    even there. UNSCOPED `findApiKeyById`, as v4's is. The resolved plaintext
-    //    is off the diffed surface (the stream is canned) and unused here, as it
-    //    was before: the host streaming provider resolves keys internally.
+    //    even there. UNSCOPED `findApiKeyById`, as v4's is. The key itself is
+    //    SENT (P4.133, dogfood #133): the one-shot loop resolves this same
+    //    composite over this same row where its stream goes out.
     //    ⚠ v4's sentences here are LOWER-CASE where the orchestrator's are not;
     //    the difference is pre-existing and deliberate — ported verbatim.
     let key_id = s(&profile, "apiKeyId");

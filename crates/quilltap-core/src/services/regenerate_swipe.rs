@@ -334,15 +334,38 @@ pub struct RegenerateSwipeOptions {
 /// The override half of [`RegenerateSwipeOptions`] (v4 `profileOverride:
 /// { profile, apiKey }`). Across v5's core/host split the host resolves what
 /// core cannot: the model context limit for the OVERRIDE's model (v4 computes
-/// it inside `buildMessageContext` from the profile it is handed). The key is
-/// the transport's, per provider (the standing provider-I/O ruling), so it has
-/// no home here.
+/// it inside `buildMessageContext` from the profile it is handed) — and, since
+/// P4.133 (dogfood #133), the understudy's own key, which v4's understudy
+/// resolver decrypted beside the profile and the swipe SENDS in place of the
+/// responder's.
 #[derive(Debug, Clone)]
 pub struct SwipeProfileOverride {
     /// The whole stored connection-profile row.
     pub profile: Value,
     /// `getModelContextLimit(profile.provider, profile.modelName)`.
     pub model_context_limit: i64,
+    /// v4 `profileOverride.apiKey` — the understudy's key (user-scoped
+    /// `findApiKeyByIdAndUserId` over its `apiKeyId`).
+    pub api_key: String,
+}
+
+/// v4 `profileOverride.apiKey` for "Try uncensored" (P4.133): the understudy's
+/// key as v4's understudy resolver decrypted it beside the profile it chose —
+/// `findApiKeyByIdAndUserId(profile.apiKeyId, userId)` (`understudy.ts:70-85`).
+/// The gate only ever chooses a candidate whose key resolved, so `""` here is
+/// unreachable from the route; it is the honest answer for a row with none.
+/// The host fills [`SwipeProfileOverride::api_key`] through this, and
+/// `retry_uncensored_tier3` pins it against the key v4's route hands the swipe.
+pub fn override_api_key<R>(resolver: &R, profile_row: &Value, user_id: &str) -> String
+where
+    R: crate::services::dangerous_content::provider_routing::ApiKeyResolver + ?Sized,
+{
+    profile_row
+        .get("apiKeyId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .and_then(|id| resolver.resolve(id, user_id))
+        .unwrap_or_default()
 }
 
 /// Error from a regenerate-swipe (v4 throws for a non-regenerable target).
@@ -467,6 +490,13 @@ where
     // v4 `connectionProfile = profileOverride?.profile ??
     // participantResult.connectionProfile` (`ce2f1dabf`, #77) — and the
     // context is budgeted for whichever profile generates.
+    // v4 `apiKey = profileOverride?.apiKey ?? participantResult.apiKey`
+    // (`regenerate-swipe.service.ts:129`) — no requires-gate on this path; the
+    // raw resolver key, `''` when the profile names none (P4.133).
+    let api_key = match &profile_override {
+        Some(o) => o.api_key.clone(),
+        None => resolution.api_key.clone().unwrap_or_default(),
+    };
     let (connection_profile, model_context_limit) = match &profile_override {
         Some(o) => {
             tracing::info!(
@@ -820,7 +850,7 @@ where
     };
 
     let rx = streaming
-        .stream_message(&provider, base_url.as_deref(), &params)
+        .stream_message_keyed(&provider, base_url.as_deref(), &api_key, &params)
         .await;
     // The stall watchdog is NOT optional on any `stream_message` consumer (bug
     // 141) — v4 says so in this very function. The budgets are the Salon's

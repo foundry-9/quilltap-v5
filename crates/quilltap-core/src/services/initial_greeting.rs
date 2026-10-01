@@ -213,8 +213,16 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
     // cannot dismiss. The loop below is unchanged: a stall arrives as an
     // ordinary mid-stream `Err`, which is logged onto the `llm_logs` row and
     // rethrown exactly like any other (v4 `catch { streamError = …; throw err }`).
+    // v4 `streamMessage(params, request.apiKey)` (`initial-greeting.ts:184`) —
+    // the greeting profile's own key, resolved by the create route (or the
+    // reroute's) and finally SENT (P4.133, dogfood #133).
     let rx = streaming
-        .stream_message(&req.provider, req.base_url.as_deref(), &params)
+        .stream_message_keyed(
+            &req.provider,
+            req.base_url.as_deref(),
+            &req.api_key,
+            &params,
+        )
         .await;
     let mut rx = watch_stream(
         rx,

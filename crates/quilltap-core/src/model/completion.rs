@@ -281,6 +281,29 @@ pub trait CompletionProvider {
         let _ = attachment_anchor_index;
         self.send_message(provider, base_url, params)
     }
+
+    /// The profile-bound variant (P4.133, dogfood #133): v4's
+    /// `sendMessage(params, apiKey)` — the key the effective connection
+    /// profile names (the cheap-LLM selection's profile, the generator's
+    /// profile, the image-description profile …), resolved by the caller and
+    /// handed to the provider with the call. No v4 completion call scans the
+    /// `api_keys` table by provider.
+    ///
+    /// Implementations that build real wire input (the host's
+    /// `WireCompletionProvider`) override this and put `api_key` on the wire —
+    /// `""` included (v4's local / keyless send). The default ignores the key
+    /// and answers [`send_message`](Self::send_message) — correct for canned /
+    /// test providers, whose keys deliberately do not see the auth.
+    fn send_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &CompletionParams,
+    ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        let _ = api_key;
+        self.send_message(provider, base_url, params)
+    }
 }
 
 /// `Arc<T>` is a [`CompletionProvider`] whenever `T` is (delegating to the inner
@@ -306,6 +329,17 @@ impl<T: CompletionProvider> CompletionProvider for Arc<T> {
         attachment_anchor_index: Option<usize>,
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
         (**self).send_message_with_anchor(provider, base_url, params, attachment_anchor_index)
+    }
+
+    // Forwarded explicitly, for the same reason (P4.133's M1).
+    fn send_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &CompletionParams,
+    ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        (**self).send_message_keyed(provider, base_url, api_key, params)
     }
 }
 

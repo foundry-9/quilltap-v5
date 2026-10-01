@@ -51,14 +51,13 @@
 //! * **`Math.random()`** — the sole impurity inside `select_next_speaker`; the
 //!   caller threads `random01` (only consumed on the multiple-candidate path).
 //!
-//! ## Host-side deferred seam
+//! ## The API key
 //!
-//! * **The decrypted API key.** v4 fetches + decrypts it via
-//!   `repos.connections.findApiKeyById(profile.apiKeyId)`. Per the established
-//!   deferral (mirroring [`crate::services::cheap_llm_exec`]), API-key acquisition
-//!   stays host-side: this resolver returns the resolved `connection_profile` row
-//!   (carrying `apiKeyId` when set); fetching the key from the `api_keys` table is
-//!   the host's job. The result's `api_key` slot is therefore `None` here.
+//! * v4 fetches + "decrypts" it via `repos.connections.findApiKeyById(profile.
+//!   apiKeyId)` — unscoped, with no `isActive` filter — and so does this
+//!   resolver (P4.133, dogfood #133). Before that the slot was always `None`
+//!   and the host's provider scan picked the wire key, so a profile bound to
+//!   the second of two keys for one provider sent the first.
 
 use serde_json::Value;
 
@@ -125,8 +124,8 @@ impl From<DbError> for ResolveError {
     }
 }
 
-/// The v4 `ParticipantResolutionResult`, minus the decrypted API key (host-side
-/// deferred). The three entity fields are the loaded JSON rows.
+/// The v4 `ParticipantResolutionResult`. The three entity fields are the loaded
+/// JSON rows.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ParticipantResolution {
     /// The character participant who will respond (the chat participant object).
@@ -135,7 +134,9 @@ pub struct ParticipantResolution {
     pub character: Value,
     /// The resolved connection profile row.
     pub connection_profile: Value,
-    /// The decrypted API key — **always `None` here** (host-side deferred seam).
+    /// The decrypted API key (v4 `apiKey`): the row the profile's `apiKeyId`
+    /// names, active or not; `None` where v4 answers `''` (no id, a dangling
+    /// id, a read error).
     pub api_key: Option<String>,
     /// Image profile id from the chat level (`chat.imageProfileId || null`).
     pub image_profile_id: Option<String>,
@@ -464,12 +465,30 @@ pub async fn resolve_responding_participant(
         connection::resolve_connection_profile(&character_participant, &character, None)
             .ok_or(ResolveError::NoConnectionProfileConfigured)?;
 
-    // Load the connection profile (host-side deferred: no API-key fetch).
+    // Load the connection profile.
     let connection_profile = {
         let id = resolved_profile_id.clone();
         db.read_main(move |conn| connection_profiles::find_by_id(conn, &id))?
     }
     .ok_or(ResolveError::ConnectionProfileNotFound)?;
+
+    // Get the API key if the profile names one (v4
+    // `participant-resolver.service.ts:236-242`). UNSCOPED `findApiKeyById` and
+    // NO `isActive` question: a profile bound to a deactivated key still sends
+    // it, and a dangling id (or a read error — v4's `safeQuery` answers `null`)
+    // leaves no key, for the orchestrator's requires-gate to refuse. This is the
+    // key every leg of the turn sends (P4.133, dogfood #133); nothing on this
+    // path scans the `api_keys` table by provider.
+    let api_key = match str_field(&connection_profile, "apiKeyId").filter(|s| !s.is_empty()) {
+        Some(api_key_id) => {
+            let api_key_id = api_key_id.to_string();
+            db.read_main(move |conn| crate::db::api_keys::find_by_id(conn, &api_key_id))
+                .ok()
+                .flatten()
+                .map(|k| k.key_value)
+        }
+        None => None,
+    };
 
     let image_profile_id = str_field(chat, "imageProfileId")
         .filter(|s| !s.is_empty())
@@ -481,7 +500,7 @@ pub async fn resolve_responding_participant(
         character_participant,
         character,
         connection_profile,
-        api_key: None,
+        api_key,
         image_profile_id,
         user_participant,
         user_participant_id,

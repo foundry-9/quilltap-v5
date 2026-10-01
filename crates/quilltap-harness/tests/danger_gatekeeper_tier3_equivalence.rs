@@ -296,6 +296,11 @@ fn oracle_table<'a>(lines: &'a [Value], table: &str) -> &'a Value {
 
 #[tokio::test]
 async fn danger_gatekeeper_tier3_matches_oracle() {
+    // P4.133 OUT-OF-MANDATE (dogfood #133): the oracle mocks
+    // `getApiKeyForCheapLLMSelection` to a constant; the twin (v5 now resolves
+    // the cheap selection's own key — and the Concierge classifier's — and
+    // refuses without one).
+    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
     let Ok(oracle_path) = std::env::var("QT_ORACLE_DANGER_GATEKEEPER") else {
         eprintln!("SKIP: set QT_ORACLE_DANGER_GATEKEEPER to the tier-3 NDJSON (see header).");
         return;

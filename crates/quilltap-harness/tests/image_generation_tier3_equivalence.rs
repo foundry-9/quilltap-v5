@@ -835,6 +835,11 @@ fn normalize_background_jobs(dump: &mut Value) {
 
 #[test]
 fn image_generation_matches_oracle() {
+    // P4.133 OUT-OF-MANDATE (dogfood #133): the oracle mocks
+    // `getApiKeyForCheapLLMSelection` to a constant; the twin (v5 now resolves
+    // the cheap selection's own key — and the Concierge classifier's — and
+    // refuses without one).
+    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
     let (Some(oracle_path), Some(main_fixture), Some(mount_fixture)) = (
         env_or_skip("QT_ORACLE_IMGGEN"),
         env_or_skip("QT_FIXTURE_IMGGEN_MAIN"),

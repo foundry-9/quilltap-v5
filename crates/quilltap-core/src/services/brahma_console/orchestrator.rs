@@ -182,9 +182,9 @@ where
     COST: CostTracker,
 {
     pub db: &'a Db,
-    /// The streaming model boundary (v4 `streamMessage`). The api-key resolution
-    /// happens here for the early-failure behavior; the resolved value is unused
-    /// (the host streaming provider resolves keys internally, as elsewhere).
+    /// The streaming model boundary (v4 `streamMessage`). The turn's api key is
+    /// resolved here (the bug-81 composite — an early refusal on failure) and
+    /// SENT with every stream through the keyed method (P4.133).
     pub streaming: &'a STR,
     /// The tool executor boundary. The Brahma slate has NO `ask_carina`, so no
     /// recursion.
@@ -349,9 +349,9 @@ where
 
     // Resolve the api key through v4's `resolveConnectionProfileApiKey` (bug 81):
     // required where required, forwarded where merely accepted, and loud on a
-    // dangling id even there. The resolved value is unused (the host streaming
-    // provider resolves keys internally); this is the early-failure gate.
-    // v4's UNSCOPED `findApiKeyById`.
+    // dangling id even there — and the resolved key is what every stream of
+    // this turn SENDS (v4 `:196` → `:346`; P4.133, dogfood #133). v4's UNSCOPED
+    // `findApiKeyById`.
     let key_id = s(profile, "apiKeyId");
     let provider_for_key = provider.clone();
     let resolution = db
@@ -365,11 +365,14 @@ where
         .unwrap_or(ProfileApiKeyResolution::Failed(
             ProfileApiKeyFailure::ApiKeyNotFound,
         ));
-    if let ProfileApiKeyResolution::Failed(reason) = resolution {
+    let api_key = match resolution {
+        ProfileApiKeyResolution::Ok(key) => key,
         // v4 `0506517d3` correction (d) — one `describeProfileApiKeyFailure` for
         // both Brahma paths (see `ProfileApiKeyFailure::describe`).
-        return Err(BrahmaSendError::new(reason.describe()));
-    }
+        ProfileApiKeyResolution::Failed(reason) => {
+            return Err(BrahmaSendError::new(reason.describe()))
+        }
+    };
 
     // Build tools — the Brahma flag vector (agent ON, help OFF, doc read/write ON,
     // wardrobe/Carina/workspace OFF, search-without-memories, read-only run_sql).
@@ -543,6 +546,7 @@ where
             sink,
             &provider,
             base_url.as_deref(),
+            &api_key,
             &model,
             &conversation_messages,
             &effective_tools,
@@ -923,6 +927,7 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     sink: &impl EventSink,
     provider: &str,
     base_url: Option<&str>,
+    api_key: &str,
     model: &str,
     messages: &[ThreadedMessage],
     tools: &[Value],
@@ -964,7 +969,9 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     // consumers). v4's console calls pass `userId` + `chatId` only — the console
     // has neither a `messageId` nor a `characterId` to carry.
     let mut rx = watch_stream(
-        streaming.stream_message(provider, base_url, &params).await,
+        streaming
+            .stream_message_keyed(provider, base_url, api_key, &params)
+            .await,
         StallBudgets::default(),
         StallWatchdogContext::streaming_service(provider, model).with_ids(
             Some(watchdog_user_id),

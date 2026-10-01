@@ -47,10 +47,12 @@ use source_census::{core_src_root, rust_sources};
 const CENSUS: &[(&str, usize, usize, &str)] = &[
     (
         "model/stream.rs",
-        1,
+        3,
         0,
-        "the blanket `impl StreamingCompletionProvider for Arc<T>` delegating to \
-         the inner value — the seam itself, not a consumer",
+        "the seam itself, not a consumer: the blanket `impl \
+         StreamingCompletionProvider for Arc<T>`'s two forwards (the unkeyed \
+         method and, explicitly, the keyed one) and the keyed method's \
+         defaulted body delegating to the unkeyed one (P4.133)",
     ),
     (
         "services/primary_stream.rs",
@@ -133,6 +135,10 @@ const CENSUS: &[(&str, usize, usize, &str)] = &[
 ];
 
 const CALL: &str = ".stream_message(";
+/// P4.133 (dogfood #133): the keyed spelling every production consumer uses
+/// now — the profile-bound key crosses the seam with the call. Counted with
+/// [`CALL`] as one population (`.stream_message(` never matches inside it).
+const KEYED_CALL: &str = ".stream_message_keyed(";
 const WRAP: &str = "watch_stream(";
 
 /// The file with every `#[cfg(test)]` item removed by brace balance.
@@ -202,11 +208,11 @@ fn every_production_stream_message_call_wears_the_watchdog() {
 
     for path in &files {
         let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path:?}: {e}"));
-        if !text.contains(CALL) {
+        if !text.contains(CALL) && !text.contains(KEYED_CALL) {
             continue;
         }
         let zone = production_zone(&text);
-        let calls = zone.matches(CALL).count();
+        let calls = zone.matches(CALL).count() + zone.matches(KEYED_CALL).count();
         if calls == 0 {
             continue; // test-module-only, e.g. model/streaming_provider.rs
         }

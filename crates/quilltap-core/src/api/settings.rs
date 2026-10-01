@@ -2576,7 +2576,12 @@ where
         // leaves the provider's own default in charge.
         request_timeout_ms: None,
     };
-    match completion.send_message(provider, base_url, &params).await {
+    // v4 `provider.sendMessage(requestParams, decryptedKey)` (`route.ts:464`) —
+    // the key the BODY names, `''` with none (P4.133, dogfood #133).
+    match completion
+        .send_message_keyed(provider, base_url, &decrypted_key, &params)
+        .await
+    {
         Err(e) => Response::ConnectionTest(json!({
             "success": false, "provider": provider, "error": e.message,
         })),

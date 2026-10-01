@@ -277,9 +277,8 @@ impl SwipeGenerateDriver for RecordingSwipeDriver {
                     .unwrap_or(Value::Null),
             );
             // v4 hands the understudy's decrypted key through the override;
-            // v5's key is per provider at the transport (the standing
-            // provider-I/O ruling) — the harness reads it off the canned
-            // resolver by the row's `apiKeyId` so the comparand stays whole.
+            // v5's host resolves it from the row (P4.133) — filled below
+            // through the host's own `override_api_key`.
             call.insert(
                 "overrideApiKey".into(),
                 override_row
@@ -507,7 +506,7 @@ fn retry_uncensored_matches_v4() {
         .iter()
         .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
         .collect();
-    let api_keys = CannedApiKeys(keys.clone());
+    let api_keys = CannedApiKeys(keys);
 
     let scratch =
         std::env::temp_dir().join(format!("qt-retry-uncensored-rust-{}", std::process::id()));
@@ -856,8 +855,11 @@ fn retry_uncensored_matches_v4() {
             .filter(|l| l.contains("announced=true"))
             .count();
 
-        // The v4 canned key rides the override on v4's side only; compare it
-        // from the canned resolver by the understudy's id.
+        // v4's route hands the understudy's decrypted key through the
+        // override; v5's host resolves it beside the context limit, through
+        // `regenerate_swipe::override_api_key` (P4.133). The comparand runs
+        // THAT function over the same canned resolver v4's mocked
+        // `findApiKeyByIdAndUserId` answers from, on the row the route chose.
         let want_calls: Vec<Value> = want["calls"].as_array().unwrap().to_vec();
         let got_calls: Vec<Value> = got_calls
             .into_iter()
@@ -870,7 +872,12 @@ fn retry_uncensored_matches_v4() {
                         })
                         .unwrap()
                         .unwrap();
-                    c["overrideApiKey"] = json!(keys[row["apiKeyId"].as_str().unwrap()].clone());
+                    c["overrideApiKey"] =
+                        json!(quilltap_core::services::regenerate_swipe::override_api_key(
+                            &api_keys,
+                            &row,
+                            quilltap_core::api::SINGLE_USER_ID,
+                        ));
                 }
                 c
             })

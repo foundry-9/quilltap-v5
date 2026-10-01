@@ -310,6 +310,9 @@ where
         provider,
         &provider_name,
         base_url.as_deref(),
+        // v4 `apiKey` from its ctx (`recovery.service.ts:303`) — the turn's
+        // `streaming.effectiveApiKey` (P4.133).
+        &ctx.api_key,
         &params,
         sink,
         &mut full_response,
@@ -367,6 +370,7 @@ async fn drain_recovery_stream<P, S>(
     provider: &P,
     provider_name: &str,
     base_url: Option<&str>,
+    api_key: &str,
     params: &StreamParams,
     sink: &S,
     full_response: &mut String,
@@ -387,7 +391,7 @@ where
     // also why it writes no `llm_logs` row. The warn carries `context` alone.
     let mut rx = watch_stream(
         provider
-            .stream_message(provider_name, base_url, params)
+            .stream_message_keyed(provider_name, base_url, api_key, params)
             .await,
         StallBudgets::default(),
         StallWatchdogContext::streaming_service(provider_name, &params.model),

@@ -454,6 +454,10 @@ struct QueuedStreamingProvider {
     markers: Vec<(String, String)>,
     /// P4.97 — the ORDERED per-call option bag (see `StreamCallW`).
     calls: Mutex<Vec<Value>>,
+    /// P4.133 (dogfood #133): the key the keyed method was handed, consumed by
+    /// the `stream_message` it delegates to — so each recorded call carries
+    /// its OWN key, and an unkeyed call records `null` against v4's string.
+    pending_key: Mutex<Option<String>>,
 }
 
 impl QueuedStreamingProvider {
@@ -505,6 +509,7 @@ impl QueuedStreamingProvider {
             queues: Mutex::new(queues),
             markers: Vec::new(),
             calls: Mutex::new(Vec::new()),
+            pending_key: Mutex::new(None),
         }
     }
 
@@ -602,6 +607,17 @@ fn chunk_to_result(c: &ChunkW, provider: &str, model: &str) -> StreamChunkResult
 }
 
 impl StreamingCompletionProvider for QueuedStreamingProvider {
+    fn stream_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &StreamParams,
+    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        *self.pending_key.lock().unwrap() = Some(api_key.to_string());
+        self.stream_message(provider, base_url, params)
+    }
+
     fn stream_message(
         &self,
         provider: &str,
@@ -629,6 +645,9 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
                 .as_ref()
                 .and_then(|t| t.as_array().map(Vec::len))
                 .unwrap_or(0),
+            // P4.133: per CALL (the key-sharing legs — a retry and its
+            // primary — are separate entries here).
+            "apiKey": self.pending_key.lock().unwrap().take(),
         }));
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
@@ -1697,6 +1716,21 @@ async fn primary_stream_tier3_matches_oracle() {
         diverged.len(),
         diverged.join("\n")
     );
+    // P4.133 (dogfood #133): the key each leg handed the provider. The diff
+    // above compares it per call; these pin that the corpus still REACHES the
+    // three distinct keys, so the comparison cannot pass on `primary-key`
+    // alone: the primary's (state), the uncensored retry's understudy key,
+    // and a chain candidate's OWN resolved key (M2: a chain that read the key
+    // off `state` would send `primary-key` there — `state` is written only
+    // after the leg succeeds).
+    for want in ["primary-key", "uncensored-key", "understudy-key"] {
+        assert!(
+            oracle_stream_calls.iter().any(|c| c["apiKey"] == want),
+            "no oracle stream call carried `{want}` — the arm measures nothing (regenerate \
+             from THIS tree's case: P4.133 records `apiKey`)"
+        );
+    }
+
     // Shape assertions, not decoration. The retry legs are the point of the
     // side-channel, and each of the three keys is load-bearing on its own:
     //   - the two SET cases must reach the retry with a primary that CARRIED

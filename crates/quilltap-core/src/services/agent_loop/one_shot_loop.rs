@@ -296,6 +296,7 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     streaming: &STR,
     provider: &str,
     base_url: Option<&str>,
+    api_key: &str,
     model: &str,
     messages: &[ThreadedMessage],
     tools: &[Value],
@@ -338,7 +339,9 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     // consumers). v4's one-shot calls pass `userId` + `chatId` only — neither a
     // `messageId` nor a `characterId` to carry.
     let mut rx = watch_stream(
-        streaming.stream_message(provider, base_url, &params).await,
+        streaming
+            .stream_message_keyed(provider, base_url, api_key, &params)
+            .await,
         StallBudgets::default(),
         StallWatchdogContext::streaming_service(provider, model).with_ids(
             Some(watchdog_user_id),
@@ -504,6 +507,31 @@ where
     let provider = s(connection_profile, "provider").unwrap_or_default();
     let model = s(connection_profile, "modelName").unwrap_or_default();
     let base_url = s(connection_profile, "baseUrl");
+    // v4 `opts.apiKey` (`one-shot-loop.ts:127`, sent at `:222`): every caller
+    // passes the key `resolveConnectionProfileApiKey(profile)` answered after
+    // its own bug-81 gate (Brahma's one-shot `:78`, the Scenario Builder route
+    // `:63`). v5 resolves the SAME composite over the SAME profile row here,
+    // where the stream goes out (P4.133, dogfood #133) — the callers' gates have
+    // already refused a failed resolution, and the Scenario Builder's key could
+    // not otherwise reach this loop without a field on the frozen engine's
+    // build request. A failure here (a row deleted between the gate and the
+    // loop) sends `''`.
+    let api_key = {
+        let provider = provider.clone();
+        let api_key_id = s(connection_profile, "apiKeyId");
+        match deps.db.read_main(move |c| {
+            Ok::<_, crate::db::DbError>(
+                crate::services::api_key_service::resolve_connection_profile_api_key(
+                    c,
+                    &provider,
+                    api_key_id.as_deref(),
+                ),
+            )
+        }) {
+            Ok(crate::services::api_key_service::ProfileApiKeyResolution::Ok(key)) => key,
+            _ => String::new(),
+        }
+    };
 
     let use_text_block_tools = resolve_one_shot_uses_text_block_tools(connection_profile, built);
     let model_supports_native_tools = built.model_supports_native_tools;
@@ -578,6 +606,7 @@ where
             deps.streaming,
             &provider,
             base_url.as_deref(),
+            &api_key,
             &model,
             &conversation_messages,
             &effective_tools,

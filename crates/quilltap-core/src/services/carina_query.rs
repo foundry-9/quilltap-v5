@@ -368,11 +368,10 @@ where
     let model_name = s(&connection_profile, "modelName").unwrap_or_default();
     let profile_id = s(&connection_profile, "id").unwrap_or_default();
 
-    // v4 reads the api key (`findApiKeyById`) and passes it to `streamMessage`.
-    // The streaming SEAM resolves keys above itself (production) / is canned (the
-    // differential), so the value is not consumed here; the read is kept for
-    // fidelity with v4's DB access and to surface a real key-lookup error.
-    let _api_key = if let Some(api_key_id) = s(&connection_profile, "apiKeyId") {
+    // v4 reads the api key (unscoped `findApiKeyById`, `carina.service.ts:517`)
+    // and passes it to `streamMessage` (`:676`) — `''` when the profile names
+    // none or the row is gone. SENT since P4.133 (dogfood #133).
+    let api_key = if let Some(api_key_id) = s(&connection_profile, "apiKeyId") {
         db.read_main(|c| api_keys::find_by_id(c, &api_key_id))
             .ok()
             .flatten()
@@ -630,6 +629,7 @@ where
         max_tokens,
         top_p,
         profile_parameters: profile_parameters.as_ref(),
+        api_key: &api_key,
         user_id: &user_id,
         chat_id: &chat_id,
         answerer_id: &answerer_id,
@@ -1151,6 +1151,8 @@ struct StreamCtx<'a> {
     max_tokens: Option<i64>,
     top_p: Option<f64>,
     profile_parameters: Option<&'a Value>,
+    /// The answerer profile's key (v4 `apiKey`).
+    api_key: &'a str,
     /// The three ids v4's Carina call hands the stall watchdog's `logContext`
     /// (`carina.service.ts:683-685`: `userId`, `chatId`, `characterId:
     /// answerer.id` — and no `messageId`).
@@ -1203,7 +1205,7 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     // consumers).
     let mut rx = watch_stream(
         streaming
-            .stream_message(ctx.provider, ctx.base_url, &params)
+            .stream_message_keyed(ctx.provider, ctx.base_url, ctx.api_key, &params)
             .await,
         StallBudgets::default(),
         StallWatchdogContext::streaming_service(ctx.provider, ctx.model).with_ids(

@@ -486,9 +486,11 @@ where
         //
         // v4's re-stream call (`native-tool-loop.service.ts:340`) passes all four
         // ids, `characterId: character.id` included.
+        // v4 `apiKey: streaming.effectiveApiKey` (`:340`) — P4.133.
+        let api_key = state.effective_api_key.clone();
         let mut rx = watch_stream(
             provider
-                .stream_message(&provider_name, base_url.as_deref(), &params)
+                .stream_message_keyed(&provider_name, base_url.as_deref(), &api_key, &params)
                 .await,
             StallBudgets::default(),
             StallWatchdogContext::streaming_service(&provider_name, &params.model).with_ids(
@@ -626,9 +628,11 @@ where
             // The watchdog, as above. v4's force-final call
             // (`native-tool-loop.service.ts:421`) passes NO `characterId` — only
             // `userId`, `messageId` and `chatId`.
+            // v4 `apiKey: streaming.effectiveApiKey` (`:421`) — P4.133.
+            let api_key = state.effective_api_key.clone();
             let mut rx = watch_stream(
                 provider
-                    .stream_message(&provider_name, base_url.as_deref(), &params)
+                    .stream_message_keyed(&provider_name, base_url.as_deref(), &api_key, &params)
                     .await,
                 StallBudgets::default(),
                 StallWatchdogContext::streaming_service(&provider_name, &params.model).with_ids(

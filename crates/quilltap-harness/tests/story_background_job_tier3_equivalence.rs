@@ -349,6 +349,43 @@ fn fresh_copy(main_fixture: &str, mount_fixture: &str, tag: &str) -> (PathBuf, P
     (main_work, mount_work)
 }
 
+/// P4.133 OUT-OF-MANDATE (dogfood #133): the oracle replaces
+/// `repos.connections.findApiKeyByIdAndUserId` with a lookup over
+/// `spec.apiKeys` — a stand-in for the `api_keys` TABLE. v5 now resolves the
+/// cheap-LLM step's key through that table for real (and refuses without
+/// one), so the twin is the same rows, planted on the fresh copy for the
+/// spec's user. (The image desks keep reading `CannedApiKeys`.)
+fn plant_spec_api_keys(
+    main_work: &Path,
+    pepper: &str,
+    user_id: &str,
+    keys: &HashMap<String, String>,
+) {
+    let writer = quilltap_core::db::Writer::open_writable(main_work, pepper)
+        .expect("open fixture copy for the api-key plant");
+    // The committed pair predates the table (v4's patch never reads it).
+    writer
+        .connection()
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS api_keys (\
+               id TEXT PRIMARY KEY, userId TEXT NOT NULL, label TEXT NOT NULL, \
+               provider TEXT NOT NULL, key_value TEXT NOT NULL, isActive INTEGER DEFAULT 1, \
+               lastUsed TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);",
+        )
+        .expect("api_keys table");
+    for (id, value) in keys {
+        writer
+            .connection()
+            .execute(
+                "INSERT OR REPLACE INTO api_keys (id, userId, label, provider, key_value, isActive, \
+                 createdAt, updatedAt) VALUES (?1, ?2, 'canned', 'OPENAI', ?3, 1, \
+                 '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
+                rusqlite::params![id, user_id, value],
+            )
+            .expect("plant api key");
+    }
+}
+
 /// [decd8ef9] Apply the case's own `conciergeSettings` to the fresh copy
 /// — the oracle runs the identical `UPDATE` on its copy. A chat-settings row is
 /// per-user and the corpus has one user, so a per-case danger bag (a dangerous
@@ -720,6 +757,12 @@ fn story_background_job_matches_oracle() {
     for label in chat_keys {
         let case = &spec.chats[label];
         let (main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture, label);
+        plant_spec_api_keys(
+            &main_work,
+            &spec.test_pepper_base64,
+            &spec.user_id,
+            &spec.api_keys,
+        );
 
         // W4.10b: a fresh per-case llm-logs partition for the IMAGE_GENERATION +
         // cheap-task (SUMMARIZATION / IMAGE_PROMPT_CRAFTING) rows.
@@ -1003,6 +1046,12 @@ fn story_background_job_runner_registration_e2e() {
         .expect("tokio runtime");
 
     let (main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture, "e2e");
+    plant_spec_api_keys(
+        &main_work,
+        &spec.test_pepper_base64,
+        &spec.user_id,
+        &spec.api_keys,
+    );
     let db = Db::open(
         DbPaths {
             main: main_work.clone(),

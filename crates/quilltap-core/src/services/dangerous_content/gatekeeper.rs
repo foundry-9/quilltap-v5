@@ -17,9 +17,9 @@
 //!     [`map_moderation_result`] over the raw result so the score/category math
 //!     is verified. The default [`NoModerationProvider`] mirrors a no-plugin
 //!     instance (always falls through to the LLM).
-//!   - **Cheap-LLM API key** (`getApiKeyForCheapLLMSelection`) — host-side, as
-//!     for [`crate::services::cheap_llm_exec`]; the boundary starts at the
-//!     [`CompletionProvider`] call.
+//!   - **Cheap-LLM API key** (`getApiKeyForCheapLLMSelection`) — resolved here
+//!     over the selection's own profile (P4.133, dogfood #133) and sent with
+//!     the classifier's call; a `null` key WARNs and fails safe, as v4 does.
 //!   - **`logLLMCall`** — fire-and-forget llm-logs write; host-side.
 
 use std::collections::HashMap;
@@ -405,10 +405,9 @@ fn cache_result(content_hash: String, result: DangerClassificationResult) {
 /// purpose-built); on `NotAvailable` falls back to the cheap-LLM classifier. Any
 /// error is fail-safe (`safeFallback`).
 ///
-/// The cheap-LLM API key acquisition (`getApiKeyForCheapLLMSelection`) is the
-/// host-side seam; this port's boundary is the [`CompletionProvider`] call, so it
-/// does not model the null-key early return (which only happens when no key is
-/// available — a host concern).
+/// The classifier's key is v4's `getApiKeyForCheapLLMSelection(selection,
+/// userId)` — the selection's own profile's key, `''` for a local model — and a
+/// `null` answer WARNs and fails safe before any call (P4.133).
 #[allow(clippy::too_many_arguments)]
 pub async fn classify_content<M, C>(
     db: &Db,
@@ -537,7 +536,29 @@ where
         ModerationOutcome::NotAvailable => {}
     }
 
-    // Fall back to cheap-LLM classification. API-key acquisition is host-side.
+    // Fall back to cheap LLM classification. Get the API key (v4
+    // `gatekeeper.service.ts:378-382`, P4.133): the selection's own profile's
+    // key; `null` (no profile, no row, a read error — v4's repository reads are
+    // fallback `safeQuery`s) fails safe with v4's WARN and is NOT cached.
+    let api_key = {
+        let selection = cheap_llm_selection.clone();
+        let uid = user_id.to_string();
+        db.read_main(move |conn| {
+            crate::services::api_key_service::get_api_key_for_cheap_llm_selection(
+                conn, &selection, &uid,
+            )
+        })
+        .ok()
+        .flatten()
+    };
+    let Some(api_key) = api_key else {
+        tracing::warn!(
+            target: "quilltap::dangerous_content",
+            "[Gatekeeper] No API key available for classification, failing safe"
+        );
+        return Ok(DangerClassificationResult::safe_fallback());
+    };
+
     let mut system_prompt = prompt_text::CLASSIFICATION_SYSTEM_PROMPT.to_string();
     if let Some(custom) = concierge_policy
         .pre_screen
@@ -574,9 +595,10 @@ where
     // bracketed by `Date.now()`; the row had no `durationMs` before.
     let classification_started_at = crate::clock::now_unix_ms();
     let response = completion
-        .send_message(
+        .send_message_keyed(
             &cheap_llm_selection.provider,
             cheap_llm_selection.base_url.as_deref(),
+            &api_key,
             &params,
         )
         .await
@@ -773,6 +795,120 @@ mod tests {
         assert_eq!(
             serialize_moderation_log_content(&clean),
             r#"{"flagged":false,"categories":[]}"#,
+        );
+    }
+
+    /// P4.133 (dogfood #133): v4 `gatekeeper.service.ts:378-382` — the
+    /// classifier resolves `getApiKeyForCheapLLMSelection` before it builds a
+    /// provider; a `null` WARNs `[Gatekeeper] No API key available for
+    /// classification, failing safe` and answers `safeFallback` with no call.
+    /// The silence leg: a resolved key sends KEYED, with no WARN.
+    #[test]
+    fn a_keyless_selection_fails_safe_with_v4s_warn_and_a_keyed_one_sends_its_key() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        use crate::model::completion::{CompletionError, CompletionResponse};
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        struct KeyRecorder(std::sync::Mutex<Vec<String>>);
+        impl CompletionProvider for KeyRecorder {
+            async fn send_message(
+                &self,
+                _provider: &str,
+                _base_url: Option<&str>,
+                _params: &CompletionParams,
+            ) -> Result<CompletionResponse, CompletionError> {
+                panic!("the classifier must send KEYED")
+            }
+            fn send_message_keyed(
+                &self,
+                _provider: &str,
+                _base_url: Option<&str>,
+                api_key: &str,
+                _params: &CompletionParams,
+            ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+            {
+                self.0.lock().unwrap().push(api_key.to_string());
+                async {
+                    Ok(CompletionResponse {
+                        content: r#"{ "isDangerous": false, "score": 0.0, "categories": [] }"#
+                            .to_string(),
+                        usage: None,
+                        finish_reason: None,
+                        attachment_results: None,
+                        cache_usage: None,
+                    })
+                }
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: dir.path().join("quilltap.db"),
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let selection = CheapLlmSelection {
+            provider: "OPENAI".to_string(),
+            model_name: "gpt-mini".to_string(),
+            base_url: None,
+            connection_profile_id: Some("no-such-profile".to_string()),
+            is_local: false,
+            profile_parameters: None,
+        };
+        let policy = super::super::resolver::test_policy("OFF", None);
+        let provider = KeyRecorder(std::sync::Mutex::new(Vec::new()));
+        let warn = "[Gatekeeper] No API key available for classification, failing safe";
+
+        let (result, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(classify_content(
+                &db,
+                &NoModerationProvider,
+                &provider,
+                "P4.133 keyless classification probe",
+                &selection,
+                "user-1",
+                &policy,
+                None,
+            ))
+        });
+        assert_eq!(result, DangerClassificationResult::safe_fallback());
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.starts_with("WARN quilltap::dangerous_content") && l.contains(warn)),
+            "v4's WARN, on its target: {lines:?}"
+        );
+        assert!(
+            provider.0.lock().unwrap().is_empty(),
+            "no call without a key"
+        );
+
+        let _key = crate::test_support::CannedCheapLlmKey::install("k-classifier");
+        let (_, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(classify_content(
+                &db,
+                &NoModerationProvider,
+                &provider,
+                "P4.133 keyed classification probe",
+                &selection,
+                "user-1",
+                &policy,
+                None,
+            ))
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains(warn)),
+            "silence leg: {lines:?}"
+        );
+        assert_eq!(
+            *provider.0.lock().unwrap(),
+            vec!["k-classifier".to_string()]
         );
     }
 }

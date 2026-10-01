@@ -12,6 +12,43 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — fix(core): send the connection profile's own API key on every model call (dogfood #133, P4.133)
+
+_Versions: core 0.0.1129, harness 0.0.1052, host 0.0.169, web 0.0.206._
+
+v5 resolved the right key at most call sites and then dropped it: only
+`(provider, base_url, params)` crossed the model boundary, and the host sent
+the FIRST active key it found for the provider. A profile bound to a second
+key for the same provider therefore used the first one.
+
+The two provider traits gain defaulted keyed methods (`stream_message_keyed`,
+`send_message_keyed`). The core streaming wire provider and the host
+completion wire provider override them and put the passed key on the request;
+`Arc` forwards them explicitly. The participant resolver now fills the key from
+the profile's `apiKeyId` (unscoped, active or not). The Salon turn runs v4's
+inline requires/accepts gate and refuses with `No API key configured for this
+connection profile`. Every leg sends its key: the primary stream and its retry,
+both tool loops, recovery, the danger reroute, the empty-response retry, the
+uncensored retry and each failover candidate (its own key), "Try uncensored"
+(new `SwipeProfileOverride.api_key`), the greeting, Carina, help chat, both
+Brahma paths, the Scenario Builder, image description, the connection test
+message, and the character wizard. Cheap-LLM tasks resolve
+`getApiKeyForCheapLLMSelection` and refuse with `No API key available for cheap
+LLM provider`. The Concierge classifier logs v4's `[Gatekeeper] No API key
+available for classification, failing safe` and answers the safe fallback.
+
+Proofs: `orchestrator_tier3` records the key every stream carries for all
+cases, plus five new arms (two keys for one provider, an inactive bound key, a
+keyless OpenAI-Compatible profile, and two requires-gate refusals);
+`primary_stream_tier3` records the key per stream call; `title_update_tier3`
+lifts v4's key mock for two cases; a new web test captures the request headers
+from the production assembly. Differentials whose v4 side mocks the key lookup
+or `requiresApiKey` arm thread-scoped twins
+(`test_support::CannedCheapLlmKey`, `CannedRequiresApiKey`).
+`harness/tools/refusal-server.py` gains a key gate (`QT_REFUSE_KEY`) and
+records `Authorization`. The three remaining generator call sites are
+pre-written as a patch for the unifier.
+
 #### 2026-10-01 — test(harness): compare v4's ensureTable plant lines count-tolerantly in the mail family (P4.134)
 
 _Versions: harness 0.0.1053._

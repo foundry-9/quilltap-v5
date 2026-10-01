@@ -69,6 +69,9 @@ async fn the_rehearsal_runs_over_the_live_assembly_and_logs_its_call() {
         .with_env_filter("quilltap=warn")
         .try_init();
     let base = common::materialize_in_scene_voiced_instance();
+    // P4.133: the cheap selection's profile needs a key of its own, or the
+    // rehearsal refuses before its provider call (and writes no row).
+    common::bind_profile_keys(base.path());
     let base_dir = base.path().to_path_buf();
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;

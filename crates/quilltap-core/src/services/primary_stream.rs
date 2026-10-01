@@ -1263,9 +1263,13 @@ where
     // and v5 renders no ids where v4 would render empty strings; that state is
     // unreachable on the request path (v4 gates its own log on the same `if
     // (userId)`), and it is four log fields wide.
+    // v4 `apiKey: streaming.effectiveApiKey` (`primary-stream.service.ts:224`,
+    // `:288`) — the profile-bound key the orchestrator's gate left in state, or
+    // the rerouted profile's (P4.133).
+    let api_key = state.effective_api_key.clone();
     let mut rx = watch_stream(
         provider
-            .stream_message(&provider_name, base_url.as_deref(), params)
+            .stream_message_keyed(&provider_name, base_url.as_deref(), &api_key, params)
             .await,
         StallBudgets::default(),
         StallWatchdogContext::streaming_service(&provider_name, &watchdog_model).with_ids(

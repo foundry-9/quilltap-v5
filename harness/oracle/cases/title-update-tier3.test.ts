@@ -122,6 +122,16 @@ interface CaseSpec {
    * which writes NOTHING — not even the `extraPatch` cursor.
    */
   deleteInFlight?: boolean;
+  /**
+   * P4.133 (dogfood #133): run v4's REAL `getApiKeyForCheapLLMSelection` for
+   * this case instead of the canned key. `bound` plants two `api_keys` rows for
+   * the cheap profile's provider — `k-title-first` FIRST, which no profile
+   * names (the old v5 provider scan's pick), then `k-title-bound`, which the
+   * profile names; the key the provider receives is recorded. `none` leaves the
+   * profile keyless: v4 throws `No API key available for cheap LLM provider`
+   * before the provider is built (`core-execution.ts:311`).
+   */
+  liftKeyMock?: 'bound' | 'none';
 }
 
 /** The hand rename `midFlightRename` plants (both sides write these bytes). */
@@ -325,6 +335,13 @@ function buildCases(): CaseSpec[] {
     // P4.112 — the chat vanishes during the LLM call: the chokepoint's
     // `missing` arm (the job discards the outcome, as v4's handler does).
     { name: 'deleted_mid_flight', chat: (s) => s.chatTitleId, deleteInFlight: true },
+    // ── P4.133 (dogfood #133): the key mock LIFTED for these two.
+    // The normal arm on the profile's OWN key, with a first-inserted key for
+    // the same provider that no profile names.
+    { name: 'profile_bound_key_sent', chat: (s) => s.chatTitleId, liftKeyMock: 'bound' },
+    // No key on the profile: v4's throw, caught into `{success:false}` — the
+    // handler advances the cursor and writes nothing else.
+    { name: 'no_key_refuses', chat: (s) => s.chatTitleId, liftKeyMock: 'none' },
   ];
 }
 
@@ -350,7 +367,12 @@ function applyMocks(spec: Spec, c: CaseSpec): void {
       __esModule: true,
       ...actual,
       createLLMProvider: async () => ({
-        sendMessage: async (params: { messages: Array<{ role: string; content: string }> }) => {
+        sendMessage: async (
+          params: { messages: Array<{ role: string; content: string }> },
+          apiKey: string,
+        ) => {
+          // P4.133: the key the provider received, in call order.
+          sentKeys.push(apiKey);
           if (c.providerThrows) throw new Error(c.providerThrowMessage ?? 'canned provider failure');
           if (c.midFlightRename) {
             // The same registry generation the handler imported (resetModules ran
@@ -402,15 +424,63 @@ function applyMocks(spec: Spec, c: CaseSpec): void {
   // this whole oracle vacuous. The fixture seeds no `api_keys` row (the factory
   // exposes no repo for it), so hand back a canned key. The Rust port's boundary
   // starts at the provider call, so it has no equivalent step.
-  jest.doMock('@/lib/services/api-key.service', () => {
-    const actual = jest.requireActual('@/lib/services/api-key.service');
-    return {
-      __esModule: true,
-      ...actual,
-      getApiKeyForCheapLLMSelection: async () => 'canned-test-key',
-    };
-  });
+  //
+  // P4.133: a `liftKeyMock` case runs the REAL module instead. `doMock`
+  // survives `resetModules`, so the lift is an explicit `requireActual`, never
+  // a skipped `doMock` (`jest-domock-survives-resetmodules`).
+  if (c.liftKeyMock) {
+    jest.doMock('@/lib/services/api-key.service', () =>
+      jest.requireActual('@/lib/services/api-key.service'),
+    );
+  } else {
+    jest.doMock('@/lib/services/api-key.service', () => {
+      const actual = jest.requireActual('@/lib/services/api-key.service');
+      return {
+        __esModule: true,
+        ...actual,
+        getApiKeyForCheapLLMSelection: async () => 'canned-test-key',
+      };
+    });
+  }
 }
+
+/** P4.133: the keys the canned provider received in the current case. */
+let sentKeys: string[] = [];
+
+/**
+ * P4.133: plant the `bound` arm's two keys on the case's DB copy, through raw
+ * SQL (the fixture predates the `api_keys` table; the Rust side runs the same
+ * statements). Both owned by the job's user, the user-scoped lookup's scope.
+ */
+async function plantBoundKey(spec: Spec, userId: string): Promise<void> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  await rawQuery(KEY_TABLE_DDL);
+  const [profile] = (await rawQuery(
+    `SELECT provider FROM connection_profiles WHERE id = ?`,
+    [spec.connectionProfileId],
+  )) as Array<{ provider: string }>;
+  for (const [id, value] of [
+    [KEY_FIRST_ID, 'k-title-first'],
+    [KEY_BOUND_ID, 'k-title-bound'],
+  ]) {
+    await rawQuery(
+      'INSERT INTO api_keys (id, userId, label, provider, key_value, isActive, createdAt, updatedAt) ' +
+        "VALUES (?, ?, 'p4133', ?, ?, 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+      [id, userId, profile.provider, value],
+    );
+  }
+  await rawQuery('UPDATE connection_profiles SET apiKeyId = ? WHERE id = ?', [
+    KEY_BOUND_ID,
+    spec.connectionProfileId,
+  ]);
+}
+
+const KEY_TABLE_DDL =
+  'CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, userId TEXT NOT NULL, ' +
+  'label TEXT NOT NULL, provider TEXT NOT NULL, key_value TEXT NOT NULL, ' +
+  'isActive INTEGER DEFAULT 1, lastUsed TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)';
+const KEY_FIRST_ID = 'f1133000-0000-4000-8000-000000000001';
+const KEY_BOUND_ID = 'b1133000-0000-4000-8000-000000000002';
 
 /** The tier-2 diff surface: what the handler wrote. */
 async function dumpState(chatId: string): Promise<unknown> {
@@ -494,6 +564,8 @@ async function runCase(
   try {
     const chatId = c.chat(spec);
     const userId = c.user ? c.user(spec) : spec.userEnabledId;
+    sentKeys = [];
+    if (c.liftKeyMock === 'bound') await plantBoundKey(spec, userId);
     const currentInterchange = c.currentInterchange ?? 5;
     const { handleTitleUpdate } = await import('@/lib/background-jobs/handlers/title-update');
 
@@ -526,6 +598,8 @@ async function runCase(
       name: c.name,
       threw,
       ...(c.expectThrow ? {} : { state: await dumpState(chatId) }),
+      // P4.133: only the lifted cases see a real key (the others the mock's).
+      ...(c.liftKeyMock ? { sentKeys } : {}),
     };
   } finally {
     global.Date = RealDate;

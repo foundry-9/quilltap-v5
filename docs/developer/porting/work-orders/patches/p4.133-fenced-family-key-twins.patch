@@ -1,0 +1,53 @@
+diff --git a/crates/quilltap-harness/tests/context_summary_service_tier3_equivalence.rs b/crates/quilltap-harness/tests/context_summary_service_tier3_equivalence.rs
+index bae812b54..58945515a 100644
+--- a/crates/quilltap-harness/tests/context_summary_service_tier3_equivalence.rs
++++ b/crates/quilltap-harness/tests/context_summary_service_tier3_equivalence.rs
+@@ -624,6 +624,12 @@ fn seed_ids_of(dump: &Value) -> Vec<String> {
+ 
+ #[tokio::test]
+ async fn context_summary_service_tier3_matches_oracle() {
++    // P4.133 (dogfood #133; pre-written for the unifier — P4.D242 owns this
++    // family's run this round): the oracle mocks
++    // `getApiKeyForCheapLLMSelection` to a constant; the twin (v5 now resolves
++    // the cheap selection's own key — and the Concierge classifier's — and
++    // refuses without one).
++    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
+     let oracle_path = match std::env::var("QT_ORACLE_CTXSUM") {
+         Ok(p) => p,
+         Err(_) => {
+diff --git a/crates/quilltap-harness/tests/courier_images_routes_equivalence.rs b/crates/quilltap-harness/tests/courier_images_routes_equivalence.rs
+index 78767ea8b..17d4b056c 100644
+--- a/crates/quilltap-harness/tests/courier_images_routes_equivalence.rs
++++ b/crates/quilltap-harness/tests/courier_images_routes_equivalence.rs
+@@ -441,6 +441,14 @@ fn dump_chat_files(db: &Db, chat_id: &str) -> Value {
+ 
+ #[test]
+ fn courier_images_routes_match_oracle() {
++    // P4.133 (dogfood #133; pre-written for the unifier — P4.D242 owns this
++    // family's run this round): the oracle mocks
++    // `getApiKeyForCheapLLMSelection` to a constant; the twin (v5 now resolves
++    // the cheap selection's own key — and the Concierge classifier's — and
++    // refuses without one).
++    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
++    // …and `requiresApiKey: () => false` (v5's Salon turn runs the gate).
++    let _canned_requires = quilltap_core::test_support::CannedRequiresApiKey::install(false);
+     let Some(oracle_path) = env_or_skip("QT_ORACLE_COURIER_IMAGES") else {
+         return;
+     };
+diff --git a/crates/quilltap-harness/tests/memory_processor_tier3_equivalence.rs b/crates/quilltap-harness/tests/memory_processor_tier3_equivalence.rs
+index 14d7a3dfe..bc692d694 100644
+--- a/crates/quilltap-harness/tests/memory_processor_tier3_equivalence.rs
++++ b/crates/quilltap-harness/tests/memory_processor_tier3_equivalence.rs
+@@ -411,6 +411,12 @@ fn normalize_result(result: &mut Value) {
+ 
+ #[tokio::test]
+ async fn memory_processor_tier3_matches_oracle() {
++    // P4.133 (dogfood #133; pre-written for the unifier — P4.D242 owns this
++    // family's run this round): the oracle mocks
++    // `getApiKeyForCheapLLMSelection` to a constant; the twin (v5 now resolves
++    // the cheap selection's own key — and the Concierge classifier's — and
++    // refuses without one).
++    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
+     let oracle_path = match std::env::var("QT_ORACLE_PROCESSOR") {
+         Ok(p) => p,
+         Err(_) => {

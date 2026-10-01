@@ -710,9 +710,12 @@ where
     // NO `characterId` — only `userId`, `messageId` and `chatId`.
     let leg_started_at_ms = crate::clock::now_unix_ms();
     let mut leg_usage = LegUsage::default();
+    // v4 `apiKey: streaming.effectiveApiKey` (`text-tool-loop.service.ts:390`)
+    // — P4.133.
+    let api_key = state.effective_api_key.clone();
     let mut rx = watch_stream(
         provider
-            .stream_message(provider_name, base_url, &params)
+            .stream_message_keyed(provider_name, base_url, &api_key, &params)
             .await,
         StallBudgets::default(),
         StallWatchdogContext::streaming_service(provider_name, &params.model).with_ids(

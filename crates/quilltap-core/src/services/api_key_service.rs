@@ -76,6 +76,35 @@ pub fn find_active_api_key_for_provider(
         .find(|k| k.provider == provider && k.is_active))
 }
 
+std::thread_local! {
+    /// The differential's twin of v4's mocked `getApiKeyForCheapLLMSelection`
+    /// (armed only through `test_support::CannedCheapLlmKey`; `None` always in
+    /// production).
+    static CANNED_CHEAP_LLM_KEY: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+std::thread_local! {
+    /// The differential's twin of v4's mocked `requiresApiKey: () => false`
+    /// (armed only through `test_support::CannedRequiresApiKey`).
+    static CANNED_REQUIRES_API_KEY: std::cell::Cell<Option<bool>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Arm / disarm the thread-scoped `requiresApiKey` answer; answers the
+/// previous value. Test-support only — see `test_support::CannedRequiresApiKey`.
+#[doc(hidden)]
+pub fn set_canned_requires_api_key(answer: Option<bool>) -> Option<bool> {
+    CANNED_REQUIRES_API_KEY.with(|c| c.replace(answer))
+}
+
+/// Arm / disarm the thread-scoped canned key; answers the previous value.
+/// Test-support only — see `test_support::CannedCheapLlmKey`.
+#[doc(hidden)]
+pub fn set_canned_cheap_llm_key(key: Option<String>) -> Option<String> {
+    CANNED_CHEAP_LLM_KEY.with(|k| std::mem::replace(&mut *k.borrow_mut(), key))
+}
+
 /// v4 `getApiKeyForCheapLLMSelection` — resolve the key for a cheap-LLM
 /// selection: `Some("")` for a local model (no key needed), `None` when the
 /// selection has no profile or the lookup fails, else the profile's key.
@@ -84,6 +113,9 @@ pub fn get_api_key_for_cheap_llm_selection(
     selection: &CheapLlmSelection,
     user_id: &str,
 ) -> Result<Option<String>, DbError> {
+    if let Some(canned) = CANNED_CHEAP_LLM_KEY.with(|k| k.borrow().clone()) {
+        return Ok(Some(canned));
+    }
     if selection.is_local {
         return Ok(Some(String::new()));
     }
@@ -102,6 +134,9 @@ pub fn get_api_key_for_cheap_llm_selection(
 /// an unknown provider is **required** (fail-safe, and asymmetric with
 /// `requiresBaseUrl`'s `?? false`).
 pub fn provider_requires_api_key(provider: &str) -> bool {
+    if let Some(answer) = CANNED_REQUIRES_API_KEY.with(|c| c.get()) {
+        return answer;
+    }
     Registry::built_in()
         .get_provider(provider)
         .map(|m| m.config_requirements.requires_api_key)
@@ -553,38 +588,25 @@ mod tests {
         );
     }
 
-    /// **The spine half of v4 bug 81, which v5 never had** (P4.D93's measurement).
+    /// **The spine half of v4 bug 81, now that v5 runs v4's gate** (P4.133,
+    /// dogfood #133; this REPOINTS `provider_scan_is_capability_blind`, which
+    /// pinned the old host provider scan as the reason v5 never had the bug —
+    /// the scan no longer decides any model call's key).
     ///
-    /// v4's chat-message spine gated the key it already held on `requiresApiKey`,
-    /// so an OpenAI-Compatible profile's key was dropped on the way to the wire.
-    /// v5 resolves the key host-side instead, through [`find_active_api_key_for_provider`]
-    /// (`quilltap-host`'s `DbProviderKeys::key_for`) — a provider SCAN with no
-    /// capability gate anywhere on it, so an OAC key has always reached
-    /// `apply_auth`. What keeps a genuinely keyless endpoint bare is the manifest
-    /// `auth` scheme, not a lookup gate: OLLAMA declares `auth: none` and injects
-    /// nothing whatever the scan returns.
-    ///
-    /// This pins that reading, because the *reason* v5 needs no spine port is the
-    /// absence of the gate — if one were ever added here, bug 81 would arrive in
-    /// v5 for the first time.
+    /// The Salon turn now asks v4's two questions over the participant's raw
+    /// key (`orchestrator.service.ts:425-439`): an OpenAI-Compatible profile's
+    /// key is FORWARDED (accepts, does not require — the bug-81 fix), an
+    /// Ollama profile's stored key is DROPPED (accepts nothing), and a hosted
+    /// provider with no key refuses. The turn-level arms are
+    /// `orchestrator_tier3`'s `keyless_oac_sends_empty` /
+    /// `keyless_requires_refuses` / `dangling_key_refuses`; this pins the two
+    /// predicate answers the gate reads.
     #[test]
-    fn provider_scan_is_capability_blind() {
-        let conn = mem_db();
-        seed_key_for(&conn, "OPENAI_COMPATIBLE", "sk-hosted-oac");
-        seed_key_for(&conn, "OLLAMA", "sk-pointless-but-stored");
-        assert_eq!(
-            find_active_api_key_for_provider(&conn, "u", "OPENAI_COMPATIBLE")
-                .unwrap()
-                .map(|k| k.key_value),
-            Some("sk-hosted-oac".to_string()),
-            "the host key source must forward an OAC key — v5's non-bug"
-        );
-        assert!(
-            find_active_api_key_for_provider(&conn, "u", "OLLAMA")
-                .unwrap()
-                .is_some(),
-            "the scan does not gate on capability; `auth: none` is what keeps \
-             an Ollama request bare"
-        );
+    fn the_salon_gate_forwards_an_oac_key_and_drops_an_ollama_one() {
+        assert!(provider_accepts_api_key("OPENAI_COMPATIBLE"));
+        assert!(!provider_requires_api_key("OPENAI_COMPATIBLE"));
+        assert!(!provider_accepts_api_key("OLLAMA"));
+        assert!(!provider_requires_api_key("OLLAMA"));
+        assert!(provider_requires_api_key("ANTHROPIC"));
     }
 }
