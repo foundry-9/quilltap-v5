@@ -49,7 +49,8 @@ use crate::db::runtime::Db;
 use crate::db::{api_keys, connection_profiles, DbError};
 use crate::generators::field_semantics::{
     CONVERSATIONAL_VOICE_DIRECTION, EXAMPLE_DIALOGUE_COVERAGE, FULL_FIELD_SEMANTICS,
-    PHYSICAL_DESCRIPTION_SEMANTICS, PROMPT_SEMANTICS, PROPERTIES_SEMANTICS,
+    GATED_COMPANION_TRUST_DISPOSITION, PHYSICAL_DESCRIPTION_SEMANTICS, PROMPT_SEMANTICS,
+    PROPERTIES_SEMANTICS, TRUST_SAFEGUARDS_DIRECTION,
 };
 use crate::generators::file_content::extract_file_content;
 use crate::generators::generated_items::{
@@ -199,8 +200,12 @@ pub fn first_message_prompt() -> String {
     format!("{FIRST_MESSAGE_PROMPT_HEAD}\n\nFor exampleDialogues: {EXAMPLE_DIALOGUE_COVERAGE}")
 }
 
-/// v4 `SYSTEM_PROMPTS_PROMPT` (byte-exact). Since v4 `c3eefa752` it ends with
-/// `\n\n` + [`CONVERSATIONAL_VOICE_DIRECTION`] (P4.D237).
+/// v4 `SYSTEM_PROMPTS_PROMPT` (byte-exact). Since v4 `c3eefa752` it carries
+/// `\n\n` + [`CONVERSATIONAL_VOICE_DIRECTION`] (P4.D237). Since v4 `ca363178d`
+/// the cap reads `300-600`, and it ends with [`TRUST_SAFEGUARDS_DIRECTION`] and
+/// [`GATED_COMPANION_TRUST_DISPOSITION`] (each after a blank line) and then the
+/// relationships sentence, joined to the gated paragraph by ONE `\n` — the same
+/// paragraph, unlike the External Prompt's `\n\n` (P4.D241).
 pub fn system_prompts_prompt() -> String {
     format!(
         r#"{PROMPT_SEMANTICS}
@@ -211,14 +216,19 @@ Respond with JSON array:
 [
   {{
     "name": "Main",
-    "content": "A comprehensive system prompt (300-500 words) covering identity, speech patterns, behaviors, boundaries, and relationship dynamics. Write in second person ('You are...', 'You always...').",
+    "content": "A comprehensive system prompt (300-600 words) covering identity, speech patterns, behaviors, boundaries, and relationship dynamics. Write in second person ('You are...', 'You always...').",
     "isDefault": true
   }}
 ]
 
 The main prompt should capture the character's essence from the source material. Include specific details about speech patterns, mannerisms, and reactions that make the character unique. If the source material implies distinct interaction modes or model-specific needs, you may add 1-2 additional named prompts (isDefault false) tailored to them.
 
-{CONVERSATIONAL_VOICE_DIRECTION}"#
+{CONVERSATIONAL_VOICE_DIRECTION}
+
+{TRUST_SAFEGUARDS_DIRECTION}
+
+{GATED_COMPANION_TRUST_DISPOSITION}
+Use the relationships array in the Prior Analysis, where one is given, as evidence for that decision."#
     )
 }
 

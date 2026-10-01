@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   CHARACTER_BASICS_PROMPT,
+  SYSTEM_PROMPTS_PROMPT,
   assembleWardrobeItems,
   assembleQtapExport,
   restampStructuralFields,
@@ -77,6 +78,9 @@ function run(fn: () => string): { ok: boolean; out: string } {
 }
 
 lines.push(JSON.stringify({ kind: 'prompt', out: CHARACTER_BASICS_PROMPT }));
+// P4.D241 (v4 `ca363178d` exports it "for tests"): the `system_prompts` step's
+// prompt as a direct row — the tier-3 family already sees its bytes on the wire.
+lines.push(JSON.stringify({ kind: 'system_prompts_prompt', out: SYSTEM_PROMPTS_PROMPT }));
 
 for (const row of corpus.wardrobe) {
   const r = run(() =>

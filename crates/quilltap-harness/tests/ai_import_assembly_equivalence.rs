@@ -33,7 +33,7 @@ use std::path::PathBuf;
 
 use quilltap_core::generators::ai_import::{
     assemble_qtap_export, assemble_wardrobe_items, character_basics_prompt,
-    restamp_structural_fields,
+    restamp_structural_fields, system_prompts_prompt,
 };
 use regex::Regex;
 use serde::Deserialize;
@@ -44,6 +44,9 @@ use serde_json::{json, Value};
 enum Row {
     #[serde(rename = "prompt")]
     Prompt { out: String },
+    /// P4.D241 — v4 `SYSTEM_PROMPTS_PROMPT` (exported since `ca363178d`).
+    #[serde(rename = "system_prompts_prompt")]
+    SystemPromptsPrompt { out: String },
     #[serde(rename = "wardrobe")]
     Wardrobe { id: String, ok: bool, out: String },
     #[serde(rename = "export")]
@@ -145,6 +148,7 @@ fn ai_import_assembly_matches_oracle() {
     let mut driven: BTreeSet<String> = BTreeSet::new();
     let mut coverage: Option<Vec<String>> = None;
     let mut prompt_seen = false;
+    let mut system_prompts_prompt_seen = false;
     let mut failed: Vec<String> = Vec::new();
     let mut throws = 0usize;
 
@@ -165,6 +169,15 @@ fn ai_import_assembly_matches_oracle() {
                 check(
                     "CHARACTER_BASICS_PROMPT".to_string(),
                     (true, character_basics_prompt()),
+                    true,
+                    &out,
+                );
+            }
+            Row::SystemPromptsPrompt { out } => {
+                system_prompts_prompt_seen = true;
+                check(
+                    "SYSTEM_PROMPTS_PROMPT".to_string(),
+                    (true, system_prompts_prompt()),
                     true,
                     &out,
                 );
@@ -208,6 +221,10 @@ fn ai_import_assembly_matches_oracle() {
         }
     }
     assert!(prompt_seen, "the oracle carried no prompt row");
+    assert!(
+        system_prompts_prompt_seen,
+        "the oracle carried no system_prompts_prompt row"
+    );
     let coverage: BTreeSet<String> = coverage.expect("a coverage row").into_iter().collect();
     assert_eq!(
         driven, coverage,

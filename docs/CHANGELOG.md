@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — feat(core): the five trust-safeguard directions through field semantics, the wizard and Summon From Lore (P4.D241)
+
+_Versions: core 0.0.1130, harness 0.0.1053._
+
+Adds v4 `ca363178d`'s five trust-safeguard constants to the generated
+`field_semantics.rs` (`TRUST_SAFEGUARDS_DIRECTION`,
+`COMPANION_TRUST_DISPOSITION`, `COMPANION_TRUST_DISPOSITION_GATE`,
+`GATED_COMPANION_TRUST_DISPOSITION`, `COMMITTEE_DRIFT_GUARDRAIL`; 8 -> 13
+exports, v4 source order) through the generator, and regenerates the wizard
+prompts (the `systemPrompt` field gains the safeguards and the gated
+disposition; the cap moves from 500 to 600 words). Summon From Lore's
+`system_prompts` step now says 300-600 words and ends with the safeguards,
+the gated disposition, and the relationships sentence on the same
+paragraph. The assembly differential records v4's newly exported
+`SYSTEM_PROMPTS_PROMPT` as a direct row; `V4_APP_VERSION` moves to
+`4.10.0-dev.105`.
+
 #### 2026-10-01 — feat(core): re-vendor the 21 built-in prompts at v4 `ca363178d` (P4.D241)
 
 _Versions: core 0.0.1129, harness 0.0.1052._

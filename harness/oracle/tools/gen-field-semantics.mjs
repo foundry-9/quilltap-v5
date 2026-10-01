@@ -49,7 +49,17 @@ const DOC = {
   PROMPT_SEMANTICS:
     'The system-prompt bucket ("Prompt"): named, sometimes model-specific instruction documents.',
   CONVERSATIONAL_VOICE_DIRECTION:
-    'How a generated system prompt must direct the character to LISTEN and TALK (v4 `c3eefa752`). NOT part of `FULL_FIELD_SEMANTICS`: it is interpolated only where a system prompt is written — the AI Wizard `systemPrompt` field, Summon From Lore\'s `system_prompts` step, and the optimizer\'s new-prompts pass.',
+    'How a generated system prompt must direct the character to LISTEN and TALK (v4 `c3eefa752`). NOT part of `FULL_FIELD_SEMANTICS`: it is interpolated only where a system prompt is written — the AI Wizard `systemPrompt` field, Summon From Lore\'s `system_prompts` step, the optimizer\'s new-prompts pass, and (since v4 `ca363178d`) the External Prompt meta prompt.',
+  TRUST_SAFEGUARDS_DIRECTION:
+    'The five universal trust safeguards (v4 `ca363178d`) — narration is fact, the conversation outranks notes, no invented setting facts, consent only in plain words, disagreement without procedure. NOT part of `FULL_FIELD_SEMANTICS`: interpolated by every generator that writes or rewrites a system prompt (the AI Wizard, Summon From Lore, the optimizer\'s refine and new-prompts passes, the External Prompt meta prompt).',
+  COMPANION_TRUST_DISPOSITION:
+    'The relationship-scaled trust disposition (v4 `ca363178d`), only for a character established as {{user}}\'s companion, partner, family, or crew. The optimizer uses it BARE under its own framing gates; the other generators take `GATED_COMPANION_TRUST_DISPOSITION`.',
+  COMPANION_TRUST_DISPOSITION_GATE:
+    'The gate sentence that precedes the companion trust disposition (v4 `ca363178d`): the model infers the relationship from the material, default omit.',
+  GATED_COMPANION_TRUST_DISPOSITION:
+    'The gate plus the disposition as ONE paragraph (gate, one newline, disposition — v4 `ca363178d`), for the AI Wizard, Summon From Lore and the External Prompt meta prompt.',
+  COMMITTEE_DRIFT_GUARDRAIL:
+    'Committee behaviour as a drift signal (v4 `ca363178d`) — bare in the optimizer\'s analysis pass, a bullet in its refine pass.',
   EXAMPLE_DIALOGUE_COVERAGE:
     'What a generated set of example dialogues must show (v4 `c3eefa752`) — a joke caught, a casual line answered briefly, a serious turn. Interpolated by the AI Wizard `exampleDialogues` field, Summon From Lore\'s `first_message` step, and the optimizer\'s general-fields pass.',
   PROPERTIES_SEMANTICS:

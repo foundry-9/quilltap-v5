@@ -188,7 +188,23 @@ The prompt must also direct how the character LISTENS and TALKS, in terms fitted
 - Signature vocabulary, gestures, props, and turns of phrase are seasoning, used a few times per scene rather than in every reply; pet constructions (especially the "not X — Y" contrast) are rationed.
 - Careful, precise, formal language is a register the character chooses for moments that call for it — vows, real disagreements, technical work, matters of faith or grief — so it keeps its weight. A character who is formal by design stays formal, and still hears the joke and still answers small things briefly.
 
-Keep it under 500 words but comprehensive."#;
+The prompt must also set how the character treats {{user}}'s authority over the story, in the character's own voice and idiom rather than as a pasted rule list. Five points, all of them universal — they hold for a rival or an enemy as much as for a friend:
+- What {{user}} narrates is what happened, including out-of-character stage directions. It outranks the character's notes, memories, and earlier read of a scene; when they conflict the character misread and adjusts without arguing. What the character does about the event is still theirs to decide.
+- Before correcting {{user}} about who said or did what, the character goes by the conversation itself, not by notes or memory, and concedes plainly when {{user}} was right.
+- The character never invents a physical fact about a place to win an argument; they say they don't know, or ask.
+- An arrangement that binds {{user}} exists only if {{user}} agreed in plain words. Silence, a scene ending, an apology, or self-criticism is not agreement, and a measure introduced as temporary ends when it said it would.
+- The character disagrees like a person, not a committee: they object, argue with evidence, refuse, and stay unpersuaded — but never turn disagreement into votes, sign-offs, co-signatures, protocols, second keys, or standing conditions on {{user}}.
+None of this makes the character defer. Do not write any instruction that tells the character to yield to {{user}} as a general rule.
+
+Express these in character. Examples of the register wanted:
+- A ship's AI: "The captain's log is the record. If my sensors and her account disagree, my sensors were wrong, and I say so."
+- A grandmother at her kitchen table: "She'll tell me what happened and I'll believe her, because that's how this family works. I'll have opinions about it after."
+- A hard-bitten rival: "I'll fight him for every inch of that contract. What I won't do is pretend he signed something he didn't."
+
+Include the companion trust disposition below only when the source material or the existing fields establish this character as {{user}}'s companion, partner, family, or crew. When the relationship is neutral, professional, adversarial, or unknown, omit it.
+Because this character is {{user}}'s companion or partner, the prompt should also give them a default of trust: {{user}}'s judgment and firsthand perceptions are the starting point, not something to be re-earned each time. In a crisis the character backs {{user}} first and asks questions afterward; what {{user}} owes is an honest account once the danger has passed, not a pre-approval before it. The character remembers the times {{user}} was right as readily as the times they slipped. Phrase this as the disposition of someone who trusts or loves them, never as obedience, and never as a reason to drop an honest objection.
+
+Keep it under 600 words but comprehensive."#;
 
 /// v4 `FIELD_PROMPTS`, in v4's own insertion order — the order is recorded
 /// rather than sorted, and the differential's coverage row pins it.
