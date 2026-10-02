@@ -17,6 +17,7 @@
 //! | `{content}` | [`ChatEvent::Content`] | each content delta |
 //! | `{reasoning}` | [`ChatEvent::Reasoning`] | live "thinking" (cumulative) |
 //! | `{done:true, messageId, usage, cacheUsage, attachmentResults, toolsExecuted}` | [`ChatEvent::Done`] | recovery / static-fallback close |
+//! | `{fileProcessing:[{filename,type,usedImageDescriptionLLM,error?}]}` | [`ChatEvent::FileProcessing`] | `process_message`, once per streamed turn that loaded ≥ 1 attachment, before the `validating` status (P4.140) |
 //!
 //! Every other v4 SSE frame (`turnStart`, `turnComplete`, `chainComplete`,
 //! `carinaAnswer`, `confirmationResult`, `pendingExternalTurn`, `error`,
@@ -357,6 +358,17 @@ pub enum ChatEvent {
         #[serde(rename = "pascalResult")]
         pascal_result: serde_json::Value,
     },
+    /// `{fileProcessing:[…]}` — v4 `encodeFallbackInfo`
+    /// (`streaming.service.ts:563-576`): one entry per attachment
+    /// `loadAndProcessFiles` processed, sent once from `processMessage`
+    /// (`orchestrator.service.ts:1386-1389`) when any file loaded — after the
+    /// `debugLLMRequest` frame (unported) and before the `validating` status,
+    /// never on the courier path. v4's client has no handler for it (nor does
+    /// v5's — the reducer returns the previous state); it is wire parity.
+    FileProcessing {
+        #[serde(rename = "fileProcessing")]
+        file_processing: Vec<FileProcessingEntry>,
+    },
     /// `{error, errorType, details}` — v4 `encodeErrorEvent(error, errorType,
     /// details)` emitted MID-STREAM by an orchestrator that continues afterwards
     /// (the help-chat loop's per-participant `processing_error`, P4.9I2A). The
@@ -380,6 +392,45 @@ pub enum ChatEvent {
         #[serde(flatten)]
         payload: Box<DonePayload>,
     },
+}
+
+/// One `fileProcessing` row — v4 `encodeFallbackInfo`'s `fallbackInfo` element
+/// (`streaming.service.ts:569-574`). Field order = v4's object literal
+/// (`filename`, `type`, `usedImageDescriptionLLM`, `error`); `error` is ABSENT
+/// when v4's is `undefined` (`JSON.stringify` drops it) and NESTED in the
+/// entry, never a top-level frame key.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct FileProcessingEntry {
+    pub filename: String,
+    #[serde(rename = "type")]
+    pub type_: crate::services::file_fallback::FallbackType,
+    #[serde(rename = "usedImageDescriptionLLM")]
+    pub used_image_description_llm: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl FileProcessingEntry {
+    /// v4's mapping, byte for byte (`streaming.service.ts:569-574`):
+    /// `filename: result.processingMetadata?.originalFilename || 'Unknown'`
+    /// (JS `||` — an EMPTY name is `'Unknown'` too), `type: result.type`,
+    /// `usedImageDescriptionLLM: …?.usedImageDescriptionLLM || false`,
+    /// `error: result.error`.
+    pub fn from_fallback(result: &crate::services::file_fallback::FallbackResult) -> Self {
+        let meta = result.processing_metadata.as_ref();
+        FileProcessingEntry {
+            filename: meta
+                .map(|m| m.original_filename.as_str())
+                .filter(|n| !n.is_empty())
+                .unwrap_or("Unknown")
+                .to_string(),
+            type_: result.type_,
+            used_image_description_llm: meta
+                .and_then(|m| m.used_image_description_llm)
+                .unwrap_or(false),
+            error: result.error.clone(),
+        }
+    }
 }
 
 /// A unit type that always serializes to the JSON literal `true` — the `turnStart`
@@ -535,6 +586,14 @@ impl ChatEvent {
         }
     }
 
+    /// v4 `encodeFallbackInfo(encoder, fallbackResults)` — the `fileProcessing`
+    /// frame over the loaded attachments' fallback results.
+    pub fn file_processing(entries: Vec<FileProcessingEntry>) -> Self {
+        ChatEvent::FileProcessing {
+            file_processing: entries,
+        }
+    }
+
     /// An answer-confirmation result event.
     pub fn confirmation_result(confirmation_result: ConfirmationResultPayload) -> Self {
         ChatEvent::ConfirmationResult {
@@ -678,6 +737,81 @@ impl EventSink for RecordingSink {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The `fileProcessing` frame's BYTES (P4.140): the differential compares
+    /// decoded `Value`s, which are key-order-blind, so v4's field order and the
+    /// absent-`error` rule are pinned here, over the recorded v4 instance
+    /// (`orchestrator_tier3`'s `empty_content_image_on_vision_seat`) and a
+    /// failed-fallback row carrying the nested `error`.
+    #[test]
+    fn file_processing_frame_bytes_are_v4s() {
+        use crate::services::file_fallback::FallbackType;
+        let native = ChatEvent::file_processing(vec![FileProcessingEntry {
+            filename: "lb_fit_a.webp".into(),
+            type_: FallbackType::Unsupported,
+            used_image_description_llm: false,
+            error: None,
+        }]);
+        assert_eq!(
+            serde_json::to_string(&native).unwrap(),
+            r#"{"fileProcessing":[{"filename":"lb_fit_a.webp","type":"unsupported","usedImageDescriptionLLM":false}]}"#
+        );
+        let two = ChatEvent::file_processing(vec![
+            FileProcessingEntry {
+                filename: "map.png".into(),
+                type_: FallbackType::ImageDescription,
+                used_image_description_llm: true,
+                error: None,
+            },
+            FileProcessingEntry {
+                filename: "Unknown".into(),
+                type_: FallbackType::Unsupported,
+                used_image_description_llm: false,
+                error: Some("no vision profile".into()),
+            },
+        ]);
+        assert_eq!(
+            serde_json::to_string(&two).unwrap(),
+            r#"{"fileProcessing":[{"filename":"map.png","type":"image_description","usedImageDescriptionLLM":true},{"filename":"Unknown","type":"unsupported","usedImageDescriptionLLM":false,"error":"no vision profile"}]}"#
+        );
+    }
+
+    /// v4's `||` fallbacks: no metadata, or an EMPTY original name, reads
+    /// `'Unknown'`; an absent `usedImageDescriptionLLM` reads `false`.
+    #[test]
+    fn file_processing_entry_maps_like_encode_fallback_info() {
+        use crate::services::file_fallback::{FallbackResult, FallbackType, ProcessingMetadata};
+        let bare = FallbackResult {
+            type_: FallbackType::Text,
+            text_content: Some("hi".into()),
+            image_description: None,
+            processing_metadata: None,
+            error: None,
+        };
+        let e = FileProcessingEntry::from_fallback(&bare);
+        assert_eq!(e.filename, "Unknown");
+        assert!(!e.used_image_description_llm);
+        let mut named = bare.clone();
+        named.processing_metadata = Some(ProcessingMetadata {
+            original_filename: String::new(),
+            used_image_description_llm: Some(true),
+            ..Default::default()
+        });
+        named.error = Some("boom".into());
+        let e = FileProcessingEntry::from_fallback(&named);
+        assert_eq!(e.filename, "Unknown");
+        assert!(e.used_image_description_llm);
+        assert_eq!(e.error.as_deref(), Some("boom"));
+        named
+            .processing_metadata
+            .as_mut()
+            .unwrap()
+            .original_filename = "notes.txt".into();
+        assert_eq!(
+            FileProcessingEntry::from_fallback(&named).filename,
+            "notes.txt"
+        );
+    }
     use serde_json::json;
 
     #[test]

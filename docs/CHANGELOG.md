@@ -204,6 +204,12 @@ _Versions: core 0.0.1148, harness 0.0.1076._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `db::api_keys::marshal_row` now reads `isActive` the way v4's SQLite hydrate does: NULL is `true` (the Zod default), a number is active only when it equals 1, and any other cell is truthy unless it is an empty string. Before, v5 refused a NULL, text, fractional or BLOB cell outright and treated `2` as active. `get_api_keys_by_user_id` now drops a row it cannot marshal (or whose `provider` is empty) with v4's `API key validation failed {keyId, userId, error}` WARN and returns the rest; one bad row used to fail the whole list. The empty-provider drop now logs Zod's own message, byte for byte. `api_keys_tier2_equivalence` gains six seeded `isActive` rows read back through v4's real `findApiKeyById`, a BLOB-`key_value` row for user A, and the drop's WARN lines; it was red on 8 before the fix (P4.139).
+#### 2026-10-02 — feat(salon): send v4's fileProcessing stream frame before the validating status (P4.140)
+
+_Versions: core 0.0.1149, harness 0.0.1077._
+
+v4 sends `{"fileProcessing":[{filename,type,usedImageDescriptionLLM,error?}]}` once per streamed turn that loaded any attachment, after its debug frame and before the `validating` status (`encodeFallbackInfo`). v5 computed the same per-file fallback results and dropped them. New `ChatEvent::FileProcessing` + `FileProcessingEntry` (v4's field order and `||` fallbacks: `Unknown` for a missing or empty name, `false` for an absent describe flag, `error` nested and omitted when absent); `ProcessedFiles` now carries `fallback_results`; `process_message` emits the frame immediately before `validating`, never on the courier path. No wire-type change: the frame flattens into the chat event envelope beside `chatId`. `orchestrator_tier3`'s recorded `EXPECTED_EVENT_DIVERGENCES` entry tripped VANISHED and is deleted (the table stays, empty). A unit test pins the frame's bytes, which the family's key-order-blind compare cannot see.
+
 #### 2026-10-02 — refactor(zone): retire the two core zone-name wrappers — the markdown export takes the zone VALUE, the autonomous-room routes a threaded NAME (P4.140, item (g))
 
 _Versions: core 0.0.1148, harness 0.0.1076._

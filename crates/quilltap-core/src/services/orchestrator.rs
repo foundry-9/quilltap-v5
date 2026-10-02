@@ -2697,6 +2697,22 @@ where
         .await;
     }
 
+    // --- The fallback-processing frame (orchestrator.service.ts:1386-1389) ---
+    // v4 sends `encodeFallbackInfo(fallbackResults)` whenever any attachment
+    // loaded (every loaded file yields a result, natively supported or not),
+    // after its `debugLLMRequest` frame (unported — the harness drops it) and
+    // immediately before the `validating` status. The courier short-circuit
+    // above returns first, as v4's does, so a courier turn never sends it.
+    if !file_processing.fallback_results.is_empty() {
+        sink.emit(ChatEvent::file_processing(
+            file_processing
+                .fallback_results
+                .iter()
+                .map(crate::services::chat_events::FileProcessingEntry::from_fallback)
+                .collect(),
+        ));
+    }
+
     // --- Pre-send context validation (orchestrator.service.ts:1305–1356,
     //     `f933ba9c`) ---
     // Measure the WHOLE payload, not just the message array: the tool schemas ride

@@ -161864,3 +161864,40 @@ empty, the tree dirty by exactly the three recorded docs paths).
   autonomous_rooms_routes_equivalence,chat_export_equivalence,chat_scenario_routes_equivalence`):
   3/3 ok. The census 6/6; core `host_zone`/`markdown_transcript`/`autonomous`
   unit tests 9/0; clippy both feature sets; fmt.
+
+### Unit 3 — v4's `fileProcessing` frame (Tier 1 item 10; M6, M7)
+
+- `orchestrator_tier3` regenerated from the pin through the sweep driver
+  (`--run orchestrator_tier3_equivalence`), GREEN at the lane's Option V
+  state with both recorded entries present; the fresh NDJSON copied to the
+  lane-private `/tmp/p4140/oracle-orchestrator.ndjson` (12,243,451 bytes) and
+  every later run in this lane reads that copy. Count from the NDJSON (the
+  family is one fail-fast `#[test]`): exactly ONE `fileProcessing` frame in
+  v4's traces — `empty_content_image_on_vision_seat`,
+  `{"fileProcessing":[{"filename":"lb_fit_a.webp","type":"unsupported","usedImageDescriptionLLM":false}]}`,
+  immediately before its `validating` status.
+- **M2's differential half:** with the turn's runner fill mutated to
+  `TimeZone::UTC`, `orchestrator_tier3` stayed GREEN (1/1) — the differential
+  cannot see the zone; the `VALUE_SITES` needle is the only guard (unit 1).
+- **Landed:** `ChatEvent::FileProcessing { file_processing }` +
+  `FileProcessingEntry` (v4's field order; `from_fallback` = v4's `||`
+  mapping: `Unknown` for a missing OR empty name, `false` for an absent flag,
+  `error` nested + skipped when `None`) + `ChatEvent::file_processing`; the
+  module table grown; `ProcessedFiles.fallback_results` (filled where
+  `load_and_process_files` returns); emitted in `process_message` after the
+  courier short-circuit and immediately before the `validating` status, only
+  when non-empty. `api/types.rs` untouched (the variant flattens beside
+  `chatId` through `EventPayload::Chat`).
+- **Red-first:** with the frame landed and the entry present, the family
+  panicked `empty_content_image_on_vision_seat: the v4-only frame VANISHED —
+  v5 emits it now` (exactly one case). Entry deleted → 1/1 green, the frame
+  compared in the ORDERED trace. `EXPECTED_EVENT_DIVERGENCES` kept EMPTY with
+  its applier (no enum, nothing `dead_code`); the stale `filter_events`
+  comment corrected; the drifted `chat_files.rs:507-526` cite went with the
+  entry.
+- **M6** (the emit moved after `validating`) → `event trace mismatch for
+  empty_content_image_on_vision_seat`. **M7** (entry fields reordered,
+  `type` first) → `orchestrator_tier3` GREEN (serde → `Value` is
+  key-order-blind — RECORDED as invisible to the family) and the new unit
+  test `chat_events::tests::file_processing_frame_bytes_are_v4s` RED.
+- Unit gate: core lib 2864/0; clippy both feature sets; fmt.

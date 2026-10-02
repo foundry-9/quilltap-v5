@@ -513,21 +513,16 @@ fn apply_expected_divergences(
 /// [`apply_expected_event_divergences`], with the same retire-by-VANISHED
 /// contract as [`EXPECTED_DIVERGENCES`].
 const EXPECTED_EVENT_DIVERGENCES: &[(&str, &str)] = &[
-    // `empty_content_image_on_vision_seat`: v4 sends the fallback-processing
-    // frame whenever `loadAndProcessFiles` ran any file
-    // (`orchestrator.service.ts:1386-1389` → `encodeFallbackInfo`,
-    // `streaming.service.ts:564-576`; `error: undefined` drops out of the
-    // JSON). v5 computes the same `fallback_results` (`chat_files.rs:507-526`)
-    // but no `fileProcessing` frame exists anywhere in the port. Invisible
-    // until P4.137: the corpus's only other `fileIds` case
-    // (`paused_hold_attachment`) is held before the stream. A NEW finding of
-    // P4.137 — an `orchestrator.rs` hunk this lane may not write (fenced to
-    // NOBODY this round, §R.10 (c)); recorded for the unifier in the lane
-    // record. The day v5 emits the frame this entry trips VANISHED.
-    (
-        "empty_content_image_on_vision_seat",
-        r#"{"fileProcessing":[{"filename":"lb_fit_a.webp","type":"unsupported","usedImageDescriptionLLM":false}]}"#,
-    ),
+    // EMPTY since P4.140. Its one entry — `empty_content_image_on_vision_seat`'s
+    // `{"fileProcessing":[{"filename":"lb_fit_a.webp","type":"unsupported",
+    // "usedImageDescriptionLLM":false}]}`, the frame v4 sends whenever
+    // `loadAndProcessFiles` ran any file (`orchestrator.service.ts:1386-1389`)
+    // and v5 once dropped (`chat_files.rs`'s `fallback_results` were computed
+    // and discarded) — tripped VANISHED the day `process_message` emitted
+    // `ChatEvent::FileProcessing` before the `validating` status, and was
+    // deleted in that commit; the frame now compares in the ORDERED trace. The
+    // table and its applier stay as the standing mechanism for the next
+    // measured frame divergence.
 ];
 
 /// Apply [`EXPECTED_EVENT_DIVERGENCES`]: the recorded frame must appear EXACTLY
@@ -1288,8 +1283,9 @@ fn filter_events(events: &[Value]) -> Vec<Value> {
             // Rust `process_message` propagates the error instead of emitting a
             // frame — the frame is a Phase-4 transport concern). There is no
             // `fallbackInfo` key to drop: v4's only file-processing frame is
-            // `{fileProcessing: …}` (`streaming.service.ts:575`), pinned as a
-            // named divergence in `EXPECTED_EVENT_DIVERGENCES`.
+            // `{fileProcessing: …}` (`streaming.service.ts:575`), which v5 emits
+            // since P4.140 (`ChatEvent::FileProcessing`) — it is KEPT and
+            // compared in order.
             if obj.contains_key("debugLLMRequest")
                 || obj.contains_key("debugContext")
                 || obj.contains_key("error")

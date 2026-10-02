@@ -471,6 +471,11 @@ pub struct ProcessedFiles {
     pub message_content_prefix: Option<String>,
     /// v4 `attachmentsToSend` — the kept (provider-supported) attachments.
     pub attachments_to_send: Vec<Value>,
+    /// v4 `fallbackResults` — ONE per loaded attachment, pushed unconditionally
+    /// (`context-builder.service.ts:194-210`; the natively-supported case is
+    /// `unsupported` with no `error`). `process_message` sends them as the
+    /// `fileProcessing` frame ([`crate::services::chat_events::ChatEvent::FileProcessing`]).
+    pub fallback_results: Vec<file_fallback::FallbackResult>,
 }
 
 /// v4 `loadAndProcessFiles(chatId, fileIds, connectionProfile, userId)` — read the
@@ -552,6 +557,7 @@ pub async fn load_and_process_files<CMP: CompletionProvider>(
             Some(message_content_prefix)
         },
         attachments_to_send,
+        fallback_results,
     }
 }
 
