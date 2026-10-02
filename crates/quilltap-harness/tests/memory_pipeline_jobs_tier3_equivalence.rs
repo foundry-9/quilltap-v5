@@ -32,13 +32,16 @@
 //!   QT_FIXTURE_MPJ_MAIN=/tmp/qt-mpj-main.db QT_FIXTURE_MPJ_MOUNT=/tmp/qt-mpj-mount.db \
 //!     cargo test -p quilltap-harness --test memory_pipeline_jobs_tier3_equivalence
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{
-    CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
+    canned_completion_key, canned_completion_key_with_attachments, CannedCompletionProvider,
+    CompletionError, CompletionMessage, CompletionParams, CompletionProvider, CompletionResponse,
+    CompletionRole, CompletionUsage,
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
@@ -125,6 +128,39 @@ struct CannedRowW {
 fn spec_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/memory-pipeline-jobs-tier3.json")
+}
+
+/// Records the canned key of every completion call v5 makes, then delegates.
+///
+/// P4.D242's A10 finding / P4.138: the fold-episode pass folds a canned MISS
+/// (`success: false`) and the canned `[]` reply into one silent `return result`
+/// with zero tracing, so a prompt/selection/temperature divergence on that call
+/// wrote the same zero rows as agreement. Asserting that the SET of keys v5 hit
+/// equals the SET of keys the oracle recorded makes the divergence visible on
+/// ANY canned call (memory note `a-canned-miss-in-a-no-op-run-is-invisible`).
+/// Only `send_message` is implemented — the other trait methods default onto it.
+struct KeyRecording<C> {
+    inner: C,
+    hit: Mutex<BTreeSet<String>>,
+}
+
+impl<C: CompletionProvider + Sync> CompletionProvider for KeyRecording<C> {
+    fn send_message(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &CompletionParams,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+    {
+        self.hit.lock().unwrap().insert(canned_completion_key_with_attachments(
+            provider,
+            &params.model,
+            params.temperature,
+            &params.messages,
+            &params.attachments,
+        ));
+        self.inner.send_message(provider, base_url, params)
+    }
 }
 
 // The oracle's `estimateMessageCost` mock returns `{ cost: null }`.
@@ -422,6 +458,27 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
         );
     }
 
+    // The keys the oracle recorded (v4 dedups by key, first write wins).
+    let want_keys: BTreeSet<String> = oracle_canned
+        .iter()
+        .map(|row| {
+            let messages: Vec<CompletionMessage> = row
+                .messages
+                .iter()
+                .map(|m| CompletionMessage {
+                    role: CompletionRole::from_v4_wire(m.role.as_str())
+                        .unwrap_or_else(|| panic!("unexpected role {}", m.role.as_str())),
+                    content: m.content.clone(),
+                })
+                .collect();
+            canned_completion_key(&row.provider, &row.model, row.temperature, &messages)
+        })
+        .collect();
+    let completion = KeyRecording {
+        inner: completion,
+        hit: Mutex::new(BTreeSet::new()),
+    };
+
     let mut embedding = CannedEmbeddingProvider::new();
     for (text, vec) in &oracle_embeddings {
         embedding = embedding.with_vector(text.clone(), vec.clone());
@@ -493,6 +550,23 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
         .err();
         assert_case_error(&case.name, got);
     }
+
+    // Consumption: v5 must have called exactly the completions v4 did. A canned
+    // miss is swallowed by the executor, so this is the only place a divergent
+    // call (the fold-episode pass above all) shows.
+    let got_keys = completion.hit.lock().unwrap().clone();
+    let never_built: Vec<&String> = want_keys.difference(&got_keys).collect();
+    let never_sent_by_v4: Vec<&String> = got_keys.difference(&want_keys).collect();
+    assert!(
+        never_built.is_empty() && never_sent_by_v4.is_empty(),
+        "canned-key consumption diverges from the oracle.\n\
+         recorded by v4 but never called by v5 ({}):\n{:#?}\n\
+         called by v5 but never recorded by v4 ({}):\n{:#?}",
+        never_built.len(),
+        never_built,
+        never_sent_by_v4.len(),
+        never_sent_by_v4,
+    );
 
     // Dump + diff the six tables in the shared-id-map remap form.
     let mut got: Vec<Value> = TABLES

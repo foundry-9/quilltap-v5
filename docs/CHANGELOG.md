@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — test(harness): memory_pipeline_jobs_tier3 asserts canned-key consumption against the oracle's recorded keys (P4.138 item g, fix 2)
+
+_Versions: harness 0.0.1065._
+
+A test-local key-recording wrapper around the canned completion provider collects every key v5's calls hit; the family now asserts that set equals the set of keys the oracle recorded and prints both differences. This closes the blindness P4.D242 found: the fold-episode pass folded a canned miss and the canned `[]` reply into the same silent result, so a divergent episode prompt wrote the same zero rows. Red-first: mutating only the episode prompt's bytes reddens exactly the two episode keys on both sides; green on main (10 cases, 2 episode rows of 15 canned). No fixture, oracle or core change.
+
 #### 2026-10-01 — fix(harness): repair the five recipe headers to the sanctioned `V5W` literal so `recipe_sweep.py --self-test` exits 0 (P4.138 item i)
 
 _Versions: harness 0.0.1064, web 0.0.207._
