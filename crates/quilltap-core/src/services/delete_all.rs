@@ -499,7 +499,9 @@ fn collect_summary(main: &Connection, user_id: &str) -> Result<DeleteSummary, Db
     let connection_profiles = ids_by_user(main, "connection_profiles", user_id);
     let image_profiles = ids_by_user(main, "image_profiles", user_id);
     let embedding_profiles = ids_by_user(main, "embedding_profiles", user_id);
-    let api_keys = api_keys::get_api_keys_by_user_id(main, user_id).unwrap_or_default();
+    // v4 `getAllApiKeys()` — the fallback by-user read: a failed read is its
+    // line and `[]` (count 0); a bad row is dropped with its WARN (P4.139).
+    let api_keys = crate::services::api_key_service::api_keys_by_user_id_or_empty(main, user_id);
     let prompt_templates = ids_by_user(main, "prompt_templates", user_id);
     let roleplay_templates = ids_by_user(main, "roleplay_templates", user_id);
     let projects = ids_all(main, "projects");
@@ -580,7 +582,10 @@ pub async fn delete_all_user_data(
         let repo = api_keys::ApiKeysRepository::new(main);
         // v4 wraps each delete in a warn-only try/catch — one failure must not
         // abort the rest.
-        for key in api_keys::get_api_keys_by_user_id(main, &uid).unwrap_or_default() {
+        // P4.139: the fallback by-user read — a bad row is dropped with its
+        // WARN and every OTHER key deleted (the whole list had been `[]`, so
+        // one bad row had left every key behind); a failed read is its line.
+        for key in crate::services::api_key_service::api_keys_by_user_id_or_empty(main, &uid) {
             let _ = repo.delete(&key.id);
         }
         Ok(())

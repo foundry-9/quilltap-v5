@@ -161501,3 +161501,41 @@ Each at v4's outcome (survey §A3 #1-9, 17-24 less the routes, 26, 27, 30, 31):
   `api_key_service::test_instance`; `understudy.rs`'s byte-identical twin (and
   `api_key_service`'s own) folded onto it.
 
+### Unit 6 — the four by-user-id callers over a lane-local helper (Tier 2 item 10)
+
+- `api_key_service::api_keys_by_user_id_or_empty<R: MainReads>` (`pub(crate)`)
+  carries v4's bytes — `tracing::error!(target: "quilltap::db", collection =
+  "connection_profiles", userId = %user_id, error = %db::fallback::error_text(…),
+  "Error finding API keys by user ID")` → `Vec::new()` — and the comment `// §S
+  fold → db::fallback::find_api_keys_by_user_id_or_empty`. Callers:
+  `api_key_list` (500 → 200 `{apiKeys: [], count: 0}`), `delete_all.rs`
+  `collect_summary` and the key-deletion loop (the silent `unwrap_or_default`
+  becomes the line; with the per-row drop of unit 1 a bad row no longer leaves
+  every key behind), and the NEW `find_active_api_key_for_provider_or_none`
+  (the web-search pick; the propagating original stays for `DbProviderKeys`).
+- Pins: `the_by_user_id_helper_logs_v4s_line_and_answers_empty` (the exact line
+  over the unlinked pool, `error=unable to open database file: <path>`; a
+  healthy list silent), `the_search_key_pick_survives_a_bad_row_and_a_failed_
+  read`, and `settings_wire_actions`' list arm grew its query-error leg (200
+  `[]` + exactly the line, `error=no such table: api_keys`) over a RENAMED
+  `api_keys` table on the copy. ⚠ **Recorded:** v4's `getApiKeysCollection`
+  would HEAL a missing table (`ensureCollection`) and answer the same 200 `[]`
+  with NO line — the rename plant pins v5's line for v4's statement-failure
+  arm, not a reproducible v4 row.
+- **`fallback_home_guard` — the order's "RED BY DESIGN on this branch" is
+  WRONG, measured:** the guard is GREEN here (2/2), because the literal is not
+  in `HOME_MESSAGES` until P4.142 adds it. It goes red only on the UNION, after
+  P4.142's pick and before the §S.1 fold — the unifier sees exactly one
+  offender then (`services/api_key_service.rs`: `"Error finding API keys by
+  user ID"`) and the fold clears it.
+- **§S.2 (P4.140 or the unifier, host `spine.rs:234-247`) pre-written:**
+  `DbSearchApiKeys::find_active_key` →
+  `api_key_service::find_active_api_key_for_provider_or_none(&self.0,
+  &user_id, &provider).map(|k| k.key_value)` (the `.ok().flatten()` deleted),
+  and the doc `:226-233` replaced with: "v4's `getAllApiKeys()` is a fallback
+  `safeQuery` that never throws — a read error logs the repository's `Error
+  finding API keys by user ID` and is `[]`; `getSearchProviderApiKey`'s catch
+  (`web-search-handler.ts:105-110`) is unreachable for it." `DbProviderKeys`
+  UNCHANGED (`no-v4-counterpart`). The census's host row moves from
+  `fallback-in-v4` to `home` with it.
+

@@ -106,6 +106,32 @@ pub fn read_api_key_scoped<R: MainReads>(
     })
 }
 
+/// v4 `getApiKeysByUserId` as every caller sees it (P4.139): the user's keys
+/// over `reads` — the per-row drop and its WARN inside
+/// [`api_keys::get_api_keys_by_user_id`] — and, when the STATEMENT fails, the
+/// fallback `safeQuery`'s line `Error finding API keys by user ID
+/// {collection: 'connection_profiles', userId, error}` and `[]`
+/// (`connection-profiles.repository.ts:218-244`, a 4-arg fallback on the
+/// repository constructed with `'connection_profiles'`).
+// §S fold → db::fallback::find_api_keys_by_user_id_or_empty
+pub(crate) fn api_keys_by_user_id_or_empty<R: MainReads>(
+    reads: &R,
+    user_id: &str,
+) -> Vec<api_keys::ApiKey> {
+    reads
+        .read_main_with(|conn| api_keys::get_api_keys_by_user_id(conn, user_id))
+        .unwrap_or_else(|error| {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "connection_profiles",
+                userId = %user_id,
+                error = %crate::db::fallback::error_text(&error),
+                "Error finding API keys by user ID"
+            );
+            Vec::new()
+        })
+}
+
 /// The generators' key idiom (P4.139) — v4's external-prompt generator, the
 /// character optimizer, the wizard (primary + vision) and the AI import all
 /// read it the same way (`external-prompt-generator.service.ts:102-108`,
@@ -173,6 +199,23 @@ pub fn find_active_api_key_for_provider(
     Ok(keys
         .into_iter()
         .find(|k| k.provider == provider && k.is_active))
+}
+
+/// [`find_active_api_key_for_provider`] at v4's fallback (P4.139): the web
+/// search's key pick (`web-search-handler.ts:88-111` →
+/// `getUserRepositories(userId).connections.getAllApiKeys()`) reads through
+/// the fallback by-user list, so a failed read is its line and "no key", and
+/// a bad ROW is dropped with its WARN while the other keys are still found.
+/// The propagating original stays for `DbProviderKeys` (no v4 counterpart —
+/// no v4 model call scans).
+pub fn find_active_api_key_for_provider_or_none<R: MainReads>(
+    reads: &R,
+    user_id: &str,
+    provider: &str,
+) -> Option<api_keys::ApiKey> {
+    api_keys_by_user_id_or_empty(reads, user_id)
+        .into_iter()
+        .find(|k| k.provider == provider && k.is_active)
 }
 
 std::thread_local! {
@@ -829,6 +872,60 @@ mod tests {
         });
         assert!(got.is_ok(), "the healthy profile prepares: {:?}", got.err());
         assert!(db_lines(&lines).is_empty(), "{lines:?}");
+    }
+
+    /// P4.139 (Tier 2 item 10): the lane-local by-user-id helper carries v4's
+    /// exact bytes — a failed STATEMENT is `Error finding API keys by user ID
+    /// {collection, userId, error}` and `[]`; a healthy list is silent. (On the
+    /// union it folds onto `db::fallback::find_api_keys_by_user_id_or_empty`,
+    /// §S.1, and this pin keeps holding.)
+    #[test]
+    fn the_by_user_id_helper_logs_v4s_line_and_answers_empty() {
+        let (dir, db) = db_with_a_failing_read_pool();
+        let (got, lines) =
+            crate::test_support::captured_with(|| api_keys_by_user_id_or_empty(&db, "u-1"));
+        assert!(got.is_empty());
+        assert_eq!(
+            lines,
+            vec![format!(
+                "ERROR quilltap::db Error finding API keys by user ID collection=connection_profiles userId=u-1 error=unable to open database file: {}",
+                dir.path().join("main.db").display()
+            )]
+        );
+        let conn = crate::db::fallback::test_plants::conn_with_api_keys();
+        crate::db::fallback::test_plants::plant_api_key(&conn, "k-ok", "u-1", false);
+        let (got, lines) =
+            crate::test_support::captured_with(|| api_keys_by_user_id_or_empty(&conn, "u-1"));
+        assert_eq!(
+            got.into_iter().map(|k| k.id).collect::<Vec<_>>(),
+            vec!["k-ok"]
+        );
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// P4.139: the web search's key pick at v4's fallback — a bad row is
+    /// dropped with its WARN and the OTHER key still found (the propagating
+    /// original found nothing); a failed read is the line and `None`.
+    #[test]
+    fn the_search_key_pick_survives_a_bad_row_and_a_failed_read() {
+        let conn = crate::db::fallback::test_plants::conn_with_api_keys();
+        crate::db::fallback::test_plants::plant_api_key(&conn, "k-bad", "u-1", true);
+        crate::db::fallback::test_plants::plant_api_key(&conn, "k-ok", "u-1", false);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            find_active_api_key_for_provider_or_none(&conn, "u-1", "OPENAI")
+        });
+        assert_eq!(got.map(|k| k.id).as_deref(), Some("k-ok"));
+        assert_eq!(
+            lines,
+            vec!["WARN quilltap::db API key validation failed keyId=k-bad userId=u-1 error=Invalid column type Blob at index: 4, name: key_value".to_string()]
+        );
+        let (_dir, db) = db_with_a_failing_read_pool();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            find_active_api_key_for_provider_or_none(&db, "u-1", "OPENAI")
+        });
+        assert!(got.is_none());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].starts_with("ERROR quilltap::db Error finding API keys by user ID "));
     }
 
     #[test]

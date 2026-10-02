@@ -427,6 +427,52 @@ fn a_corrupt_key_row_is_dropped_from_the_api_key_list_with_v4s_warn() {
         "WARN quilltap::db API key validation failed keyId={OPENAI_KEY} userId={USER_A} error=Invalid column type Blob at index: 4, name: key_value"
     );
     assert_eq!(db_lines, vec![&warn], "{lines:?}");
+
+    // The query-error leg (P4.139 Tier 2): a failed STATEMENT is the fallback's
+    // `Error finding API keys by user ID` line and `[]` — 200 `{apiKeys: [],
+    // count: 0}` (v5 had answered 500). Planted as a renamed `api_keys` table
+    // on the copy; ⚠ v4's `getApiKeysCollection` would HEAL a missing table
+    // (`ensureCollection`) and answer the same 200 `[]` with no line, so this
+    // plant pins v5's line for v4's statement-failure arm, not a v4 row.
+    let Some((db, _t)) = open_db_with_api_keys_renamed() else {
+        return;
+    };
+    let (resp, lines) =
+        quilltap_core::test_support::captured_with(|| settings::api_key_list(&db, USER_A));
+    assert_eq!(body(resp), json!({ "apiKeys": [], "count": 0 }));
+    let db_lines: Vec<&String> = lines
+        .iter()
+        .filter(|l| l.contains(" quilltap::db "))
+        .collect();
+    let line = format!(
+        "ERROR quilltap::db Error finding API keys by user ID collection=connection_profiles userId={USER_A} error=no such table: api_keys"
+    );
+    assert_eq!(db_lines, vec![&line], "{lines:?}");
+}
+
+/// The fixture copy with its `api_keys` table RENAMED (the column-rename plant
+/// shape P4.131 recorded, at table level) — every by-user statement fails.
+fn open_db_with_api_keys_renamed() -> Option<(Db, tempfile::TempDir)> {
+    let fixture = std::env::var("QT_FIXTURE_SETTINGS").ok()?;
+    let tmp = tempfile::tempdir().unwrap();
+    let main = tmp.path().join("main.db");
+    std::fs::copy(&fixture, &main).unwrap();
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, PEPPER).unwrap();
+        w.connection()
+            .execute_batch("ALTER TABLE api_keys RENAME TO api_keys_p4139_plant;")
+            .unwrap();
+    }
+    let db = Db::open(
+        DbPaths {
+            main,
+            mount_index: None,
+            llm_logs: None,
+        },
+        PEPPER,
+    )
+    .expect("open db");
+    Some((db, tmp))
 }
 
 /// The fixture copy with the OpenAI key row's `key_value` cell made a BLOB

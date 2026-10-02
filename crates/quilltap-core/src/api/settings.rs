@@ -2633,12 +2633,11 @@ fn masked_api_key(k: &api_keys::ApiKey, with_preview: bool) -> Value {
 }
 
 /// v4 `GET /api/v1/api-keys` — the masked list, newest-first (`{apiKeys, count}`).
+/// The read is v4's `getAllApiKeys()` → the fallback `getApiKeysByUserId`: a
+/// bad row is dropped with its WARN, and a failed read is its line and `[]` —
+/// 200 `{apiKeys: [], count: 0}`, never the 500 v5 had answered (P4.139).
 pub fn api_key_list(db: &Db, user_id: &str) -> Response {
-    let uid = user_id.to_string();
-    let mut keys = match db.read_main(move |conn| api_keys::get_api_keys_by_user_id(conn, &uid)) {
-        Ok(v) => v,
-        Err(e) => return internal(e),
-    };
+    let mut keys = crate::services::api_key_service::api_keys_by_user_id_or_empty(db, user_id);
     keys.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     let masked: Vec<Value> = keys.iter().map(|k| masked_api_key(k, true)).collect();
     let count = masked.len();
