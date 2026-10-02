@@ -2498,6 +2498,61 @@
     }
    ],
    "messages": []
+  },
+  {
+   "id": "e3700001-0000-4000-8000-000000000001",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "e3710001-0000-4000-8000-000000000001",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "e3710002-0000-4000-8000-000000000002",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "e3700002-0000-4000-8000-000000000002",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "e3710003-0000-4000-8000-000000000003",
+     "character": "1c151000-0000-4000-8000-000000000151",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "e3710004-0000-4000-8000-000000000004",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "e3720001-0000-4000-8000-000000000001",
+     "createdAt": "2026-01-02T03:04:06.000Z",
+     "role": "USER",
+     "content": "I have brought the study you asked for.",
+     "participantId": "e3710004-0000-4000-8000-000000000004"
+    },
+    {
+     "id": "e3720002-0000-4000-8000-000000000002",
+     "createdAt": "2026-01-02T03:04:07.000Z",
+     "role": "ASSISTANT",
+     "content": "Lucida holds out a hand for it.",
+     "participantId": "e3710003-0000-4000-8000-000000000003"
+    }
+   ]
   }
  ],
  "calls": [
@@ -3291,6 +3346,41 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "expectThrow": true
+  },
+  {
+   "name": "empty_content_pending_tool_results",
+   "kind": "single",
+   "chatId": "e3700001-0000-4000-8000-000000000001",
+   "content": "",
+   "continueMode": false,
+   "streamLabel": "empty_content_pending_tool_results",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "pendingToolResults": [
+    {
+     "tool": "roll_dice",
+     "success": true,
+     "result": "Rolled 2d6: [3, 5] = 8",
+     "prompt": "roll 2d6",
+     "arguments": {
+      "notation": "2d6"
+     },
+     "createdAt": "2026-01-02T03:04:05.000Z"
+    }
+   ]
+  },
+  {
+   "name": "empty_content_image_on_vision_seat",
+   "kind": "single",
+   "chatId": "e3700002-0000-4000-8000-000000000002",
+   "content": "",
+   "continueMode": false,
+   "streamLabel": "empty_content_image_on_vision_seat",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "fileIds": [
+    "1f151001-0000-4000-8000-000000000001"
+   ]
   }
  ],
  "streams": {
@@ -4813,6 +4903,36 @@
       "promptTokens": 12,
       "completionTokens": 6,
       "totalTokens": 18
+     }
+    }
+   ]
+  ],
+  "empty_content_pending_tool_results": [
+   [
+    {
+     "content": "Eight it is; the door gives way."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 50,
+      "completionTokens": 9,
+      "totalTokens": 59
+     }
+    }
+   ]
+  ],
+  "empty_content_image_on_vision_seat": [
+   [
+    {
+     "content": "Lucida tilts the study toward the window."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 60,
+      "completionTokens": 10,
+      "totalTokens": 70
      }
     }
    ]

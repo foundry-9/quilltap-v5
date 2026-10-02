@@ -437,15 +437,17 @@ async function main(): Promise<void> {
   );
 
   // ---- api-key + llm-logging ----
-  jest.doMock('@/lib/services/api-key.service', () => {
-    const actual = jest.requireActual('@/lib/services/api-key.service');
-    return {
-      __esModule: true,
-      ...actual,
-      getApiKeyForCheapLLMSelection: async () => 'test-key',
-      getApiKeyForProfile: async () => 'test-key',
-    };
-  });
+  // `api-key.service` runs REAL since P4.137: the cheap-LLM key mock that stood
+  // here (`getApiKeyForCheapLLMSelection: async () => 'test-key'`) is LIFTED, so
+  // every cheap call (the buildContext and pre-compute distills, the summary
+  // fold + episode passes) resolves the shared `chatSettings` row's
+  // `defaultCheapProfileId` (`CheapDefault`) → its bound `apiKeyId` →
+  // `key-cheap-default`, exactly as the v5 port does (its `CannedCheapLlmKey`
+  // twin is gone from this family too). The block's second entry,
+  // `getApiKeyForProfile`, was a phantom — never an export of this module (it
+  // is private to `embedding-service.ts`, whose `generateEmbeddingForUser` is
+  // canned above). `jest.setup.ts` does not mock this module, so deleting the
+  // block IS the lift; `resetModules()` runs once and every call shares it.
   // W4.11a: `logLLMCall` runs REAL — the cheap-LLM distill (memory-keyword-extraction
   // → MEMORY_EXTRACTION) and any summary-fold cheap calls land `llm_logs` rows the
   // Rust harness (with a `with_logging` executor) matches. P4.129: the funnel's

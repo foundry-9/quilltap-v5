@@ -508,6 +508,65 @@ fn apply_expected_divergences(
     failures
 }
 
+/// P4.137: the stream-frame divergences the arms of this family measured, keyed
+/// by case + the v4-only frame's exact JSON. Asserted in BOTH directions by
+/// [`apply_expected_event_divergences`], with the same retire-by-VANISHED
+/// contract as [`EXPECTED_DIVERGENCES`].
+const EXPECTED_EVENT_DIVERGENCES: &[(&str, &str)] = &[
+    // `empty_content_image_on_vision_seat`: v4 sends the fallback-processing
+    // frame whenever `loadAndProcessFiles` ran any file
+    // (`orchestrator.service.ts:1386-1389` → `encodeFallbackInfo`,
+    // `streaming.service.ts:564-576`; `error: undefined` drops out of the
+    // JSON). v5 computes the same `fallback_results` (`chat_files.rs:507-526`)
+    // but no `fileProcessing` frame exists anywhere in the port. Invisible
+    // until P4.137: the corpus's only other `fileIds` case
+    // (`paused_hold_attachment`) is held before the stream. A NEW finding of
+    // P4.137 — an `orchestrator.rs` hunk this lane may not write (fenced to
+    // NOBODY this round, §R.10 (c)); recorded for the unifier in the lane
+    // record. The day v5 emits the frame this entry trips VANISHED.
+    (
+        "empty_content_image_on_vision_seat",
+        r#"{"fileProcessing":[{"filename":"lb_fit_a.webp","type":"unsupported","usedImageDescriptionLLM":false}]}"#,
+    ),
+];
+
+/// Apply [`EXPECTED_EVENT_DIVERGENCES`]: the recorded frame must appear EXACTLY
+/// once in v4's trace and never in v5's; it is then removed from v4's side so
+/// the rest of the trace compares whole. Returns every failure.
+fn apply_expected_event_divergences(
+    got: &[(String, Vec<Value>)],
+    want: &mut HashMap<String, Vec<Value>>,
+) -> Vec<String> {
+    let mut failures = Vec::new();
+    for (case, frame) in EXPECTED_EVENT_DIVERGENCES {
+        let frame: Value = serde_json::from_str(frame).expect("a recorded frame parses");
+        let Some(g) = got.iter().find(|(n, _)| n == case).map(|(_, e)| e) else {
+            failures.push(format!(
+                "EXPECTED_EVENT_DIVERGENCES names `{case}`, which v5 never ran"
+            ));
+            continue;
+        };
+        let Some(w) = want.get_mut(*case) else {
+            failures.push(format!(
+                "EXPECTED_EVENT_DIVERGENCES names `{case}`, which the oracle never ran"
+            ));
+            continue;
+        };
+        let gn = g.iter().filter(|e| **e == frame).count();
+        let wn = w.iter().filter(|e| **e == frame).count();
+        match (gn, wn) {
+            (0, 1) => w.retain(|e| *e != frame),
+            (1, 1) => failures.push(format!(
+                "{case}: the v4-only frame VANISHED — v5 emits it now; delete this EXPECTED_EVENT_DIVERGENCES entry and let the trace compare whole"
+            )),
+            (gn, wn) => failures.push(format!(
+                "{case}: the v4-only frame is unproven or the WRONG SHAPE — v5 has {gn}, v4 {wn} (want 0 and 1)"
+            )),
+        }
+    }
+    failures
+}
+
 /// A dumped `llm_logs` text cell as TEXT: `common::dump_llm_logs` (and the
 /// oracle's own dump) render a compressed BLOB as the hex of its stored brotli
 /// bytes and a short payload as plain text.
@@ -1362,16 +1421,12 @@ fn orchestrator_tier3_matches_oracle() {
         eprintln!("QT_FIXTURE_ORCH_MOUNT not set; skipping");
         return;
     };
-    // P4.133 (the `ca363178d` unification's §3 catch): the oracle case mocks
-    // `getApiKeyForCheapLLMSelection` to `'test-key'` (`orchestrator-tier3.test.ts`
-    // "api-key + llm-logging") while v5 resolved the cheap selection's — and the
-    // Concierge classifier's — key for REAL and refused without one; the family
-    // was green only because every non-courier fixture profile is bound to a
-    // seeded key. The twin keeps both sides' cheap paths the same shape. (The
-    // Salon stream's key is NOT mocked on either side — the five P4.133 arms
-    // compare it through the participant resolver.) Lifting the v4 mock instead
-    // is the named stronger proof for a later order.
-    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
+    // P4.137: NO cheap-LLM key twin. The oracle's `api-key.service` mock is
+    // lifted, so both sides resolve every cheap call's key for REAL over the
+    // same fixture rows (the shared `chatSettings` row's `CheapDefault` →
+    // `key-cheap-default`). P4.133 had installed `CannedCheapLlmKey` here to
+    // match the old v4 mock; that twin is gone from THIS family only — the
+    // other families that install the seam twin their own oracles' mocks.
 
     let spec: Spec =
         serde_json::from_str(&std::fs::read_to_string(spec_path()).expect("spec readable"))
@@ -1990,6 +2045,12 @@ fn orchestrator_tier3_matches_oracle() {
     }
 
     // --- events ---
+    let event_divergence_failures = apply_expected_event_divergences(&got_events, &mut want_events);
+    assert!(
+        event_divergence_failures.is_empty(),
+        "EXPECTED_EVENT_DIVERGENCES:\n  {}",
+        event_divergence_failures.join("\n  ")
+    );
     for (name, got) in &got_events {
         let want = want_events
             .get(name)
@@ -2395,6 +2456,12 @@ fn orchestrator_tier3_matches_oracle() {
         //   lb_half1 + lb_half2          — `lantern_budget_exact_fit`: two halves
         //                                  summing to exactly 2,097,152, both
         //                                  kept (`>` not `>=`).
+        //   lb_fit_a (alone)             — P4.137's
+        //                                  `empty_content_image_on_vision_seat`:
+        //                                  an image-only send (`content: ""`)
+        //                                  whose bytes ride the PREVIOUS human
+        //                                  row (v4's anchor preference 2), not
+        //                                  an empty user line.
         //
         // `lantern_budget_single_over` (one image over the whole budget) and
         // `lantern_budget_nonvision_seat_unbudgeted` (every image described
@@ -2431,6 +2498,7 @@ fn orchestrator_tier3_matches_oracle() {
             carried,
             vec![
                 vec!["dossier.pdf".to_string()],
+                vec!["lb_fit_a.webp".to_string()],
                 vec!["lb_fit_a.webp".to_string(), "lb_fit_b.webp".to_string()],
                 vec!["lb_half1.webp".to_string(), "lb_half2.webp".to_string()],
                 vec!["lb_small.webp".to_string(), "lb_new.webp".to_string()],

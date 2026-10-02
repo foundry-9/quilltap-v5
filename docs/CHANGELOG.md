@@ -138,6 +138,27 @@ which drops the `sqlite error:` prefix it used to log. `fallback_home_guard`
 lists both messages (red first on the old emitter, green after the move).
 Unit pins cover each line, the bare message over a corrupt cell, and the
 silence legs.
+#### 2026-10-01 — test(harness): lift the orchestrator oracle's cheap-key mock and add the empty-content arms (P4.137)
+
+_Versions: harness 0.0.1064._
+
+`orchestrator-tier3.test.ts` no longer mocks `api-key.service`; every cheap
+call in the family resolves the shared `chatSettings` row's `CheapDefault`
+profile and its bound key for real, as v5 does, and the
+`CannedCheapLlmKey` twin is removed from this family only. The mock's second
+entry, `getApiKeyForProfile`, was never an export of that module. The lift
+moved nothing in the oracle beyond the family's same-pin regen noise. A
+scratch spec with `CheapDefault`'s key unbound shows both sides drop every
+cheap-LLM `llm_logs` row without a thrown case; with the twin put back, v5
+logs 216 rows against v4's 100. Two new arms: `content: ""` with a pending
+`roll_dice` result on a fresh chat (no empty user line, no
+`historyTailHash` on the one-message window), and an image-only send on the
+vision seat (the image anchors on the previous human row). Both were red on
+the pre-fix `build_context`. The image arm also showed that v5 never sends
+v4's `fileProcessing` stream frame; that is pinned both ways in a new
+`EXPECTED_EVENT_DIVERGENCES` list for a later order, since the fix belongs in
+`orchestrator.rs`.
+
 #### 2026-10-01 — fix(core): an empty new user message takes v4's chained branch in build_context (P4.137, P4.D243-F1)
 
 _Versions: core 0.0.1140._
