@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-02 — test(harness): ai_import_tier3's v4 version stamp moves to the f6426e196 pin (the unified sweep's catch)
+
+_Versions: harness 0.0.1074._
+
+`V4_APP_VERSION` follows the oracle baseline: `4.10.0-dev.105` (`ca363178d`) → `4.10.0-dev.106` (`f6426e196`). The unified sweep from the new pin was the first run of this family at it; it is green by name through the driver afterwards.
+
 #### 2026-10-02 — fix(unify): the §3 review's findings for the `f6426e196` round — the collapse's shouldRun skip, the fifth key route, the wire-key pin, and the vacuous asserts
 
 _Versions: core 0.0.1146, host 0.0.174, harness 0.0.1073._
