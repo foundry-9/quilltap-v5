@@ -35,6 +35,7 @@ A test-local key-recording wrapper around the canned completion provider collect
 _Versions: harness 0.0.1064, web 0.0.207._
 
 The five headers that spelled the P4.53 clobber `W=${V5W:-$(git rev-parse --show-toplevel)}` now carry `V5W=${V5W:-$HOME/source/quilltap-v5}` with every `$W/` rewritten to `$V5W/` (including the routes family's two fixture env prefixes), plus a prose line saying why the literal is the sanctioned one. The five `.ts` case headers use the same spelling. Header text only: `--show` output differs only on the assignment line and the `$W` to `$V5W` references, and all five families re-ran green from a pin at `f6426e196`.
+
 #### 2026-10-01 — fix(core): port v4 bug 174 — a vault image reaches Z.AI and NanoGPT as its bytes, not a server path (P4.D244)
 
 _Versions: core 0.0.1140, harness 0.0.1064._
@@ -42,6 +43,7 @@ _Versions: core 0.0.1140, harness 0.0.1064._
 v4 `f6426e196` ported whole. The Scriptorium-mount loader (`services/chat_files.rs`) no longer puts the server-relative `/api/v1/mount-points/...` path in `url` on either branch (native-text document or blob); `filepath` keeps it and the key order is unchanged. The Z.AI and NanoGPT request builders now send the bytes first and forward a `url` only when it is an absolute `http(s)` address (one shared `is_absolute_http` / `attachment_image_url`); a relative `url` with no bytes takes the existing `Attachment missing data or URL` refusal. OpenRouter's `url`-first rule is untouched, as in v4, and pinned as a non-change.
 
 Proofs: `file_attachment_tier3_equivalence` was green at `ca363178d` and red at `f6426e196` (the three mount rows lose `url`), green after the port, with a new `lcffl_mount_document` arm for the native-text branch that nothing exercised before (fixture grown with a `Notes/field.md` document mount). The request-envelope corpus was re-recorded at the pin from v4's real plugins (385 to 393 rows: four `url-wins` rows move to `data:`, eight relative-url rows added) and the harness pins both halves plus OpenRouter's non-change by name. Mutation proofs: restoring `url` on either loader branch, dropping the absolute-http guard, inverting the preference, and "fixing" OpenRouter each redden exactly the intended rows. `docs/v4/` mirror refreshed (CHANGELOG, bugs.md, the new bug-174 file).
+
 #### 2026-10-01 — fix(host): a failed avatar-roll collapse now fails the boot, as in v4 (P4.135)
 
 _Versions: core 0.0.1140, host 0.0.172._
@@ -68,6 +70,7 @@ documents; v5's reaps links / folders / chunks plus content). Filed upstream
 as v4 bugs 175 (the exit on a resumable, unstamped pass) and 176 (the ledger
 skip that leaves a damaged table unchecked behind a healthy `/health`),
 uncommitted in the v4 checkout for the human.
+
 #### 2026-10-02 — docs(porting): the P4.136 lane record — the API-key fallback lines, the engine thaw, the test-message 404
 
 _Docs-only change._
@@ -138,6 +141,7 @@ which drops the `sqlite error:` prefix it used to log. `fallback_home_guard`
 lists both messages (red first on the old emitter, green after the move).
 Unit pins cover each line, the bare message over a corrupt cell, and the
 silence legs.
+
 #### 2026-10-01 — docs(porting): P4.137 lane record and order status
 
 _Docs-only change._

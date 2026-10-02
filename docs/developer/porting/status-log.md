@@ -158927,6 +158927,7 @@ Pre-written one-line patch for `/unify`'s §5 checklist (NOT applied): add `pyth
 ### P4.138 lane record — item (g) fix 1: non-empty canned episode (2026-10-01)
 
 `memory-pipeline-jobs-tier3.json`'s `episode` rule now returns one episode (`when: 2023-06-06`, usage 300/48/348). Regenerated at pin `f6426e196`, green (10 cases); the episode narrative appears in the fresh NDJSON and 42 `episodic` tokens. With the same episode-prompt mutation as fix 2 the consumption assert fires (it runs before the table diff, so the `memories` row's redness was not separately observed — recorded, not claimed). `vector_entries` tie did not bite. Version: harness 0.0.1066. Deferred by name (Tier 3): v4's absent `[FoldEpisodePass]` lines + `SKIP_GATE` count (core smalls order), `ALIAS_ASSIGN` widening, an llm-logs comparand.
+
 ### P4.D244 — v4 `f6426e196` (bug 174: a vault image's server-relative `url` sent to Z.AI and NanoGPT) — LANE RECORD (2026-10-01)
 
 Lane branch `claude/vault-image-url-provider-7179bf`, cut from `main` `50a4cdaab`. Ledger §2 probe PASSED at lane start (v4 `main` at `f6426e196`, both logs empty, tree CLEAN); before the later regen batches the v4 tree showed EXACTLY P4.135's two docs-only filings (`docs/developer/bugs.md` + `bugs/bug-175-*.md`) — the round's recorded waiver, HEAD unmoved. Pins: `/tmp/qt-v4-pin-p4d244-f6426e196` (target; marker `https?:\/\/` count in the Z.AI `provider.ts` 1, baseline 0) and `/tmp/qt-v4-pin-p4d244-ca363178d`.
@@ -158948,6 +158949,7 @@ Lane branch `claude/vault-image-url-provider-7179bf`, cut from `main` `50a4cdaab
 💸 dogfood: a vault photo on a Z.AI vision profile (`glm-5.3-flash`) — the request body logged BEFORE the HTTP call carries `data:image/webp;base64,…`, not `/api/v1/mount-points/…` (a bad key makes it free); the same on NanoGPT; an UPLOADED (non-vault) image on both proving the legacy `files` branch unmoved; the mirror's new bug-174 file openable.
 
 **Gate (P4.D244).** fmt clean; clippy `-D warnings` clean in both feature sets; neutral families at `f6426e196` all ok (`orchestrator_tier3_equivalence`, `request_builder_google_wire_equivalence`, `files_routes_equivalence`, `chat_gallery_equivalence`); `quilltap-core --lib` 2850 passed (incl. the 7 new `attachment_url_tests`); the two lane families plus `provider_sdk_version_guard`, `builtin_prompt_templates_guard`, `spelling_guard`, `fallback_home_guard`, `blob_write_sites_census`, `get_messages_caller_census` green by name; `recipe_sweep.py --self-test` RED with the one failure naming the five P4.138 headers (expected, not this lane's). Versions: core 0.0.1140, harness 0.0.1064. **NOT RUN — shared disk exhausted by the five parallel lanes (errno 28 during the full `cargo test --workspace` link; ~0.2 GB free at the end):** the full `cargo test --workspace` (its first attempt died at link time), `cargo build --workspace --release`, `dispatch_wrong_type_census` (441; api/types.rs untouched), Tier R `cli_differential` (nothing here touches the CLI), `npm run build`. The unifier's workspace gate covers them; the lane did not verify them.
+
 ## P4.135 — the two boot rulings of 2026-10-01: D184 goes FATAL + v4 bug 175; the ledger gate pinned + v4 bug 176 (lane record, 2026-10-01)
 
 Lane `claude/p4-135-boot-rulings-ledger-8a86e8`, cut from `main` `50a4cdaab`
@@ -159089,6 +159091,69 @@ claiming a re-check alone repairs the #134 case.
 ### Gate
 
 All with `CARGO_INCREMENTAL=0`, from this worktree:
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (default;
+  `--features quilltap-core/native-transport`); `cargo build --workspace
+  --release` clean.
+- `QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4135-f6426e196
+  QT_NODE=$HOME/.nvm/versions/node/v24.13.1/bin/node cargo test --workspace
+  --no-fail-fast`: **659 test binaries / 4,088 passed / 0 failed / 3
+  ignored** (full log kept, launched in the background, awaited by its
+  notification). ⚠ The FIRST attempt died at link time with 11 `linking
+  with cc failed` errors and 0 test results — the disk was at 1.0 GB free
+  (five lanes + the main checkout's 64 GB `target/`); a rerun at 9 GB free
+  linked the rest and ran green. Not a code red. Lane families RUN by
+  non-zero duration: `host_boot_hardness` 15/0 (11.6 s),
+  `host_boot_avatar_rolls_collapse` 3/0 (unchanged, read-only),
+  `store_delete_equivalence` 1/0, `spelling_guard` 1/0.
+- Tier R by name at the pin: `CLI differential: 271 cases, 0 failures`
+  (485.6 s).
+- `dispatch_wrong_type_census` green, UNMOVED at **441** (the lane touched
+  no `api/` or web file).
+- The two live-checkout guards, run WITHOUT `QT_V4_CHECKOUT` (the live
+  checkout at `f6426e196`, dirty only by this lane's three docs paths):
+  `builtin_prompt_templates_guard` 2/0, `provider_sdk_version_guard` 3/0 —
+  GREEN.
+- `python3 harness/tools/recipe_sweep.py --self-test`: RED, exit 1, ONE
+  failure naming the alias-default headers (`doc_opacity_equivalence` …) —
+  the predicted P4.138 red, recorded, not fixed here.
+- SPA liveness: `npm ci` + `npm run build` in `apps/web` — exit 0 (bundle
+  generated); `node_modules`/`dist` removed afterwards.
+- No differential family regenerated (none exists for a boot); no sweep run.
+
+### Versions
+
+core 0.0.1139 → **0.0.1140** (two doc comments), host 0.0.171 →
+**0.0.172**. ⚠ §S.2: P4.136 also bumps host 0.0.171 → 0.0.172 — the union is
+**0.0.173**; core is bumped by P4.D244, P4.136, P4.137 too — recount.
+
+### Sibling notes / §S hunks
+
+- No family moved; `orchestrator_tier3` untouched. No `api/types.rs`,
+  `spine.rs`, `host_boot_avatar_rolls_collapse.rs` edit.
+- §S.3: `dogfood-findings.md`'s P4.D184 "RULING PENDING" → RULED + landed
+  (P4.135); the bug-176 divergence row (item 6 above) into `phase-4.md`; the
+  ledger's §1 restates the three docs-only paths above as the v4 checkout's
+  state (or, if the human has committed them, a NO-PORT? docs-only row).
+- §S.5: the `MigrationRunner` pin (item 11) into the NEXT list. When v4 fixes
+  175, the `host.rs` arm flips back to log-and-continue in that catch-up (the
+  FATAL arm then inverts; the resume arm stands).
+
+### 💸 for the dogfood pass
+
+On the Friday copy, server stopped: the §5.5 measurement first — `SELECT
+COUNT(*) FROM files WHERE originalFilename LIKE 'avatar\_%' ESCAPE '\' AND
+category='IMAGE' AND generationPrompt != '' AND generationKey IS NULL` and
+the `collapse-duplicate-avatar-rolls-v1` ledger row (v4 collapsed Friday on
+2026-09-11, so the gate likely answers `AlreadyCompleted` — record either
+way); only if an unkeyed row exists AND no ledger row, plant the `BEFORE
+UPDATE OF generationKey` trigger and see the boot fail with the singular
+`context=migration.` line, then `DROP TRIGGER`. Then P4.131's F1
+(`relativePath → relativePath_x`) booted TWICE: the lazy line on both boots,
+`/health` ready both times, `list_mail` answering v4's fallback lines; rename
+back.
+
 ## P4.136 — the API-key reads' fallback lines, the engine thaw, the test-message 404 — LANE record (2026-10-01)
 
 Branch `claude/api-key-fallback-404-5f9225` (worktree
@@ -159316,64 +159381,6 @@ C2); C2's targeted tests green with the PRE-thaw loop.
 - `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
   -- -D warnings` clean in BOTH feature sets (default;
   `--features quilltap-core/native-transport`); `cargo build --workspace
-  --release` clean.
-- `QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4135-f6426e196
-  QT_NODE=$HOME/.nvm/versions/node/v24.13.1/bin/node cargo test --workspace
-  --no-fail-fast`: **659 test binaries / 4,088 passed / 0 failed / 3
-  ignored** (full log kept, launched in the background, awaited by its
-  notification). ⚠ The FIRST attempt died at link time with 11 `linking
-  with cc failed` errors and 0 test results — the disk was at 1.0 GB free
-  (five lanes + the main checkout's 64 GB `target/`); a rerun at 9 GB free
-  linked the rest and ran green. Not a code red. Lane families RUN by
-  non-zero duration: `host_boot_hardness` 15/0 (11.6 s),
-  `host_boot_avatar_rolls_collapse` 3/0 (unchanged, read-only),
-  `store_delete_equivalence` 1/0, `spelling_guard` 1/0.
-- Tier R by name at the pin: `CLI differential: 271 cases, 0 failures`
-  (485.6 s).
-- `dispatch_wrong_type_census` green, UNMOVED at **441** (the lane touched
-  no `api/` or web file).
-- The two live-checkout guards, run WITHOUT `QT_V4_CHECKOUT` (the live
-  checkout at `f6426e196`, dirty only by this lane's three docs paths):
-  `builtin_prompt_templates_guard` 2/0, `provider_sdk_version_guard` 3/0 —
-  GREEN.
-- `python3 harness/tools/recipe_sweep.py --self-test`: RED, exit 1, ONE
-  failure naming the alias-default headers (`doc_opacity_equivalence` …) —
-  the predicted P4.138 red, recorded, not fixed here.
-- SPA liveness: `npm ci` + `npm run build` in `apps/web` — exit 0 (bundle
-  generated); `node_modules`/`dist` removed afterwards.
-- No differential family regenerated (none exists for a boot); no sweep run.
-
-### Versions
-
-core 0.0.1139 → **0.0.1140** (two doc comments), host 0.0.171 →
-**0.0.172**. ⚠ §S.2: P4.136 also bumps host 0.0.171 → 0.0.172 — the union is
-**0.0.173**; core is bumped by P4.D244, P4.136, P4.137 too — recount.
-
-### Sibling notes / §S hunks
-
-- No family moved; `orchestrator_tier3` untouched. No `api/types.rs`,
-  `spine.rs`, `host_boot_avatar_rolls_collapse.rs` edit.
-- §S.3: `dogfood-findings.md`'s P4.D184 "RULING PENDING" → RULED + landed
-  (P4.135); the bug-176 divergence row (item 6 above) into `phase-4.md`; the
-  ledger's §1 restates the three docs-only paths above as the v4 checkout's
-  state (or, if the human has committed them, a NO-PORT? docs-only row).
-- §S.5: the `MigrationRunner` pin (item 11) into the NEXT list. When v4 fixes
-  175, the `host.rs` arm flips back to log-and-continue in that catch-up (the
-  FATAL arm then inverts; the resume arm stands).
-
-### 💸 for the dogfood pass
-
-On the Friday copy, server stopped: the §5.5 measurement first — `SELECT
-COUNT(*) FROM files WHERE originalFilename LIKE 'avatar\_%' ESCAPE '\' AND
-category='IMAGE' AND generationPrompt != '' AND generationKey IS NULL` and
-the `collapse-duplicate-avatar-rolls-v1` ledger row (v4 collapsed Friday on
-2026-09-11, so the gate likely answers `AlreadyCompleted` — record either
-way); only if an unkeyed row exists AND no ledger row, plant the `BEFORE
-UPDATE OF generationKey` trigger and see the boot fail with the singular
-`context=migration.` line, then `DROP TRIGGER`. Then P4.131's F1
-(`relativePath → relativePath_x`) booted TWICE: the lazy line on both boots,
-`/health` ready both times, `list_mail` answering v4's fallback lines; rename
-back.
   --release` green.
 - `cargo test --workspace --no-fail-fast` with the lane's 28-var env block
   (every family above pointed at its `/tmp/p4136/fam` regen, the settings
@@ -159426,6 +159433,7 @@ WARN (it used to fail the job).
   before calling it a port defect.
 - `cargo test --test A --test B` stops at the first failing binary; a
   mutation run needs `--no-fail-fast` or one binary per invocation.
+
 ## P4.137 — P4.D243-F1 closed (an empty new user message takes v4's chained branch) + the orchestrator oracle's cheap-key mock lifted — LANE COMPLETE (2026-10-01)
 
 Branch `claude/empty-new-user-message-orchestrator-193984` (worktree
