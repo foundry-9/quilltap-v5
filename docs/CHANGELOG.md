@@ -145,6 +145,12 @@ The two batch document reads behind every character, project, group, wardrobe, s
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `db::fallback` gains v4's lines for the vault overlay's two batch document reads, the embedded-chunk count, the chunk-content search and the file-link name/path search, plus `find_api_keys_by_user_id_or_empty` (delivered for P4.139 under the round's shared contract). The two search fallbacks that logged under their module targets with snake_case fields and the `sqlite error:` prefix now go through the home and log v4's exact bytes. v4's `withStrictRepositoryFailures` is ported as a thread-local scope: inside it the two batch homes log with `strictFailures=true` and propagate (ruled by the human on 2026-10-02 so backup and export can stay strict once the overlay falls back). `fallback_home_guard` lists the six new messages.
+#### 2026-10-02 — docs(porting): close the P4.139 lane — mutation proofs, gate, handoffs
+
+_Docs-only change._
+
+The P4.139 lane record gains its mutation proofs (all nine red, all restored), the gate (a 39-family sweep from the `f6426e196` pin, all ok; the workspace suite 660 binaries, 4,130 passed, 0 failed), the recorded spine-pin halves for P4.140, the unifier's fold steps, the named deferrals and the dogfood rows. The work order's status header reads LANE COMPLETE.
+
 #### 2026-10-02 — test(harness): headshoulders backfill gains a corrupt-key case, a repository-line channel and the sent key as a comparand; the api_keys test DDL folded to one copy
 
 _Versions: core 0.0.1154, harness 0.0.1080._

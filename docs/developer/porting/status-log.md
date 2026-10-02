@@ -161630,3 +161630,155 @@ Each at v4's outcome (survey §A3 #1-9, 17-24 less the routes, 26, 27, 30, 31):
   pin; the committed `headshoulders-{main,mount}.db` read (copied per case),
   not rebuilt. 18 oracle rows.
 
+### Unit 10 — the spine keyed pin (Tier 2 item 11): STOPPED, both halves recorded (§S.3)
+
+The order's own rule: land only the `scenario_builder_dispatch_wire.rs` half
+if P4.140's `scenario_builder_spine/mod.rs` hunk is on `main` at lane time.
+It is not (`main` `75219b8dd` carries no lane of this round), so NEITHER half
+lands; both are pre-written for P4.140 / the unifier exactly as the order's
+§S.3 states them:
+
+- **`crates/quilltap-web/tests/scenario_builder_spine/mod.rs` (P4.140):** a
+  `KeyedSceneStream` (the `SceneStream` reply; overrides
+  `stream_message_keyed` to push the key into an `Arc<Mutex<Vec<String>>>` —
+  the default method `model/stream.rs:540-549` ignores the key, `Arc<T>`
+  forwards it `:571-579`) and a `Canned::KeyedScene(Arc<Mutex<Vec<String>>>)`
+  arm in `ScenarioBuilderSpineFactory::build`.
+- **`crates/quilltap-web/tests/scenario_builder_dispatch_wire.rs` (P4.139's,
+  applied after the spine hunk):** a keyed ANTHROPIC clone of the tools-on
+  profile in `planted_instance` with `apiKeyId` → a planted `api_keys` row
+  `key_value = 'synthetic-sb-spine-key'` (the table created with v4's DDL `IF
+  NOT EXISTS` if the pair lacks it), one build, every recorded key equals it
+  and at least one call recorded. Mutations: `api_key: ""` at host
+  `spine.rs:1877` and `api_key: String::new()` at `api/engine.rs:6584` each
+  red it. Every `ChatSpine { … }` literal needs P4.140's `display_zone:
+  TimeZone::UTC` on the union (§S.9).
+
+### Mutation proofs (M1–M9) — every one RED on its named test(s), every file restored by `cmp`
+
+- **M1** `read_api_key` unhomed (`.ok().flatten()`) → `the_read_helpers_…`,
+  `chat_participants::api_key_read_tests`, `images::api_key_read_tests` red.
+- **M2** `api_key_update`'s `Err(e) => internal(e)` restored →
+  `settings_wire_actions` (the eight-arm test) and
+  `settings_routes_equivalence` (`ak_update_corrupt`) red.
+- **M3** `marshal_row` back to `get::<_, i64>(5)? != 0` →
+  `api_keys_tier2_equivalence` + `db::api_keys::tests::is_active_…` red.
+- **M4** the row error returned (`Err(e) => return Err(e.into())`) →
+  `api_keys_tier2_equivalence`, the wire list arm, `settings_routes_
+  equivalence` (`ak_list_corrupt`) red.
+- **M5** `.ok().flatten()` restored in `scenario_builder_prepare` →
+  `scenario_builder_routes_equivalence` red (`repoLines`).
+- **M6** `fallback_repos` back to `read_main(|c| Ok(…))` + `Err(_)` fold →
+  its pool-failure pin red. (Brahma / help-chat: structural, see unit 5.)
+- **M7** a raw `api_keys::find_by_id(c, …)` added to `api_key_list` →
+  `api_key_read_sites_census` red on both EXPECTED and COUNTS.
+- **M8** `collection = "api_keys"` in the lane-local by-user-id helper →
+  its field pin red.
+- **M9** the headshoulders handler given a propagating key read before its
+  gate → `headshoulders_backfill_tier3_equivalence` red (`corrupt_key` throws).
+
+### Gate — the P4.139 lane's gate (branch `claude/p4-139-api-key-read-class-75219b8dd`, final tree `5f2c0539b` + this docs commit)
+
+- §R.2 probe PASS at lane start and before every regen batch (v4 `main` at
+  `f6426e196`, both logs empty, exactly the three recorded docs paths).
+- `cargo fmt --all --check` 0; `cargo clippy --workspace --all-targets -- -D
+  warnings` 0; the same with `--features quilltap-core/native-transport` 0;
+  `cargo build --workspace --release` 0.
+- **The sweep** (`recipe_sweep.py --run-all --v4 /tmp/qt-v4-pin-p4139-f6426e196
+  --force`, no other sweep running): **39/39 ok, zero SKIP** — the lane's own
+  seven (`api_keys_tier2`, `settings_routes`, `settings_wire_actions`,
+  `image_profiles_routes`, `embedding_profiles_routes`, `scenario_builder_
+  routes`, `headshoulders_backfill_tier3`) and the NEUTRAL set:
+  `character_wizard_tier3`, `character_optimizer_tier3`, `external_prompt_
+  tier3`, `ai_import_tier3`, `ai_import_assembly`, `embedding_provider_tier3`,
+  `initial_greeting`, `chat_create_capstone`, `images_routes`,
+  `images_generate_route`, `images_generate_dispatch_wire`, `wardrobe_routes`
+  (web), `group_wardrobe_routes`, `brahma_console_tier3`, `brahma_orchestrator_
+  tier3`, `scenario_builder_tier3`, `scenario_builder_dispatch_wire`,
+  `web_search_tool`, `title_update_tier3`, `participant_resolver_tier2`,
+  `danger_routing`, `danger_gatekeeper_tier3`, `file_attachment_tier3`,
+  `system_delete_data` (delete-all), `system_export`, `chats_participants_
+  tier2`, `salon_reads` (RUN only), `help_chat_orchestrator_tier3`,
+  `cheap_llm_fallback`, `image_failover_tier3`, `generators_wizard_routes`,
+  `character_archive_tier2`. `recipe_sweep.py --self-test` exit 0.
+- `QT_V4_CHECKOUT=<pin> CARGO_INCREMENTAL=0 cargo test --workspace
+  --no-fail-fast` with the env block (`QT_ORACLE_API_KEYS`,
+  `QT_FIXTURE_API_KEYS`, `QT_FIXTURE_SETTINGS`, `QT_ORACLE_SETTINGS_ROUTES`,
+  `QT_ORACLE_IMAGE_ROUTES`, `QT_ORACLE_EP_ROUTES`, `QT_ORACLE_SB_ROUTES`,
+  `QT_ORACLE_HEADSHOULDERS_BACKFILL`, `QT_ORACLE_SYSTEM_EXPORT`, all at
+  `/tmp/p4139/…`): **660 test binaries / 4,130 passed / 0 failed / 3
+  ignored**, every lane family confirmed RUN by non-zero duration. Tier R
+  (`cli_differential`) green (418 s). `dispatch_wrong_type_census` unmoved;
+  `fallback_home_guard` green (2/2 — see unit 6: it is NOT red on this
+  branch); `doc_mount_fallback_sites_census` green; `builtin_prompt_templates_
+  guard` + `provider_sdk_version_guard` green; `spelling_guard` green.
+- Disk: 15 GiB free before the gate → the lane's own `target/` (35 G of
+  stale per-version artifacts) removed and rebuilt `CARGO_INCREMENTAL=0`.
+
+### Versions (P4.139 bumps, base `75219b8dd`: core 0.0.1146, harness 0.0.1074, web 0.0.207)
+
+core +8 → 0.0.1154 (units 1–7, 9); harness +6 → 0.0.1080 (units 1–3, 6, 8,
+9); web +1 → 0.0.208 (unit 4, tests only). host / cli / tauri / SPA
+unchanged. No non-version `Cargo.toml` delta.
+
+### Fixtures and oracles touched (no committed `.db` pair rebuilt)
+
+- Spec/builder/case edits: `api-keys-tier2.json` + `build-api-keys-fixture.ts`
+  + `cases/api-keys.ts`; `cases/settings-routes.test.ts`; `cases/image-
+  profiles-routes.test.ts`; `cases/embedding-profiles-routes.test.ts`;
+  `scenario-builder-routes.json` + `cases/scenario-builder-routes.test.ts`;
+  `headshoulders.json` + `cases/headshoulders-backfill-tier3.test.ts`. Each is
+  read by its ONE family only (grep-verified for the two JSON specs); no other
+  oracle is invalidated. Every plant is in-case on a COPY.
+- Regen recipes: in each unit above (all from the pin, staged under
+  `/tmp/p4139/`); the sweep's recipe-default `/tmp/oracle-*.ndjson` paths are
+  the committed headers' own.
+
+### For the unifier (§S)
+
+- **§S.1** fold `api_keys_by_user_id_or_empty` onto P4.142's
+  `db::fallback::find_api_keys_by_user_id_or_empty` (callers: `api_key_list`,
+  `delete_all.rs` ×2, `find_active_api_key_for_provider_or_none`); delete the
+  lane-local literal; `fallback_home_guard` then green on the union;
+  `api_key_read_sites_census` EXPECTED: the helper-body row → `home`, COUNTS →
+  `(4, 2, 1, 2, 1, 0)`.
+- **§S.2** the host `DbSearchApiKeys` hunk (unit 6's record), host bump.
+- **§S.3** the spine keyed pin (unit 10's record).
+- **§S.4** the pricing cadence (Tier 3 item 15) — the census's
+  `recorded-divergence` row retires with it.
+- **NEW:** an `initial_greeting_equivalence` arm for the greeting's line
+  (unit 3's record) — P4.140's file family.
+- **Import edits outside the named ranges** (unit 5): help-chat's and
+  Brahma's import lines lost `ProfileApiKeyFailure` / `DbError` — expect a
+  text merge if any lane touched those lines (none is listed).
+
+### Deferred (loud, by name)
+
+Tier 3, as the order names them, none landed: item 15 the pricing context's
+cadence (§S.4); item 16 `test_plants` out of `db/fallback.rs` (and with it the
+hand INSERTs in `cheap_llm_exec.rs`, `chat_create.rs`, `gatekeeper.rs`); item
+17 `MainReads` → `db/runtime.rs`; item 18 the almanack's raw `api_keys` SQL and
+its `"isActive" = 1` filter (now ALSO a divergence from v5's own decode: the
+repository reads NULL / text cells as active, the almanack's SQL does not);
+item 19 the help-chat profile read's raw-`DbError` answer + the Scenario
+Builder cast read's missing `characters` line (P4.142's class); item 20 v4's
+`GET /api/v1/api-keys/[id]`; item 21 the uncalled scoped wrappers' deletion
+(classified `wrapper-no-caller`). Tier 2 item 11 STOPPED (unit 10). Recorded
+divergences: a marshal-failure drop's WARN `error` bytes (rusqlite vs ZodError,
+unit 1); the rename-plant query-error leg has no v4 row (unit 6); the
+`MainReads` one-line pool arm (pre-existing).
+
+### 💸 for the dogfood pass (Friday COPY only, nothing spends)
+
+`UPDATE api_keys SET key_value = x'00000000' WHERE id = <a spare key>` on the
+COPY, then: Settings → API Keys lists every OTHER key (no 500) with one `WARN
+quilltap::db API key validation failed keyId=… userId=…`; edit / delete / test
+on the corrupted key answer 404 with `Error finding API key by ID …` (the test:
+the `… and user ID` line); an image or embedding profile bound to it lists with
+`apiKey: null` and its edit refuses 404; the wizard on a profile bound to it
+proceeds keyless (the provider refuses); a `.qtap` export of that profile
+carries no `_apiKeyLabel`. `UPDATE api_keys SET isActive = NULL WHERE id = <the
+search key>` → web search still finds the key. A Scenario Builder run on a
+profile whose `name` is a BLOB answers 404 with `Error finding entity by ID
+collection=connection_profiles`.
+
