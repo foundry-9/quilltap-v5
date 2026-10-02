@@ -150,15 +150,17 @@ impl<C: CompletionProvider + Sync> CompletionProvider for KeyRecording<C> {
         provider: &str,
         base_url: Option<&str>,
         params: &CompletionParams,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
-    {
-        self.hit.lock().unwrap().insert(canned_completion_key_with_attachments(
-            provider,
-            &params.model,
-            params.temperature,
-            &params.messages,
-            &params.attachments,
-        ));
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        self.hit
+            .lock()
+            .unwrap()
+            .insert(canned_completion_key_with_attachments(
+                provider,
+                &params.model,
+                params.temperature,
+                &params.messages,
+                &params.attachments,
+            ));
         self.inner.send_message(provider, base_url, params)
     }
 }

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — style(harness): rustfmt the key-recording wrapper (P4.138)
+
+_Versions: harness 0.0.1067._
+
+Formatting only, in `memory_pipeline_jobs_tier3_equivalence.rs`.
+
 #### 2026-10-01 — test(harness): memory_pipeline_jobs_tier3's canned episode reply is non-empty (P4.138 item g, fix 1)
 
 _Versions: harness 0.0.1066._
