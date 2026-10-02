@@ -233,15 +233,23 @@ pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
         // sendMessage` before rethrowing (`PluginCatchLog`) — once, after the
         // SDK's own retries, with the thrown text. The build above sits
         // outside it, as v4's `buildRequestBody` does.
-        let catch_log = crate::model::streaming_provider::PluginCatchLog::for_call(
+        //
+        // P4.141: every provider's lines, one home (`model::plugin_catch_log`)
+        // — OpenRouter's only on v4's raw `fetch` path, the IMAGE send (bug
+        // 31's escape from the SDK), the predicate the parse below threads.
+        let openrouter_vision =
+            provider == "OPENROUTER" && openrouter_non_streaming_is_vision(&input.messages);
+        let catch_log = crate::model::plugin_catch_log::PluginCatchLog::for_call(
             provider,
             base_url,
             localhost_gateway,
-            crate::model::streaming_provider::CatchMethod::SendMessage,
+            crate::model::plugin_catch_log::CatchMethod::SendMessage,
+            &params.model,
+            openrouter_vision,
         );
         let fail = |e: crate::model::transport::TransportError| {
             if let Some(log) = &catch_log {
-                log.emit_transport(provider, &e);
+                log.emit_transport(&e);
             }
             completion_error_from(provider, e)
         };
@@ -278,15 +286,15 @@ pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
         // v4 bug 31: an OpenRouter non-streaming send that carried a formattable
         // image escaped the SDK to `sendViaChatCompletions`, so its wire body is
         // read by the raw-wire vision parse rather than the SDK-normalized one
-        // (same bytes, a different LLMResponse). The predicate mirrors the
-        // builder's own routing choice.
-        let openrouter_vision =
-            provider == "OPENROUTER" && openrouter_non_streaming_is_vision(&input.messages);
+        // (same bytes, a different LLMResponse). The predicate (above) mirrors
+        // the builder's own routing choice.
         let parsed = parse_for_provider_ex(provider, &json, openrouter_vision);
         // v4 Google `sendMessage` (`8bd080267`): a blocked prompt WARNs with the
         // model it was sent to; the parse already reads the block reason as the
-        // finish reason.
+        // finish reason. P4.141: `extractTextFromResponse` runs first, and
+        // WARNs when the answer carries no candidates at all.
         if provider == "GOOGLE" {
+            crate::model::plugin_catch_log::emit_google_no_candidates(&params.model, &json);
             if let Some(block_reason) = crate::model::response_parse::google_block_reason(&json) {
                 tracing::warn!(
                     context = "GoogleProvider.sendMessage",
@@ -834,9 +842,15 @@ mod tests {
         );
         assert_eq!(resp.finish_reason.as_deref(), Some("SAFETY"));
         let warns: Vec<&String> = lines.iter().filter(|l| l.starts_with("WARN ")).collect();
+        // P4.141: v4's `extractTextFromResponse` runs first and WARNs that
+        // the answer carries no candidates (with the block reason), THEN the
+        // send WARNs the block.
         assert_eq!(
             warns,
-            vec![&"WARN quilltap_core::model::completion_provider Google blocked the prompt context=GoogleProvider.sendMessage model=gemini-2.5-flash block_reason=SAFETY".to_string()]
+            vec![
+                &"WARN quilltap::model::completion_provider No candidates found in Google response context=GoogleProvider.extractTextFromResponse modelName=gemini-2.5-flash blockReason=SAFETY".to_string(),
+                &"WARN quilltap_core::model::completion_provider Google blocked the prompt context=GoogleProvider.sendMessage model=gemini-2.5-flash block_reason=SAFETY".to_string(),
+            ]
         );
 
         let (resp, lines) = run(

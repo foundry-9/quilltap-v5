@@ -21,6 +21,12 @@ _Docs-only change._
 - `9753d0eb2` (PORT): the project character roster now gates a character's doc tools, `search_scriptorium` and the project tier of the shared wardrobe through one chokepoint. The roster auto-add on chat create and chat move is removed. `allowAnyCharacter` now defaults to `true`, and the project PUT returns the enriched project. The SPA Characters card and four help pages change too.
 - `e5c6bd0c0` (CONVERGENCE on this port's filings 175/176, shaped differently from P4.135): a failed avatar-roll collapse is now deferred to the next boot instead of being fatal. Separately, a new boot-time structural table check reports damage through a `structure` service in `/api/health`. The ledger gate itself is unchanged.
 - §1 is rewritten for the new state. The previous dirty-tree waiver is spent because v4 committed the 175/176 filings itself.
+#### 2026-10-02 — feat(model): port v4's Google, Ollama and OpenRouter plugin error lines through one plugin_catch_log home
+
+_Versions: core 0.0.1149, harness 0.0.1077._
+
+`PluginCatchLog` and `CatchMethod` move out of `streaming_provider.rs` into a new `model/plugin_catch_log.rs`. They now cover every provider's catch shape. The three openai-SDK plugins keep their lines byte for byte. Added: Google's `Error calling Google Gemini API` / `Error streaming from Google Gemini API` (`{context, model, error}`), Ollama's status line plus `Ollama sendMessage failed` / `Ollama streamMessage failed`, and OpenRouter's `OpenRouter API error`, `Error in streamViaChatCompletions` and `Error in sendViaChatCompletions`. OpenRouter lines fire only on v4's raw-fetch path: a stream with tools or images, or a send with an image. A new `openrouter_streaming_takes_raw_path` handles the stream case. `sdk_thrown_message` becomes `v4_thrown_message(provider, method, raw_path, error)`, which renders v4's thrown text per client family and failure kind. Google's `No candidates found in Google response` WARN is ported too. The family's matched plugin ERROR lines rise from 210 to 517, and 211 pending pins retire.
+
 #### 2026-10-02 — test(harness): rebuild the text-errors corpus with hang, all-provider fetch-throws and 2xx-body cases; diff every plugin line
 
 _Versions: harness 0.0.1076._

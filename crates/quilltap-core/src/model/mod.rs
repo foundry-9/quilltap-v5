@@ -35,6 +35,7 @@ pub mod ollama_think_parser;
 pub mod ollama_think_retry;
 pub mod openai_image_models;
 pub mod openai_image_options;
+pub mod plugin_catch_log;
 pub(crate) mod provider_auth;
 pub mod provider_error;
 pub mod provider_io;

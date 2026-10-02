@@ -48,6 +48,7 @@
 
 use serde_json::{Map, Value};
 
+use crate::model::plugin_catch_log::CatchMethod;
 use crate::model::provider_io::ProviderKind;
 use crate::model::transport::TransportError;
 use crate::pascal::js_value::json_stringify;
@@ -74,32 +75,69 @@ pub fn transport_error_refusal(provider: &str, error: &TransportError) -> Option
     text_http_refusal(provider, status, body)
 }
 
-/// The `message` of the value v4's plugin THREW for a transport failure — the
-/// `error` its `… API error in streamMessage|sendMessage` catch line logs
-/// (P4.128). A non-2xx is the reconstructed side's message (the SDK's
-/// `APIError.makeMessage`, e.g. `400 Filtered.`). A failure with no status
-/// never reached a response, so the openai SDK threw its connection errors
-/// (`openai` 7.23.0 `core/error.js:78-92`): `APIConnectionTimeoutError`
-/// (`Request timed out.`) for v5's time-to-headers budget, `APIConnection
-/// Error` (`Connection error.`) for everything else.
+/// The `message` of the value v4's `provider` plugin THREW for a transport
+/// failure — the `error` its catch line logs ([`PluginCatchLog`](crate::model::plugin_catch_log::PluginCatchLog);
+/// P4.128, generalised per client family by P4.141). A non-2xx is the
+/// reconstructed side's message (the SDK's `APIError.makeMessage`, e.g. `400
+/// Filtered.`; a raw-`fetch` plugin's own `Ollama API error: …`). A failure
+/// with no status never reached a response; what v4 threw depends on the
+/// CLIENT the plugin calls through, and on whether a deadline fired (the
+/// transport's [`kind`](TransportError::kind) — `ReqwestTransport` reads
+/// reqwest's `is_timeout()` on every arm):
 ///
-/// RULED at planning (the P4.128 order, §B1): this mapping is CONFINED to the
-/// catch line's `error` field. The `StreamError` / `CompletionError` message
-/// and the failover classifier's input stay v5's own transport bytes.
+/// | client | timeout | connect |
+/// |---|---|---|
+/// | `openai` 7.23.0 (OPENAI, OPENAI_COMPATIBLE, DEEPSEEK, NANOGPT, Z_AI, GROK) and `@anthropic-ai/sdk` 0.115.0 | `Request timed out.` (`APIConnectionTimeoutError`) | `Connection error.` (`APIConnectionError`) |
+/// | `@google/genai` 1.52.0 | `This operation was aborted` (the `AbortError` of its `httpOptions.timeout` controller) | `fetch failed` (undici's `TypeError`; genai does not retry) |
+/// | OLLAMA and OpenRouter's raw `fetch` · send | `The operation was aborted due to timeout` (`AbortSignal.timeout`'s `TimeoutError`) | `fetch failed` |
+/// | OLLAMA and OpenRouter's raw `fetch` · stream | `This operation was aborted` (the first-byte `AbortController`) | `fetch failed` |
+/// | `@openrouter/sdk` 1.3.28 (OpenRouter off the raw path) | `Request timed out` | `Unable to make request` |
 ///
-/// Recorded approximation: `ReqwestTransport`'s NON-streaming arm bounds the
-/// whole exchange with reqwest's `.timeout()`, whose error renders like any
-/// other send failure, so a non-streaming timeout maps to `Connection error.`
-/// where v4 logs `Request timed out.`.
-pub fn sdk_thrown_message(provider: &str, error: &TransportError) -> String {
+/// Every row but the last is RECORDED through the real plugins
+/// (`record-text-errors.mjs`'s `transport_fetch_throws` / `transport_hang`
+/// cases); the `@openrouter/sdk` row is read from `esm/lib/sdks.js:214-217`
+/// — speakeasy retries a connection failure for up to an hour, so it is
+/// unrecordable, and v5 never runs that path (no OpenRouter line logs on it).
+/// `raw_path` is v4's OpenRouter path choice (ignored for every other
+/// provider). The openai SDK's LONG `UND_ERR_HEADERS_TIMEOUT` variant
+/// (`client.js:829-836`) needs a caller budget above undici's own 300 s and
+/// is not reproduced (the order's Tier 3).
+///
+/// RULED at planning (the P4.128 order, §B1, kept by P4.141): this text is
+/// CONFINED to the catch line's `error` field. The `StreamError` /
+/// `CompletionError` message stays v5's own transport bytes, and the failover
+/// trigger travels as the transport KIND (`v4_network_class`).
+pub fn v4_thrown_message(
+    provider: &str,
+    method: CatchMethod,
+    raw_path: bool,
+    error: &TransportError,
+) -> String {
     if let Some(side) = transport_error_refusal(provider, error) {
         return side.message;
     }
-    if error.is_timeout() {
-        "Request timed out.".to_string()
-    } else {
-        "Connection error.".to_string()
+    let timeout = error.is_timeout();
+    let raw_fetch = |stream: bool| {
+        if !timeout {
+            "fetch failed"
+        } else if stream {
+            "This operation was aborted"
+        } else {
+            "The operation was aborted due to timeout"
+        }
+    };
+    let stream = method == CatchMethod::StreamMessage;
+    match ProviderKind::of(provider) {
+        Some(ProviderKind::Google) if timeout => "This operation was aborted",
+        Some(ProviderKind::Google) => "fetch failed",
+        Some(ProviderKind::Ollama) => raw_fetch(stream),
+        Some(ProviderKind::OpenRouter) if raw_path => raw_fetch(stream),
+        Some(ProviderKind::OpenRouter) if timeout => "Request timed out",
+        Some(ProviderKind::OpenRouter) => "Unable to make request",
+        _ if timeout => "Request timed out.",
+        _ => "Connection error.",
     }
+    .to_string()
 }
 
 /// Rebuild the error v4's `provider` plugin throws for a non-2xx `status`
@@ -397,32 +435,76 @@ mod tests {
         assert_eq!(other.http_body(), None);
     }
 
-    /// P4.128: the catch line's `error` — the SDK's `APIError` text on a
-    /// non-2xx, its two connection errors otherwise.
+    /// P4.141: the catch line's `error` per client family × failure kind ×
+    /// method — the recorded `transport_hang` / `transport_fetch_throws` /
+    /// non-2xx bytes (the `@openrouter/sdk` row read from its source).
     #[test]
-    fn sdk_thrown_message_maps_the_three_failure_shapes() {
+    fn v4_thrown_message_per_family_and_kind() {
+        use CatchMethod::{SendMessage as Send, StreamMessage as Stream};
         let http = TransportError::http(
             400,
             r#"{"error":{"message":"Filtered.","code":"content_filter"}}"#,
         );
-        assert_eq!(sdk_thrown_message("DEEPSEEK", &http), "400 Filtered.");
-        assert_eq!(
-            sdk_thrown_message("NANOGPT", &TransportError::http(400, "")),
-            "400 status code (no body)"
-        );
         let connect =
             TransportError::connect("error sending request for url (http://127.0.0.1:1/)");
+        let timeout = TransportError::timeout("error sending request for url (http://x/)");
+        let headers = TransportError::headers_timeout(5);
+        assert!(timeout.is_timeout() && headers.is_timeout());
+        assert!(!connect.is_timeout() && !http.is_timeout());
+        let t = v4_thrown_message;
+        // A non-2xx: the side's message, every family.
+        assert_eq!(t("DEEPSEEK", Send, false, &http), "400 Filtered.");
         assert_eq!(
-            sdk_thrown_message("OPENAI_COMPATIBLE", &connect),
-            "Connection error."
+            t("NANOGPT", Stream, false, &TransportError::http(400, "")),
+            "400 status code (no body)"
         );
-        let timeout = TransportError::headers_timeout(5);
-        assert!(timeout.is_timeout());
-        assert!(!connect.is_timeout());
         assert_eq!(
-            sdk_thrown_message("DEEPSEEK", &timeout),
-            "Request timed out."
+            t("OLLAMA", Send, false, &TransportError::http(500, "x")),
+            "Ollama API error: 500 x"
         );
+        // The SDK family (openai + anthropic), both methods.
+        for p in [
+            "OPENAI",
+            "OPENAI_COMPATIBLE",
+            "DEEPSEEK",
+            "NANOGPT",
+            "Z_AI",
+            "GROK",
+            "ANTHROPIC",
+        ] {
+            for m in [Send, Stream] {
+                assert_eq!(t(p, m, false, &connect), "Connection error.", "{p}");
+                assert_eq!(t(p, m, false, &timeout), "Request timed out.", "{p}");
+                assert_eq!(t(p, m, false, &headers), "Request timed out.", "{p}");
+            }
+        }
+        // Google.
+        for m in [Send, Stream] {
+            assert_eq!(t("GOOGLE", m, false, &connect), "fetch failed");
+            assert_eq!(
+                t("GOOGLE", m, false, &timeout),
+                "This operation was aborted"
+            );
+        }
+        // The raw-`fetch` plugins: the send's `AbortSignal.timeout` vs the
+        // stream's first-byte controller.
+        for (p, raw) in [("OLLAMA", false), ("OLLAMA", true), ("OPENROUTER", true)] {
+            assert_eq!(t(p, Send, raw, &connect), "fetch failed");
+            assert_eq!(t(p, Stream, raw, &connect), "fetch failed");
+            assert_eq!(
+                t(p, Send, raw, &timeout),
+                "The operation was aborted due to timeout"
+            );
+            assert_eq!(t(p, Stream, raw, &headers), "This operation was aborted");
+        }
+        // `@openrouter/sdk` (read from its source — unrecordable).
+        for m in [Send, Stream] {
+            assert_eq!(
+                t("OPENROUTER", m, false, &connect),
+                "Unable to make request"
+            );
+            assert_eq!(t("OPENROUTER", m, false, &timeout), "Request timed out");
+        }
     }
 
     #[test]

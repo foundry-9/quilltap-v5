@@ -160178,3 +160178,69 @@ harness/oracle/providers/regenerate-text-errors.sh` (from the lane worktree;
 §2 probe passed immediately before; ~26 s). Run: `cargo test -p
 quilltap-harness --test text_http_errors_equivalence -- --nocapture` (reads
 the committed corpus + `cases.json`; no env var).
+
+### Unit 4 — the ten plugin ERROR lines + Google's WARN (Tier 1 items 3 + 7; Tier 2 items 9 + 11)
+
+NEW `model/plugin_catch_log.rs`: `CatchMethod` + `PluginCatchLog` moved out
+of `streaming_provider.rs` (P4.128's nit) and generalised into a per-(provider,
+method, path) `Shape` — `SdkCatch` (the three openai-SDK plugins, bytes
+unchanged), `Google {context, model, error}` (`error` in the CONTEXT, after
+`model`), `Ollama` (the status line `{context, status, error: <raw body>}`
+BEFORE the catch line `{context, baseUrl}` + error), `OpenRouterRaw` (the
+stream: status line + `Error in streamViaChatCompletions`; the vision send
+`fetch_only_try`: its non-2xx logs the status line ONLY, a `fetch` throw
+logs `Error in sendViaChatCompletions`, a thrown 2xx parse nothing).
+`emit_transport(&TransportError)` (status line on a non-2xx, then the catch
+line with `v4_thrown_message`) and `emit_thrown(text)` (mid-stream decode /
+transport / finish, and the 2xx guard of unit 6). Both targets kept
+(`quilltap::model::streaming_provider` / `completion_provider`), one
+callsite per target via a local `at_target!`. Emit points wired: the
+pre-stream `fail` (incl. the think-retry's and the chaining fallback's SECOND
+failure), the three mid-stream arms, the non-streaming transport `fail`.
+`provider_error::sdk_thrown_message` → `v4_thrown_message(provider, method,
+raw_path, &err)` with the per-family table (doc rewritten, the approximation
+retired; the `@openrouter/sdk` row — `Request timed out` / `Unable to make
+request` — READ from `esm/lib/sdks.js:214-217`, unrecordable).
+**`openrouter_streaming_takes_raw_path(messages, tools)` lives in
+`plugin_catch_log.rs`, not beside `openrouter_non_streaming_is_vision`:**
+`request_builder/chat_completions.rs` is a private module whose explicit
+re-export list sits in `request_builder/mod.rs`, outside this lane's
+ownership (§R.10(n) — no out-of-mandate edit); it is v4's `hasTools ||
+hasImages` composed over the already-exported twin. Google's
+`emit_google_no_candidates` (`{context, modelName, blockReason?}`,
+`blockReason` OMITTED when the body has none) runs before the existing
+blocked-prompt WARN — v4's `extractTextFromResponse` order; the existing
+unit pin `a_blocked_google_prompt_warns_and_reports_its_block_reason` gains
+that first line (a v4 line v5 lacked, not a behaviour change).
+
+Unit pins (`plugin_catch_log::tests`, thread-scoped capture, exact bytes):
+the base URL rule; a silence leg per silent provider + OpenRouter's SDK path;
+the SDK catch line per kind; Google #1/#2 incl. a mid-stream throw; Ollama
+#3–#6 incl. the send/stream abort texts and a mid-stream throw (Tier 2 item
+11's #6); OpenRouter #7–#10 incl. a mid-stream #9 and the vision send's
+silent 2xx; a FIELD-ORDER pin over the four shapes; the Google WARN with /
+without `blockReason` + its silence leg; the raw-path predicate.
+`provider_error::tests::v4_thrown_message_per_family_and_kind` replaces the
+P4.128 three-shape pin.
+
+Family: **211 PENDING entries retired by VANISHING** (all `unit 4`-tagged
+`lines` rows + Google's 3 `warn_lines`); the 6 left were Google's three
+content-type approximations — the line's `error` carries the same
+approximated message the existing `message` pins name — so they move to
+`EXPECTED_DIVERGENCES` beside those pins (permanent, both ways). Matched
+v4 ERROR lines **210 → 517** of 546. **Mutation proofs:** **M6** (Google's
+shape removed) → 68 unexpected (`GOOGLE` send 34 + stream 34 — v4's 37 + 37
+lines at this point less the three approximation rows each); **M7** (the
+Ollama status line removed) → exactly **66** (33 + 33 non-2xx rows); **M8**
+(the OpenRouter raw-path gate inverted) → 136 (the 70 raw rows lose their
+lines, the 66 SDK-mode rows gain lines v4 never logged). Each reverted by
+file backup, `cmp`-identical.
+Gate for this unit: `cargo test -p quilltap-core --features
+native-transport` 2,898 / 0; clippy both feature sets clean; NEUTRAL run by
+name, all green: `streaming_composer_equivalence` 5/5,
+`stream_decoders_equivalence` 5/5, `primary_stream_tier3_equivalence`,
+`cheap_llm_fallback_equivalence`, `ollama_think_retry_tier3_equivalence`,
+`tool_wire_call_site` 7/7, `request_builder_equivalence`,
+`request_builder_google_equivalence`, `file_attachment_tier3_equivalence`,
+`initial_greeting_equivalence`, `stream_watchdog_wrap_census`,
+`spelling_guard`, web `dispatch_wrong_type_census` 14/14.

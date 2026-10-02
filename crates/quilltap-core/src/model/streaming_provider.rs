@@ -64,6 +64,7 @@ use crate::model::decoders::{
     AnthropicSseDecoder, ChatCompletionsFlavor, ChatCompletionsSseDecoder, GooglePartsDecoder,
     OllamaNdjsonDecoder, ResponsesApiSseDecoder, StreamDecoder,
 };
+use crate::model::plugin_catch_log::{CatchMethod, PluginCatchLog};
 use crate::model::provider_auth::apply_auth;
 use crate::model::request_builder::{build_request, google, RequestInput};
 use crate::model::stream::{
@@ -342,125 +343,6 @@ pub fn pre_stream_error(
     e
 }
 
-/// The ERROR line three of v4's OpenAI-SDK text plugins log from the `catch`
-/// wrapping their whole `streamMessage` / `sendMessage` before rethrowing:
-/// the OPENAI_COMPATIBLE base (`plugin-utils dist providers/index.js:441-446`
-/// and `:529-534` — its `providerName` defaults to `OpenAICompatible`),
-/// DeepSeek's `provider.ts:299-303` / `:440-444` and NanoGPT's `:338-342` /
-/// `:467-474` — `this.logger.error('<Name> API error in <method>', { context:
-/// '<Name>Provider.<method>', baseUrl: this.baseUrl }, error)`. Z.AI, OPENAI
-/// and GROK carry no such catch; OpenRouter and the non-SDK plugins are not
-/// this code (their own ERROR lines are unported — the `text_http_errors`
-/// family pins them by name).
-///
-/// v4's `try` wraps the SDK call itself (`buildRequestBody` sits BEFORE it,
-/// so a build failure is silent), so the line fires on a non-2xx, on a
-/// connection failure, and on every mid-stream throw — once, after the SDK's
-/// own retries. P4.122 ported the mid-stream arms; P4.128 the pre-stream arms
-/// and the non-streaming `sendMessage` twin (`completion_provider.rs`).
-/// `baseUrl` is the value the plugin was constructed with: the profile's
-/// (localhost-rewritten, as v4's registry hands it over) or the manifest
-/// default. The error renders as its message (the `error = %…` convention of
-/// the other ported plugin catch lines); for a transport failure that is v4's
-/// thrown text, [`sdk_thrown_message`](crate::model::provider_error::sdk_thrown_message).
-pub(crate) struct PluginCatchLog {
-    message: &'static str,
-    context: &'static str,
-    base_url: String,
-    method: CatchMethod,
-}
-
-/// Which plugin method the catch line belongs to.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CatchMethod {
-    StreamMessage,
-    SendMessage,
-}
-
-impl PluginCatchLog {
-    pub(crate) fn for_call(
-        provider: &str,
-        base_url: Option<&str>,
-        gateway: Option<&str>,
-        method: CatchMethod,
-    ) -> Option<Self> {
-        let (message, context) = match (provider, method) {
-            ("OPENAI_COMPATIBLE", CatchMethod::StreamMessage) => (
-                "OpenAICompatible API error in streamMessage",
-                "OpenAICompatibleProvider.streamMessage",
-            ),
-            ("OPENAI_COMPATIBLE", CatchMethod::SendMessage) => (
-                "OpenAICompatible API error in sendMessage",
-                "OpenAICompatibleProvider.sendMessage",
-            ),
-            ("DEEPSEEK", CatchMethod::StreamMessage) => (
-                "DeepSeek API error in streamMessage",
-                "DeepSeekProvider.streamMessage",
-            ),
-            ("DEEPSEEK", CatchMethod::SendMessage) => (
-                "DeepSeek API error in sendMessage",
-                "DeepSeekProvider.sendMessage",
-            ),
-            ("NANOGPT", CatchMethod::StreamMessage) => (
-                "NanoGPT API error in streamMessage",
-                "NanoGPTProvider.streamMessage",
-            ),
-            ("NANOGPT", CatchMethod::SendMessage) => (
-                "NanoGPT API error in sendMessage",
-                "NanoGPTProvider.sendMessage",
-            ),
-            _ => return None,
-        };
-        let base_url = match base_url.filter(|b| !b.is_empty()) {
-            Some(base) => rewrite_localhost_url(base, gateway),
-            None => Registry::built_in()
-                .get_provider(provider)?
-                .base_url
-                .clone(),
-        };
-        Some(Self {
-            message,
-            context,
-            base_url,
-            method,
-        })
-    }
-
-    pub(crate) fn emit(&self, error: &str) {
-        // One callsite per target: a `tracing` target is a static.
-        match self.method {
-            CatchMethod::StreamMessage => tracing::error!(
-                target: "quilltap::model::streaming_provider",
-                context = self.context,
-                baseUrl = %self.base_url,
-                error = %error,
-                "{}",
-                self.message
-            ),
-            CatchMethod::SendMessage => tracing::error!(
-                target: "quilltap::model::completion_provider",
-                context = self.context,
-                baseUrl = %self.base_url,
-                error = %error,
-                "{}",
-                self.message
-            ),
-        }
-    }
-
-    /// The pre-stream / non-streaming arm: v4's thrown text for this
-    /// transport failure.
-    pub(crate) fn emit_transport(
-        &self,
-        provider: &str,
-        error: &crate::model::transport::TransportError,
-    ) {
-        self.emit(&crate::model::provider_error::sdk_thrown_message(
-            provider, error,
-        ));
-    }
-}
-
 /// A mid-stream decode failure as the channel's `StreamError` (P4.122): the
 /// message unchanged, plus the refusal side when the decoder read one off a
 /// coded error frame (`openai` 7.23.0's `APIError(undefined, …)`) — so a
@@ -566,14 +448,23 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
         } else {
             None
         };
-        // P4.122 item 6 / P4.128: the plugin catch line v4 logs on every
+        // P4.122 item 6 / P4.128 / P4.141: the plugin lines v4 logs on every
         // failure inside its `try` — pre-stream and mid-stream (see
-        // `PluginCatchLog`), resolved against this call's base URL.
+        // `model::plugin_catch_log`), resolved against this call's base URL,
+        // model, and v4's OpenRouter path choice (`hasTools || hasImages` —
+        // v5 always speaks the raw wire, v4 only logs on it).
+        let raw_path = provider == "OPENROUTER"
+            && crate::model::plugin_catch_log::openrouter_streaming_takes_raw_path(
+                &params.messages,
+                params.tools.as_ref(),
+            );
         let catch_log = PluginCatchLog::for_call(
             provider,
             base_url,
             self.localhost_gateway.as_deref(),
             CatchMethod::StreamMessage,
+            &params.model,
+            raw_path,
         );
         let provider_id = provider.to_string();
         async move {
@@ -587,7 +478,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
             // catch line with v4's thrown text, then the channel's error.
             let fail = |e: crate::model::transport::TransportError| {
                 if let Some(log) = &catch_log {
-                    log.emit_transport(&provider_id, &e);
+                    log.emit_transport(&e);
                 }
                 single_stream_error(pre_stream_error(&provider_id, e))
             };
@@ -696,7 +587,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
                                 Err(e) => {
                                     // v4's generator throws here — no finish().
                                     if let Some(log) = &catch_log {
-                                        log.emit(&e.message);
+                                        log.emit_thrown(&e.message);
                                     }
                                     let _ = tx.blocking_send(Err(decode_stream_error(e)));
                                     return;
@@ -704,7 +595,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
                             },
                             Some(Err(te)) => {
                                 if let Some(log) = &catch_log {
-                                    log.emit(&te.message);
+                                    log.emit_thrown(&te.message);
                                 }
                                 let _ = tx.blocking_send(Err(StreamError::new(te.message)));
                                 return;
@@ -723,7 +614,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
                         }
                         Err(e) => {
                             if let Some(log) = &catch_log {
-                                log.emit(&e.message);
+                                log.emit_thrown(&e.message);
                             }
                             let _ = tx.blocking_send(Err(decode_stream_error(e)));
                         }
@@ -920,55 +811,6 @@ mod tests {
             m.insert(p.to_string(), format!("synthetic-{}", p.to_lowercase()));
         }
         m
-    }
-
-    /// P4.122 item 6: which providers carry v4's plugin catch line, and the
-    /// `baseUrl` it names — the profile's (localhost-rewritten) over the
-    /// manifest default. The line itself is pinned against v4's recorded
-    /// `pluginErrorLog` by `streaming_composer_equivalence`.
-    #[test]
-    fn stream_catch_log_providers_and_base_url() {
-        let d =
-            PluginCatchLog::for_call("DEEPSEEK", None, None, CatchMethod::StreamMessage).unwrap();
-        assert_eq!(d.message, "DeepSeek API error in streamMessage");
-        assert_eq!(d.context, "DeepSeekProvider.streamMessage");
-        assert_eq!(d.base_url, "https://api.deepseek.com");
-        let o = PluginCatchLog::for_call(
-            "OPENAI_COMPATIBLE",
-            Some("http://localhost:1234/v1"),
-            Some("host.docker.internal"),
-            CatchMethod::StreamMessage,
-        )
-        .unwrap();
-        assert_eq!(
-            o.base_url,
-            rewrite_localhost_url("http://localhost:1234/v1", Some("host.docker.internal"))
-        );
-        assert_eq!(o.context, "OpenAICompatibleProvider.streamMessage");
-        // P4.128: the `sendMessage` twin names its own method.
-        let s = PluginCatchLog::for_call("NANOGPT", None, None, CatchMethod::SendMessage).unwrap();
-        assert_eq!(s.message, "NanoGPT API error in sendMessage");
-        assert_eq!(s.context, "NanoGPTProvider.sendMessage");
-        // An empty profile base is no override.
-        assert_eq!(
-            PluginCatchLog::for_call("NANOGPT", Some(""), None, CatchMethod::StreamMessage)
-                .unwrap()
-                .base_url,
-            "https://nano-gpt.com/api/v1"
-        );
-        for p in [
-            "Z_AI",
-            "OPENAI",
-            "GROK",
-            "OPENROUTER",
-            "ANTHROPIC",
-            "GOOGLE",
-            "OLLAMA",
-        ] {
-            for m in [CatchMethod::StreamMessage, CatchMethod::SendMessage] {
-                assert!(PluginCatchLog::for_call(p, None, None, m).is_none(), "{p}");
-            }
-        }
     }
 
     /// Decoder/flavor selection for all nine providers.
