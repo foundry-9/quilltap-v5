@@ -160,6 +160,10 @@ pub struct RunScenarioBuilderOptions<'a> {
     /// The connection profile ROW (`provider`, `modelName`, `id`,
     /// `allowWebSearch`, … are read off it).
     pub connection_profile: &'a Value,
+    /// v4 `apiKey` (`scenario-builder.service.ts:72`): the key the route's
+    /// bug-81 gate resolved (`route.ts:63`, passed at `:155` BESIDE `input`),
+    /// handed to the one-shot loop — which reads no key itself (P4.136).
+    pub api_key: &'a str,
     pub input: &'a ScenarioBuilderInput,
     /// v4 `new Date()` rendered in the server's zone — injected.
     pub now: jiff::Zoned,
@@ -252,6 +256,7 @@ where
     let RunScenarioBuilderOptions {
         user_id,
         connection_profile,
+        api_key,
         input,
         now,
         synthetic_chat_id,
@@ -439,6 +444,7 @@ where
                 user_id,
                 chat_id: &chat_id,
                 connection_profile,
+                api_key,
                 system_prompt: &system_prompt,
                 user_message: &user_message,
                 tools: &built,
@@ -707,6 +713,7 @@ mod tests {
             RunScenarioBuilderOptions {
                 user_id: crate::api::SINGLE_USER_ID,
                 connection_profile: &profile,
+                api_key: "",
                 input: &input,
                 now: jiff::Zoned::now(),
                 synthetic_chat_id: Some("c0000000-0000-4000-8000-0000000000b1".to_string()),

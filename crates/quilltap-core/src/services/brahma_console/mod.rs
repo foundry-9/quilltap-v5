@@ -49,8 +49,8 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
+use crate::db::connection_profiles;
 use crate::db::runtime::Db;
-use crate::db::{connection_profiles, DbError};
 use crate::jsstr::js_trim;
 use crate::model::stream::StreamingCompletionProvider;
 use crate::provider_manifest::Registry;
@@ -58,7 +58,7 @@ use crate::services::agent_loop::one_shot_loop::{
     build_one_shot_tool_instructions, run_one_shot_tool_loop, NoopSink, OneShotLoopDeps,
     OneShotLoopResult, RunOneShotToolLoopOptions,
 };
-use crate::services::api_key_service::{self, ProfileApiKeyFailure, ProfileApiKeyResolution};
+use crate::services::api_key_service::{self, ProfileApiKeyResolution};
 use crate::services::carina_query::{BrahmaConsoleResult, RunBrahmaConsole};
 use crate::services::native_tool_loop::ToolCallDetector;
 use crate::services::pseudo_tool::TextBlockEnabledToolOptions;
@@ -191,29 +191,24 @@ where
 
     // 2. API key: v4's `resolveConnectionProfileApiKey` (bug 81) — required where
     //    required, forwarded where merely accepted, and loud on a dangling id
-    //    even there. UNSCOPED `findApiKeyById`, as v4's is. The key itself is
-    //    SENT (P4.133, dogfood #133): the one-shot loop resolves this same
-    //    composite over this same row where its stream goes out.
+    //    even there. UNSCOPED `findApiKeyById`, as v4's is — a fallback read
+    //    over the pool, so a read error logs `Error finding API key by ID` and
+    //    is `api-key-not-found` (P4.136). The key itself is SENT: v4 resolves
+    //    it ONCE (`one-shot.service.ts:78-82`) and hands it to the loop
+    //    (`:160`), which reads no key itself.
     //    ⚠ v4's sentences here are LOWER-CASE where the orchestrator's are not;
     //    the difference is pre-existing and deliberate — ported verbatim.
-    let key_id = s(&profile, "apiKeyId");
-    let provider_for_key = provider.clone();
-    let resolution = match deps.db.read_main(move |c| {
-        Ok::<_, DbError>(api_key_service::resolve_connection_profile_api_key(
-            c,
-            &provider_for_key,
-            key_id.as_deref(),
-        ))
-    }) {
-        Ok(r) => r,
-        Err(_) => ProfileApiKeyResolution::Failed(ProfileApiKeyFailure::ApiKeyNotFound),
-    };
-    if let ProfileApiKeyResolution::Failed(reason) = resolution {
+    let api_key = match api_key_service::resolve_connection_profile_api_key(
+        deps.db,
+        &provider,
+        s(&profile, "apiKeyId").as_deref(),
+    ) {
+        ProfileApiKeyResolution::Ok(key) => key,
         // v4 `0506517d3` correction (d): the sentence comes from the shared
         // `describeProfileApiKeyFailure`, which is how the one-shot's lowercase
         // "no API key configured…" became the orchestrator's capitalised form.
-        return fail(reason.describe());
-    }
+        ProfileApiKeyResolution::Failed(reason) => return fail(reason.describe()),
+    };
 
     // 3. Tools — identical to the standalone console: agent mode, doc
     //    read/write, the read-only run_sql tool, search-without-memories; NO
@@ -314,6 +309,7 @@ where
             user_id,
             chat_id,
             connection_profile: &profile,
+            api_key: &api_key,
             system_prompt: &system_prompt,
             user_message: question,
             tools: &built,

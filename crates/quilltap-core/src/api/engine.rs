@@ -6563,7 +6563,7 @@ impl CoreEngine {
         let Some(registration) = runs.register(&run_id) else {
             return Response::error(ErrorKind::Conflict, super::scenario_builder::DUPLICATE_RUN);
         };
-        let (profile, input) =
+        let (profile, api_key, input) =
             match super::scenario_builder::scenario_builder_prepare(&db, SINGLE_USER_ID, &body) {
                 Ok(p) => p,
                 Err(r) => return r,
@@ -6581,6 +6581,7 @@ impl CoreEngine {
             user_id: SINGLE_USER_ID.to_string(),
             run_id,
             connection_profile: profile,
+            api_key,
             input,
             web_search_configured: self.web_search_configured(),
             abort: Arc::clone(&registration.token),

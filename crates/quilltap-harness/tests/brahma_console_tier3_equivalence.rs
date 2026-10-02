@@ -866,6 +866,9 @@ async fn brahma_console_tier3_matches_oracle() {
                 user_id: &lc.user_id,
                 chat_id: &lc.chat_id,
                 connection_profile: &spec.loop_profile,
+                // v4's case passes this literal (`brahma-console-tier3.test.ts`
+                // `apiKey`); the loop reads no key of its own (P4.136).
+                api_key: "unused-by-the-canned-stream",
                 system_prompt: &spec.loop_system_prompt,
                 user_message: &lc.user_message,
                 tools: &loop_built,

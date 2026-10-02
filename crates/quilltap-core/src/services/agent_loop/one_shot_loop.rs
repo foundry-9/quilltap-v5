@@ -152,6 +152,11 @@ pub struct RunOneShotToolLoopOptions<'a, S: EventSink> {
     /// The connection-profile row (`provider`, `modelName`, `baseUrl`, `id`,
     /// `name`, `pseudoToolMode` are read).
     pub connection_profile: &'a Value,
+    /// v4 `apiKey` (`one-shot-loop.ts:127`, sent at `:222`): the key the
+    /// caller's own bug-81 gate resolved (`resolveConnectionProfileApiKey` —
+    /// Brahma's one-shot `:78-82`, the Scenario Builder route `:63`). The loop
+    /// reads NO key itself (P4.136; it had re-resolved the same composite).
+    pub api_key: &'a str,
     pub system_prompt: &'a str,
     pub user_message: &'a str,
     pub tools: &'a BuiltTools,
@@ -489,6 +494,7 @@ where
         user_id,
         chat_id,
         connection_profile,
+        api_key,
         system_prompt,
         user_message,
         tools: built,
@@ -507,32 +513,6 @@ where
     let provider = s(connection_profile, "provider").unwrap_or_default();
     let model = s(connection_profile, "modelName").unwrap_or_default();
     let base_url = s(connection_profile, "baseUrl");
-    // v4 `opts.apiKey` (`one-shot-loop.ts:127`, sent at `:222`): every caller
-    // passes the key `resolveConnectionProfileApiKey(profile)` answered after
-    // its own bug-81 gate (Brahma's one-shot `:78`, the Scenario Builder route
-    // `:63`). v5 resolves the SAME composite over the SAME profile row here,
-    // where the stream goes out (P4.133, dogfood #133) — the callers' gates have
-    // already refused a failed resolution, and the Scenario Builder's key could
-    // not otherwise reach this loop without a field on the frozen engine's
-    // build request. A failure here (a row deleted between the gate and the
-    // loop) sends `''`.
-    let api_key = {
-        let provider = provider.clone();
-        let api_key_id = s(connection_profile, "apiKeyId");
-        match deps.db.read_main(move |c| {
-            Ok::<_, crate::db::DbError>(
-                crate::services::api_key_service::resolve_connection_profile_api_key(
-                    c,
-                    &provider,
-                    api_key_id.as_deref(),
-                ),
-            )
-        }) {
-            Ok(crate::services::api_key_service::ProfileApiKeyResolution::Ok(key)) => key,
-            _ => String::new(),
-        }
-    };
-
     let use_text_block_tools = resolve_one_shot_uses_text_block_tools(connection_profile, built);
     let model_supports_native_tools = built.model_supports_native_tools;
     // v4: `(!useTextBlockTools && modelSupportsNativeTools) ? built.tools : []`.
@@ -606,7 +586,7 @@ where
             deps.streaming,
             &provider,
             base_url.as_deref(),
-            &api_key,
+            api_key,
             &model,
             &conversation_messages,
             &effective_tools,

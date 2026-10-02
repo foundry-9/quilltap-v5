@@ -553,6 +553,9 @@ async fn scenario_builder_tier3_matches_oracle() {
             RunScenarioBuilderOptions {
                 user_id: &case.user_id,
                 connection_profile: &profile,
+                // v4's case passes this literal (`scenario-builder-tier3.test.ts`
+                // `apiKey`); the loop reads no key of its own (P4.136).
+                api_key: "unused-by-the-canned-stream",
                 input: &input,
                 now: now.clone(),
                 synthetic_chat_id: Some(spec.synthetic_chat_id.clone()),

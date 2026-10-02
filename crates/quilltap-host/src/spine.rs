@@ -1874,6 +1874,7 @@ where
             RunScenarioBuilderOptions {
                 user_id: &req.user_id,
                 connection_profile: &req.connection_profile,
+                api_key: &req.api_key,
                 input: &req.input,
                 now,
                 synthetic_chat_id: None,

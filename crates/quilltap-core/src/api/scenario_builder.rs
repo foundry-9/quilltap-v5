@@ -50,7 +50,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
-use crate::db::{characters_read, chats_read, connection_profiles, groups, DbError};
+use crate::db::{characters_read, chats_read, connection_profiles, groups};
 use crate::services::api_key_service::{
     resolve_connection_profile_api_key, ProfileApiKeyResolution,
 };
@@ -80,6 +80,10 @@ pub struct ScenarioBuilderBuildRequest {
     pub run_id: String,
     /// The owner-checked connection profile ROW.
     pub connection_profile: Value,
+    /// v4 `keyResolution.apiKey` (`route.ts:63`, passed at `:155` BESIDE
+    /// `input`): the key [`scenario_builder_prepare`]'s bug-81 gate resolved,
+    /// which the run SENDS — the one-shot loop reads no key itself (P4.136).
+    pub api_key: String,
     pub input: ScenarioBuilderInput,
     /// v4 `isWebSearchConfigured()` — the engine's host fact.
     pub web_search_configured: bool,
@@ -288,13 +292,14 @@ fn s<'v>(v: &'v Value, key: &str) -> Option<&'v str> {
 
 /// v4 `handleBuild` from `safeParse` to the `accepted` DEBUG
 /// (`route.ts:44-107`), in v4's order — every refusal a `Response` before any
-/// frame. Returns the vetted request (less the scope tag, token and host
-/// fact, which the engine arm adds).
+/// frame. Returns the vetted request — the profile row, the key its gate
+/// resolved, and the input — less the scope tag, token and host fact, which
+/// the engine arm adds.
 pub fn scenario_builder_prepare(
     db: &Db,
     user_id: &str,
     body: &Value,
-) -> Result<(Value, ScenarioBuilderInput), Response> {
+) -> Result<(Value, String, ScenarioBuilderInput), Response> {
     let parsed = match parse_scenario_build_request(body) {
         Ok(p) => p,
         Err(issues) => {
@@ -333,25 +338,20 @@ pub fn scenario_builder_prepare(
         return Err(Response::error(ErrorKind::BadRequest, TOOLS_OFF));
     }
 
-    let provider = s(&profile, "provider").unwrap_or_default().to_string();
-    let key_id = s(&profile, "apiKeyId").map(str::to_string);
-    let resolution = db
-        .read_main(move |c| {
-            Ok::<_, DbError>(resolve_connection_profile_api_key(
-                c,
-                &provider,
-                key_id.as_deref(),
-            ))
-        })
-        .unwrap_or(ProfileApiKeyResolution::Failed(
-            crate::services::api_key_service::ProfileApiKeyFailure::ApiKeyNotFound,
-        ));
-    // The Ok key is what the run SENDS (v4 `route.ts:155`, P4.133): the
-    // one-shot loop resolves this same composite over this same row, because
-    // the build request (constructed by the frozen engine) has no key field.
-    if let ProfileApiKeyResolution::Failed(reason) = resolution {
-        return Err(Response::error(ErrorKind::BadRequest, reason.describe()));
-    }
+    // The composite's lookup is v4's UNSCOPED fallback `findApiKeyById` over
+    // the read pool (a read error — the pool's included — logs `Error finding
+    // API key by ID` and is `api-key-not-found`). The Ok key is what the run
+    // SENDS (v4 `route.ts:155`): it travels on the build request (P4.136).
+    let api_key = match resolve_connection_profile_api_key(
+        db,
+        s(&profile, "provider").unwrap_or_default(),
+        s(&profile, "apiKeyId"),
+    ) {
+        ProfileApiKeyResolution::Ok(key) => key,
+        ProfileApiKeyResolution::Failed(reason) => {
+            return Err(Response::error(ErrorKind::BadRequest, reason.describe()));
+        }
+    };
 
     // Cast: keep only ids that READ (the OVERLAID read, unlike the mount
     // pool's raw one). v4's comment says "`repos.characters` is user-scoped",
@@ -475,7 +475,7 @@ pub fn scenario_builder_prepare(
         prior_draft: parsed.prior_draft().map(str::to_string),
         revision: parsed.revision().map(str::to_string),
     };
-    Ok((profile, input))
+    Ok((profile, api_key, input))
 }
 
 /// The dispatch reply body for a finished run: the terminal frame's object,

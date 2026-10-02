@@ -68,6 +68,22 @@ documents; v5's reaps links / folders / chunks plus content). Filed upstream
 as v4 bugs 175 (the exit on a resumable, unstamped pass) and 176 (the ledger
 skip that leaves a damaged table unchecked behind a healthy `/health`),
 uncommitted in the v4 checkout for the human.
+#### 2026-10-01 — refactor(core): the Scenario Builder and Brahma hand the one-shot loop the key their gate resolved (P4.136)
+
+_Versions: core 0.0.1142, harness 0.0.1066, host 0.0.172._
+
+v4's one-shot loop takes `apiKey` as an input (`one-shot-loop.ts:127`) and
+reads no key. v5's loop re-resolved the composite a second time and sent `''`
+on any failure of that second read. `RunOneShotToolLoopOptions`,
+`RunScenarioBuilderOptions` and `ScenarioBuilderBuildRequest` gain an
+`api_key` field. `scenario_builder_prepare` returns the key its gate resolved,
+the engine passes it through, and the host driver hands it on. Brahma's
+one-shot passes the key it resolved. The loop's re-resolution is deleted. Both
+gates call the composite over the read pool, so a pool failure logs v4's line.
+All three structs are internal; `api/types.rs` is unchanged
+(`dispatch_wrong_type_census` stays 441). The two tier-3 families pass v4's
+own literal key.
+
 #### 2026-10-01 — fix(core): every API-key read logs v4's fallback line — the resolvers go infallible, the folds and the connection-profile routes answer v4's 404 (P4.136)
 
 _Versions: core 0.0.1141, harness 0.0.1065._
