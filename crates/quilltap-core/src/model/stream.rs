@@ -379,6 +379,19 @@ pub struct StreamError {
     /// message alone, exactly as v4 does for a plain `Error`.
     /// Boxed for the same `result_large_err` reason as `ImageGenError`'s.
     pub refusal: Option<Box<crate::services::dangerous_content::refusal::RefusalError>>,
+    /// P4.141: the transport failure's KIND when this error IS one (the
+    /// composer's pre-stream / non-streaming transport arm, the pump's
+    /// transport-chunk arm); `None` everywhere else.
+    pub transport_kind: Option<crate::model::transport::TransportErrorKind>,
+    /// P4.141: whether the value v4's plugin threw for this transport failure
+    /// is NETWORK-class (`Request timed out.`, `fetch failed`, the abort
+    /// texts — [`v4_network_class`](crate::model::provider_error::v4_network_class)),
+    /// so the failover ladder files it `network` as v4's does. RESOLVED at
+    /// construction rather than derived later: only the composer knows the
+    /// provider and v4's path, and the fallback hand-overs
+    /// (`FallbackError::from_stream_error` / `from_completion_error`) see the
+    /// error alone. The message is untouched (the P4.128 ruling).
+    pub transport_network: bool,
 }
 
 impl StreamError {
@@ -387,7 +400,21 @@ impl StreamError {
             message: message.into(),
             kind: StreamErrorKind::Provider,
             refusal: None,
+            transport_kind: None,
+            transport_network: false,
         }
+    }
+
+    /// Mark this error as a transport failure of `kind` (see
+    /// [`Self::transport_network`]).
+    pub fn with_transport(
+        mut self,
+        kind: crate::model::transport::TransportErrorKind,
+        network: bool,
+    ) -> Self {
+        self.transport_kind = Some(kind);
+        self.transport_network = network;
+        self
     }
 
     /// Attach the structured refusal a decoder read (see [`Self::refusal`]).
@@ -424,6 +451,8 @@ impl StreamError {
                 model_name: model_name.map(str::to_string),
             },
             refusal: None,
+            transport_kind: None,
+            transport_network: false,
         }
     }
 

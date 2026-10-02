@@ -127,12 +127,17 @@ pub(crate) fn request_input_from_params(
 /// message, byte for byte, plus — for a non-2xx — the refusal side v4's plugin
 /// threw, rebuilt per provider ([`provider_error`](crate::model::provider_error)).
 /// The cheap path hands the side to its stand-in chain's classification.
+/// P4.141: the transport KIND and v4's network class ride along
+/// ([`v4_network_class`](crate::model::provider_error::v4_network_class) —
+/// `raw_path` is v4's OpenRouter IMAGE-send path).
 fn completion_error_from(
     provider: &str,
+    raw_path: bool,
     error: crate::model::transport::TransportError,
 ) -> CompletionError {
     let refusal = crate::model::provider_error::transport_error_refusal(provider, &error);
-    let e = CompletionError::new(error.message);
+    let network = crate::model::provider_error::v4_network_class(provider, raw_path, &error);
+    let e = CompletionError::new(error.message).with_transport(error.kind, network);
     match refusal {
         Some(r) => e.with_refusal(r),
         None => e,
@@ -251,7 +256,7 @@ pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
             if let Some(log) = &catch_log {
                 log.emit_transport(&e);
             }
-            completion_error_from(provider, e)
+            completion_error_from(provider, openrouter_vision, e)
         };
         let resp = match transport.execute(&request, policy).await {
             Ok(r) => r,

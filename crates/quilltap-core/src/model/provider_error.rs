@@ -106,7 +106,7 @@ pub fn transport_error_refusal(provider: &str, error: &TransportError) -> Option
 /// RULED at planning (the P4.128 order, §B1, kept by P4.141): this text is
 /// CONFINED to the catch line's `error` field. The `StreamError` /
 /// `CompletionError` message stays v5's own transport bytes, and the failover
-/// trigger travels as the transport KIND (`v4_network_class`).
+/// trigger travels as the transport KIND ([`v4_network_class`]).
 pub fn v4_thrown_message(
     provider: &str,
     method: CatchMethod,
@@ -138,6 +138,39 @@ pub fn v4_thrown_message(
         _ => "Connection error.",
     }
     .to_string()
+}
+
+/// Whether the value v4's `provider` plugin THREW for this transport failure
+/// is network-class — what v4's `classifyFallbackTrigger` files as `network`
+/// (`lib/llm/fallback/engine.ts:73-83`, `NETWORK_ERROR_PATTERNS`: `/timed?
+/// ?out/i`, `/fetch failed/i`, `/aborted/i`, …) — read off the
+/// [`v4_thrown_message`] table rather than re-matched: EVERY deadline
+/// (`Request timed out.` / `Request timed out`, both abort texts), and a
+/// connection failure only where the plugin calls raw `fetch` — GOOGLE's
+/// genai, OLLAMA, OpenRouter's raw path (`fetch failed`). The SDKs' `Connection
+/// error.` and `@openrouter/sdk`'s `Unable to make request` match no network
+/// pattern and fall to `provider-error`, on v4 and v5 alike. A non-2xx is
+/// never network-class here (its side and its `HTTP {status}:` bytes are
+/// classified as before). Recorded through v4's REAL classifier over the real
+/// plugins' throws (`text-http-errors.recorded.ndjson`'s `trigger` on the
+/// `transport_hang` / `transport_fetch_throws` rows).
+///
+/// v5's own transport bytes (`error sending request for url (…)`, `provider
+/// did not send response headers within …ms`) match none of those patterns,
+/// which is why the classification travels as this KIND (P4.141, the
+/// planner's ruling) — the stream watchdog's stall is the precedent (P4.D189:
+/// a `network` trigger by name, not by text).
+pub fn v4_network_class(provider: &str, raw_path: bool, error: &TransportError) -> bool {
+    use crate::model::transport::TransportErrorKind;
+    match error.kind {
+        TransportErrorKind::Http => false,
+        TransportErrorKind::Timeout => true,
+        TransportErrorKind::Connect => match ProviderKind::of(provider) {
+            Some(ProviderKind::Google | ProviderKind::Ollama) => true,
+            Some(ProviderKind::OpenRouter) => raw_path,
+            _ => false,
+        },
+    }
 }
 
 /// Rebuild the error v4's `provider` plugin throws for a non-2xx `status`
@@ -505,6 +538,61 @@ mod tests {
             );
             assert_eq!(t("OPENROUTER", m, false, &timeout), "Request timed out");
         }
+    }
+
+    /// P4.141: v4's `network` trigger per client family × kind — the
+    /// recorded `transport_hang` (every provider `network`) and
+    /// `transport_fetch_throws` (`network` for GOOGLE / OLLAMA / OpenRouter's
+    /// raw path, `provider-error` for the SDKs) rows.
+    #[test]
+    fn v4_network_class_per_family_and_kind() {
+        let connect = TransportError::connect("error sending request for url (http://x/)");
+        let timeout = TransportError::timeout("error sending request for url (http://x/)");
+        let headers = TransportError::headers_timeout(50);
+        let http = TransportError::http(503, "upstream down");
+        for p in [
+            "OPENAI",
+            "OPENAI_COMPATIBLE",
+            "DEEPSEEK",
+            "NANOGPT",
+            "Z_AI",
+            "GROK",
+            "ANTHROPIC",
+            "GOOGLE",
+            "OLLAMA",
+            "OPENROUTER",
+        ] {
+            for raw in [false, true] {
+                assert!(v4_network_class(p, raw, &timeout), "{p} timeout");
+                assert!(v4_network_class(p, raw, &headers), "{p} headers timeout");
+                assert!(!v4_network_class(p, raw, &http), "{p} non-2xx");
+            }
+        }
+        for p in [
+            "OPENAI",
+            "OPENAI_COMPATIBLE",
+            "DEEPSEEK",
+            "NANOGPT",
+            "Z_AI",
+            "GROK",
+            "ANTHROPIC",
+        ] {
+            assert!(
+                !v4_network_class(p, false, &connect),
+                "{p}: Connection error."
+            );
+        }
+        assert!(v4_network_class("GOOGLE", false, &connect));
+        assert!(v4_network_class("OLLAMA", false, &connect));
+        assert!(
+            v4_network_class("OPENROUTER", true, &connect),
+            "raw fetch: fetch failed"
+        );
+        assert!(
+            !v4_network_class("OPENROUTER", false, &connect),
+            "@openrouter/sdk: Unable to make request"
+        );
+        assert!(!v4_network_class("NOT_A_PROVIDER", false, &connect));
     }
 
     #[test]

@@ -1400,7 +1400,9 @@ impl CheapLlmTaskExecutor {
         let fe = if is_deadline {
             crate::llm_fallback::FallbackError::named("CheapLLMTimeoutError", &error.message)
         } else {
-            crate::llm_fallback::FallbackError::message(&error.message)
+            // P4.141: a transport failure v4 throws as network-class text
+            // (`Request timed out.`, `fetch failed`) classifies `network`.
+            crate::llm_fallback::FallbackError::from_completion_error(error)
         };
         // P4.118: a non-2xx also carries the refusal side — the value v4's
         // plugin threw, rebuilt per provider — so a coded 400 (`content_filter`,
@@ -1526,6 +1528,178 @@ impl CheapLlmTaskExecutor {
             "[CheapLLM] Fallback chain exhausted"
         );
         None
+    }
+}
+
+/// P4.141 — the ONE cheap-path hunk above (`attempt_cheap_fallback_chain`'s
+/// hand-over through `FallbackError::from_completion_error`): a transport
+/// failure v4 throws as network-class text walks the stand-in chain on
+/// trigger `network`; one it throws as `Connection error.` on
+/// `provider-error`. Kept beside the hunk it pins (the order's §S.2 — this
+/// lane owns only that hunk of this file).
+#[cfg(test)]
+mod transport_trigger_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+    use crate::db::Writer;
+    use crate::model::transport::TransportErrorKind;
+    use crate::test_support::CaptureLayer;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// The primary (model `posed-primary` — a keyless OLLAMA profile, so the
+    /// send reaches the provider) fails with the posed error; the understudy
+    /// answers.
+    struct PosedPrimary(CompletionError);
+    impl CompletionProvider for PosedPrimary {
+        fn send_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            params: &CompletionParams,
+        ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+        {
+            let out = if params.model == "posed-primary" {
+                Err(self.0.clone())
+            } else {
+                Ok(CompletionResponse {
+                    content: "rescued".to_string(),
+                    usage: None,
+                    finish_reason: Some("stop".to_string()),
+                    attachment_results: None,
+                    cache_usage: None,
+                })
+            };
+            async move { out }
+        }
+    }
+
+    fn db(dir: &std::path::Path) -> Db {
+        let main_path = dir.join("main.db");
+        {
+            let w = Writer::open_writable(&main_path, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE connection_profiles (\
+                       id TEXT PRIMARY KEY, userId TEXT, name TEXT, provider TEXT, \
+                       transport TEXT, courierDeltaMode INTEGER, apiKeyId TEXT, \
+                       baseUrl TEXT, modelName TEXT, parameters TEXT, isDefault INTEGER, \
+                       isCheap INTEGER, allowWebSearch INTEGER, useNativeWebSearch INTEGER, \
+                       allowToolUse INTEGER, pseudoToolMode TEXT, \
+                       \"multiCharacterPrefill\" INTEGER, modelClass TEXT, \
+                       maxContext REAL, maxTokens REAL, isDangerousCompatible INTEGER, \
+                       supportsImageUpload INTEGER, tags TEXT, sortIndex REAL, \
+                       totalTokens REAL, totalPromptTokens REAL, totalCompletionTokens REAL, \
+                       messageCount REAL, createdAt TEXT, updatedAt TEXT, \
+                       \"fallbackProfileId\" TEXT, \"allowTierFallback\" INTEGER DEFAULT 0);\
+                     INSERT INTO connection_profiles \
+                       (id, userId, name, provider, transport, courierDeltaMode, \
+                        modelName, parameters, isDefault, isCheap, allowWebSearch, \
+                        useNativeWebSearch, allowToolUse, pseudoToolMode, \
+                        isDangerousCompatible, supportsImageUpload, tags, sortIndex, \
+                        totalTokens, totalPromptTokens, totalCompletionTokens, \
+                        messageCount, createdAt, updatedAt, fallbackProfileId) VALUES \
+                       ('cp-primary', 'user-1', 'Primary', 'OLLAMA', 'api', 0, \
+                        'posed-primary', '{}', 0, 1, 0, 0, 1, 'auto', 0, 0, '[]', 0, \
+                        0, 0, 0, 0, 't', 't', 'cp-understudy'), \
+                       ('cp-understudy', 'user-1', 'Understudy', 'OLLAMA', 'api', 0, \
+                        'llama3', '{}', 0, 1, 0, 0, 1, 'auto', 0, 0, '[]', 1, \
+                        0, 0, 0, 0, 't', 't', NULL);",
+                )
+                .unwrap();
+        }
+        Db::open(
+            DbPaths {
+                main: main_path,
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap()
+    }
+
+    /// The chain's `Retrying task with a stand-in` line for `error`.
+    async fn retry_line(error: CompletionError) -> String {
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        let dir = tempfile::tempdir().unwrap();
+        let db = db(dir.path());
+        let logs = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let r = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                db,
+                user_id: "user-1".to_string(),
+                chat_id: None,
+                message_id: None,
+                ctx: LogContext::none(),
+            })
+            .execute(
+                &PosedPrimary(error),
+                &CheapLlmSelection {
+                    provider: "OLLAMA".to_string(),
+                    model_name: "posed-primary".to_string(),
+                    base_url: None,
+                    connection_profile_id: Some("cp-primary".to_string()),
+                    is_local: true,
+                    profile_parameters: None,
+                },
+                vec![CompletionMessage::user("extract")],
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("memory-extraction-self"),
+                CheapLlmTaskOptions::default(),
+            )
+            .await
+        };
+        let captured = logs.lock().unwrap().clone();
+        assert!(r.success, "the understudy answers: {captured:?}");
+        assert!(
+            captured
+                .iter()
+                .any(|l| l.contains("[CheapLLM] Task failed") && l.contains(SENT)),
+            "the posed error reached the chain: {captured:?}"
+        );
+        captured
+            .into_iter()
+            .find(|l| l.contains("[CheapLLM] Retrying task with a stand-in"))
+            .unwrap_or_else(|| panic!("the chain walked"))
+    }
+
+    const SENT: &str = "error sending request for url (http://localhost:11434/api/chat)";
+
+    #[tokio::test]
+    async fn a_posed_timeout_walks_the_chain_on_network() {
+        let line = retry_line(
+            CompletionError::new(SENT).with_transport(TransportErrorKind::Timeout, true),
+        )
+        .await;
+        assert!(line.contains(" trigger=network "), "{line}");
+    }
+
+    #[tokio::test]
+    async fn a_raw_fetch_connect_failure_walks_the_chain_on_network() {
+        // A GOOGLE / OLLAMA / OpenRouter-raw `fetch failed` (resolved by the
+        // composer as network-class).
+        let line = retry_line(
+            CompletionError::new(SENT).with_transport(TransportErrorKind::Connect, true),
+        )
+        .await;
+        assert!(line.contains(" trigger=network "), "{line}");
+    }
+
+    #[tokio::test]
+    async fn an_sdk_connect_failure_walks_the_chain_on_provider_error() {
+        // An OPENAI_COMPATIBLE `Connection error.`.
+        let line = retry_line(
+            CompletionError::new(SENT).with_transport(TransportErrorKind::Connect, false),
+        )
+        .await;
+        assert!(line.contains(" trigger=provider-error "), "{line}");
     }
 }
 

@@ -160244,3 +160244,72 @@ name, all green: `streaming_composer_equivalence` 5/5,
 `request_builder_google_equivalence`, `file_attachment_tier3_equivalence`,
 `initial_greeting_equivalence`, `stream_watchdog_wrap_census`,
 `spelling_guard`, web `dispatch_wrong_type_census` 14/14.
+
+### Unit 5 — the timeout / raw-`fetch` connect TRIGGER (Tier 1 item 4; the planner's ruling, NOT reversed)
+
+`StreamError` and `CompletionError` gain `pub transport_kind:
+Option<TransportErrorKind>` and `pub transport_network: bool` (both
+defaulted in `new()` — and in `StreamError::stalled`, the one other
+constructor; no struct literal of either exists anywhere, re-grepped) plus
+`with_transport(kind, network)`. **Representation chosen: the error stores
+the RESOLVED bool beside the kind**, because the provider and v4's path are
+known only at the composer, while `FallbackError::from_stream_error` and the
+cheap hunk see the error alone. `provider_error::v4_network_class(provider,
+raw_path, &err)`: every `Timeout` → true; `Connect` → true for GOOGLE /
+OLLAMA / OpenRouter-raw (`fetch failed`), false for the SDK family
+(`Connection error.`) and `@openrouter/sdk` (`Unable to make request`);
+`Http` → false. Set by `pre_stream_error_on_path` (NEW; the public
+`pre_stream_error(provider, err)` keeps its signature for the tier-3
+harness and takes the SDK path, which only a status-less failure can tell
+apart), by the pump's mid-stream transport arm (`network` only for a
+`Timeout` there — a broken body is undici's `terminated` in v4, no network
+pattern, the order's Tier-3 #20), and by `completion_error_from(provider,
+raw_path, err)`. `FallbackError::from_stream_error` → `kind:
+Some(Network)` when `transport_network` (the stall keeps precedence);
+NEW `FallbackError::from_completion_error` (message + side + the same rule).
+**`services/cheap_llm_exec.rs` — the ONE hunk** (`:1393-1410`): the non-
+deadline arm now builds `FallbackError::from_completion_error(error)`; the
+existing refusal re-attach below it is untouched. The cheap-path unit pins
+sit in a NEW `#[cfg(test)] mod transport_trigger_tests` immediately after
+the impl block holding the hunk (the order's "adjacent block"): a keyless
+local OLLAMA primary failing with a posed `Timeout` / network `Connect`
+walks the stand-in chain on `trigger=network`, a non-network `Connect` on
+`trigger=provider-error`. Unit pins in `llm_fallback/types.rs` (its first
+test module) and `provider_error::tests::v4_network_class_per_family_and_kind`.
+The family switches its send hand-over to `FallbackError::from_completion_
+error` (the production one) and now REQUIRES the posed kind on every
+status-less row.
+
+Family: **the 26 `trigger` PENDING entries retired by VANISHING** (exactly
+the 20 hang + 6 raw fetch-throws rows); 0 unexpected. **M3**
+(`v4_network_class` always false) → exactly 26 unexpected (`trigger`) + the
+`v4_network_class` unit pin; **M3b** (the cheap hunk back to
+`FallbackError::message`) → exactly the two network-class
+`transport_trigger_tests`; both reverted by file backup, `cmp`-identical.
+**§S.10 measured at this unit:** `orchestrator-tier3.test.ts` /
+`orchestrator-tier3.json`, `primary-stream-tier3.test.ts` /
+`primary-stream-tier3.json` / `build-primary-stream-fixture.ts` and
+`cheap-llm-fallback.test.ts` carry ZERO `timed out` / `headers within` /
+`fetch failed` / `ECONNREFUSED` / `aborted` — no recorded row of those
+families can reach the new trigger; `primary_stream_tier3` and
+`cheap_llm_fallback` run green here.
+**Handoff found (NOT this lane's file — recorded for the unifier / the next
+round):** `cheap_llm_exec::is_timeout_failure` (`:382-397`, v4's
+`isTimeoutFailure`) decides the background path's one same-route retry by
+the message regex alone; v4 also tests `error.name === 'AbortError' |
+'TimeoutError'`, and its SDKs' `Request timed out.` matches the regex — but
+v5's reqwest timeout text (`error sending request for url (…)`) matches
+neither, so a REAL transport timeout on a background cheap task is not
+retried on v5 where v4 retries it once. The kind now exists on the error
+(`transport_kind == Some(Timeout)`); the one-line fix sits outside this
+lane's single owned hunk. Its doc's "NO-PORT with evidence" claim is stale.
+Gate for this unit: core (`--features native-transport`) 2,885 / 0 twice in
+full (one earlier full run showed 2 intermittents —
+`db::chats::concierge_state_tests::a_failed_write_errors_and_answers_false`,
+seen in unit 2 too, and `services::activity_registry::tests::records_a_blip_
+once_a_span_outlives_the_threshold`, green 5/5 run together with this unit's
+cheap-path pins and every `cheap_llm_exec` test); clippy both feature sets
+clean; NEUTRAL by name all green (`streaming_composer` 5/5, `stream_decoders`
+5/5, `primary_stream_tier3`, `cheap_llm_fallback`, `ollama_think_retry_tier3`,
+`tool_wire_call_site`, `request_builder`, `file_attachment_tier3`,
+`initial_greeting`, `stream_watchdog_wrap_census`).

@@ -330,13 +330,28 @@ fn single_error(message: String) -> tokio::sync::mpsc::Receiver<StreamChunkResul
 /// 400 (`content_filter`, Z.AI's `1301`) reaches the classifier's
 /// `provider-code` evidence as it does on v4. Public so the tier-3 harness
 /// builds its posed pre-stream failure through THIS rule rather than a copy
-/// (P4.128 — the order's B4).
+/// (P4.128 — the order's B4). P4.141: the error also carries the transport
+/// KIND and v4's network class ([`pre_stream_error_on_path`] — this entry
+/// point takes OpenRouter's SDK path, which only a status-less failure can
+/// tell apart; the composer passes the request's real path).
 pub fn pre_stream_error(
     provider: &str,
     error: crate::model::transport::TransportError,
 ) -> StreamError {
+    pre_stream_error_on_path(provider, false, error)
+}
+
+/// [`pre_stream_error`] with v4's OpenRouter path choice (`raw_path`, see
+/// `model::plugin_catch_log::openrouter_streaming_takes_raw_path`) — the
+/// composer's entry point.
+pub fn pre_stream_error_on_path(
+    provider: &str,
+    raw_path: bool,
+    error: crate::model::transport::TransportError,
+) -> StreamError {
     let refusal = crate::model::provider_error::transport_error_refusal(provider, &error);
-    let mut e = StreamError::new(error.message);
+    let network = crate::model::provider_error::v4_network_class(provider, raw_path, &error);
+    let mut e = StreamError::new(error.message).with_transport(error.kind, network);
     if let Some(r) = refusal {
         e = e.with_refusal(r);
     }
@@ -480,7 +495,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
                 if let Some(log) = &catch_log {
                     log.emit_transport(&e);
                 }
-                single_stream_error(pre_stream_error(&provider_id, e))
+                single_stream_error(pre_stream_error_on_path(&provider_id, raw_path, e))
             };
 
             let bytes_rx = match self.transport.execute_stream(&request, &policy).await {
@@ -597,7 +612,18 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
                                 if let Some(log) = &catch_log {
                                     log.emit_thrown(&te.message);
                                 }
-                                let _ = tx.blocking_send(Err(StreamError::new(te.message)));
+                                // P4.141: the kind travels; a MID-stream
+                                // break is network-class only as a deadline —
+                                // the body streams unbounded, and v4's thrown
+                                // bytes for a broken body (undici's
+                                // `terminated`, no network pattern) are the
+                                // order's Tier-3 deferral, so a `Connect`
+                                // here keeps `provider-error`.
+                                let network =
+                                    te.kind == crate::model::transport::TransportErrorKind::Timeout;
+                                let _ = tx
+                                    .blocking_send(Err(StreamError::new(te.message)
+                                        .with_transport(te.kind, network)));
                                 return;
                             }
                             // Transport EOF.

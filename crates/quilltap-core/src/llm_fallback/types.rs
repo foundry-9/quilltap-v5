@@ -317,9 +317,37 @@ impl<'a> FallbackError<'a> {
     /// unattributed `provider-error` fall-through and the turn never reaches its
     /// understudy. Every site that builds a [`FallbackError`] from a
     /// [`StreamError`] goes through here.
+    ///
+    /// P4.141: a TRANSPORT failure v4's plugin threw as network-class text
+    /// (`Request timed out.`, `fetch failed`, the abort errors —
+    /// [`StreamError::transport_network`], resolved by the composer) reaches
+    /// the classifier as `kind: Network`, the typed ladder's `network` — v5's
+    /// own transport bytes match none of v4's network patterns. The stall
+    /// keeps its precedence (it is never a transport error).
     pub fn from_stream_error(e: &'a StreamError) -> FallbackError<'a> {
         let base = if e.is_stalled() {
             FallbackError::named(e.v4_name(), &e.message)
+        } else if e.transport_network {
+            FallbackError::typed(LlmErrorKind::Network, &e.message)
+        } else {
+            FallbackError::message(&e.message)
+        };
+        FallbackError {
+            refusal: e.refusal.as_deref(),
+            ..base
+        }
+    }
+
+    /// The cheap path's shape for a completion failure (P4.141): the message,
+    /// the refusal side when the completion carried one (P4.118), and —
+    /// exactly as [`Self::from_stream_error`] — `kind: Network` for a
+    /// transport failure v4 throws as network-class text
+    /// ([`CompletionError::transport_network`](crate::model::completion::CompletionError::transport_network)).
+    pub fn from_completion_error(
+        e: &'a crate::model::completion::CompletionError,
+    ) -> FallbackError<'a> {
+        let base = if e.transport_network {
+            FallbackError::typed(LlmErrorKind::Network, &e.message)
         } else {
             FallbackError::message(&e.message)
         };
@@ -338,5 +366,74 @@ impl<'a> FallbackError<'a> {
             refusal: Some(refusal),
             ..self
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! P4.141: the two hand-overs carry a network-class transport failure as
+    //! v4's `network`; a non-network one keeps the message ladder.
+    use super::*;
+    use crate::llm_fallback::{classify_fallback_trigger, FallbackTrigger};
+    use crate::model::completion::CompletionError;
+    use crate::model::transport::TransportErrorKind::{Connect, Timeout};
+
+    const SENT: &str = "error sending request for url (http://127.0.0.1:1/)";
+
+    #[test]
+    fn a_network_class_transport_failure_is_network_on_both_hand_overs() {
+        // A posed timeout (any provider), a GOOGLE connect failure.
+        let stream = StreamError::new(SENT).with_transport(Timeout, true);
+        assert_eq!(
+            classify_fallback_trigger(FallbackError::from_stream_error(&stream)),
+            Some(FallbackTrigger::Network)
+        );
+        let completion = CompletionError::new(SENT).with_transport(Connect, true);
+        assert_eq!(
+            classify_fallback_trigger(FallbackError::from_completion_error(&completion)),
+            Some(FallbackTrigger::Network)
+        );
+        let headers = StreamError::new("provider did not send response headers within 300000ms")
+            .with_transport(Timeout, true);
+        assert_eq!(
+            classify_fallback_trigger(FallbackError::from_stream_error(&headers)),
+            Some(FallbackTrigger::Network),
+            "the streaming headers timeout P4.128 left at provider-error"
+        );
+    }
+
+    #[test]
+    fn a_non_network_transport_failure_keeps_the_message_ladder() {
+        // An OPENAI_COMPATIBLE connect failure: v4's `Connection error.`.
+        let stream = StreamError::new(SENT).with_transport(Connect, false);
+        assert_eq!(
+            classify_fallback_trigger(FallbackError::from_stream_error(&stream)),
+            Some(FallbackTrigger::ProviderError)
+        );
+        let completion = CompletionError::new(SENT).with_transport(Connect, false);
+        assert_eq!(
+            classify_fallback_trigger(FallbackError::from_completion_error(&completion)),
+            Some(FallbackTrigger::ProviderError)
+        );
+        // No transport at all — the pre-P4.141 shape, unchanged.
+        assert_eq!(
+            classify_fallback_trigger(FallbackError::from_completion_error(&CompletionError::new(
+                "HTTP 429: slow down"
+            ))),
+            Some(FallbackTrigger::RateLimit)
+        );
+    }
+
+    #[test]
+    fn the_stall_keeps_its_precedence() {
+        let mut stalled = StreamError::stalled(240_000, 0, None, None);
+        // Even marked network-class, a stall reaches the classifier by NAME.
+        stalled.transport_network = true;
+        let fe = FallbackError::from_stream_error(&stalled);
+        assert_eq!(fe.name, Some("LLMStreamStalledError"));
+        assert_eq!(
+            classify_fallback_trigger(fe),
+            Some(FallbackTrigger::Network)
+        );
     }
 }

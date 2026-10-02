@@ -21,6 +21,12 @@ _Docs-only change._
 - `9753d0eb2` (PORT): the project character roster now gates a character's doc tools, `search_scriptorium` and the project tier of the shared wardrobe through one chokepoint. The roster auto-add on chat create and chat move is removed. `allowAnyCharacter` now defaults to `true`, and the project PUT returns the enriched project. The SPA Characters card and four help pages change too.
 - `e5c6bd0c0` (CONVERGENCE on this port's filings 175/176, shaped differently from P4.135): a failed avatar-roll collapse is now deferred to the next boot instead of being fatal. Separately, a new boot-time structural table check reports damage through a `structure` service in `/api/health`. The ledger gate itself is unchanged.
 - §1 is rewritten for the new state. The previous dirty-tree waiver is spent because v4 committed the 175/176 filings itself.
+#### 2026-10-02 — fix(fallback): file transport timeouts and raw-fetch connect failures under v4's network trigger
+
+_Versions: core 0.0.1150, harness 0.0.1078._
+
+`StreamError` and `CompletionError` gain `transport_kind` and `transport_network`. Both default through `new()`. The streaming and completion composers set them from the transport error. `transport_network` is true for every timeout, and for a connect failure on GOOGLE, OLLAMA or OpenRouter's raw fetch path, because v4 throws network-class text there (`Request timed out.`, `fetch failed`, the abort errors). `FallbackError::from_stream_error` and a new `FallbackError::from_completion_error` turn that into the `network` trigger. Previously v5's own transport messages fell through to `provider-error`, including the streaming headers timeout. The cheap path's fallback hand-over uses the new helper. Message bytes do not change. The 26 trigger divergences in `text_http_errors_equivalence` close.
+
 #### 2026-10-02 — feat(model): port v4's Google, Ollama and OpenRouter plugin error lines through one plugin_catch_log home
 
 _Versions: core 0.0.1149, harness 0.0.1077._

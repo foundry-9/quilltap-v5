@@ -787,25 +787,22 @@ fn run_send(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec, vision: bo
     }
 }
 
-/// The cheap path's hand-over (`cheap_llm_exec.rs`): the message, plus the
-/// refusal side when the completion carried one.
+/// The cheap path's hand-over (`cheap_llm_exec.rs`): the production
+/// `FallbackError::from_completion_error` — the message, the refusal side
+/// when the completion carried one, and `network` for a network-class
+/// transport failure (P4.141).
 fn cheap_path_hand_over(err: &CompletionError) -> FallbackError<'_> {
-    let fe = FallbackError::message(&err.message);
-    match err.refusal.as_deref() {
-        Some(r) => fe.with_refusal(r),
-        None => fe,
-    }
+    FallbackError::from_completion_error(err)
 }
 
-/// The transport kind a stream error carries (P4.141 Tier 1 item 4 — none
-/// before it lands).
-fn stream_transport_kind(_err: &StreamError) -> Option<TransportErrorKind> {
-    None
+/// The transport kind a stream error carries (P4.141 Tier 1 item 4).
+fn stream_transport_kind(err: &StreamError) -> Option<TransportErrorKind> {
+    err.transport_kind
 }
 
 /// The transport kind a completion error carries (as above).
-fn completion_transport_kind(_err: &CompletionError) -> Option<TransportErrorKind> {
-    None
+fn completion_transport_kind(err: &CompletionError) -> Option<TransportErrorKind> {
+    err.transport_kind
 }
 
 fn label(row: &Row) -> String {
@@ -1085,62 +1082,6 @@ fn diff_lines(
 /// unit that closes it — the both-ways check fails a stale entry. Same shape
 /// as [`EXPECTED_DIVERGENCES`].
 const PENDING_P4141: &[(&str, &str, &str, &[&str])] = &[
-    // unit 5 — the timeout / raw-`fetch` connect TRIGGER (`network`)
-    ("ANTHROPIC", "send", "trigger", &["transport_hang"]),
-    ("ANTHROPIC", "stream", "trigger", &["transport_hang"]),
-    ("DEEPSEEK", "send", "trigger", &["transport_hang"]),
-    ("DEEPSEEK", "stream", "trigger", &["transport_hang"]),
-    (
-        "GOOGLE",
-        "send",
-        "trigger",
-        &["transport_fetch_throws", "transport_hang"],
-    ),
-    (
-        "GOOGLE",
-        "stream",
-        "trigger",
-        &["transport_fetch_throws", "transport_hang"],
-    ),
-    ("GROK", "send", "trigger", &["transport_hang"]),
-    ("GROK", "stream", "trigger", &["transport_hang"]),
-    ("NANOGPT", "send", "trigger", &["transport_hang"]),
-    ("NANOGPT", "stream", "trigger", &["transport_hang"]),
-    (
-        "OLLAMA",
-        "send",
-        "trigger",
-        &["transport_fetch_throws", "transport_hang"],
-    ),
-    (
-        "OLLAMA",
-        "stream",
-        "trigger",
-        &["transport_fetch_throws", "transport_hang"],
-    ),
-    ("OPENAI", "send", "trigger", &["transport_hang"]),
-    ("OPENAI", "stream", "trigger", &["transport_hang"]),
-    ("OPENAI_COMPATIBLE", "send", "trigger", &["transport_hang"]),
-    (
-        "OPENAI_COMPATIBLE",
-        "stream",
-        "trigger",
-        &["transport_hang"],
-    ),
-    (
-        "OPENROUTER",
-        "send_vision",
-        "trigger",
-        &["transport_fetch_throws", "transport_hang"],
-    ),
-    (
-        "OPENROUTER",
-        "stream_tools",
-        "trigger",
-        &["transport_fetch_throws", "transport_hang"],
-    ),
-    ("Z_AI", "send", "trigger", &["transport_hang"]),
-    ("Z_AI", "stream", "trigger", &["transport_hang"]),
     // (OpenRouter's no-image send runs `@openrouter/sdk` in v4, but its
     // `JSON.parse` failure throws the same V8 text the guard renders.)
     (
@@ -1437,14 +1378,17 @@ fn text_http_errors_match_v4s_real_plugins() {
                     };
                     assert_eq!(e.message, want, "{}: v5's transport message", label(row));
                     // The KIND the transport reported travels on the error
-                    // (P4.141 Tier 1 item 4); where it does, it is the posed one.
-                    if let Some(kind) = e.transport_kind {
-                        let want_kind = match posed {
-                            Posed::Timeout => TransportErrorKind::Timeout,
-                            _ => TransportErrorKind::Connect,
-                        };
-                        assert_eq!(kind, want_kind, "{}: the transport kind", label(row));
-                    }
+                    // (P4.141 Tier 1 item 4) — the posed one.
+                    let want_kind = match posed {
+                        Posed::Timeout => TransportErrorKind::Timeout,
+                        _ => TransportErrorKind::Connect,
+                    };
+                    assert_eq!(
+                        e.transport_kind,
+                        Some(want_kind),
+                        "{}: the transport kind",
+                        label(row)
+                    );
                 }
                 Posed::Ok2xx(_) => {}
             }
