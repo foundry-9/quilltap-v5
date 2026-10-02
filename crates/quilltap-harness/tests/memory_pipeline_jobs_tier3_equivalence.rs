@@ -557,6 +557,18 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
     // miss is swallowed by the executor, so this is the only place a divergent
     // call (the fold-episode pass above all) shows.
     let got_keys = completion.hit.lock().unwrap().clone();
+    // Non-vacuity (found at unification): two EMPTY sets are equal, so a regen
+    // that recorded no canned call, or no fold-episode call, would pass
+    // silently. The order's target is the episode pass, so at least one
+    // recorded key must carry its system prompt.
+    assert!(
+        want_keys
+            .iter()
+            .any(|k| k.contains("You are consolidating a batch")),
+        "the oracle recorded no fold-episode call ({} keys) — the consumption \
+         assert below would measure nothing for the pass it exists to see",
+        want_keys.len()
+    );
     let never_built: Vec<&String> = want_keys.difference(&got_keys).collect();
     let never_sent_by_v4: Vec<&String> = got_keys.difference(&want_keys).collect();
     assert!(

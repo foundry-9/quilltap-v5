@@ -335,6 +335,7 @@ fn request_builder_matches_v4() {
     let mut named_rows = 0usize;
     // P4.D244 (v4 `f6426e196`, bug 174): the Z.AI / NanoGPT bytes-first rows, the
     // relative-url refusal rows, and OpenRouter's deliberate non-change.
+    let mut absolute_url_rows = 0usize;
     let (mut bytes_first_rows, mut rel_refusal_rows, mut openrouter_url_first) =
         (0usize, 0usize, 0usize);
     let mut refusals = 0usize;
@@ -720,6 +721,21 @@ fn request_builder_matches_v4() {
                     );
                     rel_refusal_rows += 1;
                 }
+                // An ABSOLUTE url with no bytes is forwarded, and v4's guard is
+                // case-insensitive (`/^https?:\/\//i`): the upper-case row is
+                // the corpus pin of the `i` flag (the unification review).
+                "image-attachment-url" | "image-attachment-upper-url" => {
+                    let url = row["input"]["messages"][1]["attachments"][0]["url"]
+                        .as_str()
+                        .expect("the vector carries its url");
+                    assert!(
+                        url.to_ascii_lowercase().starts_with("http")
+                            && want_body.contains(url)
+                            && !want_body.contains("data:"),
+                        "{provider}/{case}[{mode}]: v4 forwards an absolute url verbatim"
+                    );
+                    absolute_url_rows += 1;
+                }
                 _ => {}
             }
         }
@@ -814,8 +830,9 @@ fn request_builder_matches_v4() {
     }
 
     // The floor moved 25 -> 360 with P4.97. The old number said only "some rows
-    // exist"; the corpus is 393 rows (367 + P4.128's 18 `participant-names`
-    // rows, one per provider per mode + P4.D244's 8 relative-url rows), and the
+    // exist"; the corpus is 399 rows (367 + P4.128's 18 `participant-names`
+    // rows, one per provider per mode + P4.D244's 8 relative-url rows + the
+    // unification's 6 absolute-url rows), and the
     // point of the cache-key tables below is that a vanished vector must FAIL
     // rather than shrink a count nobody reads. A deliberate future removal moves this line with it.
     assert!(rows >= 360, "expected a substantial corpus, got {rows}");
@@ -828,6 +845,11 @@ fn request_builder_matches_v4() {
         (8, 4, 2),
         "P4.D244: bug 174's rows (Z.AI/NanoGPT x {{url-wins, rel-url-and-data}} x 2 modes; \
          Z.AI/NanoGPT x rel-url x 2 modes; OpenRouter url-wins x 2 modes) must all run"
+    );
+    assert_eq!(
+        absolute_url_rows, 8,
+        "Z.AI/NanoGPT x {{url, upper-url}} x 2 modes: the absolute-url arm, incl. v4's \
+         case-insensitive prefix, must all run"
     );
     assert_eq!(
         refusals,

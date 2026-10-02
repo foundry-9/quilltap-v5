@@ -88,7 +88,7 @@ use crate::photos::photos_paths::is_photos_relative_path;
 use crate::services::avatar_cache::derive_legacy_avatar_cache_key;
 use crate::services::file_storage::parse_mount_blob_storage_key;
 
-const MIGRATION_ID: &str = "collapse-duplicate-avatar-rolls-v1";
+pub const MIGRATION_ID: &str = "collapse-duplicate-avatar-rolls-v1";
 
 /// v4's `context` field on every line this pass logs.
 const LOG_CONTEXT: &str = "migration.collapse-duplicate-avatar-rolls";
@@ -126,6 +126,40 @@ pub enum CollapseOutcome {
         characters_changed: usize,
         messages_changed: usize,
     },
+}
+
+/// Why a pass did not complete, split by the v4 arm the failure lands in,
+/// because the two arms do not fail the boot the same way.
+#[derive(Debug)]
+pub enum CollapseError {
+    /// One of `shouldRun`'s reads failed: the `files` table and
+    /// `generationKey` column probes, or the pending-row `SELECT`. v4's runner
+    /// catches that throw, logs `Error checking if migration should run`,
+    /// SKIPS the migration and boots on (`migrations/index.ts:131-148`), so
+    /// the host logs that line and carries on (P4.135's unification review:
+    /// the flip had made this arm fatal too, harder than v4).
+    ShouldRun(DbError),
+    /// Everything else, which fails the boot: the pass itself (v4's
+    /// `success: false` → the runner breaks → `process.exit(1)`); the ledger
+    /// write after it (v4's `recordCompletedMigration` throws inside the
+    /// runner's `try` → `Migration threw an exception` → the same exit); and
+    /// the ledger probe. That last one is a recorded divergence: v4's
+    /// `loadMigrationState` falls back to a file-based state when the table
+    /// read throws (`migrations/state.ts:150-170`), whereas v5 refuses to
+    /// guess which migrations have run.
+    Fatal(DbError),
+}
+
+impl From<DbError> for CollapseError {
+    fn from(error: DbError) -> Self {
+        CollapseError::Fatal(error)
+    }
+}
+
+impl From<rusqlite::Error> for CollapseError {
+    fn from(error: rusqlite::Error) -> Self {
+        CollapseError::Fatal(error.into())
+    }
 }
 
 /// One `files` row in the avatar selection.
@@ -597,7 +631,7 @@ pub fn collapse_duplicate_avatar_rolls(
     main: &Connection,
     mount: Option<&Connection>,
     now_iso: &str,
-) -> Result<CollapseOutcome, DbError> {
+) -> Result<CollapseOutcome, CollapseError> {
     // The completed check comes FIRST, exactly as v4's runner orders it
     // (`isMigrationCompleted` before `shouldRun`).
     if table_exists(main, "migrations_state")? {
@@ -608,26 +642,40 @@ pub fn collapse_duplicate_avatar_rolls(
     }
 
     // v4 `shouldRun`: the table, the column, and at least one unkeyed avatar row.
-    if !table_exists(main, "files")? || !column_exists(main, "files", "generationKey")? {
-        return Ok(CollapseOutcome::NotApplicable);
+    // A failure in any of these reads is the runner's skip arm, not a failed
+    // pass ([`CollapseError::ShouldRun`]).
+    if should_run(main).map_err(CollapseError::ShouldRun)? {
+        let outcome = run_pass(main, mount)?;
+        return stamp(main, now_iso, outcome);
     }
-    {
-        let mut stmt = main.prepare(&format!(
-            "SELECT 1 FROM files \
+    Ok(CollapseOutcome::NotApplicable)
+}
+
+/// v4 `shouldRun()`: `files` exists, `generationKey` exists, and at least one
+/// unkeyed avatar row is pending.
+fn should_run(main: &Connection) -> Result<bool, DbError> {
+    if !table_exists(main, "files")? || !column_exists(main, "files", "generationKey")? {
+        return Ok(false);
+    }
+    let mut stmt = main.prepare(&format!(
+        "SELECT 1 FROM files \
               WHERE {AVATAR_FILENAME_PREDICATE} \
                 AND category = 'IMAGE' \
                 AND generationPrompt IS NOT NULL \
                 AND generationPrompt != '' \
                 AND generationKey IS NULL \
               LIMIT 1"
-        ))?;
-        if !stmt.exists([])? {
-            return Ok(CollapseOutcome::NotApplicable);
-        }
-    }
+    ))?;
+    Ok(stmt.exists([])?)
+}
 
-    let outcome = run_pass(main, mount)?;
-
+/// The ledger write after a pass that ran (v4's runner's
+/// `recordCompletedMigration`).
+fn stamp(
+    main: &Connection,
+    now_iso: &str,
+    outcome: CollapseOutcome,
+) -> Result<CollapseOutcome, CollapseError> {
     // The ledger write — v4's `migrations/state.ts` shapes verbatim (the P4.D152
     // heal's shapes, unchanged). v4's runner records every successful pass,
     // including its "nothing to collapse" early return, so this is unconditional

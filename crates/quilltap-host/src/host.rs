@@ -1685,7 +1685,8 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 // finishes (v4 `:398-412`, `:569`; measured on both boots by
                 // `host_boot_hardness`'s resume arm). When v4 fixes 175, this arm
                 // goes back to log-and-continue in that drift catch-up.
-                match quilltap_core::db::avatar_rolls_collapse_heal::collapse_duplicate_avatar_rolls(
+                use quilltap_core::db::avatar_rolls_collapse_heal::{self, CollapseError};
+                match avatar_rolls_collapse_heal::collapse_duplicate_avatar_rolls(
                     main,
                     Some(mount_index),
                     &quilltap_core::clock::now_iso(),
@@ -1722,7 +1723,20 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                         );
                     }
                     Ok(_) => {}
-                    Err(error) => {
+                    // A failed `shouldRun` read is v4's runner SKIP arm, not a
+                    // failed pass: the runner logs this line and boots on
+                    // (`migrations/index.ts:131-148`). It is the one v4 line on
+                    // this path, so v5 carries it even though v5 has no runner.
+                    Err(CollapseError::ShouldRun(error)) => {
+                        tracing::error!(
+                            target: "quilltap::boot",
+                            context = "migrations.runMigrations",
+                            migrationId = avatar_rolls_collapse_heal::MIGRATION_ID,
+                            error = %quilltap_core::db::fallback::error_text(&error),
+                            "Error checking if migration should run"
+                        );
+                    }
+                    Err(CollapseError::Fatal(error)) => {
                         tracing::error!(
                             target: "quilltap::boot",
                             context = "migration.collapse-duplicate-avatar-rolls",

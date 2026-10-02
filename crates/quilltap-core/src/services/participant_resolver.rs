@@ -244,7 +244,6 @@ fn to_message_views(messages: &[Value]) -> Vec<MessageView> {
         .collect()
 }
 
-/// Read a character (vault-overlaid, v4 `repos.characters.findById`) — main+mount.
 /// The participant's key (v4 `participant-resolver.service.ts:236-242`): the
 /// profile's `apiKeyId` through v4's UNSCOPED fallback `findApiKeyById` — a
 /// read error logs the repository line and leaves no key, as a miss does.
@@ -256,6 +255,7 @@ fn profile_api_key(db: &Db, connection_profile: &Value) -> Option<String> {
     .map(|k| k.key_value)
 }
 
+/// Read a character (vault-overlaid, v4 `repos.characters.findById`) — main+mount.
 fn read_character(db: &Db, id: &str) -> Result<Option<Value>, DbError> {
     let id = id.to_string();
     db.read_main(|main| db.read_mount_index(|mount| characters_read::find_by_id(main, mount, &id)))

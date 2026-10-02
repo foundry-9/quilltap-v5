@@ -269,6 +269,10 @@ const VAULT_PATH =
 const IMG_ATT_REL_URL_AND_DATA = { ...IMG_ATT, id: 'att-img-rel-both-1', url: VAULT_PATH };
 // …and alone (a relative url is refused through the unchanged
 // `Attachment missing data or URL` arm rather than sent).
+// An ABSOLUTE url in upper case with no bytes: v4's guard is `/^https?:\/\//i`,
+// so the `i` flag forwards it (the unification review — only unit tests had
+// pinned the case fold and the plain `http://` prefix against the regex).
+const IMG_ATT_UPPER_URL = { ...IMG_ATT_URL, id: 'att-img-upper-url-1', url: 'HTTP://CDN.EXAMPLE.INVALID/upper.png' };
 const IMG_ATT_REL_URL = { id: 'att-img-rel-1', filepath: VAULT_PATH, filename: 'laura.webp', mimeType: 'image/webp', size: 2048, url: VAULT_PATH };
 const USER_IMG = { role: 'user', content: 'What is in this image?', attachments: [IMG_ATT] };
 
@@ -389,6 +393,10 @@ function casesFor(provider) {
     // URI; a relative url alone -> refused (`failed`, `sent: []`, text part only).
     add('image-attachment-rel-url-and-data', { ...base, model: 'glm-4.6v', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_REL_URL_AND_DATA] }] });
     add('image-attachment-rel-url', { ...base, model: 'glm-4.6v', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_REL_URL] }] });
+    // v4's third jest `it` for Z.AI (an absolute url, no bytes → forwarded) and
+    // the upper-case prefix — NanoGPT had the first as a row, Z.AI did not.
+    add('image-attachment-url', { ...base, model: 'glm-4.6v', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_ATT_URL] }] });
+    add('image-attachment-upper-url', { ...base, model: 'glm-4.6v', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_UPPER_URL] }] });
     // P4.D127 (v4 bug 104, `964ffb959`) — the FLIPPED row. `glm-4.6` has no `v`
     // after its generation, so the plugin's old `VISION_MODEL_PATTERNS` refused
     // it with "Selected Z.AI model does not support image input" while the
@@ -636,6 +644,7 @@ function casesFor(provider) {
     // P4.D244 (bug 174, plugin 1.2.9): the same two relative-url vectors.
     add('image-attachment-rel-url-and-data', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_REL_URL_AND_DATA] }] });
     add('image-attachment-rel-url', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_REL_URL] }] });
+    add('image-attachment-upper-url', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_UPPER_URL] }] });
     // A MIME NanoGPT does not forward: the joined-list failure sentence, and the
     // content still switches to an array (the text part alone).
     add('unsupported-attachment', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'What is this?', attachments: [TIFF_ATT] }] });

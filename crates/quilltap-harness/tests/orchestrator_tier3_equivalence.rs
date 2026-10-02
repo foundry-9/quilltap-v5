@@ -1286,10 +1286,12 @@ fn filter_events(events: &[Value]) -> Vec<Value> {
             // Drop debug frames + keep-alives (not modeled by the Rust EventSink)
             // and the transport-shell `error` frame (v4's `handleStreamError`; the
             // Rust `process_message` propagates the error instead of emitting a
-            // frame — the frame is a Phase-4 transport concern).
+            // frame — the frame is a Phase-4 transport concern). There is no
+            // `fallbackInfo` key to drop: v4's only file-processing frame is
+            // `{fileProcessing: …}` (`streaming.service.ts:575`), pinned as a
+            // named divergence in `EXPECTED_EVENT_DIVERGENCES`.
             if obj.contains_key("debugLLMRequest")
                 || obj.contains_key("debugContext")
-                || obj.contains_key("fallbackInfo")
                 || obj.contains_key("error")
             {
                 return false;

@@ -2548,9 +2548,12 @@ mod tests {
             msgs.iter().filter(|m| m.attachments.is_some()).collect()
         }
 
-        /// One prior human row: v4's preference 2 — the attachments ride on
-        /// the human's PREVIOUS turn, no empty user line exists to take them,
-        /// and the WARN stays silent.
+        /// One prior human row: the attachments ride on the human's PREVIOUS
+        /// turn, no empty user line exists to take them, and the WARN stays
+        /// silent. The one human row is also the LAST user row, so v4's
+        /// preference 2 (a row in `userTurnMessageIds`) and preference 3 (the
+        /// last user row) pick the same index here. This arm proves the anchor
+        /// lands on the prior human turn, not which rung chose it.
         #[tokio::test]
         async fn the_attachments_anchor_on_the_previous_human_row() {
             let (msgs, lines) = send(&[
@@ -2591,10 +2594,7 @@ mod tests {
             assert_eq!(warns.len(), 1, "{lines:#?}");
             assert_eq!(
                 warns[0],
-                &format!(
-                    "WARN {WARN} attachment_count=1 context_message_count={}",
-                    msgs.len()
-                )
+                &format!("WARN {WARN} attachment_count=1 context_message_count=3")
             );
         }
     }

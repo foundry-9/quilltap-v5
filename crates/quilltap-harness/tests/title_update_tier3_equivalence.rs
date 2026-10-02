@@ -1554,10 +1554,6 @@ fn chat_vanished_debug_fires_only_when_the_chat_is_deleted_mid_flight() {
     none(&lines, VANISHED);
 }
 
-/// P4.133: the oracle's `plantBoundKey`, statement for statement — the fixture
-/// predates the `api_keys` table; `k-title-first` is inserted FIRST (no profile
-/// names it), then `k-title-bound`, which the cheap profile is bound to. Both
-/// owned by the job's user (the cheap lookup is user-scoped).
 /// P4.136: the oracle's `KEY_READ_LINES` — the repository fallback lines a
 /// lifted case's key resolution can write.
 const KEY_READ_LINES: [&str; 3] = [
@@ -1627,6 +1623,10 @@ fn ensure_key_table(rt: &tokio::runtime::Runtime, db: &Db) {
     .expect("ensure the api_keys table");
 }
 
+/// P4.133: the oracle's `plantBoundKey`, statement for statement — the fixture
+/// predates the `api_keys` table; `k-title-first` is inserted FIRST (no profile
+/// names it), then `k-title-bound`, which the cheap profile is bound to. Both
+/// owned by the job's user (the cheap lookup is user-scoped).
 fn plant_bound_key(rt: &tokio::runtime::Runtime, db: &Db, user_id: &str, profile_id: &str) {
     let (uid, pid) = (user_id.to_string(), profile_id.to_string());
     rt.block_on(db.write(move |w| {

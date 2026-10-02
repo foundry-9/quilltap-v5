@@ -2350,12 +2350,15 @@ pub async fn model_fetch<F: ModelsFetcher>(
     }
     let mut decrypted_key = String::new();
     if let Some(akid) = api_key_id.filter(|s| !s.is_empty()) {
-        let (akid, uid) = (akid.to_string(), user_id.to_string());
+        // v4 `models/route.ts:77-80` — the SCOPED `findApiKeyByIdAndUserId`, a
+        // fallback `safeQuery`: a read error logs its line and answers `null`
+        // → the 404 below, never a 500 (the P4.136 shape; the fifth arm, found
+        // at unification). The doubled "not found" is v4's own:
+        // `notFound('API key not found')` appends " not found" again.
         let key =
-            match db.read_main(move |conn| api_keys::find_by_id_and_user_id(conn, &akid, &uid)) {
-                Ok(v) => v,
-                Err(e) => return internal(e),
-            };
+            crate::db::fallback::find_api_key_by_id_and_user_id_or_none(akid, user_id, || {
+                db.read_main(|conn| api_keys::find_by_id_and_user_id(conn, akid, user_id))
+            });
         let Some(key) = key else {
             return not_found("API key not found");
         };

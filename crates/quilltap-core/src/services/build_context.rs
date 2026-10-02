@@ -3710,8 +3710,8 @@ where
     // keeps by hand: the window is the POST-trim `selected_messages` (scanning
     // the pre-trim list would fire when the human's row was trimmed out);
     // `hasNewUserMessage` is v4's `!!newUserMessage`, so `Some("")` is NO new
-    // message here (the `if let Some(..)` branch below is a separate,
-    // pre-existing shape — the anchor's gate does not inherit it); and there is
+    // message here (the token count above and the first-responder branch below
+    // read the SAME `new_user_message` binding — P4.137); and there is
     // NO continue-mode gate, unlike progressions above — Continue and Nudge get
     // the note too. `is_multi_character` is this function's own predicate, which
     // counts the user's persona seat (the commit message's "single-character is

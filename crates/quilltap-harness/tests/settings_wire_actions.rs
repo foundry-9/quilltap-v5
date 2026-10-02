@@ -220,13 +220,15 @@ fn test_message_maps_response() {
 /// by ID {collection, keyId, error}` and answers `null`, which every one of the
 /// four connection-profile routes turns into a 404 `API key` (create `route.
 /// ts:252`, PUT `[id]/route.ts:207`, test-connection `:360`, test-message
-/// `:428`). v5 had answered 500. The plant is a COPY of the fixture whose
+/// `:428`). v5 had answered 500. The models fetch (`POST /api/v1/models`) is
+/// the fifth route of the same shape, found at unification; it reads the key
+/// SCOPED. The plant is a COPY of the fixture whose
 /// OpenAI key row's `key_value` is a BLOB — the plant both sides fail on
 /// (v4's `ApiKeySchema.parse` refuses the decoded Float32Array, measured in
 /// the `title_update_tier3` lifted case; v5's marshal answers
 /// `InvalidColumnType`). A text `isActive` is not one: v4 coerces it.
 #[test]
-fn a_corrupt_key_row_is_v4s_logged_404_on_all_four_routes() {
+fn a_corrupt_key_row_is_v4s_logged_404_on_all_five_key_routes() {
     let Some((db, _t)) = open_db_with_a_corrupt_openai_key() else {
         eprintln!("SKIP: set QT_FIXTURE_SETTINGS");
         return;
@@ -300,6 +302,34 @@ fn a_corrupt_key_row_is_v4s_logged_404_on_all_four_routes() {
             .collect();
         assert_eq!(db_lines, vec![&line], "{arm}: {lines:?}");
     }
+
+    // The fifth arm (found at unification): `POST /api/v1/models` reads the
+    // key SCOPED (v4 `models/route.ts:77-80`), so its line is the scoped home's
+    // and its 404 carries v4's doubled "not found". The fetcher is never
+    // reached.
+    let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+        rt.block_on(settings::model_fetch(
+            &db,
+            USER_A,
+            "OPENAI",
+            Some(OPENAI_KEY),
+            None,
+            &CannedFetcher(vec![json!({ "id": "unreached" })]),
+        ))
+    });
+    assert_eq!(
+        body(resp),
+        json!({ "kind": "NotFound", "error": "API key not found not found" }),
+        "models"
+    );
+    let db_lines: Vec<&String> = lines
+        .iter()
+        .filter(|l| l.contains(" quilltap::db "))
+        .collect();
+    let scoped = format!(
+        "ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId={OPENAI_KEY} userId={USER_A} error=Invalid column type Blob at index: 4, name: key_value"
+    );
+    assert_eq!(db_lines, vec![&scoped], "models: {lines:?}");
 }
 
 /// The fixture copy with the OpenAI key row's `key_value` cell made a BLOB

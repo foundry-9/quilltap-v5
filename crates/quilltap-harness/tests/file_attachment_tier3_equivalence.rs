@@ -881,6 +881,21 @@ fn file_attachment_matches_oracle() {
             .get("lcffl_mount_document")
             .expect("oracle missing case lcffl_mount_document");
         assert_eq!(&got, want, "lcffl_mount_document diverged");
+        // Non-vacuity first: `got[0]` on an empty array is `Null`, whose
+        // `.get("url")` is `None` too, and two empty arrays compare equal.
+        assert_eq!(
+            got.as_array().map(Vec::len),
+            Some(1),
+            "the document must load as exactly one attachment: {got}"
+        );
+        assert_eq!(
+            got[0]
+                .get("filepath")
+                .and_then(Value::as_str)
+                .map(|p| p.starts_with("/api/v1/mount-points/")),
+            Some(true),
+            "the server-relative path stays in `filepath`: {got}"
+        );
         assert!(
             got[0].get("url").is_none(),
             "v4 f6426e196: a document attachment carries no `url`, only `filepath`"

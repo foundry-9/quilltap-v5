@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-02 — fix(unify): the §3 review's findings for the `f6426e196` round — the collapse's shouldRun skip, the fifth key route, the wire-key pin, and the vacuous asserts
+
+_Versions: core 0.0.1146, host 0.0.174, harness 0.0.1073._
+
+Fixes from the unification review of P4.D244, P4.135, P4.136, P4.137 and P4.138.
+
+- P4.135's fatal flip also made the avatar-roll collapse's `shouldRun` reads fatal. v4's runner logs `Error checking if migration should run` and skips the migration (`migrations/index.ts:131-148`). `collapse_duplicate_avatar_rolls` now returns `CollapseError::{ShouldRun, Fatal}`, and the host logs v4's runner line and boots on for `ShouldRun`. New `host_boot_hardness` arm `a_failed_collapse_should_run_read_is_v4s_logged_skip` (a renamed `generationPrompt`); re-fattening the arm reds it.
+- `model_fetch` (`POST /api/v1/models`) was a fifth key-read route still answering 500 on a read error. It now uses the scoped fallback home and answers v4's 404 (`API key not found not found`, v4's own doubled text). The wire test grows the arm and is renamed `a_corrupt_key_row_is_v4s_logged_404_on_all_five_key_routes`; red-first measured.
+- `brahma_console_tier3` records every wire key and asserts the default profile's key is sent. Before this, nothing saw which key the one-shot loop sends. `api_key: ""` at the Brahma fill reds it.
+- The request corpus is re-recorded from the pin with six new rows: Z.AI's absolute-url-without-bytes row (v4's third jest case) and an upper-case `HTTP://` url for Z.AI and NanoGPT, which pins v4's case-insensitive regex. 393 → 399 rows; no existing row moved. A new coverage count of 8 absolute-url rows is added.
+- Non-vacuity: `lcffl_mount_document` asserts exactly one attachment and its `filepath`; `memory_pipeline_jobs_tier3` asserts the oracle recorded a fold-episode call.
+- Smaller fixes: three doc comments moved back onto their own functions; a stale scene-note comment; the `-1` anchor WARN pinned with a literal count; the anchor arm's preference-2 claim softened; a dead `fallbackInfo` event filter removed; `MainReads` loses its unused `?Sized` bounds and documents its one-line pool-failure divergence.
+
 #### 2026-10-01 — style(harness): rustfmt the key-recording wrapper (P4.138)
 
 _Versions: harness 0.0.1067._

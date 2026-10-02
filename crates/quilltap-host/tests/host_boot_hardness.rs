@@ -174,7 +174,11 @@ impl Booted {
     /// Drop this boot's host (or its error) and boot the SAME instance again —
     /// no re-provision, no new plant. The instance lock is re-entrant per PID,
     /// so the second `Host::start` claims it whether or not the first boot
-    /// released it.
+    /// released it. Neither `Host` nor `CoreEngine` implements `Drop`, so the
+    /// first host's drivers are NOT stopped and run alongside the second boot
+    /// (the idiom `host_boot_avatar_rolls_collapse.rs` uses too). That is
+    /// harmless for what these arms assert: boot-time lines and the rows the
+    /// boot wrote, never a driver's later work.
     async fn reboot(self) -> Booted {
         let Booted {
             _dir, data, result, ..
@@ -260,9 +264,13 @@ const GUARDED_MESSAGES: &[&str] = &[
     "Error ensuring general scenarios folder",
     "Error ensuring general state.json",
     "Embedding dimension reconciliation failed",
-    // Not a guarded step — the FATAL collapse arm's line (P4.135), swept here
-    // for its silence leg.
+    // Not guarded steps: the avatar-roll collapse's two lines, the FATAL pass
+    // (P4.135) and the SKIPPED `shouldRun` (the unification review). They are
+    // swept here for their silence legs. On a fresh instance the collapse
+    // answers `NotApplicable`, so these two are weak legs; the resume arm's
+    // second-boot `assert_silent` is the strong one for the pass's line.
     "Failed to collapse duplicate avatar rolls",
+    "Error checking if migration should run",
 ];
 
 /// The silence leg: a healthy fresh instance logs none of the guarded lines,
@@ -664,6 +672,41 @@ async fn a_failed_avatar_roll_collapse_fails_the_boot() {
         ]
     );
     assert!(!ledger, "a failed pass must not stamp the ledger");
+}
+
+/// SKIP class, host level: the same migration's `shouldRun` FAILING, which is
+/// not a failed pass. v4's runner catches a `shouldRun` throw, logs `Error
+/// checking if migration should run` `{context: 'migrations.runMigrations',
+/// migrationId, error}`, skips the migration and boots on
+/// (`migrations/index.ts:131-148` at `f6426e196`). P4.135's flip had made this
+/// arm fatal too, harder than v4. The `CollapseError::ShouldRun` split (the
+/// unification review) restores the skip, with v4's one line on this path.
+///
+/// The plant renames `generationPrompt` after seeding two rolls. The table and
+/// `generationKey` probes pass, so only the pending-row `SELECT` fails. No
+/// earlier boot step reads the column. Nothing is keyed or stamped, and the
+/// pass's own line never fires.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_failed_collapse_should_run_read_is_v4s_logged_skip() {
+    let _serial = SERIAL.lock().await;
+    let plant = format!(
+        "{TWO_AVATAR_ROLLS}\
+         ALTER TABLE files RENAME COLUMN generationPrompt TO generationPrompt_x;"
+    );
+    let booted = boot_planted(Substrate::Fresh, &[(MAIN, &plant)]).await;
+    booted.host();
+    booted.assert_line("ERROR quilltap::boot Error checking if migration should run context=migrations.runMigrations migrationId=collapse-duplicate-avatar-rolls-v1 error=no such column: generationPrompt");
+    booted.assert_silent("Failed to collapse duplicate avatar rolls");
+    let (rows, ledger) = collapse_readback(&booted.data);
+    assert_eq!(
+        rows,
+        vec![
+            ("roll-new".to_string(), None),
+            ("roll-old".to_string(), None)
+        ],
+        "a skipped migration touches nothing"
+    );
+    assert!(!ledger, "a skipped migration stamps nothing");
 }
 
 /// Bug 175's premise, MEASURED: a pass that fails mid-delete is resumable and

@@ -187,6 +187,8 @@ struct Spec {
     loop_profile: Value,
     loop_system_prompt: String,
     loop_cases: Vec<LoopCaseW>,
+    /// The default profile's key value (`build-brahma-console-fixture.ts`).
+    synthetic_key: String,
 }
 
 fn spec_path() -> PathBuf {
@@ -315,6 +317,9 @@ struct QueuedStreamingProvider {
     /// (dogfood finding #111's other half — the one-shot engine wrote none where
     /// v4 logs every call).
     completed_streams: Mutex<i64>,
+    /// Every key the engine handed the wire (`stream_message_keyed`), in call
+    /// order — the P4.136 thaw's proof (see the pin after the cases).
+    sent_keys: Mutex<Vec<String>>,
 }
 impl QueuedStreamingProvider {
     fn from_oracle(rows: &[CannedStreamW]) -> Self {
@@ -334,10 +339,22 @@ impl QueuedStreamingProvider {
             queues: Mutex::new(queues),
             signature_mismatches: Mutex::new(Vec::new()),
             completed_streams: Mutex::new(0),
+            sent_keys: Mutex::new(Vec::new()),
         }
     }
 }
 impl StreamingCompletionProvider for QueuedStreamingProvider {
+    fn stream_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &StreamParams,
+    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        self.sent_keys.lock().unwrap().push(api_key.to_string());
+        self.stream_message(provider, base_url, params)
+    }
+
     fn stream_message(
         &self,
         provider: &str,
@@ -796,6 +813,25 @@ async fn brahma_console_tier3_matches_oracle() {
     assert_eq!(
         rows, expected_chat_message_rows,
         "one CHAT_MESSAGE row per completed one-shot stream call"
+    );
+
+    // P4.136's thaw, end to end through `run_brahma_query` (found at
+    // unification: the constructors pass a literal, so nothing saw the key
+    // the loop sends). v4's one-shot sends the key its gate resolved
+    // (`one-shot.service.ts` → `one-shot-loop.ts:127`). Every keyed case here
+    // runs on the default profile, whose key is the spec's synthetic one; a
+    // keyless provider arm sends `""`. So every wire key is one of those two,
+    // and the synthetic one must appear. `api_key: ""` at the Brahma fill
+    // fails the second assertion.
+    let sent: Vec<String> = streaming.sent_keys.lock().unwrap().clone();
+    assert!(
+        sent.iter()
+            .all(|k| k.is_empty() || *k == spec.synthetic_key),
+        "a wire key that is neither the gate's nor a keyless send: {sent:?}"
+    );
+    assert!(
+        sent.contains(&spec.synthetic_key),
+        "no stream carried the default profile's key: {sent:?}"
     );
     assert!(rows > 0, "the pin must see at least one completed turn");
     assert_eq!(

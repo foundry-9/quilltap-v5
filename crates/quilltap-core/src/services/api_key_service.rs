@@ -6,8 +6,9 @@
 //! (`lib/repositories/user-scoped.ts:225–261`). These are the **service-facing**
 //! functions; the table marshaling is [`crate::db::api_keys`].
 //!
-//! Reads take a `&rusqlite::Connection` (the read pool), matching every other
-//! scoped read (e.g. [`crate::db::connection_profiles::find_by_id`]). "Decryption"
+//! Reads go through [`MainReads`]: a held `&rusqlite::Connection`, or the pooled
+//! [`crate::db::runtime::Db`], whose checkout then sits inside each read's
+//! fallback wrap (P4.136). "Decryption"
 //! is a no-op — the stored `key_value` is plaintext (the DB cipher is the only
 //! protection); see [`crate::db::api_keys`].
 //!
@@ -43,6 +44,12 @@ use crate::provider_manifest::Registry;
 /// With the pool, each wrapped read checks out its OWN connection INSIDE its
 /// fallback wrap — as v4's `getCollection()` sits inside each repository
 /// `safeQuery` — so a pool failure lands on that read's line, not on no line.
+/// It is ONE of v4's lines on that arm, not both: v4's key reads first call
+/// `getApiKeysCollection()`, a rethrowing `safeQuery` that logs `Failed to get
+/// API keys collection` before the outer line (`connection-profiles.repository.
+/// ts:205-215`). v5 has no collection layer, so it emits the outer line alone.
+/// That is a recorded divergence on the pool-failure arm only. A corrupt cell
+/// fails outside the inner wrap, so it is one line on both sides.
 pub trait MainReads {
     fn read_main_with<T>(
         &self,
@@ -76,7 +83,7 @@ impl MainReads for crate::db::runtime::Db {
 /// SCOPED key read (`Error finding API key by ID and user ID`), each logging
 /// its own line and answering `null` (P4.136; the two `?`s here had surfaced
 /// the `Err` for every caller to fold silently).
-pub fn get_api_key_for_connection_profile<R: MainReads + ?Sized>(
+pub fn get_api_key_for_connection_profile<R: MainReads>(
     reads: &R,
     profile_id: &str,
     user_id: &str,
@@ -147,7 +154,7 @@ pub fn set_canned_cheap_llm_key(key: Option<String>) -> Option<String> {
 /// selection has no profile or the lookup fails (a failed read logs v4's
 /// repository line first — [`get_api_key_for_connection_profile`]), else the
 /// profile's key. The canned seam answers FIRST, before any read.
-pub fn get_api_key_for_cheap_llm_selection<R: MainReads + ?Sized>(
+pub fn get_api_key_for_cheap_llm_selection<R: MainReads>(
     reads: &R,
     selection: &CheapLlmSelection,
     user_id: &str,
@@ -271,7 +278,7 @@ pub enum ProfileApiKeyResolution {
 /// a read error logs `Error finding API key by ID` and answers `null`, which
 /// is [`ProfileApiKeyFailure::ApiKeyNotFound`] (P4.136: the line had been
 /// missing for every composite caller; the outcome was already v4's).
-pub fn resolve_connection_profile_api_key<R: MainReads + ?Sized>(
+pub fn resolve_connection_profile_api_key<R: MainReads>(
     reads: &R,
     provider: &str,
     api_key_id: Option<&str>,

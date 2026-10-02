@@ -862,8 +862,6 @@ where
 // Profile resolution chain (v4 resolveCarinaProfile — NOT participant-scoped)
 // ===========================================================================
 
-/// v4 `resolveCarinaProfile`: answerer's default → instance default → first
-/// profile whose provider supports native web search → `None`.
 /// The answering profile's key (`carina.service.ts:516-519`): v4's UNSCOPED
 /// fallback `findApiKeyById` — `''` for no `apiKeyId`, a missing row, or a
 /// read error (which logs the repository line first).
@@ -878,6 +876,8 @@ fn carina_api_key(db: &Db, connection_profile: &Value) -> String {
     .unwrap_or_default()
 }
 
+/// v4 `resolveCarinaProfile`: answerer's default → instance default → first
+/// profile whose provider supports native web search → `None`.
 fn resolve_carina_profile(db: &Db, user_id: &str, answerer: &Value) -> Option<Value> {
     if let Some(default_id) = s(answerer, "defaultConnectionProfileId") {
         if let Ok(Some(by_char)) = db.read_main(|c| connection_profiles::find_by_id(c, &default_id))
