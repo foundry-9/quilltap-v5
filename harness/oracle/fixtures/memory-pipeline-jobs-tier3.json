@@ -185,8 +185,8 @@
     },
     {
       "kind": "episode",
-      "response": "[]",
-      "usage": { "promptTokens": 300, "completionTokens": 2, "totalTokens": 302 }
+      "response": "[{\"narrative\": \"The correspondents traded a dozen short notes across one morning and agreed to keep the ledger terse.\", \"summary\": \"a ledger of terse notes\", \"when\": \"2023-06-06\", \"entities\": [\"the ledger\"], \"participants\": [], \"importance\": 0.5}]",
+      "usage": { "promptTokens": 300, "completionTokens": 48, "totalTokens": 348 }
     },
     {
       "kind": "title",

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — test(harness): memory_pipeline_jobs_tier3's canned episode reply is non-empty (P4.138 item g, fix 1)
+
+_Versions: harness 0.0.1066._
+
+The `episode` completion rule now answers one episode with an absolute `when` instead of `[]`, so both folds write a real episodic memory and the `memories`/`vector_entries` tables carry the fold-episode path's output. No embedding entries are needed (this family records and replays embeddings). Regenerated at `f6426e196`; green. Fixture change read only by this family.
+
 #### 2026-10-01 — test(harness): memory_pipeline_jobs_tier3 asserts canned-key consumption against the oracle's recorded keys (P4.138 item g, fix 2)
 
 _Versions: harness 0.0.1065._
