@@ -50,7 +50,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
-use crate::db::{chats_messages_read, chats_read, DbError};
+use crate::db::{chats_messages_read, chats_read};
 use crate::jsstr::js_trim;
 use crate::model::stream::{StreamParams, StreamingCompletionProvider};
 use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
@@ -58,7 +58,7 @@ use crate::services::agent_mode::{
     build_agent_mode_instructions, build_force_final_message,
     extract_submit_final_response_from_text,
 };
-use crate::services::api_key_service::{self, ProfileApiKeyFailure, ProfileApiKeyResolution};
+use crate::services::api_key_service::{self, ProfileApiKeyResolution};
 use crate::services::chat_events::{ChatEvent, DonePayload, DoneUsage, EventSink};
 use crate::services::message_context::{build_conversation_messages, WhisperMessage};
 use crate::services::message_finalizer::{CostTrackArgs, CostTracker};
@@ -352,19 +352,15 @@ where
     // dangling id even there — and the resolved key is what every stream of
     // this turn SENDS (v4 `:196` → `:346`; P4.133, dogfood #133). v4's UNSCOPED
     // `findApiKeyById`.
-    let key_id = s(profile, "apiKeyId");
-    let provider_for_key = provider.clone();
-    let resolution = db
-        .read_main(move |c| {
-            Ok::<_, DbError>(api_key_service::resolve_connection_profile_api_key(
-                c,
-                &provider_for_key,
-                key_id.as_deref(),
-            ))
-        })
-        .unwrap_or(ProfileApiKeyResolution::Failed(
-            ProfileApiKeyFailure::ApiKeyNotFound,
-        ));
+    // P4.139: the resolver reads over the POOL (`Db` is `MainReads`), so a
+    // checkout failure lands inside its `Error finding API key by ID` wrap
+    // (one line — the `MainReads` divergence) where the `read_main(|c|
+    // Ok(…))` wrapper had folded it to `api-key-not-found` silently.
+    let resolution = api_key_service::resolve_connection_profile_api_key(
+        db,
+        &provider,
+        s(profile, "apiKeyId").as_deref(),
+    );
     let api_key = match resolution {
         ProfileApiKeyResolution::Ok(key) => key,
         // v4 `0506517d3` correction (d) — one `describeProfileApiKeyFailure` for

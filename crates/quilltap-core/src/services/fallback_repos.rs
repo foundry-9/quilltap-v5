@@ -68,22 +68,55 @@ impl FallbackRepos for DbFallbackRepos<'_> {
 
 impl FallbackChainRepos for DbFallbackRepos<'_> {
     fn resolve_api_key(&self, profile: &FallbackProfile) -> Result<String, ProfileApiKeyFailure> {
-        let provider = profile.provider.clone();
-        let api_key_id = profile.api_key_id.clone();
-        let resolution = self.db.read_main(move |conn| {
-            Ok(resolve_connection_profile_api_key(
-                conn,
-                &provider,
-                api_key_id.as_deref(),
-            ))
-        });
-        match resolution {
-            Ok(ProfileApiKeyResolution::Ok(key)) => Ok(key),
-            Ok(ProfileApiKeyResolution::Failed(reason)) => Err(reason),
-            // A read that could not run at all is the same answer the resolver
-            // gives for a key row it cannot find: this candidate cannot
-            // authenticate, move on.
-            Err(_) => Err(ProfileApiKeyFailure::ApiKeyNotFound),
+        // The resolver reads over the POOL (`Db` is `MainReads`), so a read
+        // that could not run at all lands inside its `Error finding API key
+        // by ID` wrap and is `api-key-not-found` — this candidate cannot
+        // authenticate, move on. P4.139: the `read_main(|c| Ok(…))` wrapper
+        // had folded that pool failure with no line (v4's
+        // `provider-failover.service.ts:28` logs the repository's).
+        match resolve_connection_profile_api_key(
+            self.db,
+            &profile.provider,
+            profile.api_key_id.as_deref(),
+        ) {
+            ProfileApiKeyResolution::Ok(key) => Ok(key),
+            ProfileApiKeyResolution::Failed(reason) => Err(reason),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! P4.139: the failover chain's key resolution reads over the POOL, so a
+    //! checkout failure is the composite's `Error finding API key by ID` line
+    //! and `api-key-not-found` (v4 `provider-failover.service.ts:28` →
+    //! `resolveConnectionProfileApiKey` → the fallback `findApiKeyById`). ONE
+    //! line — v4's `Failed to get API keys collection` before it is the
+    //! `MainReads` divergence.
+    use super::*;
+    use crate::services::api_key_service::test_instance::{db_lines, db_with_a_failing_read_pool};
+
+    #[test]
+    fn a_failed_pool_is_the_composites_line_and_api_key_not_found() {
+        let (dir, db) = db_with_a_failing_read_pool();
+        let profile = FallbackProfile::from_value(&serde_json::json!({
+            "id": "cp-1", "userId": "u-1", "name": "Understudy", "provider": "ANTHROPIC",
+            "modelName": "m", "apiKeyId": "k-1",
+        }))
+        .expect("a FallbackProfile");
+        let (got, lines) = crate::test_support::captured_with(|| {
+            DbFallbackRepos::new(&db).resolve_api_key(&profile)
+        });
+        assert_eq!(got, Err(ProfileApiKeyFailure::ApiKeyNotFound));
+        // Measured: the read pool's checkout of the unlinked file answers
+        // SQLite's open failure, the path included, rendered bare (the home's
+        // `error_text`).
+        assert_eq!(
+            db_lines(&lines),
+            vec![format!(
+                "ERROR quilltap::db Error finding API key by ID collection=connection_profiles keyId=k-1 error=unable to open database file: {}",
+                dir.path().join("main.db").display()
+            )]
+        );
     }
 }

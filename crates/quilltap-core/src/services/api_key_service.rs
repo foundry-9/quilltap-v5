@@ -506,6 +506,24 @@ pub(crate) mod test_instance {
         )
     }
 
+    /// A pooled `Db` whose every checkout fails (the file is unlinked after
+    /// the open; the writer kept no handle) — v4's in-`safeQuery`
+    /// `getCollection()` failing. Asserted, so the plant cannot silently pass.
+    /// P4.139: the ONE copy (`dangerous_content::understudy`'s byte-identical
+    /// twin folded onto it).
+    pub(crate) fn db_with_a_failing_read_pool() -> (tempfile::TempDir, crate::db::runtime::Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("main.db");
+        drop(crate::db::Writer::open_writable(&path, PEPPER).unwrap());
+        let db = crate::db::runtime::Db::open_main(&path, PEPPER).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert!(
+            db.read_main(|_| Ok(())).is_err(),
+            "the plant must fail the pool"
+        );
+        (dir, db)
+    }
+
     /// The `quilltap::db` lines of a capture.
     pub(crate) fn db_lines(lines: &[String]) -> Vec<String> {
         lines
@@ -567,21 +585,7 @@ mod tests {
         );
     }
 
-    /// A pooled `Db` whose every checkout fails (the file is unlinked after
-    /// the open) — v4's in-`safeQuery` `getCollection()` failing.
-    fn db_with_a_failing_read_pool() -> (tempfile::TempDir, crate::db::runtime::Db) {
-        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("main.db");
-        drop(crate::db::Writer::open_writable(&path, PEPPER).unwrap());
-        let db = crate::db::runtime::Db::open_main(&path, PEPPER).unwrap();
-        std::fs::remove_file(&path).unwrap();
-        assert!(
-            db.read_main(|_| Ok(())).is_err(),
-            "the plant must fail the pool"
-        );
-        (dir, db)
-    }
+    use test_instance::db_with_a_failing_read_pool;
 
     /// P4.136: v4 `getApiKeyForConnectionProfile`'s FIRST read is the
     /// unscoped `_findById` — a failure logs `Error finding entity by ID` and

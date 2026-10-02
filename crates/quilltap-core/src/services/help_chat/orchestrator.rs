@@ -94,7 +94,7 @@ use crate::services::agent_mode::{
     build_agent_mode_instructions, build_force_final_message,
     extract_submit_final_response_from_text,
 };
-use crate::services::api_key_service::{self, ProfileApiKeyFailure, ProfileApiKeyResolution};
+use crate::services::api_key_service::{self, ProfileApiKeyResolution};
 use crate::services::chat_events::{
     ChainCompletePayload, ChatEvent, DonePayload, DoneUsage, EventSink, TurnCompletePayload,
     TurnStartPayload,
@@ -692,19 +692,17 @@ where
     // for one that merely accepts a key (bug 81). The resolved key is what every
     // stream of this turn SENDS (v4 `:361`; P4.133, dogfood #133), and a failed
     // resolution refuses early with `describeProfileApiKeyFailure`'s sentences.
-    let key_id = s(&profile, "apiKeyId");
-    let provider_for_key = provider.clone();
-    let resolution = db
-        .read_main(move |c| {
-            Ok::<_, DbError>(api_key_service::resolve_connection_profile_api_key(
-                c,
-                &provider_for_key,
-                key_id.as_deref(),
-            ))
-        })
-        .unwrap_or(ProfileApiKeyResolution::Failed(
-            ProfileApiKeyFailure::ApiKeyNotFound,
-        ));
+    //
+    // P4.139: the resolver reads over the POOL (`Db` is `MainReads`), so a
+    // checkout failure lands inside its `Error finding API key by ID` wrap —
+    // the `read_main(|c| Ok(…))` wrapper had folded it to `api-key-not-found`
+    // with no line. Structural here: the profile read above runs through the
+    // same pool first and propagates, so this arm is unreachable in this fn.
+    let resolution = api_key_service::resolve_connection_profile_api_key(
+        db,
+        &provider,
+        s(&profile, "apiKeyId").as_deref(),
+    );
     let api_key = match resolution {
         ProfileApiKeyResolution::Ok(key) => key,
         ProfileApiKeyResolution::Failed(reason) => {

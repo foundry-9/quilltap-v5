@@ -161471,3 +161471,33 @@ Each at v4's outcome (survey §A3 #1-9, 17-24 less the routes, 26, 27, 30, 31):
   from the pin; the committed `chat-send-{main,mount}.db` read (copied per
   run), not rebuilt.
 
+### Unit 5 — the three outside composite callers (Tier 1 item 7) + the failing-pool fold (Tier 2 item 14, part)
+
+- `services/help_chat/orchestrator.rs` (the key read only), `services/
+  brahma_console/orchestrator.rs` (the key read only) and `services/
+  fallback_repos.rs` pass the `Db` (it is `MainReads`) to
+  `resolve_connection_profile_api_key`; the `read_main(|c| Ok(…))` wrappers and
+  their `unwrap_or(Failed(ApiKeyNotFound))` / `Err(_) => ApiKeyNotFound` folds
+  deleted. **Out-of-range import edits, recorded:** removing the folds left
+  `ProfileApiKeyFailure` unused in help-chat's and Brahma's `api_key_service`
+  import lines and `DbError` unused in Brahma's `crate::db` import line —
+  each import line edited (one token removed); no other lane owns either file
+  this round.
+- **Pin:** `fallback_repos::tests::a_failed_pool_is_the_composites_line_and_
+  api_key_not_found` — `DbFallbackRepos::resolve_api_key` over the unlinked
+  plant → `Err(ApiKeyNotFound)` + EXACTLY one line, its `error` MEASURED as
+  `unable to open database file: <the unlinked path>` and pinned against the
+  temp dir's path (bare — the home's `error_text`).
+- **Help-chat: structural** (as the survey measured — its profile read
+  `:683-686` hits the same pool first and propagates). **Brahma: MEASURED
+  unreachable through its public entry too** — `handle_brahma_console_message`
+  reads the chat and the profile through the pool before
+  `process_brahma_response` reaches the key read, so a failing pool fails
+  there first; only a mid-function pool failure could reach the arm. Recorded
+  structural (the closure is gone — the type is the proof); the line itself is
+  pinned by the shared resolver's pool pin (`a_failed_pool_is_the_helpers_line`)
+  and the `fallback_repos` pin.
+- **DRY:** `db_with_a_failing_read_pool` is now ONE `pub(crate)` copy in
+  `api_key_service::test_instance`; `understudy.rs`'s byte-identical twin (and
+  `api_key_service`'s own) folded onto it.
+

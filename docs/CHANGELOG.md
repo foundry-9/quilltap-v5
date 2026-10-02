@@ -145,6 +145,12 @@ The two batch document reads behind every character, project, group, wardrobe, s
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `db::fallback` gains v4's lines for the vault overlay's two batch document reads, the embedded-chunk count, the chunk-content search and the file-link name/path search, plus `find_api_keys_by_user_id_or_empty` (delivered for P4.139 under the round's shared contract). The two search fallbacks that logged under their module targets with snake_case fields and the `sqlite error:` prefix now go through the home and log v4's exact bytes. v4's `withStrictRepositoryFailures` is ported as a thread-local scope: inside it the two batch homes log with `strictFailures=true` and propagate (ruled by the human on 2026-10-02 so backup and export can stay strict once the overlay falls back). `fallback_home_guard` lists the six new messages.
+#### 2026-10-02 — fix(api-keys): the help chat, Brahma and the failover chain resolve a profile's key over the read pool, so a pool failure logs v4's line
+
+_Versions: core 0.0.1151._
+
+The three callers of `resolve_connection_profile_api_key` outside `api_key_service` (the help chat, the Brahma console and `DbFallbackRepos::resolve_api_key`) now hand it the `Db` itself instead of wrapping it in `read_main(|c| Ok(…))`. A read-pool failure therefore lands inside the resolver's fallback wrap and logs `Error finding API key by ID` before `api-key-not-found`, where the wrapper had folded it silently. A new `fallback_repos` unit test pins the exact line over an unlinked database. The duplicated `db_with_a_failing_read_pool` test helper is folded to one copy (P4.139).
+
 #### 2026-10-02 — fix(scenario-builder): the prepare's profile read logs v4's repository ERROR on an unreadable profile
 
 _Versions: core 0.0.1150, web 0.0.208._

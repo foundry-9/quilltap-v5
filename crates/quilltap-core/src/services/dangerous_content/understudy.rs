@@ -404,21 +404,9 @@ mod pool_failure_tests {
 
     const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
-    /// A `Db` whose read pool cannot hand out a connection: the file is
-    /// unlinked after the open (the writer keeps its handle; a fresh read-only
-    /// open of the path fails). Asserted, so the plant cannot silently pass.
-    fn db_with_a_failing_read_pool() -> (tempfile::TempDir, Db) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("main.db");
-        drop(crate::db::Writer::open_writable(&path, PEPPER).unwrap());
-        let db = Db::open_main(&path, PEPPER).unwrap();
-        std::fs::remove_file(&path).unwrap();
-        assert!(
-            db.read_main(|_| Ok(())).is_err(),
-            "the plant must fail the pool"
-        );
-        (dir, db)
-    }
+    // A `Db` whose read pool cannot hand out a connection — the ONE copy
+    // (P4.139 folded this file's byte-identical twin onto it).
+    use crate::services::api_key_service::test_instance::db_with_a_failing_read_pool;
 
     /// A healthy `Db` with no tables — every read fails INSIDE the pool.
     fn db_with_no_tables() -> (tempfile::TempDir, Db) {
