@@ -11,9 +11,7 @@ use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 
 use crate::db::character_vault::scaffold_character_mount;
-use crate::db::doc_mount_chunks::{
-    count_embedded_by_mount_point_ids_or_empty, count_nonempty_embeddings_by_mount_point_id_or_zero,
-};
+use crate::db::doc_mount_chunks;
 use crate::db::doc_mount_points::{
     find_all_full_json, CreateOptions, DmpCreate, DmpUpdate, DocMountPointsRepository,
 };
@@ -114,7 +112,7 @@ pub fn mount_point_list(db: &Db) -> Response {
             .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
             .collect();
         // v4 `route.ts:60`: a fallback `withRawDb(new Map())` (P4.142).
-        let counts = count_embedded_by_mount_point_ids_or_empty(conn, &ids);
+        let counts = doc_mount_chunks::count_embedded_by_mount_point_ids_or_empty(conn, &ids);
         let enriched: Vec<Value> = mounts
             .into_iter()
             .map(|mut m| {
@@ -148,8 +146,10 @@ pub fn mount_point_get(db: &Db, mount_point_id: &str) -> Response {
             Some(mut mp) => {
                 // v4 `[id]/route.ts:69`: `findByMountPointId`, a fallback read
                 // — a failure counts 0 (P4.142).
-                let count =
-                    count_nonempty_embeddings_by_mount_point_id_or_zero(conn, mount_point_id);
+                let count = doc_mount_chunks::count_nonempty_embeddings_by_mount_point_id_or_zero(
+                    conn,
+                    mount_point_id,
+                );
                 let capabilities = derive_mount_capabilities(&mp);
                 if let Some(obj) = mp.as_object_mut() {
                     obj.insert("embeddedChunkCount".into(), json!(count));

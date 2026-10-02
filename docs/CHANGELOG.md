@@ -74,6 +74,12 @@ _Versions: core 0.0.1148._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `TransportError` gains `kind: TransportErrorKind` (`Http`, `Connect`, `Timeout`) and four constructors: `http(status, body)`, `connect(message)`, `timeout(message)` and `headers_timeout(ms)` (now a `Timeout`). All 52 struct literals across 12 files (core 38, harness 14) now go through them. `is_headers_timeout`'s message-prefix sniff is replaced by `is_timeout()`, which reads the kind. Behaviour does not change: every status-less site is `Connect`, every status site is `Http`, and the headers timeout is still the only `Timeout`. This is P4.141's first commit, landed early so a later field cannot cross the shared struct's literals again.
+#### 2026-10-02 — test(harness): P4.142 unit 6 — the document-store census widened to the batch and chunk reads, and recounted
+
+_Versions: core 0.0.1152, harness 0.0.1079._
+
+`doc_mount_fallback_sites_census` followed four method names, so it could not see the reads behind the `send_mail` and chat-list failures. It now also follows the vault overlay's batch reads and the `doc_mount_chunks` reads (`find_row_by_id`, a name two other repositories share, only on a `DocMountChunks` receiver), recognises `_or_zero` twins, files the blobs repository's self-call as another repository (P4.131's 68 was 67), moves the `.qtap` export's store read to a new `strict-by-ruling` class, and records the fold pass's two reads as handed to P4.144 in a documentation table. 155 sites: 42 converted, 13 internal, 19 other-repo, 13 swallowed, 1 with no v4 counterpart, 1 strict by ruling, 66 on the conversion list. The mount-point route's two chunk counts are now called path-qualified so the scanner sees them.
+
 #### 2026-10-02 — feat(db): P4.142 unit 5 — the doc_mount_chunks reads take v4's fallbacks
 
 _Versions: core 0.0.1151, harness 0.0.1078._

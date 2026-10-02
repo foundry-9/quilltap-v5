@@ -160754,3 +160754,27 @@ scope → the caller's `Err`), on the union.
 - Named, NOT changed (pre-existing, outside the order): the MOUNT_CHUNK
   branch's `[EmbeddingGenerate] Mount chunk not found` WARN logs `chunk_id`
   where v4 logs `{context: 'handleEmbeddingGenerate', jobId, chunkId}`.
+
+### Unit 6 — the census widened, corrected and recounted (core 0.0.1152, harness 0.0.1079)
+
+- `doc_mount_fallback_sites_census.rs` (item 7): (a) the blobs self-call
+  (`doc_mount_blobs.rs` `create_with_ids`) → `other-repo` via an `OVERRIDES`
+  row with its reason (P4.131's "68" was 67); (b) `METHODS` 4 → 12 — the
+  overlay's batch reads (+ `_opts`) and the five chunk reads, `TWIN_SUFFIXES`
+  + `_or_zero`, `doc_mount_chunks.rs` an `internal` file, and a
+  `SCOPED_METHODS` rule (`find_row_by_id` is also `doc_mount_points`' and
+  `conversation_chunks`' — counted only on a `DocMountChunks` receiver or in
+  its own file); the two whole-checkout wraps (`embedding_reindex_job`,
+  `embedding_generate_job`) are `converted` by `OVERRIDES` (their call text is
+  the propagating sibling's inside a home closure); (c) `HANDED` — the fold
+  pass's two memory reads as `handed(P4.144)`, a documentation table whose
+  test asserts only that the file exists (§S.4); G5 (`qtap_export/records.rs`
+  `stream_one_store`) → the new class `strict-by-ruling` (Tier 3 item 17); the
+  G4 sync rows stay `fallback-in-v4` with the COUNTS comment pointing at the
+  ruling. **Red on the moved rows** before the paste (the 25 new rows + the two
+  reclasses, measured by `QT_CENSUS_PRINT`); green after.
+- `COUNTS` (now 8-wide) = **(42, 13, 19, 0, 13, 1, 1, 66)** over **155** rows,
+  arithmetic in the comment. G1's 14 flip in the next unit.
+- `api/mount_points.rs`' two count calls made path-qualified
+  (`doc_mount_chunks::…`) — a free fn imported bare is invisible to the
+  `.`/`::` scanner.
