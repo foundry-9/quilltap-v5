@@ -161539,3 +161539,20 @@ Each at v4's outcome (survey §A3 #1-9, 17-24 less the routes, 26, 27, 30, 31):
   UNCHANGED (`no-v4-counterpart`). The census's host row moves from
   `fallback-in-v4` to `home` with it.
 
+### Unit 7 — the `.qtap` export's label read made scoped (Tier 2 item 13)
+
+- `qtap_export::resolve_api_key_label(main, user_id, id)` →
+  `read_api_key_scoped(main, id, user_id).map(|k| k.label)` — v4
+  `resolveApiKeyLabel(repos)` with `repos = getUserRepositories(userId)`
+  (`ndjson-writer.ts:97-108,178,283,413`) → the SCOPED full-row read. The
+  three profile streams (`records.rs`) take `user_id`; the export's dispatch
+  passes it. `db::api_keys::find_label_by_id` had no other caller → DELETED
+  (the census's fourth method keeps watching for a reintroduction).
+- Pin: `qtap_export::api_key_label_tests::the_label_is_the_scoped_full_row_
+  read` (a corrupt row: the scoped line + no label; a foreign key: no label,
+  silent; own key: its label; a falsy id: nothing read).
+- **Neutral, measured:** `system_export_equivalence` regenerated from the pin
+  (`/tmp/p4139/qt-sysexport-oracle`, `QT_ORACLE_OUT=/tmp/p4139/oracle-system-
+  export.ndjson`, 58 rows, 2 carrying `_apiKeyLabel`) — GREEN; the fixture's
+  keys are the exporting user's own.
+

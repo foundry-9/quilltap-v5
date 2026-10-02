@@ -376,6 +376,7 @@ pub(super) fn stream_roleplay_templates(
 
 pub(super) fn stream_connection_profiles(
     main: &Connection,
+    user_id: &str,
     ids: &[String],
     counts: &mut Counts,
     out: &mut Vec<Value>,
@@ -384,7 +385,11 @@ pub(super) fn stream_connection_profiles(
         let Some(profile) = connection_profiles::find_by_id(main, id)? else {
             continue;
         };
-        let label = resolve_api_key_label(main, profile.get("apiKeyId").and_then(Value::as_str));
+        let label = resolve_api_key_label(
+            main,
+            user_id,
+            profile.get("apiKeyId").and_then(Value::as_str),
+        );
         out.push(kind_data(
             "connection_profile",
             sanitize_profile("connection_profile", &profile, label),
@@ -396,6 +401,7 @@ pub(super) fn stream_connection_profiles(
 
 pub(super) fn stream_image_profiles(
     main: &Connection,
+    user_id: &str,
     ids: &[String],
     counts: &mut Counts,
     out: &mut Vec<Value>,
@@ -404,7 +410,11 @@ pub(super) fn stream_image_profiles(
         let Some(profile) = image_profiles::find_by_id(main, id)? else {
             continue;
         };
-        let label = resolve_api_key_label(main, profile.get("apiKeyId").and_then(Value::as_str));
+        let label = resolve_api_key_label(
+            main,
+            user_id,
+            profile.get("apiKeyId").and_then(Value::as_str),
+        );
         out.push(kind_data(
             "image_profile",
             sanitize_profile("image_profile", &profile, label),
@@ -416,6 +426,7 @@ pub(super) fn stream_image_profiles(
 
 pub(super) fn stream_embedding_profiles(
     main: &Connection,
+    user_id: &str,
     ids: &[String],
     counts: &mut Counts,
     out: &mut Vec<Value>,
@@ -424,7 +435,11 @@ pub(super) fn stream_embedding_profiles(
         let Some(profile) = embedding_profiles::find_full_json_by_id(main, id)? else {
             continue;
         };
-        let label = resolve_api_key_label(main, profile.get("apiKeyId").and_then(Value::as_str));
+        let label = resolve_api_key_label(
+            main,
+            user_id,
+            profile.get("apiKeyId").and_then(Value::as_str),
+        );
         out.push(kind_data(
             "embedding_profile",
             sanitize_profile("embedding_profile", &profile, label),

@@ -383,11 +383,13 @@ pub fn stream_export_records(
             records::stream_roleplay_templates(main, user_id, &ids, &mut counts, &mut out)?
         }
         "connection-profiles" => {
-            records::stream_connection_profiles(main, &ids, &mut counts, &mut out)?
+            records::stream_connection_profiles(main, user_id, &ids, &mut counts, &mut out)?
         }
-        "image-profiles" => records::stream_image_profiles(main, &ids, &mut counts, &mut out)?,
+        "image-profiles" => {
+            records::stream_image_profiles(main, user_id, &ids, &mut counts, &mut out)?
+        }
         "embedding-profiles" => {
-            records::stream_embedding_profiles(main, &ids, &mut counts, &mut out)?
+            records::stream_embedding_profiles(main, user_id, &ids, &mut counts, &mut out)?
         }
         "tags" => records::stream_tags(main, &ids, &mut counts, &mut out)?,
         "projects" => records::stream_projects(main, mount, &ids, &mut counts, &mut out)?,
@@ -459,13 +461,21 @@ pub(crate) fn resolve_tag_names(main: &Connection, tag_ids: &[Value]) -> Vec<Str
     names
 }
 
-/// v4 `resolveApiKeyLabel` (:61) — `connections.findApiKeyById(apiKeyId)?.label`.
-/// `None` for a falsy id, a missing key, or a throw (all swallowed by v4).
-pub(crate) fn resolve_api_key_label(main: &Connection, api_key_id: Option<&str>) -> Option<String> {
+/// v4 `resolveApiKeyLabel(repos, apiKeyId)` (`lib/export/ndjson-writer.ts:
+/// 97-108`) — `repos.connections.findApiKeyById(apiKeyId)?.label`, where
+/// `repos = getUserRepositories(userId)` (`:178,283,413`): the USER-SCOPED
+/// container, whose `findApiKeyById` is v4's SCOPED `findApiKeyByIdAndUserId`
+/// (`user-scoped.ts:246-274`) over the FULL row. So a key owned by another
+/// user has no label, and a corrupt row (a BLOB `key_value`) fails the parse —
+/// the scoped repository line, then no label. P4.139: v5 had read the `label`
+/// column alone, unscoped, and kept both. `None` for a falsy id too.
+pub(crate) fn resolve_api_key_label(
+    main: &Connection,
+    user_id: &str,
+    api_key_id: Option<&str>,
+) -> Option<String> {
     let id = api_key_id.filter(|s| !s.is_empty())?;
-    crate::db::api_keys::find_label_by_id(main, id)
-        .ok()
-        .flatten()
+    crate::services::api_key_service::read_api_key_scoped(main, id, user_id).map(|k| k.label)
 }
 
 /// v4 `sanitizeProfile` (:74) — `{...rest}` with `apiKeyId` REMOVED, then
@@ -592,5 +602,41 @@ mod tests {
             sanitize_profile("connection_profile", &p, None).to_string(),
             r#"{"id":"1","name":"P","baseUrl":"u","tags":[]}"#
         );
+    }
+}
+
+#[cfg(test)]
+mod api_key_label_tests {
+    //! P4.139: the export's `_apiKeyLabel` is v4's USER-SCOPED full-row read
+    //! (see [`super::resolve_api_key_label`]).
+    use crate::db::fallback::test_plants::{conn_with_api_keys, plant_api_key};
+
+    #[test]
+    fn the_label_is_the_scoped_full_row_read() {
+        let conn = conn_with_api_keys();
+        plant_api_key(&conn, "k-bad", "u-1", true);
+        plant_api_key(&conn, "k-ok", "u-1", false);
+        plant_api_key(&conn, "k-foreign", "u-2", false);
+        // A corrupt row: the scoped line, then no label (v5 had kept it).
+        let (got, lines) = crate::test_support::captured_with(|| {
+            super::resolve_api_key_label(&conn, "u-1", Some("k-bad"))
+        });
+        assert_eq!(got, None);
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId=k-bad userId=u-1 error=Invalid column type Blob at index: 4, name: key_value".to_string()]
+        );
+        // Another user's key: no label (v5 had exported it), silently; the
+        // user's own key: its label; a falsy id: nothing read.
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                super::resolve_api_key_label(&conn, "u-1", Some("k-foreign")),
+                super::resolve_api_key_label(&conn, "u-1", Some("k-ok")),
+                super::resolve_api_key_label(&conn, "u-1", Some("")),
+                super::resolve_api_key_label(&conn, "u-1", None),
+            )
+        });
+        assert_eq!(got, (None, Some("k".to_string()), None, None));
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }
