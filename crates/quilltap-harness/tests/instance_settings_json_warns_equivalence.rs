@@ -17,11 +17,14 @@
 //! v4's side needs a real DB (its `rawQuery`); v5's runs on an in-memory
 //! connection with the same one-table DDL — the getters touch nothing else.
 //!
-//!     N=~/.nvm/versions/node/v24.13.1/bin ; W=${V5W:-$(git rev-parse --show-toplevel)}
+//! The `V5W=${V5W:-$HOME/...}` alias below is the SANCTIONED self-referential literal: `recipe_sweep.py`
+//! (`ALIAS_ASSIGN` + `--self-test`) can neutralise only that spelling, so never copy a `W=...$(git ...)` form.
+//!
+//!     N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!     STAGE=/tmp/qt-oracle-stage-is-json-warns
 //!     rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
-//!     cp $W/harness/oracle/cases/instance-settings-json-warns.test.ts $STAGE/harness/oracle/cases/
-//!     cp $W/harness/oracle/fixtures/instance-settings-json-warns.json $STAGE/harness/oracle/fixtures/
+//!     cp $V5W/harness/oracle/cases/instance-settings-json-warns.test.ts $STAGE/harness/oracle/cases/
+//!     cp $V5W/harness/oracle/fixtures/instance-settings-json-warns.json $STAGE/harness/oracle/fixtures/
 //!     cd ~/source/quilltap-server
 //!     QT_ORACLE_OUT=/tmp/oracle-instance-settings-json-warns.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=240000 \

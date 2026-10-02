@@ -158914,3 +158914,8 @@ column: relativePath`, the `state.json` WARN with `context`, `list_mail`
 answering v4's fallback lines; a second boot with `roleplay_templates.name`
 renamed logging `Error seeding built-in roleplay templates` and the Salon
 still opening.
+
+### P4.138 lane record — item (i): the five recipe headers (2026-10-01)
+
+`recipe_sweep.py --self-test` was RED on main (one failure naming `doc_opacity`, `instance_settings_json_warns`, `scenario_builder_mount_pool`, `scenario_builder_tier3`, `scenario_builder_routes`). Headers rewritten to `V5W=${V5W:-$HOME/source/quilltap-v5}` + `$V5W/` (header text only; `.ts` twins aligned). `--self-test` now `0 failure(s)` (the `[selftest_alias]` probe line still prints, as designed). `--show` before/after diffed: only the assignment line (the `W="…"` prepend is gone) and `$W`→`$V5W` move; every other stage line byte-identical. The five families re-ran green by name through the driver at pin `f6426e196` (`/tmp/qt-v4-pin-p4138-f6426e196`). Versions: harness 0.0.1064, web 0.0.207.
+Pre-written one-line patch for `/unify`'s §5 checklist (NOT applied): add `python3 harness/tools/recipe_sweep.py --self-test` (expect `0 failure(s)`).

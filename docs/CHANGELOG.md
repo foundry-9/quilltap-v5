@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — fix(harness): repair the five recipe headers to the sanctioned `V5W` literal so `recipe_sweep.py --self-test` exits 0 (P4.138 item i)
+
+_Versions: harness 0.0.1064, web 0.0.207._
+
+The five headers that spelled the P4.53 clobber `W=${V5W:-$(git rev-parse --show-toplevel)}` now carry `V5W=${V5W:-$HOME/source/quilltap-v5}` with every `$W/` rewritten to `$V5W/` (including the routes family's two fixture env prefixes), plus a prose line saying why the literal is the sanctioned one. The five `.ts` case headers use the same spelling. Header text only: `--show` output differs only on the assignment line and the `$W` to `$V5W` references, and all five families re-ran green from a pin at `f6426e196`.
+
 #### 2026-10-01 — docs(porting): order the `f6426e196` bug-174 drift catch-up + review-follow-ups round (P4.D244 ∥ P4.135 ∥ P4.136 ∥ P4.137 ∥ P4.138)
 
 _Docs only; no version bumps._

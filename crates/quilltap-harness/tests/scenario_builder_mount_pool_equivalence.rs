@@ -70,15 +70,18 @@
 //! SAME build, in that order. Stage the case OUTSIDE `.claude/` (v4's jest
 //! ignores those paths).
 //!
-//!     N=~/.nvm/versions/node/v24.13.1/bin ; W=${V5W:-$(git rev-parse --show-toplevel)}
+//! The `V5W=${V5W:-$HOME/...}` alias below is the SANCTIONED self-referential literal: `recipe_sweep.py`
+//! (`ALIAS_ASSIGN` + `--self-test`) can neutralise only that spelling, so never copy a `W=...$(git ...)` form.
+//!
+//!     N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!     STAGE=/tmp/qt-oracle-stage-sb-pool
 //!     rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
-//!     cp $W/harness/oracle/cases/scenario-builder-mount-pool.test.ts $STAGE/harness/oracle/cases/
-//!     cp $W/harness/oracle/fixtures/scenario-builder-mount-pool.json $STAGE/harness/oracle/fixtures/
+//!     cp $V5W/harness/oracle/cases/scenario-builder-mount-pool.test.ts $STAGE/harness/oracle/cases/
+//!     cp $V5W/harness/oracle/fixtures/scenario-builder-mount-pool.json $STAGE/harness/oracle/fixtures/
 //!     cd ~/source/quilltap-server
 //!     rm -f /tmp/qt-sbpool-main.db /tmp/qt-sbpool-mount.db
 //!     QT_FIXTURE_DOPA_MAIN=/tmp/qt-sbpool-main.db QT_FIXTURE_DOPA_MOUNT=/tmp/qt-sbpool-mount.db \
-//!     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-opacity-fixture.ts
+//!     $N/node --import tsx $V5W/harness/oracle/fixtures/build-doc-opacity-fixture.ts
 //!     QT_FIXTURE_SBPOOL_MAIN=/tmp/qt-sbpool-main.db QT_FIXTURE_SBPOOL_MOUNT=/tmp/qt-sbpool-mount.db \
 //!     QT_ORACLE_OUT=/tmp/oracle-scenario-builder-mount-pool.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=240000 \

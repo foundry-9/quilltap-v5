@@ -42,15 +42,18 @@
 //! `00c290c9a` baseline — the import fails there). Fixture MINTED — rebuild,
 //! regenerate, THEN `cargo test` against the same build.
 //!
-//!     N=~/.nvm/versions/node/v24.13.1/bin ; W=${V5W:-$(git rev-parse --show-toplevel)}
+//! The `V5W=${V5W:-$HOME/...}` alias below is the SANCTIONED self-referential literal: `recipe_sweep.py`
+//! (`ALIAS_ASSIGN` + `--self-test`) can neutralise only that spelling, so never copy a `W=...$(git ...)` form.
+//!
+//!     N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!     STAGE=/tmp/qt-oracle-stage-sb-tier3
 //!     rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
-//!     cp $W/harness/oracle/cases/scenario-builder-tier3.test.ts $STAGE/harness/oracle/cases/
-//!     cp $W/harness/oracle/fixtures/scenario-builder-tier3.json $STAGE/harness/oracle/fixtures/
+//!     cp $V5W/harness/oracle/cases/scenario-builder-tier3.test.ts $STAGE/harness/oracle/cases/
+//!     cp $V5W/harness/oracle/fixtures/scenario-builder-tier3.json $STAGE/harness/oracle/fixtures/
 //!     cd ~/source/quilltap-server
 //!     rm -f /tmp/qt-sbt3-main.db /tmp/qt-sbt3-mount.db
 //!     QT_FIXTURE_DOPA_MAIN=/tmp/qt-sbt3-main.db QT_FIXTURE_DOPA_MOUNT=/tmp/qt-sbt3-mount.db \
-//!     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-opacity-fixture.ts
+//!     $N/node --import tsx $V5W/harness/oracle/fixtures/build-doc-opacity-fixture.ts
 //!     QT_FIXTURE_SBT3_MAIN=/tmp/qt-sbt3-main.db QT_FIXTURE_SBT3_MOUNT=/tmp/qt-sbt3-mount.db \
 //!     QT_ORACLE_OUT=/tmp/oracle-scenario-builder-tier3.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=240000 \

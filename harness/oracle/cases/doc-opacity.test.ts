@@ -39,14 +39,14 @@
  * and modulePathIgnorePatterns, so `--roots` into a worktree matches ZERO tests,
  * leaves the previous NDJSON in place, and the Rust family then passes against a
  * stale oracle. The jest filter is ANCHORED for the same reason.
- *   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   STAGE=/tmp/qt-oracle-stage-doc-opacity
  *   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
- *   cp $W/harness/oracle/cases/doc-opacity.test.ts $STAGE/harness/oracle/cases/
- *   cp $W/harness/oracle/fixtures/doc-opacity.json $STAGE/harness/oracle/fixtures/
+ *   cp $V5W/harness/oracle/cases/doc-opacity.test.ts $STAGE/harness/oracle/cases/
+ *   cp $V5W/harness/oracle/fixtures/doc-opacity.json $STAGE/harness/oracle/fixtures/
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_DOPA_MAIN=/tmp/qt-dopa-main.db QT_FIXTURE_DOPA_MOUNT=/tmp/qt-dopa-mount.db \
- *     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-opacity-fixture.ts
+ *     $N/node --import tsx $V5W/harness/oracle/fixtures/build-doc-opacity-fixture.ts
  *   QT_FIXTURE_DOPA_MAIN=/tmp/qt-dopa-main.db QT_FIXTURE_DOPA_MOUNT=/tmp/qt-dopa-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-doc-opacity.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=240000 \

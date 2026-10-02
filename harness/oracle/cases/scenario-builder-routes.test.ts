@@ -30,14 +30,14 @@
  *
  * Run (Node 24, from the v4 checkout or a PINNED worktree; stage outside
  * `.claude/`, which v4's jest ignores):
- *   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   STAGE=/tmp/qt-oracle-stage-sb-routes
  *   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
- *   cp $W/harness/oracle/cases/scenario-builder-routes.test.ts $STAGE/harness/oracle/cases/
- *   cp $W/harness/oracle/fixtures/scenario-builder-routes.json $STAGE/harness/oracle/fixtures/
+ *   cp $V5W/harness/oracle/cases/scenario-builder-routes.test.ts $STAGE/harness/oracle/cases/
+ *   cp $V5W/harness/oracle/fixtures/scenario-builder-routes.json $STAGE/harness/oracle/fixtures/
  *   cd ~/source/quilltap-server
- *   QT_FIXTURE_SBR_MAIN=$W/crates/quilltap-web/tests/fixtures/chat-send-main.db \
- *   QT_FIXTURE_SBR_MOUNT=$W/crates/quilltap-web/tests/fixtures/chat-send-mount.db \
+ *   QT_FIXTURE_SBR_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-send-main.db \
+ *   QT_FIXTURE_SBR_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/chat-send-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-scenario-builder-routes.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=240000 \
  *       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "scenario-builder-routes\.test\.ts$"

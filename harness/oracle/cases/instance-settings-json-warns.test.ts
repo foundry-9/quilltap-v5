@@ -23,11 +23,11 @@
  *
  * Run (Node 24, from the v4 checkout or a PINNED worktree). STAGE this case
  * OUTSIDE `.claude/` — v4's jest ignores those paths.
- *   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   STAGE=/tmp/qt-oracle-stage-is-json-warns
  *   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
- *   cp $W/harness/oracle/cases/instance-settings-json-warns.test.ts $STAGE/harness/oracle/cases/
- *   cp $W/harness/oracle/fixtures/instance-settings-json-warns.json $STAGE/harness/oracle/fixtures/
+ *   cp $V5W/harness/oracle/cases/instance-settings-json-warns.test.ts $STAGE/harness/oracle/cases/
+ *   cp $V5W/harness/oracle/fixtures/instance-settings-json-warns.json $STAGE/harness/oracle/fixtures/
  *   cd ~/source/quilltap-server
  *   QT_ORACLE_OUT=/tmp/oracle-instance-settings-json-warns.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=240000 \

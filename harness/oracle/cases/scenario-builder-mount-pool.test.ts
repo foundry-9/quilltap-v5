@@ -31,15 +31,15 @@
  * worktree matches ZERO tests and leaves the previous NDJSON in place. The
  * fixture pair is MINTED by the opacity builder — rebuild, regenerate, then
  * `cargo test` against that SAME build, in that order.
- *   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   STAGE=/tmp/qt-oracle-stage-sb-pool
  *   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
- *   cp $W/harness/oracle/cases/scenario-builder-mount-pool.test.ts $STAGE/harness/oracle/cases/
- *   cp $W/harness/oracle/fixtures/scenario-builder-mount-pool.json $STAGE/harness/oracle/fixtures/
+ *   cp $V5W/harness/oracle/cases/scenario-builder-mount-pool.test.ts $STAGE/harness/oracle/cases/
+ *   cp $V5W/harness/oracle/fixtures/scenario-builder-mount-pool.json $STAGE/harness/oracle/fixtures/
  *   cd ~/source/quilltap-server
  *   rm -f /tmp/qt-sbpool-main.db /tmp/qt-sbpool-mount.db
  *   QT_FIXTURE_DOPA_MAIN=/tmp/qt-sbpool-main.db QT_FIXTURE_DOPA_MOUNT=/tmp/qt-sbpool-mount.db \
- *     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-opacity-fixture.ts
+ *     $N/node --import tsx $V5W/harness/oracle/fixtures/build-doc-opacity-fixture.ts
  *   QT_FIXTURE_SBPOOL_MAIN=/tmp/qt-sbpool-main.db QT_FIXTURE_SBPOOL_MOUNT=/tmp/qt-sbpool-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-scenario-builder-mount-pool.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=240000 \
