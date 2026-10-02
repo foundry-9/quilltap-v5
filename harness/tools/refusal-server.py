@@ -44,6 +44,10 @@ model name, default `code`):
   unauthorized   401 {"error": {"message": "Incorrect API key provided", ...}}
                  before any stream (added 2026-09-30) -> P4.128's pre-stream
                  `OpenAICompatible API error in streamMessage` catch line
+  json           answers a small JSON object (added 2026-10-02) -> lets the
+                 multi-step generators (the AI import's twelve steps, the
+                 wizard) parse each answer and reach their later steps, so
+                 every step's request is captured
   toolcall       with `tools` and no `tool` message yet: streams ONE native
                  tool call (`list_mail` if offered, else the first tool, args
                  {}); once a tool result is in the history, answers in text
@@ -75,11 +79,13 @@ PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8898
 DEFAULT_MODE = os.environ.get("QT_REFUSE_MODE", "code")
 CAPTURE = os.environ.get("QT_REFUSE_CAPTURE", "/tmp/refusal-server-requests.ndjson")
 REQUIRED_KEY = os.environ.get("QT_REFUSE_KEY")
+JSON_TEXT = json.dumps({"name": "Dogfood Lore", "title": "", "firstMessage": "Good evening.",
+                        "pronouns": {"subject": "they", "object": "them", "possessive": "their"}})
 MODES = {"refuse-code": "code", "refuse-finish": "finish", "tokenlimit": "tokenlimit",
          "notools": "notools", "blind": "blind", "echo": "echo",
          "midframe": "midframe", "midframe-late": "midframe-late",
          "midframe-uncoded": "midframe-uncoded", "toolcall": "toolcall",
-         "malformed": "malformed", "unauthorized": "unauthorized"}
+         "malformed": "malformed", "unauthorized": "unauthorized", "json": "json"}
 
 # Azure OpenAI's content-filter rejection, as the openai SDK surfaces it.
 CODE_BODY = {"error": {
@@ -283,6 +289,8 @@ class H(BaseHTTPRequestHandler):
                 self._answer(req, "The posed tool ran; here is its answer, in plain text.")
         elif mode == "blind":
             self._answer(req, BLIND_TEXT, prompt_tokens=40)
+        elif mode == "json":
+            self._answer(req, JSON_TEXT)
         else:
             self._answer(req, "ok")
 

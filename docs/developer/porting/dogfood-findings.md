@@ -616,6 +616,20 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+### From the 2026-10-02 keys / boot-hardness / vault-image walk: NO new findings, two notes for the next `/setupphase`
+
+- **Fold into the API-key / repository census (P4.131's OPEN 130 sites):**
+  with `doc_mount_file_links.relativePath` renamed on the mount index (the
+  G2 plant), `chatGet` and `listChats` answer 500 `sqlite error: no such
+  column: l.relativePath` — a direct `doc_mount_*` repository read outside
+  the fallback homes. The boot, `/health` and `list_mail` hold. Measure v4's
+  chat GET / list under the same plant before ordering (a v4 fallback
+  `safeQuery` there would make it a divergence; a v4 500 makes it nothing).
+- **Walk rule, not an order:** Friday's live chat settings have the Lantern
+  ON, so a throwaway chat on the copy buys a real story background. Disable
+  `storyBackgroundsSettings.enabled` on the copy (and point the cheap LLM at
+  a posed desk) before creating test chats.
+
 ### From the 2026-09-30 smalls walk: three items for the next `/setupphase`
 
 - **#133 — the profile's own key — ORDERED P4.133, LANDED 2026-10-01 (see row 133).** `DbProviderKeys` (the host's key source

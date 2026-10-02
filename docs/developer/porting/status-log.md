@@ -159911,3 +159911,92 @@ empty-content send with `pendingToolResults` and an image-only send through
 dispatch (no empty user line; the anchor on the prior human turn, or v4's
 `-1` WARN with none); record what the SPA composer sends on an
 attachment-only post (the deferred divergence).
+
+## Dogfood pass — the `ca363178d` + `f6426e196` rounds: the profile's own key, boot hardness, bug 173's CLI decode, the anti-committee prompts, the scene note, bug 174's vault bytes, the API-key fallback lines (2026-10-02)
+
+**Walk doc:** `dogfood-walks/2026-10-02-keys-boot-hardness-vault-image-pass.md`.
+**40 rows: 37 PASS, 1 RECORDED (F8, the predicted SPA divergence), 1 BLOCKED
+(E6, unreachable live), 1 DEFERRED-TO-HUMAN (H1, the standing spend queue).
+ZERO v5 defects, no findings filed.** Seven boots (the clean copy; the
+corrupted key + the deleted backfill flag; the mount-index rename twice; the
+templates rename; clean; a restart after the background time limit), zero
+panics, `migrations_state` 199 throughout.
+
+Orders covered: P4.D240, P4.D241, P4.D242, P4.D243, P4.133, P4.134 (the
+`ca363178d` round) and P4.D244, P4.135, P4.136, P4.137 (the `f6426e196`
+round); P4.138 is harness-only. The ledger's §2 probe passed at planning (v4
+AT `f6426e196`, §3 EMPTY, the tree dirty by exactly the recorded bug-175/176
+waiver). The instrument `harness/tools/refusal-server.py` grew a `json` mode
+(the multi-step generators reach their later steps on a posed desk).
+
+### Proven live
+- **P4.133 ⭐ (dogfood #133 closed live).** With `QT_REFUSE_KEY=k-bound` and
+  two OPENAI_COMPATIBLE keys (`k-first` created first): the `k-first` profile
+  sent `Bearer k-first` on the greeting's three attempts and the Salon turn
+  (401 → `trigger="auth"`), the `k-bound` profile sent `Bearer k-bound` and
+  was answered; a junk NanoGPT key added SECOND failed with NanoGPT's own
+  `401 Invalid session` (on 2026-09-30 the same setup answered on the real
+  key); "Try uncensored" sent the UNDERSTUDY's key; a keyless cheap profile
+  refuses with `No API key available for cheap LLM provider`; the Scenario
+  Builder sends its profile's key both ways (the unpinned host leg).
+- **P4.136 ⭐.** A key row planted `x'00000000'`: the cheap title logs
+  `Error finding API key by ID and user ID … Invalid column type Blob at
+  index: 4, name: key_value` + v4's throw; test-message answers `not-found`
+  on a dangling id and on the corrupted row (the unscoped home's line); the
+  models fetch answers v4's doubled `API key not found not found`; with v4's
+  backfill flag deleted, the boot scan's three head-and-shoulders jobs each
+  SKIP with the line + the WARN and complete.
+- **P4.D244 ⭐ bug 174 on the WIRE.** The junk-key profiles' `baseUrl`
+  pointed at the posed server (captured, then 401 — free): a Friday vault
+  photo reaches Z.AI and NanoGPT as `data:image/webp;base64,…` whose decoded
+  SHA-256 equals the vault file's own (`688b299a…`, 5,128 B); no
+  `/api/v1/mount-points/` anywhere. An uploaded image goes out as its bytes
+  too. The vault image arrives through the bug-121 rehydration (the
+  current-message path reads chat-linked `files` only — v4-faithful).
+- **P4.D241 ⭐.** The first template list logged 21 `Built-in prompt template
+  refreshed from shipped text` lines and all 21 rows now match the shipped
+  JSON byte-for-byte (v4 had NOT refreshed them on the instance). The AI
+  import's `system_prompts` step carries `300-600`, TRUST, the gated
+  disposition and the relationships sentence; External Prompt runs within
+  budget and refuses a tiny window with the new estimate (~7097 tokens).
+- **P4.D242.** All four extraction calls carry the AGREEMENTS block (system)
+  and the ordered heading (user); the fold-episode prompt is byte-identical
+  to the generated text; and on a REAL turn ending on Friday's condition the
+  cheap model stored *"…; Charlie had not yet responded when the exchange
+  ended."*
+- **P4.D243 + P4.137.** The scene note as the last user message on Continue
+  (named from the human's seat), none on a first responder, present on a 1:1
+  persona-seat Nudge; `resolvedFromSeat=false` for the `{{user}}` seat and
+  `true` speaking as a second user seat; `content:""` + `pendingToolResults`
+  persists the TOOL row and no USER row with no empty user line; an
+  image-only send anchors on the prior human turn; a whitespace-plus-file row
+  persists.
+- **P4.D240.** `quilltap db` prints compressed message text as text in both
+  modes, keeps embeddings as Buffer JSON, `qt_text()` LIKE works, and the new
+  help paragraph renders.
+- **P4.134 + P4.135.** The mount-index rename boots TWICE with v4's lazy
+  `Failed to ensure doc_mount_file_links …` line and the `state.json` WARN
+  (`context` + bare message), `list_mail` answering v4's fallback line; the
+  templates rename logs `Error seeding built-in roleplay templates` and the
+  Salon opens; the collapse gate answers `AlreadyCompleted` silently (the
+  plant's preconditions are absent on Friday, §5.5).
+
+### Corrected expectations / non-findings
+- F6's predicted `Image attachments could not be anchored` WARN cannot fire
+  in a real chat: v4's anchor falls through to ANY user-role message and the
+  Host/Prospero/Aurora notices are user-role. v5 anchors where v4 does.
+- E6 (an empty-question Carina run) has no live entry point.
+- Under the mount-index rename, `chatGet` / `listChats` answer 500 — a direct
+  repository read, P4.131's OPEN 130-site census class; not compared against
+  v4.
+- `SCENE_STATE_TRACKING` jobs from v4's queue fail on the named handler
+  deferral.
+- **One accidental real image spend:** Friday's settings have the Lantern on,
+  so the first throwaway chat bought one `gpt-image-2.5-flare` story
+  background before the walk turned the Lantern off on the copy.
+
+### Still owed
+The standing queue: the Lantern budget, a real token-limit turn, the four
+planted proofs, dedup/summaries, the Brahma deep query, #101, the compression
+re-measure, the conceal-marker arm, an autonomous room's budget, a real
+flat-body OpenAI image refusal.

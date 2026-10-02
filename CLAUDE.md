@@ -1393,6 +1393,24 @@ records THERE. Update this summary only when a phase or round completes.
   census + guard, the `fileProcessing` frame, the SPA attachment sentence,
   the SB spine key pin, Option V (k), the smalls) — `phase-4.md`. Round
   record: `status-log.md`.
+- **The `ca363178d` + `f6426e196` dogfood pass RAN (2026-10-02, agent-driven,
+  on the Friday copy) — 40 rows, 37 PASS, ZERO v5 defects, no findings.**
+  Walk doc: `dogfood-walks/2026-10-02-keys-boot-hardness-vault-image-pass.md`;
+  record in `status-log.md`. ⭐ #133 closed live: behind `refusal-server.py`'s
+  `QT_REFUSE_KEY` gate each profile sends ITS OWN key (greeting, Salon turn,
+  "Try uncensored" → the understudy's key, the Scenario Builder), and a junk
+  NanoGPT key added second now 401s where it used to answer. ⭐ Bug 174 on
+  the WIRE (a junk-key profile's `baseUrl` aimed at the posed server): a vault
+  photo reaches Z.AI and NanoGPT as bytes whose SHA-256 equals the vault
+  file's, no mount path. ⭐ P4.136's corrupted-key lines on the title, the
+  test-message, the doubled `not found not found` and three backfill SKIPs;
+  ⭐ 21 built-in prompts refreshed byte-for-byte; P4.D242's AGREEMENTS block
+  + ordered heading, and a REAL extraction storing *"…; Charlie had not yet
+  responded"*; the scene note four ways incl. `resolvedFromSeat=true`;
+  P4.134's plants booting twice. Corrected: F6's anchor WARN is unreachable in
+  a real chat (v4 anchors on any user-role message). ⚠ **Walk rule:** Friday's
+  Lantern is ON — disable it on the copy before creating test chats (one real
+  background was bought). **Still owed:** the standing queue.
 - **Oracle baseline: `f6426e196` (2026-10-01, v4 main — "Fix bug 174: send
   vault image bytes, not a server path, to Z.AI and NanoGPT",
   `4.10.0-dev.106`), adopted at the `f6426e196` round's unification

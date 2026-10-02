@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-02 — docs(dogfood): the ca363178d + f6426e196 rounds' dogfood pass — 40 rows, 37 PASS, zero v5 defects
+
+_Docs-only change._
+
+Agent-driven walk on a fresh copy of the Friday instance covering P4.D240–D243, P4.133, P4.134 (the `ca363178d` round) and P4.D244, P4.135–P4.137 (the `f6426e196` round). No v5 defect found; no findings filed.
+
+- Proven live: each connection profile sends its own API key (behind `refusal-server.py`'s key gate, including the uncensored retry and the Scenario Builder); a vault photo reaches Z.AI and NanoGPT as image bytes, checked on the captured wire by SHA-256; the corrupted-key fallback lines and 404s; the 21 built-in prompts refreshed byte-for-byte; the memory-consent prompts and a real stored "had not yet responded" memory; the scene note; the CLI's compressed-text decode; the boot-hardness plants.
+- One expectation corrected (the image-anchor WARN is unreachable in a real chat, matching v4) and one row unreachable live (an empty-question Carina run).
+- `harness/tools/refusal-server.py` gains a `json` mode so multi-step generators reach their later steps on a posed desk.
+- Walk doc: `docs/developer/porting/dogfood-walks/2026-10-02-keys-boot-hardness-vault-image-pass.md`; record in `status-log.md`; two standing notes in `dogfood-findings.md`.
+
 #### 2026-10-02 — docs(porting): unify the f6426e196 round — the baseline moves to f6426e196; all five lanes landed; the review's findings fixed
 
 _Docs-only change._
