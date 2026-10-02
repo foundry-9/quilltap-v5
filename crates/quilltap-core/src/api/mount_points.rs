@@ -12,7 +12,7 @@ use serde_json::{json, Map, Value};
 
 use crate::db::character_vault::scaffold_character_mount;
 use crate::db::doc_mount_chunks::{
-    count_embedded_by_mount_point_ids, count_nonempty_embeddings_by_mount_point_id,
+    count_embedded_by_mount_point_ids_or_empty, count_nonempty_embeddings_by_mount_point_id_or_zero,
 };
 use crate::db::doc_mount_points::{
     find_all_full_json, CreateOptions, DmpCreate, DmpUpdate, DocMountPointsRepository,
@@ -113,7 +113,8 @@ pub fn mount_point_list(db: &Db) -> Response {
             .iter()
             .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
             .collect();
-        let counts = count_embedded_by_mount_point_ids(conn, &ids)?;
+        // v4 `route.ts:60`: a fallback `withRawDb(new Map())` (P4.142).
+        let counts = count_embedded_by_mount_point_ids_or_empty(conn, &ids);
         let enriched: Vec<Value> = mounts
             .into_iter()
             .map(|mut m| {
@@ -145,7 +146,10 @@ pub fn mount_point_get(db: &Db, mount_point_id: &str) -> Response {
         let repo = DocMountPointsRepository::new(conn);
         match repo.find_full_json_by_id(mount_point_id)? {
             Some(mut mp) => {
-                let count = count_nonempty_embeddings_by_mount_point_id(conn, mount_point_id)?;
+                // v4 `[id]/route.ts:69`: `findByMountPointId`, a fallback read
+                // — a failure counts 0 (P4.142).
+                let count =
+                    count_nonempty_embeddings_by_mount_point_id_or_zero(conn, mount_point_id);
                 let capabilities = derive_mount_capabilities(&mp);
                 if let Some(obj) = mp.as_object_mut() {
                     obj.insert("embeddedChunkCount".into(), json!(count));
@@ -1149,5 +1153,108 @@ mod tests {
             2,
             "the store survives"
         );
+    }
+}
+
+#[cfg(test)]
+mod chunk_fallback_tests {
+    use super::{mount_point_get, mount_point_list};
+    use crate::api::types::Response;
+    use crate::db::runtime::{Db, DbPaths};
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A provisioned instance (its built-in stores) with `plant` run on the
+    /// mount-index file first.
+    fn instance(dir: &tempfile::TempDir, plant: Option<&str>) -> Db {
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let mount = dir.path().join("quilltap-mount-index.db");
+        if let Some(sql) = plant {
+            crate::db::Writer::open_writable(&mount, PEPPER)
+                .unwrap()
+                .connection()
+                .execute_batch(sql)
+                .unwrap();
+        }
+        Db::open(
+            DbPaths {
+                main: dir.path().join("quilltap.db"),
+                mount_index: Some(mount),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap()
+    }
+
+    /// `mountPointId`, not `embedding`: v4 hydrates the GET's chunks with
+    /// `SELECT *` + Zod, so a renamed `embedding` is no failure there (it
+    /// counts 0 silently) — only a column BOTH stacks' queries name fails both.
+    const CHUNKS_RENAME: &str =
+        "ALTER TABLE doc_mount_chunks RENAME COLUMN mountPointId TO mountPointId_x";
+
+    fn mounts(resp: &Response) -> Vec<serde_json::Value> {
+        match resp {
+            Response::MountPoint(v) => v["mountPoints"].as_array().cloned().unwrap(),
+            other => panic!("expected the list, got {other:?}"),
+        }
+    }
+
+    /// P4.142: the LIST's cheap count is v4's fallback `withRawDb(new Map())`
+    /// (`route.ts:60`) — a failed count logs `Error counting embedded chunks by
+    /// mount point IDs` and every mount answers `embeddedChunkCount: 0` (200),
+    /// where v5 had failed the whole list (500).
+    #[test]
+    fn a_failed_list_count_logs_v4s_line_and_counts_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = instance(&dir, Some(CHUNKS_RENAME));
+        let (resp, lines) = crate::test_support::captured_with(|| mount_point_list(&db));
+        let mounts = mounts(&resp);
+        assert!(!mounts.is_empty());
+        assert!(
+            mounts.iter().all(|m| m["embeddedChunkCount"] == 0),
+            "{mounts:?}"
+        );
+        assert_eq!(
+            lines,
+            vec![format!(
+                "ERROR quilltap::db Error counting embedded chunks by mount point IDs collection=doc_mount_chunks mountPointIdCount={} error=no such column: mountPointId",
+                mounts.len()
+            )]
+        );
+    }
+
+    /// P4.142: the GET-[id]'s expensive count is v4's `findByMountPointId`
+    /// hydrate (`[id]/route.ts:69`), a fallback read — `Error finding entities by
+    /// filter {collection: doc_mount_chunks}` and a count of 0 (200).
+    #[test]
+    fn a_failed_get_count_logs_v4s_line_and_counts_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = instance(&dir, Some(CHUNKS_RENAME));
+        let id = mounts(&mount_point_list(&db))[0]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let (resp, lines) = crate::test_support::captured_with(|| mount_point_get(&db, &id));
+        match resp {
+            Response::MountPoint(v) => assert_eq!(v["mountPoint"]["embeddedChunkCount"], 0),
+            other => panic!("expected the mount point, got {other:?}"),
+        }
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding entities by filter collection=doc_mount_chunks error=no such column: mountPointId".to_string()]
+        );
+    }
+
+    /// The silence legs: a healthy instance logs neither line.
+    #[test]
+    fn healthy_counts_are_silent() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = instance(&dir, None);
+        let (resp, lines) = crate::test_support::captured_with(|| mount_point_list(&db));
+        let id = mounts(&resp)[0]["id"].as_str().unwrap().to_string();
+        assert!(lines.is_empty(), "{lines:?}");
+        let (_, lines) = crate::test_support::captured_with(|| mount_point_get(&db, &id));
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }

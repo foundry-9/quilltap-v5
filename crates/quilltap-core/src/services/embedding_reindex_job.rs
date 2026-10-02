@@ -556,10 +556,16 @@ async fn phase_mount_chunks(
     let mut counts = Counts::default();
     for mount_point in &mount_points {
         let mp = mount_point.id.clone();
-        let chunks = db.read_mount_index(move |conn| {
-            crate::db::doc_mount_chunks::DocMountChunksRepository::new(conn)
-                .find_rows_by_mount_point_id(&mp)
-        })?;
+        // v4 `embedding-reindex.ts:295`: `findByMountPointId`, a fallback read
+        // whose `getCollection()` runs inside the same `safeQuery` — so the
+        // whole checkout sits inside the home (P4.142), and the handler's own
+        // `Failed to process document mount chunks` catch is unreachable on it.
+        let chunks = crate::db::fallback::find_by_filter_or_empty("doc_mount_chunks", || {
+            db.read_mount_index(move |conn| {
+                crate::db::doc_mount_chunks::DocMountChunksRepository::new(conn)
+                    .find_rows_by_mount_point_id(&mp)
+            })
+        });
         for chunk in &chunks {
             if partial && embedding_matches_dim(chunk.embedding_dim, target_dim) {
                 counts.dim_matched += 1;
@@ -626,5 +632,76 @@ impl crate::services::job_runner::JobHandler for EmbeddingReindexAllHandler {
                 Err(e) => crate::services::job_runner::JobOutcome::Failed(e),
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod chunk_fallback_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// P4.142: phase 4's per-mount chunk read (v4 `embedding-reindex.ts:295`,
+    /// `findByMountPointId`) falls back — one `Error finding entities by filter`
+    /// per enabled mount and nothing queued; the handler's own `Failed to process
+    /// document mount chunks` catch is unreachable on it, as in v4. The read runs
+    /// on the calling thread (the read pool), so the thread-scoped capture sees it.
+    #[test]
+    fn a_failed_chunks_read_logs_v4s_line_per_mount_and_queues_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let mount = dir.path().join("quilltap-mount-index.db");
+        let enabled: i64 = {
+            let w = crate::db::Writer::open_writable(&mount, PEPPER).unwrap();
+            w.connection()
+                .execute_batch("ALTER TABLE doc_mount_chunks RENAME COLUMN linkId TO linkId_x")
+                .unwrap();
+            w.connection()
+                .query_row(
+                    "SELECT COUNT(*) FROM doc_mount_points WHERE enabled = 1",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap()
+        };
+        assert!(enabled > 0, "the provisioned instance has enabled stores");
+        let db = Db::open(
+            DbPaths {
+                main: dir.path().join("quilltap.db"),
+                mount_index: Some(mount),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let payload = EmbeddingReindexAllPayload {
+            profile_id: "prof-1".into(),
+            scope: None,
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(phase_mount_chunks(
+                &db,
+                "u-1",
+                &payload,
+                "2026-10-02T00:00:00.000Z",
+                false,
+                0,
+            ))
+        });
+        let (jobs, counts) = got.unwrap();
+        assert!(jobs.is_empty());
+        assert_eq!(counts.enqueued, 0);
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error finding entities by filter collection=doc_mount_chunks error=no such column: linkId".to_string();
+                enabled as usize
+            ]
+        );
     }
 }

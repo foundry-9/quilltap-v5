@@ -1372,7 +1372,9 @@ async fn prune_vault(db: &Db, character_id: &str) -> bool {
                 // Chunk ids first: the delete cascades them away, and their
                 // embedding_status rows would otherwise linger as permanent
                 // orphans.
-                let chunk_ids = chunks_repo.find_ids_by_link_id(link_id)?;
+                // v4 `archive-service.ts:844`: `findByLinkId`, a fallback read
+                // (`[]` after `Error finding entities by filter` — P4.142).
+                let chunk_ids = chunks_repo.find_ids_by_link_id_or_empty(link_id);
                 links_repo.delete_with_gc(link_id)?;
                 for chunk_id in chunk_ids {
                     statuses.delete_by_entity("MOUNT_CHUNK", &chunk_id)?;

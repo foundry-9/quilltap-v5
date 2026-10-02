@@ -270,17 +270,77 @@ mod tests {
     /// A failed enqueue WARNs with v4's field name — `mountPointId` on both of
     /// v4's source lines (`save-image-to-album.ts:320-323`,
     /// `auto-describe-attachment.ts:171-174`); the TEXT divergence is the
-    /// recorded one. Forced by dropping the mount's `doc_mount_chunks` between
-    /// the hand-off and the run — the enqueue's first read that still
-    /// PROPAGATES: the links read before it is v4's fallback `findByMountPointId`
-    /// (`[]` after its own ERROR, `embedding-scheduler.ts:33`), so dropping
-    /// `doc_mount_file_links` no longer fails the run (P4.131), while the chunks
-    /// read (`:60`) keeps the failure independent of the mount holding
-    /// un-embedded chunks (a chunk-less mount answers `Ok(0)` before it ever
-    /// touches `background_jobs`). A plain `#[test]` with its own runtime, because the
-    /// capture is a thread-scoped sync closure.
+    /// recorded one.
+    ///
+    /// **This arm is v5-ONLY (P4.142).** Every read in v4's
+    /// `enqueueEmbeddingJobsForMountPoint` is a fallback — the links read
+    /// (`embedding-scheduler.ts:33`), the chunks read (`:60`), `embeddingProfiles.
+    /// findAll()` (`:77`) and `users.findAll()` (`:89`) all answer empty after
+    /// their own ERROR — and the per-chunk enqueue is try/caught (`:104-121`),
+    /// so v4's `.catch` WARN is UNREACHABLE on any database failure. The chunks
+    /// read was the last propagating one here; P4.142 gave it v4's fallback (a
+    /// dropped `doc_mount_chunks` now logs and answers `Ok(0)` — this test went
+    /// red at 0 warns, measured). The one failure left is v5's own: a `Db`
+    /// opened WITHOUT a mount-index partition (`ws.mount_index()` → `None` →
+    /// `DbError::Internal`, the closure above), where v4's `requireMountIndexDb`
+    /// would throw inside a `safeQuery` and fall back. The field-name pin rides
+    /// on that arm. A plain `#[test]` with its own runtime, because the capture
+    /// is a thread-scoped sync closure.
     #[test]
     fn a_failed_enqueue_warns_with_v4s_field_name() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        // A main DB only: no mount-index partition at all.
+        let dpath = dir.path().to_path_buf();
+        crate::services::provisioning::provision_fresh_instance(&dpath, PEPPER).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: dpath.join("quilltap.db"),
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let queue: Arc<Mutex<Vec<Task>>> = Arc::new(Mutex::new(Vec::new()));
+        let q = queue.clone();
+        arm_background_spawner_for_current_thread(Arc::new(move |fut| {
+            q.lock().unwrap().push(fut);
+        }));
+        let fx = MountEmbeddingSideEffects::new(db.clone());
+        fx.enqueue_embedding_jobs("mp-1");
+        disarm_background_spawner_for_current_thread();
+        let tasks: Vec<Task> = std::mem::take(&mut *queue.lock().unwrap());
+        assert_eq!(tasks.len(), 1, "one enqueue handed to the spawner");
+        let (_, logs) = captured_with(|| {
+            for t in tasks {
+                rt.block_on(t);
+            }
+        });
+        let warns: Vec<&String> = logs
+            .iter()
+            .filter(|l| l.contains("failed to enqueue embedding jobs for mount"))
+            .collect();
+        assert_eq!(warns.len(), 1, "{logs:?}");
+        assert!(warns[0].starts_with("WARN "), "{}", warns[0]);
+        assert!(warns[0].contains("mountPointId=mp-1"), "{}", warns[0]);
+        assert!(!warns[0].contains("mount_point_id="), "{}", warns[0]);
+        assert!(
+            warns[0].contains("embedding enqueue requires the mount-index database"),
+            "the v5-only arm: {}",
+            warns[0]
+        );
+    }
+
+    /// The measurement that retired the old poison (P4.142): a dropped
+    /// `doc_mount_chunks` is NOT a failed enqueue any more — the chunks read
+    /// logs v4's `Error finding entities by filter` and answers `[]`, the run
+    /// answers `Ok(0)`, and no WARN fires (v4's `.catch` is unreachable there).
+    #[test]
+    fn a_dropped_chunks_table_falls_back_without_the_warn() {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -307,20 +367,20 @@ mod tests {
             .unwrap();
         });
         let tasks: Vec<Task> = std::mem::take(&mut *queue.lock().unwrap());
-        assert_eq!(tasks.len(), 1, "one enqueue handed to the spawner");
         let (_, logs) = captured_with(|| {
             for t in tasks {
                 rt.block_on(t);
             }
         });
-        let warns: Vec<&String> = logs
-            .iter()
-            .filter(|l| l.contains("failed to enqueue embedding jobs for mount"))
-            .collect();
-        assert_eq!(warns.len(), 1, "{logs:?}");
-        assert!(warns[0].starts_with("WARN "), "{}", warns[0]);
-        assert!(warns[0].contains("mountPointId=mp-1"), "{}", warns[0]);
-        assert!(!warns[0].contains("mount_point_id="), "{}", warns[0]);
+        // The repository line itself fires on the WRITER thread, which the
+        // thread-scoped capture cannot see; it is pinned byte-for-byte by the
+        // scheduler's own unit (`embedding_scheduler::fallback_read_tests`).
+        assert!(
+            !logs
+                .iter()
+                .any(|l| l.contains("failed to enqueue embedding jobs")),
+            "{logs:?}"
+        );
     }
 
     /// Unarmed: a DEBUG line and no enqueue — the harness/CLI posture.

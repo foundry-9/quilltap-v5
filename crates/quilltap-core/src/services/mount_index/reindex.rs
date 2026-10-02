@@ -294,8 +294,10 @@ pub fn enqueue_embedding_jobs_scoped(
         .map(|l| l.id.clone())
         .collect();
 
+    // v4 `reindex.ts:219`: `findByMountPointId`, a fallback read (`[]` after
+    // `Error finding entities by filter` — P4.142).
     let all_chunks = crate::db::doc_mount_chunks::DocMountChunksRepository::new(mount)
-        .find_rows_by_mount_point_id(&mount_point.id)?;
+        .find_rows_by_mount_point_id_or_empty(&mount_point.id);
     let candidates: Vec<_> = all_chunks
         .iter()
         .filter(|c| in_scope_link_ids.contains(&c.link_id))
@@ -346,4 +348,67 @@ pub fn enqueue_embedding_jobs_scoped(
     }
 
     Ok((jobs, queued, skipped))
+}
+
+#[cfg(test)]
+mod chunk_fallback_tests {
+    use super::*;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn instance(
+        dir: &tempfile::TempDir,
+    ) -> (crate::db::Writer, crate::db::Writer, MountServiceInfo) {
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let main =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap.db"), PEPPER).unwrap();
+        let mount =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let id: String = mount
+            .connection()
+            .query_row("SELECT id FROM doc_mount_points LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        let info = crate::db::doc_mount_points::DocMountPointsRepository::new(mount.connection())
+            .find_service_info_by_id(&id)
+            .unwrap()
+            .unwrap();
+        (main, mount, info)
+    }
+
+    /// P4.142: `enqueueEmbeddingJobsScoped`'s chunk read (v4 `reindex.ts:219`,
+    /// `findByMountPointId`) falls back — `Error finding entities by filter` and
+    /// `[]`, so nothing is queued and nothing fails.
+    #[test]
+    fn a_failed_chunks_read_logs_v4s_line_and_queues_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount, info) = instance(&dir);
+        mount
+            .connection()
+            .execute_batch("ALTER TABLE doc_mount_chunks RENAME COLUMN linkId TO linkId_x")
+            .unwrap();
+        let opts = ReindexOptions {
+            path: None,
+            force: false,
+        };
+        let (got, lines) = crate::test_support::captured_with(|| {
+            enqueue_embedding_jobs_scoped(main.connection(), mount.connection(), &info, &opts)
+        });
+        let (jobs, queued, skipped) = got.unwrap_or_else(|e| panic!("{e}"));
+        assert!(jobs.is_empty());
+        assert_eq!((queued, skipped), (0, 0));
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding entities by filter collection=doc_mount_chunks error=no such column: linkId".to_string()]
+        );
+        let (_, lines) = crate::test_support::captured_with(|| {
+            mount
+                .connection()
+                .execute_batch("ALTER TABLE doc_mount_chunks RENAME COLUMN linkId_x TO linkId")
+                .unwrap();
+            enqueue_embedding_jobs_scoped(main.connection(), mount.connection(), &info, &opts)
+                .unwrap_or_else(|e| panic!("{e}"))
+        });
+        assert!(lines.is_empty(), "the silence leg: {lines:?}");
+    }
 }

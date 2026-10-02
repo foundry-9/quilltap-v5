@@ -172,6 +172,70 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     .expect("open db")
 }
 
+/// P4.142 — the G1 chunk-count plant: `doc_mount_chunks.mountPointId` renamed on
+/// this case's fresh copy (the column BOTH stacks' chunk queries name — v4
+/// hydrates the GET's chunks with `SELECT *` + Zod, so a renamed `embedding`
+/// would fail only v5).
+fn plant_chunks(db: &Db) {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(db.write(|w| {
+            w.mount_index()
+                .expect("mount present")
+                .connection()
+                .execute_batch(
+                    "ALTER TABLE doc_mount_chunks RENAME COLUMN mountPointId TO mountPointId_x",
+                )?;
+            Ok(())
+        }))
+        .expect("plant the chunks rename");
+}
+
+/// v4 lines the chunk plants log that v5 does not port, each with why.
+const CHUNK_PLANT_UNPORTED: &[(&str, &str)] = &[(
+    "SQLite find error",
+    "v4's SQLite BACKEND line (`backends/sqlite/backend.ts:105`) under the \
+     repository's own; the backend layer's lines are unported repo-wide (the \
+     `UNPORTED_BACKEND_LINES` of the search families)",
+)];
+
+/// The plant's compared lines: v4's `{level, message, fields}` records against
+/// v5's capture under `quilltap::db`, the `error=` tail dropped on both sides.
+fn plant_lines_match(name: &str, v4: &Value, v5: &[String]) -> Result<(), String> {
+    let mut want = Vec::new();
+    for rec in v4.as_array().cloned().unwrap_or_default() {
+        let message = rec["message"].as_str().unwrap_or_default().to_string();
+        if CHUNK_PLANT_UNPORTED.iter().any(|(m, _)| *m == message) {
+            continue;
+        }
+        let mut line = format!(
+            "{} quilltap::db {message}",
+            rec["level"].as_str().unwrap_or_default().to_uppercase()
+        );
+        for pair in rec["fields"].as_array().cloned().unwrap_or_default() {
+            line.push_str(&format!(
+                " {}={}",
+                pair[0].as_str().unwrap_or_default(),
+                pair[1].as_str().unwrap_or_default()
+            ));
+        }
+        want.push(line);
+    }
+    let got: Vec<String> = v5
+        .iter()
+        .map(|l| match l.find(" error=") {
+            Some(i) => l[..i].to_string(),
+            None => l.clone(),
+        })
+        .collect();
+    if got != want {
+        return Err(format!("{name}: lines\n  v5: {got:#?}\n  v4: {want:#?}"));
+    }
+    Ok(())
+}
+
 fn dump_folders(db: &Db, mount_id: &str) -> Value {
     let mp = mount_id.to_string();
     db.read_mount_index(move |conn| {
@@ -314,6 +378,33 @@ fn mount_points_routes_match_oracle() {
         &mp::mount_point_get(&fresh_db(&spec, "g4"), BOGUS),
         &mut failed,
     );
+
+    // --- P4.142 G1 plant arms: 200 with zero embedded counts + v4's line ---
+    for name in ["list_chunks_plant", "get_chunks_plant"] {
+        let db = fresh_db(&spec, name);
+        plant_chunks(&db);
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            if name == "list_chunks_plant" {
+                mp::mount_point_list(&db)
+            } else {
+                mp::mount_point_get(&db, MP_INDEXED)
+            }
+        });
+        let status = match &resp {
+            Response::Error(e) => http_for(e.kind),
+            _ => 200,
+        };
+        if status != oracle[name]["status"].as_i64().unwrap_or(0) {
+            eprintln!("[{name}] STATUS: v5 {status} — {resp:?}");
+            failed.push(format!("{name}:status"));
+            continue;
+        }
+        ok(name, &resp, &[], &mut failed);
+        if let Err(e) = plant_lines_match(name, &oracle[name]["logs"], &lines) {
+            eprintln!("[{name}] {e}");
+            failed.push(format!("{name}:lines"));
+        }
+    }
 
     // --- Create ---
     ok(
@@ -501,6 +592,8 @@ fn mount_points_routes_match_oracle() {
         "patch_name_case_only_self",
         "delete",
         "delete_404",
+        "list_chunks_plant",
+        "get_chunks_plant",
     ];
     let mut oracle_names: Vec<&str> = oracle.keys().map(String::as_str).collect();
     oracle_names.sort_unstable();

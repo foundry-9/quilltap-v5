@@ -914,11 +914,17 @@ async fn mount_chunk_branch<E: EmbeddingProvider>(
 ) -> Result<(), String> {
     let pid = payload.profile_id.clone().unwrap_or_default();
     let eid = payload.entity_id.clone();
-    let chunk = db
-        .read_mount_index(move |conn| {
-            crate::db::doc_mount_chunks::DocMountChunksRepository::new(conn).find_row_by_id(&eid)
-        })
-        .map_err(db_str)?;
+    // v4 `embedding-generate.ts:570`: `findById`, the fallback `_findById` (its
+    // `getCollection()` inside the same `safeQuery`) — a failed read logs `Error
+    // finding entity by ID` and is `null`, so it takes the WARN + `markAsFailed`
+    // arm below; it no longer fails the JOB (a retry) as v5's `?` did (P4.142).
+    let chunk =
+        crate::db::fallback::find_by_id_or_none("doc_mount_chunks", &payload.entity_id, || {
+            db.read_mount_index(move |conn| {
+                crate::db::doc_mount_chunks::DocMountChunksRepository::new(conn)
+                    .find_row_by_id(&eid)
+            })
+        });
     let Some(chunk) = chunk else {
         tracing::warn!(
             target: "quilltap::jobs",
@@ -1013,6 +1019,73 @@ async fn mount_chunk_try<E: EmbeddingProvider>(
         "[EmbeddingGenerate] Mount chunk embedding generated",
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod chunk_fallback_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// P4.142: the MOUNT_CHUNK branch's read (v4 `embedding-generate.ts:570`,
+    /// the fallback `findById`) — a failed read logs `Error finding entity by ID
+    /// {collection: doc_mount_chunks, id}`, is `null`, and takes v4's WARN +
+    /// `markAsFailed` arm (an `embedding_status` FAILED row, `Ok`) where v5's
+    /// `?` had failed the JOB (a retry).
+    #[test]
+    fn a_failed_chunk_read_marks_the_entity_failed() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let mount = dir.path().join("quilltap-mount-index.db");
+        crate::db::Writer::open_writable(&mount, PEPPER)
+            .unwrap()
+            .connection()
+            .execute_batch("ALTER TABLE doc_mount_chunks RENAME COLUMN linkId TO linkId_x")
+            .unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: dir.path().join("quilltap.db"),
+                mount_index: Some(mount),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let payload = EmbeddingGeneratePayload {
+            entity_type: Some("MOUNT_CHUNK".into()),
+            entity_id: "chunk-1".into(),
+            character_id: None,
+            profile_id: Some("prof-1".into()),
+            chat_id: None,
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let provider = crate::model::embedding::NoEmbeddingProvider;
+        let (got, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(mount_chunk_branch(&db, &provider, "u-1", &payload))
+        });
+        assert_eq!(got, Ok(()));
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error finding entity by ID collection=doc_mount_chunks id=chunk-1 error=no such column: linkId".to_string(),
+                "WARN quilltap::jobs [EmbeddingGenerate] Mount chunk not found chunk_id=chunk-1".to_string(),
+            ]
+        );
+        let status: String = db
+            .read_main(|c| {
+                Ok(c.query_row(
+                    "SELECT status FROM embedding_status WHERE entityType = 'MOUNT_CHUNK' AND entityId = 'chunk-1'",
+                    [],
+                    |r| r.get(0),
+                )?)
+            })
+            .unwrap();
+        assert_eq!(status, "FAILED");
+    }
 }
 
 #[cfg(test)]

@@ -316,6 +316,19 @@ impl<'c> DocMountChunksRepository<'c> {
         Ok(rows)
     }
 
+    /// v4 `findByMountPointId` exactly as its callers see it (P4.142):
+    /// `safeQuery(findByFilter(…), 'Error finding chunks by mount point ID',
+    /// …, [])`, and the inner `findByFilter` is itself a fallback
+    /// (`base.repository.ts:283-297`), so a failed read logs `Error finding
+    /// entities by filter {collection: doc_mount_chunks, error}` and answers
+    /// `[]` — the outer line is UNREACHABLE (`doc-mount-chunks.repository.ts:
+    /// 115-122`).
+    pub fn find_rows_by_mount_point_id_or_empty(&self, mount_point_id: &str) -> Vec<ChunkRow> {
+        super::fallback::find_by_filter_or_empty("doc_mount_chunks", || {
+            self.find_rows_by_mount_point_id(mount_point_id)
+        })
+    }
+
     /// v4 `searchContent` (`doc-mount-chunks.repository.ts:197`, NEW at
     /// `b220999d`): substring-search chunk text across a set of mount points,
     /// returning one row per matching document (the lowest-index matching
@@ -436,6 +449,14 @@ impl<'c> DocMountChunksRepository<'c> {
             })
     }
 
+    /// v4 `findById` exactly as its callers see it (P4.142): the inherited
+    /// `_findById` — a failed read logs `Error finding entity by ID
+    /// {collection: doc_mount_chunks, id, error}` and answers `None`
+    /// (`base.repository.ts:247-257`).
+    pub fn find_row_by_id_or_none(&self, id: &str) -> Option<ChunkRow> {
+        super::fallback::find_by_id_or_none("doc_mount_chunks", id, || self.find_row_by_id(id))
+    }
+
     /// v4 `updateEmbedding` (P4.6BL) — set just the `embedding` BLOB on a chunk
     /// (+ the minted `updatedAt`, injected here as `now_iso` per this repo's
     /// convention). The vector serializes exactly as `create` does (`empty →
@@ -477,6 +498,17 @@ impl<'c> DocMountChunksRepository<'c> {
             .query_map(params![link_id], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// v4 `findByLinkId` exactly as its callers see it (P4.142): like
+    /// [`Self::find_rows_by_mount_point_id_or_empty`], the inner `findByFilter`
+    /// answers first — `Error finding entities by filter` and `[]`; the outer
+    /// `Error finding chunks by link ID` is UNREACHABLE
+    /// (`doc-mount-chunks.repository.ts:97-110`).
+    pub fn find_ids_by_link_id_or_empty(&self, link_id: &str) -> Vec<String> {
+        super::fallback::find_by_filter_or_empty("doc_mount_chunks", || {
+            self.find_ids_by_link_id(link_id)
+        })
     }
 
     /// v4 `clearEmbeddingsByLinkId`: NULL (don't delete) every stored embedding
@@ -544,6 +576,40 @@ pub fn count_embedded_by_mount_point_ids(
         out.insert(mp, c);
     }
     Ok(out)
+}
+
+/// v4 `countEmbeddedByMountPointIds` exactly as its callers see it (P4.142): the
+/// empty-ids guard first (v4 `:132`, before `withRawDb`), then a fallback
+/// `withRawDb(new Map())` — a failed read logs `Error counting embedded chunks by
+/// mount point IDs {collection, mountPointIdCount, error}` and answers the empty
+/// map (`doc-mount-chunks.repository.ts:130-153`).
+pub fn count_embedded_by_mount_point_ids_or_empty(
+    conn: &Connection,
+    ids: &[String],
+) -> std::collections::HashMap<String, i64> {
+    if ids.is_empty() {
+        return std::collections::HashMap::new();
+    }
+    super::fallback::count_embedded_chunks_or_empty(ids.len(), || {
+        count_embedded_by_mount_point_ids(conn, ids)
+    })
+}
+
+/// The GET-\[id\] count exactly as v4's route sees it (P4.142): v4 hydrates via
+/// `findByMountPointId`, whose inner `findByFilter` falls back — `Error finding
+/// entities by filter {collection: doc_mount_chunks}` and `[]` — so a failed read
+/// counts `0` (`app/api/v1/mount-points/[id]/route.ts:69`). v5 counts in SQL;
+/// the home's `Vec` shape carries the one number.
+pub fn count_nonempty_embeddings_by_mount_point_id_or_zero(
+    conn: &Connection,
+    mount_point_id: &str,
+) -> i64 {
+    super::fallback::find_by_filter_or_empty("doc_mount_chunks", || {
+        count_nonempty_embeddings_by_mount_point_id(conn, mount_point_id).map(|n| vec![n])
+    })
+    .first()
+    .copied()
+    .unwrap_or(0)
 }
 
 /// v4 GET-\[id\]'s EXPENSIVE embedded count: `findByMountPointId(id)` hydrates all
@@ -829,5 +895,100 @@ mod search_tests {
             lines,
             vec!["ERROR quilltap::db Error searching chunk content collection=doc_mount_chunks mountPointIdCount=1 queryLength=7 error=no such table: doc_mount_file_links".to_string()]
         );
+    }
+}
+
+#[cfg(test)]
+mod fallback_twin_tests {
+    use super::*;
+
+    /// The chunk columns every twin's read names (`CHUNK_ROW_SELECT`, the
+    /// `linkId` / `mountPointId` filters, the embedded count).
+    fn chunks() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_chunks (
+                id TEXT PRIMARY KEY NOT NULL, linkId TEXT NOT NULL,
+                mountPointId TEXT NOT NULL, chunkIndex REAL NOT NULL,
+                content TEXT NOT NULL, embedding BLOB);
+             INSERT INTO doc_mount_chunks VALUES ('c-1', 'l-1', 'mp-1', 0, 'x', NULL);",
+        )
+        .unwrap();
+        conn
+    }
+
+    /// P4.142: the three repository twins answer v4's fallbacks with v4's lines
+    /// — `Error finding entities by filter` for `findByMountPointId` /
+    /// `findByLinkId` (their outer lines unreachable) and `Error finding entity
+    /// by ID` for `findById` — and the two free counts the home's count line /
+    /// the filter line. The `find_ids_by_link_id_or_empty` pin stands for the
+    /// character-archive prune's site (`character_archive/service.rs`), whose
+    /// read runs inside `db.write` on the writer thread, out of a thread-scoped
+    /// capture's reach.
+    #[test]
+    fn the_chunk_twins_log_v4s_lines_and_answer_the_fallbacks() {
+        let conn = chunks();
+        conn.execute_batch(
+            "ALTER TABLE doc_mount_chunks RENAME COLUMN mountPointId TO mountPointId_x",
+        )
+        .unwrap();
+        let repo = DocMountChunksRepository::new(&conn);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                repo.find_rows_by_mount_point_id_or_empty("mp-1").len(),
+                repo.find_row_by_id_or_none("c-1").is_none(),
+                count_embedded_by_mount_point_ids_or_empty(&conn, &["mp-1".to_string()]).len(),
+                count_nonempty_embeddings_by_mount_point_id_or_zero(&conn, "mp-1"),
+            )
+        });
+        assert_eq!(got, (0, true, 0, 0));
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error finding entities by filter collection=doc_mount_chunks error=no such column: mountPointId".to_string(),
+                "ERROR quilltap::db Error finding entity by ID collection=doc_mount_chunks id=c-1 error=no such column: mountPointId".to_string(),
+                "ERROR quilltap::db Error counting embedded chunks by mount point IDs collection=doc_mount_chunks mountPointIdCount=1 error=no such column: mountPointId".to_string(),
+                "ERROR quilltap::db Error finding entities by filter collection=doc_mount_chunks error=no such column: mountPointId".to_string(),
+            ]
+        );
+        let conn = chunks();
+        conn.execute_batch("ALTER TABLE doc_mount_chunks RENAME COLUMN linkId TO linkId_x")
+            .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            DocMountChunksRepository::new(&conn).find_ids_by_link_id_or_empty("l-1")
+        });
+        assert!(got.is_empty());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding entities by filter collection=doc_mount_chunks error=no such column: linkId".to_string()]
+        );
+    }
+
+    /// The silence legs, and the count's empty-ids guard BEFORE the home (v4's
+    /// `:132` precedes `withRawDb`) — silent even on a broken table.
+    #[test]
+    fn the_chunk_twins_are_silent_on_success_and_on_empty_ids() {
+        let conn = chunks();
+        let repo = DocMountChunksRepository::new(&conn);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                repo.find_rows_by_mount_point_id_or_empty("mp-1").len(),
+                repo.find_row_by_id_or_none("c-1").map(|r| r.id),
+                repo.find_ids_by_link_id_or_empty("l-1"),
+                count_embedded_by_mount_point_ids_or_empty(&conn, &["mp-1".to_string()]).len(),
+                count_nonempty_embeddings_by_mount_point_id_or_zero(&conn, "mp-1"),
+            )
+        });
+        assert_eq!(
+            got,
+            (1, Some("c-1".to_string()), vec!["c-1".to_string()], 0, 0)
+        );
+        assert!(lines.is_empty(), "{lines:?}");
+        let broken = Connection::open_in_memory().unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            count_embedded_by_mount_point_ids_or_empty(&broken, &[]).len()
+        });
+        assert_eq!(got, 0);
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }

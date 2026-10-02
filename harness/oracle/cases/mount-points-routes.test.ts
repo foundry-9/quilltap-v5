@@ -168,7 +168,50 @@ async function dumpCascade(mountId: string): Promise<unknown> {
 
 interface CaseSpec {
   name: string;
-  run: () => Promise<{ status: number; body: unknown; tables?: unknown }>;
+  run: () => Promise<{ status: number; body: unknown; tables?: unknown; logs?: unknown }>;
+}
+
+/**
+ * P4.142 — a G1 plant arm: RENAME a `doc_mount_chunks` column on this case's
+ * fresh copy (v4's own raw mount-index handle, after `initializeDatabase()`),
+ * then run `call` with every ERROR/WARN recorded off the `Logger` prototype as
+ * `{level, message, fields}` (`module`/`error` omitted — the mail-tools plant
+ * recipe). `mountPointId` is the column BOTH stacks' chunk queries name: v4
+ * hydrates the GET's chunks with `SELECT *` + Zod, so a renamed `embedding`
+ * would be no failure there.
+ */
+async function withChunksPlant(
+  call: () => Promise<{ status: number; body: unknown }>,
+): Promise<{ status: number; body: unknown; logs: unknown }> {
+  const { getRawMountIndexDatabase } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  const midb = getRawMountIndexDatabase();
+  if (!midb) throw new Error('raw mount-index handle unavailable');
+  midb.exec('ALTER TABLE "doc_mount_chunks" RENAME COLUMN "mountPointId" TO "mountPointId_x"');
+  const { Logger } = await import('@/lib/logger');
+  const logs: Array<Record<string, unknown>> = [];
+  for (const level of ['error', 'warn'] as const) {
+    const original = Logger.prototype[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      const fields: Array<[string, string]> = [];
+      for (const [k, v] of Object.entries(context ?? {})) {
+        if (k === 'module' || k === 'error') continue;
+        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+          fields.push([k, String(v)]);
+        }
+      }
+      logs.push({ level, message, fields });
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  const out = await call();
+  return { ...out, logs };
 }
 
 async function loadRoute(
@@ -211,6 +254,7 @@ async function runCase(
       status: out.status,
       body: out.body,
       ...(out.tables !== undefined ? { tables: out.tables } : {}),
+      ...(out.logs !== undefined ? { logs: out.logs } : {}),
     };
   } finally {
     await closeDatabase();
@@ -428,6 +472,22 @@ async function main(): Promise<void> {
       name: 'delete_404',
       run: async () =>
         respond(await (await idRoute()).DELETE(mockRequest(`${B}/${BOGUS}`), params(BOGUS))),
+    },
+    // P4.142 (G1 — the two chunk-count sites): the LIST's cheap count is a
+    // fallback `withRawDb(new Map())` and the GET's hydrate a fallback
+    // `findByMountPointId`, so a broken chunks table answers 200 with zero
+    // embedded counts and v4's repository line, never a 500.
+    {
+      name: 'list_chunks_plant',
+      run: async () =>
+        withChunksPlant(async () => respond(await (await coll()).GET(mockRequest(B)))),
+    },
+    {
+      name: 'get_chunks_plant',
+      run: async () =>
+        withChunksPlant(async () =>
+          respond(await (await idRoute()).GET(mockRequest(`${B}/${MP_INDEXED}`), params(MP_INDEXED))),
+        ),
     },
   ];
 

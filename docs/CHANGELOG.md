@@ -74,6 +74,12 @@ _Versions: core 0.0.1148._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `TransportError` gains `kind: TransportErrorKind` (`Http`, `Connect`, `Timeout`) and four constructors: `http(status, body)`, `connect(message)`, `timeout(message)` and `headers_timeout(ms)` (now a `Timeout`). All 52 struct literals across 12 files (core 38, harness 14) now go through them. `is_headers_timeout`'s message-prefix sniff is replaced by `is_timeout()`, which reads the kind. Behaviour does not change: every status-less site is `Connect`, every status site is `Http`, and the headers timeout is still the only `Timeout`. This is P4.141's first commit, landed early so a later field cannot cross the shared struct's literals again.
+#### 2026-10-02 — feat(db): P4.142 unit 5 — the doc_mount_chunks reads take v4's fallbacks
+
+_Versions: core 0.0.1151, harness 0.0.1078._
+
+Fallback twins for the chunk reads v4 wraps in fallback queries: `find_rows_by_mount_point_id_or_empty`, `find_ids_by_link_id_or_empty`, `find_row_by_id_or_none`, `count_embedded_by_mount_point_ids_or_empty` and the GET-[id] `count_nonempty_embeddings_by_mount_point_id_or_zero`. Seven callers are repointed: the embedding scheduler, the scoped reindex enqueue, the reindex-all job's mount phase, the embedding-generate MOUNT_CHUNK branch (a failed read now takes v4's WARN plus markAsFailed arm instead of failing the job), the character-archive prune, and both mount-point routes (a broken chunks table answers 200 with zero embedded counts instead of a 500). The photo side effect's enqueue-failure WARN test is re-aimed at its v5-only arm (no mount-index partition), since v4's catch can't fire on a database failure. `mount_points_routes_equivalence` gains two plant arms against v4's real routes.
+
 #### 2026-10-02 — feat(api): P4.142 unit 4 — the chat list and chat GET answer v4's status, body and lines under a broken mount index
 
 _Versions: core 0.0.1150, harness 0.0.1077._

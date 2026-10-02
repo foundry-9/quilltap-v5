@@ -160693,3 +160693,64 @@ scope → the caller's `Err`), on the union.
   at the first participant's `?` — 11. Same status, body and catch line. The
   loop is outside this lane's error-arm scope in `api/salon.rs`; named for the
   successor (Tier 3 below).
+
+### Unit 5 — the chunk reads take v4's fallbacks; the re-poison re-aimed (core 0.0.1151, harness 0.0.1078)
+
+- Twins in `db/doc_mount_chunks.rs` (survey §A1/§A4):
+  `find_rows_by_mount_point_id_or_empty` and `find_ids_by_link_id_or_empty`
+  → `find_by_filter_or_empty("doc_mount_chunks", …)` (v4's outer `Error
+  finding chunks by …` lines are UNREACHABLE behind the inner `findByFilter`);
+  `find_row_by_id_or_none` → `find_by_id_or_none`; the free
+  `count_embedded_by_mount_point_ids_or_empty` (empty-ids guard BEFORE the
+  home, v4 `:132`) → unit 1's count home; the GET-[id]
+  `count_nonempty_embeddings_by_mount_point_id_or_zero` → the filter line
+  (v4 hydrates via `findByMountPointId`) answering 0.
+- Repointed: `services/mount_index/embedding_scheduler.rs:166`,
+  `services/mount_index/reindex.rs:297-298`, `services/embedding_reindex_job.rs`
+  (phase 4 — the WHOLE `read_mount_index` checkout inside the home, v4's
+  `getCollection()` sits inside the same `safeQuery`),
+  `services/embedding_generate_job.rs` (MOUNT_CHUNK — the whole checkout inside
+  `find_by_id_or_none`; a failed read now takes the already-ported WARN +
+  `markAsFailed` arm where v5's `?` failed the JOB), `services/
+  character_archive/service.rs:1375`, `api/mount_points.rs` ×2.
+- **Capture-pin units, each line + the caller's v4 outcome + a silence leg:**
+  `embedding_scheduler::fallback_read_tests` (`Ok(0)`), `reindex::
+  chunk_fallback_tests` (`([], 0, 0)`), `embedding_reindex_job::
+  chunk_fallback_tests` (one line PER enabled mount, nothing queued),
+  `embedding_generate_job::chunk_fallback_tests` (the line, then the WARN, an
+  `embedding_status` FAILED row, `Ok`), `mount_points::chunk_fallback_tests`
+  (list + get: 200 with zero counts + the line; silence on a healthy
+  instance), `doc_mount_chunks::fallback_twin_tests` (all five twins' exact
+  lines + silence + the count's empty-ids guard). **The archive prune's site
+  is pinned at the twin** (`find_ids_by_link_id_or_empty`): its read runs inside
+  `db.write` on the writer thread, out of a thread-scoped capture's reach;
+  `character_archive_tier2` covers the path as neutrality.
+- **Item 6 — `mount_embedding_effects` re-aimed.** At the scheduler
+  conversion the old test went **RED exactly as predicted**:
+  `a_failed_enqueue_warns_with_v4s_field_name` — `assertion left == right
+  failed: left: 0 right: 1` (no WARN: the dropped chunks table now logs and
+  answers `Ok(0)`). Re-poisoned with a `Db` opened WITHOUT a mount-index
+  partition (`ws.mount_index()` → `None` → `DbError::Internal("embedding enqueue
+  requires the mount-index database")`) — the doc comment says the arm is
+  v5-ONLY (every read in v4's `enqueueEmbeddingJobsForMountPoint` falls back,
+  so its `.catch` WARN is unreachable on a database failure). The field-name
+  pins stay, plus one on the v5-only error text; a sibling test pins the
+  retired poison's new behaviour (no WARN).
+- **G1 plant arms — `mount_points_routes_equivalence` (v4's REAL routes):**
+  `list_chunks_plant` / `get_chunks_plant` (oracle `mount-points-routes.
+  test.ts`, `withChunksPlant`: a `doc_mount_chunks.mountPointId` RENAME through
+  v4's raw handle + a `Logger.prototype` spy). **Measured:** a renamed
+  `embedding` is NO failure on v4's GET (its chunks hydrate with `SELECT *` +
+  Zod and count 0 silently), so the plant renames `mountPointId`, which BOTH
+  stacks' queries name (the units use the same plant). v4 answers 200 with
+  every `embeddedChunkCount` 0 and logs `Error counting embedded chunks by mount
+  point IDs {collection, mountPointIdCount: 15}` (list) / `Error finding
+  entities by filter {collection}` (get) — plus, on the GET, the BACKEND's
+  `SQLite find error {table}` (excluded, `CHUNK_PLANT_UNPORTED`, the search
+  families' `UNPORTED_BACKEND_LINES` class). **Red-first** (the route's two
+  reads back to `?`, by file backup): both arms **RED on STATUS** (v5 500
+  `sqlite error: no such column: mountPointId` vs v4 200). Green after; the
+  family 19 → 21 cases.
+- Named, NOT changed (pre-existing, outside the order): the MOUNT_CHUNK
+  branch's `[EmbeddingGenerate] Mount chunk not found` WARN logs `chunk_id`
+  where v4 logs `{context: 'handleEmbeddingGenerate', jobId, chunkId}`.

@@ -163,7 +163,9 @@ pub fn enqueue_embedding_jobs_for_mount_point(
 
     // Un-embedded chunks whose link is not blocked (a link absent from the map
     // — e.g. its row was just deleted — defaults to allowed, v4's behavior).
-    let all_chunks = chunks_repo.find_rows_by_mount_point_id(mount_point_id)?;
+    // v4's `findByMountPointId` falls back (`Error finding entities by filter`,
+    // `[]`), so a failed read is "nothing to embed" — never an `Err` (P4.142).
+    let all_chunks = chunks_repo.find_rows_by_mount_point_id_or_empty(mount_point_id);
     let unembedded: Vec<_> = all_chunks
         .iter()
         .filter(|c| !c.has_embedding && allow_by_link.get(c.link_id.as_str()) != Some(&false))
@@ -255,5 +257,57 @@ mod resolver_split_tests {
         let conn = db_with_profiles(&[]);
         assert_eq!(default_profile_id(&conn).unwrap(), None);
         assert_eq!(default_or_first_profile_id(&conn).unwrap(), None);
+    }
+}
+
+#[cfg(test)]
+mod fallback_read_tests {
+    use super::*;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A provisioned instance's two writable connections (healthy schema, no
+    /// rows).
+    fn instance(dir: &tempfile::TempDir) -> (crate::db::Writer, crate::db::Writer) {
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        (
+            crate::db::Writer::open_writable(&dir.path().join("quilltap.db"), PEPPER).unwrap(),
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap(),
+        )
+    }
+
+    /// P4.142: v4's chunks read (`embedding-scheduler.ts:60`, `findByMountPointId`)
+    /// falls back — `Error finding entities by filter {collection:
+    /// doc_mount_chunks}` and `[]` — so a broken chunks table is "nothing to
+    /// embed", `Ok(0)`, never an `Err` (which used to reach the caller's WARN).
+    #[test]
+    fn a_failed_chunks_read_logs_v4s_line_and_enqueues_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = instance(&dir);
+        mount
+            .connection()
+            .execute_batch("DROP TABLE doc_mount_chunks")
+            .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            enqueue_embedding_jobs_for_mount_point(main.connection(), mount.connection(), "mp-1")
+        });
+        assert_eq!(got.unwrap(), 0);
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding entities by filter collection=doc_mount_chunks error=no such table: doc_mount_chunks".to_string()]
+        );
+    }
+
+    /// The silence leg: a healthy, empty mount — `Ok(0)` and no line.
+    #[test]
+    fn a_healthy_empty_mount_is_silent() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = instance(&dir);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            enqueue_embedding_jobs_for_mount_point(main.connection(), mount.connection(), "mp-1")
+        });
+        assert_eq!(got.unwrap(), 0);
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }
