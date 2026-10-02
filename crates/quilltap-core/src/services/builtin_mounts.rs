@@ -90,7 +90,11 @@ const GENERAL_SCENARIOS_FOLDER: &str = "Scenarios";
 /// ledger-complete instance skips it before `shouldRun`
 /// (`migrations/index.ts:125-129`) and then reaches these tables only through
 /// the lazy, guarded repository reads — so there v5 is HARDER than v4 (the
-/// ledger-gate divergence P4.134 named for its own order).
+/// ledger-gate divergence P4.134 named; ruled KEPT 2026-10-01 and filed
+/// upstream as v4 bug 176 — v4 never re-checks a ledgered structural
+/// migration, so a damaged table there degrades every read silently behind a
+/// healthy `/health`; P4.135 pins v5's every-boot cadence in
+/// `host_boot_hardness`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LazyRepairFailures {
     /// Every sub-step's `Err` propagates — fresh-instance provisioning, and

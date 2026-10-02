@@ -2837,9 +2837,18 @@ impl ReapedStoreChildren {
 /// This is the repair half of dogfood finding #58. `api::mount_points::
 /// cascade_delete` stops NEW orphans; these are the ones already on disk — 43
 /// links and 118 folders across 21 vanished character vaults on the measured
-/// instance (2026-08-03), which no query in either app has ever looked for.
-/// v4 offers no equivalent, so this is a deliberate v5 divergence, pinned in
-/// both directions by `store_delete_equivalence`'s `reap_orphans` arm.
+/// instance (2026-08-03), which no query in either app had looked for then.
+/// v4 has since grown its own reaper with its bug-9 fix —
+/// `reapOrphanedStoreChildren` (`lib/mount-index/orphan-store-reaper.ts`, run at
+/// boot phase 3.3b and in the daily maintenance sweep through the links
+/// repository's `sweepOrphanedStoreChildren`, at `f6426e196`) — but it reaps a
+/// different set: links / folders / DOCUMENTS (`doc_mount_documents` whose file
+/// lost its last link), never chunks and never the `doc_mount_files` row or
+/// its blob. v5 reaps links / folders / CHUNKS plus the content those links
+/// last referenced (documents included, through [`gc_orphaned_file_row`]).
+/// The difference is recorded here (P4.135), not changed; the delete-route
+/// differential `store_delete_equivalence`'s `reap_orphans` arm exercises v5's
+/// reaper over planted orphans.
 ///
 /// Distinct from its two neighbours, which key on the OPPOSITE end and cannot
 /// see these rows: [`sweep_orphaned_link_content`] and [`sweep_orphaned_files`]

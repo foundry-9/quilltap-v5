@@ -1658,18 +1658,33 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 // Friday instance has already been collapsed BY v4, so a v5 boot
                 // there must find the row and do nothing at all.
                 //
-                // v4's migration body sits inside a `try/catch` that logs
-                // `Failed to collapse duplicate avatar rolls` and reports
-                // `success: false`; its runner records the failure, writes NO
-                // ledger row, and the instance boots on. A `?` here would abort
-                // the boot where v4 carries on — so the error is logged in v4's
-                // words and swallowed, and the next boot tries again (the pass
-                // is resumable by design, and no row was stamped).
-                // RULING PENDING (P4.134): the "boots on" above is FALSE — v4's
-                // runner BREAKS on `success: false` and `instrumentation.ts`
-                // then calls `process.exit(1)` (`migrations/index.ts:162-181`,
-                // `instrumentation.ts:417-431` at `ca363178d`), so v5 is SOFTER
-                // than v4 here; escalated for a ruling, guard left unchanged.
+                // A failed pass FAILS THE BOOT — ruled 2026-10-01, P4.135 (it
+                // logged and booted on until then, which was softer than v4).
+                // v4 at `f6426e196`, in order: the migration's catch logs ERROR
+                // `Failed to collapse duplicate avatar rolls` `{context:
+                // 'migration.collapse-duplicate-avatar-rolls', error}` (the
+                // singular `migration.`, the bare message) and returns `success:
+                // false` (`collapse-duplicate-avatar-rolls-v1.ts:642-659`); the
+                // runner logs `Migration failed`, BREAKS, and logs `Migration
+                // runner completed {success: false}` (`migrations/index.ts:
+                // 171-182`, `:212-219`); `instrumentation.ts:419-428` logs
+                // `Migrations failed - cannot start server` and calls
+                // `process.exit(1)` — inside the outer `try`, so `Fatal error
+                // initializing services` is never reached. v5 emits ONLY the
+                // migration's own line: v5 has no runner, and the `built-in seed
+                // failed:` envelope this `?` reaches is v5's own fatal path (the
+                // one the hardness binary's other FATAL arms assert).
+                //
+                // The exit buys an operator nothing, which is why v4 bug 175 is
+                // filed: the pass is resumable and UNSTAMPED. No ledger row is
+                // written on failure (the stamp follows `run_pass` below; v4's is
+                // the runner's success-only `recordCompletedMigration`), and only
+                // survivors (+ protected portraits) are keyed before the delete
+                // loop — every ordinary victim stays `generationKey IS NULL` until
+                // it is deleted, so the next boot's gate finds it and the pass
+                // finishes (v4 `:398-412`, `:569`; measured on both boots by
+                // `host_boot_hardness`'s resume arm). When v4 fixes 175, this arm
+                // goes back to log-and-continue in that drift catch-up.
                 match quilltap_core::db::avatar_rolls_collapse_heal::collapse_duplicate_avatar_rolls(
                     main,
                     Some(mount_index),
@@ -1710,10 +1725,11 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                     Err(error) => {
                         tracing::error!(
                             target: "quilltap::boot",
-                            context = "migrations.collapse-duplicate-avatar-rolls",
-                            error = %error,
+                            context = "migration.collapse-duplicate-avatar-rolls",
+                            error = %quilltap_core::db::fallback::error_text(&error),
                             "Failed to collapse duplicate avatar rolls"
                         );
+                        return Err(error);
                     }
                 }
                 // === end P4.D184 ===

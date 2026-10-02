@@ -20,7 +20,12 @@
 //!     exists` `{collection, error}` (`backend.ts:763-791`,
 //!     `base.repository.ts:113-124`);
 //!   - every MIGRATION is fatal (`migrations/index.ts:162-205` →
-//!     `instrumentation.ts:417-431`, `process.exit(1)`).
+//!     `instrumentation.ts:417-431`, `process.exit(1)`) — including the
+//!     avatar-roll collapse, a resumable data pass (P4.135 made v5's boot fail
+//!     there too, by ruling; filed upstream as v4 bug 175) — but only on an
+//!     instance whose ledger lacks the migration: v4 skips a ledgered one
+//!     before its `shouldRun`, where v5 re-runs its structural ensures every
+//!     boot (the ledger-gate divergence, ruled KEPT; v4 bug 176).
 //!
 //! Each arm plants damage on a COPY, boots the real `Host`, and reads the line
 //! (level + target + message + fields, the bare driver message — never
@@ -44,6 +49,8 @@
 //!
 //! Red-first (P4.134's lane record): every GUARDED arm fails at `Host::start`
 //! on `main` as it stood; the FATAL arms stay red-on-softening by design.
+//! P4.135's two collapse arms panicked "the boot SUCCEEDED" on `main` as it
+//! stood (the soft guard); its cadence arm pins behaviour `main` already had.
 //!
 //! Run:
 //!   cargo test -p quilltap-host --test host_boot_hardness
@@ -139,6 +146,13 @@ async fn boot_planted(substrate: Substrate, plants: &[(&str, &str)]) -> Booted {
             .execute_batch(sql)
             .unwrap_or_else(|e| panic!("plant {sql:?}: {e}"));
     }
+    boot_dir(dir, data).await
+}
+
+/// Boot the real `Host` over an instance already on disk, with the capture
+/// cleared — the second half of [`boot_planted`], and the whole of
+/// [`Booted::reboot`].
+async fn boot_dir(dir: tempfile::TempDir, data: PathBuf) -> Booted {
     capture().lock().unwrap().clear();
     let result = Host::start(config(dir.path())).map_err(|e| e.to_string());
     let lines = capture().lock().unwrap().clone();
@@ -157,6 +171,18 @@ async fn boot_planted(substrate: Substrate, plants: &[(&str, &str)]) -> Booted {
 }
 
 impl Booted {
+    /// Drop this boot's host (or its error) and boot the SAME instance again —
+    /// no re-provision, no new plant. The instance lock is re-entrant per PID,
+    /// so the second `Host::start` claims it whether or not the first boot
+    /// released it.
+    async fn reboot(self) -> Booted {
+        let Booted {
+            _dir, data, result, ..
+        } = self;
+        drop(result);
+        boot_dir(_dir, data).await
+    }
+
     fn host(&self) -> &Host {
         match &self.result {
             Ok(host) => host,
@@ -234,6 +260,9 @@ const GUARDED_MESSAGES: &[&str] = &[
     "Error ensuring general scenarios folder",
     "Error ensuring general state.json",
     "Embedding dimension reconciliation failed",
+    // Not a guarded step — the FATAL collapse arm's line (P4.135), swept here
+    // for its silence leg.
+    "Failed to collapse duplicate avatar rolls",
 ];
 
 /// The silence leg: a healthy fresh instance logs none of the guarded lines,
@@ -467,8 +496,9 @@ async fn a_help_docs_view_logs_v4s_ensure_collection_pair_and_boots() {
 /// `create-help-doc-chunks-table-v1`; a failed migration exits v4 (on an
 /// instance whose ledger lacks it — a ledger-complete instance skips it before
 /// `shouldRun`, `migrations/index.ts:125-129`; v5's ensures run every boot, the
-/// ledger-gate divergence P4.134 named). The boot must still FAIL (nothing
-/// over-softened).
+/// ledger-gate divergence P4.134 named — ruled KEPT 2026-10-01, filed as v4
+/// bug 176, its cadence pinned by `the_134_plant_is_re_ensured_and_re_logged_
+/// on_every_boot`). The boot must still FAIL (nothing over-softened).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_failed_migration_counterpart_still_fails_the_boot() {
     let _serial = SERIAL.lock().await;
@@ -493,7 +523,7 @@ async fn a_failed_migration_counterpart_still_fails_the_boot() {
 /// boot. Wrapping `ensure_builtin_mounts` whole in one guard reds this arm.
 /// v4-fatal only where its ledger lacks the provisioning migration; a
 /// ledger-complete v4 instance reaches `doc_mount_folders` lazily and boots
-/// (v5 HARDER — the ledger-gate divergence, recorded).
+/// (v5 HARDER — the ledger-gate divergence, recorded; v4 bug 176).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_failed_store_provision_still_fails_the_boot() {
     let _serial = SERIAL.lock().await;
@@ -520,7 +550,8 @@ async fn a_failed_store_provision_still_fails_the_boot() {
 /// inside the provisioning migrations) stays fatal. As above: on a
 /// ledger-complete v4 instance the migration is skipped and a same-named VIEW
 /// only fails the lazy index DDL per access (`views may not be indexed`), so
-/// v4 boots where v5 does not (the ledger-gate divergence, recorded).
+/// v4 boots where v5 does not (the ledger-gate divergence, recorded; v4 bug
+/// 176).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_failed_mount_index_ddl_still_fails_the_boot() {
     let _serial = SERIAL.lock().await;
@@ -537,4 +568,197 @@ async fn a_failed_mount_index_ddl_still_fails_the_boot() {
         booted.boot_error(),
         "engine assembly failed: built-in seed failed: sqlite error: views may not be indexed"
     );
+}
+
+/// Two unkeyed avatar rolls of ONE configuration (same prompt, same model —
+/// one v0 key), the older a victim of the newer. A non-`mount-blob:`
+/// `storageKey`, so the P4.D152 realign (which reads `storageKey LIKE
+/// 'mount-blob:%'` and propagates) passes over them and the collapse is the
+/// first boot step that touches them. Shape: `host_boot_avatar_rolls_collapse.rs`'s
+/// seed, with every NOT NULL column of the fresh `files` DDL filled.
+const TWO_AVATAR_ROLLS: &str = "INSERT INTO files \
+       (id, userId, sha256, originalFilename, mimeType, size, source, category, \
+        generationPrompt, generationModel, storageKey, createdAt, updatedAt) \
+     VALUES \
+       ('roll-old', 'user-1', 'ab', 'avatar_Friday_roll-old.webp', 'image/webp', 12, \
+        'GENERATED', 'IMAGE', 'Friday in her study', 'flux-dev', 'files/roll-old.webp', \
+        '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'), \
+       ('roll-new', 'user-1', 'cd', 'avatar_Friday_roll-new.webp', 'image/webp', 12, \
+        'GENERATED', 'IMAGE', 'Friday in her study', 'flux-dev', 'files/roll-new.webp', \
+        '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z');";
+
+/// The two rolls' `(id, generationKey)` and whether the collapse's ledger row
+/// exists, read off the main partition after the boot.
+fn collapse_readback(data: &Path) -> (Vec<(String, Option<String>)>, bool) {
+    let w = Writer::open_writable(&data.join(MAIN), PEPPER).unwrap();
+    let c = w.connection();
+    let rows = c
+        .prepare("SELECT id, generationKey FROM files WHERE id LIKE 'roll-%' ORDER BY id")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let has_table: bool = c
+        .query_row(
+            "SELECT EXISTS (SELECT 1 FROM sqlite_master \
+                             WHERE type = 'table' AND name = 'migrations_state')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let ledger = has_table
+        && c.query_row(
+            "SELECT EXISTS (SELECT 1 FROM migrations_state \
+                             WHERE id = 'collapse-duplicate-avatar-rolls-v1')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    (rows, ledger)
+}
+
+/// FATAL class, host level — the avatar-roll collapse (v4's migration
+/// `collapse-duplicate-avatar-rolls-v1`, P4.D184). RULED FATAL 2026-10-01
+/// (P4.135): v4's catch logs `Failed to collapse duplicate avatar rolls`
+/// `{context: 'migration.collapse-duplicate-avatar-rolls', error}` and returns
+/// `success: false`; its runner breaks and `instrumentation.ts` calls
+/// `process.exit(1)` (`collapse-duplicate-avatar-rolls-v1.ts:642-659` →
+/// `migrations/index.ts:171-182` → `instrumentation.ts:419-428` at
+/// `f6426e196`). v5 logs the migration's own line — v4's bytes: the singular
+/// `migration.` context and the BARE driver message — and fails the boot
+/// through its own envelope. Filed upstream as v4 bug 175 (the exit buys an
+/// operator nothing: the pass is resumable and unstamped — the resume arm
+/// below measures it).
+///
+/// The plant is a trigger on the collapse's OWN first write (the keying
+/// `UPDATE … SET generationKey`), which no earlier boot step issues — a column
+/// rename would be caught by the P4.D152 realign first, or turn the gate to
+/// `NotApplicable`. It fires before any delete, so nothing changed.
+///
+/// Mutation proofs (P4.135's lane record): re-softening the arm (`Err(_) =>
+/// {}`) reds `boot_error()`; `error = %error` reds `assert_line` on the
+/// `sqlite error: ` prefix; `context` back to `migrations.` reds it too.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_failed_avatar_roll_collapse_fails_the_boot() {
+    let _serial = SERIAL.lock().await;
+    let plant = format!(
+        "{TWO_AVATAR_ROLLS}\
+         CREATE TRIGGER qt_plant_collapse BEFORE UPDATE OF generationKey ON files \
+         BEGIN SELECT RAISE(ABORT, 'planted collapse failure'); END;"
+    );
+    let booted = boot_planted(Substrate::Fresh, &[(MAIN, &plant)]).await;
+    assert_eq!(
+        booted.boot_error(),
+        "engine assembly failed: built-in seed failed: sqlite error: planted collapse failure"
+    );
+    booted.assert_line("ERROR quilltap::boot Failed to collapse duplicate avatar rolls context=migration.collapse-duplicate-avatar-rolls error=planted collapse failure");
+    // Nothing changed: both rolls present, both unkeyed, no ledger row — the
+    // next boot's gate (`generationKey IS NULL`) finds them again.
+    let (rows, ledger) = collapse_readback(&booted.data);
+    assert_eq!(
+        rows,
+        vec![
+            ("roll-new".to_string(), None),
+            ("roll-old".to_string(), None)
+        ]
+    );
+    assert!(!ledger, "a failed pass must not stamp the ledger");
+}
+
+/// Bug 175's premise, MEASURED: a pass that fails mid-delete is resumable and
+/// unstamped. The plant blocks the victim's `DELETE`, which runs AFTER the
+/// survivor is keyed (`avatar_rolls_collapse_heal.rs` keys every survivor,
+/// then repoints, then deletes; ordinary victims stay unkeyed until deleted —
+/// v4's `:398-412` / `:569`, identically). The first boot fails with the
+/// survivor keyed and the victim still present and unkeyed; with the trigger
+/// gone, the next boot's gate finds the victim, the pass regroups both rows
+/// under the same v0 key, picks the same survivor, deletes the victim and
+/// stamps the ledger. So v4's `process.exit(1)` keeps a server down for a
+/// pass the next boot would have finished — what bug 175 files.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_collapse_failed_mid_delete_resumes_on_the_next_boot() {
+    let _serial = SERIAL.lock().await;
+    let plant = format!(
+        "{TWO_AVATAR_ROLLS}\
+         CREATE TRIGGER qt_plant_collapse_delete BEFORE DELETE ON files \
+         BEGIN SELECT RAISE(ABORT, 'planted delete failure'); END;"
+    );
+    let booted = boot_planted(Substrate::Fresh, &[(MAIN, &plant)]).await;
+    assert_eq!(
+        booted.boot_error(),
+        "engine assembly failed: built-in seed failed: sqlite error: planted delete failure"
+    );
+    booted.assert_line("ERROR quilltap::boot Failed to collapse duplicate avatar rolls context=migration.collapse-duplicate-avatar-rolls error=planted delete failure");
+    let (rows, ledger) = collapse_readback(&booted.data);
+    assert_eq!(rows.len(), 2, "the victim was deleted: {rows:?}");
+    let survivor_key = rows[0]
+        .1
+        .clone()
+        .expect("the survivor was keyed before the delete");
+    assert_eq!(rows[0].0, "roll-new");
+    assert_eq!(
+        rows[1],
+        ("roll-old".to_string(), None),
+        "the victim stays unkeyed"
+    );
+    assert!(!ledger, "a failed pass must not stamp the ledger");
+
+    Writer::open_writable(&booted.data.join(MAIN), PEPPER)
+        .unwrap()
+        .connection()
+        .execute_batch("DROP TRIGGER qt_plant_collapse_delete;")
+        .unwrap();
+    let booted = booted.reboot().await;
+    booted.host();
+    booted.assert_silent("Failed to collapse duplicate avatar rolls");
+    let (rows, ledger) = collapse_readback(&booted.data);
+    assert_eq!(
+        rows,
+        vec![("roll-new".to_string(), Some(survivor_key))],
+        "the second boot finishes the pass on the same survivor and key"
+    );
+    assert!(ledger, "the completed pass stamps the ledger");
+}
+
+/// The ledger-gate divergence's CADENCE (ruled 2026-10-01: v5 KEEPS its
+/// per-boot ensures; v4 bug 176). v5 re-runs every structural ensure on EVERY
+/// boot (`host.rs`'s class (i), `builtin_mounts.rs` 25a/25f/25h) — so the #134
+/// plant logs v4's lazy-ensure line on the first boot AND again on the second,
+/// with nothing stamped in between that could stop it. v4 instead skips a
+/// migration already in `migrations_state` BEFORE its `shouldRun`
+/// (`migrations/index.ts:125-129` at `f6426e196`) and reaches the table only
+/// through the repository's lazy `ensureTable` (`dedicated-db.repository.ts:
+/// 134-152`), which logs `Failed to ensure doc_mount_file_links table in mount
+/// index database` per ACCESS (`tableEnsured` flips only on success) and never
+/// at boot, behind a `/health` that checks neither table (`app/api/health/
+/// route.ts:188-200`). There is no v4 boot oracle: "both ways" here is this
+/// arm + the three FATAL arms + the bug-176 filing + the recorded-divergence
+/// row. Converge = nothing to change on the v5 side when v4 re-checks; retire
+/// the divergence row.
+///
+/// Mutation proofs (P4.135's lane record): a once-per-PROCESS memo on
+/// `ensure_builtin_mounts_with` in `host.rs` (v4's `tableEnsured` shape, a
+/// static flag) reds this arm on its second boot and leaves the single-boot
+/// arm above green — so the arm tells per-boot from per-process. Drop the
+/// second boot and it proves only what
+/// `a_renamed_link_column_logs_v4s_ensure_table_line_and_boots` already does —
+/// the second boot is this arm's reason to exist.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_134_plant_is_re_ensured_and_re_logged_on_every_boot() {
+    let _serial = SERIAL.lock().await;
+    let line = "ERROR quilltap::db Failed to ensure doc_mount_file_links table in mount index database error=no such column: relativePath";
+    let booted = boot_planted(
+        Substrate::Fresh,
+        &[(
+            MOUNT,
+            "ALTER TABLE doc_mount_file_links RENAME COLUMN relativePath TO relativePath_x",
+        )],
+    )
+    .await;
+    booted.host();
+    booted.assert_line(line);
+    let booted = booted.reboot().await;
+    booted.host();
+    booted.assert_line(line);
 }

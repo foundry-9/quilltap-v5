@@ -42,6 +42,32 @@ _Versions: core 0.0.1140, harness 0.0.1064._
 v4 `f6426e196` ported whole. The Scriptorium-mount loader (`services/chat_files.rs`) no longer puts the server-relative `/api/v1/mount-points/...` path in `url` on either branch (native-text document or blob); `filepath` keeps it and the key order is unchanged. The Z.AI and NanoGPT request builders now send the bytes first and forward a `url` only when it is an absolute `http(s)` address (one shared `is_absolute_http` / `attachment_image_url`); a relative `url` with no bytes takes the existing `Attachment missing data or URL` refusal. OpenRouter's `url`-first rule is untouched, as in v4, and pinned as a non-change.
 
 Proofs: `file_attachment_tier3_equivalence` was green at `ca363178d` and red at `f6426e196` (the three mount rows lose `url`), green after the port, with a new `lcffl_mount_document` arm for the native-text branch that nothing exercised before (fixture grown with a `Notes/field.md` document mount). The request-envelope corpus was re-recorded at the pin from v4's real plugins (385 to 393 rows: four `url-wins` rows move to `data:`, eight relative-url rows added) and the harness pins both halves plus OpenRouter's non-change by name. Mutation proofs: restoring `url` on either loader branch, dropping the absolute-http guard, inverting the preference, and "fixing" OpenRouter each redden exactly the intended rows. `docs/v4/` mirror refreshed (CHANGELOG, bugs.md, the new bug-174 file).
+#### 2026-10-01 — fix(host): a failed avatar-roll collapse now fails the boot, as in v4 (P4.135)
+
+_Versions: core 0.0.1140, host 0.0.172._
+
+Executes the two boot rulings of 2026-10-01. The P4.D184 collapse guard in
+`seed_built_ins` no longer logs and boots on: it logs v4's own line, now with
+v4's bytes (`context = "migration.collapse-duplicate-avatar-rolls"`, singular,
+where the soft line wrote `migrations.`; the bare driver message instead of
+the `sqlite error:` prefix), then propagates through the existing `built-in
+seed failed:` envelope. v5 emits only the migration's line, not v4's runner
+or `instrumentation.ts` lines (v5 has no runner). `host_boot_hardness` gains
+three arms: a fourth FATAL-class arm (two unkeyed avatar rolls plus a `BEFORE
+UPDATE OF generationKey` trigger; boot error, captured line, and a
+nothing-changed readback), a resume arm (a `BEFORE DELETE` trigger fails the
+first boot with the survivor keyed and the victim unkeyed; with the trigger
+dropped the second boot finishes the pass and stamps the ledger), and a
+cadence arm (the #134 plant booted twice logs the lazy-ensure line on both
+boots: v5 re-ensures every boot, where v4 skips a ledgered migration before
+`shouldRun`). Both new collapse arms were red on `main` ("the boot
+SUCCEEDED"); mutation proofs recorded in the lane record. Doc-only edits in
+core: `LazyRepairFailures` names v4 bug 176, and the orphan reaper's note no
+longer says v4 has no equivalent (v4's bug-9 reaper reaps links / folders /
+documents; v5's reaps links / folders / chunks plus content). Filed upstream
+as v4 bugs 175 (the exit on a resumable, unstamped pass) and 176 (the ledger
+skip that leaves a damaged table unchecked behind a healthy `/health`),
+uncommitted in the v4 checkout for the human.
 
 #### 2026-10-01 — docs(porting): order the `f6426e196` bug-174 drift catch-up + review-follow-ups round (P4.D244 ∥ P4.135 ∥ P4.136 ∥ P4.137 ∥ P4.138)
 

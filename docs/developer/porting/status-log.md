@@ -158948,3 +158948,206 @@ Lane branch `claude/vault-image-url-provider-7179bf`, cut from `main` `50a4cdaab
 💸 dogfood: a vault photo on a Z.AI vision profile (`glm-5.3-flash`) — the request body logged BEFORE the HTTP call carries `data:image/webp;base64,…`, not `/api/v1/mount-points/…` (a bad key makes it free); the same on NanoGPT; an UPLOADED (non-vault) image on both proving the legacy `files` branch unmoved; the mirror's new bug-174 file openable.
 
 **Gate (P4.D244).** fmt clean; clippy `-D warnings` clean in both feature sets; neutral families at `f6426e196` all ok (`orchestrator_tier3_equivalence`, `request_builder_google_wire_equivalence`, `files_routes_equivalence`, `chat_gallery_equivalence`); `quilltap-core --lib` 2850 passed (incl. the 7 new `attachment_url_tests`); the two lane families plus `provider_sdk_version_guard`, `builtin_prompt_templates_guard`, `spelling_guard`, `fallback_home_guard`, `blob_write_sites_census`, `get_messages_caller_census` green by name; `recipe_sweep.py --self-test` RED with the one failure naming the five P4.138 headers (expected, not this lane's). Versions: core 0.0.1140, harness 0.0.1064. **NOT RUN — shared disk exhausted by the five parallel lanes (errno 28 during the full `cargo test --workspace` link; ~0.2 GB free at the end):** the full `cargo test --workspace` (its first attempt died at link time), `cargo build --workspace --release`, `dispatch_wrong_type_census` (441; api/types.rs untouched), Tier R `cli_differential` (nothing here touches the CLI), `npm run build`. The unifier's workspace gate covers them; the lane did not verify them.
+## P4.135 — the two boot rulings of 2026-10-01: D184 goes FATAL + v4 bug 175; the ledger gate pinned + v4 bug 176 (lane record, 2026-10-01)
+
+Lane `claude/p4-135-boot-rulings-ledger-8a86e8`, cut from `main` `50a4cdaab`
+(the orders commit over `6d44cfae2`). Order:
+`work-orders/p4.135-boot-rulings-d184-fatal-ledger-gate-filings.md`; survey of
+record `work-orders/surveys/2026-10-01-f6426e196/survey-boot-rulings-p4.135.md`
+(every load-bearing claim re-read at the pin; all held — one refinement below).
+
+**Probe (§R.2).** At lane start: `main`, HEAD `f6426e196`, tree CLEAN, both
+logs empty — PASS. Again before writing into v4: identical — PASS. Pin
+`/tmp/qt-v4-pin-p4135-f6426e196` (detached, three symlink classes; `rev-parse
+HEAD` = `f6426e1969765650ed215144c4c3c24ecdc62bf3`, `package.json`
+`4.10.0-dev.106`), used to read v4 source and as `QT_V4_CHECKOUT` for the gate.
+No oracle regenerated (none exists for a boot — §R.3).
+
+### Tier 1 — landed
+
+1. **The flip** (`host.rs`, the P4.D184 block). The `Err` arm logs v4's line
+   — `target: "quilltap::boot"`, `context = "migration.collapse-duplicate-
+   avatar-rolls"` (singular — the soft line wrote `migrations.`), `error =
+   %db::fallback::error_text(&error)` (bare — the soft line carried `sqlite
+   error:`) — then `return Err(error)` out of the writer closure into the
+   existing `built-in seed failed:` envelope (no new `HostError` variant). The
+   comment rewritten: the measured v4 order (catch → `Migration failed` →
+   `Migration runner completed {success:false}` → `Migrations failed - cannot
+   start server` → `process.exit(1)` inside the outer `try`), the
+   resumable/unstamped premise with its proof, the bug-175 pointer, and "v5
+   emits only the migration's own line; the envelope is v5's".
+2. **The fourth FATAL-class arm** `a_failed_avatar_roll_collapse_fails_the_
+   boot` (`Fresh` + two unkeyed avatar rolls of one v0 key, non-`mount-blob:`
+   `storageKey`, every NOT NULL `files` column filled from
+   `fresh_schema.json` + `BEFORE UPDATE OF generationKey` trigger): boot error
+   `engine assembly failed: built-in seed failed: sqlite error: planted
+   collapse failure`; exactly one `ERROR quilltap::boot Failed to collapse
+   duplicate avatar rolls context=migration.collapse-duplicate-avatar-rolls
+   error=planted collapse failure`; readback both rolls present, both
+   `generationKey` NULL, no ledger row. The collapse message added to
+   `GUARDED_MESSAGES` (commented as the FATAL arm's silence leg).
+3. **The cadence arm** `the_134_plant_is_re_ensured_and_re_logged_on_every_
+   boot`: the #134 plant, boot → the lazy-ensure line once → `Booted::reboot()`
+   (a new helper: drop the host, clear the capture, boot the SAME tempdir; the
+   instance lock is re-entrant per PID) → the SAME line once again. Doc states
+   both cadences with v4's lines (`migrations/index.ts:125-129`,
+   `dedicated-db.repository.ts:134-152`, `route.ts:188-200`) and bug 176.
+   `boot_planted`'s tail split into `boot_dir` so both share it.
+4. **Docs naming bug 176:** the three FATAL arms (and the module header)
+   carry the bug number; `services/builtin_mounts.rs`'s `LazyRepairFailures`
+   doc names it; `db/doc_mount_file_links.rs`'s reaper note corrected — v4
+   HAS a reaper since bug 9 (`lib/mount-index/orphan-store-reaper.ts`
+   `reapOrphanedStoreChildren`, boot phase 3.3b `instrumentation.ts:684` + the
+   daily maintenance sweep), reaping links / folders / DOCUMENTS; v5 reaps
+   links / folders / CHUNKS + content (documents included via
+   `gc_orphaned_file_row`) — recorded, not changed.
+5. **The two filings** in the v4 checkout (uncommitted — the human's):
+   `docs/developer/bugs/bug-175-collapse-failure-exits-process.md` (Open, Low,
+   Faithful → Converged, v5 status `Converged: v5 exits too, P4.135,
+   2026-10-01`), `docs/developer/bugs/bug-176-ledger-skips-shouldrun.md`
+   (Open, Medium, Pinned (v5 side only; no v4 oracle)), and two register rows
+   after 174 (Fixed `—`; v5 `Converged (fatal, P4.135)` / `Pinned (v5
+   re-ensures at boot; no v4 oracle)`). Ten metadata keys in v4's order.
+   **Bytes rule checked mechanically:** every fenced `ts` block in both files
+   is a verbatim substring of the pin's file (7/7), and every quoted log
+   message / context string is present in the pin's sources.
+   **One deliberate addition beyond "two rows":** the register's `**Status**:`
+   paragraph said "Bugs **1–174** are **fixed in v4**" with no open bug — false
+   once 175/176 exist. v4's own filing convention updates it (`aa92cf91c`, bug
+   173 filed open: "**173** is **open**: …"), so the paragraph gains one
+   sentence naming 175 and 176 as open. Same file, same dirty path.
+6. **The recorded-divergence row** (pre-written for the unifier, §S.3 →
+   `phase-4.md`'s divergence list): "v5 re-runs every structural ensure each
+   boot (`host.rs` class (i), `builtin_mounts.rs` 25a/25f/25h); v4 skips a
+   ledgered migration before `shouldRun` (`migrations/index.ts:125-129`) — v4
+   bug 176; v5 KEEPS its ensures; converge = retire this row when v4
+   re-checks. Pinned v5-side by `host_boot_hardness`'s cadence arm + the three
+   FATAL arms; no v4 oracle."
+7. **The three v4 paths this lane dirtied** — `git -C ~/source/quilltap-server
+   status --short` after the filing, verbatim:
+   ```
+    M docs/developer/bugs.md
+   ?? docs/developer/bugs/bug-175-collapse-failure-exits-process.md
+   ?? docs/developer/bugs/bug-176-ledger-skips-shouldrun.md
+   ```
+   Nothing else in v4 changed; HEAD still `f6426e196`; no `git commit`, no
+   `npm`/`jest` run in v4.
+
+### Tier 2 — landed
+
+8. **Decided: NO** — v5 does not emit v4's runner / instrumentation lines
+   (`Migration failed`, `Migration runner completed`, `Migrations failed -
+   cannot start server`) on this path. v5 has no runner; the `built-in seed
+   failed:` → `engine assembly failed:` envelope is v5's own fatal path, the
+   one every FATAL arm asserts. Recorded in the `host.rs` comment.
+9. **The resume arm** `a_collapse_failed_mid_delete_resumes_on_the_next_boot`
+   — bug 175's premise MEASURED: a `BEFORE DELETE ON files` trigger fails the
+   first boot (`… sqlite error: planted delete failure`, v4's line once) with
+   `roll-new` keyed and `roll-old` present and unkeyed, no ledger row; `DROP
+   TRIGGER` through `Writer::open_writable`; the reboot completes: no failure
+   line, ONE row left (`roll-new`, the SAME key), the
+   `collapse-duplicate-avatar-rolls-v1` ledger row present.
+10. **Mutation proofs** (each applied, run, restored by copy; the restore
+    `cmp`-checked):
+
+    | # | mutation | result |
+    |---|---|---|
+    | M1 | the arm re-softened (`return Err(error);` deleted) | RED — both collapse arms, "the boot SUCCEEDED" |
+    | M2 | `error = %error` restored | RED — the FATAL arm's `assert_line` (the `sqlite error:` prefix) |
+    | M3 | `context` back to `migrations.` | RED — the FATAL arm's `assert_line` |
+    | M4 | the cadence arm's second boot removed | SURVIVES, as the order predicted — the arm then equals `a_renamed_link_column_…`; recorded as the second boot's reason to exist |
+    | M5 | (added — so the cadence arm kills something) a once-per-process `static AtomicBool` memo around `ensure_builtin_mounts_with` in `host.rs` (v4's `tableEnsured` shape) | RED — the cadence arm alone fails on its SECOND boot; the single-boot `a_renamed_link_column_…` stays GREEN |
+
+    Red-first on `main`'s `host.rs` (tests written first): 13 passed / 2
+    failed — both collapse arms "the boot SUCCEEDED"; the captured soft line
+    read `context=migrations.collapse-duplicate-avatar-rolls error=sqlite
+    error: planted collapse failure` (both byte defects, measured). The
+    cadence arm was GREEN on `main` (it pins behaviour v5 already had).
+
+### Tier 3 — deferred by name
+
+11. The v4-side pin through v4's importable `MigrationRunner` (a jest case
+    with `migrations_state` pre-stamped and a damaged table, asserting the
+    skip — would trip when v4 fixes 176). DEFERRED (the jest-oracle traps:
+    registry/resetModules, the lazy help ensure). For `phase-4.md`'s NEXT list
+    (§S.5).
+12. v4's `failed`-but-serving outer-catch model — out of scope by design.
+
+### A survey refinement (for the bug-176 filing, recorded)
+
+The survey's table frames the four structural migrations' `shouldRun` as "the
+shape test". Measured at the pin, only two are: `create-help-doc-chunks-
+table-v1` (`!sqliteTableExists`) and `add-doc-mount-link-groups-v1` (the
+column, or orphans). The three `provision-*` check the store POINTER (running
+`ensureMountIndexTables` inside the check, true if it throws), and
+`add-doc-mount-file-links-v1` checks the PRE-refactor shape. **None would
+notice a column renamed in place** (the #134 plant). So the filing's fix
+leads with a boot-time `ensureTable` pass (fatal or reported in `/health`)
+and offers the `shouldRun` re-check as the partial second part — rather than
+claiming a re-check alone repairs the #134 case.
+
+### Gate
+
+All with `CARGO_INCREMENTAL=0`, from this worktree:
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (default;
+  `--features quilltap-core/native-transport`); `cargo build --workspace
+  --release` clean.
+- `QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4135-f6426e196
+  QT_NODE=$HOME/.nvm/versions/node/v24.13.1/bin/node cargo test --workspace
+  --no-fail-fast`: **659 test binaries / 4,088 passed / 0 failed / 3
+  ignored** (full log kept, launched in the background, awaited by its
+  notification). ⚠ The FIRST attempt died at link time with 11 `linking
+  with cc failed` errors and 0 test results — the disk was at 1.0 GB free
+  (five lanes + the main checkout's 64 GB `target/`); a rerun at 9 GB free
+  linked the rest and ran green. Not a code red. Lane families RUN by
+  non-zero duration: `host_boot_hardness` 15/0 (11.6 s),
+  `host_boot_avatar_rolls_collapse` 3/0 (unchanged, read-only),
+  `store_delete_equivalence` 1/0, `spelling_guard` 1/0.
+- Tier R by name at the pin: `CLI differential: 271 cases, 0 failures`
+  (485.6 s).
+- `dispatch_wrong_type_census` green, UNMOVED at **441** (the lane touched
+  no `api/` or web file).
+- The two live-checkout guards, run WITHOUT `QT_V4_CHECKOUT` (the live
+  checkout at `f6426e196`, dirty only by this lane's three docs paths):
+  `builtin_prompt_templates_guard` 2/0, `provider_sdk_version_guard` 3/0 —
+  GREEN.
+- `python3 harness/tools/recipe_sweep.py --self-test`: RED, exit 1, ONE
+  failure naming the alias-default headers (`doc_opacity_equivalence` …) —
+  the predicted P4.138 red, recorded, not fixed here.
+- SPA liveness: `npm ci` + `npm run build` in `apps/web` — exit 0 (bundle
+  generated); `node_modules`/`dist` removed afterwards.
+- No differential family regenerated (none exists for a boot); no sweep run.
+
+### Versions
+
+core 0.0.1139 → **0.0.1140** (two doc comments), host 0.0.171 →
+**0.0.172**. ⚠ §S.2: P4.136 also bumps host 0.0.171 → 0.0.172 — the union is
+**0.0.173**; core is bumped by P4.D244, P4.136, P4.137 too — recount.
+
+### Sibling notes / §S hunks
+
+- No family moved; `orchestrator_tier3` untouched. No `api/types.rs`,
+  `spine.rs`, `host_boot_avatar_rolls_collapse.rs` edit.
+- §S.3: `dogfood-findings.md`'s P4.D184 "RULING PENDING" → RULED + landed
+  (P4.135); the bug-176 divergence row (item 6 above) into `phase-4.md`; the
+  ledger's §1 restates the three docs-only paths above as the v4 checkout's
+  state (or, if the human has committed them, a NO-PORT? docs-only row).
+- §S.5: the `MigrationRunner` pin (item 11) into the NEXT list. When v4 fixes
+  175, the `host.rs` arm flips back to log-and-continue in that catch-up (the
+  FATAL arm then inverts; the resume arm stands).
+
+### 💸 for the dogfood pass
+
+On the Friday copy, server stopped: the §5.5 measurement first — `SELECT
+COUNT(*) FROM files WHERE originalFilename LIKE 'avatar\_%' ESCAPE '\' AND
+category='IMAGE' AND generationPrompt != '' AND generationKey IS NULL` and
+the `collapse-duplicate-avatar-rolls-v1` ledger row (v4 collapsed Friday on
+2026-09-11, so the gate likely answers `AlreadyCompleted` — record either
+way); only if an unkeyed row exists AND no ledger row, plant the `BEFORE
+UPDATE OF generationKey` trigger and see the boot fail with the singular
+`context=migration.` line, then `DROP TRIGGER`. Then P4.131's F1
+(`relativePath → relativePath_x`) booted TWICE: the lazy line on both boots,
+`/health` ready both times, `list_mail` answering v4's fallback lines; rename
+back.
