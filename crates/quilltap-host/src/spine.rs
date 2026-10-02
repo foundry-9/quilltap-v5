@@ -93,6 +93,7 @@ use quilltap_core::enclave::step::{
     step as enclave_step, AutonomousRoomTurnHandler, AutonomousRoomTurnPayload, StepDeps,
     StepFuture, StepOutcome, TurnJobMeta,
 };
+use quilltap_core::host_zone::TimeZone;
 use quilltap_core::model::completion::{
     CompletionError, CompletionParams, CompletionProvider, CompletionResponse,
 };
@@ -1078,8 +1079,15 @@ where
     pub streaming: Arc<STR>,
     /// ONE per host process (the 24 h + 5 min negative caches are state).
     pub pricing: Arc<PricingFetcher<PF>>,
-    /// IANA timezone (v4 uses the process zone).
+    /// IANA timezone NAME for the CALENDAR paths (cron, the distill's
+    /// `server_tz`, the zone-less timestamp offset; v4 uses the process zone).
     pub tz: String,
+    /// The host's DISPLAY zone VALUE (P4.140, Option V) — what every tool
+    /// runner, turn, swipe, autonomous step and the Scenario Builder clock
+    /// render dates in. Never re-derived from [`Self::tz`]: a POSIX `TZ` rule
+    /// has no IANA name, so the name falls back to `"UTC"` where the value
+    /// keeps the rule's offset.
+    pub display_zone: TimeZone,
     pub env: SelfInventoryEnv,
     pub file_bytes: Arc<ProductionFileBytes>,
     pub image_transcoder: Arc<HostImageCodec>,
@@ -1124,6 +1132,7 @@ where
             streaming: Arc::clone(&self.streaming),
             pricing: Arc::clone(&self.pricing),
             tz: self.tz.clone(),
+            display_zone: self.display_zone.clone(),
             env: self.env.clone(),
             file_bytes: Arc::clone(&self.file_bytes),
             image_transcoder: Arc::clone(&self.image_transcoder),
@@ -1158,11 +1167,10 @@ where
             runner = runner.with_image_describe(Arc::clone(image_describe));
         }
         runner = runner.with_file_bytes(Arc::clone(&self.file_bytes) as _);
-        // P4.127: the tools' dates (and Carina's progressions section, through
-        // `ToolRunner::display_zone`) render in the zone the spine was built
-        // with — the already-threaded `tz` NAME through the one helper.
-        runner =
-            runner.with_display_zone(quilltap_core::host_zone::display_zone_named(Some(&self.tz)));
+        // P4.127 / P4.140: the tools' dates (and Carina's progressions section,
+        // through `ToolRunner::display_zone`) render in the host's display zone
+        // VALUE the spine was built with — never re-derived from the `tz` NAME.
+        runner = runner.with_display_zone(self.display_zone.clone());
         runner
     }
 
@@ -1372,6 +1380,8 @@ where
             timezone: Some(self.tz.clone()),
             // The host's own zone — the memory distill's local-calendar seam.
             server_tz: Some(self.tz.clone()),
+            // P4.140: the swipe's whisper / progressions render in the VALUE.
+            display_zone: self.display_zone.clone(),
             now_ms,
             local_offset_minutes: self.local_offset_minutes(now_ms),
             random01: random01.clone(),
@@ -1591,6 +1601,7 @@ where
             timestamp_config: timestamp_config.clone(),
             timezone: Some(self.tz.clone()),
             server_tz: Some(self.tz.clone()),
+            display_zone: self.display_zone.clone(),
             provider_supports_web_search,
         };
 
@@ -1641,6 +1652,7 @@ where
         // own guard decides whether a turn fires. Each chained turn re-enters
         // process_message in continue mode with a live wall clock.
         let chain_tz = self.tz.clone();
+        let chain_zone = self.display_zone.clone();
         let chain_tcfg = timestamp_config.clone();
         let chain_chat_id = chat_id.clone();
         let tz_name = self.tz.clone();
@@ -1667,6 +1679,7 @@ where
                 timestamp_config: chain_tcfg.clone(),
                 timezone: Some(chain_tz.clone()),
                 server_tz: Some(chain_tz.clone()),
+                display_zone: chain_zone.clone(),
                 provider_supports_web_search,
             }
         };
@@ -1862,13 +1875,12 @@ where
             std::sync::Arc::clone(&req.abort),
         );
         // v4's `new Date()` rendered by `formatIsoWithOffset` in the process
-        // zone — here the zone the spine was built with (the already-threaded
-        // `tz` NAME through the one helper, as the spine's tool runner), never
-        // an ambient read: the host reads the zone ONCE, in `HostConfig::new`
-        // (P4.127; this read was the one left behind — the `97b25fc53` smalls
-        // unification).
-        let now = jiff::Timestamp::now()
-            .to_zoned(quilltap_core::host_zone::display_zone_named(Some(&self.tz)));
+        // zone — here the host's display zone VALUE the spine was built with
+        // (P4.140, Option V — the NAME rendered `+00:00` under a POSIX `TZ`),
+        // never an ambient read: the host reads the zone ONCE, in
+        // `HostConfig::new` (P4.127; this read was the one left behind — the
+        // `97b25fc53` smalls unification).
+        let now = jiff::Timestamp::now().to_zoned(self.display_zone.clone());
         Ok(run_scenario_builder(
             &deps,
             RunScenarioBuilderOptions {
@@ -2111,6 +2123,7 @@ where
             now_ms: &now_fn,
             mint_uuid: &mint_fn,
             tz: &self.tz,
+            display_zone: &self.display_zone,
             random01: random01.clone(),
             fold_executor: &fold_executor,
             model_context_limit,
@@ -2180,7 +2193,10 @@ where
     pub embedding: Arc<EMB>,
     pub completion: Arc<CMP>,
     pub streaming: Arc<STR>,
+    /// The cron NAME (the greeting's lifecycle seam).
     pub tz: String,
+    /// The host's DISPLAY zone VALUE (P4.140) — the greeting's progressions.
+    pub display_zone: TimeZone,
 }
 
 impl<EMB, CMP, STR> ChatCreateSpine<EMB, CMP, STR>
@@ -2200,6 +2216,7 @@ where
             completion: Arc::clone(&self.completion),
             streaming: Arc::clone(&self.streaming),
             tz: self.tz.clone(),
+            display_zone: self.display_zone.clone(),
         }
     }
 
@@ -2296,6 +2313,7 @@ where
             executor: &executor,
             api_keys: &api_keys,
             tz: self.tz.clone(),
+            display_zone: self.display_zone.clone(),
             now_ms,
             random01,
             lifecycle: &lifecycle,
@@ -3661,6 +3679,11 @@ pub struct ProductionSpineFactory {
     pub io: ProviderIo,
     pub version: String,
     pub tz: String,
+    /// The host's DISPLAY zone VALUE (P4.140) every built spine renders in.
+    /// [`Self::new`] defaults it to UTC (the `BuiltInToolRunner` precedent —
+    /// a test factory renders the differentials' zone); production sets it
+    /// with [`Self::with_display_zone`] from `HostConfig.display_zone`.
+    pub display_zone: TimeZone,
     /// The instance root; the disk file store lives at `<base>/files`
     /// (v4 `getFilesDir()`), the docs dir feeds `self_inventory`.
     pub base_dir: PathBuf,
@@ -3677,10 +3700,18 @@ impl ProductionSpineFactory {
             io,
             version,
             tz,
+            display_zone: TimeZone::UTC,
             base_dir,
             docs_dir: None,
             pricing,
         }
+    }
+
+    /// The host's display zone VALUE (chainable) — production passes
+    /// `HostConfig.display_zone`, the ONE read.
+    pub fn with_display_zone(mut self, zone: TimeZone) -> Self {
+        self.display_zone = zone;
+        self
     }
 }
 
@@ -3784,6 +3815,7 @@ impl SpineFactory for ProductionSpineFactory {
             streaming: Arc::clone(&streaming),
             pricing: Arc::clone(&self.pricing),
             tz: self.tz.clone(),
+            display_zone: self.display_zone.clone(),
             env,
             file_bytes,
             image_transcoder: Arc::new(HostImageCodec),
@@ -3809,6 +3841,7 @@ impl SpineFactory for ProductionSpineFactory {
             completion,
             streaming,
             tz: self.tz.clone(),
+            display_zone: self.display_zone.clone(),
         });
 
         let job_handlers: Vec<(String, Box<dyn JobHandler>)> = vec![

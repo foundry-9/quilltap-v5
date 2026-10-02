@@ -149,6 +149,10 @@ pub struct StepDeps<'a> {
     /// The instance's IANA timezone: cron evaluation + the daily-cap
     /// instance-local midnight (v4 uses the host process's local zone).
     pub tz: &'a str,
+    /// The host's DISPLAY zone VALUE (P4.140, Option V) — distinct from
+    /// [`Self::tz`], the calendar NAME, and [`Self::timezone`], the story zone.
+    /// The autonomous turn's tools and whispers render their dates in it.
+    pub display_zone: &'a crate::host_zone::TimeZone,
     /// `Math.random()` for the weighted next-speaker pick.
     pub random01: DrawSource,
     /// The UNTAGGED cheap-LLM executor for the 9c summary fold. v4 runs the
@@ -716,6 +720,9 @@ where
         // The instance zone the step already carries for cron evaluation IS the
         // server-local zone the memory distill needs.
         server_tz: Some(sdeps.tz.to_string()),
+        // …while every rendered date takes the host's display zone VALUE
+        // (P4.140, Option V).
+        display_zone: sdeps.display_zone.clone(),
         provider_supports_web_search: sdeps.provider_supports_web_search,
         log_context: LogContext {
             autonomous_run_id: Some(run_id.clone()),
@@ -1910,6 +1917,7 @@ mod tests {
                 now_ms: &now_ms,
                 mint_uuid: &mint,
                 tz: "UTC",
+                display_zone: &crate::host_zone::TimeZone::UTC,
                 random01: DrawSource::constant(0.0),
                 fold_executor: &fold_executor,
                 model_context_limit: 200_000,

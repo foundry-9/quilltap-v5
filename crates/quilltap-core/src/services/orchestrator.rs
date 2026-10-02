@@ -462,6 +462,13 @@ pub struct ProcessMessageInput {
     /// a per-chat setting); this is where the server stands. `None` behaves like
     /// a UTC server (what the corpora pin).
     pub server_tz: Option<String>,
+    /// The host's DISPLAY zone VALUE (P4.140, Option V) — distinct from
+    /// [`Self::server_tz`], the calendar NAME, and [`Self::timezone`], the story
+    /// zone. The turn's tool runner and `build_context`'s mail context, whisper
+    /// seam and progressions fallback render in it. A VALUE, never a name: a
+    /// POSIX `TZ` rule has no IANA name, and re-deriving the zone from
+    /// `server_tz` rendered UTC there where the host shows the rule's offset.
+    pub display_zone: crate::host_zone::TimeZone,
     /// Injected `provider.supportsWebSearch` — the provider-capability flag
     /// resolved above the seam. `useNativeWebSearch` ANDs it with the profile.
     pub provider_supports_web_search: bool,
@@ -2412,6 +2419,7 @@ where
         timestamp_config: input.timestamp_config.clone(),
         timezone: input.timezone.clone(),
         server_tz: input.server_tz.clone(),
+        display_zone: input.display_zone.clone(),
         is_continue_mode,
         now_ms: input.clock.now_ms,
         local_offset_minutes: input.clock.local_offset_minutes,
@@ -3118,8 +3126,9 @@ where
         deps.web_search.clone(),
         deps.image_describe.clone(),
         deps.photo_bytes.clone(),
-        // The already-threaded `server_tz` NAME through the one helper.
-        crate::host_zone::display_zone_named(input.server_tz.as_deref()),
+        // P4.140 (Option V): the host's display zone VALUE, threaded — never
+        // re-derived from the `server_tz` NAME (a POSIX `TZ` has none).
+        input.display_zone.clone(),
     );
     // Native tool-call detection (v4 `detectToolCallsInResponse` → the provider
     // plugin's `parseToolCalls`) is the real registry-backed detector (W4.7c):
@@ -4383,6 +4392,11 @@ pub(crate) struct BuildContextArgs<'a> {
     /// The SERVER-LOCAL IANA zone (v4's ambient process zone) — see
     /// [`ProcessMessageInput::server_tz`]; NOT the story zone above.
     pub server_tz: Option<String>,
+    /// The host's DISPLAY zone VALUE (P4.140, Option V) — see
+    /// [`ProcessMessageInput::display_zone`]; distinct from `server_tz`, the
+    /// calendar NAME, and `timezone`, the story zone. The turn and the swipe
+    /// both copy theirs in.
+    pub display_zone: crate::host_zone::TimeZone,
     /// `continueMode === true` (v4 `input.options.continue_mode`).
     pub is_continue_mode: bool,
     /// The wall-clock base (v4 `input.clock.now_ms`).
@@ -4557,6 +4571,7 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         is_initial_message: false,
         timezone: args.timezone.clone(),
         server_tz: args.server_tz.clone(),
+        display_zone: args.display_zone.clone(),
         connection_profile: Some(args.connection_profile.clone()),
         context_compression_settings: if args.compression_enabled {
             Some(build_context::ContextCompressionSettingsInput {
@@ -4968,6 +4983,7 @@ mod tests {
             timestamp_config: None,
             timezone: None,
             server_tz: None,
+            display_zone: crate::host_zone::TimeZone::UTC,
             provider_supports_web_search: false,
             log_context: LogContext::none(),
         }
@@ -5023,7 +5039,7 @@ mod tests {
             Some(std::sync::Arc::new(
                 crate::photos::save_image_to_album::NotConfiguredBytes,
             )),
-            crate::host_zone::display_zone_named(Some("America/Chicago")),
+            crate::host_zone::TimeZone::get("America/Chicago").unwrap(),
         );
         assert_eq!(
             crate::services::tool_execution::ToolRunner::display_zone(&wired)

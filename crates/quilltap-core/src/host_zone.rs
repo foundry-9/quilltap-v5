@@ -18,18 +18,38 @@
 //! (`Timestamp::to_zoned`), never one offset taken at `now` (which puts a
 //! January letter an hour off when rendered in July). **Production reads
 //! [`system_display_zone`] ONCE, at the composition root (`quilltap-host`), and
-//! threads the result down** (P4.127): a `TimeZone` VALUE on the tool executor
-//! (which both production builders fill from the threaded NAME), `CoreConfig`
-//! and the render-job handler, and the already-threaded `server_tz` NAME through
-//! [`display_zone_named`] at the Salon turn, `build_context` and the greeting.
-//! Nothing else in core reads the environment for a DISPLAY zone (the
-//! `host_zone_sites_census` pins it); the two remaining NAME readers
-//! ([`system_zone_name`]'s callers — the autonomous-room schedule and the
-//! markdown-transcript export) are the recorded Tier-3 leftovers of P4.127. Every test and differential passes
-//! `TimeZone::UTC` (or a named second zone) explicitly. Nothing here
-//! consults a process-global override — `std::env::set_var("TZ")` in a test
-//! races every other test thread, and a test that needs a second zone passes
-//! it by argument (or spawns a child process with `TZ` set on the `Command`).
+//! threads the VALUE down** (P4.127, completed by P4.140's Option V): the tool
+//! executor, `CoreConfig`, the render-job handler, the Almanack, AND the Salon
+//! turn (`ProcessMessageInput`), `build_context` on the turn and the swipe, the
+//! autonomous step, the greeting and the spine's own runner and Scenario
+//! Builder clock. Nothing re-derives a display zone from a NAME any more (the
+//! P4.127 `display_zone_named` helper is retired: on a POSIX-`TZ` host it
+//! rendered UTC wherever it ran, while the value — jiff 0.2.31 parses the rule —
+//! showed the rule's offset). Nothing else in core reads the environment for a
+//! DISPLAY zone (the `host_zone_sites_census` pins it); the remaining reader
+//! of a NAME ([`system_zone_name`]'s callers — the autonomous-room schedule and
+//! the markdown-transcript export) is P4.127's recorded Tier-3 leftover. Every
+//! test and differential passes `TimeZone::UTC` (or a named second zone)
+//! explicitly. Nothing here consults a process-global override —
+//! `std::env::set_var("TZ")` in a test races every other test thread, and a
+//! test that needs a second zone passes it by argument (or spawns a child
+//! process with `TZ` set on the `Command`).
+//!
+//! **The calendar NAME residue (P4.140 Tier 3, recorded):** the host's `tz`
+//! NAME ([`zone_name`] of the value — `"UTC"` for a POSIX rule) still drives
+//! every CALENDAR path: cron (the schedule tick and the manual autonomous
+//! routes, which must agree), the memory distill's TODAY line and day-reference
+//! scan (`server_tz`), the zone-less timestamp offset (`js_local_offset_minutes`),
+//! the story-zone fallback, the LLM-log cleanup and the Almanack's `timezone`
+//! fact. Under a POSIX `TZ` those run on UTC while every rendered date honours
+//! the rule; a value-taking cron + day-reference seam is its own order.
+//!
+//! **v4 does not honour a POSIX DST rule (recorded, not ported):** Node 24's
+//! ICU ignores a `TZ` rule with DST and shows `/etc/localtime`'s zone (it
+//! honours only a DST-less rule such as `XST-9`); v5 honours the rule, the ruled
+//! shape. An unparseable `TZ` (`CDT`, `XST5XDT`) is a jiff `Err` and every zone
+//! here falls to UTC where ICU falls to the system zone — jiff exposes no
+//! "system zone ignoring `TZ`" constructor, so that is a ruling for the human.
 //!
 //! `quilltap-web`'s `main.rs` reconciles `QUILLTAP_TIMEZONE` / `TZ` before
 //! boot, so Docker's setting reaches `TimeZone::try_system()` here.
@@ -50,29 +70,12 @@ pub fn system_display_zone() -> TimeZone {
     TimeZone::try_system().unwrap_or(TimeZone::UTC)
 }
 
-/// The display zone for a zone NAME already threaded to the caller (the
-/// `server_tz` the composition root hands the Salon turn, `build_context` and the
-/// greeting — P4.127). An unknown or absent name resolves UTC.
-///
-/// **Ruled divergence (P4.127, recorded for the human — and RULED TO CLOSE
-/// 2026-09-30: Option V, a `TimeZone` VALUE through `ProcessMessageInput` /
-/// `BuildContextInput`, is ordered; this helper retires with it):** the name is
-/// `iana_name().unwrap_or("UTC")` of the host's zone, so a host whose zone has no
-/// IANA name (a POSIX `TZ` string, a fixed offset) displays UTC at the name-fed
-/// entries where v4 displays the host zone — the case the module doc's "a zone
-/// VALUE, not a name" rule refuses. The name-fed entries are the Salon turn's
-/// tool runner AND the spine-built runner (so every executor tool and Carina —
-/// the executor's `TimeZone` VALUE is name-resolved by BOTH production
-/// builders), `build_context` and the greeting; the value-fed entries
-/// (`CoreConfig`'s Compose reply preface, the render job, the Almanack) keep
-/// the real offsets, so on such a host the two persisted mail prefaces (Compose
-/// vs the `send_mail` tool) render in different zones. It is the same fallback every
-/// calendar path (`server_tz`, cron, the autonomous rooms, the export) already
-/// lives with; threading a `TimeZone` VALUE through `ProcessMessageInput` /
-/// `BuildContextInput` would honour the rule and is the recorded alternative.
-pub fn display_zone_named(name: Option<&str>) -> TimeZone {
-    name.and_then(|n| TimeZone::get(n).ok())
-        .unwrap_or(TimeZone::UTC)
+/// The zone's IANA NAME, for the calendar paths that still take a name (cron,
+/// the distill's `server_tz`, the cleanup — the module doc's residue): a zone
+/// with no IANA name (a POSIX `TZ` rule, a fixed offset) answers `"UTC"`. ONE
+/// home for the derivation (`HostConfig::new`, `HostConfig::set_display_zone`).
+pub fn zone_name(zone: &TimeZone) -> &str {
+    zone.iana_name().unwrap_or("UTC")
 }
 
 /// The host's system zone as an IANA NAME, for the two callers that still need
@@ -82,10 +85,7 @@ pub fn display_zone_named(name: Option<&str>) -> TimeZone {
 /// `TZ` string, an unnamed TZif) falls back to `"UTC"` — the long-standing
 /// behaviour of the three readers this consolidates.
 pub fn system_zone_name() -> String {
-    system_display_zone()
-        .iana_name()
-        .unwrap_or("UTC")
-        .to_string()
+    zone_name(&system_display_zone()).to_string()
 }
 
 #[cfg(test)]
@@ -103,18 +103,15 @@ mod tests {
         assert_eq!(system_zone_name(), expected.iana_name().unwrap_or("UTC"));
     }
 
-    /// The named helper resolves an IANA name to THAT zone (never the
-    /// environment's) and anything else to UTC.
+    /// The name derivation: an IANA zone names itself; a POSIX rule (no IANA
+    /// name) and UTC answer `"UTC"`.
     #[test]
-    fn display_zone_named_resolves_the_name_or_utc() {
-        // 2026-01-15T12:00Z — Chicago is on CST (UTC-6), Tokyo on JST (UTC+9).
-        let ts = jiff::Timestamp::from_second(1_768_478_400).unwrap();
-        let off = |z: &TimeZone| z.to_offset(ts).seconds();
-        assert_eq!(off(&display_zone_named(Some("America/Chicago"))), -6 * 3600);
-        assert_eq!(off(&display_zone_named(Some("Asia/Tokyo"))), 9 * 3600);
-        assert_eq!(off(&display_zone_named(Some("UTC"))), 0);
-        assert_eq!(off(&display_zone_named(None)), 0);
-        assert_eq!(off(&display_zone_named(Some("Not/AZone"))), 0);
-        assert_eq!(off(&display_zone_named(Some(""))), 0);
+    fn zone_name_is_the_iana_name_or_utc() {
+        let chicago = TimeZone::get("America/Chicago").unwrap();
+        assert_eq!(zone_name(&chicago), "America/Chicago");
+        let rule = TimeZone::posix("XST6XDT,M3.2.0,M11.1.0").unwrap();
+        assert_eq!(rule.iana_name(), None);
+        assert_eq!(zone_name(&rule), "UTC");
+        assert_eq!(zone_name(&TimeZone::UTC), "UTC");
     }
 }

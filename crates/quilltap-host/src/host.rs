@@ -82,15 +82,18 @@ pub struct HostConfig {
     pub version: String,
     /// The `ENCRYPTION_MASTER_PEPPER` env pepper, if set.
     pub env_pepper: Option<String>,
-    /// IANA timezone NAME for enclave cron evaluation and every already-threaded
-    /// `server_tz` (v4 uses the process zone). `new()` derives it from
-    /// [`Self::display_zone`]: the host's zone has ONE read.
+    /// IANA timezone NAME for the CALENDAR paths — enclave cron evaluation and
+    /// every already-threaded `server_tz` (v4 uses the process zone). `new()`
+    /// derives it from [`Self::display_zone`]: the host's zone has ONE read.
+    /// Set both through [`Self::set_display_zone`].
     pub tz: String,
-    /// The host's display zone as a VALUE (P4.127) — what v4's zone-less
-    /// `toLocale*` renders resolve. Read ONCE, here, and injected into
-    /// `CoreConfig`, the render-job handler and the Almanack; a zone with no IANA
-    /// name (a POSIX `TZ` string) keeps its real offsets on those paths while
-    /// `tz` falls back to `"UTC"`.
+    /// The host's display zone as a VALUE (P4.127; threaded everywhere by
+    /// P4.140's Option V) — what v4's zone-less `toLocale*` renders resolve.
+    /// Read ONCE, here, and injected into `CoreConfig`, the render-job handler,
+    /// the Almanack and the chat spine (every turn, swipe, greeting, autonomous
+    /// step and tool runner); a zone with no IANA name (a POSIX `TZ` rule) keeps
+    /// its real offsets on every display path while `tz` falls back to `"UTC"`
+    /// for the calendar ones.
     pub display_zone: quilltap_core::host_zone::TimeZone,
     /// Override the instance-registry file (tests); `None` = the launcher's
     /// per-user location.
@@ -147,7 +150,7 @@ impl HostConfig {
             env_pepper: std::env::var("ENCRYPTION_MASTER_PEPPER")
                 .ok()
                 .filter(|p| !p.is_empty()),
-            tz: display_zone.iana_name().unwrap_or("UTC").to_string(),
+            tz: quilltap_core::host_zone::zone_name(&display_zone).to_string(),
             display_zone,
             instances_path: None,
             autonomous_tick_ms: 60_000,
@@ -164,6 +167,15 @@ impl HostConfig {
             terminal: true,
             seed_sample_content: true,
         }
+    }
+
+    /// Set the host's zone (P4.140): BOTH the display VALUE and the calendar
+    /// `tz` NAME derived from it ([`quilltap_core::host_zone::zone_name`]), so
+    /// the two never disagree — a test that pins `tz` alone leaves the value on
+    /// the machine's zone, which every threaded display entry now reads.
+    pub fn set_display_zone(&mut self, zone: quilltap_core::host_zone::TimeZone) {
+        self.tz = quilltap_core::host_zone::zone_name(&zone).to_string();
+        self.display_zone = zone;
     }
 
     /// Wire a chat-send spine factory (chainable).

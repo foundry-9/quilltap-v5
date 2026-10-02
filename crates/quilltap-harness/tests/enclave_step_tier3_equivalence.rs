@@ -585,6 +585,7 @@ fn enclave_step_tier3_matches_oracle() {
             now_ms: &now_ms,
             mint_uuid: &mint,
             tz: "UTC",
+            display_zone: &quilltap_core::host_zone::TimeZone::UTC,
             // P4.87: this case's own sequence — `[0]` (the default) reproduces
             // the family's long-standing frozen zero. One source per case, as
             // the oracle rewinds its pin once per case.

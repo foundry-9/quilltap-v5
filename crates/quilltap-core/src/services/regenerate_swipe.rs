@@ -304,6 +304,12 @@ pub struct RegenerateSwipeOptions {
     /// distill's TODAY line + day-reference scan resolve their calendar in it.
     /// ⚠ NOT [`Self::timezone`], the story/timestamp zone above.
     pub server_tz: Option<String>,
+    /// The host's DISPLAY zone VALUE (P4.140, Option V) — distinct from
+    /// [`Self::server_tz`], the calendar NAME, and [`Self::timezone`], the story
+    /// zone. The swipe's `build_context` renders the Suparṇā whisper and the
+    /// progressions fallback in it (the swipe reaches the same seam the turn
+    /// does, so a name-fed swipe showed UTC on a POSIX-`TZ` host).
+    pub display_zone: crate::host_zone::TimeZone,
     /// The wall clock (v4 `Date.now()` — the buildContext timestamp base + the
     /// swipe id/… mint points; the swipe's own `createdAt` is the target's).
     pub now_ms: i64,
@@ -443,6 +449,7 @@ where
         timestamp_config,
         timezone,
         server_tz,
+        display_zone,
         now_ms,
         local_offset_minutes,
         random01,
@@ -643,6 +650,7 @@ where
         timestamp_config: timestamp_config.clone(),
         timezone: timezone.clone(),
         server_tz: server_tz.clone(),
+        display_zone: display_zone.clone(),
         is_continue_mode: true,
         now_ms,
         local_offset_minutes,

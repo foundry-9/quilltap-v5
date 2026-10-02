@@ -2483,6 +2483,7 @@ mod tests {
                 now_ms: 1_767_225_600_000,
                 local_offset_minutes: 0,
                 server_tz: Some("UTC".to_string()),
+                display_zone: crate::host_zone::TimeZone::UTC,
                 minutes_since_last_timestamp_announcement: None,
                 autonomous_context_cap: None,
                 reserved_outgoing_tokens: None,

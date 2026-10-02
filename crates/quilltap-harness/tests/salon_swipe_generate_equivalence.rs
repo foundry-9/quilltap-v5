@@ -218,6 +218,7 @@ impl SwipeGenerateDriver for TestSwipeDriver<'_> {
                 timestamp_config: None,
                 timezone: Some("UTC".to_string()),
                 server_tz: Some("UTC".to_string()),
+                display_zone: quilltap_core::host_zone::TimeZone::UTC,
                 now_ms: FROZEN_NOW_MS,
                 local_offset_minutes: 0,
                 random01: DrawSource::sequence(vec![0.0]),

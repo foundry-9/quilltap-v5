@@ -968,6 +968,10 @@ where
     pub api_keys: &'a dyn ApiKeyResolver,
     /// IANA time zone for the cron next-run evaluation.
     pub tz: String,
+    /// The host's DISPLAY zone VALUE (P4.140, Option V) — distinct from
+    /// [`Self::tz`], the calendar NAME the cron evaluation reads. The
+    /// greeting's system prompt (its progressions report) renders in it.
+    pub display_zone: crate::host_zone::TimeZone,
     /// v4 `Date.now()` — the millisecond wall clock.
     pub now_ms: i64,
     /// v4 `Math.random()` for `pickWeightedByTalkativeness` (one value shared,
@@ -1227,9 +1231,9 @@ where
         // P4.D168: the greeting's FORCED progressions report rides the same
         // injected clock every other minted value here does.
         deps.now_ms,
-        // P4.127: the greeting's display zone — the already-threaded `tz` NAME
-        // through the one helper.
-        &crate::host_zone::display_zone_named(Some(&deps.tz)),
+        // P4.140 (Option V): the greeting's display zone — the host's threaded
+        // VALUE, never re-derived from the `tz` NAME.
+        &deps.display_zone,
     )?;
 
     let chat_settings = chat_settings::find_by_user_id(main, user_id)?;
@@ -3895,6 +3899,7 @@ mod tests {
             executor: &executor,
             api_keys,
             tz: "UTC".to_string(),
+            display_zone: crate::host_zone::TimeZone::UTC,
             now_ms: 1_793_664_000_000,
             random01: DrawSource::constant(0.0),
             lifecycle: &lifecycle,

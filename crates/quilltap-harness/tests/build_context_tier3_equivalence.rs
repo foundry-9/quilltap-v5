@@ -883,6 +883,7 @@ async fn build_context_tier3_matches_oracle() {
             // TZ=UTC on the oracle side, where local == UTC (the local-vs-UTC
             // crux is proven by the tier-1 day-references family instead).
             server_tz: Some("UTC".to_string()),
+            display_zone: quilltap_core::host_zone::TimeZone::UTC,
             connection_profile,
             context_compression_settings: compression_settings,
             cheap_llm_selection: cheap_llm,

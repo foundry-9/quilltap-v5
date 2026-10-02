@@ -266,9 +266,12 @@ pub fn production_host_config(base_dir: PathBuf, version: String) -> HostConfig 
     let mut config = HostConfig::new(base_dir.clone());
     config.version = version.clone();
     let tz = config.tz.clone();
-    config.spine = Some(Arc::new(quilltap_host::ProductionSpineFactory::new(
-        base_dir, version, tz,
-    )));
+    // P4.140 (Option V): the spine renders in the host's ONE zone VALUE (the
+    // `tz` NAME is the calendar paths' — a POSIX `TZ` rule has none).
+    config.spine = Some(Arc::new(
+        quilltap_host::ProductionSpineFactory::new(base_dir, version, tz)
+            .with_display_zone(config.display_zone.clone()),
+    ));
     config
 }
 

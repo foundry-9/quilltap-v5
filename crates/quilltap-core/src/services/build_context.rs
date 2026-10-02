@@ -556,6 +556,11 @@ pub struct BuildContextInput {
     /// it. ⚠ NOT [`Self::timezone`], which is the story/timestamp zone v4's
     /// `resolveTimezone` produces and can be a per-chat setting.
     pub server_tz: Option<String>,
+    /// The host's DISPLAY zone VALUE (P4.140, Option V) — distinct from
+    /// [`Self::server_tz`], the calendar NAME, and [`Self::timezone`], the story
+    /// zone. The Suparṇā mail context, the whisper seam and the progressions
+    /// fallback render every human-readable date in it.
+    pub display_zone: crate::host_zone::TimeZone,
     pub minutes_since_last_timestamp_announcement: Option<i64>,
     /// v4 `options.autonomousContextCap` (U4.4, the enclave per-turn clamp):
     /// clamp the model-derived `budgetInfo.maxAvailable` down to this turn's
@@ -782,8 +787,8 @@ pub trait BuildContextSeams {
     /// letters, build the persona whisper ([`crate::services::suparna_notifications::
     /// build_suparna_mail_whisper_in_zone`]) and post it targeted at the responding
     /// participant (multi-character) or public (single). `zone` is the display
-    /// zone the letter dates render in (P4.127 — `build_context` resolves it once
-    /// from `server_tz`). Default: no-op.
+    /// zone the letter dates render in (P4.140 — `build_context` hands on the
+    /// host's threaded display zone VALUE). Default: no-op.
     fn post_suparna_mail(
         &self,
         chat_id: &str,
@@ -3615,10 +3620,11 @@ where
             .await;
     }
 
-    // The display zone every human-readable date below resolves in (P4.127).
-    // The already-threaded `server_tz` NAME through the one helper — NOT
-    // `timezone` (the chat's story zone; equal today, free to diverge).
-    let display_zone = crate::host_zone::display_zone_named(input.server_tz.as_deref());
+    // The display zone every human-readable date below resolves in (P4.140,
+    // Option V): the host's threaded VALUE — never `timezone` (the chat's story
+    // zone; equal today, free to diverge) and never `server_tz` (the calendar
+    // NAME, which a POSIX `TZ` rule does not have).
+    let display_zone = input.display_zone.clone();
 
     // Suparṇā mail — v4's READ half (W4.6a): collect unalerted mail, build the
     // LLM context, flip each `alerted` flag. The whisper POST is W4.6b (fired via
@@ -4517,6 +4523,7 @@ mod distill_latency_tests {
             now_ms: 1_767_225_600_000,
             local_offset_minutes: 0,
             server_tz: Some("UTC".to_string()),
+            display_zone: crate::host_zone::TimeZone::UTC,
             minutes_since_last_timestamp_announcement: None,
             autonomous_context_cap: None,
             reserved_outgoing_tokens: None,
@@ -4846,6 +4853,7 @@ mod inter_character_log_tests {
             now_ms: 1_767_225_600_000,
             local_offset_minutes: 0,
             server_tz: Some("UTC".to_string()),
+            display_zone: crate::host_zone::TimeZone::UTC,
             minutes_since_last_timestamp_announcement: None,
             autonomous_context_cap: None,
             reserved_outgoing_tokens: None,

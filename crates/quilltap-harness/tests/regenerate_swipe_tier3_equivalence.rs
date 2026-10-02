@@ -556,6 +556,7 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
                 timestamp_config: None,
                 timezone: Some("UTC".to_string()),
                 server_tz: Some("UTC".to_string()),
+                display_zone: quilltap_core::host_zone::TimeZone::UTC,
                 now_ms: spec.frozen_now_ms,
                 local_offset_minutes: spec.local_offset_minutes,
                 // P4.D172: `[0]` reproduces the frozen-zero pin.

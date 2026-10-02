@@ -150,6 +150,7 @@ impl SpineFactory for SmokeSpineFactory {
             streaming: Arc::clone(&streaming),
             pricing: Arc::new(PricingFetcher::new(NoPricingFetch)),
             tz: "UTC".to_string(),
+            display_zone: quilltap_core::host_zone::TimeZone::UTC,
             env: test_env(),
             file_bytes: Arc::new(ProductionFileBytes {
                 db: db.clone(),
@@ -172,6 +173,7 @@ impl SpineFactory for SmokeSpineFactory {
             completion,
             streaming,
             tz: "UTC".to_string(),
+            display_zone: quilltap_core::host_zone::TimeZone::UTC,
         });
         SpineBundle {
             chat_send: spine,

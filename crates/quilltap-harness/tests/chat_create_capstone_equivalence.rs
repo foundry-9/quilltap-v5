@@ -860,6 +860,7 @@ fn chat_create_capstone_matches_oracle() {
             executor: &executor,
             api_keys: &api_keys,
             tz: c.tz.clone(),
+            display_zone: quilltap_core::host_zone::TimeZone::UTC,
             now_ms: c.now_ms,
             // P4.D172: the opener pick takes ONE draw off an ordered source; a
             // one-element sequence is exactly the constant this corpus pins.
@@ -1399,6 +1400,7 @@ fn p4_81_refused_create_emits_no_progress_frame() {
         completion: std::sync::Arc::new(CannedCompletionProvider::new()),
         streaming: std::sync::Arc::new(CannedStreamingProvider::new()),
         tz: "UTC".to_string(),
+        display_zone: quilltap_core::host_zone::TimeZone::UTC,
     };
 
     // An invalid body — no `participants` at all — the FIRST rule

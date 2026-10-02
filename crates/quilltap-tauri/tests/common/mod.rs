@@ -150,7 +150,9 @@ pub fn boot_instance(
 ) -> SharedState {
     let mut config = HostConfig::new(base_dir);
     config.env_pepper = Some(TEST_PEPPER.to_string());
-    config.tz = "UTC".to_string();
+    // P4.140: the zone VALUE and the `tz` NAME together (a `tz` alone left the
+    // value on the machine zone, which every display entry now reads).
+    config.set_display_zone(quilltap_core::host_zone::TimeZone::UTC);
     // Keep the daily sweeps quiet in tests (long grace = never fires).
     config.startup_grace_ms = 3_600_000;
     config.danger_scan_interval_ms = 3_600_000;

@@ -161782,3 +161782,65 @@ search key>` → web search still finds the key. A Scenario Builder run on a
 profile whose `name` is a BLOB answers 404 with `Error finding entity by ID
 collection=connection_profiles`.
 
+## P4.140 — the Salon spine: Option V, item (g), the `fileProcessing` frame, Carina's row — LANE record (2026-10-02)
+
+Branch `claude/p4-140-salon-spine-option-v-75219b8d`, cut from `main`
+`75219b8dd`; v4 pin `/tmp/qt-v4-pin-p4140-f6426e196` (verified by
+`rev-parse` + `ls -ld`; `4.10.0-dev.106`; the bug-174 test file present). The
+§R.2 probe passed at lane start (branch `main`, HEAD `f6426e196`, both logs
+empty, the tree dirty by exactly the three recorded docs paths).
+
+### Unit 1 — Option V (Tier 1 items 1–4, 7, 8; Tier 2 item 15 M1–M5)
+
+- **Red-first, recorded BEFORE any source change** (the core WIP parked as a
+  patch and `main`'s core rebuilt): the new POSIX child under
+  `TZ=XST6XDT,M3.2.0,M11.1.0`, with one extra assertion that the production
+  derivation `display_zone_named(Some(&cfg.tz))` had offset −5h, FAILED
+  `left: 0 right: -18000` (`host_zone_sites_census.rs:668`), and that zone's
+  whisper read `posted September 29, 2026 at 07:40 PM`. The `HostConfig` value
+  was already right on `main` — `iana_name() == None`, −18000 at the D2
+  instant, −21600 in January, `cfg.tz == "UTC"` — the §R.4(a) refutation
+  measured. The extra assertion went with the helper.
+- **Landed:** `host_zone::zone_name` (one name derivation; unit-pinned on
+  Chicago / a POSIX rule / UTC); a required `display_zone` on
+  `ProcessMessageInput`, `BuildContextArgs`, `BuildContextInput`,
+  `RegenerateSwipeOptions`, `StepDeps` (`&'a`), `ChatCreateDeps`; read at the
+  turn's runner, `build_context`, the greeting, the swipe and the step;
+  `ChatSpine.display_zone` + `ChatCreateSpine.display_zone`;
+  `ProductionSpineFactory::with_display_zone` (UTC default in `new` — the nine
+  test `new(..)` calls untouched), filled in `quilltap-web`'s
+  `production_host_config`; `HostConfig::set_display_zone` (both fields), the
+  web + Tauri test commons moved onto it. `display_zone_named` and its unit
+  test RETIRED (`grep display_zone_named( crates` → only prose). `server_tz`
+  and every calendar NAME path UNCHANGED (Tier 3 item 17).
+- **Census reshaped:** `HELPER_SITES` + assertion (1b) → `VALUE_SITES` (nine
+  rows: the six threaded carriers plus `CoreConfig`, the render handler and
+  the Almanack's `AlmanackPaths`), its set assertion = the core files
+  declaring a `pub display_zone` field; `HOST_SITES` re-aimed at the value and
+  grown (the seven `display_zone: self.display_zone.clone(),` hops, the chain
+  capture + fill, the `StepDeps` fill, `quilltap-web/src/lib.rs`'s
+  `with_display_zone`); `UTC_ALLOWED` `host_zone.rs` 2 → 1; the host-crate
+  `TimeZone::UTC` count 1 → 2 (the factory default) with the "cron parser"
+  comment corrected to `js_local_offset_minutes` (§R.4(f)); the divergence
+  header replaced by the calendar residue + the ICU note. The Chicago child's
+  steps build from `cfg.display_zone`; its old step 4 (the helper honouring
+  a name) became `set_display_zone(UTC)` moving both fields on a Chicago host;
+  marker `CHILD OK: 5 value-threaded entries`. `CENSUS` `host_zone.rs` stays
+  2 until unit 2 deletes `system_zone_name`.
+- **Mutation proofs (file-backup reverts; the census reads source, so M1–M3
+  and M5 ran against the built binary):** M1 (`spine.rs` runner → `UTC`) →
+  `host_injection_points_carry_the_host_zone` only; M2 (the turn's runner
+  fill → `UTC`) → `host_zone_sites_census` only: "`input.display_zone.clone()`
+  appears 1x … the census says 2"; M3 (`lib.rs` drops `.with_display_zone`) →
+  `host_injection_points…` only; M5 (`build_context` → `UTC`) →
+  `host_zone_sites_census`: "`let display_zone = input.display_zone.clone();`
+  appears 0x"; M4 (the POSIX child builds its zone from `TimeZone::get(&cfg.tz)`)
+  → `a_posix_tz_rule_reaches_every_display_entry` (whisper `07:40 PM`).
+  M2's `orchestrator_tier3` half is recorded with the family runs below.
+- Unit gate: fmt; clippy both feature sets; `quilltap-core --lib` 2862/0; the
+  census 6/6; the web spine-literal binaries (`chat_create_end_to_end`,
+  `chat_send_smoke`, `message_retry_uncensored_dispatch_wire`,
+  `message_swipe_stream_dispatch_wire`, `messages_swipe_sse_route`, the three
+  `scenario_builder_*` spine users + `scenario_builder_routes_equivalence`),
+  `quilltap-tauri` and `quilltap-host` all green. The harness families whose
+  literals moved run in the lane's two-run sweep (below).
