@@ -348,6 +348,197 @@ pub fn sweep_orphaned_store_children_or_default<T: Default>(
 }
 // === end P4.134 ===
 
+// === P4.142 — v4's strict repository scope (`strict-failures.ts`). v4's
+// `safeQuery` answers its fallback UNLESS the caller runs inside
+// `withStrictRepositoryFailures` (an `AsyncLocalStorage` bit only the importer
+// sets, `execute.ts:430` / `preview.ts:31` — Bug 79): there it logs the same
+// line with `strictFailures: true` appended and rethrows. v5's P4.131 rule
+// keeps strict callers on the PROPAGATING repository fns, so the scope matters
+// only where one fallback layer serves both kinds of caller: the vault
+// overlay's two batch reads, under every character / project / group list.
+// The backup collect and the `.qtap` export (the 2026-08-03 "fix, don't
+// match" family) enter it too — a deliberate divergence, since v4 runs them
+// non-strict and exports a broken store EMPTY (RULED, the human, 2026-10-02).
+// The bit is THREAD-local: a `Db::write` closure runs on the writer thread, so
+// a caller enters the scope INSIDE the closure that makes the reads. ===
+
+thread_local! {
+    static STRICT_REPOSITORY_FAILURES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// v4 `withStrictRepositoryFailures` (`strict-failures.ts:40-42`): run `f` with
+/// the scoped fallbacks suspended — a home that honours the scope logs v4's line
+/// with `strictFailures=true` and propagates instead of answering its fallback.
+/// Nests (the previous bit is restored on exit, panic or not).
+pub fn with_strict_repository_failures<R>(f: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            STRICT_REPOSITORY_FAILURES.with(|s| s.set(self.0));
+        }
+    }
+    let _restore = Restore(STRICT_REPOSITORY_FAILURES.with(|s| s.replace(true)));
+    f()
+}
+
+/// v4 `strictRepositoryFailuresActive` (`strict-failures.ts:53-55`).
+pub fn strict_repository_failures_active() -> bool {
+    STRICT_REPOSITORY_FAILURES.with(|s| s.get())
+}
+
+/// v4 `docMountDocuments.findManyByMountPointsAndPath` as its callers see it: a
+/// fallback `withRawDb([])`, so `read()`'s `Err` logs `Error finding documents by
+/// mount point IDs and path {collection, mountPointIdCount, relativePath, error}`
+/// and answers `Ok([])` (`doc-mount-documents.repository.ts:142-168`) — the
+/// overlay's nine keystone/single-file reads. Inside
+/// [`with_strict_repository_failures`] the line gains `strictFailures=true` and
+/// the `Err` propagates (`safe-query.ts:57-71`); that is the ONLY `Err` this
+/// answers.
+pub fn documents_by_mount_point_ids_and_path_or_empty<T>(
+    mount_point_id_count: usize,
+    relative_path: &str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    read().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "doc_mount_documents",
+            mountPointIdCount = mount_point_id_count,
+            relativePath = %relative_path,
+            error = %error_text(&error),
+            strictFailures = strict.then_some(true),
+            "Error finding documents by mount point IDs and path"
+        );
+        if strict {
+            Err(error)
+        } else {
+            Ok(Vec::new())
+        }
+    })
+}
+
+/// v4 `docMountDocuments.findManyByMountPointsInFolder` as its callers see it: a
+/// fallback `withRawDb([])`, so `read()`'s `Err` logs `Error finding documents by
+/// mount point IDs and folder {collection, mountPointIdCount, folder, extension,
+/// recursive, error}` and answers `Ok([])` (`doc-mount-documents.repository.ts:
+/// 179-220`; `recursive` is v4's `options.recursive === true`, a boolean —
+/// `false` on the overlay's `Prompts` / `Scenarios` listings). The strict scope
+/// as [`documents_by_mount_point_ids_and_path_or_empty`].
+pub fn documents_by_mount_point_ids_in_folder_or_empty<T>(
+    mount_point_id_count: usize,
+    folder: &str,
+    extension: &str,
+    recursive: bool,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    read().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "doc_mount_documents",
+            mountPointIdCount = mount_point_id_count,
+            folder = %folder,
+            extension = %extension,
+            recursive = recursive,
+            error = %error_text(&error),
+            strictFailures = strict.then_some(true),
+            "Error finding documents by mount point IDs and folder"
+        );
+        if strict {
+            Err(error)
+        } else {
+            Ok(Vec::new())
+        }
+    })
+}
+
+/// v4 `docMountChunks.countEmbeddedByMountPointIds` as its callers see it: a
+/// fallback `withRawDb(new Map())`, so `read()`'s `Err` logs `Error counting
+/// embedded chunks by mount point IDs {collection, mountPointIdCount, error}`
+/// and answers the empty map (`doc-mount-chunks.repository.ts:130-153`).
+pub fn count_embedded_chunks_or_empty<T: Default>(
+    mount_point_id_count: usize,
+    read: impl FnOnce() -> Result<T, DbError>,
+) -> T {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "doc_mount_chunks",
+            mountPointIdCount = mount_point_id_count,
+            error = %error_text(&error),
+            "Error counting embedded chunks by mount point IDs"
+        );
+        T::default()
+    })
+}
+
+/// v4 `docMountChunks.searchContent` as its callers see it: a fallback
+/// `withRawDb([])`, so `read()`'s `Err` logs `Error searching chunk content
+/// {collection, mountPointIdCount, queryLength, error}` and answers `[]`
+/// (`doc-mount-chunks.repository.ts:172-215`). `query_length` is v4's
+/// `query.length` — UTF-16 units (`jsstr::utf16_len`).
+pub fn search_chunk_content_or_empty<T>(
+    mount_point_id_count: usize,
+    query_length: usize,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Vec<T> {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "doc_mount_chunks",
+            mountPointIdCount = mount_point_id_count,
+            queryLength = query_length,
+            error = %error_text(&error),
+            "Error searching chunk content"
+        );
+        Vec::new()
+    })
+}
+
+/// v4 `docMountFileLinks.searchByNameOrPath` as its callers see it: a fallback
+/// `withRawDb([])`, so `read()`'s `Err` logs `Error searching file links by name
+/// or path {collection, mountPointIdCount, queryLength, error}` and answers `[]`
+/// (`doc-mount-file-links.repository.ts:592-628`).
+pub fn search_file_links_by_name_or_path_or_empty<T>(
+    mount_point_id_count: usize,
+    query_length: usize,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Vec<T> {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "doc_mount_file_links",
+            mountPointIdCount = mount_point_id_count,
+            queryLength = query_length,
+            error = %error_text(&error),
+            "Error searching file links by name or path"
+        );
+        Vec::new()
+    })
+}
+
+/// v4 `getApiKeysByUserId` as its callers see it: `read()`'s `Err` logs
+/// `Error finding API keys by user ID {collection, userId, error}` and answers
+/// `[]` (`connection-profiles.repository.ts:218-244`, 4-arg fallback
+/// `safeQuery` on the repository constructed with `'connection_profiles'`).
+pub fn find_api_keys_by_user_id_or_empty(
+    user_id: &str,
+    read: impl FnOnce() -> Result<Vec<super::api_keys::ApiKey>, DbError>,
+) -> Vec<super::api_keys::ApiKey> {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "connection_profiles",
+            userId = %user_id,
+            error = %error_text(&error),
+            "Error finding API keys by user ID"
+        );
+        Vec::new()
+    })
+}
+// === end P4.142 ===
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -577,6 +768,167 @@ mod tests {
             Some("synthetic-k-ok")
         );
         assert!(got.2.is_none());
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// P4.142's five document-store shapes: v4's exact line (collection
+    /// injected first, the context keys in v4's order, the bare `error`) and the
+    /// fallback. `recursive=false` renders bare (v4's boolean).
+    #[test]
+    fn each_p4142_document_store_shape_logs_v4s_exact_line() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            documents_by_mount_point_ids_and_path_or_empty::<i32>(3, "properties.json", || {
+                Err(posed())
+            })
+        });
+        assert_eq!(got.unwrap(), Vec::<i32>::new());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding documents by mount point IDs and path collection=doc_mount_documents mountPointIdCount=3 relativePath=properties.json error=posed".to_string()]
+        );
+
+        let (got, lines) = crate::test_support::captured_with(|| {
+            documents_by_mount_point_ids_in_folder_or_empty::<i32>(
+                3,
+                "Prompts",
+                ".md",
+                false,
+                || Err(posed()),
+            )
+        });
+        assert_eq!(got.unwrap(), Vec::<i32>::new());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding documents by mount point IDs and folder collection=doc_mount_documents mountPointIdCount=3 folder=Prompts extension=.md recursive=false error=posed".to_string()]
+        );
+
+        let (got, lines) = crate::test_support::captured_with(|| {
+            count_embedded_chunks_or_empty::<std::collections::HashMap<String, i64>>(2, || {
+                Err(posed())
+            })
+        });
+        assert!(got.is_empty());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error counting embedded chunks by mount point IDs collection=doc_mount_chunks mountPointIdCount=2 error=posed".to_string()]
+        );
+
+        let (got, lines) = crate::test_support::captured_with(|| {
+            search_chunk_content_or_empty::<i32>(2, 5, || Err(posed()))
+        });
+        assert!(got.is_empty());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error searching chunk content collection=doc_mount_chunks mountPointIdCount=2 queryLength=5 error=posed".to_string()]
+        );
+
+        let (got, lines) = crate::test_support::captured_with(|| {
+            search_file_links_by_name_or_path_or_empty::<i32>(2, 5, || Err(posed()))
+        });
+        assert!(got.is_empty());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error searching file links by name or path collection=doc_mount_file_links mountPointIdCount=2 queryLength=5 error=posed".to_string()]
+        );
+    }
+
+    #[test]
+    fn each_p4142_document_store_shape_is_silent_on_success() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                documents_by_mount_point_ids_and_path_or_empty(1, "a.json", || Ok(vec![1]))
+                    .unwrap(),
+                documents_by_mount_point_ids_in_folder_or_empty(1, "Prompts", ".md", true, || {
+                    Ok(vec![2])
+                })
+                .unwrap(),
+                count_embedded_chunks_or_empty(1, || Ok(3_i64)),
+                search_chunk_content_or_empty(1, 1, || Ok(vec![4])),
+                search_file_links_by_name_or_path_or_empty(1, 1, || Ok(vec![5])),
+            )
+        });
+        assert_eq!(got, (vec![1], vec![2], 3, vec![4], vec![5]));
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// v4's strict scope (`safe-query.ts:57-71`): the same line with
+    /// `strictFailures=true` LAST, and the `Err` propagates; the bit is
+    /// restored on exit, so the very next read falls back again.
+    #[test]
+    fn the_strict_scope_appends_strict_failures_and_propagates() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            let strict = with_strict_repository_failures(|| {
+                assert!(strict_repository_failures_active());
+                (
+                    documents_by_mount_point_ids_and_path_or_empty::<i32>(1, "p.json", || {
+                        Err(posed())
+                    }),
+                    documents_by_mount_point_ids_in_folder_or_empty::<i32>(
+                        1,
+                        "Scenarios",
+                        ".md",
+                        false,
+                        || Err(posed()),
+                    ),
+                )
+            });
+            let after =
+                documents_by_mount_point_ids_and_path_or_empty::<i32>(1, "p.json", || Err(posed()));
+            (strict, after, strict_repository_failures_active())
+        });
+        let ((path, folder), after, active) = got;
+        assert!(matches!(path, Err(DbError::Internal(ref m)) if m == "posed"));
+        assert!(matches!(folder, Err(DbError::Internal(ref m)) if m == "posed"));
+        assert_eq!(after.unwrap(), Vec::<i32>::new());
+        assert!(!active);
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error finding documents by mount point IDs and path collection=doc_mount_documents mountPointIdCount=1 relativePath=p.json error=posed strictFailures=true".to_string(),
+                "ERROR quilltap::db Error finding documents by mount point IDs and folder collection=doc_mount_documents mountPointIdCount=1 folder=Scenarios extension=.md recursive=false error=posed strictFailures=true".to_string(),
+                "ERROR quilltap::db Error finding documents by mount point IDs and path collection=doc_mount_documents mountPointIdCount=1 relativePath=p.json error=posed".to_string(),
+            ]
+        );
+    }
+
+    /// The scope nests and survives a panic inside it (the bit is restored).
+    #[test]
+    fn the_strict_scope_nests_and_restores_after_a_panic() {
+        with_strict_repository_failures(|| {
+            with_strict_repository_failures(|| assert!(strict_repository_failures_active()));
+            assert!(
+                strict_repository_failures_active(),
+                "the outer scope stays strict"
+            );
+        });
+        assert!(!strict_repository_failures_active());
+        let caught = std::panic::catch_unwind(|| with_strict_repository_failures(|| panic!("x")));
+        assert!(caught.is_err());
+        assert!(!strict_repository_failures_active());
+    }
+
+    /// P4.139's delivered home (the Shared contract): v4's bytes with the
+    /// REPOSITORY's collection, and a healthy key is silent.
+    #[test]
+    fn the_api_keys_by_user_id_shape_logs_v4s_line_and_answers_empty() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            find_api_keys_by_user_id_or_empty("u-1", || Err(posed()))
+        });
+        assert!(got.is_empty());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding API keys by user ID collection=connection_profiles userId=u-1 error=posed".to_string()]
+        );
+        let conn = test_plants::conn_with_api_keys();
+        test_plants::plant_api_key(&conn, "k-ok", "u-1", false);
+        let healthy = super::super::api_keys::find_by_id(&conn, "k-ok")
+            .unwrap()
+            .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            find_api_keys_by_user_id_or_empty("u-1", || Ok(vec![healthy]))
+        });
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].key_value, "synthetic-k-ok");
         assert!(lines.is_empty(), "{lines:?}");
     }
 }

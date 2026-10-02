@@ -1343,7 +1343,9 @@ impl<'c> DocMountFileLinksRepository<'c> {
     ///
     /// v4 wraps the body in `safeQuery(…, 'Error searching file links by name or
     /// path', {…}, [])`, so ANY failure answers `[]` after a log; that is why
-    /// this port returns `Vec`, not `Result`.
+    /// this port returns `Vec`, not `Result`. The line is the home's
+    /// ([`super::fallback::search_file_links_by_name_or_path_or_empty`] — P4.142
+    /// folded a module-target copy that stood here).
     ///
     /// **The degraded-index asymmetry is real but behaviourally neutral.** The
     /// chunks scan opens with `isMountIndexDegraded() → []`; this one does not.
@@ -1361,20 +1363,11 @@ impl<'c> DocMountFileLinksRepository<'c> {
         if mount_point_ids.is_empty() || query.is_empty() {
             return Vec::new();
         }
-        match self.search_by_name_or_path_inner(query, mount_point_ids, limit) {
-            Ok(rows) => rows,
-            Err(e) => {
-                tracing::error!(
-                    target: "quilltap::doc_mount_file_links",
-                    collection = "doc_mount_file_links",
-                    mount_point_id_count = mount_point_ids.len(),
-                    query_length = crate::jsstr::utf16_len(query),
-                    error = %e,
-                    "Error searching file links by name or path",
-                );
-                Vec::new()
-            }
-        }
+        super::fallback::search_file_links_by_name_or_path_or_empty(
+            mount_point_ids.len(),
+            crate::jsstr::utf16_len(query),
+            || self.search_by_name_or_path_inner(query, mount_point_ids, limit),
+        )
     }
 
     fn search_by_name_or_path_inner(
@@ -3460,9 +3453,15 @@ mod search_tests {
         let conn = scratch();
         conn.execute_batch("DROP TABLE doc_mount_files;").unwrap();
         let repo = DocMountFileLinksRepository::new(&conn);
-        assert!(repo
-            .search_by_name_or_path("manifesto", &mps(&["mp-1"]), 200)
-            .is_empty());
+        let (got, lines) = crate::test_support::captured_with(|| {
+            repo.search_by_name_or_path("manifesto", &mps(&["mp-1"]), 200)
+        });
+        assert!(got.is_empty());
+        // v4's exact line (P4.142): `doc-mount-file-links.repository.ts:626-627`.
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error searching file links by name or path collection=doc_mount_file_links mountPointIdCount=1 queryLength=9 error=no such table: doc_mount_files".to_string()]
+        );
     }
 }
 

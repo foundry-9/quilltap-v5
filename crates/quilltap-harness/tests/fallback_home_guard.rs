@@ -41,6 +41,18 @@ const HOME_MESSAGES: &[&str] = &[
     // 249-288`), `collection = connection_profiles`.
     "Error finding API key by ID",
     "Error finding API key by ID and user ID",
+    // P4.142: the vault overlay's two batch reads (`doc-mount-documents.
+    // repository.ts:142-220`), the two chunk reads and the file-links search
+    // (`doc-mount-chunks.repository.ts:130-215`, `doc-mount-file-links.
+    // repository.ts:592-628`) — the two searches FOLDED from module-target
+    // copies — and P4.139's delivered `getApiKeysByUserId` home (the Shared
+    // contract).
+    "Error finding documents by mount point IDs and path",
+    "Error finding documents by mount point IDs and folder",
+    "Error counting embedded chunks by mount point IDs",
+    "Error searching chunk content",
+    "Error searching file links by name or path",
+    "Error finding API keys by user ID",
 ];
 
 const HOME: &str = "db/fallback.rs";

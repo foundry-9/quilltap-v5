@@ -336,9 +336,11 @@ impl<'c> DocMountChunksRepository<'c> {
     ///
     /// Scoped to [`EDITABLE_TEXT_FILE_TYPES`] to match `searchByNameOrPath`;
     /// `%`/`_` in the user's query are escaped so they match literally, and
-    /// `LIMIT` caps the scan. v4's `safeQuery(…, 'Error searching chunk content',
-    /// {…}, [])` swallows every failure into `[]`, which is why this returns
-    /// `Vec` rather than `Result`.
+    /// `LIMIT` caps the scan. v4's `withRawDb([], …, 'Error searching chunk
+    /// content', {…})` swallows every failure into `[]`, which is why this
+    /// returns `Vec` rather than `Result`; the line is the home's
+    /// ([`super::fallback::search_chunk_content_or_empty`] — P4.142 folded a
+    /// module-target, snake_case, `sqlite error:`-prefixed copy that stood here).
     pub fn search_content(
         &self,
         query: &str,
@@ -348,20 +350,11 @@ impl<'c> DocMountChunksRepository<'c> {
         if mount_point_ids.is_empty() || query.is_empty() {
             return Vec::new();
         }
-        match self.search_content_inner(query, mount_point_ids, limit) {
-            Ok(rows) => rows,
-            Err(e) => {
-                tracing::error!(
-                    target: "quilltap::doc_mount_chunks",
-                    collection = "doc_mount_chunks",
-                    mount_point_id_count = mount_point_ids.len(),
-                    query_length = crate::jsstr::utf16_len(query),
-                    error = %e,
-                    "Error searching chunk content",
-                );
-                Vec::new()
-            }
-        }
+        super::fallback::search_chunk_content_or_empty(
+            mount_point_ids.len(),
+            crate::jsstr::utf16_len(query),
+            || self.search_content_inner(query, mount_point_ids, limit),
+        )
     }
 
     fn search_content_inner(
@@ -826,8 +819,15 @@ mod search_tests {
         conn.execute_batch("DROP TABLE doc_mount_file_links;")
             .unwrap();
         let repo = DocMountChunksRepository::new(&conn);
-        assert!(repo
-            .search_content("airship", &mps(&["mp-1"]), 200)
-            .is_empty());
+        let (got, lines) = crate::test_support::captured_with(|| {
+            repo.search_content("airship", &mps(&["mp-1"]), 200)
+        });
+        assert!(got.is_empty());
+        // v4's exact line (P4.142): the Repository target, camelCase, the bare
+        // SQLite sentence (`doc-mount-chunks.repository.ts:212-213`).
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error searching chunk content collection=doc_mount_chunks mountPointIdCount=1 queryLength=7 error=no such table: doc_mount_file_links".to_string()]
+        );
     }
 }

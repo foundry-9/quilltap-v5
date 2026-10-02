@@ -74,6 +74,11 @@ _Versions: core 0.0.1148._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `TransportError` gains `kind: TransportErrorKind` (`Http`, `Connect`, `Timeout`) and four constructors: `http(status, body)`, `connect(message)`, `timeout(message)` and `headers_timeout(ms)` (now a `Timeout`). All 52 struct literals across 12 files (core 38, harness 14) now go through them. `is_headers_timeout`'s message-prefix sniff is replaced by `is_timeout()`, which reads the kind. Behaviour does not change: every status-less site is `Connect`, every status site is `Http`, and the headers timeout is still the only `Timeout`. This is P4.141's first commit, landed early so a later field cannot cross the shared struct's literals again.
+#### 2026-10-02 — feat(db): P4.142 unit 1 — five new fallback homes, v4's strict repository scope, and P4.139's API-key home
+
+_Versions: core 0.0.1147, harness 0.0.1075._
+
+`db::fallback` gains v4's lines for the vault overlay's two batch document reads, the embedded-chunk count, the chunk-content search and the file-link name/path search, plus `find_api_keys_by_user_id_or_empty` (delivered for P4.139 under the round's shared contract). The two search fallbacks that logged under their module targets with snake_case fields and the `sqlite error:` prefix now go through the home and log v4's exact bytes. v4's `withStrictRepositoryFailures` is ported as a thread-local scope: inside it the two batch homes log with `strictFailures=true` and propagate (ruled by the human on 2026-10-02 so backup and export can stay strict once the overlay falls back). `fallback_home_guard` lists the six new messages.
 
 #### 2026-10-02 — docs(dogfood): rule finding #124 closed — WaveSpeed will not be directly supported
 

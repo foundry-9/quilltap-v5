@@ -160503,3 +160503,56 @@ error=fetch failed`, `[Failover] … network`); a real Google 4xx on a bad key
 (`Error streaming from Google Gemini API context=… model=… error=…`); an
 OpenRouter image send with a junk key (line #7 alone). Plus `stall-body`
 on a non-streaming desk (a `Timeout`, never an empty answer).
+## P4.142 — the repository fallbacks (overlay batch reads, chunk reads, the chat GET/list arms) — lane record IN PROGRESS (2026-10-02)
+
+Branch `claude/p4-142-repository-fallbacks-75219b8dd` (worktree
+`.claude/worktrees/p4-142`, cut from `main` `75219b8dd`); v4 pin
+`/tmp/qt-v4-pin-p4142-f6426e196` (detached `f6426e196`, the three
+`node_modules` symlink classes; `rev-parse` + `ls -ld` verified). The §R.2
+probe PASSED at lane start: branch `main`, HEAD `f6426e196`, both logs empty,
+the tree dirty by EXACTLY the three recorded bug-175/176 docs paths.
+
+### RULED at lane start (the human, 2026-10-02) — the overlay's strict scope
+
+The survey and the order missed that the vault overlay's batch reads serve
+BOTH kinds of caller: the app paths (`send_mail`, `listChats`, …) that v4
+answers by dropping, AND the backup collect (`services/backup/collect.rs:473`)
+and the `.qtap` export (`services/qtap_export/**` — `characters_read::find_all`
+and the project/group `find_all`), which would start SILENTLY omitting every
+vaulted character on a broken mount index once the overlay falls back (today
+they fail loudly) — against the 2026-08-03 "fix, don't match" ruling. The
+importer is NOT exposed: its only overlay LIST reads (`reset.rs`, `seed.rs`)
+are v4 non-strict paths (a characters route and the startup seed), and its
+single-entity reads still error (`Unavailable`). Neither family's files are
+this lane's. **Ruling: port v4's `withStrictRepositoryFailures` as a
+thread-local scope in `db::fallback`; the two batch homes honour it (log with
+`strictFailures=true` LAST and propagate); the unifier wraps the backup
+collect and the export reads in it (a recorded divergence — v4 runs both
+non-strict) and, for v4 fidelity, the import execute + preview (§S hunks
+below).** Until the union, backup/export drop vaulted characters on a broken
+mount index on THIS branch only.
+
+### Unit 1 — the homes (core 0.0.1147, harness 0.0.1075)
+
+- Five new `db::fallback` shapes in v4's bytes (target `quilltap::db`,
+  `collection` first, the bare `error`): the two batch document reads
+  (`Error finding documents by mount point IDs and path` / `… and folder`,
+  `doc-mount-documents.repository.ts:142-220` — they return `Result`, `Err`
+  ONLY inside the strict scope), `Error counting embedded chunks by mount
+  point IDs`, `Error searching chunk content`, `Error searching file links by
+  name or path`; plus the Shared contract's `find_api_keys_by_user_id_or_empty`
+  verbatim. v4's strict scope as `with_strict_repository_failures` /
+  `strict_repository_failures_active` (thread-local — a `Db::write` closure
+  runs on the writer thread, so the scope is entered INSIDE the closure; nests;
+  panic-safe restore).
+- **Red-first:** `fallback_home_guard` with the six literals added BEFORE the
+  fold — RED on exactly 2 offenders (`db/doc_mount_chunks.rs: "Error
+  searching chunk content"`, `db/doc_mount_file_links.rs: "Error searching
+  file links by name or path"`); green after both folded onto the home
+  (`home_seen` 14 → 20).
+- Pins: exact-line capture + silence legs for every new shape in
+  `fallback.rs`'s test module, the strict scope's `strictFailures=true`-LAST
+  line + propagation + restore, nesting + panic restore; the two existing
+  broken-table pins (`doc_mount_chunks`/`doc_mount_file_links`
+  `a_broken_table_answers_empty_not_an_error`) gain the exact line (the bare
+  `no such table: …`, camelCase, `quilltap::db`).
