@@ -161946,3 +161946,20 @@ empty, the tree dirty by exactly the three recorded docs paths).
   with `llm_logs: None` (the write fails soft) — run below.
 - Unit gate: core lib 2865/0; `orchestrator_tier3` 1/1; clippy both feature
   sets; fmt.
+
+### Unit 5 — the rejected-timezone boot WARN made true (Tier 2 item 13)
+
+- A v5-own line (no v4 twin — v4's launcher prints `Timezone:` lines), so no
+  oracle. The text moved to `REJECTED_TIMEZONE_WARNING` in
+  `quilltap-web/src/main.rs`; level WARN, target and the `value` / `source`
+  fields unchanged. It now says the refused value is not forwarded, so the
+  process keeps whatever `TZ` already says — a POSIX rule there still sets the
+  displayed dates while scheduled rooms, daily budget rollover and same-day
+  recall run on UTC; any other non-zone value leaves every zone on UTC. (The
+  wording avoids claiming UTC unconditionally: a rejected `QUILLTAP_TIMEZONE`
+  with `TZ` unset leaves the platform zone, which jiff reads whole — §R.4(i)'s
+  measured two cases are both the `TZ`-source case.)
+- Pin: `tests::the_rejected_timezone_warning_does_not_promise_the_system_zone`
+  — the exact bytes, plus negative assertions on `follow the system zone` and
+  `clock is unchanged`. `quilltap-web --bin` tests 6/0; clippy (web, both
+  feature sets); fmt.

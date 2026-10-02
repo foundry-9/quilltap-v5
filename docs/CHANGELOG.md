@@ -204,6 +204,12 @@ _Versions: core 0.0.1148, harness 0.0.1076._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `db::api_keys::marshal_row` now reads `isActive` the way v4's SQLite hydrate does: NULL is `true` (the Zod default), a number is active only when it equals 1, and any other cell is truthy unless it is an empty string. Before, v5 refused a NULL, text, fractional or BLOB cell outright and treated `2` as active. `get_api_keys_by_user_id` now drops a row it cannot marshal (or whose `provider` is empty) with v4's `API key validation failed {keyId, userId, error}` WARN and returns the rest; one bad row used to fail the whole list. The empty-provider drop now logs Zod's own message, byte for byte. `api_keys_tier2_equivalence` gains six seeded `isActive` rows read back through v4's real `findApiKeyById`, a BLOB-`key_value` row for user A, and the drop's WARN lines; it was red on 8 before the fix (P4.139).
+#### 2026-10-02 — fix(web): make the rejected-timezone boot warning tell the truth (P4.140)
+
+_Versions: web 0.0.209._
+
+When `QUILLTAP_TIMEZONE` or `TZ` is not an IANA zone name, `quilltap-web` refuses to forward it and warns at boot. The warning claimed the clock "will follow the system zone", which is not what happens: the refused value is not forwarded, so the process keeps whatever `TZ` already says. If that is a POSIX rule, displayed dates follow it while scheduled rooms, daily budget rollover and same-day recall run on UTC; any other non-zone value leaves every zone on UTC. The text now says so, lives in a `const`, and is pinned by a unit test that also refuses the old claim. Level, target and the `value` / `source` fields are unchanged.
+
 #### 2026-10-02 — fix(carina): log a CHAT_MESSAGE llm_logs row for every Carina stream call (P4.140)
 
 _Versions: core 0.0.1150, harness 0.0.1078._

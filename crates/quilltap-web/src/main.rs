@@ -107,6 +107,23 @@ fn resolve_process_timezone(
     }
 }
 
+/// The boot WARN for a [`TimezoneResolution::Rejected`] value — a v5-own line
+/// (v4's launcher prints `Timezone:` lines instead, `scripts/start-quilltap-
+/// docker.ts`; no v4 twin, so no oracle). Its earlier wording promised the
+/// clock "will follow the system zone", which jiff does not do (P4.140,
+/// measured): the refused value is not forwarded, so `TZ` keeps whatever it
+/// already said. When that `TZ` is a POSIX rule (`CST6CDT,M3.2.0,M11.1.0`),
+/// jiff parses it, so every displayed date follows the rule while the calendar
+/// paths — which take the zone's IANA NAME, and a rule has none — run on UTC;
+/// when it is any other non-zone value (`CDT`) jiff refuses it and every zone
+/// is UTC. (An unset `TZ` leaves the platform zone, which jiff reads whole.)
+const REJECTED_TIMEZONE_WARNING: &str =
+    "refusing a timezone that is not an IANA zone name (expected `UTC` or `Area/Location`, \
+     e.g. America/Chicago); it is not forwarded, so the process keeps whatever `TZ` already \
+     says — a POSIX rule there (e.g. `CST6CDT,M3.2.0,M11.1.0`) still sets the displayed \
+     dates, but scheduled rooms, daily budget rollover and same-day recall run on UTC, and \
+     any other value that is not a zone name leaves every zone on UTC";
+
 struct Args {
     host: String,
     port: u16,
@@ -211,14 +228,7 @@ fn main() {
             tracing::info!(timezone = %zone, source = %source, "process timezone set");
         }
         TimezoneResolution::Rejected { value, source } => {
-            tracing::warn!(
-                value = %value,
-                source = %source,
-                "refusing a timezone that is not an IANA zone name (expected `UTC` or \
-                 `Area/Location`, e.g. America/Chicago); the process clock is unchanged, \
-                 so scheduled rooms, daily budget rollover and same-day recall will follow \
-                 the system zone"
-            );
+            tracing::warn!(value = %value, source = %source, "{}", REJECTED_TIMEZONE_WARNING);
         }
         TimezoneResolution::Unset => {}
     }
@@ -267,6 +277,25 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The rejected-timezone WARN tells the truth jiff measured (P4.140, Tier 2
+    /// item 13): a POSIX-rule `TZ` keeps the display zone while the calendar
+    /// paths fall to UTC, and anything else leaves UTC everywhere. The old text
+    /// claimed the system zone would be followed — it must not come back.
+    #[test]
+    fn the_rejected_timezone_warning_does_not_promise_the_system_zone() {
+        assert_eq!(
+            REJECTED_TIMEZONE_WARNING,
+            "refusing a timezone that is not an IANA zone name (expected `UTC` or \
+             `Area/Location`, e.g. America/Chicago); it is not forwarded, so the process \
+             keeps whatever `TZ` already says — a POSIX rule there (e.g. \
+             `CST6CDT,M3.2.0,M11.1.0`) still sets the displayed dates, but scheduled rooms, \
+             daily budget rollover and same-day recall run on UTC, and any other value that \
+             is not a zone name leaves every zone on UTC"
+        );
+        assert!(!REJECTED_TIMEZONE_WARNING.contains("follow the system zone"));
+        assert!(!REJECTED_TIMEZONE_WARNING.contains("clock is unchanged"));
+    }
 
     /// The table from v4's `docker/entrypoint.sh` (`a7f691e7`): whichever knob
     /// is set fills in the other, `QUILLTAP_TIMEZONE` wins a disagreement,
