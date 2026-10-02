@@ -452,16 +452,21 @@ pub fn get_connection_profile(
     let Some(profile) = connection_profiles::find_by_id(conn, profile_id)? else {
         return Ok(None);
     };
-    let mut api_key: Option<ApiKeySummary> = None;
-    if let Some(api_key_id) = s(&profile, "apiKeyId") {
-        if let Some(key) = api_keys::find_by_id(conn, &api_key_id)? {
-            api_key = Some(ApiKeySummary {
-                id: key.id,
-                provider: key.provider,
-                label: key.label,
-            });
-        }
-    }
+    // v4 `chat-enrichment.service.ts:392-397` reads the key UNSCOPED
+    // (`Repos = RepositoryContainer`) through the fallback `findApiKeyById`:
+    // a read error logs its line and is `apiKey: null` — the profile is still
+    // returned (P4.139; v5's `?` had failed the whole enriched-chat read).
+    let api_key = s(&profile, "apiKeyId")
+        .and_then(|api_key_id| {
+            crate::db::fallback::find_api_key_by_id_or_none(&api_key_id, || {
+                api_keys::find_by_id(conn, &api_key_id)
+            })
+        })
+        .map(|key| ApiKeySummary {
+            id: key.id,
+            provider: key.provider,
+            label: key.label,
+        });
     Ok(Some(EnrichedConnectionProfile {
         id: s(&profile, "id").unwrap_or_default(),
         name: s(&profile, "name").unwrap_or_default(),

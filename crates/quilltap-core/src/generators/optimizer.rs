@@ -39,9 +39,7 @@ use crate::db::memories_read::{
 };
 use crate::db::runtime::Db;
 use crate::db::vector_store::CharacterVectorStore;
-use crate::db::{
-    api_keys, characters_read, connection_profiles, embedding_profiles, wardrobe_read, DbError,
-};
+use crate::db::{characters_read, connection_profiles, embedding_profiles, wardrobe_read, DbError};
 use crate::generators::field_semantics::{
     COMMITTEE_DRIFT_GUARDRAIL, COMPANION_TRUST_DISPOSITION, CONVERSATIONAL_VOICE_DIRECTION,
     EXAMPLE_DIALOGUE_COVERAGE, FIELD_SEMANTICS_PREAMBLE, FULL_FIELD_SEMANTICS,
@@ -1981,20 +1979,9 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
 
     // Get API key — v4 `if (profile.apiKeyId)` → `findApiKeyByIdAndUserId` →
     // `key_value`, else `''` — SENT on every sub-step call (P4.133).
-    let mut api_key = String::new();
-    if let Some(key_id) = profile
-        .get("apiKeyId")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-    {
-        let (key_id, uid) = (key_id.to_string(), user_id.to_string());
-        if let Some(key) = db
-            .read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))
-            .map_err(db_msg)?
-        {
-            api_key = key.key_value;
-        }
-    }
+    // A read error is the scoped fallback's line, then `''` (P4.139).
+    let api_key =
+        crate::services::api_key_service::profile_api_key_value_scoped(db, &profile, user_id);
 
     // (v4 ensures the plugin system is initialized here — the v5 provider is
     // the assembled seam.)

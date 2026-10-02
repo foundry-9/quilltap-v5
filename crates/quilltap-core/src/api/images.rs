@@ -1838,16 +1838,12 @@ async fn run_images_generate(
     // ── the API key (route.ts:259-266) ──────────────────────────────────────
     // v4 `repos.connections.findApiKeyById` — UN-scoped by user, and a dangling
     // id is simply an empty key (no refusal), which the provider then rejects.
-    let api_key_id = profile
-        .get("apiKeyId")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let decrypted_key = match api_key_id {
-        Some(id) => match db.read_main(|c| crate::db::api_keys::find_by_id(c, &id)) {
-            Ok(Some(k)) => k.key_value,
-            Ok(None) => String::new(),
-            Err(e) => return super::types::db_error_response(e),
-        },
+    // It is a fallback read, so a read error is the same empty key after its
+    // logged line — the run continues; v5 had answered 500 (P4.139).
+    let decrypted_key = match profile.get("apiKeyId").and_then(Value::as_str) {
+        Some(id) => crate::services::api_key_service::read_api_key(db, id)
+            .map(|k| k.key_value)
+            .unwrap_or_default(),
         None => String::new(),
     };
 
@@ -2389,6 +2385,106 @@ mod log_context_tests {
                 1,
                 "exactly one PRODUCTION emission site carries {needle:?}"
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod api_key_read_tests {
+    //! P4.139: `POST /api/v1/images` reads the profile's key through v4's
+    //! UNSCOPED fallback `findApiKeyById` (`route.ts:325-331`) — a corrupt key
+    //! is the repository line and an EMPTY key, and the run CONTINUES (v5 had
+    //! answered 500). The probe profile's provider cannot draw, so the run's
+    //! next gate — the capability refusal, AFTER the key read — is the proof
+    //! that it continued; every seam panics if reached.
+    use super::*;
+    use crate::services::api_key_service::test_instance::*;
+
+    const CP_BAD: &str = "a2000139-0000-4000-8000-0000000000bd";
+    const CP_OK: &str = "a2000139-0000-4000-8000-00000000000c";
+
+    struct Unreached;
+    impl crate::model::image::ImageGenerationDyn for Unreached {
+        fn generate_image<'a>(
+            &'a self,
+            _provider: &'a str,
+            _api_key: &'a str,
+            _params: &'a crate::model::image::ImageGenParams,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<
+                            crate::model::image::ImageGenResponse,
+                            crate::model::image::ImageGenError,
+                        >,
+                    > + Send
+                    + 'a,
+            >,
+        > {
+            panic!("the provider must not be reached")
+        }
+    }
+    impl ImagePromptClassifier for Unreached {
+        fn classify<'a>(
+            &'a self,
+            _db: &'a crate::db::runtime::Db,
+            _content: &'a str,
+            _selection: &'a crate::cheap_llm::CheapLlmSelection,
+            _user_id: &'a str,
+            _concierge_policy: &'a ResolvedConciergePolicy,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = DangerClassificationResult> + Send + 'a>,
+        > {
+            panic!("the classifier must not be reached")
+        }
+    }
+
+    fn generate(db: &Db, profile_id: &str) -> (Response, Vec<String>) {
+        let seams = ImagesGenerateSeams {
+            provider: ErasedImageGenerate::new(Unreached),
+            classifier: ErasedImagePromptClassifier::new(Unreached),
+            codec: Arc::new(crate::services::file_storage::NotConfiguredPixelCodec),
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let prompt = serde_json::json!("a lighthouse at dusk");
+        let pid = serde_json::json!(profile_id);
+        crate::test_support::captured_with(|| {
+            rt.block_on(images_generate(
+                db,
+                &seams,
+                USER,
+                0,
+                Some(&prompt),
+                Some(&pid),
+                None,
+                None,
+                None,
+            ))
+        })
+    }
+
+    #[test]
+    fn a_corrupt_key_is_the_line_and_an_empty_key_and_the_run_continues() {
+        let (_dir, db) = provisioned(|c| {
+            plant_connection_profile(c, CP_BAD, "ANTHROPIC", Some(BAD_KEY));
+            plant_connection_profile(c, CP_OK, "ANTHROPIC", Some(OK_KEY));
+        });
+        for (pid, want_lines) in [(CP_BAD, vec![unscoped_line(BAD_KEY)]), (CP_OK, Vec::new())] {
+            let (resp, lines) = generate(&db, pid);
+            match resp {
+                Response::Error(e) => {
+                    assert_eq!(e.kind, ErrorKind::BadRequest, "{pid}");
+                    assert_eq!(
+                        e.message, "ANTHROPIC provider does not support image generation",
+                        "{pid}"
+                    );
+                }
+                other => panic!("{pid}: expected the capability 400, got {other:?}"),
+            }
+            assert_eq!(db_lines(&lines), want_lines, "{pid}: {lines:?}");
         }
     }
 }

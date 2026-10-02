@@ -26,7 +26,7 @@ use crate::cheap_llm::profile_params_value;
 use crate::db::files::FileFull;
 use crate::db::files::FilesRepository;
 use crate::db::runtime::Db;
-use crate::db::{api_keys, connection_profiles, DbError};
+use crate::db::{connection_profiles, DbError};
 use crate::generators::file_content::{extract_file_content, file_entry_of};
 use crate::generators::generated_items::{
     sanitize_generated_wardrobe_items, wardrobe_items_generation_prompt, GeneratedWardrobeItem,
@@ -731,20 +731,12 @@ async fn run_wizard_core<CMP: CompletionProvider>(
     // Get primary profile API key — user-scoped, `''` when the profile names
     // none or the row is gone (v4 `:726-732`), and SENT on every field call
     // (P4.133, dogfood #133).
-    let mut primary_api_key = String::new();
-    if let Some(key_id) = primary_profile
-        .get("apiKeyId")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-    {
-        let (key_id, uid) = (key_id.to_string(), user_id.to_string());
-        if let Some(key) = db
-            .read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))
-            .map_err(db_msg)?
-        {
-            primary_api_key = key.key_value;
-        }
-    }
+    // A read error is the scoped fallback's line, then `''` (P4.139).
+    let primary_api_key = crate::services::api_key_service::profile_api_key_value_scoped(
+        db,
+        &primary_profile,
+        user_id,
+    );
 
     // Create primary provider — `primaryProfile.baseUrl || undefined` (truthy).
     let call = WizardCallCtx {
@@ -798,19 +790,9 @@ async fn run_wizard_core<CMP: CompletionProvider>(
                         .is_none_or(|u| u == user_id)
                 })
                 .ok_or_else(|| "Vision profile not found".to_string())?;
-            if let Some(key_id) = secondary
-                .get("apiKeyId")
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-            {
-                let (key_id, uid) = (key_id.to_string(), user_id.to_string());
-                if let Some(key) = db
-                    .read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))
-                    .map_err(db_msg)?
-                {
-                    vision_api_key = key.key_value;
-                }
-            }
+            vision_api_key = crate::services::api_key_service::profile_api_key_value_scoped(
+                db, &secondary, user_id,
+            );
             vision_profile = secondary;
         }
 

@@ -1004,14 +1004,14 @@ async fn run_wardrobe_preview_avatar(
     else {
         return bad_request("Selected image profile has no API key configured");
     };
-    let uid = user_id.to_string();
-    let api_key = match db
-        .read_main(move |conn| crate::db::api_keys::find_by_id_and_user_id(conn, &api_key_id, &uid))
-    {
-        Ok(Some(k)) if !k.key_value.is_empty() => k.key_value,
-        Ok(_) => return bad_request("API key for image profile is missing or invalid"),
-        Err(e) => return internal(e),
-    };
+    // v4 `findApiKeyByIdAndUserId` (`preview-avatar/route.ts:78-84`) is a
+    // fallback read: a read error logs its line and is `null`, so it is this
+    // 400 — never the 500 v5 had answered (P4.139).
+    let api_key =
+        match crate::services::api_key_service::read_api_key_scoped(db, &api_key_id, user_id) {
+            Some(k) if !k.key_value.is_empty() => k.key_value,
+            _ => return bad_request("API key for image profile is missing or invalid"),
+        };
 
     // Aurora character aesthetic — GLOBAL tier (a preview has no project context).
     let character_aesthetic = crate::services::aesthetics::resolve_aesthetic(
@@ -1308,5 +1308,77 @@ pub async fn wardrobe_instructions_set(db: &Db, instructions: &Option<Option<Val
         }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
+    }
+}
+
+#[cfg(test)]
+mod api_key_read_tests {
+    //! P4.139: the avatar preview reads the image profile's key through v4's
+    //! SCOPED fallback `findApiKeyByIdAndUserId` (`preview-avatar/route.ts:
+    //! 78-84`) — a corrupt key is the repository line and `null`, so it is
+    //! the route's 400, never the 500 v5 had answered.
+    use super::*;
+    use crate::services::api_key_service::test_instance::*;
+
+    const CHARACTER: &str = "a1000139-0000-4000-8000-000000000001";
+    const IP_BAD: &str = "a6000139-0000-4000-8000-0000000000bd";
+    const IP_OK: &str = "a6000139-0000-4000-8000-00000000000c";
+
+    fn preview(db: &Db, image_profile_id: &str) -> (Response, Vec<String>) {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        crate::test_support::captured_with(|| {
+            rt.block_on(wardrobe_preview_avatar(
+                db,
+                &ErasedAvatarPreview::none(),
+                USER,
+                serde_json::json!({
+                    "characterId": CHARACTER,
+                    "equippedSlots": {},
+                    "imageProfileId": image_profile_id,
+                }),
+                NOW,
+                None,
+            ))
+        })
+    }
+
+    #[test]
+    fn a_corrupt_image_profile_key_is_the_scoped_line_and_the_400() {
+        let (_dir, db) = provisioned(|c| {
+            c.execute(
+                "INSERT INTO characters (id, userId, name, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'Probe', ?3, ?3)",
+                rusqlite::params![CHARACTER, USER, NOW],
+            )
+            .unwrap();
+            for (id, key) in [(IP_BAD, BAD_KEY), (IP_OK, OK_KEY)] {
+                c.execute(
+                    "INSERT INTO image_profiles (id, userId, name, provider, modelName, \
+                     apiKeyId, createdAt, updatedAt) VALUES (?1, ?2, ?1, 'OPENAI', \
+                     'gpt-image-1', ?3, ?4, ?4)",
+                    rusqlite::params![id, USER, key, NOW],
+                )
+                .unwrap();
+            }
+        });
+        let (resp, lines) = preview(&db, IP_BAD);
+        match resp {
+            Response::Error(e) => {
+                assert_eq!(e.kind, crate::api::types::ErrorKind::BadRequest);
+                assert_eq!(e.message, "API key for image profile is missing or invalid");
+            }
+            other => panic!("expected the 400, got {other:?}"),
+        }
+        assert_eq!(db_lines(&lines), vec![scoped_line(BAD_KEY, USER)]);
+        // A healthy key passes the gate (the unwired renderer refuses later)
+        // and logs no repository line.
+        let (resp, lines) = preview(&db, IP_OK);
+        if let Response::Error(e) = &resp {
+            assert_ne!(e.message, "API key for image profile is missing or invalid");
+        }
+        assert!(db_lines(&lines).is_empty(), "{lines:?}");
     }
 }

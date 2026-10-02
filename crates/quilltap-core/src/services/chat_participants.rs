@@ -65,9 +65,7 @@ use crate::clock::now_iso;
 use crate::db::chats::{ChatUpdate, ChatsRepository};
 use crate::db::chats_messages::{ChatEventInput, SystemEventInput};
 use crate::db::runtime::Db;
-use crate::db::{
-    api_keys, characters_read, chats_read, connection_profiles, image_profiles, DbError,
-};
+use crate::db::{characters_read, chats_read, connection_profiles, image_profiles, DbError};
 use crate::photos::resolve_character_avatar::resolve_character_avatar;
 use crate::services::chat_enrichment::EnrichedImage;
 use crate::services::host_notifications::{
@@ -456,23 +454,18 @@ fn enrich_with_default_image(
     }))
 }
 
-/// v4 `enrichWithApiKey(apiKeyId, repos)` — `{id, label, provider, isActive}`.
-fn enrich_with_api_key(
-    main: &Connection,
-    api_key_id: Option<&str>,
-) -> Result<Option<EnrichedApiKey>, DbError> {
-    let Some(id) = api_key_id else {
-        return Ok(None);
-    };
-    let Some(key) = api_keys::find_by_id(main, id)? else {
-        return Ok(None);
-    };
-    Ok(Some(EnrichedApiKey {
+/// v4 `enrichWithApiKey(apiKeyId, repos)` — `{id, label, provider, isActive}`
+/// (`app/api/v1/chats/[id]/helpers.ts:78`, the UNSCOPED container). The read
+/// is the fallback `findApiKeyById`: a read error logs its line and is `null`
+/// (P4.139 — it had been a `?` that failed the participant enrichment).
+fn enrich_with_api_key(main: &Connection, api_key_id: Option<&str>) -> Option<EnrichedApiKey> {
+    let key = crate::services::api_key_service::read_api_key(main, api_key_id?)?;
+    Some(EnrichedApiKey {
         id: key.id,
         label: key.label,
         provider: key.provider,
         is_active: key.is_active,
-    }))
+    })
 }
 
 /// v4 `getEnrichedCharacter` — the overlaid character + its default image.
@@ -509,7 +502,7 @@ pub fn get_enriched_connection_profile(
     let Some(p) = connection_profiles::find_by_id(main, profile_id)? else {
         return Ok(None);
     };
-    let api_key = enrich_with_api_key(main, s(&p, "apiKeyId").as_deref())?;
+    let api_key = enrich_with_api_key(main, s(&p, "apiKeyId").as_deref());
     Ok(Some(EnrichedParticipantConnectionProfile {
         id: s(&p, "id").unwrap_or_default(),
         name: s(&p, "name").unwrap_or_default(),
@@ -1811,5 +1804,36 @@ mod subprompt_tests {
             lines.iter().any(|l| l.contains(RECOMPILE_LINE)),
             "{lines:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod api_key_read_tests {
+    //! P4.139: the participant enrichment's key read is v4's UNSCOPED fallback
+    //! `findApiKeyById` (`app/api/v1/chats/[id]/helpers.ts:78`) — a corrupt key
+    //! is the repository line and `apiKey: null`, the profile still returned.
+    use crate::services::api_key_service::test_instance::*;
+
+    #[test]
+    fn a_corrupt_key_nulls_the_participant_profiles_api_key() {
+        let (_dir, db) = provisioned(|c| {
+            plant_connection_profile(c, "cp-bad", "OPENAI", Some(BAD_KEY));
+            plant_connection_profile(c, "cp-ok", "OPENAI", Some(OK_KEY));
+        });
+        let (got, lines) = crate::test_support::captured_with(|| {
+            db.read_main(|c| super::get_enriched_connection_profile(c, "cp-bad"))
+        });
+        let got = got.unwrap().expect("the profile is still returned");
+        assert_eq!(got.id, "cp-bad");
+        assert!(got.api_key.is_none());
+        assert_eq!(db_lines(&lines), vec![unscoped_line(BAD_KEY)]);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            db.read_main(|c| super::get_enriched_connection_profile(c, "cp-ok"))
+        });
+        assert_eq!(
+            got.unwrap().unwrap().api_key.map(|k| k.id).as_deref(),
+            Some(OK_KEY)
+        );
+        assert!(db_lines(&lines).is_empty(), "{lines:?}");
     }
 }

@@ -164,6 +164,19 @@ async function runCase(
   }
 }
 
+/** P4.139: make one API key's `key_value` cell a BLOB on the case's work
+ *  copy — the cell v4's `ApiKeySchema.parse` refuses (the Float32 decode) and
+ *  v5's marshal refuses. The Rust family plants identically. */
+function corruptKey(id: string): void {
+  const { getRawDatabase } = require('@/lib/database/backends/sqlite/client') as {
+    getRawDatabase: () => { prepare: (s: string) => { run: (...a: unknown[]) => { changes: number } } };
+  };
+  const r = getRawDatabase()
+    .prepare("UPDATE api_keys SET key_value = x'00000000' WHERE id = ?")
+    .run(id);
+  if (r.changes !== 1) throw new Error(`the corrupt-key plant missed ${id}`);
+}
+
 const B = 'http://localhost/api/v1/embedding-profiles';
 const coll = () => loadRoute('@/app/api/v1/embedding-profiles/route');
 const idRoute = () => loadRoute('@/app/api/v1/embedding-profiles/[id]/route');
@@ -222,6 +235,44 @@ async function main(): Promise<void> {
     {
       name: 'get_404',
       run: async () => respond(await (await idRoute()).GET(mockRequest(`${B}/${BOGUS}`), params(BOGUS))),
+    },
+    // P4.139 — a corrupt key row (APIKEY's `key_value` made a BLOB on the
+    // case's work copy). v4's `findApiKeyById` is a fallback `safeQuery`: the
+    // enrich is `apiKey: null` (200 — in the LIST too, where v5's `?` had 500'd
+    // every profile) and the create / update existence checks are 404 `API key`.
+    {
+      name: 'get_corrupt_key',
+      run: async () => {
+        corruptKey(APIKEY);
+        return respond(await (await idRoute()).GET(mockRequest(`${B}/${EP_DEFAULT}`), params(EP_DEFAULT)));
+      },
+    },
+    {
+      name: 'list_corrupt_key',
+      run: async () => {
+        corruptKey(APIKEY);
+        return respond(await (await coll()).GET(mockRequest(B)));
+      },
+    },
+    {
+      name: 'create_corrupt_key',
+      run: async () => {
+        corruptKey(APIKEY);
+        return respond(
+          await (await coll()).POST(
+            mockRequest(B, { name: 'Z', provider: 'OPENAI', modelName: 'x', apiKeyId: APIKEY }),
+          ),
+        );
+      },
+    },
+    {
+      name: 'update_corrupt_key',
+      run: async () => {
+        corruptKey(APIKEY);
+        return respond(
+          await (await idRoute()).PUT(mockRequest(`${B}/${EP_TRUNC}`, { apiKeyId: APIKEY }), params(EP_TRUNC)),
+        );
+      },
     },
     // ── create ─────────────────────────────────────────────────────────────
     {

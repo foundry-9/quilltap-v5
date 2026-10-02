@@ -14,7 +14,7 @@ use rusqlite::{Connection, OptionalExtension};
 use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
-use crate::db::{api_keys, image_profiles as ip, provider_models, tags};
+use crate::db::{image_profiles as ip, provider_models, tags};
 use crate::image_gen::huggingface_lookup::ErasedLoraMetadata;
 use crate::image_gen::lora_support::resolve_lora_support;
 use crate::image_gen::lora_validation::{
@@ -25,13 +25,16 @@ use crate::model::image::ErasedImageDiscovery;
 use crate::model::image_dialects::supported_image_models;
 use crate::model::nanogpt_catalog::image_provider_options_schema;
 use crate::provider_manifest::Registry;
+use crate::services::api_key_service::read_api_key;
 use crate::tools::generate_image::{
     self, ErasedImageGeneration, ImageGenerationToolInput, ImageToolExecutionContext,
 };
 
 // P4.56: the three profile-update handlers share ONE reader for the JS
 // semantics of `apiKeyId` / `baseUrl`; only the consequences differ per site.
-use super::settings::{classify_api_key_id, classify_base_url, ApiKeyIdPatch, BaseUrlPatch};
+use super::settings::{
+    classify_api_key_id, classify_base_url, enrich_with_api_key, ApiKeyIdPatch, BaseUrlPatch,
+};
 use super::types::{ErrorKind, Response};
 use super::zod_issues::zod_uuid_ok;
 
@@ -90,26 +93,6 @@ fn resolve_image_provider_id(provider: &str) -> &str {
 // Enrichment (v4 `enrichWithApiKey` / `enrichWithTags`)
 // ===========================================================================
 
-/// v4 `enrichWithApiKey` — `{id, label, provider, isActive} | null`. `null` when
-/// the id is falsy OR the key is not found; never the key value.
-fn enrich_api_key(
-    conn: &Connection,
-    api_key_id: Option<&str>,
-) -> Result<Value, crate::db::DbError> {
-    let Some(id) = api_key_id else {
-        return Ok(Value::Null);
-    };
-    Ok(match api_keys::find_by_id(conn, id)? {
-        Some(k) => json!({
-            "id": k.id,
-            "label": k.label,
-            "provider": k.provider,
-            "isActive": k.is_active,
-        }),
-        None => Value::Null,
-    })
-}
-
 /// v4 `enrichWithTags` — `[{tagId, tag}]` in INPUT tag-id order, dropping ids with
 /// no matching tag (`tag` is the full marshaled Tag entity). Empty input → `[]`.
 fn enrich_tags(conn: &Connection, tag_ids: &[String]) -> Result<Value, crate::db::DbError> {
@@ -138,7 +121,7 @@ fn tag_ids_of(profile: &Value) -> Vec<String> {
 
 /// Attach `apiKey` + enriched `tags` to a marshaled profile (v4's list/get spread).
 fn enrich_profile(conn: &Connection, mut profile: Value) -> Result<Value, crate::db::DbError> {
-    let api_key = enrich_api_key(conn, profile.get("apiKeyId").and_then(Value::as_str))?;
+    let api_key = enrich_with_api_key(conn, profile.get("apiKeyId").and_then(Value::as_str));
     let tags_enriched = enrich_tags(conn, &tag_ids_of(&profile))?;
     let obj = profile.as_object_mut().unwrap();
     obj.insert("apiKey".into(), api_key);
@@ -324,11 +307,11 @@ pub async fn image_profile_create(db: &Db, user_id: &str, body: Value) -> Respon
         .get("apiKeyId")
         .and_then(Value::as_str)
         .map(str::to_string);
+    // v4 `findApiKeyById` (`image-profiles/route.ts:496-499`) is a fallback
+    // read: a read error logs its line and is this 404, never a 500 (P4.139).
     if let Some(id) = &api_key_id {
-        match db.read_main(|conn| api_keys::find_by_id(conn, id)) {
-            Ok(Some(_)) => {}
-            Ok(None) => return not_found("API key"),
-            Err(e) => return internal(e),
+        if read_api_key(db, id).is_none() {
+            return not_found("API key");
         }
     }
     match db.read_main(|conn| ip::find_id_by_user_and_name(conn, user_id, &name)) {
@@ -386,10 +369,7 @@ pub async fn image_profile_create(db: &Db, user_id: &str, body: Value) -> Respon
 
     // The 201 body = v4's `{...validate(entityInput), apiKey}` — the in-memory
     // created object (apiKeyId/baseUrl present as null-or-value, tags raw []).
-    let api_key = match db.read_main(|conn| enrich_api_key(conn, api_key_id.as_deref())) {
-        Ok(v) => v,
-        Err(e) => return internal(e),
-    };
+    let api_key = enrich_with_api_key(db, api_key_id.as_deref());
     let mut obj = Map::new();
     obj.insert("id".into(), Value::String(id));
     obj.insert("userId".into(), Value::String(user_id.to_string()));
@@ -472,10 +452,9 @@ pub async fn image_profile_update(
                 patch.api_key_id = Some(None);
             }
             ApiKeyIdPatch::Set(id) => {
-                match db.read_main(|conn| api_keys::find_by_id(conn, id)) {
-                    Ok(Some(_)) => {}
-                    Ok(None) => return not_found("API key"),
-                    Err(e) => return internal(e),
+                // v4 `[id]/route.ts:116-119` — the fallback read (P4.139).
+                if read_api_key(db, id).is_none() {
+                    return not_found("API key");
                 }
                 mo.insert("apiKeyId".into(), Value::String(id.to_string()));
                 patch.api_key_id = Some(Some(id.to_string()));
@@ -563,7 +542,7 @@ pub async fn image_profile_update(
     // The echo = v4's `{...validate(merged), ...enriched}` — enrich the in-memory
     // merged (nulls present when explicitly set).
     let enriched = match db.read_main(|conn| {
-        let api_key = enrich_api_key(conn, merged.get("apiKeyId").and_then(Value::as_str))?;
+        let api_key = enrich_with_api_key(conn, merged.get("apiKeyId").and_then(Value::as_str));
         let tags_enriched = enrich_tags(conn, &tag_ids_of(&merged))?;
         Ok::<_, crate::db::DbError>((api_key, tags_enriched))
     }) {
@@ -1053,11 +1032,9 @@ pub async fn image_profile_list_models(
 
     // v4 `if (apiKeyId)` — falsy (absent or empty) takes the built-in path.
     if let Some(api_key_id) = api_key_id.filter(|s| !s.is_empty()) {
-        let key = match db.read_main(|conn| api_keys::find_by_id(conn, api_key_id)) {
-            Ok(k) => k,
-            Err(_) => return server_error(),
-        };
-        let Some(key) = key else {
+        // v4 `route.ts:146-151` — the fallback read: a read error logs its
+        // line and is this 404, never the outer catch's 500 (P4.139).
+        let Some(key) = read_api_key(db, api_key_id) else {
             return not_found("API key");
         };
         match discovery

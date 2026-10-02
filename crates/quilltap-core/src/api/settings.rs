@@ -220,14 +220,23 @@ fn validate_provider_config(provider: &str, api_key: &str, base_url: Option<&str
     errors
 }
 
-/// v4 `enrichWithApiKey(apiKeyId, repos)` → `{id,label,provider,isActive}` | null.
-/// `apiKeyId` falsy → null; UNSCOPED lookup (`findApiKeyById`); not found → null.
-fn enrich_with_api_key(conn: &rusqlite::Connection, api_key_id: Option<&str>) -> Value {
+/// v4 `enrichWithApiKey(apiKeyId, repos)` (`lib/api/middleware/enrichment.ts:
+/// 51-69`) → `{id,label,provider,isActive}` | null. `apiKeyId` falsy → null;
+/// UNSCOPED lookup (`findApiKeyById`); not found → null. A read error is v4's
+/// fallback line, then `null` (P4.136) — so the enrich is INFALLIBLE: one
+/// corrupt key nulls that profile's `apiKey` and the response is still 200.
+/// P4.139: the ONE copy — the image- and embedding-profile routes had each
+/// carried their own `Result`-returning twin whose `?` turned a corrupt key
+/// into a 500 for the whole GET (and, inside the embedding LIST loop, for
+/// every profile the user owns).
+pub(crate) fn enrich_with_api_key<R: crate::services::api_key_service::MainReads>(
+    reads: &R,
+    api_key_id: Option<&str>,
+) -> Value {
     let Some(id) = api_key_id.filter(|s| !s.is_empty()) else {
         return Value::Null;
     };
-    // A read error is v4's fallback line, then `null` (P4.136).
-    match crate::db::fallback::find_api_key_by_id_or_none(id, || api_keys::find_by_id(conn, id)) {
+    match crate::services::api_key_service::read_api_key(reads, id) {
         Some(k) => json!({
             "id": k.id,
             "label": k.label,

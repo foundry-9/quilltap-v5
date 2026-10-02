@@ -2518,8 +2518,13 @@ where
 
     let mut api_key = String::new();
     if let Some(api_key_id) = connection_profile.get("apiKeyId").and_then(Value::as_str) {
-        match api_keys::find_by_id(main, api_key_id) {
-            Ok(Some(k)) => api_key = k.key_value,
+        // P4.139: through the fallback home — a read error now logs v4's
+        // `Error finding API key by ID` BEFORE the WARN below (`route.ts:
+        // 700-706`: the repository line, then `!storedKey`'s WARN).
+        match crate::db::fallback::find_api_key_by_id_or_none(api_key_id, || {
+            api_keys::find_by_id(main, api_key_id)
+        }) {
+            Some(k) => api_key = k.key_value,
             // P4.90: v4 `app/api/v1/chats/route.ts:647` warns here and returns
             // `NO_GREETING`; v5 returned silently. The `_` arm covers BOTH a
             // missing row and a read failure because v4's own

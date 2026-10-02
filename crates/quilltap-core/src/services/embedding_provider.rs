@@ -94,7 +94,6 @@ use std::sync::Mutex;
 
 use serde_json::{json, Value};
 
-use crate::db::api_keys;
 use crate::db::embedding_profiles::{self, EmbeddingProfileRow};
 use crate::db::runtime::Db;
 use crate::embedding_vector::apply_embedding_profile;
@@ -273,17 +272,14 @@ impl<T: WireTransport> ApiEmbeddingProvider<T> {
         // v4 `getApiKeyForProfile` behind the manifest's requiresApiKey gate.
         let mut api_key = String::new();
         if manifest.config_requirements.requires_api_key {
-            let key = match &profile.api_key_id {
-                Some(kid) => {
-                    let kid = kid.clone();
-                    let uid = user_id.to_string();
-                    self.db
-                        .read_main(move |conn| api_keys::find_by_id_and_user_id(conn, &kid, &uid))
-                        .map_err(|e| ApiError::Plain(e.to_string()))?
-                        .map(|k| k.key_value)
-                }
-                None => None,
-            };
+            // v4 `getApiKeyForProfile` (`embedding-service.ts:118-129`) reads
+            // through the SCOPED fallback: a read error logs its line and is
+            // `null` — the refusal below — never the raw `sqlite error: …`
+            // v5 had surfaced (P4.139).
+            let key = profile.api_key_id.as_deref().and_then(|kid| {
+                crate::services::api_key_service::read_api_key_scoped(&self.db, kid, user_id)
+                    .map(|k| k.key_value)
+            });
             match key {
                 Some(k) => api_key = k,
                 None => {
@@ -852,6 +848,50 @@ mod tests {
             assert_eq!(err.message, "No API key found for OPENAI embedding profile");
             assert_eq!(err.provider.as_deref(), Some("OPENAI"));
         }
+    }
+
+    /// P4.139: v4 `getApiKeyForProfile` (`embedding-service.ts:118-129`) reads
+    /// through the SCOPED fallback — a corrupt key row is the repository line
+    /// and `null`, which is this refusal; v5 had surfaced the raw `sqlite
+    /// error: …` text as the embedding error.
+    #[test]
+    fn a_corrupt_key_is_the_scoped_line_and_the_no_key_refusal() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (err, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(async {
+                let db = test_db("corrupt-key").await;
+                seed_profile(&db, "ep-1", "u1", "OPENAI", Some("ak-bad"), None, false).await;
+                db.write(|ws| {
+                    crate::db::fallback::test_plants::plant_api_key(
+                        ws.main().connection(),
+                        "ak-bad",
+                        "u1",
+                        true,
+                    );
+                    Ok(())
+                })
+                .await
+                .unwrap();
+                let provider = ApiEmbeddingProvider::new(db, CannedWireTransport::new());
+                provider
+                    .generate_for_user("hi", "u1", Some("ep-1"))
+                    .await
+                    .unwrap_err()
+            })
+        });
+        assert_eq!(err.message, "No API key found for OPENAI embedding profile");
+        assert_eq!(err.provider.as_deref(), Some("OPENAI"));
+        let db_lines: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains(" quilltap::db "))
+            .collect();
+        assert_eq!(
+            db_lines,
+            vec!["ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId=ak-bad userId=u1 error=Invalid column type Blob at index: 4, name: key_value"]
+        );
     }
 
     #[tokio::test]

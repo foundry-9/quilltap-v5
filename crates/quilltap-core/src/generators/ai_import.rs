@@ -46,7 +46,7 @@ use crate::cheap_llm::profile_params_value;
 use crate::clock::iso_from_unix_ms;
 use crate::db::files::FilesRepository;
 use crate::db::runtime::Db;
-use crate::db::{api_keys, connection_profiles, DbError};
+use crate::db::{connection_profiles, DbError};
 use crate::generators::field_semantics::{
     CONVERSATIONAL_VOICE_DIRECTION, EXAMPLE_DIALOGUE_COVERAGE, FULL_FIELD_SEMANTICS,
     GATED_COMPANION_TRUST_DISPOSITION, PHYSICAL_DESCRIPTION_SEMANTICS, PROMPT_SEMANTICS,
@@ -1525,20 +1525,9 @@ async fn run_import_inner<CMP: CompletionProvider>(
 
     // Get API key — v4 `if (profile.apiKeyId)` → `findApiKeyByIdAndUserId` →
     // `key_value`, else `''` — SENT on every call (P4.133).
-    let mut api_key = String::new();
-    if let Some(key_id) = profile
-        .get("apiKeyId")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-    {
-        let (key_id, uid) = (key_id.to_string(), user_id.to_string());
-        if let Some(key) = db
-            .read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))
-            .map_err(db_msg)?
-        {
-            api_key = key.key_value;
-        }
-    }
+    // A read error is the scoped fallback's line, then `''` (P4.139).
+    let api_key =
+        crate::services::api_key_service::profile_api_key_value_scoped(db, &profile, user_id);
 
     // Create LLM provider — `profile.baseUrl || undefined` (truthy)
     let c = ImportCallCtx {

@@ -145,6 +145,12 @@ The two batch document reads behind every character, project, group, wardrobe, s
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `db::fallback` gains v4's lines for the vault overlay's two batch document reads, the embedded-chunk count, the chunk-content search and the file-link name/path search, plus `find_api_keys_by_user_id_or_empty` (delivered for P4.139 under the round's shared contract). The two search fallbacks that logged under their module targets with snake_case fields and the `sqlite error:` prefix now go through the home and log v4's exact bytes. v4's `withStrictRepositoryFailures` is ported as a thread-local scope: inside it the two batch homes log with `strictFailures=true` and propagate (ruled by the human on 2026-10-02 so backup and export can stay strict once the overlay falls back). `fallback_home_guard` lists the six new messages.
+#### 2026-10-02 — fix(api-keys): the 21 remaining API-key reads take v4's fallback outcome — profile routes, wardrobe, image generation, the generators, chat enrichment, the greeting, the embedding provider
+
+_Versions: core 0.0.1149, harness 0.0.1077._
+
+Every v4 API-key read is a fallback read that logs and answers `null`; 21 v5 sites still let the error through. They now go through the `db::fallback` homes, each at v4's outcome: image- and embedding-profile create, update and list-models answer 404 `API key not found` (was 500); the profile GET and list enrich `apiKey: null` and still answer 200 (the three `enrich` copies are now one infallible `settings::enrich_with_api_key`); wardrobe's avatar preview answers its 400; `POST /api/v1/images` continues with an empty key; the external-prompt generator, the optimizer, the wizard (primary and vision) and the AI import proceed with `''` through one new `api_key_service::profile_api_key_value_scoped` helper; the chat-enrichment and participant profile summaries carry `apiKey: null`; the greeting logs the repository line before its existing WARN; and the embedding provider answers its `No API key found` refusal instead of a raw SQLite error. `image_profiles_routes_equivalence` and `embedding_profiles_routes_equivalence` gain nine corrupt-key rows over v4's real routes (red-first 9, each with its line leg), and the other sites get unit pins over a provisioned instance (P4.139).
+
 #### 2026-10-02 — fix(settings): the api-keys update/delete/test routes answer v4's logged 404 on a corrupt key; two api_key_service read helpers
 
 _Versions: core 0.0.1148, harness 0.0.1076._

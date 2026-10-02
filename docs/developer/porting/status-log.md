@@ -161366,3 +161366,80 @@ commits past the order's `cb9ecf256`: the order itself and the #124 ruling).
   `/tmp/p4139/qt-settings-oracle/{cases,fixtures}`; from the pin
   `QT_FIXTURE_SETTINGS_MAIN=… QT_ORACLE_OUT=/tmp/p4139/oracle-settings-routes.ndjson npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots /tmp/p4139/qt-settings-oracle/cases -- "settings-routes\.test\.ts$"`.
 
+### Unit 3 — the 21 conversions over the existing homes (Tier 1 item 2)
+
+Each at v4's outcome (survey §A3 #1-9, 17-24 less the routes, 26, 27, 30, 31):
+
+- **Profile routes** (`api/image_profiles.rs:328,475,1056`,
+  `api/embedding_profiles.rs:308,501`) → `read_api_key`; `None` →
+  `not_found("API key")` (was `internal` / `internal_fixed` / the models
+  route's `server_error()` 500). **The three `enrich_*` copies → ONE**
+  `pub(crate) settings::enrich_with_api_key<R: MainReads>` (infallible, the
+  `settings.rs:230` shape); every caller's `?` dropped (image `:141,389,566`,
+  embedding `:184,214,379,684` — `:214` was inside the LIST loop, so one bad
+  key had 500'd every profile).
+- `api/wardrobe.rs` preview → `read_api_key_scoped`; `None` / empty → the
+  existing 400. `api/images.rs` generate → `read_api_key` → `''`, the run
+  continues.
+- **The four generators (five sites)** → ONE new
+  `api_key_service::profile_api_key_value_scoped(reads, profile, user_id)` —
+  v4's identical idiom in all four services (`let apiKey = ''; if
+  (profile.apiKeyId) { findApiKeyByIdAndUserId → key_value }`), so a read
+  error is the scoped line and `''`; the `?` / `.map_err(db_msg)?` that failed
+  the generator are gone. Four unused `api_keys` imports removed.
+- `services/chat_participants.rs` `enrich_with_api_key` → infallible
+  (`read_api_key`); its import line removed (file owned whole).
+- `services/chat_enrichment.rs` (`:455-463` ONLY) and `services/chat_create.rs`
+  (`:2519-2531` ONLY) call `db::fallback::find_api_key_by_id_or_none` DIRECTLY
+  over `api_keys::find_by_id` — deliberately not the helper, so each file's
+  `api_keys` import (outside this lane's named hunk) stays used and no line
+  outside the hunk moves. The census classifies both `home`.
+- `services/embedding_provider.rs` → `read_api_key_scoped`; `None` → the
+  existing `No API key found for {name} embedding profile` refusal.
+- **Two-sided (v4's REAL routes), the families TAKEN:**
+  `image_profiles_routes_equivalence` (5 rows: `get_corrupt_key` 200 +
+  `apiKey: null`, `list_plain_corrupt_key` 200 + three nulls,
+  `create_corrupt_key` / `update_corrupt_key` / `list_models_corrupt_key` 404)
+  and `embedding_profiles_routes_equivalence` (4 rows: get 200, list 200 with
+  five nulls, create / update 404), each over an in-case plant (`corruptKey()`
+  via `getRawDatabase().prepare(…).run()` on v4's work copy; `db.write` on
+  v5's) and each with a LINE leg (exactly the unscoped line; the list once per
+  profile naming the key). **Red-first** (the two route files restored from
+  `main`, restored by `cmp`): EXACTLY the nine new rows + their nine line legs
+  red, nothing else (image: `expected success, got Internal` ×2, `500` ×3 incl.
+  the models route's `Failed to fetch models`; embedding: `Internal` ×2 with
+  `Failed to fetch embedding profile(s)`, `500` ×2). Green after (image 81
+  oracle rows, embedding 48).
+- **Families NOT taken, and why:** `wardrobe_routes_equivalence` lives in the
+  WEB crate, and §R.10(j) fences this lane's web tests to the two Scenario
+  Builder files ONLY — its preview arm is a core unit pin instead;
+  `images_routes_equivalence` drives the collection routes, not generate (the
+  generate family `images_generate_route_equivalence` is not in the order's
+  candidate list) — a core unit pin instead.
+- **Unit pins** (all `captured_with`, exact line + outcome + silence leg), over
+  a NEW shared `api_key_service::test_instance::provisioned` (a REAL
+  `provision_fresh_instance` with a BLOB-key row and a healthy one):
+  `the_generators_key_idiom_is_v4s_scoped_fallback`,
+  `the_chat_enrichments_profile_summary_nulls_a_corrupt_key` (lives in
+  `api_key_service.rs` — the lane owns only `chat_enrichment.rs`'s key hunk),
+  `chat_participants::api_key_read_tests`, `wardrobe::api_key_read_tests`
+  (400 + the scoped line; a healthy key passes the gate),
+  `images::api_key_read_tests` (an ANTHROPIC profile: the line, then the
+  capability 400 that comes AFTER the key read — the proof the run continued;
+  every seam panics if reached), `embedding_provider::tests::
+  a_corrupt_key_is_the_scoped_line_and_the_no_key_refusal`.
+- **The greeting (`chat_create.rs:2519-2531`) has NO unit pin of its own:**
+  `auto_generate_first_message` is a private generic async fn and the file's
+  test module is outside this lane's hunk. Its line is the home's own (pinned
+  by the home's tests); the outcome (the WARN + `NO_GREETING`) is unchanged
+  and pinned by P4.90. **§S handoff (unifier / P4.140):** an
+  `initial_greeting_equivalence` arm over a corrupt key expecting `ERROR
+  quilltap::db Error finding API key by ID …` BEFORE `WARN [Chats v1]
+  Connection profile is missing its API key` (v4 `route.ts:700-706`).
+- Regen recipes (both from the pin, staged mirrors under `/tmp/p4139/`): the
+  two `.test.ts` headers' recipes with `TMPO=/tmp/p4139/qt-image-profiles-
+  routes-oracle` / `/tmp/p4139/qt-ep-routes-oracle` and `QT_ORACLE_OUT=/tmp/
+  p4139/oracle-{image,embedding}-profiles-routes.ndjson`; the committed
+  `groups-projects-*` / `embedding-profiles-*` pairs read (COPIED per case),
+  not rebuilt.
+

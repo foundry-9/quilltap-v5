@@ -37,7 +37,7 @@ use serde_json::Value;
 use crate::api::system_qtap::js_truthy;
 use crate::cheap_llm::{build_character_cache_key, profile_params_value};
 use crate::db::runtime::Db;
-use crate::db::{api_keys, characters_read, connection_profiles, DbError};
+use crate::db::{characters_read, connection_profiles, DbError};
 use crate::generators::field_semantics::{
     CONVERSATIONAL_VOICE_DIRECTION, GATED_COMPANION_TRUST_DISPOSITION, TRUST_SAFEGUARDS_DIRECTION,
 };
@@ -324,20 +324,9 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
 
     // v4 `if (profile.apiKeyId)` → `findApiKeyByIdAndUserId` → `key_value`,
     // else `''` — SENT with the call (P4.133).
-    let mut api_key = String::new();
-    if let Some(key_id) = profile
-        .get("apiKeyId")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-    {
-        let key_id = key_id.to_string();
-        let uid = user_id.to_string();
-        if let Some(key) =
-            db.read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))?
-        {
-            api_key = key.key_value;
-        }
-    }
+    // A read error is the scoped fallback's line, then `''` (P4.139).
+    let api_key =
+        crate::services::api_key_service::profile_api_key_value_scoped(db, &profile, user_id);
 
     // Fetch character data (the overlaid read; a broken vault THROWS in v4 and
     // propagates as `Err` here).

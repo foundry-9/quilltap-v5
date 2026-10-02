@@ -183,6 +183,25 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     .expect("open db")
 }
 
+/// P4.139: a fresh copy whose APIKEY row's `key_value` is a BLOB (the
+/// oracle's `corruptKey`), planted through the writer.
+fn corrupt_key_db(rt: &tokio::runtime::Runtime, spec: &Spec, tag: &str) -> Db {
+    let db = fresh_db(spec, tag);
+    let n = rt
+        .block_on(db.write(|w| {
+            w.main()
+                .connection()
+                .execute(
+                    "UPDATE api_keys SET key_value = x'00000000' WHERE id = ?1",
+                    [APIKEY],
+                )
+                .map_err(Into::into)
+        }))
+        .expect("plant the corrupt key");
+    assert_eq!(n, 1, "the corrupt-key plant must land on APIKEY");
+    db
+}
+
 /// The `provider_models` cache dump the list-models arms compare, mirroring the
 /// oracle's projection and ordering.
 fn dump_provider_models(db: &Db) -> Value {
@@ -296,6 +315,12 @@ fn image_profiles_routes_match_oracle() {
         "list_models_live_ok",
         "list_models_live_failure",
         "list_models_dangling_key",
+        // P4.139 — the corrupt-key arms.
+        "get_corrupt_key",
+        "list_plain_corrupt_key",
+        "create_corrupt_key",
+        "update_corrupt_key",
+        "list_models_corrupt_key",
         // P4.D138 (`84f33ce94`) — the LoRA guard arms.
         "create_loras_ok",
         "create_loras_over_cap_kept",
@@ -488,6 +513,66 @@ fn image_profiles_routes_match_oracle() {
         &ip::image_profile_get(&fresh_db(&spec, "g4"), BOGUS),
         &mut failed,
     );
+
+    // P4.139 — a corrupt key row (APIKEY's `key_value` a BLOB on the copy; the
+    // oracle plants identically). v4's `findApiKeyById` is a fallback, so the
+    // enrich is `apiKey: null` (200) and the three existence checks are 404
+    // `API key`; v5 had answered 500 on all five. Each also logs exactly the
+    // unscoped repository line.
+    {
+        let key_line = format!(
+            "ERROR quilltap::db Error finding API key by ID collection=connection_profiles keyId={APIKEY} error=Invalid column type Blob at index: 4, name: key_value"
+        );
+        let lines_of = |name: &str, lines: Vec<String>, failed: &mut Vec<String>| {
+            let db_lines: Vec<String> = lines
+                .into_iter()
+                .filter(|l| l.contains(" quilltap::db "))
+                .collect();
+            if db_lines != vec![key_line.clone()] {
+                eprintln!("[{name} lines] MISMATCH: {db_lines:?}");
+                failed.push(format!("{name}_lines"));
+            }
+        };
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            ip::image_profile_get(&corrupt_key_db(&rt, &spec, "gck"), IP_1)
+        });
+        ok("get_corrupt_key", &r, &[], &mut failed);
+        lines_of("get_corrupt_key", lines, &mut failed);
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            ip::image_profile_list(&corrupt_key_db(&rt, &spec, "lpck"), &uid, None)
+        });
+        ok("list_plain_corrupt_key", &r, &[], &mut failed);
+        lines_of("list_plain_corrupt_key", lines, &mut failed);
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(ip::image_profile_create(
+                &corrupt_key_db(&rt, &spec, "cck"),
+                &uid,
+                json!({ "name": "X", "provider": "OPENAI", "modelName": "m", "apiKeyId": APIKEY }),
+            ))
+        });
+        err("create_corrupt_key", &r, &mut failed);
+        lines_of("create_corrupt_key", lines, &mut failed);
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(ip::image_profile_update(
+                &corrupt_key_db(&rt, &spec, "uck"),
+                &uid,
+                IP_1,
+                json!({ "apiKeyId": APIKEY }),
+            ))
+        });
+        err("update_corrupt_key", &r, &mut failed);
+        lines_of("update_corrupt_key", lines, &mut failed);
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(ip::image_profile_list_models(
+                &corrupt_key_db(&rt, &spec, "lmck"),
+                &ErasedImageDiscovery::new(RealImageProvider::new(CannedWireTransport::new())),
+                Some("OPENAI"),
+                Some(APIKEY),
+            ))
+        });
+        err("list_models_corrupt_key", &r, &mut failed);
+        lines_of("list_models_corrupt_key", lines, &mut failed);
+    }
 
     // --- list-models (P4.D100 / v4 `ca22ec45`) ---
     {

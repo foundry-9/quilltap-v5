@@ -106,6 +106,33 @@ pub fn read_api_key_scoped<R: MainReads>(
     })
 }
 
+/// The generators' key idiom (P4.139) — v4's external-prompt generator, the
+/// character optimizer, the wizard (primary + vision) and the AI import all
+/// read it the same way (`external-prompt-generator.service.ts:102-108`,
+/// `character-optimizer.service.ts:815-821`, `character-wizard.service.ts:
+/// 727-733,766-771`, `ai-import.service.ts:831-837`):
+/// `let apiKey = ''; if (profile.apiKeyId) { const k = await
+/// repos.connections.findApiKeyByIdAndUserId(profile.apiKeyId, userId); if (k)
+/// apiKey = k.key_value; }`. The read is the SCOPED fallback, so a read error
+/// logs its line and the generation PROCEEDS with `''` (the provider then
+/// refuses or not) — v5's `?` had failed the whole generator instead.
+pub fn profile_api_key_value_scoped<R: MainReads>(
+    reads: &R,
+    profile: &serde_json::Value,
+    user_id: &str,
+) -> String {
+    match profile
+        .get("apiKeyId")
+        .and_then(serde_json::Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        Some(key_id) => read_api_key_scoped(reads, key_id, user_id)
+            .map(|k| k.key_value)
+            .unwrap_or_default(),
+        None => String::new(),
+    }
+}
+
 /// v4 `getApiKeyForConnectionProfile` — resolve the (plaintext) key for a
 /// connection profile by id. `None` when the profile, its `apiKeyId`, or the key
 /// record (scoped to the user) is missing — or when either read FAILS: v4's
@@ -404,6 +431,91 @@ pub fn record_api_key_usage_scoped(
     repo.record_usage(id)
 }
 
+/// P4.139's shared test instance: a REAL provisioned instance (all three
+/// partitions, v4's fresh schema + seed) with planted `api_keys` rows — for the
+/// route- and service-level pins of the API-key read class, whose callers read
+/// whole tables (`connection_profiles`, `image_profiles`, `characters`) a
+/// reduced hand-rolled DDL would have to re-derive.
+#[cfg(test)]
+pub(crate) mod test_instance {
+    use rusqlite::Connection;
+
+    pub(crate) const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    /// The provisioned single user.
+    pub(crate) const USER: &str = crate::services::provisioning::SINGLE_USER_ID;
+    pub(crate) const NOW: &str = "2026-10-01T00:00:00.000Z";
+    /// The planted CORRUPT key (a BLOB `key_value`) and a healthy one, both
+    /// owned by [`USER`].
+    pub(crate) const BAD_KEY: &str = "a0000139-0000-4000-8000-0000000000bd";
+    pub(crate) const OK_KEY: &str = "a0000139-0000-4000-8000-00000000000c";
+
+    /// Provision a fresh instance, plant [`BAD_KEY`] + [`OK_KEY`], run `seed`
+    /// over the writable main partition, and open the pooled `Db` (main +
+    /// mount index).
+    pub(crate) fn provisioned(
+        seed: impl FnOnce(&Connection),
+    ) -> (tempfile::TempDir, crate::db::runtime::Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let main = data.join("quilltap.db");
+        {
+            let w = crate::db::Writer::open_writable(&main, PEPPER).unwrap();
+            crate::db::fallback::test_plants::plant_api_key(w.connection(), BAD_KEY, USER, true);
+            crate::db::fallback::test_plants::plant_api_key(w.connection(), OK_KEY, USER, false);
+            seed(w.connection());
+        }
+        let db = crate::db::runtime::Db::open(
+            crate::db::runtime::DbPaths {
+                main,
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    /// Plant a connection profile owned by [`USER`].
+    pub(crate) fn plant_connection_profile(
+        conn: &Connection,
+        id: &str,
+        provider: &str,
+        api_key_id: Option<&str>,
+    ) {
+        conn.execute(
+            "INSERT INTO connection_profiles (id, userId, name, provider, modelName, apiKeyId, \
+             createdAt, updatedAt) VALUES (?1, ?2, 'P4.139 probe', ?3, 'm', ?4, ?5, ?5)",
+            rusqlite::params![id, USER, provider, api_key_id, NOW],
+        )
+        .unwrap();
+    }
+
+    /// The exact unscoped / scoped repository lines for `key_id` over the
+    /// BLOB plant.
+    pub(crate) fn unscoped_line(key_id: &str) -> String {
+        format!(
+            "ERROR quilltap::db Error finding API key by ID collection=connection_profiles keyId={key_id} error=Invalid column type Blob at index: 4, name: key_value"
+        )
+    }
+    pub(crate) fn scoped_line(key_id: &str, user_id: &str) -> String {
+        format!(
+            "ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId={key_id} userId={user_id} error=Invalid column type Blob at index: 4, name: key_value"
+        )
+    }
+
+    /// The `quilltap::db` lines of a capture.
+    pub(crate) fn db_lines(lines: &[String]) -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| l.contains(" quilltap::db "))
+            .cloned()
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -597,6 +709,73 @@ mod tests {
             "{}",
             lines[0]
         );
+    }
+
+    /// P4.139: the generators' key idiom (external prompt, optimizer, wizard
+    /// ×2, AI import) — a corrupt row is the SCOPED line and `''`, and the
+    /// generation proceeds; a healthy row is its key; no / an empty `apiKeyId`
+    /// reads nothing; a foreign owner is a silent `''`.
+    #[test]
+    fn the_generators_key_idiom_is_v4s_scoped_fallback() {
+        use crate::db::fallback::test_plants::{conn_with_api_keys, plant_api_key};
+        use serde_json::json;
+        let conn = conn_with_api_keys();
+        plant_api_key(&conn, "k-bad", "u-1", true);
+        plant_api_key(&conn, "k-ok", "u-1", false);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            profile_api_key_value_scoped(&conn, &json!({ "apiKeyId": "k-bad" }), "u-1")
+        });
+        assert_eq!(got, "");
+        assert_eq!(lines, vec![test_instance::scoped_line("k-bad", "u-1")]);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                profile_api_key_value_scoped(&conn, &json!({ "apiKeyId": "k-ok" }), "u-1"),
+                profile_api_key_value_scoped(&conn, &json!({ "apiKeyId": "k-ok" }), "u-2"),
+                profile_api_key_value_scoped(&conn, &json!({}), "u-1"),
+                profile_api_key_value_scoped(&conn, &json!({ "apiKeyId": "" }), "u-1"),
+                profile_api_key_value_scoped(&conn, &json!({ "apiKeyId": null }), "u-1"),
+            )
+        });
+        assert_eq!(
+            got,
+            (
+                "synthetic-k-ok".to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new()
+            )
+        );
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// P4.139: `chat_enrichment::get_connection_profile` (the chat GET's
+    /// profile summary) reads the key UNSCOPED through the fallback: a corrupt
+    /// row is the line and `apiKey: null`, the profile still returned (v4
+    /// `chat-enrichment.service.ts:392-397`). The test lives here because the
+    /// lane owns only that file's key-read hunk.
+    #[test]
+    fn the_chat_enrichments_profile_summary_nulls_a_corrupt_key() {
+        use test_instance::*;
+        let (_dir, db) = provisioned(|c| {
+            plant_connection_profile(c, "cp-bad", "OPENAI", Some(BAD_KEY));
+            plant_connection_profile(c, "cp-ok", "OPENAI", Some(OK_KEY));
+        });
+        let (got, lines) = crate::test_support::captured_with(|| {
+            db.read_main(|c| crate::services::chat_enrichment::get_connection_profile(c, "cp-bad"))
+        });
+        let got = got.unwrap().expect("the profile is still returned");
+        assert_eq!(got.id, "cp-bad");
+        assert!(got.api_key.is_none());
+        assert_eq!(db_lines(&lines), vec![unscoped_line(BAD_KEY)]);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            db.read_main(|c| crate::services::chat_enrichment::get_connection_profile(c, "cp-ok"))
+        });
+        assert_eq!(
+            got.unwrap().unwrap().api_key.map(|k| k.id).as_deref(),
+            Some(OK_KEY)
+        );
+        assert!(db_lines(&lines).is_empty(), "{lines:?}");
     }
 
     #[test]

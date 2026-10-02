@@ -325,6 +325,19 @@ async function runCase(
   }
 }
 
+/** P4.139: make one API key's `key_value` cell a BLOB on the case's work
+ *  copy — the cell v4's `ApiKeySchema.parse` refuses (the Float32 decode) and
+ *  v5's marshal refuses. The Rust family plants identically. */
+function corruptKey(id: string): void {
+  const { getRawDatabase } = require('@/lib/database/backends/sqlite/client') as {
+    getRawDatabase: () => { prepare: (s: string) => { run: (...a: unknown[]) => { changes: number } } };
+  };
+  const r = getRawDatabase()
+    .prepare("UPDATE api_keys SET key_value = x'00000000' WHERE id = ?")
+    .run(id);
+  if (r.changes !== 1) throw new Error(`the corrupt-key plant missed ${id}`);
+}
+
 const B = 'http://localhost/api/v1/image-profiles';
 const coll = () => loadRoute('@/app/api/v1/image-profiles/route');
 const idRoute = () => loadRoute('@/app/api/v1/image-profiles/[id]/route');
@@ -757,6 +770,55 @@ async function main(): Promise<void> {
       name: 'get_404',
       run: async () =>
         respond(await (await idRoute()).GET(mockRequest(`${B}/${BOGUS}`), params(BOGUS))),
+    },
+    // P4.139 — a corrupt key row (APIKEY's `key_value` made a BLOB on the
+    // case's work copy). v4's `findApiKeyById` is a fallback `safeQuery`, so
+    // the enrich answers `apiKey: null` (200) and the create / update /
+    // list-models existence checks answer 404 `API key` — never a 500.
+    {
+      name: 'get_corrupt_key',
+      run: async () => {
+        corruptKey(APIKEY);
+        return respond(await (await idRoute()).GET(mockRequest(`${B}/${IP_1}`), params(IP_1)));
+      },
+    },
+    {
+      name: 'list_plain_corrupt_key',
+      run: async () => {
+        corruptKey(APIKEY);
+        return respond(await (await coll()).GET(mockRequest(B)));
+      },
+    },
+    {
+      name: 'create_corrupt_key',
+      run: async () => {
+        corruptKey(APIKEY);
+        return respond(
+          await (await coll()).POST(
+            mockRequest(B, { name: 'X', provider: 'OPENAI', modelName: 'm', apiKeyId: APIKEY }),
+          ),
+        );
+      },
+    },
+    {
+      name: 'update_corrupt_key',
+      run: async () => {
+        corruptKey(APIKEY);
+        return respond(
+          await (await idRoute()).PUT(mockRequest(`${B}/${IP_1}`, { apiKeyId: APIKEY }), params(IP_1)),
+        );
+      },
+    },
+    {
+      name: 'list_models_corrupt_key',
+      run: async () => {
+        corruptKey(APIKEY);
+        return respond(
+          await (await coll()).GET(
+            mockRequest(`${B}?action=list-models&provider=OPENAI&apiKeyId=${APIKEY}`),
+          ),
+        );
+      },
     },
     {
       name: 'create_happy',

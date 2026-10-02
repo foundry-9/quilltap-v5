@@ -299,6 +299,73 @@ fn embedding_profiles_routes_match_oracle() {
         &mut failed,
     );
 
+    // P4.139 — a corrupt key row (APIKEY's `key_value` a BLOB on the copy; the
+    // oracle plants identically). v4's `findApiKeyById` is a fallback: the
+    // enrich is `apiKey: null` (200 — v5's `?` had 500'd the GET and, inside
+    // the list loop, EVERY profile) and the existence checks are 404 `API
+    // key`. Each logs exactly the unscoped repository line (the list once per
+    // profile naming the key).
+    {
+        let key_line = format!(
+            "ERROR quilltap::db Error finding API key by ID collection=connection_profiles keyId={APIKEY} error=Invalid column type Blob at index: 4, name: key_value"
+        );
+        let corrupt_key_db = |tag: &str| {
+            let db = fresh_db(&spec, tag);
+            let n = rt
+                .block_on(db.write(|w| {
+                    w.main()
+                        .connection()
+                        .execute(
+                            "UPDATE api_keys SET key_value = x'00000000' WHERE id = ?1",
+                            [APIKEY],
+                        )
+                        .map_err(Into::into)
+                }))
+                .expect("plant the corrupt key");
+            assert_eq!(n, 1, "the corrupt-key plant must land on APIKEY");
+            db
+        };
+        let lines_of = |name: &str, lines: Vec<String>, failed: &mut Vec<String>| {
+            let db_lines: Vec<String> = lines
+                .into_iter()
+                .filter(|l| l.contains(" quilltap::db "))
+                .collect();
+            if db_lines.is_empty() || db_lines.iter().any(|l| *l != key_line) {
+                eprintln!("[{name} lines] MISMATCH: {db_lines:?}");
+                failed.push(format!("{name}_lines"));
+            }
+        };
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            ep::embedding_profile_get(&corrupt_key_db("gck"), EP_DEFAULT)
+        });
+        ok("get_corrupt_key", &r, &[], &mut failed);
+        lines_of("get_corrupt_key", lines, &mut failed);
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            ep::embedding_profile_list(&corrupt_key_db("lck"), &uid)
+        });
+        ok("list_corrupt_key", &r, &[], &mut failed);
+        lines_of("list_corrupt_key", lines, &mut failed);
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(ep::embedding_profile_create(
+                &corrupt_key_db("cck"),
+                &uid,
+                json!({ "name": "Z", "provider": "OPENAI", "modelName": "x", "apiKeyId": APIKEY }),
+            ))
+        });
+        err("create_corrupt_key", &r, &mut failed);
+        lines_of("create_corrupt_key", lines, &mut failed);
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(ep::embedding_profile_update(
+                &corrupt_key_db("uck"),
+                &uid,
+                EP_TRUNC,
+                json!({ "apiKeyId": APIKEY }),
+            ))
+        });
+        err("update_corrupt_key", &r, &mut failed);
+        lines_of("update_corrupt_key", lines, &mut failed);
+    }
+
     // ── create ─────────────────────────────────────────────────────────────
     ok(
         "create_happy",

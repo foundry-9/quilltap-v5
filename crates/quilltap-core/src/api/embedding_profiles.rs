@@ -22,13 +22,16 @@ use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
-use crate::db::{api_keys, embedding_profiles as ep, tags, tfidf_vocabulary};
+use crate::db::{embedding_profiles as ep, tags, tfidf_vocabulary};
 use crate::provider_manifest::Registry;
+use crate::services::api_key_service::read_api_key;
 use crate::services::queue_service;
 
 // P4.56: the three profile-update handlers share ONE reader for the JS
 // semantics of `apiKeyId` / `baseUrl`; only the consequences differ per site.
-use super::settings::{classify_api_key_id, classify_base_url, ApiKeyIdPatch, BaseUrlPatch};
+use super::settings::{
+    classify_api_key_id, classify_base_url, enrich_with_api_key, ApiKeyIdPatch, BaseUrlPatch,
+};
 use super::types::{ErrorKind, Response};
 
 // ===========================================================================
@@ -70,26 +73,6 @@ fn not_available(action: &str) -> Response {
 // ===========================================================================
 // Enrichment (v4 `enrichWithApiKey` / `enrichWithTags` / `enrichProfile`)
 // ===========================================================================
-
-/// v4 `enrichWithApiKey` — `{id, label, provider, isActive} | null`. `null` when
-/// the id is falsy OR the key is not found; never the key value.
-fn enrich_api_key(
-    conn: &Connection,
-    api_key_id: Option<&str>,
-) -> Result<Value, crate::db::DbError> {
-    let Some(id) = api_key_id else {
-        return Ok(Value::Null);
-    };
-    Ok(match api_keys::find_by_id(conn, id)? {
-        Some(k) => json!({
-            "id": k.id,
-            "label": k.label,
-            "provider": k.provider,
-            "isActive": k.is_active,
-        }),
-        None => Value::Null,
-    })
-}
 
 /// v4 `enrichWithTags` — `[{tagId, tag}]` in INPUT tag-id order, dropping ids with
 /// no matching tag. Empty input → `[]`.
@@ -181,7 +164,7 @@ fn embedding_stats(conn: &Connection, profile_id: &str) -> Value {
 /// Attach `apiKey` + enriched `tags` to a marshaled profile (v4's GET
 /// `enrichProfile` → `{...profile, apiKey, tags}`).
 fn enrich_get(conn: &Connection, mut profile: Value) -> Result<Value, crate::db::DbError> {
-    let api_key = enrich_api_key(conn, profile.get("apiKeyId").and_then(Value::as_str))?;
+    let api_key = enrich_with_api_key(conn, profile.get("apiKeyId").and_then(Value::as_str));
     let tags_enriched = enrich_tags(conn, &tag_ids_of(&profile))?;
     let obj = profile.as_object_mut().unwrap();
     obj.insert("apiKey".into(), api_key);
@@ -211,7 +194,7 @@ pub fn embedding_profile_list(db: &Db, user_id: &str) -> Response {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
-            let api_key = enrich_api_key(conn, p.get("apiKeyId").and_then(Value::as_str))?;
+            let api_key = enrich_with_api_key(conn, p.get("apiKeyId").and_then(Value::as_str));
             let tags_enriched = enrich_tags(conn, &tag_ids_of(&p))?;
             let vocab = vocabulary_stats(conn, &provider, &id)?;
             let stats = embedding_stats(conn, &id);
@@ -304,11 +287,11 @@ pub async fn embedding_profile_create(db: &Db, user_id: &str, body: Value) -> Re
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
         .map(str::to_string);
+    // v4 `findApiKeyById` (`embedding-profiles/route.ts:300-303`) is a
+    // fallback read: a read error logs its line and is this 404 (P4.139).
     if let Some(id) = &api_key_id {
-        match db.read_main(|conn| api_keys::find_by_id(conn, id)) {
-            Ok(Some(_)) => {}
-            Ok(None) => return not_found("API key"),
-            Err(e) => return internal_fixed("Failed to create embedding profile", e),
+        if read_api_key(db, id).is_none() {
+            return not_found("API key");
         }
     }
     match db.read_main({
@@ -376,10 +359,7 @@ pub async fn embedding_profile_create(db: &Db, user_id: &str, body: Value) -> Re
     // The 201 body = v4's `{...profile, apiKey}` — the created object with
     // apiKeyId/baseUrl/dimensions/truncateToDimensions present as null-or-value,
     // tags raw [].
-    let api_key = match db.read_main(|conn| enrich_api_key(conn, api_key_id.as_deref())) {
-        Ok(v) => v,
-        Err(e) => return internal_fixed("Failed to create embedding profile", e),
-    };
+    let api_key = enrich_with_api_key(db, api_key_id.as_deref());
     let mut obj = Map::new();
     obj.insert("id".into(), Value::String(id));
     obj.insert("userId".into(), Value::String(user_id.to_string()));
@@ -498,10 +478,9 @@ pub async fn embedding_profile_update(
                 patch.api_key_id = Some(None);
             }
             ApiKeyIdPatch::Set(id) => {
-                match db.read_main(|conn| api_keys::find_by_id(conn, id)) {
-                    Ok(Some(_)) => {}
-                    Ok(None) => return not_found("API key"),
-                    Err(e) => return internal_fixed("Failed to update embedding profile", e),
+                // v4 `[id]/route.ts:106-109` — the fallback read (P4.139).
+                if read_api_key(db, id).is_none() {
+                    return not_found("API key");
                 }
                 mo.insert("apiKeyId".into(), Value::String(id.to_string()));
                 patch.api_key_id = Some(Some(id.to_string()));
@@ -681,7 +660,7 @@ pub async fn embedding_profile_update(
     // as v4's in-memory merge does, pinned by `update_clear_apikey` and
     // `update_clear_truncate_dims_null`.
     let enriched = match db.read_main(|conn| {
-        let api_key = enrich_api_key(conn, merged.get("apiKeyId").and_then(Value::as_str))?;
+        let api_key = enrich_with_api_key(conn, merged.get("apiKeyId").and_then(Value::as_str));
         let tags_enriched = enrich_tags(conn, &tag_ids_of(&merged))?;
         Ok::<_, crate::db::DbError>((api_key, tags_enriched))
     }) {
