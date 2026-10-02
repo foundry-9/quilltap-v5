@@ -193,6 +193,42 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     .expect("open db")
 }
 
+/// P4.142 (G1) — v4's `{level, message, fields}` plant records rendered as v5's
+/// `quilltap::db` capture lines, and v5's ERROR/WARN lines with the `error=` tail
+/// dropped (each stack's own driver sentence).
+fn plant_lines(v4: &Value, v5: &[String]) -> (Vec<String>, Vec<String>) {
+    let want = v4
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(|rec| {
+            let mut line = format!(
+                "{} quilltap::db {}",
+                rec["level"].as_str().unwrap_or_default().to_uppercase(),
+                rec["message"].as_str().unwrap_or_default()
+            );
+            for pair in rec["fields"].as_array().cloned().unwrap_or_default() {
+                line.push_str(&format!(
+                    " {}={}",
+                    pair[0].as_str().unwrap_or_default(),
+                    pair[1].as_str().unwrap_or_default()
+                ));
+            }
+            line
+        })
+        .collect();
+    let got = v5
+        .iter()
+        .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+        .map(|l| match l.find(" error=") {
+            Some(i) => l[..i].to_string(),
+            None => l.clone(),
+        })
+        .collect();
+    (got, want)
+}
+
 /// The project slim rows + chats/files projectId + project links, in the oracle's
 /// `dumpProjectTables` shape.
 fn dump_project_tables(db: &Db) -> Value {
@@ -1074,6 +1110,39 @@ fn projects_routes_match_oracle() {
             false,
             &mut failed,
         );
+    }
+    {
+        // P4.142 (G1): the links plant — `doc_mount_file_links.originalMimeType`
+        // renamed (named by v4's `queryLinks`, never by the project overlay's
+        // batch reads). v4's Branch A read is the FILES repository's fallback
+        // `findByMountPointId`: 200 `{files: [], count: 0}` + `Error finding files
+        // by mount point ID {collection: doc_mount_files, mountPointId}`.
+        let name = "list_files_iota_links_plant";
+        let db = fresh_db(&spec, "lf_iota_plant");
+        db.write_blocking(|ws| {
+            ws.mount_index().expect("mount present").connection().execute_batch(
+                "ALTER TABLE \"doc_mount_file_links\" RENAME COLUMN \"originalMimeType\" TO \"originalMimeType_x\"",
+            )?;
+            Ok(())
+        })
+        .expect("plant the links rename");
+        let (resp, lines) =
+            quilltap_core::test_support::captured_with(|| projects::project_file_list(&db, IOTA));
+        if let Response::Error(e) = &resp {
+            eprintln!("[{name}] STATUS: v5 answered {:?} {}", e.kind, e.message);
+            failed.push(format!("{name}:status"));
+        }
+        assert_eq!(
+            oracle[name]["status"].as_i64(),
+            Some(200),
+            "{name}: v4's status"
+        );
+        check(name, &response_data(&resp), false, &mut failed);
+        let (got, want) = plant_lines(&oracle[name]["logs"], &lines);
+        if got != want {
+            eprintln!("[{name}] LINES:\n  v5: {got:#?}\n  v4: {want:#?}");
+            failed.push(format!("{name}:lines"));
+        }
     }
     {
         let db = fresh_db(&spec, "lf_kappa");

@@ -40,8 +40,8 @@ const BOGUS = 'b6000000-0000-4000-8000-0000000000ee';
 
 type ReadOpts = { encoding?: 'utf-8' | 'base64'; offset?: number; limit?: number };
 type Row =
-  | { kind: 'read'; id: string; fsNorm: boolean; out: unknown }
-  | { kind: 'list'; id: string; out: unknown };
+  | { kind: 'read'; id: string; fsNorm: boolean; out: unknown; logs?: unknown }
+  | { kind: 'list'; id: string; out: unknown; logs?: unknown };
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -144,6 +144,78 @@ async function main(): Promise<void> {
   await listCase('list-empty', MP_EMPTY);
   await listCase('list-fs', MP_FS);
   await listCase('list-obs', MP_OBS);
+
+  // ── P4.142 (G1) — the plant phase, on this same copy, after every healthy
+  // case: one column RENAME at a time (renamed back after), each read's
+  // ERROR/WARN recorded off the `Logger` prototype as `{level, message, fields}`
+  // (`module`/`error` omitted — the mail-tools plant recipe). v4's reads are all
+  // fallbacks, so a broken table is the not-found arm / an empty list, never a
+  // throw of the read itself.
+  //   - links `originalMimeType` (named by `queryJoined` + `queryLinks`, by no
+  //     documents read): the read's link → `null` → `File not found`; the list's
+  //     files → `[]`.
+  //   - documents `content` (named only by the documents read): the link
+  //     resolves, the document → `null` → `Document content missing`.
+  //   - folders `mountPointId` (the filter column — a renamed `path` is NO
+  //     query failure in v4: its `findByFilter` reads `SELECT *` and drops each
+  //     row on Zod validation, `Data validation failed` per row, measured):
+  //     the list's folders → `[]`.
+  const { Logger } = await import('@/lib/logger');
+  let current: Array<Record<string, unknown>> | null = null;
+  for (const level of ['error', 'warn'] as const) {
+    const original = Logger.prototype[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (current) {
+        const fields: Array<[string, string]> = [];
+        for (const [k, v] of Object.entries(context ?? {})) {
+          if (k === 'module' || k === 'error') continue;
+          if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+            fields.push([k, String(v)]);
+          }
+        }
+        current.push({ level, message, fields });
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  const planted = async (
+    table: string,
+    column: string,
+    run: () => Promise<void>,
+  ): Promise<void> => {
+    midb.exec(`ALTER TABLE "${table}" RENAME COLUMN "${column}" TO "${column}_x"`);
+    try {
+      await run();
+    } finally {
+      midb.exec(`ALTER TABLE "${table}" RENAME COLUMN "${column}_x" TO "${column}"`);
+    }
+  };
+  const withLogs = async (id: string, run: () => Promise<void>): Promise<void> => {
+    current = [];
+    await run();
+    const row = rows.find((r) => r.id === id);
+    if (row) row.logs = current;
+    current = null;
+  };
+  await planted('doc_mount_file_links', 'originalMimeType', async () => {
+    await withLogs('db-doc-read-links-plant', () =>
+      readCase('db-doc-read-links-plant', MP_DB, 'notes/intro.md', {}, false),
+    );
+    await withLogs('list-db-links-plant', () => listCase('list-db-links-plant', MP_DB));
+  });
+  await planted('doc_mount_documents', 'content', async () => {
+    await withLogs('db-doc-read-docs-plant', () =>
+      readCase('db-doc-read-docs-plant', MP_DB, 'notes/intro.md', {}, false),
+    );
+  });
+  await planted('doc_mount_folders', 'mountPointId', async () => {
+    await withLogs('list-db-folders-plant', () => listCase('list-db-folders-plant', MP_DB));
+  });
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

@@ -130,7 +130,9 @@ pub fn list_user_gallery(
     let links_repo = DocMountFileLinksRepository::new(mount);
     let mut all_photo_links: Vec<(crate::db::doc_mount_file_links::LinkRow, String)> = Vec::new();
     for mp in points.find_enabled_for_docedit()? {
-        for link in links_repo.find_by_mount_point_id(&mp.id)? {
+        // v4 `user-gallery-service.ts:282`: the fallback joined read (P4.142,
+        // G1).
+        for link in links_repo.find_by_mount_point_id_or_empty(&mp.id) {
             if is_photos_relative_path(Some(&link.relative_path)) {
                 all_photo_links.push((link, mp.id.clone()));
             }
@@ -834,5 +836,61 @@ mod tests {
         assert!(!needs_query_embedding(Some("")));
         assert!(!needs_query_embedding(Some("   ")));
         assert!(needs_query_embedding(Some(" owl ")));
+    }
+}
+
+#[cfg(test)]
+mod fallback_read_tests {
+    use super::*;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// P4.142 (G1, a capture unit): v4's per-mount joined link read
+    /// (`user-gallery-service.ts:282`) is a fallback, so a broken links table
+    /// lists an EMPTY gallery with one `Error querying joined file links` per
+    /// enabled mount — never an error. The silence leg on the healthy table.
+    #[test]
+    fn a_broken_links_table_lists_an_empty_gallery() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let conn = w.connection();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            list_user_gallery(conn, None, None, None, None, None)
+        });
+        assert_eq!(
+            got.unwrap(),
+            json!({ "entries": [], "total": 0, "hasMore": false })
+        );
+        assert!(lines.is_empty(), "{lines:?}");
+
+        let enabled: usize = conn
+            .query_row(
+                "SELECT COUNT(*) FROM doc_mount_points WHERE enabled = 1",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap() as usize;
+        assert!(enabled > 0);
+        conn.execute_batch(
+            "ALTER TABLE \"doc_mount_file_links\" RENAME COLUMN \"originalMimeType\" TO \"originalMimeType_x\"",
+        )
+        .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            list_user_gallery(conn, None, None, None, None, None)
+        });
+        assert_eq!(
+            got.unwrap(),
+            json!({ "entries": [], "total": 0, "hasMore": false })
+        );
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? error=no such column: l.originalMimeType".to_string();
+                enabled
+            ]
+        );
     }
 }

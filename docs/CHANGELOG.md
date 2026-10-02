@@ -74,6 +74,12 @@ _Versions: core 0.0.1148._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `TransportError` gains `kind: TransportErrorKind` (`Http`, `Connect`, `Timeout`) and four constructors: `http(status, body)`, `connect(message)`, `timeout(message)` and `headers_timeout(ms)` (now a `Timeout`). All 52 struct literals across 12 files (core 38, harness 14) now go through them. `is_headers_timeout`'s message-prefix sniff is replaced by `is_timeout()`, which reads the kind. Behaviour does not change: every status-less site is `Connect`, every status site is `Http`, and the headers timeout is still the only `Timeout`. This is P4.141's first commit, landed early so a later field cannot cross the shared struct's literals again.
+#### 2026-10-02 — feat(api): P4.142 unit 7 — the 14 read-only route and listing sites take v4's fallbacks (G1)
+
+_Versions: core 0.0.1153, harness 0.0.1080, web 0.0.208._
+
+The census's G1 group is converted: the character stats action, the project file list, the mount-point file list, the mount file reads, the mount file and blob GET routes, the qtap target route, and the character and user gallery lists now read through v4's fallbacks, so a broken mount-index table answers the not-found arm or an empty list with v4's repository line instead of a 500. Reading v4 for each site found that the project file list and the mount file list read through v4's files repository, whose line is `Error finding files by mount point ID` (collection `doc_mount_files`), not the links line; `db::fallback` gains that home. Plant arms against v4's real code land in `characters_reads_equivalence` (stats and the gallery), `projects_routes_equivalence` and `mount_read_equivalence` (read and list, three plants); the web routes, which no family drives, get capture units over their extracted read functions. The census recounts to 56 converted and 52 still on the list.
+
 #### 2026-10-02 — test(harness): P4.142 unit 6 — the document-store census widened to the batch and chunk reads, and recounted
 
 _Versions: core 0.0.1152, harness 0.0.1079._

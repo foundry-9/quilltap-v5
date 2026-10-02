@@ -518,6 +518,31 @@ pub fn search_file_links_by_name_or_path_or_empty<T>(
     })
 }
 
+/// v4 `docMountFiles.findByMountPointId` as its callers see it: a fallback
+/// `withRawDb([])` on the repository constructed with `'doc_mount_files'`, so
+/// `read()`'s `Err` logs `Error finding files by mount point ID {collection,
+/// mountPointId, error}` and answers `[]` (`doc-mount-files.repository.ts:
+/// 86-95`). NOT the links repository's `queryJoined` line: v4's files-list and
+/// project-files routes read through this repository (`queryLinks` is a plain
+/// helper inside it, no fallback of its own), so a v5 site that reads the same
+/// rows through the links repository still logs THIS line (P4.142, measured
+/// while converting G1 — the census had mapped both sites to the links line).
+pub fn files_by_mount_point_id_or_empty<T>(
+    mount_point_id: &str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Vec<T> {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "doc_mount_files",
+            mountPointId = %mount_point_id,
+            error = %error_text(&error),
+            "Error finding files by mount point ID"
+        );
+        Vec::new()
+    })
+}
+
 /// v4 `getApiKeysByUserId` as its callers see it: `read()`'s `Err` logs
 /// `Error finding API keys by user ID {collection, userId, error}` and answers
 /// `[]` (`connection-profiles.repository.ts:218-244`, 4-arg fallback
@@ -905,6 +930,25 @@ mod tests {
         let caught = std::panic::catch_unwind(|| with_strict_repository_failures(|| panic!("x")));
         assert!(caught.is_err());
         assert!(!strict_repository_failures_active());
+    }
+
+    /// The files repository's list line (P4.142, G1) — collection
+    /// `doc_mount_files`, never the links repository's.
+    #[test]
+    fn the_files_by_mount_point_id_shape_logs_v4s_line() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            files_by_mount_point_id_or_empty::<i32>("mp-1", || Err(posed()))
+        });
+        assert!(got.is_empty());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding files by mount point ID collection=doc_mount_files mountPointId=mp-1 error=posed".to_string()]
+        );
+        let (got, lines) = crate::test_support::captured_with(|| {
+            files_by_mount_point_id_or_empty("mp-1", || Ok(vec![1]))
+        });
+        assert_eq!(got, vec![1]);
+        assert!(lines.is_empty(), "{lines:?}");
     }
 
     /// P4.139's delivered home (the Shared contract): v4's bytes with the

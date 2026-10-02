@@ -53,6 +53,9 @@ const HOME_MESSAGES: &[&str] = &[
     "Error searching chunk content",
     "Error searching file links by name or path",
     "Error finding API keys by user ID",
+    // P4.142 (G1): v4's FILES repository list line (`doc-mount-files.
+    // repository.ts:86-95`) — the files-list and project-files routes.
+    "Error finding files by mount point ID",
 ];
 
 const HOME: &str = "db/fallback.rs";

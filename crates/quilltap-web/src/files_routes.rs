@@ -339,6 +339,101 @@ pub async fn files_get(
 // GET /api/v1/mount-points/{id}/files/{*path} — raw form
 // ---------------------------------------------------------------------------
 
+/// The database-mount read behind [`mount_file_get`] (v4 `readMountFileBytes`'s
+/// database branch, `lib/mount-index/read-file.ts:121-139`): the link row picks
+/// documents (text) vs blobs. Its link and document reads are v4's FALLBACKS — a
+/// failed read is the not-found arm, never the 500 (P4.142, G1; a named fn so
+/// the fallback can be pinned without a web state).
+#[allow(clippy::type_complexity)]
+fn read_database_mount_file(
+    conn: &rusqlite::Connection,
+    id: &str,
+    rel: &str,
+) -> Result<Option<(Vec<u8>, String, String)>, quilltap_core::db::DbError> {
+    let links = DocMountFileLinksRepository::new(conn);
+    // v4 `read-file.ts:121`/`:125` — fallbacks; a failed read is the not-found
+    // arm (P4.142, G1).
+    let Some(link) = links.find_by_mount_point_and_path_or_none(id, rel) else {
+        return Ok(None);
+    };
+    let is_text = matches!(
+        link.file_type.as_str(),
+        "markdown" | "txt" | "json" | "jsonl"
+    );
+    if is_text {
+        let docs = DocMountDocumentsRepository::new(conn);
+        let Some(content) = docs.find_by_mount_point_and_path_or_none(id, rel) else {
+            return Ok(None);
+        };
+        return Ok(Some((
+            content.into_bytes(),
+            mime_for_extension(rel).to_string(),
+            link.sha256,
+        )));
+    }
+    let blobs = DocMountBlobsRepository::new(conn);
+    let Some(bytes) = blobs.read_data_by_file_id(&link.file_id)? else {
+        return Ok(None);
+    };
+    let (mime, sha) = match blobs.find_by_mount_point_and_path(id, rel)? {
+        Some(meta) => (meta.stored_mime_type, meta.sha256),
+        None => (mime_for_extension(rel).to_string(), link.sha256),
+    };
+    Ok(Some((bytes, mime, sha)))
+}
+
+/// The read behind [`mount_blob_get`]: the blob branch, then the documents
+/// fallback (a text file addressed via `/blobs` — v4's uploads-store
+/// back-compat). The documents fallback's link and document reads are v4's
+/// FALLBACKS (`blobs/[...path]/route.ts:79` — P4.142, G1).
+#[allow(clippy::type_complexity)]
+fn read_mount_blob(
+    conn: &rusqlite::Connection,
+    id: &str,
+    path: &str,
+) -> Result<Option<(Vec<u8>, String, String, usize, String)>, quilltap_core::db::DbError> {
+    // The blob branch, error-tolerant on a store with no doc_mount_blobs table
+    // yet (v4's hand-rolled repo creates it lazily on first WRITE; a read-only
+    // route must not).
+    let blobs = DocMountBlobsRepository::new(conn);
+    if let Ok(Some(meta)) = blobs.find_by_mount_point_and_path(id, path) {
+        let Some(data) = blobs.read_data(&meta.id)? else {
+            return Ok(None);
+        };
+        let len = meta.size_bytes.max(0) as usize;
+        let name =
+            // `originalFileName` is a nullable column (an import writes NULL when
+            // the bundle has none); the helper already skips an empty
+            // candidate, which is v4's `||` fall-through.
+            blob_disposition_name(
+                path,
+                &[meta.original_file_name.as_deref().unwrap_or(""), "file"],
+            )
+            .to_string();
+        return Ok(Some((data, meta.stored_mime_type, meta.sha256, len, name)));
+    }
+    // The documents fallback (a text file addressed via /blobs — v4's
+    // uploads-store back-compat).
+    let links = DocMountFileLinksRepository::new(conn);
+    // v4 `blobs/[...path]/route.ts` — fallback reads (P4.142, G1).
+    let Some(link) = links.find_by_mount_point_and_path_or_none(id, path) else {
+        return Ok(None);
+    };
+    let docs = DocMountDocumentsRepository::new(conn);
+    let Some(content) = docs.find_by_mount_point_and_path_or_none(id, path) else {
+        return Ok(None);
+    };
+    let bytes = content.into_bytes();
+    let len = bytes.len();
+    Ok(Some((
+        bytes,
+        mime_for_document(&link.file_type).to_string(),
+        link.sha256,
+        len,
+        blob_disposition_name(path, &["document"]).to_string(),
+    )))
+}
+
 pub async fn mount_file_get(
     State(state): State<SharedState>,
     Path((id, path)): Path<(String, String)>,
@@ -421,42 +516,7 @@ pub async fn mount_file_get(
 
     // v4 readMountFileBytes, the database-mount branch: the link row picks
     // documents (text) vs blobs.
-    #[allow(clippy::type_complexity)]
-    let read: Result<Option<(Vec<u8>, String, String)>, quilltap_core::db::DbError> = db
-        .read_mount_index({
-            let id = id.clone();
-            let rel = rel.clone();
-            move |conn| {
-                let links = DocMountFileLinksRepository::new(conn);
-                let Some(link) = links.find_by_mount_point_and_path(&id, &rel)? else {
-                    return Ok(None);
-                };
-                let is_text = matches!(
-                    link.file_type.as_str(),
-                    "markdown" | "txt" | "json" | "jsonl"
-                );
-                if is_text {
-                    let docs = DocMountDocumentsRepository::new(conn);
-                    let Some(content) = docs.find_by_mount_point_and_path(&id, &rel)? else {
-                        return Ok(None);
-                    };
-                    return Ok(Some((
-                        content.into_bytes(),
-                        mime_for_extension(&rel).to_string(),
-                        link.sha256,
-                    )));
-                }
-                let blobs = DocMountBlobsRepository::new(conn);
-                let Some(bytes) = blobs.read_data_by_file_id(&link.file_id)? else {
-                    return Ok(None);
-                };
-                let (mime, sha) = match blobs.find_by_mount_point_and_path(&id, &rel)? {
-                    Some(meta) => (meta.stored_mime_type, meta.sha256),
-                    None => (mime_for_extension(&rel).to_string(), link.sha256),
-                };
-                Ok(Some((bytes, mime, sha)))
-            }
-        });
+    let read = db.read_mount_index(|conn| read_database_mount_file(conn, &id, &rel));
 
     match read {
         Ok(Some((bytes, mime, sha))) => (
@@ -493,55 +553,7 @@ pub async fn mount_blob_get(
         Ok(v) => v,
         Err(resp) => return *resp,
     };
-    #[allow(clippy::type_complexity)]
-    let read: Result<
-        Option<(Vec<u8>, String, String, usize, String)>,
-        quilltap_core::db::DbError,
-    > = db.read_mount_index({
-        let id = id.clone();
-        let path = path.clone();
-        move |conn| {
-            // The blob branch, error-tolerant on a store with no
-            // doc_mount_blobs table yet (v4's hand-rolled repo creates it
-            // lazily on first WRITE; a read-only route must not).
-            let blobs = DocMountBlobsRepository::new(conn);
-            if let Ok(Some(meta)) = blobs.find_by_mount_point_and_path(&id, &path) {
-                let Some(data) = blobs.read_data(&meta.id)? else {
-                    return Ok(None);
-                };
-                let len = meta.size_bytes.max(0) as usize;
-                let name =
-                    // `originalFileName` is a nullable column (an import writes NULL when
-                    // the bundle has none); the helper already skips an empty
-                    // candidate, which is v4's `||` fall-through.
-                    blob_disposition_name(
-                        &path,
-                        &[meta.original_file_name.as_deref().unwrap_or(""), "file"],
-                    )
-                    .to_string();
-                return Ok(Some((data, meta.stored_mime_type, meta.sha256, len, name)));
-            }
-            // The documents fallback (a text file addressed via /blobs —
-            // v4's uploads-store back-compat).
-            let links = DocMountFileLinksRepository::new(conn);
-            let Some(link) = links.find_by_mount_point_and_path(&id, &path)? else {
-                return Ok(None);
-            };
-            let docs = DocMountDocumentsRepository::new(conn);
-            let Some(content) = docs.find_by_mount_point_and_path(&id, &path)? else {
-                return Ok(None);
-            };
-            let bytes = content.into_bytes();
-            let len = bytes.len();
-            Ok(Some((
-                bytes,
-                mime_for_document(&link.file_type).to_string(),
-                link.sha256,
-                len,
-                blob_disposition_name(&path, &["document"]).to_string(),
-            )))
-        }
-    });
+    let read = db.read_mount_index(|conn| read_mount_blob(conn, &id, &path));
 
     match read {
         Ok(Some((bytes, mime, sha, len, name))) => (
@@ -1457,3 +1469,112 @@ async fn mount_point_sync_post(
 }
 
 // === end P4.D210 ===
+
+#[cfg(test)]
+mod fallback_read_tests {
+    use super::{read_database_mount_file, read_mount_blob};
+    use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A provisioned instance's mount index with `notes/a.md` written into one
+    /// of its database stores; answers the writer and the store id.
+    fn seeded(dir: &tempfile::TempDir) -> (quilltap_core::db::Writer, String) {
+        quilltap_core::services::provisioning::provision_fresh_instance(dir.path(), PEPPER)
+            .unwrap();
+        let w = quilltap_core::db::Writer::open_writable(
+            &dir.path().join("quilltap-mount-index.db"),
+            PEPPER,
+        )
+        .unwrap();
+        let mp: String = w
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        DocMountFileLinksRepository::new(w.connection())
+            .write_database_document(&mp, "notes/a.md", "hello")
+            .unwrap();
+        (w, mp)
+    }
+
+    fn rename(w: &quilltap_core::db::Writer, table: &str, from: &str) {
+        w.connection()
+            .execute_batch(&format!(
+                "ALTER TABLE \"{table}\" RENAME COLUMN \"{from}\" TO \"{from}_x\""
+            ))
+            .unwrap();
+    }
+
+    /// P4.142 (G1): `mount_file_get`'s database read — v4's `readMountFileBytes`
+    /// reads the link and the document through FALLBACKS, so a broken links or
+    /// documents table is the not-found arm (`Ok(None)` → 404 `File`) with
+    /// v4's repository line, never the 500. The silence leg first.
+    #[test]
+    fn the_mount_file_read_falls_back_to_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let (w, mp) = seeded(&dir);
+        let (got, lines) = quilltap_core::test_support::captured_with(|| {
+            read_database_mount_file(w.connection(), &mp, "notes/a.md")
+        });
+        assert_eq!(got.unwrap().unwrap().0, b"hello".to_vec());
+        assert!(lines.is_empty(), "{lines:?}");
+
+        rename(&w, "doc_mount_documents", "content");
+        let (got, lines) = quilltap_core::test_support::captured_with(|| {
+            read_database_mount_file(w.connection(), &mp, "notes/a.md")
+        });
+        assert!(got.unwrap().is_none());
+        assert_eq!(
+            lines,
+            vec![format!("ERROR quilltap::db Error finding document by mount point and path collection=doc_mount_documents mountPointId={mp} relativePath=notes/a.md error=no such column: d.content")]
+        );
+
+        rename(&w, "doc_mount_file_links", "originalMimeType");
+        let (got, lines) = quilltap_core::test_support::captured_with(|| {
+            read_database_mount_file(w.connection(), &mp, "notes/a.md")
+        });
+        assert!(got.unwrap().is_none());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?) error=no such column: l.originalMimeType".to_string()]
+        );
+    }
+
+    /// P4.142 (G1): `mount_blob_get`'s documents fallback (a text file
+    /// addressed via `/blobs`) — the same two fallback reads (v4 `blobs/
+    /// [...path]/route.ts:79` → `notFound('Blob')`).
+    #[test]
+    fn the_mount_blob_documents_fallback_falls_back_to_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let (w, mp) = seeded(&dir);
+        let (got, lines) = quilltap_core::test_support::captured_with(|| {
+            read_mount_blob(w.connection(), &mp, "notes/a.md")
+        });
+        assert_eq!(got.unwrap().unwrap().0, b"hello".to_vec());
+        assert!(lines.is_empty(), "{lines:?}");
+
+        rename(&w, "doc_mount_documents", "content");
+        let (got, lines) = quilltap_core::test_support::captured_with(|| {
+            read_mount_blob(w.connection(), &mp, "notes/a.md")
+        });
+        assert!(got.unwrap().is_none());
+        assert_eq!(
+            lines,
+            vec![format!("ERROR quilltap::db Error finding document by mount point and path collection=doc_mount_documents mountPointId={mp} relativePath=notes/a.md error=no such column: d.content")]
+        );
+
+        rename(&w, "doc_mount_file_links", "originalMimeType");
+        let (got, lines) = quilltap_core::test_support::captured_with(|| {
+            read_mount_blob(w.connection(), &mp, "notes/a.md")
+        });
+        assert!(got.unwrap().is_none());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?) error=no such column: l.originalMimeType".to_string()]
+        );
+    }
+}

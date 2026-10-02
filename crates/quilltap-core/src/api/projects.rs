@@ -1785,8 +1785,12 @@ pub fn project_file_list(db: &Db, project_id: &str) -> Response {
 
         // Branch A: primary store present → the store's doc_mount_files.
         if let Some(store_mp) = get_project_document_store_mount_id(mount, &pid)? {
-            let links =
-                DocMountFileLinksRepository::new(mount).find_by_mount_point_id(&store_mp)?;
+            // v4 `actions/files.ts:56` reads `docMountFiles.findByMountPointId` —
+            // the FILES repository's fallback (`Error finding files by mount
+            // point ID`, `[]`), not the links line (P4.142, G1).
+            let links = crate::db::fallback::files_by_mount_point_id_or_empty(&store_mp, || {
+                DocMountFileLinksRepository::new(mount).find_by_mount_point_id(&store_mp)
+            });
             let files: Vec<Value> = links
                 .iter()
                 .map(|l| {

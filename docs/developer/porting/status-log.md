@@ -160778,3 +160778,68 @@ scope → the caller's `Err`), on the union.
 - `api/mount_points.rs`' two count calls made path-qualified
   (`doc_mount_chunks::…`) — a free fn imported bare is invisible to the
   `.`/`::` scanner.
+
+### Unit 7 — G1: the 14 read-only route/listing sites (core 0.0.1153, harness 0.0.1080, web 0.0.208)
+
+- Converted after reading each v4 downstream arm (all are not-found / empty
+  arms the v5 caller already mirrors): `api/characters.rs` `character_stats`
+  (links id → `[]`, zero vault counts), `api/projects.rs` `project_file_list`,
+  `services/mount_index/list.rs` `mount_files_list` (folders — and, as a
+  rider on the same route, its FILES read), `read_file.rs` ×3 (link → `File
+  not found`, document → `Document content missing`, the mtime link → now),
+  web `files_routes.rs` `mount_file_get` ×2 + `mount_blob_get` ×2 (→ 404),
+  web `qtap_target_route.rs` ×2 (→ 404 `File not found`), the character and
+  user gallery lists (→ empty).
+- **Measured, not in the survey: two sites read through v4's FILES
+  repository**, not the links repository: `actions/files.ts:56` and `files/
+  route.ts:29` call `docMountFiles.findByMountPointId`, a fallback `withRawDb`
+  on the repository constructed with `'doc_mount_files'` whose line is `Error
+  finding files by mount point ID {collection: doc_mount_files, mountPointId}`
+  (`doc-mount-files.repository.ts:86-95`) — the survey's D2 table had mapped
+  `project_file_list` to the links line. **New home**
+  `files_by_mount_point_id_or_empty` (+ capture/silence pin, `HOME_MESSAGES`
+  21; `db/doc_mount_files.rs` is not this lane's, so the two sites hand the
+  propagating read to the home — `OVERRIDES` rows in the census; `list.rs`'s
+  two reads wrap the WHOLE checkout, v4's `getCollection()` sits inside the
+  same `safeQuery`).
+- **Plant choice, measured:** a links `relativePath` rename breaks the vault
+  overlay's batch reads first (the character/project lookups refuse before the
+  G1 read), so the G1 links plant renames **`originalMimeType`** — named by
+  both stacks' joined link reads (`queryJoined`, `queryLinks`) and by neither
+  overlay batch read, and NOT re-added by v4's links `onTableEnsured` (only
+  `linkGroupId` is aligned). The documents arm renames **`doc_mount_documents.
+  content`** (only the documents read names it). The folders arm renames
+  **`doc_mount_folders.mountPointId`** — a renamed `path` is NO query failure in
+  v4 (`findByFilter` reads `SELECT *` and drops each row on Zod validation,
+  `Data validation failed` + `Safe validation failed` per row, measured).
+- **Plant arms (v4's REAL code, lane-private regen at the pin):**
+  `characters_reads_equivalence` + `characters-reads.test.ts`
+  (`renameMountColumn` + a `Logger.prototype` spy): `stats_links_plant` and
+  `photo_list_links_plant` (the character-gallery site — a family arm rather
+  than the order's capture unit) — v4 200 + one `Error querying joined file
+  links {whereClause: WHERE l.mountPointId = ?}` each; **red-first: v5 500
+  `sqlite error: no such column: l.originalMimeType` on each** (sites reverted
+  by file backup, one at a time). `projects_routes_equivalence` +
+  `projects-routes.test.ts` (`withLinksPlant`): `list_files_iota_links_plant` —
+  v4 200 `{files: [], count: 0}` + the FILES line; **red-first: v5 500**.
+  `mount_read_equivalence` + `mount-read.ts` (a final plant phase on the same
+  copy, renamed back after each): `db-doc-read-links-plant` (`SOURCE_NOT_FOUND`
+  + the joined line with the path `whereClause`), `list-db-links-plant` (files
+  `[]` + the FILES line), `db-doc-read-docs-plant` (`SOURCE_NOT_FOUND` + `Error
+  finding document by mount point and path`), `list-db-folders-plant` (folders
+  `[]` + `Error finding entities by filter {collection: doc_mount_folders}`;
+  v4's backend `SQLite find error` excluded as unported); 18 → 22 cases;
+  **red-first per arm: all four RED** (the raw sqlite error / a `list:` panic).
+- **No family can pose a plant** for the web crate's `mount_file_get` /
+  `mount_blob_get` / `qtap_target_get` (`files_routes_equivalence` drives
+  `api::files`, not these axum handlers; `qtap_target_route` has no family) or
+  `list_user_gallery`: **capture units**. The three handlers' DB-read closures
+  are extracted into named fns (`read_database_mount_file`, `read_mount_blob`,
+  `read_resolved_target` — no behaviour change) and pinned over a provisioned
+  instance with a written `notes/a.md`: silence, then the documents plant (the
+  document line → `None`/`NotFound`), then the links plant (the joined line →
+  `None`/`NotFound`); `user_gallery_service::fallback_read_tests` pins one
+  joined line per enabled mount and the empty gallery.
+- Census: G1's 14 rows `converted` (12 by text, `project_file_list` +
+  `mount_files_list` by `OVERRIDES`; the web rows' enclosing fns renamed by the
+  extraction) — **(56, 13, 19, 0, 13, 1, 1, 52)**.

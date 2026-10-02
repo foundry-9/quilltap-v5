@@ -128,7 +128,49 @@ async function dumpProjectTables(): Promise<unknown> {
 
 interface CaseSpec {
   name: string;
-  run: () => Promise<{ status: number; body: unknown; tables?: unknown }>;
+  run: () => Promise<{ status: number; body: unknown; tables?: unknown; logs?: unknown }>;
+}
+
+/**
+ * P4.142 (G1) — the links plant: `doc_mount_file_links.originalMimeType`
+ * renamed on this case's fresh copy (v4's raw mount-index handle), then `call`
+ * with every ERROR/WARN recorded off the `Logger` prototype as `{level, message,
+ * fields}` (`module`/`error` omitted — the mail-tools plant recipe). The column
+ * is named by the files repository's `queryLinks` and the links' `queryJoined`,
+ * never by the project overlay's batch reads, so the project still resolves.
+ */
+async function withLinksPlant(
+  call: () => Promise<{ status: number; body: unknown }>,
+): Promise<{ status: number; body: unknown; logs: unknown }> {
+  const { getRawMountIndexDatabase } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  const midb = getRawMountIndexDatabase();
+  if (!midb) throw new Error('raw mount-index handle unavailable');
+  midb.exec('ALTER TABLE "doc_mount_file_links" RENAME COLUMN "originalMimeType" TO "originalMimeType_x"');
+  const { Logger } = await import('@/lib/logger');
+  const logs: Array<Record<string, unknown>> = [];
+  for (const level of ['error', 'warn'] as const) {
+    const original = Logger.prototype[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      const fields: Array<[string, string]> = [];
+      for (const [k, v] of Object.entries(context ?? {})) {
+        if (k === 'module' || k === 'error') continue;
+        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+          fields.push([k, String(v)]);
+        }
+      }
+      logs.push({ level, message, fields });
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  const out = await call();
+  return { ...out, logs };
 }
 
 async function loadRoute(path: string): Promise<Record<string, (...a: unknown[]) => Promise<unknown>>> {
@@ -167,6 +209,7 @@ async function runCase(
       status: out.status,
       body: out.body,
       ...(out.tables !== undefined ? { tables: out.tables } : {}),
+      ...(out.logs !== undefined ? { logs: out.logs } : {}),
     };
   } finally {
     await closeDatabase();
@@ -651,6 +694,16 @@ async function main(): Promise<void> {
     // --- Files (Unit 5 / P4.6n): list-files two-branch + add/remove ---
     // Iota: STORE-BACKED branch (its official store carries assets/logo.png).
     { name: 'list_files_iota', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-files`), p(IOTA))) },
+    // P4.142 (G1): Branch A's store read is `docMountFiles.findByMountPointId`, a
+    // fallback — a broken links table lists `[]` with v4's `Error finding files
+    // by mount point ID` line (200), never a 500.
+    {
+      name: 'list_files_iota_links_plant',
+      run: async () =>
+        withLinksPlant(async () =>
+          respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-files`), p(IOTA))),
+        ),
+    },
     // Lambda: LEGACY branch (official-store link removed; two legacy files).
     { name: 'list_files_lambda', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${LAMBDA}?action=list-files`), p(LAMBDA))) },
     // Kappa: empty (legacy branch, no files).

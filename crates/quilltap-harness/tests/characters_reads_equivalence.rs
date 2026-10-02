@@ -604,6 +604,89 @@ fn characters_reads_match_oracle() {
             )),
         );
     }
+    // P4.142 (G1) — the links plant: `doc_mount_file_links.originalMimeType`
+    // renamed on a FRESH copy (a column both stacks' joined link reads name and
+    // neither vault-overlay batch read does, so Aria's own overlaid read still
+    // answers). v4's joined reads are fallbacks: the stats action and the
+    // character gallery answer 200 with v4's one `Error querying joined file
+    // links` line each. Status, body (below) and lines (`error=` tail skipped).
+    let mut plant_failed: Vec<String> = Vec::new();
+    for name in ["stats_links_plant", "photo_list_links_plant"] {
+        let dir = scratch.join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (pmain, pmount) = (dir.join("main.db"), dir.join("mount.db"));
+        std::fs::copy(fixtures_dir().join("characters-main.db"), &pmain).unwrap();
+        std::fs::copy(fixtures_dir().join("characters-mount.db"), &pmount).unwrap();
+        {
+            let w =
+                quilltap_core::db::Writer::open_writable(&pmain, &spec.test_pepper_base64).unwrap();
+            quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+            quilltap_core::test_support::ensure_p4d182_columns(w.connection());
+            let m = quilltap_core::db::Writer::open_writable(&pmount, &spec.test_pepper_base64)
+                .unwrap();
+            m.connection()
+                .execute_batch(
+                    "ALTER TABLE \"doc_mount_file_links\" RENAME COLUMN \"originalMimeType\" TO \"originalMimeType_x\"",
+                )
+                .unwrap();
+        }
+        let pdb = Db::open(
+            DbPaths {
+                main: pmain,
+                mount_index: Some(pmount),
+                llm_logs: None,
+            },
+            &spec.test_pepper_base64,
+        )
+        .expect("open planted db");
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            if name == "stats_links_plant" {
+                characters::character_stats(&pdb, uid, ARIA)
+            } else {
+                characters::character_photo_list(&pdb, uid, ARIA, None, None)
+            }
+        });
+        if let Response::Error(e) = &resp {
+            eprintln!("[{name}] STATUS: v5 answered {:?} {}", e.kind, e.message);
+            plant_failed.push(format!("{name}:status"));
+        }
+        let want_status = oracle[name]["status"].as_i64().unwrap_or(0);
+        assert_eq!(want_status, 200, "{name}: v4's status");
+        let want_lines: Vec<String> = oracle[name]["logs"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .map(|rec| {
+                let mut line = format!(
+                    "{} quilltap::db {}",
+                    rec["level"].as_str().unwrap_or_default().to_uppercase(),
+                    rec["message"].as_str().unwrap_or_default()
+                );
+                for pair in rec["fields"].as_array().cloned().unwrap_or_default() {
+                    line.push_str(&format!(
+                        " {}={}",
+                        pair[0].as_str().unwrap_or_default(),
+                        pair[1].as_str().unwrap_or_default()
+                    ));
+                }
+                line
+            })
+            .collect();
+        let got_lines: Vec<String> = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+            .map(|l| match l.find(" error=") {
+                Some(i) => l[..i].to_string(),
+                None => l.clone(),
+            })
+            .collect();
+        if got_lines != want_lines {
+            eprintln!("[{name}] LINES:\n  v5: {got_lines:#?}\n  v4: {want_lines:#?}");
+            plant_failed.push(format!("{name}:lines"));
+        }
+        push(name, response_data(&resp));
+    }
     let _ = std::fs::remove_dir_all(&scratch);
 
     // Normalize the read-time-minted physicalDescription timestamps on the detail.
@@ -625,5 +708,6 @@ fn characters_reads_match_oracle() {
             eprintln!("[{name}] OK.");
         }
     }
+    failed.extend(plant_failed);
     assert!(failed.is_empty(), "characters-reads FAILED: {failed:?}");
 }

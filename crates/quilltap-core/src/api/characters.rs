@@ -392,7 +392,11 @@ pub fn character_stats(db: &Db, _user_id: &str, character_id: &str) -> Response 
         let docs = DocMountDocumentsRepository::new(mount);
         let wardrobe_items = wardrobe_read::find_by_character_id(main, &docs, &cid, false)?.len();
         let file_links = match mount_point_id {
-            Some(mid) => DocMountFileLinksRepository::new(mount).find_by_mount_point_id(mid)?,
+            // v4 `[id]/handlers/get.ts:299`: the fallback joined read (`[]` after
+            // `Error querying joined file links` — P4.142, G1).
+            Some(mid) => {
+                DocMountFileLinksRepository::new(mount).find_by_mount_point_id_or_empty(mid)
+            }
             None => vec![],
         };
         let group_ids =

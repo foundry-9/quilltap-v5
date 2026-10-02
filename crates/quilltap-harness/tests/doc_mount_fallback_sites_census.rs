@@ -238,6 +238,22 @@ const OVERRIDES: &[(&str, &str, &str, &str)] = &[
         "find_row_by_id",
         "converted",
     ),
+    // P4.142 (G1): two read-only routes whose v4 read is the FILES repository's
+    // `findByMountPointId` (`Error finding files by mount point ID`) or the
+    // folders' — v5 hands the propagating read to the matching `db::fallback`
+    // home (the folders' over the whole checkout).
+    (
+        "quilltap-core/src/api/projects.rs",
+        "project_file_list",
+        "find_by_mount_point_id",
+        "converted",
+    ),
+    (
+        "quilltap-core/src/services/mount_index/list.rs",
+        "mount_files_list",
+        "find_by_mount_point_id",
+        "converted",
+    ),
     // P4.142 Tier 3 (G5): the `.qtap` export's store read stays STRICT under the
     // standing backup/restore/import/export ruling (2026-08-03, "fix, don't
     // match"): v4's `lib/export/ndjson-writer.ts:625,642` falls back and exports
@@ -400,14 +416,14 @@ fn render(rows: &[Row]) -> String {
 #[rustfmt::skip]
 const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/api/characters.rs", "character_depiction_guidelines", "find_by_mount_point_and_path", "swallowed-by-other-means"),
-    ("quilltap-core/src/api/characters.rs", "character_stats", "find_by_mount_point_id", "fallback-in-v4"),
+    ("quilltap-core/src/api/characters.rs", "character_stats", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/api/chat_media.rs", "chat_attach_mount_file", "find_by_mount_point_and_path", "fallback-in-v4"),
     ("quilltap-core/src/api/chat_media.rs", "chat_attach_mount_file", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/api/mount_files.rs", "mount_file_update", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/api/mount_files.rs", "mount_blob_update", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/api/mount_points.rs", "mount_point_list", "count_embedded_by_mount_point_ids_or_empty", "converted"),
     ("quilltap-core/src/api/mount_points.rs", "mount_point_get", "count_nonempty_embeddings_by_mount_point_id_or_zero", "converted"),
-    ("quilltap-core/src/api/projects.rs", "project_file_list", "find_by_mount_point_id", "fallback-in-v4"),
+    ("quilltap-core/src/api/projects.rs", "project_file_list", "find_by_mount_point_id", "converted"),
     ("quilltap-core/src/api/scenarios.rs", "create_op", "find_by_mount_point_and_path", "fallback-in-v4"),
     ("quilltap-core/src/api/scenarios.rs", "update_op", "find_by_mount_point_and_path", "fallback-in-v4"),
     ("quilltap-core/src/api/scenarios.rs", "rename_op", "find_by_mount_point_and_path", "fallback-in-v4"),
@@ -464,13 +480,13 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/vault_wardrobe_write.rs", "project_array_into_vault_folder", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/documents/mod.rs", "classify_resolved_target", "find_by_mount_point_and_path", "fallback-in-v4"),
     ("quilltap-core/src/photos/avatar_rolls_service.rs", "delete_avatar_roll", "delete_with_gc", "fallback-in-v4"),
-    ("quilltap-core/src/photos/character_gallery_service.rs", "list_character_gallery", "find_by_mount_point_id", "fallback-in-v4"),
+    ("quilltap-core/src/photos/character_gallery_service.rs", "list_character_gallery", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/photos/character_gallery_service.rs", "remove_from_character_gallery", "delete_with_gc", "fallback-in-v4"),
     ("quilltap-core/src/photos/chat_gallery.rs", "add_blob_reference", "find_by_mount_point_and_path", "swallowed-by-other-means"),
     ("quilltap-core/src/photos/save_image_to_album.rs", "find_existing_photos_link_by_sha", "find_by_mount_point_id", "fallback-in-v4"),
     ("quilltap-core/src/photos/save_image_to_album.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/photos/save_image_to_album.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
-    ("quilltap-core/src/photos/user_gallery_service.rs", "list_user_gallery", "find_by_mount_point_id", "fallback-in-v4"),
+    ("quilltap-core/src/photos/user_gallery_service.rs", "list_user_gallery", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/photos/user_gallery_service.rs", "remove_from_user_gallery", "delete_with_gc", "fallback-in-v4"),
     ("quilltap-core/src/services/aesthetics.rs", "read_store_file_internal", "find_by_mount_point_and_path", "swallowed-by-other-means"),
     ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "find_by_mount_point_id", "fallback-in-v4"),
@@ -507,11 +523,11 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/services/mount_index/folder_ops.rs", "move_folder", "find_by_mount_point_id", "fallback-in-v4"),
     ("quilltap-core/src/services/mount_index/general_state.rs", "ensure_general_state_file", "find_by_mount_point_and_path", "fallback-in-v4"),
     ("quilltap-core/src/services/mount_index/link_groups.rs", "reindex_inner", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/list.rs", "mount_files_list", "find_by_mount_point_id", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/read_file.rs", "read_mount_file_bytes_conn", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/read_file.rs", "read_mount_file_bytes_conn", "find_by_mount_point_and_path", "fallback-in-v4"),
+    ("quilltap-core/src/services/mount_index/list.rs", "mount_files_list", "find_by_mount_point_id", "converted"),
+    ("quilltap-core/src/services/mount_index/read_file.rs", "read_mount_file_bytes_conn", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/mount_index/read_file.rs", "read_mount_file_bytes_conn", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/mount_index/read_file.rs", "read_mount_file_bytes_conn", "find_by_mount_point_and_path", "other-repo"),
-    ("quilltap-core/src/services/mount_index/read_file.rs", "read_mount_file", "find_by_mount_point_and_path", "fallback-in-v4"),
+    ("quilltap-core/src/services/mount_index/read_file.rs", "read_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/mount_index/reindex.rs", "reindex_links", "find_by_mount_point_id", "fallback-in-v4"),
     ("quilltap-core/src/services/mount_index/reindex.rs", "enqueue_embedding_jobs_scoped", "find_by_mount_point_id", "fallback-in-v4"),
     ("quilltap-core/src/services/mount_index/reindex.rs", "enqueue_embedding_jobs_scoped", "find_rows_by_mount_point_id_or_empty", "converted"),
@@ -545,15 +561,15 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/tools/photo.rs", "handle_list_images", "find_by_mount_point_id", "swallowed-by-other-means"),
     ("quilltap-core/src/tools/photo.rs", "semantic_branch", "find_by_mount_point_and_path", "swallowed-by-other-means"),
     ("quilltap-core/src/tools/photo.rs", "find_existing_photos_link_by_sha", "find_by_mount_point_id", "fallback-in-v4"),
-    ("quilltap-web/src/files_routes.rs", "mount_file_get", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-web/src/files_routes.rs", "mount_file_get", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-web/src/files_routes.rs", "mount_file_get", "find_by_mount_point_and_path", "other-repo"),
-    ("quilltap-web/src/files_routes.rs", "mount_blob_get", "find_by_mount_point_and_path", "other-repo"),
-    ("quilltap-web/src/files_routes.rs", "mount_blob_get", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-web/src/files_routes.rs", "mount_blob_get", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-web/src/qtap_target_route.rs", "qtap_target_get", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-web/src/qtap_target_route.rs", "qtap_target_get", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-web/src/qtap_target_route.rs", "qtap_target_get", "find_by_mount_point_and_path", "other-repo"),
+    ("quilltap-web/src/files_routes.rs", "read_database_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-web/src/files_routes.rs", "read_database_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-web/src/files_routes.rs", "read_database_mount_file", "find_by_mount_point_and_path", "other-repo"),
+    ("quilltap-web/src/files_routes.rs", "read_mount_blob", "find_by_mount_point_and_path", "other-repo"),
+    ("quilltap-web/src/files_routes.rs", "read_mount_blob", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-web/src/files_routes.rs", "read_mount_blob", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-web/src/qtap_target_route.rs", "read_resolved_target", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-web/src/qtap_target_route.rs", "read_resolved_target", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-web/src/qtap_target_route.rs", "read_resolved_target", "find_by_mount_point_and_path", "other-repo"),
 ];
 
 #[test]
@@ -604,17 +620,22 @@ fn the_class_counts_are_pinned() {
 /// (converted, internal, other-repo, strict-in-v4 (import), swallowed-by-other-means,
 /// no-v4-counterpart, strict-by-ruling, fallback-in-v4), with the arithmetic:
 ///
-/// - **155 direct call sites in all** = 42 + 13 + 19 + 0 + 13 + 1 + 1 + 66.
+/// - **155 direct call sites in all** = 56 + 13 + 19 + 0 + 13 + 1 + 1 + 52.
 ///   P4.131 measured 130 over four method names; P4.142 widened [`METHODS`] by
 ///   the overlay's batch reads and the chunk reads (+25 rows: 19 converted, 6
 ///   internal) and corrected two classes (below).
-/// - **converted 42** = P4.131's 23 + P4.142's 19: the overlay batch twins at
+/// - **converted 56** = P4.131's 23 + P4.142's 19 + G1's 14 (below). The 19: the overlay batch twins at
 ///   their 11 callers (`vault_read_overlay` 5, `document_store_overlay` 1,
 ///   `vault_wardrobe_write` 1, `scenarios` 2, `core_whisper` 2) + the documents
 ///   repository's own `…_in_folder_or_empty` → `…_opts_or_empty` 1 + the chunk
 ///   twins at their 7 callers (`embedding_scheduler` 1, `reindex` 1, `character_
 ///   archive` 1, `mount_points` 2, and the two whole-checkout wraps in
-///   [`OVERRIDES`]: `embedding_reindex_job` 1, `embedding_generate_job` 1).
+///   [`OVERRIDES`]: `embedding_reindex_job` 1, `embedding_generate_job` 1). **G1
+///   14** (P4.142 item 8, the read-only route/listing sites): `api/characters`
+///   `character_stats` 1, `api/projects` `project_file_list` 1 and
+///   `mount_index/list` `mount_files_list` 1 (both through the home's FILES /
+///   folders line, [`OVERRIDES`]), `read_file` 3, `web/files_routes` 4,
+///   `web/qtap_target_route` 2, the two gallery lists 2.
 /// - **internal 13** = P4.131's 7 + each P4.142 twin's closure over its
 ///   propagating sibling (documents 3, chunks 3).
 /// - **other-repo 19** = P4.131's 18 + `doc_mount_blobs.rs` `create_with_ids`
@@ -631,16 +652,16 @@ fn the_class_counts_are_pinned() {
 /// - **strict-by-ruling 1** = `qtap_export/records.rs` `stream_one_store` (G5):
 ///   held strict under the 2026-08-03 backup/export ruling — v4 exports a broken
 ///   store EMPTY ([`OVERRIDES`]).
-/// - **fallback-in-v4 66** (P4.131's "68" was 67 — the blobs self-call — and G5
-///   moves out) — THE CONVERSION LIST. Its groups (survey §D2): **G1** the 14
-///   read-only route/listing sites; **G2** 25 lookup-before-write sites; **G3** 22
-///   deletes/prunes; **G4** the sync applier's 5 (`apply_store.rs`) — the human's
+/// - **fallback-in-v4 52** (P4.131's "68" was 67 — the blobs self-call — G5
+///   moves out, and G1's 14 converted) — THE CONVERSION LIST. Its groups (survey
+///   §D2): **G2** 25 lookup-before-write sites; **G3** 22 deletes/prunes; **G4**
+///   the sync applier's 5 (`apply_store.rs`) — the human's
 ///   RULING, unchanged (P4.142 Tier 3: option B, strict sync, recommended; v4's
 ///   `walkStore` reads through the same fallbacks and, with `propagateDeletes`
 ///   true, would plan the deletion of every unchanged disk file). Each G2/G3 site
 ///   converts only after its v4 downstream arm is read.
 const COUNTS: (usize, usize, usize, usize, usize, usize, usize, usize) =
-    (42, 13, 19, 0, 13, 1, 1, 66);
+    (56, 13, 19, 0, 13, 1, 1, 52);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (`services/fold_episode_pass.rs` —

@@ -104,7 +104,9 @@ pub fn list_character_gallery(
     let effective_offset = offset.unwrap_or(0).max(0);
 
     let all_links =
-        DocMountFileLinksRepository::new(mount).find_by_mount_point_id(&vault.mount_point_id)?;
+        // v4 `character-gallery-service.ts:248`: the fallback joined read
+        // (P4.142, G1).
+        DocMountFileLinksRepository::new(mount).find_by_mount_point_id_or_empty(&vault.mount_point_id);
     // v4 `4dcbe0d21`: `is_character_album_relative_path` is the single source of
     // album membership — the character-detail `photos` figure counts through the
     // same predicate, so the grid and the count cannot disagree. Avatar rolls

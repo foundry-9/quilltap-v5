@@ -98,34 +98,7 @@ pub async fn qtap_target_get(
             let Some(mp_id) = resolved.mount_point_id.as_deref() else {
                 return Ok(Outcome::ServerError);
             };
-            let rel = &resolved.relative_path;
-            let links = DocMountFileLinksRepository::new(mount);
-            let Some(link) = links.find_by_mount_point_and_path(mp_id, rel)? else {
-                return Ok(Outcome::NotFound);
-            };
-            let is_text = matches!(
-                link.file_type.as_str(),
-                "markdown" | "txt" | "json" | "jsonl"
-            );
-            if is_text {
-                let docs = DocMountDocumentsRepository::new(mount);
-                let Some(content) = docs.find_by_mount_point_and_path(mp_id, rel)? else {
-                    return Ok(Outcome::NotFound);
-                };
-                return Ok(Outcome::Ok {
-                    bytes: content.into_bytes(),
-                    mime: mime_for_extension(rel).to_string(),
-                });
-            }
-            let blobs = DocMountBlobsRepository::new(mount);
-            let Some(bytes) = blobs.read_data_by_file_id(&link.file_id)? else {
-                return Ok(Outcome::NotFound);
-            };
-            let mime = match blobs.find_by_mount_point_and_path(mp_id, rel)? {
-                Some(meta) => meta.stored_mime_type,
-                None => mime_for_extension(rel).to_string(),
-            };
-            Ok(Outcome::Ok { bytes, mime })
+            read_resolved_target(mount, mp_id, &resolved.relative_path)
         })
     });
 
@@ -153,6 +126,45 @@ pub async fn qtap_target_get(
     }
 }
 
+/// The database-mount byte read for a resolved target: the link row picks
+/// documents (text) vs blobs. The link and document reads are v4's FALLBACKS —
+/// a failed read is the not-found arm, never the 500 (P4.142, G1; a named fn so
+/// the fallback can be pinned without a web state).
+fn read_resolved_target(
+    mount: &rusqlite::Connection,
+    mp_id: &str,
+    rel: &str,
+) -> Result<Outcome, DbError> {
+    let links = DocMountFileLinksRepository::new(mount);
+    // v4's fallback reads — a failed read is the not-found arm (P4.142).
+    let Some(link) = links.find_by_mount_point_and_path_or_none(mp_id, rel) else {
+        return Ok(Outcome::NotFound);
+    };
+    let is_text = matches!(
+        link.file_type.as_str(),
+        "markdown" | "txt" | "json" | "jsonl"
+    );
+    if is_text {
+        let docs = DocMountDocumentsRepository::new(mount);
+        let Some(content) = docs.find_by_mount_point_and_path_or_none(mp_id, rel) else {
+            return Ok(Outcome::NotFound);
+        };
+        return Ok(Outcome::Ok {
+            bytes: content.into_bytes(),
+            mime: mime_for_extension(rel).to_string(),
+        });
+    }
+    let blobs = DocMountBlobsRepository::new(mount);
+    let Some(bytes) = blobs.read_data_by_file_id(&link.file_id)? else {
+        return Ok(Outcome::NotFound);
+    };
+    let mime = match blobs.find_by_mount_point_and_path(mp_id, rel)? {
+        Some(meta) => meta.stored_mime_type,
+        None => mime_for_extension(rel).to_string(),
+    };
+    Ok(Outcome::Ok { bytes, mime })
+}
+
 /// v4 `getProjectId` + `getParticipantCharacterIds` — the chat's access context.
 fn access_context(chat: &Value) -> DocumentAccessContext {
     let project_id = chat
@@ -176,5 +188,71 @@ fn access_context(chat: &Value) -> DocumentAccessContext {
         // P4.6bg S2: the operator qtap-target byte route is database-only today;
         // `None` preserves the FsSeam refusal (no general-scope byte target).
         files_dir: None,
+    }
+}
+
+#[cfg(test)]
+mod fallback_read_tests {
+    use super::{read_resolved_target, Outcome};
+    use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// P4.142 (G1, no family drives this route — a capture unit): the resolved
+    /// target's link and document reads are v4's FALLBACKS, so a broken links or
+    /// documents table answers the not-found arm (404 `File not found`) with
+    /// v4's repository line, never `Failed to stream qtap target`. The silence
+    /// leg first.
+    #[test]
+    fn the_target_read_falls_back_to_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        quilltap_core::services::provisioning::provision_fresh_instance(dir.path(), PEPPER)
+            .unwrap();
+        let w = quilltap_core::db::Writer::open_writable(
+            &dir.path().join("quilltap-mount-index.db"),
+            PEPPER,
+        )
+        .unwrap();
+        let mp: String = w
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        DocMountFileLinksRepository::new(w.connection())
+            .write_database_document(&mp, "notes/a.md", "hello")
+            .unwrap();
+        let read = || {
+            quilltap_core::test_support::captured_with(|| {
+                read_resolved_target(w.connection(), &mp, "notes/a.md")
+            })
+        };
+        let (got, lines) = read();
+        assert!(matches!(got, Ok(Outcome::Ok { ref bytes, .. }) if bytes == b"hello"));
+        assert!(lines.is_empty(), "{lines:?}");
+
+        w.connection()
+            .execute_batch(
+                "ALTER TABLE \"doc_mount_documents\" RENAME COLUMN \"content\" TO \"content_x\"",
+            )
+            .unwrap();
+        let (got, lines) = read();
+        assert!(matches!(got, Ok(Outcome::NotFound)));
+        assert_eq!(
+            lines,
+            vec![format!("ERROR quilltap::db Error finding document by mount point and path collection=doc_mount_documents mountPointId={mp} relativePath=notes/a.md error=no such column: d.content")]
+        );
+
+        w.connection()
+            .execute_batch("ALTER TABLE \"doc_mount_file_links\" RENAME COLUMN \"originalMimeType\" TO \"originalMimeType_x\"")
+            .unwrap();
+        let (got, lines) = read();
+        assert!(matches!(got, Ok(Outcome::NotFound)));
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?) error=no such column: l.originalMimeType".to_string()]
+        );
     }
 }

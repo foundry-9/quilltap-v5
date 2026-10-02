@@ -218,8 +218,10 @@ pub fn read_mount_file_bytes_conn(
         }
     } else {
         // Database mount: the link row tells us documents (text) vs blobs.
-        let link =
-            DocMountFileLinksRepository::new(conn).find_by_mount_point_and_path(&mp.id, rel)?;
+        // v4 `read-file.ts:121`/`:125`: both fallbacks (`null` → `File not
+        // found` / `Document content missing`) — P4.142, G1.
+        let link = DocMountFileLinksRepository::new(conn)
+            .find_by_mount_point_and_path_or_none(&mp.id, rel);
         let link = link.ok_or_else(|| {
             MountFileError::FileOp(FileOpError::new(
                 format!("File not found: {rel}"),
@@ -231,8 +233,8 @@ pub fn read_mount_file_bytes_conn(
             link.file_type.as_str(),
             "markdown" | "txt" | "json" | "jsonl"
         ) {
-            let content =
-                DocMountDocumentsRepository::new(conn).find_by_mount_point_and_path(&mp.id, rel)?;
+            let content = DocMountDocumentsRepository::new(conn)
+                .find_by_mount_point_and_path_or_none(&mp.id, rel);
             let content = content.ok_or_else(|| {
                 MountFileError::FileOp(FileOpError::new(
                     format!("Document content missing: {rel}"),
@@ -305,8 +307,10 @@ pub fn read_mount_file(
     } else {
         let id = mp.id.clone();
         let relc = rel.clone();
+        // v4 `read-file.ts:173`: the fallback link read — `null` keeps `now`.
         let link = db.read_mount_index(move |conn| {
-            DocMountFileLinksRepository::new(conn).find_by_mount_point_and_path(&id, &relc)
+            Ok(DocMountFileLinksRepository::new(conn)
+                .find_by_mount_point_and_path_or_none(&id, &relc))
         })?;
         if let Some(l) = link {
             if !l.last_modified.is_empty() {

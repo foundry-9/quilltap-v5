@@ -44,6 +44,13 @@ interface CaseSpec {
   name: string;
   module: string;
   url: string;
+  /** P4.142 (G1): a column RENAME on the MOUNT-INDEX copy (v4's own raw
+   * handle, after `initializeDatabase()`), and a route-time `Logger.prototype`
+   * spy recording `{level, message, fields}` (`module`/`error` omitted — the
+   * mail-tools plant recipe). The links plant renames `originalMimeType`: a
+   * column BOTH stacks' joined link reads name and neither vault-overlay batch
+   * read does, so the character's own (overlaid) read still answers. */
+  renameMountColumn?: { table: string; from: string; to: string };
   params?: Record<string, string>;
   /** The export handler returns a raw `JSON.stringify(card, null, 2)` download
    * body (Content-Type application/json), so `response.json()` yields the JSON
@@ -246,6 +253,40 @@ async function runCase(
       );
   }
 
+  let logs: Array<Record<string, unknown>> | null = null;
+  if (c.renameMountColumn) {
+    const { getRawMountIndexDatabase } = await import(
+      '@/lib/database/backends/sqlite/mount-index-client'
+    );
+    const midb = getRawMountIndexDatabase();
+    if (!midb) throw new Error('mount-index DB handle unavailable');
+    const { table, from, to } = c.renameMountColumn;
+    midb.exec(`ALTER TABLE "${table}" RENAME COLUMN "${from}" TO "${to}"`);
+    const { Logger } = await import('@/lib/logger');
+    for (const level of ['error', 'warn'] as const) {
+      const original = Logger.prototype[level];
+      Logger.prototype[level] = function (
+        this: unknown,
+        message: string,
+        context?: Record<string, unknown>,
+        ...rest: unknown[]
+      ) {
+        if (logs) {
+          const fields: Array<[string, string]> = [];
+          for (const [k, v] of Object.entries(context ?? {})) {
+            if (k === 'module' || k === 'error') continue;
+            if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+              fields.push([k, String(v)]);
+            }
+          }
+          logs.push({ level, message, fields });
+        }
+        return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+      } as never;
+    }
+    logs = [];
+  }
+
   try {
     const mod = (await import(c.module)) as { GET: (...a: unknown[]) => Promise<unknown> };
     const args: unknown[] = [mockRequest(c.url)];
@@ -254,6 +295,11 @@ async function runCase(
     const status = response.status;
     let body = await response.json();
     if (c.parseStringBody && typeof body === 'string') body = JSON.parse(body);
+    if (logs) {
+      const recorded = logs;
+      logs = null;
+      return { name: c.name, status, body, logs: recorded };
+    }
     return { name: c.name, status, body };
   } finally {
     await closeDatabase();
@@ -398,6 +444,24 @@ async function main(): Promise<void> {
     // P4.6i: the character photo gallery listing — `{ entries, total, hasMore }`.
     // Aria's vault carries its avatar (images/avatar.webp), surfaced by the list.
     { name: 'photo_list', module: '@/app/api/v1/characters/[id]/photos/route', url: `${B}/${aria}/photos`, params: { id: aria } },
+    // P4.142 (G1): the stats action's and the character gallery's joined link
+    // reads are fallbacks — under a broken links table both answer 200 (zero
+    // vault counts / an empty gallery) with v4's `Error querying joined file
+    // links` line.
+    {
+      name: 'stats_links_plant',
+      module: '@/app/api/v1/characters/[id]/route',
+      url: `${B}/${aria}?action=stats`,
+      params: { id: aria },
+      renameMountColumn: { table: 'doc_mount_file_links', from: 'originalMimeType', to: 'originalMimeType_x' },
+    },
+    {
+      name: 'photo_list_links_plant',
+      module: '@/app/api/v1/characters/[id]/photos/route',
+      url: `${B}/${aria}/photos`,
+      params: { id: aria },
+      renameMountColumn: { table: 'doc_mount_file_links', from: 'originalMimeType', to: 'originalMimeType_x' },
+    },
     // P4.6i: the cascade-delete preview — Aria's exclusive chat + vault-link
     // avatar + memory count.
     { name: 'cascade_preview', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=cascade-preview`, params: { id: aria } },

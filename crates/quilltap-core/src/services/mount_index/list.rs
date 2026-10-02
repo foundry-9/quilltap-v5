@@ -102,14 +102,23 @@ pub fn mount_files_list(db: &Db, mount_point_id: &str) -> Result<MountFilesList,
     let mp = mp.ok_or_else(|| MountFileError::Other("Mount point not found".to_string()))?;
 
     let id = mount_point_id.to_string();
-    let files = db.read_mount_index(move |conn| {
-        DocMountFilesRepository::new(conn).find_links_with_content_json_by_mount_point_id(&id)
-    })?;
+    // v4 `files/route.ts:29-30` reads both through fallbacks: `docMountFiles.
+    // findByMountPointId` (`Error finding files by mount point ID`, `[]`) and
+    // `docMountFolders.findByMountPointId` (`Error finding entities by filter`,
+    // `[]` — its outer line unreachable). Each WHOLE checkout sits inside its
+    // home, as v4's `getCollection()` does inside its `safeQuery` (P4.142, G1).
+    let files = crate::db::fallback::files_by_mount_point_id_or_empty(mount_point_id, || {
+        db.read_mount_index(move |conn| {
+            DocMountFilesRepository::new(conn).find_links_with_content_json_by_mount_point_id(&id)
+        })
+    });
 
     let id = mount_point_id.to_string();
-    let folder_rows = db.read_mount_index(move |conn| {
-        DocMountFoldersRepository::new(conn).find_by_mount_point_id(&id)
-    })?;
+    let folder_rows = crate::db::fallback::find_by_filter_or_empty("doc_mount_folders", || {
+        db.read_mount_index(move |conn| {
+            DocMountFoldersRepository::new(conn).find_by_mount_point_id(&id)
+        })
+    });
 
     // v4 uses a JS Set (insertion order); we merge into a sorted set so the
     // differential is stable regardless of fs.readdir order across per-side copies.

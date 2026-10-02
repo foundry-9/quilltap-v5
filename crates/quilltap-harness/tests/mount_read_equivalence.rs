@@ -2,7 +2,10 @@
 //! `::list` vs v4's REAL `readMountFile` + the files-list route body, over a
 //! per-side COPY of the committed mounts fixture. The fs/obsidian mounts' sentinel
 //! basePath is rewritten to a per-side copy of `mounts-fs-tree/`; fs-mount read
-//! mtimes are normalized to 0 (nondeterministic copy time).
+//! mtimes are normalized to 0 (nondeterministic copy time). P4.142 (G1): a
+//! final plant phase — one column RENAME at a time on the same copy (links
+//! `originalMimeType`, documents `content`, folders `mountPointId`) — compares
+//! each fallback read's outcome and lines against v4's.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — see mount-read.ts header):
 //!   V5W=<the v5 checkout>
@@ -347,9 +350,110 @@ fn mount_read_matches_oracle() {
         checked += 1;
     }
 
+    // ── P4.142 (G1) — the plant phase, on the same copy, mirroring the oracle:
+    // one column RENAME at a time (renamed back after); each case's outcome AND
+    // its lines (v4's `{level, message, fields}` against v5's capture, the
+    // `error=` tail dropped; the backend's `SQLite find error` is unported —
+    // the search families' `UNPORTED_BACKEND_LINES` class).
+    let rename = |table: &'static str, from: String, to: String| {
+        db.write_blocking(move |ws| {
+            ws.mount_index()
+                .expect("mount present")
+                .connection()
+                .execute_batch(&format!(
+                    "ALTER TABLE \"{table}\" RENAME COLUMN \"{from}\" TO \"{to}\""
+                ))?;
+            Ok(())
+        })
+        .expect("plant rename");
+    };
+    let lines_of = |id: &str, v5: &[String]| -> (Vec<String>, Vec<String>) {
+        let want: Vec<String> = oracle[id]["logs"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{id}: no oracle logs"))
+            .iter()
+            .filter(|rec| rec["message"] != "SQLite find error")
+            .map(|rec| {
+                let mut line = format!(
+                    "{} quilltap::db {}",
+                    rec["level"].as_str().unwrap_or_default().to_uppercase(),
+                    rec["message"].as_str().unwrap_or_default()
+                );
+                for pair in rec["fields"].as_array().cloned().unwrap_or_default() {
+                    line.push_str(&format!(
+                        " {}={}",
+                        pair[0].as_str().unwrap_or_default(),
+                        pair[1].as_str().unwrap_or_default()
+                    ));
+                }
+                line
+            })
+            .collect();
+        let got: Vec<String> = v5
+            .iter()
+            .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+            .map(|l| match l.find(" error=") {
+                Some(i) => l[..i].to_string(),
+                None => l.clone(),
+            })
+            .collect();
+        (got, want)
+    };
+    let plant_read = |id: &str| {
+        let (got, lines) = quilltap_core::test_support::captured_with(|| {
+            match read_mount_file(&db, MP_DB, "notes/intro.md", o(None, None, None)) {
+                Ok(r) => json!({ "ok": r.to_json() }),
+                Err(e) => json!({ "err": err_code(&e) }),
+            }
+        });
+        assert_eq!(norm(&got), norm(&oracle[id]["out"]), "plant read {id}");
+        let (g, w) = lines_of(id, &lines);
+        assert_eq!(g, w, "plant read {id}: lines");
+    };
+    let plant_list = |id: &str| {
+        let (got, lines) = quilltap_core::test_support::captured_with(|| {
+            mount_files_list(&db, MP_DB).expect("list").to_json()
+        });
+        assert_eq!(
+            norm(&norm_list(&got)),
+            norm(&norm_list(&oracle[id]["out"])),
+            "plant list {id}"
+        );
+        let (g, w) = lines_of(id, &lines);
+        assert_eq!(g, w, "plant list {id}: lines");
+    };
+    for (table, column, cases) in [
+        (
+            "doc_mount_file_links",
+            "originalMimeType",
+            &["db-doc-read-links-plant", "list-db-links-plant"][..],
+        ),
+        (
+            "doc_mount_documents",
+            "content",
+            &["db-doc-read-docs-plant"][..],
+        ),
+        (
+            "doc_mount_folders",
+            "mountPointId",
+            &["list-db-folders-plant"][..],
+        ),
+    ] {
+        rename(table, column.to_string(), format!("{column}_x"));
+        for id in cases {
+            if id.starts_with("list-") {
+                plant_list(id);
+            } else {
+                plant_read(id);
+            }
+            checked += 1;
+        }
+        rename(table, format!("{column}_x"), column.to_string());
+    }
+
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
-    assert_eq!(checked, 18, "expected 18 cases");
+    assert_eq!(checked, 22, "expected 22 cases");
     eprintln!("OK: mount-read matched oracle ({checked} cases).");
 }
 
