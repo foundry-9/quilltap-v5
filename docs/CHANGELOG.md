@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-02 — docs(porting): order the f6426e196 recorded-divergences round — seven lanes (P4.139–P4.145) with seven fresh surveys
+
+_Docs-only change._
+
+Work orders for the recorded-divergences round both recent unifications named next: the API-key read class (P4.139), the Salon spine — Option V, the two zone-name wrappers, the `fileProcessing` frame and Carina's llm-logs row (P4.140), the model layer's timeout trigger, 2xx-parse behaviour and ten plugin error lines (P4.141), the repository fallbacks — the overlay's batch reads, chunk reads and the chat GET/list arms (P4.142), the data/zod smalls (P4.143), the memory and harness smalls (P4.144), and the SPA's attachment-only sentence with a `fileProcessing` neutrality pin (P4.145). No drift row is absorbed; the baseline stays `f6426e196`.
+
+- Seven read-only surveys under `docs/developer/porting/work-orders/surveys/2026-10-02-f6426e196/` measured the scope first and overturned a dozen recorded premises; the orders follow the measurements (each has a "What the recorded description got wrong" section).
+- One shared §R/§S/Ownership/gate block spliced byte-identically into all seven orders (md5 recorded in the commit message); two shared contracts carried verbatim in both orders of each pair (the API-key fallback home P4.142 delivers for P4.139; the `fileProcessing` frame P4.140 emits for P4.145).
+- `phase-4.md` gains the round's ORDERED section (lanes, fences, cherry-pick order, rulings made at planning, what was left out).
+
 #### 2026-10-02 — docs(dogfood): the ca363178d + f6426e196 rounds' dogfood pass — 40 rows, 37 PASS, zero v5 defects
 
 _Docs-only change._

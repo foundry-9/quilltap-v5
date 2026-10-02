@@ -7124,6 +7124,199 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `f6426e196` recorded-divergences round (P4.139 ∥ P4.140 ∥ P4.141 ∥ P4.142 ∥ P4.143 ∥ P4.144 ∥ P4.145) — ORDERED 2026-10-02
+
+**Baseline `f6426e196`; v4 AT the baseline at the planning probe (HEAD
+`f6426e196`, `origin/main` agreeing after a fetch, `bugfix` `1a2b2164c` and
+`release` `8fbf2afe0` unmoved, the tree dirty by EXACTLY the three recorded
+bug-175/176 docs paths); the ledger's §3 is EMPTY — this round absorbs NO
+drift row and the baseline does not move at its unification.** The round
+is the recorded-divergences round BOTH recent unifications named as NEXT
+item 2: Option V (k) + the smalls (a)–(j) of the `97b25fc53` smalls
+unification, every OPEN item of the P4.135–P4.138 status headers, and the
+two dogfood standing notes of 2026-10-02 — re-measured by seven fresh
+surveys (`work-orders/surveys/2026-10-02-f6426e196/`, committed with the
+orders). **The surveys overturned a dozen recorded premises before any lane
+started; the orders follow the measurements:** (1) the dogfood claim that
+Option V "must also fix the zone VALUE" is FALSE — jiff 0.2.31 already
+honours a POSIX `TZ` rule, so every UTC surface the B5 walk saw was
+NAME-fed (the Scenario Builder clock included) and threading the value is
+the whole fix; the swipe path and the enclave step were missing from the
+recorded scope (P4.140); (2) v4 has NO client handling of the
+`fileProcessing` frame — no toast, no string — and v5's reducer already
+ignores unknown keys, so the SPA's half is a neutrality pin, not a port
+(P4.145); (3) EVERY v4 API-key read falls back — there is no "v4 lets it
+through" class — v5 has 42 sites not ~20, the api-keys routes have NO
+scoping divergence (v4 imports `getUserRepositories` and never calls it),
+and `isActive` diverges in BOTH directions (P4.139); (4) the character
+overlay's BATCH reads are not in P4.131's 130-site census at all;
+`chatGet` is a v4 500 too (only the body differs) while `listChats` is a
+real divergence; v4's sync `walkStore` reads through the same fallbacks
+and then DELETES unchanged disk files — a candidate v4 bug that keeps the
+sync ruling Tier 3 (P4.142); (5) the trail WARN collapses to a single
+`[": Invalid input"]` under zod 4.6.5's union for 3 of 5 planted rows —
+the real gap is the FIELD (`errors` array vs `error` string); the restore
+has THREE repository ERRORs, not two; `dumpFileFacts` is v5's own oracle
+helper, not a v4 function (P4.143); (6) `SKIP_GATE` is dead code in v4
+and `memoriesWritten` is already diffed, so the recorded "count
+divergence" does not exist; only three of v4's five fold-episode lines can
+fire, and porting the write-failure line is a BEHAVIOUR change (v4 stops
+linking that character's fragments) (P4.144); (7) the timeout gap is the
+TRIGGER, not the wording — v4 classes every timeout and raw-fetch connect
+failure as `network` where v5 files `provider-error`; the 2xx-parse gap
+is a behaviour divergence on SEVEN providers' non-streaming sends; there
+are TEN unported plugin lines, not nine (P4.141). Seven single lanes,
+disjoint ownership, two pre-declared named-hunk splits
+(`services/chat_create.rs` P4.139 `:2521` ∥ P4.140 the deps/greeting;
+`services/chat_enrichment.rs` P4.139 the key read ∥ P4.142 the profile
+read if its item needs it), ONE shared contract pair twice (the API-key
+home P4.142 delivers for P4.139; the `fileProcessing` frame P4.140 emits
+for P4.145). **Rulings made at planning (the human may reverse before a
+lane launches):** the timeout TRIGGER is ported as v4 has it (P4.141 Tier
+1 — consistent with P4.D189's stall-as-`network`; the fallback shape is
+written as Tier 3); the fold pass's write-failure line is ported WITH
+v4's skip-the-rest behaviour (P4.144); the sync applier's fallback stays a
+RULING for the human (P4.142 Tier 3, Option B recommended); the composer
+placeholder bytes are a RULING for the human (P4.145 Tier 3).
+
+- **P4.139 — the API-key read class** (P4.136 OPEN): `work-orders/p4.139-
+  api-key-read-class-census-guard-isactive-routes.md` — two shared key-
+  read helpers in `api_key_service.rs`; the 21 no-new-home sites routed
+  through them with v4's outcome; the three api-keys routes' 500 → v4's
+  logged 404 (`settings_wire_actions` +3 arms red-first,
+  `settings_routes_equivalence` +2 rows with a `corruptApiKey` seed);
+  `isActive` decoded as v4 reads it (`api_keys_tier2` six planted cells,
+  red-first both directions); a bad row DROPPED with v4's WARN instead of
+  failing the by-user list; the Scenario Builder prepare's profile read
+  through `find_by_id_or_none` (one red-first row); `db` passed at the
+  three outside composite callers; a NEW `api_key_read_sites_census`
+  guard red-first at 25 → 0; the four by-user-id callers through a
+  lane-local helper the unifier folds onto P4.142's delivered home
+  (`fallback_home_guard` RED by design on the branch); Tier 3 by name:
+  the pricing cadence, `test_plants`' home, the almanack's raw SQL. Rust
+  core + harness (+ web tests); Opus.
+- **P4.140 — the Salon spine** (Option V (k) + item (g) + P4.137's
+  `fileProcessing` frame + P4.129's Carina row): `work-orders/p4.140-salon-
+  spine-option-v-file-processing-frame-carina-row.md` — a `display_zone:
+  TimeZone` VALUE on `ProcessMessageInput`, `BuildContextArgs`,
+  `BuildContextInput`, `RegenerateSwipeOptions`, `StepDeps`, `ChatCreateDeps`
+  (no `api/types.rs` change); the host's `ChatSpine`/`ChatCreateSpine`
+  carrying it with a `with_display_zone` builder filled in `quilltap-web/
+  src/lib.rs`; `display_zone_named` RETIRED (the `server_tz` NAME stays for
+  the distill, cron and the log cleanup); item (g): `chat_export_markdown`
+  takes the value, the five autonomous-room routes a `CoreConfig`-derived
+  name, `system_zone_name` deleted (12 harness call sites); the census
+  reshaped with a POSIX-`TZ` child process (red on `main` at the
+  production derivation); `ChatEvent::FileProcessing` emitted before
+  `validating` (the one `EXPECTED_EVENT_DIVERGENCES` entry trips VANISHED
+  — no regen); Carina's `run_stream` logging its `CHAT_MESSAGE` row at the
+  done chunk on all three legs (the `V4OnlyRow` + `LogDivergence` retire
+  by VANISHING); the inaccurate WARN in `quilltap-web/src/main.rs:213-218`
+  as a Tier 2 small; Tier 3: the name-based calendar paths under a POSIX
+  `TZ`. Rust core + host + web/tauri test commons + harness; the MOST
+  CAPABLE tier.
+- **P4.141 — the model layer** (P4.128's two approximations + the plugin
+  lines): `work-orders/p4.141-model-layer-timeout-wording-2xx-parse-
+  plugin-error-lines.md` — `TransportError` gains a kind (`Http` /
+  `Connect` / `Timeout`) from reqwest's `is_timeout()` and the body-read
+  swallow becomes a real error (the ~45 literal sites converted in ONE
+  early commit); v4's thrown text per provider family (`Connection
+  error.` / `Request timed out.` / `fetch failed` / the abort texts); the
+  timeout TRIGGER → `network` through `StreamError` + `CompletionError`
+  (red-first on 20 hang rows + 6 widened fetch-throw rows); the posed-2xx
+  arm (five `ok_*` cases, 110 rows; v5 answers `Err` with v4's TypeError
+  bytes; non-JSON bodies through `v8_json_parse_message`); the TEN plugin
+  lines through a re-homed `model/plugin_catch_log.rs` (status + catch
+  line, v4's field order, Google's `model`, the OpenRouter raw-path gate;
+  `UNPORTED_PLUGIN_ERROR_LINES` deleted, ~202 rows red until the port
+  lands); the recorder grown (a `hang` kind, per-case `requestTimeoutMs`,
+  a `modes` filter, keep-alive) and the corpus re-recorded at the pin
+  (736 → ~880 rows). Rust core `model/**` + harness + recorder; Opus.
+- **P4.142 — the repository fallbacks** (P4.131 OPEN + the 2026-10-02
+  standing note): `work-orders/p4.142-repository-fallbacks-overlay-batch-
+  reads-chunks-chat-reads.md` — `db/fallback.rs` gains the batch-read,
+  chunk-count and search shapes (+ P4.139's delivered API-key home); the
+  overlay's two batch reads get fallback twins across 11 callers (a
+  rename-plant case in `vault_read_overlay_equivalence`; the mail family's
+  `assert_send_divergence` retires by VANISHING — the `send_mail`
+  divergence CLOSES); the project/group overlay's drop lines (ERROR +
+  WARN); `chat_get` / `list_chats` with v4's catch bodies and lines (two
+  rename-plant cases in `salon_reads_equivalence`); the chunk reads' twins
+  across seven sites (the `mount_embedding_effects` test re-aimed at a
+  v5-only arm); the census reclassified, widened and recounted; the 14
+  read-only route/listing sites (G1) converted with plant arms; Tier 2 the
+  47 G2/G3 sites as measured; Tier 3 the sync RULING (Option B written
+  out), `qtap_export`, `refresh_stats`. Rust core + web src (two files) +
+  harness; the MOST CAPABLE tier.
+- **P4.143 — the data/zod smalls** (P4.130 OPEN): `work-orders/p4.143-data-
+  zod-smalls-import-mask-restore-serde-trail-errors.md` — the import
+  mask's exception widened to every quoted family as a 7-row divergence
+  table with a count assert (red-first 6 warnings in 2 cases); a NEW
+  derived `restore-archive-chat-serde-arm.zip` with the carve pinned both
+  ways (21 → 22 cases); the third `Failed to create chat` ERROR; a
+  chat-event issue source with zod's union collapse in `api/zod_issues.rs`,
+  the WARN logging `errorsJson` (red-first on every WARN across four
+  reads); Tier 2 the duplicate-arm warnings, the embedding enum check,
+  camelCase WARN fields, logger spies on the two oracles; Tier 3
+  `dumpFileFacts` (the family is P4.142's this round), `GroupSchema`'s
+  store-resident columns, `strictFailures`. Rust core + harness + a new
+  web-tests fixture; Opus.
+- **P4.144 — memory + harness smalls** (P4.138 + P4.135 OPEN): `work-
+  orders/p4.144-memory-harness-smalls-fold-episode-lines-alias-assign.md`
+  — the three reachable `[FoldEpisodePass]` lines at v4's levels/bytes
+  with v4's skip-the-rest write behaviour, through `fold_episode_tier3`
+  with a `Logger.prototype` capture and two new runs (3 of 4 red-first;
+  M1–M5); the `SKIP_GATE` ruling as a why-comment; Tier 2 the
+  `ALIAS_ASSIGN` widening (`$(…)`, backticks, nested — its OWN commit,
+  four self-test rows), the MPJ llm-logs comparand (a `with_logging`
+  executor per case), the pass's two reads to v4's fallback shape (the
+  fragment-read twin in `db/memories_read.rs`); Tier 3 the MigrationRunner
+  tsx pin (catches part 2 of bug 176 only). Rust core + harness + tooling;
+  Sonnet-class.
+- **P4.145 — the SPA** (P4.137's named SPA item): `work-orders/p4.145-spa-
+  attachment-only-sentence-file-processing-neutrality.md` — the
+  attachment-only send carries v4's `Please look at the attached file(s).`
+  on the request only, keyed on attached files alone (five vitest arms,
+  red-first; the stale spec's false comment and planted row fixed); a NEW
+  live Playwright beat (a `text/plain` upload into a general chat, the
+  USER row + the linked file read back through `chatGet`) that runs again
+  on the union as the frame's end-to-end proof; a `fileProcessing`
+  neutrality pin in the reducer spec (nested `error` included); Tier 2
+  v4's `[Attached: …]` bubble + the optional contract mirror; Tier 3 the
+  composer placeholder bytes RULING. Angular only; Sonnet-class.
+
+**Fences:** `api/types.rs` FROZEN (`dispatch_wrong_type_census` 441);
+`api/engine.rs` P4.140 only; `db/fallback.rs` + `fallback_home_guard`
+P4.142 only (P4.139's lane-local helper folds at unification — §S.1);
+`services/orchestrator.rs` / `carina_query.rs` / `build_context.rs` /
+`message_context.rs` P4.140 only; `services/primary_stream.rs` read-only
+for everyone; `api/salon.rs` + `api/chat_media.rs` P4.142; `files_routes_
+equivalence` P4.142; `recipe_sweep.py` P4.144 in its own commit; `apps/web/
+**` P4.145; committed real-DB pairs rebuilt by NOBODY. **Execution:** all
+seven branches cut from `main` at the orders' commit; worktree per lane;
+P4.140 and P4.142 the most capable tier, P4.139 / P4.141 / P4.143 Opus,
+P4.144 / P4.145 Sonnet-class; at most TWO Rust full workspace gates on
+the machine at once (104 GB free at planning; `CARGO_INCREMENTAL=0`);
+one Playwright run at a time (P4.145 only, then the unifier);
+cherry-pick order P4.144 → P4.142 → P4.139 → P4.143 → P4.141 → P4.140 →
+P4.145; the unifier folds §S.1, regenerates `orchestrator_tier3` +
+`build_context_tier3` once on the union, re-runs P4.145's beat with the
+real frame, recounts versions, retires the closed divergences on evidence,
+and gates once from a `f6426e196` pin. **Deliberately left out:** the
+sync applier's fallback (a RULING, not code); the G2/G3 census sites
+beyond the measured 14 (their per-site v4 reading is owed first); the
+pricing-context cadence (P4.139 Tier 3); the MigrationRunner pin as a
+lane item (its catch is partial); the `[Attached: …]` bubble as Tier 1
+(Tier 2 — it widens `ComposerSend`); the name-based calendar paths under a
+POSIX `TZ` (P4.140 Tier 3 — the distill, cron and log cleanup need a
+NAME); the WaveSpeed npm-plugin loader (#124 — the human repointed the
+desk); the standing 💸 queue (the next dogfood pass, after this round).
+**NEXT after this round unifies:** the owed dogfood pass over the seven
+lanes' 💸 rows; then the rulings' follow-ups (sync applier, placeholder
+bytes, the timeout trigger if reversed) + G2/G3 as a smalls round; then a
+drift catch-up when v4 moves (`/driftcheck` first).
+
+
 ## The `f6426e196` bug-174 drift catch-up + review-follow-ups round (P4.D244 ∥ P4.135 ∥ P4.136 ∥ P4.137 ∥ P4.138) — UNIFIED 2026-10-02 (ordered 2026-10-01)
 
 **UNIFIED on main (2026-10-02) — ALL FIVE LANES LANDED; the oracle baseline
