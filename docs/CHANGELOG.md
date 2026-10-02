@@ -145,6 +145,12 @@ The two batch document reads behind every character, project, group, wardrobe, s
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `db::fallback` gains v4's lines for the vault overlay's two batch document reads, the embedded-chunk count, the chunk-content search and the file-link name/path search, plus `find_api_keys_by_user_id_or_empty` (delivered for P4.139 under the round's shared contract). The two search fallbacks that logged under their module targets with snake_case fields and the `sqlite error:` prefix now go through the home and log v4's exact bytes. v4's `withStrictRepositoryFailures` is ported as a thread-local scope: inside it the two batch homes log with `strictFailures=true` and propagate (ruled by the human on 2026-10-02 so backup and export can stay strict once the overlay falls back). `fallback_home_guard` lists the six new messages.
+#### 2026-10-02 — test(harness): api_key_read_sites_census — every raw API-key read classified, the conversion class pinned at zero
+
+_Versions: harness 0.0.1079._
+
+A new source census guards the API-key read class. It finds every raw `api_keys::find_by_id` / `find_by_id_and_user_id` / `get_api_keys_by_user_id` / `find_label_by_id` call in the core, host and web sources (anchored on the `api_keys::` path segment) and classifies it: through a `db::fallback` home (detected by the enclosing call, so a braced closure still counts), a helper's own body, the propagating provider scan with no v4 counterpart, an uncalled wrapper, the recorded pricing-cadence divergence, or `fallback-in-v4` — the conversion list, pinned at zero. A second test rejects a bare-name import of a read function, and a synthetic-source test covers the scanner. The same scanner over `main` measured 27 conversion rows (P4.139).
+
 #### 2026-10-02 — fix(export): the .qtap profile export reads the API-key label scoped to the exporting user, as v4 does
 
 _Versions: core 0.0.1153._

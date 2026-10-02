@@ -161556,3 +161556,34 @@ Each at v4's outcome (survey §A3 #1-9, 17-24 less the routes, 26, 27, 30, 31):
   export.ndjson`, 58 rows, 2 carrying `_apiKeyLabel`) — GREEN; the fixture's
   keys are the exporting user's own.
 
+### Unit 8 — the census guard `api_key_read_sites_census` (Tier 1 item 8)
+
+- NEW `crates/quilltap-harness/tests/api_key_read_sites_census.rs` in the
+  `doc_mount_fallback_sites_census` shape (`EXPECTED` rows `(file, enclosing
+  fn, method, class)` in source order, `COUNTS`, a synthetic-source test,
+  `QT_CENSUS_PRINT`), over core/host/web `src` via
+  `source_census::workspace_rust_sources` + `production_zone` + `code_only`.
+  Methods anchored on the `api_keys` PATH SEGMENT. **`home` is read off the
+  ENCLOSING CALLS, not the statement head** (a home's `|| { … }` closure opens
+  a `{` the statement head stops at — the doc-mount census's rule would have
+  missed every braced home). A second test rejects a bare-name `use
+  …::api_keys::{find_by_id, …}` import. A `QT_CENSUS_ROOT` hook scans another
+  checkout's `crates/` (the red-first measurement).
+- Lane tree: 10 rows — home 3 (Carina's, the greeting's, the chat
+  enrichment's: each over the home directly), internal 3 (the two helpers + the
+  lane-local by-user-id helper), no-v4-counterpart 1
+  (`find_active_api_key_for_provider`), wrapper-no-caller 2,
+  recorded-divergence 1 (`build_pricing_context`, Tier 3 item 15),
+  **fallback-in-v4 0** (pinned).
+- **Red-first, measured** over `main` `75219b8dd`'s sources (`git archive` →
+  `/tmp/p4139/main-src`, `QT_CENSUS_ROOT`): 42 rows (= the survey's 42 call
+  sites), **fallback-in-v4 27** = the survey's 25 NEEDS-HOME − #39 (an
+  OVERRIDES row on both trees) + #32 (the export label) + `provider_routing.
+  rs`'s two (a local `find_api_key_or_none` wrapper the scanner does not know;
+  the survey counted them ALREADY-HOME). home 11 + those 2 = the survey's 13.
+- **On the union (§S.1):** the lane-local helper's body row moves `internal`
+  → `home` when it folds onto `db::fallback::find_api_keys_by_user_id_or_empty`
+  (update EXPECTED + COUNTS → home 4, internal 2). §S.2 (the host search
+  pick) adds NO row (it calls `find_active_api_key_for_provider_or_none`, a
+  helper). §S.4 (the pricing cadence) retires the `recorded-divergence` row.
+
