@@ -344,10 +344,16 @@ fn hydrate_one<E: StoreEntity>(
 
     let state = match state_raw {
         // A corrupt state.json is non-fatal — `{}` (not the keystone invariant).
-        Some(s) => serde_json::from_str::<Value>(s)
-            .ok()
-            .filter(|v| !v.is_null())
-            .unwrap_or_else(|| Value::Object(Map::new())),
+        // v4 WARNs on the parse failure only (`document-store-overlay.ts:179-
+        // 184`); a `null` body defaults silently (`JSON.parse(raw) ?? {}`).
+        Some(s) => match serde_json::from_str::<Value>(s) {
+            Ok(v) if !v.is_null() => v,
+            Ok(_) => Value::Object(Map::new()),
+            Err(_) => {
+                log_state_unparseable::<E>(id, mount_id);
+                Value::Object(Map::new())
+            }
+        },
         None => Value::Object(Map::new()),
     };
 
@@ -422,14 +428,109 @@ pub fn apply_overlay<E: StoreEntity>(
     let by_path = load_store_files(mount, &mount_point_ids)?;
 
     let mut out = Vec::new();
+    let mut dropped = 0usize;
     for row in &rows {
         match hydrate_one::<E>(row, &by_path) {
             Ok(v) => out.push(v),
-            Err(e) if e.is_unavailable() => continue, // drop the bad row
+            // Drop the bad row — with v4's per-row ERROR (P4.142: v5 dropped
+            // SILENTLY, the divergence P4.D172 closed for the character overlay).
+            Err(e) if e.is_unavailable() => {
+                dropped += 1;
+                log_store_drop::<E>(row, &e);
+            }
             Err(e) => return Err(e),
         }
     }
+    if dropped > 0 {
+        log_store_drop_summary::<E>(dropped, rows.len());
+    }
     Ok(out)
+}
+
+// ── v4's overlay lines (`document-store-overlay.ts:179-184,210-229`). v4 builds
+// them from the config's `entityLabel` / `entityLabelCapitalized` / `idLogKey`
+// (`projectId` / `groupId` — `lib/{projects/project,groups/group}-store/
+// overlay.ts:29-31`). A tracing field NAME must be static, so each line is
+// spelled once per store-backed entity, keyed on [`StoreEntity::entity_label`]
+// (the only two implementors). ──
+
+/// v4 ERROR `` `Dropping ${label} from list — document store unavailable` ``
+/// `{[idLogKey]: row.id, officialMountPointId: row.officialMountPointId ?? null,
+/// reason: err.message}` — `reason` is the unavailable error's message, which
+/// [`OverlayError`]'s `Display` renders byte-for-byte as v4's.
+fn log_store_drop<E: StoreEntity>(row: &Map<String, Value>, err: &OverlayError) {
+    let id = row.get("id").and_then(Value::as_str).unwrap_or("");
+    let mount = row
+        .get("officialMountPointId")
+        .and_then(Value::as_str)
+        .unwrap_or("null");
+    match E::entity_label() {
+        "project" => tracing::error!(
+            projectId = %id,
+            officialMountPointId = %mount,
+            reason = %err,
+            "Dropping project from list — document store unavailable"
+        ),
+        "group" => tracing::error!(
+            groupId = %id,
+            officialMountPointId = %mount,
+            reason = %err,
+            "Dropping group from list — document store unavailable"
+        ),
+        label => tracing::error!(
+            entityLabel = label,
+            id = %id,
+            officialMountPointId = %mount,
+            reason = %err,
+            "Dropping row from list — document store unavailable"
+        ),
+    }
+}
+
+/// v4 WARN `` `apply${Label}StoreOverlay dropped ${label}s with unavailable
+/// stores` `` `{dropped, of}`.
+fn log_store_drop_summary<E: StoreEntity>(dropped: usize, of: usize) {
+    match E::entity_label() {
+        "project" => tracing::warn!(
+            dropped,
+            of,
+            "applyProjectStoreOverlay dropped projects with unavailable stores"
+        ),
+        "group" => tracing::warn!(
+            dropped,
+            of,
+            "applyGroupStoreOverlay dropped groups with unavailable stores"
+        ),
+        label => tracing::warn!(
+            entityLabel = label,
+            dropped,
+            of,
+            "applyStoreOverlay dropped rows with unavailable stores"
+        ),
+    }
+}
+
+/// v4 WARN `` `${Label} state.json unparseable; defaulting to {}` ``
+/// `{[idLogKey]: row.id, officialMountPointId: mountId}`.
+fn log_state_unparseable<E: StoreEntity>(id: &str, mount_id: &str) {
+    match E::entity_label() {
+        "project" => tracing::warn!(
+            projectId = %id,
+            officialMountPointId = %mount_id,
+            "Project state.json unparseable; defaulting to {{}}"
+        ),
+        "group" => tracing::warn!(
+            groupId = %id,
+            officialMountPointId = %mount_id,
+            "Group state.json unparseable; defaulting to {{}}"
+        ),
+        label => tracing::warn!(
+            entityLabel = label,
+            id = %id,
+            officialMountPointId = %mount_id,
+            "state.json unparseable; defaulting to {{}}"
+        ),
+    }
 }
 
 /// Read + validate `properties.json` for one mount point (v4 `readProperties` —
@@ -646,4 +747,145 @@ pub fn apply_write_overlay<E: StoreEntity>(
         db_patch.remove(k);
     }
     Ok(db_patch)
+}
+
+#[cfg(test)]
+mod drop_line_tests {
+    use super::*;
+    use crate::db::groups::GroupEntity;
+    use crate::db::projects::ProjectEntity;
+
+    /// The three tables the batch read joins, in the shape its SELECT names, with
+    /// one healthy store `mp-ok` (a bare-object `properties.json`) and one whose
+    /// `state.json` does not parse (`mp-badstate`).
+    fn mount() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_file_links (id TEXT, mountPointId TEXT, relativePath TEXT, fileId TEXT);
+             CREATE TABLE doc_mount_documents (fileId TEXT, content TEXT);
+             CREATE TABLE doc_mount_files (id TEXT);",
+        )
+        .unwrap();
+        for (i, (mp, path, content)) in [
+            ("mp-ok", "properties.json", "{}"),
+            ("mp-badstate", "properties.json", "{}"),
+            ("mp-badstate", "state.json", "{not json"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            conn.execute(
+                "INSERT INTO doc_mount_file_links VALUES (?1, ?2, ?3, ?1)",
+                rusqlite::params![format!("f{i}"), mp, path],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO doc_mount_documents VALUES (?1, ?2)",
+                rusqlite::params![format!("f{i}"), content],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO doc_mount_files VALUES (?1)",
+                rusqlite::params![format!("f{i}")],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    fn row(id: &str, mount: Option<&str>) -> Map<String, Value> {
+        let mut m = Map::new();
+        m.insert("id".into(), Value::String(id.into()));
+        m.insert(
+            "officialMountPointId".into(),
+            mount.map_or(Value::Null, |s| Value::String(s.into())),
+        );
+        m
+    }
+
+    /// P4.142 — v4's per-row ERROR (`[idLogKey]`, `officialMountPointId ?? null`,
+    /// `reason` = the unavailable error's message) and the summary WARN `{dropped,
+    /// of}` (`document-store-overlay.ts:210-229`), for both store-backed
+    /// entities; a healthy row hydrates and logs nothing of its own.
+    #[test]
+    fn a_dropped_store_logs_v4s_error_and_summary_warn() {
+        let conn = mount();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            apply_overlay::<ProjectEntity>(
+                &conn,
+                vec![
+                    row("p-ok", Some("mp-ok")),
+                    row("p-gone", Some("mp-gone")),
+                    row("p-null", None),
+                ],
+            )
+        });
+        let got = got.unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0]["id"], "p-ok");
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap_core::db::document_store_overlay Dropping project from list — document store unavailable projectId=p-gone officialMountPointId=mp-gone reason=Project p-gone has no usable document store (officialMountPointId=mp-gone): properties.json missing".to_string(),
+                "ERROR quilltap_core::db::document_store_overlay Dropping project from list — document store unavailable projectId=p-null officialMountPointId=null reason=Project p-null has no usable document store (officialMountPointId=null): officialMountPointId is null".to_string(),
+                "WARN quilltap_core::db::document_store_overlay applyProjectStoreOverlay dropped projects with unavailable stores dropped=2 of=3".to_string(),
+            ]
+        );
+        let (got, lines) = crate::test_support::captured_with(|| {
+            apply_overlay::<GroupEntity>(&conn, vec![row("g-gone", Some("mp-gone"))])
+        });
+        assert!(got.unwrap().is_empty());
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap_core::db::document_store_overlay Dropping group from list — document store unavailable groupId=g-gone officialMountPointId=mp-gone reason=Group g-gone has no usable document store (officialMountPointId=mp-gone): properties.json missing".to_string(),
+                "WARN quilltap_core::db::document_store_overlay applyGroupStoreOverlay dropped groups with unavailable stores dropped=1 of=1".to_string(),
+            ]
+        );
+    }
+
+    /// The silence leg: every row hydrates → neither line.
+    #[test]
+    fn a_healthy_list_logs_no_drop_line() {
+        let conn = mount();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            apply_overlay::<ProjectEntity>(&conn, vec![row("p-ok", Some("mp-ok"))])
+        });
+        assert_eq!(got.unwrap().len(), 1);
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// The rider: v4's `${Label} state.json unparseable; defaulting to {}` WARN
+    /// (`document-store-overlay.ts:179-184`) — the row still hydrates with `{}`.
+    #[test]
+    fn an_unparseable_state_json_warns_and_defaults() {
+        let conn = mount();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            apply_overlay::<GroupEntity>(&conn, vec![row("g-1", Some("mp-badstate"))])
+        });
+        let got = got.unwrap();
+        assert_eq!(got[0]["state"], serde_json::json!({}));
+        assert_eq!(
+            lines,
+            vec!["WARN quilltap_core::db::document_store_overlay Group state.json unparseable; defaulting to {} groupId=g-1 officialMountPointId=mp-badstate".to_string()]
+        );
+    }
+
+    /// Under a failed batch read (no tables) every store is dropped — after the
+    /// home's repository lines (P4.142 unit 2), the drop pair.
+    #[test]
+    fn a_failed_batch_read_drops_with_the_repository_lines_first() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            apply_overlay::<ProjectEntity>(&conn, vec![row("p-1", Some("mp-1"))])
+        });
+        assert!(got.unwrap().is_empty());
+        let repo_lines = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR quilltap::db Error finding documents by mount point IDs and path collection=doc_mount_documents mountPointIdCount=1 relativePath="))
+            .count();
+        assert_eq!(repo_lines, ALL_OVERLAY_PATHS.len(), "{lines:#?}");
+        assert_eq!(lines.len(), ALL_OVERLAY_PATHS.len() + 2, "{lines:#?}");
+        assert!(lines[ALL_OVERLAY_PATHS.len()].contains("Dropping project from list"));
+    }
 }

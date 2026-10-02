@@ -160627,3 +160627,27 @@ Wrap these bodies in `crate::db::fallback::with_strict_repository_failures(||
 
 A strict-scope pin per site belongs with each hunk (a planted rename under the
 scope → the caller's `Err`), on the union.
+
+### Unit 3 — the project/group overlay's drop lines (core 0.0.1149)
+
+- `document_store_overlay::apply_overlay` dropped unavailable rows SILENTLY
+  (`Err(e) if e.is_unavailable() => continue`). Now v4's ERROR `` `Dropping
+  ${label} from list — document store unavailable` `` `{[idLogKey],
+  officialMountPointId ?? null, reason}` per row and WARN `` `apply${Label}
+  StoreOverlay dropped ${label}s with unavailable stores` `` `{dropped, of}`
+  (`document-store-overlay.ts:210-229`; `idLogKey` `projectId` / `groupId` and
+  the labels read from v4's two configs, `lib/{projects/project,groups/group}-
+  store/overlay.ts:29-31`). A tracing field NAME must be static, so the lines
+  are spelled once per entity keyed on the existing `StoreEntity::
+  entity_label()` (no new trait fn; `projects.rs`/`groups.rs` untouched). JS
+  `null` renders `officialMountPointId=null` (the repo convention). `reason` is
+  `OverlayError`'s `Display`, already byte-identical to v4's
+  `…StoreUnavailableError.message`.
+- **Rider (same file, same machinery):** v4's WARN `` `${Label} state.json
+  unparseable; defaulting to {}` `` `{[idLogKey], officialMountPointId}`
+  (`:179-184`) — v5 defaulted silently. Only the parse FAILURE warns; a `null`
+  body defaults silently as v4's `?? {}`.
+- Pins (`document_store_overlay::drop_line_tests`): both entities' exact
+  ERROR + WARN (incl. the null-mount `officialMountPointId is null` arm), the
+  silence leg, the state rider, and the failed-batch-read ordering (the home's
+  4 repository lines first, then the drop pair).

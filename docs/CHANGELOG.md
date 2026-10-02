@@ -74,6 +74,12 @@ _Versions: core 0.0.1148._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `TransportError` gains `kind: TransportErrorKind` (`Http`, `Connect`, `Timeout`) and four constructors: `http(status, body)`, `connect(message)`, `timeout(message)` and `headers_timeout(ms)` (now a `Timeout`). All 52 struct literals across 12 files (core 38, harness 14) now go through them. `is_headers_timeout`'s message-prefix sniff is replaced by `is_timeout()`, which reads the kind. Behaviour does not change: every status-less site is `Connect`, every status site is `Http`, and the headers timeout is still the only `Timeout`. This is P4.141's first commit, landed early so a later field cannot cross the shared struct's literals again.
+#### 2026-10-02 — feat(db): P4.142 unit 3 — the project/group overlay logs v4's drop lines
+
+_Versions: core 0.0.1149._
+
+The project and group list overlay dropped rows with an unavailable document store silently. It now logs v4's per-row ERROR (`Dropping project from list — document store unavailable`, keyed `projectId`/`groupId`, with `officialMountPointId` and the unavailable error's message as `reason`) and the summary WARN (`applyProjectStoreOverlay dropped projects with unavailable stores {dropped, of}`). A rider adds v4's `state.json unparseable; defaulting to {}` WARN, which v5 also skipped. Unit pins cover both entities, the null-mount arm, the silence leg and the failed-batch-read ordering.
+
 #### 2026-10-02 — feat(db): P4.142 unit 2 — the vault overlay's batch reads take v4's fallbacks; the send_mail divergence retires by vanishing
 
 _Versions: core 0.0.1148, harness 0.0.1076._
