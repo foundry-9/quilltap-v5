@@ -70,6 +70,27 @@ fn internal(e: impl std::fmt::Display) -> Response {
     Response::error(ErrorKind::Internal, e.to_string())
 }
 
+/// v4 `handleList`'s own catch (`app/api/v1/chats/route.ts:1081-1084`): ERROR
+/// `[Chats v1] Error listing chats` `{}` with the Error as the third argument
+/// (`error = %e`, the file layer's hoisted convention), then `serverError('Failed
+/// to fetch chats')` — the body never carries the error's own text (P4.142; v5
+/// had answered the raw message).
+fn list_chats_failed(e: impl std::fmt::Display) -> Response {
+    tracing::error!(error = %e, "[Chats v1] Error listing chats");
+    Response::error(ErrorKind::Internal, "Failed to fetch chats")
+}
+
+/// v4 `handleGetChat`'s own catch (`app/api/v1/chats/[id]/handlers/get.ts:
+/// 416-419`): ERROR `[Chats v1] Error fetching chat` `{chatId}` + the Error,
+/// then `serverError('Failed to fetch chat')`. It runs BEFORE the route
+/// middleware's 503 arm (`lib/api/middleware/context.ts:196-205`), so a
+/// participant's unavailable vault answers this 500 too, never the contextful
+/// 503 (P4.142; v5 had answered the raw message as a 500).
+fn chat_get_failed(chat_id: &str, e: impl std::fmt::Display) -> Response {
+    tracing::error!(chatId = %chat_id, error = %e, "[Chats v1] Error fetching chat");
+    Response::error(ErrorKind::Internal, "Failed to fetch chat")
+}
+
 // ===========================================================================
 // The chat-settings read (v4 GET /api/v1/settings/chat)
 // ===========================================================================
@@ -107,7 +128,7 @@ pub fn list_chats(
     let user_id_owned = user_id.to_string();
     let all = match db.read_main(move |conn| chats_read::find_by_user_id(conn, &user_id_owned)) {
         Ok(v) => v,
-        Err(e) => return internal(e),
+        Err(e) => return list_chats_failed(e),
     };
 
     // v4's chatType filter: salon + legacy-null kept; help/brahma dropped;
@@ -135,7 +156,7 @@ pub fn list_chats(
         chat_enrichment::enrich_chats_for_list(main, mount, filtered)
     }) {
         Ok(v) => v,
-        Err(e) => return internal(e),
+        Err(e) => return list_chats_failed(e),
     };
     let mut filtered = chat_enrichment::filter_chats_by_excluded_tags(enriched, exclude_tag_ids);
     if let Some(n) = limit {
@@ -168,12 +189,16 @@ pub async fn chat_get(
     terminal_probe: Option<&dyn ariel_notifications::TerminalLivenessProbe>,
     zone: &crate::host_zone::TimeZone,
 ) -> Response {
-    // 1. Ownership-free slim read (single-user).
-    let chat_id_owned = chat_id.to_string();
-    let chat = match db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned)) {
-        Ok(Some(c)) => c,
-        Ok(None) => return Response::error(ErrorKind::NotFound, "Chat not found"),
-        Err(e) => return internal(e),
+    // 1. Ownership-free slim read (single-user). v4's `repos.chats.findById` is a
+    // fallback `_findById` (`base.repository.ts:247-257`): a failed read — the
+    // pool checkout included, as v4's `getCollection()` runs inside the same
+    // `safeQuery` — logs `Error finding entity by ID` and answers `null`, so it
+    // takes `notFound('Chat')`, never the handler's catch (P4.142).
+    let chat = match crate::db::fallback::find_by_id_or_none("chats", chat_id, || {
+        db.read_main(|conn| chats_read::find_by_id(conn, chat_id))
+    }) {
+        Some(c) => c,
+        None => return Response::error(ErrorKind::NotFound, "Chat not found"),
     };
 
     // 2. Pre-read side effects (both best-effort in v4).
@@ -211,7 +236,7 @@ pub async fn chat_get(
     });
     match result {
         Ok(v) => Response::Chat(ChatWrapDto { chat: v }),
-        Err(e) => internal(e),
+        Err(e) => chat_get_failed(chat_id, e),
     }
 }
 

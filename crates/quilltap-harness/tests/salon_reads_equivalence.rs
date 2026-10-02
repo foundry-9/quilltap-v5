@@ -177,6 +177,239 @@ fn response_data(r: &Response) -> Value {
     v.get("data").cloned().unwrap_or(Value::Null)
 }
 
+// ── P4.142 — the mount-index plant cases ────────────────────────────────────
+
+/// v4's lines on the plant cases, compared through an EXPLICIT table:
+/// `(message, v5 target)`. Every compared line is rendered `LEVEL target
+/// message k=v…` from v4's record and matched against v5's capture with the
+/// `error=` tail dropped on both sides (each stack's own driver sentence —
+/// P4.131 finding 3).
+const PLANT_COMPARED: &[(&str, &str)] = &[
+    (
+        "Error finding documents by mount point IDs and path",
+        "quilltap::db",
+    ),
+    (
+        "Error finding documents by mount point IDs and folder",
+        "quilltap::db",
+    ),
+    ("Error querying joined file links", "quilltap::db"),
+    (
+        "Dropping character from list — vault unavailable",
+        "quilltap_core::db::vault_read_overlay",
+    ),
+    (
+        "applyDocumentStoreOverlay dropped characters with unavailable vaults",
+        "quilltap_core::db::vault_read_overlay",
+    ),
+    (
+        "Dropping project from list — document store unavailable",
+        "quilltap_core::db::document_store_overlay",
+    ),
+    (
+        "applyProjectStoreOverlay dropped projects with unavailable stores",
+        "quilltap_core::db::document_store_overlay",
+    ),
+    (
+        "[Chats v1] Error listing chats",
+        "quilltap_core::api::salon",
+    ),
+    (
+        "[Chats v1] Error fetching chat",
+        "quilltap_core::api::salon",
+    ),
+];
+
+/// v4 lines NOT compared, each with why — a v4 line in neither table fails.
+const PLANT_EXCLUDED: &[(&str, &str)] = &[(
+    "Failed to ensure doc_mount_file_links table in mount index database",
+    "v4's LAZY `ensureTable` tripping on the renamed column at the mail \
+     listing's first links access; v5 runs the same repairs once per BOOT — \
+     P4.134's recorded cadence divergence (pinned both ways in \
+     `mail_carina_tools_equivalence`); v5 must log it ZERO times here",
+)];
+
+#[derive(Deserialize, Debug)]
+struct PlantLog {
+    level: String,
+    message: String,
+    fields: Vec<(String, String)>,
+}
+
+fn strip_error_tail(line: &str) -> String {
+    match line.find(" error=") {
+        Some(i) => line[..i].to_string(),
+        None => line.to_string(),
+    }
+}
+
+/// Compare v4's recorded lines with v5's captured ones for one plant case.
+///
+/// **As a MULTISET, not a sequence.** v4 fans the overlay's nine path reads out
+/// under `Promise.all` (`read-overlay.ts:82-86`), and `handleGet` enriches the
+/// participants concurrently (`get.ts:281-283`), so v4's line ORDER is the
+/// microtask schedule — on a fresh repository instance (one per jest case) the
+/// first read's `ensureTable` adds an `await` and logs LAST — where v5 reads
+/// sequentially. The ordering claims that DO hold on both sides are asserted
+/// separately: the route's catch line, when present, is the final line.
+///
+/// `fan_out` — the ONE recorded divergence, pinned both ways as `(v4, v5)`
+/// counts of the overlay's batch-read lines. v4's `handleGet` enriches EVERY
+/// participant under `Promise.all` (`get.ts:281-283`), so each participant's
+/// 9 + 2 reads run and log before the first refusal surfaces; v5's
+/// `assemble_chat_get` enriches participants in a loop and stops at the first
+/// `?`. The lines carry no mount id, so v4's extra copies are textually
+/// identical to v5's: with `fan_out` set, the multiset compare runs on the
+/// DEDUPLICATED lines and the counts are held to the pinned pair (P4.142 —
+/// the loop is outside this lane's error-arm scope in `api/salon.rs`; named
+/// for its successor). A count that moves on either side reds.
+fn assert_plant_lines(
+    name: &str,
+    v4: &[PlantLog],
+    v5: &[String],
+    fan_out: Option<(usize, usize)>,
+) -> Result<(), String> {
+    for l in v4 {
+        if !PLANT_COMPARED.iter().any(|(m, _)| *m == l.message)
+            && !PLANT_EXCLUDED.iter().any(|(m, _)| *m == l.message)
+        {
+            return Err(format!(
+                "{name}: v4 logged a line neither PLANT_COMPARED nor PLANT_EXCLUDED names: {:?} — classify it",
+                l.message
+            ));
+        }
+    }
+    for (m, _) in PLANT_EXCLUDED {
+        if v5.iter().any(|l| l.contains(m)) {
+            return Err(format!(
+                "{name}: v5 logged the excluded {m:?} at request time"
+            ));
+        }
+    }
+    let mut want: Vec<String> = v4
+        .iter()
+        .filter_map(|l| {
+            let (_, target) = PLANT_COMPARED.iter().find(|(m, _)| *m == l.message)?;
+            let mut line = format!("{} {target} {}", l.level.to_uppercase(), l.message);
+            for (k, v) in &l.fields {
+                line.push_str(&format!(" {k}={v}"));
+            }
+            Some(line)
+        })
+        .collect();
+    let mut got: Vec<String> = v5
+        .iter()
+        .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+        .map(|l| strip_error_tail(l))
+        .collect();
+    let last_want = want.last().cloned();
+    let last_got = got.last().cloned();
+    if let Some((v4_reads, v5_reads)) = fan_out {
+        let reads = |lines: &[String]| {
+            lines
+                .iter()
+                .filter(|l| l.contains("Error finding documents by mount point IDs and"))
+                .count()
+        };
+        if (reads(&want), reads(&got)) != (v4_reads, v5_reads) {
+            return Err(format!(
+                "{name}: the recorded participant fan-out moved — batch-read lines (v4, v5) = ({}, {}), pinned ({v4_reads}, {v5_reads})",
+                reads(&want),
+                reads(&got)
+            ));
+        }
+        want.sort();
+        want.dedup();
+        got.sort();
+        got.dedup();
+    }
+    want.sort();
+    got.sort();
+    if got != want {
+        return Err(format!(
+            "{name}: line multiset diverged\n  v5: {got:#?}\n  v4: {want:#?}"
+        ));
+    }
+    if last_want
+        .as_deref()
+        .is_some_and(|l| l.contains("[Chats v1]"))
+        && last_got != last_want
+    {
+        return Err(format!(
+            "{name}: the route's catch line must be LAST on both sides: v5 {last_got:?} v4 {last_want:?}"
+        ));
+    }
+    Ok(())
+}
+
+/// The HTTP status v4's REST edge answers for v5's response (the dispatch
+/// edge's mapping for the two shapes these cases produce).
+fn status_of(r: &Response) -> i64 {
+    match r {
+        Response::Error(e) => match e.kind {
+            quilltap_core::api::types::ErrorKind::Internal => 500,
+            quilltap_core::api::types::ErrorKind::NotFound => 404,
+            quilltap_core::api::types::ErrorKind::Unavailable => 503,
+            ref k => panic!("unexpected error kind {k:?}"),
+        },
+        _ => 200,
+    }
+}
+
+/// v4's error body for a v5 error response (`{error: message}`).
+fn error_body(r: &Response) -> Value {
+    match r {
+        Response::Error(e) => serde_json::json!({ "error": e.message }),
+        other => panic!("expected an error response, got {other:?}"),
+    }
+}
+
+/// A FRESH `Db` over its own copy of the committed fixture (the same vintage
+/// heals + `transcriptVersion = 7` the shared copy gets), with `plant` — a raw
+/// `ALTER TABLE` — run on the MOUNT-INDEX copy first.
+fn fresh_db(pepper: &str, tag: &str, plant: Option<&str>) -> (PathBuf, Db) {
+    let scratch = std::env::temp_dir().join(format!("qt-salon-reads-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let main = scratch.join("main.db");
+    let mount = scratch.join("mount.db");
+    std::fs::copy(fixtures_dir().join("salon-main.db"), &main).unwrap();
+    std::fs::copy(fixtures_dir().join("salon-mount.db"), &mount).unwrap();
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, pepper).unwrap();
+        quilltap_core::db::chat_messages_route_trail_repair::
+            ensure_chat_messages_route_trail_column(w.connection())
+            .unwrap();
+        quilltap_core::db::chats_cycle_order_repair::ensure_chats_cycle_order_column(
+            w.connection(),
+        )
+        .unwrap();
+        quilltap_core::test_support::ensure_p4d182_columns(w.connection());
+        w.connection()
+            .execute("UPDATE \"chats\" SET \"transcriptVersion\" = 7", [])
+            .unwrap();
+    }
+    if let Some(sql) = plant {
+        let w = quilltap_core::db::Writer::open_writable(&mount, pepper).unwrap();
+        w.connection()
+            .execute_batch(sql)
+            .expect("plant on the mount-index copy");
+    }
+    let db = Db::open(
+        DbPaths {
+            main,
+            mount_index: Some(mount),
+            llm_logs: None,
+        },
+        pepper,
+    )
+    .expect("open fresh db");
+    (scratch, db)
+}
+
+const LINKS_RENAME: &str =
+    "ALTER TABLE \"doc_mount_file_links\" RENAME COLUMN \"relativePath\" TO \"relativePath_x\"";
+
 #[test]
 fn salon_reads_match_oracle() {
     let Some(oracle_path) = env_or_skip("QT_ORACLE_SALON_READS") else {
@@ -562,6 +795,75 @@ fn salon_reads_match_oracle() {
     let _ = std::fs::remove_dir_all(&scratch);
 
     let mut failed = Vec::new();
+
+    // ── P4.142 — the plant cases: status + body + the line multiset, each on its
+    // own fresh copy (the oracle's per-case copy). ──
+    let plant_logs = |name: &str| -> Vec<PlantLog> {
+        serde_json::from_value(oracle[name]["logs"].clone())
+            .unwrap_or_else(|e| panic!("{name}: the oracle recorded no logs: {e}"))
+    };
+    {
+        let name = "list_all_mount_plant";
+        let (dir, pdb) = fresh_db(&spec.test_pepper_base64, "list-plant", Some(LINKS_RENAME));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            salon::list_chats(&pdb, uid, &[], None, false)
+        });
+        drop(pdb);
+        let _ = std::fs::remove_dir_all(&dir);
+        let rec = &oracle[name];
+        let (status, want_status) = (status_of(&resp), rec["status"].as_i64().unwrap());
+        if status != want_status {
+            eprintln!("[{name}] STATUS MISMATCH: v5 {status} v4 {want_status} — {resp:?}");
+            failed.push(format!("{name}:status"));
+        } else if norm(&response_data(&resp)) != norm(&rec["body"]["chats"]) {
+            let (g, w) = (norm(&response_data(&resp)), norm(&rec["body"]["chats"]));
+            eprintln!("[{name}] BODY MISMATCH:\n{}", first_diff(&g, &w));
+            failed.push(format!("{name}:body"));
+        } else {
+            eprintln!("[{name}] OK ({status}).");
+        }
+        if let Err(e) = assert_plant_lines(name, &plant_logs(name), &lines, None) {
+            eprintln!("[{name}] LINES: {e}");
+            failed.push(format!("{name}:lines"));
+        }
+    }
+    // `get_solo`'s two vaulted participants: v4 logs both participants' 9 + 2
+    // batch reads (22), v5 the first participant's (11) — the pinned fan-out.
+    for (name, chat, plant, fan_out) in [
+        (
+            "get_solo_mount_plant",
+            solo.as_str(),
+            Some(LINKS_RENAME),
+            Some((22, 11)),
+        ),
+        ("get_third", third.as_str(), None, None),
+    ] {
+        let (dir, pdb) = fresh_db(&spec.test_pepper_base64, name, plant);
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(salon::chat_get(&pdb, uid, chat, None, &TimeZone::UTC))
+        });
+        drop(pdb);
+        let _ = std::fs::remove_dir_all(&dir);
+        let rec = &oracle[name];
+        let (status, want_status) = (status_of(&resp), rec["status"].as_i64().unwrap());
+        if status != want_status {
+            eprintln!("[{name}] STATUS MISMATCH: v5 {status} v4 {want_status} — {resp:?}");
+            failed.push(format!("{name}:status"));
+        } else if error_body(&resp) != rec["body"] {
+            eprintln!(
+                "[{name}] BODY MISMATCH: v5 {} v4 {}",
+                error_body(&resp),
+                rec["body"]
+            );
+            failed.push(format!("{name}:body"));
+        } else {
+            eprintln!("[{name}] OK ({status}).");
+        }
+        if let Err(e) = assert_plant_lines(name, &plant_logs(name), &lines, fan_out) {
+            eprintln!("[{name}] LINES: {e}");
+            failed.push(format!("{name}:lines"));
+        }
+    }
     for (name, got, want) in &cases {
         let g = norm(got);
         let w = norm(want);

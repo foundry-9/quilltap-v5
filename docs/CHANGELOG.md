@@ -74,6 +74,12 @@ _Versions: core 0.0.1148._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `TransportError` gains `kind: TransportErrorKind` (`Http`, `Connect`, `Timeout`) and four constructors: `http(status, body)`, `connect(message)`, `timeout(message)` and `headers_timeout(ms)` (now a `Timeout`). All 52 struct literals across 12 files (core 38, harness 14) now go through them. `is_headers_timeout`'s message-prefix sniff is replaced by `is_timeout()`, which reads the kind. Behaviour does not change: every status-less site is `Connect`, every status site is `Http`, and the headers timeout is still the only `Timeout`. This is P4.141's first commit, landed early so a later field cannot cross the shared struct's literals again.
+#### 2026-10-02 — feat(api): P4.142 unit 4 — the chat list and chat GET answer v4's status, body and lines under a broken mount index
+
+_Versions: core 0.0.1150, harness 0.0.1077._
+
+`list_chats` and `chat_get` now fail the way v4's handlers do. `listChats` under a renamed mount-index column answers 200 with the vaulted characters and the project dropped (unit 2's fallback reads) instead of a 500. The two handler catches are ported: `[Chats v1] Error listing chats` with body `Failed to fetch chats`, and `[Chats v1] Error fetching chat {chatId}` with body `Failed to fetch chat` (no longer the raw database or vault-unavailable text). The chat GET's first read is now v4's fallback `findById`, so a failed read answers 404. `salon_reads_equivalence` gains three cases against v4's real routes: `list_all_mount_plant`, `get_solo_mount_plant` and `get_third`, comparing status, body and the logged lines; one divergence is pinned both ways (v4 logs every participant's overlay reads before failing, v5 stops at the first).
+
 #### 2026-10-02 — feat(db): P4.142 unit 3 — the project/group overlay logs v4's drop lines
 
 _Versions: core 0.0.1149._

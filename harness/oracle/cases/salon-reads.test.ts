@@ -89,6 +89,17 @@ interface CaseSpec {
     spoken?: string | null;
     order?: string | null;
   };
+  /** P4.142: a column RENAME on the MOUNT-INDEX copy (raw `ALTER TABLE`
+   * through v4's own mount-index handle, after `initializeDatabase()` and
+   * before the route import) — the plant every vault-overlay batch read fails
+   * on. A RENAME survives `ensureTable` (P4.131). */
+  renameMountColumn?: { table: string; from: string; to: string };
+  /** P4.142: record every ERROR/WARN v4 logs while the ROUTE runs (the
+   * `chats-messages-ops-tier2.ts` `Logger.prototype` spy recipe) as
+   * `{level, message, fields}` — context keys in v4's order, `module` and
+   * `error` omitted, non-primitive values skipped. Implied by
+   * `renameMountColumn`. */
+  recordLogs?: boolean;
 }
 
 function mockRequest(url: string): unknown {
@@ -266,6 +277,44 @@ async function runCase(
     }
   }
 
+  // P4.142: the mount-index RENAME plant (v4's own raw handle on this case's
+  // fresh copy) and the route-time log spy.
+  if (c.renameMountColumn) {
+    const { getRawMountIndexDatabase } = await import(
+      '@/lib/database/backends/sqlite/mount-index-client'
+    );
+    const midb = getRawMountIndexDatabase();
+    if (!midb) throw new Error('raw mount-index handle unavailable');
+    const { table, from, to } = c.renameMountColumn;
+    midb.exec(`ALTER TABLE "${table}" RENAME COLUMN "${from}" TO "${to}"`);
+  }
+  let logs: Array<Record<string, unknown>> | null = null;
+  if (c.renameMountColumn || c.recordLogs) {
+    const { Logger } = await import('@/lib/logger');
+    for (const level of ['error', 'warn'] as const) {
+      const original = Logger.prototype[level];
+      Logger.prototype[level] = function (
+        this: unknown,
+        message: string,
+        context?: Record<string, unknown>,
+        ...rest: unknown[]
+      ) {
+        if (logs) {
+          const fields: Array<[string, string]> = [];
+          for (const [k, v] of Object.entries(context ?? {})) {
+            if (k === 'module' || k === 'error') continue;
+            if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+              fields.push([k, String(v)]);
+            }
+          }
+          logs.push({ level, message, fields });
+        }
+        return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+      } as never;
+    }
+    logs = [];
+  }
+
   try {
     let response: { status: number; json: () => Promise<unknown> };
     if (c.kind === 'settings') {
@@ -285,6 +334,14 @@ async function runCase(
     }
     const status = response.status;
     const body = await response.json();
+    if (logs) {
+      // Let any fire-and-forget work the route started (the cold-chunk
+      // re-warm) settle before the spy is read.
+      await new Promise((r) => setTimeout(r, 50));
+      const recorded = logs;
+      logs = null;
+      return { name: c.name, status, body, logs: recorded };
+    }
     return { name: c.name, status, body };
   } finally {
     await closeDatabase();
@@ -474,6 +531,35 @@ async function main(): Promise<void> {
       url: `http://localhost/api/v1/chats/${soloId}`,
       chatId: soloId,
       setCycleColumnsRaw: { chatId: soloId, spoken: null, order: null },
+    },
+    // P4.142: the vault overlay under a broken mount index —
+    // `doc_mount_file_links.relativePath` renamed. v4's overlay batch reads are
+    // fallback `withRawDb([])`s, so `handleList` answers 200 with every vaulted
+    // character (and the project) dropped, while `handleGet`'s OWN catch turns
+    // the single overlay's `CharacterVaultUnavailableError` into 500 `Failed to
+    // fetch chat` (`get.ts:416-419`) before the middleware's 503 arm.
+    {
+      name: 'list_all_mount_plant',
+      kind: 'list',
+      url: 'http://localhost/api/v1/chats',
+      renameMountColumn: { table: 'doc_mount_file_links', from: 'relativePath', to: 'relativePath_x' },
+    },
+    {
+      name: 'get_solo_mount_plant',
+      kind: 'get',
+      url: `http://localhost/api/v1/chats/${soloId}`,
+      chatId: soloId,
+      renameMountColumn: { table: 'doc_mount_file_links', from: 'relativePath', to: 'relativePath_x' },
+    },
+    // P4.142 Tier 2: the third chat (Vex's vault is UNAVAILABLE in the
+    // committed fixture) with NO plant — v4's existing `Failed to fetch chat`
+    // arm for an unavailable-vault participant.
+    {
+      name: 'get_third',
+      kind: 'get',
+      url: `http://localhost/api/v1/chats/${thirdId}`,
+      chatId: thirdId,
+      recordLogs: true,
     },
   ];
 

@@ -160651,3 +160651,45 @@ scope → the caller's `Err`), on the union.
   ERROR + WARN (incl. the null-mount `officialMountPointId is null` arm), the
   silence leg, the state rider, and the failed-batch-read ordering (the home's
   4 repository lines first, then the drop pair).
+
+### Unit 4 — `chatGet` / `listChats` under the mount-index plant (core 0.0.1150, harness 0.0.1077)
+
+- `api/salon.rs`, the error arms ONLY (signatures incl. `zone` untouched,
+  §S.5): `list_chats`' two `Err` arms → `list_chats_failed` (ERROR `[Chats v1]
+  Error listing chats` `error = %e`, then `Failed to fetch chats`, v4
+  `route.ts:1081-1084`); `chat_get`'s post-404 composition arm →
+  `chat_get_failed` (ERROR `[Chats v1] Error fetching chat` `chatId`, `error =
+  %e`, then `Failed to fetch chat`, v4 `get.ts:416-419` — which runs BEFORE the
+  middleware's 503 arm). **Tier 2 item 12 landed with it:** the first read is
+  `db::fallback::find_by_id_or_none("chats", …)` over the whole `read_main`
+  checkout (v4's fallback `_findById` → `notFound('Chat')`; the pool failure
+  is inside the same `safeQuery` in v4).
+- **Oracle** (`salon-reads.test.ts`): a `renameMountColumn: {table, from,
+  to}` case key (raw `ALTER TABLE` through v4's own mount-index handle after
+  `initializeDatabase()`, before the route import), a route-time
+  `Logger.prototype` spy (`recordLogs`, implied by the plant), and three cases
+  — `list_all_mount_plant`, `get_solo_mount_plant`, `get_third` (Vex, no
+  plant). 17 → 20 cases.
+- **Red-first.** Against the unported overlay (M1 — the path twin back to
+  propagating, by file backup): `list_all_mount_plant` **RED on STATUS** (v5
+  500 `sqlite error: no such column: l.relativePath` vs v4 200) + lines;
+  `get_solo_mount_plant` **RED on BODY** (the raw sqlite sentence vs `Failed
+  to fetch chat`). With units 1–3 and no catch yet: list GREEN, get_solo
+  **RED on BODY** (`applyDocumentStoreOverlayOne: vault unavailable for
+  character …` vs `Failed to fetch chat`) + lines, `get_third` **RED on BODY**
+  + lines. GREEN after the catches.
+- **Measured, recorded:** v4's lines are compared as a MULTISET — v4 fans the
+  nine path reads out under `Promise.all` and enriches participants
+  concurrently, and on a fresh repository instance (one per jest case) the
+  first read's `ensureTable` adds an `await`, so `properties.json` logs LAST;
+  v5 reads sequentially. The catch line is held LAST on both sides. `Failed
+  to ensure doc_mount_file_links table in mount index database` (the mail
+  listing's lazy ensure) is EXCLUDED with P4.134's cadence reason and v5 must
+  log it zero times.
+- **ONE RECORDED DIVERGENCE, pinned both ways (`fan_out = (22, 11)`):** v4's
+  `handleGet` runs EVERY participant's overlay reads under `Promise.all`
+  (`get.ts:281-283`) before the first refusal surfaces — 2 vaulted
+  participants × (9 + 2) = 22 batch lines; v5's `assemble_chat_get` loop stops
+  at the first participant's `?` — 11. Same status, body and catch line. The
+  loop is outside this lane's error-arm scope in `api/salon.rs`; named for the
+  successor (Tier 3 below).
