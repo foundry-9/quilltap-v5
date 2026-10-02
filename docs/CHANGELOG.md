@@ -145,6 +145,11 @@ The two batch document reads behind every character, project, group, wardrobe, s
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `db::fallback` gains v4's lines for the vault overlay's two batch document reads, the embedded-chunk count, the chunk-content search and the file-link name/path search, plus `find_api_keys_by_user_id_or_empty` (delivered for P4.139 under the round's shared contract). The two search fallbacks that logged under their module targets with snake_case fields and the `sqlite error:` prefix now go through the home and log v4's exact bytes. v4's `withStrictRepositoryFailures` is ported as a thread-local scope: inside it the two batch homes log with `strictFailures=true` and propagate (ruled by the human on 2026-10-02 so backup and export can stay strict once the overlay falls back). `fallback_home_guard` lists the six new messages.
+#### 2026-10-02 — fix(db): decode api_keys.isActive as v4's hydrate and drop a bad row from the by-user list with v4's WARN
+
+_Versions: core 0.0.1147, harness 0.0.1075._
+
+`db::api_keys::marshal_row` now reads `isActive` the way v4's SQLite hydrate does: NULL is `true` (the Zod default), a number is active only when it equals 1, and any other cell is truthy unless it is an empty string. Before, v5 refused a NULL, text, fractional or BLOB cell outright and treated `2` as active. `get_api_keys_by_user_id` now drops a row it cannot marshal (or whose `provider` is empty) with v4's `API key validation failed {keyId, userId, error}` WARN and returns the rest; one bad row used to fail the whole list. The empty-provider drop now logs Zod's own message, byte for byte. `api_keys_tier2_equivalence` gains six seeded `isActive` rows read back through v4's real `findApiKeyById`, a BLOB-`key_value` row for user A, and the drop's WARN lines; it was red on 8 before the fix (P4.139).
 
 #### 2026-10-02 — docs(dogfood): rule finding #124 closed — WaveSpeed will not be directly supported
 

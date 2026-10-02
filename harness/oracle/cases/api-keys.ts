@@ -13,6 +13,11 @@
  * `lastUsed`). Read outcomes are pinned in the spec (`expect*`) and checked on
  * BOTH ports (a mismatch aborts) — the dump is the byte differential.
  *
+ * P4.139: two more NDJSON row kinds precede the dump — `readIsActive` (`{id,
+ * isActive}` per seeded `isActive` cell, read through `findApiKeyById`) and
+ * `warn` (every `logger.warn` the op sequence fires, with its op index — the
+ * per-row drop's `API key validation failed`).
+ *
  * SAFETY: every key_value is a SYNTHETIC placeholder — never a real API key.
  *
  * Run from the v4 server checkout under Node 24, AFTER building the fixture:
@@ -43,8 +48,11 @@ interface Op {
     | 'delete'
     | 'getByUser'
     | 'findById'
-    | 'findByIdAndUser';
+    | 'findByIdAndUser'
+    | 'readIsActive';
   idFromOp?: number;
+  /** `readIsActive` only: the literal (seeded) key id. */
+  id?: string;
   userId?: string;
   data?: {
     userId?: string;
@@ -96,6 +104,20 @@ async function main(): Promise<void> {
   await initializeDatabase();
   const repo = new ConnectionProfilesRepository();
 
+  // P4.139: record the repository's per-row drop WARN (`getApiKeysByUserId`
+  // `:226-233`, a direct `logger.warn` — not through `safeQuery`, so no
+  // `collection` field). The root logger is the one instance every module
+  // imports; replacing the method on it sees the call whatever LOG_LEVEL is.
+  const { logger } = await import('@/lib/logger');
+  let currentOp = -1;
+  const warnLines: Array<Record<string, unknown>> = [];
+  (logger as unknown as { warn: (m: string, c?: Record<string, unknown>) => void }).warn = (
+    message: string,
+    context?: Record<string, unknown>
+  ) => {
+    warnLines.push({ case: 'warn', op: currentOp, message, context: context ?? {} });
+  };
+
   // Minted key id per CREATE op index (idFromOp resolves against this).
   const mintedByOp: (string | undefined)[] = [];
   const resolveId = (op: Op): string => {
@@ -106,8 +128,10 @@ async function main(): Promise<void> {
     return mintedByOp[n] as string;
   };
 
+  const isActiveReads: Array<Record<string, unknown>> = [];
   for (let i = 0; i < spec.ops.length; i++) {
     const op = spec.ops[i];
+    currentOp = i;
     switch (op.kind) {
       case 'create': {
         const d = op.data as NonNullable<Op['data']>;
@@ -180,6 +204,17 @@ async function main(): Promise<void> {
         }
         break;
       }
+      case 'readIsActive': {
+        // P4.139: the hydrate's boolean branch over a seeded cell, through
+        // v4's REAL `findApiKeyById` (a parse failure would be `null`).
+        const key = await repo.findApiKeyById(op.id as string);
+        isActiveReads.push({
+          case: 'readIsActive',
+          id: op.id,
+          isActive: key === null ? null : key.isActive,
+        });
+        break;
+      }
       default:
         throw new Error(`unknown op kind: ${(op as { kind: string }).kind}`);
     }
@@ -201,6 +236,9 @@ async function main(): Promise<void> {
     orderBy: 'label',
   });
 
+  for (const line of [...isActiveReads, ...warnLines]) {
+    process.stdout.write(JSON.stringify(line) + '\n');
+  }
   process.stdout.write(JSON.stringify({ case: 'api-keys-tier2', ...dump }) + '\n');
   process.exit(0);
 }

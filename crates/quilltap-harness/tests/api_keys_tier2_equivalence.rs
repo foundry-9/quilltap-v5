@@ -24,6 +24,20 @@
 //! `updatedAt`), the free-form `provider` string, and the safeParse DROP of the
 //! malformed row from `getApiKeysByUserId`.
 //!
+//! P4.139 grows three channels the dump cannot see. (1) `readIsActive` — six
+//! seeded rows whose `isActive` cell is NULL / 2 / 'x' / '' / 1.5 / x'00', read
+//! by literal id through `findApiKeyById` and recorded `{id, isActive}`: v4's
+//! hydrate (`backend.ts:412-450`) answers `true, false, true, false, false,
+//! true`; v5's old `i64 != 0` marshal refused five and read `2` as `true`.
+//! (2) A user-A row whose `key_value` is a BLOB: v4 DROPS it from
+//! `getApiKeysByUserId` and lists the rest; v5 had failed the whole list. (3)
+//! The drop's WARN, `API key validation failed {keyId, userId, error}`, per
+//! `getByUser` op — byte-exact for the empty-provider row (v5 renders Zod's
+//! own message through `api::zod_issues`), with `error` normalised for the
+//! BLOB row (v4 a ZodError over the Float32 decode, v5 rusqlite's sentence —
+//! pinned exactly below as v5's bytes). Every mismatch is collected before
+//! the assert, so a red names its whole count.
+//!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -32,6 +46,7 @@
 //!   QT_FIXTURE_API_KEYS=/tmp/qt-api-keys-fixture.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/api-keys.ts \
 //!     > /tmp/oracle-api-keys.ndjson
+//!   (the oracle must carry six `readIsActive` rows — `grep -c readIsActive`)
 //! Run:
 //!   QT_ORACLE_API_KEYS=/tmp/oracle-api-keys.ndjson \
 //!   QT_FIXTURE_API_KEYS=/tmp/qt-api-keys-fixture.db \
@@ -88,6 +103,9 @@ enum Op {
         #[serde(default, rename = "expectFound")]
         expect_found: Option<bool>,
     },
+    /// P4.139: read a SEEDED row by literal id and record its `isActive`.
+    #[serde(rename = "readIsActive")]
+    ReadIsActive { id: String },
     #[serde(rename = "findByIdAndUser")]
     FindByIdAndUser {
         #[serde(rename = "idFromOp")]
@@ -122,6 +140,12 @@ struct UpdateData {
     #[serde(default, rename = "isActive")]
     is_active: Option<bool>,
 }
+
+/// The seeded user-A row whose `key_value` is a BLOB (`api-keys-tier2.json`).
+const CORRUPT_KEY_ID: &str = "0badbad0-0000-4000-8000-000000000b10";
+/// v5's `error` bytes on that row's drop WARN — rusqlite's bare sentence for
+/// the marshal's type check on column 4.
+const V5_BLOB_KEY_VALUE_ERROR: &str = "Invalid column type Blob at index: 4, name: key_value";
 
 const ID_COLUMNS: &[&str] = &["id"];
 const TS_COLUMNS: &[&str] = &["createdAt", "updatedAt", "lastUsed"];
@@ -180,7 +204,27 @@ fn api_keys_tier2_matches_oracle() {
 
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("cannot read oracle: {e}"));
-    let mut oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
+    // NDJSON: the `readIsActive` / `warn` rows, then the dump (P4.139).
+    let mut oracle_dump: Option<Value> = None;
+    let mut oracle_reads: Vec<Value> = Vec::new();
+    let mut oracle_warns: Vec<Value> = Vec::new();
+    for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
+        let v: Value = serde_json::from_str(line).expect("parse oracle line");
+        match v["case"].as_str() {
+            Some("readIsActive") => oracle_reads.push(v),
+            Some("warn") => oracle_warns.push(v),
+            Some("api-keys-tier2") => oracle_dump = Some(v),
+            other => panic!("unexpected oracle row kind {other:?}"),
+        }
+    }
+    let mut oracle = oracle_dump.expect("the oracle carries the api-keys-tier2 dump");
+    assert_eq!(
+        oracle_reads.len(),
+        6,
+        "a stale oracle: regenerate it (six readIsActive rows expected)"
+    );
+    let mut reds: Vec<String> = Vec::new();
+    let mut warns: Vec<String> = Vec::new();
 
     let work = std::env::temp_dir().join(format!("qt-api-keys-rust-{}.db", std::process::id()));
     let _ = std::fs::remove_file(&work);
@@ -249,14 +293,44 @@ fn api_keys_tier2_matches_oracle() {
                 user_id,
                 expect_labels,
             } => {
-                let keys = api_keys::get_api_keys_by_user_id(writer.connection(), user_id)
-                    .expect("get_api_keys_by_user_id");
+                let (keys, lines) = quilltap_core::test_support::captured_with(|| {
+                    api_keys::get_api_keys_by_user_id(writer.connection(), user_id)
+                });
+                warns.extend(lines.into_iter().map(|l| format!("op {i}: {l}")));
+                let keys = match keys {
+                    Ok(keys) => keys,
+                    Err(e) => {
+                        reds.push(format!("getByUser op {i}: the whole list failed: {e}"));
+                        continue;
+                    }
+                };
                 if let Some(expected) = expect_labels {
                     let mut labels: Vec<String> = keys.iter().map(|k| k.label.clone()).collect();
                     labels.sort();
                     let mut exp = expected.clone();
                     exp.sort();
-                    assert_eq!(labels, exp, "getByUser labels diverged (op {i})");
+                    if labels != exp {
+                        reds.push(format!(
+                            "getByUser op {i}: labels {labels:?}, expected {exp:?}"
+                        ));
+                    }
+                }
+            }
+            Op::ReadIsActive { id } => {
+                let got = match api_keys::find_by_id(writer.connection(), id) {
+                    Ok(Some(k)) => Value::Bool(k.is_active),
+                    Ok(None) => Value::Null,
+                    Err(e) => Value::String(format!("<read error: {e}>")),
+                };
+                let want = oracle_reads
+                    .iter()
+                    .find(|r| r["id"] == Value::String(id.clone()))
+                    .unwrap_or_else(|| panic!("the oracle has no readIsActive row for {id}"));
+                if got != want["isActive"] {
+                    reds.push(format!(
+                        "readIsActive {id}: v5 {got}, v4 {}",
+                        want["isActive"]
+                    ));
                 }
             }
             Op::FindById {
@@ -287,6 +361,39 @@ fn api_keys_tier2_matches_oracle() {
             }
         }
     }
+
+    // The drop's WARN lines, op by op, in v4's order. The BLOB row's `error`
+    // is v5's own sentence (pinned exactly); v4's is a ZodError over the
+    // Float32 decode — the recorded byte divergence of a marshal-failure drop.
+    let want_warns: Vec<String> = oracle_warns
+        .iter()
+        .map(|w| {
+            let c = &w["context"];
+            let key_id = c["keyId"].as_str().expect("keyId");
+            let error = if key_id == CORRUPT_KEY_ID {
+                V5_BLOB_KEY_VALUE_ERROR.to_string()
+            } else {
+                c["error"].as_str().expect("error").to_string()
+            };
+            format!(
+                "op {}: WARN quilltap::db {} keyId={key_id} userId={} error={error}",
+                w["op"],
+                w["message"].as_str().expect("message"),
+                c["userId"].as_str().expect("userId"),
+            )
+        })
+        .collect();
+    if warns != want_warns {
+        reds.push(format!(
+            "the drop WARN lines diverged\n  v5: {warns:#?}\n  v4: {want_warns:#?}"
+        ));
+    }
+    assert!(
+        reds.is_empty(),
+        "{} red(s):\n  {}",
+        reds.len(),
+        reds.join("\n  ")
+    );
 
     let mut got = writer
         .dump_table_json("api_keys", "label")

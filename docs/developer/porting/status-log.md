@@ -161275,3 +161275,52 @@ dependency delta.
   capture cannot see them; pin at the twin or at a caller-thread entry.
 - **Matching v4 can import v4's data loss:** a fallback twin is only safe where
   v4's "absent" arm is harmless; 23 of 47 write-path sites were not.
+## P4.139 — the API-key read class (lane record, `claude/p4-139-api-key-read-class-75219b8dd`, from `main` `75219b8dd`, pin `f6426e196`)
+
+Order: `work-orders/p4.139-api-key-read-class-census-guard-isactive-routes.md`;
+survey `surveys/2026-10-02-f6426e196/survey-api-key-read-class-p4.139.md`.
+§R.2 probe at lane start: PASS (v4 `main` at `f6426e196`, both logs empty,
+dirty by exactly the three recorded docs paths). Pin
+`/tmp/qt-v4-pin-p4139-f6426e196` (rev-parse `f6426e196…`, the three symlink
+classes, 15 plugin `node_modules`). Every regen staged under `/tmp/p4139/`,
+Node 24.13.1, `TZ=UTC`. Lane cut from `75219b8dd` (main had moved two docs
+commits past the order's `cb9ecf256`: the order itself and the #124 ruling).
+
+### Unit 1 — `isActive` as v4's hydrate + the per-row drop with v4's WARN (Tier 1 items 4 + 5)
+
+- `db/api_keys.rs`: `is_active_cell` decodes `get_ref(5)` — `Null → true`,
+  `Integer(n) → n == 1`, `Real(f) → f == 1.0`, `Text(t) → !t.is_empty()`,
+  `Blob(_) → true` (v4 `backend.ts:412-450` + `profile.types.ts:30`).
+  `get_api_keys_by_user_id` marshals per row; a marshal failure or an empty
+  `provider` is dropped with `WARN quilltap::db API key validation failed
+  keyId=… userId=… error=…` (no `collection`; `keyId` omitted when the id cell
+  is unreadable) and the rest listed. The statement's own failure still
+  propagates (the by-user-id home is the caller's).
+- **Found beyond the order:** v4 WARNs on the EXISTING empty-provider drop too
+  (`error` = Zod's message, `"Provider is required"` — the schema's custom
+  `min(1)` sentence); v5 had dropped that row silently. Now emitted byte-exact
+  through `api::zod_issues::too_small_string_message` + `zod_error_message`.
+- **Recorded byte divergence:** on a MARSHAL-failure drop the WARN's `error` is
+  rusqlite's sentence (`Invalid column type Blob at index: 4, name:
+  key_value`) where v4's is a ZodError over the Float32 decode (`Invalid input:
+  expected string, received Float32Array`). Pinned exactly on v5's side; the
+  two-sided row normalises only that row's `error`.
+- Differential: `api_keys_tier2_equivalence` — the spec gains six `isActive`
+  rows (user C; NULL / 2 / 'x' / '' / 1.5 / x'00') read back by literal id
+  through v4's REAL `findApiKeyById` (new op `readIsActive`), a user-A
+  BLOB-`key_value` row, and a `warn` channel (the oracle replaces the root
+  logger's `warn` and records every call with its op index). The Rust side
+  collects every mismatch before asserting. v4 recorded `true, false, true,
+  false, false, true` — exactly the survey's `node -e` probe. **Red-first at
+  the baseline source: 8** (six `readIsActive` — five read errors + `2 → true`
+  — the user-A `getByUser` whole-list failure, and the WARN channel with BOTH
+  v4 lines absent); the order predicted 7 (the empty-provider WARN is the
+  eighth). Green after. `grep -c readIsActive` on the fresh NDJSON = 6.
+- Unit pins (`db::api_keys::tests`): the nine cells (incl. 0, 1, -1), the drop
+  of a BLOB row + an empty-provider row with both exact WARN lines and a silent
+  healthy list, and the omitted `keyId` on a NULL id.
+- Regen recipe (from the pin, Node 24.13.1, `TZ=UTC`):
+  `QT_FIXTURE_OUT=/tmp/p4139/qt-api-keys-fixture.db npx tsx $V5W/harness/oracle/fixtures/build-api-keys-fixture.ts`;
+  `QT_FIXTURE_API_KEYS=/tmp/p4139/qt-api-keys-fixture.db npx tsx $V5W/harness/oracle/cases/api-keys.ts > /tmp/p4139/oracle-api-keys.ndjson`;
+  run with `QT_ORACLE_API_KEYS` + `QT_FIXTURE_API_KEYS`.
+

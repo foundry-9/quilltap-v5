@@ -11,6 +11,24 @@
     "createdAt": "2020-01-01T00:00:00.000Z",
     "updatedAt": "2020-01-01T00:00:00.000Z"
   },
+  "_isActiveRowsComment": "P4.139: six raw rows (user C — no getByUser op reads them) whose isActive cell is a value v4 writes never but a foreign or hand-edited row can carry. v4's hydrate (backend.ts:412-450): NULL -> undefined -> Zod default true; a number -> value === 1; anything else -> Boolean(value). Each is read back by literal id through findApiKeyById (the readIsActive op) and recorded {id, isActive}. isActiveSql is a SQL literal spliced into the INSERT so each cell lands with its exact storage class.",
+  "userC": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+  "isActiveRows": [
+    { "id": "0badbad0-0000-4000-8000-0000000001a1", "label": "ia-null", "isActiveSql": "NULL" },
+    { "id": "0badbad0-0000-4000-8000-0000000001a2", "label": "ia-two", "isActiveSql": "2" },
+    { "id": "0badbad0-0000-4000-8000-0000000001a3", "label": "ia-text-x", "isActiveSql": "'x'" },
+    { "id": "0badbad0-0000-4000-8000-0000000001a4", "label": "ia-text-empty", "isActiveSql": "''" },
+    { "id": "0badbad0-0000-4000-8000-0000000001a5", "label": "ia-real", "isActiveSql": "1.5" },
+    { "id": "0badbad0-0000-4000-8000-0000000001a6", "label": "ia-blob", "isActiveSql": "x'00'" }
+  ],
+  "_corruptKeyRowComment": "P4.139: a user-A row whose key_value is a BLOB — v4's hydrate decodes the stray Buffer as Float32 and ApiKeySchema.safeParse refuses it, so getApiKeysByUserId DROPS the row with its WARN and lists the rest; v5's marshal answers InvalidColumnType on the same cell. The getByUser op for user A therefore keeps its healthy label set.",
+  "corruptKeyRow": {
+    "id": "0badbad0-0000-4000-8000-000000000b10",
+    "label": "zz-corrupt-blob",
+    "provider": "OPENAI",
+    "createdAt": "2020-01-01T00:00:00.000Z",
+    "updatedAt": "2020-01-01T00:00:00.000Z"
+  },
   "ops": [
     { "kind": "create", "data": { "userId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "label": "alpha", "provider": "ANTHROPIC", "keyValue": "synthetic-key-a" } },
     { "kind": "create", "data": { "userId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "label": "beta", "provider": "OPENAI", "keyValue": "synthetic-key-b", "isActive": false } },
@@ -22,6 +40,12 @@
     { "kind": "getByUser", "userId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "expectLabels": [] },
     { "kind": "findById", "idFromOp": 0, "expectFound": true },
     { "kind": "findByIdAndUser", "idFromOp": 0, "userId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "expectFound": false },
-    { "kind": "findByIdAndUser", "idFromOp": 0, "userId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "expectFound": true }
+    { "kind": "findByIdAndUser", "idFromOp": 0, "userId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "expectFound": true },
+    { "kind": "readIsActive", "id": "0badbad0-0000-4000-8000-0000000001a1" },
+    { "kind": "readIsActive", "id": "0badbad0-0000-4000-8000-0000000001a2" },
+    { "kind": "readIsActive", "id": "0badbad0-0000-4000-8000-0000000001a3" },
+    { "kind": "readIsActive", "id": "0badbad0-0000-4000-8000-0000000001a4" },
+    { "kind": "readIsActive", "id": "0badbad0-0000-4000-8000-0000000001a5" },
+    { "kind": "readIsActive", "id": "0badbad0-0000-4000-8000-0000000001a6" }
   ]
 }

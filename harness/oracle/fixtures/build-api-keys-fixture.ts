@@ -11,6 +11,9 @@
  * validation the repo would apply — so the op sequence can exercise
  * `getApiKeysByUserId`'s per-row `safeParse` DROP. All VALID keys are created by
  * the op sequence in `cases/api-keys.ts` (`createApiKey` mints ids/timestamps).
+ * P4.139 adds six raw rows whose `isActive` cell is NULL / 2 / 'x' / '' / 1.5 /
+ * x'00' (read back by id — the hydrate's boolean branch) and one user-A row
+ * whose `key_value` is a BLOB (the per-row DROP of a cell the marshal refuses).
  *
  * SAFETY: every `key_value` is a SYNTHETIC placeholder — never a real API key.
  *
@@ -34,6 +37,15 @@ interface Spec {
     label: string;
     provider: string;
     keyValue: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  userC: string;
+  isActiveRows: Array<{ id: string; label: string; isActiveSql: string }>;
+  corruptKeyRow: {
+    id: string;
+    label: string;
+    provider: string;
     createdAt: string;
     updatedAt: string;
   };
@@ -88,9 +100,47 @@ async function main(): Promise<void> {
     ]
   );
 
+  // P4.139: the six `isActive` cells v4's hydrate reads (NULL -> default
+  // true; a number -> `=== 1`; else `Boolean(value)`) and v5's old `i64 != 0`
+  // marshal refused or misread. The SQL literal is spliced so each cell keeps
+  // its exact storage class (INTEGER affinity leaves 'x', '', 1.5 and a BLOB
+  // as they are). Every other cell is healthy (UUID ids, ISO timestamps).
+  for (const row of spec.isActiveRows) {
+    await rawQuery(
+      'INSERT INTO api_keys (id, userId, label, provider, key_value, isActive, lastUsed, createdAt, updatedAt) ' +
+        `VALUES (?, ?, ?, 'OPENAI', ?, ${row.isActiveSql}, NULL, ?, ?)`,
+      [
+        row.id,
+        spec.userC,
+        row.label,
+        `synthetic-${row.label}`,
+        spec.malformed.createdAt,
+        spec.malformed.updatedAt,
+      ]
+    );
+  }
+
+  // P4.139: a user-A row whose `key_value` is a BLOB — the cell both sides
+  // fail on (v4's Float32 decode + `z.string()`; v5's marshal type check).
+  // `getApiKeysByUserId` drops it with its WARN and lists the rest.
+  await rawQuery(
+    'INSERT INTO api_keys (id, userId, label, provider, key_value, isActive, lastUsed, createdAt, updatedAt) ' +
+      "VALUES (?, ?, ?, ?, x'00000000', 1, NULL, ?, ?)",
+    [
+      spec.corruptKeyRow.id,
+      spec.userA,
+      spec.corruptKeyRow.label,
+      spec.corruptKeyRow.provider,
+      spec.corruptKeyRow.createdAt,
+      spec.corruptKeyRow.updatedAt,
+    ]
+  );
+
   await closeDatabase();
 
-  process.stderr.write(`built api_keys fixture: ${out} (1 malformed seed row)\n`);
+  process.stderr.write(
+    `built api_keys fixture: ${out} (1 malformed + ${spec.isActiveRows.length} isActive + 1 BLOB-key seed rows)\n`
+  );
   process.exit(0);
 }
 
