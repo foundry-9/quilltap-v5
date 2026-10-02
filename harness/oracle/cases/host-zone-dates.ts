@@ -35,6 +35,14 @@
  *     > /tmp/oracle-host-zone-dates.ndjson
  *   TZ=America/Chicago $N/node --import tsx $V5W/harness/oracle/cases/host-zone-dates.ts \
  *     > /tmp/oracle-host-zone-dates-chicago.ndjson
+ *   TZ=XST-9 $N/node --import tsx $V5W/harness/oracle/cases/host-zone-dates.ts \
+ *     > /tmp/oracle-host-zone-dates-posix.ndjson
+ *
+ * The third arm (P4.140) is a POSIX `TZ` rule with NO daylight saving — the
+ * one rule shape ICU honours (it ignores a rule WITH DST and renders the
+ * host's `/etc/localtime`, so a DST-rule arm would not be machine-independent
+ * and is deliberately absent). v5 honours every rule; this arm proves the
+ * renders agree where v4 honours one too.
  */
 
 import * as fs from 'fs';
@@ -73,7 +81,15 @@ const corpus = JSON.parse(
 
 const out = (row: Record<string, unknown>) => process.stdout.write(JSON.stringify(row) + '\n');
 
-out({ op: 'hostZone', label: 'tz', tz: new Intl.DateTimeFormat().resolvedOptions().timeZone });
+// `envTz` (P4.140): under a POSIX `TZ` rule ICU resolves no zone name
+// (`resolvedOptions().timeZone` is `undefined` and drops out of the row), so
+// the third arm identifies its run by the environment value instead.
+out({
+  op: 'hostZone',
+  label: 'tz',
+  tz: new Intl.DateTimeFormat().resolvedOptions().timeZone,
+  envTz: process.env.TZ ?? null,
+});
 
 for (const s of corpus.instants) {
   out({ op: 'formatDateTime', label: s, result: formatDateTime(s, { monthStyle: 'long' }) });

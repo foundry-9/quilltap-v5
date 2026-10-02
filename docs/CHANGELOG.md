@@ -204,6 +204,12 @@ _Versions: core 0.0.1148, harness 0.0.1076._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `db::api_keys::marshal_row` now reads `isActive` the way v4's SQLite hydrate does: NULL is `true` (the Zod default), a number is active only when it equals 1, and any other cell is truthy unless it is an empty string. Before, v5 refused a NULL, text, fractional or BLOB cell outright and treated `2` as active. `get_api_keys_by_user_id` now drops a row it cannot marshal (or whose `provider` is empty) with v4's `API key validation failed {keyId, userId, error}` WARN and returns the rest; one bad row used to fail the whole list. The empty-provider drop now logs Zod's own message, byte for byte. `api_keys_tier2_equivalence` gains six seeded `isActive` rows read back through v4's real `findApiKeyById`, a BLOB-`key_value` row for user A, and the drop's WARN lines; it was red on 8 before the fix (P4.139).
+#### 2026-10-02 — test(harness): a third host-zone-dates arm under a POSIX TZ rule (P4.140)
+
+_Versions: harness 0.0.1079._
+
+The `host-zone-dates` oracle now also runs v4's real display-date helpers under `TZ=XST-9`, a POSIX rule with no IANA name and no daylight saving — the one rule shape Node's ICU honours (it ignores a rule with DST). The oracle's zone row records `envTz` because ICU resolves no zone name there. The Rust family gains `host_zone_dates_match_oracle_posix_rule`, which builds the zone with `TimeZone::posix` and matches all 43 rows; the existing UTC and Chicago arms now check `envTz` too. The recipe header carries the third generation line.
+
 #### 2026-10-02 — fix(web): make the rejected-timezone boot warning tell the truth (P4.140)
 
 _Versions: web 0.0.209._

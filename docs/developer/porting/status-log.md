@@ -161963,3 +161963,20 @@ empty, the tree dirty by exactly the three recorded docs paths).
   — the exact bytes, plus negative assertions on `follow the system zone` and
   `clock is unchanged`. `quilltap-web --bin` tests 6/0; clippy (web, both
   feature sets); fmt.
+
+### Unit 6 — `host-zone-dates` third arm under `TZ=XST-9` (Tier 2 item 14)
+
+- Measured first, from the pin: under `TZ=XST-9` v4's real helpers render
+  `September 30, 2026 at 04:40 AM` for the D2 instant (ICU honours a
+  DST-less rule; 43 rows, exit 0); the zone row is
+  `{"op":"hostZone","label":"tz","envTz":"XST-9"}` — `tz` absent
+  (`resolvedOptions().timeZone` is `undefined` and `JSON.stringify` drops it).
+- `harness/oracle/cases/host-zone-dates.ts` records `envTz` on the zone row
+  (all three arms) + the third generation line in its header;
+  `host_zone_dates_equivalence.rs` gains `QT_ORACLE_HOST_ZONE_DATES_POSIX` and
+  `host_zone_dates_match_oracle_posix_rule` (zone = `TimeZone::posix("XST-9")`,
+  asserted nameless), the `run` helper taking an `Arm { tz, env_tz, zone }`
+  so the UTC and Chicago arms check `envTz` too. All three arms 43/43 from
+  fresh pin regens staged under `/tmp/p4140/`. A DST-rule arm is NOT added
+  (§R.4(b) — not machine-independent). `recipe_sweep.py --self-test` exit 0;
+  `--show` extracts the three generation lines + the three-var run stage.

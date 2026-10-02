@@ -27,10 +27,21 @@
 //!     > /tmp/oracle-host-zone-dates.ndjson
 //!   TZ=America/Chicago $N/node --import tsx $V5W/harness/oracle/cases/host-zone-dates.ts \
 //!     > /tmp/oracle-host-zone-dates-chicago.ndjson
+//!   TZ=XST-9 $N/node --import tsx $V5W/harness/oracle/cases/host-zone-dates.ts \
+//!     > /tmp/oracle-host-zone-dates-posix.ndjson
 //! Run:
 //!   QT_ORACLE_HOST_ZONE_DATES=/tmp/oracle-host-zone-dates.ndjson \
 //!   QT_ORACLE_HOST_ZONE_DATES_CHICAGO=/tmp/oracle-host-zone-dates-chicago.ndjson \
+//!   QT_ORACLE_HOST_ZONE_DATES_POSIX=/tmp/oracle-host-zone-dates-posix.ndjson \
 //!     cargo test -p quilltap-harness --test host_zone_dates_equivalence
+//!
+//! **The POSIX arm (P4.140):** `TZ=XST-9` is a POSIX rule with no IANA name and
+//! no daylight saving — the one rule shape v4's ICU honours (a rule WITH DST is
+//! ignored by ICU, which renders the host's `/etc/localtime` instead, so that
+//! arm would not be machine-independent; v5 honours every rule, the ruled
+//! shape). ICU resolves no zone name there, so the oracle's `tz` is absent and
+//! the arm checks the recorded `envTz`; v5 builds the zone with
+//! `TimeZone::posix` — the VALUE the host reads from such a `TZ`.
 
 use std::collections::HashMap;
 
@@ -102,22 +113,37 @@ fn oracle(var: &str) -> Option<HashMap<(String, String), Value>> {
     Some(map)
 }
 
-fn run(oracle: &HashMap<(String, String), Value>, expected_tz: &str) -> usize {
+/// Which run of the oracle an arm reads: the IANA zone ICU resolved (`tz`) and
+/// the `TZ` the process ran under (`envTz`, recorded since P4.140 — the only
+/// identifier a POSIX-rule run has).
+struct Arm<'a> {
+    tz: Option<&'a str>,
+    env_tz: &'a str,
+    zone: TimeZone,
+}
+
+fn run(oracle: &HashMap<(String, String), Value>, arm: Arm<'_>) -> usize {
     let corpus = corpus();
     let mut checked = 0usize;
 
     // The zone the oracle ran under; a file generated under the wrong `TZ`
     // fails here rather than in a date diff.
-    let recorded = oracle
+    let row = oracle
         .get(&("hostZone".to_string(), "tz".to_string()))
-        .and_then(|r| r["tz"].as_str())
         .expect("the oracle records its zone");
     assert_eq!(
-        recorded, expected_tz,
-        "oracle generated under TZ={recorded}"
+        row["tz"].as_str(),
+        arm.tz,
+        "oracle generated under a different zone: {row}"
+    );
+    assert_eq!(
+        row["envTz"].as_str(),
+        Some(arm.env_tz),
+        "oracle generated under a different TZ: {row}"
     );
     checked += 1;
-    let zone = TimeZone::get(expected_tz).expect("a zone jiff knows");
+    let zone = arm.zone;
+    let expected_tz = arm.env_tz;
 
     let mut check = |op: &str, label: &str, got: &str| {
         let want = oracle
@@ -213,7 +239,14 @@ fn host_zone_dates_match_oracle_utc() {
     let Some(oracle) = oracle("QT_ORACLE_HOST_ZONE_DATES") else {
         return;
     };
-    let n = run(&oracle, "UTC");
+    let n = run(
+        &oracle,
+        Arm {
+            tz: Some("UTC"),
+            env_tz: "UTC",
+            zone: TimeZone::UTC,
+        },
+    );
     println!("host_zone_dates (UTC): {n} rows OK");
 }
 
@@ -222,6 +255,34 @@ fn host_zone_dates_match_oracle_second_zone() {
     let Some(oracle) = oracle("QT_ORACLE_HOST_ZONE_DATES_CHICAGO") else {
         return;
     };
-    let n = run(&oracle, "America/Chicago");
+    let n = run(
+        &oracle,
+        Arm {
+            tz: Some("America/Chicago"),
+            env_tz: "America/Chicago",
+            zone: TimeZone::get("America/Chicago").expect("a zone jiff knows"),
+        },
+    );
     println!("host_zone_dates (America/Chicago): {n} rows OK");
+}
+
+/// P4.140 (Tier 2 item 14): a POSIX `TZ` rule with no IANA name — the host
+/// zone VALUE Option V threads — renders exactly as v4 does where ICU honours
+/// the rule.
+#[test]
+fn host_zone_dates_match_oracle_posix_rule() {
+    let Some(oracle) = oracle("QT_ORACLE_HOST_ZONE_DATES_POSIX") else {
+        return;
+    };
+    let zone = TimeZone::posix("XST-9").expect("jiff parses the rule");
+    assert_eq!(zone.iana_name(), None, "a POSIX rule has no IANA name");
+    let n = run(
+        &oracle,
+        Arm {
+            tz: None,
+            env_tz: "XST-9",
+            zone,
+        },
+    );
+    println!("host_zone_dates (POSIX XST-9): {n} rows OK");
 }
