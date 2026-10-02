@@ -40,12 +40,13 @@ use crate::enclave::lifecycle::{
 
 use super::types::{ErrorKind, Response};
 
-/// The host's local IANA zone (v4 croner is tz-less = system-local). A fixed
-/// offset with no IANA name falls back to `UTC` (defensive; dev/CI machines
-/// always resolve a zone).
-fn system_tz() -> String {
-    crate::host_zone::system_zone_name()
-}
+// The five lifecycle routes below take the host's cron zone as a NAME (`tz`,
+// v4 croner is tz-less = system-local), threaded by the engine from
+// `host_zone::zone_name(&CoreConfig.display_zone)` (P4.140, item (g)) — a
+// NAME on purpose, never the value: the schedule tick evaluates cron by
+// `HostConfig.tz`, derived the same way, so a manual start/resume and the tick
+// agree on `nextScheduledRunAt` (a value-taking cron is the recorded Tier-3
+// calendar residue).
 
 /// A `v ?? default` read over the marshaled chat object (chats_read omits NULL
 /// nullable columns, so an absent key is exactly v4's `undefined ?? default`).
@@ -261,12 +262,11 @@ pub fn autonomous_room_status(db: &Db, chat_id: &str) -> Response {
 
 /// v4 `handleStart` — manual run start. `chat_not_found` → 404; other failures
 /// → 400; success → `{runId, jobId}`.
-pub async fn autonomous_room_start(db: &Db, user_id: &str, chat_id: &str) -> Response {
-    let tz = system_tz();
+pub async fn autonomous_room_start(db: &Db, user_id: &str, chat_id: &str, tz: &str) -> Response {
     let now_ms = system_now_ms;
     let mint = system_mint_uuid;
     let cron_seam =
-        |expr: &str, anchor: i64| crate::enclave::cron::try_next_occurrence(expr, anchor, &tz);
+        |expr: &str, anchor: i64| crate::enclave::cron::try_next_occurrence(expr, anchor, tz);
     let deps = lifecycle::LifecycleDeps {
         now_ms: &now_ms,
         mint_uuid: &mint,
@@ -280,12 +280,11 @@ pub async fn autonomous_room_start(db: &Db, user_id: &str, chat_id: &str) -> Res
 
 /// v4 `handleResume` — resume (or fresh-start) a paused/idle room. Same envelope
 /// as start.
-pub async fn autonomous_room_resume(db: &Db, user_id: &str, chat_id: &str) -> Response {
-    let tz = system_tz();
+pub async fn autonomous_room_resume(db: &Db, user_id: &str, chat_id: &str, tz: &str) -> Response {
     let now_ms = system_now_ms;
     let mint = system_mint_uuid;
     let cron_seam =
-        |expr: &str, anchor: i64| crate::enclave::cron::try_next_occurrence(expr, anchor, &tz);
+        |expr: &str, anchor: i64| crate::enclave::cron::try_next_occurrence(expr, anchor, tz);
     let deps = lifecycle::LifecycleDeps {
         now_ms: &now_ms,
         mint_uuid: &mint,
@@ -315,12 +314,11 @@ fn start_result_response(result: StartManualRunResult) -> Response {
 
 /// v4 `handlePause` — idempotent pause. Every failure (incl. a missing chat) is
 /// `400 badRequest(message)` (the `SimpleOpResult` carries no reason).
-pub async fn autonomous_room_pause(db: &Db, chat_id: &str) -> Response {
-    let tz = system_tz();
+pub async fn autonomous_room_pause(db: &Db, chat_id: &str, tz: &str) -> Response {
     let now_ms = system_now_ms;
     let mint = system_mint_uuid;
     let cron_seam =
-        |expr: &str, anchor: i64| crate::enclave::cron::try_next_occurrence(expr, anchor, &tz);
+        |expr: &str, anchor: i64| crate::enclave::cron::try_next_occurrence(expr, anchor, tz);
     let deps = lifecycle::LifecycleDeps {
         now_ms: &now_ms,
         mint_uuid: &mint,
@@ -342,12 +340,11 @@ pub async fn autonomous_room_pause(db: &Db, chat_id: &str) -> Response {
 }
 
 /// v4 `handleStop` — stop + bump `currentRunId`. Failure → `400 badRequest`.
-pub async fn autonomous_room_stop(db: &Db, chat_id: &str) -> Response {
-    let tz = system_tz();
+pub async fn autonomous_room_stop(db: &Db, chat_id: &str, tz: &str) -> Response {
     let now_ms = system_now_ms;
     let mint = system_mint_uuid;
     let cron_seam =
-        |expr: &str, anchor: i64| crate::enclave::cron::try_next_occurrence(expr, anchor, &tz);
+        |expr: &str, anchor: i64| crate::enclave::cron::try_next_occurrence(expr, anchor, tz);
     let deps = lifecycle::LifecycleDeps {
         now_ms: &now_ms,
         mint_uuid: &mint,
@@ -377,6 +374,7 @@ pub async fn autonomous_room_update_settings(
     user_id: &str,
     chat_id: &str,
     settings: &Value,
+    tz: &str,
 ) -> Response {
     // The chat guard runs BEFORE the body parse (v4 order).
     if let Err(resp) = ensure_autonomous_chat(db, chat_id) {
@@ -387,11 +385,10 @@ pub async fn autonomous_room_update_settings(
         Err(resp) => return resp,
     };
 
-    let tz = system_tz();
     let now_ms = system_now_ms;
     let mint = system_mint_uuid;
     let cron_seam =
-        |expr: &str, anchor: i64| crate::enclave::cron::try_next_occurrence(expr, anchor, &tz);
+        |expr: &str, anchor: i64| crate::enclave::cron::try_next_occurrence(expr, anchor, tz);
     let deps = lifecycle::LifecycleDeps {
         now_ms: &now_ms,
         mint_uuid: &mint,

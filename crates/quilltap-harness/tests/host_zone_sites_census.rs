@@ -61,10 +61,10 @@ use source_census::{code_only, core_src_root, production_zone, rust_sources};
 /// calls, the surfaces)`. One row: the home.
 const CENSUS: &[(&str, usize, &str)] = &[(
     "host_zone.rs",
-    2,
-    "the home: the `fn` itself + `system_zone_name`, which reads the value \
-     through it (the markdown-transcript export and the autonomous-room \
-     schedule — the two recorded Tier-3 name readers; cron reads `HostConfig.tz`)",
+    1,
+    "the home: the `fn` itself (P4.140 retired `system_zone_name` with its two \
+     Tier-3 callers — the markdown export now takes the VALUE and the \
+     autonomous-room routes the engine's `zone_name` of it)",
 )];
 
 /// `(path from the repo root, needle, production occurrences, what it pins)` —
@@ -226,9 +226,11 @@ const VALUE_SITES: &[(&str, &str, usize, &str)] = &[
     (
         "api/engine.rs",
         "&self.inner.config.display_zone",
-        2,
-        "`CoreConfig.display_zone` — the Compose reply preface and the Salon-load \
-         whispers (`salon::chat_get`)",
+        8,
+        "`CoreConfig.display_zone` — the Compose reply preface, the Salon-load \
+         whispers (`salon::chat_get`), the markdown export's zone-less offsets \
+         (P4.140 item (g)), and the five autonomous-room routes' cron NAME \
+         (`host_zone::zone_name` of it — the tick's own derivation)",
     ),
     (
         "services/conversation_render_job.rs",

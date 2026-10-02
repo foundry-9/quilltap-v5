@@ -944,6 +944,7 @@ fn chat_scenario_routes_match_oracle() {
             &db,
             "f0000000-0000-4000-8000-00000000000f",
             CHAT,
+            &quilltap_core::host_zone::TimeZone::UTC,
         );
         let (status, body_out) = match &r {
             Response::ChatMarkdownTranscriptPayload { markdown, .. } => (

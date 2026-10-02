@@ -412,7 +412,7 @@ fn autonomous_rooms_routes_match_oracle() {
     {
         let db = fresh_db(&spec, "sti2");
         let resp = rt.block_on(autonomous_rooms::autonomous_room_start(
-            &db, &uid_a, ROOM_IDLE,
+            &db, &uid_a, ROOM_IDLE, "UTC",
         ));
         check_body_blanked("start_idle", &resp, &ids, &mut failed);
         check_tables_blanked(
@@ -430,6 +430,7 @@ fn autonomous_rooms_routes_match_oracle() {
                 &db,
                 &uid_a,
                 ROOM_RUNNING,
+                "UTC",
             )),
             &mut failed,
         );
@@ -437,7 +438,11 @@ fn autonomous_rooms_routes_match_oracle() {
     // --- Pause ---
     {
         let db = fresh_db(&spec, "pau");
-        let resp = rt.block_on(autonomous_rooms::autonomous_room_pause(&db, ROOM_RUNNING));
+        let resp = rt.block_on(autonomous_rooms::autonomous_room_pause(
+            &db,
+            ROOM_RUNNING,
+            "UTC",
+        ));
         check_body("pause", &resp, &mut failed);
         check_tables_blanked(
             "pause",
@@ -450,7 +455,9 @@ fn autonomous_rooms_routes_match_oracle() {
         let db = fresh_db(&spec, "paun");
         check_error(
             "pause_non_autonomous",
-            &rt.block_on(autonomous_rooms::autonomous_room_pause(&db, CHAT_SALON)),
+            &rt.block_on(autonomous_rooms::autonomous_room_pause(
+                &db, CHAT_SALON, "UTC",
+            )),
             &mut failed,
         );
     }
@@ -458,14 +465,18 @@ fn autonomous_rooms_routes_match_oracle() {
         let db = fresh_db(&spec, "paum");
         check_error(
             "pause_missing",
-            &rt.block_on(autonomous_rooms::autonomous_room_pause(&db, MISSING)),
+            &rt.block_on(autonomous_rooms::autonomous_room_pause(&db, MISSING, "UTC")),
             &mut failed,
         );
     }
     // --- Stop ---
     {
         let db = fresh_db(&spec, "sto");
-        let resp = rt.block_on(autonomous_rooms::autonomous_room_stop(&db, ROOM_RUNNING));
+        let resp = rt.block_on(autonomous_rooms::autonomous_room_stop(
+            &db,
+            ROOM_RUNNING,
+            "UTC",
+        ));
         check_body("stop", &resp, &mut failed);
         check_tables_blanked(
             "stop",
@@ -481,6 +492,7 @@ fn autonomous_rooms_routes_match_oracle() {
             &db,
             &uid_a,
             ROOM_PAUSED,
+            "UTC",
         ));
         check_body_blanked("resume_paused", &resp, &ids, &mut failed);
         check_tables_blanked(
@@ -493,7 +505,7 @@ fn autonomous_rooms_routes_match_oracle() {
     {
         let db = fresh_db(&spec, "resi");
         let resp = rt.block_on(autonomous_rooms::autonomous_room_resume(
-            &db, &uid_a, ROOM_IDLE,
+            &db, &uid_a, ROOM_IDLE, "UTC",
         ));
         check_body_blanked("resume_idle", &resp, &ids, &mut failed);
         check_tables_blanked(
@@ -506,7 +518,7 @@ fn autonomous_rooms_routes_match_oracle() {
     // --- Update settings ---
     let upd = |db: &Db, uid: &str, chat: &str, settings: Value| -> Response {
         rt.block_on(autonomous_rooms::autonomous_room_update_settings(
-            db, uid, chat, &settings,
+            db, uid, chat, &settings, "UTC",
         ))
     };
     {

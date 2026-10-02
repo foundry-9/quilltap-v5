@@ -1681,6 +1681,8 @@ impl CoreEngine {
                     &db,
                     SINGLE_USER_ID,
                     &chat_id,
+                    // P4.140 (item (g)): the host's display zone VALUE.
+                    &self.inner.config.display_zone,
                 ),
                 Err(r) => r,
             },
@@ -4665,22 +4667,43 @@ impl CoreEngine {
             },
             Request::ChatAutonomousRoomStart { chat_id } => match self.ready_db() {
                 Ok(db) => {
-                    super::autonomous_rooms::autonomous_room_start(&db, SINGLE_USER_ID, &chat_id)
+                    super::autonomous_rooms::autonomous_room_start(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        // P4.140 (item (g)): the cron NAME the tick uses too.
+                        crate::host_zone::zone_name(&self.inner.config.display_zone),
+                    )
                         .await
                 }
                 Err(resp) => resp,
             },
             Request::ChatAutonomousRoomPause { chat_id } => match self.ready_db() {
-                Ok(db) => super::autonomous_rooms::autonomous_room_pause(&db, &chat_id).await,
+                Ok(db) => super::autonomous_rooms::autonomous_room_pause(
+                    &db,
+                    &chat_id,
+                    crate::host_zone::zone_name(&self.inner.config.display_zone),
+                )
+                .await,
                 Err(resp) => resp,
             },
             Request::ChatAutonomousRoomStop { chat_id } => match self.ready_db() {
-                Ok(db) => super::autonomous_rooms::autonomous_room_stop(&db, &chat_id).await,
+                Ok(db) => super::autonomous_rooms::autonomous_room_stop(
+                    &db,
+                    &chat_id,
+                    crate::host_zone::zone_name(&self.inner.config.display_zone),
+                )
+                .await,
                 Err(resp) => resp,
             },
             Request::ChatAutonomousRoomResume { chat_id } => match self.ready_db() {
                 Ok(db) => {
-                    super::autonomous_rooms::autonomous_room_resume(&db, SINGLE_USER_ID, &chat_id)
+                    super::autonomous_rooms::autonomous_room_resume(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        crate::host_zone::zone_name(&self.inner.config.display_zone),
+                    )
                         .await
                 }
                 Err(resp) => resp,
@@ -4693,6 +4716,7 @@ impl CoreEngine {
                             SINGLE_USER_ID,
                             &chat_id,
                             &settings,
+                            crate::host_zone::zone_name(&self.inner.config.display_zone),
                         )
                         .await
                     }

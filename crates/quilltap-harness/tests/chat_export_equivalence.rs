@@ -327,6 +327,7 @@ fn chat_export_matches_oracle() {
                 &db,
                 &spec.user_id,
                 EXPORT_CHAT,
+                &quilltap_core::host_zone::TimeZone::UTC,
             )
         } else {
             quilltap_core::services::chat_export::chat_export(&db, &spec.user_id, EXPORT_CHAT)
@@ -347,6 +348,7 @@ fn chat_export_matches_oracle() {
             &db,
             &spec.user_id,
             chat,
+            &quilltap_core::host_zone::TimeZone::UTC,
         );
         check(name, &r);
     }

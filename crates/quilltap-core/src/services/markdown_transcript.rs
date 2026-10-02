@@ -92,17 +92,17 @@ pub fn host_link_kinds() -> &'static [&'static str] {
 #[derive(Debug, Clone, Copy)]
 pub enum LocalOffset<'a> {
     Fixed(i64),
-    Zone(&'a str),
+    /// The host's display zone VALUE (P4.140, item (g)) — already resolved by
+    /// the composition root, so a POSIX `TZ` rule keeps its offsets here (the
+    /// old NAME lookup fell back to UTC for any zone without an IANA name).
+    Zone(&'a jiff::tz::TimeZone),
 }
 
 impl LocalOffset<'_> {
     fn at(&self, utc_ms: i64) -> i64 {
         match self {
             LocalOffset::Fixed(m) => *m,
-            LocalOffset::Zone(name) => {
-                let Ok(tz) = jiff::tz::TimeZone::get(name) else {
-                    return 0;
-                };
+            LocalOffset::Zone(tz) => {
                 let Ok(ts) = jiff::Timestamp::from_millisecond(utc_ms) else {
                     return 0;
                 };
@@ -492,23 +492,24 @@ pub fn transcript_filename(chat: &Value) -> String {
 // The route tier — v4 `app/api/v1/chats/[id]/actions/export-markdown.ts`
 // ===========================================================================
 
-/// The host's local IANA zone, for the zone-less formatting path (the
-/// `api::autonomous_rooms::system_tz` precedent — v4 reads the same host TZ
-/// through `Intl`). A fixed offset with no IANA name falls back to `UTC`.
-fn system_tz() -> String {
-    crate::host_zone::system_zone_name()
-}
-
 /// v4 `handleExportMarkdown`. `user_id` selects the operator row (the
 /// transcript's `userName` = `user.name || 'User'`).
 ///
 /// The `Content-Type` / `Content-Disposition` / `Cache-Control` headers belong
 /// at the quilltap-web edge (the `characters_routes.rs:373` byte-leg
 /// precedent); this returns the bytes and the filename v4's header names.
-pub fn chat_export_markdown(db: &Db, user_id: &str, chat_id: &str) -> Response {
+///
+/// `zone` is the host's display zone VALUE for the zone-less formatting path
+/// (v4 reads the host TZ through `Intl`) — threaded from `CoreConfig` (P4.140,
+/// item (g)), never an ambient read.
+pub fn chat_export_markdown(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    zone: &jiff::tz::TimeZone,
+) -> Response {
     let cid = chat_id.to_string();
     let uid = user_id.to_string();
-    let tz = system_tz();
     let out: Result<Result<Response, Response>, DbError> = db.read_main(|main| {
         db.read_mount_index(|mount| {
             let Some(chat) = chats_read::find_by_id(main, &cid)? else {
@@ -586,7 +587,7 @@ pub fn chat_export_markdown(db: &Db, user_id: &str, chat_id: &str) -> Response {
                 user_name: &user_name,
                 default_timestamp_config,
                 chat_settings_timezone,
-                local_offset: LocalOffset::Zone(&tz),
+                local_offset: LocalOffset::Zone(zone),
             }) {
                 Ok(md) => md,
                 // v4's `Intl` throw lands in the handler's catch.

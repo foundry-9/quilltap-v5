@@ -204,6 +204,12 @@ _Versions: core 0.0.1148, harness 0.0.1076._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `db::api_keys::marshal_row` now reads `isActive` the way v4's SQLite hydrate does: NULL is `true` (the Zod default), a number is active only when it equals 1, and any other cell is truthy unless it is an empty string. Before, v5 refused a NULL, text, fractional or BLOB cell outright and treated `2` as active. `get_api_keys_by_user_id` now drops a row it cannot marshal (or whose `provider` is empty) with v4's `API key validation failed {keyId, userId, error}` WARN and returns the rest; one bad row used to fail the whole list. The empty-provider drop now logs Zod's own message, byte for byte. `api_keys_tier2_equivalence` gains six seeded `isActive` rows read back through v4's real `findApiKeyById`, a BLOB-`key_value` row for user A, and the drop's WARN lines; it was red on 8 before the fix (P4.139).
+#### 2026-10-02 — refactor(zone): retire the two core zone-name wrappers — the markdown export takes the zone VALUE, the autonomous-room routes a threaded NAME (P4.140, item (g))
+
+_Versions: core 0.0.1148, harness 0.0.1076._
+
+`chat_export_markdown` now takes the host's display zone value (`LocalOffset::Zone` holds a `TimeZone`, so a POSIX `TZ` rule keeps its offsets in the zone-less timestamp path), and the five autonomous-room lifecycle routes take the cron zone name as an argument, filled by the engine from `host_zone::zone_name(&CoreConfig.display_zone)` — the same derivation as the schedule tick's `HostConfig.tz`, so a manual start and the tick agree. Both private `system_tz` wrappers and `host_zone::system_zone_name` are deleted; core no longer reads the environment for a zone anywhere but `system_display_zone`. The 12 harness call sites pass UTC explicitly, so these families no longer depend on the machine's zone. `host_zone_sites_census`'s `CENSUS` row drops to the one `fn`.
+
 #### 2026-10-02 — fix(zone): thread the host's display zone VALUE through the Salon spine (P4.140, Option V)
 
 _Versions: core 0.0.1147, harness 0.0.1075, host 0.0.175, web 0.0.208, tauri 0.0.8._

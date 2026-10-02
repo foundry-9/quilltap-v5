@@ -161844,3 +161844,23 @@ empty, the tree dirty by exactly the three recorded docs paths).
   `scenario_builder_*` spine users + `scenario_builder_routes_equivalence`),
   `quilltap-tauri` and `quilltap-host` all green. The harness families whose
   literals moved run in the lane's two-run sweep (below).
+
+### Unit 2 — item (g): the two core zone-NAME wrappers retired (Tier 1 items 5–6)
+
+- `chat_export_markdown(db, user_id, chat_id, zone: &TimeZone)`;
+  `LocalOffset::Zone(&TimeZone)` (the name lookup and its `else { return 0 }`
+  gone — the value is resolved); the five autonomous-room routes take
+  `tz: &str` (last argument), the engine's six arms filling the export from
+  `&self.inner.config.display_zone` and the routes from
+  `host_zone::zone_name(&self.inner.config.display_zone)` — a NAME on purpose,
+  so a manual start and the schedule tick (`HostConfig.tz`, the same
+  derivation) agree. Both `system_tz` wrappers and `system_zone_name` (+ its
+  assert) deleted. Harness: `autonomous_rooms_routes_equivalence` ×9,
+  `chat_export_equivalence` ×2, `chat_scenario_routes_equivalence` ×1 pass
+  UTC explicitly; `get_messages_caller_census` needed no edit.
+- Census: `CENSUS` `host_zone.rs` 2 → 1; `VALUE_SITES` `api/engine.rs`
+  2 → 8 (the export + five `zone_name(..)` fills share the needle).
+- Run from the pin through the sweep driver (`--families
+  autonomous_rooms_routes_equivalence,chat_export_equivalence,chat_scenario_routes_equivalence`):
+  3/3 ok. The census 6/6; core `host_zone`/`markdown_transcript`/`autonomous`
+  unit tests 9/0; clippy both feature sets; fmt.

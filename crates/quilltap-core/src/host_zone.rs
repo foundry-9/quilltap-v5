@@ -26,9 +26,10 @@
 //! P4.127 `display_zone_named` helper is retired: on a POSIX-`TZ` host it
 //! rendered UTC wherever it ran, while the value — jiff 0.2.31 parses the rule —
 //! showed the rule's offset). Nothing else in core reads the environment for a
-//! DISPLAY zone (the `host_zone_sites_census` pins it); the remaining reader
-//! of a NAME ([`system_zone_name`]'s callers — the autonomous-room schedule and
-//! the markdown-transcript export) is P4.127's recorded Tier-3 leftover. Every
+//! DISPLAY zone (the `host_zone_sites_census` pins it), and nothing reads it
+//! for a NAME either: the markdown-transcript export takes the VALUE and the
+//! autonomous-room routes take the engine's [`zone_name`] of it (P4.140 retired
+//! P4.127's two Tier-3 `system_tz` wrappers and `system_zone_name`). Every
 //! test and differential passes `TimeZone::UTC` (or a named second zone)
 //! explicitly. Nothing here consults a process-global override —
 //! `std::env::set_var("TZ")` in a test races every other test thread, and a
@@ -73,19 +74,10 @@ pub fn system_display_zone() -> TimeZone {
 /// The zone's IANA NAME, for the calendar paths that still take a name (cron,
 /// the distill's `server_tz`, the cleanup — the module doc's residue): a zone
 /// with no IANA name (a POSIX `TZ` rule, a fixed offset) answers `"UTC"`. ONE
-/// home for the derivation (`HostConfig::new`, `HostConfig::set_display_zone`).
+/// home for the derivation (`HostConfig::new`, `HostConfig::set_display_zone`,
+/// the engine's autonomous-room routes).
 pub fn zone_name(zone: &TimeZone) -> &str {
     zone.iana_name().unwrap_or("UTC")
-}
-
-/// The host's system zone as an IANA NAME, for the two callers that still need
-/// a name (the markdown-transcript export's `LocalOffset::Zone`, the
-/// autonomous-room schedule; cron reads `HostConfig.tz`, derived from the value,
-/// since P4.127). A zone with no IANA name (a fixed offset, a POSIX
-/// `TZ` string, an unnamed TZif) falls back to `"UTC"` — the long-standing
-/// behaviour of the three readers this consolidates.
-pub fn system_zone_name() -> String {
-    zone_name(&system_display_zone()).to_string()
 }
 
 #[cfg(test)]
@@ -100,7 +92,6 @@ mod tests {
         let expected = TimeZone::try_system().unwrap_or(TimeZone::UTC);
         let ts = jiff::Timestamp::from_millisecond(1_767_225_600_000).unwrap();
         assert_eq!(system_display_zone().to_offset(ts), expected.to_offset(ts));
-        assert_eq!(system_zone_name(), expected.iana_name().unwrap_or("UTC"));
     }
 
     /// The name derivation: an IANA zone names itself; a POSIX rule (no IANA
