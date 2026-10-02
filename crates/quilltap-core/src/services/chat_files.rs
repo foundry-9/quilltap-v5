@@ -238,7 +238,7 @@ fn load_mount_file_as_attachment(
                     use base64::Engine;
                     let bytes = content.into_bytes();
                     let size = bytes.len();
-                    let url = format!(
+                    let filepath = format!(
                         "/api/v1/mount-points/{}/files/{}",
                         mount_link.mount_point_id,
                         crate::tools::photo::encode_uri(&mount_link.relative_path)
@@ -248,14 +248,15 @@ fn load_mount_file_as_attachment(
                         .clone()
                         .unwrap_or_else(|| mount_link.file_name.clone());
                     let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                    // `filepath` only, never `url`: see the note on the blob
+                    // branch below (v4 `f6426e196`, bug 174).
                     return Some(json!({
                         "id": mount_link.id,
-                        "filepath": url,
+                        "filepath": filepath,
                         "filename": filename,
                         "mimeType": text_mime,
                         "size": size,
                         "data": data,
-                        "url": url,
                     }));
                 }
             }
@@ -327,7 +328,7 @@ fn load_mount_file_as_attachment(
     }
 
     let filename = mount_filename;
-    let url = format!(
+    let filepath = format!(
         "/api/v1/mount-points/{}/blobs/{}",
         mount_link.mount_point_id,
         crate::tools::photo::encode_uri(&mount_link.relative_path)
@@ -335,14 +336,20 @@ fn load_mount_file_as_attachment(
     use base64::Engine;
     let data = base64::engine::general_purpose::STANDARD.encode(&buffer);
 
+    // The server path goes in `filepath` and never in `url`. `FileAttachment.url`
+    // means "a URL the provider can fetch", and a plugin that honours it sends it
+    // in place of the bytes — so a server-relative path there reached Z.AI and
+    // NanoGPT as an unfetchable image and the turn died with a 400 (v4 bug 174,
+    // `f6426e196`). The same commit also inverts the Z.AI/NanoGPT builders'
+    // preference (see `model/request_builder/chat_completions.rs`). The bag
+    // keeps v4's key order — only its last key, `url`, is gone.
     Some(json!({
         "id": mount_link.id,
-        "filepath": url,
+        "filepath": filepath,
         "filename": filename,
         "mimeType": output_mime_type,
         "size": buffer.len(),
         "data": data,
-        "url": url,
     }))
 }
 

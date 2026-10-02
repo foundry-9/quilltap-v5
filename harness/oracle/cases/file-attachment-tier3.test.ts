@@ -527,6 +527,21 @@ async function main(): Promise<void> {
     lines.push(JSON.stringify({ kind: 'case', family: 'lcffl', label: 'lcffl_mount', result: attachments }));
   }
 
+  // ---- (C2) the native-text branch (P4.D244, v4 `f6426e196`, bug 174) ------
+  //
+  // A markdown DOCUMENT in the mount (no blob row): the second hunk of the fix.
+  // Before this arm no row exercised the branch at all, so the loader's `url`
+  // key could be restored there alone and stay green.
+  {
+    if (!meta.documentMountLinkId) {
+      throw new Error('the fixture sidecar carries no documentMountLinkId — rebuild it');
+    }
+    const attachments = await loadChatFilesForLLM([meta.documentMountLinkId], { provider: 'DEEPSEEK' as never });
+    lines.push(
+      JSON.stringify({ kind: 'case', family: 'lcffl', label: 'lcffl_mount_document', result: attachments }),
+    );
+  }
+
   // ---- (F) the bug-151 transport shrink at BOTH loaders (P4.D198) ----------
   //
   // v4 `bcd7e4852` runs `shrinkImageForLlmTransport` FIRST at both load paths.

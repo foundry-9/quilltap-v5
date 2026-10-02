@@ -333,6 +333,10 @@ fn request_builder_matches_v4() {
     let mut rows = 0usize;
     // P4.128: the participant-name neutrality rows (one per provider per mode).
     let mut named_rows = 0usize;
+    // P4.D244 (v4 `f6426e196`, bug 174): the Z.AI / NanoGPT bytes-first rows, the
+    // relative-url refusal rows, and OpenRouter's deliberate non-change.
+    let (mut bytes_first_rows, mut rel_refusal_rows, mut openrouter_url_first) =
+        (0usize, 0usize, 0usize);
     let mut refusals = 0usize;
     let mut pairs = std::collections::HashSet::new();
     // P4.21 attachment-coverage shape (the pre-P4.21 corpus had ZERO attachment
@@ -682,6 +686,51 @@ fn request_builder_matches_v4() {
             named_rows += 1;
         }
 
+        // P4.D244 — v4 `f6426e196` (bug 174), read off v4's RECORDED rows so the
+        // pin does not depend on the builder under test: Z.AI and NanoGPT send
+        // the BYTES whenever there are any (the old `url-wins` rows now record
+        // `data:`), and a RELATIVE url with no bytes is refused through the
+        // unchanged `Attachment missing data or URL` arm — it never reaches
+        // the wire. OpenRouter is the deliberate non-change: v4 left its
+        // `img.url ?? data:` `url`-first.
+        if matches!(provider.as_str(), "Z_AI" | "NANOGPT") {
+            match case {
+                "image-attachment-url-wins" | "image-attachment-rel-url-and-data" => {
+                    assert!(
+                        want_body.contains("data:image/png;base64,")
+                            && !want_body.contains("cdn.example.invalid")
+                            && !want_body.contains("/api/v1/mount-points/"),
+                        "{provider}/{case}[{mode}]: v4 f6426e196 sends the bytes, not a url"
+                    );
+                    bytes_first_rows += 1;
+                }
+                "image-attachment-rel-url" => {
+                    assert!(
+                        !want_body.contains("image_url")
+                            && !want_body.contains("/api/v1/mount-points/"),
+                        "{provider}/{case}[{mode}]: a relative url must never reach the wire"
+                    );
+                    assert_eq!(
+                        row["attachmentResults"],
+                        serde_json::json!({
+                            "sent": [],
+                            "failed": [{ "id": "att-img-rel-1", "error": "Attachment missing data or URL" }]
+                        }),
+                        "{provider}/{case}[{mode}]: v4's refusal shape"
+                    );
+                    rel_refusal_rows += 1;
+                }
+                _ => {}
+            }
+        }
+        if provider == "OPENROUTER" && case == "image-attachment-url-wins" {
+            assert!(
+                want_body.contains("https://cdn.example.invalid/both.png"),
+                "{provider}/{case}[{mode}]: v4 left OpenRouter url-first — the non-change moved"
+            );
+            openrouter_url_first += 1;
+        }
+
         // Method + url.
         assert_eq!(
             built.method,
@@ -765,14 +814,20 @@ fn request_builder_matches_v4() {
     }
 
     // The floor moved 25 -> 360 with P4.97. The old number said only "some rows
-    // exist"; the corpus is 385 rows (367 + P4.128's 18 `participant-names`
-    // rows, one per provider per mode), and the point of the cache-key tables
-    // below is that a vanished vector must FAIL rather than shrink a count
-    // nobody reads. A deliberate future removal moves this line with it.
+    // exist"; the corpus is 393 rows (367 + P4.128's 18 `participant-names`
+    // rows, one per provider per mode + P4.D244's 8 relative-url rows), and the
+    // point of the cache-key tables below is that a vanished vector must FAIL
+    // rather than shrink a count nobody reads. A deliberate future removal moves this line with it.
     assert!(rows >= 360, "expected a substantial corpus, got {rows}");
     assert_eq!(
         named_rows, 18,
         "P4.128: the `participant-names` neutrality rows (9 providers × 2 modes) must all run"
+    );
+    assert_eq!(
+        (bytes_first_rows, rel_refusal_rows, openrouter_url_first),
+        (8, 4, 2),
+        "P4.D244: bug 174's rows (Z.AI/NanoGPT x {{url-wins, rel-url-and-data}} x 2 modes; \
+         Z.AI/NanoGPT x rel-url x 2 modes; OpenRouter url-wins x 2 modes) must all run"
     );
     assert_eq!(
         refusals,

@@ -256,8 +256,20 @@ const IMG_ATT_URL = {
   size: 68,
   url: 'https://cdn.example.invalid/remote.png',
 };
-// Both present — the precedence pin: `url` wins and the data is never encoded.
+// Both present. Pre-`f6426e196` (bug 174) the precedence pin was "`url` wins and
+// the data is never encoded"; since it, the Z.AI and NanoGPT plugins send the
+// BYTES whenever there are any (OpenRouter is untouched and still `url`-first —
+// its `image-attachment-url-wins` row is the deliberate non-change).
 const IMG_ATT_URL_AND_DATA = { ...IMG_ATT, id: 'att-img-both-1', url: 'https://cdn.example.invalid/both.png' };
+// P4.D244 (v4 `f6426e196`, bug 174) — the server-relative path the loader used
+// to put in `url` for a document-store image (v4's own jest constant, verbatim).
+const VAULT_PATH =
+  '/api/v1/mount-points/701e03fd-9bed-4b75-b126-f25e5498eaba/blobs/photos/2026-10-01T20-19-26.593Z-finally-laura.webp';
+// …beside the bytes (the bug's exact input: bytes win, a relative url is not sent)…
+const IMG_ATT_REL_URL_AND_DATA = { ...IMG_ATT, id: 'att-img-rel-both-1', url: VAULT_PATH };
+// …and alone (a relative url is refused through the unchanged
+// `Attachment missing data or URL` arm rather than sent).
+const IMG_ATT_REL_URL = { id: 'att-img-rel-1', filepath: VAULT_PATH, filename: 'laura.webp', mimeType: 'image/webp', size: 2048, url: VAULT_PATH };
 const USER_IMG = { role: 'user', content: 'What is in this image?', attachments: [IMG_ATT] };
 
 /// `modes` restricts a case to a subset of `stream` / `send` (default: both).
@@ -368,11 +380,15 @@ function casesFor(provider) {
     // list — bug 104 — so the model id no longer decides anything here and both
     // rows now carry image_url. See `image-attachment-non-vision` below.)
     add('image-attachment-vision', { ...base, model: 'glm-4.6v', messages: [SYS, USER_IMG] });
-    // P4.D107 — `attachmentToImageUrl` prefers a remote `url` over inline data.
-    // Found by mutation while porting NanoGPT's twin: no corpus bag carried a
-    // `url` at all, so this arm was unpinned for EVERY image-serialising
-    // provider (a swapped precedence stayed green tree-wide).
+    // P4.D107 — found by mutation while porting NanoGPT's twin: no corpus bag
+    // carried a `url` at all, so the url/data precedence was unpinned for EVERY
+    // image-serialising provider. Since `f6426e196` (bug 174) the Z.AI rule is
+    // BYTES FIRST: this row now records the `data:` URI, not the absolute url.
     add('image-attachment-url-wins', { ...base, model: 'glm-4.6v', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_URL_AND_DATA] }] });
+    // P4.D244 (bug 174, plugin 1.1.32): a RELATIVE url beside bytes -> the `data:`
+    // URI; a relative url alone -> refused (`failed`, `sent: []`, text part only).
+    add('image-attachment-rel-url-and-data', { ...base, model: 'glm-4.6v', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_REL_URL_AND_DATA] }] });
+    add('image-attachment-rel-url', { ...base, model: 'glm-4.6v', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_REL_URL] }] });
     // P4.D127 (v4 bug 104, `964ffb959`) — the FLIPPED row. `glm-4.6` has no `v`
     // after its generation, so the plugin's old `VISION_MODEL_PATTERNS` refused
     // it with "Selected Z.AI model does not support image input" while the
@@ -614,8 +630,12 @@ function casesFor(provider) {
     // The `url` arm of attachmentToImageUrl — no corpus bag carried a `url`
     // before this round, so the branch was unreachable in every provider.
     add('image-attachment-url', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_ATT_URL] }] });
-    // …and `url` WINS over inline data when a bag carries both.
+    // …and since `f6426e196` (bug 174) the BYTES win over a `url` when a bag
+    // carries both (pre-fix `url` won).
     add('image-attachment-url-wins', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_URL_AND_DATA] }] });
+    // P4.D244 (bug 174, plugin 1.2.9): the same two relative-url vectors.
+    add('image-attachment-rel-url-and-data', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_REL_URL_AND_DATA] }] });
+    add('image-attachment-rel-url', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_REL_URL] }] });
     // A MIME NanoGPT does not forward: the joined-list failure sentence, and the
     // content still switches to an array (the text part alone).
     add('unsupported-attachment', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'What is this?', attachments: [TIFF_ATT] }] });

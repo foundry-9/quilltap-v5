@@ -1113,6 +1113,11 @@
       "attachments": []
     }
   ],
+  "documentMount": {
+    "relativePath": "Notes/field.md",
+    "fileName": "field.md",
+    "content": "# Field Notes\n\nThe zeppelin listed to starboard."
+  },
   "extraMounts": [
     {
       "key": "shrinkMount",
@@ -1140,6 +1145,7 @@
       }
     }
   ],
+  "$p4d244": "P4.D244 / v4 `f6426e196` (bug 174): `documentMount` is a native-text DOCUMENT (no blob row) in the same mount \u2014 the second `loadMountFileAsAttachment` branch, previously unexercised; v4's own jest shape (`Notes/field.md`).",
   "$p4d198": "P4.D198 / v4 bcd7e4852 (bug 151): the two attachment loaders now run `shrinkImageForLlmTransport` FIRST, so this corpus drives a SCRIPTED encoder on both sides (v4 a `jest.doMock('sharp')`, v5 `quilltap_harness::ScriptedTranscoder`) keyed by the BYTES each file serves. A file with no `shrinkScript` gets the DEFAULT script \u2014 8x8, no rungs \u2014 so the budget's early return fires and its row is byte-identical to the pre-bug-151 oracle; that diff is the neutrality proof. `fsmBytesPattern` / `dataPattern` generate `(i * 7 + 13) & 0xff` bytes (the same generator as llm-image-budget.json) because a 400 KB literal array has no business in a corpus. `extraMounts` is the second mount blob the mount-path rows load \u2014 v4's hunk calls that path 'where every character avatar actually travels', so it is the primary arm.",
   "conciergeChats": {
     "$comment": "P4.D227 (v4 `3b463d6b1`, #76): section G's chats \u2014 the uncensored vision fallback is the Concierge desk's, as the chat's resolved policy allows it. A Locked chat and an exempt (help) chat have an empty desk; the fourth arm sends the Concierge off duty. Each arm's image refuses on the primary describer (whose own chain is cut for the section), so the desk is the only possible stand-in.",

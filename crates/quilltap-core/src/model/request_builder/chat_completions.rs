@@ -66,6 +66,41 @@ const OPENROUTER_IMAGE_MIME_TYPES: &[&str] =
 /// byte-identical.
 const NANOGPT_IMAGE_MIME_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
 
+/// v4's `/^https?:\/\//i` (the Z.AI and NanoGPT plugins' `attachmentToImageUrl`
+/// guard): is `url` an absolute http(s) address a provider can actually fetch?
+/// Anchored and ASCII-only, so a case-insensitive compare of the 7/8-byte prefix
+/// is exact (JS's non-`u` canonicalization never maps a code unit >= 128 onto
+/// one below it) — no `regex` crate for a fixed prefix.
+fn is_absolute_http(url: &str) -> bool {
+    let b = url.as_bytes();
+    b.get(..7)
+        .is_some_and(|p| p.eq_ignore_ascii_case(b"http://"))
+        || b.get(..8)
+            .is_some_and(|p| p.eq_ignore_ascii_case(b"https://"))
+}
+
+/// v4 `attachmentToImageUrl`, byte-identical in the Z.AI (1.1.32) and NanoGPT
+/// (1.2.9) plugins since `f6426e196` (bug 174). v4's why-comment, carried: the
+/// bytes win whenever there are any. A URL is used only when it is one the
+/// provider can actually fetch — an absolute http(s) address. Preferring `url`
+/// sent the host's server-relative path for a vault image straight to the
+/// provider, which answered "messages[0].content[0].file must contain at least
+/// one of file_id, file_url, or file_data" and failed the turn. `None` is v4's
+/// `null`: the caller records `Attachment missing data or URL`.
+///
+/// `att_str` is already JS-truthy (`""` is absent), matching v4's
+/// `attachment.data` / `attachment.url &&` — no second emptiness test here.
+/// OpenRouter's `img.url ?? data:` is deliberately NOT routed through this: v4
+/// left that plugin untouched.
+fn attachment_image_url(a: &Value, mime: &str) -> Option<String> {
+    if let Some(d) = att_str(a, "data") {
+        return Some(format!("data:{mime};base64,{d}"));
+    }
+    att_str(a, "url")
+        .filter(|u| is_absolute_http(u))
+        .map(str::to_string)
+}
+
 /// v4 Z.AI `buildUserContent`: no attachments → the plain string; otherwise a
 /// content-parts ARRAY (text + `image_url` parts), even when every attachment
 /// fails — the unsupported-MIME / no-data arms still switch the wire shape to
@@ -116,16 +151,11 @@ fn zai_user_content(msg: &StreamMessage, results: &mut StreamAttachmentResults) 
             );
             continue;
         }
-        // v4 `attachmentToImageUrl`: `attachment.url` first, else the data URL.
-        let url = match att_str(a, "url") {
-            Some(u) => u.to_string(),
-            None => match att_str(a, "data") {
-                Some(d) => format!("data:{mime};base64,{d}"),
-                None => {
-                    att_fail(results, a, "Attachment missing data or URL");
-                    continue;
-                }
-            },
+        // v4 `attachmentToImageUrl` (plugin 1.1.32, `f6426e196`): the bytes
+        // first, then a `url` only when it is absolute http(s), else nothing.
+        let Some(url) = attachment_image_url(a, mime) else {
+            att_fail(results, a, "Attachment missing data or URL");
+            continue;
         };
         parts.push(json!({ "type": "image_url", "image_url": { "url": url } }));
         results.sent.push(att_id(a));
@@ -185,18 +215,12 @@ fn nanogpt_user_content(msg: &StreamMessage, results: &mut StreamAttachmentResul
             );
             continue;
         }
-        // v4 `attachmentToImageUrl`: `attachment.url` first, else the data URL,
-        // else nothing — a row missing BOTH is the one failure the MIME gate
-        // cannot pre-empt.
-        let url = match att_str(a, "url") {
-            Some(u) => u.to_string(),
-            None => match att_str(a, "data") {
-                Some(d) => format!("data:{mime};base64,{d}"),
-                None => {
-                    att_fail(results, a, "Attachment missing data or URL");
-                    continue;
-                }
-            },
+        // v4 `attachmentToImageUrl` (plugin 1.2.9, `f6426e196`): the bytes
+        // first, then a `url` only when it is absolute http(s), else nothing —
+        // a row with neither is the one failure the MIME gate cannot pre-empt.
+        let Some(url) = attachment_image_url(a, mime) else {
+            att_fail(results, a, "Attachment missing data or URL");
+            continue;
         };
         parts.push(json!({ "type": "image_url", "image_url": { "url": url } }));
         results.sent.push(att_id(a));
@@ -2223,5 +2247,183 @@ mod cache_key_wire_pins {
                 "{provider} must omit `{wire_key}` for an empty cache key"
             );
         }
+    }
+}
+
+/// v4's four `it`s in `__tests__/unit/plugins/image-attachment-url-preference.
+/// test.ts` (`f6426e196`, bug 174), twinned per provider through the REAL
+/// content builders — the recorded request corpus carries the same rows against
+/// v4's real plugins; these pin them without an oracle on hand. The OpenRouter
+/// test is the deliberate non-change: v4 left that plugin `url`-first.
+#[cfg(test)]
+mod attachment_url_tests {
+    use super::*;
+    use crate::model::StreamAttachmentFailure;
+    use serde_json::{json, Value};
+
+    const VAULT_PATH: &str = "/api/v1/mount-points/701e03fd-9bed-4b75-b126-f25e5498eaba/blobs/photos/2026-10-01T20-19-26.593Z-finally-laura.webp";
+    const DATA_URI: &str = "data:image/webp;base64,UklGRg==";
+
+    fn webp(extra: Value) -> Value {
+        let mut a = json!({
+            "id": "attachment-1",
+            "filename": "finally-laura.webp",
+            "mimeType": "image/webp",
+            "size": 2048,
+            "data": "UklGRg==",
+        });
+        for (k, v) in extra.as_object().unwrap() {
+            if v.is_null() {
+                a.as_object_mut().unwrap().remove(k);
+            } else {
+                a[k] = v.clone();
+            }
+        }
+        a
+    }
+
+    fn msg(attachment: Value) -> StreamMessage {
+        StreamMessage::User {
+            content: "What is this?".to_string(),
+            cache_control: None,
+            attachments: vec![attachment],
+            name: None,
+        }
+    }
+
+    /// `(image_url parts, results)` for one attachment through one builder.
+    fn run(
+        build: fn(&StreamMessage, &mut StreamAttachmentResults) -> Value,
+        attachment: Value,
+    ) -> (Vec<String>, StreamAttachmentResults, Value) {
+        let mut results = StreamAttachmentResults::default();
+        let content = build(&msg(attachment), &mut results);
+        let urls = content
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|p| p["type"] == "image_url")
+            .map(|p| p["image_url"]["url"].as_str().unwrap().to_string())
+            .collect();
+        (urls, results, content)
+    }
+
+    fn each_builder(
+        check: impl Fn(&str, fn(&StreamMessage, &mut StreamAttachmentResults) -> Value),
+    ) {
+        check("Z.AI", zai_user_content);
+        check("NanoGPT", nanogpt_user_content);
+    }
+
+    #[test]
+    fn sends_a_data_uri_when_an_attachment_carries_both_data_and_a_relative_url() {
+        each_builder(|who, build| {
+            let (urls, results, _) = run(build, webp(json!({ "url": VAULT_PATH })));
+            assert_eq!(urls, vec![DATA_URI], "{who}");
+            assert_eq!(results.sent, vec!["attachment-1"], "{who}");
+            assert!(results.failed.is_empty(), "{who}");
+        });
+    }
+
+    #[test]
+    fn prefers_the_bytes_even_over_an_absolute_url() {
+        each_builder(|who, build| {
+            let (urls, results, _) =
+                run(build, webp(json!({ "url": "https://example.com/a.webp" })));
+            assert_eq!(urls, vec![DATA_URI], "{who}");
+            assert_eq!(results.sent, vec!["attachment-1"], "{who}");
+        });
+    }
+
+    #[test]
+    fn forwards_an_absolute_http_url_when_there_are_no_bytes() {
+        each_builder(|who, build| {
+            let (urls, results, _) = run(
+                build,
+                webp(json!({ "data": null, "url": "https://example.com/a.webp" })),
+            );
+            assert_eq!(urls, vec!["https://example.com/a.webp"], "{who}");
+            assert_eq!(results.sent, vec!["attachment-1"], "{who}");
+            assert!(results.failed.is_empty(), "{who}");
+        });
+    }
+
+    #[test]
+    fn refuses_a_relative_url_with_no_bytes_rather_than_sending_it() {
+        each_builder(|who, build| {
+            let (urls, results, content) =
+                run(build, webp(json!({ "data": null, "url": VAULT_PATH })));
+            assert!(urls.is_empty(), "{who}");
+            assert!(results.sent.is_empty(), "{who}");
+            assert_eq!(
+                results.failed,
+                vec![StreamAttachmentFailure {
+                    id: "attachment-1".to_string(),
+                    error: "Attachment missing data or URL".to_string(),
+                }],
+                "{who}"
+            );
+            // The text part alone survives; the wire shape is still an array.
+            assert_eq!(
+                content,
+                json!([{ "type": "text", "text": "What is this?" }]),
+                "{who}"
+            );
+        });
+    }
+
+    #[test]
+    fn an_empty_data_string_is_absent_so_a_relative_url_beside_it_is_still_refused() {
+        // `att_str` is JS-truthy: v4's `attachment.data` treats `""` as missing.
+        each_builder(|who, build| {
+            let (urls, results, _) = run(build, webp(json!({ "data": "", "url": VAULT_PATH })));
+            assert!(urls.is_empty(), "{who}");
+            assert_eq!(results.failed.len(), 1, "{who}");
+        });
+    }
+
+    #[test]
+    fn is_absolute_http_is_v4s_anchored_ascii_case_insensitive_prefix() {
+        for yes in [
+            "http://a",
+            "https://a",
+            "HTTP://a",
+            "Https://a",
+            "hTtPs://x/y",
+        ] {
+            assert!(is_absolute_http(yes), "{yes}");
+        }
+        for no in [
+            "",
+            "http:/a",
+            "https:a",
+            "htt",
+            "ftp://a",
+            "qtap://a",
+            VAULT_PATH,
+            "data:image/webp;base64,UklGRg==",
+            " https://a",
+            "xhttps://a",
+            "ｈttps://a",
+        ] {
+            assert!(!is_absolute_http(no), "{no}");
+        }
+    }
+
+    /// The deliberate non-change: OpenRouter's `img.url ?? data:` is `url`-first
+    /// and v4 left it so at `f6426e196` — "fixing" it would redden
+    /// `openrouter/image-attachment-url-wins` against v4's own bytes.
+    #[test]
+    fn openrouter_stays_url_first_as_v4_left_it() {
+        let content =
+            openrouter_message_content(&msg(webp(json!({ "url": "https://example.com/a.webp" }))));
+        let urls: Vec<&str> = content
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|p| p["type"] == "image_url")
+            .map(|p| p["image_url"]["url"].as_str().unwrap())
+            .collect();
+        assert_eq!(urls, vec!["https://example.com/a.webp"]);
     }
 }

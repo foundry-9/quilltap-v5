@@ -326,11 +326,29 @@ async function main(): Promise<void> {
     extraMountLinkIds[m.key] = extra.link.id;
   }
 
+  // 7. P4.D244 (v4 `f6426e196`, bug 174) — a native-text DOCUMENT in the same
+  // mount (no blob row; its bytes live in `doc_mount_documents`): the second
+  // `loadMountFileAsAttachment` branch, which no arm exercised until now. Same
+  // shape as v4's own jest case (`link-1` / `Notes/field.md`).
+  const docContent: string = spec.documentMount.content;
+  const docLink = await repos.docMountFileLinks.linkDocumentContent({
+    mountPointId: spec.mount.mountPointId,
+    relativePath: spec.documentMount.relativePath,
+    fileName: spec.documentMount.fileName,
+    folderId: null,
+    fileType: 'markdown',
+    content: docContent,
+    contentSha256: sha256OfBuffer(Buffer.from(docContent, 'utf-8')),
+    plainTextLength: docContent.length,
+    fileSizeBytes: Buffer.byteLength(docContent, 'utf-8'),
+  });
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
   const meta = {
     mountLinkId: linkResult.link.id,
+    documentMountLinkId: docLink.link.id,
     mountPointId: spec.mount.mountPointId,
     extraMountLinkIds,
   };

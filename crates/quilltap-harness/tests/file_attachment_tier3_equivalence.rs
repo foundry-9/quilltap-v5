@@ -864,6 +864,27 @@ fn file_attachment_matches_oracle() {
             .get("lcffl_mount")
             .expect("oracle missing case lcffl_mount");
         assert_eq!(&got, want, "lcffl_mount diverged");
+
+        // ---- (C2) the native-text branch (P4.D244, v4 `f6426e196`, bug 174) --
+        // A markdown DOCUMENT in the mount (no blob row): the second hunk of
+        // v4's fix. No arm reached it before, so the `url` key could return on
+        // this branch alone and stay green.
+        let document_link_id = meta
+            .get("documentMountLinkId")
+            .and_then(Value::as_str)
+            .expect("the fixture sidecar carries no documentMountLinkId — rebuild it")
+            .to_string();
+        let attachments =
+            load_chat_files_for_llm(&db, &bytes, &transcoder, &[document_link_id], &options);
+        let got = Value::Array(attachments);
+        let (_family, want) = cases
+            .get("lcffl_mount_document")
+            .expect("oracle missing case lcffl_mount_document");
+        assert_eq!(&got, want, "lcffl_mount_document diverged");
+        assert!(
+            got[0].get("url").is_none(),
+            "v4 f6426e196: a document attachment carries no `url`, only `filepath`"
+        );
     }
 
     // ---- (F) the bug-151 transport shrink at BOTH loaders (P4.D198) --------
