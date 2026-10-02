@@ -19,97 +19,83 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `ca363178d`**: "Anti-committee phase 3 & 4: memory
-  consent & chained-turn scene note (#79)" (v4 main, 2026-09-30 20:44,
-  `4.10.0-dev.105`), adopted when the `ca363178d` four-commit drift catch-up
-  + dogfood-orders round was unified — all six lanes (P4.D240 ∥ P4.D241 ∥
-  P4.D242 ∥ P4.D243 ∥ P4.133 ∥ P4.134, 2026-10-01). The four rows
-  `aa92cf91c` … `ca363178d` are ABSORBED / NO-PORT-RATIFIED (§6).
-  CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-10-01 (`/unify` of the `ca363178d` round, main-checkout
+- **Oracle baseline: `f6426e196`**: "Fix bug 174: send vault image bytes,
+  not a server path, to Z.AI and NanoGPT" (v4 main, 2026-10-01 15:59,
+  `4.10.0-dev.106`), adopted when the `f6426e196` bug-174 drift catch-up +
+  review-follow-ups round was unified, all five lanes (P4.D244 ∥ P4.135 ∥
+  P4.136 ∥ P4.137 ∥ P4.138, 2026-10-02). The one row `f6426e196` is
+  ABSORBED(P4.D244) (§6). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-10-02 (`/unify` of the `f6426e196` round, main-checkout
   session; `git fetch --all` first). The §2 probe PASSED at the
-  unification's start (HEAD `ca363178d`, tree CLEAN on `main`, both logs
-  empty). Mid-round the tree went DIRTY with v4 work on bug 174, and at
-  the unification's final probe (after the gate) that work had been
-  **COMMITTED as `f6426e196`** (2026-10-01 15:59) — ONE commit past the
-  new baseline, tree CLEAN, `origin/main` agreeing, `bugfix` unmoved.
-  **No proof of this unification touched it:** every regen ran from the
-  detached pin `/tmp/qt-v4-pin-unify-ca363178d` (§5.1) and the two
-  live-checkout guards read paths it does not reach (the
-  default-system-prompts plugin; the root `package.json` SDK stamps — the
-  version stamp alone moved). Classified in §3 by this `/unify` (the §4
-  procedure, from the hunks). Previous check: 2026-09-30 evening, the
-  `/driftcheck` that recorded the four commits.
-- **v4 `main` HEAD at check: `f6426e196`** ("Fix bug 174: send vault image
-  bytes, not a server path, to Z.AI and NanoGPT", 2026-10-01 15:59,
-  `4.10.0-dev.106`) — **ONE commit past the baseline**; `origin/main`
+  unification's start AND at its close: HEAD `f6426e196`, both logs empty,
+  `origin/main` agreeing, the tree dirty by EXACTLY the round's recorded
+  waiver (below). Every regen of the unification ran from the detached pin
+  `/tmp/qt-v4-pin-unify-f6426e196` (§5.1). Previous check: 2026-10-01, the
+  `ca363178d` unification.
+- **v4 `main` HEAD at check: `f6426e196`** — AT the baseline; `origin/main`
   agrees.
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty, so
-  there is no unabsorbed bugfix content. **`release` tip:** `8fbf2afe0`
-  ("release: 4.9.2"), UNMOVED; still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** (two stash
-  entries, untouched); the §2 probe runs against `ca363178d`.
-- **Verdict: DRIFT PENDING — 1 commit** (§3): ONE PORT row, `f6426e196`
-  (bug 174 — **v5 has BOTH halves verbatim by faithful port**: the loader's
-  server-relative `url` beside the bytes, and the Z.AI / NanoGPT builders'
-  `url`-first preference). No CONVERGENCE row (v4-original, provenance
-  `45dcf97dc`). v4's `bugs.md` ends at bug 174 (fixed; "v5 status: Not
-  assessed").
-- **Regen rule: PIN REQUIRED** — HEAD is past the baseline, so every regen
-  runs from a detached `ca363178d` worktree per §5.1 until a round absorbs
-  the row (or regenerates its own families at `f6426e196` as the target
-  pin). HEAD's SDKs equal the recorded ones (openai 7.23.0,
-  `@openrouter/sdk` 1.3.28, anthropic 0.115.0, genai 1.52.0 — P4.D232;
-  `git diff 97b25fc53 ca363178d -- package.json` moved the version stamp
-  alone), so a provider-wire regen is baseline-faithful.
-- **ORDERED 2026-10-01 — the `f6426e196` round** (P4.D244 ∥ P4.135 ∥
-  P4.136 ∥ P4.137 ∥ P4.138; `work-orders/p4.d244-*.md` … `p4.138-*.md`):
-  P4.D244 absorbs the §3 row; the other four are the `ca363178d`
-  unification's review follow-ups and the human's two boot rulings. ONE
-  target pin for every lane: `f6426e196`. **Recorded waiver for the
-  round:** P4.135 FILES v4 bugs 175 and 176 INTO the v4 checkout
-  (`docs/developer/bugs.md` modified; `docs/developer/bugs/bug-175-*.md`
-  and `bug-176-*.md` untracked) — a §2 probe that finds EXACTLY those
-  three docs-only paths dirty is a PASS for this round; any other dirt,
-  a moved HEAD or a non-empty log is a STOP. If the human commits the
-  filings mid-round, the new docs-only commit is a NO-PORT? row for the
-  next `/driftcheck` and the pin still stands at `f6426e196`.
+  branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty.
+  **`release` tip:** `8fbf2afe0` ("release: 4.9.2"), UNMOVED; still no
+  `release: 4.10.0` squash.
+- **Checkout at check:** branch **`main`**, tree **DIRTY by three docs-only
+  paths — the v4 bugs 175 and 176 filings this port wrote, UNCOMMITTED, for
+  the human to commit:** `docs/developer/bugs.md` (modified — the two
+  register rows + the Status sentence), `docs/developer/bugs/bug-175-
+  collapse-failure-exits-process.md` and `docs/developer/bugs/bug-176-
+  ledger-skips-shouldrun.md` (untracked). P4.135 wrote them; the
+  unification CORRECTED them in place (the same three paths, nothing else):
+  bug 176's fresh-instance ledger claim (the two `add-doc-mount-*`
+  migrations are never stamped on a fresh instance — their `shouldRun`
+  answers false on the post-refactor shape), its v5-status overclaim (only
+  the DDL class is fatal on v5; the lazy-home repairs log per boot and
+  continue), its `/api/health` wording (health reads the main DB, not the
+  mount index or `help_doc_chunks`), its `isMigrationCompleted` wording; bug
+  175's coordination paragraph (v5 measured steps 1 and 3, and the
+  `shouldRun` skip). **A §2 probe that finds exactly those three paths dirty
+  PASSES; any other dirt is a STOP.** When the human commits them, HEAD
+  moves by ONE docs-only commit: a NO-PORT? row for `/driftcheck` (its file
+  list is the proof), and the `docs/v4/` mirror then lags it on
+  `docs/developer/bugs.md` + two new open-bug files.
+- **Verdict: AT BASELINE — 0 commits** (§3 EMPTY).
+- **Regen rule: NO PIN REQUIRED for `lib/`/`app/`/`packages/`/`plugins/`
+  regens** — HEAD is the baseline and the dirt is docs-only (§2's note).
+  A pin is still the cheap total proof; the unification used one. HEAD's
+  SDKs equal the recorded ones (openai 7.23.0, `@openrouter/sdk` 1.3.28,
+  anthropic 0.115.0, genai 1.52.0 — P4.D232).
 - **Live-checkout guards at the baseline:** `builtin_prompt_templates_guard`
-  is GREEN against the live checkout again (P4.D241 re-vendored the 21
-  prompts at `ca363178d`, plugin `1.1.25`). `provider_sdk_version_guard` is
-  GREEN.
+  and `provider_sdk_version_guard` GREEN (run in the unified sweep and the
+  workspace suite).
 - **The workspace gate at the baseline:** the round record in
-  `status-log.md` has the counts (the pinned sweep at `ca363178d`, the
+  `status-log.md` has the counts (the pinned sweep at `f6426e196`, the
   workspace suite, Tier R, Playwright).
-- **Schema state:** unchanged by the four commits (no DDL, no migration);
+- **Schema state:** unchanged by `f6426e196` (no DDL, no migration);
   `fresh_schema.json` stays the THIRD D23 re-dump (P4.D235, `f7f3d7bf0`).
   v5 tolerates both shapes for the two dropped `chats` columns
   (`conciergeOverride`, `renderedMarkdown`) and drops neither at boot; the
   reclamation migrations stay the standing deferral class
   (`db/text_compression.rs`). #74's two ledger columns stay a BOOT ENSURE
   (P4.D225). A Friday copy of ANY vintage from `-dev.88` on opens on v5.
-- **`help/**`:** re-vendored WHOLE at `ca363178d` (P4.D240; 129 files,
-  `diff -rq` against the pin empty; the nine pages the two code commits
-  touched all md5-equal to v4's). `f6426e196` moves no help file — nothing
-  lags.
-- **`docs/v4/`:** LAGS `f6426e196` on `docs/CHANGELOG.md`, `docs/developer/
-  bugs.md` and the new `bugs/fixed/bug-174-…md` (the bug-174 round's mirror
-  items). At `ca363178d` the whole tree matched (`diff -rq` against the
-  pin's `docs/` reported only the mirror's deliberate extra,
-  `packages-quilltap-README.md`, itself refreshed from the pin's
-  `packages/quilltap/README.md`); `docs/v4/CHANGELOG.md` (171,935 B),
-  `developer/bugs.md`, the new `bugs/fixed/bug-173-raw-sql-buffer-output.md`
-  and `features/prompt-trust-and-anti-committee.md`,
-  `PROMPT_ARCHITECTURE.md` and `SYSTEM_PROMPT_PLUGIN_DEVELOPMENT.md` all at
-  `ca363178d` bytes).
+- **`help/**`:** whole at `ca363178d` = `f6426e196` (the commit moves no
+  help file; 129 files).
+- **`docs/v4/`:** CURRENT at `f6426e196` (P4.D244 byte-copied the three
+  paths the commit moved: `CHANGELOG.md`, `developer/bugs.md`, the new
+  `developer/bugs/fixed/bug-174-vault-image-relative-url-to-provider.md`;
+  `diff -rq docs/v4 "$PIN/docs"` lists only the mirror's deliberate extra
+  `packages-quilltap-README.md`). It deliberately does NOT carry the
+  uncommitted 175/176 filings.
 - **Standing deferrals unchanged:** the three text-compression migrations,
   the image re-encode migration and the stored-`renderedMarkdown`
   reclamation stay DEFERRED as reclamation; the animated-input ruling is
   LANDED (P4.108); the corrupt-second-frame ruling keeps v5's still.
-  **Open for the human (P4.134):** the P4.D184 avatar-collapse guard —
-  v4 EXITS on that migration's failure where v5 logs and boots on
-  (`host.rs`, `RULING PENDING (P4.134)`); proposed KEEP, recorded both ways.
+  **The P4.D184 avatar-collapse guard is RULED + LANDED** (P4.135 + the
+  unification's `shouldRun` split): a failed PASS fails the boot as v4's
+  runner does (v4 bug 175 filed); a failed `shouldRun` read is v4's logged
+  SKIP; a failed ledger PROBE is fatal on v5 where v4 falls back to a file
+  state (a recorded divergence, `CollapseError::Fatal`'s doc). **The
+  ledger-gate divergence is RECORDED** (v5 re-ensures every boot; v4 skips a
+  ledgered migration before `shouldRun` — v4 bug 176 filed; v5 KEEPS its
+  ensures; pinned v5-side by `host_boot_hardness`'s cadence arm).
 
 ## §2 The freshness probe
 
@@ -148,7 +134,6 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `f6426e196` | 2026-10-01 | Fix bug 174: send vault image bytes, not a server path, to Z.AI and NanoGPT | PORT | **v5 has BOTH halves verbatim by faithful port.** (1) The loader: `services/chat_files.rs:253` (the native-text branch) and `:340` (the blob branch) set `"url"` to the server-relative `/api/v1/mount-points/<id>/{files,blobs}/<path>` beside `data` — v4 `loadMountFileAsAttachment`'s fix DROPS `url` on both branches and keeps the path in `filepath` only. (2) The builders: `model/request_builder/chat_completions.rs:119` (Z.AI) and `:188` (NanoGPT) prefer `attachment.url` over the data URL (v4's pre-fix `attachmentToImageUrl`); the fix is BYTES FIRST, then a `url` only when it is absolute `http(s)` (`/^https?:\/\//i`), else the attachment FAILS (`Attachment missing data or URL` stays the terminal arm — measure v4's exact bytes for the refused-relative-url case). OpenRouter's `img.url ?? data:` (`:214-248`; v4 `openrouter/provider.ts:110`) is UNTOUCHED by the commit — leave it (after (1) it receives `data:` for mount attachments on both sides). Oracle material: the NEW `__tests__/unit/plugins/image-attachment-url-preference.test.ts` (both plugins: bytes beat a relative or absolute `url`; an absolute `url` alone forwarded; a relative `url` alone refused) and two new cases in `__tests__/unit/lib/chat-files-v2-mount-document.test.ts` (no `url` on a blob / document attachment). Families: the chat-files / attachment loaders (`file_attachment_tier3`, the mount-attachment arms), the Z.AI + NanoGPT request-builder and `request_envelopes` corpora (any row carrying a mount attachment with both `data` and `url` moves at the new pin), `chat_files` tier-3. v4's own named follow-up: failed calls still write no `llm_logs` row. NO-PORT: `README.md`, `package.json` / `packages/quilltap/package.json` / lock stamps (`4.10.0-dev.106`; plugins z-ai 1.1.32, nanogpt 1.2.9 — v5 records plugin versions nowhere), `docs/CHANGELOG.md`, `docs/developer/bugs.md` + the new `bugs/fixed/bug-174-vault-image-relative-url-to-provider.md` (MIRROR into `docs/v4/`). No `help/` file moved. | **ORDERED(P4.D244)** — 2026-10-01, the `f6426e196` round (P4.D244 ∥ P4.135 ∥ P4.136 ∥ P4.137 ∥ P4.138); every lane pins at `f6426e196` as the target. |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -301,6 +286,20 @@ the disposable copy proves the mechanism but is a weaker claim — offer it,
 don't silently swap it in.
 
 ## §6 History
+
+- **The `f6426e196` bug-174 drift catch-up + review-follow-ups round
+  (2026-10-02, baseline `ca363178d` → `f6426e196`; P4.D244 ∥ P4.135 ∥
+  P4.136 ∥ P4.137 ∥ P4.138):** `f6426e196` (bug 174: a vault image's
+  server-relative `url` sent to Z.AI and NanoGPT) ABSORBED(P4.D244 — the
+  loader's `url` key deleted on both `chat_files.rs` branches; the Z.AI +
+  NanoGPT builders bytes-first with an absolute-`http(s)` url forwarded
+  through one ASCII `is_absolute_http`; OpenRouter untouched and pinned as a
+  non-change; `file_attachment_tier3` red-first + a native-text arm; the
+  request corpus re-recorded at the pin, 385 → 393 rows, and the
+  unification's six absolute-url rows incl. an upper-case `HTTP://` pinning
+  v4's `/i` regex, 393 → 399; the `docs/v4/` mirror's three paths). The
+  plugin/`package.json` stamps NO-PORT (the standing class). Round record:
+  `status-log.md`.
 
 - **The `ca363178d` four-commit drift catch-up + dogfood-orders round
   (2026-10-01, baseline `97b25fc53` → `ca363178d`; P4.D240 ∥ P4.D241 ∥

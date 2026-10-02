@@ -159710,3 +159710,204 @@ else bumped.
   notice where v4 would) — the deferred item, record only.
 - The SPA's attachment-only send is the deferred divergence — record what
   the composer sends, do not fix it in the walk.
+
+## The `f6426e196` bug-174 drift catch-up + review-follow-ups round — UNIFICATION record (2026-10-02)
+
+**P4.D244 ∥ P4.135 ∥ P4.136 ∥ P4.137 ∥ P4.138, unified on main 2026-10-02
+from branch `unify/f6426e196`; the oracle baseline MOVES `ca363178d` →
+`f6426e196`; the drift ledger's §3 is EMPTY.** All five lanes landed whole.
+P4.136 was PARKED at the first `/unify` (uncommitted, waiting on disk); the
+human chose to wait, and the second `/unify` took all five.
+
+**Probe.** The ledger's §2 probe passed at the start AND at the close: v4
+`main` at `f6426e196`, both logs empty, `origin/main` agreeing, `bugfix`
+`1a2b2164c` and `release` `8fbf2afe0` unmoved, the tree dirty by EXACTLY the
+round's recorded waiver (the bug-175/176 filings: `docs/developer/bugs.md` +
+two untracked bug files). Every regen ran from the detached pin
+`/tmp/qt-v4-pin-unify-f6426e196` (marker: the Z.AI `provider.ts`
+`https?:\/\/` count 1).
+
+**Picks** (§R order P4.138 → P4.D244 → P4.135 → P4.136 → P4.137; 12 lane
+commits). Version conflicts resolved per commit as ours + (theirs − base);
+the lock re-synced offline. **The same-number trap fired twice:** core
+landed 0.0.1143 (three lanes bumped 1139 → 1140) and host 0.0.172 (two
+lanes 171 → 172); recounted to 0.0.1145 / 0.0.173 in their own commit.
+Every `Cargo.toml` delta was version-only. Lane commit hashes on main differ
+from the lane records' (cherry-picks): P4.137's `3756e48c5` / `46ef688d2`
+are `8aad1bb49` / `eee6f9c7d` on the unify branch, etc.
+
+### The §3 review — what it found
+
+Four parallel readers (one per substantive lane) plus my own read of the
+cross-lane seams (P4.137's `build_context` branch, P4.136's resolver against
+v4's `api-key.service.ts`, P4.135's flip). Each finding, how it was caught,
+and what now keeps it caught:
+
+1. **BLOCKING (docs) — the union merge driver SPLICED two lane records.**
+   `merge=union` aligned P4.135's and P4.136's identical first gate lines and
+   inserted P4.136's whole record inside P4.135's `### Gate` section; P4.135's
+   gate bullets, versions, §S hunks and dogfood rows ended up under P4.136's
+   gate header, with one orphaned line. It also collapsed four blank
+   separators in the CHANGELOG. Caught by the P4.136 reader (and confirmed by
+   the P4.135 reader). FIXED (`2d019e7f6`): both files rebuilt mechanically
+   as main + each lane's own `difflib` insert blocks in pick order; every
+   block asserted present verbatim and contiguous.
+2. **SHOULD-FIX (behaviour, would have shipped) — P4.135's fatal flip
+   over-applied.** `collapse_duplicate_avatar_rolls` returned ONE `Err` for
+   its `shouldRun` reads (the `files`/`generationKey` probes and the
+   pending-row `SELECT`) and its pass, so after the flip a failed GATE read
+   (a renamed `generationPrompt`, reachable — no earlier boot step heals it)
+   failed the boot where v4's runner logs `Error checking if migration should
+   run {context: 'migrations.runMigrations', migrationId, error}` and SKIPS
+   (`migrations/index.ts:131-148`). The ruling said "match v4". Caught by the
+   P4.135 reader. FIXED (`640d3fcf1`): `CollapseError::{ShouldRun, Fatal}`
+   (`From<DbError>`/`From<rusqlite::Error>` → `Fatal`), the host logs v4's
+   runner line for `ShouldRun` and boots on; new arm
+   `host_boot_hardness::a_failed_collapse_should_run_read_is_v4s_logged_skip`
+   (exact line, `assert_silent` on the pass's line, both rolls unkeyed, no
+   ledger row); re-fattening the arm reds it (`the boot FAILED … no such
+   column: generationPrompt`). Two remaining fatal-arm LINE divergences are
+   recorded on `CollapseError::Fatal`'s doc: a failed ledger PROBE (v4 falls
+   back to a file state) and a failed ledger WRITE (v4 logs `Migration threw
+   an exception`).
+3. **SHOULD-FIX — a fifth key-read route of P4.136's exact shape.**
+   `settings::model_fetch` (`POST /api/v1/models`, v4 `models/route.ts:
+   77-80`, the SCOPED `findApiKeyByIdAndUserId`) still answered 500 on a read
+   error. Caught by the P4.136 reader's grep. FIXED: the scoped home, v4's
+   404 (`API key not found not found` — v4's own doubled text, `notFound()`
+   appends " not found"), a fifth arm in the wire case (renamed
+   `a_corrupt_key_row_is_v4s_logged_404_on_all_five_key_routes`), red-first
+   measured (the old arm: `Internal "sqlite error: Invalid column type
+   Blob…"`).
+4. **SHOULD-FIX — the thaw had no test that saw the key.** Both tier-3
+   constructors pass a literal, so `api_key: ""` at a real fill stayed green.
+   FIXED for the Brahma path: `brahma_console_tier3`'s provider records every
+   `stream_message_keyed` key and the family asserts the default profile's
+   synthetic key is sent (and nothing but it or a keyless `""`); `api_key: ""`
+   at the Brahma fill reds it (25 empty keys). The Scenario Builder spine
+   (`engine.rs` → `spine.rs` → the loop) is correct by inspection but still
+   unpinned — a host-level recorder is OPEN.
+5. **SHOULD-FIX — "every API-key read" is an overclaim** (P4.136's subject
+   and CHANGELOG heading): ~20 raw `api_keys::find_by_id*` reads still skip
+   the homes. Not fixed here (several are in files fenced this round); a
+   census + guard is OPEN, by name, in phase-4's NEXT. This record corrects
+   the lane's claim: SIX folds (+ the headshoulders spill + the fifth route),
+   not every read.
+6. **SHOULD-FIX — three doc comments sat on the wrong item** (each new fn
+   inserted between an old item's `///` block and the item):
+   `participant_resolver::read_character`, `carina_query::
+   resolve_carina_profile`, `title_update_tier3`'s `plant_bound_key`. FIXED.
+7. **SHOULD-FIX — a comment P4.137's fix made false** (`build_context.rs`'s
+   scene-note block still called the branch "a separate, pre-existing
+   shape"). FIXED.
+8. **SHOULD-FIX — the bug-176 filing overclaimed.** Its step 1 claimed a
+   fresh v4 instance ledgers `add-doc-mount-file-links-v1` and
+   `add-doc-mount-link-groups-v1` (measured false: their `shouldRun` answers
+   false on the post-refactor shape, so they are never stamped), and its
+   v5-status said v5 "fails loudly" (only the DDL class does; the lazy-home
+   repairs log per boot and continue). CORRECTED in the v4 checkout (still
+   uncommitted; the same three paths), with the health and
+   `isMigrationCompleted` wording and bug 175's "steps 1 and 3".
+9. **NITs fixed:** the native-text arm's no-`url` assert passed vacuously on
+   `[]` (now: exactly one attachment + its `filepath`); the canned-key set
+   equality passed on two empty sets (now: the oracle must have recorded a
+   fold-episode call); the `-1` WARN count pinned as a literal (`3`); the
+   anchor arm's "preference 2" claim softened (one human row is also the last
+   user row); the dead `fallbackInfo` event filter removed (v4 never emits
+   that key); `MainReads`' `?Sized` dropped, its doc records the one-line
+   pool-failure divergence (v4 logs `Failed to get API keys collection`
+   first), the stale module doc refreshed. **Six corpus rows** from the pin:
+   Z.AI's absolute-url-without-bytes row (v4's third jest case — only NanoGPT
+   had it) and an upper-case `HTTP://CDN.EXAMPLE.INVALID/upper.png` row for
+   both providers — v4 FORWARDS it, the corpus pin of the `/i` flag; 393 →
+   399, a row-by-row diff showing only the six added; a new
+   `absolute_url_rows == 8` coverage pin.
+10. **NITs recorded, not fixed (OPEN):** the `MainReads` home (a db-layer
+    trait in a service module), the repeated key-read pattern (two helpers
+    would collapse ~10 sites), `test_plants` in the production file, the
+    duplicated `api_keys` DDL, an own arm for the headshoulders skip, a
+    stricter preference-2 arm (a re-roled whisper after the human row).
+
+### Wires (§S)
+
+- **§S.1** `orchestrator_tier3` regenerated ONCE on the union from the pin:
+  GREEN (sweep `ok`, 4.4 s; suite 5.x s).
+- **§S.2** the host recount: 0.0.173 after the picks (then 0.0.174 with the
+  review fixes).
+- **§S.3** the ledger: baseline → `f6426e196`, `f6426e196` → ABSORBED(P4.D244)
+  in §6, the docs-only dirt restated in §1; `dogfood-findings.md` row 134's
+  RULING PENDING → RULED + LANDED; the bug-176 recorded-divergence row in
+  `phase-4.md`'s UNIFIED paragraph.
+- **§S.4** the two API-key literals: outside `db/fallback.rs` only in test
+  modules (`fallback_home_guard` 2/2).
+- **§S.5** the deferred-by-name list carried into `phase-4.md`'s NEXT.
+- P4.138's pre-written gate line: `recipe_sweep.py --self-test` →
+  `0 failure(s)` on the union.
+
+### Gate (final tree `fb7498ccb`; the sweep on `640d3fcf1`, the commit before the sweep's one catch)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets; `cargo build --workspace
+  --release` clean.
+- **The full sweep from the pin** (`recipe_sweep.py --run-all --v4
+  /tmp/qt-v4-pin-unify-f6426e196`, 582 families, ~1.5 h): **575 ok / 4
+  run_failed / 1 refused_repo_write / 2 refused_non_extractable.** The four
+  reds: the three standing rows (`ariel_writers_tier3`,
+  `memory_processor_tier3`, `search_replace`) + the sweep's own catch,
+  `ai_import_tier3` (`V4_APP_VERSION` `4.10.0-dev.105` → `-dev.106`, the
+  baseline move; FIXED `fb7498ccb`, green by name through the driver). The
+  refusals are by design (`backup_uuid_remap`, `avatar_rolls_routes`,
+  `generator_sse_wire`). Every round family `ok` (list in the order headers;
+  incl. both live-checkout guards). **Tier R 271 cases / 0 failures** in the
+  sweep. Artifact: `harness/tools/sweep-results/2026-10-02-f6426e196-unify.json`.
+  ⚠ A first sweep was STOPPED at 34/582: my mid-fix edit to core did not
+  build for a few minutes and 14 families failed to COMPILE (not a
+  differential red); the fixes were finished, committed, and the sweep
+  restarted on the frozen tree.
+- **`QT_V4_CHECKOUT=<the pin> TZ=UTC cargo test --workspace
+  --no-fail-fast`** with a 744-variable env block harvested from every
+  family's `--show` run stage (the same 8 dup-valued vars withheld; `$N/`
+  now EXPANDED, so `QT_NODE` is a real path): **659 test binaries / 4,104
+  passed / 5 failed / 3 ignored, zero `SKIP:` lines.** The five reds: the
+  three standing families + the two recorded env-block artifacts
+  (`backup_uuid_remap`, `doc_mount_files_tier2` — `ok` through the driver).
+  **Tier R ran INSIDE the suite for the first time in two rounds: 271 cases
+  / 0 failures (403.7 s)** — last round's `QT_NODE=$N/node` artifact is gone.
+  Every round family RAN by name: `host_boot_hardness` 16/16,
+  `settings_wire_actions` 6/6, `request_builder_equivalence`,
+  `brahma_console_tier3`, `orchestrator_tier3`, `build_context_tier3`,
+  `memory_pipeline_jobs_tier3`, `file_attachment_tier3`,
+  `title_update_tier3` 9/9, `ai_import_tier3`, `fallback_home_guard` 2/2,
+  `dispatch_wrong_type_census` 14/14 (441 UNMOVED), `spelling_guard`,
+  `avatar_rolls_collapse_heal`.
+- SPA: `npm test` **466 files / 8,788 passed**; `npm run build` clean (no
+  SPA file changed this round).
+- **Full Playwright 355 passed / 1 failed / 6 skipped (11.4 m)** — the six
+  skips the standing parks; the one red the documented P4.66 optimistic-
+  bubble intermittent (`salon-optimistic-bubble-reconcile.spec.ts`), green
+  alone afterwards (2/2, 1.4 m).
+
+### Versions
+
+core 0.0.1146, harness 0.0.1074, host 0.0.174, web 0.0.207; cli 0.0.29,
+tauri 0.0.7, SPA 0.5.792 unchanged.
+
+### 💸 for the owed dogfood pass
+
+The lanes' rows, corrected: a vault photo on a Z.AI (`glm-5.3-flash`) and a
+NanoGPT vision profile — the body logged BEFORE the HTTP call carries
+`data:image/…;base64,`, never `/api/v1/mount-points/…` (a bad key makes it
+free), and an uploaded image proving the `files` branch unmoved; the
+collapse plant ONLY if Friday's §5.5 measurement finds an unkeyed avatar
+roll AND no `collapse-duplicate-avatar-rolls-v1` row (v4 collapsed Friday on
+2026-09-11, so expect `AlreadyCompleted`), and the #134 plant booted TWICE
+(the lazy line on both boots); a corrupted key row (`UPDATE api_keys SET
+key_value = x'00000000'` — NOT `isActive='x'`, which v4 coerces and sends) on
+a cheap title, a connection test-message, a models fetch (the doubled "not
+found") and a headshoulders backfill (it skips with the line + the WARN;
+it used to fail the job); a Scenario Builder run through
+`refusal-server.py` with `QT_REFUSE_KEY` (ONE `api_keys` read per build); an
+empty-content send with `pendingToolResults` and an image-only send through
+dispatch (no empty user line; the anchor on the prior human turn, or v4's
+`-1` WARN with none); record what the SPA composer sends on an
+attachment-only post (the deferred divergence).

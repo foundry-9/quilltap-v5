@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-02 — docs(porting): unify the f6426e196 round — the baseline moves to f6426e196; all five lanes landed; the review's findings fixed
+
+_Docs-only change._
+
+Unification of P4.D244 (bug 174), P4.135 (the two boot rulings), P4.136 (API-key fallback lines and the engine thaw), P4.137 (the empty new-user-message branch and the orchestrator mock lift) and P4.138 (the harness smalls). The oracle baseline moves `ca363178d` → `f6426e196`, and the drift ledger's §3 is empty.
+
+- Review findings fixed on the unify branch: the union merge had spliced P4.136's lane record into P4.135's; P4.135's fatal flip also made the collapse's `shouldRun` reads fatal (v4 logs and skips); `model_fetch` was a fifth key-read route still answering 500; nothing pinned the key the one-shot loop sends; six corpus rows were added; vacuous asserts were fixed; doc comments were moved back onto their functions. See the round record in `status-log.md`.
+- The v4 bug 175 and 176 filings are corrected in place in the v4 checkout. They are still uncommitted, for the human.
+- Gate: fmt and clippy (both feature sets) and the release build are clean. The full sweep from the pin: 575 ok / 4 run_failed (three standing plus the `ai_import_tier3` version stamp, fixed) / 3 refused by design. Tier R 271/0. Workspace: 659 binaries / 4,104 passed / 5 failed (three standing plus two env-block artifacts) / 3 ignored, zero SKIP. SPA: 466 files / 8,788 tests; the build is clean. Playwright: 355 passed / 1 failed (the P4.66 bubble intermittent, green alone 2/2) / 6 skipped.
+- Final versions: core 0.0.1146, harness 0.0.1074, host 0.0.174, web 0.0.207.
+
 #### 2026-10-02 — test(harness): ai_import_tier3's v4 version stamp moves to the f6426e196 pin (the unified sweep's catch)
 
 _Versions: harness 0.0.1074._

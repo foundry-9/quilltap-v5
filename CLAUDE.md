@@ -1367,10 +1367,36 @@ records THERE. Update this summary only when a phase or round completes.
   those items + the bug-174 catch-up, then the owed Host dogfood pass,
   then the recorded-divergences round** — `phase-4.md`. Round record:
   `status-log.md`.
-- **Oracle baseline: `ca363178d` (2026-09-30, v4 main — "Anti-committee
-  phase 3 & 4: memory consent & chained-turn scene note (#79)",
-  `4.10.0-dev.105`), adopted at the `ca363178d` four-commit round's
-  unification (2026-10-01).**
+- **The `f6426e196` bug-174 drift catch-up + review-follow-ups round
+  (P4.D244 ∥ P4.135 ∥ P4.136 ∥ P4.137 ∥ P4.138): UNIFIED on main
+  (2026-10-02) — ALL FIVE LANDED; the oracle baseline MOVES to `f6426e196`
+  and the ledger's §3 is EMPTY (v4's tree dirty only by the uncommitted
+  bug-175/176 filings — the human commits them).** Bug 174 absorbed whole
+  (the loader's server-relative `url` dropped; Z.AI + NanoGPT bytes-first,
+  an absolute `http(s)` url forwarded; OpenRouter untouched); the D184
+  collapse now FAILS the boot on a failed pass as v4 does (bug 175 filed)
+  and the ledger-gate divergence is recorded (bug 176 filed, v5 keeps its
+  per-boot ensures); six silent API-key reads got v4's fallback lines and
+  the engine thaw sends the gate's key; an empty new user message takes
+  v4's chained branch; the memory-pipeline family sees every canned key;
+  the sweep self-test is green. **The §3 review: the union merge SPLICED
+  two lane records (rebuilt from each lane's blocks); P4.135's flip had
+  also made the collapse's `shouldRun` reads fatal where v4 logs and SKIPS
+  (`CollapseError::{ShouldRun, Fatal}`); a fifth key route (`model_fetch`)
+  still answered 500; nothing pinned the key the loop sends; all FIXED.**
+  Gate: sweep 575 ok / 4 (three standing + a version-stamp catch, fixed) /
+  3 refused; Tier R 271/0 (inside the suite again); 659 binaries / 4,104 /
+  5 (three standing + two env artifacts) / 3 ignored, zero SKIP; SPA 466 /
+  8,788; Playwright 355 / 1 (P4.66, green alone) / 6. Versions: core
+  0.0.1146, harness 0.0.1074, host 0.0.174, web 0.0.207. **Next: the owed
+  Host dogfood pass, then ONE recorded-divergences round** (the API-key
+  census + guard, the `fileProcessing` frame, the SPA attachment sentence,
+  the SB spine key pin, Option V (k), the smalls) — `phase-4.md`. Round
+  record: `status-log.md`.
+- **Oracle baseline: `f6426e196` (2026-10-01, v4 main — "Fix bug 174: send
+  vault image bytes, not a server path, to Z.AI and NanoGPT",
+  `4.10.0-dev.106`), adopted at the `f6426e196` round's unification
+  (2026-10-02).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

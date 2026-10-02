@@ -7124,7 +7124,61 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `f6426e196` bug-174 drift catch-up + review-follow-ups round (P4.D244 ∥ P4.135 ∥ P4.136 ∥ P4.137 ∥ P4.138) — ORDERED 2026-10-01
+## The `f6426e196` bug-174 drift catch-up + review-follow-ups round (P4.D244 ∥ P4.135 ∥ P4.136 ∥ P4.137 ∥ P4.138) — UNIFIED 2026-10-02 (ordered 2026-10-01)
+
+**UNIFIED on main (2026-10-02) — ALL FIVE LANES LANDED; the oracle baseline
+MOVES to `f6426e196` and the ledger's §3 is EMPTY** (v4 AT the baseline at
+both probes; its tree dirty by exactly the three uncommitted bug-175/176
+filing paths — the recorded waiver, ledger §1). Round record:
+`status-log.md`; each order's `**Unification:**` paragraph enumerates what
+stays OPEN. **The §3 review (four parallel readers + the unifier) found ONE
+docs-blocking defect and one behavioural over-reach, both fixed on the unify
+branch:** the `merge=union` driver had SPLICED P4.136's lane record into
+P4.135's `### Gate` section (both docs rebuilt from each lane's own
+additions, verified verbatim + contiguous); and P4.135's fatal flip had also
+made the avatar-roll collapse's `shouldRun` reads fatal, where v4's runner
+logs `Error checking if migration should run` and SKIPS
+(`CollapseError::{ShouldRun, Fatal}`, a new hardness arm, mutation-proven).
+Also fixed: a fifth key-read route of P4.136's shape (`model_fetch`, 500 →
+v4's scoped 404), a wire-key pin for the thaw on the Brahma path, six corpus
+rows from the pin (Z.AI's absolute-url row + an upper-case `HTTP://` pinning
+v4's `/i` regex; 393 → 399), non-vacuity guards on two asserts, three
+misplaced doc comments, a stale comment, a dead event filter. The unified
+sweep's own catch: `ai_import_tier3`'s `V4_APP_VERSION` moves with the
+baseline. The bug-175/176 filings were corrected in place (still
+uncommitted — **the human commits them**).
+**Recorded divergence (bug 176, the ledger gate):** v5 re-runs every
+structural ensure each boot (`host.rs` class (i), `builtin_mounts.rs`
+25a/25f/25h); v4 skips a ledgered migration before `shouldRun`
+(`migrations/index.ts:125-129`) and reaches those tables only lazily. v5
+KEEPS its ensures; pinned v5-side by `host_boot_hardness`'s cadence arm +
+the FATAL arms; no v4 oracle; retire when v4 re-checks.
+**Recorded divergences (the collapse's fatal arms, `CollapseError::Fatal`'s
+doc):** a failed ledger PROBE is fatal on v5 where v4 falls back to a file
+state; a failed ledger WRITE logs the migration's line on v5 where v4 logs
+the runner's `Migration threw an exception` (both fatal).
+**NEXT, in order:** (1) the owed Host dogfood pass — its 💸 queue: a vault
+photo on a Z.AI / NanoGPT vision profile at zero spend (the body logged
+before the HTTP call carries `data:`, not `/api/v1/mount-points/…`), the
+collapse trigger plant (only if Friday's §5.5 measurement finds an unkeyed
+roll AND no ledger row) and the #134 plant booted twice, a corrupted key row
+(`UPDATE api_keys SET key_value = x'00000000'` — NOT `isActive='x'`, which v4
+coerces) on a cheap title / test-message / models fetch / headshoulders
+backfill, a Scenario Builder run through `refusal-server.py` with
+`QT_REFUSE_KEY`, an attachment-only send through dispatch; (2) ONE
+recorded-divergences round: the SPA attachment-only sentence (v4
+`'Please look at the attached file(s).'` vs v5's `''`), v4's
+`fileProcessing` stream frame (an `orchestrator.rs` order), the API-key
+census + guard (~20 raw `api_keys::find_by_id*` reads outside the fallback
+homes — `orchestrator.rs:623`, `embedding_provider.rs`, the four
+`api/*profiles*`/`wardrobe`/`images` sites, the generators, `chat_create` /
+`chat_participants` / `chat_enrichment`), a host-level keyed recorder
+through the Scenario Builder spine, the SB prepare's profile-read line, the
+three outside composite callers, the api-keys routes' 500s, `marshal_row`'s
+`isActive`, the `[FoldEpisodePass]` lines + `SKIP_GATE`, the v4-side
+`MigrationRunner` pin, the `ALIAS_ASSIGN` widening, plus Option V (k) and
+the smalls (a)–(j); (3) a drift catch-up when v4 moves (the human's commit
+of the 175/176 filings is a NO-PORT? docs row).
 
 **ORDERED 2026-10-01 (the `/setupphase` after the `ca363178d` unification;
 main `6d44cfae2`).** The human's scope: ONE round over the `ca363178d`
