@@ -1,5 +1,5 @@
 {
-  "$comment": "P4.D217 — the Scenario Builder REST edge's route family. v4's REAL route (real middleware, real repositories over a per-case copy of the committed chat-send fixture pair with these plants applied) with ONLY runScenarioBuilder canned to `frames` (the one place a mock is right: the route's contract is what it does AROUND the run) and, for one case, resolveScenarioBuilderCapabilities throwing. v5: the real axum edge over the same planted instance, with a canned DRIVER publishing the same frames. The first 18 names are v4's route.test.ts cases (split where one v4 case asks two things); the last five are the middleware's. P4.D231 (v4 08c49319d): the chat-send pair carries NO `groups` table, so the plants create it (v4's own DDL, IF NOT EXISTS) with a readable group (Aeronauts Club) and an unreadable, BLOB-named one; the fourth id is never planted.",
+  "$comment": "P4.D217 — the Scenario Builder REST edge's route family. v4's REAL route (real middleware, real repositories over a per-case copy of the committed chat-send fixture pair with these plants applied) with ONLY runScenarioBuilder canned to `frames` (the one place a mock is right: the route's contract is what it does AROUND the run) and, for one case, resolveScenarioBuilderCapabilities throwing. v5: the real axum edge over the same planted instance, with a canned DRIVER publishing the same frames. The first 18 names are v4's route.test.ts cases (split where one v4 case asks two things); the last five are the middleware's. P4.D231 (v4 08c49319d): the chat-send pair carries NO `groups` table, so the plants create it (v4's own DDL, IF NOT EXISTS) with a readable group (Aeronauts Club) and an unreadable, BLOB-named one; the fourth id is never planted. P4.139: a fifth profile clone whose name is a BLOB (X'00') — v4's `findById` (a fallback-mode `safeQuery` over `_findById`) refuses the Float32-decoded name and logs `Error finding entity by ID {collection: 'connection_profiles', id, error}`; v5's `marshal_cp_row` refuses the BLOB and `scenario_builder_prepare` logs the same line through `db::fallback::find_by_id_or_none`. Both then answer the 404 with the route's DEBUG.",
   "otherUser": "5b170000-0000-4000-8000-0000000000ee",
   "plants": [
     {
@@ -64,6 +64,24 @@
       "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"name\" = 'Host Foreign', \"provider\" = 'OLLAMA', \"apiKeyId\" = NULL, \"allowToolUse\" = 1, \"isDefault\" = 0, \"userId\" = '5b170000-0000-4000-8000-0000000000ee'",
       "params": [
         "5b170000-0000-4000-8000-0000000000a4"
+      ]
+    },
+    {
+      "sql": "INSERT INTO \"connection_profiles\" SELECT * FROM \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "DROP TABLE \"p4d217_clone\"",
+      "params": []
+    },
+    {
+      "sql": "CREATE TEMP TABLE \"p4d217_clone\" AS SELECT * FROM \"connection_profiles\" ORDER BY rowid LIMIT 1",
+      "params": []
+    },
+    {
+      "sql": "UPDATE \"p4d217_clone\" SET \"id\" = ?, \"name\" = X'00', \"provider\" = 'OLLAMA', \"apiKeyId\" = NULL, \"allowToolUse\" = 1, \"isDefault\" = 0",
+      "params": [
+        "5b170000-0000-4000-8000-0000000000a5"
       ]
     },
     {
@@ -316,6 +334,17 @@
         "location": "The quay",
         "time": "dusk",
         "connectionProfileId": "5b170000-0000-4000-8000-0000000000a4"
+      }
+    },
+    {
+      "name": "P4.139: an unreadable connection profile is the repository ERROR, then 404",
+      "method": "POST",
+      "query": "action=build",
+      "body": {
+        "mode": "in-world",
+        "location": "The quay",
+        "time": "dusk",
+        "connectionProfileId": "5b170000-0000-4000-8000-0000000000a5"
       }
     },
     {

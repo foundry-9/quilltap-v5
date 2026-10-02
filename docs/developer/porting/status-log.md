@@ -161443,3 +161443,31 @@ Each at v4's outcome (survey §A3 #1-9, 17-24 less the routes, 26, 27, 30, 31):
   `groups-projects-*` / `embedding-profiles-*` pairs read (COPIED per case),
   not rebuilt.
 
+### Unit 4 — the Scenario Builder prepare's profile read (Tier 1 item 6)
+
+- `api/scenario_builder.rs` (the profile read ONLY): `db::fallback::
+  find_by_id_or_none("connection_profiles", pid, || db.read_main(…))`, the
+  `.filter(userId)`, the 404 and the DEBUG unchanged.
+- `scenario_builder_routes_equivalence` (web) + `scenario-builder-routes.
+  test.ts` + `scenario-builder-routes.json`: a fifth profile clone
+  (`…0000a5`, `name = X'00'`) and the case "P4.139: an unreadable connection
+  profile is the repository ERROR, then 404". **Both repo-line filters
+  widened** to take `connection_profiles` (the oracle's `collection ===
+  'groups'`; the Rust `StructuredCapture`), WIDENED BEFORE THE SOURCE FIX; for
+  `connection_profiles` rows the `error` is normalised on both sides after v5's
+  bytes are asserted equal to `Invalid column type Blob at index: 2, name:
+  name` (v4's: a ZodError, `received Float32Array`); the `groups` rows keep
+  their byte compare. v4 recorded 404 + the DEBUG + exactly one repo line.
+  **Red-first: 1** (`repoLines` on the new case only; status, body and the
+  DEBUG already agreed). Green after (31 oracle rows). Exactly one
+  `connection_profiles` repo line in the whole fresh oracle (no other case
+  moved).
+- Core unit pin (in `api_key_service.rs`'s tests — the lane owns only the
+  profile-read hunk of `scenario_builder.rs`):
+  `the_scenario_builder_prepares_unreadable_profile_is_the_line_and_the_404`
+  (exact line incl. v5's `error` bytes; a healthy profile prepares silent).
+- Regen recipe: the family header's, staged at `/tmp/p4139/qt-oracle-stage-sb-
+  routes`, `QT_ORACLE_OUT=/tmp/p4139/oracle-scenario-builder-routes.ndjson`,
+  from the pin; the committed `chat-send-{main,mount}.db` read (copied per
+  run), not rebuilt.
+

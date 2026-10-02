@@ -778,6 +778,55 @@ mod tests {
         assert!(db_lines(&lines).is_empty(), "{lines:?}");
     }
 
+    /// P4.139: the Scenario Builder prepare's profile read is v4's fallback
+    /// `findById` — an unreadable (BLOB-named) profile logs `Error finding
+    /// entity by ID {collection: 'connection_profiles', id, error}` and is the
+    /// route's 404 (+ its DEBUG); a healthy foreign-less profile reads silent.
+    /// (`scenario_builder_routes_equivalence` is the two-sided proof; this
+    /// pins v5's `error` bytes on the test thread — the prepare is sync.)
+    #[test]
+    fn the_scenario_builder_prepares_unreadable_profile_is_the_line_and_the_404() {
+        use test_instance::*;
+        const BLOB_NAMED: &str = "a2000139-0000-4000-8000-0000000000b0";
+        const HEALTHY: &str = "a2000139-0000-4000-8000-0000000000b1";
+        let (_dir, db) = provisioned(|c| {
+            plant_connection_profile(c, HEALTHY, "OLLAMA", None);
+            c.execute(
+                "INSERT INTO connection_profiles (id, userId, name, provider, modelName, \
+                 createdAt, updatedAt) VALUES (?1, ?2, x'00', 'OLLAMA', 'm', ?3, ?3)",
+                rusqlite::params![BLOB_NAMED, USER, NOW],
+            )
+            .unwrap();
+        });
+        let body = |pid: &str| {
+            serde_json::json!({
+                "mode": "in-world", "location": "The quay", "time": "dusk",
+                "connectionProfileId": pid,
+            })
+        };
+        let (got, lines) = crate::test_support::captured_with(|| {
+            crate::api::scenario_builder::scenario_builder_prepare(&db, USER, &body(BLOB_NAMED))
+        });
+        match got {
+            Err(crate::api::types::Response::Error(e)) => {
+                assert_eq!(e.kind, crate::api::types::ErrorKind::NotFound);
+                assert_eq!(e.message, "Connection profile not found");
+            }
+            other => panic!("expected the 404, got {other:?}"),
+        }
+        assert_eq!(
+            db_lines(&lines),
+            vec![format!(
+                "ERROR quilltap::db Error finding entity by ID collection=connection_profiles id={BLOB_NAMED} error=Invalid column type Blob at index: 2, name: name"
+            )]
+        );
+        let (got, lines) = crate::test_support::captured_with(|| {
+            crate::api::scenario_builder::scenario_builder_prepare(&db, USER, &body(HEALTHY))
+        });
+        assert!(got.is_ok(), "the healthy profile prepares: {:?}", got.err());
+        assert!(db_lines(&lines).is_empty(), "{lines:?}");
+    }
+
     #[test]
     fn cheap_selection_no_profile_is_none() {
         let conn = mem_db();

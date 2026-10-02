@@ -316,14 +316,16 @@ pub fn scenario_builder_prepare(
     };
 
     // Profile: must be the user's, and must allow tools — the builder is a
-    // tool loop. v4's `findById` is a fallback-mode `safeQuery`, so a failed
-    // read is the same `null` as a miss.
-    let pid = parsed.connection_profile_id.clone();
-    let profile = db
-        .read_main(move |c| connection_profiles::find_by_id(c, &pid))
-        .ok()
-        .flatten()
-        .filter(|p| s(p, "userId") == Some(user_id));
+    // tool loop. v4's `findById` (`route.ts:52` → `_findById`) is a
+    // fallback-mode `safeQuery`, so a failed read is the same `null` as a miss
+    // — AFTER its `Error finding entity by ID {collection:
+    // 'connection_profiles', id, error}` ERROR, which v5 had folded silently
+    // (P4.139).
+    let pid = parsed.connection_profile_id.as_str();
+    let profile = crate::db::fallback::find_by_id_or_none("connection_profiles", pid, || {
+        db.read_main(|c| connection_profiles::find_by_id(c, pid))
+    })
+    .filter(|p| s(p, "userId") == Some(user_id));
     let Some(profile) = profile else {
         tracing::debug!(
             profileId = %parsed.connection_profile_id,

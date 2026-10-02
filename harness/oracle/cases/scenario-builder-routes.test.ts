@@ -224,7 +224,13 @@ async function main(): Promise<void> {
           const ctx = this.context ?? {};
           {
             const [message, context] = args as [string, Record<string, unknown> | undefined];
-            if (message === 'Error finding entity by ID' && context?.collection === 'groups') {
+            // P4.139: the `connection_profiles` collection too — the prepare's
+            // profile read (`route.ts:52` → `findById` → `_findById`) logs it
+            // for an unreadable (BLOB-named) profile before the route's 404.
+            if (
+              message === 'Error finding entity by ID' &&
+              (context?.collection === 'groups' || context?.collection === 'connection_profiles')
+            ) {
               repoLines.push({
                 level,
                 message,

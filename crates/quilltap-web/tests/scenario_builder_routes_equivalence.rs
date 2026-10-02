@@ -123,6 +123,13 @@ const LOG_TARGETS: &[&str] = &[
 /// field besides its message) — the oracle's own row shape.
 static LOGGED: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 
+/// P4.139: v5's `error` bytes on the unreadable profile's line — rusqlite's
+/// sentence for `marshal_cp_row`'s `name` (column 2). v4's are a ZodError over
+/// the Float32-decoded BLOB, so a `connection_profiles` row's `error` is
+/// normalised on both sides (asserted equal to THIS on v5's) — the `groups`
+/// rows keep their byte compare.
+const V5_BLOB_NAME_ERROR: &str = "Invalid column type Blob at index: 2, name: name";
+
 /// P4.D231: the `groups` repository fallback ERROR (`Error finding entity by
 /// ID` with `collection: "groups"`) — v4 logs it inside `findByIdRaw`'s
 /// fallback-mode `safeQuery`, on no `ScenarioBuilder` logger, so it is kept
@@ -195,11 +202,12 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for StructuredCapture 
                     .map(|f| f[1].clone())
                     .unwrap_or(Value::Null)
             };
-            if field("collection") == json!("groups") {
+            let collection = field("collection");
+            if collection == json!("groups") || collection == json!("connection_profiles") {
                 REPO_LOGGED.lock().unwrap().push(json!({
                     "level": meta.level().as_str().to_ascii_lowercase(),
                     "message": REPO_FALLBACK,
-                    "collection": "groups",
+                    "collection": collection,
                     "id": field("id"),
                     "hasError": field("error").as_str().is_some_and(|e| !e.is_empty()),
                     "error": field("error"),
@@ -427,7 +435,7 @@ async fn scenario_builder_routes_match_oracle() {
     let mut divergences_exercised = 0usize;
     let mut lines_seen = 0usize;
     for case in &spec.cases {
-        let want = &oracle[&case.name];
+        let mut want = oracle[&case.name].clone();
         {
             let mut r = recorder.lock().unwrap();
             r.runs.clear();
@@ -513,6 +521,24 @@ async fn scenario_builder_routes_match_oracle() {
         got["runs"] = json!(recorder.lock().unwrap().runs.clone());
         got["lines"] = json!(LOGGED.lock().unwrap().clone());
         got["repoLines"] = json!(REPO_LOGGED.lock().unwrap().clone());
+        // P4.139: a `connection_profiles` row's `error` — v5's pinned, then
+        // both normalised (the comparand is `{level, message, collection, id,
+        // hasError}` for that collection).
+        let mut normalise_profile_errors = |rows: &mut Value, v5: bool| {
+            for row in rows.as_array_mut().into_iter().flatten() {
+                if row["collection"] == json!("connection_profiles") {
+                    if v5 && row["error"] != json!(V5_BLOB_NAME_ERROR) {
+                        failures.push(format!(
+                            "{}: v5's profile-read `error` bytes moved: {}",
+                            case.name, row["error"]
+                        ));
+                    }
+                    row["error"] = json!("<normalised>");
+                }
+            }
+        };
+        normalise_profile_errors(&mut got["repoLines"], true);
+        normalise_profile_errors(&mut want["repoLines"], false);
 
         if V4_MOCK_ONLY.contains(&case.name.as_str()) {
             divergences_exercised += 1;
