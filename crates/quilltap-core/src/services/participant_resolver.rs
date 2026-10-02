@@ -245,6 +245,17 @@ fn to_message_views(messages: &[Value]) -> Vec<MessageView> {
 }
 
 /// Read a character (vault-overlaid, v4 `repos.characters.findById`) — main+mount.
+/// The participant's key (v4 `participant-resolver.service.ts:236-242`): the
+/// profile's `apiKeyId` through v4's UNSCOPED fallback `findApiKeyById` — a
+/// read error logs the repository line and leaves no key, as a miss does.
+fn profile_api_key(db: &Db, connection_profile: &Value) -> Option<String> {
+    let api_key_id = str_field(connection_profile, "apiKeyId").filter(|s| !s.is_empty())?;
+    crate::db::fallback::find_api_key_by_id_or_none(api_key_id, || {
+        db.read_main(|conn| crate::db::api_keys::find_by_id(conn, api_key_id))
+    })
+    .map(|k| k.key_value)
+}
+
 fn read_character(db: &Db, id: &str) -> Result<Option<Value>, DbError> {
     let id = id.to_string();
     db.read_main(|main| db.read_mount_index(|mount| characters_read::find_by_id(main, mount, &id)))
@@ -475,20 +486,12 @@ pub async fn resolve_responding_participant(
     // Get the API key if the profile names one (v4
     // `participant-resolver.service.ts:236-242`). UNSCOPED `findApiKeyById` and
     // NO `isActive` question: a profile bound to a deactivated key still sends
-    // it, and a dangling id (or a read error — v4's `safeQuery` answers `null`)
-    // leaves no key, for the orchestrator's requires-gate to refuse. This is the
-    // key every leg of the turn sends (P4.133, dogfood #133); nothing on this
-    // path scans the `api_keys` table by provider.
-    let api_key = match str_field(&connection_profile, "apiKeyId").filter(|s| !s.is_empty()) {
-        Some(api_key_id) => {
-            let api_key_id = api_key_id.to_string();
-            db.read_main(move |conn| crate::db::api_keys::find_by_id(conn, &api_key_id))
-                .ok()
-                .flatten()
-                .map(|k| k.key_value)
-        }
-        None => None,
-    };
+    // it, and a dangling id (or a read error — v4's `safeQuery` logs `Error
+    // finding API key by ID` and answers `null`, P4.136) leaves no key, for the
+    // orchestrator's requires-gate to refuse. This is the key every leg of the
+    // turn sends (P4.133, dogfood #133); nothing on this path scans the
+    // `api_keys` table by provider.
+    let api_key = profile_api_key(db, &connection_profile);
 
     let image_profile_id = str_field(chat, "imageProfileId")
         .filter(|s| !s.is_empty())
@@ -657,6 +660,34 @@ pub struct RoleplayTemplateResult {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// P4.136: the participant's key read is v4's UNSCOPED fallback
+    /// `findApiKeyById` — a corrupt row logs the repository's line (bare
+    /// driver message) and leaves no key; a healthy row and a miss are silent.
+    #[test]
+    fn a_failed_key_read_logs_v4s_line_and_leaves_no_key() {
+        let (_dir, db) = crate::db::fallback::test_plants::db_with_api_keys(&[
+            ("k-bad", "u-1", true),
+            ("k-ok", "u-1", false),
+        ]);
+        let (key, lines) = crate::test_support::captured_with(|| {
+            profile_api_key(&db, &json!({"id": "cp-1", "apiKeyId": "k-bad"}))
+        });
+        assert_eq!(key, None);
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding API key by ID collection=connection_profiles keyId=k-bad error=Invalid column type Blob at index: 4, name: key_value".to_string()]
+        );
+        let (keys, lines) = crate::test_support::captured_with(|| {
+            (
+                profile_api_key(&db, &json!({"apiKeyId": "k-ok"})),
+                profile_api_key(&db, &json!({"apiKeyId": "k-gone"})),
+                profile_api_key(&db, &json!({"apiKeyId": ""})),
+            )
+        });
+        assert_eq!(keys, (Some("synthetic-k-ok".to_string()), None, None));
+        assert!(lines.is_empty(), "{lines:?}");
+    }
 
     #[test]
     fn connection_resolver_fallback_order() {

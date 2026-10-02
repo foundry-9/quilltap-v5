@@ -68,6 +68,38 @@ documents; v5's reaps links / folders / chunks plus content). Filed upstream
 as v4 bugs 175 (the exit on a resumable, unstamped pass) and 176 (the ledger
 skip that leaves a damaged table unchecked behind a healthy `/health`),
 uncommitted in the v4 checkout for the human.
+#### 2026-10-01 — fix(core): every API-key read logs v4's fallback line — the resolvers go infallible, the folds and the connection-profile routes answer v4's 404 (P4.136)
+
+_Versions: core 0.0.1141, harness 0.0.1065._
+
+The six v5 key reads that folded a database error into "no key" with no line
+now go through the `db::fallback` homes: the participant resolver and Carina
+(unscoped), image description (scoped), and the cheap-LLM resolver used by the
+gatekeeper and the cheap executor. `get_api_key_for_connection_profile` and
+`get_api_key_for_cheap_llm_selection` now return `Option<String>`. They wrap
+the profile read (`Error finding entity by ID`) and the scoped key read
+separately, the way v4 does. They read through a new `MainReads` handle, so a
+read-pool failure also lands on the read's line. The canned seam still answers
+first. The gate+lookup composite logs the unscoped line on a read error; its
+`api-key-not-found` outcome is unchanged.
+
+The headshoulders backfill job used to fail on a key read error. It now logs
+v4's line and skips, as v4 does (`character-headshoulders-backfill.ts:107`).
+This file was outside the lane's ownership; the human approved the edit as a
+recorded spill.
+
+The four connection-profile key reads in `api/settings.rs` (create, update,
+test-connection, test-message) answered 500 on a read error. They now log v4's
+line and answer v4's 404 `API key`. `enrich_with_api_key` logs the line too.
+
+Proofs: unit capture pins at every site over a BLOB `key_value` plant, which
+both sides fail to read. (A text `isActive` is not such a plant: v4 coerces it
+with `Boolean(value)` and sends the key, measured.) A new
+`settings_wire_actions` case covers the 404 and the line on all four routes.
+`title_update_tier3` gains a third lifted case, `corrupt_key_logs_and_refuses`,
+over v4's real resolver, which records each lifted case's repository lines
+with `error` normalised.
+
 #### 2026-10-01 — fix(core): home v4's two API-key fallback lines in `db::fallback`; the understudy key emitter moves home (P4.136)
 
 _Versions: core 0.0.1140, harness 0.0.1064._

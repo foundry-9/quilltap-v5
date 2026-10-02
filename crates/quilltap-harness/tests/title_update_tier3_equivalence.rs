@@ -604,6 +604,18 @@ fn title_update_matches_oracle() {
             false,
             "",
         ),
+        // ── P4.136: the bound key's row is corrupt (a BLOB `key_value`, the
+        // plant BOTH sides fail on) — v4's REAL scoped fallback read logs its
+        // repository line and answers `null`, which is `no_key_refuses`'s
+        // throw. The seam is NOT armed here (it answers before any read).
+        (
+            "corrupt_key_logs_and_refuses",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            None,
+            false,
+            "",
+        ),
     ];
     let now_iso = quilltap_core::clock::iso_from_unix_ms(spec.frozen_now_ms);
     // Shape, not a hand-written count: every oracle row is driven, and only those.
@@ -632,9 +644,29 @@ fn title_update_matches_oracle() {
         // executor carries the `Db` + user the resolution reads (a bare one
         // has nothing to resolve against, which is the twin of v4's mock on
         // every other case).
-        let lifted = matches!(name, "profile_bound_key_sent" | "no_key_refuses");
-        if name == "profile_bound_key_sent" {
+        let lifted = matches!(
+            name,
+            "profile_bound_key_sent" | "no_key_refuses" | "corrupt_key_logs_and_refuses"
+        );
+        if matches!(
+            name,
+            "profile_bound_key_sent" | "corrupt_key_logs_and_refuses"
+        ) {
             plant_bound_key(&rt, &db, user_id, &spec.connection_profile_id);
+        }
+        if name == "corrupt_key_logs_and_refuses" {
+            corrupt_bound_key(&rt, &db);
+        }
+        // P4.136: the committed fixture PREDATES `api_keys`. v4's key read
+        // heals that lazily (`getApiKeysCollection` → `ensureCollection`) and
+        // misses silently; v5 does no DDL on a read path, so a missing table
+        // is a read ERROR that logs the repository line. Unreachable on any
+        // v4-provisioned instance (`generateDDL` creates `api_keys`; it is in
+        // `fresh_schema.json`) — a recorded fixture-vintage divergence, pinned
+        // on v5's side by `understudy.rs`'s missing-table plant. The keyless
+        // case gets the table v4's heal would have created.
+        if name == "no_key_refuses" {
+            ensure_key_table(&rt, &db);
         }
         let executor = if lifted {
             CheapLlmTaskExecutor::with_logging(
@@ -654,15 +686,17 @@ fn title_update_matches_oracle() {
             connection_profile_id: spec.connection_profile_id.clone(),
             current_interchange: 5.0,
         };
-        let outcome = rt.block_on(handle_title_update(
-            &db,
-            &provider,
-            &executor,
-            &NoMessageCost,
-            user_id,
-            &payload,
-            spec.frozen_now_ms,
-        ));
+        let (outcome, lines) = global_capture::capture(|| {
+            rt.block_on(handle_title_update(
+                &db,
+                &provider,
+                &executor,
+                &NoMessageCost,
+                user_id,
+                &payload,
+                spec.frozen_now_ms,
+            ))
+        });
 
         let want = &oracle[name];
         // The throw arms: diff the message v4 threw.
@@ -697,6 +731,34 @@ fn title_update_matches_oracle() {
             );
             if got_keys != want_keys {
                 eprintln!("[{name}] KEY MISMATCH: got {got_keys:?} / want {want_keys:?}");
+                failed.push(name.to_string());
+                continue;
+            }
+            // P4.136: the key resolution's repository lines, `error`
+            // normalised (v4 logs a ZodError's issues, v5 rusqlite's
+            // sentence — a different driver's bytes for the same failure).
+            let want_db: Vec<String> = want["dbLines"]
+                .as_array()
+                .unwrap_or_else(|| panic!("[{name}] oracle carries no dbLines — regenerate from THIS tree's case (P4.136)"))
+                .iter()
+                .map(render_v4_db_line)
+                .collect();
+            if name == "corrupt_key_logs_and_refuses" {
+                assert_eq!(
+                    want_db.len(),
+                    1,
+                    "[{name}] v4 no longer logs the corrupt row's line — the arm measures nothing"
+                );
+            }
+            let got_db: Vec<String> = lines
+                .iter()
+                .filter(|l| {
+                    l.contains(" quilltap::db ") && KEY_READ_LINES.iter().any(|m| l.contains(m))
+                })
+                .map(|l| normalise_error(l))
+                .collect();
+            if got_db != want_db {
+                eprintln!("[{name}] DB-LINE MISMATCH:\n got {got_db:#?}\n want {want_db:#?}");
                 failed.push(name.to_string());
                 continue;
             }
@@ -1496,15 +1558,80 @@ fn chat_vanished_debug_fires_only_when_the_chat_is_deleted_mid_flight() {
 /// predates the `api_keys` table; `k-title-first` is inserted FIRST (no profile
 /// names it), then `k-title-bound`, which the cheap profile is bound to. Both
 /// owned by the job's user (the cheap lookup is user-scoped).
+/// P4.136: the oracle's `KEY_READ_LINES` — the repository fallback lines a
+/// lifted case's key resolution can write.
+const KEY_READ_LINES: [&str; 3] = [
+    "Error finding API key by ID and user ID",
+    "Error finding API key by ID",
+    "Error finding entity by ID",
+];
+
+/// A v4 `{level, message, bag}` rendered the way the capture renders v5's
+/// line (`LEVEL target message k=v …`, the bag in v4's own order), with the
+/// `error` value normalised.
+fn render_v4_db_line(v: &Value) -> String {
+    let mut out = format!(
+        "{} quilltap::db {}",
+        v["level"].as_str().unwrap().to_uppercase(),
+        v["message"].as_str().unwrap()
+    );
+    for (k, val) in v["bag"].as_object().unwrap() {
+        let val = if k == "error" {
+            "<error>".to_string()
+        } else {
+            val.as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| val.to_string())
+        };
+        out.push_str(&format!(" {k}={val}"));
+    }
+    out
+}
+
+/// The captured v5 line with everything after ` error=` replaced (the field
+/// is last on every home line).
+fn normalise_error(line: &str) -> String {
+    match line.find(" error=") {
+        Some(i) => format!("{} error=<error>", &line[..i]),
+        None => line.to_string(),
+    }
+}
+
+/// P4.136: the oracle's `corrupt` plant — the bound key's `key_value` made a
+/// BLOB, on this case's DB copy.
+fn corrupt_bound_key(rt: &tokio::runtime::Runtime, db: &Db) {
+    rt.block_on(db.write(|w| {
+        let n = w.main().connection().execute(
+            "UPDATE api_keys SET key_value = x'00000000' WHERE id = ?1",
+            ["b1133000-0000-4000-8000-000000000002"],
+        )?;
+        assert_eq!(n, 1, "the plant must land on the bound key");
+        Ok(())
+    }))
+    .expect("corrupt the bound key");
+}
+
+/// The `api_keys` DDL the oracle's `KEY_TABLE_DDL` runs.
+const KEY_TABLE_DDL: &str =
+    "CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, userId TEXT NOT NULL, \
+     label TEXT NOT NULL, provider TEXT NOT NULL, key_value TEXT NOT NULL, \
+     isActive INTEGER DEFAULT 1, lastUsed TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)";
+
+/// P4.136: the empty `api_keys` table v4's lazy `ensureCollection` creates on
+/// the first key read (see the `no_key_refuses` arm).
+fn ensure_key_table(rt: &tokio::runtime::Runtime, db: &Db) {
+    rt.block_on(db.write(|w| {
+        w.main().connection().execute_batch(KEY_TABLE_DDL)?;
+        Ok(())
+    }))
+    .expect("ensure the api_keys table");
+}
+
 fn plant_bound_key(rt: &tokio::runtime::Runtime, db: &Db, user_id: &str, profile_id: &str) {
     let (uid, pid) = (user_id.to_string(), profile_id.to_string());
     rt.block_on(db.write(move |w| {
         let c = w.main().connection();
-        c.execute_batch(
-            "CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, userId TEXT NOT NULL, \
-             label TEXT NOT NULL, provider TEXT NOT NULL, key_value TEXT NOT NULL, \
-             isActive INTEGER DEFAULT 1, lastUsed TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)",
-        )?;
+        c.execute_batch(KEY_TABLE_DDL)?;
         let provider: String = c.query_row(
             "SELECT provider FROM connection_profiles WHERE id = ?1",
             [&pid],

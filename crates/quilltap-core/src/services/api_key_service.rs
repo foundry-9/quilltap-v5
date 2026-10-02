@@ -39,24 +39,61 @@ use crate::cheap_llm::CheapLlmSelection;
 use crate::db::{api_keys, connection_profiles, DbError};
 use crate::provider_manifest::Registry;
 
+/// Where a resolver's reads run (P4.136): a held connection, or the read pool.
+/// With the pool, each wrapped read checks out its OWN connection INSIDE its
+/// fallback wrap — as v4's `getCollection()` sits inside each repository
+/// `safeQuery` — so a pool failure lands on that read's line, not on no line.
+pub trait MainReads {
+    fn read_main_with<T>(
+        &self,
+        f: impl FnOnce(&Connection) -> Result<T, DbError>,
+    ) -> Result<T, DbError>;
+}
+
+impl MainReads for Connection {
+    fn read_main_with<T>(
+        &self,
+        f: impl FnOnce(&Connection) -> Result<T, DbError>,
+    ) -> Result<T, DbError> {
+        f(self)
+    }
+}
+
+impl MainReads for crate::db::runtime::Db {
+    fn read_main_with<T>(
+        &self,
+        f: impl FnOnce(&Connection) -> Result<T, DbError>,
+    ) -> Result<T, DbError> {
+        self.read_main(f)
+    }
+}
+
 /// v4 `getApiKeyForConnectionProfile` — resolve the (plaintext) key for a
 /// connection profile by id. `None` when the profile, its `apiKeyId`, or the key
-/// record (scoped to the user) is missing.
-pub fn get_api_key_for_connection_profile(
-    conn: &Connection,
+/// record (scoped to the user) is missing — or when either read FAILS: v4's
+/// two reads are both fallback `safeQuery`s (`api-key.service.ts:23-32`), the
+/// UNSCOPED profile read (`_findById` → `Error finding entity by ID`) then the
+/// SCOPED key read (`Error finding API key by ID and user ID`), each logging
+/// its own line and answering `null` (P4.136; the two `?`s here had surfaced
+/// the `Err` for every caller to fold silently).
+pub fn get_api_key_for_connection_profile<R: MainReads + ?Sized>(
+    reads: &R,
     profile_id: &str,
     user_id: &str,
-) -> Result<Option<String>, DbError> {
-    let Some(profile) = connection_profiles::find_by_id(conn, profile_id)? else {
-        return Ok(None);
-    };
+) -> Option<String> {
+    let profile =
+        crate::db::fallback::find_by_id_or_none("connection_profiles", profile_id, || {
+            reads.read_main_with(|conn| connection_profiles::find_by_id(conn, profile_id))
+        })?;
     // v4 `if (!profile?.apiKeyId) return null` — a falsy (missing/empty) id fails.
     let api_key_id = match profile.get("apiKeyId").and_then(|v| v.as_str()) {
         Some(id) if !id.is_empty() => id,
-        _ => return Ok(None),
+        _ => return None,
     };
-    let key = api_keys::find_by_id_and_user_id(conn, api_key_id, user_id)?;
-    Ok(key.map(|k| k.key_value))
+    crate::db::fallback::find_api_key_by_id_and_user_id_or_none(api_key_id, user_id, || {
+        reads.read_main_with(|conn| api_keys::find_by_id_and_user_id(conn, api_key_id, user_id))
+    })
+    .map(|k| k.key_value)
 }
 
 /// The **provider-scan** resolver style (v4 web search's `getAllApiKeys()` scan +
@@ -107,22 +144,22 @@ pub fn set_canned_cheap_llm_key(key: Option<String>) -> Option<String> {
 
 /// v4 `getApiKeyForCheapLLMSelection` — resolve the key for a cheap-LLM
 /// selection: `Some("")` for a local model (no key needed), `None` when the
-/// selection has no profile or the lookup fails, else the profile's key.
-pub fn get_api_key_for_cheap_llm_selection(
-    conn: &Connection,
+/// selection has no profile or the lookup fails (a failed read logs v4's
+/// repository line first — [`get_api_key_for_connection_profile`]), else the
+/// profile's key. The canned seam answers FIRST, before any read.
+pub fn get_api_key_for_cheap_llm_selection<R: MainReads + ?Sized>(
+    reads: &R,
     selection: &CheapLlmSelection,
     user_id: &str,
-) -> Result<Option<String>, DbError> {
+) -> Option<String> {
     if let Some(canned) = CANNED_CHEAP_LLM_KEY.with(|k| k.borrow().clone()) {
-        return Ok(Some(canned));
+        return Some(canned);
     }
     if selection.is_local {
-        return Ok(Some(String::new()));
+        return Some(String::new());
     }
-    let Some(profile_id) = &selection.connection_profile_id else {
-        return Ok(None);
-    };
-    get_api_key_for_connection_profile(conn, profile_id, user_id)
+    let profile_id = selection.connection_profile_id.as_deref()?;
+    get_api_key_for_connection_profile(reads, profile_id, user_id)
 }
 
 // ============================================================================
@@ -230,12 +267,12 @@ pub enum ProfileApiKeyResolution {
 ///   3. an `apiKeyId` that is present is ALWAYS followed, and a missing row
 ///      always refuses.
 ///
-/// The lookup is v4's UNSCOPED `findApiKeyById`, matching the two Brahma sites
-/// this replaces. A read error collapses to [`ProfileApiKeyFailure::ApiKeyNotFound`]
-/// — the pre-existing behavior of both of those sites (their `_ =>` arms), kept
-/// so the ported semantics change and the error mapping do not change together.
-pub fn resolve_connection_profile_api_key(
-    conn: &Connection,
+/// The lookup is v4's UNSCOPED `findApiKeyById` — a fallback `safeQuery`, so
+/// a read error logs `Error finding API key by ID` and answers `null`, which
+/// is [`ProfileApiKeyFailure::ApiKeyNotFound`] (P4.136: the line had been
+/// missing for every composite caller; the outcome was already v4's).
+pub fn resolve_connection_profile_api_key<R: MainReads + ?Sized>(
+    reads: &R,
     provider: &str,
     api_key_id: Option<&str>,
 ) -> ProfileApiKeyResolution {
@@ -252,9 +289,11 @@ pub fn resolve_connection_profile_api_key(
         };
     };
 
-    match api_keys::find_by_id(conn, id) {
-        Ok(Some(key)) => ProfileApiKeyResolution::Ok(key.key_value),
-        _ => ProfileApiKeyResolution::Failed(ProfileApiKeyFailure::ApiKeyNotFound),
+    match crate::db::fallback::find_api_key_by_id_or_none(id, || {
+        reads.read_main_with(|conn| api_keys::find_by_id(conn, id))
+    }) {
+        Some(key) => ProfileApiKeyResolution::Ok(key.key_value),
+        None => ProfileApiKeyResolution::Failed(ProfileApiKeyFailure::ApiKeyNotFound),
     }
 }
 
@@ -378,9 +417,89 @@ mod tests {
         };
         // Local short-circuits before any DB read.
         assert_eq!(
-            get_api_key_for_cheap_llm_selection(&conn, &sel, "u").unwrap(),
+            get_api_key_for_cheap_llm_selection(&conn, &sel, "u"),
             Some(String::new())
         );
+    }
+
+    /// A pooled `Db` whose every checkout fails (the file is unlinked after
+    /// the open) — v4's in-`safeQuery` `getCollection()` failing.
+    fn db_with_a_failing_read_pool() -> (tempfile::TempDir, crate::db::runtime::Db) {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("main.db");
+        drop(crate::db::Writer::open_writable(&path, PEPPER).unwrap());
+        let db = crate::db::runtime::Db::open_main(&path, PEPPER).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert!(
+            db.read_main(|_| Ok(())).is_err(),
+            "the plant must fail the pool"
+        );
+        (dir, db)
+    }
+
+    /// P4.136: v4 `getApiKeyForConnectionProfile`'s FIRST read is the
+    /// unscoped `_findById` — a failure logs `Error finding entity by ID` and
+    /// answers `null`, so the key read is never reached (one line, not two).
+    /// The canned seam still answers FIRST, before any read.
+    #[test]
+    fn a_failed_profile_read_logs_v4s_find_by_id_line_and_answers_none() {
+        let (_dir, db) = db_with_a_failing_read_pool();
+        let sel = CheapLlmSelection {
+            provider: "OPENAI".to_string(),
+            model_name: "m".to_string(),
+            base_url: None,
+            connection_profile_id: Some("cp-1".to_string()),
+            is_local: false,
+            profile_parameters: None,
+        };
+        let (key, lines) = crate::test_support::captured_with(|| {
+            get_api_key_for_cheap_llm_selection(&db, &sel, "u-1")
+        });
+        assert_eq!(key, None);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with(
+                "ERROR quilltap::db Error finding entity by ID collection=connection_profiles id=cp-1 error="
+            ),
+            "{}",
+            lines[0]
+        );
+        let _canned = crate::test_support::CannedCheapLlmKey::install("k-canned");
+        let (key, lines) = crate::test_support::captured_with(|| {
+            get_api_key_for_cheap_llm_selection(&db, &sel, "u-1")
+        });
+        assert_eq!(key.as_deref(), Some("k-canned"));
+        assert!(lines.is_empty(), "the canned seam reads nothing: {lines:?}");
+    }
+
+    /// P4.136: the gate+lookup composite's lookup is v4's UNSCOPED fallback
+    /// `findApiKeyById` — a corrupt row logs the repository's line and the
+    /// outcome stays `api-key-not-found`; a healthy row is silent.
+    #[test]
+    fn the_composites_failed_key_read_logs_v4s_line_and_refuses_not_found() {
+        let conn = crate::db::fallback::test_plants::conn_with_api_keys();
+        crate::db::fallback::test_plants::plant_api_key(&conn, "k-bad", "u-1", true);
+        crate::db::fallback::test_plants::plant_api_key(&conn, "k-ok", "u-1", false);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            resolve_connection_profile_api_key(&conn, "ANTHROPIC", Some("k-bad"))
+        });
+        assert_eq!(
+            got,
+            ProfileApiKeyResolution::Failed(ProfileApiKeyFailure::ApiKeyNotFound)
+        );
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding API key by ID collection=connection_profiles keyId=k-bad error=Invalid column type Blob at index: 4, name: key_value".to_string()]
+        );
+        let (got, lines) = crate::test_support::captured_with(|| {
+            resolve_connection_profile_api_key(&conn, "ANTHROPIC", Some("k-ok"))
+        });
+        assert_eq!(
+            got,
+            ProfileApiKeyResolution::Ok("synthetic-k-ok".to_string())
+        );
+        assert!(lines.is_empty(), "{lines:?}");
     }
 
     #[test]
@@ -394,10 +513,7 @@ mod tests {
             is_local: false,
             profile_parameters: None,
         };
-        assert_eq!(
-            get_api_key_for_cheap_llm_selection(&conn, &sel, "u").unwrap(),
-            None
-        );
+        assert_eq!(get_api_key_for_cheap_llm_selection(&conn, &sel, "u"), None);
     }
 
     #[test]

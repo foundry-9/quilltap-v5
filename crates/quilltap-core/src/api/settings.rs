@@ -226,14 +226,15 @@ fn enrich_with_api_key(conn: &rusqlite::Connection, api_key_id: Option<&str>) ->
     let Some(id) = api_key_id.filter(|s| !s.is_empty()) else {
         return Value::Null;
     };
-    match api_keys::find_by_id(conn, id) {
-        Ok(Some(k)) => json!({
+    // A read error is v4's fallback line, then `null` (P4.136).
+    match crate::db::fallback::find_api_key_by_id_or_none(id, || api_keys::find_by_id(conn, id)) {
+        Some(k) => json!({
             "id": k.id,
             "label": k.label,
             "provider": k.provider,
             "isActive": k.is_active,
         }),
-        _ => Value::Null,
+        None => Value::Null,
     }
 }
 
@@ -1279,11 +1280,11 @@ pub async fn connection_profile_create(db: &Db, user_id: &str, bag: &Value) -> R
         .filter(|s| !s.is_empty())
         .map(str::to_string);
     if let (Some(akid), false) = (&api_key_id, is_courier) {
-        let akid_owned = akid.clone();
-        let key = match db.read_main(move |conn| api_keys::find_by_id(conn, &akid_owned)) {
-            Ok(v) => v,
-            Err(e) => return internal(e),
-        };
+        // v4 `findApiKeyById` is a fallback `safeQuery`: a read error logs its
+        // line and answers `null` → the 404 below, never a 500 (P4.136).
+        let key = crate::db::fallback::find_api_key_by_id_or_none(akid, || {
+            db.read_main(|conn| api_keys::find_by_id(conn, akid))
+        });
         let Some(key) = key else {
             return not_found("API key");
         };
@@ -1571,12 +1572,11 @@ pub async fn connection_profile_update(db: &Db, user_id: &str, id: &str, bag: &V
             match classify_api_key_id(v) {
                 ApiKeyIdPatch::Clear => patch.api_key_id = Some(None),
                 ApiKeyIdPatch::Set(akid) => {
-                    let akid_owned = akid.to_string();
-                    let key =
-                        match db.read_main(move |conn| api_keys::find_by_id(conn, &akid_owned)) {
-                            Ok(v) => v,
-                            Err(e) => return internal(e),
-                        };
+                    // v4 `[id]/route.ts:207` — a fallback read: a read error
+                    // logs its line and is the 404 below (P4.136).
+                    let key = crate::db::fallback::find_api_key_by_id_or_none(akid, || {
+                        db.read_main(|conn| api_keys::find_by_id(conn, akid))
+                    });
                     let Some(key) = key else {
                         return not_found("API key");
                     };
@@ -2477,11 +2477,11 @@ pub fn connection_test<V: ConnectionValidator>(
 ) -> Response {
     let mut decrypted_key = String::new();
     if let Some(akid) = api_key_id.filter(|s| !s.is_empty()) {
-        let akid_owned = akid.to_string();
-        let key = match db.read_main(move |conn| api_keys::find_by_id(conn, &akid_owned)) {
-            Ok(v) => v,
-            Err(e) => return internal(e),
-        };
+        // v4 `findApiKeyById` is a fallback `safeQuery`: a read error logs its
+        // line and answers `null` → the 404 below, never a 500 (P4.136).
+        let key = crate::db::fallback::find_api_key_by_id_or_none(akid, || {
+            db.read_main(|conn| api_keys::find_by_id(conn, akid))
+        });
         let Some(key) = key else {
             return not_found("API key");
         };
@@ -2540,11 +2540,11 @@ where
     use crate::model::completion::{CompletionMessage, CompletionParams};
     let mut decrypted_key = String::new();
     if let Some(akid) = api_key_id.filter(|s| !s.is_empty()) {
-        let akid_owned = akid.to_string();
-        let key = match db.read_main(move |conn| api_keys::find_by_id(conn, &akid_owned)) {
-            Ok(v) => v,
-            Err(e) => return internal(e),
-        };
+        // v4 `findApiKeyById` is a fallback `safeQuery`: a read error logs its
+        // line and answers `null` → the 404 below, never a 500 (P4.136).
+        let key = crate::db::fallback::find_api_key_by_id_or_none(akid, || {
+            db.read_main(|conn| api_keys::find_by_id(conn, akid))
+        });
         let Some(key) = key else {
             return not_found("API key");
         };

@@ -539,18 +539,13 @@ where
     // Fall back to cheap LLM classification. Get the API key (v4
     // `gatekeeper.service.ts:378-382`, P4.133): the selection's own profile's
     // key; `null` (no profile, no row, a read error — v4's repository reads are
-    // fallback `safeQuery`s) fails safe with v4's WARN and is NOT cached.
-    let api_key = {
-        let selection = cheap_llm_selection.clone();
-        let uid = user_id.to_string();
-        db.read_main(move |conn| {
-            crate::services::api_key_service::get_api_key_for_cheap_llm_selection(
-                conn, &selection, &uid,
-            )
-        })
-        .ok()
-        .flatten()
-    };
+    // fallback `safeQuery`s, which log their own line first, P4.136) fails safe
+    // with v4's WARN and is NOT cached.
+    let api_key = crate::services::api_key_service::get_api_key_for_cheap_llm_selection(
+        db,
+        cheap_llm_selection,
+        user_id,
+    );
     let Some(api_key) = api_key else {
         tracing::warn!(
             target: "quilltap::dangerous_content",
@@ -909,6 +904,89 @@ mod tests {
         assert_eq!(
             *provider.0.lock().unwrap(),
             vec!["k-classifier".to_string()]
+        );
+    }
+
+    /// P4.136: a corrupt key row behind the selection's profile — v4's SCOPED
+    /// fallback read logs its repository line, answers `null`, and the
+    /// classifier fails safe with its WARN (in that order) and makes no call.
+    /// The seam is NOT armed (it answers before any read).
+    #[test]
+    fn a_corrupt_key_row_logs_v4s_line_then_fails_safe() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let main = dir.path().join("quilltap.db");
+        {
+            let w = crate::db::Writer::open_writable(&main, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "INSERT INTO api_keys (id, userId, label, provider, key_value, isActive, \
+                     createdAt, updatedAt) VALUES ('k-g', 'user-1', 'g', 'OPENAI', x'00000000', \
+                     1, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z'); \
+                     INSERT INTO connection_profiles (id, userId, name, provider, modelName, \
+                     apiKeyId, parameters, createdAt, updatedAt) VALUES ('cp-g', 'user-1', 'G', \
+                     'OPENAI', 'gpt-mini', 'k-g', '{}', '2026-10-01T00:00:00.000Z', \
+                     '2026-10-01T00:00:00.000Z');",
+                )
+                .unwrap();
+        }
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main,
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let selection = CheapLlmSelection {
+            provider: "OPENAI".to_string(),
+            model_name: "gpt-mini".to_string(),
+            base_url: None,
+            connection_profile_id: Some("cp-g".to_string()),
+            is_local: false,
+            profile_parameters: None,
+        };
+        let policy = super::super::resolver::test_policy("OFF", None);
+        struct NeverCalled;
+        impl CompletionProvider for NeverCalled {
+            async fn send_message(
+                &self,
+                _provider: &str,
+                _base_url: Option<&str>,
+                _params: &CompletionParams,
+            ) -> Result<
+                crate::model::completion::CompletionResponse,
+                crate::model::completion::CompletionError,
+            > {
+                panic!("no classification call without a key")
+            }
+        }
+        let (result, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(classify_content(
+                &db,
+                &NoModerationProvider,
+                &NeverCalled,
+                "P4.136 corrupt-key classification probe",
+                &selection,
+                "user-1",
+                &policy,
+                None,
+            ))
+        });
+        assert_eq!(result, DangerClassificationResult::safe_fallback());
+        let line = "ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId=k-g userId=user-1 error=Invalid column type Blob at index: 4, name: key_value";
+        let warn = "[Gatekeeper] No API key available for classification, failing safe";
+        let at_line = lines.iter().position(|l| l == line);
+        let at_warn = lines.iter().position(|l| l.contains(warn));
+        assert!(
+            matches!((at_line, at_warn), (Some(a), Some(b)) if a < b),
+            "v4's repository line, then the WARN: {lines:?}"
         );
     }
 }

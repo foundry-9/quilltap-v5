@@ -34,6 +34,7 @@ use serde_json::{json, Value};
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 const USER_A: &str = "5e100000-0000-4000-8000-000000000001";
 const OPENAI_KEY: &str = "5e300000-0000-4000-8000-000000000001";
+const GPT_PROFILE: &str = "5e400000-0000-4000-8000-000000000001";
 
 fn open_db() -> Option<(Db, tempfile::TempDir)> {
     let fixture = std::env::var("QT_FIXTURE_SETTINGS").ok()?;
@@ -212,6 +213,123 @@ fn test_message_maps_response() {
         json!("Test message successful! Model responded: \"Hello there!\"")
     );
     assert_eq!(v["responsePreview"], json!("Hello there!"));
+}
+
+/// P4.136: v4 `findApiKeyById` is a fallback `safeQuery` on the
+/// `connection_profiles` repository — a read error logs `Error finding API key
+/// by ID {collection, keyId, error}` and answers `null`, which every one of the
+/// four connection-profile routes turns into a 404 `API key` (create `route.
+/// ts:252`, PUT `[id]/route.ts:207`, test-connection `:360`, test-message
+/// `:428`). v5 had answered 500. The plant is a COPY of the fixture whose
+/// OpenAI key row's `key_value` is a BLOB — the plant both sides fail on
+/// (v4's `ApiKeySchema.parse` refuses the decoded Float32Array, measured in
+/// the `title_update_tier3` lifted case; v5's marshal answers
+/// `InvalidColumnType`). A text `isActive` is not one: v4 coerces it.
+#[test]
+fn a_corrupt_key_row_is_v4s_logged_404_on_all_four_routes() {
+    let Some((db, _t)) = open_db_with_a_corrupt_openai_key() else {
+        eprintln!("SKIP: set QT_FIXTURE_SETTINGS");
+        return;
+    };
+    let rt = rt();
+    let line = format!(
+        "ERROR quilltap::db Error finding API key by ID collection=connection_profiles keyId={OPENAI_KEY} error=Invalid column type Blob at index: 4, name: key_value"
+    );
+    let want = json!({ "kind": "NotFound", "error": "API key not found" });
+    type Arm<'a> = (&'static str, Box<dyn Fn() -> Response + 'a>);
+    let arms: Vec<Arm<'_>> = vec![
+        (
+            "test-message",
+            Box::new(|| {
+                rt.block_on(settings::connection_test_message(
+                    &db,
+                    "OPENAI",
+                    Some(OPENAI_KEY),
+                    None,
+                    "gpt-4o",
+                    &json!({}),
+                    &CannedCompletion("unreached".into()),
+                ))
+            }),
+        ),
+        (
+            "test-connection",
+            Box::new(|| {
+                settings::connection_test(
+                    &db,
+                    "OPENAI",
+                    Some(OPENAI_KEY),
+                    None,
+                    &CannedValidator(Ok(true)),
+                )
+            }),
+        ),
+        (
+            "create",
+            Box::new(|| {
+                rt.block_on(settings::connection_profile_create(
+                    &db,
+                    USER_A,
+                    &json!({
+                        "name": "P4.136 corrupt-key probe",
+                        "provider": "OPENAI",
+                        "modelName": "gpt-4o",
+                        "apiKeyId": OPENAI_KEY,
+                    }),
+                ))
+            }),
+        ),
+        (
+            "update",
+            Box::new(|| {
+                rt.block_on(settings::connection_profile_update(
+                    &db,
+                    USER_A,
+                    GPT_PROFILE,
+                    &json!({ "apiKeyId": OPENAI_KEY }),
+                ))
+            }),
+        ),
+    ];
+    for (arm, call) in arms {
+        let (resp, lines) = quilltap_core::test_support::captured_with(call);
+        assert_eq!(body(resp), want, "{arm}");
+        let db_lines: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains(" quilltap::db "))
+            .collect();
+        assert_eq!(db_lines, vec![&line], "{arm}: {lines:?}");
+    }
+}
+
+/// The fixture copy with the OpenAI key row's `key_value` cell made a BLOB
+/// (written through a writable open on the COPY, never the fixture).
+fn open_db_with_a_corrupt_openai_key() -> Option<(Db, tempfile::TempDir)> {
+    let fixture = std::env::var("QT_FIXTURE_SETTINGS").ok()?;
+    let tmp = tempfile::tempdir().unwrap();
+    let main = tmp.path().join("main.db");
+    std::fs::copy(&fixture, &main).unwrap();
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, PEPPER).unwrap();
+        let n = w
+            .connection()
+            .execute(
+                "UPDATE api_keys SET key_value = x'00000000' WHERE id = ?1",
+                [OPENAI_KEY],
+            )
+            .unwrap();
+        assert_eq!(n, 1, "the plant must land on the fixture's OpenAI key");
+    }
+    let db = Db::open(
+        DbPaths {
+            main,
+            mount_index: None,
+            llm_logs: None,
+        },
+        PEPPER,
+    )
+    .expect("open db");
+    Some((db, tmp))
 }
 
 #[test]

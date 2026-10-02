@@ -675,7 +675,7 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
     // `findApiKeyByIdAndUserId`, `file-attachment-fallback.ts:436`) and SENT
     // with the vision call — `''` when the profile names none or the row is
     // gone (v4 `apiKeyValue || ''`; P4.133, dogfood #133).
-    let api_key = resolve_api_key(deps, profile).await.unwrap_or_default();
+    let api_key = resolve_api_key(deps.db, deps.user_id, profile).unwrap_or_default();
 
     // Parameters (snake_case input keys; camelCase wire output). v4 `d9c5a1c7`
     // replaced the raw `imageDescProfile.parameters` cast with
@@ -946,18 +946,15 @@ fn set_description_metadata(
     }
 }
 
-/// Resolve the profile's API key off the DB (v4 `findApiKeyByIdAndUserId`).
-async fn resolve_api_key<CMP: CompletionProvider>(
-    deps: &FallbackDeps<'_, CMP>,
-    profile: &Value,
-) -> Option<String> {
-    let api_key_id = profile.get("apiKeyId").and_then(Value::as_str)?.to_string();
-    let user_id = deps.user_id.to_string();
-    deps.db
-        .read_main(move |c| crate::db::api_keys::find_by_id_and_user_id(c, &api_key_id, &user_id))
-        .ok()
-        .flatten()
-        .map(|k| k.key_value)
+/// Resolve the profile's API key off the DB (v4 `findApiKeyByIdAndUserId`, a
+/// fallback `safeQuery`: a read error logs `Error finding API key by ID and
+/// user ID` and answers `null`, which the caller sends as `''` — P4.136).
+fn resolve_api_key(db: &Db, user_id: &str, profile: &Value) -> Option<String> {
+    let api_key_id = profile.get("apiKeyId").and_then(Value::as_str)?;
+    crate::db::fallback::find_api_key_by_id_and_user_id_or_none(api_key_id, user_id, || {
+        db.read_main(|c| crate::db::api_keys::find_by_id_and_user_id(c, api_key_id, user_id))
+    })
+    .map(|k| k.key_value)
 }
 
 /// Downsize a base64 image to the description provider's limit. Returns
@@ -1546,6 +1543,35 @@ mod tests {
     use super::*;
     use crate::test_support::captured;
     use serde_json::json;
+
+    /// P4.136: image description's key read is v4's SCOPED fallback
+    /// `findApiKeyByIdAndUserId` (`file-attachment-fallback.ts:434-439`) — a
+    /// corrupt row logs the repository's line and the caller sends `''`; a
+    /// healthy row, another user's row and a miss are silent.
+    #[test]
+    fn a_failed_key_read_logs_v4s_line_and_sends_empty() {
+        let (_dir, db) = crate::db::fallback::test_plants::db_with_api_keys(&[
+            ("k-bad", "u-1", true),
+            ("k-ok", "u-1", false),
+        ]);
+        let (key, lines) = crate::test_support::captured_with(|| {
+            resolve_api_key(&db, "u-1", &json!({"apiKeyId": "k-bad"})).unwrap_or_default()
+        });
+        assert_eq!(key, "");
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId=k-bad userId=u-1 error=Invalid column type Blob at index: 4, name: key_value".to_string()]
+        );
+        let (keys, lines) = crate::test_support::captured_with(|| {
+            (
+                resolve_api_key(&db, "u-1", &json!({"apiKeyId": "k-ok"})),
+                resolve_api_key(&db, "u-2", &json!({"apiKeyId": "k-ok"})),
+                resolve_api_key(&db, "u-1", &json!({"apiKeyId": "k-gone"})),
+            )
+        });
+        assert_eq!(keys, (Some("synthetic-k-ok".to_string()), None, None));
+        assert!(lines.is_empty(), "{lines:?}");
+    }
 
     #[test]
     fn needs_fallback_image_gated_by_flag() {

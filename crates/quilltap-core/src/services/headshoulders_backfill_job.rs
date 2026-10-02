@@ -266,12 +266,10 @@ pub async fn handle_headshoulders_backfill<CMP: CompletionProvider>(
         return Ok(());
     };
 
-    let uid = user_id.to_string();
-    let sel = selection.clone();
-    let api_key = db
-        .read_main(move |conn| get_api_key_for_cheap_llm_selection(conn, &sel, &uid))
-        .map_err(|e| e.to_string())?;
-    let Some(api_key) = api_key else {
+    // v4's two repository reads are fallback `safeQuery`s: a read error logs
+    // its line and answers `null` — this skip, never a failed job (P4.136; the
+    // `?` here had failed the job on a read error).
+    let Some(api_key) = get_api_key_for_cheap_llm_selection(db, &selection, user_id) else {
         tracing::warn!(
             context = CONTEXT,
             job_id = %job_id,

@@ -603,6 +603,26 @@ pub(crate) mod test_plants {
         conn
     }
 
+    /// A pooled [`crate::db::runtime::Db`] over a main DB holding only the
+    /// `api_keys` table and the planted `(id, userId, corrupt)` rows — for
+    /// sites that read through `db.read_main`.
+    pub(crate) fn db_with_api_keys(
+        rows: &[(&str, &str, bool)],
+    ) -> (tempfile::TempDir, crate::db::runtime::Db) {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("main.db");
+        {
+            let w = crate::db::Writer::open_writable(&path, PEPPER).unwrap();
+            w.connection().execute_batch(API_KEYS_DDL).unwrap();
+            for (id, user_id, corrupt) in rows {
+                plant_api_key(w.connection(), id, user_id, *corrupt);
+            }
+        }
+        let db = crate::db::runtime::Db::open_main(&path, PEPPER).unwrap();
+        (dir, db)
+    }
+
     pub(crate) fn plant_api_key(conn: &Connection, id: &str, user_id: &str, corrupt: bool) {
         let key_value = if corrupt {
             "x'00000000'"

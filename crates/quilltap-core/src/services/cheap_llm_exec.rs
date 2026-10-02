@@ -708,20 +708,14 @@ impl CheapLlmTaskExecutor {
         let Some(handle) = &self.fallback else {
             return Ok(None);
         };
-        let selection = selection.clone();
-        let user_id = handle.user_id.clone();
-        // v4's repository reads are fallback `safeQuery`s: a read error answers
-        // `null` there too, and lands on the same throw.
-        match handle
-            .db
-            .read_main(move |conn| {
-                super::api_key_service::get_api_key_for_cheap_llm_selection(
-                    conn, &selection, &user_id,
-                )
-            })
-            .ok()
-            .flatten()
-        {
+        // v4's repository reads are fallback `safeQuery`s: a read error logs
+        // its line (P4.136), answers `null` there too, and lands on the same
+        // throw.
+        match super::api_key_service::get_api_key_for_cheap_llm_selection(
+            &handle.db,
+            selection,
+            &handle.user_id,
+        ) {
             Some(key) => Ok(Some(key)),
             None => Err(CompletionError::new(
                 "No API key available for cheap LLM provider",
@@ -3200,6 +3194,78 @@ mod tests {
             *provider.0.lock().unwrap(),
             vec!["synthetic-cur".to_string(), String::new()],
             "the refused selection must never reach the provider"
+        );
+    }
+
+    /// P4.136: a corrupt key row on the selection's profile — v4's SCOPED
+    /// fallback `findApiKeyByIdAndUserId` logs its repository line and answers
+    /// `null`, and `sendToProvider` throws `No API key available for cheap LLM
+    /// provider` before any provider call. The canned seam is NOT armed (it
+    /// answers before any read). The healthy-row leg is the test above.
+    #[test]
+    fn a_corrupt_key_row_logs_v4s_line_and_throws_before_the_provider() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let main_path = main_with_selection_key(dir.path(), PEPPER, "ANTHROPIC");
+        Writer::open_writable(&main_path, PEPPER)
+            .unwrap()
+            .connection()
+            .execute(
+                "UPDATE api_keys SET key_value = x'00000000' WHERE id = 'k-cur'",
+                [],
+            )
+            .unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: main_path,
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let exec = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db,
+            user_id: "user-1".to_string(),
+            chat_id: None,
+            message_id: None,
+            ctx: LogContext::none(),
+        });
+        let provider = RecordingProvider::new();
+        let (result, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(exec.execute(
+                &provider,
+                &selection("ANTHROPIC", "claude-haiku"),
+                vec![CompletionMessage::user("title this")],
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("title-generation"),
+                CheapLlmTaskOptions::default(),
+            ))
+        });
+        assert!(!result.success);
+        assert_eq!(
+            result.error.as_deref(),
+            Some("No API key available for cheap LLM provider")
+        );
+        let db_lines: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains(" quilltap::db "))
+            .collect();
+        assert_eq!(
+            db_lines,
+            vec!["ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId=k-cur userId=user-1 error=Invalid column type Blob at index: 4, name: key_value"],
+            "{lines:?}"
+        );
+        assert!(
+            provider.seen.lock().unwrap().is_empty(),
+            "no provider call without a key"
         );
     }
 

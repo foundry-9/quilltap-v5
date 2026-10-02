@@ -370,16 +370,10 @@ where
 
     // v4 reads the api key (unscoped `findApiKeyById`, `carina.service.ts:517`)
     // and passes it to `streamMessage` (`:676`) — `''` when the profile names
-    // none or the row is gone. SENT since P4.133 (dogfood #133).
-    let api_key = if let Some(api_key_id) = s(&connection_profile, "apiKeyId") {
-        db.read_main(|c| api_keys::find_by_id(c, &api_key_id))
-            .ok()
-            .flatten()
-            .map(|k| k.key_value)
-            .unwrap_or_default()
-    } else {
-        String::new()
-    };
+    // none or the row is gone. SENT since P4.133 (dogfood #133). A read error
+    // is v4's fallback `safeQuery`: `Error finding API key by ID`, then `''`
+    // (P4.136).
+    let api_key = carina_api_key(db, &connection_profile);
 
     // 3. Load the chat for its tool slate + image profile.
     let chat_id_r = chat_id.clone();
@@ -870,6 +864,20 @@ where
 
 /// v4 `resolveCarinaProfile`: answerer's default → instance default → first
 /// profile whose provider supports native web search → `None`.
+/// The answering profile's key (`carina.service.ts:516-519`): v4's UNSCOPED
+/// fallback `findApiKeyById` — `''` for no `apiKeyId`, a missing row, or a
+/// read error (which logs the repository line first).
+fn carina_api_key(db: &Db, connection_profile: &Value) -> String {
+    let Some(api_key_id) = s(connection_profile, "apiKeyId") else {
+        return String::new();
+    };
+    crate::db::fallback::find_api_key_by_id_or_none(&api_key_id, || {
+        db.read_main(|c| api_keys::find_by_id(c, &api_key_id))
+    })
+    .map(|k| k.key_value)
+    .unwrap_or_default()
+}
+
 fn resolve_carina_profile(db: &Db, user_id: &str, answerer: &Value) -> Option<Value> {
     if let Some(default_id) = s(answerer, "defaultConnectionProfileId") {
         if let Ok(Some(by_char)) = db.read_main(|c| connection_profiles::find_by_id(c, &default_id))
@@ -1353,6 +1361,37 @@ impl EventSink for NoopSink {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// P4.136: Carina's key read is v4's UNSCOPED fallback `findApiKeyById`
+    /// (`carina.service.ts:516-519`) — a corrupt row logs the repository's
+    /// line and sends `''`; a healthy row, a miss and no id are silent.
+    #[test]
+    fn a_failed_key_read_logs_v4s_line_and_sends_empty() {
+        let (_dir, db) = crate::db::fallback::test_plants::db_with_api_keys(&[
+            ("k-bad", "u-1", true),
+            ("k-ok", "u-1", false),
+        ]);
+        let (key, lines) = crate::test_support::captured_with(|| {
+            carina_api_key(&db, &json!({"apiKeyId": "k-bad"}))
+        });
+        assert_eq!(key, "");
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding API key by ID collection=connection_profiles keyId=k-bad error=Invalid column type Blob at index: 4, name: key_value".to_string()]
+        );
+        let (keys, lines) = crate::test_support::captured_with(|| {
+            (
+                carina_api_key(&db, &json!({"apiKeyId": "k-ok"})),
+                carina_api_key(&db, &json!({"apiKeyId": "k-gone"})),
+                carina_api_key(&db, &json!({})),
+            )
+        });
+        assert_eq!(
+            keys,
+            ("synthetic-k-ok".to_string(), String::new(), String::new())
+        );
+        assert!(lines.is_empty(), "{lines:?}");
+    }
 
     #[test]
     fn brahma_name_is_case_and_whitespace_insensitive() {

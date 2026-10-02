@@ -130,8 +130,17 @@ interface CaseSpec {
    * profile names; the key the provider receives is recorded. `none` leaves the
    * profile keyless: v4 throws `No API key available for cheap LLM provider`
    * before the provider is built (`core-execution.ts:311`).
+   *
+   * P4.136: `corrupt` plants `bound`'s rows, then corrupts the BOUND row's
+   * `key_value` cell to a BLOB, so v4's REAL scoped `findApiKeyByIdAndUserId`
+   * throws inside its fallback `safeQuery` (the backend decodes a stray Buffer
+   * as Float32, and `ApiKeySchema.parse`'s `z.string()` refuses it): the
+   * repository's ERROR line, `null`, and the same throw as `none`. (NOT a text
+   * `isActive` — measured: v4's backend coerces a non-number boolean cell with
+   * `Boolean(value)`, so `'x'` reads as `true` and the key is SENT.) Every
+   * lifted case records the repository's API-key / profile lines (`dbLines`).
    */
-  liftKeyMock?: 'bound' | 'none';
+  liftKeyMock?: 'bound' | 'none' | 'corrupt';
 }
 
 /** The hand rename `midFlightRename` plants (both sides write these bytes). */
@@ -342,6 +351,9 @@ function buildCases(): CaseSpec[] {
     // No key on the profile: v4's throw, caught into `{success:false}` — the
     // handler advances the cursor and writes nothing else.
     { name: 'no_key_refuses', chat: (s) => s.chatTitleId, liftKeyMock: 'none' },
+    // P4.136: the bound key's row is corrupt — v4's fallback read logs its
+    // line and answers `null`, which is `no_key_refuses`'s throw.
+    { name: 'corrupt_key_logs_and_refuses', chat: (s) => s.chatTitleId, liftKeyMock: 'corrupt' },
   ];
 }
 
@@ -446,6 +458,17 @@ function applyMocks(spec: Spec, c: CaseSpec): void {
 
 /** P4.133: the keys the canned provider received in the current case. */
 let sentKeys: string[] = [];
+
+/**
+ * P4.136: the repository fallback lines a lifted case's key resolution can
+ * write (`safeQuery` logs through the ROOT logger, `safe-query.ts:64`), with
+ * the bag as logged — `{collection, …context, error}` in v4's order.
+ */
+const KEY_READ_LINES = new Set([
+  'Error finding API key by ID and user ID',
+  'Error finding API key by ID',
+  'Error finding entity by ID',
+]);
 
 /**
  * P4.133: plant the `bound` arm's two keys on the case's DB copy, through raw
@@ -565,7 +588,24 @@ async function runCase(
     const chatId = c.chat(spec);
     const userId = c.user ? c.user(spec) : spec.userEnabledId;
     sentKeys = [];
-    if (c.liftKeyMock === 'bound') await plantBoundKey(spec, userId);
+    if (c.liftKeyMock === 'bound' || c.liftKeyMock === 'corrupt') {
+      await plantBoundKey(spec, userId);
+    }
+    if (c.liftKeyMock === 'corrupt') {
+      const { rawQuery } = await import('@/lib/database/manager');
+      await rawQuery(`UPDATE api_keys SET key_value = x'00000000' WHERE id = ?`, [KEY_BOUND_ID]);
+    }
+    // P4.136: record the key resolution's repository lines (this registry
+    // generation's root logger — the one `safe-query.ts` imported).
+    const dbLines: Array<{ level: string; message: string; bag: unknown }> = [];
+    const { logger } = await import('@/lib/logger');
+    const errorSpy = jest
+      .spyOn(logger, 'error')
+      .mockImplementation(((message: string, bag?: Record<string, unknown>) => {
+        if (KEY_READ_LINES.has(message)) {
+          dbLines.push({ level: 'error', message, bag: JSON.parse(JSON.stringify(bag ?? {})) });
+        }
+      }) as never);
     const currentInterchange = c.currentInterchange ?? 5;
     const { handleTitleUpdate } = await import('@/lib/background-jobs/handlers/title-update');
 
@@ -592,6 +632,8 @@ async function runCase(
       await handleTitleUpdate(job as never);
     } catch (e) {
       threw = e instanceof Error ? e.message : String(e);
+    } finally {
+      errorSpy.mockRestore();
     }
 
     return {
@@ -599,7 +641,7 @@ async function runCase(
       threw,
       ...(c.expectThrow ? {} : { state: await dumpState(chatId) }),
       // P4.133: only the lifted cases see a real key (the others the mock's).
-      ...(c.liftKeyMock ? { sentKeys } : {}),
+      ...(c.liftKeyMock ? { sentKeys, dbLines } : {}),
     };
   } finally {
     global.Date = RealDate;
