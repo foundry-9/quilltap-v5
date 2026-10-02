@@ -14,7 +14,7 @@
 use serde_json::Value;
 
 use crate::db::runtime::Db;
-use crate::db::DbError;
+use crate::services::api_key_service::read_api_key_scoped;
 use crate::services::primary_stream::EffectiveProfile;
 
 use super::resolver::ResolvedConciergePolicy;
@@ -103,36 +103,25 @@ impl<'c> ConnApiKeys<'c> {
 
 impl ApiKeyResolver for ConnApiKeys<'_> {
     fn resolve(&self, api_key_id: &str, user_id: &str) -> Option<String> {
-        find_api_key_or_none(
-            || crate::db::api_keys::find_by_id_and_user_id(self.conn, api_key_id, user_id),
-            api_key_id,
-            user_id,
-        )
+        read_api_key_scoped(self.conn, api_key_id, user_id).map(|k| k.key_value)
     }
 
     /// Never `Err`: the real read is v4's FALLBACK read (see
-    /// [`find_api_key_or_none`]), so a database error logs the repository's
+    /// [`read_api_key_scoped`]), so a database error logs the repository's
     /// ERROR and answers "no key" — v4's `decryptKey` catch never sees it.
     fn try_resolve(&self, api_key_id: &str, user_id: &str) -> Result<Option<String>, String> {
         Ok(self.resolve(api_key_id, user_id))
     }
 }
 
-/// v4 `repos.connections.findApiKeyByIdAndUserId` as its callers see it — a
-/// fallback `safeQuery` — so a failed read (the read pool included, which v4's
-/// in-`safeQuery` `getCollection()` stands for) logs the repository's ERROR
-/// and answers `null`. P4.124: the two real resolvers'
-/// `try_resolve(…).ok().flatten()` had dropped it silently. P4.136: the line
-/// lives in its home, [`crate::db::fallback::find_api_key_by_id_and_user_id_or_none`]
-/// (this copy had rendered `error` with `DbError`'s `sqlite error:` prefix).
-fn find_api_key_or_none(
-    read: impl FnOnce() -> Result<Option<crate::db::api_keys::ApiKey>, DbError>,
-    key_id: &str,
-    user_id: &str,
-) -> Option<String> {
-    crate::db::fallback::find_api_key_by_id_and_user_id_or_none(key_id, user_id, read)
-        .map(|k| k.key_value)
-}
+// v4 `repos.connections.findApiKeyByIdAndUserId` as its callers see it — a
+// fallback `safeQuery` — so a failed read (the read pool included, which v4's
+// in-`safeQuery` `getCollection()` stands for) logs the repository's ERROR
+// and answers `null`. P4.124: the two real resolvers'
+// `try_resolve(…).ok().flatten()` had dropped it silently. P4.136: the line
+// lives in its home (this file's copy had rendered `error` with `DbError`'s
+// `sqlite error:` prefix). P4.139: both resolvers read through
+// `api_key_service::read_api_key_scoped`, the one scoped helper over that home.
 
 /// The owned-[`Db`] form of [`ConnApiKeys`] — the same real resolution
 /// (`find_by_id_and_user_id`) but reading off the read pool via a held [`Db`]
@@ -144,15 +133,7 @@ fn find_api_key_or_none(
 pub struct DbApiKeys(pub Db);
 impl ApiKeyResolver for DbApiKeys {
     fn resolve(&self, api_key_id: &str, user_id: &str) -> Option<String> {
-        find_api_key_or_none(
-            || {
-                self.0.read_main(|conn| {
-                    crate::db::api_keys::find_by_id_and_user_id(conn, api_key_id, user_id)
-                })
-            },
-            api_key_id,
-            user_id,
-        )
+        read_api_key_scoped(&self.0, api_key_id, user_id).map(|k| k.key_value)
     }
 
     /// Never `Err` — the [`ConnApiKeys::try_resolve`] rule.

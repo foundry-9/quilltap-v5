@@ -161324,3 +161324,45 @@ commits past the order's `cb9ecf256`: the order itself and the #124 ruling).
   `QT_FIXTURE_API_KEYS=/tmp/p4139/qt-api-keys-fixture.db npx tsx $V5W/harness/oracle/cases/api-keys.ts > /tmp/p4139/oracle-api-keys.ndjson`;
   run with `QT_ORACLE_API_KEYS` + `QT_FIXTURE_API_KEYS`.
 
+### Unit 2 — the two read helpers + the api-keys routes (Tier 1 items 1 + 3)
+
+- `services/api_key_service.rs`: `read_api_key<R: MainReads>(reads, id)` and
+  `read_api_key_scoped(reads, id, user_id)` over the existing homes. The
+  composite + `get_api_key_for_connection_profile` use them; the eleven
+  hand-wraps folded (`settings.rs` ×5, `participant_resolver.rs`,
+  `file_fallback.rs`, `provider_routing.rs` ×2 — its local
+  `find_api_key_or_none` deleted — and the two in `api_key_service.rs`).
+  `carina_query.rs:872` LEFT (P4.140's file; already correct). Pins: one test
+  over `test_plants` (both exact lines on a BLOB row; healthy / miss / foreign
+  owner silent) + a pool-failure pin (one line, the `MainReads` divergence).
+- `api/settings.rs`: `api_key_update` / `api_key_delete` through `read_api_key`,
+  `api_key_test` through `read_api_key_scoped`; the `not_found("API key")` arms
+  follow. Why-comment at `api_key_update` names `[id]/route.ts:13`'s dead
+  `getUserRepositories` import (NO scoping change — survey §B).
+- `settings_wire_actions`: `…_on_all_five_key_routes` →
+  `…_on_all_eight_key_routes` (update + delete → 404 + the unscoped line; test
+  → 404 + the SCOPED line), restructured to COLLECT every arm's red before the
+  verdict (it had fail-fasted on the first). NEW
+  `a_corrupt_key_row_is_dropped_from_the_api_key_list_with_v4s_warn` (200, the
+  OpenAI key absent, count 1, exactly the WARN). **Red-first at the baseline
+  source** (`settings.rs` + `db/api_keys.rs` restored from `main`, run,
+  restored by `cmp`): the eight-arm test red on EXACTLY the three new arms
+  (`Internal "sqlite error: Invalid column type Blob at index: 4, name:
+  key_value"` + no line, ×3; the five P4.136 arms green), the list test red
+  (`Internal`, 500). Green after.
+- `settings_routes_equivalence` + `settings-routes.test.ts`: a per-case
+  `corruptApiKey` seed (`UPDATE api_keys SET key_value = x'00000000'` on the
+  case's work copy — v4 via `rawQuery` after `initializeDatabase`, v5 via
+  `db.write`), echoed in `req`; rows `ak_update_corrupt` (PUT, no `after`),
+  `ak_delete_corrupt` (DELETE, no `after`), `ak_list_corrupt` (GET); a `>= 3`
+  stale-oracle guard. v4 recorded 404 / 404 / 200 (the Anthropic key alone,
+  count 1). **Red-first:** the family fail-fasts on `ak_update_corrupt`
+  (`{"error":"sqlite error: …"}` vs `{"error":"API key not found"}`); the other
+  two rows' reds are the same handlers the wire family measured red. Green
+  after (200 oracle rows).
+- Regen recipe (the header's, staged): build the fixture
+  `QT_FIXTURE_SETTINGS_MAIN=/tmp/p4139/qt-settings-fixture.db node --import tsx $V5W/harness/oracle/fixtures/build-settings-fixture.ts`;
+  mirror `settings-routes.test.ts` + `settings.json` into
+  `/tmp/p4139/qt-settings-oracle/{cases,fixtures}`; from the pin
+  `QT_FIXTURE_SETTINGS_MAIN=… QT_ORACLE_OUT=/tmp/p4139/oracle-settings-routes.ndjson npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots /tmp/p4139/qt-settings-oracle/cases -- "settings-routes\.test\.ts$"`.
+

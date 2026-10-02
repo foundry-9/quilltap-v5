@@ -340,6 +340,7 @@ fn settings_routes_match_v4() {
     let mut concierge_settings_cases = 0;
     let mut connection_profile_cases = 0;
     let mut profile_tag_cases = 0;
+    let mut corrupt_key_cases = 0;
     let mut recorded_cases = 0;
     for line in oracle.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).expect("parse oracle row");
@@ -477,6 +478,24 @@ fn settings_routes_match_v4() {
             .expect("seed brahma-console");
         }
 
+        // P4.139: the corrupt-key plant (the oracle applies the same UPDATE on
+        // its work copy) — a BLOB `key_value` both sides' marshals refuse.
+        if let Some(key_id) = req["corruptApiKey"].as_str().map(str::to_string) {
+            let n = rt
+                .block_on(db.write(move |w| {
+                    w.main()
+                        .connection()
+                        .execute(
+                            "UPDATE api_keys SET key_value = x'00000000' WHERE id = ?1",
+                            [&key_id],
+                        )
+                        .map_err(Into::into)
+                }))
+                .expect("plant the corrupt key");
+            assert_eq!(n, 1, "[{name}] the corrupt-key plant must land on one row");
+            corrupt_key_cases += 1;
+        }
+
         let (mut got_body, is_ack, got_status) = run_handler(&rt, &db, user, req);
 
         // The `after` refetch (post-mutation family list).
@@ -558,6 +577,11 @@ fn settings_routes_match_v4() {
     // 19 at P4.6d + the two P4.6an settings cases (re-keyed onto
     // `conciergeSettings` at P4.D227).
     assert!(n >= 21, "expected >= 21 cases, got {n}");
+    // P4.139: the three corrupt-key rows (PUT / DELETE / list).
+    assert!(
+        corrupt_key_cases >= 3,
+        "expected >= 3 corrupt-key api_keys cases, got {corrupt_key_cases} — regenerate the oracle"
+    );
     // P4.56: the data-retention family, whose arms are meaningful only through
     // the `Request` serde path this lane rewired it onto. Row-driven floor — it
     // moves with every arm batch (P4.55's rule).

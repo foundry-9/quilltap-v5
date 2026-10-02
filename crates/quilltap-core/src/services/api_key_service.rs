@@ -75,6 +75,37 @@ impl MainReads for crate::db::runtime::Db {
     }
 }
 
+/// v4 `findApiKeyById` as every caller sees it (P4.139): the UNSCOPED read of
+/// one key over `reads`, through `db::fallback`'s home — a read error (a
+/// corrupt cell, a pool failure) logs `Error finding API key by ID
+/// {collection: 'connection_profiles', keyId, error}` and answers `None`
+/// (`connection-profiles.repository.ts:249-265`, a 4-arg fallback
+/// `safeQuery`). v4 has no API-key read whose error propagates, so a caller
+/// never wants the raw `api_keys::find_by_id` — `api_key_read_sites_census`
+/// holds that rule.
+pub fn read_api_key<R: MainReads>(reads: &R, id: &str) -> Option<api_keys::ApiKey> {
+    crate::db::fallback::find_api_key_by_id_or_none(id, || {
+        reads.read_main_with(|conn| api_keys::find_by_id(conn, id))
+    })
+}
+
+/// v4 `findApiKeyByIdAndUserId` as every caller sees it (P4.139): the SCOPED
+/// read (a key owned by another user is `None`), through `db::fallback`'s
+/// home — a read error logs `Error finding API key by ID and user ID
+/// {collection, keyId, userId, error}` and answers `None`
+/// (`connection-profiles.repository.ts:270-288`). Also the read v4's
+/// user-scoped repository makes for `findApiKeyById` (`user-scoped.ts:246-
+/// 274` reroutes it here).
+pub fn read_api_key_scoped<R: MainReads>(
+    reads: &R,
+    id: &str,
+    user_id: &str,
+) -> Option<api_keys::ApiKey> {
+    crate::db::fallback::find_api_key_by_id_and_user_id_or_none(id, user_id, || {
+        reads.read_main_with(|conn| api_keys::find_by_id_and_user_id(conn, id, user_id))
+    })
+}
+
 /// v4 `getApiKeyForConnectionProfile` — resolve the (plaintext) key for a
 /// connection profile by id. `None` when the profile, its `apiKeyId`, or the key
 /// record (scoped to the user) is missing — or when either read FAILS: v4's
@@ -97,10 +128,7 @@ pub fn get_api_key_for_connection_profile<R: MainReads>(
         Some(id) if !id.is_empty() => id,
         _ => return None,
     };
-    crate::db::fallback::find_api_key_by_id_and_user_id_or_none(api_key_id, user_id, || {
-        reads.read_main_with(|conn| api_keys::find_by_id_and_user_id(conn, api_key_id, user_id))
-    })
-    .map(|k| k.key_value)
+    read_api_key_scoped(reads, api_key_id, user_id).map(|k| k.key_value)
 }
 
 /// The **provider-scan** resolver style (v4 web search's `getAllApiKeys()` scan +
@@ -296,9 +324,7 @@ pub fn resolve_connection_profile_api_key<R: MainReads>(
         };
     };
 
-    match crate::db::fallback::find_api_key_by_id_or_none(id, || {
-        reads.read_main_with(|conn| api_keys::find_by_id(conn, id))
-    }) {
+    match read_api_key(reads, id) {
         Some(key) => ProfileApiKeyResolution::Ok(key.key_value),
         None => ProfileApiKeyResolution::Failed(ProfileApiKeyFailure::ApiKeyNotFound),
     }
@@ -507,6 +533,70 @@ mod tests {
             ProfileApiKeyResolution::Ok("synthetic-k-ok".to_string())
         );
         assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// P4.139: the two helpers ARE v4's two fallback reads — a corrupt cell
+    /// logs the home's exact line (unscoped / scoped) and is `None`; a healthy
+    /// row, a miss and (scoped) a foreign owner are silent.
+    #[test]
+    fn the_read_helpers_log_v4s_lines_and_answer_none() {
+        use crate::db::fallback::test_plants::{conn_with_api_keys, plant_api_key};
+        let conn = conn_with_api_keys();
+        plant_api_key(&conn, "k-bad", "u-1", true);
+        plant_api_key(&conn, "k-ok", "u-1", false);
+        let blob = "error=Invalid column type Blob at index: 4, name: key_value";
+
+        let (got, lines) = crate::test_support::captured_with(|| read_api_key(&conn, "k-bad"));
+        assert!(got.is_none());
+        assert_eq!(
+            lines,
+            vec![format!(
+                "ERROR quilltap::db Error finding API key by ID collection=connection_profiles keyId=k-bad {blob}"
+            )]
+        );
+        let (got, lines) =
+            crate::test_support::captured_with(|| read_api_key_scoped(&conn, "k-bad", "u-1"));
+        assert!(got.is_none());
+        assert_eq!(
+            lines,
+            vec![format!(
+                "ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId=k-bad userId=u-1 {blob}"
+            )]
+        );
+
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                read_api_key(&conn, "k-ok").map(|k| k.key_value),
+                read_api_key(&conn, "k-missing"),
+                read_api_key_scoped(&conn, "k-ok", "u-1").map(|k| k.key_value),
+                read_api_key_scoped(&conn, "k-ok", "u-2"),
+                read_api_key_scoped(&conn, "k-missing", "u-1"),
+            )
+        });
+        assert_eq!(got.0.as_deref(), Some("synthetic-k-ok"));
+        assert!(got.1.is_none());
+        assert_eq!(got.2.as_deref(), Some("synthetic-k-ok"));
+        assert!(got.3.is_none(), "a foreign owner is a scoped miss");
+        assert!(got.4.is_none());
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// P4.139: over the read POOL, a failed checkout lands inside the home's
+    /// wrap — one line (the `MainReads` divergence: v4 logs `Failed to get
+    /// API keys collection` first).
+    #[test]
+    fn a_failed_pool_is_the_helpers_line() {
+        let (_dir, db) = db_with_a_failing_read_pool();
+        let (got, lines) = crate::test_support::captured_with(|| read_api_key(&db, "k-1"));
+        assert!(got.is_none());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with(
+                "ERROR quilltap::db Error finding API key by ID collection=connection_profiles keyId=k-1 error="
+            ),
+            "{}",
+            lines[0]
+        );
     }
 
     #[test]

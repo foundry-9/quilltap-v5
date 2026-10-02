@@ -87,6 +87,12 @@ interface CaseSpec {
    *  REAL setter before the case runs — the merge-over-current arms need it.
    *  The Rust harness seeds identically. */
   seedBrahmaConsole?: number;
+  /** P4.139: make this API key's `key_value` cell a BLOB on the case's work
+   *  copy before the case runs — the cell v4's `ApiKeySchema.parse` refuses
+   *  (the Float32 decode) and v5's marshal refuses (`InvalidColumnType`), so
+   *  the route's key read takes the repository's FALLBACK arm. The Rust
+   *  harness plants identically. */
+  corruptApiKey?: string;
   /** P4.D85: a v4 arm with NO v5 counterpart by design — v5 carries no
    *  `?action=` surface for connection profiles (the verbs ARE the action
    *  selection and no REST edge exists), so v4's two action-gate 400s and the
@@ -193,6 +199,12 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
       const { setBrahmaConsoleSettings } = await import('@/lib/instance-settings');
       await setBrahmaConsoleSettings({ maxAgentTurns: c.seedBrahmaConsole });
     }
+    if (c.corruptApiKey !== undefined) {
+      const { rawQuery } = await import('@/lib/database/manager');
+      await rawQuery("UPDATE api_keys SET key_value = x'00000000' WHERE id = ?", [
+        c.corruptApiKey,
+      ]);
+    }
     const req = mockRequest(c.url, c.method, c.body);
     let response: { status: number; json: () => Promise<unknown> };
     const params = { params: Promise.resolve({ id: c.paramId ?? '' }) };
@@ -268,6 +280,7 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         seedDataRetention: c.seedDataRetention ?? null,
         seedTaboo: c.seedTaboo ?? null,
         seedBrahmaConsole: c.seedBrahmaConsole ?? null,
+        corruptApiKey: c.corruptApiKey ?? null,
         recorded: c.recorded ?? false,
       },
       status,
@@ -2116,6 +2129,43 @@ describe('settings-routes oracle', () => {
       url: abase(spec.apiKeys.anthropic),
       paramId: spec.apiKeys.anthropic,
       after: 'apiKeys',
+    },
+    // P4.139 — a corrupt key row (a BLOB `key_value`). v4's key reads are
+    // FALLBACK `safeQuery`s: PUT and DELETE read UNSCOPED (`[id]/route.ts:95`,
+    // `:164`; the file's `getUserRepositories` import is dead) and answer the
+    // logged 404 — never the handler's catch → 500 — and the list
+    // (`getApiKeysByUserId`) DROPS the row with its WARN and lists the rest.
+    // No `after` on the PUT/DELETE rows: the refetch would only re-prove the
+    // list row's drop.
+    {
+      name: 'ak_update_corrupt',
+      family: 'api_keys',
+      user: 'A',
+      route: 'apiKeyItem',
+      method: 'PUT',
+      url: abase(spec.apiKeys.openai),
+      paramId: spec.apiKeys.openai,
+      body: { label: 'OpenAI Prod' },
+      corruptApiKey: spec.apiKeys.openai,
+    },
+    {
+      name: 'ak_delete_corrupt',
+      family: 'api_keys',
+      user: 'A',
+      route: 'apiKeyItem',
+      method: 'DELETE',
+      url: abase(spec.apiKeys.openai),
+      paramId: spec.apiKeys.openai,
+      corruptApiKey: spec.apiKeys.openai,
+    },
+    {
+      name: 'ak_list_corrupt',
+      family: 'api_keys',
+      user: 'A',
+      route: 'apiKeys',
+      method: 'GET',
+      url: `http://x${AK}`,
+      corruptApiKey: spec.apiKeys.openai,
     },
     // provider models (cached read).
     { name: 'pm_list_all', family: 'provider_models', user: 'A', route: 'models', method: 'GET', url: 'http://x/api/v1/models' },

@@ -951,10 +951,8 @@ fn set_description_metadata(
 /// user ID` and answers `null`, which the caller sends as `''` — P4.136).
 fn resolve_api_key(db: &Db, user_id: &str, profile: &Value) -> Option<String> {
     let api_key_id = profile.get("apiKeyId").and_then(Value::as_str)?;
-    crate::db::fallback::find_api_key_by_id_and_user_id_or_none(api_key_id, user_id, || {
-        db.read_main(|c| crate::db::api_keys::find_by_id_and_user_id(c, api_key_id, user_id))
-    })
-    .map(|k| k.key_value)
+    crate::services::api_key_service::read_api_key_scoped(db, api_key_id, user_id)
+        .map(|k| k.key_value)
 }
 
 /// Downsize a base64 image to the description provider's limit. Returns

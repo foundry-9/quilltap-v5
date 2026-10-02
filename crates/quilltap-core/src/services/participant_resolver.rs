@@ -249,10 +249,7 @@ fn to_message_views(messages: &[Value]) -> Vec<MessageView> {
 /// read error logs the repository line and leaves no key, as a miss does.
 fn profile_api_key(db: &Db, connection_profile: &Value) -> Option<String> {
     let api_key_id = str_field(connection_profile, "apiKeyId").filter(|s| !s.is_empty())?;
-    crate::db::fallback::find_api_key_by_id_or_none(api_key_id, || {
-        db.read_main(|conn| crate::db::api_keys::find_by_id(conn, api_key_id))
-    })
-    .map(|k| k.key_value)
+    crate::services::api_key_service::read_api_key(db, api_key_id).map(|k| k.key_value)
 }
 
 /// Read a character (vault-overlaid, v4 `repos.characters.findById`) — main+mount.

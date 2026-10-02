@@ -1282,9 +1282,7 @@ pub async fn connection_profile_create(db: &Db, user_id: &str, bag: &Value) -> R
     if let (Some(akid), false) = (&api_key_id, is_courier) {
         // v4 `findApiKeyById` is a fallback `safeQuery`: a read error logs its
         // line and answers `null` → the 404 below, never a 500 (P4.136).
-        let key = crate::db::fallback::find_api_key_by_id_or_none(akid, || {
-            db.read_main(|conn| api_keys::find_by_id(conn, akid))
-        });
+        let key = crate::services::api_key_service::read_api_key(db, akid);
         let Some(key) = key else {
             return not_found("API key");
         };
@@ -1574,9 +1572,7 @@ pub async fn connection_profile_update(db: &Db, user_id: &str, id: &str, bag: &V
                 ApiKeyIdPatch::Set(akid) => {
                     // v4 `[id]/route.ts:207` — a fallback read: a read error
                     // logs its line and is the 404 below (P4.136).
-                    let key = crate::db::fallback::find_api_key_by_id_or_none(akid, || {
-                        db.read_main(|conn| api_keys::find_by_id(conn, akid))
-                    });
+                    let key = crate::services::api_key_service::read_api_key(db, akid);
                     let Some(key) = key else {
                         return not_found("API key");
                     };
@@ -2355,10 +2351,7 @@ pub async fn model_fetch<F: ModelsFetcher>(
         // → the 404 below, never a 500 (the P4.136 shape; the fifth arm, found
         // at unification). The doubled "not found" is v4's own:
         // `notFound('API key not found')` appends " not found" again.
-        let key =
-            crate::db::fallback::find_api_key_by_id_and_user_id_or_none(akid, user_id, || {
-                db.read_main(|conn| api_keys::find_by_id_and_user_id(conn, akid, user_id))
-            });
+        let key = crate::services::api_key_service::read_api_key_scoped(db, akid, user_id);
         let Some(key) = key else {
             return not_found("API key not found");
         };
@@ -2482,9 +2475,7 @@ pub fn connection_test<V: ConnectionValidator>(
     if let Some(akid) = api_key_id.filter(|s| !s.is_empty()) {
         // v4 `findApiKeyById` is a fallback `safeQuery`: a read error logs its
         // line and answers `null` → the 404 below, never a 500 (P4.136).
-        let key = crate::db::fallback::find_api_key_by_id_or_none(akid, || {
-            db.read_main(|conn| api_keys::find_by_id(conn, akid))
-        });
+        let key = crate::services::api_key_service::read_api_key(db, akid);
         let Some(key) = key else {
             return not_found("API key");
         };
@@ -2545,9 +2536,7 @@ where
     if let Some(akid) = api_key_id.filter(|s| !s.is_empty()) {
         // v4 `findApiKeyById` is a fallback `safeQuery`: a read error logs its
         // line and answers `null` → the 404 below, never a 500 (P4.136).
-        let key = crate::db::fallback::find_api_key_by_id_or_none(akid, || {
-            db.read_main(|conn| api_keys::find_by_id(conn, akid))
-        });
+        let key = crate::services::api_key_service::read_api_key(db, akid);
         let Some(key) = key else {
             return not_found("API key");
         };
@@ -2696,6 +2685,14 @@ pub async fn api_key_create(
 }
 
 /// v4 `PUT /api/v1/api-keys/[id]`.
+///
+/// The existence read is v4's UNSCOPED `repos.connections.findApiKeyById`
+/// (`app/api/v1/api-keys/[id]/route.ts:95`) — the context's unscoped
+/// container; the file's `getUserRepositories` import (`:13`) is DEAD, never
+/// called, so neither PUT nor DELETE checks ownership on either side. It is a
+/// fallback `safeQuery`: a read error logs `Error finding API key by ID` and is
+/// the 404 below — the handler's `catch` → 500 is unreachable for it (P4.139;
+/// v5 had answered 500).
 pub async fn api_key_update(
     db: &Db,
     id: &str,
@@ -2703,11 +2700,8 @@ pub async fn api_key_update(
     is_active: Option<bool>,
     api_key: Option<&str>,
 ) -> Response {
-    let id_owned = id.to_string();
-    match db.read_main(move |conn| api_keys::find_by_id(conn, &id_owned)) {
-        Ok(Some(_)) => {}
-        Ok(None) => return not_found("API key"),
-        Err(e) => return internal(e),
+    if crate::services::api_key_service::read_api_key(db, id).is_none() {
+        return not_found("API key");
     }
     let mut patch = api_keys::AkUpdate::default();
     if let Some(l) = label {
@@ -2738,13 +2732,11 @@ pub async fn api_key_update(
     }
 }
 
-/// v4 `DELETE /api/v1/api-keys/[id]`. → ack.
+/// v4 `DELETE /api/v1/api-keys/[id]`. → ack. The existence read is the
+/// UNSCOPED fallback (`[id]/route.ts:164`) — see [`api_key_update`].
 pub async fn api_key_delete(db: &Db, id: &str) -> Response {
-    let id_owned = id.to_string();
-    match db.read_main(move |conn| api_keys::find_by_id(conn, &id_owned)) {
-        Ok(Some(_)) => {}
-        Ok(None) => return not_found("API key"),
-        Err(e) => return internal(e),
+    if crate::services::api_key_service::read_api_key(db, id).is_none() {
+        return not_found("API key");
     }
     let cid = id.to_string();
     match db
@@ -2757,6 +2749,8 @@ pub async fn api_key_delete(db: &Db, id: &str) -> Response {
 }
 
 /// v4 `POST /api/v1/api-keys/[id]?action=test` (`testProviderApiKey` + record-usage).
+/// The read is the SCOPED fallback `findApiKeyByIdAndUserId` (`[id]/route.ts:
+/// 201`): a read error logs its line and is the 404 (P4.139).
 pub async fn api_key_test<V: ConnectionValidator>(
     db: &Db,
     user_id: &str,
@@ -2764,13 +2758,9 @@ pub async fn api_key_test<V: ConnectionValidator>(
     base_url: Option<&str>,
     validator: &V,
 ) -> Response {
-    let (id_owned, uid) = (id.to_string(), user_id.to_string());
-    let key =
-        match db.read_main(move |conn| api_keys::find_by_id_and_user_id(conn, &id_owned, &uid)) {
-            Ok(Some(k)) => k,
-            Ok(None) => return not_found("API key"),
-            Err(e) => return internal(e),
-        };
+    let Some(key) = crate::services::api_key_service::read_api_key_scoped(db, id, user_id) else {
+        return not_found("API key");
+    };
     match validator.validate(&key.provider, &key.key_value, base_url) {
         Ok(true) => {
             let cid = id.to_string();

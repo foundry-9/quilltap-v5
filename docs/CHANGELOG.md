@@ -145,6 +145,12 @@ The two batch document reads behind every character, project, group, wardrobe, s
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `db::fallback` gains v4's lines for the vault overlay's two batch document reads, the embedded-chunk count, the chunk-content search and the file-link name/path search, plus `find_api_keys_by_user_id_or_empty` (delivered for P4.139 under the round's shared contract). The two search fallbacks that logged under their module targets with snake_case fields and the `sqlite error:` prefix now go through the home and log v4's exact bytes. v4's `withStrictRepositoryFailures` is ported as a thread-local scope: inside it the two batch homes log with `strictFailures=true` and propagate (ruled by the human on 2026-10-02 so backup and export can stay strict once the overlay falls back). `fallback_home_guard` lists the six new messages.
+#### 2026-10-02 — fix(settings): the api-keys update/delete/test routes answer v4's logged 404 on a corrupt key; two api_key_service read helpers
+
+_Versions: core 0.0.1148, harness 0.0.1076._
+
+`api_key_service` gains `read_api_key` and `read_api_key_scoped`, the unscoped and scoped API-key reads through the existing `db::fallback` homes (a read error logs v4's `Error finding API key by ID` / `… and user ID` line and answers `None`). Eleven hand-written copies of that pattern in `settings.rs`, `participant_resolver.rs`, `file_fallback.rs`, `provider_routing.rs` and `api_key_service.rs` now call them. `PUT` and `DELETE /api/v1/api-keys/[id]` (unscoped, as in v4 — its `getUserRepositories` import is dead) and the `?action=test` handler (scoped) now answer 404 `API key not found` with the repository line on a corrupt key row instead of 500. `settings_wire_actions` grows to eight key-route arms plus a list arm (red-first 3 + 1), and `settings_routes_equivalence` gains `ak_update_corrupt`, `ak_delete_corrupt` and `ak_list_corrupt` over a per-case corrupt-key plant on both sides (P4.139).
+
 #### 2026-10-02 — fix(db): decode api_keys.isActive as v4's hydrate and drop a bad row from the by-user list with v4's WARN
 
 _Versions: core 0.0.1147, harness 0.0.1075._

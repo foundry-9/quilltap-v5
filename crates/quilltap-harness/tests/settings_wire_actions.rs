@@ -34,6 +34,7 @@ use serde_json::{json, Value};
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 const USER_A: &str = "5e100000-0000-4000-8000-000000000001";
 const OPENAI_KEY: &str = "5e300000-0000-4000-8000-000000000001";
+const ANTHROPIC_KEY: &str = "5e300000-0000-4000-8000-000000000002";
 const GPT_PROFILE: &str = "5e400000-0000-4000-8000-000000000001";
 
 fn open_db() -> Option<(Db, tempfile::TempDir)> {
@@ -110,7 +111,12 @@ impl CompletionProvider for CannedCompletion {
 
 fn body(resp: Response) -> Value {
     match resp {
-        Response::ConnectionTest(v) | Response::ApiKeyTest(v) | Response::Models(v) => v,
+        Response::ConnectionTest(v)
+        | Response::ApiKeyTest(v)
+        | Response::Models(v)
+        | Response::ApiKeys(v)
+        | Response::ApiKey(v) => v,
+        Response::Ack(_) => json!({ "ack": true }),
         Response::Error(e) => json!({ "kind": format!("{:?}", e.kind), "error": e.message }),
         other => panic!("unexpected: {other:?}"),
     }
@@ -227,8 +233,16 @@ fn test_message_maps_response() {
 /// (v4's `ApiKeySchema.parse` refuses the decoded Float32Array, measured in
 /// the `title_update_tier3` lifted case; v5's marshal answers
 /// `InvalidColumnType`). A text `isActive` is not one: v4 coerces it.
+///
+/// P4.139 adds the api-keys routes' three arms (eight in all). v4's
+/// `app/api/v1/api-keys/[id]/route.ts` reads PUT (`:95`) and DELETE (`:164`)
+/// UNSCOPED and the `?action=test` handler (`:201`) SCOPED — exactly as v5
+/// does (the file's `getUserRepositories` import at `:13` is dead) — and each
+/// read is the fallback, so a corrupt key is the line and a 404, never the
+/// handler's `catch` → 500 (unreachable for a read error). v5 had answered
+/// `Internal "sqlite error: Invalid column type Blob …"` on all three.
 #[test]
-fn a_corrupt_key_row_is_v4s_logged_404_on_all_five_key_routes() {
+fn a_corrupt_key_row_is_v4s_logged_404_on_all_eight_key_routes() {
     let Some((db, _t)) = open_db_with_a_corrupt_openai_key() else {
         eprintln!("SKIP: set QT_FIXTURE_SETTINGS");
         return;
@@ -282,6 +296,22 @@ fn a_corrupt_key_row_is_v4s_logged_404_on_all_five_key_routes() {
             }),
         ),
         (
+            "api-key update",
+            Box::new(|| {
+                rt.block_on(settings::api_key_update(
+                    &db,
+                    OPENAI_KEY,
+                    Some("P4.139 probe"),
+                    None,
+                    None,
+                ))
+            }),
+        ),
+        (
+            "api-key delete",
+            Box::new(|| rt.block_on(settings::api_key_delete(&db, OPENAI_KEY))),
+        ),
+        (
             "update",
             Box::new(|| {
                 rt.block_on(settings::connection_profile_update(
@@ -293,14 +323,24 @@ fn a_corrupt_key_row_is_v4s_logged_404_on_all_five_key_routes() {
             }),
         ),
     ];
-    for (arm, call) in arms {
-        let (resp, lines) = quilltap_core::test_support::captured_with(call);
-        assert_eq!(body(resp), want, "{arm}");
+    // Every arm runs before the verdict, so a red names its whole count.
+    let mut reds: Vec<String> = Vec::new();
+    let mut check = |arm: &str, resp: Response, lines: Vec<String>, want_line: &str| {
+        let got = body(resp);
+        if got != want_line_body(arm, &want) {
+            reds.push(format!("{arm}: body {got}"));
+        }
         let db_lines: Vec<&String> = lines
             .iter()
             .filter(|l| l.contains(" quilltap::db "))
             .collect();
-        assert_eq!(db_lines, vec![&line], "{arm}: {lines:?}");
+        if db_lines != vec![want_line] {
+            reds.push(format!("{arm}: lines {lines:?}"));
+        }
+    };
+    for (arm, call) in arms {
+        let (resp, lines) = quilltap_core::test_support::captured_with(call);
+        check(arm, resp, lines, &line);
     }
 
     // The fifth arm (found at unification): `POST /api/v1/models` reads the
@@ -317,19 +357,76 @@ fn a_corrupt_key_row_is_v4s_logged_404_on_all_five_key_routes() {
             &CannedFetcher(vec![json!({ "id": "unreached" })]),
         ))
     });
-    assert_eq!(
-        body(resp),
-        json!({ "kind": "NotFound", "error": "API key not found not found" }),
-        "models"
+    let scoped = format!(
+        "ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId={OPENAI_KEY} userId={USER_A} error=Invalid column type Blob at index: 4, name: key_value"
     );
+    check("models", resp, lines, &scoped);
+
+    // The eighth arm (P4.139): `POST /api/v1/api-keys/[id]?action=test` reads
+    // SCOPED (`[id]/route.ts:201`), so its line is the scoped home's; its 404
+    // is the single "not found". The validator is never reached.
+    let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+        rt.block_on(settings::api_key_test(
+            &db,
+            USER_A,
+            OPENAI_KEY,
+            None,
+            &CannedValidator(Ok(true)),
+        ))
+    });
+    check("api-key test", resp, lines, &scoped);
+    assert!(
+        reds.is_empty(),
+        "{} red(s):\n  {}",
+        reds.len(),
+        reds.join("\n  ")
+    );
+}
+
+/// The 404 body each arm owes: v4's `notFound('API key')`, except the models
+/// fetch's `notFound('API key not found')`, which doubles the noun.
+fn want_line_body(arm: &str, want: &Value) -> Value {
+    if arm == "models" {
+        json!({ "kind": "NotFound", "error": "API key not found not found" })
+    } else {
+        want.clone()
+    }
+}
+
+/// P4.139: v4 `GET /api/v1/api-keys` lists `getAllApiKeys()` — the user's
+/// `getApiKeysByUserId`, which DROPS a row `ApiKeySchema.safeParse` refuses
+/// with its WARN (`connection-profiles.repository.ts:224-237`, a direct
+/// `logger.warn`, no `collection`) and lists the rest. v5's list had failed on
+/// the first bad row and answered 500 for every key the user owns.
+#[test]
+fn a_corrupt_key_row_is_dropped_from_the_api_key_list_with_v4s_warn() {
+    let Some((db, _t)) = open_db_with_a_corrupt_openai_key() else {
+        eprintln!("SKIP: set QT_FIXTURE_SETTINGS");
+        return;
+    };
+    let (resp, lines) =
+        quilltap_core::test_support::captured_with(|| settings::api_key_list(&db, USER_A));
+    let v = body(resp);
+    let ids: Vec<&str> = v["apiKeys"]
+        .as_array()
+        .unwrap_or_else(|| panic!("a 200 list, got {v}"))
+        .iter()
+        .map(|k| k["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        ids,
+        vec![ANTHROPIC_KEY],
+        "the OpenAI key dropped, the rest listed"
+    );
+    assert_eq!(v["count"], json!(1));
     let db_lines: Vec<&String> = lines
         .iter()
         .filter(|l| l.contains(" quilltap::db "))
         .collect();
-    let scoped = format!(
-        "ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId={OPENAI_KEY} userId={USER_A} error=Invalid column type Blob at index: 4, name: key_value"
+    let warn = format!(
+        "WARN quilltap::db API key validation failed keyId={OPENAI_KEY} userId={USER_A} error=Invalid column type Blob at index: 4, name: key_value"
     );
-    assert_eq!(db_lines, vec![&scoped], "models: {lines:?}");
+    assert_eq!(db_lines, vec![&warn], "{lines:?}");
 }
 
 /// The fixture copy with the OpenAI key row's `key_value` cell made a BLOB
