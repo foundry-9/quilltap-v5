@@ -650,9 +650,140 @@
     "case": "transport_fetch_throws",
     "transport": "fetch-throws",
     "providers": [
+      "openai",
       "openai-compatible",
       "deepseek",
-      "nanogpt"
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ],
+    "modes": {
+      "openrouter": [
+        "stream_tools",
+        "send_vision"
+      ]
+    }
+  },
+  {
+    "case": "transport_hang",
+    "transport": "hang",
+    "requestTimeoutMs": 50,
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ],
+    "modes": {
+      "openrouter": [
+        "stream_tools",
+        "send_vision"
+      ]
+    }
+  },
+  {
+    "case": "ok_choices_empty",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "application/json",
+    "body": "{\"choices\":[]}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "ok_choice_no_message",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "application/json",
+    "body": "{\"choices\":[{}]}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "ok_empty_object",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "application/json",
+    "body": "{}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "ok_non_json",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "application/json",
+    "body": "not json",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ]
+  },
+  {
+    "case": "ok_empty_body_json",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "application/json",
+    "body": "",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
     ]
   }
 ]

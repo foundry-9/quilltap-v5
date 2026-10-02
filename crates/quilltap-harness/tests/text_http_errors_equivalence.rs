@@ -38,6 +38,28 @@
 //! RED-FIRST (measured on the unwired tree, the side `None` at every site):
 //! see the lane record — every `provider-code` row answered `refused: false`.
 //!
+//! P4.141 widened the corpus past the non-2xx: a posed TRANSPORT failure on
+//! all ten providers (`transport_fetch_throws`), a HANG under a 50 ms
+//! `requestTimeoutMs` (`transport_hang` — the SDKs' real
+//! `APIConnectionTimeoutError` and the raw-`fetch` plugins' abort errors), and
+//! five posed 2xx bodies (`ok_*`). The posed exchange follows each case's
+//! `cases.json` entry, and the family diffs, per row:
+//! - the OUTCOME (v4 `ok` ↔ v5 `Ok`, v4 `thrown` ↔ v5 `Err`);
+//! - on a non-2xx, the refusal side (above) and v5's `HTTP {status}:` bytes;
+//!   on a status-less row, v5's transport bytes (the RULED P4.128 shape — only
+//!   the catch line carries v4's text) and the transport KIND; on a thrown 2xx
+//!   row, v5's message against v4's thrown `message` (no v5 transport text
+//!   exists there, so the message IS v4's);
+//! - the verdict and the trigger, through the Salon's and the cheap path's own
+//!   hand-overs (`FallbackError::from_stream_error` /
+//!   `FallbackError::from_completion_error`);
+//! - EVERY ERROR and WARN line v5 logged on the two model targets against v4's
+//!   whole `pluginErrorLog` / `pluginWarnLog`, rendered from v4's `context`
+//!   in key order plus the logger's third-argument `error`;
+//! - the request count, 1-for-1 on status and 2xx rows; recorded and NOT
+//!   compared on a status-less row (the 2026-07-23 provider-I/O ruling — the
+//!   SDKs' retries are the transport's, not the port's contract).
+//!
 //! Regenerate the oracle (Node 24, from a PINNED v4 worktree — ledger §5.1;
 //! the corpus is committed, so this is only needed when the SDKs or plugins
 //! move):
@@ -48,6 +70,7 @@
 
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
 
 use quilltap_core::llm_fallback::{classify_fallback_trigger, FallbackError};
 use quilltap_core::model::completion::{
@@ -59,8 +82,8 @@ use quilltap_core::model::stream::{
 };
 use quilltap_core::model::streaming_provider::{SingleKey, WireStreamingProvider};
 use quilltap_core::model::transport::{
-    BoxFuture, ProviderTransport, StreamBytes, TransportError, TransportPolicy, TransportRequest,
-    TransportResponse,
+    BoxFuture, ProviderTransport, StreamBytes, TransportError, TransportErrorKind, TransportPolicy,
+    TransportRequest, TransportResponse,
 };
 use quilltap_core::services::dangerous_content::refusal::{
     classify_refusal, code_string, RefusalError, RefusalInput,
@@ -73,6 +96,20 @@ const CORPUS: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../harness/oracle/fixtures/text-http-errors/text-http-errors.recorded.ndjson"
 );
+/// The posed exchanges the corpus was recorded from (P4.141 — a case's
+/// `transport` and `requestTimeoutMs` are not on its rows).
+const CASES: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../harness/oracle/fixtures/text-http-errors/cases.json"
+);
+
+#[derive(Deserialize)]
+struct CaseSpec {
+    case: String,
+    transport: Option<String>,
+    #[serde(rename = "requestTimeoutMs")]
+    request_timeout_ms: Option<i64>,
+}
 
 #[derive(Deserialize)]
 struct Thrown {
@@ -111,12 +148,17 @@ struct Row {
     /// host-bridge logger); absent when it logged none.
     #[serde(rename = "pluginErrorLog", default)]
     plugin_error_log: Vec<PluginLine>,
+    /// P4.141: the WARN lines (same bridge, no third argument).
+    #[serde(rename = "pluginWarnLog", default)]
+    plugin_warn_log: Vec<PluginLine>,
 }
 
 #[derive(Deserialize)]
 struct PluginLine {
     message: String,
+    /// v4's context object, in v4's key order (`preserve_order`).
     context: Value,
+    #[serde(default)]
     error: Option<String>,
 }
 
@@ -144,28 +186,13 @@ struct PluginLine {
 /// `HTTP {status}:` rule; `google_json_as_text_plain` is the content-type
 /// branch the transport cannot see (the module doc of `model::provider_error`).
 const EXPECTED_DIVERGENCES: &[(&str, &str, &str, &[&str])] = &[
-    // P4.128's posed TRANSPORT failure: v4 threw the SDK's
-    // `APIConnectionError` (`Connection error.`, no status, no code); v5's
-    // refusal side models an HTTP failure only (`transport_error_refusal`
-    // needs a status), so there is no side to diff. The verdict (not refused)
-    // and the trigger (`provider-error`) agree regardless — both are compared
-    // and pass on these rows; only the side's ABSENCE is the difference.
-    (
-        "OPENAI_COMPATIBLE",
-        "stream",
-        "side",
-        &["transport_fetch_throws"],
-    ),
-    (
-        "OPENAI_COMPATIBLE",
-        "send",
-        "side",
-        &["transport_fetch_throws"],
-    ),
-    ("DEEPSEEK", "stream", "side", &["transport_fetch_throws"]),
-    ("DEEPSEEK", "send", "side", &["transport_fetch_throws"]),
-    ("NANOGPT", "stream", "side", &["transport_fetch_throws"]),
-    ("NANOGPT", "send", "side", &["transport_fetch_throws"]),
+    // (P4.128 pinned the six `transport_fetch_throws` rows' missing refusal
+    // SIDE here. P4.141 scopes the side comparand to the rows that HAVE one by
+    // design — a non-2xx: `transport_error_refusal` models an HTTP failure
+    // only, so a status-less or 2xx row is diffed on its message, verdict,
+    // trigger and lines instead, and those six entries retired with the
+    // scoping.)
+    //
     // A non-JSON body served AS `application/json`: `@google/genai` throws a
     // bare `SyntaxError` (no `status`, V8's message); v5 synthesizes the
     // `ApiError` (the third approximation in `model::provider_error`'s doc).
@@ -336,6 +363,32 @@ const EXPECTED_DIVERGENCES: &[(&str, &str, &str, &[&str])] = &[
             "zai_1301_string",
         ],
     ),
+    // P4.141's posed 2xx bodies through `@openrouter/sdk` (v4's no-tools
+    // stream / no-image send): the SDK schema-validates the body and throws
+    // `ResponseValidationError` (or V8's `JSON.parse` text) where v5's raw
+    // wire answers — the same `openrouter-sdk` class.
+    (
+        "OPENROUTER",
+        "send",
+        "outcome",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_object",
+        ],
+    ),
+    (
+        "OPENROUTER",
+        "stream",
+        "outcome",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_body_json",
+            "ok_empty_object",
+            "ok_non_json",
+        ],
+    ),
     ("OPENROUTER", "stream", "message", EVERY_CASE),
     ("OPENROUTER", "stream", "name", EVERY_CASE),
     ("OPENROUTER", "stream", "status", EVERY_CASE),
@@ -394,7 +447,8 @@ const EXPECTED_DIVERGENCES: &[(&str, &str, &str, &[&str])] = &[
         ],
     ),
 ];
-/// The [`EXPECTED_DIVERGENCES`] marker for "every case of the corpus".
+/// The [`EXPECTED_DIVERGENCES`] marker for "every non-2xx case of the
+/// corpus" (the response rows — see the both-ways check).
 const EVERY_CASE: &[&str] = &["*"];
 
 /// v5's OWN trigger on each pinned GOOGLE trigger divergence (v4 reads the
@@ -403,66 +457,132 @@ const EVERY_CASE: &[&str] = &["*"];
 /// trigger, except the 401's `auth`). Absent = `None`.
 const V5_GOOGLE_TRIGGER: &[(&str, Option<&str>)] = &[("invalid_api_key_401", Some("auth"))];
 
-fn expected(case: &str, provider: &str, mode: &str, field: &str) -> bool {
+fn expected(row: &Row, field: &str) -> bool {
+    let non_2xx = row.status.is_some_and(|s| !(200..300).contains(&s));
     EXPECTED_DIVERGENCES.iter().any(|(p, m, f, cases)| {
-        *p == provider
-            && *m == mode
+        *p == row.provider
+            && *m == row.mode
             && *f == field
-            && (*cases == EVERY_CASE || cases.contains(&case))
+            && ((*cases == EVERY_CASE && non_2xx) || cases.contains(&row.case.as_str()))
     })
 }
 
-/// A transport that fails every call with the posed non-2xx, rendered exactly
-/// as `ReqwestTransport` renders it, and counts the calls. With no status it
-/// poses a TRANSPORT failure (P4.128's `transport_fetch_throws`): reqwest's
-/// connect-failure rendering, no status, no body.
-struct PosedFailure {
-    status: Option<u16>,
-    body: String,
+/// The exchange a row poses (P4.141 — the case's `transport` first, else its
+/// status): a non-2xx, a refused connection, a deadline, or a 2xx body.
+#[derive(Clone, Debug)]
+enum Posed {
+    Http { status: u16, body: String },
+    Connect,
+    Timeout,
+    Ok2xx(Vec<u8>),
+}
+
+impl Posed {
+    fn for_row(row: &Row, spec: &CaseSpec) -> Self {
+        match spec.transport.as_deref() {
+            Some("fetch-throws") => Posed::Connect,
+            Some("hang") => Posed::Timeout,
+            Some(other) => panic!("{}: unknown posed transport {other:?}", label(row)),
+            None => {
+                let status = row
+                    .status
+                    .unwrap_or_else(|| panic!("{}: a response row has a status", label(row)));
+                let body = row.body.clone().unwrap_or_default();
+                if (200..300).contains(&status) {
+                    Posed::Ok2xx(body.into_bytes())
+                } else {
+                    Posed::Http { status, body }
+                }
+            }
+        }
+    }
+
+    fn is_statusless(&self) -> bool {
+        matches!(self, Posed::Connect | Posed::Timeout)
+    }
+}
+
+/// A transport answering every call with the row's posed exchange, rendered
+/// exactly as `ReqwestTransport` renders it, and counting the calls.
+struct PosedTransport {
+    posed: Posed,
     calls: AtomicUsize,
+    /// The URL of the last request the composer handed over.
+    url: Mutex<String>,
 }
 
-impl PosedFailure {
-    fn new(status: Option<u16>, body: Option<&str>) -> Self {
+impl PosedTransport {
+    fn new(posed: Posed) -> Self {
         Self {
-            status,
-            body: body.unwrap_or_default().to_string(),
+            posed,
             calls: AtomicUsize::new(0),
+            url: Mutex::new(String::new()),
         }
     }
 
-    fn fail(&self, request: &TransportRequest) -> TransportError {
+    fn seen_url(&self) -> String {
+        self.url.lock().unwrap().clone()
+    }
+
+    fn saw(&self, request: &TransportRequest) {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        match self.status {
-            Some(status) => TransportError::http(status, &self.body),
-            None => TransportError::connect(posed_connect_failure(&request.url)),
-        }
+        *self.url.lock().unwrap() = request.url.clone();
     }
 }
 
-/// `reqwest::Error`'s `Display` for a refused connection — what
-/// `ReqwestTransport` hands up for v4's `fetch failed`.
+/// `reqwest::Error`'s `Display` for a request that never got a response — a
+/// refused connection AND reqwest's own whole-exchange timeout render alike
+/// (`reqwest-0.12.28/src/error.rs:231,267-269`); only the KIND tells them
+/// apart (P4.141).
 fn posed_connect_failure(url: &str) -> String {
     format!("error sending request for url ({url})")
 }
 
-impl ProviderTransport for PosedFailure {
+impl ProviderTransport for PosedTransport {
     fn execute<'a>(
         &'a self,
         request: &'a TransportRequest,
         _policy: &'a TransportPolicy,
     ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
-        let e = self.fail(request);
-        Box::pin(async move { Err(e) })
+        self.saw(request);
+        let out = match &self.posed {
+            Posed::Http { status, body } => Err(TransportError::http(*status, body)),
+            Posed::Connect => Err(TransportError::connect(posed_connect_failure(&request.url))),
+            Posed::Timeout => Err(TransportError::timeout(posed_connect_failure(&request.url))),
+            Posed::Ok2xx(body) => Ok(TransportResponse {
+                status: 200,
+                body: body.clone(),
+            }),
+        };
+        Box::pin(async move { out })
     }
 
     fn execute_stream<'a>(
         &'a self,
         request: &'a TransportRequest,
-        _policy: &'a TransportPolicy,
+        policy: &'a TransportPolicy,
     ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>> {
-        let e = self.fail(request);
-        Box::pin(async move { Err(e) })
+        self.saw(request);
+        let posed = self.posed.clone();
+        let url = request.url.clone();
+        // The streaming arm's deadline is the time-to-headers budget — the
+        // POLICY's, so a hang row also proves the row's `requestTimeoutMs`
+        // reached the transport.
+        let budget = policy.timeout.as_millis();
+        Box::pin(async move {
+            match posed {
+                Posed::Http { status, body } => Err(TransportError::http(status, body)),
+                Posed::Connect => Err(TransportError::connect(posed_connect_failure(&url))),
+                Posed::Timeout => Err(TransportError::headers_timeout(budget)),
+                Posed::Ok2xx(body) => {
+                    let (tx, rx) = tokio::sync::mpsc::channel(1);
+                    if !body.is_empty() {
+                        let _ = tx.send(Ok(body)).await;
+                    }
+                    Ok(rx)
+                }
+            }
+        })
     }
 }
 
@@ -474,34 +594,51 @@ fn model_for(provider: &str) -> &'static str {
     }
 }
 
-fn stream_params(provider: &str) -> StreamParams {
+/// The recorder's `TOOL` (the OpenRouter `stream_tools` mode's tool — v4's
+/// `hasTools` raw-path gate).
+fn recorder_tool() -> Value {
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": "lookup",
+            "description": "Look something up.",
+            "parameters": {
+                "type": "object",
+                "properties": { "q": { "type": "string" } },
+                "required": ["q"]
+            }
+        }
+    })
+}
+
+fn stream_params(row: &Row, spec: &CaseSpec) -> StreamParams {
     StreamParams {
         messages: vec![StreamMessage::user("hi")],
-        model: model_for(provider).into(),
+        model: model_for(&row.provider).into(),
         temperature: None,
         max_tokens: Some(64),
         top_p: None,
-        tools: None,
+        tools: (row.mode == "stream_tools").then(|| Value::Array(vec![recorder_tool()])),
         web_search_enabled: false,
         profile_parameters: None,
         cache_key: None,
         previous_response_id: None,
         stop: Vec::new(),
-        request_timeout_ms: None,
+        request_timeout_ms: spec.request_timeout_ms,
     }
 }
 
 // The recorder's 1×1 PNG (the OpenRouter `send_vision` mode's attachment).
 const PNG_1X1: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
-fn completion_params(provider: &str, vision: bool) -> CompletionParams {
+fn completion_params(row: &Row, spec: &CaseSpec, vision: bool) -> CompletionParams {
     CompletionParams {
         messages: vec![CompletionMessage::user(if vision {
             "what is this"
         } else {
             "hi"
         })],
-        model: model_for(provider).into(),
+        model: model_for(&row.provider).into(),
         temperature: None,
         max_tokens: Some(64),
         strict_max_tokens: false,
@@ -518,33 +655,43 @@ fn completion_params(provider: &str, vision: bool) -> CompletionParams {
         } else {
             Vec::new()
         },
-        request_timeout_ms: None,
+        request_timeout_ms: spec.request_timeout_ms,
     }
 }
 
-/// What v5 produced for one posed failure.
+/// What v5 produced for one posed exchange.
 struct V5Outcome {
-    message: String,
-    side: Option<RefusalError>,
-    trigger: Option<String>,
+    /// `None` when v5 answered (`Ok` / a stream that ended clean).
+    error: Option<V5Error>,
     calls: usize,
-    /// Every tracing line the call emitted on the caller thread (the
-    /// pre-stream arm and the whole completion path run there).
+    /// The URL the transport was handed (the status-less rows' message pin).
+    url: String,
+    /// Every tracing line the call emitted (the pre-stream arm and the whole
+    /// completion path run on the caller thread; the pump logs under the
+    /// caller's dispatcher).
     lines: Vec<String>,
 }
 
-fn run_stream(rt: &tokio::runtime::Runtime, row: &Row) -> V5Outcome {
+struct V5Error {
+    message: String,
+    side: Option<RefusalError>,
+    trigger: Option<String>,
+    transport_kind: Option<TransportErrorKind>,
+}
+
+fn run_stream(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec) -> V5Outcome {
+    let posed = Posed::for_row(row, spec);
+    let one_item = !matches!(posed, Posed::Ok2xx(_));
     let provider = WireStreamingProvider::new(
-        PosedFailure::new(row.status, row.body.as_deref()),
+        PosedTransport::new(posed),
         SingleKey(String::new()),
         TransportPolicy::default(),
         "Quilltap/test".to_string(),
     );
+    let params = stream_params(row, spec);
     let (items, lines) = captured_with(|| {
         rt.block_on(async {
-            let mut rx = provider
-                .stream_message(&row.provider, None, &stream_params(&row.provider))
-                .await;
+            let mut rx = provider.stream_message(&row.provider, None, &params).await;
             let mut out = Vec::new();
             while let Some(item) = rx.recv().await {
                 out.push(item);
@@ -552,32 +699,39 @@ fn run_stream(rt: &tokio::runtime::Runtime, row: &Row) -> V5Outcome {
             out
         })
     });
-    assert_eq!(
-        items.len(),
-        1,
-        "{}: a pre-stream failure is one item",
-        label(row)
-    );
-    let err: StreamError = items
+    if one_item {
+        assert_eq!(
+            items.len(),
+            1,
+            "{}: a pre-stream failure is one item",
+            label(row)
+        );
+    }
+    let error = items
         .into_iter()
-        .next()
-        .unwrap()
-        .expect_err("a posed non-2xx is an error");
-    // The Salon's hand-over (`primary_stream.rs`).
-    let trigger = classify_fallback_trigger(FallbackError::from_stream_error(&err))
-        .map(|t| t.as_str().to_string());
+        .find_map(Result::err)
+        .map(|err: StreamError| {
+            // The Salon's hand-over (`primary_stream.rs`).
+            let trigger = classify_fallback_trigger(FallbackError::from_stream_error(&err))
+                .map(|t| t.as_str().to_string());
+            V5Error {
+                message: err.message.clone(),
+                side: err.refusal.as_deref().cloned(),
+                trigger,
+                transport_kind: stream_transport_kind(&err),
+            }
+        });
     V5Outcome {
-        message: err.message.clone(),
-        side: err.refusal.as_deref().cloned(),
-        trigger,
+        error,
         calls: provider.transport_ref().calls.load(Ordering::SeqCst),
+        url: provider.transport_ref().seen_url(),
         lines,
     }
 }
 
-fn run_send(rt: &tokio::runtime::Runtime, row: &Row, vision: bool) -> V5Outcome {
-    let transport = PosedFailure::new(row.status, row.body.as_deref());
-    let params = completion_params(&row.provider, vision);
+fn run_send(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec, vision: bool) -> V5Outcome {
+    let transport = PosedTransport::new(Posed::for_row(row, spec));
+    let params = completion_params(row, spec, vision);
     let (result, lines) = captured_with(|| {
         rt.block_on(execute_completion(
             &transport,
@@ -591,25 +745,44 @@ fn run_send(rt: &tokio::runtime::Runtime, row: &Row, vision: bool) -> V5Outcome 
             None,
         ))
     });
-    let err: CompletionError = match result {
-        Ok(_) => panic!("{}: a posed non-2xx must fail", label(row)),
-        Err(e) => e,
-    };
-    // The cheap path's hand-over (`cheap_llm_exec.rs`): the message, plus the
-    // side when the completion carried one.
-    let fe = FallbackError::message(&err.message);
-    let fe = match err.refusal.as_deref() {
-        Some(r) => fe.with_refusal(r),
-        None => fe,
-    };
-    let trigger = classify_fallback_trigger(fe).map(|t| t.as_str().to_string());
+    let error = result.err().map(|err: CompletionError| {
+        // The cheap path's hand-over (`cheap_llm_exec.rs`).
+        let trigger =
+            classify_fallback_trigger(cheap_path_hand_over(&err)).map(|t| t.as_str().to_string());
+        V5Error {
+            message: err.message.clone(),
+            side: err.refusal.as_deref().cloned(),
+            trigger,
+            transport_kind: completion_transport_kind(&err),
+        }
+    });
     V5Outcome {
-        message: err.message.clone(),
-        side: err.refusal.as_deref().cloned(),
-        trigger,
+        error,
         calls: transport.calls.load(Ordering::SeqCst),
+        url: transport.seen_url(),
         lines,
     }
+}
+
+/// The cheap path's hand-over (`cheap_llm_exec.rs`): the message, plus the
+/// refusal side when the completion carried one.
+fn cheap_path_hand_over(err: &CompletionError) -> FallbackError<'_> {
+    let fe = FallbackError::message(&err.message);
+    match err.refusal.as_deref() {
+        Some(r) => fe.with_refusal(r),
+        None => fe,
+    }
+}
+
+/// The transport kind a stream error carries (P4.141 Tier 1 item 4 — none
+/// before it lands).
+fn stream_transport_kind(_err: &StreamError) -> Option<TransportErrorKind> {
+    None
+}
+
+/// The transport kind a completion error carries (as above).
+fn completion_transport_kind(_err: &CompletionError) -> Option<TransportErrorKind> {
+    None
 }
 
 fn label(row: &Row) -> String {
@@ -617,65 +790,100 @@ fn label(row: &Row) -> String {
 }
 
 /// Run v5 for a recorded v4 row (see the module doc's row mapping).
-fn run_v5(rt: &tokio::runtime::Runtime, row: &Row) -> V5Outcome {
+fn run_v5(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec) -> V5Outcome {
     match row.mode.as_str() {
-        "stream" | "stream_tools" => run_stream(rt, row),
-        "send" => run_send(rt, row, false),
-        "send_vision" => run_send(rt, row, true),
+        "stream" | "stream_tools" => run_stream(rt, row, spec),
+        "send" => run_send(rt, row, spec, false),
+        "send_vision" => run_send(rt, row, spec, true),
         other => panic!("unknown mode {other}"),
     }
 }
 
 /// The field-by-field diff of one row; each entry is a divergence NAME.
-fn diff_row(row: &Row, v5: &V5Outcome) -> Vec<(&'static str, String)> {
+fn diff_row(row: &Row, posed: &Posed, v5: &V5Outcome) -> Vec<(&'static str, String)> {
     let mut out: Vec<(&'static str, String)> = Vec::new();
+    let v4_thrown = row.outcome == "thrown";
+    match (v4_thrown, &v5.error) {
+        (true, None) | (false, Some(_)) => {
+            out.push((
+                "outcome",
+                format!(
+                    "v4 {} | v5 {}",
+                    row.outcome,
+                    v5.error
+                        .as_ref()
+                        .map(|e| format!("thrown {:?}", e.message))
+                        .unwrap_or_else(|| "ok".to_string())
+                ),
+            ));
+            return out;
+        }
+        (false, None) => return out,
+        (true, Some(_)) => {}
+    }
+    let v5e = v5.error.as_ref().expect("both threw");
     let thrown = row
         .thrown
         .as_ref()
-        .unwrap_or_else(|| panic!("{}: v4 must have thrown", label(row)));
-    match &v5.side {
-        None => out.push(("side", "v5 attached no refusal side".to_string())),
-        Some(side) => {
-            let want_code = thrown.code.as_ref().and_then(code_string);
-            let want_nested = thrown.error_code.as_ref().and_then(code_string);
-            let fields: [(&'static str, String, String); 6] = [
-                ("message", thrown.message.clone(), side.message.clone()),
-                ("code", format!("{want_code:?}"), format!("{:?}", side.code)),
-                (
-                    "nested_code",
-                    format!("{want_nested:?}"),
-                    format!("{:?}", side.nested_code),
-                ),
-                (
-                    "name",
-                    format!("{:?}", thrown.name),
-                    format!("{:?}", side.name),
-                ),
-                (
-                    "status",
-                    format!("{:?}", thrown.status),
-                    format!("{:?}", side.status),
-                ),
-                (
-                    "provider_reason",
-                    format!("{:?}", thrown.provider_reason),
-                    format!("{:?}", side.provider_reason),
-                ),
-            ];
-            for (name, want, got) in fields {
-                if want != got {
-                    out.push((name, format!("v4 {want} | v5 {got}")));
+        .unwrap_or_else(|| panic!("{}: v4 threw", label(row)));
+    match posed {
+        // The refusal SIDE exists by design on a non-2xx only.
+        Posed::Http { .. } => match &v5e.side {
+            None => out.push(("side", "v5 attached no refusal side".to_string())),
+            Some(side) => {
+                let want_code = thrown.code.as_ref().and_then(code_string);
+                let want_nested = thrown.error_code.as_ref().and_then(code_string);
+                let fields: [(&'static str, String, String); 6] = [
+                    ("message", thrown.message.clone(), side.message.clone()),
+                    ("code", format!("{want_code:?}"), format!("{:?}", side.code)),
+                    (
+                        "nested_code",
+                        format!("{want_nested:?}"),
+                        format!("{:?}", side.nested_code),
+                    ),
+                    (
+                        "name",
+                        format!("{:?}", thrown.name),
+                        format!("{:?}", side.name),
+                    ),
+                    (
+                        "status",
+                        format!("{:?}", thrown.status),
+                        format!("{:?}", side.status),
+                    ),
+                    (
+                        "provider_reason",
+                        format!("{:?}", thrown.provider_reason),
+                        format!("{:?}", side.provider_reason),
+                    ),
+                ];
+                for (name, want, got) in fields {
+                    if want != got {
+                        out.push((name, format!("v4 {want} | v5 {got}")));
+                    }
                 }
             }
+        },
+        // No v5 transport text exists on a thrown 2xx: the message IS v4's.
+        Posed::Ok2xx(_) => {
+            if v5e.message != thrown.message {
+                out.push((
+                    "message",
+                    format!("v4 {:?} | v5 {:?}", thrown.message, v5e.message),
+                ));
+            }
         }
+        // A status-less row: v5's message stays the transport's own bytes
+        // (asserted by the caller); v4's text rides the catch line.
+        Posed::Connect | Posed::Timeout => {}
     }
     // The verdict over the side (v4's classifier over the thrown value). With
     // no side v5 classifies the message alone — the pre-P4.118 behaviour.
     let synthesized;
-    let input_err = match &v5.side {
+    let input_err = match &v5e.side {
         Some(s) => s,
         None => {
-            synthesized = RefusalError::message_only(v5.message.clone());
+            synthesized = RefusalError::message_only(v5e.message.clone());
             &synthesized
         }
     };
@@ -699,18 +907,18 @@ fn diff_row(row: &Row, v5: &V5Outcome) -> Vec<(&'static str, String)> {
             format!("v4 {want_verdict:?} | v5 {got_verdict:?}"),
         ));
     }
-    if v5.trigger != row.trigger {
+    if v5e.trigger != row.trigger {
         // A pinned GOOGLE trigger divergence also pins v5's OWN value: a
         // regression from one wrong value to another must not hide inside
         // the carve-out (the `97b25fc53` unification review).
-        if row.provider == "GOOGLE" {
+        if row.provider == "GOOGLE" && matches!(posed, Posed::Http { .. }) {
             let want_v5 = V5_GOOGLE_TRIGGER
                 .iter()
                 .find(|(c, _)| *c == row.case)
                 .map(|(_, t)| *t)
                 .unwrap_or(None);
             assert_eq!(
-                v5.trigger.as_deref(),
+                v5e.trigger.as_deref(),
                 want_v5,
                 "{}: v5's trigger on a pinned GOOGLE divergence moved (v4 {:?})",
                 label(row),
@@ -719,109 +927,684 @@ fn diff_row(row: &Row, v5: &V5Outcome) -> Vec<(&'static str, String)> {
         }
         out.push((
             "trigger",
-            format!("v4 {:?} | v5 {:?}", row.trigger, v5.trigger),
+            format!("v4 {:?} | v5 {:?}", row.trigger, v5e.trigger),
         ));
     }
     out
 }
 
-/// The three openai-SDK plugins whose `streamMessage` / `sendMessage` wrap
-/// the SDK call in a `try … catch { this.logger.error('<Name> API error in
-/// <method>', { context, baseUrl }, error); throw }` (P4.122 item 6 ported the
-/// MID-stream half; P4.128 the pre-stream and `sendMessage` halves).
-const CATCH_LINE_PROVIDERS: &[&str] = &["OPENAI_COMPATIBLE", "DEEPSEEK", "NANOGPT"];
-
-/// ERROR lines v4's OTHER plugins log on these rows that v5 has NOT ported
-/// (measured at the `97b25fc53` pin by P4.128's logger bridge; outside that
-/// order's mandate — a named follow-up). Pinned BOTH ways: a NEW v4 line
-/// fails the per-row check in [`diff_catch_lines`]; an entry v4 stops
-/// emitting fails the exercised-count assert in the test; and a v5 PORT of
-/// one fails the absence check (v5's whole capture, not only its catch-line
-/// filter — the `97b25fc53` smalls unification's catch: the first shape
-/// noticed a new v4 line and nothing else). `(provider, v4 mode, message)`.
-const UNPORTED_PLUGIN_ERROR_LINES: &[(&str, &str, &str)] = &[
-    ("GOOGLE", "send", "Error calling Google Gemini API"),
-    ("GOOGLE", "stream", "Error streaming from Google Gemini API"),
-    ("OLLAMA", "send", "Ollama API error response"),
-    ("OLLAMA", "send", "Ollama sendMessage failed"),
-    ("OLLAMA", "stream", "Ollama streaming API error"),
-    ("OLLAMA", "stream", "Ollama streamMessage failed"),
-    ("OPENROUTER", "send_vision", "OpenRouter API error"),
-    ("OPENROUTER", "stream_tools", "OpenRouter API error"),
-    (
-        "OPENROUTER",
-        "stream_tools",
-        "Error in streamViaChatCompletions",
-    ),
+/// The two tracing targets v4's plugin lines land on in v5 (one per
+/// composer — `model::plugin_catch_log`).
+const TARGETS: [&str; 2] = [
+    "quilltap::model::streaming_provider",
+    "quilltap::model::completion_provider",
 ];
 
-/// P4.128 — the plugin catch line, diffed against v4's recorded
-/// `pluginErrorLog` field for field: v5's captured `… API error in …` lines
-/// must be exactly v4's (a silence leg on every row where v4 logged none),
-/// and every OTHER v4 plugin ERROR line must be a pinned unported one. Returns
-/// the number of v4 catch lines on the row, or the mismatch.
-fn diff_catch_lines(
-    row: &Row,
-    v5: &V5Outcome,
-    unported_seen: &mut BTreeSet<(String, String, String)>,
-) -> Result<usize, String> {
-    for (_, _, msg) in UNPORTED_PLUGIN_ERROR_LINES {
-        assert!(
-            !v5.lines.iter().any(|l| l.contains(msg)),
-            "{}: v5 now emits an UNPORTED_PLUGIN_ERROR_LINES message ({msg:?}) — port it as a \
-             diffed catch line and retire its entry",
-            label(row)
-        );
-    }
-    let (method, target) = if row.mode.starts_with("stream") {
-        ("streamMessage", "quilltap::model::streaming_provider")
-    } else {
-        ("sendMessage", "quilltap::model::completion_provider")
-    };
-    let got: Vec<&str> = v5
-        .lines
+/// v5's captured lines at `level` on the two model targets.
+fn v5_plugin_lines<'a>(v5: &'a V5Outcome, level: &str) -> Vec<&'a str> {
+    v5.lines
         .iter()
         .map(String::as_str)
         .filter(|l| {
-            l.contains(" API error in streamMessage") || l.contains(" API error in sendMessage")
+            TARGETS
+                .iter()
+                .any(|t| l.starts_with(&format!("{level} {t} ")))
         })
+        .collect()
+}
+
+/// A v4 context value as the capture renders a `%`-sigil field: a string
+/// unquoted, anything else as its JSON text.
+fn render_value(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// v4's recorded plugin line as v5's capture renders it: `<LEVEL> <target>
+/// <message>`, then every `context` key in v4's order, then the logger's
+/// third-argument `error`.
+fn render_v4_line(level: &str, row: &Row, line: &PluginLine) -> String {
+    let target = if row.mode.starts_with("stream") {
+        TARGETS[0]
+    } else {
+        TARGETS[1]
+    };
+    let mut out = format!("{level} {target} {}", line.message);
+    if let Some(ctx) = line.context.as_object() {
+        for (k, v) in ctx {
+            out.push_str(&format!(" {k}={}", render_value(v)));
+        }
+    }
+    if let Some(e) = &line.error {
+        out.push_str(&format!(" error={e}"));
+    }
+    out
+}
+
+/// WARN lines v4's plugins log on these rows that v5 has NOT ported, pinned
+/// BOTH ways (an entry v4 stops emitting fails the exercised check; a v5 port
+/// fails the absence check). `(provider, v4 mode, message)`. The Responses
+/// SSE end-of-stream WARN lives in v5's `responses_api` decoder — outside
+/// P4.141's ownership, a named deferral (the lane record).
+const UNPORTED_PLUGIN_WARN_LINES: &[(&str, &str, &str)] = &[
+    (
+        "OPENAI",
+        "stream",
+        "Stream ended without response.completed event",
+    ),
+    (
+        "GROK",
+        "stream",
+        "Stream ended without response.completed event",
+    ),
+];
+
+/// P4.128 / P4.141 — the plugin lines, diffed against v4's recorded
+/// `pluginErrorLog` / `pluginWarnLog`: v5's ERROR (WARN) lines on the two
+/// model targets must be exactly v4's whole log, in order (a silence leg on
+/// every row where v4 logged none). Returns the number of v4 ERROR lines on
+/// the row, or the mismatch.
+fn diff_lines(
+    row: &Row,
+    v5: &V5Outcome,
+    unported_warn_seen: &mut BTreeSet<(String, String, String)>,
+) -> (Result<usize, String>, Result<(), String>) {
+    let got: Vec<&str> = v5_plugin_lines(v5, "ERROR");
+    let want: Vec<String> = row
+        .plugin_error_log
+        .iter()
+        .map(|e| render_v4_line("ERROR", row, e))
         .collect();
-    let mut want: Vec<String> = Vec::new();
-    for e in &row.plugin_error_log {
-        if CATCH_LINE_PROVIDERS.contains(&row.provider.as_str())
-            && e.message.ends_with(&format!(" API error in {method}"))
-        {
-            want.push(format!(
-                "ERROR {target} {} context={} baseUrl={} error={}",
-                e.message,
-                e.context["context"].as_str().unwrap(),
-                e.context["baseUrl"].as_str().unwrap(),
-                e.error.as_deref().expect("the SDK threw an Error"),
-            ));
-        } else {
-            let triple = (row.provider.as_str(), row.mode.as_str(), e.message.as_str());
-            assert!(
-                UNPORTED_PLUGIN_ERROR_LINES.contains(&triple),
-                "{}: v4 logged an ERROR line no pin names: {:?}",
-                label(row),
-                e.message
-            );
-            unported_seen.insert((
+    let errors = if got == want.iter().map(String::as_str).collect::<Vec<_>>() {
+        Ok(want.len())
+    } else {
+        Err(format!(
+            "{}: the plugin ERROR lines\n  v5: {got:?}\n  v4: {want:?}",
+            label(row)
+        ))
+    };
+    for (_, _, msg) in UNPORTED_PLUGIN_WARN_LINES {
+        assert!(
+            !v5.lines.iter().any(|l| l.contains(msg)),
+            "{}: v5 now emits an UNPORTED_PLUGIN_WARN_LINES message ({msg:?}) — retire its entry",
+            label(row)
+        );
+    }
+    let got_warn: Vec<&str> = v5_plugin_lines(v5, "WARN");
+    let mut want_warn: Vec<String> = Vec::new();
+    for w in &row.plugin_warn_log {
+        let triple = (row.provider.as_str(), row.mode.as_str(), w.message.as_str());
+        if UNPORTED_PLUGIN_WARN_LINES.contains(&triple) {
+            unported_warn_seen.insert((
                 triple.0.to_string(),
                 triple.1.to_string(),
                 triple.2.to_string(),
             ));
+        } else {
+            want_warn.push(render_v4_line("WARN", row, w));
         }
     }
-    let want: Vec<&str> = want.iter().map(String::as_str).collect();
-    if got == want {
-        Ok(want.len())
+    let warns = if got_warn == want_warn.iter().map(String::as_str).collect::<Vec<_>>() {
+        Ok(())
     } else {
         Err(format!(
-            "{}: the plugin catch line\n  v5: {got:?}\n  v4: {want:?}",
+            "{}: the plugin WARN lines\n  v5: {got_warn:?}\n  v4: {want_warn:?}",
             label(row)
         ))
-    }
+    };
+    (errors, warns)
+}
+
+/// P4.141 PENDING: the divergences the rebuilt corpus measured RED-FIRST on
+/// the tree before the port's units landed, each retired (deleted) by the
+/// unit that closes it — the both-ways check fails a stale entry. Same shape
+/// as [`EXPECTED_DIVERGENCES`].
+const PENDING_P4141: &[(&str, &str, &str, &[&str])] = &[
+    // unit 4 — the ten plugin ERROR lines + Google's WARN (`model::plugin_catch_log`)
+    (
+        "GOOGLE",
+        "send",
+        "lines",
+        &[
+            "anthropic_top_level_code",
+            "anthropic_typed_body",
+            "azure_content_filter",
+            "benign_null_code",
+            "code_is_bool",
+            "code_is_number_zero",
+            "content_policy_violation",
+            "empty_body",
+            "error_empty_message",
+            "error_is_false",
+            "error_is_string",
+            "error_null_flat",
+            "error_without_message",
+            "flat_content_filter",
+            "float_in_body",
+            "google_empty_body_as_json",
+            "google_html_as_json",
+            "google_invalid_argument",
+            "google_json_as_text_plain",
+            "invalid_api_key_401",
+            "invalid_prompt",
+            "json_array",
+            "json_null",
+            "json_number",
+            "json_string",
+            "message_not_a_string",
+            "mixed_case_code",
+            "model_not_found_404",
+            "non_json_text",
+            "oai_content_filter",
+            "ollama_error_string",
+            "openrouter_moderation_403",
+            "transport_fetch_throws",
+            "transport_hang",
+            "zai_1301_long_message",
+            "zai_1301_numeric",
+            "zai_1301_string",
+        ],
+    ),
+    (
+        "GOOGLE",
+        "send",
+        "warn_lines",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_object",
+        ],
+    ),
+    (
+        "GOOGLE",
+        "stream",
+        "lines",
+        &[
+            "anthropic_top_level_code",
+            "anthropic_typed_body",
+            "azure_content_filter",
+            "benign_null_code",
+            "code_is_bool",
+            "code_is_number_zero",
+            "content_policy_violation",
+            "empty_body",
+            "error_empty_message",
+            "error_is_false",
+            "error_is_string",
+            "error_null_flat",
+            "error_without_message",
+            "flat_content_filter",
+            "float_in_body",
+            "google_empty_body_as_json",
+            "google_html_as_json",
+            "google_invalid_argument",
+            "google_json_as_text_plain",
+            "invalid_api_key_401",
+            "invalid_prompt",
+            "json_array",
+            "json_null",
+            "json_number",
+            "json_string",
+            "message_not_a_string",
+            "mixed_case_code",
+            "model_not_found_404",
+            "non_json_text",
+            "oai_content_filter",
+            "ollama_error_string",
+            "openrouter_moderation_403",
+            "transport_fetch_throws",
+            "transport_hang",
+            "zai_1301_long_message",
+            "zai_1301_numeric",
+            "zai_1301_string",
+        ],
+    ),
+    (
+        "OLLAMA",
+        "send",
+        "lines",
+        &[
+            "anthropic_top_level_code",
+            "anthropic_typed_body",
+            "azure_content_filter",
+            "benign_null_code",
+            "code_is_bool",
+            "code_is_number_zero",
+            "content_policy_violation",
+            "empty_body",
+            "error_empty_message",
+            "error_is_false",
+            "error_is_string",
+            "error_null_flat",
+            "error_without_message",
+            "flat_content_filter",
+            "float_in_body",
+            "google_invalid_argument",
+            "google_json_as_text_plain",
+            "invalid_api_key_401",
+            "invalid_prompt",
+            "json_array",
+            "json_null",
+            "json_number",
+            "json_string",
+            "message_not_a_string",
+            "mixed_case_code",
+            "model_not_found_404",
+            "non_json_text",
+            "oai_content_filter",
+            "ollama_error_string",
+            "openrouter_moderation_403",
+            "transport_fetch_throws",
+            "transport_hang",
+            "zai_1301_long_message",
+            "zai_1301_numeric",
+            "zai_1301_string",
+        ],
+    ),
+    (
+        "OLLAMA",
+        "stream",
+        "lines",
+        &[
+            "anthropic_top_level_code",
+            "anthropic_typed_body",
+            "azure_content_filter",
+            "benign_null_code",
+            "code_is_bool",
+            "code_is_number_zero",
+            "content_policy_violation",
+            "empty_body",
+            "error_empty_message",
+            "error_is_false",
+            "error_is_string",
+            "error_null_flat",
+            "error_without_message",
+            "flat_content_filter",
+            "float_in_body",
+            "google_invalid_argument",
+            "google_json_as_text_plain",
+            "invalid_api_key_401",
+            "invalid_prompt",
+            "json_array",
+            "json_null",
+            "json_number",
+            "json_string",
+            "message_not_a_string",
+            "mixed_case_code",
+            "model_not_found_404",
+            "non_json_text",
+            "oai_content_filter",
+            "ollama_error_string",
+            "openrouter_moderation_403",
+            "transport_fetch_throws",
+            "transport_hang",
+            "zai_1301_long_message",
+            "zai_1301_numeric",
+            "zai_1301_string",
+        ],
+    ),
+    (
+        "OPENROUTER",
+        "send_vision",
+        "lines",
+        &[
+            "anthropic_top_level_code",
+            "anthropic_typed_body",
+            "azure_content_filter",
+            "benign_null_code",
+            "code_is_bool",
+            "code_is_number_zero",
+            "content_policy_violation",
+            "empty_body",
+            "error_empty_message",
+            "error_is_false",
+            "error_is_string",
+            "error_null_flat",
+            "error_without_message",
+            "flat_content_filter",
+            "float_in_body",
+            "google_invalid_argument",
+            "google_json_as_text_plain",
+            "invalid_api_key_401",
+            "invalid_prompt",
+            "json_array",
+            "json_null",
+            "json_number",
+            "json_string",
+            "message_not_a_string",
+            "mixed_case_code",
+            "model_not_found_404",
+            "non_json_text",
+            "oai_content_filter",
+            "ollama_error_string",
+            "openrouter_moderation_403",
+            "transport_fetch_throws",
+            "transport_hang",
+            "zai_1301_long_message",
+            "zai_1301_numeric",
+            "zai_1301_string",
+        ],
+    ),
+    (
+        "OPENROUTER",
+        "stream_tools",
+        "lines",
+        &[
+            "anthropic_top_level_code",
+            "anthropic_typed_body",
+            "azure_content_filter",
+            "benign_null_code",
+            "code_is_bool",
+            "code_is_number_zero",
+            "content_policy_violation",
+            "empty_body",
+            "error_empty_message",
+            "error_is_false",
+            "error_is_string",
+            "error_null_flat",
+            "error_without_message",
+            "flat_content_filter",
+            "float_in_body",
+            "google_invalid_argument",
+            "google_json_as_text_plain",
+            "invalid_api_key_401",
+            "invalid_prompt",
+            "json_array",
+            "json_null",
+            "json_number",
+            "json_string",
+            "message_not_a_string",
+            "mixed_case_code",
+            "model_not_found_404",
+            "non_json_text",
+            "oai_content_filter",
+            "ollama_error_string",
+            "openrouter_moderation_403",
+            "transport_fetch_throws",
+            "transport_hang",
+            "zai_1301_long_message",
+            "zai_1301_numeric",
+            "zai_1301_string",
+        ],
+    ),
+    // unit 5 — the timeout / raw-`fetch` connect TRIGGER (`network`)
+    ("ANTHROPIC", "send", "trigger", &["transport_hang"]),
+    ("ANTHROPIC", "stream", "trigger", &["transport_hang"]),
+    ("DEEPSEEK", "send", "trigger", &["transport_hang"]),
+    ("DEEPSEEK", "stream", "trigger", &["transport_hang"]),
+    (
+        "GOOGLE",
+        "send",
+        "trigger",
+        &["transport_fetch_throws", "transport_hang"],
+    ),
+    (
+        "GOOGLE",
+        "stream",
+        "trigger",
+        &["transport_fetch_throws", "transport_hang"],
+    ),
+    ("GROK", "send", "trigger", &["transport_hang"]),
+    ("GROK", "stream", "trigger", &["transport_hang"]),
+    ("NANOGPT", "send", "trigger", &["transport_hang"]),
+    ("NANOGPT", "stream", "trigger", &["transport_hang"]),
+    (
+        "OLLAMA",
+        "send",
+        "trigger",
+        &["transport_fetch_throws", "transport_hang"],
+    ),
+    (
+        "OLLAMA",
+        "stream",
+        "trigger",
+        &["transport_fetch_throws", "transport_hang"],
+    ),
+    ("OPENAI", "send", "trigger", &["transport_hang"]),
+    ("OPENAI", "stream", "trigger", &["transport_hang"]),
+    ("OPENAI_COMPATIBLE", "send", "trigger", &["transport_hang"]),
+    (
+        "OPENAI_COMPATIBLE",
+        "stream",
+        "trigger",
+        &["transport_hang"],
+    ),
+    (
+        "OPENROUTER",
+        "send_vision",
+        "trigger",
+        &["transport_fetch_throws", "transport_hang"],
+    ),
+    (
+        "OPENROUTER",
+        "stream_tools",
+        "trigger",
+        &["transport_fetch_throws", "transport_hang"],
+    ),
+    ("Z_AI", "send", "trigger", &["transport_hang"]),
+    ("Z_AI", "stream", "trigger", &["transport_hang"]),
+    // unit 6 — the 2xx shape guard (`model::sdk_response_shape`): outcome, v4's thrown bytes, the 2xx catch lines
+    // (OpenRouter's no-image send runs `@openrouter/sdk` in v4, but its
+    // `JSON.parse` failure throws the same V8 text the guard renders.)
+    (
+        "OPENROUTER",
+        "send",
+        "message",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "ANTHROPIC",
+        "send",
+        "message",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "ANTHROPIC",
+        "send",
+        "outcome",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_object",
+        ],
+    ),
+    (
+        "DEEPSEEK",
+        "send",
+        "lines",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_body_json",
+            "ok_empty_object",
+            "ok_non_json",
+        ],
+    ),
+    (
+        "DEEPSEEK",
+        "send",
+        "message",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "DEEPSEEK",
+        "send",
+        "outcome",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_object",
+        ],
+    ),
+    (
+        "GOOGLE",
+        "send",
+        "lines",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "GOOGLE",
+        "send",
+        "message",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "GROK",
+        "send",
+        "message",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "GROK",
+        "send",
+        "outcome",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_object",
+        ],
+    ),
+    (
+        "NANOGPT",
+        "send",
+        "lines",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_body_json",
+            "ok_empty_object",
+            "ok_non_json",
+        ],
+    ),
+    (
+        "NANOGPT",
+        "send",
+        "message",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "NANOGPT",
+        "send",
+        "outcome",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_object",
+        ],
+    ),
+    (
+        "OLLAMA",
+        "send",
+        "lines",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "OLLAMA",
+        "send",
+        "message",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "OPENAI",
+        "send",
+        "message",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "OPENAI",
+        "send",
+        "outcome",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_object",
+        ],
+    ),
+    (
+        "OPENAI_COMPATIBLE",
+        "send",
+        "lines",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_body_json",
+            "ok_empty_object",
+            "ok_non_json",
+        ],
+    ),
+    (
+        "OPENAI_COMPATIBLE",
+        "send",
+        "message",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "OPENAI_COMPATIBLE",
+        "send",
+        "outcome",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_object",
+        ],
+    ),
+    (
+        "OPENROUTER",
+        "send_vision",
+        "message",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "Z_AI",
+        "send",
+        "message",
+        &["ok_empty_body_json", "ok_non_json"],
+    ),
+    (
+        "Z_AI",
+        "send",
+        "outcome",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_object",
+        ],
+    ),
+    // unit 7 — Google's stream on a non-SSE 2xx body (`Incomplete JSON segment at the end`)
+    (
+        "GOOGLE",
+        "stream",
+        "lines",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_object",
+            "ok_non_json",
+        ],
+    ),
+    (
+        "GOOGLE",
+        "stream",
+        "outcome",
+        &[
+            "ok_choice_no_message",
+            "ok_choices_empty",
+            "ok_empty_object",
+            "ok_non_json",
+        ],
+    ),
+];
+
+fn expected_any(row: &Row, field: &str) -> bool {
+    expected(row, field)
+        || PENDING_P4141.iter().any(|(p, m, f, cases)| {
+            *p == row.provider
+                && *m == row.mode
+                && *f == field
+                && cases.contains(&row.case.as_str())
+        })
 }
 
 #[test]
@@ -832,14 +1615,24 @@ fn text_http_errors_match_v4s_real_plugins() {
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str(l).expect("corpus row parses"))
         .collect();
-    // 33 cases × (9 providers × 2 modes + OPENROUTER × 4 modes), plus the two
-    // GOOGLE-only rows (`google_html_as_json`, `google_empty_body_as_json`:
-    // a body that is not JSON served AS `application/json`) × 2 modes, plus
-    // P4.128's posed transport failure through the three catch-line plugins
-    // × 2 modes.
+    let specs: Vec<CaseSpec> = serde_json::from_str(
+        &std::fs::read_to_string(CASES).unwrap_or_else(|e| panic!("read {CASES}: {e}")),
+    )
+    .expect("cases.json parses");
+    let spec_of = |case: &str| -> &CaseSpec {
+        specs
+            .iter()
+            .find(|s| s.case == case)
+            .unwrap_or_else(|| panic!("no cases.json entry for {case}"))
+    };
+    // Re-derived from the rebuilt NDJSON (P4.141): 33 shared non-2xx cases ×
+    // 22 rows, the two GOOGLE-only rows × 2 modes, the two status-less cases ×
+    // 20 rows (nine providers × 2 modes + OpenRouter's two raw modes — the
+    // SDK modes skipped, the recorder's `modes` override), and the five 2xx
+    // cases × 22 rows.
     assert_eq!(
         rows.len(),
-        33 * 22 + 2 * 2 + 3 * 2,
+        33 * 22 + 2 * 2 + 2 * 20 + 5 * 22,
         "corpus row count; regenerate the corpus"
     );
 
@@ -848,54 +1641,75 @@ fn text_http_errors_match_v4s_real_plugins() {
     let mut unexpected: Vec<String> = Vec::new();
     let mut refused_v4 = 0usize;
     let mut refused_matched = 0usize;
-    let mut transport_rows = 0usize;
+    let mut statusless_rows = 0usize;
+    let mut ok_rows = 0usize;
     let mut catch_lines = 0usize;
-    let mut unported_seen: BTreeSet<(String, String, String)> = BTreeSet::new();
-    let mut catch_mismatches: Vec<String> = Vec::new();
+    let mut unported_warn_seen: BTreeSet<(String, String, String)> = BTreeSet::new();
 
     for row in &rows {
-        assert_eq!(row.outcome, "thrown", "{}: v4 must throw", label(row));
-        let v5 = run_v5(&rt, row);
-        match row.status {
-            Some(status) => {
-                // (4) the message bytes do not move.
-                assert_eq!(
-                    v5.message,
-                    format!(
-                        "HTTP {}: {}",
-                        status,
-                        row.body.as_deref().unwrap_or_default()
-                    ),
-                    "{}: v5's message must stay the transport's bytes (§S.5)",
-                    label(row)
-                );
-                // v4 issued exactly one request per row (no SDK retry on these
-                // statuses); so must v5.
-                assert_eq!(v5.calls, row.fetch_calls, "{}: request count", label(row));
-            }
-            None => {
-                // A transport failure: v5's message stays the transport's own
-                // (RULED at planning — only the catch line's `error` field
-                // takes v4's `Connection error.`), and the SDK's retries (1 +
-                // `DEFAULT_MAX_RETRIES` 2) are recorded but NOT compared: the
-                // 2026-07-23 provider-I/O ruling (v5's retries live inside
-                // `ReqwestTransport`, which a posed transport replaces).
-                assert!(
-                    v5.message.starts_with("error sending request for url ("),
-                    "{}: v5's transport message moved: {}",
-                    label(row),
-                    v5.message
-                );
-                assert_eq!(row.fetch_calls, 3, "{}: v4's SDK retry count", label(row));
-                transport_rows += 1;
+        let spec = spec_of(&row.case);
+        let posed = Posed::for_row(row, spec);
+        let v5 = run_v5(&rt, row, spec);
+        if row.outcome == "ok" {
+            ok_rows += 1;
+        }
+        if let Some(e) = &v5.error {
+            match &posed {
+                Posed::Http { status, body } => {
+                    // (4) the message bytes do not move.
+                    assert_eq!(
+                        e.message,
+                        format!("HTTP {status}: {body}"),
+                        "{}: v5's message must stay the transport's bytes (§S.5)",
+                        label(row)
+                    );
+                }
+                Posed::Connect | Posed::Timeout => {
+                    // v5's message stays the transport's own (RULED at P4.128
+                    // planning — only the catch line's `error` takes v4's
+                    // text): reqwest's `Display` on the non-streaming arm, the
+                    // time-to-headers budget on the streaming one.
+                    let want = if row.mode.starts_with("stream") && matches!(posed, Posed::Timeout)
+                    {
+                        TransportError::headers_timeout(
+                            spec.request_timeout_ms
+                                .expect("a hang row carries a budget")
+                                as u128,
+                        )
+                        .message
+                    } else {
+                        posed_connect_failure(&v5.url)
+                    };
+                    assert_eq!(e.message, want, "{}: v5's transport message", label(row));
+                    // The KIND the transport reported travels on the error
+                    // (P4.141 Tier 1 item 4); where it does, it is the posed one.
+                    if let Some(kind) = e.transport_kind {
+                        let want_kind = match posed {
+                            Posed::Timeout => TransportErrorKind::Timeout,
+                            _ => TransportErrorKind::Connect,
+                        };
+                        assert_eq!(kind, want_kind, "{}: the transport kind", label(row));
+                    }
+                }
+                Posed::Ok2xx(_) => {}
             }
         }
-        match diff_catch_lines(row, &v5, &mut unported_seen) {
-            Ok(n) => catch_lines += n,
-            Err(e) => catch_mismatches.push(e),
+        if posed.is_statusless() {
+            statusless_rows += 1;
+        } else {
+            // One request per row (no SDK retry on these); so must v5.
+            assert_eq!(v5.calls, row.fetch_calls, "{}: request count", label(row));
         }
 
-        let diffs = diff_row(row, &v5);
+        let mut diffs = diff_row(row, &posed, &v5);
+        let (errors, warns) = diff_lines(row, &v5, &mut unported_warn_seen);
+        match errors {
+            Ok(n) => catch_lines += n,
+            Err(e) => diffs.push(("lines", e)),
+        }
+        if let Err(e) = warns {
+            diffs.push(("warn_lines", e));
+        }
         if row.refusal.refused {
             refused_v4 += 1;
             if !diffs.iter().any(|(n, _)| *n == "verdict") {
@@ -909,7 +1723,7 @@ fn text_http_errors_match_v4s_real_plugins() {
                 row.mode.clone(),
                 field.to_string(),
             );
-            if !expected(&key.0, &key.1, &key.2, &key.3) {
+            if !expected_any(row, field) {
                 unexpected.push(format!("{} {field}: {detail}", label(row)));
             }
             found.insert(key);
@@ -917,7 +1731,9 @@ fn text_http_errors_match_v4s_real_plugins() {
     }
 
     eprintln!(
-        "text_http_errors: {} rows; v4 refused {refused_v4}, v5 matched {refused_matched}; {} divergence(s) found",
+        "text_http_errors: {} rows; v4 refused {refused_v4}, v5 matched {refused_matched}; \
+         {statusless_rows} status-less, {ok_rows} ok; {catch_lines} v4 ERROR line(s) diffed; \
+         {} divergence(s) found",
         rows.len(),
         found.len()
     );
@@ -929,35 +1745,30 @@ fn text_http_errors_match_v4s_real_plugins() {
     // fetch plugins, × 2) — and v5 matches every one bar the two OpenRouter
     // SDK-path `1301` rows pinned above. Before P4.118 wired the side, v5 matched NONE.
     assert_eq!(refused_v4, 162, "v4's refused rows");
-    assert_eq!(transport_rows, 6, "the posed transport-failure rows");
-    assert!(
-        catch_mismatches.is_empty(),
-        "{} row(s) with a catch-line mismatch:\n{}",
-        catch_mismatches.len(),
-        catch_mismatches.join("\n")
-    );
-    // P4.128: the three catch-line plugins × 34 cases (33 shared + the
-    // transport row) × 2 modes — every one diffed field for field.
-    assert_eq!(catch_lines, 3 * 34 * 2, "v4's plugin catch lines diffed");
-    let unported_missing: Vec<&(&str, &str, &str)> = UNPORTED_PLUGIN_ERROR_LINES
+    assert_eq!(refused_matched, 160, "v5's matching refusal verdicts");
+    assert_eq!(statusless_rows, 40, "the posed status-less rows");
+    let unported_missing: Vec<&(&str, &str, &str)> = UNPORTED_PLUGIN_WARN_LINES
         .iter()
         .filter(|(p, m, msg)| {
-            !unported_seen.contains(&(p.to_string(), m.to_string(), msg.to_string()))
+            !unported_warn_seen.contains(&(p.to_string(), m.to_string(), msg.to_string()))
         })
         .collect();
     assert!(
         unported_missing.is_empty(),
-        "UNPORTED_PLUGIN_ERROR_LINES entries v4 no longer emits on any row (retire them): {unported_missing:?}"
+        "UNPORTED_PLUGIN_WARN_LINES entries v4 no longer emits on any row (retire them): {unported_missing:?}"
     );
-    assert_eq!(refused_matched, 160, "v5's matching refusal verdicts");
     let mut missing: Vec<String> = Vec::new();
-    for (p, m, f, cases) in EXPECTED_DIVERGENCES {
-        // "Every case" = every case that HAS a row for that provider/mode
-        // (the GOOGLE-only rows have none elsewhere).
+    let pinned = EXPECTED_DIVERGENCES.iter().chain(PENDING_P4141.iter());
+    for (p, m, f, cases) in pinned {
+        // "Every case" = every NON-2xx case that has a row for that
+        // provider/mode (the GOOGLE-only rows have none elsewhere; P4.141's
+        // status-less and 2xx rows carry no refusal side — the marker
+        // predates them and means the P4.118 response rows).
         let listed: Vec<&str> = if *cases == EVERY_CASE {
             let cases_here: BTreeSet<&str> = rows
                 .iter()
                 .filter(|r| r.provider == *p && r.mode == *m)
+                .filter(|r| r.status.is_some_and(|s| !(200..300).contains(&s)))
                 .map(|r| r.case.as_str())
                 .collect();
             cases_here.into_iter().collect()
@@ -978,5 +1789,12 @@ fn text_http_errors_match_v4s_real_plugins() {
         unexpected.join("\n"),
         missing.len(),
         missing.join("\n")
+    );
+    // v4 logged 546 plugin ERROR lines across the corpus; this counts the
+    // ones on rows whose lines MATCH (a mismatching row is a "lines"
+    // divergence). P4.141 raises it to all 546 as its units land.
+    assert_eq!(
+        catch_lines, 210,
+        "v4's plugin ERROR lines diffed and matched"
     );
 }

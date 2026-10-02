@@ -160063,3 +160063,118 @@ native-transport` 2,869 passed / 1 failed — the failure is
 intermittent in a file this lane never touches (recorded, not this lane's);
 clippy both feature sets clean. The full workspace gate rides unit 3's
 (which carries this tree).
+
+### Unit 3 — the recorder grown, the corpus rebuilt at the pin, the family reworked (Tier 1 items 6 + 8; Tier 2 items 9's recorder half)
+
+**The recorder** (`record-text-errors.mjs`): (i) `"transport": "hang"` — the
+mocked `fetch` returns a promise rejecting with `(init?.signal ?? (input
+instanceof Request ? input.signal : undefined)).reason` on abort (undici's
+behaviour; genai hands `fetch` a `Request`); (ii) a case-level
+`requestTimeoutMs` threaded by `paramsFor`; (iii) a case-level `modes` object
+overriding a provider's mode list (`{"openrouter": ["stream_tools",
+"send_vision"]}` on the hang + fetch-throws cases — speakeasy's 1-hour
+retry); (iv) a keep-alive interval cleared before `writeFileSync`; plus
+`okResult` on every `ok` row (`{content}` / `{chunks, content}`) and the WARN
+half of the logger bridge (`pluginWarnLog`, present when non-empty). **A
+measured recorder correction:** a posed EMPTY 2xx body was first posed as
+`new Response(null)` (the P4.118 rule for non-2xx), which leaves
+`response.body` null — every SDK stream reader then threw `Attempted to
+iterate over a response with no body` (and Ollama `Failed to get response
+reader`, Google `Response body is empty`, OpenRouter-raw `No response body`),
+a shape no real 2xx over undici reaches. The empty body is now `''` (an
+EMPTY stream) on a 2xx only, so no existing non-2xx row moves; the send
+half is unchanged either way (`!bodyText` → `undefined`).
+
+**`cases.json`:** `transport_fetch_throws` widened to all ten providers
+(OpenRouter's raw modes only); NEW `transport_hang` (`requestTimeoutMs: 50`,
+same providers/modes) and `ok_choices_empty` / `ok_choice_no_message` /
+`ok_empty_object` / `ok_non_json` / `ok_empty_body_json` (200,
+`application/json`, all ten providers × all modes).
+
+**Neutrality first (recorded):** the grown recorder over the UNCHANGED
+`cases.json` at the pin wrote 736 rows, **every one parse-identical and in
+the same order** as the committed corpus, none gaining a `pluginWarnLog`.
+**Rebuilt corpus** (the recipe below, `IDENTICAL` to the staged run byte for
+byte): **880 rows** — ANTHROPIC/DEEPSEEK/GROK/NANOGPT/OLLAMA/OPENAI/
+OPENAI_COMPATIBLE/Z_AI 40 + 40, GOOGLE 42 + 42, OPENROUTER `stream` 38 /
+`stream_tools` 40 / `send` 38 / `send_vision` 40; outcome 825 thrown / 55 ok;
+**546** plugin ERROR lines, **13** WARN lines; triggers `network` 26,
+`provider-error` 179, `moderation-refusal` 162, `model-missing` 20, `auth`
+18, none 475. The 736 old rows remain parse-identical in the rebuilt file.
+
+**Measured v4 facts the survey had as probes, now recorded through the real
+plugins:** every SDK provider's hang row throws `Request timed out.` after
+`fetchCalls: 1`; GOOGLE `This operation was aborted` (`AbortError`) both
+modes; OLLAMA send / OpenRouter `send_vision` `The operation was aborted due
+to timeout` (`TimeoutError`), their streams `This operation was aborted`;
+`fetch failed` on every raw-`fetch` connect row (1 call), `Connection error.`
+on every SDK connect row (3 calls); all 26 status-less raw/hang rows
+`network`, every SDK connect row `provider-error`. The 2xx rows match the
+survey's §B1 table exactly (and the stream half is clean for every
+openai-SDK provider — OPENAI/GROK log the unported `Stream ended without
+response.completed event` WARN; ANTHROPIC/OLLAMA end with zero chunks;
+GOOGLE throws `Incomplete JSON segment at the end` on every non-empty
+non-SSE body and answers an empty one with one chunk).
+
+**The family** (`text_http_errors_equivalence.rs`): `PosedFailure` → a
+`PosedTransport` over `Posed::{Http, Connect, Timeout, Ok2xx}` (from the
+row's `cases.json` entry — `transport` / `requestTimeoutMs` are not on the
+rows): `execute` → `Err(http)` / `Err(connect(reqwest's Display))` /
+`Err(timeout(the same Display))` / `Ok(200, body)`; `execute_stream` →
+`Err(http)` / `Err(connect)` / `Err(headers_timeout(policy budget))` / a
+channel yielding the body then EOF. `run_stream` passes the recorder's tool
+on `stream_tools` rows and `request_timeout_ms` on hang rows. Per-row
+OUTCOME comparand replaces `assert_eq!(row.outcome, "thrown")`; the refusal
+SIDE is diffed on non-2xx rows only (where one exists by design — the six
+P4.128 `side` pins on `transport_fetch_throws` RETIRE with that scoping); a
+thrown 2xx row diffs v5's message against v4's `thrown.message`; the
+status-less rows assert v5's transport bytes against `posed_connect_failure(<the
+URL the transport was handed>)` (the tautology retired) or the
+`headers_timeout(<the row's budget>)` bytes, plus the KIND where the error
+carries one; `fetch_calls` 1-for-1 on status and 2xx rows, recorded-not-
+compared on status-less rows (the 2026-07-23 ruling). `diff_lines` diffs
+EVERY ERROR line on the two model targets against the WHOLE `pluginErrorLog`
+(rendered from v4's `context` in key order + the third-argument `error`) and
+every WARN line against `pluginWarnLog` — `UNPORTED_PLUGIN_ERROR_LINES` and
+both of its asserts DELETED. `UNPORTED_PLUGIN_WARN_LINES` (NEW, both ways):
+OPENAI + GROK `stream` `Stream ended without response.completed event` —
+the Responses decoder's end-of-stream WARN, outside this lane's ownership (a
+named deferral). `EVERY_CASE` is scoped to the non-2xx rows (it predates the
+status-less / 2xx rows and means the P4.118 response rows). OpenRouter's
+`stream` / `send` 2xx OUTCOME rows join the permanent `openrouter-sdk` class
+(`ResponseValidationError` where v5's raw wire answers).
+
+Gate: `CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` (no env block) **659 binaries / 4,112 passed / 0 failed / 3 ignored** (units 2 + 3 together).
+
+**RED-FIRST, measured on this tree** (units 1–2 landed; one `#[test]`, so
+the count is the set of `(case, provider, mode, field)` divergences it
+collects): **321 new divergences** — 8 OpenRouter SDK-mode `outcome` rows
+(the permanent class above) and **313** now `PENDING_P4141` entries, each
+tagged by the unit that retires it (the both-ways check fails a stale
+entry; 2 of the 313, OpenRouter `send`'s non-JSON / empty `message`, surfaced
+only once `EVERY_CASE` was scoped):
+- `lines` **237**: GOOGLE send 39 / stream 41, OLLAMA send 37 / stream 35,
+  OpenRouter `send_vision` 35 / `stream_tools` 35 — **202 on the 736 old rows
+  exactly as predicted** (35/35/33×4) plus the new status-less and 2xx rows —
+  and OPENAI_COMPATIBLE / DEEPSEEK / NANOGPT send 5 each (the `ok_*` rows);
+- `trigger` **26** (the 20 hang rows + the 6 raw-provider fetch-throws rows —
+  as predicted);
+- `outcome` **25**: 21 send rows (7 providers × 3 JSON shapes, as predicted)
+  + GOOGLE `stream` 4;
+- `message` **22**: the non-JSON / empty send rows of all ten providers'
+  sends (incl. OpenRouter's SDK `send`) — `response parse: …` vs V8's text;
+- `warn_lines` **3**: GOOGLE send's three JSON-shape rows.
+The six SDK catch-line rows on `transport_hang` the order predicted red on
+`error` are GREEN here: unit 1 already reads the kind (`is_timeout()`), so
+the posed `Timeout` renders `Request timed out.`; their red-first is unit 2's
+M1. `v4 refused 162 / v5 matched 160` and the 162/160 constants hold
+unchanged; status-less rows 40; matched ERROR lines 210 of 546 (pinned —
+rises as units land).
+
+**Regen recipe (AS RUN):**
+`PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH TZ=UTC
+V4=/tmp/qt-v4-pin-p4141-f6426e196 bash
+harness/oracle/providers/regenerate-text-errors.sh` (from the lane worktree;
+§2 probe passed immediately before; ~26 s). Run: `cargo test -p
+quilltap-harness --test text_http_errors_equivalence -- --nocapture` (reads
+the committed corpus + `cases.json`; no env var).

@@ -21,6 +21,12 @@ _Docs-only change._
 - `9753d0eb2` (PORT): the project character roster now gates a character's doc tools, `search_scriptorium` and the project tier of the shared wardrobe through one chokepoint. The roster auto-add on chat create and chat move is removed. `allowAnyCharacter` now defaults to `true`, and the project PUT returns the enriched project. The SPA Characters card and four help pages change too.
 - `e5c6bd0c0` (CONVERGENCE on this port's filings 175/176, shaped differently from P4.135): a failed avatar-roll collapse is now deferred to the next boot instead of being fatal. Separately, a new boot-time structural table check reports damage through a `structure` service in `/api/health`. The ledger gate itself is unchanged.
 - §1 is rewritten for the new state. The previous dirty-tree waiver is spent because v4 committed the 175/176 filings itself.
+#### 2026-10-02 — test(harness): rebuild the text-errors corpus with hang, all-provider fetch-throws and 2xx-body cases; diff every plugin line
+
+_Versions: harness 0.0.1076._
+
+`record-text-errors.mjs` gains a `hang` transport (the mocked `fetch` rejects with the abort signal's reason, as undici does), a per-case `requestTimeoutMs`, a per-provider `modes` override, a keep-alive, `okResult` on rows that did not throw, and a `pluginWarnLog`. `cases.json` widens `transport_fetch_throws` to all ten providers and adds `transport_hang` (50 ms budget) plus five 2xx cases (`ok_choices_empty`, `ok_choice_no_message`, `ok_empty_object`, `ok_non_json`, `ok_empty_body_json`). Regenerated from v4 `f6426e196`: 736 → 880 rows. The 736 existing rows are parse-identical. `text_http_errors_equivalence` now poses each row's exchange (non-2xx, connect, timeout, or a 2xx body) and compares the outcome. It diffs every ERROR and WARN line on the two model targets against v4's whole plugin log, and `UNPORTED_PLUGIN_ERROR_LINES` is gone. The 313 divergences measured on this tree are pinned in `PENDING_P4141`, each tagged with the unit that retires it.
+
 #### 2026-10-02 — fix(model): ReqwestTransport reports timeouts as Timeout and no longer turns a failed 2xx body read into an empty answer
 
 _Versions: core 0.0.1148._
