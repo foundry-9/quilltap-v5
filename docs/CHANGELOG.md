@@ -68,6 +68,20 @@ documents; v5's reaps links / folders / chunks plus content). Filed upstream
 as v4 bugs 175 (the exit on a resumable, unstamped pass) and 176 (the ledger
 skip that leaves a damaged table unchecked behind a healthy `/health`),
 uncommitted in the v4 checkout for the human.
+#### 2026-10-01 — fix(core): home v4's two API-key fallback lines in `db::fallback`; the understudy key emitter moves home (P4.136)
+
+_Versions: core 0.0.1140, harness 0.0.1064._
+
+`db::fallback` gains `find_api_key_by_id_or_none` (`Error finding API key by
+ID`) and `find_api_key_by_id_and_user_id_or_none` (`… and user ID`), the
+twins of v4's two fallback `safeQuery` key reads. Both hard-code
+`collection = "connection_profiles"` (the repository's name, never the table)
+and render `error` as the bare driver message. The Concierge resolvers'
+private emitter in `provider_routing.rs` now delegates to the scoped home,
+which drops the `sqlite error:` prefix it used to log. `fallback_home_guard`
+lists both messages (red first on the old emitter, green after the move).
+Unit pins cover each line, the bare message over a corrupt cell, and the
+silence legs.
 
 #### 2026-10-01 — docs(porting): order the `f6426e196` bug-174 drift catch-up + review-follow-ups round (P4.D244 ∥ P4.135 ∥ P4.136 ∥ P4.137 ∥ P4.138)
 

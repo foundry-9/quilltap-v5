@@ -532,6 +532,13 @@ mod pool_failure_tests {
             "{}",
             hit[0]
         );
+        // P4.136: the line is the home's, so `error` is the driver's bare
+        // sentence (this resolver's own copy had carried `sqlite error: `).
+        assert!(
+            hit[0].ends_with(" error=no such table: api_keys"),
+            "{}",
+            hit[0]
+        );
         // The pooled form, over a pool that cannot open: the same line.
         let (_dir, db) = db_with_a_failing_read_pool();
         let keys = DbApiKeys(db);

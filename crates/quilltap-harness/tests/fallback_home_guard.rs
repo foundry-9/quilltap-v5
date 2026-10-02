@@ -37,6 +37,10 @@ const HOME_MESSAGES: &[&str] = &[
     "Failed to ensure collection exists",
     "Error seeding built-in roleplay templates",
     "Error sweeping orphaned store children",
+    // P4.136: v4's two API-key reads (`connection-profiles.repository.ts:
+    // 249-288`), `collection = connection_profiles`.
+    "Error finding API key by ID",
+    "Error finding API key by ID and user ID",
 ];
 
 const HOME: &str = "db/fallback.rs";

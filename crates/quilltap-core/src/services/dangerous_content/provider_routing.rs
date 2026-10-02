@@ -118,31 +118,20 @@ impl ApiKeyResolver for ConnApiKeys<'_> {
     }
 }
 
-/// v4 `repos.connections.findApiKeyByIdAndUserId` as its callers see it —
-/// `safeQuery(…, 'Error finding API key by ID and user ID', { keyId, userId },
-/// null)` with the repository's `collection` (`connection_profiles`) injected
-/// first — so a failed read (the read pool included, which v4's in-`safeQuery`
-/// `getCollection()` stands for) logs that ERROR and answers `null`. P4.124: the
-/// two real resolvers' `try_resolve(…).ok().flatten()` had dropped it silently.
+/// v4 `repos.connections.findApiKeyByIdAndUserId` as its callers see it — a
+/// fallback `safeQuery` — so a failed read (the read pool included, which v4's
+/// in-`safeQuery` `getCollection()` stands for) logs the repository's ERROR
+/// and answers `null`. P4.124: the two real resolvers'
+/// `try_resolve(…).ok().flatten()` had dropped it silently. P4.136: the line
+/// lives in its home, [`crate::db::fallback::find_api_key_by_id_and_user_id_or_none`]
+/// (this copy had rendered `error` with `DbError`'s `sqlite error:` prefix).
 fn find_api_key_or_none(
     read: impl FnOnce() -> Result<Option<crate::db::api_keys::ApiKey>, DbError>,
     key_id: &str,
     user_id: &str,
 ) -> Option<String> {
-    match read() {
-        Ok(key) => key.map(|k| k.key_value),
-        Err(error) => {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "connection_profiles",
-                keyId = %key_id,
-                userId = %user_id,
-                error = %error,
-                "Error finding API key by ID and user ID"
-            );
-            None
-        }
-    }
+    crate::db::fallback::find_api_key_by_id_and_user_id_or_none(key_id, user_id, read)
+        .map(|k| k.key_value)
 }
 
 /// The owned-[`Db`] form of [`ConnApiKeys`] — the same real resolution

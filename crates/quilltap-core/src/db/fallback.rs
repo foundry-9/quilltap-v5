@@ -181,6 +181,62 @@ pub fn delete_with_gc_or_false(
     })
 }
 
+// === P4.136 — v4's two API-key reads (`connection-profiles.repository.ts:
+// 249-288`). Both are 4-arg fallback `safeQuery`s on the repository
+// constructed with `'connection_profiles'`, so the injected `collection` is
+// the REPOSITORY's — never `api_keys`, the table they read — and it is
+// hard-coded here rather than taken as a parameter, so no caller can pass the
+// table name. A corrupt cell (a BLOB `key_value`) throws inside the wrapper
+// (v4's `ApiKeySchema.parse`; v5's `marshal_row` type check) and lands on the
+// line;
+// a missing `api_keys` TABLE is NOT a v4 arm (`getApiKeysCollection` heals it
+// with `ensureCollection` first). Per access — v4 has no once-only gate. ===
+
+/// v4 `findApiKeyById` as its callers see it: `read()`'s `Err` logs `Error
+/// finding API key by ID {collection, keyId, error}` and answers `None`
+/// (`connection-profiles.repository.ts:249-265`) — the UNSCOPED read the
+/// participant resolver, Carina, the gate+lookup composite and the
+/// connection-profile routes make.
+pub fn find_api_key_by_id_or_none(
+    key_id: &str,
+    read: impl FnOnce() -> Result<Option<super::api_keys::ApiKey>, DbError>,
+) -> Option<super::api_keys::ApiKey> {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "connection_profiles",
+            keyId = %key_id,
+            error = %error_text(&error),
+            "Error finding API key by ID"
+        );
+        None
+    })
+}
+
+/// v4 `findApiKeyByIdAndUserId` as its callers see it: `read()`'s `Err` logs
+/// `Error finding API key by ID and user ID {collection, keyId, userId,
+/// error}` and answers `None` (`connection-profiles.repository.ts:270-288`) —
+/// the SCOPED read the cheap-LLM resolver, image description and the
+/// Concierge's understudy resolvers make.
+pub fn find_api_key_by_id_and_user_id_or_none(
+    key_id: &str,
+    user_id: &str,
+    read: impl FnOnce() -> Result<Option<super::api_keys::ApiKey>, DbError>,
+) -> Option<super::api_keys::ApiKey> {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "connection_profiles",
+            keyId = %key_id,
+            userId = %user_id,
+            error = %error_text(&error),
+            "Error finding API key by ID and user ID"
+        );
+        None
+    })
+}
+// === end P4.136 ===
+
 // === P4.134 (dogfood #134(b)) — v4's lazy-init and boot-reachable repository
 // lines, for the boot steps v5 runs eagerly where v4 degrades per read. Each
 // shape is the line v4 ACTUALLY reaches on a database failure of that step
@@ -446,5 +502,121 @@ mod tests {
         });
         assert_eq!(got, (vec![1], Some(2), vec![3], Some(4), true));
         assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// The two API-key shapes (P4.136): v4's line with the REPOSITORY's
+    /// collection, the context keys in v4's order, and `None`.
+    #[test]
+    fn each_api_key_shape_logs_v4s_line_and_answers_none() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            find_api_key_by_id_or_none("k-1", || Err(posed()))
+        });
+        assert!(got.is_none());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(
+            lines[0],
+            "ERROR quilltap::db Error finding API key by ID collection=connection_profiles keyId=k-1 error=posed"
+        );
+        let (got, lines) = crate::test_support::captured_with(|| {
+            find_api_key_by_id_and_user_id_or_none("k-1", "u-1", || Err(posed()))
+        });
+        assert!(got.is_none());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(
+            lines[0],
+            "ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId=k-1 userId=u-1 error=posed"
+        );
+    }
+
+    /// A corrupt cell — a BLOB `key_value`, which BOTH sides fail to read (see
+    /// [`test_plants`]; a missing TABLE is no v4 arm, `ensureCollection` heals
+    /// it) — renders the driver's bare sentence, and a healthy row (or a miss)
+    /// is silent.
+    #[test]
+    fn a_corrupt_api_key_cell_renders_the_bare_message_and_a_healthy_row_is_silent() {
+        let conn = test_plants::conn_with_api_keys();
+        test_plants::plant_api_key(&conn, "k-bad", "u-1", true);
+        test_plants::plant_api_key(&conn, "k-ok", "u-1", false);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                find_api_key_by_id_or_none("k-bad", || {
+                    super::super::api_keys::find_by_id(&conn, "k-bad")
+                }),
+                find_api_key_by_id_and_user_id_or_none("k-bad", "u-1", || {
+                    super::super::api_keys::find_by_id_and_user_id(&conn, "k-bad", "u-1")
+                }),
+            )
+        });
+        assert!(got.0.is_none() && got.1.is_none());
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error finding API key by ID collection=connection_profiles keyId=k-bad error=Invalid column type Blob at index: 4, name: key_value".to_string(),
+                "ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId=k-bad userId=u-1 error=Invalid column type Blob at index: 4, name: key_value".to_string(),
+            ]
+        );
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                find_api_key_by_id_or_none("k-ok", || {
+                    super::super::api_keys::find_by_id(&conn, "k-ok")
+                }),
+                find_api_key_by_id_and_user_id_or_none("k-ok", "u-1", || {
+                    super::super::api_keys::find_by_id_and_user_id(&conn, "k-ok", "u-1")
+                }),
+                find_api_key_by_id_or_none("k-gone", || {
+                    super::super::api_keys::find_by_id(&conn, "k-gone")
+                }),
+            )
+        });
+        assert_eq!(
+            got.0.map(|k| k.key_value).as_deref(),
+            Some("synthetic-k-ok")
+        );
+        assert_eq!(
+            got.1.map(|k| k.key_value).as_deref(),
+            Some("synthetic-k-ok")
+        );
+        assert!(got.2.is_none());
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+}
+
+/// Planted `api_keys` rows for the P4.136 unit pins across core: the table
+/// (v4's DDL) and a row whose `key_value` is `synthetic-<id>`, or — `corrupt`
+/// — a BLOB. That is the plant BOTH sides fail on, measured (the
+/// `title_update_tier3` lifted case): v4's backend decodes a stray Buffer as
+/// Float32 and `ApiKeySchema.parse`'s `z.string()` refuses it; v5's
+/// `marshal_row` answers `InvalidColumnType`. A text `isActive` is NOT one —
+/// v4 coerces a non-number boolean cell with `Boolean(value)`.
+#[cfg(test)]
+pub(crate) mod test_plants {
+    use rusqlite::Connection;
+
+    pub(crate) const API_KEYS_DDL: &str = "CREATE TABLE IF NOT EXISTS api_keys (\
+        id TEXT PRIMARY KEY, userId TEXT NOT NULL, label TEXT NOT NULL, \
+        provider TEXT NOT NULL, key_value TEXT NOT NULL, isActive INTEGER DEFAULT 1, \
+        lastUsed TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);";
+
+    pub(crate) fn conn_with_api_keys() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(API_KEYS_DDL).unwrap();
+        conn
+    }
+
+    pub(crate) fn plant_api_key(conn: &Connection, id: &str, user_id: &str, corrupt: bool) {
+        let key_value = if corrupt {
+            "x'00000000'"
+        } else {
+            "'synthetic-' || ?1"
+        };
+        conn.execute(
+            &format!(
+                "INSERT INTO api_keys (id, userId, label, provider, key_value, isActive, \
+                 createdAt, updatedAt) VALUES (?1, ?2, 'k', 'OPENAI', {key_value}, 1, \
+                 '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')"
+            ),
+            rusqlite::params![id, user_id],
+        )
+        .unwrap();
     }
 }
