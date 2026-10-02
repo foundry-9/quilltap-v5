@@ -68,6 +68,14 @@ documents; v5's reaps links / folders / chunks plus content). Filed upstream
 as v4 bugs 175 (the exit on a resumable, unstamped pass) and 176 (the ledger
 skip that leaves a damaged table unchecked behind a healthy `/health`),
 uncommitted in the v4 checkout for the human.
+#### 2026-10-02 — docs(porting): the P4.136 lane record — the API-key fallback lines, the engine thaw, the test-message 404
+
+_Docs-only change._
+
+The lane record in `status-log.md` (what landed, the measured corrections to
+the order, the loud deferrals, the regen recipes, the gate) and the order's
+status header set to LANE COMPLETE.
+
 #### 2026-10-01 — refactor(core): the Scenario Builder and Brahma hand the one-shot loop the key their gate resolved (P4.136)
 
 _Versions: core 0.0.1142, harness 0.0.1066, host 0.0.172._

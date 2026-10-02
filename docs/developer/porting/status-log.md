@@ -159089,6 +159089,229 @@ claiming a re-check alone repairs the #134 case.
 ### Gate
 
 All with `CARGO_INCREMENTAL=0`, from this worktree:
+## P4.136 — the API-key reads' fallback lines, the engine thaw, the test-message 404 — LANE record (2026-10-01)
+
+Branch `claude/api-key-fallback-404-5f9225` (worktree
+`.claude/worktrees/api-key-fallback-404-5f9225`), cut from `main`
+`50a4cdaab`. Pin `/tmp/qt-v4-pin-p4136-f6426e196` (verified by `rev-parse` +
+`ls -ld`); a second pin `/tmp/qt-v4-pin-p4136-ca363178d` for the one baseline
+measurement. The §2 probe passed at lane start and before each regen batch
+(v4 `main` at `f6426e196`, both logs empty; the tree dirty by EXACTLY
+P4.135's three recorded docs paths — the round's waiver). `git log
+ca363178d..f6426e196` over every v4 path this lane twins (`api-key.service.ts`,
+`connection-profiles.repository.ts`, `safe-query.ts`, `agent-loop/`,
+`scenario-builder*`, both route trees, `cheap-llm-tasks/`,
+`dangerous-content/`, `lib/chat/`, `carina/`, `chat-message/`) is EMPTY.
+
+### Landed
+
+- **Tier 1 item 1 — the two homes.** `db::fallback::find_api_key_by_id_or_none`
+  (`Error finding API key by ID {collection, keyId, error}`) and
+  `find_api_key_by_id_and_user_id_or_none` (`… and user ID`, `+ userId`),
+  `target: "quilltap::db"`, `collection = "connection_profiles"` HARD-CODED,
+  `error = %error_text(&error)`. Pins: exact lines over a posed error, the
+  bare driver message over a corrupt cell, silence over a healthy row and a
+  miss. A `#[cfg(test)] db::fallback::test_plants` module (the `api_keys`
+  DDL, a pooled `Db` with planted rows) serves every core pin.
+- **Item 2 — the emitter moves home.** `provider_routing.rs`'s
+  `find_api_key_or_none` delegates to the scoped home (the `%error`
+  `sqlite error:` prefix closes with it); `fallback_home_guard` grew both
+  literals RED-FIRST — exactly one offender,
+  `services/dangerous_content/provider_routing.rs: "Error finding API key by
+  ID and user ID"`, `home_seen` already 14 — then GREEN after the move. The
+  understudy pin `a_failed_api_key_read_logs_the_repository_line` gains the
+  bare-bytes assert (`error=no such table: api_keys`).
+- **Item 3 — infallible resolvers.** `get_api_key_for_connection_profile` /
+  `get_api_key_for_cheap_llm_selection` → `Option<String>` over TWO home wraps
+  (the profile read through `find_by_id_or_none("connection_profiles", …)` —
+  v4's `_findById` line — then the scoped key home), generic over a new
+  `api_key_service::MainReads` (a `&Connection`, or the pooled `Db` whose
+  checkout sits INSIDE each wrap — v4's `getCollection()` inside each
+  `safeQuery`). The canned seam still answers FIRST (pinned: armed over a
+  failing pool → the canned key, zero lines). `gatekeeper.rs` and
+  `cheap_llm_exec.rs` lose their `.ok().flatten()` and call the resolver over
+  the `Db`; outcomes unchanged (the WARN + `safe_fallback`; the throw).
+  `resolve_connection_profile_api_key` is generic the same way and its
+  lookup arm goes through the UNSCOPED home (`Failed(ApiKeyNotFound)`
+  unchanged).
+- **Item 4 — the three remaining folds**, each extracted into a small named
+  fn the pin drives: `participant_resolver::profile_api_key` (unscoped →
+  `None`), `carina_query::carina_api_key` (unscoped → `''`),
+  `file_fallback::resolve_api_key` (scoped → `None`, sent as `''`; now sync,
+  over `(db, user_id, profile)`).
+- **Item 5 — the four settings arms** (create `:1283`, PUT `:1576`,
+  test-connection `:2481`, test-message `:2544`; ⚠ the survey labelled
+  `:1576` "test-connection" — it is the profile UPDATE, v4
+  `[id]/route.ts:207`; test-connection is `:2481`, v4 `route.ts:360`) through
+  the unscoped home: a read error is the line + 404 `API key`.
+  `enrich_with_api_key` (v4 `enrichProfile`, `[id]/route.ts:42`) logs the line
+  too (outcome `null` unchanged). New `settings_wire_actions` case
+  `a_corrupt_key_row_is_v4s_logged_404_on_all_four_routes` over a COPY of the
+  fixture.
+- **Item 6 — the thaw.** `api_key` on `ScenarioBuilderBuildRequest`
+  (`String`), `RunScenarioBuilderOptions` (`&str`) and
+  `RunOneShotToolLoopOptions` (`&str`, v4 `one-shot-loop.ts:127`);
+  `scenario_builder_prepare` returns `(profile, api_key, input)`;
+  `engine.rs` passes it through (the destructure + the ONE fill);
+  `spine.rs:1874` fills `&req.api_key`; Brahma passes the key it resolved;
+  the loop's re-resolution DELETED (no line put in its place). Both gates
+  call the composite over the `Db`, so a pool failure is the line too.
+  `api/types.rs` UNTOUCHED; `dispatch_wrong_type_census` 14/14 green, 441
+  unmoved. The two tier-3 constructors pass v4's own literal
+  (`'unused-by-the-canned-stream'`); `scenario_builder/mod.rs`'s in-module
+  test passes `""` (it aborts before any stream).
+- **Item 7 — families at the pin** (lane-private runner
+  `/tmp/p4136/runfam.py`: the driver's own `--show` recipe, `/tmp` scratch
+  moved under `/tmp/p4136/fam`, cwd the pin; each `test result` read, zero
+  `SKIP`): GREEN — `scenario_builder_tier3`, `scenario_builder_routes`,
+  `brahma_console_tier3`, `brahma_orchestrator_tier3`, `danger_routing`,
+  `danger_gatekeeper_tier3`, `carina_query_tier3`,
+  `participant_resolver_tier2`, `headshoulders_backfill_tier3`,
+  **`orchestrator_tier3` (the §S.1 adjacency — GREEN on this lane, 4.4 s)**,
+  `title_update_tier3` (9/9), `settings_wire_actions` (6/6),
+  `dispatch_wrong_type_census` (14/14). `file_attachment_tier3` RED at
+  `f6426e196` on `lcffl_mount` — P4.D244's DESIGNED red — and GREEN with this
+  lane's code at `ca363178d` (own baseline pin): this lane is neutral there.
+- **Item 8 — (h) refuted, NO-PORT on scoping.** v4's route `repos` is the
+  unscoped container (`lib/api/middleware/context.ts:116` →
+  `getRepositoriesSafe()` → `getRepositories()`); zero
+  `getUserRepositories` hits in either route file. Both route reads stay
+  unscoped. The stale "user-scoped" comments are left as they are.
+- **Tier 2 item 9 — the lifted `title_update_tier3` case**
+  `corrupt_key_logs_and_refuses`: both sides plant `bound`'s rows on the
+  case's COPY, then `UPDATE api_keys SET key_value = x'00000000'` on the bound
+  row; v4's REAL resolver (lifted, `requireActual`) logs `Error finding API
+  key by ID and user ID {collection, keyId, userId, error}`, sends nothing,
+  advances the cursor; v5 does the same with the seam NOT armed. Every lifted
+  case now records `dbLines` (the oracle spies the registry generation's
+  root `logger.error`, filtered to the three key-read messages); the Rust
+  side compares through `global_capture` with `error` normalised (v4 a
+  ZodError issues dump, v5 rusqlite's sentence).
+- **Item 10 — mutations** (each applied, run, restored by `cmp`):
+  **M1** (the scoped home's line dropped) → reds `each_api_key_shape…`,
+  `a_corrupt_api_key_cell…`, the cheap-exec / gatekeeper / file-fallback /
+  understudy pins, and `title_update_tier3`'s `corrupt_key_logs_and_refuses`
+  ALONE (`got [] / want [the line]` — exactly unported main's behaviour, so
+  this is the lifted case's red-first); **M4** (`collection = "api_keys"` on
+  the unscoped home) → reds the participant / Carina / composite pins and the
+  wire case (`collection=api_keys` vs `connection_profiles`); **M2**
+  (`error = %error` in the scoped home) → reds every scoped bare-bytes pin
+  (`a_corrupt_api_key_cell…`, cheap exec, gatekeeper, file fallback,
+  understudy); **M5** (the test-message arm back to `internal(e)`) → the wire
+  case reds `Internal "sqlite error: …"` vs `NotFound "API key not found"`;
+  **M3** structural — the re-resolution is deleted and the loop has no key
+  source but its option (every constructor compiles only with the field).
+- **Item 11 — the two older composite folds** (`api/scenario_builder.rs`,
+  `brahma_console/mod.rs`) now reach v4's line + outcome through the
+  composite's home wrap, and their pool-failure arms are gone (both call the
+  composite over the `Db`).
+
+### Measured against the order (§R.4-style corrections)
+
+- **The order's plant is wrong: a text `isActive` is NOT a v4 read error.**
+  First oracle run with `isActive = 'x'`: v4 SENT the key (`sentKeys:
+  ["k-title-bound"]`, `dbLines: []`). v4's SQLite backend
+  (`backends/sqlite/backend.ts:412-452`) treats any `is*` column as boolean
+  and coerces a non-number with `Boolean(value)`. The plant BOTH sides fail on
+  is a BLOB `key_value` (v4: the stray Buffer decodes as Float32Array and
+  `z.string()` refuses it; v5: `Invalid column type Blob at index: 4, name:
+  key_value`). Every pin uses that. The order's 💸 row (`SET isActive='x'`)
+  must become `SET key_value = x'00000000'`.
+- **A SEVENTH silent fold the survey missed:**
+  `services/headshoulders_backfill_job.rs` (v4
+  `character-headshoulders-backfill.ts:107`, the same resolver) FAILED THE
+  JOB on a read error (`.map_err(..)?`) where v4 logs the line and skips with
+  its WARN. Forced by item 3's signature. **OUT-OF-MANDATE SPILL, approved by
+  the human mid-lane**: the call now reads the infallible resolver (the line,
+  then the existing skip). Proof: the shared resolver's pins + the type change
+  (the `?` is gone); `headshoulders_backfill_tier3` GREEN at the pin.
+- **The title-update fixture PREDATES `api_keys`** (the comparand caught it
+  on `no_key_refuses`: v5 logged the line over `no such table`, v4 healed
+  lazily and missed silently). Every v4-provisioned instance has the table
+  (`generateDDL`; `fresh_schema.json`), so this is a recorded FIXTURE-VINTAGE
+  divergence (v5 does no DDL on a read path), pinned on v5's side by the
+  understudy's missing-table plant; the Rust half of `no_key_refuses` creates
+  the empty table v4's heal would have.
+
+### Deferred (loud, by name)
+
+- **`db/api_keys.rs` `marshal_row`'s `isActive`** (outside this lane): v5
+  refuses a row whose `isActive` is text or NULL (`InvalidColumnType`) where
+  v4 reads `Boolean(value)` / `undefined → default true`, and reads `2` as
+  `true` where v4's `value === 1` reads `false`. Low reach (v4 writes 0/1),
+  but a corrupt or foreign row costs v5 the key where v4 sends it. Next round.
+- **The api-keys routes' reads** (`settings.rs` `api_key_update` `:2704`,
+  `api_key_delete` `:2741`, `api_key_test` `:2766`): `Err(e) => internal(e)`
+  where v4's are fallback reads → 404; and v4's `api-keys/[id]/route.ts`
+  imports `getUserRepositories` while v5's PUT/DELETE read UNSCOPED — a
+  possible scoping divergence, unmeasured. Next round, with a survey.
+- **The Scenario Builder prepare's PROFILE read** (`api/scenario_builder.rs`
+  `.ok().flatten()`): no `Error finding entity by ID` line on a read error
+  (outcome — 404 — already v4's).
+- **Three composite callers outside this lane** (`help_chat/orchestrator.rs`,
+  `brahma_console/orchestrator.rs`, `fallback_repos.rs`) still wrap the
+  composite in `db.read_main(|c| Ok(…))` and fold a POOL failure without a
+  line (an in-pool read error is covered by the composite's own wrap). A
+  one-line change each (pass the `Db`).
+- Tier 3 items 12–14 as ordered (scoping NO-PORT; no planted arm in
+  `danger_gatekeeper_tier3` — the unit pin
+  `a_corrupt_key_row_logs_v4s_line_then_fails_safe` is the proof; v4's
+  `getApiKeysByUserId` line out of scope).
+
+### Regen recipes (lane-private staging)
+
+- `title_update_tier3` (the case this lane authored):
+  ```
+  PIN=/tmp/qt-v4-pin-p4136-f6426e196 ; V5W=<worktree>
+  TMPO=/tmp/p4136/qt-tu-oracle ; rm -rf "$TMPO" ; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+  cp "$V5W/harness/oracle/cases/title-update-tier3.test.ts" "$TMPO/cases/"
+  cp "$V5W/harness/oracle/fixtures/cost-background-web.json" "$TMPO/fixtures/"
+  cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH \
+    QT_FIXTURE_CB_MAIN=$V5W/crates/quilltap-web/tests/fixtures/cost-background-main.db \
+    QT_FIXTURE_CB_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/cost-background-mount.db \
+    QT_ORACLE_OUT=/tmp/p4136/oracle-title-update.ndjson \
+    npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$TMPO/cases" -- title-update-tier3
+  QT_ORACLE_TITLE_UPDATE=/tmp/p4136/oracle-title-update.ndjson \
+    cargo test -p quilltap-harness --test title_update_tier3_equivalence -- --nocapture
+  ```
+  (26 rows; `grep -c corrupt_key_logs_and_refuses` = 1, its `dbLines` length 1.)
+- `settings_wire_actions`: build the fixture from the pin
+  (`QT_FIXTURE_SETTINGS_MAIN=/tmp/p4136/qt-settings-fixture.db node --import
+  tsx $V5W/harness/oracle/fixtures/build-settings-fixture.ts`), then
+  `QT_FIXTURE_SETTINGS=/tmp/p4136/qt-settings-fixture.db cargo test -p
+  quilltap-harness --test settings_wire_actions`.
+- Every neutral family: the committed recipe via the sweep driver
+  (`--run <family> --v4 "$PIN" --v5w <worktree> --force`); this lane ran the
+  same recipes through `/tmp/p4136/runfam.py` to keep its scratch private.
+
+### Fixtures changed
+
+NONE committed. The oracle case `title-update-tier3.test.ts` gained a case
+and a `dbLines` field on every lifted case (the committed recipe header
+stands; any stale `/tmp/oracle-title-update.ndjson` must be REGENERATED —
+the Rust side panics "oracle carries no dbLines" on an old one).
+
+### For the unifier
+
+- **§S.1** — `orchestrator_tier3` GREEN at the pin on this lane (NOT re-run on
+  P4.137's edits — the union regen is the unifier's).
+- **§S.2** — host bumped 0.0.171 → 0.0.172 here; P4.135 bumps it too; the
+  union is 0.0.173.
+- **§S.4** — the two API-key literals live ONLY in `db/fallback.rs` on this
+  branch (`fallback_home_guard` green).
+- `harness/oracle/cases/title-update-tier3.test.ts` changed — not on any
+  sibling's list.
+
+### Commits
+
+`a599f5c49` (the homes + the emitter move; core 0.0.1140, harness 0.0.1064)
+→ `be2c665d2` (the reads, the folds, the 404s, the lifted case; core
+0.0.1141, harness 0.0.1065) → `230392d9c` (the thaw; core 0.0.1142, harness
+0.0.1066, host 0.0.172) → this docs commit. Each intermediate tree
+clippy-clean (`-D warnings`); C1 carries no `db_with_api_keys` (unused until
+C2); C2's targeted tests green with the PRE-thaw loop.
+
+### Gate (tree `230392d9c`, `CARGO_INCREMENTAL=0`, pin `f6426e196`)
 
 - `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
   -- -D warnings` clean in BOTH feature sets (default;
@@ -159151,3 +159374,55 @@ UPDATE OF generationKey` trigger and see the boot fail with the singular
 (`relativePath → relativePath_x`) booted TWICE: the lazy line on both boots,
 `/health` ready both times, `list_mail` answering v4's fallback lines; rename
 back.
+  --release` green.
+- `cargo test --workspace --no-fail-fast` with the lane's 28-var env block
+  (every family above pointed at its `/tmp/p4136/fam` regen, the settings
+  fixture, the title-update oracle, `QT_V4_CHECKOUT` = the pin): **659 test
+  binaries / 4,093 passed / 2 failed / 3 ignored.** The two reds:
+  `file_attachment_tier3` (P4.D244's DESIGNED bug-174 red at the target pin;
+  green with this lane's code at `ca363178d`) and
+  `db::chats::concierge_state_tests::a_failed_write_errors_and_answers_false`
+  — a `captured_with` callsite-interest intermittent (the DEBUG line lost,
+  the ERROR kept; a file this lane never touched), **green alone 3/3**. Every
+  family this lane owns or was ordered to run confirmed RUN by name with a
+  `test result` line (list under item 7; `fallback_home_guard` 2/2,
+  `dispatch_wrong_type_census` 14/14 at 441).
+- **Tier R** (`cli_differential`, `QT_V4_CHECKOUT` = the pin): **271 cases,
+  0 failures** (428 s).
+- Live-checkout guards (no `QT_V4_CHECKOUT`): `provider_sdk_version_guard`
+  3/3, `builtin_prompt_templates_guard` 2/2 — GREEN.
+- `python3 harness/tools/recipe_sweep.py --self-test`: RED with the ONE
+  designed failure naming P4.138's five `W=${V5W:-…}` headers (recorded, not
+  fixed — P4.138's).
+- SPA liveness: `npm ci` + `npm run build` in `apps/web` green (no SPA file
+  touched).
+
+### Versions
+
+core 0.0.1142, harness 0.0.1066, host 0.0.172 (§S.2: P4.135 bumps host too
+— the union is 0.0.173).
+
+### 💸 dogfood rows (corrected from the order)
+
+On the Friday copy: a cheap-LLM title on a profile whose key row is
+corrupted on the copy with **`UPDATE api_keys SET key_value = x'00000000'
+WHERE id = …`** (NOT `isActive='x'` — v4 coerces that and sends the key)
+logging `ERROR quilltap::db Error finding API key by ID and user ID
+collection=connection_profiles keyId=… userId=… error=Invalid column type
+Blob at index: 4, name: key_value` and v4's throw; a Scenario Builder run
+sending the gate's key (`refusal-server.py` with `QT_REFUSE_KEY`) with ONE
+`api_keys` read per build; a connection test-message on a dangling
+`apiKeyId` answering 404, and on the corrupted row the logged 404; a
+headshoulders backfill on the corrupted row SKIPPING with the line + the
+WARN (it used to fail the job).
+
+### Gotchas
+
+- A text `isActive` is invisible to v4 (`Boolean(value)` on any `is*`
+  column) — a corrupt-row plant must break a STRING cell with a BLOB (TEXT
+  affinity converts an INTEGER to text, so only a BLOB survives).
+- A new two-sided comparand over a pre-table fixture surfaces v4's lazy
+  `ensureCollection` heal as a "divergence" — check the fixture's vintage
+  before calling it a port defect.
+- `cargo test --test A --test B` stops at the first failing binary; a
+  mutation run needs `--no-fail-fast` or one binary per invocation.
