@@ -921,6 +921,7 @@ fn assert_mail_logs(logs: &HashMap<&'static str, Vec<Vec<String>>>, spec: &Spec,
 /// out (the error text is each stack's own).
 #[derive(Deserialize)]
 struct PlantLog {
+    level: String,
     message: String,
     fields: Vec<(String, String)>,
 }
@@ -934,18 +935,31 @@ struct PlantRow {
     logs: Vec<PlantLog>,
 }
 
-/// The repository-layer messages v5 ports (P4.131). v4's other lines on these
-/// plants are plant artefacts or other subsystems: `Failed to ensure <table>
-/// table …` is `ensureTable` tripping on the very column the plant renamed, and
-/// the overlay chatter (`Error finding documents by mount point IDs …`,
-/// `Dropping character from list …`) belongs to the character overlay.
-const PLANT_SHARED_MESSAGES: [&str; 5] = [
+/// The repository-layer messages v5 ports (P4.131; P4.142 added the vault
+/// overlay's two batch reads, which now fall back as v4's do). v4's other lines
+/// on these plants are plant artefacts or other subsystems: `Failed to ensure
+/// <table> table …` is `ensureTable` tripping on the very column the plant
+/// renamed ([`PLANT_ENSURE_TABLE_MESSAGES`]), and the overlay's own drop lines
+/// are compared under their module target ([`PLANT_OVERLAY_MESSAGES`]).
+const PLANT_SHARED_MESSAGES: [&str; 7] = [
     "Error querying joined file links",
     "Error finding document by mount point and path",
     "Error finding entities by filter",
     "Error finding entity by filter",
     "Error finding entity by ID",
+    "Error finding documents by mount point IDs and path",
+    "Error finding documents by mount point IDs and folder",
 ];
+
+/// P4.142 — the character overlay's own two lines (`read-overlay.ts:345-363`),
+/// not repository-layer lines: v5 logs them under the overlay module's target
+/// (`vault_read_overlay.rs`), so they are compared by a second, TARGET-AWARE leg
+/// — level + message + every field, byte for byte (no `error` field to skip).
+const PLANT_OVERLAY_MESSAGES: [&str; 2] = [
+    "Dropping character from list — vault unavailable",
+    "applyDocumentStoreOverlay dropped characters with unavailable vaults",
+];
+const PLANT_OVERLAY_TARGET: &str = "quilltap_core::db::vault_read_overlay";
 
 /// Every OTHER message v4 logs on these plants, each with the reason it is not
 /// compared — an EXPLICIT list, so a v4 line in neither table fails the
@@ -953,36 +967,16 @@ const PLANT_SHARED_MESSAGES: [&str; 5] = [
 /// unification's catch: the first shape filtered v4's log to
 /// [`PLANT_SHARED_MESSAGES`] and could not see a new repository line, nor the
 /// `characters` validation line below). `(message, why)`.
-const PLANT_EXCLUDED_MESSAGES: &[(&str, &str)] = &[
-    (
-        "Error finding documents by mount point IDs and path",
-        "the character overlay's batch read (`document_store_overlay`), not the \
-         document store — the census's `fallback-in-v4` list for the next order",
-    ),
-    (
-        "Error finding documents by mount point IDs and folder",
-        "the overlay's sibling batch read",
-    ),
-    (
-        "Dropping character from list — vault unavailable",
-        "the overlay dropping each character whose vault read failed (v5's overlay \
-         read propagates instead — the recorded `send_mail` divergence, \
-         `assert_send_divergence`)",
-    ),
-    (
-        "applyDocumentStoreOverlay dropped characters with unavailable vaults",
-        "the overlay's summary WARN after the drops above",
-    ),
-    (
-        "Data validation failed",
-        "v4's `characters` collection validates each row under the renamed column \
-         and logs the repository's `Data validation failed {collection: characters}` \
-         (base.repository.ts:130-157) where v5's overlay read propagates: a RECORDED \
-         v4-only line, the same one P4.130 pinned both ways in the mount-pool \
-         family (`V4_ONLY_VALIDATION`); un-ported here until the overlay takes v4's \
-         fallback reads",
-    ),
-];
+const PLANT_EXCLUDED_MESSAGES: &[(&str, &str)] = &[(
+    "Data validation failed",
+    "the `characters` plant only: v4's `characters` collection reads the slim rows \
+     through `findByFilter` and `validateSafe`s each one under the renamed `name` \
+     column, logging the repository's `Data validation failed {collection: \
+     characters}` (base.repository.ts:130-157) — the slim read, not the vault \
+     overlay (P4.142 corrected the earlier reason). A RECORDED v4-only line, the \
+     same one P4.130 pinned both ways in the mount-pool family \
+     (`V4_ONLY_VALIDATION`)",
+)];
 
 /// P4.134 (dogfood #134(b)) — v4's lazy `ensureTable` line, `(table, message)`.
 /// `ensureTable` trips on the very column the plant renamed and logs this ERROR
@@ -1039,15 +1033,17 @@ fn v5s_ensure_table_line_is_v4s_sentence() {
 ///   v5's ERROR lines of those messages — message, field NAMES and ORDER and
 ///   field values byte for byte (`collection`, `whereClause`, `mountPointId`,
 ///   `relativePath`, `id`), v5's `error=` tail aside.
-/// - **One RECORDED divergence, pinned both ways** ([`assert_send_divergence`]):
-///   `send_mail` over a broken links table. v4 resolves the recipient through
-///   the character overlay, whose batch reads are FALLBACK reads — each logs and
-///   answers empty, every character is dropped as "vault unavailable", and the
-///   tool answers `No soul by that name keeps a postbox here.` — so v4 never
-///   reaches the write (and never its catch). v5's overlay read propagates, so
-///   the recipient resolve throws into the catch. The overlay is not this lane's
-///   file (`characters_read` / `document_store_overlay`); it is the census's
-///   `fallback-in-v4` list for the next order.
+/// - **The overlay's lines, target-aware** ([`PLANT_OVERLAY_MESSAGES`]): the
+///   drop ERROR + summary WARN, compared under v5's overlay-module target.
+/// - **No recorded divergence remains (P4.142).** `send_mail` over a broken
+///   links table had been pinned both ways (`assert_send_divergence`): v4
+///   resolves the recipient through the character overlay, whose batch reads are
+///   FALLBACK reads — each logs and answers empty, every character is dropped as
+///   "vault unavailable", and the tool answers `No soul by that name keeps a
+///   postbox here.` without reaching a write or its catch — while v5's overlay
+///   read propagated into the catch. P4.142 gave the overlay v4's fallback
+///   batch reads; the pin tripped VANISHED on the fresh oracle and was retired
+///   in the same commit, and the row now goes through the generic compare.
 ///
 /// Plus `markAlerted`'s NOT_FOUND warn (v4's own arm, reachable in both).
 async fn assert_catch_lines(
@@ -1101,7 +1097,8 @@ async fn assert_catch_lines(
     let letter = meta.reader_paths["unalerted"].clone();
     let name = letter.strip_prefix("Mail/").unwrap().to_string();
     let mut compared = 0;
-    let mut send_divergence_seen = false;
+    // The `links:send` row's overlay drop lines (P4.142): must not be vacuous.
+    let mut send_drops_seen = 0usize;
     // v4's `ensureTable` lines seen across every row: [links, folders].
     let mut ensure_table_seen = [0usize; 2];
     for plant in ["links", "links+folders", "folders", "characters"] {
@@ -1208,13 +1205,14 @@ async fn assert_catch_lines(
             for l in &want.logs {
                 assert!(
                     PLANT_SHARED_MESSAGES.contains(&l.message.as_str())
+                        || PLANT_OVERLAY_MESSAGES.contains(&l.message.as_str())
                         || PLANT_ENSURE_TABLE_MESSAGES
                             .iter()
                             .any(|(_, m)| *m == l.message)
                         || PLANT_EXCLUDED_MESSAGES.iter().any(|(m, _)| *m == l.message),
-                    "{label}: v4 logged a line neither PLANT_SHARED_MESSAGES, \
-                     PLANT_ENSURE_TABLE_MESSAGES nor PLANT_EXCLUDED_MESSAGES names: {:?} \
-                     — classify it",
+                    "{label}: v4 logged a line none of PLANT_SHARED_MESSAGES, \
+                     PLANT_OVERLAY_MESSAGES, PLANT_ENSURE_TABLE_MESSAGES or \
+                     PLANT_EXCLUDED_MESSAGES names: {:?} — classify it",
                     l.message
                 );
             }
@@ -1253,24 +1251,50 @@ async fn assert_catch_lines(
             for (a, e) in actual.iter().zip(&expected) {
                 assert!(a.starts_with(e.as_str()), "{label}:\n  v5: {a}\n  v4: {e}");
             }
+            // P4.142 — the overlay's own lines, target-aware: level + message +
+            // every field (v4's order), under v5's overlay-module target.
+            let overlay_expected: Vec<String> = want
+                .logs
+                .iter()
+                .filter(|l| PLANT_OVERLAY_MESSAGES.contains(&l.message.as_str()))
+                .map(|l| {
+                    let fields: String =
+                        l.fields.iter().map(|(k, v)| format!(" {k}={v}")).collect();
+                    format!(
+                        "{} {PLANT_OVERLAY_TARGET} {}{fields}",
+                        l.level.to_uppercase(),
+                        l.message
+                    )
+                })
+                .collect();
+            let overlay_actual: Vec<&String> = lines
+                .iter()
+                .filter(|l| PLANT_OVERLAY_MESSAGES.iter().any(|m| l.contains(m)))
+                .collect();
+            assert_eq!(
+                overlay_actual,
+                overlay_expected.iter().collect::<Vec<_>>(),
+                "{label}: the overlay's drop lines diverged"
+            );
+            if plant == "links" && tool == "send" {
+                send_drops_seen = overlay_expected.len();
+            }
+            // The text, and no tool reached its catch (v4 has none in these rows —
+            // `send` over the links plant included since P4.142: the recorded
+            // divergence VANISHED when the overlay's batch reads took v4's
+            // fallbacks, and `assert_send_divergence` was retired by measurement).
             let caught = lines
                 .iter()
                 .any(|l| l.contains("handler threw unexpectedly"));
-            if plant == "links" && tool == "send" {
-                assert_send_divergence(&want.text, text, lines);
-                send_divergence_seen = true;
-            } else {
-                assert_eq!(text, &want.text, "{label}: text");
-                // …and no OTHER tool reached its catch (v4 has none in these rows).
-                assert!(!caught, "{label} reached the catch: {lines:?}");
-            }
+            assert_eq!(text, &want.text, "{label}: text");
+            assert!(!caught, "{label} reached the catch: {lines:?}");
             compared += 1;
         }
     }
     assert_eq!(compared, rows.len(), "every oracle row was exercised");
     assert!(
-        send_divergence_seen,
-        "the send divergence row was exercised"
+        send_drops_seen >= 2,
+        "the links:send row must compare v4's drop ERROR(s) + summary WARN, saw {send_drops_seen}"
     );
     // The v4 half of the cadence pin must not pass vacuously: v4 DID log each
     // `ensureTable` line on its plant.
@@ -1278,43 +1302,6 @@ async fn assert_catch_lines(
         ensure_table_seen.iter().all(|n| *n >= 1),
         "v4's ensureTable lines [links, folders] seen {ensure_table_seen:?} times — \
          each plant must trip its table's ensure in v4 at least once"
-    );
-}
-
-/// The recorded `send_mail`-over-a-broken-links-table divergence, pinned BOTH
-/// ways (the `EXPECTED_DIVERGENCES` shape): it must still differ, and differ
-/// exactly as recorded.
-///
-/// v4: the recipient resolve FAILS SOFT (the character overlay's batch reads are
-/// fallback reads), every character is dropped as "vault unavailable", and the
-/// tool answers `No soul by that name keeps a postbox here.` — no catch, and no
-/// repository-layer line of the ported set (all of v4's lines are overlay
-/// chatter). v5: the overlay read propagates, the recipient resolve throws, and
-/// the handler's catch answers the stumbled refusal with ONE catch line.
-fn assert_send_divergence(v4_text: &str, v5_text: &str, v5_lines: &[String]) {
-    assert_eq!(
-        v4_text, "No soul by that name keeps a postbox here.",
-        "v4's recorded text moved"
-    );
-    assert_ne!(
-        v5_text, v4_text,
-        "VANISHED: v5 now fails soft as v4 does — retire the recorded send divergence"
-    );
-    assert!(
-        v5_text.starts_with("The Post Office stumbled and the letter went unsent — "),
-        "WRONG SHAPE: {v5_text}"
-    );
-    let catches: Vec<&String> = v5_lines
-        .iter()
-        .filter(|l| l.contains("handler threw unexpectedly"))
-        .collect();
-    assert_eq!(catches.len(), 1, "WRONG SHAPE: {v5_lines:?}");
-    assert!(
-        catches[0].starts_with(
-            "ERROR quilltap_core::tools::send_mail send_mail handler threw unexpectedly module=send-mail-handler chatId=chat-plant error="
-        ),
-        "{}",
-        catches[0]
     );
 }
 

@@ -19,7 +19,8 @@
 //! to the files and strip them from the DB-bound patch. The byte-landing path
 //! every file write ultimately calls is [`super::doc_mount_file_links`]'s
 //! `write_database_document` (build step 1 of this slice); the read path is the
-//! `doc_mount_documents` 3-table join (`find_many_by_mount_points_and_path`).
+//! `doc_mount_documents` 3-table join (`find_many_by_mount_points_and_path_or_empty`
+//! — v4's fallback batch read, P4.142).
 //!
 //! ## Failure is asymmetric (a deliberate v4 divergence)
 //!
@@ -276,7 +277,7 @@ fn load_store_files(
     }
     let docs = DocMountDocumentsRepository::new(mount);
     for path in ALL_OVERLAY_PATHS {
-        let pairs = docs.find_many_by_mount_points_and_path(mount_point_ids, path)?;
+        let pairs = docs.find_many_by_mount_points_and_path_or_empty(mount_point_ids, path)?;
         let by_mount = by_path.get_mut(path).expect("path seeded above");
         for (mount_point_id, content) in pairs {
             by_mount.insert(mount_point_id, content);

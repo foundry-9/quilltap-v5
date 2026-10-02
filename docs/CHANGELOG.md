@@ -74,6 +74,12 @@ _Versions: core 0.0.1148._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `TransportError` gains `kind: TransportErrorKind` (`Http`, `Connect`, `Timeout`) and four constructors: `http(status, body)`, `connect(message)`, `timeout(message)` and `headers_timeout(ms)` (now a `Timeout`). All 52 struct literals across 12 files (core 38, harness 14) now go through them. `is_headers_timeout`'s message-prefix sniff is replaced by `is_timeout()`, which reads the kind. Behaviour does not change: every status-less site is `Connect`, every status site is `Http`, and the headers timeout is still the only `Timeout`. This is P4.141's first commit, landed early so a later field cannot cross the shared struct's literals again.
+#### 2026-10-02 — feat(db): P4.142 unit 2 — the vault overlay's batch reads take v4's fallbacks; the send_mail divergence retires by vanishing
+
+_Versions: core 0.0.1148, harness 0.0.1076._
+
+The two batch document reads behind every character, project, group, wardrobe, scenario and Core-whisper overlay now go through fallback twins (`find_many_by_mount_points_and_path_or_empty`, `find_many_by_mount_points_in_folder[_opts]_or_empty`): a failed read logs v4's line and answers empty, so a broken mount index drops vaulted characters from list reads instead of failing them, and the single-character read answers the vault-unavailable refusal. All 11 production callers are repointed and the overlay's comment (ported from v4's own false one) is rewritten to the measurement. Inside the strict repository scope the twins still propagate. `vault_read_overlay_equivalence` gains a column-rename plant against v4's real overlay (red before the twins); `mail_carina_tools_equivalence`'s recorded `send_mail` divergence tripped VANISHED and is retired, with the batch-read lines and the overlay's drop lines now compared.
+
 #### 2026-10-02 — feat(db): P4.142 unit 1 — five new fallback homes, v4's strict repository scope, and P4.139's API-key home
 
 _Versions: core 0.0.1147, harness 0.0.1075._

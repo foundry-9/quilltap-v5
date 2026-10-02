@@ -112,8 +112,20 @@ impl VaultFileMaps {
 
 /// Load every vault file the overlay needs for the given mount points (v4
 /// `loadVaultFileMaps`): one batched single-file query per overlay path plus the
-/// two directory listings. Read failures propagate (no swallow — there is no DB
-/// fallback post-cutover).
+/// two directory listings.
+///
+/// **A read failure does NOT propagate — it empties the maps** (P4.142,
+/// measured at `f6426e196`). v4's comment here (`read-overlay.ts:66-70`, "Does
+/// NOT swallow read failures — a store-read exception propagates") is false
+/// against v4's own code: both repository methods it calls are fallback
+/// `withRawDb([])`s (`doc-mount-documents.repository.ts:142-220`), so a failed
+/// read logs the repository's line and answers `[]`, every linked character
+/// then lacks its `properties.json` keystone, and the batch overlay DROPS it
+/// while the single overlay throws `CharacterVaultUnavailableError`. v5 had
+/// ported the false comment AND written the propagation to match it; the reads
+/// now go through the `_or_empty` twins. The one `Err` left is v4's strict
+/// scope ([`super::fallback::with_strict_repository_failures`]), under which
+/// the twins propagate as v4's `safeQuery` rethrows.
 pub fn load_vault_file_maps(
     repo: &DocMountDocumentsRepository,
     mount_point_ids: &[String],
@@ -121,7 +133,7 @@ pub fn load_vault_file_maps(
     let mut content_by_mount_by_path: HashMap<&'static str, HashMap<String, String>> =
         HashMap::new();
     for path in SINGLE_FILE_OVERLAY_PATHS {
-        let pairs = repo.find_many_by_mount_points_and_path(mount_point_ids, path)?;
+        let pairs = repo.find_many_by_mount_points_and_path_or_empty(mount_point_ids, path)?;
         let mut by_mount = HashMap::new();
         for (mount_id, content) in pairs {
             by_mount.insert(mount_id, content);
@@ -130,14 +142,18 @@ pub fn load_vault_file_maps(
     }
 
     let mut prompts_by_mount: HashMap<String, Vec<VaultFolderDoc>> = HashMap::new();
-    for doc in repo.find_many_by_mount_points_in_folder(mount_point_ids, PROMPTS_FOLDER, ".md")? {
+    for doc in
+        repo.find_many_by_mount_points_in_folder_or_empty(mount_point_ids, PROMPTS_FOLDER, ".md")?
+    {
         prompts_by_mount
             .entry(doc.mount_point_id.clone())
             .or_default()
             .push(doc);
     }
     let mut scenarios_by_mount: HashMap<String, Vec<VaultFolderDoc>> = HashMap::new();
-    for doc in repo.find_many_by_mount_points_in_folder(mount_point_ids, SCENARIOS_FOLDER, ".md")? {
+    for doc in
+        repo.find_many_by_mount_points_in_folder_or_empty(mount_point_ids, SCENARIOS_FOLDER, ".md")?
+    {
         scenarios_by_mount
             .entry(doc.mount_point_id.clone())
             .or_default()
@@ -479,7 +495,8 @@ pub fn read_character_vault_wardrobe(
     fetch_archetypes: &dyn Fn() -> Result<Vec<SeedArchetype>, DbError>,
 ) -> Result<Option<Value>, DbError> {
     let mount = [mount_point_id.to_string()];
-    let all_docs = repo.find_many_by_mount_points_in_folder(&mount, WARDROBE_FOLDER, ".md")?;
+    let all_docs =
+        repo.find_many_by_mount_points_in_folder_or_empty(&mount, WARDROBE_FOLDER, ".md")?;
     // `Wardrobe/instructions.md` is dressing guidance, never a garment (v4
     // `b86bb1a5`). Filter before the length check so a folder holding only the
     // instructions file still falls through to the legacy `wardrobe.json` branch
@@ -538,7 +555,7 @@ pub fn read_character_vault_wardrobe(
 
     // Folder empty/missing — fall through to legacy wardrobe.json so
     // pre-migration vaults still surface their items.
-    let legacy = repo.find_many_by_mount_points_and_path(&mount, WARDROBE_JSON_PATH)?;
+    let legacy = repo.find_many_by_mount_points_and_path_or_empty(&mount, WARDROBE_JSON_PATH)?;
     let Some((_, content)) = legacy.into_iter().next() else {
         return Ok(None);
     };

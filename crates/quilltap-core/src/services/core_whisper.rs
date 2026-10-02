@@ -172,7 +172,7 @@ fn read_vault_core_files(
     mount_point_id: &str,
 ) -> Result<Vec<CoreFile>, DbError> {
     let docs = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount)
-        .find_many_by_mount_points_in_folder_opts(
+        .find_many_by_mount_points_in_folder_opts_or_empty(
             std::slice::from_ref(&mount_point_id.to_string()),
             "Core",
             ".md",
@@ -280,7 +280,7 @@ fn assemble_group_core_files(
     let mut result: Vec<CoreFile> = Vec::new();
     for (name, mount_ids) in groups {
         let docs = match crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount)
-            .find_many_by_mount_points_in_folder_opts(&mount_ids, "Core", ".md", true)
+            .find_many_by_mount_points_in_folder_opts_or_empty(&mount_ids, "Core", ".md", true)
         {
             Ok(d) => d,
             Err(_) => continue,

@@ -292,7 +292,7 @@ pub fn list_scenarios_in_folder(
     include_archived: bool,
 ) -> Result<ListScenariosResult, DbError> {
     let repo = DocMountDocumentsRepository::new(mount);
-    let mut docs = repo.find_many_by_mount_points_in_folder(
+    let mut docs = repo.find_many_by_mount_points_in_folder_or_empty(
         &[mount_point_id.to_string()],
         folder_name,
         ".md",
@@ -387,7 +387,7 @@ pub fn set_scenario_default_in_folder(
     folder_name: &str,
 ) -> Result<(), ScenarioWriteError> {
     let repo = DocMountDocumentsRepository::new(mount);
-    let docs = repo.find_many_by_mount_points_in_folder(
+    let docs = repo.find_many_by_mount_points_in_folder_or_empty(
         &[mount_point_id.to_string()],
         folder_name,
         ".md",

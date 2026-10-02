@@ -12,7 +12,12 @@
 //! missing properties.json keystone, partial overlay (properties only → identity
 //! kept, systemPrompts/scenarios replaced with []), physical MINT (no existing
 //! physicalDescription), empty identity.md → null + prompt promote-first, and
-//! prompt keep-non-first-default.
+//! prompt keep-non-first-default. P4.142: the RENAME plant
+//! (`doc_mount_file_links.relativePath` renamed on a per-run copy) — v4's batch
+//! reads fall back, so the batch overlay drops every vaulted character with v4's
+//! 9 + 2 batch-read lines + the drop lines, and the single overlay throws
+//! `CharacterVaultUnavailableError`; compared list + lines (`error=` tails
+//! skipped) + the refusal.
 //!
 //! Build the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -49,6 +54,62 @@ struct Spec {
 #[derive(Deserialize)]
 struct Oracle {
     characters: Vec<Value>,
+    /// P4.142 — the RENAME plant (`doc_mount_file_links.relativePath` renamed).
+    plant: Plant,
+}
+
+#[derive(Deserialize)]
+struct Plant {
+    characters: Vec<Value>,
+    logs: Vec<LogRec>,
+    one: PlantOne,
+}
+
+#[derive(Deserialize)]
+struct PlantOne {
+    threw: Option<String>,
+    #[serde(default)]
+    message: Option<String>,
+    logs: Vec<LogRec>,
+}
+
+/// One v4 ERROR/WARN recorded off the `Logger` prototype: the context keys in
+/// v4's order, `module` and `error` omitted.
+#[derive(Deserialize, Debug)]
+struct LogRec {
+    level: String,
+    message: String,
+    fields: Vec<(String, String)>,
+}
+
+/// The two repository-layer lines (v4's `Repository` logger → `quilltap::db`);
+/// every other recorded line is the overlay module's own.
+const REPOSITORY_MESSAGES: &[&str] = &[
+    "Error finding documents by mount point IDs and path",
+    "Error finding documents by mount point IDs and folder",
+];
+
+/// v4's record rendered the way v5's capture layer renders the same line, with
+/// the `error=` tail dropped on BOTH sides (on a links-rename plant the two
+/// sides' messages are each one's own driver sentence — P4.131 finding 3).
+fn render_v4(rec: &LogRec) -> String {
+    let target = if REPOSITORY_MESSAGES.contains(&rec.message.as_str()) {
+        "quilltap::db"
+    } else {
+        "quilltap_core::db::vault_read_overlay"
+    };
+    let mut line = format!("{} {target} {}", rec.level.to_uppercase(), rec.message);
+    for (k, v) in &rec.fields {
+        line.push_str(&format!(" {k}={v}"));
+    }
+    line
+}
+
+fn strip_error_tail(line: &str) -> String {
+    match line.find(" error=") {
+        Some(i) => line[..i].to_string(),
+        None => line.to_string(),
+    }
 }
 
 fn spec_path() -> PathBuf {
@@ -226,8 +287,94 @@ fn vault_read_overlay_matches_oracle() {
     );
 
     let _ = std::fs::remove_file(&work);
+
+    // ── P4.142 — the RENAME plant, on a SECOND per-run copy. v4's batch reads
+    // are fallback `withRawDb([])`s, so the batch overlay drops every vaulted
+    // character (9 path lines, 2 folder lines, one drop ERROR per vaulted
+    // character, 1 summary WARN) and the single overlay throws
+    // `CharacterVaultUnavailableError` (`properties.json missing`) after its own
+    // 9 + 2 lines.
+    let plant_work =
+        std::env::temp_dir().join(format!("qt-vro-rust-plant-{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&plant_work);
+    std::fs::copy(&fixture, &plant_work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
+    let plant_writer = Writer::open_writable(&plant_work, &spec.test_pepper_base64)
+        .unwrap_or_else(|e| panic!("open plant copy: {e}"));
+    plant_writer
+        .connection()
+        .execute_batch(
+            "ALTER TABLE doc_mount_file_links RENAME COLUMN relativePath TO relativePath_x",
+        )
+        .expect("plant the rename");
+    let (plant_got, plant_lines) = quilltap_core::test_support::captured_with(|| {
+        let repo = plant_writer.doc_mount_documents();
+        apply_document_store_overlay(&repo, spec.characters.clone())
+    });
+    let mut plant_got = plant_got.unwrap_or_else(|e| {
+        panic!("the batch overlay must DROP on the plant (v4), got Err({e:?})")
+    });
+    let mut plant_want = oracle.plant.characters.clone();
+    normalize_mint(&mut plant_got, &mint_ids);
+    normalize_mint(&mut plant_want, &mint_ids);
+    assert_eq!(plant_got, plant_want, "the plant's hydrated list diverged");
+    let want_lines: Vec<String> = oracle.plant.logs.iter().map(render_v4).collect();
+    let got_lines: Vec<String> = plant_lines
+        .iter()
+        .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+        .map(|l| strip_error_tail(l))
+        .collect();
+    assert_eq!(
+        got_lines, want_lines,
+        "the plant's batch-overlay line sequence diverged"
+    );
+    assert_eq!(
+        want_lines.len(),
+        9 + 2 + 6 + 1,
+        "the oracle's plant must hold 9 path + 2 folder + 6 drops + 1 WARN: {want_lines:#?}"
+    );
+
+    let ada: Value = spec
+        .characters
+        .iter()
+        .find(|c| c["name"].as_str() == Some("Ada"))
+        .cloned()
+        .expect("Ada");
+    let (one, one_lines) = quilltap_core::test_support::captured_with(|| {
+        let repo = plant_writer.doc_mount_documents();
+        apply_document_store_overlay_one(&repo, Some(ada))
+    });
+    assert_eq!(
+        oracle.plant.one.threw.as_deref(),
+        Some("CharacterVaultUnavailableError"),
+        "v4's single overlay throws on the plant"
+    );
+    match one {
+        Err(OverlayOneError::Unavailable(u)) => assert_eq!(
+            Some(u.message()),
+            oracle.plant.one.message,
+            "the single overlay's refusal text diverged"
+        ),
+        other => panic!(
+            "the single overlay must answer Unavailable (v4 CharacterVaultUnavailableError) on the plant, got {other:?}"
+        ),
+    }
+    let want_one: Vec<String> = oracle.plant.one.logs.iter().map(render_v4).collect();
+    let got_one: Vec<String> = one_lines
+        .iter()
+        .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+        .map(|l| strip_error_tail(l))
+        .collect();
+    assert_eq!(
+        got_one, want_one,
+        "the single overlay's plant lines diverged"
+    );
+    assert_eq!(want_one.len(), 9 + 2, "{want_one:#?}");
+    drop(plant_writer);
+    let _ = std::fs::remove_file(&plant_work);
+
     eprintln!(
-        "OK: vault read overlay matched oracle on {} characters (+ the …One throw).",
-        got.len()
+        "OK: vault read overlay matched oracle on {} characters (+ the …One throw, + the rename plant: {} lines).",
+        got.len(),
+        want_lines.len()
     );
 }

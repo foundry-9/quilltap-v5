@@ -160556,3 +160556,74 @@ mount index on THIS branch only.
   broken-table pins (`doc_mount_chunks`/`doc_mount_file_links`
   `a_broken_table_answers_empty_not_an_error`) gain the exact line (the bare
   `no such table: …`, camelCase, `quilltap::db`).
+
+### Unit 2 — the overlay's batch reads take v4's fallbacks (core 0.0.1148, harness 0.0.1076)
+
+- Twins beside the propagating reads in `db/doc_mount_documents.rs`:
+  `find_many_by_mount_points_and_path_or_empty`,
+  `find_many_by_mount_points_in_folder_or_empty`,
+  `find_many_by_mount_points_in_folder_opts_or_empty` (the empty-ids guard
+  BEFORE the home, as v4's `:146`/`:189`; `Result` because the strict scope
+  still propagates). All 11 production callers repointed:
+  `vault_read_overlay.rs` ×5 (the overlay's 3 + the wardrobe readers' 2),
+  `document_store_overlay.rs` ×1, `vault_wardrobe_write.rs` ×1,
+  `scenarios.rs` ×2, `services/core_whisper.rs` ×2. The propagating fns stay
+  (no production caller left; `vault_folder_read_equivalence` still drives the
+  strict one). `load_vault_file_maps`' comment — v4's own false
+  `read-overlay.ts:66-70` text, ported together with a propagation that matched
+  it — rewritten to the measurement.
+- **Red-first (a), `vault_read_overlay_equivalence`:** a RENAME plant leg on a
+  second per-run copy (oracle `vault-read-overlay.ts` records v4's real batch +
+  single overlay under the same plant, with a `Logger.prototype` spy). Against
+  unported v5: **RED** — `the batch overlay must DROP on the plant (v4), got
+  Err(Sqlite(… "no such column: l.relativePath"))`. After the twins: GREEN —
+  the hydrated list (Plain only), the 18-line sequence (9 path + 2 folder + 6
+  drop ERRORs + 1 WARN, `error=` tails skipped) and the single overlay's
+  `Unavailable` refusal text + its 9 + 2 lines all match v4.
+- **Red-first (b), `mail_carina_tools_equivalence`:** green at the baseline
+  (the divergence pinned); after the twins **RED "VANISHED"** on exactly the
+  `links:send` row (`assert_ne!` left == right == `No soul by that name keeps
+  a postbox here.`). Retired in this commit: `assert_send_divergence` +
+  `send_divergence_seen` deleted, the row through the generic text + no-catch
+  compare; the two batch messages moved from `PLANT_EXCLUDED_MESSAGES` into
+  `PLANT_SHARED_MESSAGES` (5 → 7; the send row compares v4's 11 batch lines);
+  a second, TARGET-AWARE leg compares the overlay's own drop ERROR + summary
+  WARN by level + message + every field under `quilltap_core::db::
+  vault_read_overlay` (5 drops + 1 WARN on the send row; a non-vacuity floor);
+  the `Data validation failed` exclusion's reason reworded (the `characters`
+  plant's slim `findByFilter`/`validateSafe`, not the overlay).
+- Unit pins (`doc_mount_documents::fallback_twin_tests`): the three twins'
+  exact lines on a broken mount index (`recursive=true` on the opts twin),
+  the empty-ids silence leg, and the overlay under the strict scope →
+  `Err` + one `strictFailures=true` line, where outside it the same overlay
+  drops with 13 lines.
+- `quilltap-core --lib` 2869 / 0.
+
+#### §S hunks pre-written for the unifier (the 2026-10-02 ruling)
+
+Wrap these bodies in `crate::db::fallback::with_strict_repository_failures(||
+…)` — each runs its reads on the calling thread (`read_main` / a borrowed
+`&Connection`), so the thread-local scope reaches them:
+
+1. **`services/backup/collect.rs` `collect_user_data`** — the inner
+   `db.read_mount_index(|mount| { … })` closure body (`:471-481`: the
+   characters / projects / groups `find_all`s). A RECORDED DIVERGENCE (v4's
+   `backup-service.ts:159` runs non-strict and drops), under the 2026-08-03
+   ruling. ⚠ The projects/groups `find_all`s there end in
+   `.unwrap_or_default()` (pre-existing): under the scope a broken store makes
+   them EMPTY rather than failing the backup — the unifier should decide
+   whether to drop the `.unwrap_or_default()` too (not this lane's file).
+2. **`services/qtap_export/mod.rs`** — `resolve_export_ids` and
+   `stream_export_records` bodies, and **`qtap_export/preview.rs`
+   `preview_export`** (every `find_all` of characters / projects / groups the
+   export makes). A RECORDED DIVERGENCE (v4 `ndjson-writer.ts:625,642` runs
+   non-strict and exports a broken store EMPTY). P4.139 owns
+   `qtap_export/{mod,records}.rs` this round — apply on the union.
+3. **`services/quilltap_import/mod.rs` `execute_import`** and
+   **`quilltap_import/preview.rs` `preview_import`** — v4-FAITHFUL (`execute.ts:
+   430`, `preview.ts:31`). Low stakes: the importer's only overlay LIST reads
+   are `reset.rs` / `seed.rs` (v4 non-strict paths: a characters route and the
+   startup seed); its single reads already refuse (`Unavailable`).
+
+A strict-scope pin per site belongs with each hunk (a planted rename under the
+scope → the caller's `Err`), on the union.

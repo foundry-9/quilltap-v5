@@ -52,8 +52,11 @@ pub fn project_array_into_vault_folder<T>(
     mapper: impl Fn(&T) -> (String, String),
     preserve_file_names: &[&str],
 ) -> Result<(), DbError> {
-    let existing =
-        docs.find_many_by_mount_points_in_folder(&[mount_point_id.to_string()], folder, ".md")?;
+    let existing = docs.find_many_by_mount_points_in_folder_or_empty(
+        &[mount_point_id.to_string()],
+        folder,
+        ".md",
+    )?;
     // The relative paths currently in the folder, to sweep what we don't rewrite.
     let existing_paths: Vec<String> = existing.into_iter().map(|d| d.relative_path).collect();
 

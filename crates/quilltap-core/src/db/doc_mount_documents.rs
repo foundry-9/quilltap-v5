@@ -402,6 +402,32 @@ impl<'c> DocMountDocumentsRepository<'c> {
         Ok(rows)
     }
 
+    /// v4 `findManyByMountPointsAndPath` exactly as its callers see it: a
+    /// fallback `withRawDb([])` (`doc-mount-documents.repository.ts:142-168`), so
+    /// a failed read logs `Error finding documents by mount point IDs and path`
+    /// and answers `[]` (the home,
+    /// [`super::fallback::documents_by_mount_point_ids_and_path_or_empty`]). The
+    /// `Err` survives ONLY inside v4's strict scope
+    /// ([`super::fallback::with_strict_repository_failures`]), which is why this
+    /// still answers `Result`. The empty-ids guard runs BEFORE the home, as v4's
+    /// `:146` precedes its `withRawDb`. Every overlay caller reads through this
+    /// (P4.142); the propagating [`Self::find_many_by_mount_points_and_path`]
+    /// stays for callers that must see the failure.
+    pub fn find_many_by_mount_points_and_path_or_empty(
+        &self,
+        mount_point_ids: &[String],
+        relative_path: &str,
+    ) -> Result<Vec<(String, String)>, DbError> {
+        if mount_point_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        super::fallback::documents_by_mount_point_ids_and_path_or_empty(
+            mount_point_ids.len(),
+            relative_path,
+            || self.find_many_by_mount_points_and_path(mount_point_ids, relative_path),
+        )
+    }
+
     /// v4 `findManyByMountPointsInFolder` (`doc-mount-documents.repository.ts:234`):
     /// the directory listing the read overlay uses to enumerate a single folder
     /// (`Prompts/` / `Scenarios/`) across many mount points at once. Same 3-table
@@ -428,6 +454,55 @@ impl<'c> DocMountDocumentsRepository<'c> {
         extension: &str,
     ) -> Result<Vec<VaultFolderDoc>, DbError> {
         self.find_many_by_mount_points_in_folder_opts(mount_point_ids, folder, extension, false)
+    }
+
+    /// v4 `findManyByMountPointsInFolder` exactly as its callers see it: a
+    /// fallback `withRawDb([])` (`doc-mount-documents.repository.ts:179-220`),
+    /// so a failed read logs `Error finding documents by mount point IDs and
+    /// folder` (with v4's `recursive` boolean) and answers `[]` (the home,
+    /// [`super::fallback::documents_by_mount_point_ids_in_folder_or_empty`]);
+    /// `Err` only inside the strict scope. The empty-ids guard precedes the home
+    /// (v4 `:189`).
+    pub fn find_many_by_mount_points_in_folder_or_empty(
+        &self,
+        mount_point_ids: &[String],
+        folder: &str,
+        extension: &str,
+    ) -> Result<Vec<VaultFolderDoc>, DbError> {
+        self.find_many_by_mount_points_in_folder_opts_or_empty(
+            mount_point_ids,
+            folder,
+            extension,
+            false,
+        )
+    }
+
+    /// [`Self::find_many_by_mount_points_in_folder_or_empty`] with v4's
+    /// `{ recursive }` option (the Core-whisper `Core/**` reads pass `true`).
+    pub fn find_many_by_mount_points_in_folder_opts_or_empty(
+        &self,
+        mount_point_ids: &[String],
+        folder: &str,
+        extension: &str,
+        recursive: bool,
+    ) -> Result<Vec<VaultFolderDoc>, DbError> {
+        if mount_point_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        super::fallback::documents_by_mount_point_ids_in_folder_or_empty(
+            mount_point_ids.len(),
+            folder,
+            extension,
+            recursive,
+            || {
+                self.find_many_by_mount_points_in_folder_opts(
+                    mount_point_ids,
+                    folder,
+                    extension,
+                    recursive,
+                )
+            },
+        )
     }
 
     /// v4 `findManyByMountPointsInFolder` with the `{ recursive }` option. The
@@ -609,4 +684,95 @@ pub fn find_full_json_by_mount_point_id(
         out.push(r?);
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod fallback_twin_tests {
+    use super::*;
+    use crate::db::fallback::with_strict_repository_failures;
+
+    /// A mount index with none of the three joined tables: every batch read
+    /// fails on `no such table: doc_mount_file_links`.
+    fn broken() -> Connection {
+        Connection::open_in_memory().unwrap()
+    }
+
+    fn ids() -> Vec<String> {
+        vec!["mp-1".to_string(), "mp-2".to_string()]
+    }
+
+    /// P4.142: the two batch twins answer v4's fallback with the home's exact
+    /// line; an empty id list answers `[]` BEFORE the home (v4's `:146`/`:189`
+    /// guards precede `withRawDb`), so it logs nothing even on a broken table.
+    #[test]
+    fn the_batch_twins_log_v4s_line_and_answer_empty() {
+        let conn = broken();
+        let repo = DocMountDocumentsRepository::new(&conn);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                repo.find_many_by_mount_points_and_path_or_empty(&ids(), "properties.json")
+                    .unwrap(),
+                repo.find_many_by_mount_points_in_folder_or_empty(&ids(), "Prompts", ".md")
+                    .unwrap()
+                    .len(),
+                repo.find_many_by_mount_points_in_folder_opts_or_empty(&ids(), "Core", ".md", true)
+                    .unwrap()
+                    .len(),
+            )
+        });
+        assert_eq!(got, (Vec::new(), 0, 0));
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error finding documents by mount point IDs and path collection=doc_mount_documents mountPointIdCount=2 relativePath=properties.json error=no such table: doc_mount_file_links".to_string(),
+                "ERROR quilltap::db Error finding documents by mount point IDs and folder collection=doc_mount_documents mountPointIdCount=2 folder=Prompts extension=.md recursive=false error=no such table: doc_mount_file_links".to_string(),
+                "ERROR quilltap::db Error finding documents by mount point IDs and folder collection=doc_mount_documents mountPointIdCount=2 folder=Core extension=.md recursive=true error=no such table: doc_mount_file_links".to_string(),
+            ]
+        );
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                repo.find_many_by_mount_points_and_path_or_empty(&[], "properties.json")
+                    .unwrap(),
+                repo.find_many_by_mount_points_in_folder_or_empty(&[], "Prompts", ".md")
+                    .unwrap()
+                    .len(),
+            )
+        });
+        assert_eq!(got, (Vec::new(), 0));
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// Inside v4's strict scope the twins propagate (the line gains
+    /// `strictFailures=true`) — and so does the batch overlay above them, which
+    /// is what keeps a strict caller (the backup collect, the `.qtap` export,
+    /// the import — the §S wraps) from reading a broken store as an empty one.
+    #[test]
+    fn the_strict_scope_makes_the_overlay_propagate_again() {
+        let conn = broken();
+        let repo = DocMountDocumentsRepository::new(&conn);
+        let linked = vec![serde_json::json!({
+            "id": "c-1",
+            "name": "Ada",
+            "characterDocumentMountPointId": "mp-1",
+        })];
+        let (fallback, lines) = crate::test_support::captured_with(|| {
+            crate::db::vault_read_overlay::apply_document_store_overlay(&repo, linked.clone())
+        });
+        assert_eq!(
+            fallback.unwrap(),
+            Vec::<serde_json::Value>::new(),
+            "dropped"
+        );
+        assert_eq!(lines.len(), 9 + 2 + 1 + 1, "{lines:#?}");
+        let (strict, lines) = crate::test_support::captured_with(|| {
+            with_strict_repository_failures(|| {
+                crate::db::vault_read_overlay::apply_document_store_overlay(&repo, linked.clone())
+            })
+        });
+        assert!(strict.is_err(), "{strict:?}");
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding documents by mount point IDs and path collection=doc_mount_documents mountPointIdCount=1 relativePath=properties.json error=no such table: doc_mount_file_links strictFailures=true".to_string()]
+        );
+    }
 }
