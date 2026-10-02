@@ -138,6 +138,25 @@ which drops the `sqlite error:` prefix it used to log. `fallback_home_guard`
 lists both messages (red first on the old emitter, green after the move).
 Unit pins cover each line, the bare message over a corrupt cell, and the
 silence legs.
+#### 2026-10-01 — fix(core): an empty new user message takes v4's chained branch in build_context (P4.137, P4.D243-F1)
+
+_Versions: core 0.0.1140._
+
+A send of `content: ""` with files or pending tool results reaches
+`build_context` as `Some("")`. v4 tests the string by JS truthiness at the
+token count, the scene-note input, the first-responder branch and
+`messagesIncluded`, so the empty string is no new message there. v5 took the
+first-responder branch on `Some("")`: it pushed an empty user line (or
+`"\n\n---\n\n"` plus the trailing sections under it), flagged it as the
+attachment anchor, counted it, and added 4 tokens. One `Option<&str>`
+(`as_deref().filter(|s| !s.is_empty())`) is now computed once and read by all
+three sites. Whitespace stays a new message, as in v4. Unit pins: the
+P4.D243 empty-message pin grown to the push, the flag, the count and the
+tokens (the whole built context now equals the `None` turn's), a whitespace
+sibling, and two `build_message_context` arms for the attachment anchor (the
+previous human row; v4's `-1` WARN with the attachments dropped). Three
+`build_context_tier3` ops (`""` single, `""` chained-multi with a turn skip,
+`"   "`), red-first on the first two and green after.
 
 #### 2026-10-01 — docs(porting): order the `f6426e196` bug-174 drift catch-up + review-follow-ups round (P4.D244 ∥ P4.135 ∥ P4.136 ∥ P4.137 ∥ P4.138)
 

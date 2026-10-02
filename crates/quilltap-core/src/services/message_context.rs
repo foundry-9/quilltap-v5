@@ -2379,4 +2379,223 @@ mod tests {
         };
         assert!(!is_whisper_party(&whispered_announcement, ME));
     }
+
+    /// P4.137 (P4.D243-F1) — the attachment anchor on an EMPTY new user
+    /// message. v4's send schema admits `content: ''` beside files
+    /// (`orchestrator.service.ts:148-171`) and `buildContext`'s `if
+    /// (newUserMessage)` (`context-manager.ts:2726`) then pushes NO user line
+    /// and sets NO `isUserTurn`, so `selectAttachmentAnchorIndex`
+    /// (`context-builder.service.ts:730-745`) falls through its ladder: the
+    /// previous human row (preference 2) when there is one, else `-1` — the
+    /// WARN at `:1272-1276` and the attachments dropped. Until P4.137 v5 took
+    /// the first-responder branch on `Some("")`, flagged an EMPTY user line
+    /// as the anchor, and this arm was unreachable on a non-continue turn.
+    /// Driven through the real `build_message_context` over a provisioned
+    /// instance; M1 (the branch back to `if let Some(..) =
+    /// &input.new_user_message`) reddens both arms.
+    mod empty_new_user_message_anchor {
+        use super::*;
+        use crate::model::completion::{
+            CompletionError, CompletionParams, CompletionProvider, CompletionResponse,
+        };
+        use crate::model::embedding::{
+            EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,
+        };
+        use crate::services::build_context::{ContextCharacter, ContextChat, NoopSeams};
+
+        const PEPPER: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        const WARN: &str = "Image attachments could not be anchored — no user-role message in context; images will not reach the model";
+
+        struct UnusedCompletion;
+        impl CompletionProvider for UnusedCompletion {
+            async fn send_message(
+                &self,
+                _provider: &str,
+                _base_url: Option<&str>,
+                _params: &CompletionParams,
+            ) -> Result<CompletionResponse, CompletionError> {
+                Err(CompletionError::new("no completion provider in this pin"))
+            }
+        }
+        struct FailingEmbedding;
+        impl EmbeddingProvider for FailingEmbedding {
+            async fn generate_embedding_for_user(
+                &self,
+                _text: &str,
+                _user_id: &str,
+                _profile_id: Option<&str>,
+                _priority: EmbeddingPriority,
+            ) -> Result<EmbeddingResult, EmbeddingError> {
+                Err(EmbeddingError::new("no embedding provider in this pin"))
+            }
+        }
+
+        fn lyra() -> ContextCharacter {
+            ContextCharacter {
+                id: "char-a".to_string(),
+                name: "Lyra".to_string(),
+                character_document_mount_point_id: None,
+                sys: crate::system_prompt::Character {
+                    name: "Lyra".to_string(),
+                    ..Default::default()
+                },
+                metadata: None,
+            }
+        }
+
+        /// A single-character, non-continue turn whose new user message is the
+        /// empty string — the carrier the orchestrator builds for a send of
+        /// `content: ""` with files and no inlined prefix.
+        fn an_empty_send() -> BuildContextInput {
+            BuildContextInput {
+                model_context_limit: 32_000,
+                user_id: "user".to_string(),
+                character: lyra(),
+                user_character: None,
+                chat: ContextChat {
+                    id: "chat-1".to_string(),
+                    ..Default::default()
+                },
+                existing_messages: Vec::new(),
+                new_user_message: Some(String::new()),
+                active_user_participant_id: None,
+                roleplay_template: None,
+                embedding_profile_id: None,
+                skip_memories: true,
+                min_memory_importance: 0.1,
+                responding_participant: None,
+                all_participants: None,
+                participant_characters: None,
+                messages_with_participants: None,
+                tool_instructions: None,
+                timestamp_config: None,
+                is_initial_message: false,
+                timezone: None,
+                connection_profile: None,
+                context_compression_settings: None,
+                cheap_llm_selection: None,
+                bypass_compression: true,
+                cached_compression_result: None,
+                cached_compression_message_count: None,
+                generate_memory_recap: false,
+                uncensored_fallback: None,
+                is_continue_mode: false,
+                now_ms: 1_767_225_600_000,
+                local_offset_minutes: 0,
+                server_tz: Some("UTC".to_string()),
+                minutes_since_last_timestamp_announcement: None,
+                autonomous_context_cap: None,
+                reserved_outgoing_tokens: None,
+                regeneration_of_message_ids: None,
+                turn_skip: None,
+                pre_searched_memories: None,
+                recall_signals: None,
+                pre_searched_query_embedding: None,
+                human_turn_message_ids: None,
+            }
+        }
+
+        fn row(id: &str, role: &str, content: &str) -> Value {
+            serde_json::json!({ "type": "message", "id": id, "role": role, "content": content })
+        }
+
+        async fn send(history: &[Value]) -> (Vec<FormattedMsg>, Vec<String>) {
+            let dir = tempfile::tempdir().expect("tempdir");
+            crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER)
+                .expect("provision a fresh instance");
+            let db = Db::open_main(dir.path().join("quilltap.db"), PEPPER).expect("open main");
+            let seams = CannedSeams::new(&[]);
+            let transparency = std::collections::HashMap::new();
+            let params = MessageContextParams {
+                is_multi_character: false,
+                provider: "ANTHROPIC",
+                responding_character_name: "Lyra",
+                responding_participant_id: "participant-a",
+                has_history_access: true,
+                character_participant_created_at: None,
+                character_system_transparency: Some(true),
+                use_prefill: false,
+                participants: &[],
+                participant_transparency: &transparency,
+            };
+            let attachments = [serde_json::json!({ "id": "img-1" })];
+
+            use tracing_subscriber::layer::SubscriberExt;
+            let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+            let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+            let out = {
+                let _guard = tracing::subscriber::set_default(subscriber);
+                build_message_context(
+                    &db,
+                    &FailingEmbedding,
+                    &UnusedCompletion,
+                    &CheapLlmTaskExecutor::new(),
+                    &NoopSeams,
+                    &seams,
+                    &params,
+                    an_empty_send(),
+                    history,
+                    &attachments,
+                )
+                .await
+                .unwrap_or_else(|e| panic!("the turn must build: {e:?}"))
+            };
+            let lines = logs.lock().unwrap().clone();
+            (out.formatted_messages, lines)
+        }
+
+        fn anchored(msgs: &[FormattedMsg]) -> Vec<&FormattedMsg> {
+            msgs.iter().filter(|m| m.attachments.is_some()).collect()
+        }
+
+        /// One prior human row: v4's preference 2 — the attachments ride on
+        /// the human's PREVIOUS turn, no empty user line exists to take them,
+        /// and the WARN stays silent.
+        #[tokio::test]
+        async fn the_attachments_anchor_on_the_previous_human_row() {
+            let (msgs, lines) = send(&[
+                row("h1", "USER", "Here is the map."),
+                row("a1", "ASSISTANT", "Noted."),
+            ])
+            .await;
+            let on = anchored(&msgs);
+            assert_eq!(on.len(), 1, "{msgs:#?}");
+            assert_eq!(on[0].role, "user");
+            assert_eq!(on[0].content, "Here is the map.");
+            assert_eq!(
+                on[0].attachments.as_deref(),
+                Some(&[serde_json::json!({ "id": "img-1" })][..])
+            );
+            assert!(
+                !msgs
+                    .iter()
+                    .any(|m| m.role == "user" && m.content.is_empty()),
+                "no empty user line: {msgs:#?}"
+            );
+            assert_eq!(
+                msgs.last().unwrap().content,
+                "Noted.",
+                "nothing pushed after the history"
+            );
+            assert!(!lines.iter().any(|l| l.contains(WARN)), "{lines:#?}");
+        }
+
+        /// No human row at all: v4's `-1` — the WARN, byte for byte with its
+        /// two counts, and the attachments reach no message.
+        #[tokio::test]
+        async fn with_no_human_row_the_attachments_drop_with_v4s_warn() {
+            let (msgs, lines) = send(&[row("a1", "ASSISTANT", "Good evening.")]).await;
+            assert!(anchored(&msgs).is_empty(), "{msgs:#?}");
+            assert!(!msgs.iter().any(|m| m.role == "user"), "{msgs:#?}");
+            let warns: Vec<&String> = lines.iter().filter(|l| l.contains(WARN)).collect();
+            assert_eq!(warns.len(), 1, "{lines:#?}");
+            assert_eq!(
+                warns[0],
+                &format!(
+                    "WARN {WARN} attachment_count=1 context_message_count={}",
+                    msgs.len()
+                )
+            );
+        }
+    }
 }

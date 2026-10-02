@@ -3771,6 +3771,118 @@
       "timestampMode": null,
       "profileMaxContext": 8000,
       "reservedOutgoingTokens": 2000
+    },
+    {
+      "name": "empty_new_user_message_single",
+      "_comment": "P4.137 (P4.D243-F1): the empty string the send schema admits beside files or pending tool results (orchestrator.service.ts:148-171). v4's buildContext reads it by JS truthiness at every consumer (context-manager.ts:2101 tokens, :2726 the branch, :2782 messagesIncluded), so a single-character turn pushes NO trailing message at all \u2014 no empty isUserTurn line, no +1, no +4. Memories ON so the window query (:703, trim + non-blank) and the recap fallback (:1300, ||) see the empty string too.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Tell me about your work."
+        },
+        {
+          "role": "assistant",
+          "content": "I design engines of thought."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "empty_new_user_message_chained_multi_with_skip",
+      "_comment": "P4.137 (P4.D243-F1): narration_anchor_with_turn_skip's chained multi shape with newUserMessage: '' \u2014 v4 takes the CHAINED branch (:2748) and pushes [anchor, turnSkip].join('\\n\\n---\\n\\n') as the bare trailing-only message; v5 before P4.137 pushed '' + '\\n\\n---\\n\\n' + those sections under an empty isUserTurn line.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004a1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a3",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a2",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000001"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "turnSkip": {
+        "offerSkip": true,
+        "recentlyAddressed": false,
+        "characterName": "Ada"
+      }
+    },
+    {
+      "name": "whitespace_new_user_message",
+      "_comment": "P4.137: whitespace is NOT empty \u2014 the send schema refines on content.trim() but buildContext's branch tests the raw string, so '   ' is a NEW user message on both sides (pushed, isUserTurn, +1, +tokens). Guards against an over-eager trim at the branch.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "   ",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Tell me about your work."
+        },
+        {
+          "role": "assistant",
+          "content": "I design engines of thought."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
     }
   ],
   "vaultConversationSummaries": [

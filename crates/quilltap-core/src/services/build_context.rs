@@ -3226,9 +3226,25 @@ where
     }
 
     // 7. New user message tokens.
-    let new_user_message_tokens = input
-        .new_user_message
-        .as_deref()
+    //
+    // Whether THIS turn carries a new user message, computed ONCE (P4.137,
+    // P4.D243-F1). v4 tests the raw string by JS truthiness at every
+    // consumer below — `newUserMessage ? estimateTokens(…) + 4 : 0`
+    // (`context-manager.ts:2101`), `hasNewUserMessage: !!newUserMessage`
+    // (`:2714`), `if (newUserMessage) {` the first-responder push (`:2726`)
+    // and `messagesIncluded: … + (newUserMessage ? 1 : 0)` (`:2782`) — so
+    // the empty string the send schema admits beside files or pending tool
+    // results (`orchestrator.service.ts:148-171`, carried here as
+    // `Some("")`) is NO new message: no user line, the trailing-only note
+    // instead, zero tokens, no +1. The token count, the scene-note input and
+    // the branch all read THIS binding, so one turn is never
+    // half-first-responder. Whitespace is NOT empty: the schema refines on
+    // `content.trim()`, the branch tests the raw string, so `"   "` stays a
+    // new message on both sides — never trim here (the window query trims
+    // on its own, as v4's `buildRecentWindowQuery` does).
+    let new_user_message: Option<&str> =
+        input.new_user_message.as_deref().filter(|s| !s.is_empty());
+    let new_user_message_tokens = new_user_message
         .map(|m| estimate_tokens(m, cpt) + 4)
         .unwrap_or(0);
 
@@ -3733,10 +3749,7 @@ where
         crate::user_narration_anchor::build_user_narration_anchor(
             &crate::user_narration_anchor::BuildUserNarrationAnchorInput {
                 is_multi_character,
-                has_new_user_message: input
-                    .new_user_message
-                    .as_deref()
-                    .is_some_and(|s| !s.is_empty()),
+                has_new_user_message: new_user_message.is_some(),
                 history_window: &window,
                 human_turn_message_ids: input.human_turn_message_ids.as_ref(),
                 user_name,
@@ -3747,7 +3760,7 @@ where
 
     // New user message with trailing recall / core / mail context.
     let mut messages_included = selected_messages.len();
-    if let Some(new_user_message) = &input.new_user_message {
+    if let Some(new_user_message) = new_user_message {
         let new_user_msg_name = if is_multi_character {
             let all = input.all_participants.as_ref().unwrap();
             let pc = input.participant_characters.as_ref().unwrap();
@@ -3803,7 +3816,7 @@ where
             trailing.push(turn_skip_instruction.clone());
         }
         let composed = if trailing.is_empty() {
-            new_user_message.clone()
+            new_user_message.to_string()
         } else {
             format!(
                 "{new_user_message}\n\n---\n\n{}",
@@ -5073,15 +5086,87 @@ mod inter_character_log_tests {
 
         /// The anchor's gate is v4's `!!newUserMessage`: an EMPTY new user
         /// message is no new message, so the note applies (its DEBUG line is
-        /// the witness — the push itself rides whichever branch the pre-existing
-        /// `if let Some(..)` takes; see the lane record). M4: `is_some()` here
-        /// reddens this pin.
+        /// the witness). P4.137 (P4.D243-F1) grew this pin to the PUSH as well:
+        /// v4's branch (`context-manager.ts:2726`), token count (`:2101`) and
+        /// `messagesIncluded` (`:2782`) read the same truthiness, so the empty
+        /// send takes the CHAINED branch — the trailing message is the note
+        /// ALONE (no leading `"\n\n---\n\n"` under an empty line), no message
+        /// carries the `isUserTurn` anchor flag, no +1, no +4 — and the whole
+        /// built context is the `None` turn's, byte for byte. M1 (the branch
+        /// back to `if let Some(..) = &input.new_user_message`) and M2 (the
+        /// token count back to the raw `Option`) redden this pin.
         #[tokio::test]
         async fn an_empty_new_user_message_is_no_new_message_to_the_gate() {
             let mut t = chained(Some(&["h1"]));
             t.new_user_message = Some(String::new());
-            let (_, lines) = build(&t).await;
+            let (out, lines) = build(&t).await;
             assert_eq!(anchor_lines(&lines), 1, "{lines:?}");
+
+            let last = out.messages.last().unwrap();
+            assert_eq!(last.role, "user");
+            assert!(last.content.starts_with(SCENE), "{:?}", last.content);
+            assert!(
+                !last.content.starts_with("\n\n---\n\n"),
+                "{:?}",
+                last.content
+            );
+            assert!(
+                !last.content.contains("\n\n---\n\n"),
+                "the note alone: {:?}",
+                last.content
+            );
+            assert!(
+                !out.messages.iter().any(|m| m
+                    .metadata
+                    .as_ref()
+                    .is_some_and(|md| md.is_user_turn == Some(true))),
+                "no message may carry the attachment anchor's flag: {:?}",
+                out.messages
+            );
+            // The window is the two history rows; no +1 for a message that
+            // does not exist.
+            assert_eq!(out.messages_included, 2);
+
+            let (none, _) = build(&chained(Some(&["h1"]))).await;
+            assert_eq!(
+                out.token_usage, none.token_usage,
+                "no +4 for the empty string"
+            );
+            assert_eq!(out, none, "an empty new user message IS the chained turn");
+        }
+
+        /// The sibling: whitespace is NOT empty. v4's send schema refines on
+        /// `content.trim()` but the branch tests the raw string, so `"   "` is
+        /// a NEW user message — pushed, flagged as the attachment anchor,
+        /// counted, tokened — and the note stands down. M3 (a `trim()` added
+        /// to the predicate) reddens this pin.
+        #[tokio::test]
+        async fn a_whitespace_new_user_message_is_a_new_message() {
+            let mut t = chained(Some(&["h1"]));
+            t.new_user_message = Some("   ".to_string());
+            let (out, lines) = build(&t).await;
+            assert_eq!(anchor_lines(&lines), 0, "{lines:?}");
+
+            let last = out.messages.last().unwrap();
+            assert_eq!(last.role, "user");
+            assert_eq!(last.content, "   ");
+            assert_eq!(
+                last.metadata.as_ref().and_then(|md| md.is_user_turn),
+                Some(true)
+            );
+            assert_eq!(out.messages_included, 3);
+
+            let (none, _) = build(&chained(Some(&["h1"]))).await;
+            assert!(
+                out.token_usage.recent_messages > none.token_usage.recent_messages,
+                "{:?} vs {:?}",
+                out.token_usage,
+                none.token_usage
+            );
+            assert_eq!(
+                out.token_usage.total - none.token_usage.total,
+                out.token_usage.recent_messages - none.token_usage.recent_messages
+            );
         }
     }
 }
