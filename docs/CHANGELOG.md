@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-02 — docs(dogfood): rule finding #124 closed — WaveSpeed will not be directly supported
+
+_Docs-only change._
+
+The human ruled that Quilltap v5 will not directly support the WaveSpeed image provider: no native provider and no npm-plugin loader for it will be ordered. Finding #124's row and standing note record the ruling; the uncensored image desk points at a native provider instead (the NanoGPT workaround proven on 2026-09-29). The round plan's left-out line is updated to match.
+
 #### 2026-10-02 — docs(porting): order the f6426e196 recorded-divergences round — seven lanes (P4.139–P4.145) with seven fresh surveys
 
 _Docs-only change._

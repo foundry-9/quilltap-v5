@@ -7309,8 +7309,8 @@ pricing-context cadence (P4.139 Tier 3); the MigrationRunner pin as a
 lane item (its catch is partial); the `[Attached: …]` bubble as Tier 1
 (Tier 2 — it widens `ComposerSend`); the name-based calendar paths under a
 POSIX `TZ` (P4.140 Tier 3 — the distill, cron and log cleanup need a
-NAME); the WaveSpeed npm-plugin loader (#124 — the human repointed the
-desk); the standing 💸 queue (the next dogfood pass, after this round).
+NAME); the WaveSpeed npm-plugin loader (#124 — RULED 2026-10-02: WaveSpeed
+will not be directly supported; CLOSED, no order); the standing 💸 queue (the next dogfood pass, after this round).
 **NEXT after this round unifies:** the owed dogfood pass over the seven
 lanes' 💸 rows; then the rulings' follow-ups (sync applier, placeholder
 bytes, the timeout trigger if reversed) + G2/G3 as a smalls round; then a
