@@ -159426,3 +159426,279 @@ WARN (it used to fail the job).
   before calling it a port defect.
 - `cargo test --test A --test B` stops at the first failing binary; a
   mutation run needs `--no-fail-fast` or one binary per invocation.
+## P4.137 — P4.D243-F1 closed (an empty new user message takes v4's chained branch) + the orchestrator oracle's cheap-key mock lifted — LANE COMPLETE (2026-10-01)
+
+Branch `claude/empty-new-user-message-orchestrator-193984` (worktree
+`.claude/worktrees/empty-new-user-message-orchestrator-193984`), cut from
+`main` `50a4cdaab`. Pin `/tmp/qt-v4-pin-p4137-f6426e196` (verified by
+`rev-parse` = `f6426e1969…` and `ls -ld`; the three symlink classes). The
+§R.2 probe PASSED at lane start and before every regen batch (branch
+`main`, HEAD `f6426e196`, both logs empty, tree CLEAN — not even P4.135's
+waived dirt yet). `git log ca363178d..f6426e196 -- lib/chat/context-manager.ts
+lib/services/chat-message lib/services/api-key.service.ts` EMPTY (measured),
+so the baseline and the pin agree on every path this lane reads.
+
+### Commits
+
+- `3756e48c5` fix(core): an empty new user message takes v4's chained
+  branch in build_context (P4.137, P4.D243-F1) — core 0.0.1140.
+- `46ef688d2` test(harness): lift the orchestrator oracle's cheap-key mock
+  and add the empty-content arms (P4.137) — harness 0.0.1064.
+- (this record + the order header) docs.
+
+### Tier 1 — landed
+
+1. **The predicate** (`build_context.rs` §7): ONE
+   `let new_user_message: Option<&str> = input.new_user_message.as_deref().filter(|s| !s.is_empty());`
+   computed above the token count, read by the token count (v4 `:2101`), the
+   scene-note input (`:2714`, the P4.D243 predicate now REUSES it) and the
+   branch (`:2726`) — `messages_included` follows inside the branch
+   (`:2782`). The *why*-comment names v4's four truthiness sites and that
+   whitespace is NOT empty (`orchestrator.service.ts:148-171` refines on
+   `trim()`, the branch does not). **Reader census** (unmoved, each already
+   v4's truthiness): `build_recent_window_query` (`if let Some(n)` → `js_trim`
+   → non-empty; v4 `:703`), the recap query (`.filter(|s| !s.is_empty())`
+   then `or_else`; v4 `:1300`), the distill (`.filter(|s| !s.is_empty())`;
+   v4 `:1436`). The five `BuildContextInput {` literals untouched;
+   `orchestrator.rs` untouched (READ only).
+2. **The P4.D243 pin grown** (`an_empty_new_user_message_is_no_new_message_to_the_gate`):
+   the trailing message is the scene note ALONE (no `"\n\n---\n\n"`), no
+   message carries `is_user_turn: Some(true)`, `messages_included == 2`, the
+   `token_usage` equals the `None` turn's, and the WHOLE `BuiltContext`
+   equals the `None` turn's. Sibling `a_whitespace_new_user_message_is_a_new_message`:
+   `"   "` pushed, flagged, `messages_included == 3`, `recent_messages` and
+   `total` up by the same amount, the note stood down.
+3. **`message_context.rs` unit pin** (`tests::empty_new_user_message_anchor`,
+   two arms through the REAL `build_message_context` over a provisioned
+   instance): one prior human row → the attachments ride that row
+   (preference 2), no empty user line, nothing pushed after the history, no
+   WARN; no human row → v4's `-1` WARN byte-pinned through the module's
+   local capture rig (`WARN Image attachments could not be anchored — no
+   user-role message in context; images will not reach the model
+   attachment_count=1 context_message_count=<n>`), the attachments on no
+   message.
+4. **`build_context_tier3` grown 58 → 61 ops**: `empty_new_user_message_single`
+   (the `plain_single_char_turn` shape, memories ON so the window query and
+   the recap fallback see `""` too), `empty_new_user_message_chained_multi_with_skip`
+   (`narration_anchor_with_turn_skip` + `newUserMessage: ""`),
+   `whitespace_new_user_message`. **Red-first on unported `main`
+   (measured with a scratch soft-assert copy of the harness, reverted):
+   EXACTLY the two empty ops.** Op (i): v4 pushes NOTHING after the history
+   (the recall text, which only rides UNDER a new message, is dropped
+   entirely — `memories: 326` counted, nowhere in `messages`), v5 pushed
+   `"\n\n---\n\nYou remember the following entries…## Memory Anchors…"`
+   flagged `isUserTurn`; `messagesIncluded` 3 vs 2, `recentMessages` 29 vs
+   25. Op (ii): v4 pushes the bare `Scene note: Charlie's most recent
+   message …\n\n---\n\n<turn-skip note>` (no flag), v5 pushed
+   `"\n\n---\n\n" + that` under an empty flagged line; `messagesIncluded` 3
+   vs 2, `recentMessages` 36 vs 32. Op (iii) green on both (the guard).
+   Green after item 1. The compared shape is the whole serialized
+   `BuiltContext` (`messages`, `tokenUsage`, `messagesIncluded`, …) plus the
+   whisper write side.
+5. **`orchestrator_tier3` arm `empty_content_pending_tool_results`**: chat
+   `e3700001-…` (Friday on `Primary` + the Operator's seat, no history),
+   `content: ""`, `continueMode: false`, the existing `roll_dice` chip, its
+   `streams` entry. **Red-first on unported `build_context`:** v5's stream
+   carried a 4th message `"[Operator] \n\n---\n\nYou remember the gist …"`
+   where v4's ends at the TOOL row (`[Tool Result: roll_dice]\nRolled 2d6:
+   [3, 5] = 8`) — a canned-key miss, so the event trace reddens. The
+   `historyTailHash` cell is red BY CONSTRUCTION but not reached in the red
+   run (the stream fails first): v4's `CHAT_MESSAGE` row carries NO
+   `historyTailHash` (one non-system message; `cache-prefix-hashes.ts:73-82`
+   needs `> 1`), unported v5 had two non-system messages and would write one
+   (`cache_prefix_hashes.rs:172`). `chat_messages`: v4 writes the TOOL row +
+   the reply + a Commonplace recap whisper and NO USER row, NO file link —
+   v5 identical (the persist is untouched; the table diff is green). Green
+   after item 1.
+6. **The mock lift**: the `api-key.service` doMock block deleted from
+   `orchestrator-tier3.test.ts` (a comment in its place; the phantom
+   `getApiKeyForProfile` named); the v5 `CannedCheapLlmKey` line + its
+   P4.133 comment deleted from `orchestrator_tier3_equivalence.rs` (this
+   family ONLY; the nine other families' seams untouched). **Byte-neutral,
+   measured honestly:** the family is NOT byte-stable across two regens at
+   the same pin (raw `cmp` differs at char 33064 mocked-vs-MOCKED: row
+   order follows minted UUIDs). Canonicalized (brotli text cells decoded
+   via Node's `zlib`, UUIDs / ISO times / 64-hex masked, row lists sorted,
+   `durationMs` zeroed), mocked₁-vs-mocked₂ leaves exactly 9 differing
+   leaves — `historyTailHash` on nine `CHAT_MESSAGE` rows — and
+   mocked₁-vs-lifted leaves the SAME nine paths and nothing else (`lift −
+   noise = ∅`). v5 GREEN against the lifted oracle with the twin gone.
+   **The bite (scratch spec, `CheapDefault.apiKeyId` →
+   `ae0000ff-…`, no row; regenerated into `/tmp/p4137/`):** v4 writes ZERO
+   `MEMORY_EXTRACTION` / `SUMMARIZATION` / `TITLE_GENERATION` rows (115 + 2
+   + 1 → 0; 511 → 397 oracle lines) and NO case throws — every cheap caller's
+   own catch swallows the `No API key available for cheap LLM provider`
+   throw; v5 twin-less takes the same arm, GREEN. **M4** (the twin put back
+   over the scratch spec): `llm_logs row count diverges (got 216 vs oracle
+   100)` — the lift's reason to exist. **The `[Gatekeeper]` measurement:**
+   NO corpus case reaches the classifier — 0 `DANGER_CLASSIFICATION`
+   `llm_logs` rows and 0 `[Gatekeeper]` strings in the lifted oracle; v4's
+   call is gated on `conciergePolicy.preScreen.enabled &&
+   preScreen.scanTextChat` (`danger-orchestrator.service.ts:123`) and the
+   fixture's `concierge: { enabled: true }` sets neither. The P4.133
+   record's "the classifier's key resolved for real in this family" was
+   vacuous here (nothing to resolve) — corrected by this record.
+
+### Tier 2 — landed
+
+8. **`empty_content_image_on_vision_seat`**: chat `e3700002-…` (Lucida on
+   `LanternVision` + the Operator's seat; history: one USER row, one
+   ASSISTANT row), `content: ""`, `fileIds: ["1f151001-…"]`. v4: no prefix
+   (native image) → chained branch; the chat is multi-character so the
+   scene note is the trailing-only message; the image rides wire message
+   index 2 — `[Operator] I have brought the study you asked for.` — v4's
+   anchor preference 2, confirmed on the wire slate. Red-first on unported
+   `build_context` (v5 pushed `"[Operator] "` — an empty flagged line —
+   where v4 pushes the note). The harness's attachment-slate outcome pin
+   gains the arm's `["lb_fit_a.webp"]`. ⚠ **A NEW finding (STOPPED on,
+   fenced):** v4 sends a `{"fileProcessing":[{"filename":"lb_fit_a.webp",
+   "type":"unsupported","usedImageDescriptionLLM":false}]}` stream frame
+   whenever `loadAndProcessFiles` ran a file (`orchestrator.service.ts:1386-1389`
+   → `encodeFallbackInfo`, `streaming.service.ts:564-576`); **v5 has no such
+   frame anywhere** (it computes `fallback_results` in `chat_files.rs:507-526`
+   and drops them). Invisible until now: the corpus's only other `fileIds`
+   case, `paused_hold_attachment`, is held before the stream. The fix is an
+   `orchestrator.rs` hunk (fenced to NOBODY, §R.10 (c)) and possibly an
+   `Event` shape (`api/types.rs` FROZEN, §R.10 (a)) — NOT written. Pinned
+   both ways in a new `EXPECTED_EVENT_DIVERGENCES` list (retire-by-VANISHED,
+   the `EXPECTED_DIVERGENCES` contract); the rest of the arm compares whole.
+9. **Mutation proofs** (each run, each restored, `git diff` checked):
+   M1 (branch → `if let Some(..) = &input.new_user_message`) → the grown
+   pin, both `message_context` arms, both `""` corpus ops (messages +
+   `messagesIncluded`), both orchestrator arms (canned-key miss) RED; the
+   whitespace pin green. M2 (token count → the raw `Option`) → the grown pin
+   and both `""` ops on `tokenUsage` ONLY (messages equal). M3 (`trim()` in
+   the predicate) → `a_whitespace_new_user_message_is_a_new_message` and
+   `whitespace_new_user_message` RED (v4 disagrees), nothing else. M4 as
+   above.
+10. **`historyTailHash` expectations** (identical both sides, and identical
+    across two regens at the pin): `empty_content_pending_tool_results` —
+    the cell is ABSENT (one non-system message); `empty_content_image_on_vision_seat`
+    — `8054c15e70a420f2` (frozen window `[user, assistant]`; the note is the
+    last). ⚠ The order's "the shorter frozen window" moves the cell only on
+    the tool-results arm (presence → absence); on the image arm unported v5's
+    frozen window was ALSO `[user, assistant]` (its last was the empty line),
+    so that cell was never a discriminator there — its red is the message
+    list.
+
+### Tier 3 — deferred (loud)
+
+11. **The SPA attachment-only send** (survey §B6/§D7): v4's Salon sends
+    `'Please look at the attached file(s).'` (`useSSEStreaming.ts:845`), v5's
+    composer sends `''` (`salon-conversation.ts:3654`) — so on v5 an
+    attachment-only Salon post persists no row and links no file. NOT this
+    lane's (`apps/web/**`); for `phase-4.md` NEXT (§S.5).
+12. The text-file-prefix shape (`''` + a text file → first-responder with
+    the inlined prefix, no persisted row) — v4-faithful, no arm.
+13. The whitespace-with-file shape — v4-faithful, recorded.
+14. **NEW: the missing `fileProcessing` frame** (item 8) — an
+    `orchestrator.rs` order for the next round; retire the
+    `EXPECTED_EVENT_DIVERGENCES` entry when it lands.
+
+### Fixtures changed (and what they invalidate)
+
+- `harness/oracle/fixtures/build-context-tier3.json` (+3 ops, pure
+  insertions) → regenerate `build_context_tier3` only (no other family
+  reads it).
+- `harness/oracle/fixtures/orchestrator-tier3.json` (+2 chats, +2 calls,
+  +2 streams, pure insertions) and `harness/oracle/cases/orchestrator-tier3.test.ts`
+  (the lift) → regenerate `orchestrator_tier3` from the spec (the fixture
+  DB MUST be rebuilt; no other family reads this spec). P4.136's adjacency
+  (§S.1): its `get_api_key_for_connection_profile` fallback line runs under
+  this family's now-real cheap path on every healthy row and is
+  unreachable here; the unifier regenerates ONCE on the union.
+- No committed real-DB pair was rebuilt.
+
+### Regen recipes (lane-private; the committed headers are unchanged)
+
+- `build_context_tier3`: `zsh /tmp/p4137/regen-bc.sh` (stages the case +
+  spec under `/tmp/p4137/bc-oracle`, builds `/tmp/p4137/bc-{main,mount}.db`,
+  jest `-- "build-context-tier3\.test\.ts$"` under `TZ=UTC` from the pin,
+  `QT_ORACLE_OUT=/tmp/p4137/oracle-build-context.ndjson`), then
+  `QT_ORACLE_BUILD_CONTEXT=/tmp/p4137/oracle-build-context.ndjson
+  QT_FIXTURE_BC_MAIN=/tmp/p4137/bc-main.db QT_FIXTURE_BC_MOUNT=/tmp/p4137/bc-mount.db
+  cargo test -p quilltap-harness --test build_context_tier3_equivalence`.
+  The committed recipe (`recipe_sweep.py --run build_context_tier3_equivalence`)
+  is equivalent.
+- `orchestrator_tier3`: `zsh /tmp/p4137/regen-orch.sh <label> <case.ts> <spec.json>`
+  — stages the case, the spec, the WHOLE `harness/oracle/lib/` (the
+  builder dynamically imports `../lib/v4-migrations`) AND a copy of
+  `build-orchestrator-fixture.ts` next to the spec (it reads the spec from
+  its own directory — the only way to build a scratch spec), runs the
+  builder and jest `-- "orchestrator-tier3\.test\.ts$"` under `TZ=UTC` from
+  the pin into `/tmp/p4137/{orch-main,orch-mount,oracle-orch}-<label>.*`.
+  Then `QT_ORACLE_ORCHESTRATOR=… QT_FIXTURE_ORCH_MAIN=… QT_FIXTURE_ORCH_MOUNT=…
+  cargo test -p quilltap-harness --test orchestrator_tier3_equivalence`
+  (the Rust side reads the COMMITTED spec — a scratch-spec run copies the
+  scratch spec over it and restores). The committed recipe is equivalent
+  for the committed spec.
+- Byte-neutral check: `node /tmp/p4137/decode.mjs` (brotli text cells) →
+  `python3 /tmp/p4137/canon.py` → `python3 /tmp/p4137/jdiff.py`.
+
+### Gate (pin `f6426e196`, `CARGO_INCREMENTAL=0`)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (default;
+  `--features quilltap-core/native-transport`).
+- `cargo build --workspace --release`: exit 0 (3m 40s; the first attempt died in `tauri::generate_context!` because the lane had deleted `apps/web/dist` mid-build — environmental; rebuilt the SPA dist and re-ran).
+- The sweep from the pin (`recipe_sweep.py --run-all --force --v4
+  /tmp/qt-v4-pin-p4137-f6426e196`, one invocation, 14 families): **14 / 14
+  ok** — the eleven NEUTRAL families (`regenerate_swipe_tier3`,
+  `enclave_step_tier3`, `salon_swipe_generate`, `chat_continuation_tier2`,
+  `turn_orchestrator_tier2`, `request_prefix_hashes`, `primary_stream_tier3`,
+  `native_tool_loop_tier3`, `text_tool_loop_tier3`,
+  `brahma_orchestrator_tier3`, `help_chat_orchestrator_tier3`), Tier R
+  (`cli_differential` **271 cases / 0 failures**, 451.9 s), and this lane's
+  two families through the COMMITTED recipes (agreeing with the
+  lane-private regens).
+- `dispatch_wrong_type_census` green, UNMOVED at 441 (no `api/types.rs`
+  change). Live-checkout guards against `~/source/quilltap-server` at
+  `f6426e196`: `builtin_prompt_templates_guard` 2/2, `provider_sdk_version_guard`
+  3/3 — GREEN.
+- `python3 harness/tools/recipe_sweep.py --self-test`: **RED, 1 failure**
+  naming exactly P4.138's five headers (`doc_opacity`,
+  `instance_settings_json_warns`, `scenario_builder_mount_pool`,
+  `scenario_builder_tier3`, `scenario_builder_routes`) — the round's
+  designed red, recorded, not fixed.
+- `QT_V4_CHECKOUT=<pin> cargo test --workspace --no-fail-fast` with the
+  lane's env block (both families' `QT_ORACLE_*` / `QT_FIXTURE_*` at the
+  lane-private paths): **659 test binaries / 4,088 passed / 0 failed / 3
+  ignored**, exit 0; `build_context_tier3_equivalence` RAN (0.44 s, 1/1) and
+  `orchestrator_tier3_equivalence` RAN (5.35 s, 1/1); ZERO `SKIP:` lines in
+  the whole log. No standing intermittent fired this run.
+- SPA (no `apps/web/**` edit): `npm ci` + `npm run build` exit 0 (liveness).
+
+### Versions
+
+core 0.0.1139 → **0.0.1140**, harness 0.0.1063 → **0.0.1064**. Nothing
+else bumped.
+
+### For the unifier (§S)
+
+- **§S.1:** regenerate `orchestrator_tier3` ONCE from the pin on the union
+  with P4.136 (whose fallback line sits under this family's now-real cheap
+  path — unreachable on the healthy rows). Expect GREEN; this lane's own
+  regen and the committed-recipe sweep agree.
+- **NEW for `phase-4.md` NEXT (§S.5 list):** the missing `fileProcessing`
+  stream frame (item 8 / 14) — an `orchestrator.rs` order; the
+  `EXPECTED_EVENT_DIVERGENCES` entry retires when it lands. Plus the SPA
+  attachment-only substitution (item 11).
+- `status-log.md`'s P4.133 record claims the Concierge classifier's key was
+  resolved for real in `orchestrator_tier3` — vacuous: no corpus case
+  reaches the classifier (item 6).
+
+### 💸 for the dogfood pass
+
+- Through dispatch on the Friday copy: `chatSend` with `content: ""` +
+  `pendingToolResults` — the LLM Inspector shows no empty user line, the
+  trailing note alone when it applies, the TOOL row persisted, no USER row.
+- An image-only send on a vision seat after a prior human turn — the image
+  anchored on that turn in the logged request body; and in a chat with NO
+  prior human turn, v4's `Image attachments could not be anchored …` WARN
+  with the image dropped.
+- A whitespace-only send with a file persists the whitespace row
+  (v4-faithful).
+- Watch for the absent `fileProcessing` frame (SPA shows no fallback
+  notice where v4 would) — the deferred item, record only.
+- The SPA's attachment-only send is the deferred divergence — record what
+  the composer sends, do not fix it in the walk.

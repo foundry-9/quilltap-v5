@@ -138,6 +138,15 @@ which drops the `sqlite error:` prefix it used to log. `fallback_home_guard`
 lists both messages (red first on the old emitter, green after the move).
 Unit pins cover each line, the bare message over a corrupt cell, and the
 silence legs.
+#### 2026-10-01 — docs(porting): P4.137 lane record and order status
+
+_Docs-only change._
+
+The P4.137 lane record in `status-log.md` (red-first counts, mutation
+proofs, the lift's byte-neutral measurement, the gate) and the order's
+status header set to LANE COMPLETE. Records the missing `fileProcessing`
+stream frame as a new deferral for the next round.
+
 #### 2026-10-01 — test(harness): lift the orchestrator oracle's cheap-key mock and add the empty-content arms (P4.137)
 
 _Versions: harness 0.0.1064._
