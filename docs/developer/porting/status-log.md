@@ -160000,3 +160000,40 @@ The standing queue: the Lantern budget, a real token-limit turn, the four
 planted proofs, dedup/summaries, the Brahma deep query, #101, the compression
 re-measure, the conceal-marker arm, an autonomous room's budget, a real
 flat-body OpenAI image refusal.
+
+## P4.141 — the model layer: the timeout kind + trigger, the 2xx shape guard, the ten plugin ERROR lines — LANE record (2026-10-02)
+
+Branch `claude/p4-141-model-layer-timeout-2xx-lines-75219b8dd` (worktree
+`.claude/worktrees/p4-141`), cut from `main` `75219b8dd`. Pin
+`/tmp/qt-v4-pin-p4141-f6426e196` (verified by `git -C "$PIN" rev-parse HEAD`
+= `f6426e1969765650ed215144c4c3c24ecdc62bf3` and `ls -ld`; the three
+`node_modules` symlink classes; `node_modules/openai/package.json` 7.23.0;
+`package.json` `4.10.0-dev.106`). The §2 probe PASSED at lane start and
+before every regen batch: branch `main`, HEAD `f6426e196`, both logs EMPTY,
+the tree dirty by EXACTLY the three waived docs paths (`docs/developer/
+bugs.md` + the bug-175/176 files).
+
+### Unit 1 — the `TransportError` kind (Tier 1 item 1), ONE early commit
+
+`TransportErrorKind { Http, Connect, Timeout }` on `TransportError`, with the
+constructors `http` (exists, `Http`), `connect`, `timeout`, and
+`headers_timeout` (now a `Timeout` constructor, message bytes unchanged);
+`is_headers_timeout` + the `HEADERS_TIMEOUT_PREFIX` sniff retired for
+`is_timeout()` off the kind (its one caller, `sdk_thrown_message`, moved).
+**Literal census at lane start** (`ggrep -rnP "(?<!struct |impl |for
+)TransportError *\{" crates`): **52 sites in 12 files** — core
+`streaming_provider.rs` 14, `completion_provider.rs` 10, `transport.rs` 6,
+`provider_error.rs` 6, `ollama_think_retry.rs` 2; harness
+`text_http_errors_equivalence.rs` 3, `tool_wire_call_site.rs` 3,
+`primary_stream_tier3_equivalence.rs` 2, `ollama_think_retry_tier3_
+equivalence.rs` 2, `cheap_llm_fallback_equivalence.rs` 2,
+`streaming_composer_equivalence.rs` 1, `provider_header_common/mod.rs` 1
+(the order's "~45"). No destructuring pattern existed. Every status-less site
+→ `connect`, every status site → `http` (an `HTTP {s}: {body}` message
+re-expressed as `http(s, body)` — same bytes); the one test literal with a
+status and a non-HTTP message (`provider_error.rs`'s prefix-guess pin) is
+built from `http` and its `message` reassigned. Zero struct literals remain
+outside the constructors. No behaviour change. Gate:
+`CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` (no env block)
+**659 binaries / 4,109 passed / 0 failed / 3 ignored**; clippy
+(`--features quilltap-core/native-transport`) clean.

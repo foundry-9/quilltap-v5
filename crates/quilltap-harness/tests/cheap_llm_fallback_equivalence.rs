@@ -354,10 +354,7 @@ struct PosedHttpFailure {
 
 impl PosedHttpFailure {
     fn error(&self) -> TransportError {
-        TransportError {
-            message: format!("HTTP {}: {}", self.status, self.body),
-            status: Some(self.status),
-        }
+        TransportError::http(self.status, &self.body)
     }
 }
 

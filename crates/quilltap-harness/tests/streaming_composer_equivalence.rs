@@ -217,12 +217,7 @@ impl ProviderTransport for ReplayTransport {
         _request: &'a TransportRequest,
         _policy: &'a TransportPolicy,
     ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
-        Box::pin(async move {
-            Err(TransportError {
-                message: "non-streaming not scripted".to_string(),
-                status: None,
-            })
-        })
+        Box::pin(async move { Err(TransportError::connect("non-streaming not scripted")) })
     }
     fn execute_stream<'a>(
         &'a self,

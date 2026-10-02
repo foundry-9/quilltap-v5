@@ -434,14 +434,8 @@ impl PosedFailure {
     fn fail(&self, request: &TransportRequest) -> TransportError {
         self.calls.fetch_add(1, Ordering::SeqCst);
         match self.status {
-            Some(status) => TransportError {
-                message: format!("HTTP {}: {}", status, self.body),
-                status: Some(status),
-            },
-            None => TransportError {
-                message: posed_connect_failure(&request.url),
-                status: None,
-            },
+            Some(status) => TransportError::http(status, &self.body),
+            None => TransportError::connect(posed_connect_failure(&request.url)),
         }
     }
 }

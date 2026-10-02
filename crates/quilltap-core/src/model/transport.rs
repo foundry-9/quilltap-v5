@@ -202,14 +202,38 @@ impl TransportResponse {
     }
 }
 
+/// What kind of failure a [`TransportError`] is (P4.141). v4's plugins throw a
+/// different value for each — the SDKs' `APIConnectionTimeoutError` (`Request
+/// timed out.`) vs `APIConnectionError` (`Connection error.`), the raw-`fetch`
+/// plugins' abort texts vs undici's `fetch failed` — and v4's failover
+/// classifier files every timeout as `network`, so the kind travels beside the
+/// message rather than being sniffed back out of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransportErrorKind {
+    /// A non-2xx response (`status` is set).
+    Http,
+    /// The request never got a response: a refused / reset connection, a DNS
+    /// failure, a body that broke off — anything that is not a deadline.
+    Connect,
+    /// A deadline fired: the whole-exchange budget (non-streaming) or the
+    /// time-to-headers budget (streaming).
+    Timeout,
+}
+
 /// A transport error (a network/timeout/abort failure, or a non-2xx status). The
 /// message is what the failover service's `is*`/`parse*` detectors read (the
 /// `handle_provider_error` normalizer went with v4's `d4138b96b` sweep, P4.D157).
+/// Build one through the constructors ([`Self::http`], [`Self::connect`],
+/// [`Self::timeout`], [`Self::headers_timeout`]) so the kind is never left to a
+/// default (P4.141 — the shared-struct trap: a field added later must not cross
+/// ~50 struct literals in a dozen files again).
 #[derive(Clone, Debug)]
 pub struct TransportError {
     pub message: String,
     /// The HTTP status, when the failure was a non-2xx response.
     pub status: Option<u16>,
+    /// What kind of failure this is (P4.141).
+    pub kind: TransportErrorKind,
 }
 
 impl TransportError {
@@ -223,27 +247,46 @@ impl TransportError {
         TransportError {
             message: format!("HTTP {status}: {}", body.as_ref()),
             status: Some(status),
+            kind: TransportErrorKind::Http,
+        }
+    }
+
+    /// A failure that never reached a response and is not a deadline (a
+    /// refused connection, a reset, a body read that broke off). No status.
+    pub fn connect(message: impl Into<String>) -> Self {
+        TransportError {
+            message: message.into(),
+            status: None,
+            kind: TransportErrorKind::Connect,
+        }
+    }
+
+    /// A deadline that fired before the exchange completed. No status.
+    pub fn timeout(message: impl Into<String>) -> Self {
+        TransportError {
+            message: message.into(),
+            status: None,
+            kind: TransportErrorKind::Timeout,
         }
     }
 
     /// The streaming arm's time-to-headers budget running out (v4's
-    /// `openStream()` `AbortController`).
+    /// `openStream()` `AbortController`) — a [`TransportErrorKind::Timeout`]
+    /// whose message names what it measured.
     pub fn headers_timeout(ms: u128) -> Self {
-        TransportError {
-            message: format!("{HEADERS_TIMEOUT_PREFIX}{ms}ms"),
-            status: None,
-        }
+        Self::timeout(format!(
+            "provider did not send response headers within {ms}ms"
+        ))
     }
 
-    /// Whether this is [`Self::headers_timeout`] — the one transport failure
-    /// the openai SDK names `APIConnectionTimeoutError` rather than
-    /// `APIConnectionError` (P4.128's catch-line mapping).
-    pub fn is_headers_timeout(&self) -> bool {
-        self.status.is_none() && self.message.starts_with(HEADERS_TIMEOUT_PREFIX)
+    /// Whether a deadline fired — the transport failure v4's SDKs throw as
+    /// `APIConnectionTimeoutError` (and its raw-`fetch` plugins as an abort),
+    /// read off the kind (P4.141; P4.128 sniffed the headers-timeout message
+    /// prefix, which saw only one of the two deadlines).
+    pub fn is_timeout(&self) -> bool {
+        self.kind == TransportErrorKind::Timeout
     }
 }
-
-const HEADERS_TIMEOUT_PREFIX: &str = "provider did not send response headers within ";
 
 impl std::fmt::Display for TransportError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -358,17 +401,11 @@ mod native {
                                 Some(TransportError::http(status, String::from_utf8_lossy(&body)));
                         }
                         Err(e) => {
-                            last = Some(TransportError {
-                                message: e.to_string(),
-                                status: None,
-                            });
+                            last = Some(TransportError::connect(e.to_string()));
                         }
                     }
                 }
-                Err(last.unwrap_or(TransportError {
-                    message: "transport failed".to_string(),
-                    status: None,
-                }))
+                Err(last.unwrap_or_else(|| TransportError::connect("transport failed")))
             })
         }
 
@@ -389,10 +426,7 @@ mod native {
                 let sent = tokio::time::timeout(policy.timeout, self.build(request).send())
                     .await
                     .map_err(|_| TransportError::headers_timeout(policy.timeout.as_millis()))?;
-                let resp = sent.map_err(|e| TransportError {
-                    message: e.to_string(),
-                    status: None,
-                })?;
+                let resp = sent.map_err(|e| TransportError::connect(e.to_string()))?;
                 let status = resp.status().as_u16();
                 if !(200..300).contains(&status) {
                     let text = resp.text().await.unwrap_or_default();
@@ -410,12 +444,7 @@ mod native {
                             }
                             Ok(None) => break,
                             Err(e) => {
-                                let _ = tx
-                                    .send(Err(TransportError {
-                                        message: e.to_string(),
-                                        status: None,
-                                    }))
-                                    .await;
+                                let _ = tx.send(Err(TransportError::connect(e.to_string()))).await;
                                 break;
                             }
                         }

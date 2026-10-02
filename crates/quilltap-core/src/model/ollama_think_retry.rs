@@ -86,10 +86,12 @@ mod tests {
         }
     }
 
-    fn err(status: Option<u16>, message: &str) -> TransportError {
-        TransportError {
-            message: message.into(),
-            status,
+    /// A non-2xx with `body` (rendered `HTTP {status}: {body}`), or a
+    /// status-less connect failure whose message is `body`.
+    fn err(status: Option<u16>, body: &str) -> TransportError {
+        match status {
+            Some(status) => TransportError::http(status, body),
+            None => TransportError::connect(body),
         }
     }
 
@@ -122,14 +124,14 @@ mod tests {
     fn only_a_non_ok_status_on_ollama_with_think_retries() {
         let with_think = req(r#"{"model":"m","think":false}"#);
         let without = req(r#"{"model":"m"}"#);
-        let think_err = err(Some(400), "HTTP 400: does not support thinking");
+        let think_err = err(Some(400), "does not support thinking");
 
         assert!(think_retry_request("OLLAMA", &with_think, &think_err).is_some());
         // A think-unrelated error never retries.
         assert!(think_retry_request(
             "OLLAMA",
             &with_think,
-            &err(Some(404), r#"HTTP 404: model "nope" not found"#)
+            &err(Some(404), r#"model "nope" not found"#)
         )
         .is_none());
         // A network failure (no status) is not `!response.ok`.

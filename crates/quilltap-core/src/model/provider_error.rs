@@ -95,7 +95,7 @@ pub fn sdk_thrown_message(provider: &str, error: &TransportError) -> String {
     if let Some(side) = transport_error_refusal(provider, error) {
         return side.message;
     }
-    if error.is_headers_timeout() {
+    if error.is_timeout() {
         "Request timed out.".to_string()
     } else {
         "Connection error.".to_string()
@@ -386,22 +386,14 @@ mod tests {
         let e = TransportError::http(status, text);
         assert_eq!(e.message, format!("HTTP {status}: {text}"));
         assert_eq!(e.http_body(), Some(text));
-        let empty = TransportError {
-            message: "HTTP 400: ".to_string(),
-            status: Some(400),
-        };
+        let empty = TransportError::http(400, "");
         assert_eq!(empty.http_body(), Some(""));
         // A network failure has no status, hence no body.
-        let net = TransportError {
-            message: "HTTP 400: looks like one".to_string(),
-            status: None,
-        };
+        let net = TransportError::connect("HTTP 400: looks like one");
         assert_eq!(net.http_body(), None);
         // A message in another shape is not guessed at.
-        let other = TransportError {
-            message: "provider did not send response headers within 5ms".to_string(),
-            status: Some(400),
-        };
+        let mut other = TransportError::http(400, "");
+        other.message = "provider did not send response headers within 5ms".to_string();
         assert_eq!(other.http_body(), None);
     }
 
@@ -418,17 +410,15 @@ mod tests {
             sdk_thrown_message("NANOGPT", &TransportError::http(400, "")),
             "400 status code (no body)"
         );
-        let connect = TransportError {
-            message: "error sending request for url (http://127.0.0.1:1/)".into(),
-            status: None,
-        };
+        let connect =
+            TransportError::connect("error sending request for url (http://127.0.0.1:1/)");
         assert_eq!(
             sdk_thrown_message("OPENAI_COMPATIBLE", &connect),
             "Connection error."
         );
         let timeout = TransportError::headers_timeout(5);
-        assert!(timeout.is_headers_timeout());
-        assert!(!connect.is_headers_timeout());
+        assert!(timeout.is_timeout());
+        assert!(!connect.is_timeout());
         assert_eq!(
             sdk_thrown_message("DEEPSEEK", &timeout),
             "Request timed out."
@@ -705,16 +695,11 @@ mod tests {
 
     #[test]
     fn transport_error_refusal_needs_a_status_and_the_prefix() {
-        let coded = TransportError {
-            message: r#"HTTP 400: {"error":{"code":"content_filter","message":"m"}}"#.to_string(),
-            status: Some(400),
-        };
+        let coded =
+            TransportError::http(400, r#"{"error":{"code":"content_filter","message":"m"}}"#);
         let side = transport_error_refusal("OPENAI", &coded).expect("coded 400");
         assert_eq!(side.code.as_deref(), Some("content_filter"));
-        let net = TransportError {
-            message: "connection refused".to_string(),
-            status: None,
-        };
+        let net = TransportError::connect("connection refused");
         assert!(transport_error_refusal("OPENAI", &net).is_none());
     }
 }

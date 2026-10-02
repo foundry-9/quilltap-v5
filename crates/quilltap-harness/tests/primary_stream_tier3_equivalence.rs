@@ -1908,12 +1908,7 @@ impl ProviderTransport for FallbackTransport {
         _request: &'a TransportRequest,
         _policy: &'a TransportPolicy,
     ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
-        Box::pin(async move {
-            Err(TransportError {
-                message: "non-streaming not scripted".to_string(),
-                status: None,
-            })
-        })
+        Box::pin(async move { Err(TransportError::connect("non-streaming not scripted")) })
     }
     fn execute_stream<'a>(
         &'a self,
@@ -1929,10 +1924,7 @@ impl ProviderTransport for FallbackTransport {
         let frame = self.retry_frame.clone();
         Box::pin(async move {
             if n == 1 {
-                Err(TransportError {
-                    message: "400 previous_response_not_found".to_string(),
-                    status: None,
-                })
+                Err(TransportError::connect("400 previous_response_not_found"))
             } else {
                 let (tx, rx) = tokio::sync::mpsc::channel(1);
                 let _ = tx.send(Ok(frame)).await;

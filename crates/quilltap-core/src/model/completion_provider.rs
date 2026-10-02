@@ -343,12 +343,7 @@ mod tests {
             _policy: &'a TransportPolicy,
         ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>>
         {
-            Box::pin(async move {
-                Err(TransportError {
-                    message: "no stream".to_string(),
-                    status: None,
-                })
-            })
+            Box::pin(async move { Err(TransportError::connect("no stream")) })
         }
     }
 
@@ -890,10 +885,9 @@ mod tests {
                 match outcome {
                     Some(Ok(body)) => Ok(TransportResponse { status: 200, body }),
                     Some(Err(e)) => Err(e),
-                    None => Err(TransportError {
-                        message: "scripted transport: no outcome queued".to_string(),
-                        status: None,
-                    }),
+                    None => Err(TransportError::connect(
+                        "scripted transport: no outcome queued",
+                    )),
                 }
             })
         }
@@ -903,12 +897,7 @@ mod tests {
             _policy: &'a TransportPolicy,
         ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>>
         {
-            Box::pin(async move {
-                Err(TransportError {
-                    message: "no stream".to_string(),
-                    status: None,
-                })
-            })
+            Box::pin(async move { Err(TransportError::connect("no stream")) })
         }
     }
 
@@ -920,11 +909,10 @@ mod tests {
     }
 
     fn think_rejection() -> TransportError {
-        TransportError {
-            message: r#"HTTP 400: {"error":"\"qwen3:8b\" does not support disabling thinking"}"#
-                .to_string(),
-            status: Some(400),
-        }
+        TransportError::http(
+            400,
+            r#"{"error":"\"qwen3:8b\" does not support disabling thinking"}"#,
+        )
     }
 
     async fn run_ollama(
@@ -970,10 +958,7 @@ mod tests {
     async fn think_rejection_twice_surfaces_the_second_error() {
         let t = ScriptedTransport::new(vec![
             Err(think_rejection()),
-            Err(TransportError {
-                message: "HTTP 500: still thinking about it".to_string(),
-                status: Some(500),
-            }),
+            Err(TransportError::http(500, "still thinking about it")),
         ]);
         let err = run_ollama(&t, "OLLAMA", "qwen3:8b")
             .await
@@ -986,10 +971,10 @@ mod tests {
     #[tokio::test]
     async fn a_non_think_error_never_retries() {
         let t = ScriptedTransport::new(vec![
-            Err(TransportError {
-                message: r#"HTTP 404: {"error":"model \"nope\" not found"}"#.to_string(),
-                status: Some(404),
-            }),
+            Err(TransportError::http(
+                404,
+                r#"{"error":"model \"nope\" not found"}"#,
+            )),
             Ok(ollama_body("unreachable")),
         ]);
         let err = run_ollama(&t, "OLLAMA", "qwen3:8b")
@@ -1005,10 +990,10 @@ mod tests {
     #[tokio::test]
     async fn a_coded_http_failure_keeps_its_bytes_and_carries_the_side() {
         let bytes = r#"HTTP 400: {"error":{"code":"1301","message":"blocked"}}"#;
-        let t = ScriptedTransport::new(vec![Err(TransportError {
-            message: bytes.to_string(),
-            status: Some(400),
-        })]);
+        let t = ScriptedTransport::new(vec![Err(TransportError::http(
+            400,
+            r#"{"error":{"code":"1301","message":"blocked"}}"#,
+        ))]);
         let err = run_ollama(&t, "Z_AI", "glm-4.6")
             .await
             .expect_err("400 surfaces");
@@ -1024,10 +1009,7 @@ mod tests {
     async fn the_think_retry_failure_carries_the_second_errors_side() {
         let t = ScriptedTransport::new(vec![
             Err(think_rejection()),
-            Err(TransportError {
-                message: "HTTP 500: still thinking about it".to_string(),
-                status: Some(500),
-            }),
+            Err(TransportError::http(500, "still thinking about it")),
         ]);
         let err = run_ollama(&t, "OLLAMA", "qwen3:8b")
             .await
@@ -1042,10 +1024,7 @@ mod tests {
     /// A failure with no status (the network) carries no side.
     #[tokio::test]
     async fn a_statusless_failure_carries_no_side() {
-        let t = ScriptedTransport::new(vec![Err(TransportError {
-            message: "connection refused".to_string(),
-            status: None,
-        })]);
+        let t = ScriptedTransport::new(vec![Err(TransportError::connect("connection refused"))]);
         let err = run_ollama(&t, "OPENAI", "gpt-4o").await.expect_err("fails");
         assert!(err.refusal.is_none());
     }

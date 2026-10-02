@@ -51,12 +51,7 @@ impl ProviderTransport for HeaderCapture {
         _request: &'a TransportRequest,
         _policy: &'a TransportPolicy,
     ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>> {
-        Box::pin(async move {
-            Err(TransportError {
-                message: "unused".to_string(),
-                status: None,
-            })
-        })
+        Box::pin(async move { Err(TransportError::connect("unused")) })
     }
 }
 

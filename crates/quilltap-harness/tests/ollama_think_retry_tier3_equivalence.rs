@@ -138,10 +138,7 @@ impl ProviderTransport for ScriptedTransport {
                     status: 200,
                     body: OK_SEND.as_bytes().to_vec(),
                 }),
-                Outcome::Fail(status, text) => Err(TransportError {
-                    message: format!("HTTP {status}: {text}"),
-                    status: Some(status),
-                }),
+                Outcome::Fail(status, text) => Err(TransportError::http(status, text)),
             }
         })
     }
@@ -159,10 +156,7 @@ impl ProviderTransport for ScriptedTransport {
                     let _ = tx.send(Ok(OK_STREAM.as_bytes().to_vec())).await;
                     Ok(rx)
                 }
-                Outcome::Fail(status, text) => Err(TransportError {
-                    message: format!("HTTP {status}: {text}"),
-                    status: Some(status),
-                }),
+                Outcome::Fail(status, text) => Err(TransportError::http(status, text)),
             }
         })
     }

@@ -771,12 +771,7 @@ mod tests {
             _request: &'a TransportRequest,
             _policy: &'a TransportPolicy,
         ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
-            Box::pin(async move {
-                Err(TransportError {
-                    message: "non-streaming not scripted".to_string(),
-                    status: None,
-                })
-            })
+            Box::pin(async move { Err(TransportError::connect("non-streaming not scripted")) })
         }
         fn execute_stream<'a>(
             &'a self,
@@ -790,10 +785,7 @@ mod tests {
             let fail = self.fail_before_stream.clone();
             Box::pin(async move {
                 if let Some(message) = fail {
-                    return Err(TransportError {
-                        message,
-                        status: None,
-                    });
+                    return Err(TransportError::connect(message));
                 }
                 let (tx, rx) = tokio::sync::mpsc::channel(frames.len().max(1));
                 for f in frames {
@@ -820,12 +812,7 @@ mod tests {
             Self::typed(
                 outcomes
                     .into_iter()
-                    .map(|o| {
-                        o.map_err(|message| TransportError {
-                            message,
-                            status: None,
-                        })
-                    })
+                    .map(|o| o.map_err(TransportError::connect))
                     .collect(),
             )
         }
@@ -847,12 +834,7 @@ mod tests {
             _request: &'a TransportRequest,
             _policy: &'a TransportPolicy,
         ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
-            Box::pin(async move {
-                Err(TransportError {
-                    message: "non-streaming not scripted".to_string(),
-                    status: None,
-                })
-            })
+            Box::pin(async move { Err(TransportError::connect("non-streaming not scripted")) })
         }
         fn execute_stream<'a>(
             &'a self,
@@ -872,10 +854,9 @@ mod tests {
                         }
                         Ok(rx)
                     }
-                    None => Err(TransportError {
-                        message: "scripted transport: no outcome queued".to_string(),
-                        status: None,
-                    }),
+                    None => Err(TransportError::connect(
+                        "scripted transport: no outcome queued",
+                    )),
                 }
             })
         }
@@ -1358,10 +1339,7 @@ mod tests {
         let frame = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"}}]}\n\n";
         let t = FakeStreamTransport::new(vec![
             Ok(frame.as_bytes().to_vec()),
-            Err(TransportError {
-                message: "connection reset".to_string(),
-                status: None,
-            }),
+            Err(TransportError::connect("connection reset")),
         ]);
         let p = WireStreamingProvider::new(
             t,
@@ -1668,11 +1646,10 @@ mod tests {
     }
 
     fn think_rejection() -> TransportError {
-        TransportError {
-            message: r#"HTTP 400: {"error":"\"qwen3:8b\" does not support disabling thinking"}"#
-                .to_string(),
-            status: Some(400),
-        }
+        TransportError::http(
+            400,
+            r#"{"error":"\"qwen3:8b\" does not support disabling thinking"}"#,
+        )
     }
 
     /// Arm 1 — rejected, then retried WITHOUT `think`, and the stream proceeds.
@@ -1723,10 +1700,7 @@ mod tests {
     async fn think_rejection_twice_is_a_single_error() {
         let t = ScriptedStreamTransport::typed(vec![
             Err(think_rejection()),
-            Err(TransportError {
-                message: "HTTP 500: still thinking about it".to_string(),
-                status: Some(500),
-            }),
+            Err(TransportError::http(500, "still thinking about it")),
         ]);
         let p = WireStreamingProvider::new(
             t,
@@ -1747,10 +1721,10 @@ mod tests {
     #[tokio::test]
     async fn a_non_think_error_never_retries() {
         let t = ScriptedStreamTransport::typed(vec![
-            Err(TransportError {
-                message: r#"HTTP 404: {"error":"model \"nope\" not found"}"#.to_string(),
-                status: Some(404),
-            }),
+            Err(TransportError::http(
+                404,
+                r#"{"error":"model \"nope\" not found"}"#,
+            )),
             Ok(ollama_stream("unreachable")),
         ]);
         let p = WireStreamingProvider::new(
@@ -1773,11 +1747,10 @@ mod tests {
     // pin each of the three HTTP sites with a status-carrying failure.
 
     fn coded_400() -> TransportError {
-        TransportError {
-            message: r#"HTTP 400: {"error":{"message":"Filtered.","code":"content_filter"}}"#
-                .to_string(),
-            status: Some(400),
-        }
+        TransportError::http(
+            400,
+            r#"{"error":{"message":"Filtered.","code":"content_filter"}}"#,
+        )
     }
 
     /// The plain pre-stream failure (the main site).
@@ -1827,12 +1800,10 @@ mod tests {
     /// The chaining fallback's retry failure: the SECOND error, bytes and side.
     #[tokio::test]
     async fn the_chained_retry_failure_carries_the_second_errors_side() {
-        let first = TransportError {
-            message:
-                r#"HTTP 400: {"error":{"message":"gone","code":"previous_response_not_found"}}"#
-                    .to_string(),
-            status: Some(400),
-        };
+        let first = TransportError::http(
+            400,
+            r#"{"error":{"message":"gone","code":"previous_response_not_found"}}"#,
+        );
         let t = ScriptedStreamTransport::typed(vec![Err(first), Err(coded_400())]);
         let p = WireStreamingProvider::new(
             t,
@@ -1858,10 +1829,7 @@ mod tests {
     async fn the_think_retry_failure_carries_ollamas_rendering() {
         let t = ScriptedStreamTransport::typed(vec![
             Err(think_rejection()),
-            Err(TransportError {
-                message: "HTTP 500: still thinking about it".to_string(),
-                status: Some(500),
-            }),
+            Err(TransportError::http(500, "still thinking about it")),
         ]);
         let p = WireStreamingProvider::new(
             t,
