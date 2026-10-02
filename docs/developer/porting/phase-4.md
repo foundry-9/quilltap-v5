@@ -7124,6 +7124,117 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `f6426e196` bug-174 drift catch-up + review-follow-ups round (P4.D244 ∥ P4.135 ∥ P4.136 ∥ P4.137 ∥ P4.138) — ORDERED 2026-10-01
+
+**ORDERED 2026-10-01 (the `/setupphase` after the `ca363178d` unification;
+main `6d44cfae2`).** The human's scope: ONE round over the `ca363178d`
+unification's OPEN list plus the ledger's one drift row, with the two boot
+rulings taken 2026-10-01 (D184 goes FATAL to match v4 AND the v4 bug is
+filed; the ledger-gate divergence is a v4 bug to file, v5 KEEPS its
+per-boot ensures). Five surveys (`work-orders/surveys/2026-10-01-f6426e196/`)
+measured the scope first; **two of the unification's premises fell on
+measurement and the orders follow the measurement:** (1) the "user-scoped"
+half of item (h) is REFUTED — v4's route `context.repos` is the UNSCOPED
+container (`lib/api/middleware/context.ts:116`), so the Scenario Builder
+route and the connection test-message read `findApiKeyById` exactly as v5
+does; what survives is the loop's SECOND key read (threaded through three
+INTERNAL structs, `api/types.rs` untouched) and the test-message's
+500-where-v4-404s arm; (2) the `memory_pipeline_jobs_tier3` blindness is a
+COMPARAND gap, closed harness-side (a key-recording wrapper asserting
+set-equality against the oracle's `canned` rows — no fixture, no regen)
+with the non-empty episode reply as the optional second step. Five lanes,
+file-disjoint, all from `main`, ONE target pin `f6426e196`
+(`4.10.0-dev.106` — one commit past the baseline `ca363178d`; PIN REQUIRED;
+the §3 row `ORDERED(P4.D244)`). The orders (each ~600–720 lines; one
+byte-identical §R/§S/Ownership/gate block, md5 `a786a8255ed877974ed7214a702da4f9`):
+**P4.D244** (`p4.d244-bug174-vault-image-url-to-provider.md`) — bug 174
+ported whole along the seam its hunks draw: the loader's `"url"` key deleted
+on BOTH `chat_files.rs` branches (v4 `loadMountFileAsAttachment`), the Z.AI
++ NanoGPT builders inverted to bytes-first with a `url` forwarded only when
+absolute `http(s)` (one shared ASCII-prefix `is_absolute_http`; the
+`Attachment missing data or URL` arm the refusal), OpenRouter UNTOUCHED as
+v4 left it (pinned as a non-change); `file_attachment_tier3` red-first on
+three mount arms at the pin + a NEW native-text arm; the request corpus
+re-recorded at the pin with v4's relative-url vectors (+8 rows); the
+`docs/v4/` mirror's three paths ∥ **P4.135**
+(`p4.135-boot-rulings-d184-fatal-ledger-gate-filings.md`) — the collapse's
+`Err` arm logs v4's line with v4's BYTES (the singular `migration.` context
+and the bare error — two pre-existing byte defects in the soft line) then
+propagates through the existing `built-in seed failed:` envelope; a fourth
+FATAL-class arm over the ONE plant that fails the collapse and nothing
+before it (two unkeyed avatar rows + a `BEFORE UPDATE OF generationKey`
+trigger), red-first by construction, with the nothing-changed readback; a
+cadence arm booting TWICE after the #134 plant (v5 re-ensures every boot;
+v4 skips a ledgered migration before `shouldRun` — `migrations/index.ts:
+125-129` at the REPO ROOT, not `lib/database/`); v4 bugs 175 and 176 FILED
+into the v4 checkout (two files + two register rows, uncommitted — the
+human commits; the round's recorded waiver in the ledger's §1) ∥
+**P4.136** (`p4.136-api-key-fallback-lines-engine-thaw-test-message-404.md`)
+— SIX silent API-key reads (not five: Carina's predates P4.133; the cheap
+path folds TWO v4 lines) through two new `db::fallback` homes (`Error
+finding API key by ID` / `… and user ID`, `collection = "connection_
+profiles"`, the bare error), the existing emitter (`provider_routing.rs:
+122-143`, still rendering the `sqlite error:` prefix) MOVED home,
+`fallback_home_guard` grown red-first, `get_api_key_for_connection_profile`
+infallible over the two wraps, the four `api/settings.rs` `internal(e)`
+key-read arms → v4's logged 404, a third lifted `title_update_tier3` case
+over a corrupted copy; the engine THAWED at ONE fill for the key the gate
+resolved (`ScenarioBuilderBuildRequest.api_key` → `RunScenarioBuilder
+Options` → `RunOneShotToolLoopOptions`, v4 `one-shot-loop.ts:127`), the
+loop's re-resolution deleted, Brahma passing its own; NO scoping change ∥
+**P4.137** (`p4.137-empty-new-user-message-branch-orchestrator-mock-lift.md`)
+— P4.D243-F1 is a three-site READER defect in `build_context.rs` (`:3229`
+tokens, `:3750` the branch, `messages_included` through it; the send gate,
+every orchestrator gate and `final_user_message = Some("")` already
+faithful): ONE `as_deref().filter(|s| !s.is_empty())` computed once;
+whitespace stays a message on both sides; two new `build_context_tier3` ops
++ a whitespace guard, a new `orchestrator_tier3` arm (`content: ""` + the
+`roll_dice` chip — red-first on the stream's messages AND the `CHAT_MESSAGE`
+`historyTailHash` cell, `chat_messages` UNCHANGED), the `message_context.rs`
+`-1` WARN pin; AND the orchestrator oracle's cheap-key mock LIFTED (the
+block deleted — `getApiKeyForProfile` is a phantom export; `jest.setup.ts`
+leaves the module real) with the v5 twin removed from this family only,
+predicted byte-neutral and proven to bite by a scratch-spec mutation ∥
+**P4.138** (`p4.138-harness-smalls-pipeline-canned-key-consumption-sweep-
+self-test.md`) — the consumed-keys assert (red-first ONLY against the
+whole pre-P4.D242 `prompt_text.rs` restored — a one-line mutation can pass
+for the wrong reason); the five recipe headers rewritten to the SANCTIONED
+literal `V5W=${V5W:-$HOME/source/quilltap-v5}` (NOT a rename keeping
+`$(git rev-parse …)` — that passes the self-test while staying outside the
+driver's backstop), `--self-test` exit 0, `--show` ×5 diffed. **Fences:**
+`api/types.rs` FROZEN (census 441 unmoved by everyone); `api/engine.rs`
+thawed for P4.136 at ONE fill only; `orchestrator.rs`, `quilltap-web/src`,
+`apps/web/**`: NOBODY; `orchestrator_tier3` P4.137's to edit, P4.136's to
+RUN (the one declared adjacency, regenerated once on the union — §S.1);
+`request_builder` P4.D244's alone; `fallback_home_guard` and
+`title_update_tier3` P4.136's alone; `host_boot_avatar_rolls_collapse.rs`
+read-only for everyone; NO committed real-DB pair rebuilt by anyone; the
+host crate bumped by P4.135 AND P4.136 (the recount pair — §S.2).
+**Execution:** all five in parallel, a worktree each, from `main` at the
+orders' commit; P4.137 the most capable tier, P4.135 and P4.136 Opus,
+P4.D244 and P4.138 a capable mid-tier; cherry-pick order P4.138 → P4.D244
+→ P4.135 → P4.136 → P4.137; the unifier gates once from the `f6426e196`
+pin (the full sweep, Tier R 271/0, the workspace suite, the SPA build +
+tests unchanged, the full Playwright suite), moves the baseline to
+`f6426e196`, restates the v4 checkout's docs-only dirt (or the human's
+filing commit as a NO-PORT? row), lands the bug-176 recorded-divergence row
+and the dogfood notes. **Deliberately left out:** the owed Host dogfood
+pass (AFTER this round — its 💸 queue now carries a vault photo on a Z.AI
+vision profile at zero spend, the collapse trigger plant, a corrupted key
+row's line, an attachment-only send through dispatch); Option V (k) + the
+recorded-divergences smalls (a)–(j) (the round after, unchanged); the
+"user-scoped" scoping change (REFUTED — NO-PORT); and ONE new finding
+P4.137's survey made, carried by name as the next SPA smalls item: **v5's
+Salon composer sends `''` on an attachment-only send where v4 substitutes
+`'Please look at the attached file(s).'`** (`useSSEStreaming.ts:845` vs
+`salon-conversation.ts:3654`) — so on v5 an attachment-only Salon post
+persists NO user row and links NO file where v4 persists the sentence; a
+one-file SPA item with a live beat, not this round's (no lane edits
+`apps/web/**`). **NEXT after this round unifies:** the owed dogfood pass;
+then the SPA attachment-sentence item + Option V (k) + the smalls (a)–(j)
+as one recorded-divergences round; then a drift catch-up when v4 moves.
+
+
 ## The `97b25fc53` smalls round (P4.127 ∥ P4.128 ∥ P4.129 ∥ P4.130 ∥ P4.131 ∥ P4.132) — UNIFIED 2026-09-30 (ordered 2026-09-30)
 
 **UNIFIED on main (2026-09-30) — ALL SIX LANES LANDED; the baseline STAYS

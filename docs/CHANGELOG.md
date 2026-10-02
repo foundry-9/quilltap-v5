@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — docs(porting): order the `f6426e196` bug-174 drift catch-up + review-follow-ups round (P4.D244 ∥ P4.135 ∥ P4.136 ∥ P4.137 ∥ P4.138)
+
+_Docs only; no version bumps._
+
+Five work orders under `docs/developer/porting/work-orders/` with one
+byte-identical shared round block (§R / §S / Ownership / gate), their five
+surveys under `work-orders/surveys/2026-10-01-f6426e196/`, the drift
+ledger's `f6426e196` row marked `ORDERED(P4.D244)` with the round's
+recorded waiver (P4.135's two docs-only filings in the v4 checkout), and
+the round section in `phase-4.md`. P4.D244: bug 174 ported whole (the
+loader drops the server-relative `url`; Z.AI and NanoGPT send bytes first
+and forward only an absolute `http(s)` `url`; OpenRouter untouched) with the
+mirror refreshed. P4.135: the D184 collapse guard goes fatal with v4's line
+and bytes, the ledger-gate divergence is pinned on v5's side, and v4 bugs
+175 and 176 are filed into the v4 checkout for the human to commit. P4.136:
+the six silent API-key reads get v4's fallback lines through two new
+`db::fallback` homes under the guard, the Scenario Builder loop carries the
+key its gate resolved instead of reading twice, the connection test-message
+answers v4's logged 404; the "user-scoped" premise was refuted on
+measurement (v4's route reads are unscoped) and no scoping change is
+ordered. P4.137: the empty new-user-message branch bound to one non-empty
+predicate at the three `build_context.rs` readers, plus the orchestrator
+oracle's cheap-key mock lifted. P4.138: the memory-pipeline family asserts
+every recorded canned key was consumed, and the five recipe headers that
+reddened the sweep's self-test are repaired to the sanctioned spelling.
+
 #### 2026-10-01 — docs(porting): unify the `ca363178d` four-commit drift catch-up + dogfood-orders round (P4.D240 ∥ P4.D241 ∥ P4.D242 ∥ P4.D243 ∥ P4.133 ∥ P4.134) — the baseline moves to `ca363178d`
 
 _Versions: core 0.0.1139, harness 0.0.1063, host 0.0.171, web 0.0.206, cli 0.0.29; tauri 0.0.7, fixture-sanitizer 0.0.4, SPA 0.5.792 unmoved._
