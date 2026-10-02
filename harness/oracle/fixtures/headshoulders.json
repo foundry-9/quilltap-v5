@@ -258,6 +258,12 @@
       "user": 3
     },
     {
+      "name": "corrupt_key",
+      "character": 7,
+      "user": 1,
+      "corruptKey": true
+    },
+    {
       "name": "local_selection",
       "character": 9,
       "user": 2,

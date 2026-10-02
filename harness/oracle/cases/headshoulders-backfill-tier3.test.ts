@@ -77,6 +77,8 @@ interface CaseSpec {
   character: number | 'missing';
   user: number;
   reply?: ReplySpec;
+  /** P4.139: make the cheap profile's key row (`apiKeys[0]`) a BLOB first. */
+  corruptKey?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -84,8 +86,17 @@ interface Spec {
   missingCharacterId: string;
   users: Array<{ id: string }>;
   characters: Array<{ id: string }>;
+  apiKeys: Array<{ id: string }>;
   handlerCases: CaseSpec[];
 }
+
+/** P4.139: the repository's three API-key / profile read lines (the
+ *  `title-update-tier3` set). */
+const KEY_READ_LINES = new Set([
+  'Error finding API key by ID and user ID',
+  'Error finding API key by ID',
+  'Error finding entity by ID',
+]);
 
 /** The canned answer, built from the spec recipe — identical on both sides. */
 function replyText(r: ReplySpec | undefined): string {
@@ -215,6 +226,10 @@ async function main(): Promise<void> {
 
     const logLines: LogLine[] = [];
     const calls: Array<Record<string, unknown>> = [];
+    // P4.139: the repository's key-read ERRORs (`safe-query.ts` logs through
+    // this same mocked root logger) — every case records them, so every case
+    // is a silence leg too.
+    const dbLines: Array<{ level: string; message: string; bag: unknown }> = [];
 
     jest.resetModules();
     jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
@@ -238,6 +253,9 @@ async function main(): Promise<void> {
           if (typeof message === 'string' && message.startsWith('[HeadShouldersBackfill]')) {
             logLines.push({ level, message, context: context ?? null });
           }
+          if (KEY_READ_LINES.has(message)) {
+            dbLines.push({ level, message, bag: JSON.parse(JSON.stringify(context ?? {})) });
+          }
         };
       const mk = (): Record<string, unknown> => {
         const l = {
@@ -245,6 +263,10 @@ async function main(): Promise<void> {
           warn: record('warn'),
           debug: record('debug'),
           error: record('error'),
+          // P4.139: the backend's stray-Buffer decode logs at TRACE before
+          // the Float32 hydrate — without it the corrupt-key plant would throw
+          // `logger.trace is not a function` inside the read, not v4's parse.
+          trace: () => undefined,
           child: () => mk(),
         };
         return l;
@@ -318,6 +340,21 @@ async function main(): Promise<void> {
     const { getRepositories } = await import('@/lib/repositories/factory');
 
     await initializeDatabase();
+
+    // P4.139: the corrupt-key plant — the cheap profile's key row made a BLOB
+    // (`ApiKeySchema.parse` refuses the Float32 decode). The Rust side plants
+    // identically on its copy.
+    if (c.corruptKey) {
+      const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+      const r = (
+        getRawDatabase() as unknown as {
+          prepare: (s: string) => { run: (...a: unknown[]) => { changes: number } };
+        }
+      )
+        .prepare("UPDATE api_keys SET key_value = x'00000000' WHERE id = ?")
+        .run(spec.apiKeys[0].id);
+      if (r.changes !== 1) throw new Error('the corrupt-key plant missed the cheap key');
+    }
 
     const frozen = spec.frozenNowMs;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -394,6 +431,7 @@ async function main(): Promise<void> {
 
       record.calls = calls;
       record.log = logLines;
+      record.dbLines = dbLines;
       // The LOSSLESS carrier for the split-surrogate case (see the sanitizer's
       // note above) — the code units of what v4 actually stored.
       const writtenPrompt = (after?.physicalDescription as { headAndShouldersPrompt?: string | null } | null)

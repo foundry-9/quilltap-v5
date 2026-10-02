@@ -537,12 +537,10 @@ mod pool_failure_tests {
             1,
             "{lines:?}"
         );
-        // A key found is silent.
-        conn.execute_batch(
-            "CREATE TABLE api_keys (id TEXT, provider TEXT, label TEXT, key_value TEXT, \
-             isActive INTEGER, lastUsed TEXT, userId TEXT, createdAt TEXT, updatedAt TEXT)",
-        )
-        .unwrap();
+        // A key found is silent. (The table only has to EXIST — an empty one
+        // is a clean miss; v4's DDL, the one copy, P4.139.)
+        conn.execute_batch(crate::db::fallback::test_plants::API_KEYS_DDL)
+            .unwrap();
         let (_, lines) = captured_with(|| ConnApiKeys::new(&conn).resolve("k-1", "u-1"));
         assert!(
             with(&lines, "Error finding API key").is_empty(),

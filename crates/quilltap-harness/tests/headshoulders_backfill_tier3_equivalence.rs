@@ -22,14 +22,25 @@
 //!   * the `CHARACTER_WIZARD` `llm_logs` projection;
 //!   * the six `[HeadShouldersBackfill]` log lines with their bags.
 //!
-//! **The oracle's `apiKey` field is deliberately NOT a comparand.** v4 resolves
-//! the key and hands it to `generateField`, which passes it to
-//! `provider.sendMessage(params, key)`; v5's [`CompletionProvider`] boundary
-//! resolves the key BELOW itself, so no key reaches the seam. The key GATE is
-//! measured instead by the two cases that turn on it — `no_api_key` (a
-//! non-local selection whose profile has no key row: warn, no call) and
-//! `local_selection` (an OLLAMA selection, whose key resolves to the empty
-//! string: the call proceeds).
+//! **The oracle's `apiKey` field IS a comparand** (P4.139 — the header had
+//! said "deliberately NOT", "no key reaches the seam", stale since P4.133:
+//! `generate_one` hands the resolved key to `generators::wizard`, which SENDS
+//! it with `send_message_keyed`). [`CannedProvider`] overrides the keyed method
+//! and records the key on the call, so the cheap profile's `sk-synthetic-cheap-
+//! key`, the local selection's `''`, and a missing key's absent call are all
+//! compared. The key GATE's cases: `no_api_key` (a non-local selection whose
+//! profile has no key row: warn, no call), `local_selection` (an OLLAMA
+//! selection, whose key resolves to the empty string: the call proceeds), and
+//! P4.139's `corrupt_key` (the cheap key row's `key_value` made a BLOB on both
+//! sides: v4's SCOPED fallback read logs `Error finding API key by ID and user
+//! ID` and is `null`, so the WARN and no call — `threw: false`).
+//!
+//! **A sixth comparand, `dbLines`** (P4.139): the repository's key-read ERRORs
+//! on every case (`Error finding API key by ID [and user ID]`, `Error finding
+//! entity by ID`), compared as rendered lines with the `error` value
+//! normalised (v4's is a ZodError over the Float32 decode, v5's rusqlite's
+//! sentence — pinned exactly on v5's side). Every other case is its silence
+//! leg.
 //!
 //! **`physicalDescription.createdAt`/`updatedAt` are placeholdered.** v4's
 //! parser and v5's `default_physical` both SYNTHESIZE them at READ time from
@@ -91,6 +102,9 @@ struct CaseSpec {
     /// A 1-based index into `users`.
     user: usize,
     reply: Option<ReplySpec>,
+    /// P4.139: make the cheap profile's key row (`apiKeys[0]`) a BLOB first.
+    #[serde(default)]
+    corrupt_key: bool,
 }
 
 #[derive(Deserialize)]
@@ -104,8 +118,20 @@ struct Spec {
     missing_character_id: String,
     users: Vec<IdRow>,
     characters: Vec<IdRow>,
+    api_keys: Vec<IdRow>,
     handler_cases: Vec<CaseSpec>,
 }
+
+/// The repository's key-read lines the `dbLines` channel compares.
+const KEY_READ_LINES: [&str; 3] = [
+    "Error finding API key by ID and user ID",
+    "Error finding API key by ID",
+    "Error finding entity by ID",
+];
+
+/// v5's `error` bytes on the corrupt key row (rusqlite's sentence for the
+/// marshal's `key_value` type check).
+const V5_BLOB_KEY_VALUE_ERROR: &str = "Invalid column type Blob at index: 4, name: key_value";
 
 fn spec_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -167,20 +193,36 @@ fn reply_text(r: &Option<ReplySpec>) -> String {
 // ── The model boundary ─────────────────────────────────────────────────────
 
 /// Records every request and answers the case's canned reply (or throws), the
-/// same contract as the oracle's `createLLMProvider` mock.
+/// same contract as the oracle's `createLLMProvider` mock. The KEYED method is
+/// overridden to put the sent key on the recorded call (`apiKey`); an unkeyed
+/// send records no `apiKey`, which the comparand would then catch.
 struct CannedProvider {
     reply: Option<ReplySpec>,
     calls: Arc<Mutex<Vec<Value>>>,
+    pending_key: Mutex<Option<String>>,
 }
 
 impl CompletionProvider for CannedProvider {
+    fn send_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &CompletionParams,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        *self.pending_key.lock().unwrap() = Some(api_key.to_string());
+        self.send_message(provider, base_url, params)
+    }
+
     async fn send_message(
         &self,
         provider: &str,
         base_url: Option<&str>,
         params: &CompletionParams,
     ) -> Result<CompletionResponse, CompletionError> {
+        let api_key = self.pending_key.lock().unwrap().take();
         self.calls.lock().unwrap().push(json!({
+            "apiKey": api_key,
             "provider": provider,
             "baseUrl": base_url,
             "model": params.model,
@@ -379,10 +421,26 @@ fn headshoulders_backfill_matches_oracle() {
         let user_id = spec.users[case.user - 1].id.clone();
 
         let db = fresh_db(&case.name);
+        if case.corrupt_key {
+            let key_id = spec.api_keys[0].id.clone();
+            let n = rt
+                .block_on(db.write(move |w| {
+                    w.main()
+                        .connection()
+                        .execute(
+                            "UPDATE api_keys SET key_value = x'00000000' WHERE id = ?1",
+                            [&key_id],
+                        )
+                        .map_err(Into::into)
+                }))
+                .expect("plant the corrupt key");
+            assert_eq!(n, 1, "the corrupt-key plant must land on the cheap key");
+        }
         let calls = Arc::new(Mutex::new(Vec::new()));
         let provider = CannedProvider {
             reply: case.reply.clone(),
             calls: Arc::clone(&calls),
+            pending_key: Mutex::new(None),
         };
         let payload = HeadShouldersBackfillPayload {
             character_id: character_id.clone(),
@@ -405,22 +463,56 @@ fn headshoulders_backfill_matches_oracle() {
             continue;
         }
 
-        // The request(s) that reached the model boundary — `apiKey` subtracted
-        // (see the header).
+        // The request(s) that reached the model boundary, the SENT key
+        // included (see the header).
         let got_calls = Value::Array(calls.lock().unwrap().clone());
-        let want_calls = Value::Array(
-            want["calls"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default()
-                .iter()
-                .map(|c| {
-                    let mut m = c.as_object().unwrap().clone();
-                    m.remove("apiKey");
-                    Value::Object(m)
-                })
-                .collect(),
-        );
+        let want_calls = Value::Array(want["calls"].as_array().cloned().unwrap_or_default());
+
+        // The repository's key-read lines (P4.139), `error` normalised after
+        // v5's bytes are pinned.
+        let want_db: Vec<String> = want["dbLines"]
+            .as_array()
+            .unwrap_or_else(|| panic!("[{name}] the oracle row carries no dbLines (stale oracle?)"))
+            .iter()
+            .map(|l| {
+                let mut out = format!(
+                    "{} quilltap::db {}",
+                    l["level"].as_str().unwrap().to_uppercase(),
+                    l["message"].as_str().unwrap()
+                );
+                for (k, v) in l["bag"].as_object().unwrap() {
+                    let rendered = if k == "error" {
+                        "<err>".to_string()
+                    } else {
+                        v.as_str()
+                            .map(str::to_string)
+                            .unwrap_or_else(|| v.to_string())
+                    };
+                    out.push_str(&format!(" {k}={rendered}"));
+                }
+                out
+            })
+            .collect();
+        let mut got_db: Vec<String> = Vec::new();
+        for l in log_lines.iter().filter(|l| {
+            l.contains(" quilltap::db ") && KEY_READ_LINES.iter().any(|m| l.contains(m))
+        }) {
+            let Some(at) = l.find(" error=") else {
+                got_db.push(l.clone());
+                continue;
+            };
+            if case.corrupt_key && &l[at + " error=".len()..] != V5_BLOB_KEY_VALUE_ERROR {
+                eprintln!("[{name}] v5's key-read error bytes moved: {l}");
+                failed.push(format!("{name}_db_error"));
+            }
+            got_db.push(format!("{} error=<err>", &l[..at]));
+        }
+        if got_db != want_db {
+            eprintln!(
+                "[{name}] dbLines DIVERGE:\n--- got ---\n{got_db:#?}\n--- want ---\n{want_db:#?}"
+            );
+            failed.push(format!("{name}_db"));
+        }
         if norm(&got_calls) != norm(&want_calls) {
             eprintln!(
                 "[{name}] CALLS DIVERGE:\n--- got ---\n{}\n--- want ---\n{}",

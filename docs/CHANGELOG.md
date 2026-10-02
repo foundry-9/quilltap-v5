@@ -145,6 +145,12 @@ The two batch document reads behind every character, project, group, wardrobe, s
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `db::fallback` gains v4's lines for the vault overlay's two batch document reads, the embedded-chunk count, the chunk-content search and the file-link name/path search, plus `find_api_keys_by_user_id_or_empty` (delivered for P4.139 under the round's shared contract). The two search fallbacks that logged under their module targets with snake_case fields and the `sqlite error:` prefix now go through the home and log v4's exact bytes. v4's `withStrictRepositoryFailures` is ported as a thread-local scope: inside it the two batch homes log with `strictFailures=true` and propagate (ruled by the human on 2026-10-02 so backup and export can stay strict once the overlay falls back). `fallback_home_guard` lists the six new messages.
+#### 2026-10-02 — test(harness): headshoulders backfill gains a corrupt-key case, a repository-line channel and the sent key as a comparand; the api_keys test DDL folded to one copy
+
+_Versions: core 0.0.1154, harness 0.0.1080._
+
+`headshoulders_backfill_tier3_equivalence` gains a `corrupt_key` case (the cheap profile's key row made a BLOB on both sides): v4's scoped fallback read logs `Error finding API key by ID and user ID`, the handler warns and makes no call, and v5 matches. A new `dbLines` channel compares the repository's key-read lines on every case with the `error` value normalised, and the canned provider now records the key it is sent, so `apiKey` is a comparand again (the header's "no key reaches the seam" had been stale since the generators began sending keys). The oracle's logger mock gains a no-op `trace` so the corrupt cell fails inside v4's real parse. In core tests, the reduced and duplicated `api_keys` DDLs in `api_key_service`, `embedding_provider` and `understudy` now use `test_plants::API_KEYS_DDL` (P4.139).
+
 #### 2026-10-02 — test(harness): api_key_read_sites_census — every raw API-key read classified, the conversion class pinned at zero
 
 _Versions: harness 0.0.1079._

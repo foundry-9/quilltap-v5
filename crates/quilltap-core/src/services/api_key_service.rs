@@ -583,17 +583,10 @@ mod tests {
     use crate::db::api_keys::{AkCreate, AkUpdate, ApiKeysRepository};
     use rusqlite::Connection;
 
-    /// A bare in-memory `api_keys` table (DDL transcribed) for the scoped tests.
+    /// A bare in-memory `api_keys` table (v4's DDL — the one copy, P4.139)
+    /// for the scoped tests.
     fn mem_db() -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE api_keys (\
-               id TEXT PRIMARY KEY, userId TEXT NOT NULL, label TEXT NOT NULL, \
-               provider TEXT NOT NULL, key_value TEXT NOT NULL, isActive INTEGER DEFAULT 1, \
-               lastUsed TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);",
-        )
-        .unwrap();
-        conn
+        crate::db::fallback::test_plants::conn_with_api_keys()
     }
 
     fn seed_key(conn: &Connection, user_id: &str) -> String {

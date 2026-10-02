@@ -657,12 +657,11 @@ mod tests {
                    apiKeyId TEXT, baseUrl TEXT, modelName TEXT, dimensions REAL,
                    truncateToDimensions REAL, normalizeL2 INTEGER, isDefault INTEGER,
                    tags TEXT, createdAt TEXT, updatedAt TEXT);
-                 CREATE TABLE IF NOT EXISTS api_keys (
-                   id TEXT PRIMARY KEY, userId TEXT, label TEXT, provider TEXT,
-                   key_value TEXT, isActive INTEGER, lastUsed TEXT,
-                   createdAt TEXT, updatedAt TEXT);",
-            )
-            .map_err(Into::into)
+                 ",
+            )?;
+            // v4's `api_keys` DDL — the one copy (P4.139).
+            conn.execute_batch(crate::db::fallback::test_plants::API_KEYS_DDL)
+                .map_err(Into::into)
         })
         .await
         .expect("create tables");

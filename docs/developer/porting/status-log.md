@@ -161587,3 +161587,46 @@ Each at v4's outcome (survey §A3 #1-9, 17-24 less the routes, 26, 27, 30, 31):
   pick) adds NO row (it calls `find_active_api_key_for_provider_or_none`, a
   helper). §S.4 (the pricing cadence) retires the `recorded-divergence` row.
 
+### Unit 9 — the headshoulders `corrupt_key` arm (Tier 2 item 12) + the `api_keys` DDL folds (Tier 2 item 14, rest)
+
+- `headshoulders.json` gains `{"name": "corrupt_key", "character": 7, "user":
+  1, "corruptKey": true}`; both sides `UPDATE api_keys SET key_value =
+  x'00000000' WHERE id = <apiKeys[0].id>` (`a0000082-…-001`, the Cheap Mock
+  profile's key) on the case copy (v4 via `getRawDatabase()` after
+  `initializeDatabase`, v5 via `db.write`). v4 recorded `threw: null`, `calls:
+  []`, the `[HeadShouldersBackfill] No API key for cheap LLM selection,
+  skipping` WARN alone, and ONE `Error finding API key by ID and user ID`
+  line — v5 matches.
+- **A NEW `dbLines` channel** on EVERY case (the three key-read messages,
+  `title-update-tier3`'s set; v4 through the family's doMocked root logger —
+  `safe-query.ts` logs through it — v5 through the existing thread capture),
+  compared as rendered lines with `error` normalised; v5's `error` asserted
+  `Invalid column type Blob at index: 4, name: key_value` on the corrupt case.
+  Every other case is its silence leg (17 of 18 empty on both sides).
+- **`apiKey` is a comparand again** (the "if cheap" half, taken): the canned
+  provider overrides `send_message_keyed` and records the key; the
+  `m.remove("apiKey")` subtraction is gone. happy_path sends
+  `sk-synthetic-cheap-key`, local_selection `''`, on both sides. The stale
+  header (`:24-31`, "no key reaches the seam") rewritten.
+- **An oracle artifact found and fixed:** the family's logger doMock had no
+  `trace`, and v4's backend logs a stray Buffer at TRACE before its Float32
+  decode — so the first regen recorded `error: "_logger.logger.trace is not a
+  function"` (the read threw INSIDE the hydrate, before the parse). A no-op
+  `trace` added; the regen then recorded v4's real ZodError (`received
+  Float32Array`). Outcome-identical either way, so the normalised comparand
+  could not have told.
+- **Not red-first on `main`** (P4.136 had already landed the behaviour); M9 is
+  its proof (below).
+- **DRY (item 14, rest):** `api_key_service`'s `mem_db` → `test_plants::
+  conn_with_api_keys`; `embedding_provider`'s reduced `api_keys` DDL →
+  `test_plants::API_KEYS_DDL`; `understudy.rs`'s REDUCED, reordered DDL
+  MEASURED first — not deliberate: the silence leg only needs the table to
+  EXIST (empty → a clean miss; every read selects explicit columns) — folded
+  onto `API_KEYS_DDL`. The hand INSERTs in `cheap_llm_exec.rs`,
+  `chat_create.rs` and `dangerous_content/gatekeeper.rs` are outside this
+  lane's files — LEFT, named for the `test_plants` move (Tier 3 item 16).
+- Regen recipe: the `.test.ts` header's, staged `TMPO=/tmp/p4139/qt-hs-oracle`,
+  `QT_ORACLE_OUT=/tmp/p4139/oracle-headshoulders-backfill.ndjson`, from the
+  pin; the committed `headshoulders-{main,mount}.db` read (copied per case),
+  not rebuilt. 18 oracle rows.
+
