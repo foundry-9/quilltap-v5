@@ -161980,3 +161980,147 @@ empty, the tree dirty by exactly the three recorded docs paths).
   fresh pin regens staged under `/tmp/p4140/`. A DST-rule arm is NOT added
   (§R.4(b) — not machine-independent). `recipe_sweep.py --self-test` exit 0;
   `--show` extracts the three generation lines + the three-var run stage.
+
+### The display-zone proof run (Tier 1 item 9) — two sweeps from the pin
+
+The P4.127 two-run recipe, through the sweep driver (`--run-all --families
+<33> --v4 /tmp/qt-v4-pin-p4140-f6426e196 --v5w <the worktree> --force`), the
+two runs' environments differing ONLY in `TZ` (each recipe's own oracle-side
+`TZ=UTC` pins untouched — `tool_dispatch`'s included):
+
+- **Families (33):** the 26 P4.127 families (`conversation_markdown`,
+  `almanack_render`, `almanack_tier2`, `context_feeders_leaves`,
+  `progressions_engine`, `mail_carina_tools`, `post_office_routes`,
+  `post_office_concierge_lantern_suparna`, `scriptorium_tools`,
+  `conversation_annotations_tier2`, `conversation_annotations_upsert_tier2`,
+  `web_search_tool`, `web_search_wire`, `orchestrator_tier3`,
+  `embedding_remainder`, `host_zone_dates`, `markdown_transcript`,
+  `annotations_rendering_patterns`, `chat_admin_routes`, `tool_dispatch`,
+  `salon_reads`, `help_chats_routes`, `chat_context_init`,
+  `subprompts_prompt_tier2`, `carina_query_tier3`, `chat_create_capstone`)
+  + `build_context_tier3`, `regenerate_swipe_tier3`, `salon_swipe_generate`,
+  `enclave_step_tier3`, `autonomous_rooms_routes`, `chat_export`,
+  `chat_scenario_routes` (all `_equivalence`).
+- **`TZ=UTC`:** 33/33 ok, zero `SKIP` (`/tmp/p4140/sweep-utc.json`).
+- **no `TZ`** (`env -u TZ`, this CDT host): 33/33 ok, zero `SKIP`
+  (`/tmp/p4140/sweep-notz.json`). `carina_query_tier3` among them — Carina's
+  new row write fails soft on its `llm_logs: None` `Db` (NEUTRAL, as the
+  survey predicted); `mail_carina_tools` + `salon_reads` (P4.142's families)
+  run as neutrality only.
+- The oracle side is v4's code, so no NDJSON byte can move from a v5 change;
+  the one oracle-case edit this lane made is `host-zone-dates.ts`'s `envTz`
+  (unit 6), which the family's three arms consume.
+- `host_zone_sites_census` green with `TZ=UTC` and with no `TZ` (the two
+  children set their own `TZ` on the `Command`).
+
+### Gate — the P4.140 lane's closing gate on `a8e598a16` (Option V + (g) + the frame + Carina's row)
+
+- **Probe:** the §R.2 probe passed at lane start and before the sweep batch
+  (branch `main`, HEAD `f6426e196`, both logs empty, dirty by exactly the
+  three recorded docs paths). `git worktree list` showed the checkout + the
+  P4.139 and P4.140 pins only.
+- **fmt** clean; **clippy** `--workspace --all-targets -D warnings` clean in
+  BOTH feature sets (default; `--features quilltap-core/native-transport`);
+  **release build** (`cargo build --workspace --release`) clean, 4m 09s.
+- **`QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4140-f6426e196 cargo test --workspace
+  --no-fail-fast`** with the lane's 60-var env block (every oracle/fixture var
+  of the 33 swept families, copied to `/tmp/p4140/env/` so no sibling sweep
+  could clobber them): **653 test binaries / 4,115 passed / 1 failed / 3
+  ignored, zero `SKIP:` lines.** The one red, `mail_carina_tools_equivalence`,
+  is an ENV-BLOCK ARTIFACT of the lane's copier, not the port: the family
+  reads two files the run stage never names — the fixture's
+  `<main>.db.meta.json` sidecar and the `oracle-mail-tools-plants.ndjson`
+  derived from `QT_ORACLE_MAIL`'s directory. Both copied from the same 16:40
+  sweep run → **2/2 green by name** with the same block (and it was ok in both
+  sweeps). Every family this lane touched confirmed RUN by non-zero duration:
+  `orchestrator_tier3` 1/1, `host_zone_sites_census` 6/6 (and 6/6 again under
+  `TZ=UTC`), `host_zone_dates` 3/3 (all three arms), `chat_create_end_to_end`,
+  `chat_send_smoke`, `messages_swipe_sse_route` 4/4.
+- **Censuses/guards:** `dispatch_wrong_type_census` 14/14, 441 UNMOVED
+  (`api/types.rs` untouched — `git diff main` empty); `get_messages_caller_census`
+  3/3 (no edit needed); `stream_watchdog_wrap_census` 2/2; `fallback_home_guard`
+  2/2 (green on this branch — this lane writes no home literal);
+  `spelling_guard` 1/1; the live-checkout guards `builtin_prompt_templates_guard`
+  2/2 and `provider_sdk_version_guard` 3/3 GREEN at the pin.
+- **Tier R** (`cli_differential`, `QT_V4_CHECKOUT=` the pin): **271 cases,
+  0 failures** (in the workspace run and again by name).
+- `recipe_sweep.py --self-test`: 0 failures.
+
+### Versions (this lane's bumps; the unifier recounts)
+
+core 0.0.1146 → 0.0.1150 (+4: units 1–4), harness 0.0.1074 → 0.0.1079 (+5:
+units 1–4, 6), host 0.0.174 → 0.0.175 (+1), web 0.0.207 → 0.0.209 (+2: units
+1, 5), tauri 0.0.7 → 0.0.8 (+1, test common only). cli, SPA unchanged. No
+non-version `Cargo.toml` delta.
+
+### What landed vs what stays OPEN
+
+- **Tier 1 items 1–11: LANDED.** **Tier 2:** 12 LANDED in a measured form
+  (the `run_stream`-level three-call pin — the order's three-leg
+  `run_carina_query` scenario cannot reach the forced final, see unit 4);
+  13, 14, 15 (M1–M9, each reddening exactly its named target; M7 recorded as
+  invisible to the family and caught by the byte-pin unit test) LANDED;
+  **16 NOT TAKEN — recorded:** none of the seven `_in_zone` siblings P4.127
+  stripped (`read_conversation`, `upsert_annotation`, `web_search`,
+  `chat_send_mail`, the three mail tools) lives in a file this lane owns or
+  opened, so all seven stay recorded for a smalls lane.
+- **Tier 3 (loud deferrals, unbuilt):** 17 the calendar NAME residue under a
+  POSIX `TZ` (cron — the tick AND item (g)'s routes, the distill's
+  `local_tz`/day-reference scan, `js_local_offset_minutes`, the story-zone
+  `timezone: Some(tz)` fallback at the four spine fills, the LLM-log cleanup,
+  the Almanack's `timezone` fact); 18 an unparseable `TZ` (jiff `Err` → UTC;
+  the reworded WARN tells the operator); 19 ICU ignoring a DST POSIX rule
+  (recorded in `host_zone.rs`'s doc + the census header); 20 Carina's row
+  under an autonomous run carries no `autonomousRunId` (`LogContext::none()`
+  — `RunCarinaQueryOptions` would need one); 21 v4's funnel-only
+  `normalizeContentBlockFormat` and the `Failed to log LLM call from
+  streaming service` WARN (shared by every `log_loop_leg` caller); 22 the
+  pricing cadence (P4.139's).
+
+### Fixtures and oracles
+
+- **No committed fixture changed; none rebuilt; none planted.** The one
+  oracle-case edit: `harness/oracle/cases/host-zone-dates.ts` (records
+  `envTz`; third generation line) — it invalidates no other family (only
+  `host_zone_dates_equivalence` reads it, and its three arms were regenerated).
+- `orchestrator_tier3`'s oracle needed NO regen for the frame or the row (both
+  v4 sides were already recorded) — the lane regenerated it from the pin
+  anyway as the run's source.
+
+### §S handoffs (as pre-written by the order — nothing new)
+
+- §S.a/§S.2: `orchestrator_tier3` is GREEN on this branch with both entries
+  deleted; a union red naming `carina_markup` or
+  `empty_content_image_on_vision_seat` is this lane's, any other row P4.142's.
+- §S.b: `chat_create.rs` edits are `ChatCreateDeps` (one field after `tz`), the
+  greeting's zone fill and the test literal — disjoint from P4.139's key read.
+- §S.c/§S.9: every `ChatSpine { … }` / `ChatCreateSpine { … }` literal needs
+  `display_zone: TimeZone::UTC` (the four web test files carry it); P4.139's
+  `DbSearchApiKeys` hunk was not touched.
+- §S.d/§S.3: the frame is emitted per the Shared contract; P4.145's live beat
+  receives it on the union.
+- §S.e: `host_zone_sites_census`'s `HOST_SITES` names
+  `crates/quilltap-web/src/lib.rs`'s `.with_display_zone(config.display_zone.clone())`.
+- §S.5: the version recount (above).
+
+### 💸 for the dogfood walk
+
+As the order's 💸 section lists (Friday copy, `TZ='XST6XDT,M3.2.0,M11.1.0'`,
+Lantern OFF first): the turn's tool dates + `Current time:`, a `list_mail`
+date, the Scenario Builder clock `-05:00`, a greeting's progressions + a
+Suparṇā whisper, a swipe's whisper, an autonomous turn's tool dates and the
+markdown export — all CDT; the new boot WARN under `TZ=CDT` (and every zone
+UTC there); one `{"chatId":…,"fileProcessing":[…]}` frame before `validating`
+on an attachment turn with the Salon showing nothing new; an `@Carina` and an
+`ask_carina` consult each writing a `CHAT_MESSAGE` row (`characterId` = the
+answerer, NULL `messageId`) visible in the LLM Inspector.
+
+### Memory-note candidates
+
+- A sweep-driver run stage does not name every file a family reads (a
+  fixture's `.meta.json` sidecar, an oracle sibling derived from a var's
+  directory) — an env block built by copying the run stage's paths must copy
+  the sidecars too, or the workspace gate reds for nothing.
+- Every Cargo version bump mints new hashes for every test binary; a lane's
+  `target/debug/deps` grew to 57 GB and a newest-per-stem prune reclaimed
+  28 GB, then 19 GB, with nothing lost.
