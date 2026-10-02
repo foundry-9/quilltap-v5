@@ -6932,7 +6932,11 @@ measurement recipe first).
 
 **UNIFIED on main (2026-10-01) — ALL SIX LANES LANDED WHOLE; the oracle
 baseline MOVES to `ca363178d` and the ledger's §3 is EMPTY (v4 AT the
-baseline at both probes). Round record: `status-log.md` → "The `ca363178d`
+baseline at both probes — ⚠ v4 then COMMITTED bug 174 as `f6426e196`
+during the gate (the vault-image `url` sent to Z.AI / NanoGPT — v5 HAS it
+verbatim by faithful port, the ledger's one UNPROCESSED PORT row; PIN
+REQUIRED; no proof here touched it — every regen ran from the detached
+pin). Round record: `status-log.md` → "The `ca363178d`
 four-commit drift catch-up + dogfood-orders round — UNIFICATION record
 (2026-10-01)".** The §3 review (seven parallel readers — one per lane,
 P4.133 split in two) found NO blocking defect in any lane's code — the
@@ -6969,13 +6973,22 @@ item 10, now wider: the migration-counterpart ensures run every boot, v4
 skips ledgered migrations); the two unscoped key re-resolutions (the
 Scenario Builder's one-shot loop, the connection test-message) where v4's
 route reads are user-scoped — single-user instances, record only; the
-P4.D184 avatar-collapse RULING for the human (v4 exits; v5 logs and boots on
-— proposed KEEP, recorded both ways); `recipe_sweep.py --self-test` red on
-main since the Scenario Builder round (five headers spell `W=${V5W:-…}`) —
-a smalls item. **NEXT: the owed Host dogfood pass (the six lanes' 💸 rows
-on the Friday copy), then the recorded-divergences round (Option V (k) +
-the smalls (a)–(j) + the items above), then a drift catch-up when v4
-moves.**
+P4.D184 avatar-collapse RULING — **RULED by the human 2026-10-01: v5 goes
+FATAL to match v4, and a v4 bug is filed saying v4 should not exit on that
+resumable, unstamped pass** (converge when v4 fixes it); the ledger-gate
+divergence — **RULED 2026-10-01: a v4 bug to file (v4 skips a ledgered
+migration before `shouldRun`, so a table damaged after provisioning is
+never repaired at boot and fails lazily per read); v5 KEEPS its per-boot
+ensures, recorded as a deliberate divergence**; `recipe_sweep.py
+--self-test` red on main since the Scenario Builder round (five headers
+spell `W=${V5W:-…}`). **NEXT (the human's choice, 2026-10-01): ONE round
+of orders for the items above — D184 fatal + the v4 filing, the ledger-gate
+filing + the recorded divergence, the five silent key reads, the
+orchestrator mock lift, P4.D243-F1, the `memory_pipeline_jobs_tier3`
+blindness, the two unscoped re-resolutions (user-scoped; the engine's
+request thawed for the one-shot loop's key), the sweep self-test — plus
+the bug-174 catch-up (`f6426e196`); then the owed Host dogfood pass; then
+the recorded-divergences round (Option V (k) + the smalls (a)–(j)).**
 
 **Baseline `97b25fc53`; v4 `main` HEAD `ca363178d` ("Anti-committee phase 3
 & 4: memory consent & chained-turn scene note (#79)", `4.10.0-dev.105`,

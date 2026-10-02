@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-01 — docs(porting): unify the `ca363178d` four-commit drift catch-up + dogfood-orders round (P4.D240 ∥ P4.D241 ∥ P4.D242 ∥ P4.D243 ∥ P4.133 ∥ P4.134) — the baseline moves to `ca363178d`
+
+_Versions: core 0.0.1139, harness 0.0.1063, host 0.0.171, web 0.0.206, cli 0.0.29; tauri 0.0.7, fixture-sanitizer 0.0.4, SPA 0.5.792 unmoved._
+
+All six lanes landed whole: bug 173's raw-SQL decode in the CLI with the
+`help/` tree and `docs/v4/` mirror at `ca363178d`; the 21 built-in prompts
+re-vendored and the five trust-safeguard directions at eight generator
+sites; the memory-consent extraction prompts and the two-arm transcript
+heading; the chained-turn scene note; the connection profile's own API key
+on every model call; the warn-and-continue boot steps. Wires: the three
+generator sends keyed (§S.1), `orchestrator_tier3` regenerated once on the
+union with 21 scene-note streams and the bound key (§S.2), the host recount
+(0.0.170 after a silent same-bump merge). The review (seven readers) found
+nothing blocking; its should-fixes landed with pins. Gate: the full sweep
+from the pin 575 ok / 3 standing / 3 refused / 1 catch fixed of 582; Tier R
+271/0; the workspace suite 659 binaries / 4,080 passed / 5 failed (three
+standing + two env-block artifacts, green by name) / 3 ignored, zero SKIP;
+SPA 466 files / 8,788; Playwright 355 / 1 (the P4.66 intermittent, green
+alone 2/2) / 6 skipped. v4's checkout went dirty mid-round with bug 174 in
+flight, so the ledger's regen rule stays PIN REQUIRED. Round record in
+`status-log.md`.
+
 #### 2026-10-01 — test(harness): the scene-note family's recipe header runs its oracle from the v4 checkout (the unified sweep's catch)
 
 _Versions: harness 0.0.1063._

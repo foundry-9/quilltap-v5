@@ -28,27 +28,38 @@ probe verifies against._
   CLAUDE.md's Status bullet agrees.
 - **Checked:** 2026-10-01 (`/unify` of the `ca363178d` round, main-checkout
   session; `git fetch --all` first). The §2 probe PASSED at the
-  unification's start and again before its docs commit: HEAD at
-  `ca363178d`, the tree clean on `main`, `bugfix`, `origin/main` and
-  `origin/bugfix` unmoved. Previous check: 2026-09-30 evening, the
-  `/driftcheck` that recorded these four commits.
-- **v4 `main` HEAD at check: `ca363178d`** — AT THE BASELINE. **Zero
-  commits past it; §3 is EMPTY.**
+  unification's start (HEAD `ca363178d`, tree CLEAN on `main`, both logs
+  empty). Mid-round the tree went DIRTY with v4 work on bug 174, and at
+  the unification's final probe (after the gate) that work had been
+  **COMMITTED as `f6426e196`** (2026-10-01 15:59) — ONE commit past the
+  new baseline, tree CLEAN, `origin/main` agreeing, `bugfix` unmoved.
+  **No proof of this unification touched it:** every regen ran from the
+  detached pin `/tmp/qt-v4-pin-unify-ca363178d` (§5.1) and the two
+  live-checkout guards read paths it does not reach (the
+  default-system-prompts plugin; the root `package.json` SDK stamps — the
+  version stamp alone moved). Classified in §3 by this `/unify` (the §4
+  procedure, from the hunks). Previous check: 2026-09-30 evening, the
+  `/driftcheck` that recorded the four commits.
+- **v4 `main` HEAD at check: `f6426e196`** ("Fix bug 174: send vault image
+  bytes, not a server path, to Z.AI and NanoGPT", 2026-10-01 15:59,
+  `4.10.0-dev.106`) — **ONE commit past the baseline**; `origin/main`
+  agrees.
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
   branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty, so
   there is no unabsorbed bugfix content. **`release` tip:** `8fbf2afe0`
   ("release: 4.9.2"), UNMOVED; still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**; the §2 probe runs
-  against `ca363178d`.
-- **Verdict: NO DRIFT — v4 AT the baseline.** No PORT, PORT-NEW, CONVERGENCE
-  or NO-PORT? rows pending. v4's `bugs.md` ends at bug 173 (fixed at
-  `ddf942635`, ported by P4.D240 — its "v5 status: Not assessed" line is
-  now stale on v4's side).
-- **Regen rule: NO PIN REQUIRED while the §2 probe passes** — HEAD IS the
-  baseline and the tree is clean, so the live checkout regenerates
-  baseline-faithful oracles. The moment the probe fails (HEAD moves or the
-  tree goes dirty), every regen goes back to a detached `ca363178d` worktree
-  per §5.1. HEAD's SDKs equal the recorded ones (openai 7.23.0,
+- **Checkout at check:** branch **`main`**, tree **CLEAN** (two stash
+  entries, untouched); the §2 probe runs against `ca363178d`.
+- **Verdict: DRIFT PENDING — 1 commit** (§3): ONE PORT row, `f6426e196`
+  (bug 174 — **v5 has BOTH halves verbatim by faithful port**: the loader's
+  server-relative `url` beside the bytes, and the Z.AI / NanoGPT builders'
+  `url`-first preference). No CONVERGENCE row (v4-original, provenance
+  `45dcf97dc`). v4's `bugs.md` ends at bug 174 (fixed; "v5 status: Not
+  assessed").
+- **Regen rule: PIN REQUIRED** — HEAD is past the baseline, so every regen
+  runs from a detached `ca363178d` worktree per §5.1 until a round absorbs
+  the row (or regenerates its own families at `f6426e196` as the target
+  pin). HEAD's SDKs equal the recorded ones (openai 7.23.0,
   `@openrouter/sdk` 1.3.28, anthropic 0.115.0, genai 1.52.0 — P4.D232;
   `git diff 97b25fc53 ca363178d -- package.json` moved the version stamp
   alone), so a provider-wire regen is baseline-faithful.
@@ -68,15 +79,18 @@ probe verifies against._
   (P4.D225). A Friday copy of ANY vintage from `-dev.88` on opens on v5.
 - **`help/**`:** re-vendored WHOLE at `ca363178d` (P4.D240; 129 files,
   `diff -rq` against the pin empty; the nine pages the two code commits
-  touched all md5-equal to v4's). Nothing lags.
-- **`docs/v4/`:** the whole tree matches `ca363178d` (`diff -rq` against the
-  pin's `docs/` reports only the mirror's deliberate extra,
+  touched all md5-equal to v4's). `f6426e196` moves no help file — nothing
+  lags.
+- **`docs/v4/`:** LAGS `f6426e196` on `docs/CHANGELOG.md`, `docs/developer/
+  bugs.md` and the new `bugs/fixed/bug-174-…md` (the bug-174 round's mirror
+  items). At `ca363178d` the whole tree matched (`diff -rq` against the
+  pin's `docs/` reported only the mirror's deliberate extra,
   `packages-quilltap-README.md`, itself refreshed from the pin's
   `packages/quilltap/README.md`); `docs/v4/CHANGELOG.md` (171,935 B),
   `developer/bugs.md`, the new `bugs/fixed/bug-173-raw-sql-buffer-output.md`
   and `features/prompt-trust-and-anti-committee.md`,
   `PROMPT_ARCHITECTURE.md` and `SYSTEM_PROMPT_PLUGIN_DEVELOPMENT.md` all at
-  `ca363178d` bytes. No standing lag item.
+  `ca363178d` bytes).
 - **Standing deferrals unchanged:** the three text-compression migrations,
   the image re-encode migration and the stored-`renderedMarkdown`
   reclamation stay DEFERRED as reclamation; the animated-input ruling is
@@ -122,9 +136,7 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-
-_(EMPTY — v4 `main` is AT the baseline `ca363178d`. The four rows of the
-`ca363178d` round moved to §6 at its unification, 2026-10-01.)_
+| `f6426e196` | 2026-10-01 | Fix bug 174: send vault image bytes, not a server path, to Z.AI and NanoGPT | PORT | **v5 has BOTH halves verbatim by faithful port.** (1) The loader: `services/chat_files.rs:253` (the native-text branch) and `:340` (the blob branch) set `"url"` to the server-relative `/api/v1/mount-points/<id>/{files,blobs}/<path>` beside `data` — v4 `loadMountFileAsAttachment`'s fix DROPS `url` on both branches and keeps the path in `filepath` only. (2) The builders: `model/request_builder/chat_completions.rs:119` (Z.AI) and `:188` (NanoGPT) prefer `attachment.url` over the data URL (v4's pre-fix `attachmentToImageUrl`); the fix is BYTES FIRST, then a `url` only when it is absolute `http(s)` (`/^https?:\/\//i`), else the attachment FAILS (`Attachment missing data or URL` stays the terminal arm — measure v4's exact bytes for the refused-relative-url case). OpenRouter's `img.url ?? data:` (`:214-248`; v4 `openrouter/provider.ts:110`) is UNTOUCHED by the commit — leave it (after (1) it receives `data:` for mount attachments on both sides). Oracle material: the NEW `__tests__/unit/plugins/image-attachment-url-preference.test.ts` (both plugins: bytes beat a relative or absolute `url`; an absolute `url` alone forwarded; a relative `url` alone refused) and two new cases in `__tests__/unit/lib/chat-files-v2-mount-document.test.ts` (no `url` on a blob / document attachment). Families: the chat-files / attachment loaders (`file_attachment_tier3`, the mount-attachment arms), the Z.AI + NanoGPT request-builder and `request_envelopes` corpora (any row carrying a mount attachment with both `data` and `url` moves at the new pin), `chat_files` tier-3. v4's own named follow-up: failed calls still write no `llm_logs` row. NO-PORT: `README.md`, `package.json` / `packages/quilltap/package.json` / lock stamps (`4.10.0-dev.106`; plugins z-ai 1.1.32, nanogpt 1.2.9 — v5 records plugin versions nowhere), `docs/CHANGELOG.md`, `docs/developer/bugs.md` + the new `bugs/fixed/bug-174-vault-image-relative-url-to-provider.md` (MIRROR into `docs/v4/`). No `help/` file moved. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

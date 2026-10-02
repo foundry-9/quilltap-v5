@@ -1310,10 +1310,67 @@ records THERE. Update this summary only when a phase or round completes.
   fatal where v4 warns and continues — it blocks P4.131's mail plant live),
   and Option V must also fix the zone VALUE (a POSIX `TZ` puts every surface
   in UTC). **Still owed:** the standing queue.
-- **Oracle baseline: `97b25fc53` (2026-09-28, v4 main — "Drape undressed
-  characters in story backgrounds instead of re-dressing them",
-  `4.10.0-dev.100`), adopted at the `97b25fc53` seven-commit round
-  unification (2026-09-29).**
+- **The `ca363178d` four-commit drift catch-up + dogfood-orders round
+  (P4.D240 ∥ P4.D241 ∥ P4.D242 ∥ P4.D243 ∥ P4.133 ∥ P4.134): UNIFIED on main
+  (2026-10-01) — ALL SIX LANES LANDED WHOLE; the oracle baseline MOVES to
+  `ca363178d`; ⚠ v4 COMMITTED bug 174 (`f6426e196`) during the gate — the
+  vault-image server-relative `url` sent to Z.AI / NanoGPT, which v5 HAS
+  verbatim by faithful port — so the ledger's §3 holds ONE UNPROCESSED PORT
+  row and the regen rule is PIN REQUIRED at `ca363178d`.** v4's four
+  commits absorbed: bug 173 (the CLI's raw-SQL reader decodes compressed
+  text at its ONE v5 site through a scoped helper, the four other callers
+  untouched; Tier R 266 → 271 with v4's integration-test shapes; the
+  table-mode seam decided (b) with four named divergences pinned; the whole
+  `help/` tree + the `docs/v4/` mirror at `ca363178d`; the two docs commits
+  NO-PORT-ratified) ∥ the anti-committee squash in three lanes — the 21
+  prompts re-vendored (the content-keyed seeder refreshes lazily, no code
+  change) + the five trust directions at EIGHT generator sites
+  (`META_SYSTEM_PROMPT` a `LazyLock<String>`, 1227 → 5664 units, which
+  flipped one external case to v4's over-budget refusal — kept, with an
+  ample-context sibling); the memory-consent prompts REGENERATED through the
+  extended generator (which also emits `FOLD_EPISODE_PROMPT` now) + the
+  transcript heading as v4's two-arm branch, the corpus 18 → 22; the
+  chained-turn scene note as a pure module + its `build_context` wiring
+  (the persona seat counts; no continue gate; the post-trim window), a NEW
+  tier-1 family, `build_context_tier3` 47 → 58 ops, 21 orchestrator streams
+  carrying the note ∥ dogfood #133 — the profile's OWN key crosses the model
+  boundary at last (defaulted keyed trait methods, the `Arc` forwards, both
+  wire overrides; v4's inline requires/accepts gate at v4's position; every
+  leg sends its key, each failover candidate its OWN; v4's three missing
+  refusals; the secondaries ported) ∥ dogfood #134(b) — eight boot steps
+  warn-and-continue with v4's line (the three prescribed lines UNREACHABLE
+  in v4 behind fallback `safeQuery`s — the lines v4 ACTUALLY logs ported),
+  the migrations / DDL / provisions still fatal, a 12-arm host binary.
+  **The §3 review (seven parallel readers): NO blocking finding — the
+  thirteenth such round; should-fixes landed at unification:** the anchored
+  completion was the ONE trait method still defaulting onto the retired
+  provider scan (no production caller — `send_message_keyed_with_anchor`
+  added); P4.134's two file-links ensures ran in the REVERSE of v4's order
+  (swapped, order-pinned) and its "a failed migration exits v4" holds only
+  where the ledger lacks the migration (v5 is HARDER on a ledger-complete
+  instance); `orchestrator_tier3` ran v5's cheap-key resolution for real
+  while v4 mocked it (the twin installed); plus the nits. **The sweep's own
+  catch:** the new tier-1 family's recipe header carried a placeholder
+  `cd` the driver cannot rewrite (fixed). Gate: fmt/clippy both feature
+  sets/release clean; the full sweep from the pin 575 ok / 3 standing / 3
+  refused / 1 catch of 582; Tier R 271/0; `cargo test --workspace` 659
+  binaries / 4,080 / 5 (three standing + two env-block artifacts, green by
+  name) / 3 ignored, zero SKIP; SPA 466 / 8,788; full Playwright 355 / 1 (the
+  P4.66 bubble intermittent, green alone 2/2) / 6. Versions: core 0.0.1139,
+  harness 0.0.1063, host 0.0.171, web 0.0.206, cli 0.0.29. 💸 the dogfood
+  queue gains the six lanes' rows (the round record lists them). **OPEN:**
+  the five silent API-key fallback reads, P4.D243-F1, the
+  `memory_pipeline_jobs_tier3` A10 blindness, the ledger-gate divergence
+  order, the P4.D184 ruling — **RULED 2026-10-01: v5 goes FATAL (match
+  v4) and the v4 bug is filed; the ledger-gate divergence is a v4 bug to
+  file, v5 keeps its per-boot ensures.** **Next: ONE round of orders for
+  those items + the bug-174 catch-up, then the owed Host dogfood pass,
+  then the recorded-divergences round** — `phase-4.md`. Round record:
+  `status-log.md`.
+- **Oracle baseline: `ca363178d` (2026-09-30, v4 main — "Anti-committee
+  phase 3 & 4: memory consent & chained-turn scene note (#79)",
+  `4.10.0-dev.105`), adopted at the `ca363178d` four-commit round's
+  unification (2026-10-01).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

@@ -5254,3 +5254,13 @@ place, and `status-log.md` remains the record of authority for every round.
   unification (verified immediately before the unified regen). (The
   drift-check/pin/sweep-driver boilerplate continued as in the current
   paragraph.)
+
+## Baseline paragraph superseded at the `ca363178d`-round unification (2026-10-01)
+
+Removed from CLAUDE.md's Status when the oracle baseline moved `97b25fc53` →
+`ca363178d`; verbatim:
+
+- **Oracle baseline: `97b25fc53` (2026-09-28, v4 main — "Drape undressed
+  characters in story backgrounds instead of re-dressing them",
+  `4.10.0-dev.100`), adopted at the `97b25fc53` seven-commit round
+  unification (2026-09-29).**

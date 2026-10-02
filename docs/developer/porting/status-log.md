@@ -158655,3 +158655,262 @@ second), a profile bound to the junk one → the turn FAILS with NanoGPT's
 profile 401s, the `k-bound` profile answers, the capture line names the
 header; a Try-uncensored reroute whose captured header is the UNDERSTUDY's
 key; a cheap-LLM title on a keyless profile logging v4's throw.
+
+---
+
+## The `ca363178d` four-commit drift catch-up + dogfood-orders round — UNIFICATION record (2026-10-01)
+
+**Unified on `main` (fast-forward from `unify/ca363178d-round`): P4.D240 ∥
+P4.D241 ∥ P4.D242 ∥ P4.D243 ∥ P4.133 ∥ P4.134 — ALL SIX LANES LANDED WHOLE.
+The oracle baseline MOVES `97b25fc53` → `ca363178d`; the ledger's §3 is
+EMPTY (its four rows retired to §6: `ddf942635` ABSORBED(P4.D240),
+`ca363178d` ABSORBED(P4.D241, P4.D242, P4.D243; help P4.D240), `aa92cf91c` +
+`a67a282c6` NO-PORT-RATIFIED(P4.D240) on their file lists). ⚠ v4's checkout
+went DIRTY during the round with bug 174 in flight and then COMMITTED it as
+`f6426e196` (15:59, during the gate): ONE commit past the new baseline —
+the vault-image server-relative `url` sent to Z.AI / NanoGPT, which **v5
+has verbatim by faithful port** (`chat_files.rs:253,340` set `url`;
+`chat_completions.rs:119,188` prefer it over the bytes) — classified in the
+ledger's §3 as its one UNPROCESSED PORT row. No proof here touched it: every
+regen ran from the detached pin `/tmp/qt-v4-pin-unify-ca363178d`; the two
+live-checkout guards read none of its paths. Regen rule: PIN REQUIRED.**
+
+### Survey and reconciliation
+
+- Six clean worktrees, thirteen lane commits; the §2 probe PASSED at the
+  start (v4 `main`, CLEAN, `ca363178d`, both logs empty). Cherry-picked in
+  the ordered sequence P4.D240 → P4.D241 → P4.D242 → P4.D243 → P4.134 →
+  P4.133 through a per-commit resolver (a crate version = ours + the
+  commit's own delta from its parent; `docs/CHANGELOG.md` = ours + the
+  commit's added entry under `## October 2026`; `status-log.md` = ours +
+  the commit's appended block; `Cargo.lock` via `cargo update -w
+  --offline`). Only the predicted files conflicted; `services/
+  orchestrator.rs` merged clean with EXACTLY the two marked hunks (§S.3:
+  P4.133's gate at `:1216`, P4.D243's `None` line at `:4554`).
+- **Two audit catches on the union, both fixed in the wire commit:** the
+  host crate's bump auto-merged SILENTLY (P4.133 and P4.134 each wrote
+  `0.0.169`; the recount is 0.0.168 + 2 = **0.0.170**), and P4.D240's
+  2026-10-01 CHANGELOG entry sat under `## September 2026` (the first lane
+  picked carried no October header; the resolver created it for the
+  later lanes).
+
+### The wires (`93b86ef56`)
+
+- **§S.1** — P4.133's pre-written patch applied: `optimizer.rs`,
+  `ai_import.rs` keyed mechanically; `external_prompt.rs`'s module-doc hunk
+  HAND-applied over P4.D241's new "Field semantics" section (the only hunk
+  that failed to apply). The three generators now hand the profile's own
+  key to `send_message_keyed`. The fenced-family twins patch applied
+  (`courier_images_routes`, `context_summary_service_tier3`,
+  `memory_processor_tier3`). The two stale key-seam comments P4.133 recorded
+  outside its files rewritten (`db/connection_profiles.rs`,
+  `api/chat_send.rs`).
+- **§S.2** — `orchestrator_tier3` regenerated ONCE on the union from the pin
+  (the sweep, then by name after the fix commit): GREEN; the fresh oracle
+  carries **21 `Scene note: Operator` streams** (P4.D243's measured firing
+  list: the 20 chained legs of `noncontinue_two_llm_maxdepth` +
+  `rehydrate_user_attachments`), 70 `streamKeys` rows and P4.133's
+  `k-bound` case.
+- **§S.4** — recount: core 0.0.1128 + 9 lane bumps + 3 unifier = 0.0.1140?
+  No: + 9 lanes (P4.D241 ×4, P4.D242, P4.D243 ×2, P4.134, P4.133) → 1137, +
+  the wire → 1138, + the fixes → **1139**; harness 0.0.1051 + 9 → 1060, +
+  wire 1061, + fixes 1062, + the header fix → **1063**; host 0.0.168 + 2 →
+  170, + fixes → **171**; web 0.0.205 + 1 → **206**; cli 0.0.27 + 1 → 28, +
+  fixes → **29**; tauri 0.0.7, fixture-sanitizer 0.0.4, SPA 0.5.792
+  unmoved.
+- **§S.5** — the ledger's §1 rewritten (baseline `ca363178d`; the dirty
+  checkout recorded), §3 emptied to a §6 entry; `phase-4.md`'s round section
+  UNIFIED with the OPEN list and NEXT; `dogfood-findings.md` rows 133 and
+  134(b) FIXED (the P4.D184 ruling escalated there); the six order headers'
+  `**Unification:**` lines written.
+
+### The §3 review — seven parallel readers (one per lane, P4.133 split in two): NO blocking finding in any lane (the thirteenth such round), no overclaim
+
+Should-fixes and nits taken, all landed in `75ca09667` with their pins:
+
+- **P4.133 (core reader):** `send_message_with_anchor` was the ONE trait
+  method still defaulting onto the unkeyed send — i.e. onto the host's
+  provider scan the order retired; zero production callers today, so no
+  family could see it. Added `send_message_keyed_with_anchor` (trait
+  default → `send_message_keyed`; the `Arc` forward; the host override over
+  `send_inner` with both the key and the anchor; the host `Arc` pin grew a
+  third leg, `Bearer k-bound-anchored`). Three stale module headers still
+  calling the key host-side (`model/stream.rs`, `model/completion.rs`,
+  `services/file_fallback.rs`) rewritten. Recorded, not fixed: the five new
+  key reads fold a DB error into "no key" SILENTLY where v4's `safeQuery`
+  logs `Error finding API key by ID` / `… and user ID` (`participant_
+  resolver.rs`, `gatekeeper.rs`, `cheap_llm_exec.rs`, `one_shot_loop.rs`,
+  `file_fallback.rs`; damaged-table-only; the home is P4.D225's
+  `provider_routing.rs:141` shape) — a smalls item; the two UNSCOPED
+  re-resolutions (the one-shot loop's for the Scenario Builder, the
+  connection test-message) where v4's route reads are user-scoped —
+  single-user instances, record only; the one-shot loop's second
+  resolution while `api/engine.rs` is frozen.
+- **P4.133 (host/harness reader):** `orchestrator_tier3` ran v5's cheap-LLM
+  / classifier key resolution for REAL while its v4 case mocks
+  `getApiKeyForCheapLLMSelection → 'test-key'` — green only because the
+  lane bound every non-courier fixture profile to a seeded key; the one
+  family in the 14-family blast radius with neither a twin nor a lifted
+  mock. The twin installed (both sides' cheap paths the same shape; the
+  Salon stream's key is mocked on neither side, so the five P4.133 arms
+  still compare it); lifting the v4 mock to `requireActual` named as the
+  stronger proof. Two twin constants matched to their mocks' bytes
+  (`'test-cheap-key'`, `'canned-test-key'`); the `pending_key` handoff's
+  invariant commented. Verified per file that all 13 out-of-mandate twins
+  pair with a v4 case that mocks; the production assembly's M1 survival
+  explained TRUE (`&*self.streaming` / by value; the `Arc` seams are
+  Carina / Brahma).
+- **P4.134:** the lane's most consequential judgment — three prescribed
+  lines UNREACHABLE in v4 behind fallback `safeQuery`s — CONFIRMED from
+  v4's source. Two should-fixes: (1) the two `doc_mount_file_links` lazy
+  ensures ran in the REVERSE of v4's order — `onTableEnsured` runs the
+  link-group column (`:400`) BEFORE the NOCASE repair (`:408`); swapped,
+  with a core order pin over a plant that fails both (a TABLE squatting on
+  the partial index's name + the renamed `relativePath` → two ERROR lines,
+  the column's first; v4's one `try` logs one per access — the cadence
+  divergence's other half, recorded); (2) "a failed migration exits v4"
+  is true only on an instance whose ledger LACKS the migration
+  (`migrations/index.ts:125-129` skips a ledgered one before `shouldRun`),
+  so on a ledger-complete instance v4 reaches `doc_mount_folders` lazily
+  and boots where v5's fatal arms do not — v5 HARDER; the enum doc, the
+  sweep comment and the three fatal arms' docs now say so (the
+  ledger-gate divergence's wider scope). Two doc nits (the scenarios
+  `Result` unreachable-`Err` in both stacks; the 25g arm proves v5's line
+  shape — v4 is SILENT under a chunks-column plant).
+- **P4.D243:** line-for-line twin of v4; the M5 "equivalent mutant"
+  reasoning verified; F1 correctly fenced and named. Nit taken: the tier-1
+  corpus-shape guard pins exactly 30 build rows (15 applying / 15 silent)
+  instead of `>=`.
+- **P4.D240:** `diff -rq help` empty, the mirror byte-identical bar the
+  deliberate extra, the codec arm-for-arm. Nit taken: the Tier R `m-3`
+  fixture assert pins `decode_blob`'s fallback ARM (`== from_utf8_lossy(
+  payload)`), not "contains U+FFFD" (a brotli success emitting invalid
+  UTF-8 would have satisfied the weaker property); the `nodefmt` vector's
+  why-comment. The lane record omitted `help_doc_chunking` / `help_tools`:
+  both `ok` in the unified sweep.
+- **P4.D241:** an independent byte reconstruction of all eight sites and
+  the 21 bodies agreed; one lane-record count corrected here — **19** of
+  the 21 bodies carry `Whose story|WHOSE` (`OLLAMA_COMPANION` and
+  `OLLAMA_ROMANTIC` carry neither, though both moved); all 21 moved.
+- **P4.D242:** an independent template-literal evaluation agreed on all six
+  constants; `prompt_text.rs` md5-identical to a fresh run of the script.
+  Nit taken: the generator's comment overstated what it does (it ABORTS on
+  a body escape).
+
+### The sweep's own catch (fixed `7d8d11c46`)
+
+`user_narration_anchor_equivalence` — the NEW tier-1 family — came back
+`regen_failed`: its committed header said `cd <v4 checkout at ca363178d>`,
+a placeholder the driver cannot rewrite, so the sweep ran `tsx` from the v5
+checkout and the `@/lib` alias could not resolve. The lane had run its
+oracle from the pin BY HAND. Header now the tsx convention (`cd
+~/source/quilltap-server` + `$V5W`); green by name through the driver from
+the pin.
+
+### Gate (the sweep at `93b86ef56`; everything else on the final tree `7d8d11c46`; `CARGO_INCREMENTAL=0 TZ=UTC` for the suite)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (run on the wire tree and
+  again after the fixes); `cargo build --workspace --release` clean on the
+  final tree.
+- **The full sweep from the `ca363178d` pin** (`recipe_sweep.py --run-all
+  --v4 /tmp/qt-v4-pin-unify-ca363178d`, artifact `harness/tools/
+  sweep-results/2026-10-01-ca363178d-unify.json`): **575 ok / 3 run_failed /
+  1 regen_failed / 3 refused of 582.** The three run_failed are the three
+  STANDING rows (`ariel_writers_tier3`, `memory_processor_tier3` — the
+  compressed-text byte parity, `search_replace`); the regen_failed the
+  catch above (fixed, green by name); refused by design: `backup_uuid_remap`
+  (a repo-write corpus), `avatar_rolls_routes`, `generator_sse_wire`
+  (non-extractable). Every family this round touched `ok`, incl. the two
+  live-checkout guards at the pin, the six `help_*` families, and the
+  eleven P4.133 twins.
+- **By name through the driver from the pin after the fix commit:**
+  `user_narration_anchor`, `builtin_mounts`, `cheap_llm_fallback`,
+  `orchestrator_tier3` (§S.2), `cli_differential` — **Tier R 271 cases /
+  0 failures** (440 s) — and `doc_mount_files_tier2` (2 rows matched): all
+  green.
+- **`QT_V4_CHECKOUT=<the pin> TZ=UTC cargo test --workspace --no-fail-fast`**
+  with the 746-variable env block harvested mechanically from every
+  family's `--show` run stage (identical to last round's; the same 8
+  dup-valued vars WITHHELD; `QT_NODE` a real path): **659 test binaries /
+  4,080 passed / 5 failed / 3 ignored, zero `SKIP:` lines.** The five reds:
+  the three standing families + the two recorded env-block artifacts
+  (`backup_uuid_remap` — its var names an oracle the refused recipe never
+  produces; `doc_mount_files_tier2` — green by name above). Every round
+  family confirmed RUN inside the suite: `host_boot_hardness` 12/12,
+  `profile_bound_api_key_wire` 2/2, `trust_directions_order` 8/8,
+  `user_narration_anchor` 1/1 (30 rows), `build_context_tier3` (58 ops),
+  `orchestrator_tier3` 5.3 s, `primary_stream_tier3` 2/2, `title_update_
+  tier3` 9/9, `retry_uncensored_tier3`, `mail_carina_tools` 2/2,
+  `fallback_home_guard` 2/2, `dispatch_wrong_type_census` 14/14 (441
+  UNMOVED), `stream_watchdog_wrap_census` 2/2, `memory_tasks` 2/2,
+  `carina_memory_extraction`, `external_prompt_tier3` 2/2,
+  `character_optimizer_tier3` 2/2, `ai_import_tier3`, `generators_leaf`,
+  `prompt_templates_routes`, `help_tree_equivalence`, `host_help_docs_boot`
+  2/2, `cli_differential` (410 s), `builtin_prompt_templates_guard` 2/2,
+  `courier_images_routes`, `context_summary_service_tier3`,
+  `lock_conflict_boot_status` 2/2.
+- **Live-checkout guards against the LIVE checkout (no `QT_V4_CHECKOUT`):**
+  `builtin_prompt_templates_guard` 2/2 GREEN again; `provider_sdk_version_
+  guard` 3/3.
+- **SPA:** `npm test` **466 files / 8,788 tests** green; `npm run build`
+  clean; `npm run lint` clean (956 qt-* classes). No lane touched
+  `apps/web/**`; SPA 0.5.792 unmoved.
+- **Full Playwright** against the fresh release binary, run AFTER the
+  sweep and the suite: **355 passed / 1 failed / 6 skipped (11.4 m)** — the
+  six skips the standing parks; the one red the documented P4.66
+  optimistic-bubble intermittent (`salon-optimistic-bubble-reconcile.
+  spec.ts`), **green alone afterwards (2/2, 1.3 m)**.
+- Pre-existing, recorded: `recipe_sweep.py --self-test` is RED on main
+  (five Scenario Builder headers spell `W=${V5W:-…}`, the P4.53 clobber
+  spelling the driver neutralizes at run time) — a smalls item.
+
+### Versions
+
+core 0.0.1139, harness 0.0.1063, host 0.0.171, web 0.0.206, cli 0.0.29;
+tauri 0.0.7, fixture-sanitizer 0.0.4, SPA 0.5.792 unmoved.
+
+### OPEN after this round (also in `phase-4.md` and the order headers)
+
+The five silent API-key fallback reads (v4's `Error finding API key by ID`
+lines); lifting the orchestrator case's cheap-key mock; **P4.D243-F1** (the
+`Some("")` first-responder branch — REACHABLE: v4 admits an empty `content`
+with files or tool results); `memory_pipeline_jobs_tier3` blind to the
+fold-episode bytes; the ledger-gate divergence order (now wider than P4.134's
+item 10); the two unscoped key re-resolutions (record only); the P4.D184
+avatar-collapse RULING (the human's — RULED the same day: v5 goes fatal,
+a v4 bug filed; and the ledger-gate divergence RULED a v4 bug to file with
+v5 keeping its per-boot ensures); the sweep self-test red; v4 bug 174
+(`f6426e196`, the next catch-up's first row — the loader's `url` and the
+Z.AI / NanoGPT builders' preference, both in v5 today).
+
+### 💸 for the owed dogfood pass (from the six lanes)
+
+`quilltap db --data-dir <Friday copy> "SELECT id, content FROM chat_messages
+WHERE length(content) > 600 LIMIT 2"` printing text in `--json` AND table
+mode, the same with `embedding` (Buffer JSON / compact JSON), a `qt_text()`
+LIKE still working, the Database Protection page's new paragraph in the
+SPA's help; the Friday copy's first template list logging up to 21
+`Built-in prompt template refreshed from shipped text` lines (MODERN
+General with `## Whose story it is`), a Summon From Lore `system_prompts`
+step showing `300-600` + TRUST + the relationships sentence, an External
+Prompt run within budget and its refusal's new number on a tiny
+`maxContext`; a real Salon turn whose extraction call shows the ORDERED
+heading + the AGREEMENTS block in both bodies, a turn ending on a condition
+storing "…; <name> had not yet responded", a fold with the episode
+sentence, an empty-question Carina run keeping `TURN TRANSCRIPT:`; a
+multi-character chat's Continue showing `Scene note:` as the LAST user
+message named from the human's seat, none on a first responder, a 1:1 chat
+with a persona seat showing it on Nudge, the DEBUG line's `resolvedFromSeat`;
+two NanoGPT keys (the real one FIRST, a junk one second) with a profile
+bound to the junk one FAILING on NanoGPT's 401, `refusal-server.py`'s
+`QT_REFUSE_KEY` gate (`k-first` 401s, the bound profile answers, the
+capture line names the header), a Try-uncensored reroute whose captured
+header is the UNDERSTUDY's key, a cheap-LLM title on a keyless profile
+logging v4's throw; P4.131's F1 (`relativePath → relativePath_x` on the
+Friday copy's mount index): v5 BOOTS with `ERROR quilltap::db Failed to
+ensure doc_mount_file_links table in mount index database error=no such
+column: relativePath`, the `state.json` WARN with `context`, `list_mail`
+answering v4's fallback lines; a second boot with `roleplay_templates.name`
+renamed logging `Error seeding built-in roleplay templates` and the Salon
+still opening.
