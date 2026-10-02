@@ -369,6 +369,20 @@ mod native {
         }
     }
 
+    /// A `reqwest` failure as a [`TransportError`] — `Timeout` iff reqwest
+    /// says a deadline fired (`reqwest::Error::is_timeout`: a `TimedOut` /
+    /// hyper timeout / `io::ErrorKind::TimedOut` anywhere in the source
+    /// chain), else `Connect`. The message is reqwest's own `Display`
+    /// (`error sending request for url (…)` for both a refused connection and
+    /// a whole-exchange timeout — P4.141: only the kind tells them apart).
+    fn reqwest_error(e: &reqwest::Error) -> TransportError {
+        if e.is_timeout() {
+            TransportError::timeout(e.to_string())
+        } else {
+            TransportError::connect(e.to_string())
+        }
+    }
+
     impl Default for ReqwestTransport {
         fn default() -> Self {
             Self::new()
@@ -393,16 +407,39 @@ mod native {
                     match self.build(request).timeout(policy.timeout).send().await {
                         Ok(resp) => {
                             let status = resp.status().as_u16();
-                            let body = resp.bytes().await.map(|b| b.to_vec()).unwrap_or_default();
                             if (200..300).contains(&status) {
-                                return Ok(TransportResponse { status, body });
+                                // P4.141: a 2xx whose body read fails — the
+                                // whole-exchange `.timeout()` firing mid-body,
+                                // or the connection breaking — is a transport
+                                // failure, never an empty answer. v4's SDK
+                                // throws `Request timed out.` from its body
+                                // read here (`openai` 7.23.0
+                                // `parseResponseWithTimeout`, `client.js:
+                                // 580-585`); this arm used to swallow the error
+                                // into an EMPTY 200, which then failed the
+                                // parse as `response parse: EOF …`.
+                                match resp.bytes().await {
+                                    Ok(body) => {
+                                        return Ok(TransportResponse {
+                                            status,
+                                            body: body.to_vec(),
+                                        })
+                                    }
+                                    Err(e) => last = Some(reqwest_error(&e)),
+                                }
+                            } else {
+                                // A non-2xx keeps its lossy body rendering:
+                                // v4 reads `errorText` the same way, and an
+                                // unreadable error body is still the status's.
+                                let body =
+                                    resp.bytes().await.map(|b| b.to_vec()).unwrap_or_default();
+                                last = Some(TransportError::http(
+                                    status,
+                                    String::from_utf8_lossy(&body),
+                                ));
                             }
-                            last =
-                                Some(TransportError::http(status, String::from_utf8_lossy(&body)));
                         }
-                        Err(e) => {
-                            last = Some(TransportError::connect(e.to_string()));
-                        }
+                        Err(e) => last = Some(reqwest_error(&e)),
                     }
                 }
                 Err(last.unwrap_or_else(|| TransportError::connect("transport failed")))
@@ -426,7 +463,7 @@ mod native {
                 let sent = tokio::time::timeout(policy.timeout, self.build(request).send())
                     .await
                     .map_err(|_| TransportError::headers_timeout(policy.timeout.as_millis()))?;
-                let resp = sent.map_err(|e| TransportError::connect(e.to_string()))?;
+                let resp = sent.map_err(|e| reqwest_error(&e))?;
                 let status = resp.status().as_u16();
                 if !(200..300).contains(&status) {
                     let text = resp.text().await.unwrap_or_default();
@@ -444,7 +481,7 @@ mod native {
                             }
                             Ok(None) => break,
                             Err(e) => {
-                                let _ = tx.send(Err(TransportError::connect(e.to_string()))).await;
+                                let _ = tx.send(Err(reqwest_error(&e))).await;
                                 break;
                             }
                         }
@@ -555,6 +592,9 @@ mod tests {
             SlowButFlowing { chunks: usize, gap_ms: u64 },
             /// Answer 500 immediately, counting how many times we were asked.
             AlwaysFails,
+            /// Send a 200's headers promising `Content-Length: 100`, then go
+            /// silent with the body never sent (P4.141 — the body-read arm).
+            HeadersThenStalls,
         }
 
         /// A one-shot-per-connection HTTP server on an ephemeral port. Returns the
@@ -601,6 +641,17 @@ mod tests {
                                 }
                                 let _ = sock.write_all(b"0\r\n\r\n").await;
                                 let _ = sock.flush().await;
+                            }
+                            Behavior::HeadersThenStalls => {
+                                let _ = sock
+                                    .write_all(
+                                        b"HTTP/1.1 200 OK\r\n\
+                                          Content-Type: application/json\r\n\
+                                          Content-Length: 100\r\n\r\n",
+                                    )
+                                    .await;
+                                let _ = sock.flush().await;
+                                std::future::pending::<()>().await;
                             }
                             Behavior::AlwaysFails => {
                                 let _ = sock
@@ -651,6 +702,81 @@ mod tests {
                 started.elapsed()
             );
             assert!(err.status.is_none(), "a deadline is not an HTTP status");
+            // P4.141: the deadline is a TIMEOUT — v4's SDK throws
+            // `APIConnectionTimeoutError` here, and v4's failover files it
+            // `network`.
+            assert_eq!(err.kind, TransportErrorKind::Timeout, "{}", err.message);
+        }
+
+        /// P4.141: a 2xx whose body never finishes arriving is a TIMEOUT
+        /// error, not an empty 200 (the swallow `unwrap_or_default()` used to
+        /// make it — v4 throws `Request timed out.` from the SDK's body read).
+        #[tokio::test]
+        async fn non_streaming_body_stall_is_a_timeout_not_an_empty_answer() {
+            let (url, _) = spawn(Behavior::HeadersThenStalls).await;
+            let transport = ReqwestTransport::new();
+            let policy = TransportPolicy {
+                timeout: Duration::from_millis(150),
+                max_retries: 0,
+            };
+            let result = transport.execute(&request(url), &policy).await;
+            let err = match result {
+                Ok(resp) => panic!(
+                    "a stalled 2xx body must not answer (got {} with {} byte(s))",
+                    resp.status,
+                    resp.body.len()
+                ),
+                Err(e) => e,
+            };
+            assert_eq!(err.kind, TransportErrorKind::Timeout, "{}", err.message);
+            assert!(err.status.is_none());
+        }
+
+        /// P4.141: a non-2xx is `Http` (with its status and body).
+        #[tokio::test]
+        async fn a_non_2xx_is_kind_http() {
+            let (url, _) = spawn(Behavior::AlwaysFails).await;
+            let err = ReqwestTransport::new()
+                .execute(
+                    &request(url),
+                    &TransportPolicy {
+                        timeout: Duration::from_secs(5),
+                        max_retries: 0,
+                    },
+                )
+                .await
+                .expect_err("a 500 fails");
+            assert_eq!(err.kind, TransportErrorKind::Http);
+            assert_eq!(err.status, Some(500));
+            assert_eq!(err.message, "HTTP 500: boom");
+        }
+
+        /// P4.141: a refused connection is `Connect` on both arms — not a
+        /// deadline, so v4's SDK throws `Connection error.` (and its raw-fetch
+        /// plugins `fetch failed`).
+        #[tokio::test]
+        async fn a_refused_connection_is_kind_connect() {
+            let transport = ReqwestTransport::new();
+            let policy = TransportPolicy {
+                timeout: Duration::from_secs(5),
+                max_retries: 0,
+            };
+            let url = "http://127.0.0.1:1/v1/chat".to_string();
+            let err = transport
+                .execute(&request(url.clone()), &policy)
+                .await
+                .expect_err("nothing listens on port 1");
+            assert_eq!(err.kind, TransportErrorKind::Connect, "{}", err.message);
+            assert!(err.status.is_none());
+            assert_eq!(
+                err.message,
+                format!("error sending request for url ({url})")
+            );
+            let err = transport
+                .execute_stream(&request(url), &policy)
+                .await
+                .expect_err("nothing listens on port 1");
+            assert_eq!(err.kind, TransportErrorKind::Connect, "{}", err.message);
         }
 
         /// D3, half one: a stream whose provider never sends headers is aborted at
@@ -678,6 +804,7 @@ mod tests {
                 "the abort must name what it measured: {}",
                 err.message
             );
+            assert_eq!(err.kind, TransportErrorKind::Timeout);
         }
 
         /// D3, half two — the half that makes the first half safe: a provider that

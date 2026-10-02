@@ -160037,3 +160037,29 @@ outside the constructors. No behaviour change. Gate:
 `CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` (no env block)
 **659 binaries / 4,109 passed / 0 failed / 3 ignored**; clippy
 (`--features quilltap-core/native-transport`) clean.
+
+### Unit 2 — `ReqwestTransport` sets the kind; the `:353` swallow closed (Tier 1 item 2)
+
+`reqwest_error(&reqwest::Error)` → `Timeout` iff `is_timeout()`, else
+`Connect`, message = reqwest's `to_string()` — used by `execute`'s send arm,
+the NEW 2xx body-read arm, `execute_stream`'s `send()` arm and the mid-stream
+chunk arm; the `tokio` deadline keeps `headers_timeout` (`Timeout`). The 2xx
+body read is an `Err` now (never an empty 2xx); a non-2xx keeps the lossy-
+empty body rendering. `native_deadlines` pins: `NeverAnswers` non-streaming →
+`Timeout` (the existing test extended); NEW `Behavior::HeadersThenStalls`
+(200 + `Content-Length: 100`, then silence) → `Err(Timeout)`; `AlwaysFails` →
+`Http` (`HTTP 500: boom`); a refused `127.0.0.1:1` → `Connect` on BOTH arms
+with reqwest's `error sending request for url (…)` bytes; the streaming
+headers abort asserts `Timeout`. **Red-first = the mutations:** **M1**
+(`reqwest_error` always `Connect`) reddens exactly
+`non_streaming_abandons_a_provider_that_never_answers` +
+`non_streaming_body_stall_is_a_timeout_not_an_empty_answer`; **M2** (the
+swallow restored: `Err(_) => return Ok(200, [])`) reddens exactly
+`non_streaming_body_stall_…`; both reverted by file backup, `cmp`-identical.
+Gate for this unit: `cargo test -p quilltap-core --features
+native-transport` 2,869 passed / 1 failed — the failure is
+`db::chats::concierge_state_tests::a_failed_write_errors_and_answers_false`,
+**green alone (6/6)** and green in unit 1's full gate: a capture-count
+intermittent in a file this lane never touches (recorded, not this lane's);
+clippy both feature sets clean. The full workspace gate rides unit 3's
+(which carries this tree).

@@ -21,6 +21,12 @@ _Docs-only change._
 - `9753d0eb2` (PORT): the project character roster now gates a character's doc tools, `search_scriptorium` and the project tier of the shared wardrobe through one chokepoint. The roster auto-add on chat create and chat move is removed. `allowAnyCharacter` now defaults to `true`, and the project PUT returns the enriched project. The SPA Characters card and four help pages change too.
 - `e5c6bd0c0` (CONVERGENCE on this port's filings 175/176, shaped differently from P4.135): a failed avatar-roll collapse is now deferred to the next boot instead of being fatal. Separately, a new boot-time structural table check reports damage through a `structure` service in `/api/health`. The ledger gate itself is unchanged.
 - §1 is rewritten for the new state. The previous dirty-tree waiver is spent because v4 committed the 175/176 filings itself.
+#### 2026-10-02 — fix(model): ReqwestTransport reports timeouts as Timeout and no longer turns a failed 2xx body read into an empty answer
+
+_Versions: core 0.0.1148._
+
+`ReqwestTransport` now sets the transport error kind from reqwest's `is_timeout()` on the non-streaming send, the streaming `send()` and the mid-stream chunk read (`Timeout`, else `Connect`); the streaming time-to-headers deadline stays a `Timeout`. A 2xx whose body read fails (the whole-exchange timeout firing mid-body, or a broken connection) is now an error. It used to be swallowed into an empty 200 that then failed to parse. A non-2xx keeps its lossy body rendering. Message bytes are unchanged. New unit pins in `native_deadlines`: a never-answering provider and a 2xx that stalls after its headers are both `Timeout`, a 500 is `Http`, and a refused port is `Connect` on both arms.
+
 #### 2026-10-02 — refactor(model): TransportError carries a kind (Http/Connect/Timeout) and is built only through constructors
 
 _Versions: core 0.0.1147, harness 0.0.1075._
