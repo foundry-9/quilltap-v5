@@ -33,8 +33,9 @@
 //!      locally (`normalize_llm_log_rows`: `messageId` through the message
 //!      idmaps; a live `read_conversation` render inside `request` decoded and
 //!      blanked, its `contentLength` placeholdered; the clock-bearing
-//!      `historyTailHash` of `CLOCK_TAIL_LEGS`), and the measured divergences
-//!      are pinned both ways in `EXPECTED_DIVERGENCES`.
+//!      `historyTailHash` of `CLOCK_TAIL_LEGS`). Every row compares whole
+//!      since P4.140 logged Carina's — the last measured divergence (P4.129's
+//!      both-ways pins retired by VANISHING).
 //!
 //! **TZ=UTC is REQUIRED since P4.d26**: the distill TODAY line renders in the
 //! SERVER-LOCAL zone, so this oracle is TZ-sensitive (the harness pins
@@ -424,94 +425,23 @@ fn decode_live_renders(dump: &mut Value) {
     }
 }
 
-/// The shape a recorded `llm_logs` divergence must keep.
-#[derive(Clone, Copy, PartialEq, Debug)]
-enum LogDivergence {
-    /// A row v4 writes and v5 does not (the whole row is v4-only).
-    V4OnlyRow,
-}
-
-/// P4.129: the `llm_logs` divergences the FIRST HONEST REGEN measured (never
-/// the predicted list), keyed by case + leg — the leg named by the canned
-/// reply its row logs. Each is asserted in BOTH directions
-/// ([`apply_expected_divergences`]): "WRONG SHAPE" if the row differs by
-/// anything but the recorded shape, "unproven" if the row is not seen,
-/// "VANISHED" when v4 and v5 agree — retire an entry by watching it vanish,
-/// never by deleting the assert first.
-const EXPECTED_DIVERGENCES: &[(&str, &str, LogDivergence)] = &[
-    // The three `NameHash` entries P4.129 measured (`textblock_mode`'s one leg,
-    // `agent_force_final`'s primary + native re-stream) tripped VANISHED on
-    // the union once P4.128's `name` slot preceded this family, and were
-    // retired there (the `97b25fc53` smalls unification, §S 2): v4 and v5
-    // now hash the same tail, and those rows compare whole.
-    // `carina_markup`: the Carina (`@Oracle`) consultation's answer stream.
-    // v4's `carina.service.ts:676-686` `runStream` goes through the ONE
-    // `streamMessage` funnel with `userId`/`chatId`/`characterId: answerer.id`
-    // and no `messageId`, so the funnel logs a CHAT_MESSAGE row for it
-    // (`streaming.service.ts:478-515`); v5's `carina_query.rs` `run_stream`
-    // streams through `watch_stream` directly and logs NOTHING. A NEW finding
-    // of P4.129's first honest regen — a CORE hunk this harness lane may not
-    // write (`crates/quilltap-core/**` is outside its ownership); recorded for
-    // the unifier in P4.129's lane record. Pinned both ways so the day
-    // `run_stream` logs the row this entry trips VANISHED.
-    (
-        "carina_markup",
-        "It is high noon.",
-        LogDivergence::V4OnlyRow,
-    ),
-];
-
-/// Apply [`EXPECTED_DIVERGENCES`] to the normalized rows of both sides: each
-/// entry's rows are located (CHAT_MESSAGE, the case's chat, the leg's reply),
-/// their difference checked against the recorded shape, and then made equal
-/// (a `V4OnlyRow` removed from v4's
-/// side). Returns every failure; the caller panics on any.
-fn apply_expected_divergences(
-    got: &mut [Value],
-    want: &mut Vec<Value>,
-    chat_of_case: &HashMap<String, String>,
-) -> Vec<String> {
-    let reply = |r: &Value| -> Option<String> {
-        let resp: Value = serde_json::from_str(&decoded_log_cell(&r["response"])?).ok()?;
-        resp["content"].as_str().map(String::from)
-    };
-    let is_leg = |r: &Value, chat: &str, leg: &str| {
-        r["type"] == "CHAT_MESSAGE" && r["chatId"] == chat && reply(r).as_deref() == Some(leg)
-    };
-    let mut failures = Vec::new();
-    for (case, leg, shape) in EXPECTED_DIVERGENCES {
-        let chat = chat_of_case
-            .get(*case)
-            .unwrap_or_else(|| panic!("EXPECTED_DIVERGENCES names `{case}`, not in the corpus"));
-        let g: Vec<usize> = (0..got.len())
-            .filter(|&i| is_leg(&got[i], chat, leg))
-            .collect();
-        let w: Vec<usize> = (0..want.len())
-            .filter(|&i| is_leg(&want[i], chat, leg))
-            .collect();
-        match shape {
-            LogDivergence::V4OnlyRow => match (g.len(), w.len()) {
-                (0, 1) => {
-                    want.remove(w[0]);
-                }
-                (1, 1) => failures.push(format!(
-                    "{case} / {leg:?}: the v4-only row VANISHED — v5 logs it now; delete this EXPECTED_DIVERGENCES entry and let the row compare whole"
-                )),
-                (gn, wn) => failures.push(format!(
-                    "{case} / {leg:?}: the v4-only row is unproven or the WRONG SHAPE — v5 has {gn} row(s), v4 {wn} (want 0 and 1)"
-                )),
-            },
-        }
-    }
-    common::sort_by_canonical_json(got);
-    common::sort_by_canonical_json(want);
-    failures
-}
+// P4.140 RETIRED the `llm_logs` divergence machinery (`LogDivergence`,
+// `EXPECTED_DIVERGENCES`, `apply_expected_divergences` — P4.129's both-ways
+// pins). Its last entry, `("carina_markup", "It is high noon.", V4OnlyRow)` —
+// v4's `runStream` (`carina.service.ts:676-686`) logs a `CHAT_MESSAGE` row per
+// call through the one `streamMessage` funnel (`streaming.service.ts:476-514`)
+// and v5's `carina_query::run_stream` logged nothing — tripped VANISHED the day
+// `run_stream` wrote the row through `log_loop_leg`, and was deleted in that
+// commit; the row now compares WHOLE (`characterId` = the answerer, NULL
+// `messageId`, the request summary, usage, `requestHashes`). With no entry left
+// the enum had no constructed variant, so the whole mechanism went (the §S 2
+// precedent of the `97b25fc53` smalls unification); a future measured row
+// divergence re-adds it with its first entry.
 
 /// P4.137: the stream-frame divergences the arms of this family measured, keyed
 /// by case + the v4-only frame's exact JSON. Asserted in BOTH directions by
-/// [`apply_expected_event_divergences`], with the same retire-by-VANISHED
-/// contract as [`EXPECTED_DIVERGENCES`].
+/// [`apply_expected_event_divergences`], with the retire-by-VANISHED contract
+/// P4.129's (since retired) `llm_logs` table used.
 const EXPECTED_EVENT_DIVERGENCES: &[(&str, &str)] = &[
     // EMPTY since P4.140. Its one entry — `empty_content_image_on_vision_seat`'s
     // `{"fileProcessing":[{"filename":"lb_fit_a.webp","type":"unsupported",
@@ -2979,14 +2909,9 @@ fn orchestrator_tier3_matches_oracle() {
             "v4's clock-bearing historyTailHash rows are not exactly CLOCK_TAIL_LEGS"
         );
     }
-    let divergence_failures =
-        apply_expected_divergences(&mut got_logs, &mut want_logs, &chat_of_case);
+    common::sort_by_canonical_json(&mut got_logs);
+    common::sort_by_canonical_json(&mut want_logs);
     report_llm_log_diffs(&got_logs, &want_logs);
-    assert!(
-        divergence_failures.is_empty(),
-        "EXPECTED_DIVERGENCES:\n  {}",
-        divergence_failures.join("\n  ")
-    );
     assert_eq!(
         got_logs.len(),
         want_logs.len(),

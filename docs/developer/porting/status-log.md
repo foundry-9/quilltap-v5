@@ -161901,3 +161901,48 @@ empty, the tree dirty by exactly the three recorded docs paths).
   key-order-blind — RECORDED as invisible to the family) and the new unit
   test `chat_events::tests::file_processing_frame_bytes_are_v4s` RED.
 - Unit gate: core lib 2864/0; clippy both feature sets; fmt.
+
+### Unit 4 — Carina's missing `CHAT_MESSAGE` row (Tier 1 item 11; Tier 2 item 12; M8, M9)
+
+- **Landed:** `StreamCtx` gains `db: &Db` and `profile: EffectiveProfile`
+  (`orchestrator::to_effective_profile` over the answering profile, built once
+  where the ctx is built); `run_stream` takes its own
+  `started_at_ms = clock::now_unix_ms()` immediately before the stream call,
+  `observe`s a `LegUsage` on every `Ok` chunk, and at the `done` chunk calls
+  `log_loop_leg(db, &LegLogIds { user_id, chat_id, message_id: "",
+  character_id: Some(answerer_id), log_context: &LogContext::none() }, …,
+  Some(&profile), &params, answer.clone(), &leg, raw.clone())`. All three call
+  sites (initial, loop, forced final) unchanged, all logging. Doc comment cites
+  `carina.service.ts:676-686` + `streaming.service.ts:476-514`.
+- **Red-first** (the lane-private oracle): with the hunk landed and the entry
+  present, `EXPECTED_DIVERGENCES: carina_markup / "It is high noon.": the
+  v4-only row VANISHED` — exactly one row (the NDJSON's `llmlogs` record has
+  219 rows and exactly one carrying `high noon`). Entry deleted → 1/1 green
+  with the row compared WHOLE. **No `CLOCK_TAIL_LEGS` addition** — measured:
+  the Carina leg's `historyTailHash` carries no clock.
+- **Retired:** with no entry left `LogDivergence` had no constructed variant;
+  the enum, `EXPECTED_DIVERGENCES` and `apply_expected_divergences` were
+  DELETED (nothing else referenced them — the §S 2 precedent), the call site
+  keeping the canonical sort the applier used to do; a comment block records
+  the retirement where they stood; the module doc's point 3 updated.
+  `EXPECTED_EVENT_DIVERGENCES` (unit 3) stays, empty.
+- **M8** (the `log_loop_leg` call removed) → `llm_logs row count diverges (got
+  218 vs oracle 219)`. **M9** (`character_id: None`) → `characterId differs:
+  got null want "0ac1e000-…"` on the `It is high noon.` row.
+- **Tier 2 item 12 — landed in a MEASURED form (the order's premise was
+  short):** `MAX_TOOL_ITERATIONS` is 5, so a consult whose third leg is the
+  forced final cannot exist — "two tool replies then text" ends on a loop turn
+  that still offers tools; the forced final needs SEVEN legs, over a seeded
+  chat/answerer/profile fixture only the harness's `carina_query_tier3` owns.
+  The pin instead drives `run_stream` itself exactly as its three call sites
+  do (tools, tools, `[]`/`false`) through a provisioned llm-logs partition:
+  `carina_query::tests::every_carina_stream_call_logs_its_own_chat_message_row`
+  — THREE `CHAT_MESSAGE` rows, each `characterId` = the answerer, NULL
+  `messageId`, the profile's id, THAT call's own `promptTokens` (11/22/33),
+  the request summary's `toolCount` 1/1/0 (the writer summarizes `tools` as a
+  count — measured, the order's "no `tools` in its request" is `toolCount: 0`),
+  and NO row for a fourth call with an empty `userId` (the funnel gate).
+- **Neutrality to record at the sweep:** `carina_query_tier3` opens its `Db`
+  with `llm_logs: None` (the write fails soft) — run below.
+- Unit gate: core lib 2865/0; `orchestrator_tier3` 1/1; clippy both feature
+  sets; fmt.

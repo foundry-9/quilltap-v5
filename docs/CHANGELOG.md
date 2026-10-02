@@ -204,6 +204,12 @@ _Versions: core 0.0.1148, harness 0.0.1076._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `db::api_keys::marshal_row` now reads `isActive` the way v4's SQLite hydrate does: NULL is `true` (the Zod default), a number is active only when it equals 1, and any other cell is truthy unless it is an empty string. Before, v5 refused a NULL, text, fractional or BLOB cell outright and treated `2` as active. `get_api_keys_by_user_id` now drops a row it cannot marshal (or whose `provider` is empty) with v4's `API key validation failed {keyId, userId, error}` WARN and returns the rest; one bad row used to fail the whole list. The empty-provider drop now logs Zod's own message, byte for byte. `api_keys_tier2_equivalence` gains six seeded `isActive` rows read back through v4's real `findApiKeyById`, a BLOB-`key_value` row for user A, and the drop's WARN lines; it was red on 8 before the fix (P4.139).
+#### 2026-10-02 — fix(carina): log a CHAT_MESSAGE llm_logs row for every Carina stream call (P4.140)
+
+_Versions: core 0.0.1150, harness 0.0.1078._
+
+v4's Carina consultation streams through the one `streamMessage` funnel, which writes a `CHAT_MESSAGE` `llm_logs` row per call (`characterId` = the answerer, no `messageId`) for the initial call, every tool-loop turn and the forced-text final. v5's `carina_query::run_stream` logged nothing, so `@Carina` and `ask_carina` consults never showed in the LLM Inspector. `run_stream` now tracks the call's usage and start time and writes the row at the `done` chunk through the existing `log_loop_leg` (same `userId` gate). `orchestrator_tier3`'s recorded `carina_markup` divergence tripped VANISHED and is deleted along with the now-unused `LogDivergence` machinery; the row compares whole. A new unit test drives `run_stream` the way its three call sites do and checks three rows, each with its own usage, and none for an empty user id.
+
 #### 2026-10-02 — feat(salon): send v4's fileProcessing stream frame before the validating status (P4.140)
 
 _Versions: core 0.0.1149, harness 0.0.1077._

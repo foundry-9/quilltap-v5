@@ -616,6 +616,10 @@ where
     };
 
     let stream_ctx = StreamCtx {
+        db,
+        // v4's funnel logs `connectionProfile.id` / provider / model off the
+        // answering profile (`streaming.service.ts:476-514`).
+        profile: crate::services::orchestrator::to_effective_profile(&connection_profile),
         provider: &provider,
         base_url: base_url.as_deref(),
         model: &model_name,
@@ -1151,6 +1155,10 @@ where
 // ===========================================================================
 
 struct StreamCtx<'a> {
+    /// The partitions the per-call `CHAT_MESSAGE` row is written to (P4.140).
+    db: &'a Db,
+    /// The answering profile as the funnel's log row names it (P4.140).
+    profile: crate::services::primary_stream::EffectiveProfile,
     provider: &'a str,
     base_url: Option<&'a str>,
     model: &'a str,
@@ -1171,6 +1179,16 @@ struct StreamCtx<'a> {
 
 /// Accumulate one streamed LLM call into `(answer, rawResponse)` — v4's
 /// `runStream`. Only the offered tool slate + native-web-search flag vary.
+///
+/// **Each call logs its own `CHAT_MESSAGE` `llm_logs` row** (P4.140, P4.129's
+/// finding): v4's `runStream` (`carina.service.ts:676-686`) goes through the
+/// ONE `streamMessage` funnel with `userId`, `chatId`, `characterId:
+/// answerer.id` and no `messageId`, and the funnel logs at `chunk.done`
+/// whenever `userId` is truthy (`streaming.service.ts:476-514`) — so the
+/// initial call, every tool-loop turn and the forced-text final each write a
+/// row. v5 has no funnel; this call site writes it through P4.121's
+/// [`log_loop_leg`](crate::services::primary_stream::log_loop_leg), which keeps
+/// the `userId` gate, with this call's own usage and wall time.
 async fn run_stream<STR: StreamingCompletionProvider>(
     streaming: &STR,
     ctx: &StreamCtx<'_>,
@@ -1211,6 +1229,8 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     // The watchdog turns that into an ordinary `Err` (v4 `f90144ac4`, bug 141;
     // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
     // consumers).
+    // This call's own start (v4's per-call `startTime` in the funnel).
+    let started_at_ms = crate::clock::now_unix_ms();
     let mut rx = watch_stream(
         streaming
             .stream_message_keyed(ctx.provider, ctx.base_url, ctx.api_key, &params)
@@ -1225,12 +1245,32 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     );
     let mut answer = String::new();
     let mut raw: Option<Value> = None;
+    let mut leg = crate::services::primary_stream::LegUsage::default();
     while let Some(chunk) = rx.recv().await {
         match chunk {
             Ok(c) => {
+                leg.observe(&c);
                 answer.push_str(&c.content);
                 if c.done {
                     raw = c.raw_response;
+                    crate::services::primary_stream::log_loop_leg(
+                        ctx.db,
+                        &crate::services::primary_stream::LegLogIds {
+                            user_id: ctx.user_id,
+                            chat_id: ctx.chat_id,
+                            // No `messageId` (v4 passes none) → a NULL cell.
+                            message_id: "",
+                            character_id: Some(ctx.answerer_id),
+                            log_context: &crate::services::llm_logging::LogContext::none(),
+                        },
+                        started_at_ms,
+                        Some(&ctx.profile),
+                        &params,
+                        answer.clone(),
+                        &leg,
+                        raw.clone(),
+                    )
+                    .await;
                 }
             }
             Err(_) => break,
@@ -1361,6 +1401,199 @@ impl EventSink for NoopSink {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// One canned answer per call, in order (the three Carina call sites issue
+    /// different message lists, so a keyed canned provider cannot script them).
+    struct QueuedStream {
+        answers: std::sync::Mutex<
+            std::collections::VecDeque<Vec<crate::model::stream::StreamChunkResult>>,
+        >,
+    }
+
+    impl StreamingCompletionProvider for QueuedStream {
+        fn stream_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &StreamParams,
+        ) -> impl Future<Output = tokio::sync::mpsc::Receiver<crate::model::stream::StreamChunkResult>>
+               + Send {
+            let seq = self
+                .answers
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("a queued answer");
+            async move {
+                let (tx, rx) = tokio::sync::mpsc::channel(seq.len().max(1));
+                for item in seq {
+                    let _ = tx.send(item).await;
+                }
+                rx
+            }
+        }
+    }
+
+    fn answer(text: &str, prompt_tokens: i64) -> Vec<crate::model::stream::StreamChunkResult> {
+        use crate::model::stream::{StreamChunk, StreamUsage};
+        vec![
+            Ok(StreamChunk {
+                content: text.to_string(),
+                ..Default::default()
+            }),
+            Ok(StreamChunk {
+                done: true,
+                usage: Some(StreamUsage {
+                    prompt_tokens,
+                    completion_tokens: 3,
+                    total_tokens: prompt_tokens + 3,
+                }),
+                raw_response: Some(json!({ "finish_reason": "stop" })),
+                ..Default::default()
+            }),
+        ]
+    }
+
+    /// P4.140 (Tier 2 item 12): EVERY Carina `run_stream` call writes its own
+    /// `CHAT_MESSAGE` row — v4's `runStream` is called at three sites (the
+    /// initial call, each tool-loop turn, the forced-text final with `[]` tools
+    /// and `false`), each one a `streamMessage` funnel call that logs at
+    /// `chunk.done` behind `if (userId)` (`carina.service.ts:669-690, 693, 733,
+    /// 754`; `streaming.service.ts:476-514`). The corpus has only a single-leg
+    /// Carina, so it cannot tell "per call" from "once per consult"; this does,
+    /// driving `run_stream` exactly as the three sites do over a real
+    /// llm-logs partition. Each row: `characterId` = the answerer, `messageId`
+    /// NULL, the answering profile's id, THIS call's usage; the forced final's
+    /// request carries no `tools`; an empty `userId` writes nothing.
+    ///
+    /// (A whole `run_carina_query` consult would need SEVEN legs to reach the
+    /// forced final — `MAX_TOOL_ITERATIONS` is 5 — over a seeded chat /
+    /// answerer / profile fixture the harness's `carina_query_tier3` owns; the
+    /// three call sites all call this one function unchanged.)
+    #[tokio::test]
+    async fn every_carina_stream_call_logs_its_own_chat_message_row() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER)
+            .expect("provision an instance with an llm-logs partition");
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: None,
+                llm_logs: Some(data.join("quilltap-llm-logs.db")),
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let streaming = QueuedStream {
+            answers: std::sync::Mutex::new(
+                vec![
+                    answer("", 11),
+                    answer("", 22),
+                    answer("It is high noon.", 33),
+                    answer("unlogged", 44),
+                ]
+                .into(),
+            ),
+        };
+        let profile_row = json!({
+            "id": "cp-oracle",
+            "name": "Oracle seat",
+            "provider": "OPENAI",
+            "modelName": "gpt-test",
+        });
+        let ctx = |user_id: &'static str| StreamCtx {
+            db: &db,
+            profile: crate::services::orchestrator::to_effective_profile(&profile_row),
+            provider: "OPENAI",
+            base_url: None,
+            model: "gpt-test",
+            temperature: Some(0.7),
+            max_tokens: None,
+            top_p: None,
+            profile_parameters: None,
+            api_key: "k",
+            user_id,
+            chat_id: "chat-c",
+            answerer_id: "char-answerer",
+        };
+        let messages = vec![StreamMessage::user("What time is it?")];
+        let tools = vec![json!({ "type": "function", "function": { "name": "search" } })];
+        // The initial call and a tool-loop turn (tools offered), then the
+        // forced-text final (`[]`, `false`) — the three sites' shapes.
+        run_stream(&streaming, &ctx("u1"), &messages, &tools, false).await;
+        run_stream(&streaming, &ctx("u1"), &messages, &tools, false).await;
+        let (final_answer, _) = run_stream(&streaming, &ctx("u1"), &messages, &[], false).await;
+        assert_eq!(final_answer, "It is high noon.");
+        // v4's funnel gate: no `userId`, no row.
+        run_stream(&streaming, &ctx(""), &messages, &tools, false).await;
+
+        type Row = (
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+            String,
+        );
+        let rows: Vec<Row> = db
+            .read_llm_logs(|c| {
+                let mut st = c.prepare(
+                    "SELECT type, characterId, messageId, connectionProfileId, chatId, \
+                     qt_text(request), qt_text(usage) FROM llm_logs ORDER BY createdAt, rowid",
+                )?;
+                let rows = st
+                    .query_map([], |r| {
+                        Ok((
+                            r.get(0)?,
+                            r.get(1)?,
+                            r.get(2)?,
+                            r.get(3)?,
+                            r.get(4)?,
+                            r.get(5)?,
+                            r.get(6)?,
+                        ))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .unwrap();
+        assert_eq!(rows.len(), 3, "one row per userId-bearing call: {rows:?}");
+        for (i, (ty, character, message, profile, chat, _, usage)) in rows.iter().enumerate() {
+            assert_eq!(ty, "CHAT_MESSAGE");
+            assert_eq!(character.as_deref(), Some("char-answerer"));
+            assert_eq!(message, &None, "Carina passes no messageId");
+            assert_eq!(profile.as_deref(), Some("cp-oracle"));
+            assert_eq!(chat, "chat-c");
+            let usage: Value = serde_json::from_str(usage).unwrap();
+            assert_eq!(
+                usage["promptTokens"],
+                json!(11 * (i as i64 + 1)),
+                "row {i} logs its OWN call's usage"
+            );
+        }
+        // The stored request summarizes the offered tools as `toolCount` (the
+        // llm-logs writer's request summary of v4's `tools`).
+        let request = |i: usize| -> Value { serde_json::from_str(&rows[i].5).unwrap() };
+        assert_eq!(
+            request(0)["toolCount"],
+            json!(1),
+            "the initial call offers tools"
+        );
+        assert_eq!(
+            request(1)["toolCount"],
+            json!(1),
+            "a tool-loop turn offers tools"
+        );
+        assert_eq!(
+            request(2)["toolCount"],
+            json!(0),
+            "the forced final offers none (v4 `tools.length > 0 ? tools : undefined`)"
+        );
+    }
 
     /// P4.136: Carina's key read is v4's UNSCOPED fallback `findApiKeyById`
     /// (`carina.service.ts:516-519`) — a corrupt row logs the repository's
