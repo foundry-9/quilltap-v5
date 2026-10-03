@@ -297,6 +297,12 @@ _Versions: core 0.0.1148, harness 0.0.1075._
 _Versions: core 0.0.1147._
 
 `log_chat_create_validation_failure` now logs the three repository ERRORs v4 logs when `repos.chats.create` refuses a chat — `Data validation failed`, `Error creating entity`, and the missing `Failed to create chat` from `chats.repository.ts`'s own `safeQuery` — on both the restore and the `.qtap` import paths. The unit test pins three lines in order; a sibling test records that on v5's serde arm all three carry serde's sentence where v4 carries a ZodError (a recorded divergence, Tier 3).
+#### 2026-10-02 — docs(porting): rule the brotli stored-byte divergence acceptable (P4.144)
+
+_Versions: harness 0.0.1077._
+
+The human ruled that the ten memory-extraction `request` rows whose stored brotli bytes differ from v4's are acceptable: both sides decode the other's bytes to the same text, so reads are unaffected and no codec change is ordered. `memory_pipeline_jobs_tier3_equivalence`'s `STORED_BYTE_DIVERGENCES` pin is re-documented as a ruled divergence (it said escalated); the comparison and the count are unchanged. The lane record and the work order's status header record the ruling; the parity claim in `db/text_compression.rs`'s module doc is left for the unifier.
+
 #### 2026-10-02 — docs(porting): P4.144 lane record, gate and status header
 
 _Docs-only change._

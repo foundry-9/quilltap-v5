@@ -162846,3 +162846,25 @@ INSERT ON memories` trigger for one character → one `WARN … Failed to write
 episode for character … error=<bare SQLite message>` with the other
 character's episode written. (Plant an UPDATE trigger only with the
 changed-links guard — a bare one fires inside the gate.)
+
+### Ruling — the brotli stored-byte divergence (the human, 2026-10-02)
+
+**ACCEPTED, no codec change.** The ten MEMORY_EXTRACTION `request` BLOBs whose
+stored brotli bytes differ from v4's (Unit 3's escalation) are fine: v4 and v5
+each decode the other's bytes to the identical text, so the difference is not
+behaviour. The escalation is closed as a RULED divergence.
+
+- `memory_pipeline_jobs_tier3_equivalence.rs`: `STORED_BYTE_DIVERGENCES` is
+  re-documented as RULED (it had said "escalated, not ruled"). The comparand
+  stays as built: compressed cells compared DECODED (the contract the ruling
+  sets), the count pinned both ways — a converged codec retires the pin; a
+  corpus change is re-measured, each moved row confirmed to decode
+  identically, and the number updated. harness 0.0.1077.
+- **For the unifier:** `db/text_compression.rs`'s module doc still claims
+  byte parity ("35 encode rows, byte-identical on every one"). That file is
+  outside P4.144, so the doc is NOT edited here. It should gain a sentence
+  naming this ruled exception (JSON request envelopes of ~9–12 KB store
+  different bytes than Node's brotli; reads are unaffected; ruled acceptable
+  2026-10-02) — the unifier's call where it lands.
+- §S handoff 5 (Unit 3's close) stands with the new reading: a codec change
+  trips the pin, which then retires by measurement.

@@ -374,19 +374,28 @@ fn normalize_all(dumps: &mut [Value]) {
 // P4.144: the `llm_logs` comparand's compressed cells.
 // ---------------------------------------------------------------------------
 
-/// ESCALATED, not ruled (P4.144): the number of `llm_logs` rows whose STORED
-/// compressed bytes differ from v4's while decoding to the identical text.
-/// `db::text_compression`'s module doc records encoder byte parity with
-/// Node's brotli (35 rows to 262,293 bytes); this family's corpus refutes it on
-/// all ten MEMORY_EXTRACTION `request` payloads (8,919–11,702 raw bytes; two
-/// store 1–2 bytes LONGER on v5), while the six ≤ 2,516-byte rows match.
-/// Measured out of tree against the same `brotli` 8.0.4 crate: the
-/// `CompressorWriter` (any buffer size) and the one-shot `BrotliCompress` both
-/// differ from Node 24.13.1's bundled C brotli at `QUALITY 5` + `SIZE_HINT`,
-/// which the oracle's bytes equal exactly — the divergence is inside the
-/// encoder, not the call shape. The codec is not this lane's file, so the
-/// family compares the cells DECODED and pins this count in both directions:
-/// a codec fix trips it (retire the pin), and so does any new divergence.
+/// RULED 2026-10-02 (the human, on P4.144's escalation): an ACCEPTED
+/// divergence. The number of `llm_logs` rows whose STORED compressed bytes
+/// differ from v4's while decoding to the identical text. The ruling: this is
+/// fine, because both sides READ the same — v4 and v5 each decode the other's
+/// bytes to the same text, so the stored-byte difference is not behaviour.
+/// No codec change is ordered.
+///
+/// The measurement behind it: `db::text_compression`'s module doc records
+/// encoder byte parity with Node's brotli (35 rows to 262,293 bytes); this
+/// family's corpus breaks it on all ten MEMORY_EXTRACTION `request` payloads
+/// (8,919–11,702 raw bytes; two store 1–2 bytes LONGER on v5), while the six
+/// ≤ 2,516-byte rows match. Measured out of tree against the same `brotli`
+/// 8.0.4 crate: the `CompressorWriter` (any buffer size) and the one-shot
+/// `BrotliCompress` both differ from Node 24.13.1's bundled C brotli at
+/// `QUALITY 5` + `SIZE_HINT`, which the oracle's bytes equal exactly — the
+/// divergence is inside the encoder, not the call shape.
+///
+/// So the family compares the cells DECODED (the comparand the ruling makes
+/// the contract) and pins this count in both directions, the ruled-divergence
+/// shape: a codec change that converges trips it (retire the pin), and a
+/// corpus change that moves the count trips it (re-measure, confirm every
+/// moved row still decodes identically, update the number).
 const STORED_BYTE_DIVERGENCES: usize = 10;
 
 /// A dumped cell holding a compressed text BLOB arrives as hex (the shared
@@ -790,8 +799,8 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
     assert_eq!(
         stored_byte_divergences, STORED_BYTE_DIVERGENCES,
         "llm_logs rows whose stored brotli bytes differ from v4's (decoded text identical) \
-         moved from the escalated count — see `STORED_BYTE_DIVERGENCES`: a codec fix \
-         retires the pin, a rise is a new encoder divergence"
+         moved from the ruled count — see `STORED_BYTE_DIVERGENCES`: a converged codec \
+         retires the pin; a corpus change is re-measured and the number updated"
     );
 
     println!(
