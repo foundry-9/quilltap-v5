@@ -799,6 +799,34 @@ async function main(): Promise<void> {
         );
       },
     },
+    // P4.D246 (v4 `9753d0eb2`): the PUT's post-write enrichment FAILING. A
+    // roster member's vault keystone is deleted through the REAL
+    // deleteDatabaseDocument (Aria is on Iota's roster), so `enrichProject`'s
+    // `characters.findById` throws `CharacterVaultUnavailableError` — the
+    // overlay runs OUTSIDE the repository's safeQuery — AFTER
+    // `repos.projects.update` committed. `handlePutDefault` has no local
+    // try/catch, so the throw reaches the middleware's contextful 503; the
+    // dump proves the rename LANDED anyway. (The GET's local catch would have
+    // answered its fixed 500 here — this arm is what tells the two apart.)
+    {
+      name: 'update_enrich_store_corrupt',
+      run: async () => {
+        const { rawQuery } = await import('@/lib/database/manager');
+        const rows = (await rawQuery(
+          `SELECT characterDocumentMountPointId AS mp FROM characters WHERE id = '${ARIA}'`,
+        )) as Array<{ mp: string | null }>;
+        const mp = rows[0]?.mp;
+        if (!mp) throw new Error('aria has no characterDocumentMountPointId');
+        const { deleteDatabaseDocument } = await import('@/lib/mount-index/database-store');
+        await deleteDatabaseDocument(mp, 'properties.json');
+        const r = await (await loadRoute(idRoute)).PUT(
+          mockRequest(`${B}/${IOTA}`, { name: 'Iota Renamed Behind A Broken Vault' }),
+          p(IOTA),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpProjectTables() };
+      },
+    },
   ];
 
   const outLines: string[] = [];

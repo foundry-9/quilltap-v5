@@ -295,6 +295,95 @@ pub async fn project_create(db: &Db, body: Value) -> Response {
 // Get (v4 handleGetDefault) — enriched roster + _count.
 // ===========================================================================
 
+/// v4 `enrichProject` (`app/api/v1/projects/[id]/actions/project-crud.ts:19-68`
+/// since `9753d0eb2` — the GET's former body, lifted into the ONE helper the GET
+/// and the PUT now share). v4's doc sentence, verbatim: *"The project as the
+/// detail page consumes it: the roster expanded from bare ids to display
+/// entries, plus chat/file/character counts. Every response the page swaps into
+/// its state must carry this shape, or the Characters card reads string ids as
+/// entries and shows an empty roster."*
+///
+/// The shape is `{ ...project, characterRoster: <entries>, _count }`: the
+/// project's own keys in place, `characterRoster` REPLACED in position
+/// (serde_json's `preserve_order` map is the JS spread-then-assign twin),
+/// `_count` appended LAST. Per roster id: `characters.findById` (a miss is
+/// DROPPED — `filter(Boolean)`), `chatCount` = the project's chats whose
+/// `participants` include the character, `enrichWithDefaultImage`. Note
+/// `_count.characters` counts the STORED roster, misses included, so it may
+/// exceed `characterRoster.len()`. Errors PROPAGATE — each caller decides the
+/// envelope (the GET's fixed 500, the PUT's middleware 503).
+fn enrich_project(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    project: Value,
+) -> Result<Value, DbError> {
+    let pid = project
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let chats = project_chats(main, &pid)?;
+    let files = FilesRepository::new(main);
+    let file_count = files.count_by_project_id(&pid)? as usize;
+    let roster = roster_of(&project);
+
+    let mut enriched_roster = Vec::new();
+    for char_id in &roster {
+        let Some(char) = characters_read::find_by_id(main, mount, char_id)? else {
+            continue;
+        };
+        // chats in this project that include this character as a participant.
+        let chat_count = chats
+            .iter()
+            .filter(|c| {
+                c.get("participants")
+                    .and_then(Value::as_array)
+                    .map(|ps| {
+                        ps.iter().any(|p| {
+                            p.get("characterId").and_then(Value::as_str) == Some(char_id.as_str())
+                        })
+                    })
+                    .unwrap_or(false)
+            })
+            .count();
+        let default_image_id = char.get("defaultImageId").and_then(Value::as_str);
+        let default_image = enrich_with_default_image(main, mount, default_image_id)?;
+        let mut entry = Map::new();
+        entry.insert("id".into(), char.get("id").cloned().unwrap_or(Value::Null));
+        entry.insert(
+            "name".into(),
+            char.get("name").cloned().unwrap_or(Value::Null),
+        );
+        // v4 `defaultImageId: char.defaultImageId` — JS omits an `undefined`
+        // value on stringify; the overlay leaves the key absent/null when the
+        // character has no avatar, so mirror the present-non-null rule.
+        match char.get("defaultImageId") {
+            Some(v) if !v.is_null() => {
+                entry.insert("defaultImageId".into(), v.clone());
+            }
+            _ => {}
+        }
+        entry.insert(
+            "defaultImage".into(),
+            serde_json::to_value(default_image).unwrap_or(Value::Null),
+        );
+        entry.insert(
+            "tags".into(),
+            char.get("tags").cloned().unwrap_or(json!([])),
+        );
+        entry.insert("chatCount".into(), json!(chat_count));
+        enriched_roster.push(Value::Object(entry));
+    }
+
+    let mut obj = project.as_object().cloned().unwrap_or_default();
+    obj.insert("characterRoster".into(), Value::Array(enriched_roster));
+    obj.insert(
+        "_count".into(),
+        json!({ "chats": chats.len(), "files": file_count, "characters": roster.len() }),
+    );
+    Ok(Value::Object(obj))
+}
+
 pub fn project_get(db: &Db, project_id: &str) -> Response {
     let pid = project_id.to_string();
     let result = read_both(db, move |main, mount| {
@@ -302,72 +391,12 @@ pub fn project_get(db: &Db, project_id: &str) -> Response {
         let Some(project) = repo.find_by_id(&pid).map_err(overlay_to_db)? else {
             return Ok(None);
         };
-        let chats = project_chats(main, &pid)?;
-        let files = FilesRepository::new(main);
-        let file_count = files.count_by_project_id(&pid)? as usize;
-        let roster = roster_of(&project);
-
-        let mut enriched_roster = Vec::new();
-        for char_id in &roster {
-            let Some(char) = characters_read::find_by_id(main, mount, char_id)? else {
-                continue;
-            };
-            // chats in this project that include this character as a participant.
-            let chat_count = chats
-                .iter()
-                .filter(|c| {
-                    c.get("participants")
-                        .and_then(Value::as_array)
-                        .map(|ps| {
-                            ps.iter().any(|p| {
-                                p.get("characterId").and_then(Value::as_str)
-                                    == Some(char_id.as_str())
-                            })
-                        })
-                        .unwrap_or(false)
-                })
-                .count();
-            let default_image_id = char.get("defaultImageId").and_then(Value::as_str);
-            let default_image = enrich_with_default_image(main, mount, default_image_id)?;
-            let mut entry = Map::new();
-            entry.insert("id".into(), char.get("id").cloned().unwrap_or(Value::Null));
-            entry.insert(
-                "name".into(),
-                char.get("name").cloned().unwrap_or(Value::Null),
-            );
-            // v4 `defaultImageId: char.defaultImageId` — JS omits an `undefined`
-            // value on stringify; the overlay leaves the key absent/null when the
-            // character has no avatar, so mirror the present-non-null rule.
-            match char.get("defaultImageId") {
-                Some(v) if !v.is_null() => {
-                    entry.insert("defaultImageId".into(), v.clone());
-                }
-                _ => {}
-            }
-            entry.insert(
-                "defaultImage".into(),
-                serde_json::to_value(default_image).unwrap_or(Value::Null),
-            );
-            entry.insert(
-                "tags".into(),
-                char.get("tags").cloned().unwrap_or(json!([])),
-            );
-            entry.insert("chatCount".into(), json!(chat_count));
-            enriched_roster.push(Value::Object(entry));
-        }
-
-        let mut obj = project.as_object().cloned().unwrap_or_default();
-        obj.insert("characterRoster".into(), Value::Array(enriched_roster));
-        obj.insert(
-            "_count".into(),
-            json!({ "chats": chats.len(), "files": file_count, "characters": roster.len() }),
-        );
-        Ok(Some(Value::Object(obj)))
+        Ok(Some(enrich_project(main, mount, project)?))
     });
     match result {
         Ok(Some(project)) => Response::Project(json!({ "project": project })),
         Ok(None) => not_found("Project"),
-        // v4's `handleGetProject` wraps its WHOLE body in a local try/catch →
+        // v4's `handleGetDefault` wraps its WHOLE body in a local try/catch →
         // a FIXED `serverError('Failed to fetch project')` — so the middleware's
         // store-unavailable 503 never fires on the project GET (the routes
         // differential's `get_store_corrupt` arm pins this: 500 + this exact
@@ -523,9 +552,28 @@ pub async fn project_update(db: &Db, project_id: &str, patch: Value) -> Response
     })
     .await;
     match out {
+        // v4 `9753d0eb2`: `successResponse({ project: await enrichProject(project,
+        // repos) })` — the PUT answers the SAME enriched project the GET answers
+        // (roster entries, not ids, + `_count`), so the detail page can swap the
+        // response into its state. The enrichment runs AFTER the write, as a
+        // SEPARATE read: v4's `repos.projects.update` has committed before
+        // `enrichProject` reads, so a failure here leaves the write LANDED and
+        // answers the error — it must not sit inside the writer closure, where
+        // an `Err` could unwind the update v4 keeps. And it PROPAGATES through
+        // `db_error_response` (v4's `handlePutDefault` has no local try/catch —
+        // an unavailable roster member's vault is the middleware's contextful
+        // 503), never the GET's fixed `internal("Failed to fetch project")`.
         Ok(ProjectUpdateOutcome::Updated(project)) => {
-            Response::Project(json!({ "project": project }))
+            match read_both(db, move |main, mount| enrich_project(main, mount, project)) {
+                Ok(project) => Response::Project(json!({ "project": project })),
+                Err(e) => db_error_response(e),
+            }
         }
+        // Reached when the project is absent BEFORE the write, or when the
+        // post-write re-read misses (`repo.update` → `None`). The second is v4
+        // `project-crud.ts:108-110` at `9753d0eb2` (`if (!project) return
+        // notFound('Project')`) — v5 had this arm first (v4 answered 200
+        // `{project: null}` on that race until then): a CONVERGENCE, no code.
         Ok(ProjectUpdateOutcome::NotFound) => not_found("Project"),
         // v4 `validationError(...)` — the `details` issues array is the
         // recorded no-details divergence class.

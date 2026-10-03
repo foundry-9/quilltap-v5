@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — feat(projects): the project PUT answers the enriched project through the one helper the GET uses (v4 `9753d0eb2`, P4.D246 unit 3)
+
+_Versions: core 0.0.1185._
+
+v4's `handlePutDefault` now returns `enrichProject(project)` — the GET's former body lifted into a module helper — so a PUT's echo carries `characterRoster` as display entries (`{id, name, defaultImageId?, defaultImage, tags, chatCount}`) and `_count` exactly as the GET does. `api/projects.rs` lifts `project_get`'s body into `enrich_project` (v4's doc sentence carried verbatim; the project's keys in place, `characterRoster` replaced in position, `_count` last) and `project_update` runs it AFTER the write as a separate read, its error through `db_error_response`: v4's write has committed before `enrichProject` runs and the PUT has no local try/catch, so an unavailable roster member's vault is the middleware's contextful 503 with the rename landed, never the GET's fixed `Failed to fetch project` 500. The `NotFound` arm's comment records that v5's re-read-misses 404 is the arm v4 added at this commit (a convergence; no code).
+
+`projects_routes_equivalence` consumes the two arms recorded at unit 2 — `update_on_empty_roster` (Kappa: `characterRoster: []` + `_count.characters: 0`) and `update_then_get_agree` (a PUT then the GET on Iota, the two bodies asserted identical apart from the minted `updatedAt`, every character id compared raw) — and adds `update_enrich_store_corrupt` on both sides: Aria's vault keystone deleted through the real `deleteDatabaseDocument`, then a PUT on Iota → 503 `{error: 'Character vault unavailable', characterId}` with the dump proving the rename landed (v4 at the baseline answers that arm 200 un-enriched). Red-first at the target: the four standing PUT rows RED on unported main, GREEN after; 81 rows GREEN. Mutations: the raw project answered reddens the four PUT rows + `update_on_empty_roster` and trips `update_then_get_agree`'s own assertion (M4); the enrichment error mapped through the GET's fixed 500 reddens exactly `update_enrich_store_corrupt` on kind and body (M5).
+
 #### 2026-10-03 — feat(projects): a project created without `allowAnyCharacter` opens — the API prefault and a new repository create seed, both `true` (v4 `9753d0eb2`, P4.D246 unit 2)
 
 _Versions: core 0.0.1184._

@@ -15,6 +15,7 @@ use std::path::PathBuf;
 
 use quilltap_core::api::projects;
 use quilltap_core::api::types::{ErrorKind, Response};
+use quilltap_core::db::characters_read;
 use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
 use quilltap_core::db::projects::find_official_mount_point_id_raw;
 use quilltap_core::db::runtime::{Db, DbPaths};
@@ -1330,6 +1331,113 @@ fn projects_routes_match_oracle() {
             json!({ "name": "Iota Should Not Rename" }),
         ));
         check_unavailable("update_store_corrupt", &resp, &mut failed);
+    }
+
+    // ── P4.D246 (v4 `9753d0eb2`): the PUT answers the ENRICHED project ──────
+    // `handlePutDefault` now runs the GET's `enrichProject` over the stored
+    // project AFTER the write. The four standing PUT rows (`update`,
+    // `update_surviving_mode_latest_chat`, `update_unknown_key_stripped`,
+    // `update_clear_description`) pin it on Iota's rich roster; these three
+    // state what they cannot.
+    {
+        // An EMPTY roster: `characterRoster: []` + `_count.characters: 0`.
+        let name = "update_on_empty_roster";
+        let db = fresh_db(&spec, "uoer");
+        let resp = rt.block_on(projects::project_update(
+            &db,
+            KAPPA,
+            json!({ "description": "Kappa, re-described" }),
+        ));
+        check(name, &response_data(&resp), true, &mut failed);
+        let project = &response_data(&resp)["project"];
+        assert_eq!(
+            project["characterRoster"],
+            json!([]),
+            "{name}: the enriched empty roster"
+        );
+        assert_eq!(
+            project["_count"]["characters"],
+            json!(0),
+            "{name}: `_count` is appended even for an empty roster"
+        );
+    }
+    {
+        // The "same shape as GET" claim made a row: a PUT on Iota, then the
+        // GET, both bodies recorded on both sides — and v5's two bodies must be
+        // IDENTICAL apart from the minted `updatedAt` (every other byte,
+        // character ids included, compared raw).
+        let name = "update_then_get_agree";
+        let db = fresh_db(&spec, "utga");
+        let put = response_data(&rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "name": "Iota Agreed" }),
+        )));
+        let get = response_data(&projects::project_get(&db, IOTA));
+        check(name, &json!({ "put": put, "get": get }), true, &mut failed);
+        let strip_updated_at = |v: &Value| {
+            let mut v = v.clone();
+            if let Some(p) = v.get_mut("project").and_then(Value::as_object_mut) {
+                p.remove("updatedAt");
+            }
+            v
+        };
+        assert_eq!(
+            norm(&strip_updated_at(&put)),
+            norm(&strip_updated_at(&get)),
+            "{name}: the PUT's body must be the GET's body (v4 9753d0eb2 — one `enrichProject`)"
+        );
+        assert!(
+            put["project"]["characterRoster"][0].is_object(),
+            "{name}: the PUT's roster entries are objects, not ids"
+        );
+    }
+    {
+        // M5's arm: the enrichment FAILING after the write. Aria (on Iota's
+        // roster) loses her vault keystone through the REAL
+        // delete_database_document, so `characters_read::find_by_id` refuses
+        // `StoreUnavailable` inside `enrich_project` — after `repo.update`
+        // committed. v4's `handlePutDefault` has no local try/catch (the GET
+        // does), so the throw is the middleware's contextful 503
+        // `{error, characterId}`, and the dump proves the rename LANDED. A port
+        // that routed the PUT's enrichment through the GET's fixed
+        // `internal("Failed to fetch project")` answers 500 here and reddens.
+        let name = "update_enrich_store_corrupt";
+        let db = fresh_db(&spec, "corrupt_put_enrich");
+        let aria_vault = db
+            .read_main(|main| characters_read::find_by_id_raw(main, ARIA))
+            .expect("read aria raw")
+            .and_then(|c| {
+                c.get("characterDocumentMountPointId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .expect("aria has a characterDocumentMountPointId");
+        rt.block_on(db.write(move |w| {
+            let mount = w
+                .mount_index()
+                .expect("fixture has a mount-index partition");
+            DocMountFileLinksRepository::new(mount.connection())
+                .delete_database_document(&aria_vault, "properties.json")?;
+            Ok(())
+        }))
+        .expect("delete aria's vault keystone");
+        let resp = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "name": "Iota Renamed Behind A Broken Vault" }),
+        ));
+        check_unavailable(name, &resp, &mut failed);
+        check_tables(name, &dump_project_tables(&db), &mut failed);
+        let renamed = dump_project_tables(&db)["projects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["id"] == IOTA && p["name"] == "Iota Renamed Behind A Broken Vault");
+        assert!(
+            renamed,
+            "{name}: the write must have LANDED before the enrichment failed"
+        );
     }
 
     assert!(failed.is_empty(), "projects-routes FAILED: {failed:?}");
