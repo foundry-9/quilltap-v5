@@ -27,6 +27,16 @@
 //! model that streamed no visible text — a `finalContent` computed as the
 //! last chunk's `.text` (concatenation of its non-thought part text).
 //!
+//! At EOF the SDK throws `Error('Incomplete JSON segment at the end')` when
+//! its buffer still holds non-whitespace text after the last delimiter
+//! (`processStreamResponse`, `if (done) { if (buffer.trim().length > 0) throw
+//! … }` — P4.141, measured: a 2xx body that is not SSE at all, e.g. a plain
+//! JSON object, throws exactly this, and the plugin's catch logs `Error
+//! streaming from Google Gemini API`). The shared splitter would flush that
+//! tail as a last event instead, so the decoder tracks genai's own buffer
+//! beside it ([`GenaiTail`]) — the earliest of the three delimiters, as genai
+//! scans them — and refuses at [`StreamDecoder::finish`] before flushing.
+//!
 //! `is_thinking_model` is a v4 model-name predicate; since the terminal
 //! `finalContent` branch depends on it, the decoder takes it as a construction
 //! input (the manifest/host supplies it, matching v4's `isThinkingModel(model)`).
@@ -35,10 +45,51 @@ use serde_json::Value;
 
 use super::sse::SseParser;
 use super::{DecodeError, StreamChunk, StreamDecoder};
+use crate::jsstr::js_trim;
 use crate::model::stream::{StreamCacheUsage, StreamUsage};
+
+/// `@google/genai` 1.52.0 `processStreamResponse`'s `buffer`: everything after
+/// the last complete event (the module doc). Bytes, since the three
+/// delimiters are ASCII; decoded only for the EOF check.
+#[derive(Default)]
+struct GenaiTail(Vec<u8>);
+
+impl GenaiTail {
+    const DELIMITERS: [&'static [u8]; 3] = [b"\n\n", b"\r\r", b"\r\n\r\n"];
+
+    /// Append a read and drop every complete event, splitting at the
+    /// EARLIEST delimiter each time (genai's `indexOf` over all three).
+    fn push(&mut self, bytes: &[u8]) {
+        self.0.extend_from_slice(bytes);
+        loop {
+            let earliest = Self::DELIMITERS
+                .iter()
+                .filter_map(|d| {
+                    self.0
+                        .windows(d.len())
+                        .position(|w| w == *d)
+                        .map(|i| (i, d.len()))
+                })
+                .min_by_key(|(i, _)| *i);
+            match earliest {
+                Some((i, len)) => {
+                    self.0.drain(..i + len);
+                }
+                None => break,
+            }
+        }
+    }
+
+    /// genai's `buffer.trim().length > 0` at EOF.
+    fn incomplete(&self) -> bool {
+        !js_trim(&String::from_utf8_lossy(&self.0)).is_empty()
+    }
+}
 
 pub struct GooglePartsDecoder {
     sse: SseParser,
+    /// genai's own buffer, for its end-of-stream refusal (P4.141).
+    tail: GenaiTail,
     is_thinking_model: bool,
     total_streamed_content: String,
     reasoning: String,
@@ -58,6 +109,7 @@ impl GooglePartsDecoder {
     pub fn new(is_thinking_model: bool) -> Self {
         Self {
             sse: SseParser::new(),
+            tail: GenaiTail::default(),
             is_thinking_model,
             total_streamed_content: String::new(),
             reasoning: String::new(),
@@ -300,11 +352,16 @@ impl GooglePartsDecoder {
 
 impl StreamDecoder for GooglePartsDecoder {
     fn push(&mut self, bytes: &[u8]) -> Result<Vec<StreamChunk>, DecodeError> {
+        self.tail.push(bytes);
         let events = self.sse.push(bytes);
         self.process_events(events)
     }
 
     fn finish(&mut self) -> Result<Vec<StreamChunk>, DecodeError> {
+        // genai refuses BEFORE it would have flushed anything (P4.141).
+        if !self.done_emitted && self.tail.incomplete() {
+            return Err(DecodeError::new("Incomplete JSON segment at the end"));
+        }
         let events = self.sse.finish();
         let mut out = self.process_events(events)?;
         if !self.done_emitted {
@@ -318,6 +375,36 @@ impl StreamDecoder for GooglePartsDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P4.141: genai's end-of-stream refusal — a non-SSE body (a posed 2xx
+    /// JSON object, v4's `ok_*` rows) and an undelimited tail after a good
+    /// event both throw v4's text; a whitespace tail and an empty body do not.
+    /// Chunk-invariant (genai's buffer is byte-for-byte the concatenation).
+    #[test]
+    fn an_undelimited_tail_is_genais_incomplete_segment() {
+        let event = b"data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hi\"}]}}]}\n\n";
+        for chunk in [0, 1, 7] {
+            for body in [
+                br#"{"choices":[]}"#.to_vec(),
+                b"not json".to_vec(),
+                [event.as_slice(), br#"{"choices":[]}"#].concat(),
+                [event.as_slice(), b"data: {\"candidates\":[]}"].concat(),
+            ] {
+                let err = drive(false, &body, chunk).expect_err("an incomplete tail throws");
+                assert_eq!(err.message, "Incomplete JSON segment at the end", "{chunk}");
+            }
+            for body in [
+                Vec::new(),
+                event.to_vec(),
+                [event.as_slice(), b" \r\n "].concat(),
+            ] {
+                assert!(drive(false, &body, chunk).is_ok(), "{chunk}: {body:?}");
+            }
+        }
+        // The earliest delimiter wins: `\r\n\r\n` contains no `\n\n`.
+        let crlf = b"data: {\"candidates\":[]}\r\n\r\n";
+        assert!(drive(false, crlf, 0).is_ok());
+    }
 
     fn drive(thinking: bool, wire: &[u8], chunk: usize) -> Result<Vec<StreamChunk>, DecodeError> {
         let mut d = GooglePartsDecoder::new(thinking);

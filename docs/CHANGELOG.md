@@ -21,6 +21,12 @@ _Docs-only change._
 - `9753d0eb2` (PORT): the project character roster now gates a character's doc tools, `search_scriptorium` and the project tier of the shared wardrobe through one chokepoint. The roster auto-add on chat create and chat move is removed. `allowAnyCharacter` now defaults to `true`, and the project PUT returns the enriched project. The SPA Characters card and four help pages change too.
 - `e5c6bd0c0` (CONVERGENCE on this port's filings 175/176, shaped differently from P4.135): a failed avatar-roll collapse is now deferred to the next boot instead of being fatal. Separately, a new boot-time structural table check reports damage through a `structure` service in `/api/health`. The ledger gate itself is unchanged.
 - §1 is rewritten for the new state. The previous dirty-tree waiver is spent because v4 committed the 175/176 filings itself.
+#### 2026-10-02 — fix(decoders): Google's stream throws genai's "Incomplete JSON segment at the end" on an undelimited tail
+
+_Versions: core 0.0.1152, harness 0.0.1080._
+
+`@google/genai` throws `Incomplete JSON segment at the end` when non-whitespace text remains in its buffer after the last SSE delimiter at end of stream. A 2xx body that is not SSE triggers this, for example a plain JSON object. v5's `google_parts` decoder used to flush that tail as one more event. It now keeps genai's own buffer beside the shared splitter (the earliest of `\n\n`, `\r\r`, `\r\n\r\n`, as genai scans) and refuses at `finish` before flushing. The plugin's `Error streaming from Google Gemini API` line follows. The last eight pending divergences in `text_http_errors_equivalence` close and the pending table is removed: 540 of v4's 546 plugin ERROR lines now match, and the other six are the pinned Google content-type approximations.
+
 #### 2026-10-02 — fix(model): a 2xx body the v4 plugin cannot read now fails the non-streaming send with v4's thrown text
 
 _Versions: core 0.0.1151, harness 0.0.1079._

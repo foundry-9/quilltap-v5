@@ -1077,46 +1077,6 @@ fn diff_lines(
     (errors, warns)
 }
 
-/// P4.141 PENDING: the divergences the rebuilt corpus measured RED-FIRST on
-/// the tree before the port's units landed, each retired (deleted) by the
-/// unit that closes it — the both-ways check fails a stale entry. Same shape
-/// as [`EXPECTED_DIVERGENCES`].
-const PENDING_P4141: &[(&str, &str, &str, &[&str])] = &[
-    // unit 7 — Google's stream on a non-SSE 2xx body (`Incomplete JSON segment at the end`)
-    (
-        "GOOGLE",
-        "stream",
-        "lines",
-        &[
-            "ok_choice_no_message",
-            "ok_choices_empty",
-            "ok_empty_object",
-            "ok_non_json",
-        ],
-    ),
-    (
-        "GOOGLE",
-        "stream",
-        "outcome",
-        &[
-            "ok_choice_no_message",
-            "ok_choices_empty",
-            "ok_empty_object",
-            "ok_non_json",
-        ],
-    ),
-];
-
-fn expected_any(row: &Row, field: &str) -> bool {
-    expected(row, field)
-        || PENDING_P4141.iter().any(|(p, m, f, cases)| {
-            *p == row.provider
-                && *m == row.mode
-                && *f == field
-                && cases.contains(&row.case.as_str())
-        })
-}
-
 #[test]
 fn text_http_errors_match_v4s_real_plugins() {
     let text = std::fs::read_to_string(CORPUS).unwrap_or_else(|e| panic!("read {CORPUS}: {e}"));
@@ -1236,7 +1196,7 @@ fn text_http_errors_match_v4s_real_plugins() {
                 row.mode.clone(),
                 field.to_string(),
             );
-            if !expected_any(row, field) {
+            if !expected(row, field) {
                 unexpected.push(format!("{} {field}: {detail}", label(row)));
             }
             found.insert(key);
@@ -1260,6 +1220,11 @@ fn text_http_errors_match_v4s_real_plugins() {
     assert_eq!(refused_v4, 162, "v4's refused rows");
     assert_eq!(refused_matched, 160, "v5's matching refusal verdicts");
     assert_eq!(statusless_rows, 40, "the posed status-less rows");
+    // v4 answered (did not throw) on 55 rows: the openai-SDK streams, the
+    // OpenRouter raw stream, Anthropic's / Ollama's zero-chunk streams and
+    // Google's empty-body stream over the 2xx cases, and Google / Ollama /
+    // OpenRouter-raw's sends over the JSON shapes.
+    assert_eq!(ok_rows, 55, "v4's answered rows");
     let unported_missing: Vec<&(&str, &str, &str)> = UNPORTED_PLUGIN_WARN_LINES
         .iter()
         .filter(|(p, m, msg)| {
@@ -1271,8 +1236,7 @@ fn text_http_errors_match_v4s_real_plugins() {
         "UNPORTED_PLUGIN_WARN_LINES entries v4 no longer emits on any row (retire them): {unported_missing:?}"
     );
     let mut missing: Vec<String> = Vec::new();
-    let pinned = EXPECTED_DIVERGENCES.iter().chain(PENDING_P4141.iter());
-    for (p, m, f, cases) in pinned {
+    for (p, m, f, cases) in EXPECTED_DIVERGENCES {
         // "Every case" = every NON-2xx case that has a row for that
         // provider/mode (the GOOGLE-only rows have none elsewhere; P4.141's
         // status-less and 2xx rows carry no refusal side — the marker
@@ -1305,9 +1269,10 @@ fn text_http_errors_match_v4s_real_plugins() {
     );
     // v4 logged 546 plugin ERROR lines across the corpus; this counts the
     // ones on rows whose lines MATCH (a mismatching row is a "lines"
-    // divergence). P4.141 raises it to all 546 as its units land.
+    // divergence): every one but the six GOOGLE lines of the three pinned
+    // content-type approximations (P4.141 — 210 before its units landed).
     assert_eq!(
-        catch_lines, 536,
+        catch_lines, 540,
         "v4's plugin ERROR lines diffed and matched"
     );
 }

@@ -160370,3 +160370,56 @@ cheap path (`compression`, `file_fallback`, the gatekeeper, `memory_recap`,
 `outfit_selections`, `voice_rewrite_core`, `build_context`, `message_context`)
 now see v4's `Err` on these bodies where they saw `Ok("")`; their families
 run in the lane's closing workspace gate.
+
+### Unit 7 — Google's stream on a non-SSE 2xx body (Tier 2 item 10)
+
+MEASURED first: v5's `google_parts` decoder did NOT throw — it flushed the
+undelimited tail through the shared SSE splitter (and found no `data:`
+event) and ended with a done chunk, where `@google/genai` 1.52.0's
+`processStreamResponse` throws `Error('Incomplete JSON segment at the end')`
+whenever `buffer.trim()` is non-empty at EOF (read at the pin,
+`dist/node/index.cjs:13252-13256`). The decoder edit is ONE arm: a
+`GenaiTail` byte buffer kept beside the splitter (genai's earliest-of-three
+delimiter scan), checked in `finish()` BEFORE the flush (`js_trim` — JS
+whitespace). Chunk-invariant by construction; unit pin
+`an_undelimited_tail_is_genais_incomplete_segment` (whole / byte /
+7-byte chunkings; a non-SSE JSON body, `not json`, a good event + an
+undelimited tail; the silence legs: empty body, a clean event, a whitespace
+tail, a `\r\n\r\n`-delimited event). The composer's existing finish arm
+emits Google's line #2 (unit 4).
+**The proof is the text-errors corpus:** its four GOOGLE `stream` `ok_*`
+rows (`ok_choices_empty`, `ok_choice_no_message`, `ok_empty_object`,
+`ok_non_json`) were recorded through the REAL genai and were PENDING on
+`outcome` + `lines` — **8 retired by VANISHING**; the empty-body row stays
+`ok` on both sides (one chunk). **M9** (the tail check disabled) → exactly 8
+(4 `outcome` + 4 `lines`) + the decoder unit pin; reverted, `cmp`-identical.
+`PENDING_P4141` is now EMPTY and DELETED with its plumbing; the family's
+final counts: 880 rows, 162 / 160 refusals, 40 status-less, 55 ok, **540 of
+546** v4 ERROR lines matched (the 6 others are the three pinned Google
+content-type approximations, × 2 modes).
+**Withdrawn, a §S handoff (recorded, not committed):** the order's planned
+`stream_decoders` row — `fixtures/streams/google_parts/google-incomplete-
+tail.wire` (`data: {…"Hello"…}\n\n` + an undelimited `{"candidates":…}`)
+— WAS built and recorded through the real genai at the pin (v4 yields
+`Hello`, then throws, and logs line #2; the six existing google rows
+byte-identical), and `stream_decoders_equivalence` went RED-first on it and
+GREEN with the decoder edit. But `streaming_composer_equivalence` reads the
+SAME `cases.json`, and its `assert_catch_lines` renders only the
+openai-SDK `{context, baseUrl}` line shape — the new row's Google line
+(`{context, model, error}`) cannot be rendered there, and that file is
+LITERALS-ONLY for this lane (§R.10(n)). So the row is NOT committed; the
+unifier (or a successor order) may add the `.wire` + its case + the
+recorded row AND widen `assert_catch_lines` to render v4's context keys in
+order (the `text_http_errors_equivalence` `render_v4_line` rule). The
+recorded row is:
+`{"decoder": "google_parts", "provider": "google", "case":
+"google-incomplete-tail", "error": "Incomplete JSON segment at the end",
+"chunks": [{"content": "Hello", "done": false}], "thrown": {"message":
+"Incomplete JSON segment at the end", "name": "Error"}, "refusal":
+{"refused": false}, "trigger": "provider-error", "pluginErrorLog":
+[{"plugin": "qtap-plugin-google", "message": "Error streaming from Google
+Gemini API", "context": {"context": "GoogleProvider.streamMessage",
+"model": "gemini-2.5-flash", "error": "Incomplete JSON segment at the
+end"}, "error": null}]}`.
+Gate for this unit: `stream_decoders` 5/5 and `streaming_composer` 5/5
+(the existing google rows neutral under the edit); core `google_parts` 8/8.
