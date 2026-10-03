@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — fix(unify): the e5c6bd0c0 round's review findings — the created doc_mount_files keeps its sha256 index, a failed index rolls its table back, a lock clears the structural record, an empty projectId is missing context, the update INFO pinned before a failing enrichment
+
+_Versions: core 0.0.1199, host 0.0.179, tauri 0.0.9, SPA 0.5.797._
+
+Fixes from the unification review of P4.D245–P4.D248. (1) `db/table_shape.rs`: the boot-time creation of an absent structural table matched index DDL only in the quoted ` ON "<table>" (` spelling, so `doc_mount_files` was created without `idx_doc_mount_files_sha256` (v4 writes that index unquoted, and `fresh_schema.json` keeps v4's text). `table_shape_equivalence`'s substrate test filtered v4's side the same way and so could not see it; both now match either spelling (red-first on the regenerated oracle). Each table's creation now runs inside a SAVEPOINT, so a failing index rolls the table back and the next boot retries and re-reports instead of reading an index-less table as sound. The DDL dump is parsed once per process. Two new unit pins, both mutation-proven. (2) `quilltap-host`: the assembly teardown clears the structural-problems record, so the getter reads empty while locked as documented (pinned in the lock/unlock arm, mutation-proven); the created-table index assert is now exact. (3) `doc_edit/path_resolver.rs`: the project-scope guard treats an empty `projectId` as missing (v4's `!context.projectId`); before, `Some("")` passed, the chokepoint admitted the falsy project, and the legacy fallback resolved to the whole `files/` root. The WARN pin now covers `None` and `""` (red-first). (4) `projects_routes_equivalence`: the enrichment-failure arm now pins the `[Projects v1] Project updated` INFO, which v4 logs before `enrichProject` (mutation-proven by moving the line after a successful enrichment). (5) Doc comments: the Tauri `health` command and the SPA's `interpretHealth` describe the degraded 503; three SPA comments cite `enrich_project` instead of stale line numbers.
+
 #### 2026-10-03 — docs(porting): P4.D246 lane record closed — the gate, the deferrals, LANE COMPLETE; one clippy lint in the wire test
 
 _Versions: web 0.0.215._

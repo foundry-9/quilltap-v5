@@ -370,19 +370,31 @@ impl EnsureFailures {
 /// fresh-instance provisioning replays (`services/provisioning`).
 const FRESH_SCHEMA_JSON: &str = include_str!("../services/provisioning/fresh_schema.json");
 
+/// The dump, parsed once per process (the boot walks ten tables).
+static FRESH_SCHEMA: std::sync::LazyLock<serde_json::Value> = std::sync::LazyLock::new(|| {
+    serde_json::from_str(FRESH_SCHEMA_JSON).expect("fresh_schema.json parses")
+});
+
 /// The dump's statements for `collection` in `partition`, in dump order: its
 /// `CREATE TABLE`, then every `CREATE INDEX` on it.
+///
+/// The index target is matched in EITHER spelling: v4's repositories write one
+/// structural index unquoted (`doc-mount-files.repository.ts`'s
+/// `CREATE INDEX idx_doc_mount_files_sha256 ON doc_mount_files (sha256)`), and
+/// the dump keeps v4's text. A quoted-only match created `doc_mount_files`
+/// WITHOUT its sha256 index — a v5-only schema difference, caught at the
+/// `e5c6bd0c0` unification (the tier-1 substrate test had filtered v4's side
+/// the same way, so both sides dropped it).
 fn fresh_ddl_for(partition: Partition, collection: &str) -> Vec<String> {
     let key = match partition {
         Partition::Main => "main",
         Partition::MountIndex => "mountIndex",
         Partition::LlmLogs => "llmLogs",
     };
-    let schema: serde_json::Value =
-        serde_json::from_str(FRESH_SCHEMA_JSON).expect("fresh_schema.json parses");
     let table_prefix = format!("CREATE TABLE \"{collection}\" (");
-    let on_table = format!(" ON \"{collection}\" (");
-    schema[key]
+    let on_quoted = format!(" ON \"{collection}\" (");
+    let on_bare = format!(" ON {collection} (");
+    FRESH_SCHEMA[key]
         .as_array()
         .expect("fresh_schema.json partition array")
         .iter()
@@ -390,7 +402,7 @@ fn fresh_ddl_for(partition: Partition, collection: &str) -> Vec<String> {
         .filter(|sql| {
             sql.starts_with(&table_prefix)
                 || ((sql.starts_with("CREATE INDEX ") || sql.starts_with("CREATE UNIQUE INDEX "))
-                    && sql.contains(&on_table))
+                    && (sql.contains(&on_quoted) || sql.contains(&on_bare)))
         })
         .map(str::to_string)
         .collect()
@@ -445,14 +457,29 @@ pub fn create_missing_structural_tables(
             if name_is_taken(conn, table.collection)? {
                 return Ok(());
             }
-            for sql in fresh_ddl_for(table.partition, table.collection) {
-                if let Err(e) = conn.execute_batch(&sql) {
-                    let e = DbError::from(e);
-                    error = Some(crate::db::fallback::error_text(&e));
-                    return Err(e);
-                }
-            }
-            Ok(())
+            // One SAVEPOINT per table: a later `CREATE INDEX` failing (a
+            // squatted index name) rolls the table back too, so the next boot
+            // retries and re-reports — v4's `IF NOT EXISTS` index DDL re-fails
+            // on every boot. Without it the table would survive index-less and
+            // read SOUND forever after (the shape check reads columns only).
+            let created = conn
+                .execute_batch("SAVEPOINT qt_structural_create")
+                .and_then(|()| {
+                    for sql in fresh_ddl_for(table.partition, table.collection) {
+                        if let Err(e) = conn.execute_batch(&sql) {
+                            let _ = conn.execute_batch(
+                                "ROLLBACK TO qt_structural_create; RELEASE qt_structural_create",
+                            );
+                            return Err(e);
+                        }
+                    }
+                    conn.execute_batch("RELEASE qt_structural_create")
+                });
+            created.map_err(|e| {
+                let e = DbError::from(e);
+                error = Some(crate::db::fallback::error_text(&e));
+                e
+            })
         });
         if let Some(text) = error {
             failures.record(table.collection, text);
@@ -605,5 +632,58 @@ mod tests {
         assert_eq!(STRUCTURAL_TABLES.len(), 11);
         assert_eq!(STRUCTURAL_TABLES[0].collection, "llm_logs");
         assert_eq!(STRUCTURAL_TABLES[1].collection, "help_doc_chunks");
+    }
+
+    /// Found at the `e5c6bd0c0` unification: `doc_mount_files`' sha256 index is
+    /// written UNQUOTED in v4's dump; a created table must carry it.
+    #[test]
+    fn a_created_doc_mount_files_carries_its_unquoted_sha256_index() {
+        let mount = Connection::open_in_memory().unwrap();
+        let mut failures = EnsureFailures::default();
+        create_missing_structural_tables(Some(&mount), None, &mut failures);
+        assert!(failures.is_empty(), "{failures:?}");
+        let has: bool = mount
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'index' \
+                 AND name = 'idx_doc_mount_files_sha256' AND tbl_name = 'doc_mount_files')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            has,
+            "doc_mount_files was created without idx_doc_mount_files_sha256"
+        );
+    }
+
+    /// A later index failing rolls the table back with it, so the next boot
+    /// retries and re-reports instead of reading an index-less table SOUND.
+    #[test]
+    fn a_failed_index_rolls_the_created_table_back_and_is_recorded() {
+        let mount = Connection::open_in_memory().unwrap();
+        // Squat the sha256 index's name with a table.
+        mount
+            .execute_batch("CREATE TABLE idx_doc_mount_files_sha256 (x)")
+            .unwrap();
+        let mut failures = EnsureFailures::default();
+        create_missing_structural_tables(Some(&mount), None, &mut failures);
+        let text = failures
+            .get("doc_mount_files")
+            .expect("the failure is recorded");
+        assert!(text.contains("idx_doc_mount_files_sha256"), "{text}");
+        assert!(
+            !name_is_taken(&mount, "doc_mount_files").unwrap(),
+            "the table must roll back with its index"
+        );
+        // Every other mount table still created.
+        assert!(name_is_taken(&mount, "doc_mount_file_links").unwrap());
+        // Squatter gone → a second pass creates it whole.
+        mount
+            .execute_batch("DROP TABLE idx_doc_mount_files_sha256")
+            .unwrap();
+        let mut again = EnsureFailures::default();
+        create_missing_structural_tables(Some(&mount), None, &mut again);
+        assert!(again.is_empty(), "{again:?}");
+        assert!(name_is_taken(&mount, "doc_mount_files").unwrap());
     }
 }

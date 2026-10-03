@@ -451,9 +451,15 @@ fn creating_every_absent_table_reproduces_v4s_substrate() {
     let v4_for = |partition: &str, table: &str| -> Vec<String> {
         let mut v: Vec<String> = strings(&substrate[0][partition])
             .into_iter()
+            // The index target in EITHER spelling: v4's repositories write one
+            // structural index unquoted (`doc-mount-files.repository.ts`'s
+            // `idx_doc_mount_files_sha256 ON doc_mount_files (sha256)`); a
+            // quoted-only filter here dropped it from BOTH sides and hid the
+            // creation path's own miss (found at the `e5c6bd0c0` unification).
             .filter(|sql| {
                 sql.starts_with(&format!("CREATE TABLE \"{table}\" ("))
                     || sql.contains(&format!(" ON \"{table}\" ("))
+                    || sql.contains(&format!(" ON {table} ("))
             })
             .collect();
         v.sort();

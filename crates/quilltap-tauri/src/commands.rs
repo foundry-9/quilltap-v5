@@ -31,7 +31,8 @@ pub async fn dispatch(state: State<'_, SharedState>, request: Value) -> Result<V
 
 /// §1 `health`: `{status, body}` where `status` is exactly the HTTP status
 /// `health.rs` would set (200 healthy / 423 locked / 409 lock-conflict /
-/// 503 unhealthy) and `body` is the `GET /health` JSON verbatim, so the
+/// 503 unhealthy OR `degraded` — a booted instance whose structural pass found
+/// damage, P4.D248) and `body` is the `GET /health` JSON verbatim, so the
 /// SPA's interpreter branches identically under both transports.
 pub async fn health_inner(state: &SharedState) -> Value {
     let (status, body) = quilltap_web::health::health_parts(state).await;

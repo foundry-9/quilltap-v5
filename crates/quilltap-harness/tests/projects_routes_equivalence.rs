@@ -1510,12 +1510,26 @@ fn projects_routes_match_oracle() {
             Ok(())
         }))
         .expect("delete aria's vault keystone");
-        let resp = rt.block_on(projects::project_update(
-            &db,
-            IOTA,
-            json!({ "name": "Iota Renamed Behind A Broken Vault" }),
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_update(
+                &db,
+                IOTA,
+                json!({ "name": "Iota Renamed Behind A Broken Vault" }),
+            ))
+        });
         check_unavailable(name, &resp, &mut failed);
+        // v4 `project-crud.ts:113` logs the update BEFORE `enrichProject`
+        // runs, so the INFO fires even though the enrichment then 503s (pinned
+        // at the `e5c6bd0c0` unification — a port that logged only after a
+        // successful enrichment stayed green everywhere else).
+        assert_eq!(
+            projects_v1_lines(&lines),
+            vec![format!(
+                "{PROJECTS_TARGET} [Projects v1] Project updated projectId={IOTA} userId={}",
+                quilltap_core::api::SINGLE_USER_ID
+            )],
+            "{name}: v4's update INFO line fires before the failing enrichment"
+        );
         check_tables(name, &dump_project_tables(&db), &mut failed);
         let renamed = dump_project_tables(&db)["projects"]
             .as_array()

@@ -4159,7 +4159,7 @@ export interface ProjectSummary {
 export interface ProjectRosterCharacter {
   id: string;
   name: string;
-  /** OMITTED on the wire when the character has none (`api/projects.rs:333-338`). */
+  /** OMITTED on the wire when the character has none (`api/projects.rs` `enrich_project`). */
   defaultImageId?: string | null;
   defaultImage: EnrichedImage | null;
   tags: string[];
@@ -4183,7 +4183,7 @@ export interface ProjectDetail {
    * The ENRICHED roster, in roster order (a roster id with no character is
    * dropped) — v4 `app/prospero/[id]/types.ts:96` `characterRoster:
    * ProjectCharacter[]`; the server writes it in place of the stored id list
-   * (`api/projects.rs:350`). There is no `roster` key: the SPA invented one at
+   * (`api/projects.rs` `enrich_project`). There is no `roster` key: the SPA invented one at
    * P4.6l and the card read it, so no v5 project ever showed its roster
    * (P4.D247 §D1).
    */

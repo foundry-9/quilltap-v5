@@ -447,7 +447,7 @@ describe('ProjectModelBehaviorCard', () => {
  * string quoted from `git show e5c6bd0c0:"app/prospero/[id]/components/
  * CharactersCard.tsx"` and `…/hooks/useProjectDetail.ts`). The `project()`
  * builder carries the WIRE shape: `characterRoster` holds the enriched entries
- * `projectGet` sends (`api/projects.rs:350`) and there is no `roster` key —
+ * `projectGet` sends (`api/projects.rs` `enrich_project`) and there is no `roster` key —
  * the phantom the card read since P4.6l (survey §D1).
  */
 describe('ProjectCharactersCard', () => {

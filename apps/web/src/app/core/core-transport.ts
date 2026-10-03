@@ -173,7 +173,9 @@ export class HttpCoreTransport implements CoreTransport {
 /**
  * Interpret a `GET /health` status + body pair (health.rs's vocabulary): 200
  * healthy, 423 locked (carries `dbKeyState`), 409 lock-conflict, 503
- * unhealthy. Shared verbatim by the HTTP fetch and the Tauri `health` command
+ * unhealthy — except a 503 whose body reads `status: "degraded"` (a booted
+ * instance with structural damage, P4.D248), which is healthy here (ruling
+ * R1). Shared verbatim by the HTTP fetch and the Tauri `health` command
  * (whose reply carries the same status number) so the branches cannot drift.
  *
  * P4.9c: the healthy and locked arms additionally carry the serving build's

@@ -473,6 +473,9 @@ struct AssemblyTeardown {
     stop: watch::Sender<bool>,
     /// Clears the host's terminal-manager slot for this assembly.
     terminal_slot: Arc<Mutex<Option<Arc<TerminalManager>>>>,
+    /// Clears the host's structural-problems record for this assembly (the
+    /// getter's "empty while locked" contract; the next assemble replaces it).
+    structural_problems: Arc<Mutex<Vec<String>>>,
     /// The instance lock this assembly holds; released on shutdown (AFTER the
     /// stop flag flips, so the heartbeat loop never mistakes our own release
     /// for a lock loss).
@@ -488,6 +491,7 @@ impl AssemblyTeardown {
         // Drop this assembly's terminal manager (live PTYs keep their reader
         // threads until the shells exit; new spawns need a fresh unlock).
         self.terminal_slot.lock().unwrap().take();
+        self.structural_problems.lock().unwrap().clear();
         // Idempotent: a second shutdown finds no file (or not ours) and no-ops.
         // On the lock-loss path this is the ownership test doing its job —
         // a record another process now owns is left strictly alone.
@@ -853,6 +857,7 @@ impl EngineAssembler for HostAssembler {
         let teardown = Arc::new(AssemblyTeardown {
             stop: stop_tx,
             terminal_slot: self.terminal_slot.clone(),
+            structural_problems: self.structural_problems.clone(),
             lock_path: lock_path.clone(),
             _wake_target: wake_target,
         });

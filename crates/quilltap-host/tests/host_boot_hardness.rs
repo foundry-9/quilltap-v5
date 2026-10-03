@@ -457,7 +457,9 @@ async fn an_absent_group_link_table_is_created_and_reported_sound() {
             |r| r.get(0),
         )
         .unwrap();
-    assert!(indexes >= 1, "the created table carries v4's indexes");
+    // Exactly the dump's one index on this table (`idx_group_character_members_createdAt`);
+    // the exhaustive table-by-table proof is `table_shape_equivalence`'s substrate test.
+    assert_eq!(indexes, 1, "the created table carries v4's index");
 }
 
 /// P4.D248 — the record is REPLACED on every assemble (v4's
@@ -507,6 +509,14 @@ async fn a_repaired_table_clears_the_record_on_the_next_assemble() {
         Response::UnlockState(u) => assert_eq!(u.state, PepperState::NeedsPassphrase),
         other => panic!("unexpected: {other:?}"),
     }
+    // The getter's contract: empty while locked — the assembly's teardown
+    // clears the record (found at the `e5c6bd0c0` unification: the lock left
+    // the previous assembly's record readable).
+    assert!(
+        host.structural_problems().is_empty(),
+        "locked → no record: {:?}",
+        host.structural_problems()
+    );
     match core.dispatch(unlock()).await {
         Response::UnlockState(u) => assert_eq!(u.state, PepperState::Resolved),
         other => panic!("unexpected: {other:?}"),

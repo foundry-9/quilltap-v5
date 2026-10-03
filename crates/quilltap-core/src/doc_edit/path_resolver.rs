@@ -765,7 +765,12 @@ fn resolve_project_path(
     context: &PathResolutionContext,
     files_dir: Option<&Path>,
 ) -> Result<ResolvedPath, ResolveError> {
-    let Some(project_id) = &context.project_id else {
+    // JS truthiness (v4 `if (!context.projectId)`): `""` is missing too. A
+    // bare `Some` match let `Some("")` through, where the chokepoint then
+    // admits a falsy project and the legacy fallback joins `""` onto
+    // `files_dir` — the whole `files/` root (found at the `e5c6bd0c0`
+    // unification).
+    let Some(project_id) = context.project_id.as_ref().filter(|p| !p.is_empty()) else {
         // v4 `path-resolver.ts:597` — a pre-existing absent line, restored
         // alongside the roster gate (P4.D245 Tier 2 item 14): the WARN has no
         // context object.
@@ -1586,38 +1591,42 @@ mod tests {
         // pre-existing absent line beside the roster gate; its silence leg is
         // every resolving `project` pin above.
         let (main, mount) = roster_fixture();
-        let ctx = PathResolutionContext {
-            character_id: Some("c-on".to_string()),
-            ..Default::default()
-        };
-        let (out, lines) = crate::test_support::captured_with(|| {
-            resolve_doc_edit_path(
-                &main,
-                &mount,
-                DocEditScope::Project,
-                Some("plan.md"),
-                &ctx,
-                None,
-            )
-        });
-        assert!(matches!(
-            out,
-            Err(ResolveError::Path {
-                code: PathErrorCode::MissingContext,
-                ..
-            })
-        ));
-        let warn = lines
-            .iter()
-            .find(|l| l.contains("project scope requires projectId in context"))
-            .unwrap_or_else(|| panic!("{lines:?}"));
-        assert!(
-            warn.starts_with("WARN quilltap_core::doc_edit::path_resolver"),
-            "{warn}"
-        );
-        assert!(
-            !lines.iter().any(|l| l.contains("[ProjectRoster]")),
-            "no chokepoint call without a project: {lines:?}"
-        );
+        // `None` and `Some("")` alike — v4's `!context.projectId`.
+        for project_id in [None, Some(String::new())] {
+            let ctx = PathResolutionContext {
+                character_id: Some("c-on".to_string()),
+                project_id,
+                ..Default::default()
+            };
+            let (out, lines) = crate::test_support::captured_with(|| {
+                resolve_doc_edit_path(
+                    &main,
+                    &mount,
+                    DocEditScope::Project,
+                    Some("plan.md"),
+                    &ctx,
+                    None,
+                )
+            });
+            assert!(matches!(
+                out,
+                Err(ResolveError::Path {
+                    code: PathErrorCode::MissingContext,
+                    ..
+                })
+            ));
+            let warn = lines
+                .iter()
+                .find(|l| l.contains("project scope requires projectId in context"))
+                .unwrap_or_else(|| panic!("{lines:?}"));
+            assert!(
+                warn.starts_with("WARN quilltap_core::doc_edit::path_resolver"),
+                "{warn}"
+            );
+            assert!(
+                !lines.iter().any(|l| l.contains("[ProjectRoster]")),
+                "no chokepoint call without a project: {lines:?}"
+            );
+        }
     }
 }
