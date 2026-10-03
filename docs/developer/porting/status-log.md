@@ -163400,3 +163400,216 @@ core 0.0.1183 → **0.0.1187** (+4: units 2, 3, 4, 5), web 0.0.213 → **0.0.215
 
 **Post-gate, on the lint-fixed tree:** `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` exit 0 AND with `--features quilltap-core/native-transport` exit 0; `project_update_dispatch_wire` GREEN again (twice — once after the lint fix, once after rustfmt's reflow of it); the intermittent `a_failed_write_errors_and_answers_false` GREEN by name 3/3. Pins removed (`git worktree remove --force` both; the human's checkout clean on `main`); the lane's `target/` removed after this commit. **LANE COMPLETE.**
 
+## 2026-10-03 — P4.D245: the project roster as a TOOL-ACCESS gate (v4 `9753d0eb2`'s tool-access half) — LANE COMPLETE on `claude/roster-tool-access-gate-94496a`
+
+**Order:** `work-orders/p4.d245-project-roster-tool-access-gate-core.md`. **v4
+baseline `f6426e196`; target pin `e5c6bd0c0`** (`/tmp/qt-v4-pin-p4d245-e5c6bd0c0`;
+the baseline pin `/tmp/qt-v4-pin-p4d245-f6426e196` for every both-directions
+count). The ledger's §2 probe PASSED at lane start and before every regen batch
+(branch `main`, HEAD `e5c6bd0c0`, tree CLEAN, both logs empty). Every regen ran
+from the pin into a lane-private `/tmp/p4d245/<tag>/` (the committed recipe
+headers stay canonical; `recipe_sweep.py --self-test` exit 0 on the branch).
+
+### What landed (eleven commits, core 0.0.1183 → 0.0.1190; harness FROZEN)
+
+1. `64153b44f` **the enumeration twin FOLDED** (item 1, substrate):
+   `get_accessible_mount_points` now calls the resolver's own
+   `collect_accessible_mount_point_ids` (`pub(crate)`) with
+   `operator_override: false`, as v4's one function does. Neutral by
+   measurement at the BASELINE pin: `doc_opacity` 72 ops, `doc_enum` 17,
+   `doc_ui` 9 — green on unported main and on the folded tree against the
+   SAME oracle bytes.
+2. `974e2eef1` **the eight doc builders set `allowAnyCharacter: true`
+   EXPLICITLY** (item 2; eleven `projects.create` calls). Regenerated at BOTH
+   pins on the unported-for-the-gate tree, all green: `doc_opacity` 72,
+   `doc_enum` 17, `doc_ui` 9, `doc_text` 47, `doc_blob` 11, `doc_fm` 20,
+   `doc_fs` 21, `doc_edit_path_resolver` 38 rows — at `f6426e196` AND
+   `e5c6bd0c0`.
+3. `f762b5769` **the chokepoint** `project_roster_access.rs` (item 3) +
+   ONE new `db/fallback.rs` home (`can_character_participate_or_false`,
+   ERROR `Error checking character participation {collection: projects,
+   projectId, characterId, error}`) + its `fallback_home_guard` literal; six
+   unit pins incl. both fail-closed arms with the DEBUG AFTER the ERROR.
+4. `e3c89bf12` **the resolver's two gates** (item 4) + seven unit pins; the
+   `warn_fixture` CORRECTION (below).
+5. `5f53f2612` **the three doc-tool gates** (item 5) in v4's evaluation order.
+6. `1efa7361d` **`search_scriptorium`'s standard arm** (item 6).
+7. `40360da6a` **the shared wardrobe tiers** (item 7): `SharedWardrobeTierOptions
+   { operator }`, the private `resolve_project_tier_for_chat` over
+   `chats_read::find_by_id_or_none`, the seven tools on the default,
+   `chat_equip` on `operator: true`; seven unit pins over a fresh-schema main.
+8. `54ad1da4b` **`project_info`'s three sentences** (item 8) + three pins.
+9. `395033d74` **NEW `project_roster_access_equivalence`** (item 9) — 43 ops.
+10. `5e7de0db7` **`search_tools` + a closed third project** (item 10): three
+    rows; the INFO floor 28 → 30.
+11. `da7c5adc4` **`doc_fs` + a closed legacy project** (item 11): one row.
+
+### The red-first record (every count measured, none assumed)
+
+- **`project_roster_access_equivalence` at `e5c6bd0c0`, composition arms
+  (28 then 29):** unported tree **22 of 28 RED** (every arm with a character
+  AND a project — the off-roster results and the on-roster LOG LINES); after
+  the resolver gate 13; after the doc-tool gates 7; after the wardrobe tier
+  **0 of 29** (the operator row included). With the 14 direct rows (v4's nine
+  `roster-access.test.ts` shapes + the gated-id arms, on a REAL DB): **43 of
+  43 green at the target; at `f6426e196` 22 of 29 RED with the 14 direct
+  rows SKIPPED** (`{absent: true}` — the module does not exist there), the
+  both-directions proof. The 7 that agree at both pins are the arms with no
+  character, no project, an empty id, or the operator.
+- **`search_tools` at `e5c6bd0c0` on unported main: RED on exactly
+  `pi_get_info_rich` + `pi_get_info_minimal`** (the `formatted` string; the
+  two oracles' `resultJson` differ only by the minted store id across two
+  builds; the 39 search rows byte-unmoved). Green after item 8; red on those
+  two rows against the baseline oracle after it.
+- **The grown `search_tools` rows at the target:** `pi_get_info_closed` →
+  `Project files and wardrobe: roster only (Bram Roster)`;
+  `search_closed_offroster` (Ada) → her vault + General, NO project hit;
+  `search_closed_onroster` (Bram) → the observatory chunk first. Every
+  pre-existing row UNMOVED by the third project (UUID-normalized compare of
+  the two target oracles) except `search_operator_surface`, whose operator
+  set is every enabled store and legitimately gains the new hit on both
+  sides.
+- **`doc_fs` closed legacy grep arm:** at the target `legacy-project-grep-
+  closed` (character A on Project C, roster [], Allow Any OFF) → `[]` where
+  the character-less `legacy-project-grep` on L still matches; against the
+  baseline oracle red on exactly that op.
+
+### Mutation proofs (item 12) — each applied, its witness run, reverted
+
+| proof | mutation | witness | red |
+|---|---|---|---|
+| M1 | `resolve_project_path` gate removed | `project_roster_access` | 4 ops: `resolve_project_closed_bea` (the refusal), `resolve_project_closed_ada` + `resolve_project_open_bea` (the admitted resolves lose their chokepoint line), `open_blank_closed_ada` (two lines → one) |
+| M2 | the collector gate removed | `project_roster_access` | 4 ops: `accessible_closed_bea`, `resolve_store_by_name_closed_bea`, `list_files_closed_bea`, `grep_closed_bea` |
+| M3 | the enumeration twin UN-folded (the pre-lane hand-copy restored, gate only in the resolver) | `project_roster_access` | 8 ops: all four `accessible_*`, `list_files_closed_{ada,bea}`, `grep_closed_{ada,bea}` — item 1 is load-bearing |
+| M4 | `document_ui`'s scope gate removed | `project_roster_access` | 2 ops: `open_blank_closed_bea` (lands in the project), `open_blank_closed_ada` |
+| M5 | `character_id` dropped from `blank_ctx` | `project_roster_access` | 1 op: `open_blank_closed_ada` — the line COUNT (two → one), §D6's only witness |
+| M6 | grep's legacy-walk gate removed | `doc_fs` | `legacy-project-grep-closed` (A matches `files/<C>/draft.md`) |
+| M7 | the search gate removed | `search_tools` | `search_closed_offroster` |
+| M8a | `operator: true` dropped at `chat_equip` | web `wardrobe_routes` | `eq_project_tier` (Aria off-roster, measured) |
+| M8b | the operator option ignored inside `resolve_project_tier_for_chat` | `project_roster_access` | 1 op: `tiers_closed_bea_operator` |
+| M9 | fail-OPEN (both `Err` arms → `true`) | `project_roster_access` | 2 ops: `admits_broken_ada`, `accessible_broken_ada` |
+| M10 | `project_info`'s order inverted (roster first) | `search_tools` | `pi_get_info_rich` |
+
+Every mutation reverted by `git checkout --`; `git status` clean after the run.
+Each proof reddened its named arm and nothing outside its site's reach.
+
+
+### Item 13 — neutral families on the PORTED tree at `e5c6bd0c0`, all green
+
+`doc_opacity` 72 ops, `doc_enum` 17, `doc_ui` 9, `doc_text` 47, `doc_blob`
+11, `doc_fm` 20, `doc_edit_path_resolver` (38 rows), `doc_fs` 22,
+`wardrobe_tools` 35, `tiered_mount_pool`, `scenario_builder_mount_pool`,
+`fallback_home_guard` 2/2, `project_roster_access` 43, `search_tools`; the
+web crate's **`wardrobe_routes_equivalence` RUN only** (the committed pair
+copied to `/tmp`, the oracle regenerated at the pin — 94 rows — green).
+**The Aria measurement:** the committed `wardrobe-routes` pair's project
+(`d1000000-…01`) stores `{"allowAnyCharacter": false, "characterRoster": []}`
+— Aria is OFF-roster in a CLOSED project, so `eq_project_tier` IS M8's second
+witness (read through the cipher driver from a copy; the pair untouched).
+
+### Corrections to the order, measured
+
+- **`warn_fixture` (survey §B2 / order item 4):** the prescribed EMPTY
+  `projects` table ("p-1 off-roster by absence; the assertions still hold")
+  was wrong — withholding the project tier EMPTIES the pool (no General in
+  that fixture) and three pre-existing pins then exercised the resolver's
+  "No document stores accessible in this context" refusal instead of the
+  out-of-scope split. The fixture now bakes `p-1` OPEN (the slim row +
+  `r-1`'s `properties.json` with `allowAnyCharacter: true`), every old pin
+  keeps its meaning, and a `roster_fixture` flips the same row CLOSED for the
+  gate's own pins. Memory note written.
+- **The family needed two oracle-side artifacts handled by name:** (a) v4
+  creates `chat_documents` lazily on first access where v5 expects the
+  table, so the builder `ensureCollection`s it; (b) the new-blank failure on
+  a DATABASE project store (`writeFile('')`, a pre-existing v4 shape both
+  sides share) renders `Error: ENOENT…` under jest because Node's fs error
+  fails `instanceof Error` across realms — plain Node renders `ENOENT…`, v5's
+  bytes — stripped from the oracle side only (`strip_jest_realm_error_prefix`).
+  Memory note written.
+- **Two missing `files/` levels trip v4's `safeRealpath`:** with
+  `files/_general` absent, v4 re-attaches the segments in the wrong order and
+  refuses the General landing as a boundary escape; both sides materialize
+  `files/_general` up front (the doc-fs idiom). Not this family's subject;
+  recorded, not measured further.
+
+### §D3 measurement (Tier 2 item 15) — the split IS attributable
+
+`OverlayError::Db` reaches the chokepoint ONLY from the slim MAIN read: the
+overlay's own mount read is the fallback `documents_by_mount_point_ids_and_
+path_or_empty` (P4.142), which logs its own line and answers `[]`, so a mount
+failure surfaces as `Unavailable` (`properties.json missing`) — v4's OUTER
+line, as ported. The one place the two sides part is INSIDE
+`with_strict_repository_failures`, where v4's inner `_findById` rethrows and
+`projectRosterAdmits` throws, while v5 logs the inner line and answers
+`false`; NO roster-gate site runs under the strict scope (its callers are
+backup, export, import and the cascade delete alone). Recorded in the home
+fn's doc; no divergence pin needed.
+
+### Tier 2 / Tier 3
+
+- **Item 14 (v4's pre-existing absent lines):** the `project scope requires projectId in context` WARN RESTORED
+  (`16159e3c6`, capture pin, module target); the `Error finding links by
+  project ID` home for `resolve_project_mount_point_ids` NOT landed — it
+  lives in `tools/wardrobe_shared.rs`, which this lane only READS (a helper
+  there is a STOP by the order) — deferred by name to the next smalls round
+  alongside item 18.
+- **Item 16 — candidate v4 note (§D4), for the human to file:** an off-roster
+  character addressing the closed project's OWN linked store by NAME under
+  `document_store` falls to the out-of-scope refusal — *"The document store
+  "Project Files: Closed Ledger" exists but is not reachable from this
+  conversation. It is not linked to this project, and it is not one of your
+  own group's stores…"* — which is FALSE for that store (it IS linked; the
+  roster is the wall). Ported faithfully and pinned (`resolve_store_by_name_
+  closed_bea`, both sides byte-identical).
+- **Item 17 — `[Wardrobe] Project lookup for chat failed` WARN:** v4-
+  unreachable (behind `chats._findById`'s fallback); NOT ported; the unit pin
+  `a_failing_chat_read_logs_the_fallback_home_line_and_answers_empty` proves
+  v5 logs `Error finding entity by ID {collection: chats}` and answers `[]`.
+- **Item 18 — `resolve_project_mount_point_ids_for_chat`'s silent chat-read
+  `Err`:** unchanged (its six callers are v4's ungated sites); named for the
+  next smalls round.
+- **Item 19:** the SPA (P4.D247) and the data half + the vendored trees
+  (P4.D246) — not this lane.
+
+### Fixtures and regen recipes
+
+- NEW minted pair `build-project-roster-access-fixture.ts` →
+  `QT_FIXTURE_PRA_{MAIN,MOUNT}`; oracle `project-roster-access.test.ts` →
+  `QT_ORACLE_PRA` (recipe in the `.rs` header; the sweep driver extracts it).
+- `build-search-tools-fixture.ts` (+ the Closed Observatory) → every
+  `search_tools` regen; `build-doc-fs-fixture.ts` (+ Project C) → `doc_fs`;
+  the eight doc builders' explicit flag → their eight families AND
+  `scenario_builder_mount_pool` (which reuses the doc-opacity builder). No
+  committed real-DB pair rebuilt.
+
+### Gate
+
+The P4.D245 lane gate on `claude/roster-tool-access-gate-94496a` at
+`16159e3c6` (twelve commits), from the `e5c6bd0c0` pin, `CARGO_INCREMENTAL=0`:
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+-D warnings` clean in BOTH feature sets (default + `quilltap-core/
+native-transport`); **`QT_V4_CHECKOUT=<the pin> cargo test --workspace
+--no-fail-fast` with the lane's 29-variable env block: 661 test binaries /
+4,250 passed / 1 failed / 3 ignored.** The one red is an env-block ARTIFACT:
+`search_tools_equivalence` and `tiered_mount_pool_equivalence` both read
+`QT_FIXTURE_TMP_{MAIN,MOUNT}` (their committed headers), so the combined block
+handed `search_tools` the tiered-mount-pool fixture (`no such table:
+projects`); by name with its own env it is green (0.21 s), as recorded under
+item 13. Every lane family confirmed RUN in the gate by its per-binary result
+line with a non-zero duration (`project_roster_access` 0.04 s, `doc_opacity`
+0.09 s, `doc_text` 0.11 s, `doc_blob` 0.12 s, `wardrobe_tools` 0.15 s, the web
+`wardrobe_routes` 0.29 s, `cli_differential` 303.6 s Tier R); the two
+live-checkout guards GREEN by name with output visible (`the_vendored_
+catalogue_equals_v4s_shipped_prompts`, `every_installed_provider_sdk_matches_
+the_recorded_version`); `fallback_home_guard` 2/2 with the one new literal;
+`spelling_guard` green; `dispatch_wrong_type_census` 14/14, **441 UNMOVED**
+(`api/types.rs` untouched). `recipe_sweep.py --self-test` exit 0 on the
+branch. The lane's `target/` was removed after the gate; the two pins and
+`/tmp/p4d245/` deleted.
+
+
+### 💸 for the dogfood pass
+
+The order's rows, unchanged; add: `project_info` on the Friday copy's
+projects BEFORE and AFTER P4.D247's roster edit; the closed store by NAME
+under `document_store` for the §D4 note's wording in a real Salon turn.

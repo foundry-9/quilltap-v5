@@ -64,6 +64,12 @@ Red-first at the target on unported main: routes RED on the five flag-less creat
 _No crate versions bumped._
 
 Copies v4's `help/` tree at `e5c6bd0c0` over v5's (`diff -rq` against the pin is empty). Five pages change, none added or removed, so the count stays 129 and both count literals (`help_tree_embed_guard.rs`, `host_help_docs_boot.rs`) are unmoved: `project-characters.md`, `project-chats.md`, `project-settings.md`, `projects.md` (`9753d0eb2` — the roster as a tool-access list) and `cli-migrations.md` (`e5c6bd0c0` — resumable migrations and the boot-time table check). `docs/v4/` gains the same commits' `CHANGELOG.md`, `developer/API.md`, `developer/bugs.md` and the two new `developer/bugs/fixed/bug-175-*.md` / `bug-176-*.md`; the only residual against v4's `docs/` is the standing `packages-quilltap-README.md` (byte-identical to v4's `packages/quilltap/README.md` at both pins). Red-first: `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, failed on the unported tree (the five pages; `cli-migrations.md` gains a second section, 744 → 745 chunks) and pass after the copy; regenerated at the baseline `f6426e196` they now fail, so the move is pinned in both directions. The embed guard and the host help-boot test pass unmoved.
+#### 2026-10-03 — docs(porting): P4.D245 lane record — the project roster tool-access gate, lane complete
+
+_Docs-only change._
+
+The lane record for P4.D245 appended to `status-log.md` (the red-first counts at both pins, the eleven mutation proofs, the item-13 neutral runs with the Aria measurement, the `warn_fixture` correction, the §D3 measurement, the §D4 candidate v4 note, the gate), and the order's status header set to LANE COMPLETE.
+
 #### 2026-10-03 — fix(doc-edit): the project scope's missing-project refusal logs v4's WARN (P4.D245 Tier 2 item 14)
 
 _Versions: core 0.0.1191._
