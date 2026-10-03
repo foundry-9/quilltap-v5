@@ -163293,3 +163293,26 @@ character sharing a legacy avatar under the same plant aborting; a
 background cheap task against `refusal-server.py`'s `hang` mode RETRYING
 once (`is_timeout_failure` by kind); a keyless vision profile behind a keyed
 primary in the wizard sending the PRIMARY's key.
+
+## P4.D246 — v4 `9753d0eb2`'s DATA half (the `allowAnyCharacter` create default at both sites, the enriched project PUT, the chat-create roster auto-add deleted) + `help/**` and `docs/v4/**` re-vendored whole at `e5c6bd0c0` — LANE record IN PROGRESS (2026-10-03)
+
+**Branch** `claude/project-roster-data-mirror-aa9044` (worktree `.claude/worktrees/project-roster-data-mirror-aa9044`), cut from `main` `0e17596b4`. **Baseline** `f6426e196`; **target pin** `e5c6bd0c0`. Order: `work-orders/p4.d246-project-roster-data-half-help-mirror.md`; survey: `work-orders/surveys/2026-10-03-e5c6bd0c0/survey-project-roster-data-half-help-mirror-p4.d246.md`.
+
+### The §2 probe and the pins
+
+The ledger's §2 probe PASSED at lane start (branch `main`, tree clean, HEAD `e5c6bd0c0`, `e5c6bd0c0..main` and `1a2b2164c..bugfix` both empty) and is re-run by the regen script before every batch (each `regen-*.log` opens with the probe line). Two lane-unique detached worktrees per ledger §5.1, all three symlink classes: `/tmp/qt-v4-pin-p4d246-e5c6bd0c0` (`package.json` `4.10.0-dev.108`; marker `ggrep -c 'prefault(true)' app/api/v1/projects/schemas.ts` = 1) and `/tmp/qt-v4-pin-p4d246-f6426e196` (`4.10.0-dev.106`; marker 0). Every oracle in this record was regenerated from BOTH pins into the lane-private `/tmp/p4d246/<sha>/` with `rm -f` first and the builder's exit line read; the committed recipe headers are untouched (the sweep driver's `--v4` is the pin). Main's `target/` was cloned warm (`cp -cR`, 3.8 s).
+
+### Red-first on UNPORTED main (`0e17596b4`), measured at both pins before any source moved
+
+| family | at `f6426e196` | at `e5c6bd0c0` | counted from the oracle bytes |
+|---|---|---|---|
+| `projects_routes_equivalence` | GREEN (77 rows) | **RED on exactly nine rows**: `create_blank_description`, `create_whitespace_name`, `create_unknown_key_stripped`, `create_name_astral_within_max`, `create_null_color_and_icon`, `update`, `update_surviving_mode_latest_chat`, `update_unknown_key_stripped`, `update_clear_description` | the two pins' NDJSON differ on 12 rows; 9 carry a real diff (the five creates: `allowAnyCharacter` `false → true`; the four PUTs: `characterRoster` as entries + `_count` present), the other 3 (`create`, `wardrobe_create`, `mount_link`) differ only in minted ids/timestamps |
+| `projects_tier2_equivalence` | GREEN | **RED** (`doc_mount_files` — the sha-keyed dump — is the first table the fail-fast reaches) | exactly ONE `properties.json` cell differs between the pins: Alpha's final bag, `"allowAnyCharacter": false` → `true`; the other 13 document cells identical |
+| `chat_create_capstone_equivalence` (builder UNMODIFIED) | GREEN (141 cases) | GREEN — VACUOUS as the survey's §D1 predicted (the flag-less builder bakes `true` at the target; neither side writes) | — |
+| `help_tree_equivalence` | GREEN (129 docs / 744 chunks) | **RED** | the five pages: `cli-migrations.md` (1 → 2 chunks), `project-characters.md`, `project-chats.md`, `project-settings.md`, `projects.md`; walk order identical; 744 → 745 chunks |
+| `help_section_size_equivalence` | GREEN | **RED** (`the (file, section) set differs from v4's`) | 745 → 746 lines |
+
+### Unit 1 — `help/**` + `docs/v4/**` re-vendored WHOLE at `e5c6bd0c0` (order items 10–11)
+
+`cp -R "$PIN/help/." help/` → `diff -rq help "$PIN/help"` EMPTY, 129 files. The five pages' md5s match the survey's §B7 table exactly (`de636267` `cli-migrations`, `f25f11a2` `project-characters`, `53198bd1` `project-chats`, `6c79df0b` `project-settings`, `2928b56d` `projects`). The five `docs/v4` paths byte-copied (`0436cea9` `CHANGELOG.md`, `b6134e91` `developer/API.md`, `7272ca80` `developer/bugs.md`, `6b4866f8` `bug-175-collapse-failure-exits-process.md`, `fa4352b0` `bug-176-ledger-skips-shouldrun.md`); **the residual** `diff -rq "$PIN/docs" docs/v4` lists ONLY `Only in docs/v4: packages-quilltap-README.md` (`cmp` clean against v4's `packages/quilltap/README.md` at both pins); the two git-ignored `.DS_Store`s the survey saw were NOT present in this worktree (nothing to exclude). After the copy: `help_tree_equivalence` GREEN at the target (129 docs / 745 chunks), `help_section_size_equivalence` GREEN at the target; **both-directions:** `help_tree_equivalence` against the BASELINE oracle now RED (`docs[39]` = `cli-migrations.md`); `help_tree_embed_guard` GREEN and `host_help_docs_boot` GREEN (2 tests) with both count literals UNMOVED at 129 (`ggrep -rn '\b129\b' crates/ --include='*.rs'` finds the same two homes and nothing new). The embed guard's blindness to a stale re-vendor stands as the memory note records (it compares embedded vs disk); the mutation `revert one page → tree family red, guard green` was measured at P4.D238/P4.D240 and is not re-run here.
+

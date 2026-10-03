@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(help): re-vendor the whole help tree and the docs/v4 mirror at v4 `e5c6bd0c0` (P4.D246 unit 1)
+
+_No crate versions bumped._
+
+Copies v4's `help/` tree at `e5c6bd0c0` over v5's (`diff -rq` against the pin is empty). Five pages change, none added or removed, so the count stays 129 and both count literals (`help_tree_embed_guard.rs`, `host_help_docs_boot.rs`) are unmoved: `project-characters.md`, `project-chats.md`, `project-settings.md`, `projects.md` (`9753d0eb2` — the roster as a tool-access list) and `cli-migrations.md` (`e5c6bd0c0` — resumable migrations and the boot-time table check). `docs/v4/` gains the same commits' `CHANGELOG.md`, `developer/API.md`, `developer/bugs.md` and the two new `developer/bugs/fixed/bug-175-*.md` / `bug-176-*.md`; the only residual against v4's `docs/` is the standing `packages-quilltap-README.md` (byte-identical to v4's `packages/quilltap/README.md` at both pins). Red-first: `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, failed on the unported tree (the five pages; `cli-migrations.md` gains a second section, 744 → 745 chunks) and pass after the copy; regenerated at the baseline `f6426e196` they now fail, so the move is pinned in both directions. The embed guard and the host help-boot test pass unmoved.
+
 #### 2026-10-03 — docs(porting): order the e5c6bd0c0 drift catch-up round (P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248)
 
 _Docs-only change._
